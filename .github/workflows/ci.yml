@@ -29,7 +29,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up toolchain
-        uses: ./.github/actions/setup
+        uses: $/.github/actions/setup
       - name: ESLint
         run: pnpm lint
       - name: Prettier
@@ -47,7 +47,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up toolchain
-        uses: ./.github/actions/setup
+        uses: $/.github/actions/setup
       - name: tsc --noEmit
         run: pnpm typecheck
 
@@ -67,7 +67,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up toolchain
-        uses: ./.github/actions/setup
+        uses: $/.github/actions/setup
         with:
           node-version: ${{ matrix.node }}
       - name: Vitest with coverage
@@ -93,7 +93,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up toolchain
-        uses: ./.github/actions/setup
+        uses: $/.github/actions/setup
       - name: Unused files, exports and dependencies
         run: pnpm knip
 
@@ -109,7 +109,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up toolchain
-        uses: ./.github/actions/setup
+        uses: $/.github/actions/setup
       - name: Build
         run: pnpm build
       - name: Lint the package (publint)
@@ -148,7 +148,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Set up toolchain
-        uses: ./.github/actions/setup
+        uses: $/.github/actions/setup
         with:
           node-version: ${{ matrix.node }}
       - name: Build

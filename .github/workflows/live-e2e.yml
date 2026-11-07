@@ -62,7 +62,7 @@ jobs:
       # No dependency cache: this job holds the account token.
       - name: Set up toolchain
         if: ${{ steps.token.outputs.present == 'true' }}
-        uses: ./.github/actions/setup
+        uses: $/.github/actions/setup
         with:
           cache: "false"
 

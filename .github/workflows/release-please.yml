@@ -69,7 +69,7 @@ jobs:
 
       # No dependency cache in the release job, so a poisoned cache cannot reach the package.
       - name: Set up toolchain
-        uses: ./.github/actions/setup
+        uses: $/.github/actions/setup
         with:
           cache: "false"
 
