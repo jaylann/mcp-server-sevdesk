@@ -1,0 +1,10 @@
+* text=auto eol=lf
+
+*.png  binary
+*.jpg  binary
+*.ico  binary
+*.pdf  binary
+*.zip  binary
+
+pnpm-lock.yaml -diff linguist-generated
+spec/openapi.yaml linguist-vendored

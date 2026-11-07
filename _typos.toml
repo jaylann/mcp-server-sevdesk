@@ -1,0 +1,29 @@
+[files]
+extend-exclude = [
+  "pnpm-lock.yaml",
+  "spec/openapi.yaml",
+  "test/fixtures/**",
+  "*.de.md",
+  "*.svg",
+  "dist/",
+  "coverage/",
+  ".git/",
+]
+
+[default]
+# German accounting vocabulary and sevDesk API identifiers are not typos.
+extend-ignore-re = ["(?i)\\b(rechnung|beleg|gutschrift|angebot|mahnung|steuer|umsatz)\\w*"]
+
+[default.extend-words]
+# sevDesk API field names (spelled this way upstream).
+surename = "surename"
+ammount = "ammount"
+ammountPayed = "ammountPayed"
+Payed = "Payed"
+# German UI labels and contributor handles.
+Offen = "Offen"
+mastr = "mastr"
+Feld = "Feld"
+Intervall = "Intervall"
+intervall = "intervall"
+unity = "unity"

@@ -1,0 +1,3 @@
+# pnpm only runs install scripts for packages listed here (esbuild verifies its native binary).
+allowBuilds:
+  esbuild: true

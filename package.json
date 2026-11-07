@@ -1,0 +1,87 @@
+{
+  "name": "mcp-server-sevdesk",
+  "version": "0.0.0",
+  "description": "Safety-first MCP server for the sevDesk accounting API: invoices, receipts, banking and reports with tiered permissions and human confirmation. Unofficial.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "sevdesk",
+    "accounting",
+    "buchhaltung",
+    "invoices",
+    "e-rechnung",
+    "xrechnung",
+    "zugferd"
+  ],
+  "homepage": "https://github.com/jaylann/mcp-server-sevdesk#readme",
+  "bugs": "https://github.com/jaylann/mcp-server-sevdesk/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jaylann/mcp-server-sevdesk.git"
+  },
+  "license": "MIT",
+  "author": "Justin Lanfermann <Justin@Lanfermann.dev>",
+  "mcpName": "io.github.jaylann/mcp-server-sevdesk",
+  "type": "module",
+  "bin": {
+    "mcp-server-sevdesk": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md",
+    "README.de.md"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "packageManager": "pnpm@12.16.1",
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsx src/index.ts",
+    "inspect": "pnpm build && npx -y @modelcontextprotocol/inspector@2.14.0 node dist/index.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "knip": "knip",
+    "publint": "publint --strict",
+    "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test:coverage && pnpm knip && pnpm build && pnpm publint",
+    "prepare": "git config core.hooksPath githooks || true"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.4.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@modelcontextprotocol/client": "^2.4.0",
+    "@types/node": "^24.19.0",
+    "@vitest/coverage-v8": "^5.1.0",
+    "eslint": "^10.14.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-simple-import-sort": "^14.0.0",
+    "knip": "^6.44.2",
+    "lint-staged": "^17.6.0",
+    "prettier": "^3.9.10",
+    "publint": "^0.3.25",
+    "tsdown": "^0.23.7",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.1",
+    "vitest": "^5.1.0"
+  },
+  "lint-staged": {
+    "*.{ts,js,mjs}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  }
+}

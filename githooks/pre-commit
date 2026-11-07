@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Lint and format only the staged files (fast). CI runs the full gate.
+set -eu
+exec pnpm exec lint-staged
