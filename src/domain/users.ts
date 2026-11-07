@@ -11,6 +11,7 @@ import { z } from "zod";
 import { sanitizeUntrusted } from "../safety/fence.js";
 import { parseUpstream, zId, zOptionalString } from "../sevdesk/schema.js";
 import type { SevdeskClient } from "../sevdesk/types.js";
+import { trimmedText } from "./common.js";
 
 /** Compact user DTO (also the tools' output schema). */
 export const userDtoSchema = z.object({
@@ -48,15 +49,15 @@ type SevUserRecord = z.output<typeof sevUserSchema>;
  * `username`; all text is sanitized (users can name themselves anything).
  */
 function toUser(record: SevUserRecord): User {
-  const parts = [present(record.firstName), present(record.lastName)].filter(
+  const parts = [trimmedText(record.firstName), trimmedText(record.lastName)].filter(
     (part): part is string => part !== undefined,
   );
   const name =
-    present(record.fullname) ??
+    trimmedText(record.fullname) ??
     (parts.length > 0 ? parts.join(" ") : undefined) ??
-    present(record.username) ??
+    trimmedText(record.username) ??
     `(unnamed user ${record.id})`;
-  const email = present(record.email);
+  const email = trimmedText(record.email);
   return {
     id: record.id,
     name: sanitizeUntrusted(name, USER_FIELD_MAX),
@@ -72,8 +73,4 @@ export async function listUsers(client: SevdeskClient, signal?: AbortSignal): Pr
   });
   const items = page.items.map((raw) => toUser(parseUpstream(sevUserSchema, raw, "users")));
   return { items, total: page.total ?? items.length };
-}
-
-function present(value: string | undefined): string | undefined {
-  return value === undefined || value.trim() === "" ? undefined : value.trim();
 }

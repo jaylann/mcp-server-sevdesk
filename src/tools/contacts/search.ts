@@ -5,26 +5,19 @@ import {
   type ContactSearchResult,
   searchContacts,
 } from "../../domain/contacts.js";
+import {
+  pageOutput,
+  pageOutputShape,
+  pageSummary,
+  type PageWindow,
+  pagingInputShape,
+} from "../../domain/paging.js";
 import { CONTACT_CATEGORY_KEYS, contactCategoryIdByKey } from "../../domain/reference-data.js";
 import { defineTool } from "../define-tool.js";
 
-/** Default and maximum page size: enough to pick from, small enough for the context window. */
-const DEFAULT_LIMIT = 25;
-const MAX_LIMIT = 100;
-
 const output = z.object({
   items: z.array(contactDtoSchema),
-  total: z.number().int().optional().describe("All matches in sevDesk, when sevDesk reports it."),
-  offset: z.number().int(),
-  limit: z.number().int(),
-  hasMore: z
-    .boolean()
-    .describe("More matches may follow: call again with offset = nextOffset. An empty page ends."),
-  nextOffset: z
-    .number()
-    .int()
-    .optional()
-    .describe("offset plus the rows sevDesk returned; sevDesk may return fewer rows than limit."),
+  ...pageOutputShape,
 });
 
 /** `sevdesk_contacts_search`: find organisations and persons. */
@@ -65,14 +58,7 @@ export const contactsSearchTool = defineTool({
       .enum(CONTACT_CATEGORY_KEYS)
       .optional()
       .describe("customer (Kunde), supplier (Lieferant), partner or prospect (Interessent)."),
-    limit: z
-      .number()
-      .int()
-      .min(1)
-      .max(MAX_LIMIT)
-      .default(DEFAULT_LIMIT)
-      .describe(`Page size, 1–${MAX_LIMIT}.`),
-    offset: z.number().int().min(0).default(0).describe("Matches to skip, for paging."),
+    ...pagingInputShape({ limit: 25, max: 100 }),
   }),
   output,
   handler: async (args, ctx) => {
@@ -87,29 +73,25 @@ export const contactsSearchTool = defineTool({
       },
       ctx.signal,
     );
-    const data = {
-      items: [...result.items],
-      ...(result.total === undefined ? {} : { total: result.total }),
+    const window: PageWindow = {
       offset: args.offset,
-      limit: args.limit,
-      hasMore: result.hasMore,
-      ...(result.hasMore ? { nextOffset: result.nextOffset } : {}),
+      received: result.received,
+      total: result.total,
     };
-    return { data, summary: summarize(args.offset, result) };
+    return {
+      data: { items: [...result.items], ...pageOutput(window, result, args.limit) },
+      summary: summarize(window, result),
+    };
   },
 });
 
-function summarize(offset: number, result: ContactSearchResult): string {
-  const { received, total, hasMore, nextOffset } = result;
-  if (received === 0) {
-    return offset > 0 && total !== undefined && total > 0
-      ? `No contacts at offset ${offset}; there are ${total} matches in total.`
-      : offset > 0
-        ? `No more contacts after offset ${offset}.`
-        : "No contacts matched.";
+/** {@link pageSummary}, with a more specific sentence for an empty page. */
+function summarize(window: PageWindow, result: ContactSearchResult): string {
+  if (window.received === 0) {
+    if (window.offset === 0) return "No contacts matched.";
+    if (window.total !== undefined && window.total > 0) {
+      return `No contacts at offset ${window.offset}; there are ${window.total} matches in total.`;
+    }
   }
-  const range = `${offset + 1}–${nextOffset}`;
-  const of = total === undefined ? "" : ` of ${total}`;
-  const more = hasMore ? `; more may follow (nextOffset ${nextOffset})` : "";
-  return `Contacts ${range}${of}${more}.`;
+  return pageSummary("Contacts", window, result);
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   contactKind,
+  getContactDetails,
   getNextCustomerNumber,
   parseContactRecord,
   toContactDto,
@@ -33,6 +34,7 @@ describe("contact mapping (community: recorded Contact shape, fake data)", () =>
       createdAt: "2026-01-05",
       // 2026-03-01T23:30:00+00:00 is already 2 March in Berlin (UTC+1).
       updatedAt: "2026-03-02",
+      link: "https://my.sevdesk.de/crm/detail/id/1001",
     });
   });
 
@@ -57,7 +59,12 @@ describe("contact mapping (community: recorded Contact shape, fake data)", () =>
 
   it("leaves missing fields out instead of sending nulls", () => {
     const dto = dtoOf({ id: 7, name: "Musterfirma GmbH", customerNumber: "", category: null });
-    expect(dto).toEqual({ id: 7, kind: "organisation", displayName: "Musterfirma GmbH" });
+    expect(dto).toEqual({
+      id: 7,
+      kind: "organisation",
+      displayName: "Musterfirma GmbH",
+      link: "https://my.sevdesk.de/crm/detail/id/7",
+    });
   });
 
   it("names a contact without any name by its id", () => {
@@ -132,6 +139,48 @@ describe("getNextCustomerNumber (spec: objects is a string)", () => {
     const client = new FakeSevdeskClient([{ path, response: { body: { objects: "" } } }]);
     await expect(getNextCustomerNumber(client)).rejects.toMatchObject({
       kind: "unexpected_response",
+    });
+  });
+});
+
+describe("getContactDetails sparse rows (fake data)", () => {
+  const contactRef = { id: "1001", objectName: "Contact" };
+
+  function client(addresses: readonly object[], ways: readonly object[]) {
+    return new FakeSevdeskClient([
+      { path: "/Contact/1001", response: { body: { objects: [{ id: "1001", name: "Muster" }] } } },
+      { path: "/ContactAddress", response: { body: { objects: addresses } } },
+      { path: "/CommunicationWay", response: { body: { objects: ways } } },
+    ]);
+  }
+
+  it("leaves unset address and communication way fields out or at safe defaults", async () => {
+    const details = await getContactDetails(
+      client(
+        [
+          { id: "1", contact: contactRef },
+          { id: "2", contact: contactRef, category: { id: "45", objectName: "Category" } },
+        ],
+        [
+          { id: "3", contact: contactRef },
+          { id: "4", contact: contactRef, key: { id: "999", objectName: "CommunicationWayKey" } },
+        ],
+      ),
+      1001,
+    );
+    // Category 45 has an empty name in sevDesk's reference data: id only.
+    expect(details.addresses).toEqual([{ id: 1 }, { id: 2, category: { id: 45 } }]);
+    expect(details.communicationWays).toEqual([
+      { id: 3, type: "UNKNOWN", value: "", main: false },
+      { id: 4, type: "UNKNOWN", value: "", key: { id: 999 }, main: false },
+    ]);
+  });
+
+  it("passes the abort signal on", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(getContactDetails(client([], []), 1001, controller.signal)).rejects.toMatchObject({
+      kind: "aborted",
     });
   });
 });

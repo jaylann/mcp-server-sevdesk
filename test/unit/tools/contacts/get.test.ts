@@ -72,7 +72,11 @@ describe("sevdesk_contact_get (community: recorded shapes, fake data)", () => {
       limit: 1000,
     });
     expect(tool.output.parse(result.data)).toEqual(result.data);
-    expect(result.data.contact).toMatchObject({ id: 1001, displayName: "Musterfirma GmbH" });
+    expect(result.data.contact).toMatchObject({
+      id: 1001,
+      displayName: "Musterfirma GmbH",
+      link: "https://my.sevdesk.de/crm/detail/id/1001",
+    });
     expect(result.data.addresses).toEqual([
       {
         id: 3001,
