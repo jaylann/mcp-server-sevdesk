@@ -15,6 +15,8 @@ const TOOL_NAME_PATTERN = /^sevdesk_[a-z0-9]+(?:_[a-z0-9]+)+$/;
 const MAX_TOOL_NAME_LENGTH = 64;
 const MIN_DESCRIPTION_LENGTH = 20;
 export const MAX_DESCRIPTION_LENGTH = 2_048;
+/** The only `localEffects` value (see `ToolDefinition.localEffects`). */
+const WRITES_FILES = "writes-files";
 /** The JSON Schema dialect the MCP SDK advertises tool schemas in. */
 export const JSON_SCHEMA_TARGET = "draft-2020-12";
 
@@ -37,6 +39,7 @@ export interface ToolMetadata {
   readonly toolset: string;
   readonly tier: string;
   readonly annotations: { readonly [K in keyof ToolAnnotationSet]?: unknown };
+  readonly localEffects?: unknown;
   readonly input: unknown;
   readonly output: unknown;
 }
@@ -80,6 +83,9 @@ export function defineTool<I extends ToolInputSchema, O extends ToolOutputSchema
  *   chars; toolset and tier are known;
  * - all four annotations are booleans and agree with the tier: `read` ⇒ read-only and not
  *   destructive; every other tier ⇒ not read-only; `commit` ⇒ destructive; `external` ⇒ open world;
+ * - the one exception: a `read` tool with `localEffects: "writes-files"` (changes nothing in
+ *   sevDesk, but writes local files) must declare `readOnlyHint: false`. The flag is the only way
+ *   for a `read` tool to drop `readOnlyHint`, and it is accepted on `read` tools only;
  * - input is a strict zod object (unknown keys rejected, see {@link isStrictObject}) whose JSON
  *   Schema has an object root without a top-level union; output is a zod object that converts to
  *   JSON Schema.
@@ -115,7 +121,7 @@ export function validateToolDefinition(definition: ToolMetadata): string[] {
     }
   }
   if (isTier(tier)) {
-    problems.push(...annotationTierProblems(tier, annotations));
+    problems.push(...annotationTierProblems(tier, annotations, definition.localEffects));
   } else {
     problems.push(`tier "${tier}" is unknown (expected one of ${TIERS.join(", ")}).`);
   }
@@ -136,14 +142,31 @@ export function isStrictObject(schema: z.ZodObject): boolean {
   return schema._zod.def.catchall?._zod.def.type === "never";
 }
 
-function annotationTierProblems(tier: Tier, annotations: ToolMetadata["annotations"]): string[] {
+function annotationTierProblems(
+  tier: Tier,
+  annotations: ToolMetadata["annotations"],
+  localEffects: unknown,
+): string[] {
   const problems: string[] = [];
   const mismatch = (key: keyof ToolAnnotationSet, expected: boolean): void => {
     if (annotations[key] !== expected) {
       problems.push(`tier "${tier}" requires annotations.${key} = ${String(expected)}.`);
     }
   };
-  if (tier === "read") {
+  if (localEffects !== undefined && localEffects !== WRITES_FILES) {
+    problems.push(`localEffects must be "${WRITES_FILES}" when set.`);
+  }
+  if (localEffects !== undefined && tier !== "read") {
+    problems.push(
+      `localEffects is only for read-tier tools; tier "${tier}" is never read-only anyway.`,
+    );
+  }
+  if (tier === "read" && localEffects === WRITES_FILES) {
+    if (annotations.readOnlyHint !== false) {
+      problems.push(`localEffects "${WRITES_FILES}" requires annotations.readOnlyHint = false.`);
+    }
+    mismatch("destructiveHint", false);
+  } else if (tier === "read") {
     mismatch("readOnlyHint", true);
     mismatch("destructiveHint", false);
   } else {

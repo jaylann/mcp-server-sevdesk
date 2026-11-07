@@ -2,6 +2,7 @@ import { McpServer, type McpServerFactory, type ProtocolEra } from "@modelcontex
 
 import type { Config } from "./config.js";
 import { buildInstructions } from "./instructions.js";
+import { registerResources } from "./resources/index.js";
 import type { SevdeskClient } from "./sevdesk/types.js";
 import { ToolDefinitionError, validateToolDefinition } from "./tools/define-tool.js";
 import { ALL_TOOLS, assertUniqueNames } from "./tools/index.js";
@@ -37,8 +38,9 @@ export function createServerFactory(deps: ServerDeps): McpServerFactory {
 }
 
 /**
- * Creates one fully configured server instance: {@link SERVER_INFO}, generated instructions and
- * the tools selected for `deps.config`. `era` decides structured output in `auto` mode (see
+ * Creates one fully configured server instance: {@link SERVER_INFO}, generated instructions, the
+ * tools selected for `deps.config` and the matching resources (`src/resources/`: document file
+ * templates of enabled toolsets, reference data). `era` decides structured output in `auto` mode (see
  * `resolveStructuredOutput`); without it the instance behaves as legacy. Prefer
  * {@link createServerFactory} for serving, which does the preparation once.
  */
@@ -68,8 +70,9 @@ function prepare(deps: ServerDeps): PreparedServer {
 function instantiate(prepared: PreparedServer, era: ProtocolEra | undefined): McpServer {
   const { config, client } = prepared.deps;
   const server = new McpServer(SERVER_INFO, {
-    // Declared up front so tools/list is valid with zero tools; the list never changes at runtime.
-    capabilities: { tools: { listChanged: false } },
+    // Declared up front so tools/list and resources/list are valid when empty; neither list
+    // changes at runtime.
+    capabilities: { tools: { listChanged: false }, resources: { listChanged: false } },
     instructions: prepared.instructions,
     maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS,
   });
@@ -78,5 +81,6 @@ function instantiate(prepared: PreparedServer, era: ProtocolEra | undefined): Mc
     client,
     structuredOutput: resolveStructuredOutput(config.structuredOutput, era),
   });
+  registerResources(server, { config, client });
   return server;
 }

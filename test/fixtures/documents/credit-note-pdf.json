@@ -1,0 +1,18 @@
+{
+  "_provenance": {
+    "source": "spec",
+    "ref": "spec/openapi.yaml#/paths/~1CreditNote~1{creditNoteId}~1getPdf/get/responses/200",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "GET /CreditNote/{id}/getPdf?preventSendBy=1. Spec schema wrapped in objects per D-001 (community: j-mastr/sevdesk-api#66 covers all PDF retrievals); content is a tiny fake PDF (base64)."
+  },
+  "status": 200,
+  "body": {
+    "objects": {
+      "filename": "GU-1001.pdf",
+      "mimeType": "application/pdf",
+      "base64encoded": true,
+      "content": "JVBERi0xLjQKJSBmYWtlIHRlc3QgZG9jdW1lbnQ6IE11c3RlcmZpcm1hIEdtYkggR1UtMTAwMQoxIDAgb2JqIDw8IC9UeXBlIC9DYXRhbG9nID4+IGVuZG9iagp0cmFpbGVyIDw8IC9Sb290IDEgMCBSID4+CiUlRU9GCg=="
+    }
+  }
+}
