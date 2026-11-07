@@ -1,3 +1,8 @@
+# Supply-chain policy: only install versions that have been public for at least a day, so a
+# compromised release is likely to be caught and yanked before it reaches us. (pnpm's CI default,
+# made explicit so local installs behave the same.)
+minimumReleaseAge: 1440
+
 # pnpm only runs install scripts for packages listed here (esbuild verifies its native binary).
 allowBuilds:
   esbuild: true
