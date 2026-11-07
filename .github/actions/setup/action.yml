@@ -1,0 +1,34 @@
+name: Setup toolchain
+description: >-
+  Install pnpm (version from the packageManager field in package.json) and Node.js, then install
+  dependencies from the lockfile.
+
+inputs:
+  node-version:
+    description: Node.js version to install. Empty (the default) reads `.nvmrc`.
+    required: false
+    default: ""
+  cache:
+    description: >-
+      Cache the pnpm store between runs ("true" or "false"). Release jobs pass "false" so a
+      poisoned cache can never reach a published artifact.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up pnpm
+      uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+    - name: Set up Node.js
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: ${{ inputs.node-version }}
+        node-version-file: ${{ inputs.node-version == '' && '.nvmrc' || '' }}
+        cache: ${{ inputs.cache == 'true' && 'pnpm' || '' }}
+        package-manager-cache: false
+
+    - name: Install dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile

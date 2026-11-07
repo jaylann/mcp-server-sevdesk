@@ -1,0 +1,72 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.jaylann/mcp-server-sevdesk",
+  "title": "sevDesk",
+  "description": "Safety-first MCP server for sevDesk accounting: invoices, receipts, banking, reports. Unofficial.",
+  "version": "0.0.0",
+  "websiteUrl": "https://github.com/jaylann/mcp-server-sevdesk#readme",
+  "repository": {
+    "url": "https://github.com/jaylann/mcp-server-sevdesk",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "mcp-server-sevdesk",
+      "version": "0.0.0",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "SEVDESK_API_TOKEN",
+          "description": "sevDesk API token (Settings > Users > API token). It has full access to the account; ideally create it for a dedicated user.",
+          "format": "string",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "SEVDESK_ALLOW",
+          "description": "Comma-separated permission tiers to enable: read, write, commit, external, or all. Tools above the allowed tiers are not registered. read is always on.",
+          "format": "string",
+          "default": "read",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SEVDESK_READ_ONLY",
+          "description": "Set to true to allow only read tools, whatever SEVDESK_ALLOW says.",
+          "format": "boolean",
+          "default": "false",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SEVDESK_DRY_RUN",
+          "description": "Set to true to make write tools return the request they would send instead of sending it.",
+          "format": "boolean",
+          "default": "false",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SEVDESK_CONFIRM",
+          "description": "How a human confirms commit and external actions: elicit (in the client), browser (local approval page) or off (also needs SEVDESK_I_UNDERSTAND_NO_CONFIRM=1).",
+          "format": "string",
+          "default": "elicit",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SEVDESK_TOOLSETS",
+          "description": "Comma-separated toolsets to load, e.g. invoices,vouchers,banking. Unset loads all except advanced; all adds advanced.",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}

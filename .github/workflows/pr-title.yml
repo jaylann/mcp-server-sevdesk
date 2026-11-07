@@ -1,0 +1,47 @@
+name: PR title
+
+# PRs are squash-merged, so the PR title becomes the commit on main that release-please reads.
+# Uses `pull_request` (not `pull_request_target`): the check only needs the event payload.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  conventional-title:
+    name: Conventional Commit title
+    # Dependabot titles are already conventional (see .github/dependabot.yml commit-message).
+    if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read # read the PR title
+    steps:
+      - name: Validate the PR title
+        uses: amannn/action-semantic-pull-request@2252a14e810aa9b85c2d560bd7070c802206ecf6 # v6.1.2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          # Keep in sync with githooks/commit-msg and CONTRIBUTING.md.
+          types: |
+            feat
+            fix
+            chore
+            docs
+            refactor
+            test
+            perf
+            style
+            ci
+            build
+            revert
+          requireScope: false
+          subjectPattern: ^[^A-Z].*$
+          subjectPatternError: |
+            The subject "{subject}" in the PR title "{title}" must start with a lowercase letter,
+            e.g. "feat(invoices): add finalize tool".

@@ -1,0 +1,173 @@
+name: Release
+
+# On every push to main, release-please opens or updates the release PR. Merging that PR creates
+# the GitHub release and tag; the publish job then ships the same commit to npm (trusted
+# publishing with provenance, no NPM_TOKEN) and to the MCP Registry (GitHub OIDC).
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+# Never cancel a release in flight; queue the next push behind it instead.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  release-please:
+    name: Release PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # release commits, tags and GitHub releases
+      issues: write # create and apply the "autorelease: *" labels
+      pull-requests: write # open and update the release PR
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          # PRs opened with the default GITHUB_TOKEN do not trigger workflows, so CI would not run on
+          # the release PR. An optional fine-grained token (contents + pull requests: write on this
+          # repo only) fixes that; without it, close and reopen the release PR to run CI.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish:
+    name: Publish to npm and the MCP Registry
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: release
+      url: https://www.npmjs.com/package/mcp-server-sevdesk
+    permissions:
+      contents: read # check out the release tag
+      id-token: write # OIDC for npm trusted publishing + provenance and the MCP Registry login
+    env:
+      VERSION: ${{ needs.release-please.outputs.version }}
+      # mcp-publisher release binary, pinned by version and SHA-256 (linux_amd64).
+      MCP_PUBLISHER_VERSION: 1.8.8
+      MCP_PUBLISHER_SHA256: 09f1fa70ee146b640584274a1a6b2b8a0310b05d4321fa9224e6df6a016d67f4
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          persist-credentials: false
+
+      # No dependency cache in the release job, so a poisoned cache cannot reach the package.
+      - name: Set up toolchain
+        uses: ./.github/actions/setup
+        with:
+          cache: "false"
+
+      - name: Build
+        run: pnpm build
+
+      - name: Lint the package (publint)
+        run: pnpm publint
+
+      - name: Check that package.json and server.json carry the release version
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const want = process.env.VERSION;
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            const server = JSON.parse(fs.readFileSync("server.json", "utf8"));
+            const found = {
+              "package.json version": pkg.version,
+              "server.json version": server.version,
+              "server.json packages[0].version": server.packages?.[0]?.version,
+            };
+            let ok = true;
+            for (const [where, got] of Object.entries(found)) {
+              if (got !== want) {
+                console.log("::error::" + where + " is " + got + ", expected " + want);
+                ok = false;
+              }
+            }
+            if (server.name !== pkg.mcpName) {
+              console.log("::error::server.json name " + server.name + " differs from mcpName " + pkg.mcpName);
+              ok = false;
+            }
+            if (!ok) process.exit(1);
+            console.log("package.json and server.json are at " + want + ".");
+          '
+
+      # Trusted publishing needs npm >= 11.5.1. Node 24 bundles a newer npm, so no upgrade step;
+      # this only fails loudly if that ever stops being true.
+      - name: Check the npm version
+        run: |
+          node -e '
+            const [have, need] = [process.argv[1], "11.5.1"].map((v) => v.split(".").map(Number));
+            const older = have[0] - need[0] || have[1] - need[1] || have[2] - need[2];
+            if (older < 0) {
+              console.log("::error::npm " + process.argv[1] + " is too old for trusted publishing (need >= 11.5.1)");
+              process.exit(1);
+            }
+            console.log("npm " + process.argv[1]);
+          ' "$(npm --version)"
+
+      - name: Publish to npm
+        run: |
+          name="$(node -p 'require("./package.json").name')"
+          if [ -n "$(npm view "$name@$VERSION" version --prefer-online 2>/dev/null)" ]; then
+            echo "$name@$VERSION is already on npm; skipping (re-run)."
+          else
+            npm publish --provenance --access public
+          fi
+
+      # The MCP Registry verifies the npm package (mcpName) before accepting server.json.
+      - name: Wait until the version is visible on npm
+        run: |
+          name="$(node -p 'require("./package.json").name')"
+          for _ in $(seq 1 30); do
+            if [ "$(npm view "$name@$VERSION" version --prefer-online 2>/dev/null)" = "$VERSION" ]; then
+              echo "$name@$VERSION is live."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::$name@$VERSION did not appear on npm within 5 minutes."
+          exit 1
+
+      - name: Install mcp-publisher (checksum-verified)
+        run: |
+          base="https://github.com/modelcontextprotocol/registry/releases/download/v$MCP_PUBLISHER_VERSION"
+          asset="mcp-publisher_linux_amd64.tar.gz"
+          dir="$RUNNER_TEMP/mcp-publisher"
+          mkdir -p "$dir"
+          cd "$dir"
+          curl --fail --silent --show-error --location --retry 3 --output "$asset" "$base/$asset"
+          curl --fail --silent --show-error --location --retry 3 --output checksums.txt \
+            "$base/registry_${MCP_PUBLISHER_VERSION}_checksums.txt"
+
+          # The tarball must match the release's checksums file ...
+          line="$(awk -v f="$asset" '$2 == f' checksums.txt)"
+          if [ -z "$line" ]; then
+            echo "::error::$asset is not listed in the release checksums file."
+            exit 1
+          fi
+          echo "$line" | sha256sum --check --strict -
+          # ... and the hash pinned in this workflow, so a replaced asset plus checksums file fails.
+          echo "$MCP_PUBLISHER_SHA256  $asset" | sha256sum --check --strict -
+
+          tar -xzf "$asset" mcp-publisher
+          test -x mcp-publisher
+
+      - name: Publish server.json to the MCP Registry
+        run: |
+          "$RUNNER_TEMP/mcp-publisher/mcp-publisher" login github-oidc
+          "$RUNNER_TEMP/mcp-publisher/mcp-publisher" publish

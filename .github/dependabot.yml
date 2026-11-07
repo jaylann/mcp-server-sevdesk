@@ -1,0 +1,64 @@
+version: 2
+
+# PR titles become squash commits on main, so they are Conventional Commits:
+#   fix(deps): production npm dependencies (shows up in the changelog, triggers a patch release)
+#   chore(deps): development npm dependencies (hidden from the changelog)
+#   ci(deps): GitHub Actions (hidden from the changelog)
+# Minor/patch updates are grouped; majors arrive as one PR each.
+# .github/workflows/dependabot-auto-merge.yml auto-merges minor/patch dev-dependency and Actions PRs.
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    # Let new releases age before proposing them (supply-chain attacks are usually caught within days).
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+      semver-minor-days: 7
+      semver-patch-days: 3
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: fix(deps)
+      prefix-development: chore(deps)
+    groups:
+      # The MCP SDK packages (server = production, client = tests) must move together.
+      mcp-sdk:
+        patterns:
+          - "@modelcontextprotocol/*"
+      prod-dependencies:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+      dev-dependencies:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directories:
+      - "/"
+      - "/.github/actions/*"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    # GitHub Actions supports only default-days (no per-semver cooldown).
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: ci(deps)
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch

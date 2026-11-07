@@ -1,0 +1,196 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions: {}
+
+# Cancel superseded runs of the same PR or branch, but let every run on main finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read # check out the repository
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up toolchain
+        uses: ./.github/actions/setup
+      - name: ESLint
+        run: pnpm lint
+      - name: Prettier
+        run: pnpm format:check
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read # check out the repository
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up toolchain
+        uses: ./.github/actions/setup
+      - name: tsc --noEmit
+        run: pnpm typecheck
+
+  test:
+    name: Test (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # check out the repository
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22", "24"]
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up toolchain
+        uses: ./.github/actions/setup
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Vitest with coverage
+        run: pnpm test:coverage
+      - name: Upload coverage report
+        if: ${{ matrix.node == '24' && !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 14
+          if-no-files-found: warn
+
+  knip:
+    name: Knip
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read # check out the repository
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up toolchain
+        uses: ./.github/actions/setup
+      - name: Unused files, exports and dependencies
+        run: pnpm knip
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read # check out the repository
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up toolchain
+        uses: ./.github/actions/setup
+      - name: Build
+        run: pnpm build
+      - name: Lint the package (publint)
+        run: pnpm publint
+
+  typos:
+    name: Spell check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read # check out the repository
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: typos
+        uses: crate-ci/typos@4c8b7f51ca60df14e3c5ca82770dfbbe6c3dae85 # v1.52.0
+
+  # Packs the npm tarball, installs it into an empty directory outside the repository (so nothing
+  # resolves from the repo's node_modules) and runs a stdio handshake against the installed bin.
+  pack-smoke:
+    name: Pack smoke (${{ matrix.os }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    permissions:
+      contents: read # check out the repository
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: ["22", "24"]
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up toolchain
+        uses: ./.github/actions/setup
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Build
+        run: pnpm build
+      - name: Pack, install the tarball and run the stdio smoke test
+        run: |
+          # Forward slashes work for bash, npm and node on every runner, including Windows.
+          tmp="${RUNNER_TEMP//\\//}/pack-smoke"
+          mkdir -p "$tmp/pack" "$tmp/install"
+
+          npm pack --ignore-scripts --json --pack-destination "$tmp/pack" > "$tmp/pack.json"
+          tarball="$tmp/pack/$(node -p 'require(process.argv[1])[0].filename' "$tmp/pack.json")"
+          echo "Packed $tarball"
+
+          (
+            cd "$tmp/install"
+            npm init -y > /dev/null
+            npm install --no-audit --no-fund "$tarball"
+          )
+
+          bin="$tmp/install/node_modules/mcp-server-sevdesk/dist/index.js"
+          test -f "$bin" || { echo "::error::Installed package has no dist/index.js"; exit 1; }
+          pnpm exec tsx scripts/smoke.ts "$bin"
+
+  # The single required status check for the branch ruleset. It runs even when a dependency failed
+  # or was skipped (a skipped required check would otherwise count as passing).
+  ci-ok:
+    name: ci-ok
+    if: ${{ always() }}
+    needs: [lint, typecheck, test, knip, build, typos, pack-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: All CI jobs succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Job results: $RESULTS"
+          for result in $RESULTS; do
+            if [ "$result" != "success" ]; then
+              echo "::error::At least one CI job did not succeed."
+              exit 1
+            fi
+          done

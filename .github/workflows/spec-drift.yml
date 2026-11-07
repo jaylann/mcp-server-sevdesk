@@ -1,0 +1,108 @@
+name: Spec drift
+
+# Weekly check of the upstream sevDesk OpenAPI spec and API news. On drift it opens one issue
+# labelled `spec-drift` (or comments on the open one). CI never commits spec changes; a maintainer
+# reviews the report and updates spec/ by hand.
+on:
+  schedule:
+    # Mondays 05:17 UTC.
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  check:
+    name: Check upstream spec
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # check out the repository (never written)
+      issues: write # create the label, open or comment on the spec-drift issue
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up toolchain
+        uses: ./.github/actions/setup
+
+      # Exit codes of the script: 0 = no drift, 10 = drift (report written), anything else = error.
+      - name: Compare with upstream
+        id: drift
+        run: |
+          set +e
+          pnpm exec tsx scripts/check-spec-drift.ts --report drift-report.md
+          code=$?
+          set -e
+          case "$code" in
+            0)
+              echo "No drift."
+              echo "drift=false" >> "$GITHUB_OUTPUT"
+              ;;
+            10)
+              if [ ! -s drift-report.md ]; then
+                echo "::error::Drift reported but drift-report.md is missing or empty."
+                exit 1
+              fi
+              echo "::warning::Upstream sevDesk spec drift detected."
+              echo "drift=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::check-spec-drift.ts failed with exit code $code."
+              exit "$code"
+              ;;
+          esac
+
+      - name: Upload the drift report
+        if: ${{ steps.drift.outputs.drift == 'true' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: drift-report
+          path: drift-report.md
+          retention-days: 30
+
+      - name: Open or update the spec-drift issue
+        if: ${{ steps.drift.outputs.drift == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          label="spec-drift"
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          body="$RUNNER_TEMP/spec-drift-body.md"
+
+          # Issue bodies and comments are capped at 65,536 characters; the full report is the artifact.
+          {
+            echo "Detected by the scheduled spec-drift check: $run_url"
+            echo
+            if [ "$(wc -c < drift-report.md)" -gt 60000 ]; then
+              head -c 60000 drift-report.md
+              echo
+              echo
+              echo "_Report truncated. The full report is the \`drift-report\` artifact of the run above._"
+            else
+              cat drift-report.md
+            fi
+          } > "$body"
+
+          gh label create "$label" --repo "$GITHUB_REPOSITORY" --force \
+            --color D93F0B --description "The upstream sevDesk API spec or API news changed"
+
+          issue="$(gh issue list --repo "$GITHUB_REPOSITORY" --label "$label" --state open \
+            --json number --jq '.[0].number // empty')"
+          if [ -n "$issue" ]; then
+            gh issue comment "$issue" --repo "$GITHUB_REPOSITORY" --body-file "$body"
+            echo "Commented on #$issue."
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --label "$label" \
+              --title "Upstream sevDesk API spec changed" --body-file "$body"
+          fi

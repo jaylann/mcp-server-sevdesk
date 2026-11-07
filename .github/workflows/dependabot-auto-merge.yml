@@ -1,0 +1,42 @@
+name: Dependabot auto-merge
+
+# Enables auto-merge (squash) for Dependabot PRs that only bump development dependencies or
+# GitHub Actions by a minor or patch version. The merge happens once the required checks (ci-ok)
+# pass. Production dependencies, indirect dependencies and major updates always need a human.
+on:
+  pull_request:
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  auto-merge:
+    name: Enable auto-merge
+    if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # merge the PR
+      pull-requests: write # enable auto-merge on the PR
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+
+      # For grouped PRs fetch-metadata reports the riskiest values: `update-type` is the largest
+      # semver change and `dependency-type` is `direct:production` if any dependency is.
+      - name: Enable auto-merge for minor/patch dev-dependency and Actions updates
+        if: >-
+          ${{
+            (steps.meta.outputs.update-type == 'version-update:semver-minor' ||
+             steps.meta.outputs.update-type == 'version-update:semver-patch') &&
+            (steps.meta.outputs.dependency-type == 'direct:development' ||
+             steps.meta.outputs.package-ecosystem == 'github_actions')
+          }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --squash "$PR_URL"

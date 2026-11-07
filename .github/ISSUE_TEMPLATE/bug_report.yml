@@ -1,0 +1,141 @@
+name: Bug report
+description: Something does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug.
+
+        > [!CAUTION]
+        > **Never paste your sevDesk API token**, not even partly. It gives full access to the
+        > whole sevDesk account and cannot be scoped. If you posted it by accident, revoke it in
+        > sevDesk right away. Also remove customer names, addresses, IBANs, amounts and other
+        > personal or business data from everything below.
+
+        Security problems belong in a [private report](https://github.com/jaylann/mcp-server-sevdesk/security/advisories/new), not here.
+
+  - type: input
+    id: version
+    attributes:
+      label: Package version
+      description: The version of `mcp-server-sevdesk` you run (for `npx`, check `npm view mcp-server-sevdesk version` or your lockfile).
+      placeholder: "0.3.1"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: client
+    attributes:
+      label: MCP client
+      options:
+        - Claude Desktop
+        - Claude Code
+        - Cursor
+        - VS Code (GitHub Copilot)
+        - Windsurf
+        - Codex
+        - Zed
+        - MCP Inspector
+        - Other (name it below)
+    validations:
+      required: true
+
+  - type: input
+    id: client-version
+    attributes:
+      label: Client name and version
+      placeholder: "Claude Desktop 1.4.2"
+
+  - type: dropdown
+    id: transport
+    attributes:
+      label: Transport
+      options:
+        - stdio (default)
+        - Streamable HTTP with bearer auth (--http)
+        - Streamable HTTP with OAuth (--http)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: tiers
+    attributes:
+      label: Enabled tiers (SEVDESK_ALLOW)
+      description: Select every tier you enabled. `read` is always on.
+      multiple: true
+      options:
+        - read
+        - write
+        - commit
+        - external
+    validations:
+      required: true
+
+  - type: input
+    id: settings
+    attributes:
+      label: Other settings
+      description: Any of SEVDESK_READ_ONLY, SEVDESK_DRY_RUN, SEVDESK_CONFIRM, SEVDESK_TOOLSETS you set. No tokens.
+      placeholder: "SEVDESK_CONFIRM=browser, SEVDESK_TOOLSETS=invoices,vouchers"
+
+  - type: dropdown
+    id: system-version
+    attributes:
+      label: sevDesk bookkeeping system version
+      description: Pick "Don't know" if you are unsure.
+      options:
+        - "2.0"
+        - "1.0"
+        - Don't know
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Operating system and Node.js version
+      placeholder: "macOS 26.1, Node 24.11.0"
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Include the tool name and the arguments the model sent, if you can see them.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Configure the server with ...
+        2. Ask the model to ...
+        3. See error ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs (redacted)
+      description: Server output from stderr or your client's MCP log. Remove tokens and personal or business data first.
+      render: text
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: This report contains no API token and no personal or business data.
+          required: true
+        - label: I searched the existing issues for a duplicate.
+          required: true

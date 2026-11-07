@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or help with setup
+    url: https://github.com/jaylann/mcp-server-sevdesk/discussions/categories/q-a
+    about: Ask in GitHub Discussions (Q&A) instead of opening an issue.
+  - name: Report a security vulnerability
+    url: https://github.com/jaylann/mcp-server-sevdesk/security/advisories/new
+    about: Report vulnerabilities privately. Please do not open a public issue.

@@ -1,0 +1,69 @@
+name: Endpoint request
+description: Ask for a sevDesk endpoint or workflow the server should support.
+labels: [enhancement, endpoint]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the bookkeeping task first; the tool design follows from it. Do not paste API
+        tokens or real customer data.
+
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Workflow
+      description: What should the model be able to do? German terms are welcome (Rechnung, Beleg, Mahnung, …).
+      placeholder: "List the open receipts (Belege) of a month and match them to bank transactions."
+    validations:
+      required: true
+
+  - type: textarea
+    id: endpoints
+    attributes:
+      label: sevDesk API endpoints
+      description: Endpoints involved, if you know them, with a link to the sevDesk API docs.
+      placeholder: |
+        GET /Voucher, GET /CheckAccountTransaction (https://api.sevdesk.de/)
+      render: text
+
+  - type: dropdown
+    id: tier
+    attributes:
+      label: Suggested tier
+      description: >-
+        read = no side effects; write = reversible changes (drafts, contacts); commit = legally binding
+        or irreversible (finalize, book, cancel); external = reaches third parties (email, letter).
+        When in doubt, pick the higher tier.
+      options:
+        - read
+        - write
+        - commit
+        - external
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: system-version
+    attributes:
+      label: Bookkeeping system version
+      description: Does this depend on the sevDesk bookkeeping system version?
+      options:
+        - Both 1.0 and 2.0
+        - Only 2.0
+        - Only 1.0
+        - Don't know
+
+  - type: textarea
+    id: side-effects
+    attributes:
+      label: Side effects and pitfalls
+      description: Does the endpoint send emails, change document status, book payments or lock records (GoBD)? Any known API quirks?
+
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contribution
+      options:
+        - label: I would like to implement this (see "Adding a tool" in CONTRIBUTING.md).
+        - label: I can record scrubbed fixtures from my own sevDesk account.

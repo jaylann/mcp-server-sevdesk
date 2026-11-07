@@ -1,0 +1,50 @@
+name: Feature request
+description: Suggest an improvement to the server, its tools or its documentation.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For a sevDesk endpoint or workflow the server does not cover yet, use the
+        **Endpoint request** form instead. Questions go to
+        [Discussions](https://github.com/jaylann/mcp-server-sevdesk/discussions/categories/q-a).
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How should it work? Example prompts or tool calls help.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+
+  - type: dropdown
+    id: safety
+    attributes:
+      label: Safety impact
+      description: Would this add or change anything that writes to sevDesk or reaches third parties?
+      options:
+        - No, read-only or no sevDesk access
+        - Yes, it writes or changes data
+        - Not sure
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contribution
+      options:
+        - label: I would like to open a pull request for this.
