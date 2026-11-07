@@ -15,6 +15,7 @@
 import { z } from "zod";
 
 import { toUnixSeconds } from "../sevdesk/dates.js";
+import { expectSingle } from "../sevdesk/envelope.js";
 import { SevdeskError } from "../sevdesk/errors.js";
 import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
 import {
@@ -177,7 +178,7 @@ export const bankAccountDtoSchema = z.object({
     .describe("Balance reported by the bank connection (finAPI/PayPal), when there is one."),
 });
 
-type BankAccountDto = z.output<typeof bankAccountDtoSchema>;
+export type BankAccountDto = z.output<typeof bankAccountDtoSchema>;
 
 /** One bank transaction (Umsatz). */
 export const transactionDtoSchema = z.object({
@@ -204,7 +205,7 @@ export const transactionDtoSchema = z.object({
   enshrined: z.boolean().describe("Festgeschrieben: locked, can no longer be changed."),
 });
 
-type TransactionDto = z.output<typeof transactionDtoSchema>;
+export type TransactionDto = z.output<typeof transactionDtoSchema>;
 
 // ---------------------------------------------------------------------------------------------
 // Mapping
@@ -376,9 +377,52 @@ async function fetchBalance(
   }
 }
 
+/**
+ * One check account (`GET /CheckAccount/{id}`) without a balance, e.g. for a write tool that books
+ * on it. An unknown id is sevDesk's `not_found` error.
+ */
+export async function getBankAccount(
+  client: SevdeskClient,
+  accountId: number,
+  signal?: AbortSignal,
+): Promise<BankAccountDto> {
+  const id = toSevdeskId(accountId);
+  const payload = await client.request({
+    method: "GET",
+    path: sevdeskPath("CheckAccount", id),
+    ...(signal === undefined ? {} : { signal }),
+  });
+  return toAccountDto(parseAccount(expectSingle(payload, `check account ${String(id)}`)));
+}
+
 // ---------------------------------------------------------------------------------------------
 // Operations: transactions
 // ---------------------------------------------------------------------------------------------
+
+/**
+ * One bank transaction (`GET /CheckAccountTransaction/{id}`) with its account's name and currency
+ * (`GET /CheckAccount/{accountId}`; without an account the amount is taken as EUR, as in lists).
+ * An unknown transaction id is sevDesk's `not_found` error.
+ */
+export async function getTransaction(
+  client: SevdeskClient,
+  transactionId: number,
+  signal?: AbortSignal,
+): Promise<TransactionDto> {
+  const id = toSevdeskId(transactionId);
+  const payload = await client.request({
+    method: "GET",
+    path: sevdeskPath("CheckAccountTransaction", id),
+    ...(signal === undefined ? {} : { signal }),
+  });
+  const record = parseTransaction(expectSingle(payload, `bank transaction ${String(id)}`));
+  const accounts = new Map<number, AccountInfo>();
+  if (record.checkAccount !== undefined) {
+    const account = await getBankAccount(client, record.checkAccount.id, signal);
+    accounts.set(account.id, { name: account.name, currency: account.currency });
+  }
+  return toTransactionDto(record, accounts);
+}
 
 /** Which transaction date a `from`/`to` range applies to. */
 export const TRANSACTION_DATE_FIELDS = ["value", "entry"] as const;

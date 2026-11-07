@@ -167,7 +167,7 @@ export const orderDetailSchema = orderRowSchema.extend({
   updatedAt: z.string().optional(),
 });
 
-type OrderDetail = z.output<typeof orderDetailSchema>;
+export type OrderDetail = z.output<typeof orderDetailSchema>;
 
 // ---------------------------------------------------------------------------------------------
 // Mapping
@@ -218,6 +218,15 @@ function toOrderDetail(record: OrderRecord): OrderDetail {
     createdAt: berlinDate(record.create),
     updatedAt: berlinDate(record.update),
   });
+}
+
+/**
+ * Maps one raw `Order` record (one object of `GET /Order/{id}`, contact embedded or not) to the
+ * detail DTO, without positions or related documents: for write tools that read a record back.
+ * Throws `unexpected_response` for a record that does not fit.
+ */
+export function mapOrderDetail(raw: unknown): OrderDetail {
+  return toOrderDetail(parseOrderRecord(raw));
 }
 
 function toRelatedDocument(record: z.output<typeof relatedRecordSchema>): RelatedDocument {

@@ -1,0 +1,30 @@
+{
+  "_provenance": {
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "source": "community",
+    "ref": "https://github.com/jernoxit/sevdesk-rs/blob/HEAD/tests/fixtures/write_voucher_book_amount.json (recorded VoucherLog)",
+    "note": "PUT /CreditNote/{id}/bookAmount, not recorded (sevdesk-rs: measured but not recorded). Built from the recorded VoucherLog with objectName CreditNoteLog (spec bookCreditNote response). Ignored by the tool (read-back). Values fake."
+  },
+  "status": 200,
+  "body": {
+    "objects": {
+      "id": "8201",
+      "objectName": "CreditNoteLog",
+      "additionalInformation": null,
+      "create": "2026-11-07T10:00:00+01:00",
+      "creditNote": {
+        "id": "2001",
+        "objectName": "CreditNote"
+      },
+      "fromStatus": "200",
+      "toStatus": "1000",
+      "amountPayed": "177.33",
+      "bookingDate": "2026-11-07T12:00:00+01:00",
+      "sevClient": {
+        "id": "9001",
+        "objectName": "SevClient"
+      }
+    }
+  }
+}
