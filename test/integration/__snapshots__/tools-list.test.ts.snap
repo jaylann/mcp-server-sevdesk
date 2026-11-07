@@ -25,6 +25,132 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
+      "title": "List sevDesk bank accounts",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "balanceDate": {
+          "description": "Balance at the end of this day, YYYY-MM-DD; default today (Berlin).",
+          "type": "string",
+        },
+        "includeArchived": {
+          "default": false,
+          "description": "Also list archived (archiviert) accounts.",
+          "type": "boolean",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_bank_accounts_list",
+    "title": "List sevDesk bank accounts",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Cash position",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "asOf": {
+          "description": "Day of the balances (Stichtag), YYYY-MM-DD; default today (Berlin). With outlookDays it must be today or later (sevDesk only knows today's open items).",
+          "type": "string",
+        },
+        "includeArchived": {
+          "default": false,
+          "description": "Also list archived accounts (archiviert).",
+          "type": "boolean",
+        },
+        "outlookDays": {
+          "description": "Add the expected in- and outflows due within this many days after asOf.",
+          "maximum": 365,
+          "minimum": 1,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_cash_position",
+    "title": "Cash position",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Changes since",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 20,
+          "description": "Changed records to return per subject, 1–100.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "offset": {
+          "default": 0,
+          "description": "sevDesk rows to skip (a previous nextOffset); only with exactly one subject.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "since": {
+          "description": "Start: YYYY-MM-DD (00:00 Berlin) or an ISO 8601 date-time, e.g. 2026-11-01T08:00:00+01:00 (Berlin time without an offset).",
+          "maxLength": 40,
+          "minLength": 10,
+          "type": "string",
+        },
+        "subjects": {
+          "default": [
+            "contacts",
+            "invoices",
+            "credit_notes",
+            "orders",
+            "vouchers",
+            "transactions",
+          ],
+          "description": "Which records to check; default all.",
+          "items": {
+            "enum": [
+              "contacts",
+              "invoices",
+              "credit_notes",
+              "orders",
+              "vouchers",
+              "transactions",
+            ],
+            "type": "string",
+          },
+          "maxItems": 6,
+          "minItems": 1,
+          "type": "array",
+        },
+      },
+      "required": [
+        "since",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_changed_since",
+    "title": "Changes since",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
       "title": "Get a sevDesk contact",
     },
     "inputSchema": {
@@ -100,7 +226,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         },
         "offset": {
           "default": 0,
-          "description": "Matches to skip, for paging.",
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
           "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
@@ -116,6 +242,647 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     },
     "name": "sevdesk_contacts_search",
     "title": "Search sevDesk contacts",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get a sevDesk credit note",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Credit note id (not its number), e.g. from sevdesk_credit_notes_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_credit_note_get",
+    "title": "Get a sevDesk credit note",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get a credit note PDF",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "sevDesk id of the document (not its number such as RE-1001).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_credit_note_pdf",
+    "title": "Get a credit note PDF",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List sevDesk credit notes",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "contactId": {
+          "description": "Only credit notes of this contact.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "from": {
+          "description": "First day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "limit": {
+          "default": 25,
+          "description": "Page size, 1–100.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "number": {
+          "description": "Exact credit note number, e.g. 'GU-1000'.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "status": {
+          "description": "draft (100), open (200), partially_paid (750) or paid (1000).",
+          "enum": [
+            "draft",
+            "open",
+            "partially_paid",
+            "paid",
+          ],
+          "type": "string",
+        },
+        "to": {
+          "description": "Last day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_credit_notes_list",
+    "title": "List sevDesk credit notes",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get a sevDesk invoice",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Invoice id (not the invoice number), e.g. from sevdesk_invoices_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_get",
+    "title": "Get a sevDesk invoice",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get an invoice PDF",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "sevDesk id of the document (not its number such as RE-1001).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_pdf",
+    "title": "Get an invoice PDF",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get an e-invoice XML",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "sevDesk id of the document (not its number such as RE-1001).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_xml",
+    "title": "Get an e-invoice XML",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List sevDesk invoices",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "contactId": {
+          "description": "Only invoices of this contact (id from sevdesk_contacts_search).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "from": {
+          "description": "First day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "limit": {
+          "default": 25,
+          "description": "Page size, 1–100.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "number": {
+          "description": "Exact invoice number, e.g. 'RE-1000'.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "overdueOnly": {
+          "default": false,
+          "description": "Only open/partially paid invoices past their due date (Berlin time).",
+          "type": "boolean",
+        },
+        "status": {
+          "description": "draft (100), open (200), partially_paid (750) or paid (1000).",
+          "enum": [
+            "draft",
+            "open",
+            "partially_paid",
+            "paid",
+          ],
+          "type": "string",
+        },
+        "to": {
+          "description": "Last day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "type": {
+          "description": "Invoice type: invoice (RE), advance, partial, final, cancellation, reminder…",
+          "enum": [
+            "invoice",
+            "advance",
+            "partial",
+            "final",
+            "cancellation",
+            "reminder",
+            "recurring",
+          ],
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_invoices_list",
+    "title": "List sevDesk invoices",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get a sevDesk order",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Order id (not its number), e.g. from sevdesk_orders_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_order_get",
+    "title": "Get a sevDesk order",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get an order PDF",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "sevDesk id of the document (not its number such as RE-1001).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_order_pdf",
+    "title": "Get an order PDF",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List sevDesk orders",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "contactId": {
+          "description": "Only orders of this contact.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "from": {
+          "description": "First day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "limit": {
+          "default": 25,
+          "description": "Page size, 1–100.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "number": {
+          "description": "Exact order number, e.g. 'AN-1000'.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "status": {
+          "description": "draft 100, sent 200, rejected 300, accepted 500, partially_invoiced 750, invoiced 1000.",
+          "enum": [
+            "draft",
+            "sent",
+            "rejected",
+            "accepted",
+            "partially_invoiced",
+            "invoiced",
+          ],
+          "type": "string",
+        },
+        "to": {
+          "description": "Last day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "type": {
+          "description": "offer (AN), order_confirmation (AB) or delivery_note (LI).",
+          "enum": [
+            "offer",
+            "order_confirmation",
+            "delivery_note",
+          ],
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_orders_list",
+    "title": "List sevDesk orders",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get a sevDesk part",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Part id, e.g. from sevdesk_parts_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_part_get",
+    "title": "Get a sevDesk part",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List sevDesk parts",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 25,
+          "description": "Page size, 1–100.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "name": {
+          "description": "Part name.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "partNumber": {
+          "description": "Part number (Artikelnummer), e.g. 'ART-001'.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_parts_list",
+    "title": "List sevDesk parts",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Payables aging",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "asOf": {
+          "description": "Reference day (Stichtag), YYYY-MM-DD, today or later; default today (Berlin). sevDesk only knows today's open items, so a past day is refused; a later day ages today's open items as of that day.",
+          "type": "string",
+        },
+        "top": {
+          "default": 10,
+          "description": "How many of the largest parties to list per currency.",
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_payables_aging",
+    "title": "Payables aging",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Receivables aging",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "asOf": {
+          "description": "Reference day (Stichtag), YYYY-MM-DD, today or later; default today (Berlin). sevDesk only knows today's open items, so a past day is refused; a later day ages today's open items as of that day.",
+          "type": "string",
+        },
+        "top": {
+          "default": 10,
+          "description": "How many of the largest parties to list per currency.",
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_receivables_aging",
+    "title": "Receivables aging",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Summarize sevDesk records",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "accountId": {
+          "description": "Transactions only: payment account (Zahlungskonto) id.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "contactId": {
+          "description": "Customer (invoices, credit notes) or supplier (vouchers) contact id.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "from": {
+          "description": "First day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "groupBy": {
+          "default": "none",
+          "description": "none, month, quarter, status, contact (customer/supplier; not for transactions) or account (transactions only).",
+          "enum": [
+            "none",
+            "month",
+            "quarter",
+            "status",
+            "contact",
+            "account",
+          ],
+          "type": "string",
+        },
+        "invoiceType": {
+          "description": "Invoices only: invoice (RE), advance (AR), partial (TR), final (ER), cancellation (SR), reminder (MA) or recurring (WKR template); reminders and templates count only when asked for here.",
+          "enum": [
+            "invoice",
+            "advance",
+            "partial",
+            "final",
+            "cancellation",
+            "reminder",
+            "recurring",
+          ],
+          "type": "string",
+        },
+        "kind": {
+          "description": "Vouchers only: expense (Ausgabe) or revenue (Einnahme).",
+          "enum": [
+            "expense",
+            "revenue",
+          ],
+          "type": "string",
+        },
+        "maxGroups": {
+          "default": 50,
+          "description": "Most groups to return; the rest are counted in groupsOmitted.",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "status": {
+          "description": "Invoices/credit notes: draft, open, partially_paid, paid. Vouchers: draft, open, transferred, partially_paid, paid. Transactions: created, linked, private, auto_booked, booked.",
+          "enum": [
+            "draft",
+            "open",
+            "partially_paid",
+            "paid",
+            "transferred",
+            "created",
+            "linked",
+            "private",
+            "auto_booked",
+            "booked",
+          ],
+          "type": "string",
+        },
+        "subject": {
+          "description": "invoices, credit_notes, vouchers or transactions (bank transactions).",
+          "enum": [
+            "invoices",
+            "credit_notes",
+            "vouchers",
+            "transactions",
+          ],
+          "type": "string",
+        },
+        "to": {
+          "description": "Last day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+      },
+      "required": [
+        "subject",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_records_summarize",
+    "title": "Summarize sevDesk records",
   },
   {
     "annotations": {
@@ -157,6 +924,197 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     },
     "name": "sevdesk_reference_lookup",
     "title": "Look up sevDesk ids and codes",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List sevDesk bank transactions",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "checkAccountId": {
+          "description": "Payment account (Zahlungskonto) id.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "dateField": {
+          "default": "value",
+          "description": "Date that from/to apply to: value (Wertstellung, default; filtered here) or entry (the second date, see entryDate; sevDesk filters it itself).",
+          "enum": [
+            "value",
+            "entry",
+          ],
+          "type": "string",
+        },
+        "direction": {
+          "description": "in = incoming (positive), out = outgoing (negative).",
+          "enum": [
+            "in",
+            "out",
+          ],
+          "type": "string",
+        },
+        "from": {
+          "description": "First day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "limit": {
+          "default": 25,
+          "description": "Page size, 1–100.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "status": {
+          "description": "Statuses to include, e.g. ['created'] for unbooked transactions.",
+          "items": {
+            "enum": [
+              "created",
+              "linked",
+              "private",
+              "auto_booked",
+              "booked",
+            ],
+            "type": "string",
+          },
+          "maxItems": 5,
+          "minItems": 1,
+          "type": "array",
+        },
+        "to": {
+          "description": "Last day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_transactions_list",
+    "title": "List sevDesk bank transactions",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get a sevDesk voucher",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Voucher id, e.g. from sevdesk_vouchers_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_voucher_get",
+    "title": "Get a sevDesk voucher",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List sevDesk vouchers",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "description": "Part of the Belegnummer or description, e.g. an invoice number.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "from": {
+          "description": "First day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "kind": {
+          "description": "expense (Ausgabe, creditDebit C) or revenue (Einnahme, creditDebit D).",
+          "enum": [
+            "expense",
+            "revenue",
+          ],
+          "type": "string",
+        },
+        "limit": {
+          "default": 25,
+          "description": "Page size, 1–100.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "status": {
+          "description": "Voucher status by name.",
+          "enum": [
+            "draft",
+            "open",
+            "transferred",
+            "partially_paid",
+            "paid",
+          ],
+          "type": "string",
+        },
+        "supplierId": {
+          "description": "Contact id of the supplier (Lieferant) or customer.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "supplierName": {
+          "description": "Part of the supplier name, for vouchers without a contact too.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "to": {
+          "description": "Last day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "type": {
+          "description": "normal (VOU) or recurring (RV).",
+          "enum": [
+            "normal",
+            "recurring",
+          ],
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_vouchers_list",
+    "title": "List sevDesk vouchers",
   },
 ]
 `;
@@ -186,6 +1144,132 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
+      "title": "List sevDesk bank accounts",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "balanceDate": {
+          "description": "Balance at the end of this day, YYYY-MM-DD; default today (Berlin).",
+          "type": "string",
+        },
+        "includeArchived": {
+          "default": false,
+          "description": "Also list archived (archiviert) accounts.",
+          "type": "boolean",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_bank_accounts_list",
+    "title": "List sevDesk bank accounts",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Cash position",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "asOf": {
+          "description": "Day of the balances (Stichtag), YYYY-MM-DD; default today (Berlin). With outlookDays it must be today or later (sevDesk only knows today's open items).",
+          "type": "string",
+        },
+        "includeArchived": {
+          "default": false,
+          "description": "Also list archived accounts (archiviert).",
+          "type": "boolean",
+        },
+        "outlookDays": {
+          "description": "Add the expected in- and outflows due within this many days after asOf.",
+          "maximum": 365,
+          "minimum": 1,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_cash_position",
+    "title": "Cash position",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Changes since",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 20,
+          "description": "Changed records to return per subject, 1–100.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "offset": {
+          "default": 0,
+          "description": "sevDesk rows to skip (a previous nextOffset); only with exactly one subject.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "since": {
+          "description": "Start: YYYY-MM-DD (00:00 Berlin) or an ISO 8601 date-time, e.g. 2026-11-01T08:00:00+01:00 (Berlin time without an offset).",
+          "maxLength": 40,
+          "minLength": 10,
+          "type": "string",
+        },
+        "subjects": {
+          "default": [
+            "contacts",
+            "invoices",
+            "credit_notes",
+            "orders",
+            "vouchers",
+            "transactions",
+          ],
+          "description": "Which records to check; default all.",
+          "items": {
+            "enum": [
+              "contacts",
+              "invoices",
+              "credit_notes",
+              "orders",
+              "vouchers",
+              "transactions",
+            ],
+            "type": "string",
+          },
+          "maxItems": 6,
+          "minItems": 1,
+          "type": "array",
+        },
+      },
+      "required": [
+        "since",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_changed_since",
+    "title": "Changes since",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
       "title": "Get a sevDesk contact",
     },
     "inputSchema": {
@@ -261,7 +1345,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         },
         "offset": {
           "default": 0,
-          "description": "Matches to skip, for paging.",
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
           "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
@@ -277,6 +1361,647 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
     },
     "name": "sevdesk_contacts_search",
     "title": "Search sevDesk contacts",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get a sevDesk credit note",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Credit note id (not its number), e.g. from sevdesk_credit_notes_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_credit_note_get",
+    "title": "Get a sevDesk credit note",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get a credit note PDF",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "sevDesk id of the document (not its number such as RE-1001).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_credit_note_pdf",
+    "title": "Get a credit note PDF",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List sevDesk credit notes",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "contactId": {
+          "description": "Only credit notes of this contact.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "from": {
+          "description": "First day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "limit": {
+          "default": 25,
+          "description": "Page size, 1–100.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "number": {
+          "description": "Exact credit note number, e.g. 'GU-1000'.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "status": {
+          "description": "draft (100), open (200), partially_paid (750) or paid (1000).",
+          "enum": [
+            "draft",
+            "open",
+            "partially_paid",
+            "paid",
+          ],
+          "type": "string",
+        },
+        "to": {
+          "description": "Last day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_credit_notes_list",
+    "title": "List sevDesk credit notes",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get a sevDesk invoice",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Invoice id (not the invoice number), e.g. from sevdesk_invoices_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_get",
+    "title": "Get a sevDesk invoice",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get an invoice PDF",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "sevDesk id of the document (not its number such as RE-1001).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_pdf",
+    "title": "Get an invoice PDF",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get an e-invoice XML",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "sevDesk id of the document (not its number such as RE-1001).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_xml",
+    "title": "Get an e-invoice XML",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List sevDesk invoices",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "contactId": {
+          "description": "Only invoices of this contact (id from sevdesk_contacts_search).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "from": {
+          "description": "First day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "limit": {
+          "default": 25,
+          "description": "Page size, 1–100.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "number": {
+          "description": "Exact invoice number, e.g. 'RE-1000'.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "overdueOnly": {
+          "default": false,
+          "description": "Only open/partially paid invoices past their due date (Berlin time).",
+          "type": "boolean",
+        },
+        "status": {
+          "description": "draft (100), open (200), partially_paid (750) or paid (1000).",
+          "enum": [
+            "draft",
+            "open",
+            "partially_paid",
+            "paid",
+          ],
+          "type": "string",
+        },
+        "to": {
+          "description": "Last day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "type": {
+          "description": "Invoice type: invoice (RE), advance, partial, final, cancellation, reminder…",
+          "enum": [
+            "invoice",
+            "advance",
+            "partial",
+            "final",
+            "cancellation",
+            "reminder",
+            "recurring",
+          ],
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_invoices_list",
+    "title": "List sevDesk invoices",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get a sevDesk order",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Order id (not its number), e.g. from sevdesk_orders_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_order_get",
+    "title": "Get a sevDesk order",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get an order PDF",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "sevDesk id of the document (not its number such as RE-1001).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_order_pdf",
+    "title": "Get an order PDF",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List sevDesk orders",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "contactId": {
+          "description": "Only orders of this contact.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "from": {
+          "description": "First day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "limit": {
+          "default": 25,
+          "description": "Page size, 1–100.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "number": {
+          "description": "Exact order number, e.g. 'AN-1000'.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "status": {
+          "description": "draft 100, sent 200, rejected 300, accepted 500, partially_invoiced 750, invoiced 1000.",
+          "enum": [
+            "draft",
+            "sent",
+            "rejected",
+            "accepted",
+            "partially_invoiced",
+            "invoiced",
+          ],
+          "type": "string",
+        },
+        "to": {
+          "description": "Last day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "type": {
+          "description": "offer (AN), order_confirmation (AB) or delivery_note (LI).",
+          "enum": [
+            "offer",
+            "order_confirmation",
+            "delivery_note",
+          ],
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_orders_list",
+    "title": "List sevDesk orders",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get a sevDesk part",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Part id, e.g. from sevdesk_parts_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_part_get",
+    "title": "Get a sevDesk part",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List sevDesk parts",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 25,
+          "description": "Page size, 1–100.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "name": {
+          "description": "Part name.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "partNumber": {
+          "description": "Part number (Artikelnummer), e.g. 'ART-001'.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_parts_list",
+    "title": "List sevDesk parts",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Payables aging",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "asOf": {
+          "description": "Reference day (Stichtag), YYYY-MM-DD, today or later; default today (Berlin). sevDesk only knows today's open items, so a past day is refused; a later day ages today's open items as of that day.",
+          "type": "string",
+        },
+        "top": {
+          "default": 10,
+          "description": "How many of the largest parties to list per currency.",
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_payables_aging",
+    "title": "Payables aging",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Receivables aging",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "asOf": {
+          "description": "Reference day (Stichtag), YYYY-MM-DD, today or later; default today (Berlin). sevDesk only knows today's open items, so a past day is refused; a later day ages today's open items as of that day.",
+          "type": "string",
+        },
+        "top": {
+          "default": 10,
+          "description": "How many of the largest parties to list per currency.",
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_receivables_aging",
+    "title": "Receivables aging",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Summarize sevDesk records",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "accountId": {
+          "description": "Transactions only: payment account (Zahlungskonto) id.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "contactId": {
+          "description": "Customer (invoices, credit notes) or supplier (vouchers) contact id.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "from": {
+          "description": "First day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "groupBy": {
+          "default": "none",
+          "description": "none, month, quarter, status, contact (customer/supplier; not for transactions) or account (transactions only).",
+          "enum": [
+            "none",
+            "month",
+            "quarter",
+            "status",
+            "contact",
+            "account",
+          ],
+          "type": "string",
+        },
+        "invoiceType": {
+          "description": "Invoices only: invoice (RE), advance (AR), partial (TR), final (ER), cancellation (SR), reminder (MA) or recurring (WKR template); reminders and templates count only when asked for here.",
+          "enum": [
+            "invoice",
+            "advance",
+            "partial",
+            "final",
+            "cancellation",
+            "reminder",
+            "recurring",
+          ],
+          "type": "string",
+        },
+        "kind": {
+          "description": "Vouchers only: expense (Ausgabe) or revenue (Einnahme).",
+          "enum": [
+            "expense",
+            "revenue",
+          ],
+          "type": "string",
+        },
+        "maxGroups": {
+          "default": 50,
+          "description": "Most groups to return; the rest are counted in groupsOmitted.",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "status": {
+          "description": "Invoices/credit notes: draft, open, partially_paid, paid. Vouchers: draft, open, transferred, partially_paid, paid. Transactions: created, linked, private, auto_booked, booked.",
+          "enum": [
+            "draft",
+            "open",
+            "partially_paid",
+            "paid",
+            "transferred",
+            "created",
+            "linked",
+            "private",
+            "auto_booked",
+            "booked",
+          ],
+          "type": "string",
+        },
+        "subject": {
+          "description": "invoices, credit_notes, vouchers or transactions (bank transactions).",
+          "enum": [
+            "invoices",
+            "credit_notes",
+            "vouchers",
+            "transactions",
+          ],
+          "type": "string",
+        },
+        "to": {
+          "description": "Last day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+      },
+      "required": [
+        "subject",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_records_summarize",
+    "title": "Summarize sevDesk records",
   },
   {
     "annotations": {
@@ -318,6 +2043,240 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
     },
     "name": "sevdesk_reference_lookup",
     "title": "Look up sevDesk ids and codes",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List sevDesk bank transactions",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "checkAccountId": {
+          "description": "Payment account (Zahlungskonto) id.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "dateField": {
+          "default": "value",
+          "description": "Date that from/to apply to: value (Wertstellung, default; filtered here) or entry (the second date, see entryDate; sevDesk filters it itself).",
+          "enum": [
+            "value",
+            "entry",
+          ],
+          "type": "string",
+        },
+        "direction": {
+          "description": "in = incoming (positive), out = outgoing (negative).",
+          "enum": [
+            "in",
+            "out",
+          ],
+          "type": "string",
+        },
+        "from": {
+          "description": "First day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "limit": {
+          "default": 25,
+          "description": "Page size, 1–100.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "status": {
+          "description": "Statuses to include, e.g. ['created'] for unbooked transactions.",
+          "items": {
+            "enum": [
+              "created",
+              "linked",
+              "private",
+              "auto_booked",
+              "booked",
+            ],
+            "type": "string",
+          },
+          "maxItems": 5,
+          "minItems": 1,
+          "type": "array",
+        },
+        "to": {
+          "description": "Last day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_transactions_list",
+    "title": "List sevDesk bank transactions",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get a sevDesk voucher",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Voucher id, e.g. from sevdesk_vouchers_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_voucher_get",
+    "title": "Get a sevDesk voucher",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List sevDesk vouchers",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "description": "Part of the Belegnummer or description, e.g. an invoice number.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "from": {
+          "description": "First day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "kind": {
+          "description": "expense (Ausgabe, creditDebit C) or revenue (Einnahme, creditDebit D).",
+          "enum": [
+            "expense",
+            "revenue",
+          ],
+          "type": "string",
+        },
+        "limit": {
+          "default": 25,
+          "description": "Page size, 1–100.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "status": {
+          "description": "Voucher status by name.",
+          "enum": [
+            "draft",
+            "open",
+            "transferred",
+            "partially_paid",
+            "paid",
+          ],
+          "type": "string",
+        },
+        "supplierId": {
+          "description": "Contact id of the supplier (Lieferant) or customer.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "supplierName": {
+          "description": "Part of the supplier name, for vouchers without a contact too.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "to": {
+          "description": "Last day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "type": {
+          "description": "normal (VOU) or recurring (RV).",
+          "enum": [
+            "normal",
+            "recurring",
+          ],
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_vouchers_list",
+    "title": "List sevDesk vouchers",
+  },
+]
+`;
+
+exports[`tools/list > SEVDESK_OUTPUT_DIR set (adds the file-writing save tool) 1`] = `
+[
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Save a document file to disk",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "document": {
+          "description": "Which file: invoice_pdf, credit_note_pdf, order_pdf, or invoice_xml (e-invoice XML).",
+          "enum": [
+            "invoice_pdf",
+            "credit_note_pdf",
+            "order_pdf",
+            "invoice_xml",
+          ],
+          "type": "string",
+        },
+        "id": {
+          "description": "sevDesk id of the document (not its number such as RE-1001).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "document",
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_document_save",
+    "title": "Save a document file to disk",
   },
 ]
 `;
@@ -347,6 +2306,132 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
+      "title": "List sevDesk bank accounts",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "balanceDate": {
+          "description": "Balance at the end of this day, YYYY-MM-DD; default today (Berlin).",
+          "type": "string",
+        },
+        "includeArchived": {
+          "default": false,
+          "description": "Also list archived (archiviert) accounts.",
+          "type": "boolean",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_bank_accounts_list",
+    "title": "List sevDesk bank accounts",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Cash position",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "asOf": {
+          "description": "Day of the balances (Stichtag), YYYY-MM-DD; default today (Berlin). With outlookDays it must be today or later (sevDesk only knows today's open items).",
+          "type": "string",
+        },
+        "includeArchived": {
+          "default": false,
+          "description": "Also list archived accounts (archiviert).",
+          "type": "boolean",
+        },
+        "outlookDays": {
+          "description": "Add the expected in- and outflows due within this many days after asOf.",
+          "maximum": 365,
+          "minimum": 1,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_cash_position",
+    "title": "Cash position",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Changes since",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 20,
+          "description": "Changed records to return per subject, 1–100.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "offset": {
+          "default": 0,
+          "description": "sevDesk rows to skip (a previous nextOffset); only with exactly one subject.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "since": {
+          "description": "Start: YYYY-MM-DD (00:00 Berlin) or an ISO 8601 date-time, e.g. 2026-11-01T08:00:00+01:00 (Berlin time without an offset).",
+          "maxLength": 40,
+          "minLength": 10,
+          "type": "string",
+        },
+        "subjects": {
+          "default": [
+            "contacts",
+            "invoices",
+            "credit_notes",
+            "orders",
+            "vouchers",
+            "transactions",
+          ],
+          "description": "Which records to check; default all.",
+          "items": {
+            "enum": [
+              "contacts",
+              "invoices",
+              "credit_notes",
+              "orders",
+              "vouchers",
+              "transactions",
+            ],
+            "type": "string",
+          },
+          "maxItems": 6,
+          "minItems": 1,
+          "type": "array",
+        },
+      },
+      "required": [
+        "since",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_changed_since",
+    "title": "Changes since",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
       "title": "Get a sevDesk contact",
     },
     "inputSchema": {
@@ -422,7 +2507,7 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         },
         "offset": {
           "default": 0,
-          "description": "Matches to skip, for paging.",
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
           "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
@@ -438,6 +2523,647 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
     },
     "name": "sevdesk_contacts_search",
     "title": "Search sevDesk contacts",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get a sevDesk credit note",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Credit note id (not its number), e.g. from sevdesk_credit_notes_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_credit_note_get",
+    "title": "Get a sevDesk credit note",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get a credit note PDF",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "sevDesk id of the document (not its number such as RE-1001).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_credit_note_pdf",
+    "title": "Get a credit note PDF",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List sevDesk credit notes",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "contactId": {
+          "description": "Only credit notes of this contact.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "from": {
+          "description": "First day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "limit": {
+          "default": 25,
+          "description": "Page size, 1–100.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "number": {
+          "description": "Exact credit note number, e.g. 'GU-1000'.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "status": {
+          "description": "draft (100), open (200), partially_paid (750) or paid (1000).",
+          "enum": [
+            "draft",
+            "open",
+            "partially_paid",
+            "paid",
+          ],
+          "type": "string",
+        },
+        "to": {
+          "description": "Last day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_credit_notes_list",
+    "title": "List sevDesk credit notes",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get a sevDesk invoice",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Invoice id (not the invoice number), e.g. from sevdesk_invoices_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_get",
+    "title": "Get a sevDesk invoice",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get an invoice PDF",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "sevDesk id of the document (not its number such as RE-1001).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_pdf",
+    "title": "Get an invoice PDF",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get an e-invoice XML",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "sevDesk id of the document (not its number such as RE-1001).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_xml",
+    "title": "Get an e-invoice XML",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List sevDesk invoices",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "contactId": {
+          "description": "Only invoices of this contact (id from sevdesk_contacts_search).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "from": {
+          "description": "First day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "limit": {
+          "default": 25,
+          "description": "Page size, 1–100.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "number": {
+          "description": "Exact invoice number, e.g. 'RE-1000'.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "overdueOnly": {
+          "default": false,
+          "description": "Only open/partially paid invoices past their due date (Berlin time).",
+          "type": "boolean",
+        },
+        "status": {
+          "description": "draft (100), open (200), partially_paid (750) or paid (1000).",
+          "enum": [
+            "draft",
+            "open",
+            "partially_paid",
+            "paid",
+          ],
+          "type": "string",
+        },
+        "to": {
+          "description": "Last day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "type": {
+          "description": "Invoice type: invoice (RE), advance, partial, final, cancellation, reminder…",
+          "enum": [
+            "invoice",
+            "advance",
+            "partial",
+            "final",
+            "cancellation",
+            "reminder",
+            "recurring",
+          ],
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_invoices_list",
+    "title": "List sevDesk invoices",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get a sevDesk order",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Order id (not its number), e.g. from sevdesk_orders_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_order_get",
+    "title": "Get a sevDesk order",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get an order PDF",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "sevDesk id of the document (not its number such as RE-1001).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_order_pdf",
+    "title": "Get an order PDF",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List sevDesk orders",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "contactId": {
+          "description": "Only orders of this contact.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "from": {
+          "description": "First day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "limit": {
+          "default": 25,
+          "description": "Page size, 1–100.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "number": {
+          "description": "Exact order number, e.g. 'AN-1000'.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "status": {
+          "description": "draft 100, sent 200, rejected 300, accepted 500, partially_invoiced 750, invoiced 1000.",
+          "enum": [
+            "draft",
+            "sent",
+            "rejected",
+            "accepted",
+            "partially_invoiced",
+            "invoiced",
+          ],
+          "type": "string",
+        },
+        "to": {
+          "description": "Last day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "type": {
+          "description": "offer (AN), order_confirmation (AB) or delivery_note (LI).",
+          "enum": [
+            "offer",
+            "order_confirmation",
+            "delivery_note",
+          ],
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_orders_list",
+    "title": "List sevDesk orders",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get a sevDesk part",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Part id, e.g. from sevdesk_parts_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_part_get",
+    "title": "Get a sevDesk part",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List sevDesk parts",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 25,
+          "description": "Page size, 1–100.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "name": {
+          "description": "Part name.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "partNumber": {
+          "description": "Part number (Artikelnummer), e.g. 'ART-001'.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_parts_list",
+    "title": "List sevDesk parts",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Payables aging",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "asOf": {
+          "description": "Reference day (Stichtag), YYYY-MM-DD, today or later; default today (Berlin). sevDesk only knows today's open items, so a past day is refused; a later day ages today's open items as of that day.",
+          "type": "string",
+        },
+        "top": {
+          "default": 10,
+          "description": "How many of the largest parties to list per currency.",
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_payables_aging",
+    "title": "Payables aging",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Receivables aging",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "asOf": {
+          "description": "Reference day (Stichtag), YYYY-MM-DD, today or later; default today (Berlin). sevDesk only knows today's open items, so a past day is refused; a later day ages today's open items as of that day.",
+          "type": "string",
+        },
+        "top": {
+          "default": 10,
+          "description": "How many of the largest parties to list per currency.",
+          "maximum": 50,
+          "minimum": 1,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_receivables_aging",
+    "title": "Receivables aging",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Summarize sevDesk records",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "accountId": {
+          "description": "Transactions only: payment account (Zahlungskonto) id.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "contactId": {
+          "description": "Customer (invoices, credit notes) or supplier (vouchers) contact id.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "from": {
+          "description": "First day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "groupBy": {
+          "default": "none",
+          "description": "none, month, quarter, status, contact (customer/supplier; not for transactions) or account (transactions only).",
+          "enum": [
+            "none",
+            "month",
+            "quarter",
+            "status",
+            "contact",
+            "account",
+          ],
+          "type": "string",
+        },
+        "invoiceType": {
+          "description": "Invoices only: invoice (RE), advance (AR), partial (TR), final (ER), cancellation (SR), reminder (MA) or recurring (WKR template); reminders and templates count only when asked for here.",
+          "enum": [
+            "invoice",
+            "advance",
+            "partial",
+            "final",
+            "cancellation",
+            "reminder",
+            "recurring",
+          ],
+          "type": "string",
+        },
+        "kind": {
+          "description": "Vouchers only: expense (Ausgabe) or revenue (Einnahme).",
+          "enum": [
+            "expense",
+            "revenue",
+          ],
+          "type": "string",
+        },
+        "maxGroups": {
+          "default": 50,
+          "description": "Most groups to return; the rest are counted in groupsOmitted.",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "status": {
+          "description": "Invoices/credit notes: draft, open, partially_paid, paid. Vouchers: draft, open, transferred, partially_paid, paid. Transactions: created, linked, private, auto_booked, booked.",
+          "enum": [
+            "draft",
+            "open",
+            "partially_paid",
+            "paid",
+            "transferred",
+            "created",
+            "linked",
+            "private",
+            "auto_booked",
+            "booked",
+          ],
+          "type": "string",
+        },
+        "subject": {
+          "description": "invoices, credit_notes, vouchers or transactions (bank transactions).",
+          "enum": [
+            "invoices",
+            "credit_notes",
+            "vouchers",
+            "transactions",
+          ],
+          "type": "string",
+        },
+        "to": {
+          "description": "Last day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+      },
+      "required": [
+        "subject",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_records_summarize",
+    "title": "Summarize sevDesk records",
   },
   {
     "annotations": {
@@ -479,6 +3205,197 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
     },
     "name": "sevdesk_reference_lookup",
     "title": "Look up sevDesk ids and codes",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List sevDesk bank transactions",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "checkAccountId": {
+          "description": "Payment account (Zahlungskonto) id.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "dateField": {
+          "default": "value",
+          "description": "Date that from/to apply to: value (Wertstellung, default; filtered here) or entry (the second date, see entryDate; sevDesk filters it itself).",
+          "enum": [
+            "value",
+            "entry",
+          ],
+          "type": "string",
+        },
+        "direction": {
+          "description": "in = incoming (positive), out = outgoing (negative).",
+          "enum": [
+            "in",
+            "out",
+          ],
+          "type": "string",
+        },
+        "from": {
+          "description": "First day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "limit": {
+          "default": 25,
+          "description": "Page size, 1–100.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "status": {
+          "description": "Statuses to include, e.g. ['created'] for unbooked transactions.",
+          "items": {
+            "enum": [
+              "created",
+              "linked",
+              "private",
+              "auto_booked",
+              "booked",
+            ],
+            "type": "string",
+          },
+          "maxItems": 5,
+          "minItems": 1,
+          "type": "array",
+        },
+        "to": {
+          "description": "Last day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_transactions_list",
+    "title": "List sevDesk bank transactions",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get a sevDesk voucher",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Voucher id, e.g. from sevdesk_vouchers_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_voucher_get",
+    "title": "Get a sevDesk voucher",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List sevDesk vouchers",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "description": "Part of the Belegnummer or description, e.g. an invoice number.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "from": {
+          "description": "First day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "kind": {
+          "description": "expense (Ausgabe, creditDebit C) or revenue (Einnahme, creditDebit D).",
+          "enum": [
+            "expense",
+            "revenue",
+          ],
+          "type": "string",
+        },
+        "limit": {
+          "default": 25,
+          "description": "Page size, 1–100.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "status": {
+          "description": "Voucher status by name.",
+          "enum": [
+            "draft",
+            "open",
+            "transferred",
+            "partially_paid",
+            "paid",
+          ],
+          "type": "string",
+        },
+        "supplierId": {
+          "description": "Contact id of the supplier (Lieferant) or customer.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "supplierName": {
+          "description": "Part of the supplier name, for vouchers without a contact too.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "to": {
+          "description": "Last day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "type": {
+          "description": "normal (VOU) or recurring (RV).",
+          "enum": [
+            "normal",
+            "recurring",
+          ],
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_vouchers_list",
+    "title": "List sevDesk vouchers",
   },
 ]
 `;
