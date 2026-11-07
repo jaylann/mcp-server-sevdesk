@@ -1,0 +1,106 @@
+{
+  "_provenance": {
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "source": "community",
+    "ref": "https://github.com/emuuu/sevDesk.NET/blob/main/docs/sevdesk-api-responses.txt (GET /api/v1/InvoicePos)",
+    "note": "Keys and string scalars of the recorded GET /InvoicePos row; values match the positions of save-invoice-response.json."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "5101",
+        "objectName": "InvoicePos",
+        "additionalInformation": null,
+        "create": "2026-10-01T09:05:00+02:00",
+        "update": "2026-10-01T09:05:00+02:00",
+        "invoice": {
+          "id": "2101",
+          "objectName": "Invoice"
+        },
+        "part": null,
+        "quantity": "3",
+        "price": "10",
+        "name": "Beratung",
+        "priority": "100",
+        "unity": {
+          "id": "1",
+          "objectName": "Unity"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "positionNumber": "0",
+        "text": null,
+        "discount": "0",
+        "isPercentage": "1",
+        "discountedValue": null,
+        "taxRate": "19",
+        "temporary": "0",
+        "sumNet": "30",
+        "sumGross": "35.7",
+        "sumDiscount": "0",
+        "sumTax": "5.7",
+        "sumNetAccounting": "30",
+        "sumTaxAccounting": "5.7",
+        "sumGrossAccounting": "35.7",
+        "priceNet": "10",
+        "priceGross": "11.9",
+        "priceTax": "1.9",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountForeignCurrency": "0",
+        "createNextPart": null
+      },
+      {
+        "id": "5102",
+        "objectName": "InvoicePos",
+        "additionalInformation": null,
+        "create": "2026-10-01T09:05:00+02:00",
+        "update": "2026-10-01T09:05:00+02:00",
+        "invoice": {
+          "id": "2101",
+          "objectName": "Invoice"
+        },
+        "part": null,
+        "quantity": "1",
+        "price": "25",
+        "name": "Paket",
+        "priority": "100",
+        "unity": {
+          "id": "1",
+          "objectName": "Unity"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "positionNumber": "1",
+        "text": "Zweite Zeile\nund eine dritte",
+        "discount": "0",
+        "isPercentage": "1",
+        "discountedValue": null,
+        "taxRate": "19",
+        "temporary": "0",
+        "sumNet": "25",
+        "sumGross": "29.75",
+        "sumDiscount": "0",
+        "sumTax": "4.75",
+        "sumNetAccounting": "25",
+        "sumTaxAccounting": "4.75",
+        "sumGrossAccounting": "29.75",
+        "priceNet": "25",
+        "priceGross": "29.75",
+        "priceTax": "4.75",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountForeignCurrency": "0",
+        "createNextPart": null
+      }
+    ]
+  }
+}

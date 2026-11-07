@@ -1,0 +1,157 @@
+{
+  "_provenance": {
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "source": "community",
+    "ref": "https://github.com/jernoxit/sevdesk-rs/blob/6fac90326a99e44a60d8cf77105b7619dece1bb8/tests/fixtures/write_credit_note_save.json (POST /CreditNote/Factory/saveCreditNote, live 2026-10-01)",
+    "note": "Recorded response, keys and scalar types kept; names, ids and address replaced with fakes; refSrcInvoice points at invoice 1001. creditNoteNumber was GU-1048 (sevdesk-rs sends a number from the number range) and is null here because this server sends none (D-027). sevdesk-rs stores only this response; its request (shape from its source, src/document_payload/credit_note.rs) was UNDERACHIEVEMENT, 1 x 10 net at 19 %."
+  },
+  "status": 200,
+  "body": {
+    "objects": {
+      "creditNote": {
+        "id": "2201",
+        "objectName": "CreditNote",
+        "additionalInformation": null,
+        "propertyIsEInvoice": "0",
+        "creditNoteNumber": null,
+        "contact": {
+          "id": "1001",
+          "objectName": "Contact"
+        },
+        "create": "2026-11-07T10:00:00+01:00",
+        "update": "2026-11-07T10:00:00+01:00",
+        "creditNoteDate": "2026-11-07T00:00:00+01:00",
+        "header": "Gutschrift",
+        "headText": null,
+        "footText": null,
+        "timeToPay": null,
+        "discountTime": "0",
+        "discount": "0",
+        "addressName": "Musterfirma GmbH, Buchhaltung",
+        "addressStreet": "Musterstraße 1",
+        "addressZip": "12345",
+        "addressCity": "Musterstadt",
+        "addressCountry": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "payDate": null,
+        "createUser": {
+          "id": "2001",
+          "objectName": "SevUser"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "deliveryDate": "2026-11-07T00:00:00+01:00",
+        "status": "100",
+        "smallSettlement": "0",
+        "contactPerson": {
+          "id": "2001",
+          "objectName": "SevUser"
+        },
+        "taxRate": "0",
+        "taxText": "Umsatzsteuer 19%",
+        "addressParentName": null,
+        "taxType": null,
+        "paymentMethod": null,
+        "sendDate": null,
+        "creditNoteType": "CN",
+        "accountIntervall": null,
+        "accountLastCreditNote": null,
+        "accountNextCreditNote": null,
+        "reminderTotal": null,
+        "reminderDebit": null,
+        "reminderDeadline": null,
+        "reminderCharge": null,
+        "addressParentName2": null,
+        "addressName2": null,
+        "addressGender": null,
+        "accountEndDate": null,
+        "address": null,
+        "currency": "EUR",
+        "sumNet": "10",
+        "sumTax": "1.9",
+        "sumGross": "11.9",
+        "sumDiscounts": "0",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountsForeignCurrency": "0",
+        "sumNetAccounting": "10",
+        "sumTaxAccounting": "1.9",
+        "sumGrossAccounting": "11.9",
+        "customerInternalNote": null,
+        "taxNumber": null,
+        "vatNumber": null,
+        "showNet": "1",
+        "enshrined": null,
+        "sendType": "0",
+        "bookingCategory": "UNDERACHIEVEMENT",
+        "deliveryDateUntil": null,
+        "refSrcInvoice": {
+          "id": "1001",
+          "objectName": "Invoice"
+        },
+        "isTransferred": "0",
+        "sumDiscountNet": "0",
+        "sumDiscountGross": "0",
+        "sumDiscountNetForeignCurrency": "0",
+        "sumDiscountGrossForeignCurrency": "0",
+        "taxRule": {
+          "id": "1",
+          "objectName": "TaxRule"
+        }
+      },
+      "creditNotePos": [
+        {
+          "id": "6201",
+          "objectName": "CreditNotePos",
+          "additionalInformation": null,
+          "create": "2026-11-07T10:00:00+01:00",
+          "update": "2026-11-07T10:00:00+01:00",
+          "creditNote": {
+            "id": "2201",
+            "objectName": "CreditNote"
+          },
+          "quantity": "1",
+          "price": "10",
+          "name": "Teilgutschrift Versand",
+          "priority": "100",
+          "unity": {
+            "id": "1",
+            "objectName": "Unity"
+          },
+          "sevClient": {
+            "id": "9001",
+            "objectName": "SevClient"
+          },
+          "positionNumber": "1000",
+          "text": null,
+          "discount": "0",
+          "isPercentage": "1",
+          "discountedValue": null,
+          "taxRate": "19",
+          "temporary": "0",
+          "sumNet": "10",
+          "sumGross": "11.9",
+          "sumDiscount": "0",
+          "sumTax": "1.9",
+          "sumNetAccounting": "10",
+          "sumTaxAccounting": "1.9",
+          "sumGrossAccounting": "11.9",
+          "priceNet": "10",
+          "priceGross": "11.9",
+          "priceTax": "1.9",
+          "sumNetForeignCurrency": "0",
+          "sumTaxForeignCurrency": "0",
+          "sumGrossForeignCurrency": "0",
+          "sumDiscountForeignCurrency": "0",
+          "createNextPart": null
+        }
+      ]
+    }
+  }
+}

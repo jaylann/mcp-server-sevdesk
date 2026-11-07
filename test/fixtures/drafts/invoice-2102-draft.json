@@ -1,0 +1,110 @@
+{
+  "_provenance": {
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "source": "community",
+    "ref": "https://github.com/emuuu/sevDesk.NET/blob/main/docs/sevdesk-api-responses.txt (GET /api/v1/Invoice)",
+    "note": "A draft created in the web app (multi-line address, structured address fields null) as GET /Invoice/2102 returns it without embed; keys and scalar types of the recording, values fake. Skonto 2 % / 7 days and a payment method that an update must carry over."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "2102",
+        "objectName": "Invoice",
+        "additionalInformation": null,
+        "invoiceNumber": null,
+        "contact": {
+          "id": "1001",
+          "objectName": "Contact"
+        },
+        "create": "2026-10-01T09:00:00+02:00",
+        "update": "2026-10-01T09:05:00+02:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "invoiceDate": "2026-11-02T00:00:00+01:00",
+        "header": "Rechnung",
+        "headText": "Vielen Dank für Ihren Auftrag.",
+        "footText": "Zahlbar innerhalb von 14 Tagen.",
+        "timeToPay": "14",
+        "discountTime": "7",
+        "discount": "2",
+        "addressName": null,
+        "addressStreet": null,
+        "addressZip": null,
+        "addressCity": null,
+        "payDate": null,
+        "createUser": {
+          "id": "7001",
+          "objectName": "SevUser"
+        },
+        "deliveryDate": "2026-11-02T00:00:00+01:00",
+        "status": "100",
+        "smallSettlement": "0",
+        "contactPerson": {
+          "id": "7001",
+          "objectName": "SevUser"
+        },
+        "taxRate": "0",
+        "taxText": "Umsatzsteuer 19%",
+        "dunningLevel": null,
+        "addressParentName": null,
+        "taxType": null,
+        "sendDate": null,
+        "invoiceType": "RE",
+        "accountIntervall": null,
+        "accountLastInvoice": null,
+        "accountNextInvoice": null,
+        "reminderTotal": null,
+        "reminderDebit": null,
+        "reminderDeadline": null,
+        "reminderCharge": null,
+        "addressParentName2": null,
+        "addressName2": null,
+        "addressGender": null,
+        "accountStartDate": null,
+        "accountEndDate": null,
+        "address": "Musterfirma GmbH\nMusterstraße 1\n12345 Musterstadt",
+        "currency": "EUR",
+        "sumNet": "100",
+        "sumTax": "16.6",
+        "sumGross": "116.6",
+        "sumDiscounts": "0",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountsForeignCurrency": "0",
+        "sumNetAccounting": "100",
+        "sumTaxAccounting": "16.6",
+        "sumGrossAccounting": "116.6",
+        "paidAmount": 0,
+        "customerInternalNote": "Bestellnummer 4711",
+        "einvoiceReference": null,
+        "showNet": "1",
+        "enshrined": null,
+        "sendType": null,
+        "deliveryDateUntil": null,
+        "sendPaymentReceivedNotificationDate": null,
+        "sumDiscountNet": "0",
+        "sumDiscountGross": "0",
+        "sumDiscountNetForeignCurrency": "0",
+        "sumDiscountGrossForeignCurrency": "0",
+        "taxRule": {
+          "id": "1",
+          "objectName": "TaxRule"
+        },
+        "addressCountry": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "paymentMethod": {
+          "id": "21919",
+          "objectName": "PaymentMethod"
+        },
+        "origin": null
+      }
+    ]
+  }
+}

@@ -1,0 +1,124 @@
+{
+  "_provenance": {
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "source": "community",
+    "ref": "https://github.com/TomDixon63/OrderManager2/blob/HEAD/front/src/app/model/order.ts (GET /api/v1/Order, 2023)",
+    "note": "The new draft offer as GET /Order/3101?embed=contact returns it; keys and scalar types of the recorded row, values fake."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "3101",
+        "objectName": "Order",
+        "additionalInformation": null,
+        "create": "2026-11-07T10:00:00+01:00",
+        "update": "2026-11-07T10:00:00+01:00",
+        "orderNumber": null,
+        "orderDate": "2026-11-07T00:00:00+01:00",
+        "status": "100",
+        "header": "Angebot",
+        "headText": null,
+        "footText": null,
+        "addressName": null,
+        "addressStreet": null,
+        "addressZip": null,
+        "addressCity": null,
+        "addressCountry": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "createUser": {
+          "id": "2001",
+          "objectName": "SevUser"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "deliveryTerms": null,
+        "paymentTerms": null,
+        "version": "0",
+        "smallSettlement": "0",
+        "contactPerson": {
+          "id": "2001",
+          "objectName": "SevUser"
+        },
+        "taxRate": "0",
+        "taxText": "Umsatzsteuerpflichtige Umsätze",
+        "addressParentName": null,
+        "taxType": null,
+        "orderType": "AN",
+        "sendDate": null,
+        "addressParentName2": null,
+        "addressName2": null,
+        "addressGender": null,
+        "address": "Musterfirma GmbH, Buchhaltung\nMusterstraße 1\n12345 Musterstadt",
+        "currency": "EUR",
+        "sumNet": "55",
+        "sumTax": "10.45",
+        "sumGross": "65.45",
+        "sumDiscounts": "0",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountsForeignCurrency": "0",
+        "weight": "0",
+        "customerInternalNote": null,
+        "showNet": "1",
+        "sendType": null,
+        "sumDiscountNet": "0",
+        "sumDiscountGross": "0",
+        "sumDiscountNetForeignCurrency": "0",
+        "sumDiscountGrossForeignCurrency": "0",
+        "taxRule": {
+          "id": "1",
+          "objectName": "TaxRule"
+        },
+        "origin": null,
+        "contact": {
+          "id": "1001",
+          "objectName": "Contact",
+          "additionalInformation": null,
+          "create": "2026-01-05T09:30:00+01:00",
+          "update": "2026-03-01T23:30:00+00:00",
+          "name": "Musterfirma GmbH",
+          "status": "1000",
+          "customerNumber": "K-1001",
+          "surename": null,
+          "familyname": null,
+          "titel": null,
+          "category": {
+            "id": "3",
+            "objectName": "Category"
+          },
+          "description": "Stammkunde seit 2026",
+          "academicTitle": null,
+          "gender": null,
+          "sevClient": {
+            "id": "9001",
+            "objectName": "SevClient"
+          },
+          "name2": null,
+          "birthday": null,
+          "vatNumber": "DE000000000",
+          "bankAccount": null,
+          "bankNumber": null,
+          "defaultCashbackTime": null,
+          "defaultCashbackPercent": null,
+          "defaultTimeToPay": "14",
+          "taxNumber": "000/000/00000",
+          "taxOffice": null,
+          "exemptVat": "0",
+          "taxType": null,
+          "defaultDiscountAmount": null,
+          "defaultDiscountPercentage": "1",
+          "buyerReference": null,
+          "governmentAgency": "0",
+          "defaultShowVat": "1"
+        }
+      }
+    ]
+  }
+}

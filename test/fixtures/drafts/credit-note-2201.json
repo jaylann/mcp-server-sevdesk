@@ -1,0 +1,147 @@
+{
+  "_provenance": {
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "source": "community",
+    "ref": "https://github.com/jernoxit/sevdesk-rs/blob/6fac90326a99e44a60d8cf77105b7619dece1bb8/tests/fixtures/write_credit_note_save.json (creditNote row) + https://github.com/jernoxit/sevdesk-rs/blob/6fac90326a99e44a60d8cf77105b7619dece1bb8/tests/fixtures/credit_note.json (GET shape)",
+    "note": "The draft as GET /CreditNote/2201?embed=contact returns it: the creditNote row of the recorded saveCreditNote response with the contact embedded; creditNoteNumber null as in save-credit-note-response.json. Values fake."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "2201",
+        "objectName": "CreditNote",
+        "additionalInformation": null,
+        "propertyIsEInvoice": "0",
+        "creditNoteNumber": null,
+        "contact": {
+          "id": "1001",
+          "objectName": "Contact",
+          "additionalInformation": null,
+          "create": "2026-01-05T09:30:00+01:00",
+          "update": "2026-03-01T23:30:00+00:00",
+          "name": "Musterfirma GmbH",
+          "status": "1000",
+          "customerNumber": "K-1001",
+          "surename": null,
+          "familyname": null,
+          "titel": null,
+          "category": {
+            "id": "3",
+            "objectName": "Category"
+          },
+          "description": "Stammkunde seit 2026",
+          "academicTitle": null,
+          "gender": null,
+          "sevClient": {
+            "id": "9001",
+            "objectName": "SevClient"
+          },
+          "name2": null,
+          "birthday": null,
+          "vatNumber": "DE000000000",
+          "bankAccount": null,
+          "bankNumber": null,
+          "defaultCashbackTime": null,
+          "defaultCashbackPercent": null,
+          "defaultTimeToPay": "14",
+          "taxNumber": "000/000/00000",
+          "taxOffice": null,
+          "exemptVat": "0",
+          "taxType": null,
+          "defaultDiscountAmount": null,
+          "defaultDiscountPercentage": "1",
+          "buyerReference": null,
+          "governmentAgency": "0",
+          "defaultShowVat": "1"
+        },
+        "create": "2026-11-07T10:00:00+01:00",
+        "update": "2026-11-07T10:00:00+01:00",
+        "creditNoteDate": "2026-11-07T00:00:00+01:00",
+        "header": "Gutschrift",
+        "headText": null,
+        "footText": null,
+        "timeToPay": null,
+        "discountTime": "0",
+        "discount": "0",
+        "addressName": "Musterfirma GmbH, Buchhaltung",
+        "addressStreet": "Musterstraße 1",
+        "addressZip": "12345",
+        "addressCity": "Musterstadt",
+        "addressCountry": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "payDate": null,
+        "createUser": {
+          "id": "2001",
+          "objectName": "SevUser"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "deliveryDate": "2026-11-07T00:00:00+01:00",
+        "status": "100",
+        "smallSettlement": "0",
+        "contactPerson": {
+          "id": "2001",
+          "objectName": "SevUser"
+        },
+        "taxRate": "0",
+        "taxText": "Umsatzsteuer 19%",
+        "addressParentName": null,
+        "taxType": null,
+        "paymentMethod": null,
+        "sendDate": null,
+        "creditNoteType": "CN",
+        "accountIntervall": null,
+        "accountLastCreditNote": null,
+        "accountNextCreditNote": null,
+        "reminderTotal": null,
+        "reminderDebit": null,
+        "reminderDeadline": null,
+        "reminderCharge": null,
+        "addressParentName2": null,
+        "addressName2": null,
+        "addressGender": null,
+        "accountEndDate": null,
+        "address": null,
+        "currency": "EUR",
+        "sumNet": "10",
+        "sumTax": "1.9",
+        "sumGross": "11.9",
+        "sumDiscounts": "0",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountsForeignCurrency": "0",
+        "sumNetAccounting": "10",
+        "sumTaxAccounting": "1.9",
+        "sumGrossAccounting": "11.9",
+        "customerInternalNote": null,
+        "taxNumber": null,
+        "vatNumber": null,
+        "showNet": "1",
+        "enshrined": null,
+        "sendType": "0",
+        "bookingCategory": "UNDERACHIEVEMENT",
+        "deliveryDateUntil": null,
+        "refSrcInvoice": {
+          "id": "1001",
+          "objectName": "Invoice"
+        },
+        "isTransferred": "0",
+        "sumDiscountNet": "0",
+        "sumDiscountGross": "0",
+        "sumDiscountNetForeignCurrency": "0",
+        "sumDiscountGrossForeignCurrency": "0",
+        "taxRule": {
+          "id": "1",
+          "objectName": "TaxRule"
+        }
+      }
+    ]
+  }
+}

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   addDays,
+  addressDto,
   allOf,
   cleanText,
   contactRef,
@@ -184,6 +185,36 @@ describe("status, tax and send state", () => {
     expect(sentDto(salesRecord({ sendDate: "2026-11-02T08:00:00+01:00" }))).toEqual({
       date: "2026-11-02",
     });
+  });
+});
+
+describe("addressDto", () => {
+  it("prefers the printed address text", () => {
+    expect(
+      addressDto(
+        salesRecord({
+          address: "Musterfirma GmbH\nHauptstr. 1\n10115 Berlin",
+          addressName: "Other Name",
+          addressCountry: { id: 1, objectName: "StaticCountry" },
+        }),
+      ),
+    ).toEqual({ text: "Musterfirma GmbH\nHauptstr. 1\n10115 Berlin", countryId: 1 });
+  });
+
+  it("composes the text from the structured parts when sevDesk sent no address (API drafts)", () => {
+    expect(
+      addressDto(
+        salesRecord({
+          addressName: " Musterfirma GmbH ",
+          addressStreet: "Hauptstr. 1",
+          addressZip: "10115",
+          addressCity: "Berlin",
+          addressCountry: { id: 1, objectName: "StaticCountry" },
+        }),
+      ),
+    ).toEqual({ text: "Musterfirma GmbH\nHauptstr. 1\n10115 Berlin", countryId: 1 });
+    expect(addressDto(salesRecord({ addressCity: "Berlin" }))).toEqual({ text: "Berlin" });
+    expect(addressDto(salesRecord({ addressZip: "", addressName: "  " }))).toBeUndefined();
   });
 });
 

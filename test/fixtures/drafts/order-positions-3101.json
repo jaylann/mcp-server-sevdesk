@@ -1,0 +1,102 @@
+{
+  "_provenance": {
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "source": "community",
+    "ref": "https://github.com/TomDixon63/OrderManager2/blob/HEAD/front/src/app/model/order.ts (embedded OrderPos rows)",
+    "note": "Keys and scalar types of the recorded order position row; values fake."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "9101",
+        "objectName": "OrderPos",
+        "additionalInformation": null,
+        "create": "2026-09-20T09:00:00+02:00",
+        "update": "2026-09-20T09:00:00+02:00",
+        "order": {
+          "id": "3101",
+          "objectName": "Order"
+        },
+        "part": null,
+        "quantity": "3",
+        "price": "10",
+        "priceNet": "10",
+        "priceTax": "1.9",
+        "priceGross": "11.9",
+        "name": "Beratung",
+        "priority": "100",
+        "unity": {
+          "id": "1",
+          "objectName": "Unity"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "positionNumber": "0",
+        "text": null,
+        "discount": "0",
+        "isPercentage": "1",
+        "discountedValue": null,
+        "optional": "0",
+        "optionalChargeable": "0",
+        "taxRate": "19",
+        "sumNet": "30",
+        "sumGross": "35.7",
+        "sumTax": "5.7",
+        "sumDiscount": "0",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountForeignCurrency": "0",
+        "createNextPart": null
+      },
+      {
+        "id": "9102",
+        "objectName": "OrderPos",
+        "additionalInformation": null,
+        "create": "2026-09-20T09:00:00+02:00",
+        "update": "2026-09-20T09:00:00+02:00",
+        "order": {
+          "id": "3101",
+          "objectName": "Order"
+        },
+        "part": null,
+        "quantity": "1",
+        "price": "25",
+        "priceNet": "25",
+        "priceTax": "4.75",
+        "priceGross": "29.75",
+        "name": "Paket",
+        "priority": "100",
+        "unity": {
+          "id": "1",
+          "objectName": "Unity"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "positionNumber": "1",
+        "text": null,
+        "discount": "0",
+        "isPercentage": "1",
+        "discountedValue": null,
+        "optional": "0",
+        "optionalChargeable": "0",
+        "taxRate": "19",
+        "sumNet": "25",
+        "sumGross": "29.75",
+        "sumTax": "4.75",
+        "sumDiscount": "0",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountForeignCurrency": "0",
+        "createNextPart": null
+      }
+    ]
+  }
+}
