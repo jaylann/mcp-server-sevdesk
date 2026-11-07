@@ -306,6 +306,24 @@ describe("createScrubber", () => {
     expect(scrubbedXml.objects.length).toBeLessThan(xml.objects.length);
   });
 
+  it("finds the XML root after comments, processing instructions and a DOCTYPE", () => {
+    const decl = '<?xml version="1.0" encoding="UTF-8"?>';
+    const xml = (body: string): string =>
+      (scrubber().scrub({ objects: `${decl}${body}` }) as { objects: string }).objects;
+
+    const scrubbed = xml(
+      '\n<!-- <fake:Root> Musterfirma --><?pi data?>\n<!DOCTYPE x>\n<ubl:Invoice xmlns:ubl="urn:x"><cbc:Name>Musterfirma</cbc:Name></ubl:Invoice>',
+    );
+    expect(scrubbed).toMatch(/\n<ubl:Invoice xmlns:ubl="urn:x">\n/);
+    expect(scrubbed).not.toContain("fake:Root");
+    expect(scrubbed).not.toContain("Musterfirma");
+
+    for (const broken of ["<!-- never closed <a:Root>", "<?pi never closed", "plain text"]) {
+      expect(xml(broken)).toMatch(/<!-- scrubbed: \d+ characters -->$/);
+      expect(xml(broken)).not.toContain("a:Root");
+    }
+  });
+
   it("scrubs unknown free text by default and reports the key for review", () => {
     const s = scrubber();
     const scrubbed = s.scrub({

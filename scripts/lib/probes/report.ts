@@ -151,6 +151,7 @@ function escapeInline(text: string): string {
   return text.replace(/\r?\n/g, " ").replace(/</g, "&lt;");
 }
 
+/** One Markdown table cell: backslashes first, then pipes, on one line. */
 function escapeCell(text: string): string {
-  return escapeInline(text).replace(/\|/g, "\\|");
+  return escapeInline(text).replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
 }

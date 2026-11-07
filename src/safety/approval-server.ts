@@ -20,7 +20,7 @@
  * Limit (documented in SECURITY.md): anything that can read the server log or drive the user's
  * browser, including an agent with such tools, can still open the page and press Approve.
  */
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -433,10 +433,12 @@ function recordKey(toolName: string, argsHash: string): string {
   return `${toolName}:${argsHash}`;
 }
 
+/** A short code for humans to match prompt and page; `randomInt` keeps every letter equally likely. */
 function referenceCode(): string {
-  return [...randomBytes(REFERENCE_LENGTH)]
-    .map((byte) => REFERENCE_ALPHABET[byte % REFERENCE_ALPHABET.length] ?? "A")
-    .join("");
+  return Array.from(
+    { length: REFERENCE_LENGTH },
+    () => REFERENCE_ALPHABET[randomInt(REFERENCE_ALPHABET.length)] ?? "A",
+  ).join("");
 }
 
 function secret(): string {

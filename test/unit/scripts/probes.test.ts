@@ -503,6 +503,20 @@ describe("runProbes (write mode)", () => {
     );
     expect(markdown).not.toContain(TOKEN);
   });
+
+  it("escapes backslashes before pipes, so a cell cannot end early or swallow its border", async () => {
+    const base = await runProbes(
+      options(trialAccount(), { allowWrites: true, only: ["write-numbering-invoice"] }),
+    );
+    const record = base.created[0];
+    expect(record).toBeDefined();
+    const markdown = renderReport({
+      ...base,
+      created: [{ ...record!, state: "draft \\| or \\ not | sure" }],
+    });
+
+    expect(markdown).toContain("| draft \\\\\\| or \\\\ not \\| sure |");
+  });
 });
 
 describe("core helpers", () => {

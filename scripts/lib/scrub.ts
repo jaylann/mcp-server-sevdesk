@@ -537,15 +537,36 @@ function replaceDigits(value: string, n: number): string {
 }
 
 /**
+ * Skips what may precede the root element (whitespace, comments, processing instructions, a
+ * DOCTYPE) by scanning, not by deleting patterns, so nothing comment-like can survive into the
+ * root match. Returns the text from the root element on (empty when there is none).
+ */
+function skipProlog(text: string): string {
+  let rest = text;
+  for (;;) {
+    rest = rest.trimStart();
+    const terminator = rest.startsWith("<!--")
+      ? "-->"
+      : rest.startsWith("<?")
+        ? "?>"
+        : rest.startsWith("<!")
+          ? ">"
+          : undefined;
+    if (terminator === undefined) return rest;
+    const end = rest.indexOf(terminator, 2);
+    if (end === -1) return "";
+    rest = rest.slice(end + terminator.length);
+  }
+}
+
+/**
  * Keeps the XML declaration, the root element's name and its namespace declarations (enough to
  * tell CII from UBL and to check the encoding), and drops everything else.
  */
 function scrubXml(xml: string): string {
   const declaration = XML_DECLARATION.exec(xml)?.[0].trim() ?? "";
-  const rest = xml
-    .slice(XML_DECLARATION.exec(xml)?.[0].length ?? 0)
-    .replace(/<!--[\s\S]*?-->/g, "");
-  const root = /<([A-Za-z_][\w.:-]*)([^>]*)>/.exec(rest);
+  const rest = skipProlog(xml.slice(XML_DECLARATION.exec(xml)?.[0].length ?? 0));
+  const root = /^<([A-Za-z_][\w.:-]*)([^>]*)>/.exec(rest);
   if (root === null) return `${declaration}\n<!-- scrubbed: ${xml.length} characters -->`;
   const name = root[1] ?? "root";
   const namespaces = (root[2] ?? "").match(/\sxmlns(?::[\w.-]+)?="[^"]*"/g) ?? [];
