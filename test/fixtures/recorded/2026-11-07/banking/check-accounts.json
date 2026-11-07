@@ -1,0 +1,77 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /CheckAccount?limit=n (recording session 2026-11-07)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "Personal and company data replaced by scripts/lib/scrub.ts; keys, nulls and scalar types as recorded. Mirrors banking/check-accounts.json. A recorded single page (has total)."
+  },
+  "status": 200,
+  "body": {
+    "total": 2,
+    "objects": [
+      {
+        "id": "6333721",
+        "objectName": "CheckAccount",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:30:57+01:00",
+        "update": "2026-11-07T23:30:57+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "name": "Musterkonto 1",
+        "type": "offline",
+        "importType": null,
+        "currency": "EUR",
+        "checkAccId": null,
+        "pin": null,
+        "defaultAccount": "1",
+        "status": "100",
+        "translationCode": null,
+        "bankServer": null,
+        "balance": null,
+        "accountingNumber": "1820",
+        "iban": null,
+        "bic": null,
+        "baseAccount": "1",
+        "priority": "0",
+        "countryCode": null,
+        "autoMapTransaction": "1",
+        "autoSyncTransactions": "1",
+        "lastSync": null
+      },
+      {
+        "id": "6333723",
+        "objectName": "CheckAccount",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:34:12+01:00",
+        "update": "2026-11-07T23:34:12+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "name": "Musterkonto 2",
+        "type": "register",
+        "importType": null,
+        "currency": "EUR",
+        "checkAccId": null,
+        "pin": null,
+        "defaultAccount": "0",
+        "status": "100",
+        "translationCode": "CASH_REGISTER",
+        "bankServer": null,
+        "balance": "0",
+        "accountingNumber": null,
+        "iban": null,
+        "bic": null,
+        "baseAccount": "0",
+        "priority": "0",
+        "countryCode": null,
+        "autoMapTransaction": "0",
+        "autoSyncTransactions": "0",
+        "lastSync": null
+      }
+    ]
+  }
+}

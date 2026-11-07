@@ -1,0 +1,240 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /InvoicePos?limit=n (recording session 2026-11-07)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "Personal and company data replaced by scripts/lib/scrub.ts; keys, nulls and scalar types as recorded. Mirrors invoices/invoice-positions-unfiltered.json. A recorded single page (has total). Without invoice filter, to compare with the filtered read (D-035)."
+  },
+  "status": 200,
+  "body": {
+    "total": 39,
+    "objects": [
+      {
+        "id": "371779518",
+        "objectName": "InvoicePos",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:36:34+01:00",
+        "update": "2026-11-07T23:36:34+01:00",
+        "invoice": {
+          "id": "138793600",
+          "objectName": "Invoice"
+        },
+        "quantity": "1",
+        "price": "100",
+        "name": "Musterposition 2",
+        "priority": "100",
+        "unity": {
+          "id": "1",
+          "objectName": "Unity"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "positionNumber": "1000",
+        "text": null,
+        "discount": "0",
+        "isPercentage": "1",
+        "discountedValue": null,
+        "taxRate": "19",
+        "temporary": "0",
+        "sumNet": "100",
+        "sumGross": "119",
+        "sumDiscount": "0",
+        "sumTax": "19",
+        "sumNetAccounting": "100",
+        "sumTaxAccounting": "19",
+        "sumGrossAccounting": "119",
+        "priceNet": "100",
+        "priceGross": "119",
+        "priceTax": "19",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountForeignCurrency": "0",
+        "createNextPart": null
+      },
+      {
+        "id": "371779519",
+        "objectName": "InvoicePos",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:36:39+01:00",
+        "update": "2026-11-07T23:36:39+01:00",
+        "invoice": {
+          "id": "138793601",
+          "objectName": "Invoice"
+        },
+        "quantity": "1",
+        "price": "100",
+        "name": "Musterposition 2",
+        "priority": "100",
+        "unity": {
+          "id": "1",
+          "objectName": "Unity"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "positionNumber": "1000",
+        "text": null,
+        "discount": "0",
+        "isPercentage": "1",
+        "discountedValue": null,
+        "taxRate": "19",
+        "temporary": "0",
+        "sumNet": "100",
+        "sumGross": "119",
+        "sumDiscount": "0",
+        "sumTax": "19",
+        "sumNetAccounting": "100",
+        "sumTaxAccounting": "19",
+        "sumGrossAccounting": "119",
+        "priceNet": "100",
+        "priceGross": "119",
+        "priceTax": "19",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountForeignCurrency": "0",
+        "createNextPart": null
+      },
+      {
+        "id": "371779523",
+        "objectName": "InvoicePos",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:36:41+01:00",
+        "update": "2026-11-07T23:36:41+01:00",
+        "invoice": {
+          "id": "138793604",
+          "objectName": "Invoice"
+        },
+        "quantity": "1",
+        "price": "100",
+        "name": "Musterposition 2",
+        "priority": "100",
+        "unity": {
+          "id": "1",
+          "objectName": "Unity"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "positionNumber": "1000",
+        "text": null,
+        "discount": "0",
+        "isPercentage": "1",
+        "discountedValue": null,
+        "taxRate": "19",
+        "temporary": "0",
+        "sumNet": "100",
+        "sumGross": "119",
+        "sumDiscount": "0",
+        "sumTax": "19",
+        "sumNetAccounting": "100",
+        "sumTaxAccounting": "19",
+        "sumGrossAccounting": "119",
+        "priceNet": "100",
+        "priceGross": "119",
+        "priceTax": "19",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountForeignCurrency": "0",
+        "createNextPart": null
+      },
+      {
+        "id": "371779524",
+        "objectName": "InvoicePos",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:36:43+01:00",
+        "update": "2026-11-07T23:36:43+01:00",
+        "invoice": {
+          "id": "138793605",
+          "objectName": "Invoice"
+        },
+        "quantity": "1",
+        "price": "119",
+        "name": "Musterposition 2",
+        "priority": "100",
+        "unity": {
+          "id": "1",
+          "objectName": "Unity"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "positionNumber": "1000",
+        "text": null,
+        "discount": "0",
+        "isPercentage": "1",
+        "discountedValue": null,
+        "taxRate": "19",
+        "temporary": "0",
+        "sumNet": "100",
+        "sumGross": "119",
+        "sumDiscount": "0",
+        "sumTax": "19",
+        "sumNetAccounting": "100",
+        "sumTaxAccounting": "19",
+        "sumGrossAccounting": "119",
+        "priceNet": "100",
+        "priceGross": "119",
+        "priceTax": "19",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountForeignCurrency": "0",
+        "createNextPart": null
+      },
+      {
+        "id": "371779529",
+        "objectName": "InvoicePos",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:36:44+01:00",
+        "update": "2026-11-07T23:36:44+01:00",
+        "invoice": {
+          "id": "138793607",
+          "objectName": "Invoice"
+        },
+        "quantity": "1",
+        "price": "100",
+        "name": "Musterposition 2",
+        "priority": "100",
+        "unity": {
+          "id": "1",
+          "objectName": "Unity"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "positionNumber": "1000",
+        "text": null,
+        "discount": "0",
+        "isPercentage": "1",
+        "discountedValue": null,
+        "taxRate": "19",
+        "temporary": "0",
+        "sumNet": "100",
+        "sumGross": "119",
+        "sumDiscount": "0",
+        "sumTax": "19",
+        "sumNetAccounting": "100",
+        "sumTaxAccounting": "19",
+        "sumGrossAccounting": "119",
+        "priceNet": "100",
+        "priceGross": "119",
+        "priceTax": "19",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountForeignCurrency": "0",
+        "createNextPart": null
+      }
+    ]
+  }
+}

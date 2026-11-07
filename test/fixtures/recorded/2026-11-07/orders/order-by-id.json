@@ -1,0 +1,124 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /Order/{order}?embed=contact (recording session 2026-11-07)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "Personal and company data replaced by scripts/lib/scrub.ts; keys, nulls and scalar types as recorded. Mirrors orders/order-3002.json."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "31523703",
+        "objectName": "Order",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:44:04+01:00",
+        "update": "2026-11-07T23:44:31+01:00",
+        "orderNumber": "AN-0001",
+        "contact": {
+          "id": "140758307",
+          "objectName": "Contact",
+          "additionalInformation": null,
+          "create": "2026-11-07T23:42:02+01:00",
+          "update": "2026-11-07T23:42:02+01:00",
+          "name": "Musterfirma 1 GmbH",
+          "status": "1000",
+          "customerNumber": "0001",
+          "surename": null,
+          "familyname": null,
+          "titel": null,
+          "category": {
+            "id": "3",
+            "objectName": "Category"
+          },
+          "description": "Muster-Text 1",
+          "academicTitle": null,
+          "gender": null,
+          "sevClient": {
+            "id": "9001",
+            "objectName": "SevClient"
+          },
+          "name2": null,
+          "birthday": null,
+          "vatNumber": null,
+          "bankAccount": null,
+          "bankNumber": null,
+          "mandateReference": null,
+          "defaultCashbackTime": null,
+          "defaultCashbackPercent": null,
+          "defaultTimeToPay": null,
+          "taxNumber": null,
+          "taxOffice": null,
+          "exemptVat": "0",
+          "taxType": null,
+          "defaultDiscountAmount": null,
+          "defaultDiscountPercentage": "1",
+          "buyerReference": null,
+          "governmentAgency": "0",
+          "defaultShowVat": "1"
+        },
+        "orderDate": "2026-11-07T00:00:00+01:00",
+        "status": "200",
+        "header": "Muster-Text 12",
+        "headText": null,
+        "footText": null,
+        "addressName": null,
+        "addressStreet": null,
+        "addressZip": null,
+        "addressCity": null,
+        "addressCountry": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "createUser": {
+          "id": "1569401",
+          "objectName": "SevUser"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "deliveryTerms": null,
+        "paymentTerms": null,
+        "version": "0",
+        "smallSettlement": "0",
+        "contactPerson": {
+          "id": "1569401",
+          "objectName": "SevUser"
+        },
+        "taxRate": "0",
+        "taxText": "Umsatzsteuer 19%",
+        "addressParentName": null,
+        "taxType": null,
+        "orderType": "AN",
+        "sendDate": "2026-11-07T23:44:31+01:00",
+        "addressParentName2": null,
+        "addressName2": null,
+        "addressGender": null,
+        "address": null,
+        "currency": "EUR",
+        "sumNet": "100",
+        "sumTax": "19",
+        "sumGross": "119",
+        "sumDiscounts": "0",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountsForeignCurrency": "0",
+        "weight": "0",
+        "customerInternalNote": "Muster-Text 9",
+        "showNet": "1",
+        "sendType": "0",
+        "sumDiscountNet": "0",
+        "sumDiscountGross": "0",
+        "sumDiscountNetForeignCurrency": "0",
+        "sumDiscountGrossForeignCurrency": "0",
+        "taxRule": {
+          "id": "1",
+          "objectName": "TaxRule"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,146 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /CreditNote/{creditNote}?embed=contact (recording session 2026-11-07)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "Personal and company data replaced by scripts/lib/scrub.ts; keys, nulls and scalar types as recorded. Mirrors credit-notes/credit-note-2001.json, drafts/credit-note-2201.json."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "3084629",
+        "objectName": "CreditNote",
+        "additionalInformation": null,
+        "creditNoteNumber": "GU-0001",
+        "contact": {
+          "id": "140758307",
+          "objectName": "Contact",
+          "additionalInformation": null,
+          "create": "2026-11-07T23:42:02+01:00",
+          "update": "2026-11-07T23:42:02+01:00",
+          "name": "Musterfirma 1 GmbH",
+          "status": "1000",
+          "customerNumber": "0001",
+          "surename": null,
+          "familyname": null,
+          "titel": null,
+          "category": {
+            "id": "3",
+            "objectName": "Category"
+          },
+          "description": "Muster-Text 1",
+          "academicTitle": null,
+          "gender": null,
+          "sevClient": {
+            "id": "9001",
+            "objectName": "SevClient"
+          },
+          "name2": null,
+          "birthday": null,
+          "vatNumber": null,
+          "bankAccount": null,
+          "bankNumber": null,
+          "mandateReference": null,
+          "defaultCashbackTime": null,
+          "defaultCashbackPercent": null,
+          "defaultTimeToPay": null,
+          "taxNumber": null,
+          "taxOffice": null,
+          "exemptVat": "0",
+          "taxType": null,
+          "defaultDiscountAmount": null,
+          "defaultDiscountPercentage": "1",
+          "buyerReference": null,
+          "governmentAgency": "0",
+          "defaultShowVat": "1"
+        },
+        "create": "2026-11-07T23:44:06+01:00",
+        "update": "2026-11-07T23:44:07+01:00",
+        "creditNoteDate": "2026-11-07T00:00:00+01:00",
+        "header": "Muster-Text 8",
+        "headText": null,
+        "footText": null,
+        "timeToPay": null,
+        "discountTime": "0",
+        "discount": "0",
+        "addressName": null,
+        "addressStreet": null,
+        "addressZip": null,
+        "addressCity": null,
+        "addressCountry": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "payDate": null,
+        "createUser": {
+          "id": "1569401",
+          "objectName": "SevUser"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "deliveryDate": "2026-11-07T00:00:00+01:00",
+        "status": "200",
+        "smallSettlement": "0",
+        "contactPerson": {
+          "id": "1569401",
+          "objectName": "SevUser"
+        },
+        "taxRate": "0",
+        "taxText": "Umsatzsteuer 19%",
+        "addressParentName": null,
+        "taxType": null,
+        "sendDate": "2026-11-07T23:44:06+01:00",
+        "creditNoteType": "CN",
+        "accountIntervall": null,
+        "accountLastCreditNote": null,
+        "accountNextCreditNote": null,
+        "reminderTotal": null,
+        "reminderDebit": null,
+        "reminderDeadline": null,
+        "reminderCharge": null,
+        "addressParentName2": null,
+        "addressName2": null,
+        "accountingType": {
+          "id": "32891",
+          "objectName": "AccountingType"
+        },
+        "addressGender": null,
+        "accountEndDate": null,
+        "address": null,
+        "currency": "EUR",
+        "sumNet": "100",
+        "sumTax": "19",
+        "sumGross": "119",
+        "sumDiscounts": "0",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountsForeignCurrency": "0",
+        "sumNetAccounting": "100",
+        "sumTaxAccounting": "19",
+        "sumGrossAccounting": "119",
+        "customerInternalNote": "Muster-Text 9",
+        "taxNumber": null,
+        "vatNumber": null,
+        "showNet": "1",
+        "enshrined": "2026-11-07T23:44:07+01:00",
+        "sendType": "VPR",
+        "bookingCategory": "PROVISION",
+        "deliveryDateUntil": null,
+        "isTransferred": "0",
+        "sumDiscountNet": "0",
+        "sumDiscountGross": "0",
+        "sumDiscountNetForeignCurrency": "0",
+        "sumDiscountGrossForeignCurrency": "0",
+        "taxRule": {
+          "id": "9",
+          "objectName": "TaxRule"
+        }
+      }
+    ]
+  }
+}

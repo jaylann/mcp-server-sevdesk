@@ -1,0 +1,45 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /Part/{part} (recording session 2026-11-07)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "Personal and company data replaced by scripts/lib/scrub.ts; keys, nulls and scalar types as recorded. Mirrors parts/part-6001.json, parts/part-6002.json."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "58929889",
+        "objectName": "Part",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:42:00+01:00",
+        "update": "2026-11-07T23:42:00+01:00",
+        "name": "Musterartikel 1",
+        "partNumber": "MCP-E0E-00000000-0000-mpba-P1",
+        "text": null,
+        "stock": "0",
+        "stockEnabled": "0",
+        "unity": {
+          "id": "1",
+          "objectName": "Unity"
+        },
+        "pricePartner": null,
+        "priceCustomer": null,
+        "price": "42.01",
+        "secondUnityFactor": null,
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "pricePurchase": null,
+        "taxRate": "19",
+        "image": null,
+        "status": "100",
+        "internalComment": null,
+        "priceNet": "42.01",
+        "priceGross": "49.99"
+      }
+    ]
+  }
+}

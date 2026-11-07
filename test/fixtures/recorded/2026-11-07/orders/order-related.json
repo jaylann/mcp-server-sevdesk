@@ -1,0 +1,13 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /Order/{order}/getRelatedObjects?includeItself=0 (recording session 2026-11-07)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "Personal and company data replaced by scripts/lib/scrub.ts; keys, nulls and scalar types as recorded. Mirrors orders/order-related-3002.json. Shape on Update 2.0 (D-036 was observed on 1.0)."
+  },
+  "status": 200,
+  "body": {
+    "objects": []
+  }
+}

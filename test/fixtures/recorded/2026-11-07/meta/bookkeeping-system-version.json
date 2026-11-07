@@ -1,0 +1,15 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /Tools/bookkeepingSystemVersion (recording session 2026-11-07)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "System reference data, kept verbatim except for account ids and contact data. Mirrors meta/bookkeeping-system-version.json."
+  },
+  "status": 200,
+  "body": {
+    "objects": {
+      "version": "2.0"
+    }
+  }
+}

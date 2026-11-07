@@ -1,0 +1,53 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /SevUser?limit=n (recording session 2026-11-07)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "Personal and company data replaced by scripts/lib/scrub.ts; keys, nulls and scalar types as recorded. Mirrors meta/sev-users.json. A recorded single page (has total)."
+  },
+  "status": 200,
+  "body": {
+    "total": 1,
+    "objects": [
+      {
+        "id": "1569401",
+        "objectName": "SevUser",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:30:23+01:00",
+        "update": "2026-11-07T23:30:58+01:00",
+        "fullname": "Max Mustermann1",
+        "firstName": "Vorname1",
+        "lastName": "Mustermann1",
+        "username": "person1@example.com",
+        "status": "100",
+        "email": "person1@example.com",
+        "gender": "m",
+        "role": "admin",
+        "memberCode": "MM",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "lastLogin": "2026-11-07T23:30:58+01:00",
+        "lastLoginIp": "192.0.2.2",
+        "welcomeScreenSeen": "0",
+        "smtpName": null,
+        "smtpMail": null,
+        "smtpUser": null,
+        "smtpPort": null,
+        "smtpSsl": null,
+        "smtpHost": null,
+        "languageCode": "de_DE",
+        "twoFactorAuth": "0",
+        "forcePasswordChange": "0",
+        "clientOwner": "0",
+        "defaultReceiveMailCopy": "1",
+        "hideMapsDirections": "0",
+        "startDate": null,
+        "endDate": null,
+        "lastPasswordChange": "2026-11-07T23:30:56+01:00"
+      }
+    ]
+  }
+}

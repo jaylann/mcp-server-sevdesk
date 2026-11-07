@@ -1,0 +1,87 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /CommunicationWayKey?limit=n (recording session 2026-11-07)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "System reference data, kept verbatim except for account ids and contact data. Mirrors meta/communication-way-keys.json. A recorded single page (has total)."
+  },
+  "status": 200,
+  "body": {
+    "total": 8,
+    "objects": [
+      {
+        "id": "2",
+        "objectName": "CommunicationWayKey",
+        "additionalInformation": null,
+        "create": "2011-11-15T11:46:09+01:00",
+        "upadate": "2011-11-15T11:46:09+01:00",
+        "name": "Arbeit",
+        "translationCode": "COMM_WAY_KEY_WORK"
+      },
+      {
+        "id": "6",
+        "objectName": "CommunicationWayKey",
+        "additionalInformation": null,
+        "create": "2011-11-15T11:46:19+01:00",
+        "upadate": "2011-11-15T11:46:19+01:00",
+        "name": "Autobox",
+        "translationCode": "COMM_WAY_KEY_AUTOBOX"
+      },
+      {
+        "id": "3",
+        "objectName": "CommunicationWayKey",
+        "additionalInformation": null,
+        "create": "2011-11-15T11:46:13+01:00",
+        "upadate": "2011-11-15T11:46:13+01:00",
+        "name": "Fax",
+        "translationCode": "COMM_WAY_KEY_FAX"
+      },
+      {
+        "id": "4",
+        "objectName": "CommunicationWayKey",
+        "additionalInformation": null,
+        "create": "2011-11-15T11:46:19+01:00",
+        "upadate": "2011-11-15T11:46:19+01:00",
+        "name": "Mobil",
+        "translationCode": "COMM_WAY_KEY_MOBILE"
+      },
+      {
+        "id": "7",
+        "objectName": "CommunicationWayKey",
+        "additionalInformation": null,
+        "create": "2011-11-15T11:46:19+01:00",
+        "upadate": "2011-11-15T11:46:19+01:00",
+        "name": "Newsletter",
+        "translationCode": "COMM_WAY_KEY_NEWSLETTER"
+      },
+      {
+        "id": "1",
+        "objectName": "CommunicationWayKey",
+        "additionalInformation": null,
+        "create": "2011-11-15T11:46:03+01:00",
+        "upadate": "2011-11-15T11:46:03+01:00",
+        "name": "Privat",
+        "translationCode": "COMM_WAY_KEY_PRIVAT"
+      },
+      {
+        "id": "8",
+        "objectName": "CommunicationWayKey",
+        "additionalInformation": null,
+        "create": "2011-11-15T11:46:19+01:00",
+        "upadate": "2011-11-15T11:46:19+01:00",
+        "name": "Rechnungsadresse",
+        "translationCode": "COMM_WAY_KEY_INVOICE_ADDRESS"
+      },
+      {
+        "id": "5",
+        "objectName": "CommunicationWayKey",
+        "additionalInformation": null,
+        "create": "2011-11-15T11:46:19+01:00",
+        "upadate": "2011-11-15T11:46:19+01:00",
+        "name": " ",
+        "translationCode": "COMM_WAY_KEY_EMPTY"
+      }
+    ]
+  }
+}

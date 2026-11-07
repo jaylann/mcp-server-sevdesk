@@ -1,0 +1,14 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /ContactAddress?limit=n (recording session 2026-11-07)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "Personal and company data replaced by scripts/lib/scrub.ts; keys, nulls and scalar types as recorded. Mirrors contacts/contact-addresses-unfiltered.json. A recorded single page (has total). Without contact filter, to compare with the filtered read (D-032)."
+  },
+  "status": 200,
+  "body": {
+    "total": 0,
+    "objects": []
+  }
+}
