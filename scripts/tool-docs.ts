@@ -30,8 +30,12 @@ function typeOf(property: JsonSchemaProperty): string {
   return typeof property.type === "string" ? property.type : "any";
 }
 
+/** Makes text safe for one Markdown table cell: backslashes first, then pipes, no line breaks. */
 function cell(text: string): string {
-  return text.replace(/\|/g, "\\|").replace(/\s*\n\s*/g, " ");
+  return text
+    .replace(/\\/g, "\\\\")
+    .replace(/\|/g, "\\|")
+    .replace(/\s*\n\s*/g, " ");
 }
 
 function inputTable(tool: AnyToolDefinition): string {
