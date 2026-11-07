@@ -21,6 +21,14 @@ updates:
       semver-minor-days: 7
       semver-patch-days: 3
     open-pull-requests-limit: 5
+    ignore:
+      # Typings must match the oldest supported Node major (engines: >=22.12, .nvmrc 24), not the
+      # newest Node release; bump this major by hand together with .nvmrc and engines.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # typescript-eslint supports TypeScript < 6.1 (TS 7 is the native compiler); move together.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: fix(deps)
       prefix-development: chore(deps)
