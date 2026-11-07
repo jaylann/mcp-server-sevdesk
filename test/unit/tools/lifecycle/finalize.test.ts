@@ -34,7 +34,8 @@ const cases = [
     path: "/CreditNote/2001",
     id: 2001,
     key: "creditNote",
-    draft: creditNoteRow({ status: "100", creditNoteNumber: null }),
+    // Credit note drafts carry their number already (sevdesk_credit_note_create_draft reserves it).
+    draft: creditNoteRow({ status: "100", creditNoteNumber: "GU-1101" }),
     done: creditNoteRow({ status: "200", creditNoteNumber: "GU-1101" }),
     fixture: "credit-note-send-by.json",
     number: "GU-1101",
@@ -107,7 +108,7 @@ describe.each(cases)("$name (community record shapes, fake values)", (kind) => {
 
     expect(client.writes()).toEqual([]);
     expect(plan.preview.action).toMatch(
-      /^Finalize .+ \(no number yet\): draft → (open|sent), marked as sent by post \(VP\)\.$/,
+      /^Finalize .+: draft → (open|sent), marked as sent by post \(VP\)\.$/,
     );
     expect(plan.preview.facts).toContainEqual({ label: "Marked as sent", value: "by post (VP)" });
     expect(plan.preview.irreversible).toBe(false);
@@ -251,6 +252,38 @@ describe("sevdesk_order_finalize details", () => {
     const kind = cases[1];
     if (kind === undefined) throw new Error("missing case");
     const plan = await prepareWrite(finalizeTool("creditNote"), { id: 2001 }, staged(kind));
-    expect(plan.preview.warnings[0]).toContain("or a new document");
+    expect(plan.preview.warnings[0]).toBe(
+      "The credit note becomes legally binding: sevDesk books it under the number the draft " +
+        "carries. Afterwards it can only be corrected by a reset to draft (while not enshrined), " +
+        "or a new document.",
+    );
+  });
+
+  it.each([null, "", "  "])(
+    "refuses a credit note draft without a number (%j): sendBy can fail half-way (recorded)",
+    async (creditNoteNumber) => {
+      const kind = cases[1];
+      if (kind === undefined) throw new Error("missing case");
+      const client = staged(kind, creditNoteRow({ status: "100", creditNoteNumber }));
+      const error = await prepareWrite(finalizeTool("creditNote"), { id: 2001 }, client).catch(
+        (thrown: unknown) => thrown,
+      );
+      expect(error).toBeInstanceOf(SevdeskError);
+      expect((error as SevdeskError).kind).toBe("validation");
+      expect((error as SevdeskError).message).toBe(
+        "Credit note 2001 is a draft without a number, and finalizing it could fail half-way in " +
+          "sevDesk and leave a finalized credit note without a number. Create it again with " +
+          "sevdesk_credit_note_create_draft (which takes a number from the number range) and " +
+          "delete this draft in sevDesk, or give it a number in the sevDesk web app first.",
+      );
+      expect(client.writes()).toEqual([]);
+    },
+  );
+
+  it("still finalizes an invoice draft without a number (sendBy assigns it, recorded)", async () => {
+    const kind = cases[0];
+    if (kind === undefined) throw new Error("missing case");
+    const plan = await prepareWrite(finalizeTool("invoice"), { id: 1001 }, staged(kind));
+    expect(plan.preview.action).toContain("no number yet");
   });
 });

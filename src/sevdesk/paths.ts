@@ -108,9 +108,16 @@ export type GetSafety =
  * - `…/sendByWithRender` always marks the document as sent.
  * - An `enshrine` or `enshrineDocuments` query flag (DATEV exports) enshrines every exported
  *   document, which is irreversible.
+ * - The next-number endpoints (`…/getNextOrderNumber`, `…/getNextCreditNoteNumber`,
+ *   `…/getNextInvoiceNumber`, any `getNext…Number`) reserve the number unless `useNextNumber` is
+ *   clearly off: sevDesk returns it and advances the counter (recorded on the trial account,
+ *   2026-11-07: true → AN-1000, then false → AN-1001). Only `useNextNumber=false` was recorded to
+ *   peek; what sevDesk does without the flag is unrecorded, so an absent flag counts as
+ *   reserving. Exception: the documented `getNextCustomerNumber`, which takes no such flag and
+ *   reserves nothing (spec).
  *
- * Endpoint names are matched case-insensitively. `declaredSideEffect` (the request's
- * `sideEffect` flag) always wins and leaves the query untouched.
+ * Endpoint names and flag names are matched case-insensitively. `declaredSideEffect` (the
+ * request's `sideEffect` flag) always wins and leaves the query untouched.
  */
 export function resolveGetSafety(
   path: string,
@@ -131,6 +138,7 @@ export function resolveGetSafety(
   if (endpoint === "sendbywithrender") return { sideEffect: true, effect: MARKS_SENT, query };
 
   if (enshrineFlagSet(query)) return { sideEffect: true, effect: ENSHRINES, query };
+  if (reservesNumber(endpoint, query)) return { sideEffect: true, effect: RESERVES_NUMBER, query };
 
   return declaredSideEffect
     ? { sideEffect: true, effect: "it is marked as changing data in sevDesk", query }
@@ -164,8 +172,9 @@ const ENDPOINT_TIERS: Readonly<Record<string, WriteTier>> = {
  * The lowest tier that may make a request that changes data (the caller decides that it does,
  * see `resolveGetSafety`): the endpoint's entry in the tier table, `commit` for a `getPdf` that
  * marks the document as sent (same effect as `sendBy`) and for DATEV exports with an `enshrine`
- * flag, otherwise `write`. The client refuses a request whose declared tier does not cover it
- * (`tierCovers`), so a `write` tool can never finalize, book, cancel or send.
+ * flag, otherwise `write` (this includes a next-number GET that reserves the number: a draft tool
+ * reserves the number it saves the draft with). The client refuses a request whose declared tier
+ * does not cover it (`tierCovers`), so a `write` tool can never finalize, book, cancel or send.
  */
 export function minimumWriteTier(
   path: string,
@@ -185,6 +194,22 @@ function enshrineFlagSet(query: Readonly<Record<string, QueryValue>> | undefined
 }
 
 /**
+ * Whether a GET to a next-number endpoint reserves the number: unless its `useNextNumber` flag
+ * (any key spelling) is clearly off. An absent flag and odd values err towards the write gate;
+ * `getNextCustomerNumber` (documented, no flag) never reserves.
+ */
+function reservesNumber(
+  endpoint: string,
+  query: Readonly<Record<string, QueryValue>> | undefined,
+): boolean {
+  if (!NEXT_NUMBER_ENDPOINT.test(endpoint) || endpoint === NEXT_CUSTOMER_NUMBER) return false;
+  const flags = Object.entries(query ?? {}).filter(
+    ([key, value]) => key.toLowerCase() === "usenextnumber" && value !== undefined,
+  );
+  return flags.length === 0 || flags.some(([, value]) => !isFalseFlag(value));
+}
+
+/**
  * The `preventSendBy` value every getPdf read is sent with: the literal string `true`, the form
  * both community measurements verified (jernoxit/sevdesk-rs, firsttris/haben; spec/deviations.md
  * D-023). Whether sevDesk honors `1` is unconfirmed, and if it did not, a preview would finalize
@@ -195,6 +220,11 @@ const PREVENT_SEND_BY = "true";
 const MARKS_SENT = "it marks the document as sent";
 const ENSHRINES = "it enshrines (irreversibly locks) the exported documents";
 const ENSHRINE_KEYS: ReadonlySet<string> = new Set(["enshrine", "enshrinedocuments"]);
+const RESERVES_NUMBER = "it reserves the next document number";
+/** `getNextOrderNumber`, `getNextCreditNoteNumber`, `getNextInvoiceNumber`, … (lower case). */
+const NEXT_NUMBER_ENDPOINT = /^getnext[a-z]+number$/;
+/** `Contact/Factory/getNextCustomerNumber`: documented, reads the next customer number only. */
+const NEXT_CUSTOMER_NUMBER = "getnextcustomernumber";
 
 function isTrueFlag(value: QueryValue): boolean {
   return value === true || value === 1 || value === "1" || value === "true";

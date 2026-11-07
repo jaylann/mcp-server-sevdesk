@@ -8,7 +8,8 @@
  *   marks an invoice or credit note as sent and commits an order. The client forces the flag as
  *   well; it is passed here explicitly so the intent is visible and tested at this layer too.
  * - `download` is never sent: the documented and community-recorded response is the JSON envelope
- *   `{objects: {filename, mimeType, base64encoded, content}}` (D-001), which is what is parsed.
+ *   `{objects: {filename, mimetype, base64Encoded, content}}` (D-001; the spec spells the keys
+ *   `mimeType`/`base64encoded`, D-072), which is what is parsed.
  * - Files are capped at {@link MAX_DOCUMENT_FILE_BYTES} decoded bytes, must start with the magic
  *   bytes of their type (`%PDF-`, `<`), and their file name is reduced to a safe basename. Anything
  *   else is an `unexpected_response` error, never a silently "fixed" file.
@@ -157,15 +158,24 @@ interface FetchedBytes {
 }
 
 /**
- * `getPdf` record inside `objects` (spec `invoiceGetPdf` 200 schema, wrapped per D-001). Lenient
- * like every upstream schema; `content` is required.
+ * `getPdf` record inside `objects` (wrapped per D-001). Lenient like every upstream schema;
+ * `content` is required. sevDesk sends `mimetype` and `base64Encoded` (recorded 2026-11-07), the
+ * spec says `mimeType` and `base64encoded` (D-072): both spellings are read, the recorded one wins.
  */
-const pdfRecordSchema = z.object({
-  filename: zOptionalString,
-  mimeType: zOptionalString,
-  base64encoded: zBool01.optional(),
-  content: z.string(),
-});
+const pdfRecordSchema = z
+  .object({
+    filename: zOptionalString,
+    mimetype: zOptionalString,
+    mimeType: zOptionalString,
+    base64Encoded: zBool01.optional(),
+    base64encoded: zBool01.optional(),
+    content: z.string(),
+  })
+  .transform(({ mimetype, mimeType, base64Encoded, base64encoded, ...rest }) => ({
+    ...rest,
+    mimeType: mimetype ?? mimeType,
+    base64encoded: base64Encoded ?? base64encoded,
+  }));
 
 const PDF_MAGIC = "%PDF-";
 const ACCEPTED_PDF_TYPES: ReadonlySet<string> = new Set(["application/pdf", "application/x-pdf"]);

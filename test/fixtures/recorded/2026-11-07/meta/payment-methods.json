@@ -1,0 +1,81 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /PaymentMethod?limit=n (recording session 2026-11-07)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "System reference data, kept verbatim except for account ids and contact data. Mirrors meta/payment-methods.json. A recorded single page (has total)."
+  },
+  "status": 200,
+  "body": {
+    "total": 6,
+    "objects": [
+      {
+        "id": "21919",
+        "objectName": "PaymentMethod",
+        "additionalInformation": null,
+        "create": "2020-10-26T18:57:14+01:00",
+        "update": "2024-10-28T22:20:24+01:00",
+        "name": "SEPA Überweisung",
+        "text": "Bitte überweisen Sie den Rechnungsbetrag unter Angabe der Rechnungsnummer auf das unten angegebene Konto. Der Rechnungsbetrag ist bis zum [%ZAHLUNGSZIEL%] fällig.",
+        "electronicInvoiceId": "58",
+        "translationCode": "PAYMENT_METHOD_58"
+      },
+      {
+        "id": "21920",
+        "objectName": "PaymentMethod",
+        "additionalInformation": null,
+        "create": "2020-10-26T18:57:14+01:00",
+        "update": "2020-10-26T18:57:14+01:00",
+        "name": "SEPA Lastschrift",
+        "text": "Der Betrag wird innerhalb der nächsten 30 Tage von Ihrem Konto eingezogen.",
+        "electronicInvoiceId": "59",
+        "translationCode": "PAYMENT_METHOD_58"
+      },
+      {
+        "id": "21921",
+        "objectName": "PaymentMethod",
+        "additionalInformation": null,
+        "create": "2020-10-26T18:57:14+01:00",
+        "update": "2020-10-26T18:57:14+01:00",
+        "name": "Bargeld",
+        "text": "Die Zahlung erfolgte per Barzahlung.",
+        "electronicInvoiceId": "10",
+        "translationCode": "PAYMENT_METHOD_10"
+      },
+      {
+        "id": "21922",
+        "objectName": "PaymentMethod",
+        "additionalInformation": null,
+        "create": "2020-10-26T18:57:14+01:00",
+        "update": "2024-10-28T22:20:24+01:00",
+        "name": "Schuldenausgleich zwischen beiden Parteien",
+        "text": "Bitte überweisen Sie den Rechnungsbetrag unter Angabe der Rechnungsnummer auf das unten angegebene Konto. Der Rechnungsbetrag ist bis zum [%ZAHLUNGSZIEL%] fällig.",
+        "electronicInvoiceId": "97",
+        "translationCode": "PAYMENT_METHOD_97"
+      },
+      {
+        "id": "21923",
+        "objectName": "PaymentMethod",
+        "additionalInformation": null,
+        "create": "2020-10-26T18:57:14+01:00",
+        "update": "2024-10-28T22:20:24+01:00",
+        "name": "Scheck",
+        "text": "Bitte überweisen Sie den Rechnungsbetrag unter Angabe der Rechnungsnummer auf das unten angegebene Konto. Der Rechnungsbetrag ist bis zum [%ZAHLUNGSZIEL%] fällig.",
+        "electronicInvoiceId": "20",
+        "translationCode": "PAYMENT_METHOD_20"
+      },
+      {
+        "id": "114251",
+        "objectName": "PaymentMethod",
+        "additionalInformation": null,
+        "create": "2025-08-21T13:19:52+02:00",
+        "update": "2025-08-21T13:19:52+02:00",
+        "name": "Online-Zahlung (z.B. PayPal)",
+        "text": "Die Zahlung erfolgt online.",
+        "electronicInvoiceId": "68",
+        "translationCode": "PAYMENT_METHOD_68"
+      }
+    ]
+  }
+}

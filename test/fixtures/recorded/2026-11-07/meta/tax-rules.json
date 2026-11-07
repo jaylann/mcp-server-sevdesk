@@ -1,0 +1,275 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /TaxRule?limit=n (recording session 2026-11-07)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "System reference data, kept verbatim except for account ids and contact data. Mirrors meta/tax-rules.json. A recorded single page (has total)."
+  },
+  "status": 200,
+  "body": {
+    "total": 20,
+    "objects": [
+      {
+        "id": "1",
+        "objectName": "TaxRule",
+        "additionalInformation": null,
+        "name": "Umsatzsteuerpflichtige Umsätze",
+        "description": "Umsatzsteuerpflichtige Umsätze",
+        "code": "USTPFL_UMS_EINN",
+        "countryClient": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "countryContactType": "DE"
+      },
+      {
+        "id": "2",
+        "objectName": "TaxRule",
+        "additionalInformation": null,
+        "name": "Ausfuhren",
+        "description": "Ausfuhren ins Drittland",
+        "code": "AUSFUHREN",
+        "countryClient": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "countryContactType": "NOT_EU"
+      },
+      {
+        "id": "3",
+        "objectName": "TaxRule",
+        "additionalInformation": null,
+        "name": "Innergemeinschaftliche Lieferungen",
+        "description": "Lieferungen ins EU-Ausland",
+        "code": "INNERGEM_LIEF",
+        "countryClient": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "countryContactType": "EU"
+      },
+      {
+        "id": "4",
+        "objectName": "TaxRule",
+        "additionalInformation": null,
+        "name": "Steuerfreie Umsätze §4 UStG",
+        "description": "Steuerfreie Umsätze §4 UStG",
+        "code": "STFREIE_UMS_P4",
+        "countryClient": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "countryContactType": "DE"
+      },
+      {
+        "id": "5",
+        "objectName": "TaxRule",
+        "additionalInformation": null,
+        "name": "Reverse Charge gem. §13b UStG",
+        "description": "Reverse Charge gem. §13b UStG",
+        "code": "REV_CHARGE_13B_1",
+        "countryClient": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "countryContactType": "EU"
+      },
+      {
+        "id": "8",
+        "objectName": "TaxRule",
+        "additionalInformation": null,
+        "name": "Innergemeinschaftliche Erwerbe",
+        "description": "Innergemeinschaftliche Erwerbe",
+        "code": "INNERGEM_ERWERB",
+        "countryClient": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "countryContactType": "EU"
+      },
+      {
+        "id": "9",
+        "objectName": "TaxRule",
+        "additionalInformation": null,
+        "name": "Vorsteuerabziehbare Aufwendungen",
+        "description": "Vorsteuerabziehbare Aufwendungen",
+        "code": "VORST_ABZUGSF_AUFW",
+        "countryClient": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "countryContactType": "DE"
+      },
+      {
+        "id": "10",
+        "objectName": "TaxRule",
+        "additionalInformation": null,
+        "name": "Nicht vorsteuerabziehbare Aufwendungen",
+        "description": "Nicht vorsteuerabziehbare Aufwendungen",
+        "code": "NICHT_VORST_ABZUGSF_AUFW",
+        "countryClient": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "countryContactType": "DE"
+      },
+      {
+        "id": "11",
+        "objectName": "TaxRule",
+        "additionalInformation": null,
+        "name": "Steuer nicht erhoben nach §19UStG",
+        "description": "Steuer nicht erhoben nach §19UStG",
+        "code": "KLEINUNTERNEHMER_P19",
+        "countryClient": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "countryContactType": "DE"
+      },
+      {
+        "id": "12",
+        "objectName": "TaxRule",
+        "additionalInformation": null,
+        "name": "Reverse Charge gem. §13b Abs. 2 UStG mit Vorsteuerabzug 0% (19%) z.B. Dienstleistungen aus dem Drittland, Bauleistungen",
+        "description": "Reverse Charge gem. §13b Abs. 2 UStG mit Vorsteuerabzug 0% (19%) z.B. Dienstleistungen aus dem Drittland, Bauleistungen",
+        "code": "REV_CHARGE_13B_MIT_VORST_ABZUG_0",
+        "countryClient": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "countryContactType": "DE"
+      },
+      {
+        "id": "13",
+        "objectName": "TaxRule",
+        "additionalInformation": null,
+        "name": "Reverse Charge gem. §13b UStG ohne Vorsteuerabzug 0% (19%) z.B. Kleinunternehmer, Versicherungsvertreter, Ärzte",
+        "description": "Reverse Charge gem. §13b UStG ohne Vorsteuerabzug 0% (19%) z.B. Kleinunternehmer, Versicherungsvertreter, Ärzte",
+        "code": "REV_CHARGE_13B_OHNE_VORST_ABZUG_0",
+        "countryClient": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "countryContactType": "EU"
+      },
+      {
+        "id": "14",
+        "objectName": "TaxRule",
+        "additionalInformation": null,
+        "name": "Reverse Charge gem. §13b Abs. 1 EU Umsätze 0% (19%) z.B. Dienstleistung aus den EU Staaten",
+        "description": "Reverse Charge gem. §13b Abs. 1 EU Umsätze 0% (19%) z.B. Dienstleistung aus den EU Staaten",
+        "code": "REV_CHARGE_13B_EU_0",
+        "countryClient": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "countryContactType": "EU"
+      },
+      {
+        "id": "15",
+        "objectName": "TaxRule",
+        "additionalInformation": null,
+        "name": "Nicht Steuerbar (Steuer)",
+        "description": "z.B. Umsatzsteuervorauszahlungen oder Umsatzsteuerrückerstattung",
+        "code": "NICHT_STEUERBAR_TAX",
+        "countryClient": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "countryContactType": "DE"
+      },
+      {
+        "id": "16",
+        "objectName": "TaxRule",
+        "additionalInformation": null,
+        "name": "Nicht Steuerbar (Ausgabe)",
+        "description": "z.B. Privateinlagen oder Eigenverbrauch",
+        "code": "NICHT_STEUERBAR_EXPENSE",
+        "countryClient": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "countryContactType": "DE"
+      },
+      {
+        "id": "17",
+        "objectName": "TaxRule",
+        "additionalInformation": null,
+        "name": "Nicht im Inland steuerbare Leistung",
+        "description": "außerhalb EU, z.B. Schweiz",
+        "code": "NICHT_IM_INLAND_STEUERBAR",
+        "countryClient": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "countryContactType": "NOT_EU"
+      },
+      {
+        "id": "18",
+        "objectName": "TaxRule",
+        "additionalInformation": null,
+        "name": "One-Stop-Shop - Warenverkauf in die EU",
+        "description": "One-Stop-Shop-Verfahren zur Besteuerung des Warenverkaufs an Endverbraucher in der EU",
+        "code": "OSS_GOODS",
+        "countryClient": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "countryContactType": "EU"
+      },
+      {
+        "id": "19",
+        "objectName": "TaxRule",
+        "additionalInformation": null,
+        "name": "One-Stop-Shop - elektronische Dienstleistungen in die EU",
+        "description": "One-Stop-Shop-Verfahren zur Besteuerung von elektronischen Dienstleistungen an Endverbraucher in der EU",
+        "code": "OSS_SERVICES",
+        "countryClient": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "countryContactType": "EU"
+      },
+      {
+        "id": "20",
+        "objectName": "TaxRule",
+        "additionalInformation": null,
+        "name": "One-Stop-Shop - Sonstige Leistungen in die EU",
+        "description": "One-Stop-Shop-Verfahren zur Besteuerung sonstiger Leistungen an Endverbraucher in der EU",
+        "code": "OSS_OTHER",
+        "countryClient": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "countryContactType": "EU"
+      },
+      {
+        "id": "21",
+        "objectName": "TaxRule",
+        "additionalInformation": null,
+        "name": "Reverse Charge gem. §13b Abs. 1 USTG EU Umsätze",
+        "description": "z.B. Dienstleistungen an Unternehmer in anderen EU Staaten",
+        "code": "REV_CHARGE_13B_1_USTG",
+        "countryClient": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "countryContactType": "EU"
+      },
+      {
+        "id": "22",
+        "objectName": "TaxRule",
+        "additionalInformation": null,
+        "name": "Nicht Steuerbar (Einnahme)",
+        "description": "z.B. Durchlaufende Posten",
+        "code": "NICHT_STEUERBAR_REVENUE",
+        "countryClient": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "countryContactType": "DE"
+      }
+    ]
+  }
+}

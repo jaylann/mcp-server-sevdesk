@@ -1,0 +1,13 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /CheckAccount/{checkAccount}/getBalanceAtDate?date=2026-11-07 (recording session 2026-11-07)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "Personal and company data replaced by scripts/lib/scrub.ts; keys, nulls and scalar types as recorded. Mirrors banking/balance-4001.json."
+  },
+  "status": 200,
+  "body": {
+    "objects": "249"
+  }
+}

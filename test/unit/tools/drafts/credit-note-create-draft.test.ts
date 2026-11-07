@@ -84,13 +84,17 @@ describe("sevdesk_credit_note_create_draft (community: sevdesk-rs request shape 
     });
   });
 
-  it("prepares sevdesk-rs's underachievement body without a number: source invoice, its rule and rate", async () => {
+  it("prepares sevdesk-rs's underachievement body with the peeked number: source invoice, its rule and rate", async () => {
     const { client, plan } = await prepare(args);
     expect(client.writes()).toEqual([]);
+    expect(client.callsTo("/CreditNote/Factory/getNextCreditNoteNumber")).toMatchObject([
+      { query: { useNextNumber: "false" }, sideEffect: false },
+    ]);
     expect(plan.state.body).toEqual({
       creditNote: {
         objectName: "CreditNote",
         mapAll: true,
+        creditNoteNumber: "GU-1002",
         creditNoteType: "CN",
         status: 100,
         contact: { id: 1001, objectName: "Contact" },
@@ -131,19 +135,45 @@ describe("sevdesk_credit_note_create_draft (community: sevdesk-rs request shape 
       "Create a draft credit note (Gutschrift, UNDERACHIEVEMENT) for Musterfirma GmbH (contact " +
         "1001) with 1 position, gross 11.90 EUR.",
     );
-    expect(plan.preview.facts.slice(0, 3)).toEqual([
+    expect(plan.preview.facts.slice(0, 4)).toEqual([
+      { label: "Number", value: "GU-1002 (reserved when the draft is saved)" },
       { label: "Customer", value: "Musterfirma GmbH (contact 1001)" },
       { label: "Booking category", value: "UNDERACHIEVEMENT" },
       { label: "Reduces invoice", value: "1001 (RE-1001)" },
     ]);
+    expect(plan.preview.warnings).toContain(
+      "Saving reserves the number GU-1002 from sevDesk's credit note number range " +
+        "(Nummernkreis). If saving fails, that number is skipped (a gap in the range); if " +
+        "another document takes it first, the draft gets the next number.",
+    );
   });
 
-  it("saves once with the write tier and returns the credit note read back", async () => {
+  it("reserves the number, saves once with it and the write tier, and returns the credit note read back", async () => {
     const client = new FakeSevdeskClient(routes);
     const { output } = await executeWrite(tool, args, client);
-    expect(client.writes().map(({ method, path, tier }) => ({ method, path, tier }))).toEqual([
-      { method: "POST", path: "/CreditNote/Factory/saveCreditNote", tier: "write" },
+    expect(
+      client.writes().map(({ method, path, query, tier }) => ({ method, path, query, tier })),
+    ).toEqual([
+      {
+        method: "GET",
+        path: "/CreditNote/Factory/getNextCreditNoteNumber",
+        query: { useNextNumber: "true" },
+        tier: "write",
+      },
+      { method: "POST", path: "/CreditNote/Factory/saveCreditNote", query: {}, tier: "write" },
     ]);
+    expect(client.writes()[1]?.body).toMatchObject({ creditNote: { creditNoteNumber: "GU-1002" } });
+    // The number scan reads every credit note (no filter sevDesk might ignore), after reserving.
+    const scan = client.calls.filter(
+      (call) => call.path === "/CreditNote" && !("contact[id]" in call.query),
+    );
+    expect(scan.map((call) => call.query)).toEqual([
+      { limit: 1000, offset: 0, countAll: true },
+      { limit: 1000, offset: 3, countAll: true },
+    ]);
+    expect(client.calls.indexOf(scan[0] as (typeof client.calls)[number])).toBeGreaterThan(
+      client.calls.findIndex((call) => call.query["useNextNumber"] === "true"),
+    );
     expect(output.affected).toEqual([{ objectName: "CreditNote", id: "2201" }]);
     expect(output.data.creditNote).toMatchObject({
       id: 2201,
@@ -153,14 +183,9 @@ describe("sevdesk_credit_note_create_draft (community: sevdesk-rs request shape 
       totals: { gross: { amount: "11.90", currency: "EUR" } },
     });
     expect(output.data.positions).toHaveLength(1);
-    expect(output.summary).toBe(
-      "Created draft credit note 2201 (1 position, gross 11.90 EUR). See notes.",
-    );
-    expect(output.data.notes).toEqual([
-      "The credit note has no number yet: sevDesk assigns it from its number range " +
-        "(Nummernkreis), at the latest when the credit note is finalized with " +
-        "sevdesk_credit_note_finalize.",
-    ]);
+    expect(output.data.creditNote.number).toBe("GU-1002");
+    expect(output.summary).toBe("Created draft credit note 2201 (1 position, gross 11.90 EUR).");
+    expect(output.data.notes).toBeUndefined();
   });
 
   it("uses tax rule 9 for a provision credit note without a source invoice", async () => {
@@ -185,10 +210,11 @@ describe("sevdesk_credit_note_create_draft (community: sevdesk-rs request shape 
       positions: [{ name: "Lizenz", quantity: 1, unitPrice: 50, taxRate: 7 }],
     });
     expect(plan.state.body.creditNote.bookingCategory).toBe("ROYALTY_ASSIGNED");
-    expect(plan.preview.warnings).toEqual([
+    expect(plan.preview.warnings).toContain(
       "sevDesk's requirements for royalty credit notes (tax rule, accounts) are not documented " +
         "or recorded; check the draft in sevDesk before finalizing.",
-    ]);
+    );
+    expect(plan.preview.warnings).toHaveLength(2);
   });
 
   it("creates another credit note for the source invoice with allowDuplicate, and says so", async () => {

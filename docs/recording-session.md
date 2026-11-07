@@ -41,9 +41,19 @@ the write parts create, finalize, pay and cancel real documents.
    recording, scrubbed or not.
 3. Check the bookkeeping system version in the settings: a new account should be on
    **Update 2.0** (the probe report states it too).
-4. Optional, so more read probes give an answer instead of "inconclusive":
-   - add a cash register (Kasse) or an offline bank account: **required** for the payment probes
-     and the lifecycle scenario;
+4. **Switch the account to standard VAT** (required for everything after finalizing): Einstellungen
+   → Unternehmen → "Buchhaltung & Steuern" → Umsatzsteuer **"Standard 19%"**. The 2026-11-07
+   trial started as a Kleinunternehmer (small-business scheme): drafts with tax rule 1 were saved,
+   but every `sendBy` failed with 422 "Tax rule 'USTPFL_UMS_EINN' is not valid for account '4400'
+   with taxation scope 'SMALL_BUSINESS'" (`spec/deviations.md` D-067), so the payment,
+   cancellation, reminder and credit-note probes all came back inconclusive. `GET /SevClient`
+   shows the setting as `smallSettlement` (`"1"` = small business).
+5. **Confirm the account's e-mail address in sevDesk** before any e-mail probe: until it is
+   confirmed, `sendViaEmail` answers 400 "Confirm your email address to send mails." (D-069).
+6. Add a cash register (Kasse) or an offline bank account: **required** for the payment probes and
+   the lifecycle scenario. Give the cash register a **positive opening balance** (one cash entry
+   is enough): a credit note payout takes money out of it.
+7. Optional, so more read probes give an answer instead of "inconclusive":
    - add one person contact (not only organisations);
    - enter two or three cash entries or import a small CSV of bank transactions with different
      value and entry dates;
@@ -69,7 +79,9 @@ the write parts create, finalize, pay and cancel real documents.
 ## 3. Run the session (about 20 minutes)
 
 Run everything from the repository root after `pnpm install`. Each step takes a few minutes at
-the client's pace of about 4 requests per second.
+the client's pace of about 4 requests per second. Behind a filtering HTTP proxy, add
+`NODE_USE_ENV_PROXY=1` to every command: Node's `fetch` ignores `HTTPS_PROXY` without it, and the
+requests fail with network errors.
 
 ```bash
 # 3.1 See every probe and what is never probed (no token needed, nothing sent).
@@ -80,8 +92,9 @@ pnpm probe --out probe-report-read-only.md
 
 # 3.3 Write probes: create tagged drafts, finalize/pay/cancel some of them, then re-run the reads.
 #     --probe-email (optional) also sends ONE invoice e-mail to an address you own, to record the
-#     sendViaEmail answer; without it nothing is e-mailed.
-SEVDESK_LIVE_I_UNDERSTAND_WRITES=1 pnpm probe --allow-writes --probe-email you@example.org \
+#     sendViaEmail answer; without it nothing is e-mailed. On a trial account only the account's
+#     own login address works (see the notes below).
+SEVDESK_LIVE_I_UNDERSTAND_WRITES=1 pnpm probe --allow-writes --probe-email login@example.org \
   --out probe-report.md
 
 # 3.4 Optional: a burst of 40 requests to see whether sevDesk rate-limits (D-022).
@@ -96,7 +109,8 @@ pnpm test:live
 
 # 3.7 Lifecycle through the write tools (contact → draft → PDF preview stays a draft → finalize →
 #     partial + full payment → reminder → cancellation → credit note). Add
-#     SEVDESK_LIVE_EMAIL_TO=you@example.org to also e-mail the paid invoice to yourself.
+#     SEVDESK_LIVE_EMAIL_TO=login@example.org (the account's login address) to also e-mail the
+#     paid invoice to yourself.
 SEVDESK_LIVE_LIFECYCLE=1 SEVDESK_LIVE_I_UNDERSTAND_WRITES=1 pnpm test:live
 ```
 
@@ -108,7 +122,9 @@ Notes:
 - Step 3.7 drives the M3 write tools with the arguments in `ARGS` at the top of
   `test/live/lifecycle.test.ts`. If a tool's arguments change, adjust them there; the other steps
   do not depend on it.
-- The write probes cover: draft numbering (no number sent, B4/D-027) and `getNextOrderNumber`;
+- The write probes cover: draft numbering (B4/D-027: what sevDesk does with documents saved
+  without a number; the write tools themselves leave only invoices unnumbered and reserve the next
+  order and credit note number, D-066) and `getNextOrderNumber`;
   getPdf previews of 2.0 drafts (B1); position price fields per `showNet` (B8); updates through
   `save*` with an id and omitted fields; the address of API-created drafts; credit notes without
   `deliveryDate`; payments (answer, date formats, the calendar day of a 12:00 Berlin date, credit
@@ -121,6 +137,18 @@ Notes:
   shows each question.
 - A step that fails with `Refusing to write: the account already holds …` means the account does
   not look like a fresh trial. Stop and check which account the token belongs to.
+- E-mail on a trial account: `sendViaEmail` first needs the confirmed sender address (step 1.5);
+  after that, a trial account can only e-mail its own login address. Any other recipient, even an
+  address of yours, is refused with 400 "During the test phase, you can only send emails to your
+  own email address." (D-069). A refused send changes nothing, so the probe can simply be run
+  again with `--only write-send-email-shape`.
+- Finalizing (`sendBy`) enshrined every invoice and credit note on the 2026-11-07 trial
+  (automatic Festschreibung was on): finalized test documents cannot be reset to draft or
+  deleted, only cancelled or left alone. Payments and `resetToOpen` still work on them (D-059,
+  D-060).
+- The 2026-11-07 session needed three write runs: one on the Kleinunternehmer account (most
+  lifecycle probes inconclusive, D-067), one after switching to standard VAT, and e-mail re-runs
+  after confirming the sender address. Doing steps 1.4 and 1.5 first saves the extra runs.
 
 ## 4. Review before anything is shared (about 15 minutes)
 
@@ -158,7 +186,11 @@ Never commit:
 
 Recorded fixtures do not replace the committed community/spec fixtures automatically: each
 recorded file says in its `_provenance.note` which committed fixture it mirrors, and replacing one
-is a normal code change with its tests.
+is a normal code change with its tests. Every recorded file must run through its production parser
+in a contract test (`test/contract/recorded-fixtures.test.ts` for the 2026-11-07 session, which
+fails when a recorded file has no contract); a recorded shape a parser rejects is a contract break
+to fix in the parser, pinned with `it.fails` until then. Findings go into `spec/deviations.md` with
+the source "recorded <date>, trial account, Update 2.0 (probe `<id>`)".
 
 ## 6. Optional: the `live` environment for the CI workflow
 

@@ -61,14 +61,18 @@ describe("sevdesk_order_create_draft (community order bodies, fake data)", () =>
     });
   });
 
-  it("prepares an offer: version 0, multi-line address, type header, no number", async () => {
+  it("prepares an offer: version 0, multi-line address, type header, the peeked number", async () => {
     const client = new FakeSevdeskClient(orderCreateRoutes);
     const plan = await prepareWrite(tool, orderCreateArgs, client);
     expect(client.writes()).toEqual([]);
+    expect(client.callsTo("/Order/Factory/getNextOrderNumber")).toMatchObject([
+      { query: { orderType: "AN", useNextNumber: "false" }, sideEffect: false },
+    ]);
     expect(plan.state.body).toEqual({
       order: {
         objectName: "Order",
         mapAll: true,
+        orderNumber: "AN-1000",
         orderType: "AN",
         version: 0,
         status: 100,
@@ -191,15 +195,27 @@ describe("sevdesk_order_create_draft (community order bodies, fake data)", () =>
     expect(plan.preview.warnings).toEqual([
       "Possible duplicate: orders 3050, 3051 for the same contact, date (2026-11-07) and gross " +
         "total (65.45 EUR) already exist. Check it before creating another one.",
+      "Saving reserves the number AN-1000 from sevDesk's offer number range (Nummernkreis). If " +
+        "saving fails, that number is skipped (a gap in the range); if another document takes " +
+        "it first, the draft gets the next number.",
     ]);
   });
 
-  it("saves once, reads the order back and reports it as affected", async () => {
+  it("reserves the number, saves once with it, reads the order back and reports it as affected", async () => {
     const client = new FakeSevdeskClient(orderCreateRoutes);
     const { output } = await executeWrite(tool, orderCreateArgs, client);
-    expect(client.writes().map(({ method, path, tier }) => ({ method, path, tier }))).toEqual([
-      { method: "POST", path: "/Order/Factory/saveOrder", tier: "write" },
+    expect(
+      client.writes().map(({ method, path, query, tier }) => ({ method, path, query, tier })),
+    ).toEqual([
+      {
+        method: "GET",
+        path: "/Order/Factory/getNextOrderNumber",
+        query: { orderType: "AN", useNextNumber: "true" },
+        tier: "write",
+      },
+      { method: "POST", path: "/Order/Factory/saveOrder", query: {}, tier: "write" },
     ]);
+    expect(client.writes()[1]?.body).toMatchObject({ order: { orderNumber: "AN-1000" } });
     expect(output.affected).toEqual([{ objectName: "Order", id: "3101" }]);
     expect(output.data.order).toMatchObject({
       id: 3101,
@@ -207,10 +223,9 @@ describe("sevdesk_order_create_draft (community order bodies, fake data)", () =>
       status: { code: 100 },
       totals: { gross: { amount: "65.45", currency: "EUR" } },
     });
-    expect(output.summary).toBe(
-      "Created draft order 3101 (AN, 2 positions, gross 65.45 EUR). See notes.",
-    );
-    expect(output.data.notes?.[0]).toMatch(/^The order has no number yet/);
+    expect(output.data.order.number).toBe("AN-1000");
+    expect(output.summary).toBe("Created draft order 3101 (AN, 2 positions, gross 65.45 EUR).");
+    expect(output.data.notes).toBeUndefined();
   });
 
   it("requires a known order type", () => {

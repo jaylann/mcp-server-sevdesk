@@ -37,7 +37,8 @@ const draftInvoice = invoiceRow({
 });
 const openInvoice = invoiceRow();
 const paidInvoice = invoiceRow({ status: "1000", paidAmount: 177.33 });
-const draftCreditNote = creditNoteRow({ status: "100", creditNoteNumber: null });
+/** A credit note draft carries its number (sevdesk_credit_note_create_draft reserves it). */
+const draftCreditNote = creditNoteRow({ status: "100", creditNoteNumber: "GU-1101" });
 const openCreditNote = creditNoteRow();
 const draftOrder = orderRow({ status: "100", orderNumber: null });
 const email = { to: "kunde@example.com", subject: "Ihre Unterlagen", text: "Guten Tag, anbei." };

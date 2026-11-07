@@ -16,6 +16,10 @@ const output = z.object({
     .boolean()
     .describe("False when sevDesk had more position rows than could be read."),
   invoiceId: z.number().int().describe("The invoice the credit note was created from."),
+  notes: z
+    .array(z.string())
+    .optional()
+    .describe("Things to check, e.g. whether sevDesk's credit note counter was moved on."),
 });
 
 /** `sevdesk_credit_note_create_from_invoice`: a credit note draft from a finalized invoice. */
@@ -29,8 +33,9 @@ export const creditNoteFromInvoiceTool = defineWriteTool({
     "unpaid invoice that should " +
     "be voided completely, cancel it instead (sevdesk_invoice_cancel). Refuses when a credit " +
     "note for the invoice exists (allowDuplicate overrides, e.g. a second partial refund). " +
-    "Tier write. Then check it with sevdesk_credit_note_get and finalize it with " +
-    "sevdesk_credit_note_finalize.",
+    "Tier write. Afterwards sevDesk's credit note counter is moved past the new draft's " +
+    "number (sevDesk does not do that itself). Then check it with sevdesk_credit_note_get and " +
+    "finalize it with sevdesk_credit_note_finalize.",
   toolset: "credit-notes",
   tier: "write",
   annotations: {
@@ -55,7 +60,7 @@ export const creditNoteFromInvoiceTool = defineWriteTool({
   output,
   prepare: (args, ctx) => planCreditNoteFromInvoice(ctx.client, args, ctx.signal),
   execute: async (_args, plan, ctx) => {
-    const { details, affected } = await executeCreditNoteFromInvoice(
+    const { details, affected, notes } = await executeCreditNoteFromInvoice(
       ctx.client,
       plan.state,
       ctx.signal,
@@ -66,10 +71,12 @@ export const creditNoteFromInvoiceTool = defineWriteTool({
         positions: [...details.positions],
         positionsComplete: details.positionsComplete,
         invoiceId: plan.state.invoiceId,
+        ...(notes.length === 0 ? {} : { notes }),
       },
       summary:
         `Created credit note draft ${details.creditNote.id} from invoice ` +
-        `${plan.state.invoiceId}; finalize it with sevdesk_credit_note_finalize.`,
+        `${plan.state.invoiceId}; finalize it with sevdesk_credit_note_finalize.` +
+        (notes.length === 0 ? "" : " See notes."),
       affected,
     };
   },

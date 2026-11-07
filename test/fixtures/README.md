@@ -51,6 +51,26 @@ count. Recorded single pages are answered the same for every offset, so do not u
 version (`1.0` or `2.0`) of the account the shape belongs to. Use `note` for anything that is
 inferred or illustrative rather than observed, so nobody mistakes it for ground truth.
 
+## Recorded sessions (`recorded/<date>/`)
+
+`recorded/2026-11-07/` holds the read responses of the recording session on a sevDesk trial
+account (Update 2.0, SKR04, standard VAT; see `docs/recording-session.md`), written by
+`pnpm fixtures:record` and scrubbed. Each file's `ref` names the request (`GET /Invoice?…
+(recording session 2026-11-07)`) and its `note` names the committed fixture it mirrors
+(`scripts/lib/fixture-plan.ts`). They are evidence, not test data to edit:
+
+- Do not change them by hand. A new session goes into a new date folder.
+- Lists are recorded single pages: they carry `total` (a JSON number, as sevDesk sends it), so the
+  fake client returns them unchanged for every offset. Code that falls back to `listAll` needs the
+  rows without `total` (see `rowsOnly` in the contract test).
+- Every file runs through the production code that reads its endpoint in
+  `test/contract/recorded-fixtures.test.ts`, which also checks the provenance and fails when a
+  recorded file has no contract. Write answers (POST/PUT) are not fixtures here: their scrubbed
+  shapes are in the probe reports and in `spec/deviations.md`.
+- Scrubbing replaces each distinct value with one fake, so equal fakes mean equal real values
+  (two credit notes with the same fake number really shared a number, `spec/deviations.md`
+  D-068).
+
 ## Data rules
 
 - **Fake data only.** Use obviously fake values: Musterfirma GmbH, Max Mustermann, Erika

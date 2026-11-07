@@ -7,9 +7,11 @@
  * "Must set deliveryDate" without it, recorded by sevDesk.NET), `discount: 0`, `taxRate: 0`,
  * `creditNotePosDelete: null`, and none of `invoiceType`, `discountSave`, `discountDelete`,
  * `takeDefaultAddress`, `forCashRegister`, which the spec lists but that accepted request did not
- * send. sevdesk-rs also sends a `creditNoteNumber` taken from the number range (GU-1048 in that
- * run); this server sends none (B4, spec/deviations.md D-027) until a recording shows one is
- * needed.
+ * send. Like sevdesk-rs (GU-1048 in that run) it sends a `creditNoteNumber` from the number
+ * range: without one the draft is accepted, but `sendBy` then answers HTTP 500 (PHP TypeError,
+ * `fileName` null; recorded 2026-11-07) and may finalize the credit note without a number anyway.
+ * `prepare` peeks the next number for the preview; `execute` reserves it and skips numbers that
+ * existing credit notes carry already (`numbering.ts`). The number is never invented (B4).
  *
  * Booking category (spec tag `CreditNote` → "Credit note booking categories"; measured by
  * sevdesk-rs in `credit_note.rs`, 2026-09-29):
@@ -28,7 +30,8 @@ import type { SevdeskClient } from "../../sevdesk/types.js";
 import { type CreditNoteDetails, getCreditNote } from "../credit-notes.js";
 import { checkInvoiceCreditable, findCreditNotesForInvoice } from "../derived-documents.js";
 import { getInvoice, type InvoiceDetails } from "../invoices.js";
-import { compare } from "../money.js";
+import { compare, toDecimalString } from "../money.js";
+import { taxRuleById } from "../reference-data.js";
 import { draftPreview, positionCount, ref, structuredAddress, taxText } from "./document.js";
 import { duplicateWarning, findDuplicates } from "./duplicates.js";
 import {
@@ -50,6 +53,17 @@ import {
   wireDocumentDate,
   wireTimestamp,
 } from "./fields.js";
+import {
+  changedNumberNote,
+  CREDIT_NOTE_SCAN_MAX,
+  numberList,
+  peekNextNumber,
+  quotableNumber,
+  reservationWarning,
+  reservedNumberError,
+  reserveFreeCreditNoteNumber,
+  storedNumberNote,
+} from "./numbering.js";
 import {
   CREDIT_NOTE_BOOKING_CATEGORIES,
   type SaveCreditNoteBody,
@@ -76,8 +90,18 @@ import {
 } from "./preview.js";
 import { readBack, readBackNotes } from "./read-back.js";
 import { addressInputShape } from "./recipient.js";
-import { type CreateArgs, resolveCreateBasics, type TaxOptions } from "./shared.js";
-import { DEFAULT_TAX_RULE_ID, SALES_TAX_RULE_IDS } from "./tax.js";
+import {
+  type CreateArgs,
+  type DraftCallOptions,
+  resolveCreateBasics,
+  type TaxOptions,
+} from "./shared.js";
+import {
+  DEFAULT_TAX_RULE_ID,
+  type RegimeMessage,
+  regimeReason,
+  SALES_TAX_RULE_IDS,
+} from "./tax.js";
 
 /** Readable booking categories → sevDesk's `bookingCategory`. */
 const BOOKING_CATEGORY_NAMES = {
@@ -90,7 +114,24 @@ export type BookingCategoryName = keyof typeof BOOKING_CATEGORY_NAMES;
 
 /** Tax rule of provision credit notes (Vorsteuerabziehbare Aufwendungen; measured, see above). */
 const PROVISION_TAX_RULE_ID = 9;
+/**
+ * Tax rules of provision credit notes on a Kleinunternehmer account: sevDesk refused to finalize
+ * one with rule 9 there and named 10 (Nicht vorsteuerabziehbare Aufwendungen) and 13 (Reverse
+ * Charge ohne Vorsteuerabzug) as the allowed rules, both 0 % (422, recorded 2026-11-07). Saving
+ * with them is not recorded yet; the preview says so.
+ */
+const SMALL_BUSINESS_PROVISION_RULE_IDS = [10, 13];
+const SMALL_BUSINESS_PROVISION_DEFAULT = 10;
 const DEFAULT_HEADER = "Gutschrift";
+/**
+ * Read-back note for a credit note without a number: unlike invoices, sevDesk does not assign one
+ * reliably at finalize, and sevdesk_credit_note_finalize refuses such drafts (recorded 2026-11-07).
+ */
+const NUMBERLESS_CREDIT_NOTE =
+  "The credit note has no number, and sevdesk_credit_note_finalize refuses credit notes without " +
+  "one (sevDesk can fail half-way on them). Create it again with " +
+  "sevdesk_credit_note_create_draft, which reserves a number, or set a number in the sevDesk " +
+  "web app.";
 const FINALIZE_TOOL = "sevdesk_credit_note_finalize";
 
 /** Input fields of `sevdesk_credit_note_create_draft` (without `dryRun`). */
@@ -130,7 +171,8 @@ export const creditNoteCreateInputShape = {
   priceMode: priceModeInput,
   taxRule: taxRuleInput.describe(
     "Tax rule (Steuerregel) id. Default: the source invoice's rule (underachievement), 9 " +
-      "(provision) or 1. See sevdesk_reference_lookup kind=tax_rules.",
+      "(provision; 10 on a Kleinunternehmer account) or the account's: 1 for regular VAT, 11 " +
+      "for Kleinunternehmer. See sevdesk_reference_lookup kind=tax_rules.",
   ),
   taxText: taxTextInput,
   currency: currencyInput.describe("ISO 4217 code; default EUR or the source invoice's currency."),
@@ -155,8 +197,11 @@ export interface CreditNoteCreateArgs extends CreateArgs {
 }
 
 export interface CreditNoteDraftState {
+  /** The body to save; its `creditNoteNumber` is the peeked one, replaced by the reserved. */
   readonly body: SaveCreditNoteBody;
   readonly expected: Amounts;
+  /** The number the preview showed. */
+  readonly peekedNumber: string;
 }
 
 export interface CreditNoteDraftPlan {
@@ -164,12 +209,16 @@ export interface CreditNoteDraftPlan {
   readonly state: CreditNoteDraftState;
 }
 
-/** Prepares a new draft credit note: validates, reads, builds the body and the preview. */
+/**
+ * Prepares a new draft credit note: validates, reads, peeks the next number, builds the body and
+ * the preview.
+ */
 export async function prepareCreditNoteCreate(
   client: SevdeskClient,
   args: CreditNoteCreateArgs,
-  signal?: AbortSignal,
+  options: DraftCallOptions,
 ): Promise<CreditNoteDraftPlan> {
+  const { signal } = options;
   const category = BOOKING_CATEGORY_NAMES[args.bookingCategory];
   const date = args.date ?? todayInBerlin();
   const delivery = resolveDeliveryPeriod(date, args.deliveryDate, args.deliveryDateUntil, false);
@@ -192,7 +241,7 @@ export async function prepareCreditNoteCreate(
     client,
     { ...args, currency: args.currency ?? source?.invoice.currency },
     taxOptions(category, source),
-    signal,
+    options,
   );
   const { contact, contactPerson, address, currency, expected, mode } = basics;
   if (source !== undefined && source.invoice.currency !== currency) {
@@ -205,6 +254,7 @@ export async function prepareCreditNoteCreate(
   }
   const duplicateQuery = { contactId: args.contactId, date, gross: expected.gross, currency };
   const duplicates = await findDuplicates(client, { kind: "creditNote" }, duplicateQuery, signal);
+  const peeked = await peekNextNumber(client, { kind: "creditNote" }, signal);
 
   const header = args.header ?? DEFAULT_HEADER;
   const body = strictBody(
@@ -213,6 +263,7 @@ export async function prepareCreditNoteCreate(
       creditNote: {
         objectName: "CreditNote",
         mapAll: true,
+        creditNoteNumber: peeked,
         creditNoteType: "CN",
         status: 100,
         contact: ref(args.contactId, "Contact"),
@@ -240,6 +291,7 @@ export async function prepareCreditNoteCreate(
   );
 
   const facts: PreviewFact[] = [
+    fact("Number", `${peeked} (reserved when the draft is saved)`),
     fact("Customer", customerText(contact.contact.displayName, args.contactId)),
     fact("Booking category", category),
     ...(source === undefined
@@ -273,11 +325,12 @@ export async function prepareCreditNoteCreate(
     [
       ...(sourceCheck?.warnings ?? []),
       duplicateWarning("credit note", duplicates, duplicateQuery),
+      reservationWarning("credit note", peeked),
       royaltyWarning,
       ...basics.warnings,
     ],
   );
-  return { preview, state: { body, expected } };
+  return { preview, state: { body, expected, peekedNumber: peeked } };
 }
 
 export interface CreditNoteDraftResult {
@@ -286,32 +339,94 @@ export interface CreditNoteDraftResult {
   readonly notes: readonly string[];
 }
 
-/** Sends the prepared body (one request, never retried) and reads the credit note back. */
+/**
+ * Reserves a free credit note number ({@link reserveFreeCreditNoteNumber}: numbers existing
+ * credit notes carry are skipped), saves the prepared body with it (one request, never retried)
+ * and reads the credit note back. When the save fails, the error names the reserved, now skipped
+ * number.
+ */
 export async function executeCreditNoteDraft(
   client: SevdeskClient,
   state: CreditNoteDraftState,
   signal?: AbortSignal,
 ): Promise<CreditNoteDraftResult> {
-  const response = await client.request({
-    method: "POST",
-    path: "/CreditNote/Factory/saveCreditNote",
-    body: state.body,
-    ...(signal === undefined ? {} : { signal }),
-  });
+  const reserved = await reserveFreeCreditNoteNumber(client, signal);
+  const body = strictBody(
+    saveCreditNoteBodySchema,
+    { ...state.body, creditNote: { ...state.body.creditNote, creditNoteNumber: reserved.number } },
+    "credit note",
+  );
+  let response: unknown;
+  try {
+    response = await client.request({
+      method: "POST",
+      path: "/CreditNote/Factory/saveCreditNote",
+      body,
+      ...(signal === undefined ? {} : { signal }),
+    });
+  } catch (error) {
+    if (error instanceof SevdeskError) {
+      throw reservedNumberError(error, "credit note", reserved.number);
+    }
+    throw error;
+  }
   const id = savedDocumentId(response, "creditNote", "credit note");
   const details = await readBack({ objectName: "CreditNote", id: String(id) }, () =>
     getCreditNote(client, id, signal),
   );
-  const notes = readBackNotes(
-    {
-      number: details.creditNote.number,
-      gross: details.creditNote.totals.gross?.amount,
-      currency: details.creditNote.currency,
-      positionsComplete: details.positionsComplete,
-    },
-    { noun: "credit note", finalizeTool: FINALIZE_TOOL, expected: state.expected },
-  );
+  const stored = storedNumberNote("credit note", reserved.number, details.creditNote.number);
+  const notes = [
+    ...numberNotes(state.peekedNumber, reserved),
+    ...(stored === undefined ? [] : [stored]),
+    ...readBackNotes(
+      {
+        number: details.creditNote.number,
+        gross: details.creditNote.totals.gross?.amount,
+        currency: details.creditNote.currency,
+        positionsComplete: details.positionsComplete,
+      },
+      {
+        noun: "credit note",
+        finalizeTool: FINALIZE_TOOL,
+        expected: state.expected,
+        numberless: NUMBERLESS_CREDIT_NOTE,
+      },
+    ),
+  ];
   return { id, details, notes };
+}
+
+/** Trusted result notes about the reserved number: skipped numbers, a cut scan, a new number. */
+function numberNotes(
+  peeked: string,
+  reserved: {
+    readonly number: string;
+    readonly skipped: readonly string[];
+    readonly truncated: boolean;
+  },
+): string[] {
+  const notes: string[] = [];
+  const number = quotableNumber(reserved.number) ?? "the reserved number";
+  if (reserved.skipped.length > 0) {
+    notes.push(
+      `Skipped credit note number${reserved.skipped.length === 1 ? "" : "s"} ` +
+        `${numberList(reserved.skipped)}: existing credit notes carry ` +
+        `${reserved.skipped.length === 1 ? "it" : "them"} already (sevDesk's counter lagged ` +
+        "behind, e.g. after sevdesk_credit_note_create_from_invoice). The draft was saved with " +
+        `${number}.`,
+    );
+  } else {
+    const changed = changedNumberNote("credit note", peeked, reserved.number);
+    if (changed !== undefined) notes.push(changed);
+  }
+  if (reserved.truncated) {
+    notes.push(
+      `Only the first ${CREDIT_NOTE_SCAN_MAX} credit notes were checked for ${number}; make ` +
+        "sure in sevDesk that no " +
+        "other credit note carries it before finalizing.",
+    );
+  }
+  return notes;
 }
 
 /** The checked source invoice of an underachievement credit note and its preview warnings. */
@@ -411,6 +526,17 @@ function taxOptions(
     return {
       scope: { allowedRuleIds: [PROVISION_TAX_RULE_ID], documents: "provision credit notes" },
       defaultRuleId: PROVISION_TAX_RULE_ID,
+      smallBusiness: {
+        scope: {
+          allowedRuleIds: SMALL_BUSINESS_PROVISION_RULE_IDS,
+          documents: "provision credit notes on a Kleinunternehmer account",
+        },
+        defaultRuleId: SMALL_BUSINESS_PROVISION_DEFAULT,
+        warning:
+          "On a Kleinunternehmer account provision credit notes take tax rule 10 or 13 at 0 % " +
+          "(sevDesk names them when it refuses rule 9); saving one this way is not verified " +
+          "live yet, so check the draft in sevDesk before finalizing.",
+      },
     };
   }
   const scope = { allowedRuleIds: SALES_TAX_RULE_IDS, documents: "credit notes" };
@@ -423,11 +549,50 @@ function taxOptions(
   const sourceRule = source.invoice.tax.rule?.id;
   return {
     scope,
+    // The source invoice's rule stays the default on every account: a credit note keeps the
+    // invoice's rates, so the regime's own default (rule 11) would only dead-end on them.
     defaultRuleId:
       sourceRule !== undefined && SALES_TAX_RULE_IDS.includes(sourceRule)
         ? sourceRule
         : DEFAULT_TAX_RULE_ID,
+    keepDefault: true,
+    regimeMessage: sourceRegimeMessage(source.invoice.id, rates),
     rateLimit:
       rates.length === 0 ? undefined : { rates, owner: `the source invoice ${source.invoice.id}` },
+  };
+}
+
+/**
+ * The refusal for an underachievement credit note whose rule does not fit the account's regime:
+ * it names a rule of the regime that allows all the source invoice's rates, or says that none
+ * does (the invoice was issued under the other regulation, so the correction belongs in sevDesk
+ * or with the tax advisor). Trusted text: ids and rates only.
+ */
+function sourceRegimeMessage(invoiceId: number, rates: readonly string[]): RegimeMessage {
+  return (rule, regime) => {
+    const reason = regimeReason(rule, regime, "credit notes");
+    const rateText =
+      rates.length === 0 ? "" : `: ${rates.map((rate) => toDecimalString(rate)).join(", ")} %`;
+    const alternative = SALES_TAX_RULE_IDS.map((id) => taxRuleById(id)).find(
+      (candidate) =>
+        candidate !== undefined &&
+        candidate.regimes.includes(regime) &&
+        candidate.allowedTaxRates !== undefined &&
+        rates.every((rate) =>
+          candidate.allowedTaxRates?.some((allowed) => compare(allowed, rate) === 0),
+        ),
+    );
+    if (alternative !== undefined) {
+      return (
+        `${reason} Pass taxRule ${alternative.id} (${alternative.nameDe}) instead: it allows the ` +
+        `rates of invoice ${invoiceId}${rateText}.`
+      );
+    }
+    return (
+      `${reason} An underachievement credit note must keep the rates of the invoice it reduces ` +
+      `(invoice ${invoiceId}${rateText}), and no tax rule of this regulation allows them: the ` +
+      "invoice was issued under the other regulation. Correct it in the sevDesk web app or with " +
+      "your tax advisor."
+    );
   };
 }

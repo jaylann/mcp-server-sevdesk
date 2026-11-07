@@ -1,0 +1,185 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /CheckAccountTransaction?limit=n (recording session 2026-11-07)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "Personal and company data replaced by scripts/lib/scrub.ts; keys, nulls and scalar types as recorded. Mirrors banking/transactions-list.json. A recorded single page (has total)."
+  },
+  "status": 200,
+  "body": {
+    "total": 8,
+    "objects": [
+      {
+        "id": "1910687010",
+        "objectName": "CheckAccountTransaction",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:41:56+01:00",
+        "update": "2026-11-07T23:41:56+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "valueDate": "2026-11-07T12:00:00+01:00",
+        "entryDate": "2026-11-07T12:00:00+01:00",
+        "amount": "1",
+        "feeAmount": null,
+        "gvCode": null,
+        "entryText": null,
+        "primaNotaNo": null,
+        "paymtPurpose": "Muster-Text 13",
+        "payeePayerBankCode": null,
+        "payeePayerAcctNo": null,
+        "payeePayerName": "Musterfirma 4 GmbH",
+        "checkAccount": {
+          "id": "6333721",
+          "objectName": "CheckAccount"
+        },
+        "status": "400",
+        "score": null,
+        "compareHash": null,
+        "enshrined": null,
+        "obonoReceiptUuid": null,
+        "externalId": null,
+        "deletedAt": null,
+        "restoredAt": null
+      },
+      {
+        "id": "1910687002",
+        "objectName": "CheckAccountTransaction",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:41:45+01:00",
+        "update": "2026-11-07T23:41:45+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "valueDate": "2026-11-07T12:00:00+01:00",
+        "entryDate": "2026-11-07T12:00:00+01:00",
+        "amount": "119",
+        "feeAmount": null,
+        "gvCode": null,
+        "entryText": null,
+        "primaNotaNo": null,
+        "paymtPurpose": "Muster-Text 14",
+        "payeePayerBankCode": null,
+        "payeePayerAcctNo": null,
+        "payeePayerName": "Musterfirma 4 GmbH",
+        "checkAccount": {
+          "id": "6333721",
+          "objectName": "CheckAccount"
+        },
+        "status": "400",
+        "score": null,
+        "compareHash": null,
+        "enshrined": null,
+        "obonoReceiptUuid": null,
+        "externalId": null,
+        "deletedAt": null,
+        "restoredAt": null
+      },
+      {
+        "id": "1910687001",
+        "objectName": "CheckAccountTransaction",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:41:41+01:00",
+        "update": "2026-11-07T23:41:41+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "valueDate": "2026-11-07T12:00:00+01:00",
+        "entryDate": "2026-11-07T12:00:00+01:00",
+        "amount": "-119",
+        "feeAmount": null,
+        "gvCode": null,
+        "entryText": null,
+        "primaNotaNo": null,
+        "paymtPurpose": "Muster-Text 15",
+        "payeePayerBankCode": null,
+        "payeePayerAcctNo": null,
+        "payeePayerName": "Musterfirma 4 GmbH",
+        "checkAccount": {
+          "id": "6333721",
+          "objectName": "CheckAccount"
+        },
+        "status": "400",
+        "score": null,
+        "compareHash": null,
+        "enshrined": null,
+        "obonoReceiptUuid": null,
+        "externalId": null,
+        "deletedAt": null,
+        "restoredAt": null
+      },
+      {
+        "id": "1910687000",
+        "objectName": "CheckAccountTransaction",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:41:36+01:00",
+        "update": "2026-11-07T23:41:36+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "valueDate": "2026-11-07T12:00:00+01:00",
+        "entryDate": "2026-11-07T12:00:00+01:00",
+        "amount": "10",
+        "feeAmount": null,
+        "gvCode": null,
+        "entryText": null,
+        "primaNotaNo": null,
+        "paymtPurpose": "Muster-Text 16",
+        "payeePayerBankCode": null,
+        "payeePayerAcctNo": null,
+        "payeePayerName": "Musterfirma 4 GmbH",
+        "checkAccount": {
+          "id": "6333721",
+          "objectName": "CheckAccount"
+        },
+        "status": "400",
+        "score": null,
+        "compareHash": null,
+        "enshrined": null,
+        "obonoReceiptUuid": null,
+        "externalId": null,
+        "deletedAt": null,
+        "restoredAt": null
+      },
+      {
+        "id": "1910686966",
+        "objectName": "CheckAccountTransaction",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:41:20+01:00",
+        "update": "2026-11-07T23:41:20+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "valueDate": "2026-11-07T12:00:00+01:00",
+        "entryDate": "2026-11-07T12:00:00+01:00",
+        "amount": "50",
+        "feeAmount": null,
+        "gvCode": null,
+        "entryText": null,
+        "primaNotaNo": null,
+        "paymtPurpose": "Muster-Text 17",
+        "payeePayerBankCode": null,
+        "payeePayerAcctNo": null,
+        "payeePayerName": "Musterfirma 4 GmbH",
+        "checkAccount": {
+          "id": "6333721",
+          "objectName": "CheckAccount"
+        },
+        "status": "400",
+        "score": null,
+        "compareHash": null,
+        "enshrined": null,
+        "obonoReceiptUuid": null,
+        "externalId": null,
+        "deletedAt": null,
+        "restoredAt": null
+      }
+    ]
+  }
+}

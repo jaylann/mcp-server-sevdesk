@@ -4,7 +4,7 @@
     "ref": "spec/openapi.yaml#/paths/~1CreditNote~1Factory~1createFromInvoice/post/responses/201 + https://github.com/jernoxit/sevdesk-rs/blob/HEAD/tests/fixtures/credit_note.json",
     "date": "2026-11-07",
     "systemVersion": "2.0",
-    "note": "Envelope per the spec ({objects: {creditNote, creditNotePos, discount}}); sevdesk-rs reads the id from creditNote.id or id. Credit note keys from the sevdesk-rs recorded credit note. Draft from paid invoice 1004 (origin set, as createFromInvoice does). All values fake."
+    "note": "Envelope per the spec ({objects: {creditNote, creditNotePos, discount}}); sevdesk-rs reads the id from creditNote.id or id. Credit note keys from the sevdesk-rs recorded credit note. Draft from paid invoice 1004 (origin set, as createFromInvoice does). All values fake. creditNoteNumber GU-1000: createFromInvoice gives the draft the credit note counter's current value without advancing it (recorded 2026-11-07)."
   },
   "status": 201,
   "body": {
@@ -13,7 +13,7 @@
         "id": "2101",
         "objectName": "CreditNote",
         "additionalInformation": null,
-        "creditNoteNumber": null,
+        "creditNoteNumber": "GU-1000",
         "contact": {
           "id": "1001",
           "objectName": "Contact"

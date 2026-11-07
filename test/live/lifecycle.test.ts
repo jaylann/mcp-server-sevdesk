@@ -87,6 +87,18 @@ const ARGS = {
   reminder: (invoiceId: number) => ({ invoiceId }),
   cancel: (id: number) => ({ id }),
   creditNoteFromInvoice: (invoiceId: number) => ({ invoiceId }),
+  draftOffer: (contactId: number, tag: string) => ({
+    contactId,
+    orderType: "offer",
+    header: `${tag} Angebot`,
+    positions: [{ name: `${tag} Beratung`, quantity: 1, unitPrice: "100.00", taxRate: 19 }],
+  }),
+  draftProvisionCreditNote: (contactId: number, tag: string) => ({
+    contactId,
+    bookingCategory: "provision",
+    header: `${tag} Gutschrift`,
+    positions: [{ name: `${tag} Provision`, quantity: 1, unitPrice: "50.00", taxRate: 19 }],
+  }),
   sendEmail: (id: number, to: string, tag: string) => ({
     id,
     to,
@@ -136,6 +148,20 @@ describe.skipIf(!gate.open)("live: lifecycle on a TRIAL account (writes!)", () =
     expect(data.status, `${name} did not run`).toBe("done");
     expectValidOutput(name, data.result);
     return data.result;
+  }
+
+  /** sevDesk's next document number, peeked without reserving it (`useNextNumber=false`). */
+  async function peekNumber(
+    path: string,
+    query: Readonly<Record<string, string>>,
+  ): Promise<string> {
+    const value = await stack.sevdesk.request({
+      method: "GET",
+      path,
+      query: { ...query, useNextNumber: "false" },
+    });
+    expect(value, `${path} did not answer a number`).toBeTypeOf("string");
+    return value as string;
   }
 
   async function invoice(id: number): Promise<Record<string, unknown>> {
@@ -287,6 +313,70 @@ describe.skipIf(!gate.open)("live: lifecycle on a TRIAL account (writes!)", () =
       creditNote: Record<string, unknown>;
     };
     expect(statusCode(note.creditNote)).toBeTypeOf("number");
+    // createFromInvoice takes the counter's current number without advancing it (recorded
+    // 2026-11-07); the tool moves the counter past it, so the next credit note cannot reuse it.
+    const next = await peekNumber("/CreditNote/Factory/getNextCreditNoteNumber", {});
+    expect(next, "the credit-note counter still offers the new note's number").not.toBe(
+      note.creditNote["number"],
+    );
+  });
+
+  it("creates an offer (Angebot) with a reserved number; the counter advances exactly once", async () => {
+    const before = await peekNumber("/Order/Factory/getNextOrderNumber", { orderType: "AN" });
+    const data = await write("sevdesk_order_create_draft", ARGS.draftOffer(need("contact"), tag));
+    const id = remember("Order", findId(data, "Order", ["order"]), "draft (deletable)");
+    const order = (await callOk(stack.mcp, "sevdesk_order_get", { id })) as {
+      order: Record<string, unknown>;
+    };
+    expect(order.order["number"], "the offer carries the reserved number").toBe(before);
+    const after = await peekNumber("/Order/Factory/getNextOrderNumber", { orderType: "AN" });
+    expect(after, "the order counter did not advance").not.toBe(before);
+
+    await write("sevdesk_order_finalize", ARGS.finalize(id));
+    mark(id, "finalized (cannot be deleted)");
+    const again = await peekNumber("/Order/Factory/getNextOrderNumber", { orderType: "AN" });
+    expect(again, "finalizing must not move the counter again").toBe(after);
+  });
+
+  it("turns the finalized offer into an advance invoice (30 %), then the final invoice", async () => {
+    const offer = created.find((item) => item.objectName === "Order")?.id;
+    expect(offer, "the offer step did not run").toBeTypeOf("number");
+
+    // Order matters: a full invoice marks the order fully invoiced (status 1000), after which the
+    // tool refuses further invoices from it (verified live on 2026-11-08).
+    for (const args of [
+      { orderId: offer, mode: "advance", amount: 30, amountType: "percentage" },
+      { orderId: offer, mode: "full", allowDuplicate: true },
+    ]) {
+      const data = await write("sevdesk_order_to_invoice", args);
+      const id = remember("Invoice", findId(data, "Invoice", ["invoice"]), "draft (deletable)");
+      const draft = await invoice(id);
+      expect(statusCode(draft), `${args.mode}: not a draft`).toBe(100);
+    }
+  });
+
+  it("creates a provision credit note with a reserved number and finalizes it", async () => {
+    const data = await write(
+      "sevdesk_credit_note_create_draft",
+      ARGS.draftProvisionCreditNote(need("contact"), tag),
+    );
+    const id = remember(
+      "CreditNote",
+      findId(data, "CreditNote", ["creditNote"]),
+      "draft (deletable)",
+    );
+    const draft = (await callOk(stack.mcp, "sevdesk_credit_note_get", { id })) as {
+      creditNote: Record<string, unknown>;
+    };
+    expect(draft.creditNote["number"], "the draft carries a reserved number").toBeTruthy();
+
+    await write("sevdesk_credit_note_finalize", ARGS.finalize(id));
+    mark(id, "finalized (cannot be deleted)");
+    const final = (await callOk(stack.mcp, "sevdesk_credit_note_get", { id })) as {
+      creditNote: Record<string, unknown>;
+    };
+    expect(statusCode(final.creditNote)).toBe(200);
+    expect(final.creditNote["number"]).toBe(draft.creditNote["number"]);
   });
 
   it.runIf(EMAIL_TO !== undefined)(

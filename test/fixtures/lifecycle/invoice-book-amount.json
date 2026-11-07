@@ -2,9 +2,9 @@
   "_provenance": {
     "date": "2026-11-07",
     "systemVersion": "2.0",
-    "source": "community",
-    "ref": "https://github.com/jernoxit/sevdesk-rs/blob/HEAD/tests/fixtures/write_voucher_book_amount.json (recorded VoucherLog)",
-    "note": "PUT /Invoice/{id}/bookAmount. Only the voucher variant is recorded: wrapped in objects, key amountPayed, bookingDate at 12:00 Berlin. Built from it with objectName InvoiceLog and an invoice reference; the spec's InvoiceLog has copy-paste errors (creditNote key, ammountPayed, D-013), so the tool ignores this body and reads the invoice back. Values fake."
+    "source": "recorded",
+    "ref": "PUT /Invoice/{id}/bookAmount (recording session 2026-11-07, probe write-book-amount)",
+    "note": "Keys as recorded: an InvoiceLog with invoice, fromStatus, toStatus, ammountPayed (sevDesk's spelling) and bookingDate. Values fake. The tool ignores this body and reads the invoice back (D-013)."
   },
   "status": 200,
   "body": {
@@ -19,7 +19,7 @@
       },
       "fromStatus": "200",
       "toStatus": "1000",
-      "amountPayed": "177.33",
+      "ammountPayed": "177.33",
       "bookingDate": "2026-11-07T12:00:00+01:00",
       "sevClient": {
         "id": "9001",

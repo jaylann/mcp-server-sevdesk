@@ -1,0 +1,56 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /Contact/{contact} (recording session 2026-11-07)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "Personal and company data replaced by scripts/lib/scrub.ts; keys, nulls and scalar types as recorded. Mirrors contacts/contact-1001.json. An organisation."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "140758307",
+        "objectName": "Contact",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:42:02+01:00",
+        "update": "2026-11-07T23:42:02+01:00",
+        "name": "Musterfirma 1 GmbH",
+        "status": "1000",
+        "customerNumber": "0001",
+        "surename": null,
+        "familyname": null,
+        "titel": null,
+        "category": {
+          "id": "3",
+          "objectName": "Category"
+        },
+        "description": "Muster-Text 1",
+        "academicTitle": null,
+        "gender": null,
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "name2": null,
+        "birthday": null,
+        "vatNumber": null,
+        "bankAccount": null,
+        "bankNumber": null,
+        "mandateReference": null,
+        "defaultCashbackTime": null,
+        "defaultCashbackPercent": null,
+        "defaultTimeToPay": null,
+        "taxNumber": null,
+        "taxOffice": null,
+        "exemptVat": "0",
+        "taxType": null,
+        "defaultDiscountAmount": null,
+        "defaultDiscountPercentage": "1",
+        "buyerReference": null,
+        "governmentAgency": "0",
+        "defaultShowVat": "1"
+      }
+    ]
+  }
+}

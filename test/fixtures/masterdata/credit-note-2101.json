@@ -4,7 +4,7 @@
     "ref": "https://github.com/jernoxit/sevdesk-rs/blob/HEAD/tests/fixtures/credit_note.json (GET /api/v1/CreditNote/{id})",
     "date": "2026-11-07",
     "systemVersion": "2.0",
-    "note": "The credit note of credit-note-from-invoice-2101.json as GET by id (embed=contact) returns it. All values fake."
+    "note": "The credit note of credit-note-from-invoice-2101.json as GET by id (embed=contact) returns it. All values fake. creditNoteNumber GU-1000: createFromInvoice gives the draft the credit note counter's current value without advancing it (recorded 2026-11-07)."
   },
   "status": 200,
   "body": {
@@ -13,7 +13,7 @@
         "id": "2101",
         "objectName": "CreditNote",
         "additionalInformation": null,
-        "creditNoteNumber": null,
+        "creditNoteNumber": "GU-1000",
         "contact": {
           "id": "1001",
           "objectName": "Contact",

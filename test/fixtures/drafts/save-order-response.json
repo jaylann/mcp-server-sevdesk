@@ -4,7 +4,7 @@
     "systemVersion": "2.0",
     "source": "spec",
     "ref": "spec/openapi.yaml#/components/schemas/saveOrderResponse (objects.order, as read by codestra/sevdesk-mcp src/tools/orders.ts)",
-    "note": "Not recorded: the order row uses the keys of the recorded GET /Order row (OrderManager2), values fake. Whether sevDesk returns orderPos too and whether it assigns orderNumber without one is unverified; null here."
+    "note": "Not recorded: the order row uses the keys of the recorded GET /Order row (OrderManager2), values fake. Whether sevDesk returns orderPos too is unverified. orderNumber AN-1000: the reserved number the draft is saved with (saveOrder without one answers 400, recorded 2026-11-07)."
   },
   "status": 200,
   "body": {
@@ -15,7 +15,7 @@
         "additionalInformation": null,
         "create": "2026-11-07T10:00:00+01:00",
         "update": "2026-11-07T10:00:00+01:00",
-        "orderNumber": null,
+        "orderNumber": "AN-1000",
         "orderDate": "2026-11-07T00:00:00+01:00",
         "status": "100",
         "header": "Angebot",

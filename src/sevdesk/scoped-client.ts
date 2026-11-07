@@ -9,7 +9,8 @@
  *
  * "Changes data" means what the HTTP client means: any non-GET, and GETs that
  * `resolveGetSafety` classifies as side effects (a `getPdf` without `preventSendBy`,
- * `sendByWithRender`, DATEV `enshrine` flags) or that declare `sideEffect`.
+ * `sendByWithRender`, DATEV `enshrine` flags, a next-number GET without `useNextNumber=false`,
+ * which reserves the number) or that declare `sideEffect`.
  */
 import { tierCovers, type WriteTier } from "../safety/tiers.js";
 import { SevdeskError } from "./errors.js";

@@ -68,8 +68,8 @@ function resetWarnings(doc: LifecycleDocument<PaymentKind>, to: ResetTarget): st
       `Every payment booked on this ${noun} is taken back: linked bank transactions are ` +
         "unlinked and return to unbooked (status 100) in their account, and the paid amount " +
         "goes back to 0. sevDesk makes no counter-booking. Transactions sevDesk created itself " +
-        "for payments on offline or cash accounts may stay in the account; check them " +
-        "afterwards.",
+        "for payments on offline accounts are deleted (recorded); cash registers (Kasse) were " +
+        "not measured, so check them afterwards.",
       "sevDesk refuses the reset if one of the payment transactions is enshrined.",
     ];
     if (doc.enshrined) {

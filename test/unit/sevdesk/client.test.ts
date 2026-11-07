@@ -520,6 +520,46 @@ describe("state-changing GET endpoints", () => {
     expect(fake.requests).toHaveLength(0);
   });
 
+  it("refuses a next-number GET that reserves the number in read-only mode", async () => {
+    const { client, fake } = setup([], { config: readOnly });
+    const error = await catchError(
+      client.request({
+        method: "GET",
+        path: "/Order/Factory/getNextOrderNumber",
+        query: { orderType: "AN", useNextNumber: "true" },
+      }),
+    );
+    expect(error.kind).toBe("blocked");
+    expect(error.message).toBe(
+      "Blocked before sending: GET /Order/Factory/getNextOrderNumber changes data in sevDesk " +
+        "(it reserves the next document number), but read-only mode is on " +
+        "(SEVDESK_READ_ONLY). Nothing was sent.",
+    );
+    expect(fake.requests).toHaveLength(0);
+  });
+
+  it("sends a next-number peek as a read and the reserving form from a write tool", async () => {
+    const { client: reader, fake: readFake } = setup([envelope("GU-1002")], { config: readOnly });
+    await expect(
+      reader.request({
+        method: "GET",
+        path: "/CreditNote/Factory/getNextCreditNoteNumber",
+        query: { useNextNumber: "false" },
+      }),
+    ).resolves.toBe("GU-1002");
+    expect(readFake.requests[0]?.url.searchParams.get("useNextNumber")).toBe("false");
+
+    const { client: writer, fake: writeFake } = setup([envelope("GU-1002")]);
+    await writer.request({
+      method: "GET",
+      path: "/CreditNote/Factory/getNextCreditNoteNumber",
+      query: { useNextNumber: "true" },
+      sideEffect: true,
+      tier: "write",
+    });
+    expect(writeFake.requests[0]?.url.searchParams.get("useNextNumber")).toBe("true");
+  });
+
   it.each([{ enshrineDocuments: false }, { enshrine: 0 }, { includeEnshrined: true }, {}])(
     "keeps a DATEV export with %j as a read",
     async (query) => {

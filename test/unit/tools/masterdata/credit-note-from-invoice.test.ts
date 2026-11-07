@@ -18,6 +18,11 @@ import {
 const INVOICE = "masterdata/invoice-1004.json";
 const CREDIT_NOTE = "masterdata/credit-note-2101.json";
 const CREATE = "/CreditNote/Factory/createFromInvoice";
+const NEXT = "/CreditNote/Factory/getNextCreditNoteNumber";
+const COUNTER_WARNING =
+  "sevDesk gives the draft the next credit note number without advancing its counter, so the " +
+  "counter is moved past the new number afterwards; otherwise the next credit note could get " +
+  "the same number.";
 const byContact = { "contact[id]": 1001, "contact[objectName]": "Contact" };
 
 const table: (readonly [string, FakeRoute])[] = [
@@ -47,6 +52,14 @@ const table: (readonly [string, FakeRoute])[] = [
     })[1] as FakeRoute,
   ],
   ["units", { path: "/Unity", response: { fixture: "meta/units.json" } }],
+  [
+    "nextPeek",
+    { path: NEXT, query: { useNextNumber: "false" }, response: { body: { objects: "GU-1000" } } },
+  ],
+  [
+    "nextReserve",
+    { path: NEXT, query: { useNextNumber: "true" }, response: { body: { objects: "GU-1000" } } },
+  ],
 ];
 
 function routes(
@@ -92,10 +105,12 @@ describe("sevdesk_credit_note_create_from_invoice", () => {
         "The credit note (Gutschrift) is created as a draft with all positions of the invoice; " +
           "adjust it if only part is refunded, then finalize it with " +
           "sevdesk_credit_note_finalize.",
+        COUNTER_WARNING,
       ],
       irreversible: false,
     });
     expect(client.writes()).toEqual([]);
+    expect(client.callsTo(NEXT)).toEqual([]);
     // Credit notes are listed by contact only: an origin filter would hide underachievement
     // credit notes, which carry only refSrcInvoice.
     expect(client.callsTo("/CreditNote")[0]?.query).toEqual({
@@ -106,11 +121,24 @@ describe("sevdesk_credit_note_create_from_invoice", () => {
     });
   });
 
-  it("creates the credit note, verifies the draft and reads it back", async () => {
+  it("creates the credit note, verifies the draft, reads it back and moves the counter on", async () => {
     const client = new FakeSevdeskClient(routes());
     const { output } = await executeWrite(tool, { invoiceId: 1004 }, client);
     expect(client.writes().map((call) => [call.method, call.path, call.tier, call.body])).toEqual([
       ["POST", CREATE, "write", { invoice: { id: 1004, objectName: "Invoice" } }],
+      ["GET", NEXT, "write", undefined],
+    ]);
+    // Peek first (a read), then reserve once (recorded: createFromInvoice gave GU-1000 and left
+    // the counter there).
+    expect(
+      client.callsTo(NEXT).map((call) => [call.query["useNextNumber"], call.sideEffect]),
+    ).toEqual([
+      ["false", false],
+      ["true", true],
+    ]);
+    expect(output.data.notes).toEqual([
+      "sevDesk's credit note counter was moved past GU-1000 (the new draft's number), so the " +
+        "next credit note cannot get it again.",
     ]);
     expect(output.data.creditNote).toMatchObject({
       id: 2101,
@@ -123,8 +151,66 @@ describe("sevdesk_credit_note_create_from_invoice", () => {
     expect(output.affected).toEqual([{ objectName: "CreditNote", id: "2101" }]);
     expect(output.summary).toBe(
       "Created credit note draft 2101 from invoice 1004; finalize it with " +
-        "sevdesk_credit_note_finalize.",
+        "sevdesk_credit_note_finalize. See notes.",
     );
+  });
+
+  it("leaves the counter alone when it is past the new number already", async () => {
+    const client = new FakeSevdeskClient(routes({ nextPeek: { body: { objects: "GU-1001" } } }));
+    const { output } = await executeWrite(tool, { invoiceId: 1004 }, client);
+    expect(client.writes().map((call) => call.path)).toEqual([CREATE]);
+    expect(output.data.notes).toBeUndefined();
+    expect(output.summary).not.toContain("See notes");
+  });
+
+  it("notes, without failing, when the counter cannot be checked or moved", async () => {
+    const failure = {
+      error: new SevdeskError({ kind: "server", message: "sevDesk failed." }),
+    };
+    for (const overrides of [{ nextPeek: failure }, { nextReserve: failure }]) {
+      const client = new FakeSevdeskClient(routes(overrides));
+      const { output } = await executeWrite(tool, { invoiceId: 1004 }, client);
+      expect(output.data.notes).toEqual([
+        "sevDesk's credit note counter could not be checked or moved past GU-1000: the next " +
+          "credit note may get the same number. sevdesk_credit_note_create_draft skips numbers in " +
+          "use; elsewhere check the number before finalizing.",
+      ]);
+      expect(output.affected).toEqual([{ objectName: "CreditNote", id: "2101" }]);
+    }
+  });
+
+  it("does not touch the counter for a draft without a number", async () => {
+    const client = new FakeSevdeskClient(
+      routes({ readBack: patched(CREDIT_NOTE, { creditNoteNumber: null }) }),
+    );
+    const { output } = await executeWrite(tool, { invoiceId: 1004 }, client);
+    expect(client.callsTo(NEXT)).toEqual([]);
+    expect(output.data.notes).toEqual([
+      "The new credit note has no number, so sevDesk's credit note counter was not checked; " +
+        "sevdesk_credit_note_finalize refuses credit notes without a number (sevDesk can fail " +
+        "half-way on them), so set one in the sevDesk web app first.",
+    ]);
+  });
+
+  it("says a number was skipped when another client moved the counter in between", async () => {
+    // Peek: GU-1000 (the draft's number); the reservation then gets GU-1001.
+    const client = new FakeSevdeskClient(routes({ nextReserve: { body: { objects: "GU-1001" } } }));
+    const { output } = await executeWrite(tool, { invoiceId: 1004 }, client);
+    expect(client.writes().map((call) => call.path)).toEqual([CREATE, NEXT]);
+    expect(output.data.notes).toEqual([
+      "sevDesk's credit note counter moved on while it was being moved past GU-1000: the " +
+        "reservation took GU-1001 instead, which is now skipped (a gap in the number range, " +
+        "Nummernkreis). Check that no other credit note carries GU-1000 before finalizing.",
+    ]);
+  });
+
+  it("rethrows a counter failure that is not a sevDesk error", async () => {
+    const client = new FakeSevdeskClient(
+      routes().filter(
+        (route) => !(route.path === NEXT && route.query?.["useNextNumber"] === "true"),
+      ),
+    );
+    await expect(executeWrite(tool, { invoiceId: 1004 }, client)).rejects.toThrow(/no route/);
   });
 
   it("lists the invoice in affected when sevDesk changed it", async () => {

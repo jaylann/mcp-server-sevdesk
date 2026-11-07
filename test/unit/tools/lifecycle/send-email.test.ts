@@ -256,6 +256,23 @@ describe("sevdesk_credit_note_send_email and sevdesk_order_send_email", () => {
     expect(output.affected).toEqual([{ objectName: "CreditNote", id: "2001" }]);
   });
 
+  it("refuses to send (and so finalize) a credit note draft without a number", async () => {
+    const client = new StagedClient(
+      [documentRoute("creditNote", creditNoteRow({ status: "100", creditNoteNumber: null }))],
+      [],
+    );
+    const error = await prepareWrite(sendEmailTool("creditNote"), { id: 2001, ...message }, client)
+      .then(() => undefined)
+      .catch((thrown: unknown) => thrown);
+    expect(error).toMatchObject({
+      kind: "validation",
+      message: expect.stringMatching(
+        /^Credit note 2001 is a draft without a number, and sending \(and so finalizing\) it could fail half-way/,
+      ) as unknown,
+    });
+    expect(client.writes()).toEqual([]);
+  });
+
   it("send an order and say a draft order is marked as sent", async () => {
     const orderTool = sendEmailTool("order");
     const client = new StagedClient(

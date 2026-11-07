@@ -47,7 +47,10 @@ export interface ListOptions {
 
 export interface Page<T = unknown> {
   readonly items: readonly T[];
-  /** From `countAll=true` (sevDesk returns it as a string; parsed here). */
+  /**
+   * From `countAll=true`. sevDesk sends a number (recorded 2026-11-07) or, in older responses, a
+   * string; both are parsed here (spec/deviations.md D-002).
+   */
   readonly total: number | undefined;
 }
 

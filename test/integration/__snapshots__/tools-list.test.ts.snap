@@ -741,7 +741,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "integer",
         },
         "taxRule": {
-          "description": "Tax rule (Steuerregel) id. Default: the source invoice's rule (underachievement), 9 (provision) or 1. See sevdesk_reference_lookup kind=tax_rules.",
+          "description": "Tax rule (Steuerregel) id. Default: the source invoice's rule (underachievement), 9 (provision; 10 on a Kleinunternehmer account) or the account's: 1 for regular VAT, 11 for Kleinunternehmer. See sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991,
           "type": "integer",
@@ -4059,7 +4059,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "integer",
         },
         "taxRule": {
-          "description": "Tax rule (Steuerregel) id. Default: the source invoice's rule (underachievement), 9 (provision) or 1. See sevdesk_reference_lookup kind=tax_rules.",
+          "description": "Tax rule (Steuerregel) id. Default: the source invoice's rule (underachievement), 9 (provision; 10 on a Kleinunternehmer account) or the account's: 1 for regular VAT, 11 for Kleinunternehmer. See sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991,
           "type": "integer",

@@ -64,7 +64,25 @@ function refuseCancellation(doc: LifecycleDocument, action: string): void {
   }
 }
 
-/** Finalize (`sendBy`): drafts only. */
+/**
+ * Refuses a credit note draft without a number. Recorded on 2026-11-07: `sendBy` on such a draft
+ * answered HTTP 500 (PHP TypeError, `fileName` null) yet finalized the credit note anyway
+ * (status 200, no number), while other numberless drafts got a number; the outcome is
+ * unreliable and can leave a finalized credit note without a number. Invoices without a number
+ * are fine (`sendBy` assigns one reliably, recorded); orders cannot be saved without one.
+ */
+function refuseNumberlessCreditNote(doc: LifecycleDocument, action: string): void {
+  if (doc.kind !== "creditNote" || doc.status !== STATUS.draft) return;
+  if (doc.number !== undefined && doc.number.trim() !== "") return;
+  refuse(
+    `${documentRef(doc, true)} is a draft without a number, and ${action} it could fail half-way ` +
+      "in sevDesk and leave a finalized credit note without a number. Create it again with " +
+      "sevdesk_credit_note_create_draft (which takes a number from the number range) and delete " +
+      "this draft in sevDesk, or give it a number in the sevDesk web app first.",
+  );
+}
+
+/** Finalize (`sendBy`): drafts only; credit note drafts need a number. */
 export function assertFinalizable(doc: LifecycleDocument): void {
   refuseTemplate(doc, "finalized");
   if (doc.status !== STATUS.draft) {
@@ -73,16 +91,19 @@ export function assertFinalizable(doc: LifecycleDocument): void {
         `finalized, and this one already was.`,
     );
   }
+  refuseNumberlessCreditNote(doc, "finalizing");
 }
 
 /**
- * Send by email (`sendViaEmail`): any document except recurring invoice templates. sevDesk
- * finalizes a draft it sends, which is a commit-level step, so a draft is only accepted when the
- * caller may finalize (`finalizeAllowed`: the commit tier is enabled); an external-only setup
- * would otherwise finalize documents through the back door.
+ * Send by email (`sendViaEmail`): any document except recurring invoice templates and credit
+ * note drafts without a number (sending finalizes them, see {@link refuseNumberlessCreditNote}).
+ * sevDesk finalizes a draft it sends, which is a commit-level step, so a draft is only accepted
+ * when the caller may finalize (`finalizeAllowed`: the commit tier is enabled); an external-only
+ * setup would otherwise finalize documents through the back door.
  */
 export function assertEmailable(doc: LifecycleDocument, finalizeAllowed: boolean): void {
   refuseTemplate(doc, "sent by email");
+  refuseNumberlessCreditNote(doc, "sending (and so finalizing)");
   if (doc.status === STATUS.draft && !finalizeAllowed) {
     const { toolPrefix } = KINDS[doc.kind];
     refuse(
