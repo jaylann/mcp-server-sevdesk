@@ -4,6 +4,7 @@
  * (`..`, `//`, `?`, `#`) can never reach a different endpoint than the one a tool meant to call.
  * {@link resolveGetSafety} recognizes the GET endpoints that change state.
  */
+import type { WriteTier } from "../safety/tiers.js";
 import { SevdeskError } from "./errors.js";
 import type { QueryValue } from "./types.js";
 
@@ -129,14 +130,58 @@ export function resolveGetSafety(
   }
   if (endpoint === "sendbywithrender") return { sideEffect: true, effect: MARKS_SENT, query };
 
-  const enshrines = Object.entries(query ?? {}).some(
-    ([key, value]) => ENSHRINE_KEYS.has(key.toLowerCase()) && !isFalseFlag(value),
-  );
-  if (enshrines) return { sideEffect: true, effect: ENSHRINES, query };
+  if (enshrineFlagSet(query)) return { sideEffect: true, effect: ENSHRINES, query };
 
   return declaredSideEffect
     ? { sideEffect: true, effect: "it is marked as changing data in sevDesk", query }
     : { sideEffect: false, query };
+}
+
+/**
+ * The minimum tier per endpoint name (the last path segment, matched case-insensitively) for
+ * requests that change data. Everything not listed needs `write`.
+ *
+ * - `commit`: steps that make a document legally binding or are hard to undo: `sendBy` (mark as
+ *   sent, finalizes a draft), `bookAmount` (book a payment), `enshrine` (festschreiben, GoBD,
+ *   irreversible), `cancelInvoice` (Storno), `resetToDraft` / `resetToOpen`, `changeParameter`
+ *   (changes a finalized document's parameters);
+ * - `external`: steps that reach third parties: `sendViaEmail`, `sendByWithRender` (renders and
+ *   marks as sent, used for letters).
+ */
+const ENDPOINT_TIERS: Readonly<Record<string, WriteTier>> = {
+  sendby: "commit",
+  bookamount: "commit",
+  enshrine: "commit",
+  cancelinvoice: "commit",
+  resettodraft: "commit",
+  resettoopen: "commit",
+  changeparameter: "commit",
+  sendviaemail: "external",
+  sendbywithrender: "external",
+};
+
+/**
+ * The lowest tier that may make a request that changes data (the caller decides that it does,
+ * see `resolveGetSafety`): the endpoint's entry in the tier table, `commit` for a `getPdf` that
+ * marks the document as sent (same effect as `sendBy`) and for DATEV exports with an `enshrine`
+ * flag, otherwise `write`. The client refuses a request whose declared tier does not cover it
+ * (`tierCovers`), so a `write` tool can never finalize, book, cancel or send.
+ */
+export function minimumWriteTier(
+  path: string,
+  query: Readonly<Record<string, QueryValue>> | undefined,
+): WriteTier {
+  const endpoint = path.slice(path.lastIndexOf("/") + 1).toLowerCase();
+  const listed = ENDPOINT_TIERS[endpoint];
+  if (listed !== undefined) return listed;
+  if (endpoint === "getpdf" || enshrineFlagSet(query)) return "commit";
+  return "write";
+}
+
+function enshrineFlagSet(query: Readonly<Record<string, QueryValue>> | undefined): boolean {
+  return Object.entries(query ?? {}).some(
+    ([key, value]) => ENSHRINE_KEYS.has(key.toLowerCase()) && !isFalseFlag(value),
+  );
 }
 
 /**

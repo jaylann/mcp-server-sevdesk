@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import pkg from "../../package.json" with { type: "json" };
 import { buildInstructions } from "../../src/instructions.js";
+import { createSafetyRuntime } from "../../src/safety/runtime.js";
 import { createServer, createServerFactory, SERVER_INFO } from "../../src/server.js";
 import { ToolDefinitionError } from "../../src/tools/define-tool.js";
 import { ALL_TOOLS } from "../../src/tools/index.js";
@@ -103,6 +104,30 @@ describe("createServer", () => {
     expect(() =>
       createServer({ config: testConfig(), client: stubClient(), tools: [loose] }),
     ).toThrow(/strictObject/);
+  });
+
+  it("exposes close(), which closes the shared safety runtime", async () => {
+    const config = testConfig();
+    const safety = createSafetyRuntime(config, { log: () => undefined });
+    const ticket = await safety.approvals.create({
+      toolName: "sevdesk_dummy_finalize",
+      toolTitle: "Finalize",
+      tier: "commit",
+      tierText: "legally binding bookkeeping",
+      argsHash: "a",
+      previewHash: "p",
+      preview: { action: "A.", facts: [], warnings: [], irreversible: false },
+      callId: "c",
+    });
+    const factory = createServerFactory({ config, client: stubClient(), tools: [], safety });
+
+    await factory.close();
+
+    expect(safety.approvals.current("sevdesk_dummy_finalize", "a")).toBeUndefined();
+    await expect(fetch(ticket.url)).rejects.toThrow();
+    await expect(
+      createServerFactory({ config, client: stubClient(), tools: [] }).close(),
+    ).resolves.toBeUndefined();
   });
 
   it("refuses duplicate tool names", () => {

@@ -148,6 +148,127 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
   {
     "annotations": {
       "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create a sevDesk contact",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "allowDuplicate": {
+          "default": false,
+          "description": "Create the contact even though one with the same name or e-mail exists. Only after checking that the existing one is really someone else.",
+          "type": "boolean",
+        },
+        "buyerReference": {
+          "description": "Leitweg-ID / buyer reference for e-invoices (XRechnung) to public bodies.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "category": {
+          "default": "customer",
+          "description": "customer (Kunde), supplier (Lieferant), partner or prospect (Interessent).",
+          "enum": [
+            "supplier",
+            "customer",
+            "partner",
+            "prospect",
+          ],
+          "type": "string",
+        },
+        "city": {
+          "description": "City (Ort).",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "country": {
+          "description": "Country as ISO 3166-1 alpha-2 code, e.g. DE (default for a new address), AT, CH.",
+          "pattern": "^[A-Za-z]{2}$",
+          "type": "string",
+        },
+        "customerNumber": {
+          "description": "Kundennummer; must not be used yet.",
+          "maxLength": 50,
+          "minLength": 1,
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "email": {
+          "description": "E-mail address.",
+          "format": "email",
+          "maxLength": 254,
+          "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+          "type": "string",
+        },
+        "firstName": {
+          "description": "Person: first name (sevDesk field surename). Leave organisationName out.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "lastName": {
+          "description": "Person: last name (sevDesk field familyname).",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "organisationName": {
+          "description": "Organisation (company) name. Leave firstName/lastName out for organisations.",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
+        "phone": {
+          "description": "Phone number (Telefon).",
+          "maxLength": 50,
+          "minLength": 3,
+          "pattern": "^[0-9+()/.\\- ]+$",
+          "type": "string",
+        },
+        "street": {
+          "description": "Street and house number (Straße).",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
+        "taxNumber": {
+          "description": "Steuernummer (tax number).",
+          "maxLength": 30,
+          "minLength": 1,
+          "type": "string",
+        },
+        "vatNumber": {
+          "description": "USt-IdNr. (VAT ID), e.g. DE123456789.",
+          "type": "string",
+        },
+        "website": {
+          "description": "Website, e.g. https://example.com.",
+          "maxLength": 255,
+          "pattern": "^(https?:\\/\\/)?[^\\s/.]+(\\.[^\\s/.]+)+(\\/\\S*)?$",
+          "type": "string",
+        },
+        "zip": {
+          "description": "Postal code (PLZ).",
+          "maxLength": 20,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_contact_create",
+    "title": "Create a sevDesk contact",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
@@ -171,6 +292,130 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     },
     "name": "sevdesk_contact_get",
     "title": "Get a sevDesk contact",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Update a sevDesk contact",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "buyerReference": {
+          "description": "Leitweg-ID / buyer reference for e-invoices (XRechnung) to public bodies.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "category": {
+          "description": "customer (Kunde), supplier (Lieferant), partner or prospect (Interessent).",
+          "enum": [
+            "supplier",
+            "customer",
+            "partner",
+            "prospect",
+          ],
+          "type": "string",
+        },
+        "city": {
+          "description": "City (Ort).",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "country": {
+          "description": "Country as ISO 3166-1 alpha-2 code, e.g. DE (default for a new address), AT, CH.",
+          "pattern": "^[A-Za-z]{2}$",
+          "type": "string",
+        },
+        "customerNumber": {
+          "description": "Kundennummer; must not be used yet.",
+          "maxLength": 50,
+          "minLength": 1,
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "email": {
+          "description": "E-mail address.",
+          "format": "email",
+          "maxLength": 254,
+          "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+          "type": "string",
+        },
+        "firstName": {
+          "description": "Person: first name (sevDesk field surename). Leave organisationName out.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "id": {
+          "description": "Contact id, e.g. from sevdesk_contacts_search.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "lastName": {
+          "description": "Person: last name (sevDesk field familyname).",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "organisationName": {
+          "description": "Organisation (company) name. Leave firstName/lastName out for organisations.",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
+        "phone": {
+          "description": "Phone number (Telefon).",
+          "maxLength": 50,
+          "minLength": 3,
+          "pattern": "^[0-9+()/.\\- ]+$",
+          "type": "string",
+        },
+        "street": {
+          "description": "Street and house number (Straße).",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
+        "taxNumber": {
+          "description": "Steuernummer (tax number).",
+          "maxLength": 30,
+          "minLength": 1,
+          "type": "string",
+        },
+        "vatNumber": {
+          "description": "USt-IdNr. (VAT ID), e.g. DE123456789.",
+          "type": "string",
+        },
+        "website": {
+          "description": "Website, e.g. https://example.com.",
+          "maxLength": 255,
+          "pattern": "^(https?:\\/\\/)?[^\\s/.]+(\\.[^\\s/.]+)+(\\/\\S*)?$",
+          "type": "string",
+        },
+        "zip": {
+          "description": "Postal code (PLZ).",
+          "maxLength": 20,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_contact_update",
+    "title": "Update a sevDesk contact",
   },
   {
     "annotations": {
@@ -245,6 +490,389 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
   },
   {
     "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Book a payment on a sevDesk credit note",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "description": "Amount paid out, gross, positive, in the credit note's currency, e.g. "119.00" (at most 2 decimals).",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "checkAccountId": {
+          "description": "Check account (Zahlungskonto) the money moved on, from sevdesk_bank_accounts_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "date": {
+          "description": "Booking date (Zahlungsdatum), YYYY-MM-DD; defaults to today (Berlin).",
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Credit note id (not the credit note number), e.g. from sevdesk_credit_notes_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "paymentType": {
+          "description": "payment (default): all of the open amount or a part of it. cash_discount: less than the open amount, the rest is written off as Skonto. bank_fees: less, the rest written off as bank fees (Geldverkehrskosten). other_difference: more or less than the open amount for another reason; the document is settled.",
+          "enum": [
+            "payment",
+            "cash_discount",
+            "bank_fees",
+            "other_difference",
+          ],
+          "type": "string",
+        },
+        "transactionId": {
+          "description": "Imported bank transaction (Umsatz) to link, from sevdesk_transactions_list (status created, same account). Without it sevDesk creates a new transaction (offline and cash accounts only).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+        "amount",
+        "checkAccountId",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_credit_note_book_payment",
+    "title": "Book a payment on a sevDesk credit note",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create a draft credit note",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "addressCity": {
+          "description": "City (Ort).",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressCountry": {
+          "description": "ISO 3166-1 alpha-2 country code of the address, e.g. DE, AT, CH; default: the country of the address it changes, else DE.",
+          "pattern": "^[A-Za-z]{2}$",
+          "type": "string",
+        },
+        "addressName": {
+          "description": "Recipient name as printed. Address fields replace the matching parts of the contact's invoice address (new drafts) or of the stored address (updates); the rest is kept.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressStreet": {
+          "description": "Street and number.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressZip": {
+          "description": "Postcode (PLZ).",
+          "maxLength": 20,
+          "minLength": 1,
+          "type": "string",
+        },
+        "allowDuplicate": {
+          "description": "underachievement only: create it even though a credit note for the source invoice exists (e.g. a second partial refund). Default false.",
+          "type": "boolean",
+        },
+        "bookingCategory": {
+          "description": "Buchungskategorie: underachievement (Minderleistung: reduces an issued invoice, needs sourceInvoiceId), provision (Provisionsgutschrift, tax rule 9), royalty_assigned or royalty_unassigned (Lizenzgebühren).",
+          "enum": [
+            "underachievement",
+            "provision",
+            "royalty_assigned",
+            "royalty_unassigned",
+          ],
+          "type": "string",
+        },
+        "contactId": {
+          "description": "Customer contact id (Kontakt), from sevdesk_contacts_search.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "contactPersonId": {
+          "description": "sevDesk user (SevUser) shown as contact person (Ansprechpartner). Required only when the account has several users: sevdesk_reference_lookup kind=users lists them.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "currency": {
+          "description": "ISO 4217 code; default EUR or the source invoice's currency.",
+          "pattern": "^[A-Za-z]{3}$",
+          "type": "string",
+        },
+        "date": {
+          "description": "Gutschriftsdatum, YYYY-MM-DD; default today (Europe/Berlin).",
+          "type": "string",
+        },
+        "deliveryDate": {
+          "description": "Delivery or service date (Liefer-/Leistungsdatum), YYYY-MM-DD; default the document date.",
+          "type": "string",
+        },
+        "deliveryDateUntil": {
+          "description": "End of the delivery period (Leistungszeitraum bis), YYYY-MM-DD.",
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "footText": {
+          "description": "Closing text below the positions (Fußtext); simple HTML allowed.",
+          "maxLength": 10000,
+          "type": "string",
+        },
+        "headText": {
+          "description": "Intro text above the positions (Kopftext); simple HTML allowed.",
+          "maxLength": 10000,
+          "type": "string",
+        },
+        "header": {
+          "description": "Document title (Betreff); default "Gutschrift".",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "positions": {
+          "description": "Positionen in printed order; prices per priceMode.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "discountPercent": {
+                "description": "Rabatt on this position in percent, more than 0 and at most 100.",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "name": {
+                "description": "Article or service name (Bezeichnung) as printed.",
+                "maxLength": 250,
+                "minLength": 1,
+                "type": "string",
+              },
+              "partId": {
+                "description": "Inventory part (Artikel, see sevdesk_parts_list) to link. Name and price still come from this position; sevDesk does not fill them in.",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "quantity": {
+                "description": "Menge, greater than 0, up to 4 decimals, e.g. 2 or "1.5".",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "taxRate": {
+                "description": "Umsatzsteuersatz in percent, e.g. 19, 7 or 0; must be allowed by the tax rule. May be left out only when the rule allows a single rate (e.g. 0 for rule 11).",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "text": {
+                "description": "Description printed below the name (Positionstext); line breaks allowed.",
+                "maxLength": 5000,
+                "type": "string",
+              },
+              "unitId": {
+                "description": "Einheit (Unity id, see sevdesk_reference_lookup kind=units); default 1 = Stk.",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "unitPrice": {
+                "description": "Einzelpreis per unit in the document currency, net or gross as the document's priceMode says; up to 4 decimals, e.g. "49.90"; negative for a deduction line.",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+            },
+            "required": [
+              "name",
+              "quantity",
+              "unitPrice",
+            ],
+            "type": "object",
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array",
+        },
+        "priceMode": {
+          "description": "Whether position unit prices are net (netto, the default for new drafts) or gross (brutto). Sets sevDesk's showNet.",
+          "enum": [
+            "net",
+            "gross",
+          ],
+          "type": "string",
+        },
+        "sourceInvoiceId": {
+          "description": "underachievement only: id of the finalized invoice this credit note reduces (refSrcInvoice).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "taxRule": {
+          "description": "Tax rule (Steuerregel) id. Default: the source invoice's rule (underachievement), 9 (provision) or 1. See sevdesk_reference_lookup kind=tax_rules.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "taxText": {
+          "description": "Tax note printed on the document; default: the tax rule's German name.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "contactId",
+        "bookingCategory",
+        "positions",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_credit_note_create_draft",
+    "title": "Create a draft credit note",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create a credit note from a sevDesk invoice",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "allowDuplicate": {
+          "default": false,
+          "description": "Create it even though a credit note from this invoice exists.",
+          "type": "boolean",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "invoiceId": {
+          "description": "Invoice id (not its number), e.g. from sevdesk_invoices_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "invoiceId",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_credit_note_create_from_invoice",
+    "title": "Create a credit note from a sevDesk invoice",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Enshrine a sevDesk credit note",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Credit note id (not the credit note number), e.g. from sevdesk_credit_notes_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_credit_note_enshrine",
+    "title": "Enshrine a sevDesk credit note",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Finalize a sevDesk credit note",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Credit note id (not the credit note number), e.g. from sevdesk_credit_notes_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "sentVia": {
+          "description": "How the document is or was sent, recorded as its send type: pdf_download (VPDF, default: PDF downloaded and sent your own way), post (VP, Briefversand), print (VPR, printed and handed over), own_email (VM, emailed outside sevDesk).",
+          "enum": [
+            "pdf_download",
+            "post",
+            "print",
+            "own_email",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_credit_note_finalize",
+    "title": "Finalize a sevDesk credit note",
+  },
+  {
+    "annotations": {
       "destructiveHint": false,
       "idempotentHint": true,
       "openWorldHint": false,
@@ -296,6 +924,116 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     },
     "name": "sevdesk_credit_note_pdf",
     "title": "Get a credit note PDF",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Reset a sevDesk credit note",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Credit note id (not the credit note number), e.g. from sevdesk_credit_notes_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "to": {
+          "description": "open: unlink all payments of a paid or partially paid document (resetToOpen). draft: turn an open document without payments back into a draft (resetToDraft).",
+          "enum": [
+            "draft",
+            "open",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "id",
+        "to",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_credit_note_reset",
+    "title": "Reset a sevDesk credit note",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+      "title": "Email a sevDesk credit note",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "bcc": {
+          "description": "Bcc recipients, up to 10.",
+          "items": {
+            "type": "string",
+          },
+          "maxItems": 10,
+          "type": "array",
+        },
+        "cc": {
+          "description": "Cc recipients, up to 10.",
+          "items": {
+            "type": "string",
+          },
+          "maxItems": 10,
+          "type": "array",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Credit note id (not the credit note number), e.g. from sevdesk_credit_notes_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "sendCopyToMe": {
+          "description": "Also send a copy to the sevDesk user's own address. Defaults to false.",
+          "type": "boolean",
+        },
+        "subject": {
+          "description": "Subject (Betreff), one line.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
+        "text": {
+          "description": "Email text; simple HTML allowed. sevDesk attaches the document itself.",
+          "maxLength": 10000,
+          "minLength": 1,
+          "type": "string",
+        },
+        "to": {
+          "description": "Recipient (Empfänger): one email address.",
+          "type": "string",
+        },
+      },
+      "required": [
+        "id",
+        "to",
+        "subject",
+        "text",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_credit_note_send_email",
+    "title": "Email a sevDesk credit note",
   },
   {
     "annotations": {
@@ -361,6 +1099,406 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
   },
   {
     "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Book a payment on a sevDesk invoice",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "description": "Amount received, gross, positive, in the invoice's currency, e.g. "119.00" (at most 2 decimals).",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "checkAccountId": {
+          "description": "Check account (Zahlungskonto) the money moved on, from sevdesk_bank_accounts_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "date": {
+          "description": "Booking date (Zahlungsdatum), YYYY-MM-DD; defaults to today (Berlin).",
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Invoice id (not the invoice number), e.g. from sevdesk_invoices_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "paymentType": {
+          "description": "payment (default): all of the open amount or a part of it. cash_discount: less than the open amount, the rest is written off as Skonto. bank_fees: less, the rest written off as bank fees (Geldverkehrskosten). other_difference: more or less than the open amount for another reason; the document is settled. reminder_charges: more than the open amount, the extra booked as reminder charges (Mahngebühren).",
+          "enum": [
+            "payment",
+            "cash_discount",
+            "bank_fees",
+            "other_difference",
+            "reminder_charges",
+          ],
+          "type": "string",
+        },
+        "transactionId": {
+          "description": "Imported bank transaction (Umsatz) to link, from sevdesk_transactions_list (status created, same account). Without it sevDesk creates a new transaction (offline and cash accounts only).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+        "amount",
+        "checkAccountId",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_book_payment",
+    "title": "Book a payment on a sevDesk invoice",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Cancel a sevDesk invoice",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Invoice id (not the invoice number), e.g. from sevdesk_invoices_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_cancel",
+    "title": "Cancel a sevDesk invoice",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create a draft invoice",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "addressCity": {
+          "description": "City (Ort).",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressCountry": {
+          "description": "ISO 3166-1 alpha-2 country code of the address, e.g. DE, AT, CH; default: the country of the address it changes, else DE.",
+          "pattern": "^[A-Za-z]{2}$",
+          "type": "string",
+        },
+        "addressName": {
+          "description": "Recipient name as printed. Address fields replace the matching parts of the contact's invoice address (new drafts) or of the stored address (updates); the rest is kept.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressStreet": {
+          "description": "Street and number.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressZip": {
+          "description": "Postcode (PLZ).",
+          "maxLength": 20,
+          "minLength": 1,
+          "type": "string",
+        },
+        "contactId": {
+          "description": "Customer contact id (Kontakt), from sevdesk_contacts_search.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "contactPersonId": {
+          "description": "sevDesk user (SevUser) shown as contact person (Ansprechpartner). Required only when the account has several users: sevdesk_reference_lookup kind=users lists them.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "currency": {
+          "description": "ISO 4217 currency code (Währung); default EUR.",
+          "pattern": "^[A-Za-z]{3}$",
+          "type": "string",
+        },
+        "date": {
+          "description": "Rechnungsdatum, YYYY-MM-DD; default today (Europe/Berlin).",
+          "type": "string",
+        },
+        "deliveryDate": {
+          "description": "Delivery or service date (Liefer-/Leistungsdatum), YYYY-MM-DD; default the document date.",
+          "type": "string",
+        },
+        "deliveryDateUntil": {
+          "description": "End of the delivery period (Leistungszeitraum bis), YYYY-MM-DD.",
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "footText": {
+          "description": "Closing text below the positions (Fußtext); simple HTML allowed.",
+          "maxLength": 10000,
+          "type": "string",
+        },
+        "headText": {
+          "description": "Intro text above the positions (Kopftext); simple HTML allowed.",
+          "maxLength": 10000,
+          "type": "string",
+        },
+        "header": {
+          "description": "Document title (Betreff); default "Rechnung".",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "positions": {
+          "description": "Positionen in printed order; prices per priceMode.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "discountPercent": {
+                "description": "Rabatt on this position in percent, more than 0 and at most 100.",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "name": {
+                "description": "Article or service name (Bezeichnung) as printed.",
+                "maxLength": 250,
+                "minLength": 1,
+                "type": "string",
+              },
+              "partId": {
+                "description": "Inventory part (Artikel, see sevdesk_parts_list) to link. Name and price still come from this position; sevDesk does not fill them in.",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "quantity": {
+                "description": "Menge, greater than 0, up to 4 decimals, e.g. 2 or "1.5".",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "taxRate": {
+                "description": "Umsatzsteuersatz in percent, e.g. 19, 7 or 0; must be allowed by the tax rule. May be left out only when the rule allows a single rate (e.g. 0 for rule 11).",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "text": {
+                "description": "Description printed below the name (Positionstext); line breaks allowed.",
+                "maxLength": 5000,
+                "type": "string",
+              },
+              "unitId": {
+                "description": "Einheit (Unity id, see sevdesk_reference_lookup kind=units); default 1 = Stk.",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "unitPrice": {
+                "description": "Einzelpreis per unit in the document currency, net or gross as the document's priceMode says; up to 4 decimals, e.g. "49.90"; negative for a deduction line.",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+            },
+            "required": [
+              "name",
+              "quantity",
+              "unitPrice",
+            ],
+            "type": "object",
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array",
+        },
+        "priceMode": {
+          "description": "Whether position unit prices are net (netto, the default for new drafts) or gross (brutto). Sets sevDesk's showNet.",
+          "enum": [
+            "net",
+            "gross",
+          ],
+          "type": "string",
+        },
+        "taxRule": {
+          "description": "Tax rule (Steuerregel) id: 1 taxable domestic revenue (default), 2 exports, 3 intra-EU supplies, 4 tax-exempt §4, 5 reverse charge §13b, 11 Kleinunternehmer §19, 17 not taxable in Germany, 18–20 One-Stop-Shop, 21 reverse charge for EU services. Details: sevdesk_reference_lookup kind=tax_rules.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "taxText": {
+          "description": "Tax note printed on the document; default: the tax rule's German name.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "timeToPay": {
+          "description": "Zahlungsziel in days, e.g. 14.",
+          "maximum": 3650,
+          "minimum": 0,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "contactId",
+        "positions",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_create_draft",
+    "title": "Create a draft invoice",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create a sevDesk payment reminder",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "allowDuplicate": {
+          "default": false,
+          "description": "Create it even though an unsent reminder draft for this invoice exists.",
+          "type": "boolean",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "invoiceId": {
+          "description": "Id of the overdue invoice (not its number), e.g. from sevdesk_invoices_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "invoiceId",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_create_reminder",
+    "title": "Create a sevDesk payment reminder",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Enshrine a sevDesk invoice",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Invoice id (not the invoice number), e.g. from sevdesk_invoices_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_enshrine",
+    "title": "Enshrine a sevDesk invoice",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Finalize a sevDesk invoice",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Invoice id (not the invoice number), e.g. from sevdesk_invoices_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "sentVia": {
+          "description": "How the document is or was sent, recorded as its send type: pdf_download (VPDF, default: PDF downloaded and sent your own way), post (VP, Briefversand), print (VPR, printed and handed over), own_email (VM, emailed outside sevDesk).",
+          "enum": [
+            "pdf_download",
+            "post",
+            "print",
+            "own_email",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_finalize",
+    "title": "Finalize a sevDesk invoice",
+  },
+  {
+    "annotations": {
       "destructiveHint": false,
       "idempotentHint": true,
       "openWorldHint": false,
@@ -412,6 +1550,319 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     },
     "name": "sevdesk_invoice_pdf",
     "title": "Get an invoice PDF",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Reset a sevDesk invoice",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Invoice id (not the invoice number), e.g. from sevdesk_invoices_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "to": {
+          "description": "open: unlink all payments of a paid or partially paid document (resetToOpen). draft: turn an open document without payments back into a draft (resetToDraft).",
+          "enum": [
+            "draft",
+            "open",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "id",
+        "to",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_reset",
+    "title": "Reset a sevDesk invoice",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+      "title": "Email a sevDesk invoice",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "attachXml": {
+          "description": "E-invoices (XRechnung/ZUGFeRD) only: attach the XML instead of the PDF. Defaults to false.",
+          "type": "boolean",
+        },
+        "bcc": {
+          "description": "Bcc recipients, up to 10.",
+          "items": {
+            "type": "string",
+          },
+          "maxItems": 10,
+          "type": "array",
+        },
+        "cc": {
+          "description": "Cc recipients, up to 10.",
+          "items": {
+            "type": "string",
+          },
+          "maxItems": 10,
+          "type": "array",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Invoice id (not the invoice number), e.g. from sevdesk_invoices_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "sendCopyToMe": {
+          "description": "Also send a copy to the sevDesk user's own address. Defaults to false.",
+          "type": "boolean",
+        },
+        "subject": {
+          "description": "Subject (Betreff), one line.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
+        "text": {
+          "description": "Email text; simple HTML allowed. sevDesk attaches the document itself.",
+          "maxLength": 10000,
+          "minLength": 1,
+          "type": "string",
+        },
+        "to": {
+          "description": "Recipient (Empfänger): one email address.",
+          "type": "string",
+        },
+      },
+      "required": [
+        "id",
+        "to",
+        "subject",
+        "text",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_send_email",
+    "title": "Email a sevDesk invoice",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Update a draft invoice",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "addressCity": {
+          "description": "City (Ort).",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressCountry": {
+          "description": "ISO 3166-1 alpha-2 country code of the address, e.g. DE, AT, CH; default: the country of the address it changes, else DE.",
+          "pattern": "^[A-Za-z]{2}$",
+          "type": "string",
+        },
+        "addressName": {
+          "description": "Recipient name as printed. Address fields replace the matching parts of the contact's invoice address (new drafts) or of the stored address (updates); the rest is kept.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressStreet": {
+          "description": "Street and number.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressZip": {
+          "description": "Postcode (PLZ).",
+          "maxLength": 20,
+          "minLength": 1,
+          "type": "string",
+        },
+        "contactId": {
+          "description": "Customer contact id (Kontakt), from sevdesk_contacts_search.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "contactPersonId": {
+          "description": "sevDesk user (SevUser) shown as contact person (Ansprechpartner). Required only when the account has several users: sevdesk_reference_lookup kind=users lists them.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "currency": {
+          "description": "ISO 4217 currency code (Währung); default EUR.",
+          "pattern": "^[A-Za-z]{3}$",
+          "type": "string",
+        },
+        "date": {
+          "description": "Rechnungsdatum, YYYY-MM-DD.",
+          "type": "string",
+        },
+        "deliveryDate": {
+          "description": "Liefer-/Leistungsdatum, YYYY-MM-DD.",
+          "type": "string",
+        },
+        "deliveryDateUntil": {
+          "description": "End of the delivery period (Leistungszeitraum bis), YYYY-MM-DD.",
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "footText": {
+          "description": "Closing text below the positions (Fußtext); simple HTML allowed.",
+          "maxLength": 10000,
+          "type": "string",
+        },
+        "headText": {
+          "description": "Intro text above the positions (Kopftext); simple HTML allowed.",
+          "maxLength": 10000,
+          "type": "string",
+        },
+        "header": {
+          "description": "Document title (Betreff).",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "id": {
+          "description": "Id of the draft invoice (not its number), e.g. from sevdesk_invoices_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "positions": {
+          "description": "When given, replaces ALL positions; leave out to keep them.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "discountPercent": {
+                "description": "Rabatt on this position in percent, more than 0 and at most 100.",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "name": {
+                "description": "Article or service name (Bezeichnung) as printed.",
+                "maxLength": 250,
+                "minLength": 1,
+                "type": "string",
+              },
+              "partId": {
+                "description": "Inventory part (Artikel, see sevdesk_parts_list) to link. Name and price still come from this position; sevDesk does not fill them in.",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "quantity": {
+                "description": "Menge, greater than 0, up to 4 decimals, e.g. 2 or "1.5".",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "taxRate": {
+                "description": "Umsatzsteuersatz in percent, e.g. 19, 7 or 0; must be allowed by the tax rule. May be left out only when the rule allows a single rate (e.g. 0 for rule 11).",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "text": {
+                "description": "Description printed below the name (Positionstext); line breaks allowed.",
+                "maxLength": 5000,
+                "type": "string",
+              },
+              "unitId": {
+                "description": "Einheit (Unity id, see sevdesk_reference_lookup kind=units); default 1 = Stk.",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "unitPrice": {
+                "description": "Einzelpreis per unit in the document currency, net or gross as the document's priceMode says; up to 4 decimals, e.g. "49.90"; negative for a deduction line.",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+            },
+            "required": [
+              "name",
+              "quantity",
+              "unitPrice",
+            ],
+            "type": "object",
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array",
+        },
+        "priceMode": {
+          "description": "Net or gross unit prices (showNet). Changing it requires positions too.",
+          "enum": [
+            "net",
+            "gross",
+          ],
+          "type": "string",
+        },
+        "taxRule": {
+          "description": "New tax rule (Steuerregel) id; see sevdesk_reference_lookup kind=tax_rules.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "taxText": {
+          "description": "Tax note printed on the document; default: the tax rule's German name.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "timeToPay": {
+          "description": "Zahlungsziel in days, e.g. 14.",
+          "maximum": 3650,
+          "minimum": 0,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_update_draft",
+    "title": "Update a draft invoice",
   },
   {
     "annotations": {
@@ -523,6 +1974,251 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
   {
     "annotations": {
       "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create a draft order",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "addressCity": {
+          "description": "City (Ort).",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressCountry": {
+          "description": "ISO 3166-1 alpha-2 country code of the address, e.g. DE, AT, CH; default: the country of the address it changes, else DE.",
+          "pattern": "^[A-Za-z]{2}$",
+          "type": "string",
+        },
+        "addressName": {
+          "description": "Recipient name as printed. Address fields replace the matching parts of the contact's invoice address (new drafts) or of the stored address (updates); the rest is kept.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressStreet": {
+          "description": "Street and number.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressZip": {
+          "description": "Postcode (PLZ).",
+          "maxLength": 20,
+          "minLength": 1,
+          "type": "string",
+        },
+        "contactId": {
+          "description": "Customer contact id (Kontakt), from sevdesk_contacts_search.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "contactPersonId": {
+          "description": "sevDesk user (SevUser) shown as contact person (Ansprechpartner). Required only when the account has several users: sevdesk_reference_lookup kind=users lists them.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "currency": {
+          "description": "ISO 4217 currency code (Währung); default EUR.",
+          "pattern": "^[A-Za-z]{3}$",
+          "type": "string",
+        },
+        "date": {
+          "description": "Angebots-/Auftragsdatum, YYYY-MM-DD; default today (Berlin).",
+          "type": "string",
+        },
+        "deliveryTerms": {
+          "description": "Lieferbedingungen as printed on the document.",
+          "maxLength": 5000,
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "footText": {
+          "description": "Closing text below the positions (Fußtext); simple HTML allowed.",
+          "maxLength": 10000,
+          "type": "string",
+        },
+        "headText": {
+          "description": "Intro text above the positions (Kopftext); simple HTML allowed.",
+          "maxLength": 10000,
+          "type": "string",
+        },
+        "header": {
+          "description": "Document title (Betreff); default "Angebot", "Auftragsbestätigung" or "Lieferschein".",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "orderType": {
+          "description": "offer (Angebot, AN), order_confirmation (Auftragsbestätigung, AB) or delivery_note (Lieferschein, LI).",
+          "enum": [
+            "offer",
+            "order_confirmation",
+            "delivery_note",
+          ],
+          "type": "string",
+        },
+        "paymentTerms": {
+          "description": "Zahlungsbedingungen as printed on the document.",
+          "maxLength": 5000,
+          "type": "string",
+        },
+        "positions": {
+          "description": "Positionen in printed order; prices per priceMode.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "discountPercent": {
+                "description": "Rabatt on this position in percent, more than 0 and at most 100.",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "name": {
+                "description": "Article or service name (Bezeichnung) as printed.",
+                "maxLength": 250,
+                "minLength": 1,
+                "type": "string",
+              },
+              "optional": {
+                "description": "Optional position (Optionale Position, offers): printed, not part of the total.",
+                "type": "boolean",
+              },
+              "partId": {
+                "description": "Inventory part (Artikel, see sevdesk_parts_list) to link. Name and price still come from this position; sevDesk does not fill them in.",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "quantity": {
+                "description": "Menge, greater than 0, up to 4 decimals, e.g. 2 or "1.5".",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "taxRate": {
+                "description": "Umsatzsteuersatz in percent, e.g. 19, 7 or 0; must be allowed by the tax rule. May be left out only when the rule allows a single rate (e.g. 0 for rule 11).",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "text": {
+                "description": "Description printed below the name (Positionstext); line breaks allowed.",
+                "maxLength": 5000,
+                "type": "string",
+              },
+              "unitId": {
+                "description": "Einheit (Unity id, see sevdesk_reference_lookup kind=units); default 1 = Stk.",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "unitPrice": {
+                "description": "Einzelpreis per unit in the document currency, net or gross as the document's priceMode says; up to 4 decimals, e.g. "49.90"; negative for a deduction line.",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+            },
+            "required": [
+              "name",
+              "quantity",
+              "unitPrice",
+            ],
+            "type": "object",
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array",
+        },
+        "priceMode": {
+          "description": "Whether position unit prices are net (netto, the default for new drafts) or gross (brutto). Sets sevDesk's showNet.",
+          "enum": [
+            "net",
+            "gross",
+          ],
+          "type": "string",
+        },
+        "taxRule": {
+          "description": "Tax rule (Steuerregel) id: 1 taxable domestic revenue (default), 2 exports, 3 intra-EU supplies, 4 tax-exempt §4, 5 reverse charge §13b, 11 Kleinunternehmer §19, 17 not taxable in Germany, 18–20 One-Stop-Shop, 21 reverse charge for EU services. Details: sevdesk_reference_lookup kind=tax_rules.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "taxText": {
+          "description": "Tax note printed on the document; default: the tax rule's German name.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "contactId",
+        "orderType",
+        "positions",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_order_create_draft",
+    "title": "Create a draft order",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Finalize a sevDesk order",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Order id (not the order number), e.g. from sevdesk_orders_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "sentVia": {
+          "description": "How the document is or was sent, recorded as its send type: pdf_download (VPDF, default: PDF downloaded and sent your own way), post (VP, Briefversand), print (VPR, printed and handed over), own_email (VM, emailed outside sevDesk).",
+          "enum": [
+            "pdf_download",
+            "post",
+            "print",
+            "own_email",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_order_finalize",
+    "title": "Finalize a sevDesk order",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
@@ -573,6 +2269,338 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     },
     "name": "sevdesk_order_pdf",
     "title": "Get an order PDF",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false,
+      "title": "Email a sevDesk order",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "bcc": {
+          "description": "Bcc recipients, up to 10.",
+          "items": {
+            "type": "string",
+          },
+          "maxItems": 10,
+          "type": "array",
+        },
+        "cc": {
+          "description": "Cc recipients, up to 10.",
+          "items": {
+            "type": "string",
+          },
+          "maxItems": 10,
+          "type": "array",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Order id (not the order number), e.g. from sevdesk_orders_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "sendCopyToMe": {
+          "description": "Also send a copy to the sevDesk user's own address. Defaults to false.",
+          "type": "boolean",
+        },
+        "subject": {
+          "description": "Subject (Betreff), one line.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
+        "text": {
+          "description": "Email text; simple HTML allowed. sevDesk attaches the document itself.",
+          "maxLength": 10000,
+          "minLength": 1,
+          "type": "string",
+        },
+        "to": {
+          "description": "Recipient (Empfänger): one email address.",
+          "type": "string",
+        },
+      },
+      "required": [
+        "id",
+        "to",
+        "subject",
+        "text",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_order_send_email",
+    "title": "Email a sevDesk order",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create an invoice from a sevDesk order",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "allowDuplicate": {
+          "default": false,
+          "description": "Create it even though an invoice draft from this order exists.",
+          "type": "boolean",
+        },
+        "amount": {
+          "description": "partial/advance only: the amount, in the unit of amountType.",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "amountType": {
+          "default": "percentage",
+          "description": "partial/advance only: percent of the order, or an amount net or gross.",
+          "enum": [
+            "percentage",
+            "net",
+            "gross",
+          ],
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "mode": {
+          "default": "full",
+          "description": "full: whole order; partial: Teilrechnung; advance: Abschlagsrechnung.",
+          "enum": [
+            "full",
+            "partial",
+            "advance",
+          ],
+          "type": "string",
+        },
+        "orderId": {
+          "description": "Order id (not its number), e.g. from sevdesk_orders_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "orderId",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_order_to_invoice",
+    "title": "Create an invoice from a sevDesk order",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Update a draft order",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "addressCity": {
+          "description": "City (Ort).",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressCountry": {
+          "description": "ISO 3166-1 alpha-2 country code of the address, e.g. DE, AT, CH; default: the country of the address it changes, else DE.",
+          "pattern": "^[A-Za-z]{2}$",
+          "type": "string",
+        },
+        "addressName": {
+          "description": "Recipient name as printed. Address fields replace the matching parts of the contact's invoice address (new drafts) or of the stored address (updates); the rest is kept.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressStreet": {
+          "description": "Street and number.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressZip": {
+          "description": "Postcode (PLZ).",
+          "maxLength": 20,
+          "minLength": 1,
+          "type": "string",
+        },
+        "contactId": {
+          "description": "Customer contact id (Kontakt), from sevdesk_contacts_search.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "contactPersonId": {
+          "description": "sevDesk user (SevUser) shown as contact person (Ansprechpartner). Required only when the account has several users: sevdesk_reference_lookup kind=users lists them.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "currency": {
+          "description": "ISO 4217 currency code (Währung); default EUR.",
+          "pattern": "^[A-Za-z]{3}$",
+          "type": "string",
+        },
+        "date": {
+          "description": "Angebots-/Auftragsdatum, YYYY-MM-DD.",
+          "type": "string",
+        },
+        "deliveryTerms": {
+          "description": "Lieferbedingungen as printed on the document.",
+          "maxLength": 5000,
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "footText": {
+          "description": "Closing text below the positions (Fußtext); simple HTML allowed.",
+          "maxLength": 10000,
+          "type": "string",
+        },
+        "headText": {
+          "description": "Intro text above the positions (Kopftext); simple HTML allowed.",
+          "maxLength": 10000,
+          "type": "string",
+        },
+        "header": {
+          "description": "Document title (Betreff).",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "id": {
+          "description": "Id of the draft order (not its number), e.g. from sevdesk_orders_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "paymentTerms": {
+          "description": "Zahlungsbedingungen as printed on the document.",
+          "maxLength": 5000,
+          "type": "string",
+        },
+        "positions": {
+          "description": "When given, replaces ALL positions; leave out to keep them.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "discountPercent": {
+                "description": "Rabatt on this position in percent, more than 0 and at most 100.",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "name": {
+                "description": "Article or service name (Bezeichnung) as printed.",
+                "maxLength": 250,
+                "minLength": 1,
+                "type": "string",
+              },
+              "optional": {
+                "description": "Optional position (Optionale Position, offers): printed, not part of the total.",
+                "type": "boolean",
+              },
+              "partId": {
+                "description": "Inventory part (Artikel, see sevdesk_parts_list) to link. Name and price still come from this position; sevDesk does not fill them in.",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "quantity": {
+                "description": "Menge, greater than 0, up to 4 decimals, e.g. 2 or "1.5".",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "taxRate": {
+                "description": "Umsatzsteuersatz in percent, e.g. 19, 7 or 0; must be allowed by the tax rule. May be left out only when the rule allows a single rate (e.g. 0 for rule 11).",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "text": {
+                "description": "Description printed below the name (Positionstext); line breaks allowed.",
+                "maxLength": 5000,
+                "type": "string",
+              },
+              "unitId": {
+                "description": "Einheit (Unity id, see sevdesk_reference_lookup kind=units); default 1 = Stk.",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "unitPrice": {
+                "description": "Einzelpreis per unit in the document currency, net or gross as the document's priceMode says; up to 4 decimals, e.g. "49.90"; negative for a deduction line.",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+            },
+            "required": [
+              "name",
+              "quantity",
+              "unitPrice",
+            ],
+            "type": "object",
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array",
+        },
+        "priceMode": {
+          "description": "Net or gross unit prices (showNet). Changing it requires positions too.",
+          "enum": [
+            "net",
+            "gross",
+          ],
+          "type": "string",
+        },
+        "taxRule": {
+          "description": "New tax rule (Steuerregel) id; see sevdesk_reference_lookup kind=tax_rules.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "taxText": {
+          "description": "Tax note printed on the document; default: the tax rule's German name.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_order_update_draft",
+    "title": "Update a draft order",
   },
   {
     "annotations": {
@@ -650,6 +2678,105 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
   {
     "annotations": {
       "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create a sevDesk part",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "description": "Description (Beschreibung) printed on documents.",
+          "maxLength": 2000,
+          "minLength": 1,
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "internalComment": {
+          "description": "Internal note, not printed.",
+          "maxLength": 2000,
+          "minLength": 1,
+          "type": "string",
+        },
+        "name": {
+          "description": "Part name (Artikelname) as printed on documents.",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
+        "partNumber": {
+          "description": "Artikelnummer; must not be used by another part.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "price": {
+          "description": "Sales price (Verkaufspreis) in EUR, net or gross per priceType; the other one is computed with the tax rate.",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "pricePurchase": {
+          "description": "Purchase price (Einkaufspreis), net, EUR.",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "priceType": {
+          "default": "net",
+          "description": "Whether price is the net (netto, default) or gross (brutto) price.",
+          "enum": [
+            "net",
+            "gross",
+          ],
+          "type": "string",
+        },
+        "stock": {
+          "description": "Stock (Bestand).",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "stockEnabled": {
+          "default": false,
+          "description": "Track stock (Lagerbestand) for the part.",
+          "type": "boolean",
+        },
+        "taxRate": {
+          "description": "Tax rate in percent, default 19.",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "unitId": {
+          "default": 1,
+          "description": "Unit (Einheit) id, see sevdesk_reference_lookup kind=units (1 = Stk).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "name",
+        "partNumber",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_part_create",
+    "title": "Create a sevDesk part",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
@@ -673,6 +2800,112 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     },
     "name": "sevdesk_part_get",
     "title": "Get a sevDesk part",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Update a sevDesk part",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "active": {
+          "description": "false deactivates the part (inactive), true activates it.",
+          "type": "boolean",
+        },
+        "description": {
+          "description": "Description (Beschreibung) printed on documents.",
+          "maxLength": 2000,
+          "minLength": 1,
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Part id, e.g. from sevdesk_parts_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "internalComment": {
+          "description": "Internal note, not printed.",
+          "maxLength": 2000,
+          "minLength": 1,
+          "type": "string",
+        },
+        "name": {
+          "description": "Part name (Artikelname) as printed on documents.",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
+        "partNumber": {
+          "description": "Artikelnummer; must not be used by another part.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "price": {
+          "description": "Sales price (Verkaufspreis) in EUR, net or gross per priceType; the other one is computed with the tax rate.",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "pricePurchase": {
+          "description": "Purchase price (Einkaufspreis), net, EUR.",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "priceType": {
+          "default": "net",
+          "description": "Whether price is the net (netto, default) or gross (brutto) price.",
+          "enum": [
+            "net",
+            "gross",
+          ],
+          "type": "string",
+        },
+        "stock": {
+          "description": "Stock (Bestand).",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "stockEnabled": {
+          "description": "Track stock (Lagerbestand) for the part.",
+          "type": "boolean",
+        },
+        "taxRate": {
+          "description": "Tax rate in percent.",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "unitId": {
+          "description": "Unit (Einheit) id, see sevdesk_reference_lookup kind=units (1 = Stk).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_part_update",
+    "title": "Update a sevDesk part",
   },
   {
     "annotations": {
@@ -896,6 +3129,11 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
+        "accountNumber": {
+          "description": "receipt_guidance only: exact account number in the chart of accounts.",
+          "pattern": "^\\d{1,12}$",
+          "type": "string",
+        },
         "kind": {
           "description": "Which list to return.",
           "enum": [
@@ -907,14 +3145,41 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
             "countries",
             "units",
             "payment_methods",
+            "receipt_guidance",
           ],
           "type": "string",
+        },
+        "limit": {
+          "description": "receipt_guidance only: page size, 1–100 (default 25).",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "offset": {
+          "description": "receipt_guidance only: entries to skip; pass the previous nextOffset.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
         },
         "query": {
           "description": "Case-insensitive substring filter on names, codes and ids, e.g. 'reverse'.",
           "maxLength": 100,
           "minLength": 1,
           "type": "string",
+        },
+        "receiptType": {
+          "description": "receipt_guidance only: accounts for expense or revenue receipts.",
+          "enum": [
+            "expense",
+            "revenue",
+          ],
+          "type": "string",
+        },
+        "taxRuleId": {
+          "description": "receipt_guidance only: accounts that allow this tax rule id.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
         },
       },
       "required": [
@@ -1267,6 +3532,127 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
   {
     "annotations": {
       "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create a sevDesk contact",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "allowDuplicate": {
+          "default": false,
+          "description": "Create the contact even though one with the same name or e-mail exists. Only after checking that the existing one is really someone else.",
+          "type": "boolean",
+        },
+        "buyerReference": {
+          "description": "Leitweg-ID / buyer reference for e-invoices (XRechnung) to public bodies.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "category": {
+          "default": "customer",
+          "description": "customer (Kunde), supplier (Lieferant), partner or prospect (Interessent).",
+          "enum": [
+            "supplier",
+            "customer",
+            "partner",
+            "prospect",
+          ],
+          "type": "string",
+        },
+        "city": {
+          "description": "City (Ort).",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "country": {
+          "description": "Country as ISO 3166-1 alpha-2 code, e.g. DE (default for a new address), AT, CH.",
+          "pattern": "^[A-Za-z]{2}$",
+          "type": "string",
+        },
+        "customerNumber": {
+          "description": "Kundennummer; must not be used yet.",
+          "maxLength": 50,
+          "minLength": 1,
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "email": {
+          "description": "E-mail address.",
+          "format": "email",
+          "maxLength": 254,
+          "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+          "type": "string",
+        },
+        "firstName": {
+          "description": "Person: first name (sevDesk field surename). Leave organisationName out.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "lastName": {
+          "description": "Person: last name (sevDesk field familyname).",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "organisationName": {
+          "description": "Organisation (company) name. Leave firstName/lastName out for organisations.",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
+        "phone": {
+          "description": "Phone number (Telefon).",
+          "maxLength": 50,
+          "minLength": 3,
+          "pattern": "^[0-9+()/.\\- ]+$",
+          "type": "string",
+        },
+        "street": {
+          "description": "Street and house number (Straße).",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
+        "taxNumber": {
+          "description": "Steuernummer (tax number).",
+          "maxLength": 30,
+          "minLength": 1,
+          "type": "string",
+        },
+        "vatNumber": {
+          "description": "USt-IdNr. (VAT ID), e.g. DE123456789.",
+          "type": "string",
+        },
+        "website": {
+          "description": "Website, e.g. https://example.com.",
+          "maxLength": 255,
+          "pattern": "^(https?:\\/\\/)?[^\\s/.]+(\\.[^\\s/.]+)+(\\/\\S*)?$",
+          "type": "string",
+        },
+        "zip": {
+          "description": "Postal code (PLZ).",
+          "maxLength": 20,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_contact_create",
+    "title": "Create a sevDesk contact",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
@@ -1290,6 +3676,130 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
     },
     "name": "sevdesk_contact_get",
     "title": "Get a sevDesk contact",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Update a sevDesk contact",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "buyerReference": {
+          "description": "Leitweg-ID / buyer reference for e-invoices (XRechnung) to public bodies.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "category": {
+          "description": "customer (Kunde), supplier (Lieferant), partner or prospect (Interessent).",
+          "enum": [
+            "supplier",
+            "customer",
+            "partner",
+            "prospect",
+          ],
+          "type": "string",
+        },
+        "city": {
+          "description": "City (Ort).",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "country": {
+          "description": "Country as ISO 3166-1 alpha-2 code, e.g. DE (default for a new address), AT, CH.",
+          "pattern": "^[A-Za-z]{2}$",
+          "type": "string",
+        },
+        "customerNumber": {
+          "description": "Kundennummer; must not be used yet.",
+          "maxLength": 50,
+          "minLength": 1,
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "email": {
+          "description": "E-mail address.",
+          "format": "email",
+          "maxLength": 254,
+          "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+          "type": "string",
+        },
+        "firstName": {
+          "description": "Person: first name (sevDesk field surename). Leave organisationName out.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "id": {
+          "description": "Contact id, e.g. from sevdesk_contacts_search.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "lastName": {
+          "description": "Person: last name (sevDesk field familyname).",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "organisationName": {
+          "description": "Organisation (company) name. Leave firstName/lastName out for organisations.",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
+        "phone": {
+          "description": "Phone number (Telefon).",
+          "maxLength": 50,
+          "minLength": 3,
+          "pattern": "^[0-9+()/.\\- ]+$",
+          "type": "string",
+        },
+        "street": {
+          "description": "Street and house number (Straße).",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
+        "taxNumber": {
+          "description": "Steuernummer (tax number).",
+          "maxLength": 30,
+          "minLength": 1,
+          "type": "string",
+        },
+        "vatNumber": {
+          "description": "USt-IdNr. (VAT ID), e.g. DE123456789.",
+          "type": "string",
+        },
+        "website": {
+          "description": "Website, e.g. https://example.com.",
+          "maxLength": 255,
+          "pattern": "^(https?:\\/\\/)?[^\\s/.]+(\\.[^\\s/.]+)+(\\/\\S*)?$",
+          "type": "string",
+        },
+        "zip": {
+          "description": "Postal code (PLZ).",
+          "maxLength": 20,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_contact_update",
+    "title": "Update a sevDesk contact",
   },
   {
     "annotations": {
@@ -1361,6 +3871,251 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
     },
     "name": "sevdesk_contacts_search",
     "title": "Search sevDesk contacts",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create a draft credit note",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "addressCity": {
+          "description": "City (Ort).",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressCountry": {
+          "description": "ISO 3166-1 alpha-2 country code of the address, e.g. DE, AT, CH; default: the country of the address it changes, else DE.",
+          "pattern": "^[A-Za-z]{2}$",
+          "type": "string",
+        },
+        "addressName": {
+          "description": "Recipient name as printed. Address fields replace the matching parts of the contact's invoice address (new drafts) or of the stored address (updates); the rest is kept.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressStreet": {
+          "description": "Street and number.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressZip": {
+          "description": "Postcode (PLZ).",
+          "maxLength": 20,
+          "minLength": 1,
+          "type": "string",
+        },
+        "allowDuplicate": {
+          "description": "underachievement only: create it even though a credit note for the source invoice exists (e.g. a second partial refund). Default false.",
+          "type": "boolean",
+        },
+        "bookingCategory": {
+          "description": "Buchungskategorie: underachievement (Minderleistung: reduces an issued invoice, needs sourceInvoiceId), provision (Provisionsgutschrift, tax rule 9), royalty_assigned or royalty_unassigned (Lizenzgebühren).",
+          "enum": [
+            "underachievement",
+            "provision",
+            "royalty_assigned",
+            "royalty_unassigned",
+          ],
+          "type": "string",
+        },
+        "contactId": {
+          "description": "Customer contact id (Kontakt), from sevdesk_contacts_search.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "contactPersonId": {
+          "description": "sevDesk user (SevUser) shown as contact person (Ansprechpartner). Required only when the account has several users: sevdesk_reference_lookup kind=users lists them.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "currency": {
+          "description": "ISO 4217 code; default EUR or the source invoice's currency.",
+          "pattern": "^[A-Za-z]{3}$",
+          "type": "string",
+        },
+        "date": {
+          "description": "Gutschriftsdatum, YYYY-MM-DD; default today (Europe/Berlin).",
+          "type": "string",
+        },
+        "deliveryDate": {
+          "description": "Delivery or service date (Liefer-/Leistungsdatum), YYYY-MM-DD; default the document date.",
+          "type": "string",
+        },
+        "deliveryDateUntil": {
+          "description": "End of the delivery period (Leistungszeitraum bis), YYYY-MM-DD.",
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "footText": {
+          "description": "Closing text below the positions (Fußtext); simple HTML allowed.",
+          "maxLength": 10000,
+          "type": "string",
+        },
+        "headText": {
+          "description": "Intro text above the positions (Kopftext); simple HTML allowed.",
+          "maxLength": 10000,
+          "type": "string",
+        },
+        "header": {
+          "description": "Document title (Betreff); default "Gutschrift".",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "positions": {
+          "description": "Positionen in printed order; prices per priceMode.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "discountPercent": {
+                "description": "Rabatt on this position in percent, more than 0 and at most 100.",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "name": {
+                "description": "Article or service name (Bezeichnung) as printed.",
+                "maxLength": 250,
+                "minLength": 1,
+                "type": "string",
+              },
+              "partId": {
+                "description": "Inventory part (Artikel, see sevdesk_parts_list) to link. Name and price still come from this position; sevDesk does not fill them in.",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "quantity": {
+                "description": "Menge, greater than 0, up to 4 decimals, e.g. 2 or "1.5".",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "taxRate": {
+                "description": "Umsatzsteuersatz in percent, e.g. 19, 7 or 0; must be allowed by the tax rule. May be left out only when the rule allows a single rate (e.g. 0 for rule 11).",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "text": {
+                "description": "Description printed below the name (Positionstext); line breaks allowed.",
+                "maxLength": 5000,
+                "type": "string",
+              },
+              "unitId": {
+                "description": "Einheit (Unity id, see sevdesk_reference_lookup kind=units); default 1 = Stk.",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "unitPrice": {
+                "description": "Einzelpreis per unit in the document currency, net or gross as the document's priceMode says; up to 4 decimals, e.g. "49.90"; negative for a deduction line.",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+            },
+            "required": [
+              "name",
+              "quantity",
+              "unitPrice",
+            ],
+            "type": "object",
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array",
+        },
+        "priceMode": {
+          "description": "Whether position unit prices are net (netto, the default for new drafts) or gross (brutto). Sets sevDesk's showNet.",
+          "enum": [
+            "net",
+            "gross",
+          ],
+          "type": "string",
+        },
+        "sourceInvoiceId": {
+          "description": "underachievement only: id of the finalized invoice this credit note reduces (refSrcInvoice).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "taxRule": {
+          "description": "Tax rule (Steuerregel) id. Default: the source invoice's rule (underachievement), 9 (provision) or 1. See sevdesk_reference_lookup kind=tax_rules.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "taxText": {
+          "description": "Tax note printed on the document; default: the tax rule's German name.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "contactId",
+        "bookingCategory",
+        "positions",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_credit_note_create_draft",
+    "title": "Create a draft credit note",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create a credit note from a sevDesk invoice",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "allowDuplicate": {
+          "default": false,
+          "description": "Create it even though a credit note from this invoice exists.",
+          "type": "boolean",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "invoiceId": {
+          "description": "Invoice id (not its number), e.g. from sevdesk_invoices_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "invoiceId",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_credit_note_create_from_invoice",
+    "title": "Create a credit note from a sevDesk invoice",
   },
   {
     "annotations": {
@@ -1481,6 +4236,236 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
   {
     "annotations": {
       "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create a draft invoice",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "addressCity": {
+          "description": "City (Ort).",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressCountry": {
+          "description": "ISO 3166-1 alpha-2 country code of the address, e.g. DE, AT, CH; default: the country of the address it changes, else DE.",
+          "pattern": "^[A-Za-z]{2}$",
+          "type": "string",
+        },
+        "addressName": {
+          "description": "Recipient name as printed. Address fields replace the matching parts of the contact's invoice address (new drafts) or of the stored address (updates); the rest is kept.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressStreet": {
+          "description": "Street and number.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressZip": {
+          "description": "Postcode (PLZ).",
+          "maxLength": 20,
+          "minLength": 1,
+          "type": "string",
+        },
+        "contactId": {
+          "description": "Customer contact id (Kontakt), from sevdesk_contacts_search.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "contactPersonId": {
+          "description": "sevDesk user (SevUser) shown as contact person (Ansprechpartner). Required only when the account has several users: sevdesk_reference_lookup kind=users lists them.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "currency": {
+          "description": "ISO 4217 currency code (Währung); default EUR.",
+          "pattern": "^[A-Za-z]{3}$",
+          "type": "string",
+        },
+        "date": {
+          "description": "Rechnungsdatum, YYYY-MM-DD; default today (Europe/Berlin).",
+          "type": "string",
+        },
+        "deliveryDate": {
+          "description": "Delivery or service date (Liefer-/Leistungsdatum), YYYY-MM-DD; default the document date.",
+          "type": "string",
+        },
+        "deliveryDateUntil": {
+          "description": "End of the delivery period (Leistungszeitraum bis), YYYY-MM-DD.",
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "footText": {
+          "description": "Closing text below the positions (Fußtext); simple HTML allowed.",
+          "maxLength": 10000,
+          "type": "string",
+        },
+        "headText": {
+          "description": "Intro text above the positions (Kopftext); simple HTML allowed.",
+          "maxLength": 10000,
+          "type": "string",
+        },
+        "header": {
+          "description": "Document title (Betreff); default "Rechnung".",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "positions": {
+          "description": "Positionen in printed order; prices per priceMode.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "discountPercent": {
+                "description": "Rabatt on this position in percent, more than 0 and at most 100.",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "name": {
+                "description": "Article or service name (Bezeichnung) as printed.",
+                "maxLength": 250,
+                "minLength": 1,
+                "type": "string",
+              },
+              "partId": {
+                "description": "Inventory part (Artikel, see sevdesk_parts_list) to link. Name and price still come from this position; sevDesk does not fill them in.",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "quantity": {
+                "description": "Menge, greater than 0, up to 4 decimals, e.g. 2 or "1.5".",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "taxRate": {
+                "description": "Umsatzsteuersatz in percent, e.g. 19, 7 or 0; must be allowed by the tax rule. May be left out only when the rule allows a single rate (e.g. 0 for rule 11).",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "text": {
+                "description": "Description printed below the name (Positionstext); line breaks allowed.",
+                "maxLength": 5000,
+                "type": "string",
+              },
+              "unitId": {
+                "description": "Einheit (Unity id, see sevdesk_reference_lookup kind=units); default 1 = Stk.",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "unitPrice": {
+                "description": "Einzelpreis per unit in the document currency, net or gross as the document's priceMode says; up to 4 decimals, e.g. "49.90"; negative for a deduction line.",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+            },
+            "required": [
+              "name",
+              "quantity",
+              "unitPrice",
+            ],
+            "type": "object",
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array",
+        },
+        "priceMode": {
+          "description": "Whether position unit prices are net (netto, the default for new drafts) or gross (brutto). Sets sevDesk's showNet.",
+          "enum": [
+            "net",
+            "gross",
+          ],
+          "type": "string",
+        },
+        "taxRule": {
+          "description": "Tax rule (Steuerregel) id: 1 taxable domestic revenue (default), 2 exports, 3 intra-EU supplies, 4 tax-exempt §4, 5 reverse charge §13b, 11 Kleinunternehmer §19, 17 not taxable in Germany, 18–20 One-Stop-Shop, 21 reverse charge for EU services. Details: sevdesk_reference_lookup kind=tax_rules.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "taxText": {
+          "description": "Tax note printed on the document; default: the tax rule's German name.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "timeToPay": {
+          "description": "Zahlungsziel in days, e.g. 14.",
+          "maximum": 3650,
+          "minimum": 0,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "contactId",
+        "positions",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_create_draft",
+    "title": "Create a draft invoice",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create a sevDesk payment reminder",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "allowDuplicate": {
+          "default": false,
+          "description": "Create it even though an unsent reminder draft for this invoice exists.",
+          "type": "boolean",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "invoiceId": {
+          "description": "Id of the overdue invoice (not its number), e.g. from sevdesk_invoices_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "invoiceId",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_create_reminder",
+    "title": "Create a sevDesk payment reminder",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
@@ -1531,6 +4516,205 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
     },
     "name": "sevdesk_invoice_pdf",
     "title": "Get an invoice PDF",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Update a draft invoice",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "addressCity": {
+          "description": "City (Ort).",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressCountry": {
+          "description": "ISO 3166-1 alpha-2 country code of the address, e.g. DE, AT, CH; default: the country of the address it changes, else DE.",
+          "pattern": "^[A-Za-z]{2}$",
+          "type": "string",
+        },
+        "addressName": {
+          "description": "Recipient name as printed. Address fields replace the matching parts of the contact's invoice address (new drafts) or of the stored address (updates); the rest is kept.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressStreet": {
+          "description": "Street and number.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressZip": {
+          "description": "Postcode (PLZ).",
+          "maxLength": 20,
+          "minLength": 1,
+          "type": "string",
+        },
+        "contactId": {
+          "description": "Customer contact id (Kontakt), from sevdesk_contacts_search.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "contactPersonId": {
+          "description": "sevDesk user (SevUser) shown as contact person (Ansprechpartner). Required only when the account has several users: sevdesk_reference_lookup kind=users lists them.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "currency": {
+          "description": "ISO 4217 currency code (Währung); default EUR.",
+          "pattern": "^[A-Za-z]{3}$",
+          "type": "string",
+        },
+        "date": {
+          "description": "Rechnungsdatum, YYYY-MM-DD.",
+          "type": "string",
+        },
+        "deliveryDate": {
+          "description": "Liefer-/Leistungsdatum, YYYY-MM-DD.",
+          "type": "string",
+        },
+        "deliveryDateUntil": {
+          "description": "End of the delivery period (Leistungszeitraum bis), YYYY-MM-DD.",
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "footText": {
+          "description": "Closing text below the positions (Fußtext); simple HTML allowed.",
+          "maxLength": 10000,
+          "type": "string",
+        },
+        "headText": {
+          "description": "Intro text above the positions (Kopftext); simple HTML allowed.",
+          "maxLength": 10000,
+          "type": "string",
+        },
+        "header": {
+          "description": "Document title (Betreff).",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "id": {
+          "description": "Id of the draft invoice (not its number), e.g. from sevdesk_invoices_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "positions": {
+          "description": "When given, replaces ALL positions; leave out to keep them.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "discountPercent": {
+                "description": "Rabatt on this position in percent, more than 0 and at most 100.",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "name": {
+                "description": "Article or service name (Bezeichnung) as printed.",
+                "maxLength": 250,
+                "minLength": 1,
+                "type": "string",
+              },
+              "partId": {
+                "description": "Inventory part (Artikel, see sevdesk_parts_list) to link. Name and price still come from this position; sevDesk does not fill them in.",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "quantity": {
+                "description": "Menge, greater than 0, up to 4 decimals, e.g. 2 or "1.5".",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "taxRate": {
+                "description": "Umsatzsteuersatz in percent, e.g. 19, 7 or 0; must be allowed by the tax rule. May be left out only when the rule allows a single rate (e.g. 0 for rule 11).",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "text": {
+                "description": "Description printed below the name (Positionstext); line breaks allowed.",
+                "maxLength": 5000,
+                "type": "string",
+              },
+              "unitId": {
+                "description": "Einheit (Unity id, see sevdesk_reference_lookup kind=units); default 1 = Stk.",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "unitPrice": {
+                "description": "Einzelpreis per unit in the document currency, net or gross as the document's priceMode says; up to 4 decimals, e.g. "49.90"; negative for a deduction line.",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+            },
+            "required": [
+              "name",
+              "quantity",
+              "unitPrice",
+            ],
+            "type": "object",
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array",
+        },
+        "priceMode": {
+          "description": "Net or gross unit prices (showNet). Changing it requires positions too.",
+          "enum": [
+            "net",
+            "gross",
+          ],
+          "type": "string",
+        },
+        "taxRule": {
+          "description": "New tax rule (Steuerregel) id; see sevdesk_reference_lookup kind=tax_rules.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "taxText": {
+          "description": "Tax note printed on the document; default: the tax rule's German name.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "timeToPay": {
+          "description": "Zahlungsziel in days, e.g. 14.",
+          "maximum": 3650,
+          "minimum": 0,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_update_draft",
+    "title": "Update a draft invoice",
   },
   {
     "annotations": {
@@ -1642,6 +4826,210 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
   {
     "annotations": {
       "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create a draft order",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "addressCity": {
+          "description": "City (Ort).",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressCountry": {
+          "description": "ISO 3166-1 alpha-2 country code of the address, e.g. DE, AT, CH; default: the country of the address it changes, else DE.",
+          "pattern": "^[A-Za-z]{2}$",
+          "type": "string",
+        },
+        "addressName": {
+          "description": "Recipient name as printed. Address fields replace the matching parts of the contact's invoice address (new drafts) or of the stored address (updates); the rest is kept.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressStreet": {
+          "description": "Street and number.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressZip": {
+          "description": "Postcode (PLZ).",
+          "maxLength": 20,
+          "minLength": 1,
+          "type": "string",
+        },
+        "contactId": {
+          "description": "Customer contact id (Kontakt), from sevdesk_contacts_search.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "contactPersonId": {
+          "description": "sevDesk user (SevUser) shown as contact person (Ansprechpartner). Required only when the account has several users: sevdesk_reference_lookup kind=users lists them.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "currency": {
+          "description": "ISO 4217 currency code (Währung); default EUR.",
+          "pattern": "^[A-Za-z]{3}$",
+          "type": "string",
+        },
+        "date": {
+          "description": "Angebots-/Auftragsdatum, YYYY-MM-DD; default today (Berlin).",
+          "type": "string",
+        },
+        "deliveryTerms": {
+          "description": "Lieferbedingungen as printed on the document.",
+          "maxLength": 5000,
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "footText": {
+          "description": "Closing text below the positions (Fußtext); simple HTML allowed.",
+          "maxLength": 10000,
+          "type": "string",
+        },
+        "headText": {
+          "description": "Intro text above the positions (Kopftext); simple HTML allowed.",
+          "maxLength": 10000,
+          "type": "string",
+        },
+        "header": {
+          "description": "Document title (Betreff); default "Angebot", "Auftragsbestätigung" or "Lieferschein".",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "orderType": {
+          "description": "offer (Angebot, AN), order_confirmation (Auftragsbestätigung, AB) or delivery_note (Lieferschein, LI).",
+          "enum": [
+            "offer",
+            "order_confirmation",
+            "delivery_note",
+          ],
+          "type": "string",
+        },
+        "paymentTerms": {
+          "description": "Zahlungsbedingungen as printed on the document.",
+          "maxLength": 5000,
+          "type": "string",
+        },
+        "positions": {
+          "description": "Positionen in printed order; prices per priceMode.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "discountPercent": {
+                "description": "Rabatt on this position in percent, more than 0 and at most 100.",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "name": {
+                "description": "Article or service name (Bezeichnung) as printed.",
+                "maxLength": 250,
+                "minLength": 1,
+                "type": "string",
+              },
+              "optional": {
+                "description": "Optional position (Optionale Position, offers): printed, not part of the total.",
+                "type": "boolean",
+              },
+              "partId": {
+                "description": "Inventory part (Artikel, see sevdesk_parts_list) to link. Name and price still come from this position; sevDesk does not fill them in.",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "quantity": {
+                "description": "Menge, greater than 0, up to 4 decimals, e.g. 2 or "1.5".",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "taxRate": {
+                "description": "Umsatzsteuersatz in percent, e.g. 19, 7 or 0; must be allowed by the tax rule. May be left out only when the rule allows a single rate (e.g. 0 for rule 11).",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "text": {
+                "description": "Description printed below the name (Positionstext); line breaks allowed.",
+                "maxLength": 5000,
+                "type": "string",
+              },
+              "unitId": {
+                "description": "Einheit (Unity id, see sevdesk_reference_lookup kind=units); default 1 = Stk.",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "unitPrice": {
+                "description": "Einzelpreis per unit in the document currency, net or gross as the document's priceMode says; up to 4 decimals, e.g. "49.90"; negative for a deduction line.",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+            },
+            "required": [
+              "name",
+              "quantity",
+              "unitPrice",
+            ],
+            "type": "object",
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array",
+        },
+        "priceMode": {
+          "description": "Whether position unit prices are net (netto, the default for new drafts) or gross (brutto). Sets sevDesk's showNet.",
+          "enum": [
+            "net",
+            "gross",
+          ],
+          "type": "string",
+        },
+        "taxRule": {
+          "description": "Tax rule (Steuerregel) id: 1 taxable domestic revenue (default), 2 exports, 3 intra-EU supplies, 4 tax-exempt §4, 5 reverse charge §13b, 11 Kleinunternehmer §19, 17 not taxable in Germany, 18–20 One-Stop-Shop, 21 reverse charge for EU services. Details: sevdesk_reference_lookup kind=tax_rules.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "taxText": {
+          "description": "Tax note printed on the document; default: the tax rule's German name.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "contactId",
+        "orderType",
+        "positions",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_order_create_draft",
+    "title": "Create a draft order",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
@@ -1692,6 +5080,268 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
     },
     "name": "sevdesk_order_pdf",
     "title": "Get an order PDF",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create an invoice from a sevDesk order",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "allowDuplicate": {
+          "default": false,
+          "description": "Create it even though an invoice draft from this order exists.",
+          "type": "boolean",
+        },
+        "amount": {
+          "description": "partial/advance only: the amount, in the unit of amountType.",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "amountType": {
+          "default": "percentage",
+          "description": "partial/advance only: percent of the order, or an amount net or gross.",
+          "enum": [
+            "percentage",
+            "net",
+            "gross",
+          ],
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "mode": {
+          "default": "full",
+          "description": "full: whole order; partial: Teilrechnung; advance: Abschlagsrechnung.",
+          "enum": [
+            "full",
+            "partial",
+            "advance",
+          ],
+          "type": "string",
+        },
+        "orderId": {
+          "description": "Order id (not its number), e.g. from sevdesk_orders_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "orderId",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_order_to_invoice",
+    "title": "Create an invoice from a sevDesk order",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Update a draft order",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "addressCity": {
+          "description": "City (Ort).",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressCountry": {
+          "description": "ISO 3166-1 alpha-2 country code of the address, e.g. DE, AT, CH; default: the country of the address it changes, else DE.",
+          "pattern": "^[A-Za-z]{2}$",
+          "type": "string",
+        },
+        "addressName": {
+          "description": "Recipient name as printed. Address fields replace the matching parts of the contact's invoice address (new drafts) or of the stored address (updates); the rest is kept.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressStreet": {
+          "description": "Street and number.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressZip": {
+          "description": "Postcode (PLZ).",
+          "maxLength": 20,
+          "minLength": 1,
+          "type": "string",
+        },
+        "contactId": {
+          "description": "Customer contact id (Kontakt), from sevdesk_contacts_search.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "contactPersonId": {
+          "description": "sevDesk user (SevUser) shown as contact person (Ansprechpartner). Required only when the account has several users: sevdesk_reference_lookup kind=users lists them.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "currency": {
+          "description": "ISO 4217 currency code (Währung); default EUR.",
+          "pattern": "^[A-Za-z]{3}$",
+          "type": "string",
+        },
+        "date": {
+          "description": "Angebots-/Auftragsdatum, YYYY-MM-DD.",
+          "type": "string",
+        },
+        "deliveryTerms": {
+          "description": "Lieferbedingungen as printed on the document.",
+          "maxLength": 5000,
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "footText": {
+          "description": "Closing text below the positions (Fußtext); simple HTML allowed.",
+          "maxLength": 10000,
+          "type": "string",
+        },
+        "headText": {
+          "description": "Intro text above the positions (Kopftext); simple HTML allowed.",
+          "maxLength": 10000,
+          "type": "string",
+        },
+        "header": {
+          "description": "Document title (Betreff).",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "id": {
+          "description": "Id of the draft order (not its number), e.g. from sevdesk_orders_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "paymentTerms": {
+          "description": "Zahlungsbedingungen as printed on the document.",
+          "maxLength": 5000,
+          "type": "string",
+        },
+        "positions": {
+          "description": "When given, replaces ALL positions; leave out to keep them.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "discountPercent": {
+                "description": "Rabatt on this position in percent, more than 0 and at most 100.",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "name": {
+                "description": "Article or service name (Bezeichnung) as printed.",
+                "maxLength": 250,
+                "minLength": 1,
+                "type": "string",
+              },
+              "optional": {
+                "description": "Optional position (Optionale Position, offers): printed, not part of the total.",
+                "type": "boolean",
+              },
+              "partId": {
+                "description": "Inventory part (Artikel, see sevdesk_parts_list) to link. Name and price still come from this position; sevDesk does not fill them in.",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "quantity": {
+                "description": "Menge, greater than 0, up to 4 decimals, e.g. 2 or "1.5".",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "taxRate": {
+                "description": "Umsatzsteuersatz in percent, e.g. 19, 7 or 0; must be allowed by the tax rule. May be left out only when the rule allows a single rate (e.g. 0 for rule 11).",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "text": {
+                "description": "Description printed below the name (Positionstext); line breaks allowed.",
+                "maxLength": 5000,
+                "type": "string",
+              },
+              "unitId": {
+                "description": "Einheit (Unity id, see sevdesk_reference_lookup kind=units); default 1 = Stk.",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "unitPrice": {
+                "description": "Einzelpreis per unit in the document currency, net or gross as the document's priceMode says; up to 4 decimals, e.g. "49.90"; negative for a deduction line.",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+            },
+            "required": [
+              "name",
+              "quantity",
+              "unitPrice",
+            ],
+            "type": "object",
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array",
+        },
+        "priceMode": {
+          "description": "Net or gross unit prices (showNet). Changing it requires positions too.",
+          "enum": [
+            "net",
+            "gross",
+          ],
+          "type": "string",
+        },
+        "taxRule": {
+          "description": "New tax rule (Steuerregel) id; see sevdesk_reference_lookup kind=tax_rules.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "taxText": {
+          "description": "Tax note printed on the document; default: the tax rule's German name.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_order_update_draft",
+    "title": "Update a draft order",
   },
   {
     "annotations": {
@@ -1769,6 +5419,105 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
   {
     "annotations": {
       "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create a sevDesk part",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "description": "Description (Beschreibung) printed on documents.",
+          "maxLength": 2000,
+          "minLength": 1,
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "internalComment": {
+          "description": "Internal note, not printed.",
+          "maxLength": 2000,
+          "minLength": 1,
+          "type": "string",
+        },
+        "name": {
+          "description": "Part name (Artikelname) as printed on documents.",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
+        "partNumber": {
+          "description": "Artikelnummer; must not be used by another part.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "price": {
+          "description": "Sales price (Verkaufspreis) in EUR, net or gross per priceType; the other one is computed with the tax rate.",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "pricePurchase": {
+          "description": "Purchase price (Einkaufspreis), net, EUR.",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "priceType": {
+          "default": "net",
+          "description": "Whether price is the net (netto, default) or gross (brutto) price.",
+          "enum": [
+            "net",
+            "gross",
+          ],
+          "type": "string",
+        },
+        "stock": {
+          "description": "Stock (Bestand).",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "stockEnabled": {
+          "default": false,
+          "description": "Track stock (Lagerbestand) for the part.",
+          "type": "boolean",
+        },
+        "taxRate": {
+          "description": "Tax rate in percent, default 19.",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "unitId": {
+          "default": 1,
+          "description": "Unit (Einheit) id, see sevdesk_reference_lookup kind=units (1 = Stk).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "name",
+        "partNumber",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_part_create",
+    "title": "Create a sevDesk part",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
@@ -1792,6 +5541,112 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
     },
     "name": "sevdesk_part_get",
     "title": "Get a sevDesk part",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Update a sevDesk part",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "active": {
+          "description": "false deactivates the part (inactive), true activates it.",
+          "type": "boolean",
+        },
+        "description": {
+          "description": "Description (Beschreibung) printed on documents.",
+          "maxLength": 2000,
+          "minLength": 1,
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Part id, e.g. from sevdesk_parts_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "internalComment": {
+          "description": "Internal note, not printed.",
+          "maxLength": 2000,
+          "minLength": 1,
+          "type": "string",
+        },
+        "name": {
+          "description": "Part name (Artikelname) as printed on documents.",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
+        "partNumber": {
+          "description": "Artikelnummer; must not be used by another part.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "price": {
+          "description": "Sales price (Verkaufspreis) in EUR, net or gross per priceType; the other one is computed with the tax rate.",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "pricePurchase": {
+          "description": "Purchase price (Einkaufspreis), net, EUR.",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "priceType": {
+          "default": "net",
+          "description": "Whether price is the net (netto, default) or gross (brutto) price.",
+          "enum": [
+            "net",
+            "gross",
+          ],
+          "type": "string",
+        },
+        "stock": {
+          "description": "Stock (Bestand).",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "stockEnabled": {
+          "description": "Track stock (Lagerbestand) for the part.",
+          "type": "boolean",
+        },
+        "taxRate": {
+          "description": "Tax rate in percent.",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "unitId": {
+          "description": "Unit (Einheit) id, see sevdesk_reference_lookup kind=units (1 = Stk).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_part_update",
+    "title": "Update a sevDesk part",
   },
   {
     "annotations": {
@@ -2015,6 +5870,11 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
+        "accountNumber": {
+          "description": "receipt_guidance only: exact account number in the chart of accounts.",
+          "pattern": "^\\d{1,12}$",
+          "type": "string",
+        },
         "kind": {
           "description": "Which list to return.",
           "enum": [
@@ -2026,14 +5886,41 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
             "countries",
             "units",
             "payment_methods",
+            "receipt_guidance",
           ],
           "type": "string",
+        },
+        "limit": {
+          "description": "receipt_guidance only: page size, 1–100 (default 25).",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "offset": {
+          "description": "receipt_guidance only: entries to skip; pass the previous nextOffset.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
         },
         "query": {
           "description": "Case-insensitive substring filter on names, codes and ids, e.g. 'reverse'.",
           "maxLength": 100,
           "minLength": 1,
           "type": "string",
+        },
+        "receiptType": {
+          "description": "receipt_guidance only: accounts for expense or revenue receipts.",
+          "enum": [
+            "expense",
+            "revenue",
+          ],
+          "type": "string",
+        },
+        "taxRuleId": {
+          "description": "receipt_guidance only: accounts that allow this tax rule id.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
         },
       },
       "required": [
@@ -3177,6 +7064,11 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
+        "accountNumber": {
+          "description": "receipt_guidance only: exact account number in the chart of accounts.",
+          "pattern": "^\\d{1,12}$",
+          "type": "string",
+        },
         "kind": {
           "description": "Which list to return.",
           "enum": [
@@ -3188,14 +7080,41 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
             "countries",
             "units",
             "payment_methods",
+            "receipt_guidance",
           ],
           "type": "string",
+        },
+        "limit": {
+          "description": "receipt_guidance only: page size, 1–100 (default 25).",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "offset": {
+          "description": "receipt_guidance only: entries to skip; pass the previous nextOffset.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
         },
         "query": {
           "description": "Case-insensitive substring filter on names, codes and ids, e.g. 'reverse'.",
           "maxLength": 100,
           "minLength": 1,
           "type": "string",
+        },
+        "receiptType": {
+          "description": "receipt_guidance only: accounts for expense or revenue receipts.",
+          "enum": [
+            "expense",
+            "revenue",
+          ],
+          "type": "string",
+        },
+        "taxRuleId": {
+          "description": "receipt_guidance only: accounts that allow this tax rule id.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
         },
       },
       "required": [

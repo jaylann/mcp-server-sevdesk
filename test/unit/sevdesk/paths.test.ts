@@ -4,6 +4,7 @@ import { SevdeskError } from "../../../src/sevdesk/errors.js";
 import {
   assertSafePath,
   isSevdeskId,
+  minimumWriteTier,
   resolveGetSafety,
   sevdeskPath,
   toSevdeskId,
@@ -182,5 +183,42 @@ describe("resolveGetSafety", () => {
     expect(resolveGetSafety("/Invoice/1/getXml", undefined, true)).toMatchObject({
       sideEffect: true,
     });
+  });
+});
+
+describe("minimumWriteTier", () => {
+  it.each([
+    ["/Invoice/1/sendBy", "commit"],
+    ["/Order/1/sendBy", "commit"],
+    ["/Invoice/1/bookAmount", "commit"],
+    ["/CreditNote/1/bookAmount", "commit"],
+    ["/Invoice/1/enshrine", "commit"],
+    ["/CreditNote/1/enshrine", "commit"],
+    ["/Invoice/1/cancelInvoice", "commit"],
+    ["/Invoice/1/resetToDraft", "commit"],
+    ["/Invoice/1/resetToOpen", "commit"],
+    ["/Invoice/1/changeParameter", "commit"],
+    ["/Invoice/1/SENDBY", "commit"],
+    ["/Invoice/1/getPdf", "commit"],
+    ["/Invoice/1/sendViaEmail", "external"],
+    ["/Order/1/sendViaEmail", "external"],
+    ["/CreditNote/1/sendByWithRender", "external"],
+    ["/Invoice/Factory/saveInvoice", "write"],
+    ["/Invoice/Factory/createInvoiceFromOrder", "write"],
+    ["/Invoice/Factory/createInvoiceReminder", "write"],
+    ["/CreditNote/Factory/createFromInvoice", "write"],
+    ["/Contact", "write"],
+    ["/Contact/7", "write"],
+    ["/ContactAddress", "write"],
+    ["/Part/3", "write"],
+    ["/Order/12", "write"],
+  ] as const)("%s needs %s", (path, tier) => {
+    expect(minimumWriteTier(path, undefined)).toBe(tier);
+  });
+
+  it("treats DATEV exports with an enshrine flag as commit", () => {
+    expect(minimumWriteTier("/Export/datevCSV", { enshrine: true })).toBe("commit");
+    expect(minimumWriteTier("/Export/datevCSV", { enshrineDocuments: "1" })).toBe("commit");
+    expect(minimumWriteTier("/Export/datevCSV", { enshrine: false })).toBe("write");
   });
 });

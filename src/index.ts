@@ -49,14 +49,17 @@ function main(argv: readonly string[]): void {
   // Non-fatal by design; see checkConnection.
   void checkConnection(client, config, log);
 
-  const handle = serveStdio(createServerFactory({ config, client }), {
+  const factory = createServerFactory({ config, client });
+  const handle = serveStdio(factory, {
     onerror: (error) => {
       log(error.message);
     },
   });
 
+  // Also stops the local approval page (SEVDESK_CONFIRM=browser), if it was started; its server
+  // is unref'd, so it never keeps the process alive on its own.
   const shutdown = (): void => {
-    handle.close().then(
+    Promise.all([handle.close(), factory.close()]).then(
       () => process.exit(0),
       () => process.exit(1),
     );

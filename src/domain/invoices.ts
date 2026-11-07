@@ -227,7 +227,7 @@ export const invoiceDetailSchema = invoiceRowSchema.extend({
   updatedAt: z.string().optional(),
 });
 
-type InvoiceDetail = z.output<typeof invoiceDetailSchema>;
+export type InvoiceDetail = z.output<typeof invoiceDetailSchema>;
 
 // ---------------------------------------------------------------------------------------------
 // Mapping
@@ -313,6 +313,15 @@ function toInvoiceDetail(record: InvoiceRecord, today: string): InvoiceDetail {
     createdAt: berlinDate(record.create),
     updatedAt: berlinDate(record.update),
   });
+}
+
+/**
+ * Maps one raw `Invoice` record (one object of `GET /Invoice/{id}`, contact embedded or not) to
+ * the detail DTO, without positions: for write tools that read a record back. `today` is a Berlin
+ * `YYYY-MM-DD` for `overdue`. Throws `unexpected_response` for a record that does not fit.
+ */
+export function mapInvoiceDetail(raw: unknown, today: string): InvoiceDetail {
+  return toInvoiceDetail(parseInvoiceRecord(raw), today);
 }
 
 /** The value unless it is a zero decimal (sevDesk sends "0" for "no Skonto", "no fee"). */

@@ -155,7 +155,7 @@ export const creditNoteDetailSchema = creditNoteRowSchema.extend({
   updatedAt: z.string().optional(),
 });
 
-type CreditNoteDetail = z.output<typeof creditNoteDetailSchema>;
+export type CreditNoteDetail = z.output<typeof creditNoteDetailSchema>;
 
 // ---------------------------------------------------------------------------------------------
 // Mapping
@@ -200,6 +200,15 @@ function toCreditNoteDetail(record: CreditNoteRecord): CreditNoteDetail {
     createdAt: berlinDate(record.create),
     updatedAt: berlinDate(record.update),
   });
+}
+
+/**
+ * Maps one raw `CreditNote` record (one object of `GET /CreditNote/{id}`, contact embedded or not)
+ * to the detail DTO, without positions: for write tools that read a record back. Throws
+ * `unexpected_response` for a record that does not fit.
+ */
+export function mapCreditNoteDetail(raw: unknown): CreditNoteDetail {
+  return toCreditNoteDetail(parseCreditNoteRecord(raw));
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -3,11 +3,13 @@ import { z } from "zod";
 import { isTier, type Tier, TIERS } from "../safety/tiers.js";
 import { isToolsetName, TOOLSETS } from "./toolsets.js";
 import type {
+  ReadToolDefinition,
   ToolAnnotationSet,
-  ToolDefinition,
   ToolInputSchema,
   ToolOutputSchema,
+  WriteToolDefinition,
 } from "./types.js";
+import { DRY_RUN_ARGUMENT } from "./write-input.js";
 
 /** `sevdesk_<resource>_<verb>[_…]`: lowercase snake_case with at least two segments after the prefix. */
 const TOOL_NAME_PATTERN = /^sevdesk_[a-z0-9]+(?:_[a-z0-9]+)+$/;
@@ -15,7 +17,7 @@ const TOOL_NAME_PATTERN = /^sevdesk_[a-z0-9]+(?:_[a-z0-9]+)+$/;
 const MAX_TOOL_NAME_LENGTH = 64;
 const MIN_DESCRIPTION_LENGTH = 20;
 export const MAX_DESCRIPTION_LENGTH = 2_048;
-/** The only `localEffects` value (see `ToolDefinition.localEffects`). */
+/** The only `localEffects` value (see `ReadToolDefinition.localEffects`). */
 const WRITES_FILES = "writes-files";
 /** The JSON Schema dialect the MCP SDK advertises tool schemas in. */
 export const JSON_SCHEMA_TARGET = "draft-2020-12";
@@ -42,6 +44,9 @@ export interface ToolMetadata {
   readonly localEffects?: unknown;
   readonly input: unknown;
   readonly output: unknown;
+  readonly handler?: unknown;
+  readonly prepare?: unknown;
+  readonly execute?: unknown;
 }
 
 /** Thrown by {@link defineTool} with every problem found, so all can be fixed in one go. */
@@ -61,13 +66,27 @@ export class ToolDefinitionError extends Error {
 }
 
 /**
- * Declares a tool and validates it at definition (module load) time, so a broken definition fails
- * every test run instead of misbehaving in a client. Throws {@link ToolDefinitionError}; see
+ * Declares a read tool and validates it at definition (module load) time, so a broken definition
+ * fails every test run instead of misbehaving in a client. Throws {@link ToolDefinitionError}; see
  * {@link validateToolDefinition} for the rules. Keeps the schema generics intact for the handler.
  */
 export function defineTool<I extends ToolInputSchema, O extends ToolOutputSchema>(
-  definition: ToolDefinition<I, O>,
-): ToolDefinition<I, O> {
+  definition: ReadToolDefinition<I, O>,
+): ReadToolDefinition<I, O> {
+  return checked(definition);
+}
+
+/**
+ * Declares a write tool (`write`, `commit` or `external` tier: `prepare` + `execute`, input with
+ * `dryRunInputShape`) and validates it like {@link defineTool}.
+ */
+export function defineWriteTool<I extends ToolInputSchema, O extends ToolOutputSchema, S>(
+  definition: WriteToolDefinition<I, O, S>,
+): WriteToolDefinition<I, O, S> {
+  return checked(definition);
+}
+
+function checked<T extends ToolMetadata>(definition: T): T {
   const problems = validateToolDefinition(definition);
   if (problems.length > 0) {
     throw new ToolDefinitionError(definition.name, problems);
@@ -88,7 +107,9 @@ export function defineTool<I extends ToolInputSchema, O extends ToolOutputSchema
  *   for a `read` tool to drop `readOnlyHint`, and it is accepted on `read` tools only;
  * - input is a strict zod object (unknown keys rejected, see {@link isStrictObject}) whose JSON
  *   Schema has an object root without a top-level union; output is a zod object that converts to
- *   JSON Schema.
+ *   JSON Schema;
+ * - a `read` tool has a `handler` and no `dryRun` argument; a write tool has `prepare` and
+ *   `execute`, no `handler`, and the `dryRun` argument (`dryRunInputShape`).
  */
 export function validateToolDefinition(definition: ToolMetadata): string[] {
   const problems: string[] = [];
@@ -122,6 +143,7 @@ export function validateToolDefinition(definition: ToolMetadata): string[] {
   }
   if (isTier(tier)) {
     problems.push(...annotationTierProblems(tier, annotations, definition.localEffects));
+    problems.push(...shapeTierProblems(tier, definition));
   } else {
     problems.push(`tier "${tier}" is unknown (expected one of ${TIERS.join(", ")}).`);
   }
@@ -177,6 +199,41 @@ function annotationTierProblems(
   }
   if (tier === "external") {
     mismatch("openWorldHint", true);
+  }
+  return problems;
+}
+
+/** The functions and the `dryRun` argument a tool of `tier` must (not) have. */
+function shapeTierProblems(tier: Tier, definition: ToolMetadata): string[] {
+  const problems: string[] = [];
+  const isFunction = (value: unknown): boolean => typeof value === "function";
+  const hasDryRun =
+    definition.input instanceof z.ZodObject &&
+    Object.hasOwn(definition.input.shape, DRY_RUN_ARGUMENT);
+  if (tier === "read") {
+    if (!isFunction(definition.handler)) {
+      problems.push("a read tool needs a handler function (declare it with defineTool).");
+    }
+    if (definition.prepare !== undefined || definition.execute !== undefined) {
+      problems.push("prepare/execute are for write tools only; a read tool has a handler.");
+    }
+    if (hasDryRun) {
+      problems.push(`a read tool must not take "${DRY_RUN_ARGUMENT}"; it changes nothing anyway.`);
+    }
+  } else {
+    if (!isFunction(definition.prepare) || !isFunction(definition.execute)) {
+      problems.push(
+        `a ${tier} tool needs prepare and execute functions (declare it with defineWriteTool).`,
+      );
+    }
+    if (definition.handler !== undefined) {
+      problems.push(`a ${tier} tool has prepare/execute instead of a handler.`);
+    }
+    if (!hasDryRun) {
+      problems.push(
+        `a ${tier} tool must accept "${DRY_RUN_ARGUMENT}": spread dryRunInputShape into its input.`,
+      );
+    }
   }
   return problems;
 }

@@ -1,0 +1,36 @@
+{
+  "_provenance": {
+    "source": "community",
+    "ref": "https://github.com/jernoxit/sevdesk-rs/blob/main/tests/fixtures/communication_way_list.json (GET /CommunicationWay?contact[id]=…)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "The e-mail of contact 1101 as the filtered list returns it. All values fake."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "4101",
+        "objectName": "CommunicationWay",
+        "additionalInformation": null,
+        "create": "2026-11-07T10:00:02+01:00",
+        "update": "2026-11-07T10:00:02+01:00",
+        "contact": {
+          "id": "1101",
+          "objectName": "Contact"
+        },
+        "type": "EMAIL",
+        "value": "buchhaltung@example.com",
+        "key": {
+          "id": "2",
+          "objectName": "CommunicationWayKey"
+        },
+        "main": "1",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        }
+      }
+    ]
+  }
+}

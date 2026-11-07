@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import type { Config } from "../../../src/config.js";
+import { createSafetyRuntime } from "../../../src/safety/runtime.js";
 import { SERVER_INFO } from "../../../src/server.js";
 import { defineTool } from "../../../src/tools/define-tool.js";
 import {
@@ -241,7 +242,12 @@ describe("tools/call", () => {
     const config = testConfig({ readOnly: true });
     const client = await connectFactory(() => {
       const server = new McpServer(SERVER_INFO, { capabilities: { tools: {} } });
-      registerTools(server, [create], { config, client: stubClient(), structuredOutput: false });
+      registerTools(server, [create], {
+        config,
+        client: stubClient(),
+        structuredOutput: false,
+        safety: createSafetyRuntime(config),
+      });
       return server;
     });
     clients.push(client);

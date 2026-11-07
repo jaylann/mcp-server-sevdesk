@@ -1,0 +1,75 @@
+name: Live E2E
+
+# Manual only: runs `pnpm test:live` against the sevDesk account behind the SEVDESK_API_TOKEN
+# secret of the protected `live` environment (a free trial account, never production). Read-only
+# checks by default; the `lifecycle` input adds the write scenario (tagged test data, cleanup list
+# in the log). Not scheduled: there is no permanent test account. See docs/recording-session.md.
+on:
+  workflow_dispatch:
+    inputs:
+      lifecycle:
+        description: >-
+          Also run the write lifecycle (trial accounts only: creates, finalizes, pays and cancels
+          real documents that cannot be deleted)
+        type: boolean
+        default: false
+
+permissions: {}
+
+# One account, one run at a time: two lifecycle runs would race on the same data.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  live:
+    name: Live E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Protected environment: required reviewer, main only, holds the SEVDESK_API_TOKEN secret.
+    environment:
+      name: live
+    permissions:
+      contents: read # check out the repository
+    steps:
+      - name: Check for the API token
+        id: token
+        env:
+          HAS_TOKEN: ${{ secrets.SEVDESK_API_TOKEN != '' }}
+        run: |
+          if [ "$HAS_TOKEN" = "true" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=Live E2E skipped::The live environment has no SEVDESK_API_TOKEN secret, so there is no account to test against. See docs/recording-session.md."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Warn about writes
+        if: ${{ steps.token.outputs.present == 'true' && inputs.lifecycle }}
+        run: |
+          echo "::warning title=Live E2E writes::The lifecycle scenario writes to the sevDesk account (trial accounts only). Finalized documents cannot be deleted; the cleanup list is at the end of the test log."
+
+      - name: Check out
+        if: ${{ steps.token.outputs.present == 'true' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # No dependency cache: this job holds the account token.
+      - name: Set up toolchain
+        if: ${{ steps.token.outputs.present == 'true' }}
+        uses: $/.github/actions/setup
+        with:
+          cache: "false"
+
+      - name: Live tests
+        if: ${{ steps.token.outputs.present == 'true' }}
+        env:
+          SEVDESK_API_TOKEN: ${{ secrets.SEVDESK_API_TOKEN }}
+          SEVDESK_LIVE_LIFECYCLE: ${{ inputs.lifecycle && '1' || '0' }}
+          SEVDESK_LIVE_I_UNDERSTAND_WRITES: ${{ inputs.lifecycle && '1' || '0' }}
+        run: pnpm test:live

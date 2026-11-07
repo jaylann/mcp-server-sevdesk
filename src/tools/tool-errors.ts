@@ -7,7 +7,7 @@ import type { CallToolResult } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
 import type { Config } from "../config.js";
-import { fenceBlock, fenceInline, sanitizeUntrusted } from "../safety/fence.js";
+import { codePointLabel, fenceBlock, fenceInline, sanitizeUntrusted } from "../safety/fence.js";
 import { REDACTED, redactSecrets } from "../safety/redact.js";
 import type { Tier } from "../safety/tiers.js";
 import { SevdeskError } from "../sevdesk/errors.js";
@@ -36,16 +36,29 @@ export function toolErrorResult(error: unknown, context: ToolErrorContext): Call
     if (error.kind === "unexpected_response" || error.kind === "server") {
       logToStderr(context, `${error.kind} error: ${describeForLog(error)}`);
     }
-    return errorResult(describeSevdeskError(error, context));
+    const completed = completedWritesLine(error);
+    const text = describeSevdeskError(error, context);
+    return errorResult(
+      completed === undefined ? text : `${withoutNothingSent(text)}\n${completed}`,
+    );
   }
   if (isAbortError(error)) {
     return errorResult(cancelledText(context));
   }
   logToStderr(context, `internal error: ${describeForLog(error)}`);
-  return errorResult(
+  const intro =
     `Internal error in mcp-server-sevdesk while running ${context.toolName}. The details were ` +
-      "written to the server log (stderr). Try again; if it keeps failing, the user can report " +
-      `it at ${ISSUE_TRACKER}.`,
+    "written to the server log (stderr).";
+  if (context.tier !== "read") {
+    // A write tool may have failed after (part of) its change went through.
+    return errorResult(
+      `${intro} This tool changes data, so the change may or may not have been made: check the ` +
+        "record with the matching get or list tool before retrying. If it keeps failing, the " +
+        `user can report it at ${ISSUE_TRACKER}.`,
+    );
+  }
+  return errorResult(
+    `${intro} Try again; if it keeps failing, the user can report it at ${ISSUE_TRACKER}.`,
   );
 }
 
@@ -131,10 +144,20 @@ export function describeSevdeskError(error: SevdeskError, context: ToolErrorCont
       // to change, so they are shown as they are; any generic tier advice could contradict them.
       return `${sentence(details)} Do not try to work around this; tell the user what was blocked.`;
     case "unexpected_response":
+      // With an HTTP status the client found the response itself unreadable (generic advice).
+      // Without one, our own code raised it after reading the answer, with a trusted message that
+      // may carry specific guidance (e.g. "do not cancel again"), so it is shown and "try again"
+      // is not suggested. Upstream text never appears here (it is only in upstreamMessage).
+      if (error.status === undefined) {
+        return (
+          `${sentence(details)} This is likely a sevDesk API change or a bug in ` +
+          `mcp-server-sevdesk (report it at ${ISSUE_TRACKER}).${mayHaveChanged}`
+        );
+      }
       return (
-        "sevDesk answered in an unexpected format, so the result could not be read. This is " +
-        `likely a sevDesk API change or a bug in mcp-server-sevdesk (report it at ${ISSUE_TRACKER}). ` +
-        `Try again later or use another tool.${mayHaveChanged}`
+        `sevDesk answered in an unexpected format${status}, so the result could not be read. ` +
+        `This is likely a sevDesk API change or a bug in mcp-server-sevdesk (report it at ` +
+        `${ISSUE_TRACKER}). Try again later or use another tool.${mayHaveChanged}`
       );
   }
 }
@@ -177,6 +200,43 @@ export function invalidArgumentsResult(
   return errorResult(lines.join("\n"));
 }
 
+/** A write argument that contains characters a human would not see (see `findHiddenCharacters`). */
+export interface HiddenCharacterProblem {
+  /** Where in the arguments, e.g. `["positions", 0, "text"]`. */
+  readonly path: readonly PropertyKey[];
+  readonly codePoints: readonly number[];
+}
+
+/**
+ * Write arguments contain characters that would reach sevDesk but not be shown to the human who
+ * approves (or later reads) the change. Names each argument (fenced) and the code points, capped.
+ */
+export function hiddenCharactersResult(
+  toolName: string,
+  problems: readonly HiddenCharacterProblem[],
+): CallToolResult {
+  const lines = [`Invalid arguments for ${toolName}; nothing was sent to sevDesk.`];
+  for (const problem of problems.slice(0, MAX_LISTED_ISSUES)) {
+    const where = problem.path.length === 0 ? "arguments" : formatPath(problem.path);
+    const shown = problem.codePoints.slice(0, MAX_LISTED_KEYS).map(codePointLabel);
+    const more =
+      problem.codePoints.length > MAX_LISTED_KEYS
+        ? ` and ${problem.codePoints.length - MAX_LISTED_KEYS} more`
+        : "";
+    lines.push(
+      `- ${where} contains characters the user would not see: ${shown.join(", ")}${more}.`,
+    );
+  }
+  if (problems.length > MAX_LISTED_ISSUES) {
+    lines.push(`- … ${problems.length - MAX_LISTED_ISSUES} more arguments omitted.`);
+  }
+  lines.push(
+    "Remove these characters (invisible, zero-width, bidi, variation selectors, carriage " +
+      "returns, tabs); line breaks are fine, use spaces instead of tabs. Then call the tool again.",
+  );
+  return errorResult(lines.join("\n"));
+}
+
 /**
  * Defense in depth: the tool's tier is not enabled. Normally such tools are never registered, so
  * reaching this means a registration bug; the call is refused anyway.
@@ -200,14 +260,57 @@ export function tierNotAllowedResult(context: ToolErrorContext): CallToolResult 
 export function outputValidationFailedResult(
   context: ToolErrorContext,
   error: z.ZodError,
+  options: { readonly changedData?: boolean } = {},
 ): CallToolResult {
   logToStderr(context, `output validation failed:\n${z.prettifyError(error)}`);
+  const next =
+    options.changedData === true
+      ? " The change itself was sent to sevDesk and most likely made: check the record with a " +
+        "read tool and do not call this tool again for it."
+      : " Try again later or use another tool.";
   return errorResult(
     `Internal output validation failed for ${context.toolName}: the result did not have the ` +
       "shape this tool promises, so it was withheld. This is likely a sevDesk API change or a bug " +
-      `in mcp-server-sevdesk; the details were written to the server log (stderr). Try again ` +
-      "later or use another tool.",
+      `in mcp-server-sevdesk; the details were written to the server log (stderr).${next}`,
   );
+}
+
+/** Rendered refs are limited to this many; the rest is counted. */
+const MAX_LISTED_WRITES = 20;
+
+/**
+ * The trusted line for an error after which earlier steps of the call had already changed
+ * records (`SevdeskError.completedWrites`), or `undefined` when there are none. objectName and id
+ * come from our code but are still reduced to letters / digits before they are shown.
+ */
+function completedWritesLine(error: SevdeskError): string | undefined {
+  const refs = error.completedWrites.map(({ objectName, id }) => {
+    const name = objectName.replace(/[^A-Za-z]/g, "") || "Record";
+    const digits = id.replace(/\D/g, "");
+    return digits === "" ? name : `${name} ${digits}`;
+  });
+  if (refs.length === 0) return undefined;
+  const listed = refs.slice(0, MAX_LISTED_WRITES).join(", ");
+  const more =
+    refs.length > MAX_LISTED_WRITES ? ` and ${refs.length - MAX_LISTED_WRITES} more` : "";
+  return (
+    `Before this failed, the call had already created or changed: ${listed}${more}. Do not ` +
+    "repeat the call; fix or finish it with the matching update tool."
+  );
+}
+
+/**
+ * Removes "nothing was sent" claims from a description: with completed writes they would only be
+ * true of the failed step, and read as if the whole call changed nothing.
+ */
+function withoutNothingSent(text: string): string {
+  return text
+    .replace(/ \(nothing was sent\)/gi, "")
+    .replace(/\s*nothing was sent(?: to sevDesk)?\./gi, "")
+    .replace(
+      /The request was refused before it was sent to sevDesk/g,
+      "The last step was refused before it was sent to sevDesk",
+    );
 }
 
 const UNCERTAIN_WRITE =

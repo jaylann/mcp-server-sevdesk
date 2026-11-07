@@ -1,0 +1,60 @@
+{
+  "_provenance": {
+    "source": "community",
+    "ref": "https://github.com/emuuu/sevDesk.NET/blob/main/docs/sevdesk-api-responses.txt (GET /api/v1/InvoicePos)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "One position of invoices/invoice-positions-1001.json, re-parented to reminder 1102. All values fake."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "5201",
+        "objectName": "InvoicePos",
+        "additionalInformation": null,
+        "create": "2026-10-01T09:05:00+02:00",
+        "update": "2026-10-01T09:05:00+02:00",
+        "invoice": {
+          "id": "1102",
+          "objectName": "Invoice"
+        },
+        "part": null,
+        "quantity": "1",
+        "price": "10",
+        "name": "Versand​pauschale ‮",
+        "priority": "100",
+        "unity": {
+          "id": "99",
+          "objectName": "Unity"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "positionNumber": "3",
+        "text": null,
+        "discount": "5",
+        "isPercentage": "0",
+        "discountedValue": null,
+        "taxRate": "19",
+        "temporary": "0",
+        "sumNet": "5",
+        "sumGross": "5.95",
+        "sumDiscount": "0",
+        "sumTax": "0.95",
+        "sumNetAccounting": "5",
+        "sumTaxAccounting": "0.95",
+        "sumGrossAccounting": "5.95",
+        "priceNet": "10",
+        "priceGross": "11.9",
+        "priceTax": "1.9",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountForeignCurrency": "0",
+        "createNextPart": null
+      }
+    ]
+  }
+}

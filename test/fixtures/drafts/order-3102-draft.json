@@ -1,0 +1,87 @@
+{
+  "_provenance": {
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "source": "community",
+    "ref": "https://github.com/TomDixon63/OrderManager2/blob/HEAD/front/src/app/model/order.ts (GET /api/v1/Order, 2023)",
+    "note": "A draft offer with a number already assigned (as after a reset or a web-app save) as GET /Order/3102 returns it without embed; keys and scalar types of the recorded row, values fake."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "3102",
+        "objectName": "Order",
+        "additionalInformation": null,
+        "create": "2026-09-10T09:00:00+02:00",
+        "update": "2026-09-20T09:00:00+02:00",
+        "orderNumber": "AN-1007",
+        "orderDate": "2026-11-03T00:00:00+01:00",
+        "status": "100",
+        "header": "Angebot AN-1007",
+        "headText": "<p>Gerne bieten wir Ihnen an:</p>",
+        "footText": "<p>Das Angebot ist 30 Tage gültig.</p>",
+        "addressName": "Musterfirma GmbH",
+        "addressStreet": null,
+        "addressZip": null,
+        "addressCity": null,
+        "addressCountry": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "createUser": {
+          "id": "2001",
+          "objectName": "SevUser"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "deliveryTerms": "Lieferung frei Haus",
+        "paymentTerms": "14 Tage netto",
+        "version": "0",
+        "smallSettlement": "0",
+        "contactPerson": {
+          "id": "2001",
+          "objectName": "SevUser"
+        },
+        "taxRate": "0",
+        "taxText": "Umsatzsteuer 19%",
+        "addressParentName": null,
+        "taxType": null,
+        "orderType": "AN",
+        "sendDate": null,
+        "addressParentName2": null,
+        "addressName2": null,
+        "addressGender": null,
+        "address": "Musterfirma GmbH\nMusterstraße 1\n12345 Musterstadt",
+        "currency": "EUR",
+        "sumNet": "200",
+        "sumTax": "38",
+        "sumGross": "238",
+        "sumDiscounts": "0",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountsForeignCurrency": "0",
+        "weight": "0",
+        "customerInternalNote": null,
+        "showNet": "1",
+        "sendType": null,
+        "sumDiscountNet": "0",
+        "sumDiscountGross": "0",
+        "sumDiscountNetForeignCurrency": "0",
+        "sumDiscountGrossForeignCurrency": "0",
+        "taxRule": {
+          "id": "1",
+          "objectName": "TaxRule"
+        },
+        "origin": null,
+        "contact": {
+          "id": "1001",
+          "objectName": "Contact"
+        }
+      }
+    ]
+  }
+}

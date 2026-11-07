@@ -1,0 +1,13 @@
+{
+  "_provenance": {
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "source": "community",
+    "ref": "https://github.com/jernoxit/sevdesk-rs/blob/HEAD/src/endpoints/invoice.rs (enshrine_invoice; answers {\"objects\": null})",
+    "note": "PUT /Invoice/{id}/enshrine and /CreditNote/{id}/enshrine; the spec declares objects with default null as well."
+  },
+  "status": 200,
+  "body": {
+    "objects": null
+  }
+}

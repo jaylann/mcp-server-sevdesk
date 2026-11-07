@@ -1,0 +1,106 @@
+{
+  "_provenance": {
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "source": "community",
+    "ref": "https://github.com/emuuu/sevDesk.NET/blob/main/docs/sevdesk-api-responses.txt (GET /api/v1/InvoicePos)",
+    "note": "Keys and string scalars of the recorded GET /InvoicePos row; values fake (two positions, 19 % and 7 %)."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "5201",
+        "objectName": "InvoicePos",
+        "additionalInformation": null,
+        "create": "2026-10-01T09:05:00+02:00",
+        "update": "2026-10-01T09:05:00+02:00",
+        "invoice": {
+          "id": "2102",
+          "objectName": "Invoice"
+        },
+        "part": null,
+        "quantity": "1",
+        "price": "80",
+        "name": "Wartung",
+        "priority": "100",
+        "unity": {
+          "id": "9",
+          "objectName": "Unity"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "positionNumber": "0",
+        "text": null,
+        "discount": "0",
+        "isPercentage": "1",
+        "discountedValue": null,
+        "taxRate": "19",
+        "temporary": "0",
+        "sumNet": "80",
+        "sumGross": "95.2",
+        "sumDiscount": "0",
+        "sumTax": "15.2",
+        "sumNetAccounting": "80",
+        "sumTaxAccounting": "15.2",
+        "sumGrossAccounting": "95.2",
+        "priceNet": "80",
+        "priceGross": "95.2",
+        "priceTax": "15.2",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountForeignCurrency": "0",
+        "createNextPart": null
+      },
+      {
+        "id": "5202",
+        "objectName": "InvoicePos",
+        "additionalInformation": null,
+        "create": "2026-10-01T09:05:00+02:00",
+        "update": "2026-10-01T09:05:00+02:00",
+        "invoice": {
+          "id": "2102",
+          "objectName": "Invoice"
+        },
+        "part": null,
+        "quantity": "1",
+        "price": "20",
+        "name": "Fachbuch",
+        "priority": "100",
+        "unity": {
+          "id": "1",
+          "objectName": "Unity"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "positionNumber": "1",
+        "text": null,
+        "discount": "0",
+        "isPercentage": "1",
+        "discountedValue": null,
+        "taxRate": "7",
+        "temporary": "0",
+        "sumNet": "20",
+        "sumGross": "21.4",
+        "sumDiscount": "0",
+        "sumTax": "1.4",
+        "sumNetAccounting": "20",
+        "sumTaxAccounting": "1.4",
+        "sumGrossAccounting": "21.4",
+        "priceNet": "20",
+        "priceGross": "21.4",
+        "priceTax": "1.4",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountForeignCurrency": "0",
+        "createNextPart": null
+      }
+    ]
+  }
+}

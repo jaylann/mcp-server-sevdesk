@@ -10,11 +10,13 @@ import { isIsoDate, toUnixSeconds } from "../sevdesk/dates.js";
 import { SevdeskError } from "../sevdesk/errors.js";
 import {
   compare,
+  decimal,
   DEFAULT_CURRENCY,
   isCurrencyCode,
   isDecimal,
   type Money,
   money,
+  toDecimalString,
 } from "./money.js";
 import { statusByCode, type StatusObjectType } from "./reference-data.js";
 
@@ -162,6 +164,54 @@ export function cleanText(value: string | undefined, maxLength: number): string 
 }
 
 const isoDate = z.string().refine(isIsoDate, { message: "expected a calendar date as YYYY-MM-DD" });
+
+/** A calendar-date argument, `YYYY-MM-DD` (Europe/Berlin). Add `.describe(...)` per field. */
+export const isoDateInput = isoDate;
+
+/** Options of {@link amountInput}. */
+export interface AmountInputOptions {
+  /** Maximum fraction digits accepted (default 2). Excess digits are rejected, never rounded. */
+  readonly places?: number;
+  /** Accept amounts below zero (default false). */
+  readonly allowNegative?: boolean;
+  /** Accept zero (default true). */
+  readonly allowZero?: boolean;
+}
+
+/**
+ * An amount argument for write tools: a decimal string (`"1190.50"`) or a JSON number (`19.99`,
+ * read through its shortest `String()` form, so no float arithmetic happens), parsed to an exact
+ * decimal string without exponent, e.g. `"1190.5"`. Comma decimals ("1.190,50") are rejected
+ * rather than guessed. Add `.describe(...)` per field (say the currency and net/gross).
+ */
+export function amountInput(options: AmountInputOptions = {}) {
+  const places = options.places ?? 2;
+  return z.union([z.string(), z.number()]).transform((value, ctx): string => {
+    const text = typeof value === "number" ? String(value) : value.trim();
+    if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(text) || !isDecimal(text)) {
+      ctx.addIssue({ code: "custom", message: "expected a decimal amount such as 119.00" });
+      return z.NEVER;
+    }
+    const exact = decimal(text);
+    if (exact.scale > places) {
+      ctx.addIssue({
+        code: "custom",
+        message: `at most ${places} decimal places are allowed (got ${toDecimalString(exact)})`,
+      });
+      return z.NEVER;
+    }
+    const sign = compare(exact, 0);
+    if (sign < 0 && options.allowNegative !== true) {
+      ctx.addIssue({ code: "custom", message: "the amount must not be negative" });
+      return z.NEVER;
+    }
+    if (sign === 0 && options.allowZero === false) {
+      ctx.addIssue({ code: "custom", message: "the amount must not be zero" });
+      return z.NEVER;
+    }
+    return toDecimalString(exact);
+  });
+}
 
 /** `from`/`to` input fields (inclusive calendar days, Europe/Berlin); spread into a tool input. */
 export const dateRangeInputShape = {

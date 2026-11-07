@@ -80,6 +80,11 @@ export const salesDocumentFields = {
   headText: zText,
   footText: zText,
   address: zText,
+  /** Structured address parts; API-created documents may carry only these (`address` null). */
+  addressName: zText,
+  addressStreet: zText,
+  addressZip: zText,
+  addressCity: zText,
   addressCountry: zOptionalRef,
   status: zIntish,
   currency: zText,
@@ -263,12 +268,25 @@ export function pricesEnteredAs(showNet: boolean | undefined): "net" | "gross" |
   return showNet === undefined ? undefined : showNet ? "net" : "gross";
 }
 
-/** The printed recipient address and its country; `undefined` when sevDesk sent neither. */
+/**
+ * The printed recipient address and its country; `undefined` when sevDesk sent neither. Documents
+ * created through the API often have `address: null` and only the structured parts
+ * (`addressName`, `addressStreet`, `addressZip`, `addressCity`); the text is then composed from
+ * them, one line per part.
+ */
 export function addressDto(
   record: SalesDocumentRecord,
 ): { text?: string | undefined; countryId?: number | undefined } | undefined {
+  const city = [record.addressZip, record.addressCity]
+    .map((part) => part?.trim())
+    .filter((part) => part !== undefined && part !== "")
+    .join(" ");
+  const composed = [record.addressName, record.addressStreet, city]
+    .map((part) => part?.trim())
+    .filter((part) => part !== undefined && part !== "")
+    .join("\n");
   const address = compact({
-    text: cleanText(record.address, TEXT_MAX.long),
+    text: cleanText(record.address ?? (composed === "" ? undefined : composed), TEXT_MAX.long),
     countryId: record.addressCountry?.id,
   });
   return Object.keys(address).length === 0 ? undefined : address;

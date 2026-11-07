@@ -384,6 +384,70 @@ describe("write gate", () => {
   });
 });
 
+describe("endpoint minimum tier", () => {
+  const all = { allowedTiers: new Set<Tier>(["read", "write", "commit", "external"]) };
+
+  it.each([
+    ["PUT", "/Invoice/1/sendBy", "write"],
+    ["PUT", "/Invoice/1/bookAmount", "write"],
+    ["PUT", "/Invoice/1/enshrine", "write"],
+    ["POST", "/Invoice/1/cancelInvoice", "write"],
+    ["PUT", "/Invoice/1/resetToDraft", "write"],
+    ["POST", "/Invoice/1/sendViaEmail", "write"],
+    ["POST", "/Invoice/1/sendViaEmail", "commit"],
+  ] as const)(
+    "refuses %s %s from a %s tool before sending, even with every tier enabled",
+    async (method, path, tier) => {
+      const { client, fake } = setup([], { config: all });
+
+      const failure = await catchError(client.request({ method, tier, path, body: {} }));
+
+      expect(failure.kind).toBe("blocked");
+      expect(failure.message).toMatch(
+        new RegExp(
+          `needs at least the (commit|external) tier, but the calling tool has the ${tier} tier`,
+        ),
+      );
+      expect(failure.message).toContain("Nothing was sent.");
+      expect(fake.requests).toHaveLength(0);
+    },
+  );
+
+  it("refuses a side-effect getPdf (marks as sent) from a write tool", async () => {
+    const { client, fake } = setup([], { config: all });
+
+    const failure = await catchError(
+      client.request({ method: "GET", path: "/Invoice/1/getPdf", sideEffect: true, tier: "write" }),
+    );
+
+    expect(failure.message).toContain("needs at least the commit tier");
+    expect(fake.requests).toHaveLength(0);
+  });
+
+  it.each([
+    ["PUT", "/Invoice/1/sendBy", "commit"],
+    ["PUT", "/Invoice/1/sendBy", "external"],
+    ["POST", "/Invoice/1/sendViaEmail", "external"],
+    ["POST", "/Invoice/Factory/saveInvoice", "write"],
+  ] as const)("lets %s %s through from a %s tool", async (method, path, tier) => {
+    const { client, fake } = setup([envelope({ id: "1" })], { config: all });
+
+    await client.request({ method, tier, path, body: {} });
+
+    expect(fake.requests).toHaveLength(1);
+  });
+
+  it("checks the endpoint tier before the configured tiers", () => {
+    const write = new Set<Tier>(["read", "write"]);
+    expect(
+      writeBlockReason({ allowedTiers: write, readOnly: false, dryRun: false }, "write", "commit"),
+    ).toMatch(/^internal error: this endpoint needs at least the commit tier/);
+    expect(
+      writeBlockReason({ allowedTiers: write, readOnly: false, dryRun: false }, "commit", "commit"),
+    ).toMatch(/SEVDESK_ALLOW=commit/);
+  });
+});
+
 describe("state-changing GET endpoints", () => {
   const readOnly = { readOnly: true, allowedTiers: new Set<Tier>(["read"]) };
 

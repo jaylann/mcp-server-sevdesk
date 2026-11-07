@@ -65,9 +65,31 @@ tokens before committing; the recorder does this, but review the diff anyway.
 
 ## Live tests
 
-`pnpm test:live` (coming in M3) runs read-only checks against a real account using
-`SEVDESK_API_TOKEN`. The optional `--lifecycle` scenario creates and cleans up tagged test data and
-is meant for **trial accounts only**: sevDesk has no sandbox, so every write is real.
+sevDesk has no sandbox: every write is real, and finalized documents cannot be deleted. The live
+tooling therefore reads only a short list of variables (`SEVDESK_API_TOKEN` or
+`SEVDESK_API_TOKEN_FILE`, `SEVDESK_BASE_URL`, `SEVDESK_RATE_LIMIT`, `SEVDESK_TIMEOUT_MS`) and
+ignores tier switches from your shell.
+
+- `pnpm test:live` calls every read tool through the real server against your account, in
+  read-only mode (the HTTP client refuses any data-changing request), and checks that each answers
+  without an error and with schema-valid output. Without a token every test is skipped with the
+  reason. It runs from its own config (`vitest.live.config.ts`) and never in `pnpm test`.
+- `SEVDESK_LIVE_LIFECYCLE=1 SEVDESK_LIVE_I_UNDERSTAND_WRITES=1 pnpm test:live` adds a write
+  scenario through the write tools (contact, draft, finalize, payments, reminder, cancellation,
+  credit note). **Trial accounts only**: it refuses accounts that already hold many records,
+  e-mails nothing unless `SEVDESK_LIVE_EMAIL_TO` names your own address, tags what it creates
+  (`MCP-E2E <run id>`) and prints a cleanup list.
+- `pnpm probe --out report.md` checks the open questions of `spec/deviations.md` against the API
+  and reports each finding with scrubbed evidence; `--allow-writes` (plus
+  `SEVDESK_LIVE_I_UNDERSTAND_WRITES=1`) adds probes that create their own tagged test data;
+  `--probe-email <your address>` adds one e-mail probe to that address only.
+  `pnpm probe --list` shows every probe.
+- `pnpm fixtures:record` records scrubbed read responses as fixtures (read-only;
+  `--dry-run` lists the requests).
+
+The step-by-step runbook for a recording session on a free trial account, including what to commit
+and what never to commit, is [docs/recording-session.md](docs/recording-session.md). The manual
+workflow `Live E2E` runs `pnpm test:live` in CI behind the protected `live` environment.
 
 ## Reporting bugs and security issues
 

@@ -6,7 +6,9 @@
  * Safety invariants:
  * - Requests that change data (any non-GET, GETs marked `sideEffect`, and the state-changing GET
  *   endpoints recognized by `resolveGetSafety`) are refused before any network activity unless
- *   writes are enabled: not read-only, not dry-run, and the request's declared `tier` allowed.
+ *   writes are enabled: not read-only, not dry-run, the request's declared `tier` allowed, and
+ *   that tier covers the endpoint's minimum tier (`minimumWriteTier`: e.g. `sendBy` needs
+ *   `commit`, `sendViaEmail` needs `external`), so a write tool cannot finalize or send.
  * - A `getPdf` read always carries the literal `preventSendBy=true`, so a preview never marks a
  *   document as sent.
  * - Only side-effect-free GETs are retried. A retried POST can create a second invoice.
@@ -14,7 +16,7 @@
  *   reaches another origin, and it is redacted from all upstream text kept on errors.
  */
 import type { Config } from "../config.js";
-import type { Tier } from "../safety/tiers.js";
+import { isWriteTier, tierCovers, type WriteTier } from "../safety/tiers.js";
 import { type Envelope, expectArray, parseTotal, readEnvelope } from "./envelope.js";
 import {
   type ErrorContext,
@@ -25,7 +27,7 @@ import {
   unexpectedResponse,
 } from "./errors.js";
 import { createPacer, realSleep, type Sleep } from "./pacing.js";
-import { assertSafePath, resolveGetSafety } from "./paths.js";
+import { assertSafePath, minimumWriteTier, resolveGetSafety } from "./paths.js";
 import type {
   CollectedList,
   ListAllOptions,
@@ -122,9 +124,6 @@ const DEFAULT_LIST_ALL_PAGE_SIZE = 500;
 /** Maximum requests in flight per client. */
 const MAX_CONCURRENCY = 4;
 
-type WriteTier = Exclude<Tier, "read">;
-
-const WRITE_TIERS: readonly Tier[] = ["write", "commit", "external"];
 const RESERVED_LIST_KEYS = ["limit", "offset", "countAll"] as const;
 
 type WriteGateConfig = Pick<SevdeskClientConfig, "allowedTiers" | "readOnly" | "dryRun">;
@@ -132,18 +131,26 @@ type WriteGateConfig = Pick<SevdeskClientConfig, "allowedTiers" | "readOnly" | "
 /**
  * Why a request of `tier` that changes data is refused under `config`, or `undefined` when it is
  * allowed. Checked in this order, each with its own wording: read-only mode, dry-run mode, a
- * missing (or non-write) tier, which is a programming error, and a tier not enabled in
- * `SEVDESK_ALLOW`. The text is trusted and names the setting to change.
+ * missing (or non-write) tier, which is a programming error, a tier below the endpoint's
+ * `required` minimum (also a programming error: the tool has the wrong tier), and a tier not
+ * enabled in `SEVDESK_ALLOW`. The text is trusted and names the setting to change.
  */
 export function writeBlockReason(
   config: WriteGateConfig,
   tier: WriteTier | undefined,
+  required: WriteTier = "write",
 ): string | undefined {
   if (config.readOnly) return "read-only mode is on (SEVDESK_READ_ONLY)";
   if (config.dryRun) return "dry-run mode is on (SEVDESK_DRY_RUN)";
   // `tier` is typed, but a cast elsewhere could still smuggle in "read".
-  if (tier === undefined || !WRITE_TIERS.includes(tier)) {
+  if (tier === undefined || !isWriteTier(tier)) {
     return "internal error: a request that changes data did not declare its tier";
+  }
+  if (!tierCovers(tier, required)) {
+    return (
+      `internal error: this endpoint needs at least the ${required} tier, but the calling tool ` +
+      `has the ${tier} tier`
+    );
   }
   if (!config.allowedTiers.has(tier)) {
     return (
@@ -247,7 +254,7 @@ export function createSevdeskClient(
         : undefined;
     const changesData = safety === undefined || safety.sideEffect;
     if (changesData) {
-      const reason = writeBlockReason(config, request.tier);
+      const reason = writeBlockReason(config, request.tier, minimumWriteTier(path, request.query));
       if (reason !== undefined) {
         const effect = safety?.sideEffect === true ? ` (${safety.effect})` : "";
         throw new SevdeskError({

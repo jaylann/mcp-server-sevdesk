@@ -34,7 +34,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up toolchain
-        uses: ./.github/actions/setup
+        uses: $/.github/actions/setup
 
       # Exit codes of the script: 0 = no drift, 10 = drift (report written), anything else = error.
       - name: Compare with upstream

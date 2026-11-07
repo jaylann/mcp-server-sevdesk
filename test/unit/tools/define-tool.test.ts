@@ -3,13 +3,15 @@ import { z } from "zod";
 
 import {
   defineTool,
+  defineWriteTool,
   isStrictObject,
   MAX_DESCRIPTION_LENGTH,
   ToolDefinitionError,
   type ToolMetadata,
   validateToolDefinition,
 } from "../../../src/tools/define-tool.js";
-import type { ToolDefinition } from "../../../src/tools/types.js";
+import type { ReadToolDefinition, WriteToolDefinition } from "../../../src/tools/types.js";
+import { dryRunInputShape } from "../../../src/tools/write-input.js";
 import {
   COMMIT_ANNOTATIONS,
   EXTERNAL_ANNOTATIONS,
@@ -20,7 +22,7 @@ import {
 const input = z.strictObject({ id: z.string().min(1).describe("Contact id.") });
 const output = z.object({ name: z.string() });
 
-function valid(): ToolDefinition<typeof input, typeof output> {
+function valid(): ReadToolDefinition<typeof input, typeof output> {
   return {
     name: "sevdesk_contact_get",
     title: "Get contact",
@@ -34,8 +36,35 @@ function valid(): ToolDefinition<typeof input, typeof output> {
   };
 }
 
+const writeInput = z.strictObject({ id: z.string().min(1), ...dryRunInputShape });
+
+function validWrite(): WriteToolDefinition<typeof writeInput, typeof output, null> {
+  return {
+    name: "sevdesk_contact_update",
+    title: "Update contact",
+    description: "Updates one contact (Kontakt) by id.",
+    toolset: "contacts",
+    tier: "write",
+    annotations: WRITE_ANNOTATIONS,
+    input: writeInput,
+    output,
+    prepare: () =>
+      Promise.resolve({
+        preview: { action: "Update the contact.", facts: [], warnings: [], irreversible: false },
+        state: null,
+      }),
+    execute: () => Promise.resolve({ data: { name: "A" }, summary: "Updated it." }),
+  };
+}
+
+/**
+ * Problems of the valid read definition with `overrides`; when the overrides name a write tier,
+ * the base is the valid write definition instead, so only the overridden fields can fail.
+ */
 function problems(overrides: Partial<Record<keyof ToolMetadata, unknown>>): string[] {
-  return validateToolDefinition({ ...valid(), ...overrides } as ToolMetadata);
+  const writeTier = overrides.tier !== undefined && overrides.tier !== "read";
+  const base: ToolMetadata = writeTier ? validWrite() : valid();
+  return validateToolDefinition({ ...base, ...overrides } as ToolMetadata);
 }
 
 describe("defineTool", () => {
@@ -49,7 +78,12 @@ describe("defineTool", () => {
   });
 
   it("throws one error listing every problem", () => {
-    const broken = { ...valid(), name: "contact_get", title: " ", tier: "write" as const };
+    const broken = {
+      ...valid(),
+      name: "contact_get",
+      title: " ",
+      annotations: { ...valid().annotations, destructiveHint: true },
+    };
 
     expect(() => defineTool(broken)).toThrow(ToolDefinitionError);
     try {
@@ -229,6 +263,40 @@ describe("validateToolDefinition", () => {
   it("requires an object output schema", () => {
     expect(problems({ output: z.array(z.string()) })).toEqual([
       "output must be a zod object schema, e.g. z.object({ … }).",
+    ]);
+  });
+});
+
+describe("tool shape per tier", () => {
+  it("accepts a valid write definition and defineWriteTool returns it frozen", () => {
+    const definition = validWrite();
+
+    expect(validateToolDefinition(definition)).toEqual([]);
+    expect(Object.isFrozen(defineWriteTool(definition))).toBe(true);
+  });
+
+  it("requires a handler and no dryRun argument on read tools", () => {
+    expect(validateToolDefinition({ ...valid(), handler: undefined, input: writeInput })).toEqual([
+      "a read tool needs a handler function (declare it with defineTool).",
+      'a read tool must not take "dryRun"; it changes nothing anyway.',
+    ]);
+    expect(validateToolDefinition({ ...valid(), prepare: () => undefined })).toEqual([
+      "prepare/execute are for write tools only; a read tool has a handler.",
+    ]);
+  });
+
+  it("requires prepare, execute and dryRun, and no handler, on write tools", () => {
+    expect(
+      validateToolDefinition({
+        ...validWrite(),
+        execute: undefined,
+        handler: () => undefined,
+        input,
+      }),
+    ).toEqual([
+      "a write tool needs prepare and execute functions (declare it with defineWriteTool).",
+      "a write tool has prepare/execute instead of a handler.",
+      'a write tool must accept "dryRun": spread dryRunInputShape into its input.',
     ]);
   });
 });

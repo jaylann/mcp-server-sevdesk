@@ -11,6 +11,7 @@ import {
   SevdeskError,
   type SevdeskErrorKind,
   unexpectedResponse,
+  withCompletedWrites,
 } from "../../../src/sevdesk/errors.js";
 
 const TOKEN = "0123456789abcdef0123456789abcdef";
@@ -214,5 +215,48 @@ describe("sanitizeUpstream", () => {
 
   it("leaves short text alone", () => {
     expect(sanitizeUpstream("short", [TOKEN])).toBe("short");
+  });
+});
+
+describe("withCompletedWrites", () => {
+  it("keeps the failure and adds the records earlier steps created", () => {
+    const original = new SevdeskError({
+      kind: "validation",
+      message: "sevDesk rejected the request.",
+      status: 422,
+      exceptionUuid: "abc",
+      upstreamMessage: "zip invalid",
+      method: "POST",
+      path: "/ContactAddress",
+    });
+
+    const first = withCompletedWrites(original, [{ objectName: "Contact", id: "123" }]);
+    const second = withCompletedWrites(first, [{ objectName: "ContactAddress", id: "456" }]);
+
+    expect(second).toMatchObject({
+      kind: "validation",
+      message: "sevDesk rejected the request.",
+      status: 422,
+      exceptionUuid: "abc",
+      upstreamMessage: "zip invalid",
+      method: "POST",
+      path: "/ContactAddress",
+      cause: first,
+    });
+    expect(second.completedWrites).toEqual([
+      { objectName: "Contact", id: "123" },
+      { objectName: "ContactAddress", id: "456" },
+    ]);
+    expect(Object.isFrozen(second.completedWrites)).toBe(true);
+  });
+
+  it("is empty by default and copies optional fields only when set", () => {
+    const bare = new SevdeskError({ kind: "network", message: "Connection failed." });
+
+    const wrapped = withCompletedWrites(bare, []);
+
+    expect(bare.completedWrites).toEqual([]);
+    expect(wrapped.status).toBeUndefined();
+    expect(wrapped.completedWrites).toEqual([]);
   });
 });

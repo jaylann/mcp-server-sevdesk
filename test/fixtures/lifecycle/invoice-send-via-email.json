@@ -1,0 +1,33 @@
+{
+  "_provenance": {
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "source": "spec",
+    "ref": "spec/openapi.yaml#/paths/~1Invoice~1{invoiceId}~1sendViaEmail/post/responses/201 (Model_Email)",
+    "note": "No public recording (sevdesk-rs: per spec, unmeasured). Wrapped in objects per D-001; values fake. Ignored by the tool (read-back)."
+  },
+  "status": 201,
+  "body": {
+    "objects": {
+      "id": "8101",
+      "objectName": "Email",
+      "create": "2026-11-07T10:00:00+01:00",
+      "update": "2026-11-07T10:00:00+01:00",
+      "object": {
+        "id": "1001",
+        "objectName": "Invoice"
+      },
+      "from": "buchhaltung@example.com",
+      "to": "kunde@example.com",
+      "subject": "Ihre Unterlagen",
+      "text": "Guten Tag, anbei erhalten Sie die Unterlagen.",
+      "sevClient": {
+        "id": "9001",
+        "objectName": "SevClient"
+      },
+      "cc": null,
+      "bcc": null,
+      "arrived": null
+    }
+  }
+}

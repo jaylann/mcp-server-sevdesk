@@ -1,0 +1,155 @@
+{
+  "_provenance": {
+    "source": "community",
+    "ref": "https://github.com/emuuu/sevDesk.NET/blob/main/docs/sevdesk-api-responses.txt (GET /api/v1/InvoicePos)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "The positions of invoices/invoice-positions-1001.json, re-parented to invoice 1101. All values fake."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "5101",
+        "objectName": "InvoicePos",
+        "additionalInformation": null,
+        "create": "2026-10-01T09:05:00+02:00",
+        "update": "2026-10-01T09:05:00+02:00",
+        "invoice": {
+          "id": "1101",
+          "objectName": "Invoice"
+        },
+        "part": null,
+        "quantity": "1",
+        "price": "10",
+        "name": "Versand​pauschale ‮",
+        "priority": "100",
+        "unity": {
+          "id": "99",
+          "objectName": "Unity"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "positionNumber": "3",
+        "text": null,
+        "discount": "5",
+        "isPercentage": "0",
+        "discountedValue": null,
+        "taxRate": "19",
+        "temporary": "0",
+        "sumNet": "5",
+        "sumGross": "5.95",
+        "sumDiscount": "0",
+        "sumTax": "0.95",
+        "sumNetAccounting": "5",
+        "sumTaxAccounting": "0.95",
+        "sumGrossAccounting": "5.95",
+        "priceNet": "10",
+        "priceGross": "11.9",
+        "priceTax": "1.9",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountForeignCurrency": "0",
+        "createNextPart": null
+      },
+      {
+        "id": "5102",
+        "objectName": "InvoicePos",
+        "additionalInformation": null,
+        "create": "2026-10-01T09:05:00+02:00",
+        "update": "2026-10-01T09:05:00+02:00",
+        "invoice": {
+          "id": "1101",
+          "objectName": "Invoice"
+        },
+        "part": {
+          "id": "6001",
+          "objectName": "Part"
+        },
+        "quantity": "2",
+        "price": "42.01",
+        "name": "Testartikel",
+        "priority": "100",
+        "unity": {
+          "id": "1",
+          "objectName": "Unity"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "positionNumber": "1",
+        "text": "Beschreibung des Testartikels",
+        "discount": "0",
+        "isPercentage": "1",
+        "discountedValue": null,
+        "taxRate": "19",
+        "temporary": "0",
+        "sumNet": "84.02",
+        "sumGross": "99.98",
+        "sumDiscount": "0",
+        "sumTax": "15.96",
+        "sumNetAccounting": "84.02",
+        "sumTaxAccounting": "15.96",
+        "sumGrossAccounting": "99.98",
+        "priceNet": "42.01",
+        "priceGross": "49.9919",
+        "priceTax": "7.9819",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountForeignCurrency": "0",
+        "createNextPart": null
+      },
+      {
+        "id": "5103",
+        "objectName": "InvoicePos",
+        "additionalInformation": null,
+        "create": "2026-10-01T09:05:00+02:00",
+        "update": "2026-10-01T09:05:00+02:00",
+        "invoice": {
+          "id": "1101",
+          "objectName": "Invoice"
+        },
+        "part": null,
+        "quantity": "1.5",
+        "price": "40",
+        "name": "Beratung",
+        "priority": "100",
+        "unity": {
+          "id": "9",
+          "objectName": "Unity"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "positionNumber": "2",
+        "text": "Workshop, 1,5 Stunden",
+        "discount": "0",
+        "isPercentage": "1",
+        "discountedValue": null,
+        "taxRate": "19",
+        "temporary": "0",
+        "sumNet": "60",
+        "sumGross": "71.4",
+        "sumDiscount": "0",
+        "sumTax": "11.4",
+        "sumNetAccounting": "60",
+        "sumTaxAccounting": "11.4",
+        "sumGrossAccounting": "71.4",
+        "priceNet": "40",
+        "priceGross": "47.6",
+        "priceTax": "7.6",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountForeignCurrency": "0",
+        "createNextPart": null
+      }
+    ]
+  }
+}

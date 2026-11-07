@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  amountInput,
   cleanText,
   compact,
   currencyCode,
   documentDateFilter,
+  isoDateInput,
   moneyFromUpstream,
   trimmedText,
 } from "../../../src/domain/common.js";
@@ -147,5 +149,45 @@ describe("documentDateFilter (D-046)", () => {
     expect(() => documentDateFilter({ from: "2026-04-01", to: "2026-03-01" })).toThrow(
       SevdeskError,
     );
+  });
+});
+
+describe("amountInput", () => {
+  it("parses decimal strings and JSON numbers to exact decimal strings", () => {
+    const schema = amountInput();
+    expect(schema.parse("1190.50")).toBe("1190.5");
+    expect(schema.parse(" 19.99 ")).toBe("19.99");
+    expect(schema.parse(19.99)).toBe("19.99");
+    expect(schema.parse(0)).toBe("0");
+    expect(schema.parse("100")).toBe("100");
+  });
+
+  it("rejects comma decimals, garbage and excess decimal places instead of guessing", () => {
+    const schema = amountInput();
+    for (const value of ["1.190,50", "19,99", "", ".", "abc", "1.2.3", "NaN"]) {
+      expect(schema.safeParse(value).success, value).toBe(false);
+    }
+    expect(schema.safeParse("1.005").error?.issues[0]?.message).toBe(
+      "at most 2 decimal places are allowed (got 1.005)",
+    );
+    expect(amountInput({ places: 4 }).parse("1.0005")).toBe("1.0005");
+  });
+
+  it("rejects negative amounts and, on request, zero", () => {
+    expect(amountInput().safeParse("-1").error?.issues[0]?.message).toBe(
+      "the amount must not be negative",
+    );
+    expect(amountInput({ allowNegative: true }).parse(-1.5)).toBe("-1.5");
+    expect(amountInput({ allowZero: false }).safeParse("0.00").error?.issues[0]?.message).toBe(
+      "the amount must not be zero",
+    );
+  });
+});
+
+describe("isoDateInput", () => {
+  it("accepts calendar dates only", () => {
+    expect(isoDateInput.parse("2026-02-28")).toBe("2026-02-28");
+    expect(isoDateInput.safeParse("2026-02-30").success).toBe(false);
+    expect(isoDateInput.safeParse("28.02.2026").success).toBe(false);
   });
 });

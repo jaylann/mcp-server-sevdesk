@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildInstructions, MAX_INSTRUCTIONS_LENGTH } from "../../src/instructions.js";
+import { buildInstructions, fitToCap, MAX_INSTRUCTIONS_LENGTH } from "../../src/instructions.js";
 import { TIERS } from "../../src/safety/tiers.js";
 import { ALL_TOOLS } from "../../src/tools/index.js";
 import { selectTools } from "../../src/tools/registry.js";
@@ -46,12 +46,31 @@ describe("buildInstructions", () => {
     expect(text).not.toContain("legally binding");
   });
 
-  it("asks for the user's go-ahead once binding tiers are enabled", () => {
-    const text = build(allEnabledConfig());
+  it("says that binding tiers ask the user, per confirmation mode", () => {
+    const elicit = build(allEnabledConfig());
+    expect(elicit).toContain("Enabled permission tiers: read, write, commit, external.");
+    expect(elicit).not.toContain("Disabled:");
+    expect(elicit).toContain(
+      "each such call asks the user to approve it in a confirmation prompt. If the user " +
+        "declines, do not retry unless they ask.",
+    );
 
-    expect(text).toContain("Enabled permission tiers: read, write, commit, external.");
-    expect(text).not.toContain("Disabled:");
-    expect(text).toContain("get the user's go-ahead for each such call");
+    const browser = build(allEnabledConfig({ confirm: "browser" }));
+    expect(browser).toContain(
+      "each such call first opens an approval page for the user (status approval_pending, with a " +
+        "reference code)",
+    );
+    expect(browser).toContain("call the tool again with the same arguments");
+
+    const off = build(allEnabledConfig({ confirm: "off" }));
+    expect(off).toContain("confirmation prompts are off (SEVDESK_CONFIRM=off)");
+    expect(off).toContain("get the user's explicit go-ahead before each such call");
+  });
+
+  it("does not mention confirmations when only the write tier is enabled", () => {
+    expect(build(testConfig({ allowedTiers: tiers("read", "write") }))).not.toMatch(
+      /confirmation|approval page/,
+    );
   });
 
   it("suggests the next tier up when some are already enabled", () => {
@@ -76,7 +95,8 @@ describe("buildInstructions", () => {
 
   it("mentions per-call dry runs only when a registered changing tool supports them", () => {
     expect(build(testConfig({ allowedTiers: tiers("read", "write") }))).toContain(
-      "Changing tools accept dryRun: true",
+      "Changing tools accept dryRun: true to preview exactly what a call would change, without " +
+        "sending it or asking the user.",
     );
     expect(build()).not.toContain("dryRun");
   });
@@ -98,6 +118,8 @@ describe("buildInstructions", () => {
       "read-only": testConfig({ readOnly: true }),
       "all tiers and toolsets": allEnabledConfig(),
       "all tiers, dry run": allEnabledConfig({ dryRun: true }),
+      "all tiers, browser approval": allEnabledConfig({ confirm: "browser" }),
+      "all tiers, confirmation off": allEnabledConfig({ confirm: "off" }),
     };
 
     it.each(Object.entries(configs))("with the shipped tools (%s)", (_name, config) => {
@@ -107,17 +129,42 @@ describe("buildInstructions", () => {
 
     it("with a large catalog in every toolset and tier", () => {
       const tools = TOOLSETS.flatMap((toolset) =>
-        TIERS.map((tier) => ({
-          ...dummies[0]!,
-          name: `sevdesk_${toolset.replace("-", "")}_${tier}_${"x".repeat(40)}`,
-          toolset,
-          tier,
-        })),
+        TIERS.map(
+          (tier) =>
+            ({
+              ...dummies[0]!,
+              name: `sevdesk_${toolset.replace("-", "")}_${tier}_${"x".repeat(40)}`,
+              toolset,
+              tier,
+            }) as AnyToolDefinition,
+        ),
       );
       const text = build(allEnabledConfig({ dryRun: true }), tools);
 
       expect(text.length).toBeLessThanOrEqual(MAX_INSTRUCTIONS_LENGTH);
       expect(text).toContain(`(${TOOLSETS.length * TIERS.length} tools)`);
     });
+  });
+});
+
+describe("fitToCap", () => {
+  const long = (char: string) => char.repeat(700);
+
+  it("drops optional sections, last first, until the text fits", () => {
+    const text = fitToCap([
+      { text: long("a") },
+      { text: long("b"), optional: true },
+      { text: long("c") },
+      { text: "d", optional: true },
+    ]);
+
+    expect(text).toBe(`${long("a")}\n${long("c")}`);
+  });
+
+  it("cuts hard when the required sections alone are too long", () => {
+    const text = fitToCap([{ text: long("a") }, { text: long("b") }, { text: long("c") }]);
+
+    expect(text).toHaveLength(MAX_INSTRUCTIONS_LENGTH);
+    expect(text.endsWith("…")).toBe(true);
   });
 });

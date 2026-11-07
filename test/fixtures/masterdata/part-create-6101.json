@@ -1,0 +1,54 @@
+{
+  "_provenance": {
+    "source": "community",
+    "ref": "https://github.com/emuuu/sevDesk.NET/blob/main/docs/sevdesk-api-responses.txt (POST /api/v1/Part)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "Shape and string scalars as in the recorded POST /Part response (2026-02-19), including the embedded unity; objects is the created record. Values fake; price = priceGross as recorded (D-042)."
+  },
+  "status": 201,
+  "body": {
+    "objects": {
+      "id": "6101",
+      "objectName": "Part",
+      "additionalInformation": null,
+      "create": "2026-11-07T10:00:00+01:00",
+      "update": "2026-11-07T10:00:00+01:00",
+      "name": "Beratungspaket",
+      "partNumber": "DL-020",
+      "text": "Vier Stunden Beratung vor Ort",
+      "category": {
+        "id": "1",
+        "objectName": "Category"
+      },
+      "stock": "0",
+      "stockEnabled": "0",
+      "unity": {
+        "id": "9",
+        "objectName": "Unity",
+        "additionalInformation": null,
+        "create": null,
+        "update": "1970-01-01T01:00:01+01:00",
+        "name": "Std",
+        "translationCode": "UNITY_HOUR",
+        "unitySystem": "general",
+        "uneceTradeUnitCode": "HUR"
+      },
+      "pricePartner": null,
+      "priceCustomer": null,
+      "price": "119",
+      "secondUnityFactor": null,
+      "sevClient": {
+        "id": "9001",
+        "objectName": "SevClient"
+      },
+      "pricePurchase": null,
+      "taxRate": "19",
+      "image": null,
+      "status": "100",
+      "internalComment": null,
+      "priceNet": "100",
+      "priceGross": "119"
+    }
+  }
+}
