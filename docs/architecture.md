@@ -146,9 +146,11 @@ checks and returns its preview (status `dry_run`) without sending anything or as
    (`tierScopedClient`, which applies the endpoint rule too), their `prepare` one that refuses
    every write (`readOnlyClient`). The client recognizes the
    state-changing GETs by endpoint, not only by the caller's `sideEffect` flag: a `getPdf` read
-   always gets `preventSendBy=1`, while `getPdf` with `preventSendBy` off, `sendByWithRender`, and
-   DATEV exports with an `enshrine` flag count as writes (see
-   [D-023](../spec/deviations.md#d-023-some-gets-change-state)).
+   always goes out with the literal `preventSendBy=true` (recorded: drafts stay drafts), while
+   `getPdf` with `preventSendBy` off, `sendByWithRender`, DATEV exports with an `enshrine` flag
+   (all `commit`/`external`, see [D-023](../spec/deviations.md#d-023-some-gets-change-state)) and
+   the next-number endpoints unless `useNextNumber=false` (they reserve a document number;
+   `write`; the documented `getNextCustomerNumber` stays a read) count as writes.
 
 **Write flow** (`src/tools/write-flow.ts`). A write tool has `prepare` (reads, checks, builds a
 preview: action, facts, warnings, irreversible) and `execute`. Every call runs `prepare`, then a
