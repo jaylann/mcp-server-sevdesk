@@ -1,0 +1,13 @@
+{
+  "_provenance": {
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "source": "community",
+    "ref": "src/sevdesk/envelope.ts expectSingle (sevDesk answers some unknown ids with an empty list)",
+    "note": "Empty GET-by-id result."
+  },
+  "status": 200,
+  "body": {
+    "objects": []
+  }
+}

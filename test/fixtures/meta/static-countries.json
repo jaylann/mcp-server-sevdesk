@@ -1,0 +1,36 @@
+{
+  "_provenance": {
+    "source": "community",
+    "ref": "https://github.com/emuuu/sevDesk.NET/blob/main/docs/sevdesk-api-responses.txt (GET /api/v1/StaticCountry)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "Entry 4 (Afghanistan) verbatim from the recording. Entry 1 (Germany) inferred: the recording references StaticCountry 1 as the German client country (TaxRule.countryClient) and as a Berlin address's country; its fields follow the recorded shape."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "1",
+        "objectName": "StaticCountry",
+        "additionalInformation": null,
+        "code": "de",
+        "name": "Deutschland",
+        "nameEn": "Germany",
+        "translationCode": "COUNTRY_DE",
+        "locale": "de_DE",
+        "priority": "1"
+      },
+      {
+        "id": "4",
+        "objectName": "StaticCountry",
+        "additionalInformation": null,
+        "code": "af",
+        "name": "Afghanistan",
+        "nameEn": "Afghanistan",
+        "translationCode": "COUNTRY_AF",
+        "locale": "en_US",
+        "priority": null
+      }
+    ]
+  }
+}

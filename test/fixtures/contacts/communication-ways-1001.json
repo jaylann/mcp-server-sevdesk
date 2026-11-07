@@ -1,0 +1,80 @@
+{
+  "_provenance": {
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "source": "community",
+    "ref": "https://github.com/emuuu/sevDesk.NET/blob/main/docs/sevdesk-api-responses.txt (GET /api/v1/CommunicationWay)",
+    "note": "Shape as in the recorded GET /CommunicationWay row (2026-02-19); all values fake (example.com, +49 30 0000000 range)."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "4001",
+        "objectName": "CommunicationWay",
+        "additionalInformation": null,
+        "create": "2026-01-05T09:32:00+01:00",
+        "update": "2026-01-05T09:32:00+01:00",
+        "contact": {
+          "id": "1001",
+          "objectName": "Contact"
+        },
+        "type": "EMAIL",
+        "value": "rechnung@example.com",
+        "key": {
+          "id": "8",
+          "objectName": "CommunicationWayKey"
+        },
+        "main": "1",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        }
+      },
+      {
+        "id": "4002",
+        "objectName": "CommunicationWay",
+        "additionalInformation": null,
+        "create": "2026-01-05T09:32:00+01:00",
+        "update": "2026-01-05T09:32:00+01:00",
+        "contact": {
+          "id": "1001",
+          "objectName": "Contact"
+        },
+        "type": "PHONE",
+        "value": "+49 30 0000000",
+        "key": {
+          "id": "2",
+          "objectName": "CommunicationWayKey"
+        },
+        "main": "0",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        }
+      },
+      {
+        "id": "4003",
+        "objectName": "CommunicationWay",
+        "additionalInformation": null,
+        "create": "2026-01-05T09:32:00+01:00",
+        "update": "2026-01-05T09:32:00+01:00",
+        "contact": {
+          "id": "1001",
+          "objectName": "Contact"
+        },
+        "type": "WEB",
+        "value": "https://www.example.com",
+        "key": {
+          "id": "2",
+          "objectName": "CommunicationWayKey"
+        },
+        "main": "0",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        }
+      }
+    ]
+  }
+}

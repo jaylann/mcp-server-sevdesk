@@ -1,0 +1,11 @@
+{
+  "_provenance": {
+    "source": "spec",
+    "ref": "spec/openapi.yaml#/paths/~1Tools~1bookkeepingSystemVersion/get/responses/200 (example)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "Same shape in the recorded response of sevDesk.NET docs/sevdesk-api-responses.txt."
+  },
+  "status": 200,
+  "body": { "objects": { "version": "2.0" } }
+}

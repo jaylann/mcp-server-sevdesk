@@ -1,0 +1,69 @@
+{
+  "_provenance": {
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "source": "community",
+    "ref": "https://github.com/emuuu/sevDesk.NET/blob/main/docs/sevdesk-api-responses.txt (GET /api/v1/ContactAddress)",
+    "note": "Shape as in the recorded GET /ContactAddress row (2026-02-19); all values fake. Filtered by contact[id]=1001."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "3001",
+        "objectName": "ContactAddress",
+        "additionalInformation": null,
+        "create": "2026-01-05T09:31:00+01:00",
+        "update": "2026-01-05T09:31:00+01:00",
+        "contact": {
+          "id": "1001",
+          "objectName": "Contact"
+        },
+        "street": "Musterstraße 1",
+        "zip": "12345",
+        "city": "Musterstadt",
+        "country": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "category": {
+          "id": "47",
+          "objectName": "Category"
+        },
+        "name": "Musterfirma GmbH",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "name2": "Buchhaltung"
+      },
+      {
+        "id": "3002",
+        "objectName": "ContactAddress",
+        "additionalInformation": null,
+        "create": "2026-01-05T09:31:00+01:00",
+        "update": "2026-01-05T09:31:00+01:00",
+        "contact": {
+          "id": "1001",
+          "objectName": "Contact"
+        },
+        "street": "Lagerweg 5",
+        "zip": "12345",
+        "city": "Musterstadt",
+        "country": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "category": {
+          "id": "48",
+          "objectName": "Category"
+        },
+        "name": null,
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        }
+      }
+    ]
+  }
+}

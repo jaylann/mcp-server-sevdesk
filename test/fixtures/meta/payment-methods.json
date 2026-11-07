@@ -1,0 +1,36 @@
+{
+  "_provenance": {
+    "source": "community",
+    "ref": "https://github.com/j-mastr/sevdesk-php-sdk/blob/main/docs/Model/ModelPaymentMethodResponse.md",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "Field names from j-mastr's patched spec; no recorded response was available, so ids, names and codes are illustrative. Replace with a scrubbed recording."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "21919",
+        "objectName": "PaymentMethod",
+        "additionalInformation": null,
+        "create": "2026-02-19T14:06:30+01:00",
+        "update": "2026-02-19T14:06:30+01:00",
+        "name": "Überweisung",
+        "text": "Bitte überweisen Sie den Betrag auf unser Konto.",
+        "translationCode": null,
+        "electronicInvoiceId": "58"
+      },
+      {
+        "id": "21920",
+        "objectName": "PaymentMethod",
+        "additionalInformation": null,
+        "create": "2026-02-19T14:06:30+01:00",
+        "update": "2026-02-19T14:06:30+01:00",
+        "name": "Bar",
+        "text": null,
+        "translationCode": null,
+        "electronicInvoiceId": "10"
+      }
+    ]
+  }
+}

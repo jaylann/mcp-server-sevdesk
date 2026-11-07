@@ -1,0 +1,202 @@
+import { describe, expect, it } from "vitest";
+import { z } from "zod";
+
+import {
+  defineTool,
+  isStrictObject,
+  MAX_DESCRIPTION_LENGTH,
+  ToolDefinitionError,
+  type ToolMetadata,
+  validateToolDefinition,
+} from "../../../src/tools/define-tool.js";
+import type { ToolDefinition } from "../../../src/tools/types.js";
+import {
+  COMMIT_ANNOTATIONS,
+  EXTERNAL_ANNOTATIONS,
+  READ_ANNOTATIONS,
+  WRITE_ANNOTATIONS,
+} from "../../helpers/dummy-tools.js";
+
+const input = z.strictObject({ id: z.string().min(1).describe("Contact id.") });
+const output = z.object({ name: z.string() });
+
+function valid(): ToolDefinition<typeof input, typeof output> {
+  return {
+    name: "sevdesk_contact_get",
+    title: "Get contact",
+    description: "Gets one contact (Kontakt) by id.",
+    toolset: "contacts",
+    tier: "read",
+    annotations: READ_ANNOTATIONS,
+    input,
+    output,
+    handler: () => Promise.resolve({ data: { name: "A" }, summary: "Found it." }),
+  };
+}
+
+function problems(overrides: Partial<Record<keyof ToolMetadata, unknown>>): string[] {
+  return validateToolDefinition({ ...valid(), ...overrides } as ToolMetadata);
+}
+
+describe("defineTool", () => {
+  it("returns a valid definition unchanged and frozen", () => {
+    const definition = valid();
+
+    const defined = defineTool(definition);
+
+    expect(defined).toBe(definition);
+    expect(Object.isFrozen(defined)).toBe(true);
+  });
+
+  it("throws one error listing every problem", () => {
+    const broken = { ...valid(), name: "contact_get", title: " ", tier: "write" as const };
+
+    expect(() => defineTool(broken)).toThrow(ToolDefinitionError);
+    try {
+      defineTool(broken);
+    } catch (error) {
+      expect(error).toBeInstanceOf(ToolDefinitionError);
+      const definitionError = error as ToolDefinitionError;
+      expect(definitionError.toolName).toBe("contact_get");
+      expect(definitionError.problems).toHaveLength(3);
+      expect(definitionError.message).toMatch(
+        /^Invalid tool definition "contact_get":\n {2}- name/,
+      );
+    }
+  });
+});
+
+describe("validateToolDefinition", () => {
+  it("accepts a valid definition", () => {
+    expect(validateToolDefinition(valid())).toEqual([]);
+  });
+
+  it.each([
+    "contact_get",
+    "sevdesk_contact",
+    "sevdesk_Contact_get",
+    "sevdesk_contact-get",
+    "sevdesk_contact__get",
+    "sevdesk_contact_get_",
+  ])("rejects the name %s", (name) => {
+    expect(problems({ name })).toEqual([expect.stringContaining("name must match")]);
+  });
+
+  it("rejects names longer than 64 characters", () => {
+    const name = `sevdesk_${"a".repeat(50)}_${"b".repeat(10)}`;
+    expect(problems({ name })).toEqual([`name has ${name.length} chars; the maximum is 64.`]);
+  });
+
+  it("requires a title and a description of 20 to 2,048 characters", () => {
+    expect(problems({ title: "  " })).toEqual(["title must not be empty."]);
+    expect(problems({ description: "Too short." })).toEqual([
+      "description must have at least 20 chars.",
+    ]);
+    expect(problems({ description: "x".repeat(MAX_DESCRIPTION_LENGTH) })).toEqual([]);
+    expect(problems({ description: "x".repeat(MAX_DESCRIPTION_LENGTH + 1) })).toEqual([
+      "description has 2049 chars; the maximum is 2048.",
+    ]);
+  });
+
+  it("rejects unknown toolsets and tiers", () => {
+    expect(problems({ toolset: "payroll" })).toEqual([
+      expect.stringContaining('toolset "payroll" is unknown'),
+    ]);
+    expect(problems({ tier: "admin" })).toEqual([
+      expect.stringContaining('tier "admin" is unknown'),
+    ]);
+  });
+
+  it("requires all four annotations explicitly", () => {
+    const { openWorldHint: _omitted, ...partial } = READ_ANNOTATIONS;
+    expect(problems({ annotations: partial })).toEqual([
+      "annotations.openWorldHint must be set explicitly to true or false.",
+    ]);
+  });
+
+  it.each([
+    [
+      "read",
+      { ...READ_ANNOTATIONS, readOnlyHint: false },
+      'tier "read" requires annotations.readOnlyHint = true.',
+    ],
+    [
+      "read",
+      { ...READ_ANNOTATIONS, destructiveHint: true },
+      'tier "read" requires annotations.destructiveHint = false.',
+    ],
+    [
+      "write",
+      { ...WRITE_ANNOTATIONS, readOnlyHint: true },
+      'tier "write" requires annotations.readOnlyHint = false.',
+    ],
+    [
+      "commit",
+      { ...COMMIT_ANNOTATIONS, destructiveHint: false },
+      'tier "commit" requires annotations.destructiveHint = true.',
+    ],
+    [
+      "external",
+      { ...EXTERNAL_ANNOTATIONS, openWorldHint: false },
+      'tier "external" requires annotations.openWorldHint = true.',
+    ],
+    [
+      "external",
+      { ...EXTERNAL_ANNOTATIONS, readOnlyHint: true },
+      'tier "external" requires annotations.readOnlyHint = false.',
+    ],
+  ])("checks tier %s against its annotations", (tier, annotations, expected) => {
+    expect(problems({ tier, annotations })).toEqual([expected]);
+  });
+
+  it.each([
+    ["write", WRITE_ANNOTATIONS],
+    ["commit", COMMIT_ANNOTATIONS],
+    ["external", EXTERNAL_ANNOTATIONS],
+  ])("accepts the usual %s annotations", (tier, annotations) => {
+    expect(problems({ tier, annotations })).toEqual([]);
+  });
+
+  it("requires a strict input object", () => {
+    const strictMessage =
+      "input must reject unknown keys: use z.strictObject({ … }) or z.object({ … }).strict().";
+    expect(problems({ input: z.object({ id: z.string() }) })).toEqual([strictMessage]);
+    expect(problems({ input: z.looseObject({ id: z.string() }) })).toEqual([strictMessage]);
+    expect(problems({ input: z.object({ id: z.string() }).strict() })).toEqual([]);
+    expect(problems({ input: z.string() })).toEqual([
+      "input must be a zod object schema, e.g. z.strictObject({ … }).",
+    ]);
+  });
+
+  it("requires schemas that convert to JSON Schema", () => {
+    expect(problems({ input: z.strictObject({ when: z.date() }) })).toEqual([
+      "input schema cannot be converted to JSON Schema: Date cannot be represented in JSON Schema",
+    ]);
+    expect(problems({ output: z.object({ when: z.date() }) })).toEqual([
+      "output schema cannot be converted to JSON Schema: Date cannot be represented in JSON Schema",
+    ]);
+  });
+
+  it("requires an object output schema", () => {
+    expect(problems({ output: z.array(z.string()) })).toEqual([
+      "output must be a zod object schema, e.g. z.object({ … }).",
+    ]);
+  });
+});
+
+describe("isStrictObject", () => {
+  it("is true only for objects that reject unknown keys", () => {
+    expect(isStrictObject(z.strictObject({}))).toBe(true);
+    expect(isStrictObject(z.object({}).strict())).toBe(true);
+    expect(isStrictObject(z.object({}))).toBe(false);
+    expect(isStrictObject(z.object({}).loose())).toBe(false);
+    expect(isStrictObject(z.object({}).catchall(z.string()))).toBe(false);
+  });
+
+  it("agrees with zod's JSON Schema output", () => {
+    for (const schema of [z.strictObject({}), z.object({}), z.looseObject({})]) {
+      const json = z.toJSONSchema(schema, { io: "input" });
+      expect(isStrictObject(schema)).toBe(json.additionalProperties === false);
+    }
+  });
+});

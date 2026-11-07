@@ -1,0 +1,10 @@
+{
+  "_provenance": {
+    "source": "spec",
+    "ref": "spec/openapi.yaml#/paths/~1Tools~1bookkeepingSystemVersion/get/responses/200 (enum value 1.0)",
+    "date": "2026-11-07",
+    "systemVersion": "1.0"
+  },
+  "status": 200,
+  "body": { "objects": { "version": "1.0" } }
+}

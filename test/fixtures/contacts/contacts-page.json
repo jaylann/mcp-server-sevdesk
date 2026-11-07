@@ -1,0 +1,101 @@
+{
+  "_provenance": {
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "source": "community",
+    "ref": "https://github.com/emuuu/sevDesk.NET/blob/main/docs/sevdesk-api-responses.txt (GET /api/v1/Contact?depth=1&countAll=true)",
+    "note": "Field set and string scalars as in the recorded GET /Contact row (2026-02-19); all values fake. One page with countAll: total is sevDesk's string count, larger than the page."
+  },
+  "status": 200,
+  "body": {
+    "total": "140",
+    "objects": [
+      {
+        "id": "1001",
+        "objectName": "Contact",
+        "additionalInformation": null,
+        "create": "2026-01-05T09:30:00+01:00",
+        "update": "2026-03-01T23:30:00+00:00",
+        "name": "Musterfirma GmbH",
+        "status": "1000",
+        "customerNumber": "K-1001",
+        "surename": null,
+        "familyname": null,
+        "titel": null,
+        "category": {
+          "id": "3",
+          "objectName": "Category"
+        },
+        "description": "Stammkunde seit 2026",
+        "academicTitle": null,
+        "gender": null,
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "name2": null,
+        "birthday": null,
+        "vatNumber": "DE000000000",
+        "bankAccount": null,
+        "bankNumber": null,
+        "defaultCashbackTime": null,
+        "defaultCashbackPercent": null,
+        "defaultTimeToPay": "14",
+        "taxNumber": "000/000/00000",
+        "taxOffice": null,
+        "exemptVat": "0",
+        "taxType": null,
+        "defaultDiscountAmount": null,
+        "defaultDiscountPercentage": "1",
+        "buyerReference": null,
+        "governmentAgency": "0",
+        "defaultShowVat": "1"
+      },
+      {
+        "id": "1002",
+        "objectName": "Contact",
+        "additionalInformation": null,
+        "create": "2026-02-19T14:13:11+01:00",
+        "update": "2026-02-19T14:13:11+01:00",
+        "name": null,
+        "status": "1000",
+        "customerNumber": "K-1002",
+        "surename": "Max",
+        "familyname": "Mustermann",
+        "titel": null,
+        "category": {
+          "id": "3",
+          "objectName": "Category"
+        },
+        "description": null,
+        "academicTitle": "Dr.",
+        "gender": "m",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "name2": null,
+        "birthday": null,
+        "vatNumber": null,
+        "bankAccount": null,
+        "bankNumber": null,
+        "defaultCashbackTime": null,
+        "defaultCashbackPercent": null,
+        "defaultTimeToPay": null,
+        "taxNumber": null,
+        "taxOffice": null,
+        "exemptVat": "0",
+        "taxType": null,
+        "defaultDiscountAmount": null,
+        "defaultDiscountPercentage": "1",
+        "buyerReference": null,
+        "governmentAgency": "0",
+        "defaultShowVat": "1",
+        "parent": {
+          "id": "1001",
+          "objectName": "Contact"
+        }
+      }
+    ]
+  }
+}

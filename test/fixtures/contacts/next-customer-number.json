@@ -1,0 +1,13 @@
+{
+  "_provenance": {
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "source": "spec",
+    "ref": "spec/openapi.yaml#/paths/~1Contact~1Factory~1getNextCustomerNumber/get/responses/200",
+    "note": "The spec documents objects as a string without example; the value is fake."
+  },
+  "status": 200,
+  "body": {
+    "objects": "K-1004"
+  }
+}

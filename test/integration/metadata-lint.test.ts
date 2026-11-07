@@ -1,0 +1,77 @@
+/**
+ * Lint over every shipped tool: the rules clients and models rely on, checked on the real catalog
+ * (not just on whatever `defineTool` happened to see).
+ */
+import { describe, expect, it } from "vitest";
+import { z } from "zod";
+
+import {
+  isStrictObject,
+  JSON_SCHEMA_TARGET,
+  MAX_DESCRIPTION_LENGTH,
+  validateToolDefinition,
+} from "../../src/tools/define-tool.js";
+import { ALL_TOOLS } from "../../src/tools/index.js";
+import type { AnyToolDefinition } from "../../src/tools/types.js";
+
+const ANNOTATION_KEYS = ["destructiveHint", "idempotentHint", "openWorldHint", "readOnlyHint"];
+
+const cases = ALL_TOOLS.map((tool): [string, AnyToolDefinition] => [tool.name, tool]);
+
+function duplicates(values: readonly string[]): string[] {
+  return values.filter((value, index) => values.indexOf(value) !== index);
+}
+
+describe("tool metadata", () => {
+  it("ships at least one tool", () => {
+    expect(ALL_TOOLS.length).toBeGreaterThan(0);
+  });
+
+  it("uses unique names and titles", () => {
+    expect(duplicates(ALL_TOOLS.map((tool) => tool.name))).toEqual([]);
+    expect(duplicates(ALL_TOOLS.map((tool) => tool.title))).toEqual([]);
+  });
+
+  describe.each(cases)("%s", (_name, tool) => {
+    it("passes defineTool validation", () => {
+      expect(validateToolDefinition(tool)).toEqual([]);
+    });
+
+    it(`has a description of at most ${MAX_DESCRIPTION_LENGTH} characters`, () => {
+      expect(tool.description.length).toBeLessThanOrEqual(MAX_DESCRIPTION_LENGTH);
+    });
+
+    it("sets all four annotations explicitly", () => {
+      const annotations: Record<string, unknown> = { ...tool.annotations };
+      expect(Object.keys(annotations).sort()).toEqual(ANNOTATION_KEYS);
+      for (const key of ANNOTATION_KEYS) {
+        expect(typeof annotations[key], key).toBe("boolean");
+      }
+    });
+
+    it("has a strict, flat object-root input JSON Schema", () => {
+      const input: unknown = tool.input;
+      expect(input).toBeInstanceOf(z.ZodObject);
+      const schema = input as z.ZodObject;
+      const json = z.toJSONSchema(schema, { io: "input", target: JSON_SCHEMA_TARGET });
+
+      expect(json.type).toBe("object");
+      expect(json).not.toHaveProperty("anyOf");
+      expect(json).not.toHaveProperty("oneOf");
+      expect(json).not.toHaveProperty("allOf");
+      expect(json.additionalProperties).toBe(false);
+      expect(isStrictObject(schema)).toBe(true);
+    });
+
+    it("has an object output JSON Schema", () => {
+      const output: unknown = tool.output;
+      expect(output).toBeInstanceOf(z.ZodObject);
+      const json = z.toJSONSchema(output as z.ZodObject, {
+        io: "output",
+        target: JSON_SCHEMA_TARGET,
+      });
+
+      expect(json.type).toBe("object");
+    });
+  });
+});

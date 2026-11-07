@@ -1,0 +1,59 @@
+{
+  "_provenance": {
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "source": "community",
+    "ref": "https://github.com/emuuu/sevDesk.NET/blob/main/docs/sevdesk-api-responses.txt (GET /api/v1/Contact/{id})",
+    "note": "Field set and string scalars as in the recorded GET /Contact row (2026-02-19); all values fake. A person (surename = first name) belonging to organisation 1001."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "1002",
+        "objectName": "Contact",
+        "additionalInformation": null,
+        "create": "2026-02-19T14:13:11+01:00",
+        "update": "2026-02-19T14:13:11+01:00",
+        "name": null,
+        "status": "1000",
+        "customerNumber": "K-1002",
+        "surename": "Max",
+        "familyname": "Mustermann",
+        "titel": null,
+        "category": {
+          "id": "3",
+          "objectName": "Category"
+        },
+        "description": null,
+        "academicTitle": "Dr.",
+        "gender": "m",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "name2": null,
+        "birthday": null,
+        "vatNumber": null,
+        "bankAccount": null,
+        "bankNumber": null,
+        "defaultCashbackTime": null,
+        "defaultCashbackPercent": null,
+        "defaultTimeToPay": null,
+        "taxNumber": null,
+        "taxOffice": null,
+        "exemptVat": "0",
+        "taxType": null,
+        "defaultDiscountAmount": null,
+        "defaultDiscountPercentage": "1",
+        "buyerReference": null,
+        "governmentAgency": "0",
+        "defaultShowVat": "1",
+        "parent": {
+          "id": "1001",
+          "objectName": "Contact"
+        }
+      }
+    ]
+  }
+}
