@@ -1,0 +1,41 @@
+{
+  "_provenance": {
+    "source": "community",
+    "ref": "https://github.com/jernoxit/sevdesk-rs/blob/main/tests/fixtures/contact_address_list.json (GET /ContactAddress?contact[id]=…)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "The address of contact 1101 as the filtered list returns it. All values fake."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "3101",
+        "objectName": "ContactAddress",
+        "additionalInformation": null,
+        "create": "2026-11-07T10:00:01+01:00",
+        "update": "2026-11-07T10:00:01+01:00",
+        "contact": {
+          "id": "1101",
+          "objectName": "Contact"
+        },
+        "street": "Beispielweg 5",
+        "zip": "10115",
+        "city": "Berlin",
+        "country": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "category": {
+          "id": "47",
+          "objectName": "Category"
+        },
+        "name": null,
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        }
+      }
+    ]
+  }
+}

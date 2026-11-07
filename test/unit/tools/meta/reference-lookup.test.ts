@@ -131,6 +131,133 @@ describe("sevdesk_reference_lookup", () => {
   it("rejects unknown kinds and empty queries", () => {
     expect(tool.input.safeParse({ kind: "accounts" }).success).toBe(false);
     expect(tool.input.safeParse({ kind: "units", query: "" }).success).toBe(false);
-    expect(tool.input.safeParse({ kind: "units", limit: 5 }).success).toBe(false);
+    expect(tool.input.safeParse({ kind: "units", unknown: 5 }).success).toBe(false);
+    expect(tool.input.safeParse({ kind: "receipt_guidance", accountNumber: "44a" }).success).toBe(
+      false,
+    );
+    expect(tool.input.safeParse({ kind: "receipt_guidance", limit: 101 }).success).toBe(false);
+  });
+
+  it("refuses receipt_guidance arguments for other kinds before calling sevDesk", async () => {
+    const client = new FakeSevdeskClient(upstreamRoutes);
+    await expect(
+      tool.handler(
+        tool.input.parse({ kind: "units", limit: 5, taxRuleId: 1 }),
+        testContext(client),
+      ),
+    ).rejects.toMatchObject({
+      kind: "validation",
+      message:
+        "taxRuleId, limit only apply to kind=receipt_guidance; leave them out for kind=units.",
+    });
+    expect(client.calls).toHaveLength(0);
+  });
+});
+
+describe("sevdesk_reference_lookup kind=receipt_guidance", () => {
+  const guidanceRoutes: FakeRoute[] = [
+    {
+      path: "/ReceiptGuidance/forAllAccounts",
+      response: { fixture: "masterdata/receipt-guidance-all.json" },
+    },
+  ];
+
+  it("returns a compact first page of the account's guidance", async () => {
+    const { client, result } = await lookup({ kind: "receipt_guidance", limit: 2 }, guidanceRoutes);
+    expect(result.data).toMatchObject({
+      kind: "receipt_guidance",
+      source: "sevdesk",
+      total: 4,
+      matched: 4,
+      returned: 2,
+      offset: 0,
+      nextOffset: 2,
+      truncated: false,
+    });
+    expect(result.data.receiptGuidance?.[1]).toEqual({
+      accountDatevId: 2571,
+      accountNumber: "1525",
+      accountName: "Kautionen",
+      description: "Gezahlte Kautionen z. B. für Büroräume",
+      receiptTypes: ["expense"],
+      taxRules: [{ id: 16, code: "NICHT_STEUERBAR_EXPENSE", taxRates: [0] }],
+    });
+    expect(result.summary).toBe(
+      "2 of 4 matching receipt guidance accounts (4 in total). More: call again with offset 2.",
+    );
+    expect(client.calls).toEqual([
+      expect.objectContaining({ method: "GET", path: "/ReceiptGuidance/forAllAccounts" }),
+    ]);
+  });
+
+  it("filters by account number, tax rule, receipt type and query, and pages", async () => {
+    const byNumber = await lookup(
+      { kind: "receipt_guidance", accountNumber: "4400" },
+      guidanceRoutes,
+    );
+    expect(byNumber.result.data.receiptGuidance?.map((guide) => guide.accountDatevId)).toEqual([
+      3631,
+    ]);
+    expect(byNumber.result.data.nextOffset).toBeUndefined();
+
+    const byRule = await lookup({ kind: "receipt_guidance", taxRuleId: 16 }, guidanceRoutes);
+    expect(byRule.result.data.receiptGuidance?.map((guide) => guide.accountNumber)).toEqual([
+      "1525",
+      "1590",
+    ]);
+
+    const revenue = await lookup(
+      { kind: "receipt_guidance", receiptType: "revenue", offset: 1 },
+      guidanceRoutes,
+    );
+    expect(revenue.result.data).toMatchObject({ matched: 2, returned: 1, offset: 1 });
+    expect(revenue.result.data.receiptGuidance?.[0]?.accountNumber).toBe("4400");
+
+    const query = await lookup({ kind: "receipt_guidance", query: "kreditkarten" }, guidanceRoutes);
+    expect(query.result.data.receiptGuidance?.map((guide) => guide.accountNumber)).toEqual([
+      "4970",
+    ]);
+    const byCode = await lookup(
+      { kind: "receipt_guidance", query: "rev_charge_13b_eu" },
+      guidanceRoutes,
+    );
+    expect(byCode.result.data.matched).toBe(1);
+  });
+
+  it("caches the guidance per server configuration", async () => {
+    const client = new FakeSevdeskClient(guidanceRoutes);
+    const ctx = testContext(client);
+    await tool.handler(tool.input.parse({ kind: "receipt_guidance" }), ctx);
+    await tool.handler(tool.input.parse({ kind: "receipt_guidance", taxRuleId: 9 }), ctx);
+    expect(client.calls).toHaveLength(1);
+  });
+
+  it("keeps unknown rate words and reports truncation", async () => {
+    const { result } = await lookup({ kind: "receipt_guidance" }, [
+      {
+        path: "/ReceiptGuidance/forAllAccounts",
+        response: {
+          body: {
+            total: "1200",
+            objects: [
+              {
+                accountDatevId: 1,
+                accountNumber: "4400",
+                allowedTaxRules: [{ id: 1, name: "USTPFL_UMS_EINN", taxRates: ["TWELVE"] }],
+                allowedReceiptTypes: ["REVENUE"],
+              },
+            ],
+          },
+        },
+      },
+    ]);
+    expect(result.data.receiptGuidance?.[0]?.taxRules).toEqual([
+      { id: 1, code: "USTPFL_UMS_EINN", taxRates: [], unknownTaxRates: ["TWELVE"] },
+    ]);
+    expect(result.data.truncated).toBe(true);
+    expect(result.summary).toBe(
+      "1 of 1 matching receipt guidance accounts (1 in total). sevDesk has more accounts than " +
+        "could be fetched.",
+    );
   });
 });

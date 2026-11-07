@@ -1,0 +1,160 @@
+{
+  "_provenance": {
+    "source": "community",
+    "ref": "spec/openapi.yaml#/paths/~1CreditNote~1Factory~1createFromInvoice/post/responses/201 + https://github.com/jernoxit/sevdesk-rs/blob/HEAD/tests/fixtures/credit_note.json",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "Envelope per the spec ({objects: {creditNote, creditNotePos, discount}}); sevdesk-rs reads the id from creditNote.id or id. Credit note keys from the sevdesk-rs recorded credit note. Draft from paid invoice 1004 (origin set, as createFromInvoice does). All values fake."
+  },
+  "status": 201,
+  "body": {
+    "objects": {
+      "creditNote": {
+        "id": "2101",
+        "objectName": "CreditNote",
+        "additionalInformation": null,
+        "creditNoteNumber": null,
+        "contact": {
+          "id": "1001",
+          "objectName": "Contact"
+        },
+        "create": "2026-11-07T10:00:00+01:00",
+        "update": "2026-11-07T10:00:00+01:00",
+        "creditNoteDate": "2026-11-07T00:00:00+01:00",
+        "header": "Gutschrift Nr. GU-1001 zur Rechnung Nr. RE-1004",
+        "headText": "Wir schreiben Ihnen folgenden Betrag gut.",
+        "footText": null,
+        "timeToPay": null,
+        "discountTime": "0",
+        "discount": "0",
+        "addressName": "Musterfirma GmbH",
+        "addressStreet": "Musterstraße 1",
+        "addressZip": "12345",
+        "addressCity": "Musterstadt",
+        "addressCountry": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "payDate": null,
+        "createUser": {
+          "id": "7001",
+          "objectName": "SevUser"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "deliveryDate": "2026-10-22T00:00:00+02:00",
+        "status": "100",
+        "smallSettlement": "0",
+        "contactPerson": {
+          "id": "7001",
+          "objectName": "SevUser"
+        },
+        "taxRate": "0",
+        "taxText": null,
+        "addressParentName": null,
+        "taxType": null,
+        "sendDate": null,
+        "creditNoteType": "CN",
+        "accountIntervall": null,
+        "accountLastCreditNote": null,
+        "accountNextCreditNote": null,
+        "reminderTotal": null,
+        "reminderDebit": null,
+        "reminderDeadline": null,
+        "reminderCharge": null,
+        "addressParentName2": null,
+        "addressName2": null,
+        "addressGender": null,
+        "accountEndDate": null,
+        "address": "Musterfirma GmbH\nMusterstraße 1\n12345 Musterstadt",
+        "currency": "EUR",
+        "sumNet": "100",
+        "sumTax": "19",
+        "sumGross": "119",
+        "sumDiscounts": "0",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountsForeignCurrency": "0",
+        "sumNetAccounting": "20",
+        "sumTaxAccounting": "3.8",
+        "sumGrossAccounting": "23.8",
+        "customerInternalNote": "Reklamation vom 20.10.",
+        "taxNumber": null,
+        "vatNumber": null,
+        "showNet": "1",
+        "enshrined": null,
+        "sendType": null,
+        "bookingCategory": "UNDERACHIEVEMENT",
+        "deliveryDateUntil": null,
+        "refSrcInvoice": {
+          "id": "1004",
+          "objectName": "Invoice"
+        },
+        "isTransferred": "0",
+        "sumDiscountNet": "0",
+        "sumDiscountGross": "0",
+        "sumDiscountNetForeignCurrency": "0",
+        "sumDiscountGrossForeignCurrency": "0",
+        "taxRule": {
+          "id": "1",
+          "objectName": "TaxRule"
+        },
+        "origin": {
+          "id": "1004",
+          "objectName": "Invoice"
+        }
+      },
+      "creditNotePos": [
+        {
+          "id": "8101",
+          "objectName": "CreditNotePos",
+          "additionalInformation": null,
+          "create": "2026-10-22T09:05:00+02:00",
+          "update": "2026-10-22T09:05:00+02:00",
+          "creditNote": {
+            "id": "2101",
+            "objectName": "CreditNote"
+          },
+          "quantity": "1",
+          "price": "20",
+          "name": "Minderung Beratung",
+          "priority": "100",
+          "unity": {
+            "id": "7",
+            "objectName": "Unity"
+          },
+          "sevClient": {
+            "id": "9001",
+            "objectName": "SevClient"
+          },
+          "positionNumber": "1000",
+          "text": "Gutschrift für nicht erbrachte Leistung",
+          "discount": "0",
+          "isPercentage": "1",
+          "discountedValue": null,
+          "taxRate": "19",
+          "temporary": "0",
+          "sumNet": "20",
+          "sumGross": "23.8",
+          "sumDiscount": "0",
+          "sumTax": "3.8",
+          "sumNetAccounting": "20",
+          "sumTaxAccounting": "3.8",
+          "sumGrossAccounting": "23.8",
+          "priceNet": "20",
+          "priceGross": "23.8",
+          "priceTax": "3.8",
+          "sumNetForeignCurrency": "0",
+          "sumTaxForeignCurrency": "0",
+          "sumGrossForeignCurrency": "0",
+          "sumDiscountForeignCurrency": "0",
+          "createNextPart": null
+        }
+      ],
+      "discount": []
+    }
+  }
+}

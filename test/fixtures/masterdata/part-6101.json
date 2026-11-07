@@ -1,0 +1,49 @@
+{
+  "_provenance": {
+    "source": "community",
+    "ref": "https://github.com/emuuu/sevDesk.NET/blob/main/docs/sevdesk-api-responses.txt (GET /api/v1/Part)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "The part created in part-create-6101.json as GET by id returns it (array of one, unity as reference). Values fake."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "6101",
+        "objectName": "Part",
+        "additionalInformation": null,
+        "create": "2026-11-07T10:00:00+01:00",
+        "update": "2026-11-07T10:00:00+01:00",
+        "name": "Beratungspaket",
+        "partNumber": "DL-020",
+        "text": "Vier Stunden Beratung vor Ort",
+        "category": {
+          "id": "1",
+          "objectName": "Category"
+        },
+        "stock": "0",
+        "stockEnabled": "0",
+        "unity": {
+          "id": "9",
+          "objectName": "Unity"
+        },
+        "pricePartner": null,
+        "priceCustomer": null,
+        "price": "119",
+        "secondUnityFactor": null,
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "pricePurchase": null,
+        "taxRate": "19",
+        "image": null,
+        "status": "100",
+        "internalComment": null,
+        "priceNet": "100",
+        "priceGross": "119"
+      }
+    ]
+  }
+}

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { compact } from "../../domain/common.js";
+import { loadReceiptGuidance, RECEIPT_TYPES } from "../../domain/receipt-guidance.js";
 import {
   CONTACT_CATEGORIES,
   CONTACT_CATEGORY_KEYS,
@@ -12,6 +14,7 @@ import {
   TAX_RULES,
 } from "../../domain/reference-data.js";
 import { listUsers, userDtoSchema } from "../../domain/users.js";
+import { SevdeskError } from "../../sevdesk/errors.js";
 import { defineTool } from "../define-tool.js";
 import type { ToolContext } from "../types.js";
 
@@ -24,8 +27,20 @@ const LOOKUP_KINDS = [
   "countries",
   "units",
   "payment_methods",
+  "receipt_guidance",
 ] as const;
 type LookupKind = (typeof LOOKUP_KINDS)[number];
+
+/** Default and maximum page size of kind `receipt_guidance` (the other kinds are not paged). */
+const GUIDANCE_PAGE = { limit: 25, max: 100 } as const;
+/** Arguments that only apply to kind `receipt_guidance`. */
+const GUIDANCE_ONLY_ARGS = [
+  "accountNumber",
+  "taxRuleId",
+  "receiptType",
+  "limit",
+  "offset",
+] as const;
 
 const taxRuleItem = z.object({
   id: z.number().int(),
@@ -82,6 +97,30 @@ const paymentMethodItem = z.object({
   text: z.string().optional(),
 });
 
+const receiptGuidanceItem = z.object({
+  accountDatevId: z
+    .number()
+    .int()
+    .describe("Booking account id (accountDatev) to use in voucher positions."),
+  accountNumber: z.string().optional().describe("Number in the chart of accounts (SKR03/04)."),
+  accountName: z.string().optional(),
+  description: z.string().optional().describe("What the account is for, as sevDesk says."),
+  receiptTypes: z.array(z.enum(RECEIPT_TYPES)).describe("expense (Ausgabe), revenue (Einnahme)."),
+  taxRules: z
+    .array(
+      z.object({
+        id: z.number().int().describe("Tax rule id (Steuerregel), see kind=tax_rules."),
+        code: z.string().optional(),
+        taxRates: z.array(z.number()).describe("Allowed tax rates in percent."),
+        unknownTaxRates: z
+          .array(z.string())
+          .optional()
+          .describe("Rate values sevDesk sent that this server cannot read."),
+      }),
+    )
+    .describe("Tax rules this account allows, each with its allowed tax rates."),
+});
+
 const output = z.object({
   kind: z.enum(LOOKUP_KINDS),
   source: z
@@ -98,6 +137,21 @@ const output = z.object({
   countries: z.array(countryItem).optional(),
   units: z.array(unitItem).optional(),
   paymentMethods: z.array(paymentMethodItem).optional(),
+  receiptGuidance: z
+    .array(receiptGuidanceItem)
+    .optional()
+    .describe("Kind receipt_guidance: one page of accounts, filtered."),
+  matched: z
+    .number()
+    .int()
+    .optional()
+    .describe("Kind receipt_guidance: entries matching the filters, before paging."),
+  offset: z.number().int().optional().describe("Kind receipt_guidance: offset of this page."),
+  nextOffset: z
+    .number()
+    .int()
+    .optional()
+    .describe("Kind receipt_guidance: pass as offset for the next page; absent on the last page."),
 });
 
 type LookupOutput = z.output<typeof output>;
@@ -111,8 +165,11 @@ export const referenceLookupTool = defineTool({
     "(Steuerregeln for Update 2.0, e.g. 1 = steuerpflichtig, 11 = Kleinunternehmer §19), " +
     "contact_categories (Kunde, Lieferant, …), status_codes (Entwurf, offen, bezahlt per " +
     "document type), document_types (RE, AN, …), users (SevUser), countries (StaticCountry), " +
-    "units (Einheiten) and payment_methods (Zahlungsarten). Use query to filter by a " +
-    "case-insensitive substring of names, codes or ids.",
+    "units (Einheiten), payment_methods (Zahlungsarten) and receipt_guidance (Kontierungshilfe: " +
+    "which booking account (accountDatev) allows which tax rules and tax rates for expense or " +
+    "revenue receipts (Belege); filter with accountNumber, taxRuleId and receiptType, paged " +
+    "with limit/offset). Use query to filter by a case-insensitive substring of names, codes " +
+    "or ids.",
   toolset: "meta",
   tier: "read",
   annotations: {
@@ -130,9 +187,52 @@ export const referenceLookupTool = defineTool({
       .max(100)
       .optional()
       .describe("Case-insensitive substring filter on names, codes and ids, e.g. 'reverse'."),
+    accountNumber: z
+      .string()
+      .trim()
+      .regex(/^\d{1,12}$/, "expected an account number such as 4400")
+      .optional()
+      .describe("receipt_guidance only: exact account number in the chart of accounts."),
+    taxRuleId: z
+      .number()
+      .int()
+      .positive()
+      .max(Number.MAX_SAFE_INTEGER)
+      .optional()
+      .describe("receipt_guidance only: accounts that allow this tax rule id."),
+    receiptType: z
+      .enum(RECEIPT_TYPES)
+      .optional()
+      .describe("receipt_guidance only: accounts for expense or revenue receipts."),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(GUIDANCE_PAGE.max)
+      .optional()
+      .describe(
+        `receipt_guidance only: page size, 1–${GUIDANCE_PAGE.max} (default ${GUIDANCE_PAGE.limit}).`,
+      ),
+    offset: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe("receipt_guidance only: entries to skip; pass the previous nextOffset."),
   }),
   output,
   handler: async (args, ctx) => {
+    if (args.kind === "receipt_guidance") {
+      const data = await lookupReceiptGuidance(args, ctx);
+      return { data, summary: receiptGuidanceSummary(data) };
+    }
+    const misplaced = GUIDANCE_ONLY_ARGS.filter((key) => args[key] !== undefined);
+    if (misplaced.length > 0) {
+      throw new SevdeskError({
+        kind: "validation",
+        message: `${misplaced.join(", ")} only apply to kind=receipt_guidance; leave them out for kind=${args.kind}.`,
+      });
+    }
     const data = await lookup(args.kind, args.query, ctx);
     const filtered = args.query === undefined ? "" : " matching the query";
     return {
@@ -144,8 +244,79 @@ export const referenceLookupTool = defineTool({
   },
 });
 
+type LookupArgs = z.output<typeof referenceLookupTool.input>;
+
+/**
+ * Kind `receipt_guidance`: the account's cached `forAllAccounts` guidance (see
+ * `loadReceiptGuidance`), filtered here by account number, tax rule, receipt type and query, then
+ * paged. `total` counts all accounts, `matched` those that pass the filters.
+ */
+async function lookupReceiptGuidance(args: LookupArgs, ctx: ToolContext): Promise<LookupOutput> {
+  const list = await loadReceiptGuidance(
+    ctx.client,
+    { kind: "all" },
+    { cacheOwner: ctx.config, signal: ctx.signal },
+  );
+  const keep = matcher(args.query);
+  const matches = list.guides.filter(
+    (guide) =>
+      (args.accountNumber === undefined || guide.accountNumber === args.accountNumber) &&
+      (args.taxRuleId === undefined || guide.taxRules.some((rule) => rule.id === args.taxRuleId)) &&
+      (args.receiptType === undefined || guide.receiptTypes.includes(args.receiptType)) &&
+      keep(
+        guide.accountDatevId,
+        guide.accountNumber,
+        guide.accountName,
+        guide.description,
+        ...guide.taxRules.map((rule) => rule.code),
+      ),
+  );
+  const offset = args.offset ?? 0;
+  const limit = args.limit ?? GUIDANCE_PAGE.limit;
+  const page = matches.slice(offset, offset + limit);
+  const end = offset + page.length;
+  return {
+    kind: "receipt_guidance",
+    source: "sevdesk",
+    total: list.guides.length,
+    returned: page.length,
+    truncated: list.truncated,
+    matched: matches.length,
+    offset,
+    ...(end < matches.length ? { nextOffset: end } : {}),
+    receiptGuidance: page.map((guide) =>
+      compact({
+        accountDatevId: guide.accountDatevId,
+        accountNumber: guide.accountNumber,
+        accountName: guide.accountName,
+        description: guide.description,
+        receiptTypes: [...guide.receiptTypes],
+        taxRules: guide.taxRules.map((rule) =>
+          compact({
+            id: rule.id,
+            code: rule.code,
+            taxRates: [...rule.taxRates],
+            unknownTaxRates:
+              rule.unknownTaxRates.length === 0 ? undefined : [...rule.unknownTaxRates],
+          }),
+        ),
+      }),
+    ),
+  };
+}
+
+function receiptGuidanceSummary(data: LookupOutput): string {
+  const more =
+    data.nextOffset === undefined ? "" : ` More: call again with offset ${data.nextOffset}.`;
+  const truncated = data.truncated ? " sevDesk has more accounts than could be fetched." : "";
+  return (
+    `${data.returned} of ${data.matched ?? 0} matching receipt guidance accounts ` +
+    `(${data.total} in total).${more}${truncated}`
+  );
+}
+
 async function lookup(
-  kind: LookupKind,
+  kind: Exclude<LookupKind, "receipt_guidance">,
   query: string | undefined,
   ctx: ToolContext,
 ): Promise<LookupOutput> {

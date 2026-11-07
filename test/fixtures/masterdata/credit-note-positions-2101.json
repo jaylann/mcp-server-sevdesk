@@ -1,0 +1,59 @@
+{
+  "_provenance": {
+    "source": "community",
+    "ref": "https://github.com/jernoxit/sevdesk-rs/blob/HEAD/tests/fixtures/write_credit_note_save.json (creditNotePos rows)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "The positions of credit-notes/credit-note-positions-2001.json, re-parented to credit note 2101. All values fake."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "8101",
+        "objectName": "CreditNotePos",
+        "additionalInformation": null,
+        "create": "2026-10-22T09:05:00+02:00",
+        "update": "2026-10-22T09:05:00+02:00",
+        "creditNote": {
+          "id": "2101",
+          "objectName": "CreditNote"
+        },
+        "quantity": "1",
+        "price": "20",
+        "name": "Minderung Beratung",
+        "priority": "100",
+        "unity": {
+          "id": "7",
+          "objectName": "Unity"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "positionNumber": "1000",
+        "text": "Gutschrift für nicht erbrachte Leistung",
+        "discount": "0",
+        "isPercentage": "1",
+        "discountedValue": null,
+        "taxRate": "19",
+        "temporary": "0",
+        "sumNet": "20",
+        "sumGross": "23.8",
+        "sumDiscount": "0",
+        "sumTax": "3.8",
+        "sumNetAccounting": "20",
+        "sumTaxAccounting": "3.8",
+        "sumGrossAccounting": "23.8",
+        "priceNet": "20",
+        "priceGross": "23.8",
+        "priceTax": "3.8",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountForeignCurrency": "0",
+        "createNextPart": null
+      }
+    ]
+  }
+}

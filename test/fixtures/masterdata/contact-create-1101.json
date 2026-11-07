@@ -1,0 +1,54 @@
+{
+  "_provenance": {
+    "source": "community",
+    "ref": "https://github.com/jernoxit/sevdesk-rs/blob/main/tests/fixtures/write_contact_create.json (POST /Contact)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "Shape and string scalars as in the sevdesk-rs live capture (2026-10-01): objects is the created record, not an array. All values fake."
+  },
+  "status": 201,
+  "body": {
+    "objects": {
+      "id": "1101",
+      "objectName": "Contact",
+      "additionalInformation": null,
+      "create": "2026-11-07T10:00:00+01:00",
+      "update": "2026-11-07T10:00:00+01:00",
+      "name": "Beispiel Handel GmbH",
+      "status": "1000",
+      "customerNumber": "K-1004",
+      "surename": null,
+      "familyname": null,
+      "titel": null,
+      "category": {
+        "id": "3",
+        "objectName": "Category"
+      },
+      "description": null,
+      "academicTitle": null,
+      "gender": null,
+      "sevClient": {
+        "id": "9001",
+        "objectName": "SevClient"
+      },
+      "name2": null,
+      "birthday": null,
+      "vatNumber": "DE000000001",
+      "bankAccount": null,
+      "bankNumber": null,
+      "mandateReference": null,
+      "defaultCashbackTime": null,
+      "defaultCashbackPercent": null,
+      "defaultTimeToPay": null,
+      "taxNumber": null,
+      "taxOffice": null,
+      "exemptVat": "0",
+      "taxType": null,
+      "defaultDiscountAmount": null,
+      "defaultDiscountPercentage": "1",
+      "buyerReference": null,
+      "governmentAgency": "0",
+      "defaultShowVat": "1"
+    }
+  }
+}
