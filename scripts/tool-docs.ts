@@ -5,6 +5,7 @@
  */
 import { z } from "zod";
 
+import { requiresConfirmation, TIER_DESCRIPTIONS, TIERS } from "../src/safety/tiers.js";
 import { ALL_TOOLS } from "../src/tools/index.js";
 import { TOOLSETS } from "../src/tools/toolsets.js";
 import type { AnyToolDefinition } from "../src/tools/types.js";
@@ -63,6 +64,8 @@ function annotationSummary(tool: AnyToolDefinition): string {
   if (tool.annotations.destructiveHint) flags.push("destructive");
   if (tool.annotations.idempotentHint) flags.push("idempotent");
   if (tool.annotations.openWorldHint) flags.push("reaches third parties");
+  if (tool.tier !== "read") flags.push("supports `dryRun`");
+  if (requiresConfirmation(tool.tier)) flags.push("asks the user to confirm");
   return flags.join(", ");
 }
 
@@ -75,6 +78,10 @@ export function renderToolDocs(tools: readonly AnyToolDefinition[] = ALL_TOOLS):
     "",
     `${tools.length} tools. Which ones a client sees depends on \`SEVDESK_TOOLSETS\` and ` +
       "`SEVDESK_ALLOW` (see the README); tools above the enabled tiers are never listed.",
+    "",
+    "Tiers:",
+    "",
+    ...TIERS.map((tier) => `- \`${tier}\`: ${TIER_DESCRIPTIONS[tier]}.`),
     "",
   ];
   for (const toolset of TOOLSETS) {

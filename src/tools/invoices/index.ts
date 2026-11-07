@@ -1,6 +1,15 @@
 import type { AnyToolDefinition } from "../types.js";
+import { INVOICE_DERIVED_TOOLS } from "./derived-tools.js";
+import { INVOICE_DRAFT_TOOLS } from "./draft-tools.js";
 import { invoiceGetTool } from "./get.js";
+import { INVOICE_LIFECYCLE_TOOLS } from "./lifecycle-tools.js";
 import { invoicesListTool } from "./list.js";
 
 /** Tools of the `invoices` toolset (Rechnungen). */
-export const INVOICE_TOOLS: readonly AnyToolDefinition[] = [invoicesListTool, invoiceGetTool];
+export const INVOICE_TOOLS: readonly AnyToolDefinition[] = [
+  invoicesListTool,
+  invoiceGetTool,
+  ...INVOICE_DRAFT_TOOLS,
+  ...INVOICE_LIFECYCLE_TOOLS,
+  ...INVOICE_DERIVED_TOOLS,
+];
