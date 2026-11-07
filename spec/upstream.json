@@ -1,0 +1,15 @@
+{
+  "url": "https://api.sevdesk.de/openapi.yaml",
+  "etag": "\"487743d27f5579bf1115f1ec1e36535055b97e342cde1cc2d11fa56f29925a7a\"",
+  "lastModified": "Tue, 06 Oct 2026 09:58:55 GMT",
+  "sha256": "2f4931a876c0c3fad778382ad2ae6f3ed1b3545dc0542a75cd214bf6e7c649e0",
+  "bytes": 671199,
+  "fetchedAt": "2026-11-07T16:07:22.000Z",
+  "apiNews": {
+    "url": "https://tech.sevdesk.com/api_news/",
+    "feedUrl": "https://tech.sevdesk.com/api_news/index.xml",
+    "latestPostUrl": "https://tech.sevdesk.com/api_news/posts/2026_02_breaking_changes_q1_2026/",
+    "latestPostTitle": "Breaking Changes Q1 2026",
+    "latestPostDate": "2026-02-19T09:18:15.000Z"
+  }
+}
