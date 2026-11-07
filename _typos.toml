@@ -25,6 +25,15 @@ Offen = "Offen"
 mastr = "mastr"
 Feld = "Feld"
 Tage = "Tage"
+# German words in test data, fixtures and quoted sources.
+Formate = "Formate"
+Handel = "Handel"
+ist = "ist"
+Oktober = "Oktober"
+Paket = "Paket"
+vor = "vor"
+# Deliberately mangled objectName in the error-rendering sanitizer test.
+SYSTE = "SYSTE"
 # Umlaut transliteration (ü → ue) in safe filenames.
 ue = "ue"
 Ue = "Ue"

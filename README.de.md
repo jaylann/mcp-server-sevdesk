@@ -18,6 +18,9 @@ bindend ist.
   (`write` → `commit` → `external`).
 - **Echte Bestätigung durch Sie** vor dem Festschreiben, Verbuchen, Stornieren oder Versenden.
 - **Keine versteckten Nebenwirkungen:** Eine PDF-Vorschau markiert keine Rechnung als versendet.
+- **Probelauf:** Jedes Schreib-Tool versteht `dryRun: true` und zeigt dann nur genau an, was es
+  tun würde. Schreibvorgänge werden nie wiederholt und auf Wunsch lokal protokolliert
+  (`SEVDESK_AUDIT_LOG`).
 - **sevDesk-Update 2.0:** Steuerregeln und Buchungskonten werden vor dem Senden geprüft.
 
 Die vollständige Dokumentation ist auf Englisch: [README.md](README.md).
