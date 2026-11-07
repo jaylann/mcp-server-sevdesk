@@ -7,7 +7,8 @@
  * - Requests that change data (any non-GET, GETs marked `sideEffect`, and the state-changing GET
  *   endpoints recognized by `resolveGetSafety`) are refused before any network activity unless
  *   writes are enabled: not read-only, not dry-run, and the request's declared `tier` allowed.
- * - A `getPdf` read always carries `preventSendBy=1`, so a preview never marks a document as sent.
+ * - A `getPdf` read always carries the literal `preventSendBy=true`, so a preview never marks a
+ *   document as sent.
  * - Only side-effect-free GETs are retried. A retried POST can create a second invoice.
  * - The token is sent only in the `Authorization` header; redirects are not followed, so it never
  *   reaches another origin, and it is redacted from all upstream text kept on errors.
@@ -239,7 +240,7 @@ export function createSevdeskClient(
     }
 
     // GETs are classified by endpoint too, so a forgotten `sideEffect` flag cannot send an
-    // invoice; a getPdf read gets `preventSendBy=1` here.
+    // invoice; a getPdf read gets `preventSendBy=true` here.
     const safety =
       method === "GET"
         ? resolveGetSafety(path, request.query, request.sideEffect === true)

@@ -87,7 +87,7 @@ export function assertSafePath(path: string): void {
 export type GetSafety =
   | {
       readonly sideEffect: false;
-      /** The query to send; for `getPdf` it carries `preventSendBy=1`. */
+      /** The query to send; for `getPdf` it carries `preventSendBy=true`. */
       readonly query: Readonly<Record<string, QueryValue>> | undefined;
     }
   | {
@@ -101,8 +101,9 @@ export type GetSafety =
  * Recognizes sevDesk's state-changing GET endpoints (see spec/deviations.md D-023), so that a
  * missing `sideEffect` flag cannot turn a "read" into a write:
  * - `…/getPdf` (Invoice, Order, CreditNote) marks the document as sent unless `preventSendBy` is
- *   set. Without a declared side effect the client adds `preventSendBy=1`; an explicit
- *   `preventSendBy` of false/0 makes the request a side effect.
+ *   set. Without a declared side effect the client sends the literal `preventSendBy=true` (also
+ *   when the caller passed true, 1, "1" or "true"); any other `preventSendBy` value (false, 0, …)
+ *   makes the request a side effect.
  * - `…/sendByWithRender` always marks the document as sent.
  * - An `enshrine` or `enshrineDocuments` query flag (DATEV exports) enshrines every exported
  *   document, which is irreversible.
@@ -120,12 +121,11 @@ export function resolveGetSafety(
   if (endpoint === "getpdf") {
     if (declaredSideEffect) return { sideEffect: true, effect: MARKS_SENT, query };
     const preventSendBy = query?.["preventSendBy"];
-    if (preventSendBy === undefined) {
-      return { sideEffect: false, query: { ...query, preventSendBy: true } };
+    // Missing or "on" in any spelling: a read that always goes out as the verified literal.
+    if (preventSendBy === undefined || isTrueFlag(preventSendBy)) {
+      return { sideEffect: false, query: { ...query, preventSendBy: PREVENT_SEND_BY } };
     }
-    return isTrueFlag(preventSendBy)
-      ? { sideEffect: false, query }
-      : { sideEffect: true, effect: MARKS_SENT, query };
+    return { sideEffect: true, effect: MARKS_SENT, query };
   }
   if (endpoint === "sendbywithrender") return { sideEffect: true, effect: MARKS_SENT, query };
 
@@ -138,6 +138,14 @@ export function resolveGetSafety(
     ? { sideEffect: true, effect: "it is marked as changing data in sevDesk", query }
     : { sideEffect: false, query };
 }
+
+/**
+ * The `preventSendBy` value every getPdf read is sent with: the literal string `true`, the form
+ * both community measurements verified (jernoxit/sevdesk-rs, firsttris/haben; spec/deviations.md
+ * D-023). Whether sevDesk honors `1` is unconfirmed, and if it did not, a preview would finalize
+ * (and could enshrine) a draft, so the client never sends booleans as `1` here.
+ */
+const PREVENT_SEND_BY = "true";
 
 const MARKS_SENT = "it marks the document as sent";
 const ENSHRINES = "it enshrines (irreversibly locks) the exported documents";

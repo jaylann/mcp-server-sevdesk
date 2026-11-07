@@ -6,7 +6,7 @@
  * sevDesk MCP servers exposed it as a harmless "download PDF" read tool, so a read-only session
  * could change bookkeeping data. `GET /CreditNote/{id}/sendByWithRender` always marks the credit
  * note as sent. The client therefore recognizes these endpoints itself, not only via the
- * `sideEffect` flag: a getPdf read always goes out with `preventSendBy=1`, and anything that would
+ * `sideEffect` flag: a getPdf read always goes out with `preventSendBy=true`, and anything that would
  * mark a document as sent is a write: blocked in read-only and dry-run mode, never retried.
  */
 import { describe, expect, it } from "vitest";
@@ -81,7 +81,7 @@ describe("B1: state-changing GETs count as writes", () => {
       query: { preventSendBy: true },
     });
 
-    expect(fake.requests[0]?.url.searchParams.get("preventSendBy")).toBe("1");
+    expect(fake.requests[0]?.url.searchParams.get("preventSendBy")).toBe("true");
   });
 
   it("a sideEffect GET is never retried when writes are enabled", async () => {
@@ -96,7 +96,7 @@ describe("B1: state-changing GETs count as writes", () => {
 });
 
 describe("B1: unflagged state-changing GETs are recognized by endpoint", () => {
-  it("an unflagged getPdf in read-only mode goes out with preventSendBy=1", async () => {
+  it("an unflagged getPdf in read-only mode goes out with preventSendBy=true", async () => {
     const { client, fake } = setup({ readOnly: true, allowedTiers: new Set<Tier>(["read"]) }, [
       envelope({ filename: "RE-1.pdf", content: "JVBERi0=" }),
       envelope({ filename: "RE-1.pdf", content: "JVBERi0=" }),
@@ -106,7 +106,7 @@ describe("B1: unflagged state-changing GETs are recognized by endpoint", () => {
     await client.download({ method: "GET", path: "/Invoice/12/getPdf", query: { download: true } });
 
     for (const request of fake.requests) {
-      expect(request.url.searchParams.get("preventSendBy")).toBe("1");
+      expect(request.url.searchParams.get("preventSendBy")).toBe("true");
     }
   });
 
