@@ -1,0 +1,33 @@
+{
+  "_provenance": {
+    "source": "community",
+    "ref": "https://github.com/firsttris/haben/blob/HEAD/packages/import/src/sevdesk/client.test.ts (GET /Order/{id}/getRelatedObjects)",
+    "date": "2026-11-07",
+    "systemVersion": "1.0",
+    "note": "Shape of the haben regression fixture, taken from a real Update 1.0 account (haben issue #346): an object with gaps in its numeric keys instead of a list. Values fake."
+  },
+  "status": 200,
+  "body": {
+    "objects": {
+      "0": {
+        "id": "1010",
+        "objectName": "Invoice",
+        "invoiceNumber": "RE-1010",
+        "invoiceType": "RE",
+        "status": "1000"
+      },
+      "3": {
+        "id": "3005",
+        "objectName": "Order",
+        "orderType": "LI",
+        "orderNumber": "LI-1005"
+      },
+      "7": {
+        "id": "3002",
+        "objectName": "Order",
+        "orderType": "AB",
+        "orderNumber": "AB-1002"
+      }
+    }
+  }
+}

@@ -1,0 +1,150 @@
+{
+  "_provenance": {
+    "source": "community",
+    "ref": "https://github.com/emuuu/sevDesk.NET/blob/main/docs/sevdesk-api-responses.txt (GET /api/v1/Invoice)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "Recorded invoice keys and scalar types, values fake. GET by id returns an array of one. origin, addressCountry and paymentMethod are absent in the recording (unset); their shape follows spec Model_InvoiceResponse ({id, objectName}). No propertyIsEInvoice key, as in the recording (spec/deviations.md D-034)."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "1001",
+        "objectName": "Invoice",
+        "additionalInformation": null,
+        "invoiceNumber": "RE-1001",
+        "contact": {
+          "id": "1001",
+          "objectName": "Contact",
+          "additionalInformation": null,
+          "create": "2026-01-05T09:30:00+01:00",
+          "update": "2026-03-01T23:30:00+00:00",
+          "name": "Musterfirma GmbH",
+          "status": "1000",
+          "customerNumber": "K-1001",
+          "surename": null,
+          "familyname": null,
+          "titel": null,
+          "category": {
+            "id": "3",
+            "objectName": "Category"
+          },
+          "description": null,
+          "academicTitle": null,
+          "gender": null,
+          "sevClient": {
+            "id": "9001",
+            "objectName": "SevClient"
+          },
+          "name2": null,
+          "birthday": null,
+          "vatNumber": "DE000000000",
+          "bankAccount": null,
+          "bankNumber": null,
+          "defaultCashbackTime": null,
+          "defaultCashbackPercent": null,
+          "defaultTimeToPay": "14",
+          "taxNumber": null,
+          "taxOffice": null,
+          "exemptVat": "0",
+          "taxType": null,
+          "defaultDiscountAmount": null,
+          "defaultDiscountPercentage": "1",
+          "buyerReference": null,
+          "governmentAgency": "0",
+          "defaultShowVat": "1"
+        },
+        "create": "2026-10-01T09:00:00+02:00",
+        "update": "2026-10-01T09:05:00+02:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "invoiceDate": "2026-10-01T00:00:00+02:00",
+        "header": "Rechnung RE-1001",
+        "headText": "Vielen Dank für Ihren Auftrag.",
+        "footText": "Bitte überweisen Sie den Betrag innerhalb von 14 Tagen.",
+        "timeToPay": "14",
+        "discountTime": "7",
+        "discount": "2",
+        "addressName": null,
+        "addressStreet": null,
+        "addressZip": null,
+        "addressCity": null,
+        "payDate": null,
+        "createUser": {
+          "id": "7001",
+          "objectName": "SevUser"
+        },
+        "deliveryDate": "2026-10-01T00:00:00+02:00",
+        "status": "200",
+        "smallSettlement": "0",
+        "contactPerson": {
+          "id": "7001",
+          "objectName": "SevUser"
+        },
+        "taxRate": "19",
+        "taxText": null,
+        "dunningLevel": null,
+        "addressParentName": null,
+        "taxType": null,
+        "sendDate": "2026-10-01T10:00:00+02:00",
+        "invoiceType": "RE",
+        "accountIntervall": null,
+        "accountLastInvoice": null,
+        "accountNextInvoice": null,
+        "reminderTotal": null,
+        "reminderDebit": null,
+        "reminderDeadline": null,
+        "reminderCharge": null,
+        "addressParentName2": null,
+        "addressName2": null,
+        "addressGender": null,
+        "accountStartDate": null,
+        "accountEndDate": null,
+        "address": "Musterfirma GmbH\nMusterstraße 1\n12345 Musterstadt",
+        "currency": "EUR",
+        "sumNet": "149.02",
+        "sumTax": "28.31",
+        "sumGross": "177.33",
+        "sumDiscounts": "0",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountsForeignCurrency": "0",
+        "sumNetAccounting": "149.02",
+        "sumTaxAccounting": "28.31",
+        "sumGrossAccounting": "177.33",
+        "paidAmount": 0,
+        "customerInternalNote": "Bestellnummer 4711​",
+        "einvoiceReference": null,
+        "showNet": "1",
+        "enshrined": null,
+        "sendType": "VM",
+        "deliveryDateUntil": null,
+        "sendPaymentReceivedNotificationDate": null,
+        "sumDiscountNet": "0",
+        "sumDiscountGross": "0",
+        "sumDiscountNetForeignCurrency": "0",
+        "sumDiscountGrossForeignCurrency": "0",
+        "taxRule": {
+          "id": "1",
+          "objectName": "TaxRule"
+        },
+        "addressCountry": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "paymentMethod": {
+          "id": "21919",
+          "objectName": "PaymentMethod"
+        },
+        "origin": {
+          "id": "3001",
+          "objectName": "Order"
+        }
+      }
+    ]
+  }
+}

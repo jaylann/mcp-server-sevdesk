@@ -1,0 +1,105 @@
+{
+  "_provenance": {
+    "source": "community",
+    "ref": "https://github.com/TomDixon63/OrderManager2/blob/HEAD/front/src/app/model/order.ts (embedded OrderPos rows)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "Keys and scalar types of the recorded OrderPos rows (embedded in GET /Order); no recorded GET /OrderPos exists. Position 9002 has its net/gross prices unset to exercise the showNet fallback. All values fake."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "9001",
+        "objectName": "OrderPos",
+        "additionalInformation": null,
+        "create": "2026-09-20T09:00:00+02:00",
+        "update": "2026-09-20T09:00:00+02:00",
+        "order": {
+          "id": "3002",
+          "objectName": "Order"
+        },
+        "part": {
+          "id": "6001",
+          "objectName": "Part"
+        },
+        "quantity": "2",
+        "price": "49.9919",
+        "priceNet": "42.01",
+        "priceTax": "7.9819",
+        "priceGross": "49.9919",
+        "name": "Testartikel",
+        "priority": "100",
+        "unity": {
+          "id": "1",
+          "objectName": "Unity"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "positionNumber": "0",
+        "text": "",
+        "discount": "0",
+        "isPercentage": "1",
+        "discountedValue": null,
+        "optional": "0",
+        "optionalChargeable": "0",
+        "taxRate": "19",
+        "sumNet": "84.02",
+        "sumGross": "99.98",
+        "sumTax": "15.96",
+        "sumDiscount": "0",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountForeignCurrency": "0",
+        "createNextPart": null
+      },
+      {
+        "id": "9002",
+        "objectName": "OrderPos",
+        "additionalInformation": null,
+        "create": "2026-09-20T09:00:00+02:00",
+        "update": "2026-09-20T09:00:00+02:00",
+        "order": {
+          "id": "3002",
+          "objectName": "Order"
+        },
+        "part": null,
+        "quantity": "1",
+        "price": "119",
+        "priceNet": null,
+        "priceTax": null,
+        "priceGross": null,
+        "name": "Optionale Einweisung",
+        "priority": "100",
+        "unity": {
+          "id": "9",
+          "objectName": "Unity"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "positionNumber": "1",
+        "text": "",
+        "discount": "0",
+        "isPercentage": "1",
+        "discountedValue": null,
+        "optional": "1",
+        "optionalChargeable": "0",
+        "taxRate": "19",
+        "sumNet": "100",
+        "sumGross": "119",
+        "sumTax": "19",
+        "sumDiscount": "0",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountForeignCurrency": "0",
+        "createNextPart": null
+      }
+    ]
+  }
+}
