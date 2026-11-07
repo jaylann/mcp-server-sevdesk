@@ -1,0 +1,83 @@
+{
+  "_provenance": {
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "source": "community",
+    "ref": "https://github.com/emuuu/sevDesk.NET/blob/main/docs/sevdesk-api-responses.txt (GET /api/v1/Voucher)",
+    "note": "The recorded voucher (Update 2.0, taxRule 9) with ids and names replaced by fakes."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "2002",
+        "objectName": "Voucher",
+        "additionalInformation": null,
+        "create": "2026-02-19T14:14:13+01:00",
+        "update": "2026-02-19T14:14:13+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "createUser": {
+          "id": "9101",
+          "objectName": "SevUser"
+        },
+        "voucherDate": "2026-02-19T00:00:00+01:00",
+        "supplier": {
+          "id": "1002",
+          "objectName": "Contact"
+        },
+        "supplierName": "Max Mustermann",
+        "description": "Testbeleg Büromaterial",
+        "resultDisdar": null,
+        "payDate": null,
+        "status": "50",
+        "currency": "EUR",
+        "sumNet": "100",
+        "sumTax": "19",
+        "sumGross": "119",
+        "sumNetAccounting": "100",
+        "sumTaxAccounting": "19",
+        "sumGrossAccounting": "119",
+        "showNet": "0",
+        "paidAmount": 0,
+        "taxType": null,
+        "creditDebit": "D",
+        "hidden": "0",
+        "voucherType": "VOU",
+        "recurringIntervall": null,
+        "recurringInterval": null,
+        "recurringStartDate": null,
+        "recurringNextVoucher": null,
+        "recurringLastVoucher": null,
+        "recurringEndDate": null,
+        "enshrined": null,
+        "sendType": null,
+        "inSource": null,
+        "iban": null,
+        "accountingSpecialCase": null,
+        "paymentDeadline": null,
+        "tip": "0",
+        "mileageRate": "0",
+        "selectedForPaymentFile": "0",
+        "supplierNameAtSave": "Mustermann Max",
+        "taxmaroStockAccount": null,
+        "vatNumber": null,
+        "deliveryDate": "2026-02-19T00:00:00+01:00",
+        "deliveryDateUntil": null,
+        "sumDiscountNet": "0",
+        "sumDiscountGross": "0",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountNetForeignCurrency": "0",
+        "sumDiscountGrossForeignCurrency": "0",
+        "taxRule": {
+          "id": "9",
+          "objectName": "TaxRule"
+        }
+      }
+    ]
+  }
+}

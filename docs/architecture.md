@@ -179,7 +179,7 @@ The full list, with sources and tests, is the
 [deviations register](../spec/deviations.md). The ones with the biggest effect on the code:
 
 - **No sandbox and no webhooks.** Every write is real, which is why writes are off by default and
-  tested against fixtures. "Changed since" queries replace webhooks _(planned, M2)_.
+  tested against fixtures. "Changed since" queries (`sevdesk_changed_since`) replace webhooks.
 - **The spec is not reliable** ([ADR 0002](adr/0002-hand-written-zod-schemas.md)). Responses are
   wrapped in `{objects: …}` even where the spec says otherwise, scalars arrive as strings, and
   unknown request fields are dropped without an error.

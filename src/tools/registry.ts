@@ -25,7 +25,13 @@ import {
   toolErrorResult,
 } from "./tool-errors.js";
 import type { ToolsetName } from "./toolsets.js";
-import type { AnyToolDefinition, ToolAnnotationSet, ToolContext, ToolOutput } from "./types.js";
+import type {
+  AnyToolDefinition,
+  ToolAnnotationSet,
+  ToolContext,
+  ToolOutput,
+  ToolSelectionConfig,
+} from "./types.js";
 
 export interface RegistryDeps {
   readonly config: Config;
@@ -38,16 +44,22 @@ export interface RegistryDeps {
 }
 
 /**
- * The tools a server exposes for `config`: those in an enabled toolset and an allowed tier,
- * sorted by name (code-unit order, locale independent) so `tools/list` is stable. Tools of other
- * tiers are not registered at all; the call wrapper re-checks the tier as a second layer.
+ * The tools a server exposes for `config`: those in an enabled toolset and an allowed tier whose
+ * own `available` condition (if any) holds, sorted by name (code-unit order, locale independent)
+ * so `tools/list` is stable. Tools of other tiers are not registered at all; the call wrapper
+ * re-checks the tier as a second layer.
  */
 export function selectTools(
   all: readonly AnyToolDefinition[],
-  config: Pick<Config, "toolsets" | "allowedTiers">,
+  config: ToolSelectionConfig,
 ): AnyToolDefinition[] {
   return all
-    .filter((tool) => config.toolsets.has(tool.toolset) && config.allowedTiers.has(tool.tier))
+    .filter(
+      (tool) =>
+        config.toolsets.has(tool.toolset) &&
+        config.allowedTiers.has(tool.tier) &&
+        (tool.available?.(config) ?? true),
+    )
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
 
@@ -175,7 +187,11 @@ async function runTool(
       return outputValidationFailedResult(errorContext, data.error);
     }
     return successResult(
-      { summary: output.summary, data: data.data },
+      {
+        summary: output.summary,
+        data: data.data,
+        ...(output.extraContent === undefined ? {} : { extraContent: output.extraContent }),
+      },
       { structured: deps.structuredOutput },
     );
   } catch (error) {

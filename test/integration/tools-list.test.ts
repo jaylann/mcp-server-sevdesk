@@ -40,6 +40,42 @@ describe("tools/list", () => {
     expect(await surface(allEnabledConfig())).toMatchSnapshot();
   });
 
+  it("SEVDESK_OUTPUT_DIR set (adds the file-writing save tool)", async () => {
+    const tools = await surface(testConfig({ outputDir: "/srv/sevdesk-exports" }));
+    expect(tools.filter((tool) => tool.name === "sevdesk_document_save")).toMatchSnapshot();
+  });
+
+  it("SEVDESK_OUTPUT_DIR set: adds sevdesk_document_save, declared as not read-only", async () => {
+    const without = (await surface(testConfig())).map((tool) => tool.name);
+    const tools = await surface(testConfig({ outputDir: "/srv/sevdesk-out" }));
+
+    expect(without).not.toContain("sevdesk_document_save");
+    expect(
+      tools.map((tool) => tool.name).filter((name) => name !== "sevdesk_document_save"),
+    ).toEqual(without);
+    expect(tools.find((tool) => tool.name === "sevdesk_document_save")).toEqual({
+      name: "sevdesk_document_save",
+      title: "Save a document file to disk",
+      annotations: {
+        title: "Save a document file to disk",
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      inputSchema: expect.objectContaining({
+        type: "object",
+        additionalProperties: false,
+        required: ["document", "id"],
+        properties: expect.objectContaining({
+          document: expect.objectContaining({
+            enum: ["invoice_pdf", "credit_note_pdf", "order_pdf", "invoice_xml"],
+          }) as unknown,
+        }) as unknown,
+      }) as unknown,
+    });
+  });
+
   it("is sorted by name", async () => {
     const names = (await surface(allEnabledConfig())).map((tool) => tool.name);
     expect(names).toEqual([...names].sort());

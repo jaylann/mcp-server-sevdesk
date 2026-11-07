@@ -25,6 +25,29 @@ describe("successResult", () => {
     const result = successResult({ summary: "  ", data: { a: 1 } }, { structured: false });
     expect(result.content).toEqual([{ type: "text", text: '{\n  "a": 1\n}' }]);
   });
+
+  it("appends extra content blocks after the text block; structuredContent stays data", () => {
+    const link = {
+      type: "resource_link",
+      uri: "sevdesk://invoices/1/pdf",
+      name: "RE-1.pdf",
+      mimeType: "application/pdf",
+    } as const;
+
+    const result = successResult({ ...output, extraContent: [link, link] }, { structured: true });
+
+    expect(result.content).toEqual([
+      { type: "text", text: `Found 2 contacts.\n\n${JSON.stringify(output.data, null, 2)}` },
+      link,
+      link,
+    ]);
+    expect(result.structuredContent).toEqual(output.data);
+  });
+
+  it("treats an empty extraContent like none", () => {
+    const result = successResult({ ...output, extraContent: [] }, { structured: false });
+    expect(result.content).toHaveLength(1);
+  });
 });
 
 describe("errorResult", () => {

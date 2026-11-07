@@ -11,10 +11,11 @@ export interface SuccessResultOptions {
 }
 
 /**
- * Formats a successful call. The content is always a single text block, the trusted summary, a
+ * Formats a successful call. The content starts with one text block, the trusted summary, a
  * blank line, then `data` as indented JSON, so clients that ignore `structuredContent` (or have
- * bugs with it) still get everything. `data` must already be validated against the tool's output
- * schema.
+ * bugs with it) still get everything. The handler's `extraContent` blocks (resource links) follow
+ * in order; `structuredContent` is `data` alone. `data` must already be validated against the
+ * tool's output schema.
  */
 export function successResult(
   output: ToolOutput<unknown>,
@@ -24,7 +25,7 @@ export function successResult(
   const summary = output.summary.trim();
   const text = summary === "" ? json : `${summary}\n\n${json}`;
   return {
-    content: [{ type: "text", text }],
+    content: [{ type: "text", text }, ...(output.extraContent ?? [])],
     ...(options.structured ? { structuredContent: output.data } : {}),
   };
 }

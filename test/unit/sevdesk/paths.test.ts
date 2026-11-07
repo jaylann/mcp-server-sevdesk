@@ -128,16 +128,26 @@ describe("assertSafePath", () => {
 });
 
 describe("resolveGetSafety", () => {
-  it("adds preventSendBy=1 to an undeclared getPdf and keeps other parameters", () => {
+  it("adds the literal preventSendBy=true to an undeclared getPdf and keeps other parameters", () => {
     expect(resolveGetSafety("/Order/5/getPdf", { download: true }, false)).toEqual({
       sideEffect: false,
-      query: { download: true, preventSendBy: true },
+      query: { download: true, preventSendBy: "true" },
     });
     expect(resolveGetSafety("/Invoice/5/getPdf", undefined, false)).toEqual({
       sideEffect: false,
-      query: { preventSendBy: true },
+      query: { preventSendBy: "true" },
     });
   });
+
+  it.each([true, 1, "1", "true"])(
+    "sends a caller's preventSendBy %j as the verified literal 'true' (D-023)",
+    (value) => {
+      expect(resolveGetSafety("/Invoice/5/getPdf", { preventSendBy: value }, false)).toEqual({
+        sideEffect: false,
+        query: { preventSendBy: "true" },
+      });
+    },
+  );
 
   it("leaves the query untouched when the side effect is declared", () => {
     const query = { download: true };

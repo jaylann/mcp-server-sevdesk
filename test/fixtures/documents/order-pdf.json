@@ -1,0 +1,18 @@
+{
+  "_provenance": {
+    "source": "spec",
+    "ref": "spec/openapi.yaml#/paths/~1Order~1{orderId}~1getPdf/get/responses/200",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "GET /Order/{id}/getPdf?preventSendBy=1. Spec schema wrapped in objects per D-001 (community: j-mastr/sevdesk-api#66); content is a tiny fake PDF (base64)."
+  },
+  "status": 200,
+  "body": {
+    "objects": {
+      "filename": "AN-1001.pdf",
+      "mimeType": "application/pdf",
+      "base64encoded": true,
+      "content": "JVBERi0xLjQKJSBmYWtlIHRlc3QgZG9jdW1lbnQ6IE11c3RlcmZpcm1hIEdtYkggQU4tMTAwMQoxIDAgb2JqIDw8IC9UeXBlIC9DYXRhbG9nID4+IGVuZG9iagp0cmFpbGVyIDw8IC9Sb290IDEgMCBSID4+CiUlRU9GCg=="
+    }
+  }
+}

@@ -50,6 +50,7 @@
     "test:coverage": "vitest run --coverage",
     "knip": "knip",
     "publint": "publint --strict",
+    "docs:tools": "node --import tsx scripts/gen-tool-docs.ts && prettier --write docs/tools.md",
     "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test:coverage && pnpm knip && pnpm build && pnpm publint",
     "prepare": "git config core.hooksPath githooks || true"
   },

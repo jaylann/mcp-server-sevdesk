@@ -1,0 +1,81 @@
+{
+  "_provenance": {
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "source": "community",
+    "ref": "https://github.com/emuuu/sevDesk.NET/blob/main/docs/sevdesk-api-responses.txt (GET /api/v1/Part)",
+    "note": "6001 mirrors the recorded row (note `price` equals `priceGross` there); 6002 uses the same key set with fake values (stock tracking on, inactive). The full collection."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "6001",
+        "objectName": "Part",
+        "additionalInformation": null,
+        "create": "2026-02-19T14:13:21+01:00",
+        "update": "2026-02-19T14:13:21+01:00",
+        "name": "Testartikel",
+        "partNumber": "ART-001",
+        "text": "Beschreibung des Testartikels",
+        "category": {
+          "id": "1",
+          "objectName": "Category"
+        },
+        "stock": "100",
+        "stockEnabled": "0",
+        "unity": {
+          "id": "1",
+          "objectName": "Unity"
+        },
+        "pricePartner": null,
+        "priceCustomer": null,
+        "price": "49.99",
+        "secondUnityFactor": null,
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "pricePurchase": null,
+        "taxRate": "19",
+        "image": null,
+        "status": "100",
+        "internalComment": null,
+        "priceNet": "42.01",
+        "priceGross": "49.99"
+      },
+      {
+        "id": "6002",
+        "objectName": "Part",
+        "additionalInformation": null,
+        "create": "2026-02-19T14:13:21+01:00",
+        "update": "2026-02-19T14:13:21+01:00",
+        "name": "Beratungsstunde",
+        "partNumber": "DL-010",
+        "text": null,
+        "category": null,
+        "stock": "7.5",
+        "stockEnabled": "1",
+        "unity": {
+          "id": "9",
+          "objectName": "Unity"
+        },
+        "pricePartner": null,
+        "priceCustomer": null,
+        "price": "95.2",
+        "secondUnityFactor": null,
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "pricePurchase": "40.5",
+        "taxRate": "19",
+        "image": null,
+        "status": "50",
+        "internalComment": "Nur nach Absprache",
+        "priceNet": "80",
+        "priceGross": "95.2"
+      }
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "_provenance": {
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "source": "spec",
+    "ref": "spec/openapi.yaml#/paths/~1CheckAccount~1{checkAccountId}~1getBalanceAtDate/get/responses/200",
+    "note": "The spec's example type (string, format float); no recording available. Value fake."
+  },
+  "status": 200,
+  "body": {
+    "objects": "1500.25"
+  }
+}

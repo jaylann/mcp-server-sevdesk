@@ -32,6 +32,13 @@ describe("tool metadata", () => {
     expect(duplicates(ALL_TOOLS.map((tool) => tool.title))).toEqual([]);
   });
 
+  it("lets only the reviewed tools write local files (extend this list deliberately)", () => {
+    const writers = ALL_TOOLS.filter((tool) => tool.localEffects !== undefined).map(
+      (tool) => tool.name,
+    );
+    expect(writers).toEqual(["sevdesk_document_save"]);
+  });
+
   describe.each(cases)("%s", (_name, tool) => {
     it("passes defineTool validation", () => {
       expect(validateToolDefinition(tool)).toEqual([]);
@@ -47,6 +54,15 @@ describe("tool metadata", () => {
       for (const key of ANNOTATION_KEYS) {
         expect(typeof annotations[key], key).toBe("boolean");
       }
+    });
+
+    it('is read-only exactly when it is a read tool without localEffects "writes-files"', () => {
+      const writesFiles = tool.localEffects === "writes-files";
+      expect(tool.localEffects === undefined || writesFiles, "localEffects value").toBe(true);
+      if (writesFiles) {
+        expect(tool.tier).toBe("read");
+      }
+      expect(tool.annotations.readOnlyHint).toBe(tool.tier === "read" && !writesFiles);
     });
 
     it("has a strict, flat object-root input JSON Schema", () => {

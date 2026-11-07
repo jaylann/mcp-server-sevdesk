@@ -392,23 +392,28 @@ describe("state-changing GET endpoints", () => {
     "/Order/12/getPdf",
     "/CreditNote/12/getPdf",
     "/Invoice/12/GETPDF",
-  ])("sends %s as a read with preventSendBy=1 when no side effect is declared", async (path) => {
+  ])("sends %s as a read with preventSendBy=true when no side effect is declared", async (path) => {
     const { client, fake } = setup([envelope({ content: "JVBERi0=" })], { config: readOnly });
     await client.request({ method: "GET", path, query: { download: false } });
     const params = fake.requests[0]?.url.searchParams;
-    expect(params?.get("preventSendBy")).toBe("1");
+    // The literal the community measurements verified (D-023); `1` is unconfirmed.
+    expect(params?.get("preventSendBy")).toBe("true");
     expect(params?.get("download")).toBe("0");
   });
 
-  it.each([true, 1, "1", "true"])("keeps an explicit preventSendBy %j as a read", async (value) => {
-    const { client, fake } = setup([envelope({})], { config: readOnly });
-    await client.request({
-      method: "GET",
-      path: "/Invoice/12/getPdf",
-      query: { preventSendBy: value },
-    });
-    expect(fake.requests).toHaveLength(1);
-  });
+  it.each([true, 1, "1", "true"])(
+    "keeps an explicit preventSendBy %j as a read and sends it as the literal true",
+    async (value) => {
+      const { client, fake } = setup([envelope({})], { config: readOnly });
+      await client.request({
+        method: "GET",
+        path: "/Invoice/12/getPdf",
+        query: { preventSendBy: value },
+      });
+      expect(fake.requests).toHaveLength(1);
+      expect(fake.requests[0]?.url.searchParams.getAll("preventSendBy")).toEqual(["true"]);
+    },
+  );
 
   it.each([false, 0, "0", "false", "no"])(
     "treats getPdf with preventSendBy %j as a side effect",

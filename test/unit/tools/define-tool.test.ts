@@ -157,6 +157,55 @@ describe("validateToolDefinition", () => {
     expect(problems({ tier, annotations })).toEqual([]);
   });
 
+  describe("localEffects (read tools that write local files)", () => {
+    const writesFiles = { ...READ_ANNOTATIONS, readOnlyHint: false, idempotentHint: false };
+
+    it('accepts a read tool with localEffects "writes-files" and readOnlyHint false', () => {
+      expect(problems({ localEffects: "writes-files", annotations: writesFiles })).toEqual([]);
+      expect(() =>
+        defineTool({ ...valid(), localEffects: "writes-files", annotations: writesFiles }),
+      ).not.toThrow();
+    });
+
+    it("requires readOnlyHint false together with the flag", () => {
+      expect(problems({ localEffects: "writes-files" })).toEqual([
+        'localEffects "writes-files" requires annotations.readOnlyHint = false.',
+      ]);
+    });
+
+    it("still forbids destructive read tools", () => {
+      expect(
+        problems({
+          localEffects: "writes-files",
+          annotations: { ...writesFiles, destructiveHint: true },
+        }),
+      ).toEqual(['tier "read" requires annotations.destructiveHint = false.']);
+    });
+
+    it("is the only way for a read tool to drop readOnlyHint", () => {
+      expect(problems({ annotations: writesFiles })).toEqual([
+        'tier "read" requires annotations.readOnlyHint = true.',
+      ]);
+    });
+
+    it("rejects other values", () => {
+      expect(problems({ localEffects: "deletes-files", annotations: writesFiles })).toEqual([
+        'localEffects must be "writes-files" when set.',
+        'tier "read" requires annotations.readOnlyHint = true.',
+      ]);
+    });
+
+    it.each([
+      ["write", WRITE_ANNOTATIONS],
+      ["commit", COMMIT_ANNOTATIONS],
+      ["external", EXTERNAL_ANNOTATIONS],
+    ])("is rejected on %s tools", (tier, annotations) => {
+      expect(problems({ tier, annotations, localEffects: "writes-files" })).toEqual([
+        `localEffects is only for read-tier tools; tier "${tier}" is never read-only anyway.`,
+      ]);
+    });
+  });
+
   it("requires a strict input object", () => {
     const strictMessage =
       "input must reject unknown keys: use z.strictObject({ … }) or z.object({ … }).strict().";

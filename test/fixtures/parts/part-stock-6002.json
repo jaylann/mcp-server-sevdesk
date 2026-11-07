@@ -1,0 +1,13 @@
+{
+  "_provenance": {
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "source": "spec",
+    "ref": "spec/openapi.yaml#/paths/~1Part~1{partId}~1getStock/get/responses/200",
+    "note": "The spec declares an integer; no recording available. Value fake."
+  },
+  "status": 200,
+  "body": {
+    "objects": 7
+  }
+}

@@ -31,6 +31,13 @@ server is designed around that fact:
 - **Compact, typed output.** Aggregations run on the server, so the model doesn't page through
   hundreds of records.
 
+## Tools
+
+27 tools across 10 toolsets: account info and reference data, contacts, invoices, credit notes,
+orders, vouchers (Belege), banking, parts, PDFs and e-invoice XML (as MCP resources), and
+server-side reports (summaries, receivables and payables aging, cash position, changes since a
+date). The full generated reference is in [docs/tools.md](docs/tools.md).
+
 ## Configuration
 
 All settings are environment variables, set in your MCP client's server config. Only the token is
@@ -47,7 +54,7 @@ required; everything else defaults to the safest option.
 | `SEVDESK_TOOLSETS`          | `default`                      | Comma list of `meta`, `contacts`, `invoices`, `credit-notes`, `orders`, `vouchers`, `banking`, `parts`, `reports`, `advanced`, or `default`/`all`. `default` is everything except `advanced`. |
 | `SEVDESK_STRUCTURED_OUTPUT` | `auto`                         | `on`/`off`/`auto`: typed `structuredContent` output (auto = only for clients that support it well).                                                                                           |
 | `SEVDESK_AUDIT_LOG`         |                                | Path of an append-only JSONL log of every write.                                                                                                                                              |
-| `SEVDESK_OUTPUT_DIR`        |                                | Directory where PDFs and exports may be written.                                                                                                                                              |
+| `SEVDESK_OUTPUT_DIR`        |                                | Directory where `sevdesk_document_save` may write PDFs and e-invoice XML (it is only offered when this is set; it never overwrites and never changes anything in sevDesk).                    |
 | `SEVDESK_FILE_DIRS`         |                                | Directories receipts may be uploaded from (separated like `PATH`).                                                                                                                            |
 | `SEVDESK_RATE_LIMIT`        | `4`                            | Requests per second (sevDesk publishes no limit).                                                                                                                                             |
 | `SEVDESK_TIMEOUT_MS`        | `30000`                        | Per-request timeout.                                                                                                                                                                          |
@@ -68,7 +75,7 @@ required; everything else defaults to the safest option.
 | --------- | ----------------------------------------------------------------------------------------- | ------- |
 | M0        | Repository, tooling, CI, security and release pipeline                                    | done    |
 | M1        | Core client, safety framework, contacts and account info (read)                           | done    |
-| M2        | All read tools, PDFs/XML as resources, reports and aggregates                             | planned |
+| M2        | All read tools, PDFs/XML as resources, reports and aggregates                             | done    |
 | M3        | Full invoice lifecycle with tiers and human confirmation                                  | planned |
 | M4        | Receipt and e-invoice (XRechnung/ZUGFeRD) intake, bank reconciliation, VAT summary, DATEV | planned |
 | M5        | Remote mode: Streamable HTTP with OAuth 2.1, Docker                                       | planned |

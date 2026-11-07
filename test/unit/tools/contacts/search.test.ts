@@ -59,7 +59,12 @@ describe("sevdesk_contacts_search (community: recorded Contact shape, fake data)
     const { result } = await search({ limit: 2 });
     expect(tool.output.parse(result.data)).toEqual(result.data);
     expect(result.data.items).toEqual([
-      expect.objectContaining({ id: 1001, kind: "organisation", displayName: "Musterfirma GmbH" }),
+      expect.objectContaining({
+        id: 1001,
+        kind: "organisation",
+        displayName: "Musterfirma GmbH",
+        link: "https://my.sevdesk.de/crm/detail/id/1001",
+      }),
       expect.objectContaining({ id: 1002, kind: "person", displayName: "Dr. Max Mustermann" }),
     ]);
   });

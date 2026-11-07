@@ -1,9 +1,11 @@
 import type { CallToolResult, Client } from "@modelcontextprotocol/client";
 import { McpServer } from "@modelcontextprotocol/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
 import type { Config } from "../../../src/config.js";
 import { SERVER_INFO } from "../../../src/server.js";
+import { defineTool } from "../../../src/tools/define-tool.js";
 import {
   registerTools,
   resolveStructuredOutput,
@@ -12,7 +14,7 @@ import {
 import type { AnyToolDefinition } from "../../../src/tools/types.js";
 import { allEnabledConfig, TEST_TOKEN, testConfig, tiers } from "../../helpers/config.js";
 import { connectFactory, connectInProcess, type ConnectOptions } from "../../helpers/connect.js";
-import { createDummyTools, stubClient } from "../../helpers/dummy-tools.js";
+import { createDummyTools, READ_ANNOTATIONS, stubClient } from "../../helpers/dummy-tools.js";
 
 const clients: Client[] = [];
 
@@ -70,6 +72,52 @@ describe("selectTools", () => {
     const before = names(tools);
     selectTools(tools, allEnabledConfig());
     expect(names(tools)).toEqual(before);
+  });
+
+  describe("a tool's available condition", () => {
+    const seen: unknown[] = [];
+    const conditional = defineTool({
+      name: "sevdesk_dummy_conditional",
+      title: "Conditional (dummy)",
+      description: "Registered only when SEVDESK_OUTPUT_DIR is set, for framework tests.",
+      toolset: "meta",
+      tier: "read",
+      annotations: READ_ANNOTATIONS,
+      available: (config) => {
+        seen.push(config);
+        return config.outputDir !== undefined;
+      },
+      input: z.strictObject({}),
+      output: z.object({}),
+      handler: () => Promise.resolve({ data: {}, summary: "" }),
+    });
+    const catalog = [...tools, conditional];
+
+    it("registers the tool only when the condition holds, and receives the config", () => {
+      const without = testConfig();
+      const withDir = testConfig({ outputDir: "/srv/out" });
+
+      expect(names(selectTools(catalog, without))).not.toContain("sevdesk_dummy_conditional");
+      expect(names(selectTools(catalog, withDir))).toContain("sevdesk_dummy_conditional");
+      expect(seen).toEqual([without, withDir]);
+    });
+
+    it("is checked after toolset and tier, which it cannot override", () => {
+      seen.length = 0;
+      const config = testConfig({ outputDir: "/srv/out", toolsets: new Set(["contacts"]) });
+
+      expect(names(selectTools(catalog, config))).not.toContain("sevdesk_dummy_conditional");
+      expect(seen).toEqual([]);
+    });
+
+    it("decides what tools/list shows", async () => {
+      const without = await connect(testConfig(), {}, catalog);
+      const withDir = await connect(testConfig({ outputDir: "/srv/out" }), {}, catalog);
+
+      const listed = async (client: Client) => (await client.listTools()).tools.map((t) => t.name);
+      expect(await listed(without)).not.toContain("sevdesk_dummy_conditional");
+      expect(await listed(withDir)).toContain("sevdesk_dummy_conditional");
+    });
   });
 });
 
@@ -309,6 +357,75 @@ describe("structured output", () => {
 
     expect(seen.outputSchema).toBeUndefined();
     expect(seen.structuredContent).toBeUndefined();
+  });
+});
+
+describe("extra content blocks", () => {
+  const link = {
+    type: "resource_link",
+    uri: "sevdesk://invoices/7/pdf",
+    name: "RE-7.pdf",
+    title: "Invoice 7 (PDF)",
+    mimeType: "application/pdf",
+    size: 123,
+  } as const;
+
+  function linkTool(withLinks: boolean, data: unknown = { uri: link.uri }): AnyToolDefinition {
+    return defineTool({
+      name: "sevdesk_dummy_link",
+      title: "Link (dummy)",
+      description: "Returns a resource link next to its JSON data, for framework tests.",
+      toolset: "meta",
+      tier: "read",
+      annotations: READ_ANNOTATIONS,
+      input: z.strictObject({}),
+      output: z.object({ uri: z.string() }),
+      handler: () =>
+        Promise.resolve({
+          data: data as { uri: string },
+          summary: "Linked.",
+          ...(withLinks ? { extraContent: [link] } : {}),
+        }),
+    });
+  }
+
+  it("appends the handler's resource links after the JSON text block", async () => {
+    const client = await connect(testConfig({ structuredOutput: "on" }), {}, [linkTool(true)]);
+
+    const result = await client.callTool({ name: "sevdesk_dummy_link", arguments: {} });
+
+    expect(result.isError).toBeFalsy();
+    expect(result.content).toEqual([
+      { type: "text", text: `Linked.\n\n${JSON.stringify({ uri: link.uri }, null, 2)}` },
+      link,
+    ]);
+    expect(result.structuredContent).toEqual({ uri: link.uri });
+  });
+
+  it("also reaches legacy clients", async () => {
+    const client = await connect(testConfig(), { era: "legacy" }, [linkTool(true)]);
+
+    const result = await client.callTool({ name: "sevdesk_dummy_link", arguments: {} });
+
+    expect(result.content.map((block) => block.type)).toEqual(["text", "resource_link"]);
+  });
+
+  it("sends only the text block without extra content", async () => {
+    const client = await connect(testConfig(), {}, [linkTool(false)]);
+
+    const result = await client.callTool({ name: "sevdesk_dummy_link", arguments: {} });
+
+    expect(result.content.map((block) => block.type)).toEqual(["text"]);
+  });
+
+  it("drops the links with the data when the output fails validation", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const client = await connect(testConfig(), {}, [linkTool(true, { uri: 42 })]);
+
+    const result = await client.callTool({ name: "sevdesk_dummy_link", arguments: {} });
+
+    expect(result.isError).toBe(true);
+    expect(result.content.map((block) => block.type)).toEqual(["text"]);
   });
 });
 

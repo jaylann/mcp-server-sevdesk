@@ -1,0 +1,145 @@
+{
+  "_provenance": {
+    "source": "community",
+    "ref": "https://github.com/jernoxit/sevdesk-rs/blob/HEAD/tests/fixtures/credit_note.json (GET /api/v1/CreditNote/{id})",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "Keys and scalar types of the recorded credit note row; all values fake. GET by id: an array of one; contact embedded (embed=contact)."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "2001",
+        "objectName": "CreditNote",
+        "additionalInformation": null,
+        "creditNoteNumber": "GU-1001",
+        "contact": {
+          "id": "1001",
+          "objectName": "Contact",
+          "additionalInformation": null,
+          "create": "2026-01-05T09:30:00+01:00",
+          "update": "2026-03-01T23:30:00+00:00",
+          "name": "Musterfirma GmbH",
+          "status": "1000",
+          "customerNumber": "K-1001",
+          "surename": null,
+          "familyname": null,
+          "titel": null,
+          "category": {
+            "id": "3",
+            "objectName": "Category"
+          },
+          "description": null,
+          "academicTitle": null,
+          "gender": null,
+          "sevClient": {
+            "id": "9001",
+            "objectName": "SevClient"
+          },
+          "name2": null,
+          "birthday": null,
+          "vatNumber": "DE000000000",
+          "bankAccount": null,
+          "bankNumber": null,
+          "defaultCashbackTime": null,
+          "defaultCashbackPercent": null,
+          "defaultTimeToPay": "14",
+          "taxNumber": null,
+          "taxOffice": null,
+          "exemptVat": "0",
+          "taxType": null,
+          "defaultDiscountAmount": null,
+          "defaultDiscountPercentage": "1",
+          "buyerReference": null,
+          "governmentAgency": "0",
+          "defaultShowVat": "1"
+        },
+        "create": "2026-10-22T09:00:00+02:00",
+        "update": "2026-10-22T09:10:00+02:00",
+        "creditNoteDate": "2026-10-22T09:00:00+02:00",
+        "header": "Gutschrift Nr. GU-1001 zur Rechnung Nr. RE-1004",
+        "headText": "Wir schreiben Ihnen folgenden Betrag gut.",
+        "footText": null,
+        "timeToPay": null,
+        "discountTime": "0",
+        "discount": "0",
+        "addressName": "Musterfirma GmbH",
+        "addressStreet": "Musterstraße 1",
+        "addressZip": "12345",
+        "addressCity": "Musterstadt",
+        "addressCountry": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "payDate": null,
+        "createUser": {
+          "id": "7001",
+          "objectName": "SevUser"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "deliveryDate": "2026-10-22T00:00:00+02:00",
+        "status": "200",
+        "smallSettlement": "0",
+        "contactPerson": {
+          "id": "7001",
+          "objectName": "SevUser"
+        },
+        "taxRate": "0",
+        "taxText": null,
+        "addressParentName": null,
+        "taxType": null,
+        "sendDate": "2026-10-22T10:00:00+02:00",
+        "creditNoteType": "CN",
+        "accountIntervall": null,
+        "accountLastCreditNote": null,
+        "accountNextCreditNote": null,
+        "reminderTotal": null,
+        "reminderDebit": null,
+        "reminderDeadline": null,
+        "reminderCharge": null,
+        "addressParentName2": null,
+        "addressName2": null,
+        "addressGender": null,
+        "accountEndDate": null,
+        "address": "Musterfirma GmbH\nMusterstraße 1\n12345 Musterstadt",
+        "currency": "EUR",
+        "sumNet": "20",
+        "sumTax": "3.8",
+        "sumGross": "23.8",
+        "sumDiscounts": "0",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountsForeignCurrency": "0",
+        "sumNetAccounting": "20",
+        "sumTaxAccounting": "3.8",
+        "sumGrossAccounting": "23.8",
+        "customerInternalNote": "Reklamation vom 20.10.",
+        "taxNumber": null,
+        "vatNumber": null,
+        "showNet": "1",
+        "enshrined": null,
+        "sendType": "VM",
+        "bookingCategory": "UNDERACHIEVEMENT",
+        "deliveryDateUntil": null,
+        "refSrcInvoice": {
+          "id": "1004",
+          "objectName": "Invoice"
+        },
+        "isTransferred": "0",
+        "sumDiscountNet": "0",
+        "sumDiscountGross": "0",
+        "sumDiscountNetForeignCurrency": "0",
+        "sumDiscountGrossForeignCurrency": "0",
+        "taxRule": {
+          "id": "1",
+          "objectName": "TaxRule"
+        }
+      }
+    ]
+  }
+}

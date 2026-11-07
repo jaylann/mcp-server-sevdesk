@@ -18,8 +18,11 @@ import { toBerlinDate } from "../sevdesk/dates.js";
 import { expectSingle } from "../sevdesk/envelope.js";
 import { SevdeskError } from "../sevdesk/errors.js";
 import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
-import { parseUpstream, zBool01, zId, zRef } from "../sevdesk/schema.js";
+import { parseUpstream, zBool01, zId, zOptionalRef, zText } from "../sevdesk/schema.js";
 import type { QueryValue, SevdeskClient } from "../sevdesk/types.js";
+import { cleanText, compact, trimmedText } from "./common.js";
+import { contactLink } from "./links.js";
+import { type ChildRows, listChildRows, readPage } from "./paging.js";
 import {
   addressCategoryById,
   communicationWayKeyById,
@@ -30,29 +33,10 @@ import {
 const NAME_MAX = 300;
 const FIELD_MAX = 200;
 const VALUE_MAX = 500;
-/** sevDesk's maximum page size, used for addresses and communication ways. */
-const DETAIL_PAGE_SIZE = 1000;
-/**
- * Cap when addresses or communication ways have to be read page by page (more than one page, or
- * sevDesk ignored the `contact[id]` filter and the account's rows are filtered here).
- */
-const DETAIL_MAX_ROWS = 10_000;
 
 // ---------------------------------------------------------------------------------------------
 // Upstream schemas (lenient)
 // ---------------------------------------------------------------------------------------------
-
-/** Free text that sevDesk may send as string, number or `null`; `null`/"" become `undefined`. */
-const zText = z
-  .union([z.string(), z.number(), z.null()])
-  .optional()
-  .transform((value) =>
-    value === null || value === undefined || value === "" ? undefined : String(value),
-  );
-
-const zOptionalRef = zRef()
-  .nullish()
-  .transform((value) => value ?? undefined);
 
 /** `Contact` as returned by `GET /Contact` and `GET /Contact/{id}` (fields the DTO needs). */
 const contactRecordSchema = z.object({
@@ -131,6 +115,7 @@ export const contactDtoSchema = z.object({
   governmentAgency: z.boolean().optional().describe("Public authority (Behörde)."),
   createdAt: z.string().optional().describe("YYYY-MM-DD, Europe/Berlin."),
   updatedAt: z.string().optional().describe("YYYY-MM-DD, Europe/Berlin."),
+  link: z.string().optional().describe("Opens the contact in the sevDesk web app."),
 });
 
 export type ContactDto = z.output<typeof contactDtoSchema>;
@@ -179,7 +164,7 @@ export function parseContactRecord(raw: unknown): ContactRecord {
 
 /** Organisation when `name` is set, person otherwise (sevDesk's own rule). */
 export function contactKind(record: ContactRecord): ContactKind {
-  return present(record.name) === undefined ? "person" : "organisation";
+  return trimmedText(record.name) === undefined ? "person" : "organisation";
 }
 
 /** Maps a parsed contact to the compact DTO. */
@@ -197,7 +182,7 @@ export function toContactDto(record: ContactRecord): ContactDto {
     id: record.id,
     kind,
     displayName: sanitizeUntrusted(displayName, NAME_MAX),
-    customerNumber: cleanText(record.customerNumber),
+    customerNumber: cleanText(record.customerNumber, FIELD_MAX),
     category:
       record.category === undefined
         ? undefined
@@ -205,12 +190,13 @@ export function toContactDto(record: ContactRecord): ContactDto {
           ? { id: record.category.id }
           : { id: category.id, key: category.key, name: category.name },
     parentOrganisationId: record.parent?.id,
-    vatNumber: cleanText(record.vatNumber),
-    taxNumber: cleanText(record.taxNumber),
-    buyerReference: cleanText(record.buyerReference),
+    vatNumber: cleanText(record.vatNumber, FIELD_MAX),
+    taxNumber: cleanText(record.taxNumber, FIELD_MAX),
+    buyerReference: cleanText(record.buyerReference, FIELD_MAX),
     governmentAgency: record.governmentAgency,
     createdAt: berlinDate(record.create),
     updatedAt: berlinDate(record.update),
+    link: contactLink(record.id),
   });
 }
 
@@ -219,9 +205,9 @@ function toAddressDto(record: z.output<typeof addressRecordSchema>): AddressDto 
   return compact({
     id: record.id,
     recipient: recipient === undefined ? undefined : sanitizeUntrusted(recipient, VALUE_MAX),
-    street: cleanText(record.street),
-    zip: cleanText(record.zip),
-    city: cleanText(record.city),
+    street: cleanText(record.street, FIELD_MAX),
+    zip: cleanText(record.zip, FIELD_MAX),
+    city: cleanText(record.city, FIELD_MAX),
     countryId: record.country?.id,
     category:
       record.category === undefined ? undefined : namedRef(record.category.id, addressCategoryById),
@@ -233,8 +219,8 @@ function toCommunicationWayDto(
 ): CommunicationWayDto {
   return compact({
     id: record.id,
-    type: sanitizeUntrusted(present(record.type) ?? "UNKNOWN", 20),
-    value: sanitizeUntrusted(present(record.value) ?? "", VALUE_MAX),
+    type: sanitizeUntrusted(trimmedText(record.type) ?? "UNKNOWN", 20),
+    value: sanitizeUntrusted(trimmedText(record.value) ?? "", VALUE_MAX),
     key: record.key === undefined ? undefined : namedRef(record.key.id, communicationWayKeyById),
     main: record.main ?? false,
   });
@@ -295,25 +281,22 @@ export async function searchContacts(
     query["category[objectName]"] = "Category";
   }
 
-  const page = await client.list("/Contact", query, {
-    limit: params.limit,
-    offset: params.offset,
-    ...(signal === undefined ? {} : { signal }),
-  });
-
+  const page = await readPage(
+    client,
+    "/Contact",
+    query,
+    params,
+    (raw) => toContactDto(parseContactRecord(raw)),
+    signal,
+  );
   const seen = new Set<number>();
-  const items: ContactDto[] = [];
-  for (const raw of page.items) {
-    const record = parseContactRecord(raw);
-    if (seen.has(record.id)) continue;
-    seen.add(record.id);
-    items.push(toContactDto(record));
-  }
-
-  const received = page.items.length;
-  const nextOffset = params.offset + received;
-  const hasMore = received > 0 && (page.total === undefined || nextOffset < page.total);
-  return { items, received, total: page.total, hasMore, nextOffset };
+  const items = page.items.filter((item) => {
+    if (seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+  const { received, total } = page.window;
+  return { items, received, total, ...page.state };
 }
 
 export interface ContactDetails {
@@ -370,51 +353,26 @@ export async function getContactDetails(
   };
 }
 
-interface ContactRows<T> {
-  readonly rows: readonly T[];
-  /** False when the cap stopped reading before the end. */
-  readonly complete: boolean;
-}
-
 /**
  * Reads the rows of one contact from a collection that takes sevDesk's `contact[id]` filter
- * (undocumented for `GET /ContactAddress`, see spec/deviations.md D-032).
- *
- * Rows are always filtered by `contact.id` here as well, so an ignored filter cannot leak other
- * contacts' data. One page suffices when every row belongs to the contact and sevDesk's `total`
- * shows nothing is left (or the page is empty). Otherwise, when the total exceeds the page or the
- * filter was evidently ignored, the collection is read page by page up to
- * {@link DETAIL_MAX_ROWS} rows and filtered locally; hitting that cap is reported as incomplete
- * rather than returning a silently short list.
+ * (undocumented for `GET /ContactAddress`, see spec/deviations.md D-032). Rows are always checked
+ * against `contact.id` here as well, so an ignored filter cannot leak other contacts' data; see
+ * {@link listChildRows} for paging and the cap.
  */
-async function listContactRows<
-  T extends { readonly contact?: { readonly id: number } | undefined },
->(
+function listContactRows<T extends { readonly contact?: { readonly id: number } | undefined }>(
   client: SevdeskClient,
   path: string,
   contactId: number,
   parse: (raw: unknown) => T,
   signal: AbortSignal | undefined,
-): Promise<ContactRows<T>> {
-  const filter = { "contact[id]": contactId, "contact[objectName]": "Contact" };
-  const withSignal = signal === undefined ? {} : { signal };
-  const belongs = (row: T): boolean => row.contact?.id === contactId;
-
-  const page = await client.list(path, filter, { limit: DETAIL_PAGE_SIZE, ...withSignal });
-  const first = page.items.map(parse);
-  const received = page.items.length;
-  const filterHonoured = first.every(belongs);
-  const nothingLeft = received === 0 || (page.total !== undefined && page.total <= received);
-  if (filterHonoured && nothingLeft) {
-    return { rows: first, complete: true };
-  }
-
-  const all = await client.listAll(path, filter, {
-    max: DETAIL_MAX_ROWS,
-    pageSize: DETAIL_PAGE_SIZE,
-    ...withSignal,
-  });
-  return { rows: all.items.map(parse).filter(belongs), complete: !all.truncated };
+): Promise<ChildRows<T>> {
+  return listChildRows(
+    client,
+    path,
+    { "contact[id]": contactId, "contact[objectName]": "Contact" },
+    { parse, belongs: (row) => row.contact?.id === contactId },
+    signal,
+  );
 }
 
 /**
@@ -444,30 +402,12 @@ export async function getNextCustomerNumber(
 // Helpers
 // ---------------------------------------------------------------------------------------------
 
-function present(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-  return trimmed === undefined || trimmed === "" ? undefined : trimmed;
-}
-
 function joinPresent(
   parts: readonly (string | undefined)[],
   separator: string,
 ): string | undefined {
-  const kept = parts.map(present).filter((part): part is string => part !== undefined);
+  const kept = parts.map(trimmedText).filter((part): part is string => part !== undefined);
   return kept.length === 0 ? undefined : kept.join(separator);
-}
-
-/** Trimmed, sanitized text, or `undefined` when empty. */
-function cleanText(value: string | undefined): string | undefined {
-  const text = present(value);
-  return text === undefined ? undefined : sanitizeUntrusted(text, FIELD_MAX);
-}
-
-/** Drops `undefined` members, so absent fields are left out of the JSON instead of set to null. */
-function compact<T extends Record<string, unknown>>(value: T): T {
-  return Object.fromEntries(
-    Object.entries(value).filter(([, member]) => member !== undefined),
-  ) as T;
 }
 
 /** Calendar date of a sevDesk timestamp; an unreadable timestamp is left out, not fatal. */

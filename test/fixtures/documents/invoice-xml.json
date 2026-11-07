@@ -1,0 +1,13 @@
+{
+  "_provenance": {
+    "source": "spec",
+    "ref": "spec/openapi.yaml#/paths/~1Invoice~1{invoiceId}~1getXml/get/responses/200",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "GET /Invoice/{id}/getXml. Spec: objects is the XML as a string. The XML body is a shortened, illustrative CII document with fake data, not a real sevDesk export."
+  },
+  "status": 200,
+  "body": {
+    "objects": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<rsm:CrossIndustryInvoice xmlns:rsm=\"urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100\" xmlns:ram=\"urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100\"><rsm:ExchangedDocument><ram:ID>RE-1001</ram:ID></rsm:ExchangedDocument><rsm:SupplyChainTradeTransaction><ram:ApplicableHeaderTradeAgreement><ram:SellerTradeParty><ram:Name>Musterfirma GmbH</ram:Name></ram:SellerTradeParty></ram:ApplicableHeaderTradeAgreement></rsm:SupplyChainTradeTransaction></rsm:CrossIndustryInvoice>\n"
+  }
+}

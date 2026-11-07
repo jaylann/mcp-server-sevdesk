@@ -35,7 +35,7 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 | [D-005](#d-005-model_invoice-requires-tax-fields-of-both-system-versions)        | `Model_Invoice` requires tax fields of both system versions          | Open                  |
 | [D-006](#d-006-taxrule-id-enums-are-incomplete)                                  | `taxRule` id enums are incomplete                                    | Partly fixed upstream |
 | [D-007](#d-007-voucher-status-and-recurringinterval-enums-are-too-narrow)        | Voucher `status` and `recurringInterval` enums are too narrow        | Open                  |
-| [D-008](#d-008-two-response-fields-typed-string-are-numbers)                     | Two response fields typed `string` are numbers                       | Open                  |
+| [D-008](#d-008-two-response-fields-typed-string-can-be-numbers)                  | Two response fields typed `string` can be numbers                    | Open                  |
 | [D-009](#d-009-sendtype-can-be-an-empty-string-or-0)                             | `sendType` can be an empty string or `"0"`                           | Open                  |
 | [D-010](#d-010-createinvoicefromorder-required-a-bogus-invoice-id)               | `createInvoiceFromOrder` required a bogus invoice id                 | Fixed upstream        |
 | [D-011](#d-011-uploadtempfile-media-type-and-filename-type-are-wrong)            | `uploadTempFile` media type and `filename` type are wrong            | Open                  |
@@ -60,6 +60,23 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 | [D-030](#d-030-undocumented-tax-rules-15-16-and-22)                              | Undocumented tax rules 15, 16 and 22                                 | Open                  |
 | [D-031](#d-031-transaction-status-350-exists-only-in-the-response-model)         | Transaction status 350 exists only in the response model             | Open                  |
 | [D-032](#d-032-the-contactid-filter-on-contactaddress-is-undocumented)           | The `contact[id]` filter on `/ContactAddress` is undocumented        | Open                  |
+| [D-033](#d-033-getxml-refusals-for-invoices-without-xml-are-undocumented)        | `getXml` refusals for invoices without XML are undocumented          | Open                  |
+| [D-034](#d-034-invoice-reads-do-not-say-whether-an-invoice-is-an-e-invoice)      | Invoice reads do not say whether an invoice is an e-invoice          | Open                  |
+| [D-035](#d-035-unknown-or-misspelled-list-filters-are-ignored)                   | Unknown or misspelled list filters are ignored                       | Open                  |
+| [D-036](#d-036-getrelatedobjects-is-declared-to-return-order-positions)          | `getRelatedObjects` is declared to return order positions            | Open                  |
+| [D-037](#d-037-cancelled-invoices-keep-status-1000)                              | Cancelled invoices keep status 1000                                  | Open                  |
+| [D-038](#d-038-the-credit-note-status-filter-allows-order-statuses)              | The credit note status filter allows order statuses                  | Open                  |
+| [D-039](#d-039-credit-note-and-position-responses-have-undeclared-fields)        | Credit note and position responses have undeclared fields            | Open                  |
+| [D-040](#d-040-the-creditnotepos-filter-names-the-wrong-objectname)              | The `CreditNotePos` filter names the wrong `objectName`              | Open                  |
+| [D-041](#d-041-voucher-bookamount-takes-a-signed-amount)                         | Voucher `bookAmount` takes a signed amount                           | Open                  |
+| [D-042](#d-042-part-price-is-documented-as-net-but-holds-the-gross-price)        | Part `price` is documented as net but holds the gross price          | Open                  |
+| [D-043](#d-043-the-currency-of-document-sums-is-undocumented)                    | The currency of document sums is undocumented                        | Open                  |
+| [D-044](#d-044-voucher-reads-can-omit-document)                                  | Voucher reads can omit `document`                                    | Open                  |
+| [D-045](#d-045-voucher-positions-can-lack-accountdatev-on-update-20)             | Voucher positions can lack `accountDatev` on Update 2.0              | Open                  |
+| [D-046](#d-046-date-range-filters-on-document-lists-are-described-two-ways)      | Date-range filters on document lists are described two ways          | Open                  |
+| [D-047](#d-047-transaction-date-filters-compare-entrydate)                       | Transaction date filters compare `entryDate`                         | Open                  |
+| [D-048](#d-048-change-filters-are-documented-only-in-tag-texts)                  | Change filters are documented only in tag texts                      | Open                  |
+| [D-049](#d-049-whether-lists-include-templates-and-reminders-is-undocumented)    | Whether lists include templates and reminders is undocumented        | Open                  |
 
 ## Entries
 
@@ -81,7 +98,10 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   [j-mastr/sevdesk-php-sdk#70](https://github.com/j-mastr/sevdesk-php-sdk/issues/70).
 - **Impact:** `src/sevdesk/envelope.ts` unwraps every response. It accepts both an object and an
   array of one under `objects`, and maps an empty array from a GET-by-id to a not-found error.
-- **Test:** `test/unit/sevdesk/envelope.test.ts`, `test/unit/sevdesk/client.test.ts` (unwrapping for every method). Per-endpoint fixtures follow with the write tools (M3).
+- **Test:** `test/unit/sevdesk/envelope.test.ts`, `test/unit/sevdesk/client.test.ts` (unwrapping
+  for every method), `test/unit/domain/document-files.test.ts` (`getPdf` fixtures
+  `test/fixtures/documents/*-pdf.json` wrapped in `objects`, as an object or an array of one).
+  Per-endpoint fixtures for writes follow with the write tools (M3).
 
 ### D-002: Scalars come back as strings
 
@@ -99,7 +119,10 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 - **Impact:** Incoming zod schemas are lenient and coerce: numeric strings and numbers both parse
   into the decimal money type or integers, `"0"`/`"1"`/`0`/`1`/booleans parse into booleans. We
   never rely on the declared JSON type of a response field.
-- **Test:** `test/unit/sevdesk/schema.test.ts` (lenient `zId`/`zIntish`/`zNumberish`/`zDecimalString`/`zBool01`), `test/unit/domain/contacts.test.ts`.
+- **Test:** `test/unit/sevdesk/schema.test.ts` (lenient
+  `zId`/`zIntish`/`zNumberish`/`zDecimalString`/`zBool01`), `test/unit/domain/contacts.test.ts`,
+  `test/unit/domain/invoices.test.ts` (`showNet` and `smallSettlement` as `"0"`/`"1"`),
+  `test/unit/tools/invoices/list.test.ts` (`paidAmount` as a JSON number).
 
 ### D-003: Unknown request fields are silently ignored
 
@@ -176,17 +199,23 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   description "Types and status of vouchers".
 - **Impact:** Response schemas accept any status and map unknown codes to a generic state instead
   of failing. Intervals are parsed as durations, not matched against a list.
-- **Test:** `test/regressions/b9-reference-ids.test.ts` (voucher statuses 50/100/150/750/1000). `recurringInterval`: pending (M2).
+- **Test:** `test/regressions/b9-reference-ids.test.ts` (voucher statuses 50/100/150/750/1000),
+  `test/unit/domain/vouchers.test.ts` (`recurringInterval` in several ISO 8601 spellings).
 
-### D-008: Two response fields typed `string` are numbers
+### D-008: Two response fields typed `string` can be numbers
 
-- **Status:** Open. **Evidence:** community.
+- **Status:** Open. **Evidence:** community, recorded (community recording).
 - **Spec says:** `Model_CheckAccountTransactionResponse.amount` is `type: string`, and
   `Model_ContactResponse.defaultDiscountAmount` is `type: string, format: float`.
-- **Actual behavior:** Both come back as JSON numbers, unlike most other scalars (D-002).
-- **Sources:** [j-mastr/sevdesk-api#90](https://github.com/j-mastr/sevdesk-api/pull/90).
-- **Impact:** Covered by the lenient number coercion from D-002. Fixtures include both forms.
-- **Test:** pending (M2): banking and contact detail DTOs.
+- **Actual behavior:** Both have been reported as JSON numbers, unlike most other scalars (D-002).
+  The recorded `GET /CheckAccountTransaction` row has `amount` as the string `"-250"`, so both
+  forms occur.
+- **Sources:** [j-mastr/sevdesk-api#90](https://github.com/j-mastr/sevdesk-api/pull/90);
+  [emuuu/sevDesk.NET recorded responses](https://github.com/emuuu/sevDesk.NET) (2026-02-19).
+- **Impact:** Covered by the lenient number coercion from D-002. The transaction fixture
+  (`test/fixtures/banking/transactions-list.json`) has both forms. No tool reads
+  `defaultDiscountAmount`.
+- **Test:** `test/unit/tools/banking/transactions.test.ts` (`amount` as a string and as a number).
 
 ### D-009: `sendType` can be an empty string or `"0"`
 
@@ -194,8 +223,10 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 - **Spec says:** `sendType` is a nullable enum `VPR, VPDF, VM, VP`.
 - **Actual behavior:** Orders, invoices and credit notes can also return `""` or `"0"`.
 - **Sources:** [j-mastr/sevdesk-api#45](https://github.com/j-mastr/sevdesk-api/issues/45).
-- **Impact:** `""`, `"0"` and `null` all normalize to "not sent".
-- **Test:** pending (M3): `sendBy`.
+- **Impact:** `""`, `"0"`, `null` and unknown codes all count as "no send type". The read tools
+  show a document as sent only with a documented send type or a `sendDate`.
+- **Test:** `test/unit/domain/document-positions.test.ts` ("treats empty, '0' and unknown send
+  types as not sent"), `test/unit/tools/invoices/list.test.ts`. Writing (`sendBy`): pending (M3).
 
 ### D-010: `createInvoiceFromOrder` required a bogus invoice id
 
@@ -260,8 +291,11 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   `accountNextInvoice` is a `string` in the response model and an `integer` in the request model.
 - **Actual behavior:** Not yet recorded; we expect an ISO-8601 duration as described.
 - **Sources:** spec.
-- **Impact:** Recurring-invoice fields are parsed leniently and shown as text if they do not parse.
-- **Test:** pending (M2): recurring invoices.
+- **Impact:** The invoice tools show `accountIntervall` as text, exactly as sevDesk sent it, and do
+  not parse it. `accountNextInvoice` is read as a date given as Unix seconds (number or string), ISO
+  8601 or `dd.mm.yyyy`; any other value fails the call instead of being dropped.
+- **Test:** `test/unit/domain/invoices.test.ts` ("maps the schedule of a recurring invoice (WKR)
+  as sevDesk sent it").
 
 ### D-015: Invoice type filters use `Re` instead of `RE`
 
@@ -269,10 +303,20 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 - **Spec says:** The `invoiceType` filter enums of `/Export/invoiceCsv`, `/Export/invoiceZip` and
   `/Report/invoicelist` contain `Re`, while their own descriptions and `Model_Invoice.invoiceType`
   use `RE`.
-- **Actual behavior:** Invoice types are upper case (`RE`).
-- **Sources:** spec.
-- **Impact:** Our filter schemas use `RE`.
-- **Test:** pending (M2): invoice list filters.
+- **Actual behavior:** Invoice types are upper case (`RE`). Whether `GET /Invoice` honors the
+  `invoiceType` filter at all has not been measured (jernoxit/sevdesk-rs leaves it out for that
+  reason; see also D-035).
+- **Sources:** spec; [jernoxit/sevdesk-rs `src/query.rs`](https://github.com/jernoxit/sevdesk-rs/blob/main/src/query.rs).
+- **Impact:** `sevdesk_invoices_list` sends upper-case codes (`RE`, `AR`, `SR`, …) and checks the
+  type of every returned row again, so an ignored filter cannot return other invoice types. Like
+  the number re-check (D-035), this switches the list to a local scan (`filteredLocally`, no
+  total). The order list (`orderType`) and the voucher list (`voucherType`) re-check their types
+  the same way.
+- **Test:** `test/unit/tools/invoices/list.test.ts` ("maps readable filters to sevDesk's codes and
+  parameter names", "re-checks the invoice type on every row, so an ignored filter cannot leak"),
+  `test/unit/tools/orders/list.test.ts` ("re-checks the order type on every row, so an ignored
+  filter cannot leak"), `test/unit/tools/vouchers/list.test.ts` ("re-checks the voucher type on
+  every row, so an ignored filter cannot leak").
 
 ### D-016: `valueDate` and `entryDate` descriptions are swapped
 
@@ -280,13 +324,16 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 - **Spec says:** In `Model_CheckAccountTransaction`, `valueDate` is "Date the check account
   transaction was booked" and `entryDate` "was imported". In
   `Model_CheckAccountTransactionResponse` the two descriptions are the other way round.
-- **Actual behavior:** At most one of the two can be right; to be confirmed with recorded data.
-  The response model also has status 350 ("Auto-booked without user confirmation"), which the
-  request model lacks.
-- **Sources:** spec.
-- **Impact:** The transaction DTO exposes both dates under neutral names and documents the
-  uncertainty until a recording settles it.
-- **Test:** pending (M2): bank transactions.
+- **Actual behavior:** At most one of the two can be right. The recorded transaction has both
+  dates equal, so it does not settle the question. The list filters `startDate`/`endDate` compare
+  `entryDate` (D-047). The response model also has status 350 (D-031).
+- **Sources:** spec;
+  [emuuu/sevDesk.NET recorded responses](https://github.com/emuuu/sevDesk.NET) (2026-02-19).
+- **Impact:** The transaction DTO keeps both dates and describes each one. `valueDate` is treated
+  as the transaction's date because the request model requires it, and date ranges apply to it by
+  default. `entryDate` is an optional second date (the import date per the request model); a range
+  applies to it with `dateField: "entry"` (D-047).
+- **Test:** `test/unit/tools/banking/transactions.test.ts` (both dates, `entryDate` missing).
 
 ### D-017: `origin.objectName` only allowed `Invoice`
 
@@ -296,7 +343,8 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 - **Actual behavior:** Invoices created from an order have `origin.objectName: "Order"`.
 - **Sources:** [j-mastr/sevdesk-api#55](https://github.com/j-mastr/sevdesk-api/issues/55).
 - **Impact:** `origin` is parsed as a generic `{id, objectName}` reference. Kept for history.
-- **Test:** none needed (fixed upstream).
+- **Test:** none needed (fixed upstream); `test/unit/tools/invoices/get.test.ts` reads an invoice
+  with `origin` `Order`.
 
 ### D-018: Document dates are typed `date-time` but take Unix or `dd.mm.yyyy`
 
@@ -336,13 +384,23 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   `onlyDebit` on `GET /CheckAccountTransaction` are `type: boolean`; `isBooked` is "Only retrieve
   booked transactions".
 - **Actual behavior:** Without `depth=1`, `GET /Contact` returns organisations only. Boolean query
-  parameters must be sent as `1`/`0`; a literal `false` is ignored. `isBooked=false` does not
-  return unbooked transactions.
-- **Sources:** [genz-its/sevdesk](https://github.com/genz-its/sevdesk) docs.
+  parameters must be sent as `1`/`0`; a literal `false` is ignored. `isBooked=true` returns only
+  booked transactions, but `isBooked=false` is ignored and returns everything. A `status` filter,
+  which the spec does not declare for `GET /CheckAccountTransaction`, works: `status=100` returns
+  only transactions in that status.
+- **Sources:** [genz-its/sevdesk](https://github.com/genz-its/sevdesk) docs and
+  [`CLAUDE.md`](https://github.com/genz-its/sevdesk/blob/main/CLAUDE.md);
+  [jernoxit/sevdesk-rs `src/query.rs`](https://github.com/jernoxit/sevdesk-rs/blob/main/src/query.rs)
+  (measured).
 - **Impact:** The client serializes booleans as `1`/`0` and always sends `depth=1` for contact
-  lists. "Unbooked" transactions are selected by `status` (100 created, 200 linked) instead of
-  `isBooked`.
-- **Test:** `test/unit/tools/contacts/search.test.ts` (`depth=1`), `test/regressions/b16-zero-values.test.ts` (booleans as `1`/`0`). `isBooked`: pending (M2 banking).
+  lists. `sevdesk_transactions_list` never sends `isBooked`. With exactly one status (for example
+  `created`) it sends `status=<code>` to narrow the read; several statuses cannot go into one
+  filter and are not sent. Either way it checks every row's status itself, so a server that
+  ignores the filter changes nothing, and its output says that it filtered locally.
+- **Test:** `test/unit/tools/contacts/search.test.ts` (`depth=1`),
+  `test/regressions/b16-zero-values.test.ts` (booleans as `1`/`0`),
+  `test/unit/tools/banking/transactions.test.ts` ("filters unbooked (created) transactions locally
+  and counts sevDesk rows, not matches", "combines several statuses and a direction").
 
 ### D-021: Validation errors can come back as 500
 
@@ -382,22 +440,33 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   the document as sent. The DATEV export GETs `/Export/createDatevCsvZipExportJob`
   (`enshrineDocuments`) and the deprecated `/Export/datevCSV` (`enshrine`) take a flag that
   enshrines every exported document, which is irreversible.
-- **Actual behavior:** `getPdf` without `preventSendBy` marks the document as sent (status
-  change). It must be called with `preventSendBy` set to true.
+- **Actual behavior:** `getPdf` without `preventSendBy` marks the document as sent: a draft
+  invoice or credit note is finalized (status 200), and if the account enshrines documents
+  automatically on completion, it is enshrined too. It must be called with `preventSendBy` set to
+  true. With `preventSendBy=true`, a credit note draft stays a draft (jernoxit/sevdesk-rs), and
+  seven Update 1.0 orders (AN, AB, LI) kept their status, send date, send type and update time
+  (firsttris/haben; not checked on Update 2.0).
 - **Sources:** spec; [joosthel/sevdesk-mcp v0.5.0](https://github.com/joosthel/sevdesk-mcp/releases/tag/v0.5.0)
-  changelog.
+  changelog; [jernoxit/sevdesk-rs](https://github.com/jernoxit/sevdesk-rs) (README and
+  `src/endpoints/invoice.rs`, measured 2026-11-05);
+  [firsttris/haben `docs/sevdesk.md`](https://github.com/firsttris/haben/blob/main/docs/sevdesk.md).
 - **Impact:** The client recognizes these endpoints by path (`resolveGetSafety` in
   `src/sevdesk/paths.ts`), not only through the caller's `sideEffect` flag. A `getPdf` that is not
-  declared a side effect always goes out with `preventSendBy=1`; an explicit `preventSendBy` of
-  false/0 makes it a side effect. `sendByWithRender` and any GET with a truthy `enshrine` or
+  declared a side effect always goes out with the literal `preventSendBy=true`, the form both
+  community sources verified, even though other booleans go out as `1`/`0` (D-020). A caller's
+  `preventSendBy` of `true`, `1`, `"1"` or `"true"` keeps it a read and is sent as `true`; any
+  other value makes it a side effect. `sendByWithRender` and any GET with a truthy `enshrine` or
   `enshrineDocuments` flag are always side effects. Side-effect GETs count as writes: they need a
   declared tier that `SEVDESK_ALLOW` enables, are refused in read-only and dry-run mode, and are
-  never retried. Which literal sevDesk accepts (`true` or `1`, see D-020) is confirmed in the M3
-  recording session.
+  never retried. The PDF tools (`sevdesk_invoice_pdf`, `sevdesk_credit_note_pdf`,
+  `sevdesk_order_pdf`) and the `sevdesk://…/pdf` resources pass `preventSendBy` explicitly as
+  well and never send `download`.
 - **Test:** `test/regressions/getpdf-side-effect-blocked.test.ts` (flagged and unflagged
-  side-effect GETs), `test/unit/sevdesk/client.test.ts` ("state-changing GET endpoints"),
-  `test/unit/sevdesk/paths.test.ts` (`resolveGetSafety`). The `getPdf` tool itself: pending (M2),
-  plus regression test B1.
+  side-effect GETs), `test/regressions/b1-getpdf-prevent-send.test.ts` (PDF tools and resources
+  through the real client in read-only mode: one GET with `preventSendBy=true`, no `download`),
+  `test/unit/sevdesk/client.test.ts` ("state-changing GET endpoints"),
+  `test/unit/sevdesk/paths.test.ts` (`resolveGetSafety`: the literal `true` for every accepted
+  spelling), `test/unit/tools/documents/file-tools.test.ts`.
 
 ### D-024: Undocumented endpoints we rely on
 
@@ -447,8 +516,11 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 - **Sources:**
   [API news 2026-02-19, "Breaking Changes Q1 2026"](https://tech.sevdesk.com/api_news/posts/2026_02_breaking_changes_q1_2026/).
 - **Impact:** Render schemas expect `pdf` only. The PDF is written to a file or returned as a
-  resource, never inlined as base64 text.
-- **Test:** pending (M2): PDF rendering.
+  resource, never inlined as base64 text. `getPdf` is not among the changed endpoints, and the
+  current spec still declares `content` for it: the PDF tools use `getPdf`, parse `content`, and
+  reject a `pdf`-only body as `unexpected_response`.
+- **Test:** `test/unit/domain/document-files.test.ts` (the render shape is rejected for `getPdf`).
+  `render` and `changeParameter`: pending (M3), with the invoice preview.
 
 ### D-026: `saveVoucher` key order and top-level `filename`
 
@@ -461,7 +533,8 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   dropped silently (D-003), and the voucher has no document.
 - **Sources:** spec; [joosthel/sevdesk-mcp#2](https://github.com/joosthel/sevdesk-mcp/pull/2).
 - **Impact:** The `saveVoucher` builder emits keys in a fixed order (`voucher`, `voucherPosSave`,
-  `voucherPosDelete`, `filename`) and the read-back checks that `document` is set.
+  `voucherPosDelete`, `filename`) and the read-back checks that `document` is set (but see D-044:
+  voucher reads can omit `document`).
 - **Test:** pending (M4): voucher upload, plus regression test B5.
 
 ### D-027: Document numbers can contain unexpanded placeholders
@@ -516,8 +589,10 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 - **Actual behavior:** The transaction response model also allows 350 ("auto-booked without
   confirmation").
 - **Sources:** `spec/openapi.yaml` (`Model_CheckAccountTransactionResponse`).
-- **Impact:** Reference data includes 350; the banking DTOs (M2) will accept it.
-- **Test:** `test/regressions/b9-reference-ids.test.ts` (status list). Banking DTOs: pending (M2).
+- **Impact:** Reference data includes 350. `sevdesk_transactions_list` labels it ("Auto-booked
+  without user confirmation") and can filter for it (`auto_booked`).
+- **Test:** `test/regressions/b9-reference-ids.test.ts` (status list),
+  `test/unit/tools/banking/transactions.test.ts` (filter `auto_booked`).
 
 ### D-032: The `contact[id]` filter on `/ContactAddress` is undocumented
 
@@ -529,3 +604,370 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 - **Impact:** `getContactDetails` sends the filter and also filters the result by contact id, so an
   ignored filter can never leak another contact's addresses.
 - **Test:** `test/unit/tools/contacts/get.test.ts` (defensive filter).
+
+### D-033: `getXml` refusals for invoices without XML are undocumented
+
+- **Status:** Open. **Evidence:** spec + community.
+- **Spec says:** `GET /Invoice/{invoiceId}/getXml` ("Retrieves the XML of an e-invoice") declares
+  `200` with `{objects: "<?xml …"}`, `400` ("Bad request. Invoice was not found"), `401` and
+  `500`. It does not say what happens for an invoice that is not an e-invoice, or for an e-invoice
+  that is still a draft.
+- **Actual behavior:** sevDesk refuses the call. jernoxit/sevdesk-rs measured `400` with error
+  code 832 ("ZUGFeRD generation failed") for `getXml` and `getPdf` on an e-invoice draft
+  (2026-11-05), and documents a `400` that lists the missing fields when e-invoice data is
+  incomplete.
+  firsttris/haben treats a refused `getXml` as "not an e-invoice". The answer for an ordinary
+  invoice, and the response `Content-Type`, have not been recorded.
+- **Sources:** [jernoxit/sevdesk-rs](https://github.com/jernoxit/sevdesk-rs) (README,
+  `src/error.rs`); [firsttris/haben](https://github.com/firsttris/haben)
+  (`packages/import/src/sevdesk/client.ts`).
+- **Impact:** `fetchDocumentFile` (`src/domain/document-files.ts`) calls `getXml` without a
+  pre-check (see D-034). A 4xx refusal that is classified as a validation error, or an empty body
+  (`null`, `""`, `[]`, `false`), becomes a `not_found` error with our own message: XML exists only
+  for invoices marked as e-invoices with complete e-invoice data, and only once they are finalized
+  (a draft e-invoice gets its XML after finalizing). sevDesk's status, message and exception id
+  stay on the error for the logs. A body that is not XML text (or is HTML) is an
+  `unexpected_response`.
+- **Test:** `test/unit/domain/document-files.test.ts` ("fetchDocumentFile: e-invoice XML").
+
+### D-034: Invoice reads do not say whether an invoice is an e-invoice
+
+- **Status:** Open. **Evidence:** spec + recorded (community recording).
+- **Spec says:** `propertyIsEInvoice` ("If true, the invoice will be created as e-invoice")
+  exists only in the request model `Model_Invoice` and the Invoice tag docs.
+  `Model_InvoiceResponse` does not have it, and no invoice filter selects e-invoices.
+- **Actual behavior:** The recorded `POST /Invoice` response carries `propertyIsEInvoice` (as
+  `null`), but the recorded `GET /Invoice` row has no such key. A client cannot tell from a read
+  whether an invoice has e-invoice XML.
+- **Sources:** [emuuu/sevDesk.NET recorded responses](https://github.com/emuuu/sevDesk.NET)
+  (2026-02-19).
+- **Impact:** The XML tool and the `sevdesk://invoices/{id}/xml` resource call `getXml` directly
+  and rely on its refusal (D-033) instead of checking the invoice first. The invoice tools set
+  `eInvoice` only when sevDesk sends `propertyIsEInvoice` as true or false; when it is missing or
+  `null` they leave `eInvoice` out (unknown) and never infer it. The invoice fixtures follow the
+  recording and have no `propertyIsEInvoice`.
+- **Test:** `test/unit/domain/document-files.test.ts` (`getXml` is the only request),
+  `test/unit/tools/invoices/list.test.ts` ("shows eInvoice only when sevDesk sends
+  propertyIsEInvoice").
+
+### D-035: Unknown or misspelled list filters are ignored
+
+- **Status:** Open. **Evidence:** spec + community.
+- **Spec says:** The filter tables of the Invoice and CreditNote tags list
+  `customerIntenalNote={note}` (sic). Nothing says what happens to a query filter the API does not
+  know, or how the document number filters match.
+- **Actual behavior:** sevDesk ignores unknown or misspelled query filters without an error and
+  returns the unfiltered list. jernoxit/sevdesk-rs measured this for the misspelled name the spec
+  documents (the correct `customerInternalNote` works) and for `externalId`. Whether
+  `invoiceNumber`, `creditNoteNumber` and `orderNumber` match exactly is not measured.
+- **Sources:** [jernoxit/sevdesk-rs `src/query.rs`](https://github.com/jernoxit/sevdesk-rs/blob/main/src/query.rs).
+  Related: D-003 (unknown fields in request bodies), D-032 (`contact[id]` on `/ContactAddress`).
+- **Impact:** The document number filters are sent to sevDesk and checked again on every returned
+  row (trimmed, case-insensitive; `matchesNumber` in `src/domain/document-positions.ts`), so an
+  ignored filter cannot return other documents. The invoice, order and voucher types are checked
+  again the same way (D-015). Position lists are filtered by their parent id again for the same
+  reason.
+- **Test:** `test/unit/tools/invoices/list.test.ts` ("re-checks the invoice number on every
+  row…"), `test/unit/tools/credit-notes/list.test.ts`, `test/unit/tools/orders/list.test.ts`
+  ("re-checks the order number on every row", "re-checks the order type on every row…"),
+  `test/unit/tools/vouchers/list.test.ts` ("re-checks the voucher type on every row…"),
+  `test/unit/domain/document-positions.test.ts` ("re-checks document numbers trimmed and
+  case-insensitively"), `test/unit/tools/invoices/get.test.ts` (positions of other invoices).
+
+### D-036: `getRelatedObjects` is declared to return order positions
+
+- **Status:** Open. **Evidence:** spec + community.
+- **Spec says:** `GET /Order/{orderId}/getRelatedObjects` ("Get related objects of a specified
+  order") declares `objects` as an array of `Model_OrderPosResponse`, that is, order positions.
+- **Actual behavior:** It returns the linked documents (invoices made from the order, other
+  orders, and the order itself unless `includeItself` is false), either as a list or as an object
+  whose keys are numeric indexes with gaps (`{"0": …, "3": …}`). Observed on an Update 1.0
+  account.
+- **Sources:** [firsttris/haben#346](https://github.com/firsttris/haben/issues/346);
+  [firsttris/haben `docs/sevdesk.md`](https://github.com/firsttris/haben/blob/main/docs/sevdesk.md).
+- **Impact:** `sevdesk_order_get` calls it with `includeItself=0`, reads both forms, drops the
+  order itself and shows each document's kind, id, number, type and status. If the call fails or
+  the answer has another shape, the order is still returned without `related`, and the summary
+  says that the related documents could not be read.
+- **Test:** `test/unit/tools/orders/get.test.ts` ("lists related documents from a numeric-key
+  object…", "reads related documents sent as a list…", "still returns the order when related
+  documents cannot be read").
+
+### D-037: Cancelled invoices keep status 1000
+
+- **Status:** Open. **Evidence:** spec + recorded (community recording).
+- **Spec says:** `POST /Invoice/{invoiceId}/cancelInvoice` says "The cancellation invoice will be
+  automatically paid and the source invoices status will change to 'cancelled'". Neither the
+  invoice status table nor `Model_InvoiceResponse.status` (`50, 100, 200, 750, 1000`) has a code
+  for "cancelled".
+- **Actual behavior:** The original invoice stays at status 1000 with `paidAmount` 0 and
+  `payDate` null, and does not point to its cancellation. The cancellation invoice (type `SR`) is
+  paid (status 1000) and has negative sums. Its `origin` (`objectName` `Invoice`, the original's
+  id) is the only link between the two.
+- **Sources:** [jernoxit/sevdesk-rs](https://github.com/jernoxit/sevdesk-rs) recorded fixtures
+  (`tests/fixtures/invoice_list.json`, `tests/fixtures/write_invoice_cancel.json`).
+- **Impact:** Invoice rows of type `SR` carry `cancelsInvoiceId` (from `origin`), and its
+  description says that the cancelled invoice itself keeps status 1000. There is no "cancelled"
+  status filter. `sevdesk_records_summarize` keeps `cancelsInvoiceId` on SR rows and says in its
+  notes how many SR invoices cancel an invoice that is also counted (each pair nets to zero) and
+  how many cancel one outside the summary. It also flags counted invoices with status paid and a
+  paid amount of 0 whose SR is not counted, since that is how a cancelled original looks.
+  `sevdesk_receivables_aging` leaves SR invoices out and counts them: neither they nor the
+  originals are open.
+- **Test:** `test/unit/tools/invoices/list.test.ts` ("links a cancellation invoice (SR) to the
+  invoice it cancels"), `test/unit/tools/reports/summarize.test.ts` ("says when a cancellation
+  invoice's original is not in the summary", "flags paid invoices with nothing paid as cancelled
+  originals whose SR is missing"), `test/unit/tools/reports/aging.test.ts` ("explains
+  approximate, unknown and left-out rows in its notes").
+
+### D-038: The credit note status filter allows order statuses
+
+- **Status:** Open. **Evidence:** spec.
+- **Spec says:** The `status` parameter of `GET /CreditNote` is a string enum
+  `100, 200, 300, 500, 750, 1000`. The CreditNote tag's status table and
+  `Model_creditNoteResponse.status` have only `100, 200, 750, 1000`; 300 and 500 are order
+  statuses (rejected, accepted).
+- **Actual behavior:** Not recorded. We assume credit notes only have the four statuses of the
+  status table.
+- **Sources:** spec (`getCreditNotes`, tag "Status of credit notes", `Model_creditNoteResponse`).
+- **Impact:** `sevdesk_credit_notes_list` offers only `draft`, `open`, `partially_paid` and `paid`
+  (100, 200, 750, 1000); any other status is rejected before anything is sent.
+- **Test:** `test/unit/tools/credit-notes/list.test.ts` ("rejects unknown statuses and
+  parameters").
+
+### D-039: Credit note and position responses have undeclared fields
+
+- **Status:** Open. **Evidence:** spec + recorded (community recording).
+- **Spec says:** `Model_creditNoteResponse` has no `bookingCategory`, `refSrcInvoice`, `origin`,
+  `payDate`, `enshrined`, `creditNoteType` or `isTransferred`; only the request model has
+  `bookingCategory`, and only the tag docs mention `refSrcInvoice`. `Model_creditNotePosResponse`
+  and `Model_OrderPosResponse` have no `sumNet`, `sumTax` or `sumGross`.
+- **Actual behavior:** Recorded credit notes carry all of these fields, with `refSrcInvoice` as
+  `{id, objectName}` and `creditNoteType` `"CN"`; `origin` is set only on credit notes created
+  from an invoice. Credit notes have no `paidAmount`. Recorded credit note and order positions
+  carry `sumNet`, `sumTax` and `sumGross`.
+- **Sources:** [jernoxit/sevdesk-rs](https://github.com/jernoxit/sevdesk-rs) recorded fixtures
+  (`tests/fixtures/credit_note.json`, `tests/fixtures/write_credit_note_save.json`);
+  [TomDixon63/OrderManager2](https://github.com/TomDixon63/OrderManager2)
+  (`front/src/app/model/order.ts`, a pasted `GET /Order?embed=positions` response, 2023).
+- **Impact:** The credit note tools read `bookingCategory`, `refSrcInvoice` (as a reference or a
+  bare id), `origin`, `payDate` and `enshrined` leniently and show no paid amount. Position totals
+  come from the positions' own `sumNet`/`sumTax`/`sumGross`.
+- **Test:** `test/unit/tools/credit-notes/list.test.ts` ("returns compact rows with booking
+  category and source invoice", "reads refSrcInvoice as a bare id too…"),
+  `test/unit/tools/credit-notes/get.test.ts`, `test/unit/tools/orders/get.test.ts`.
+
+### D-040: The `CreditNotePos` filter names the wrong `objectName`
+
+- **Status:** Open. **Evidence:** spec + recorded (community recording).
+- **Spec says:** For `GET /CreditNotePos`, `creditNote[objectName]` is "Only required if
+  creditNote[id] was provided. 'creditNote' should be used as value." The CreditNotePos tag's own
+  examples use `"objectName": "CreditNote"`.
+- **Actual behavior:** Recorded credit note positions refer to their parent as
+  `{objectName: "CreditNote"}`, and other clients filter with `creditNote[objectName]=CreditNote`.
+  Whether the lower-case value works too has not been recorded.
+- **Sources:** spec; [jernoxit/sevdesk-rs](https://github.com/jernoxit/sevdesk-rs)
+  (`tests/fixtures/write_credit_note_save.json`).
+- **Impact:** Credit note positions are requested with `creditNote[objectName]=CreditNote` and
+  filtered by parent id again (D-035), so an ignored filter cannot mix in other positions.
+- **Test:** `test/unit/tools/credit-notes/get.test.ts`.
+
+### D-041: Voucher `bookAmount` takes a signed amount
+
+- **Status:** Open. **Evidence:** community.
+- **Spec says:** `PUT /Voucher/{voucherId}/bookAmount` takes `amount`: "Amount which should be
+  booked. Can also be a partial amount." Nothing about its sign.
+- **Actual behavior:** The amount is signed as the money moves on the check account: negative for
+  an expense voucher (`creditDebit` `C`), positive for revenue (`D`). A positive amount on an
+  expense voucher is accepted without an error and stored as a negative `paidAmount`; the voucher
+  then stays partially paid (750) with no `payDate`.
+- **Sources:** [genz-its/sevdesk `CLAUDE.md`](https://github.com/genz-its/sevdesk/blob/main/CLAUDE.md)
+  (verified against a live account).
+- **Impact:** `bookingAmountSign` in `src/domain/vouchers.ts` gives the sign for each voucher
+  kind, for the payment tool (M3) to apply. The voucher tools already warn about a negative
+  `paidAmount`, the trace a wrongly signed booking leaves.
+- **Test:** `test/regressions/expense-sign.test.ts`. Booking itself: pending (M3).
+
+### D-042: Part `price` is documented as net but holds the gross price
+
+- **Status:** Open. **Evidence:** spec + recorded (community recording).
+- **Spec says:** `Model_Part.price` is the "Net price for which the part is sold. we will change
+  this parameter so that the gross price is calculated automatically, until then the priceGross
+  parameter must be used." `priceNet` and `priceGross` are separate fields.
+- **Actual behavior:** In the recorded `GET /Part` row, `price` (`49.99`) equals `priceGross`;
+  `priceNet` is `42.01`.
+- **Sources:** [emuuu/sevDesk.NET recorded responses](https://github.com/emuuu/sevDesk.NET)
+  (2026-02-19).
+- **Impact:** The parts tools ignore `price` and show `priceNet`, `priceGross` and
+  `pricePurchase` only.
+- **Test:** `test/unit/tools/parts/list.test.ts` ("returns compact parts with exact prices; price
+  (= gross in the recording) is ignored").
+
+### D-043: The currency of document sums is undocumented
+
+- **Status:** Open. **Evidence:** spec + community + recorded (community recording).
+- **Spec says:** `sumNet`, `sumTax` and `sumGross` are the "Net sum of the invoice" (voucher,
+  order, credit note) without a currency. Invoices, orders and credit notes also declare
+  `sumNetForeignCurrency` and friends ("Net sum of the invoice in the foreign currency").
+  `Model_VoucherResponse` declares only `sumDiscountsForeignCurrency`. The currency of
+  `paidAmount` is not stated.
+- **Actual behavior:** For a document in a foreign currency, `sumNet`/`sumTax`/`sumGross` hold the
+  EUR base and `sum…ForeignCurrency` the amounts in the document's currency. For EUR documents the
+  `…ForeignCurrency` sums are `"0"`. Recorded voucher rows carry `sumNetForeignCurrency`,
+  `sumTaxForeignCurrency` and `sumGrossForeignCurrency` although the model lacks them. No public
+  recording of a foreign-currency document exists, and the currency of `paidAmount` on one is
+  unknown.
+- **Sources:** [numtide/freelancer-toolbox](https://github.com/numtide/freelancer-toolbox)
+  (`sevdesk-cli`, vouchers);
+  [firsttris/haben `docs/sevdesk.md`](https://github.com/firsttris/haben/blob/main/docs/sevdesk.md)
+  (orders); EUR rows recorded by [emuuu/sevDesk.NET](https://github.com/emuuu/sevDesk.NET) and
+  [jernoxit/sevdesk-rs](https://github.com/jernoxit/sevdesk-rs).
+- **Impact:** For EUR documents the tools use the plain sums and never the `…ForeignCurrency`
+  fields. For another currency with non-zero `…ForeignCurrency` sums, amounts are shown in the
+  document's currency and the EUR base separately (`base` on vouchers, `totalsEur` on invoices,
+  credit notes and orders). Without such sums, the plain sums are shown in the document's currency
+  and no EUR figure is claimed. Invoices show `paid` only in EUR; vouchers label a foreign-currency
+  `paidAmount` as EUR and say that this is not verified.
+- **Test:** `test/unit/domain/vouchers.test.ts` ("shows foreign-currency vouchers in their own
+  currency with the EUR base apart", "uses the plain sums when a foreign-currency voucher has no
+  foreign sums"), `test/unit/domain/document-positions.test.ts` ("splits foreign-currency
+  documents into document currency and EUR", "does not claim an EUR figure…"),
+  `test/unit/tools/invoices/list.test.ts` ("reports foreign-currency invoices in their currency
+  and EUR").
+
+### D-044: Voucher reads can omit `document`
+
+- **Status:** Open. **Evidence:** spec + recorded (community recording).
+- **Spec says:** `Model_VoucherResponse.document` is a nullable `{id, objectName: "Document"}`
+  reference to the attached file.
+- **Actual behavior:** The recorded `GET /Voucher` row has no `document` key at all, not even
+  `null`. Whether `GET /Voucher/{voucherId}` includes it has not been recorded.
+- **Sources:** [emuuu/sevDesk.NET recorded responses](https://github.com/emuuu/sevDesk.NET)
+  (2026-02-19).
+- **Impact:** The voucher tools report `hasDocument` only when the key is present; otherwise they
+  leave it out instead of saying `false`. The `saveVoucher` read-back planned for D-026 cannot
+  rely on `document` until a recording shows it.
+- **Test:** `test/unit/tools/vouchers/get.test.ts` ("renders the recorded mix…": no
+  `hasDocument`), `test/unit/domain/vouchers.test.ts`.
+
+### D-045: Voucher positions can lack `accountDatev` on Update 2.0
+
+- **Status:** Open. **Evidence:** spec + community + recorded (community recording).
+- **Spec says:** `Model_VoucherPos` and `Model_VoucherPosResponse` both list `accountDatev` ("Use
+  this in sevdesk-Update 2.0 (replaces accountingType)") and `accountingType` as required.
+- **Actual behavior:** A position carries one of the two. The recorded `GET /VoucherPos` row,
+  which belongs to a voucher with the Update 2.0 tax rule 9, has `accountingType` and no
+  `accountDatev` key. genz-its reports `accountDatev: null` on legacy 1.0 positions, which carry
+  `accountingType` instead.
+- **Sources:** [emuuu/sevDesk.NET recorded responses](https://github.com/emuuu/sevDesk.NET)
+  (2026-02-19); [genz-its/sevdesk `CLAUDE.md`](https://github.com/genz-its/sevdesk/blob/main/CLAUDE.md).
+- **Impact:** The bookkeeping generation is detected per object: for a voucher from
+  `taxRule`/`taxType`, for a position from `accountDatev`/`accountingType`
+  (`detectPositionGeneration` in `src/sevdesk/system-version.ts`). A 2.0 voucher can therefore
+  show a 1.0 position with its `accountingType` id. Our schemas do not copy the spec's `required`
+  lists.
+- **Test:** `test/unit/tools/vouchers/get.test.ts` ("renders the recorded mix: a 2.0 voucher with
+  a legacy 1.0 position").
+
+### D-046: Date-range filters on document lists are described two ways
+
+- **Status:** Open. **Evidence:** spec.
+- **Spec says:** The `startDate`/`endDate` parameters of `GET /Invoice`, `GET /Order`,
+  `GET /CreditNote` and `GET /Voucher` select documents "with a date equal or higher" / "equal or
+  lower". The filter tables of the same tags say the date must be "bigger than" / "smaller than"
+  the timestamp. The parameters are `type: integer` with examples like `01.01.2020`.
+- **Actual behavior:** Not recorded. Document dates sit at 00:00 Berlin time (for example the
+  recorded `voucherDate` `2026-02-19T00:00:00+01:00`), so under the strict reading a filter that
+  starts at 00:00 of the first day leaves that day out.
+- **Sources:** spec.
+- **Impact:** `documentDateFilter` (`src/domain/common.ts`) serves all four lists. It sends the
+  Berlin calendar days as Unix seconds, with `startDate` one second before the first day and
+  `endDate` at the last second of the last day, so the first day is included under either
+  reading. Every returned document's date is then checked against the inclusive range, which
+  drops anything the earlier bound let in; a document without a date never matches a range. The
+  re-check does not start a scan: sevDesk's paging and total stay.
+- **Test:** `test/unit/domain/common.test.ts` ("documentDateFilter"),
+  `test/unit/tools/invoices/list.test.ts` ("re-checks the date range on every row without a local
+  scan"), `test/unit/tools/credit-notes/list.test.ts`, `test/unit/tools/orders/list.test.ts`,
+  `test/unit/tools/vouchers/list.test.ts` ("re-checks the voucher date against the range, keeping
+  sevDesk's paging").
+
+### D-047: Transaction date filters compare `entryDate`
+
+- **Status:** Open. **Evidence:** spec + community.
+- **Spec says:** `GET /CheckAccountTransaction` declares `startDate` ("Only retrieve transactions
+  from this date on") and `endDate` ("Only retrieve transactions up to this date") as
+  `type: string, format: date-time`. It does not say which of the transaction's two dates they
+  compare (see D-016).
+- **Actual behavior:** jernoxit/sevdesk-rs measured on a test account (2026-10-01) that both
+  filters cut by `entryDate`, not `valueDate`, and that they accept Unix timestamps as well as ISO
+  dates.
+- **Sources:** [jernoxit/sevdesk-rs `src/query.rs`](https://github.com/jernoxit/sevdesk-rs/blob/main/src/query.rs).
+- **Impact:** `sevdesk_transactions_list` has `dateField: "value" | "entry"` (default `value`).
+  For a value-date range it sends no `startDate`/`endDate` and filters `valueDate` itself, reading
+  sevDesk pages up to its scan cap (5,000 rows per call; `filteredLocally`, no total). For an
+  entry-date range it sends `startDate`/`endDate` as ISO date-times with the Berlin offset
+  (00:00:00 to 23:59:59) and checks `entryDate` again; that re-check does not start a scan, so
+  sevDesk's total stays.
+- **Test:** `test/unit/tools/banking/transactions.test.ts` ("filters a value-date range here only,
+  since sevDesk's date filters cut by entryDate", "lets sevDesk filter an entry-date range and
+  re-checks entryDate", "defaults dateField to value"), `test/unit/domain/banking.test.ts` ("drops
+  rows without a value date when a date range is given").
+
+### D-048: Change filters are documented only in tag texts
+
+- **Status:** Open. **Evidence:** spec.
+- **Spec says:** `createBefore`, `createAfter`, `updateBefore` and `updateAfter` (`={timestamp}`,
+  for example "Only retrieve all invoices updated last after timestamp") appear only in the filter
+  tables of the Contact, Invoice, Order and Voucher tags; no operation declares them as
+  parameters. The spec does not define "timestamp" (seconds, milliseconds or a date string) or
+  say whether "after" includes the given instant. The CreditNote filter table and
+  `GET /CheckAccountTransaction` have no change filter at all.
+- **Actual behavior:** Not recorded. Whether sevDesk applies `updateAfter` in Unix seconds,
+  strictly or inclusively, and whether `/CreditNote` and `/CheckAccountTransaction` accept it
+  anyway, is checked in the M3 recording session. A filter sevDesk does not understand is ignored
+  (D-035).
+- **Sources:** spec (tag descriptions of Contact, Invoice, Order, Voucher and CreditNote;
+  `getTransactions`).
+- **Impact:** `sevdesk_changed_since` sends `updateAfter` as Unix seconds, one second before
+  `since`, for contacts, invoices, orders and vouchers, and checks every returned row itself: a
+  row counts when its update time, or its creation time if it has none, is at or after `since`;
+  rows with neither are counted but not listed. When a page shows that sevDesk did not apply the
+  filter, it reads full pages from then on. Credit notes and transactions are read without a
+  server filter and checked the same way. Each subject's scan reads at most 5,000 rows per call
+  and continues with `nextOffset`.
+- **Test:** `test/unit/tools/reports/changed-since.test.ts` ("checks every subject by default,
+  sending updateAfter only where the spec documents it", "keeps rows updated at or after since
+  (creation time as fallback), newest first", "switches to full pages when sevDesk evidently
+  ignored the filter", "caps the scan of subjects sevDesk cannot filter and continues with
+  nextOffset").
+
+### D-049: Whether lists include templates and reminders is undocumented
+
+- **Status:** Open. **Evidence:** spec.
+- **Spec says:** The Invoice tag's filter table offers `showWkr=all` ("Retrieve all recurring
+  invoices"), `showMa=all` ("Retrieve all invoices which are payment reminders") and
+  `showAll=true` ("Retrieve all invoices of all types"). That suggests `GET /Invoice` leaves
+  recurring invoice templates (`WKR`) and reminders (`MA`) out by default. The Voucher tag's table
+  offers `noRv=true` ("Only retrieve vouchers which are not of type RV"), which suggests
+  `GET /Voucher` includes recurring voucher templates (`RV`) by default. No operation declares
+  these parameters, and neither default is stated.
+- **Actual behavior:** Not recorded.
+- **Sources:** spec (filter tables of the Invoice and Voucher tags).
+- **Impact:** Templates and reminders are not documents of their own, so the tools keep them out
+  of totals whatever the default is. `sevdesk_invoices_list` sends `showWkr=all` or `showMa=all`
+  only when the caller asks for type `recurring` or `reminder`, and re-checks the type on every
+  row (D-015). `sevdesk_records_summarize` leaves WKR and MA invoices out and counts them in its
+  notes unless `invoiceType` asks for them. `sevdesk_receivables_aging` leaves them out and
+  reports them under `excluded` (`recurringTemplates`, `reminders`). The summary and
+  `sevdesk_payables_aging` read vouchers with `voucherType=VOU` (not `noRv`) and drop RV rows that
+  sevDesk returns anyway; the payables aging reports those as `excluded.recurringTemplates`.
+  `sevdesk_cash_position` leaves all three out of its outlook and counts them in a note.
+- **Test:** `test/unit/tools/invoices/list.test.ts` ("asks sevDesk to show recurring templates
+  and reminders when that type is requested"), `test/unit/tools/reports/summarize.test.ts`
+  ("leaves recurring templates (WKR) and reminders (MA) out unless asked for", "counts reminders
+  when invoiceType asks for them", "totals expense and revenue in separate lines, foreign ones
+  with their EUR base"), `test/unit/tools/reports/aging.test.ts` ("explains approximate, unknown
+  and left-out rows in its notes", "flags wrong-signed payments, foreign paid amounts and
+  left-out rows"), `test/unit/tools/reports/cash-position.test.ts` ("adds an expected outlook
+  from open items by due date, never mixing currencies").

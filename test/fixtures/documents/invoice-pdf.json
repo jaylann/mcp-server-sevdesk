@@ -1,0 +1,18 @@
+{
+  "_provenance": {
+    "source": "community",
+    "ref": "https://github.com/j-mastr/sevdesk-php-sdk/issues/70",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "GET /Invoice/{id}/getPdf?preventSendBy=1. Shape observed in j-mastr/sevdesk-php-sdk#70 (objects wrapper, D-001) and declared by spec invoiceGetPdf 200; content is a tiny fake PDF (base64), not a real sevDesk render."
+  },
+  "status": 200,
+  "body": {
+    "objects": {
+      "filename": "RE-1001.pdf",
+      "mimeType": "application/pdf",
+      "base64encoded": true,
+      "content": "JVBERi0xLjQKJSBmYWtlIHRlc3QgZG9jdW1lbnQ6IE11c3RlcmZpcm1hIEdtYkggUkUtMTAwMQoxIDAgb2JqIDw8IC9UeXBlIC9DYXRhbG9nID4+IGVuZG9iagp0cmFpbGVyIDw8IC9Sb290IDEgMCBSID4+CiUlRU9GCg=="
+    }
+  }
+}
