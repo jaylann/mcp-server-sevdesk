@@ -305,8 +305,7 @@ describe("sevdesk_invoice_create_draft (community: sevdesk-rs request shape + re
         "a rate the tax rule does not allow",
         { positions: [{ name: "A", quantity: 1, unitPrice: 1, taxRate: 16 }] },
         "Position 1 has a tax rate of 16 %, which tax rule 1 (Umsatzsteuerpflichtige Umsätze) " +
-          "does not allow. Tax rule 1 allows 0, 7, 19 %. A small business (Kleinunternehmer, " +
-          "§19 UStG) uses tax rule 11 with rate 0.",
+          "does not allow. Tax rule 1 allows 0, 7, 19 %.",
       ],
       [
         "a missing rate when the rule allows several",

@@ -28,7 +28,8 @@ export const creditNoteCreateDraftTool = defineWriteTool({
   title: "Create a draft credit note",
   description:
     "Create a draft credit note (Gutschrift) for a contact with its positions. Tier write: it " +
-    "only creates a draft; nothing is sent or booked and no number is assigned yet. " +
+    "only creates a draft; nothing is sent or booked. Saving reserves the next number of " +
+    "sevDesk's number range (shown in the preview). " +
     "bookingCategory is required: underachievement (Minderleistung) reduces a finalized invoice " +
     "of the same contact given as sourceInvoiceId (not cancelled; refused when a credit note " +
     "for it exists unless allowDuplicate), and every rate must be one of that invoice's " +
@@ -36,7 +37,8 @@ export const creditNoteCreateDraftTool = defineWriteTool({
     "(Lizenzen) are not verified live yet. To credit a whole invoice use " +
     "sevdesk_credit_note_create_from_invoice instead. Defaults: today, net prices, EUR (or the " +
     "invoice's currency), the contact's invoice address, the account's only user as contact " +
-    "person. dryRun previews without saving. After: sevdesk_credit_note_pdf, " +
+    "person, tax rule 1 (11 on a Kleinunternehmer account). dryRun previews without saving. " +
+    "After: sevdesk_credit_note_pdf, " +
     "sevdesk_credit_note_finalize.",
   toolset: "credit-notes",
   tier: "write",
@@ -48,7 +50,8 @@ export const creditNoteCreateDraftTool = defineWriteTool({
   },
   input: z.strictObject({ ...creditNoteCreateInputShape, ...dryRunInputShape }),
   output,
-  prepare: (args, ctx) => prepareCreditNoteCreate(ctx.client, args, ctx.signal),
+  prepare: (args, ctx) =>
+    prepareCreditNoteCreate(ctx.client, args, { signal: ctx.signal, cacheOwner: ctx.config }),
   execute: async (_args, plan, ctx) => {
     const result = await executeCreditNoteDraft(ctx.client, plan.state, ctx.signal);
     const { creditNote, positions, positionsComplete } = result.details;

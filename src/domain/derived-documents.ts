@@ -15,6 +15,10 @@
  *   the answer is `{creditNote, creditNotePos, discount}` per the spec, and sevdesk-rs
  *   (https://github.com/jernoxit/sevdesk-rs, `tests/number_probe/calls.rs`, live) reads the id
  *   from `creditNote.id` or `id`; both are accepted. The credit note's `origin` is the invoice.
+ *   It gives the draft the credit note counter's current value without advancing the counter
+ *   (recorded 2026-11-07: draft GU-1000, and a credit note finalized 11 s later got GU-1000 too),
+ *   so afterwards the counter is moved past the new number when it still points at it
+ *   (`getNextCreditNoteNumber`, `useNextNumber=true`, see `drafts/numbering.ts`).
  * - `POST /Invoice/Factory/createInvoiceReminder` with `invoice[id]`/`invoice[objectName]` in
  *   the query AND `{invoice}` in the body (the spec requires both); the answer is the reminder
  *   (invoice type MA) wrapped in `objects` (j-mastr/sevdesk-api#12). Update 2.0 rejects a
@@ -50,6 +54,7 @@ import type { ConfirmationFact, ConfirmationPreview, SevdeskObjectRef } from "..
 import { cleanText } from "./common.js";
 import { type CreditNoteDetails, getCreditNote } from "./credit-notes.js";
 import type { DocumentTotals } from "./document-positions.js";
+import { peekNextNumber, quotableNumber, reserveNextNumber } from "./drafts/numbering.js";
 import {
   getInvoice,
   type InvoiceDetail,
@@ -436,6 +441,9 @@ export async function planCreditNoteFromInvoice(
   const warnings = [
     "The credit note (Gutschrift) is created as a draft with all positions of the invoice; adjust " +
       "it if only part is refunded, then finalize it with sevdesk_credit_note_finalize.",
+    "sevDesk gives the draft the next credit note number without advancing its counter, so the " +
+      "counter is moved past the new number afterwards; otherwise the next credit note could " +
+      "get the same number.",
     ...checked.warnings,
   ];
   if (invoice.status.code !== 1000) {
@@ -470,12 +478,14 @@ export async function planCreditNoteFromInvoice(
 /**
  * Sends `createFromInvoice` (never retried), reads the new credit note back and checks that it is
  * a draft that refers to the invoice; the invoice is listed in `affected` when sevDesk changed it.
+ * Then moves the credit note counter past the new number ({@link advanceCreditNoteCounter});
+ * what happened there is reported in `notes`.
  */
 export async function executeCreditNoteFromInvoice(
   client: SevdeskClient,
   state: CreditNoteFromInvoiceState,
   signal?: AbortSignal,
-): Promise<{ details: CreditNoteDetails; affected: SevdeskObjectRef[] }> {
+): Promise<{ details: CreditNoteDetails; affected: SevdeskObjectRef[]; notes: string[] }> {
   const answer = await client.request({
     method: "POST",
     path: "/CreditNote/Factory/createFromInvoice",
@@ -498,7 +508,56 @@ export async function executeCreditNoteFromInvoice(
       : ["it does not refer to the invoice it was created from"],
     affected,
   );
-  return { details, affected };
+  const notes = await advanceCreditNoteCounter(client, details.creditNote.number, signal);
+  return { details, affected, notes };
+}
+
+/**
+ * After `createFromInvoice`: when the credit note counter still offers the new draft's number
+ * (peek, `useNextNumber=false`), reserves it once (`useNextNumber=true`, a write-tier side-effect
+ * GET) so that the next credit note cannot get the same number. The credit note exists already,
+ * so a failure here never fails the call: it becomes a trusted note. Returns the notes.
+ */
+async function advanceCreditNoteCounter(
+  client: SevdeskClient,
+  draftNumber: string | undefined,
+  signal: AbortSignal | undefined,
+): Promise<string[]> {
+  if (draftNumber === undefined) {
+    return [
+      "The new credit note has no number, so sevDesk's credit note counter was not checked; " +
+        "sevdesk_credit_note_finalize refuses credit notes without a number (sevDesk can fail " +
+        "half-way on them), so set one in the sevDesk web app first.",
+    ];
+  }
+  const label = quotableNumber(draftNumber) ?? "the new draft's number";
+  const range = { kind: "creditNote" } as const;
+  const same = (number: string) => number.trim().toLowerCase() === draftNumber.trim().toLowerCase();
+  try {
+    if (!same(await peekNextNumber(client, range, signal))) return [];
+    const reserved = await reserveNextNumber(client, range, signal);
+    if (!same(reserved)) {
+      // The counter moved between the peek and the reservation (another client): the reserved
+      // number is lost, and whoever took the draft's number may carry it as well.
+      const taken = quotableNumber(reserved) ?? "another number";
+      return [
+        `sevDesk's credit note counter moved on while it was being moved past ${label}: the ` +
+          `reservation took ${taken} instead, which is now skipped (a gap in the number range, ` +
+          `Nummernkreis). Check that no other credit note carries ${label} before finalizing.`,
+      ];
+    }
+    return [
+      `sevDesk's credit note counter was moved past ${label} (the new draft's number), so the ` +
+        "next credit note cannot get it again.",
+    ];
+  } catch (error) {
+    if (!(error instanceof SevdeskError)) throw error;
+    return [
+      `sevDesk's credit note counter could not be checked or moved past ${label}: the next ` +
+        "credit note may get the same number. sevdesk_credit_note_create_draft skips numbers in " +
+        "use; elsewhere check the number before finalizing.",
+    ];
+  }
 }
 
 /**

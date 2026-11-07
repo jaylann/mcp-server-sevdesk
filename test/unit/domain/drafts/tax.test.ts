@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  checkTaxRuleRegime,
   checkTaxRuleUseCase,
   documentTaxFields,
+  regimeDefaultRuleId,
+  regimeRefusal,
   resolveTaxRates,
   ruleForLegacyTaxType,
   SALES_TAX_RULE_IDS,
@@ -151,5 +154,89 @@ describe("draft tax: rules, use cases and fields", () => {
     expect(ruleForLegacyTaxType("ss")?.id).toBe(11);
     expect(ruleForLegacyTaxType("custom")).toBeUndefined();
     expect(ruleForLegacyTaxType(undefined)).toBeUndefined();
+  });
+});
+
+describe("draft tax: the account's VAT regulation (recorded 2026-11-07)", () => {
+  const orders = { allowedRuleIds: SALES_TAX_RULE_IDS, documents: "orders" };
+
+  it("defaults to rule 11 on a Kleinunternehmer account only instead of rule 1", () => {
+    expect(regimeDefaultRuleId(1, "small_business")).toBe(11);
+    expect(regimeDefaultRuleId(1, "regular")).toBe(1);
+    expect(regimeDefaultRuleId(1, undefined)).toBe(1);
+    expect(regimeDefaultRuleId(9, "small_business")).toBe(9);
+  });
+
+  it("lets every rule pass when the regime is unknown, and fitting rules always", () => {
+    expect(() => {
+      checkTaxRuleRegime(rule(11), undefined, orders);
+      checkTaxRuleRegime(rule(1), "regular", orders);
+      checkTaxRuleRegime(rule(11), "small_business", orders);
+    }).not.toThrow();
+  });
+
+  it("names the fitting rules of the scope, or says that none fits", () => {
+    expect(
+      regimeRefusal(rule(9), "small_business", { allowedRuleIds: [10, 13], documents: "x" }),
+    ).toMatch(/ Use tax rule 10 or 13\.$/);
+    expect(
+      regimeRefusal(rule(1), "small_business", { allowedRuleIds: [1, 2], documents: "foos" }),
+    ).toBe(
+      "This sevDesk account uses the Kleinunternehmer regulation (§19 UStG), so tax rule 1 " +
+        "(Umsatzsteuerpflichtige Umsätze) cannot be used: sevDesk refuses to finalize foos with " +
+        "it. None of the tax rules foos take fits this regulation; create the document in " +
+        "sevDesk instead.",
+    );
+    expect(
+      regimeRefusal(rule(11), "regular", { allowedRuleIds: [11, 2], documents: "foos" }),
+    ).toMatch(/ Use tax rule 2\.$/);
+    expect(
+      message(() => {
+        checkTaxRuleRegime(rule(1), "small_business", orders);
+      }),
+    ).toMatch(/^This sevDesk account uses the Kleinunternehmer regulation/);
+  });
+
+  it("gives rate hints that fit the regime", () => {
+    expect(
+      message(() => resolveTaxRates(rule(2), [{ taxRate: "19" }], undefined, "regular")),
+    ).toMatch(/Tax rule 2 allows 0 %\. To charge VAT on domestic sales use tax rule 1\.$/);
+    expect(message(() => resolveTaxRates(rule(1), [{ taxRate: "16" }], undefined, "regular"))).toBe(
+      "Position 1 has a tax rate of 16 %, which tax rule 1 (Umsatzsteuerpflichtige Umsätze) does " +
+        "not allow. Tax rule 1 allows 0, 7, 19 %.",
+    );
+    expect(message(() => resolveTaxRates(rule(1), [{ taxRate: "16" }]))).toMatch(
+      /A small business \(Kleinunternehmer, §19 UStG\) uses tax rule 11 with rate 0\.$/,
+    );
+  });
+
+  it("refuses a defaulted rate of the limit that the rule does not allow", () => {
+    const limit = { rates: ["19"], owner: "the source invoice 1001" };
+    expect(message(() => resolveTaxRates(rule(11), [{}], limit))).toBe(
+      "Position 1 has no taxRate, and the only rate of the source invoice 1001 (19 %) is not " +
+        "allowed by tax rule 11 (Steuer nicht erhoben nach §19UStG). Tax rule 11 allows 0 %. To " +
+        "charge VAT on domestic sales use tax rule 1.",
+    );
+    expect(resolveTaxRates(rule(11), [{}], { rates: ["0"], owner: "x" })).toEqual(["0"]);
+  });
+
+  it("drops the Kleinunternehmer warning on such an account and sets smallSettlement there", () => {
+    expect(taxRuleWarnings(rule(11), "small_business")).toEqual([]);
+    expect(taxRuleWarnings(rule(11), "regular")).toHaveLength(1);
+    expect(documentTaxFields(rule(10), "2.0", undefined, "small_business")).toMatchObject({
+      taxRule: { id: 10, objectName: "TaxRule" },
+      smallSettlement: true,
+    });
+    expect(documentTaxFields(rule(1), "2.0", undefined, "regular")).toMatchObject({
+      smallSettlement: false,
+    });
+  });
+
+  it("does not call a rule an expense rule when the scope takes expense rules", () => {
+    expect(message(() => taxRuleFor(12, { allowedRuleIds: [10, 13], documents: "x" }))).toBe(
+      "Tax rule 12 (Reverse Charge gem. §13b Abs. 2 UStG mit Vorsteuerabzug 0% (19%)) cannot be " +
+        "used for x. Use tax rule 10, 13; sevdesk_reference_lookup kind=tax_rules explains them.",
+    );
+    expect(message(() => taxRuleFor(9, scope))).toMatch(/\(it is a rule for expenses\)/);
   });
 });

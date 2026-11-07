@@ -17,7 +17,8 @@ import {
 
 /**
  * Write-tool cases owned by the M3 drafts work (see test/helpers/write-cases.ts). Dates default
- * to today, so every case passes explicit dates and stays independent of the clock.
+ * to today, so every case passes explicit dates and stays independent of the clock. Order and
+ * credit note creates reserve their number first (a side-effect GET with the write tier).
  */
 export const DRAFTS_CASES: readonly WriteToolCase[] = [
   {
@@ -43,14 +44,20 @@ export const DRAFTS_CASES: readonly WriteToolCase[] = [
     tool: creditNoteCreateDraftTool,
     args: { ...creditNoteCreateArgs, date: "2026-11-07" },
     routes: creditNoteCreateRoutes,
-    writes: [{ method: "POST", path: "/CreditNote/Factory/saveCreditNote" }],
+    writes: [
+      { method: "GET", path: "/CreditNote/Factory/getNextCreditNoteNumber" },
+      { method: "POST", path: "/CreditNote/Factory/saveCreditNote" },
+    ],
   },
   {
     label: "create a draft offer",
     tool: orderCreateDraftTool,
     args: { ...orderCreateArgs, date: "2026-11-07" },
     routes: orderCreateRoutes,
-    writes: [{ method: "POST", path: "/Order/Factory/saveOrder" }],
+    writes: [
+      { method: "GET", path: "/Order/Factory/getNextOrderNumber" },
+      { method: "POST", path: "/Order/Factory/saveOrder" },
+    ],
   },
   {
     label: "update a draft offer",

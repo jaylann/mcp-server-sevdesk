@@ -1,0 +1,45 @@
+{
+  "_provenance": {
+    "source": "community",
+    "ref": "https://github.com/emuuu/sevDesk.NET/blob/main/docs/sevdesk-api-responses.txt (sevClient object embedded in a recorded GET /Contact response, 2026-02)",
+    "date": "2026-11-07",
+    "systemVersion": "2.0",
+    "note": "Regular VAT account (smallSettlement \"0\"). As the body of GET /SevClient, which the trial account answered on 2026-11-07 with one object of the same fields (92 in all; smallSettlement \"1\" before and \"0\" after the switch to standard VAT, chartOfAccounts \"skr04\"). Reduced to 20 of the recorded fields, keys and scalar types as recorded, values fake."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "9001",
+        "objectName": "SevClient",
+        "additionalInformation": null,
+        "create": "2026-02-19T14:06:30+01:00",
+        "update": "2026-02-19T14:07:20+01:00",
+        "name": "Musterfirma GmbH",
+        "status": "1000",
+        "contactEmail": "buchhaltung@example.com",
+        "vatNumber": null,
+        "smallSettlement": "0",
+        "hasSeenBasicSettingsModal": "0",
+        "invoiceTimeToPay": "14",
+        "type": "TRIAL",
+        "showNet": "1",
+        "taxNumber": null,
+        "chartOfAccounts": "skr04",
+        "accountingChart": {
+          "id": "1",
+          "objectName": "AccountingChart"
+        },
+        "accountingSystem": {
+          "id": "2",
+          "objectName": "AccountingSystem"
+        },
+        "addressCountry": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "defaultCurrency": "EUR"
+      }
+    ]
+  }
+}

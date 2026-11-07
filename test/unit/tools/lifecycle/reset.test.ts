@@ -59,6 +59,11 @@ describe("sevdesk_invoice_reset (spec resetToOpen/resetToDraft; behaviour per se
     expect(plan.preview.warnings[0]).toContain(
       "linked bank transactions are unlinked and return to unbooked (status 100)",
     );
+    // D-071 measured an offline account only; cash registers are not claimed.
+    expect(plan.preview.warnings[0]).toContain(
+      "Transactions sevDesk created itself for payments on offline accounts are deleted " +
+        "(recorded); cash registers (Kasse) were not measured, so check them afterwards.",
+    );
     expect(plan.preview.irreversible).toBe(false);
     expect(output.data["invoice"]).toMatchObject({ status: { code: 200 } });
     expect(output.summary).toBe("Invoice 1001 reset to open: status Open / due (200).");

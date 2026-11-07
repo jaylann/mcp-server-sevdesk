@@ -20,8 +20,10 @@ export function readEnvelope(body: unknown): Envelope | undefined {
 }
 
 /**
- * Parses sevDesk's `total` (sent as a string such as `"123"`, sometimes a number). Returns
- * `undefined` when it is absent or not a non-negative integer.
+ * Parses sevDesk's `total`: a JSON number in every recorded response (2026-11-07, e.g. `39`;
+ * spec/deviations.md D-002 expected a string), and a digit string such as `"123"` in older
+ * community recordings, so both are accepted. Returns `undefined` when it is absent or not a
+ * non-negative integer.
  */
 export function parseTotal(total: unknown): number | undefined {
   let value: number | undefined;

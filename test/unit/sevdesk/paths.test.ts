@@ -177,6 +177,62 @@ describe("resolveGetSafety", () => {
     );
   });
 
+  it.each([
+    ["/Order/Factory/getNextOrderNumber", { orderType: "AN", useNextNumber: "true" }],
+    ["/Order/Factory/getNextOrderNumber", { orderType: "AN", useNextNumber: true }],
+    ["/CreditNote/Factory/getNextCreditNoteNumber", { useNextNumber: 1 }],
+    ["/CreditNote/Factory/getNextCreditNoteNumber", { useNextNumber: "1" }],
+    ["/Invoice/Factory/getNextInvoiceNumber", { invoiceType: "RE", useNextNumber: "yes" }],
+    ["/Invoice/Factory/GETNEXTINVOICENUMBER", { UseNextNumber: "TRUE" }],
+    // Only true/false were recorded: without the flag sevDesk might reserve.
+    ["/Order/Factory/getNextOrderNumber", { orderType: "AN" }],
+    ["/Order/Factory/getNextOrderNumber", { useNextNumber: undefined }],
+    ["/Invoice/Factory/getNextInvoiceNumber", {}],
+  ] as const)("treats %s with %j as reserving the number", (path, query) => {
+    expect(resolveGetSafety(path, query, false)).toEqual({
+      sideEffect: true,
+      effect: "it reserves the next document number",
+      query,
+    });
+  });
+
+  it.each([
+    [{ orderType: "AN", useNextNumber: "false" }],
+    [{ orderType: "AN", useNextNumber: false }],
+    [{ orderType: "AN", useNextNumber: 0 }],
+    [{ orderType: "AN", useNextNumber: "0" }],
+    [{ orderType: "AN", useNextNumber: "false", UseNextNumber: undefined }],
+  ])("treats getNextOrderNumber with %j as a peek (plain read)", (query) => {
+    expect(resolveGetSafety("/Order/Factory/getNextOrderNumber", query, false)).toEqual({
+      sideEffect: false,
+      query,
+    });
+  });
+
+  it("names the reservation when the side effect is declared", () => {
+    const query = { useNextNumber: "true" };
+    expect(
+      resolveGetSafety("/CreditNote/Factory/getNextCreditNoteNumber", query, true),
+    ).toMatchObject({ sideEffect: true, effect: "it reserves the next document number" });
+  });
+
+  it("ignores useNextNumber on endpoints that hand out no numbers", () => {
+    expect(resolveGetSafety("/Invoice", { useNextNumber: "true" }, false).sideEffect).toBe(false);
+  });
+
+  it("treats a getNext…Number GET without the flag as reserving, except customer numbers", () => {
+    expect(
+      resolveGetSafety("/CreditNote/Factory/getNextCreditNoteNumber", undefined, false),
+    ).toMatchObject({
+      sideEffect: true,
+      effect: "it reserves the next document number",
+    });
+    expect(resolveGetSafety("/Contact/Factory/getNextCustomerNumber", undefined, false)).toEqual({
+      sideEffect: false,
+      query: undefined,
+    });
+  });
+
   it("passes ordinary reads through and honors the declared flag", () => {
     const query = { status: 100 };
     expect(resolveGetSafety("/Invoice", query, false)).toEqual({ sideEffect: false, query });
@@ -214,6 +270,15 @@ describe("minimumWriteTier", () => {
     ["/Order/12", "write"],
   ] as const)("%s needs %s", (path, tier) => {
     expect(minimumWriteTier(path, undefined)).toBe(tier);
+  });
+
+  it("lets write tools reserve document numbers", () => {
+    expect(minimumWriteTier("/Order/Factory/getNextOrderNumber", { useNextNumber: "true" })).toBe(
+      "write",
+    );
+    expect(
+      minimumWriteTier("/CreditNote/Factory/getNextCreditNoteNumber", { useNextNumber: "true" }),
+    ).toBe("write");
   });
 
   it("treats DATEV exports with an enshrine flag as commit", () => {

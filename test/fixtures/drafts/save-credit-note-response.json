@@ -4,7 +4,7 @@
     "systemVersion": "2.0",
     "source": "community",
     "ref": "https://github.com/jernoxit/sevdesk-rs/blob/6fac90326a99e44a60d8cf77105b7619dece1bb8/tests/fixtures/write_credit_note_save.json (POST /CreditNote/Factory/saveCreditNote, live 2026-10-01)",
-    "note": "Recorded response, keys and scalar types kept; names, ids and address replaced with fakes; refSrcInvoice points at invoice 1001. creditNoteNumber was GU-1048 (sevdesk-rs sends a number from the number range) and is null here because this server sends none (D-027). sevdesk-rs stores only this response; its request (shape from its source, src/document_payload/credit_note.rs) was UNDERACHIEVEMENT, 1 x 10 net at 19 %."
+    "note": "Recorded response, keys and scalar types kept; names, ids and address replaced with fakes; refSrcInvoice points at invoice 1001. creditNoteNumber was GU-1048 (sevdesk-rs sends a number from the number range); GU-1002 here, the number this server reserves and sends since the 2026-11-07 recording. sevdesk-rs stores only this response; its request (shape from its source, src/document_payload/credit_note.rs) was UNDERACHIEVEMENT, 1 x 10 net at 19 %."
   },
   "status": 200,
   "body": {
@@ -14,7 +14,7 @@
         "objectName": "CreditNote",
         "additionalInformation": null,
         "propertyIsEInvoice": "0",
-        "creditNoteNumber": null,
+        "creditNoteNumber": "GU-1002",
         "contact": {
           "id": "1001",
           "objectName": "Contact"

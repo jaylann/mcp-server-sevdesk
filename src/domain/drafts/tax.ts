@@ -13,9 +13,16 @@
  *
  * The document-level `taxRate` is "not used anymore" (spec) and always sent as 0, as sevdesk-rs
  * does.
+ *
+ * Regime: a rule must fit the account's VAT regulation (`TaxRule.regimes`; the account's regime
+ * comes from `account-settings.ts`). sevDesk accepts a draft with a rule that does not fit but
+ * refuses to finalize it (recorded 2026-11-07 on a Kleinunternehmer account: 422 "Tax rule
+ * 'USTPFL_UMS_EINN' is not valid for account '4400' with taxation scope 'SMALL_BUSINESS'"), so
+ * such rules are refused before anything is saved, and the default follows the regime.
  */
 import { SevdeskError } from "../../sevdesk/errors.js";
 import type { SystemVersion } from "../../sevdesk/system-version.js";
+import type { TaxRegime } from "../account-settings.js";
 import { compare, toDecimalString } from "../money.js";
 import { type TaxRule, taxRuleById } from "../reference-data.js";
 
@@ -30,8 +37,8 @@ export const SALES_TAX_RULE_IDS: readonly number[] = [1, 2, 3, 4, 5, 11, 17, 18,
 /** Taxable domestic revenue (Umsatzsteuerpflichtige Umsätze): the default for new drafts. */
 export const DEFAULT_TAX_RULE_ID = 1;
 
-/** The Kleinunternehmer rule (§19 UStG): no VAT, `smallSettlement`. */
-const SMALL_BUSINESS_RULE_ID = 11;
+/** The Kleinunternehmer rule (§19 UStG): no VAT, `smallSettlement`; the default on such accounts. */
+export const SMALL_BUSINESS_RULE_ID = 11;
 
 /** One-Stop-Shop rules: the rate depends on the destination country. */
 const OSS_RULE_IDS: ReadonlySet<number> = new Set([18, 19, 20]);
@@ -56,7 +63,10 @@ export function taxRuleFor(id: number, scope: RuleScope): TaxRule {
     });
   }
   if (!scope.allowedRuleIds.includes(rule.id)) {
-    const why = rule.direction === "expense" ? " (it is a rule for expenses)" : "";
+    const expenseScope = scope.allowedRuleIds.some(
+      (allowedId) => taxRuleById(allowedId)?.direction === "expense",
+    );
+    const why = rule.direction === "expense" && !expenseScope ? " (it is a rule for expenses)" : "";
     throw new SevdeskError({
       kind: "validation",
       message:
@@ -66,6 +76,85 @@ export function taxRuleFor(id: number, scope: RuleScope): TaxRule {
   }
   return rule;
 }
+
+/**
+ * The rule a create call uses when it names none: `defaultRuleId`, except that the regular
+ * default (rule 1) becomes rule 11 on a Kleinunternehmer account.
+ */
+export function regimeDefaultRuleId(defaultRuleId: number, regime: TaxRegime | undefined): number {
+  return regime === "small_business" && defaultRuleId === DEFAULT_TAX_RULE_ID
+    ? SMALL_BUSINESS_RULE_ID
+    : defaultRuleId;
+}
+
+/** Builds the trusted refusal for a rule that does not fit the regime (see {@link regimeRefusal}). */
+export type RegimeMessage = (rule: TaxRule, regime: TaxRegime) => string;
+
+/**
+ * Refuses a rule that does not fit the account's regulation with a `validation` error that says
+ * which rules `scope` offers under it (sevDesk would refuse to finalize the document), or with
+ * `message` when the document type knows better (e.g. a credit note bound to its invoice's rates).
+ */
+export function checkTaxRuleRegime(
+  rule: TaxRule,
+  regime: TaxRegime | undefined,
+  scope: RuleScope,
+  message?: RegimeMessage,
+): void {
+  if (regime === undefined || rule.regimes.includes(regime)) return;
+  throw new SevdeskError({
+    kind: "validation",
+    message: message?.(rule, regime) ?? regimeRefusal(rule, regime, scope),
+  });
+}
+
+/**
+ * The first sentence of every regime refusal: the account's regulation and why `rule` cannot be
+ * used for `documents` (trusted).
+ */
+export function regimeReason(rule: TaxRule, regime: TaxRegime, documents: string): string {
+  const account =
+    regime === "small_business"
+      ? "This sevDesk account uses the Kleinunternehmer regulation (§19 UStG)"
+      : "This sevDesk account charges VAT (regular taxation, not the Kleinunternehmer regulation " +
+        "of §19 UStG)";
+  return (
+    `${account}, so tax rule ${rule.id} (${rule.nameDe}) cannot be used: sevDesk refuses to ` +
+    `finalize ${documents} with it.`
+  );
+}
+
+/** Trusted explanation why `rule` does not fit `regime`, with the rules to use instead. */
+export function regimeRefusal(rule: TaxRule, regime: TaxRegime, scope: RuleScope): string {
+  const fitting = scope.allowedRuleIds.filter(
+    (id) => taxRuleById(id)?.regimes.includes(regime) === true,
+  );
+  const reason = regimeReason(rule, regime, scope.documents);
+  if (regime === "small_business" && fitting.includes(SMALL_BUSINESS_RULE_ID)) {
+    return (
+      `${reason} Use tax rule 11 with 0 %: leave out taxRule (rule 11 is the default on this ` +
+      "account) and give the positions taxRate 0 or none."
+    );
+  }
+  if (regime === "regular" && fitting.includes(DEFAULT_TAX_RULE_ID)) {
+    return (
+      `${reason} Use tax rule 1 (Umsatzsteuerpflichtige Umsätze, 0, 7 or 19 %; the default on ` +
+      "this account) or another rule from sevdesk_reference_lookup kind=tax_rules. If the " +
+      "account should use the Kleinunternehmer regulation, change that in sevDesk's settings first."
+    );
+  }
+  if (fitting.length > 0) return `${reason} Use tax rule ${fitting.join(" or ")}.`;
+  return (
+    `${reason} None of the tax rules ${scope.documents} take fits this regulation; create the ` +
+    "document in sevDesk instead."
+  );
+}
+
+/** Preview warning when the account's regulation could not be read (trusted text). */
+export const UNKNOWN_REGIME_WARNING =
+  "The VAT regulation of this sevDesk account (regular VAT or Kleinunternehmer, §19 UStG) could " +
+  "not be read, so the tax rule was not checked against it. sevDesk refuses to finalize " +
+  "documents whose tax rule does not fit (e.g. tax rule 1 on a Kleinunternehmer account).";
 
 /** Extra limit on the rates, e.g. "the rates of the source invoice". */
 export interface RateLimit {
@@ -84,15 +173,25 @@ export function resolveTaxRates(
   rule: TaxRule,
   positions: readonly { readonly taxRate?: string | undefined }[],
   limit?: RateLimit,
+  regime?: TaxRegime,
 ): string[] {
   const allowed = rule.allowedTaxRates?.map(String);
   const candidates = limit?.rates ?? allowed;
   return positions.map((position, index) => {
     const label = `Position ${index + 1}`;
     if (position.taxRate === undefined) {
-      if (candidates !== undefined && candidates.length === 1 && candidates[0] !== undefined) {
-        return toDecimalString(candidates[0]);
+      const only = candidates?.length === 1 ? candidates[0] : undefined;
+      if (only !== undefined && allowed !== undefined && !includesRate(allowed, only)) {
+        // Only reachable with a limit: its single rate is not one the rule allows.
+        throw new SevdeskError({
+          kind: "validation",
+          message:
+            `${label} has no taxRate, and the only rate of ${limit?.owner ?? "the document"} ` +
+            `(${toDecimalString(only)} %) is not allowed by tax rule ${rule.id} (${rule.nameDe}). ` +
+            `${rateChoice(rule, allowed)}${rateHint(rule, only, regime)}`,
+        });
       }
+      if (only !== undefined) return toDecimalString(only);
       throw new SevdeskError({
         kind: "validation",
         message:
@@ -108,7 +207,7 @@ export function resolveTaxRates(
         kind: "validation",
         message:
           `${label} has a tax rate of ${rate} %, which tax rule ${rule.id} (${rule.nameDe}) ` +
-          `does not allow. ${rateChoice(rule, allowed)}${rateHint(rule, rate)}`,
+          `does not allow. ${rateChoice(rule, allowed)}${rateHint(rule, rate, regime)}`,
       });
     }
     if (limit !== undefined && !includesRate(limit.rates, rate)) {
@@ -138,10 +237,13 @@ export function checkTaxRuleUseCase(rule: TaxRule, useCase: string, noun: string
   }
 }
 
-/** Preview warnings for a rule (trusted text). */
-export function taxRuleWarnings(rule: TaxRule): string[] {
+/**
+ * Preview warnings for a rule (trusted text). The Kleinunternehmer note is left out when the
+ * account is known to use that regulation.
+ */
+export function taxRuleWarnings(rule: TaxRule, regime?: TaxRegime): string[] {
   const warnings: string[] = [];
-  if (rule.id === SMALL_BUSINESS_RULE_ID) {
+  if (rule.id === SMALL_BUSINESS_RULE_ID && regime !== "small_business") {
     warnings.push(
       "Tax rule 11 is for small businesses (Kleinunternehmer, §19 UStG) only: the document " +
         "shows no VAT.",
@@ -177,16 +279,19 @@ type LegacyTaxType = (typeof LEGACY_TAX_TYPES)[number];
 
 /**
  * The tax fields for `rule` on an account with bookkeeping system `version`. `taxText` defaults to
- * the rule's German name. Throws a `validation` error on a 1.0 account for a rule without a 1.0
- * tax type.
+ * the rule's German name. `smallSettlement` is set for rule 11 and for every document of a
+ * Kleinunternehmer account (spec: "If the sevdesk account is falling under the small entrepreneur
+ * scheme … this attribute should be true"). Throws a `validation` error on a 1.0 account for a
+ * rule without a 1.0 tax type.
  */
 export function documentTaxFields(
   rule: TaxRule,
   version: SystemVersion,
   taxText: string | undefined,
+  regime?: TaxRegime,
 ): DocumentTaxFields {
   const text = taxText ?? rule.nameDe;
-  const smallSettlement = rule.id === SMALL_BUSINESS_RULE_ID;
+  const smallSettlement = rule.id === SMALL_BUSINESS_RULE_ID || regime === "small_business";
   if (version === "2.0") {
     return {
       taxRule: { id: rule.id, objectName: "TaxRule" },
@@ -236,13 +341,16 @@ function rateChoice(rule: TaxRule, rates: readonly string[]): string {
   return `Tax rule ${rule.id} allows ${rates.map((rate) => toDecimalString(rate)).join(", ")} %.`;
 }
 
-/** A pointer to the rule that probably fits a rejected rate. */
-function rateHint(rule: TaxRule, rate: string): string {
+/** A pointer to the rule that probably fits a rejected rate, given the account's regime. */
+function rateHint(rule: TaxRule, rate: string, regime: TaxRegime | undefined): string {
   const onlyZero = rule.allowedTaxRates?.length === 1 && rule.allowedTaxRates[0] === 0;
   if (onlyZero && compare(rate, 0) > 0) {
-    return " To charge VAT on domestic sales use tax rule 1.";
+    return regime === "small_business"
+      ? " This sevDesk account uses the Kleinunternehmer regulation (§19 UStG): its documents " +
+          "show no VAT, so every position takes 0 %."
+      : " To charge VAT on domestic sales use tax rule 1.";
   }
-  if (rule.id === DEFAULT_TAX_RULE_ID && compare(rate, 0) !== 0) {
+  if (rule.id === DEFAULT_TAX_RULE_ID && compare(rate, 0) !== 0 && regime === undefined) {
     return " A small business (Kleinunternehmer, §19 UStG) uses tax rule 11 with rate 0.";
   }
   return "";

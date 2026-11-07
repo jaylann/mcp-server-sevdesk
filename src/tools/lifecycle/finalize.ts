@@ -62,12 +62,13 @@ const DESCRIPTIONS: Readonly<Record<LifecycleKind, string>> = {
     "sevdesk_invoice_create_draft). Next: sevdesk_invoice_pdf, sevdesk_invoice_book_payment " +
     "(Zahlung buchen), sevdesk_invoice_enshrine (festschreiben).",
   creditNote:
-    "Finalize a draft credit note (Gutschrift fertigstellen): sevDesk marks it as sent, assigns " +
-    "its final number and books it (draft 100 → open 200). Nothing is sent to the customer: " +
-    "sentVia only records how you send it. To email it through sevDesk use " +
+    "Finalize a draft credit note (Gutschrift fertigstellen): sevDesk marks it as sent and books " +
+    "it (draft 100 → open 200) under the number the draft carries. Nothing is sent to the " +
+    "customer: sentVia only records how you send it. To email it through sevDesk use " +
     "sevdesk_credit_note_send_email instead. Commit tier: asks a human to confirm the shown " +
-    "preview; dryRun only previews. Drafts only. Next: sevdesk_credit_note_book_payment " +
-    "(Auszahlung buchen), sevdesk_credit_note_enshrine.",
+    "preview; dryRun only previews. Drafts with a number only (sevDesk can fail half-way on a " +
+    "draft without one; sevdesk_credit_note_create_draft assigns one). Next: " +
+    "sevdesk_credit_note_book_payment (Auszahlung buchen), sevdesk_credit_note_enshrine.",
   order:
     "Finalize a draft order (Angebot, Auftragsbestätigung or Lieferschein fertigstellen): " +
     "sevDesk marks it as sent and assigns its final number (draft 100 → sent 200). Nothing is " +
@@ -77,15 +78,21 @@ const DESCRIPTIONS: Readonly<Record<LifecycleKind, string>> = {
     "Next: sevdesk_order_pdf, sevdesk_order_to_invoice.",
 };
 
+/** What sevDesk does to an invoice or credit note it finalizes. */
+const BOOKS = {
+  invoice: "assigns its final number and books it",
+  creditNote: "books it under the number the draft carries",
+} as const;
+
 /** Consequences of finalizing, per kind. */
 function finalizeWarnings(kind: LifecycleKind): string[] {
   const { toolPrefix } = KINDS[kind];
   const binding =
     kind === "order"
       ? "The order is marked as sent (status 200) and sevDesk assigns its final number."
-      : `The ${KINDS[kind].noun} becomes legally binding: sevDesk assigns its final number and ` +
-        `books it. Afterwards it can only be corrected by a reset to draft (while not ` +
-        `enshrined), ${kind === "invoice" ? "a cancellation (Storno) or a credit note" : "or a new document"}.`;
+      : `The ${KINDS[kind].noun} becomes legally binding: sevDesk ${BOOKS[kind]}. Afterwards ` +
+        `it can only be corrected by a reset to draft (while not enshrined), ` +
+        `${kind === "invoice" ? "a cancellation (Storno) or a credit note" : "or a new document"}.`;
   const warnings = [
     binding,
     `sevDesk sends nothing to the customer: this only records how the document was sent. To ` +

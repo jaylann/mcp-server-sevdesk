@@ -218,10 +218,10 @@ describe("sevdesk_invoice_update_draft (community shapes, fake data)", () => {
   });
 
   it("validates a new tax rule against the stored rates", async () => {
-    const error = await rejection({ id: 2102, taxRule: 11 });
+    const error = await rejection({ id: 2102, taxRule: 2 });
     expect(error.message).toBe(
-      "Position 1 has a tax rate of 19 %, which tax rule 11 (Steuer nicht erhoben nach §19UStG) " +
-        "does not allow. Tax rule 11 allows 0 %. To charge VAT on domestic sales use tax rule 1.",
+      "Position 1 has a tax rate of 19 %, which tax rule 2 (Ausfuhren) does not allow. Tax rule " +
+        "2 allows 0 %. To charge VAT on domestic sales use tax rule 1.",
     );
   });
 

@@ -36,6 +36,11 @@ export interface ReadBackExpectation {
   readonly noun: string;
   /** Tool that finalizes the document, e.g. "sevdesk_invoice_finalize". */
   readonly finalizeTool: string;
+  /**
+   * Trusted note for a document read back without a number, when sevDesk does not assign one at
+   * finalize (credit notes: the finalize tool refuses them); defaults to "sevDesk assigns it".
+   */
+  readonly numberless?: string | undefined;
   /** Expected totals when this call set the positions; `undefined` when they were kept. */
   readonly expected?: Amounts | undefined;
 }
@@ -49,9 +54,10 @@ export function readBackNotes(actual: ReadBackFacts, expectation: ReadBackExpect
   const { noun } = expectation;
   if (actual.number === undefined) {
     notes.push(
-      `The ${noun} has no number yet: sevDesk assigns it from its number range ` +
-        `(Nummernkreis), at the latest when the ${noun} is finalized with ` +
-        `${expectation.finalizeTool}.`,
+      expectation.numberless ??
+        `The ${noun} has no number yet: sevDesk assigns it from its number range ` +
+          `(Nummernkreis), at the latest when the ${noun} is finalized with ` +
+          `${expectation.finalizeTool}.`,
     );
   } else if (PLACEHOLDER.test(actual.number)) {
     notes.push(

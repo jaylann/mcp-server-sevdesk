@@ -4,7 +4,7 @@
     "systemVersion": "2.0",
     "source": "community",
     "ref": "https://github.com/jernoxit/sevdesk-rs/blob/6fac90326a99e44a60d8cf77105b7619dece1bb8/tests/fixtures/write_credit_note_save.json (creditNote row) + https://github.com/jernoxit/sevdesk-rs/blob/6fac90326a99e44a60d8cf77105b7619dece1bb8/tests/fixtures/credit_note.json (GET shape)",
-    "note": "The draft as GET /CreditNote/2201?embed=contact returns it: the creditNote row of the recorded saveCreditNote response with the contact embedded; creditNoteNumber null as in save-credit-note-response.json. Values fake."
+    "note": "The draft as GET /CreditNote/2201?embed=contact returns it: the creditNote row of the recorded saveCreditNote response with the contact embedded; creditNoteNumber GU-1002, the number the draft is saved with (reserved from the number range, as since the 2026-11-07 recording), as in save-credit-note-response.json. Values fake."
   },
   "status": 200,
   "body": {
@@ -14,7 +14,7 @@
         "objectName": "CreditNote",
         "additionalInformation": null,
         "propertyIsEInvoice": "0",
-        "creditNoteNumber": null,
+        "creditNoteNumber": "GU-1002",
         "contact": {
           "id": "1001",
           "objectName": "Contact",

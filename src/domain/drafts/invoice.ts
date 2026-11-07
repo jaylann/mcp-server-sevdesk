@@ -88,6 +88,7 @@ import { addressInputShape } from "./recipient.js";
 import {
   addressBlock,
   type CreateArgs,
+  type DraftCallOptions,
   resolveCreateBasics,
   resolveUpdateBasics,
   type StoredAddress,
@@ -203,15 +204,16 @@ export interface InvoiceDraftPlan {
 export async function prepareInvoiceCreate(
   client: SevdeskClient,
   args: InvoiceCreateArgs,
-  signal?: AbortSignal,
+  options: DraftCallOptions,
 ): Promise<InvoiceDraftPlan> {
+  const { signal } = options;
   const date = args.date ?? todayInBerlin();
   const delivery = resolveDeliveryPeriod(date, args.deliveryDate, args.deliveryDateUntil, true);
   const basics = await resolveCreateBasics(
     client,
     args,
     { scope: INVOICE_SCOPE, defaultRuleId: DEFAULT_TAX_RULE_ID },
-    signal,
+    options,
   );
   const { contact, contactPerson, address, currency, expected, mode } = basics;
   const duplicateQuery = { contactId: args.contactId, date, gross: expected.gross, currency };
@@ -277,8 +279,9 @@ export async function prepareInvoiceCreate(
 export async function prepareInvoiceUpdate(
   client: SevdeskClient,
   args: InvoiceUpdateArgs,
-  signal?: AbortSignal,
+  options: DraftCallOptions,
 ): Promise<InvoiceDraftPlan> {
+  const { signal } = options;
   assertChanges(args, "invoice");
   const current = await loadCurrentInvoice(client, args.id, signal);
   const doc = current.document;
@@ -295,7 +298,7 @@ export async function prepareInvoiceUpdate(
       useCase:
         doc.propertyIsEInvoice === true ? { label: "e-invoices", noun: "invoice" } : undefined,
     },
-    signal,
+    options,
   );
 
   const storedDate = berlinDay(doc.invoiceDate);

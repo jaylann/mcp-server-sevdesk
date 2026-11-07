@@ -18,7 +18,8 @@ export const orderUpdateDraftTool = defineWriteTool({
     "(Lieferschein). Tier write. Only the fields you give change; everything else keeps its " +
     "stored value, the type stays. positions, when given, replace ALL stored positions in one " +
     "request (saveOrder with the order's id); leave them out to keep them. Changing priceMode " +
-    "needs the positions too, and a new tax rule must allow every stored rate. A new contactId " +
+    "needs the positions too, and a new tax rule must allow every stored rate and fit the " +
+    "account's VAT regulation (regular or Kleinunternehmer). A new contactId " +
     "also takes that contact's invoice address unless you give an address. Only drafts can be " +
     "changed; for a sent offer create a new draft. dryRun shows the changes without saving. " +
     "Before: sevdesk_order_get. After: sevdesk_order_pdf, sevdesk_order_finalize.",
@@ -32,7 +33,8 @@ export const orderUpdateDraftTool = defineWriteTool({
   },
   input: z.strictObject({ ...orderUpdateInputShape, ...dryRunInputShape }),
   output: orderDraftOutput,
-  prepare: (args, ctx) => prepareOrderUpdate(ctx.client, args, ctx.signal),
+  prepare: (args, ctx) =>
+    prepareOrderUpdate(ctx.client, args, { signal: ctx.signal, cacheOwner: ctx.config }),
   execute: async (_args, plan, ctx) =>
     orderDraftToolOutput(await executeOrderDraft(ctx.client, plan.state, ctx.signal), "Updated"),
 });

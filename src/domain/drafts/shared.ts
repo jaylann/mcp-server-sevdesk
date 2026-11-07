@@ -8,10 +8,15 @@
  * leave out keeps its stored value, and changes that would silently alter stored positions are
  * refused (a new price mode re-reads every stored price; a new tax rule must allow every stored
  * rate).
+ *
+ * The account's VAT regulation (`account-settings.ts`, read first and cached) decides the default
+ * tax rule (1, or 11 on a Kleinunternehmer account) and refuses rules that do not fit it; when it
+ * cannot be read, the old behavior applies and the preview says the rule was not checked.
  */
 import { SevdeskError } from "../../sevdesk/errors.js";
 import { getBookkeepingSystemVersion, type SystemVersion } from "../../sevdesk/system-version.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
+import { loadAccountSettings, type TaxRegime, taxRegimeOf } from "../account-settings.js";
 import { cleanText, currencyCode } from "../common.js";
 import type { ContactDetails } from "../contacts.js";
 import type { PositionRecord } from "../document-positions.js";
@@ -41,26 +46,70 @@ import {
   resolveContactPerson,
 } from "./recipient.js";
 import {
+  checkTaxRuleRegime,
   checkTaxRuleUseCase,
+  DEFAULT_TAX_RULE_ID,
   type DocumentTaxFields,
   documentTaxFields,
   LEGACY_TAX_TYPES,
   type RateLimit,
+  regimeDefaultRuleId,
+  type RegimeMessage,
   resolveTaxRates,
   ruleForLegacyTaxType,
   type RuleScope,
+  SMALL_BUSINESS_RULE_ID,
   taxRuleFor,
   taxRuleWarnings,
+  UNKNOWN_REGIME_WARNING,
 } from "./tax.js";
+
+/** Per-call context of a draft `prepare`. */
+export interface DraftCallOptions {
+  readonly signal?: AbortSignal | undefined;
+  /** Owner of the account-settings cache: tools pass `ctx.config` (see `account-settings.ts`). */
+  readonly cacheOwner: object;
+}
 
 /** How a document type validates its tax rule. */
 export interface TaxOptions {
   readonly scope: RuleScope;
-  /** Rule used when the call gives none (create only). */
+  /**
+   * Rule used when the call gives none (create only). On a Kleinunternehmer account the regular
+   * default (rule 1) becomes rule 11.
+   */
   readonly defaultRuleId: number;
   readonly rateLimit?: RateLimit | undefined;
   /** A `notSupportedFor` entry that applies to this document, e.g. "e-invoices". */
   readonly useCase?: { readonly label: string; readonly noun: string } | undefined;
+  /**
+   * Keep `defaultRuleId` on every account (no rule 1 → rule 11 switch): a default taken from a
+   * source document, which a rule that does not fit then refuses with `regimeMessage`.
+   */
+  readonly keepDefault?: boolean | undefined;
+  /** Refusal text for a rule that does not fit the account's regime (default: `regimeRefusal`). */
+  readonly regimeMessage?: RegimeMessage | undefined;
+  /**
+   * Rules, default and a preview warning on a Kleinunternehmer account, for documents whose rules
+   * differ there beyond the default (provision credit notes).
+   */
+  readonly smallBusiness?:
+    | {
+        readonly scope: RuleScope;
+        readonly defaultRuleId: number;
+        readonly warning?: string | undefined;
+      }
+    | undefined;
+}
+
+/** The account's regime (`undefined` when it cannot be read), read through the cache. */
+async function accountRegime(
+  client: SevdeskClient,
+  options: DraftCallOptions,
+): Promise<TaxRegime | undefined> {
+  return taxRegimeOf(
+    await loadAccountSettings(client, { cacheOwner: options.cacheOwner, signal: options.signal }),
+  );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -79,6 +128,8 @@ export interface CreateArgs extends AddressInput {
 
 export interface CreateBasics {
   readonly version: SystemVersion;
+  /** The account's VAT regulation; `undefined` when it could not be read. */
+  readonly regime: TaxRegime | undefined;
   readonly contact: ContactDetails;
   readonly contactPerson: ContactPerson;
   readonly address: DocumentAddress;
@@ -92,18 +143,32 @@ export interface CreateBasics {
   readonly warnings: readonly string[];
 }
 
-/** Validates a create call and reads what its payload needs. Throws `validation` errors. */
+/**
+ * Validates a create call and reads what its payload needs. Throws `validation` errors. The
+ * account's regime is read first (it decides the default rule); everything else is validated
+ * before the remaining reads.
+ */
 export async function resolveCreateBasics(
   client: SevdeskClient,
   args: CreateArgs,
   tax: TaxOptions,
-  signal?: AbortSignal,
+  options: DraftCallOptions,
 ): Promise<CreateBasics> {
-  const rule = taxRuleFor(args.taxRule ?? tax.defaultRuleId, tax.scope);
+  const { signal } = options;
+  const regime = await accountRegime(client, options);
+  const special = regime === "small_business" ? tax.smallBusiness : undefined;
+  const scope = special?.scope ?? tax.scope;
+  const ruleId =
+    args.taxRule ??
+    special?.defaultRuleId ??
+    (tax.keepDefault === true ? tax.defaultRuleId : regimeDefaultRuleId(tax.defaultRuleId, regime));
+  const named = taxRuleById(ruleId);
+  if (named !== undefined) checkTaxRuleRegime(named, regime, scope, tax.regimeMessage);
+  const rule = taxRuleFor(ruleId, scope);
   if (tax.useCase !== undefined) checkTaxRuleUseCase(rule, tax.useCase.label, tax.useCase.noun);
   const positions = toDraftPositions(
     args.positions,
-    resolveTaxRates(rule, args.positions, tax.rateLimit),
+    resolveTaxRates(rule, args.positions, tax.rateLimit, regime),
   );
   const currency = resolveCurrency(args.currency);
   const mode = args.priceMode ?? "net";
@@ -117,16 +182,22 @@ export async function resolveCreateBasics(
   ]);
   return {
     version,
+    regime,
     contact,
     contactPerson,
     address: resolveAddress(contact, args, countries),
     rule,
-    tax: documentTaxFields(rule, version, args.taxText),
+    tax: documentTaxFields(rule, version, args.taxText, regime),
     positions,
     mode,
     currency,
     expected: expectedTotals(positions, mode),
-    warnings: [...taxRuleWarnings(rule), ...currencyWarnings(currency)],
+    warnings: [
+      ...(regime === undefined ? [UNKNOWN_REGIME_WARNING] : []),
+      ...(special?.warning === undefined ? [] : [special.warning]),
+      ...taxRuleWarnings(rule, regime),
+      ...currencyWarnings(currency),
+    ],
   };
 }
 
@@ -210,6 +281,8 @@ interface UpdateTaxFields {
 
 export interface UpdateBasics {
   readonly version: SystemVersion;
+  /** The account's VAT regulation; `undefined` when it could not be read. */
+  readonly regime: TaxRegime | undefined;
   readonly contact: ContactDetails;
   readonly contactChanged: boolean;
   readonly contactPerson: { readonly id: number; readonly name?: string | undefined };
@@ -241,9 +314,10 @@ export async function resolveUpdateBasics(
   storedAddress: StoredAddress,
   storedPositions: readonly PositionRecord[],
   args: UpdateArgs,
-  tax: Omit<TaxOptions, "defaultRuleId">,
-  signal?: AbortSignal,
+  tax: Omit<TaxOptions, "defaultRuleId" | "smallBusiness" | "keepDefault">,
+  options: DraftCallOptions,
 ): Promise<UpdateBasics> {
+  const { signal } = options;
   const storedMode: PriceMode = stored.showNet === false ? "gross" : "net";
   const mode = args.priceMode ?? storedMode;
   const modeChanged = mode !== storedMode;
@@ -256,10 +330,13 @@ export async function resolveUpdateBasics(
     });
   }
 
+  const regime = await accountRegime(client, options);
   const storedRule =
     stored.taxRule === undefined
       ? ruleForLegacyTaxType(stored.taxType)
       : taxRuleById(stored.taxRule.id);
+  const named = args.taxRule === undefined ? undefined : taxRuleById(args.taxRule);
+  if (named !== undefined) checkTaxRuleRegime(named, regime, tax.scope, tax.regimeMessage);
   const rule = args.taxRule === undefined ? storedRule : taxRuleFor(args.taxRule, tax.scope);
   const taxChanged = args.taxRule !== undefined || args.taxText !== undefined;
   if (rule === undefined && (args.positions !== undefined || taxChanged)) {
@@ -277,7 +354,7 @@ export async function resolveUpdateBasics(
   if (args.positions !== undefined && rule !== undefined) {
     positions = toDraftPositions(
       args.positions,
-      resolveTaxRates(rule, args.positions, tax.rateLimit),
+      resolveTaxRates(rule, args.positions, tax.rateLimit, regime),
     );
   } else if (args.taxRule !== undefined && rule !== undefined) {
     // The stored positions stay: each must be allowed by the new rule.
@@ -285,6 +362,7 @@ export async function resolveUpdateBasics(
       rule,
       storedPositions.map((row) => ({ taxRate: row.taxRate })),
       tax.rateLimit,
+      regime,
     );
   }
 
@@ -316,6 +394,7 @@ export async function resolveUpdateBasics(
           rule,
           version,
           args.taxText ?? (args.taxRule === undefined ? cleanStored(stored.taxText) : undefined),
+          regime,
         )
       : undefined;
   // A new contact brings its invoice address; otherwise the call's fields change the stored one
@@ -326,6 +405,7 @@ export async function resolveUpdateBasics(
       : storedAddress.base;
   return {
     version,
+    regime,
     contact,
     contactChanged,
     contactPerson,
@@ -343,12 +423,38 @@ export async function resolveUpdateBasics(
     addressBefore:
       countries === undefined ? undefined : storedAddressPreview(storedAddress, countries),
     warnings: [
+      ...(regime === undefined && (taxChanged || positions !== undefined)
+        ? [UNKNOWN_REGIME_WARNING]
+        : []),
+      ...(args.taxRule === undefined &&
+      rule !== undefined &&
+      regime !== undefined &&
+      !rule.regimes.includes(regime)
+        ? [keptRuleWarning(rule, regime)]
+        : []),
       ...(rule !== undefined && (taxChanged || positions !== undefined)
-        ? taxRuleWarnings(rule)
+        ? taxRuleWarnings(rule, regime)
         : []),
       ...(currency !== storedCurrency ? currencyWarnings(currency) : []),
     ],
   };
+}
+
+/** Warning for a stored tax rule the update keeps although it does not fit the account. */
+function keptRuleWarning(rule: TaxRule, regime: TaxRegime): string {
+  const fix =
+    regime === "small_business"
+      ? `taxRule ${SMALL_BUSINESS_RULE_ID} (Kleinunternehmer, §19 UStG) with 0 % rates`
+      : `taxRule ${DEFAULT_TAX_RULE_ID} (Umsatzsteuerpflichtige Umsätze) or another rule for ` +
+        "regular VAT";
+  const account =
+    regime === "small_business"
+      ? "the Kleinunternehmer regulation (§19 UStG)"
+      : "regular VAT, not the Kleinunternehmer regulation";
+  return (
+    `The draft keeps tax rule ${rule.id} (${rule.nameDe}), which does not fit this account's ` +
+    `VAT regulation (${account}): sevDesk will refuse to finalize it. Pass ${fix} to fix it.`
+  );
 }
 
 /** A stored tax text kept as is (raw), unless it is blank. */

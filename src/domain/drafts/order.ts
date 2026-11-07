@@ -5,9 +5,11 @@
  * Create body: the shape of two working production bodies (codestra/sevdesk-mcp and a product
  * configurator, 2026-08), checked against `Model_Order`: `version: 0`, `addressCountry`, the
  * multi-line `address` (`takeDefaultAddress` leaves an order's recipient block empty, codestra),
- * `taxRate: 0`, `orderPosSave` with `objectName`, `mapAll` and `positionNumber`. Unlike those
- * bodies no `orderNumber` is sent (B4, lead decision): whether sevDesk then assigns one is
- * unrecorded (codestra reports a 400), which the recording session checks.
+ * `taxRate: 0`, `orderPosSave` with `objectName`, `mapAll` and `positionNumber`, and the
+ * `orderNumber` from the order type's number range: `saveOrder` without one answers 400
+ * (recorded 2026-11-07, as codestra reported), and saving does not advance the counter, so
+ * `prepare` peeks the next number for the preview and `execute` reserves it right before the
+ * save (`numbering.ts`). The number is never invented (B4).
  *
  * Update: `saveOrder` with `order.id`, not `PUT /Order/{orderId}`. Evidence and trade-off:
  * `PUT /Order/{id}` (`Model_OrderUpdate`) changes the order's own fields only (codestra uses it
@@ -60,6 +62,15 @@ import {
   wireDocumentDate,
 } from "./fields.js";
 import {
+  changedNumberNote,
+  type NumberRange,
+  peekNextNumber,
+  reservationWarning,
+  reservedNumberError,
+  reserveNextNumber,
+  storedNumberNote,
+} from "./numbering.js";
+import {
   savedDocumentId,
   type SaveOrderBody,
   saveOrderBodySchema,
@@ -88,6 +99,7 @@ import { addressInputShape } from "./recipient.js";
 import {
   addressBlock,
   type CreateArgs,
+  type DraftCallOptions,
   resolveCreateBasics,
   resolveUpdateBasics,
   type UpdateArgs,
@@ -186,9 +198,12 @@ export interface OrderUpdateArgs extends UpdateArgs {
 }
 
 export interface OrderDraftState {
+  /** The body to save; on create its `orderNumber` is the peeked one, replaced by the reserved. */
   readonly body: SaveOrderBody;
   readonly orderId?: number | undefined;
   readonly expected?: Amounts | undefined;
+  /** Create only: the number range to reserve from and the number the preview showed. */
+  readonly numbering?: { readonly range: NumberRange; readonly peeked: string } | undefined;
 }
 
 export interface OrderDraftPlan {
@@ -196,12 +211,16 @@ export interface OrderDraftPlan {
   readonly state: OrderDraftState;
 }
 
-/** Prepares a new draft order (offer, order confirmation or delivery note). */
+/**
+ * Prepares a new draft order (offer, order confirmation or delivery note), with the next number
+ * of its range peeked for the preview (reserved only by {@link executeOrderDraft}).
+ */
 export async function prepareOrderCreate(
   client: SevdeskClient,
   args: OrderCreateArgs,
-  signal?: AbortSignal,
+  options: DraftCallOptions,
 ): Promise<OrderDraftPlan> {
+  const { signal } = options;
   const code = ORDER_TYPE_FILTERS[args.orderType];
   const typeName = orderTypeLabel(code);
   const date = args.date ?? todayInBerlin();
@@ -209,7 +228,7 @@ export async function prepareOrderCreate(
     client,
     args,
     { scope: ORDER_SCOPE, defaultRuleId: DEFAULT_TAX_RULE_ID },
-    signal,
+    options,
   );
   const { contact, contactPerson, address, currency, expected, mode } = basics;
   const duplicateQuery = { contactId: args.contactId, date, gross: expected.gross, currency };
@@ -219,6 +238,8 @@ export async function prepareOrderCreate(
     duplicateQuery,
     signal,
   );
+  const range: NumberRange = { kind: "order", orderType: code };
+  const peeked = await peekNextNumber(client, range, signal);
 
   const header = args.header ?? typeName;
   const body = strictBody(
@@ -227,6 +248,7 @@ export async function prepareOrderCreate(
       order: {
         objectName: "Order",
         mapAll: true,
+        orderNumber: peeked,
         orderType: code,
         version: 0,
         status: 100,
@@ -254,6 +276,7 @@ export async function prepareOrderCreate(
 
   const facts: PreviewFact[] = [
     fact("Type", `${typeName} (${code})`),
+    fact("Number", `${peeked} (reserved when the draft is saved)`),
     fact("Customer", customerText(contact.contact.displayName, args.contactId)),
     fact("Address", addressText(address)),
     fact("Date", date),
@@ -272,17 +295,22 @@ export async function prepareOrderCreate(
       `${customerText(contact.contact.displayName, args.contactId)} with ` +
       `${positionCount(basics.positions.length)}, gross ${moneyText(expected.gross, currency)}.`,
     facts,
-    [duplicateWarning("order", duplicates, duplicateQuery), ...basics.warnings],
+    [
+      duplicateWarning("order", duplicates, duplicateQuery),
+      reservationWarning(args.orderType.replace("_", " "), peeked),
+      ...basics.warnings,
+    ],
   );
-  return { preview, state: { body, expected } };
+  return { preview, state: { body, expected, numbering: { range, peeked } } };
 }
 
-/** Prepares an update of a draft order. */
+/** Prepares an update of a draft order; its stored number is kept (never reserved anew). */
 export async function prepareOrderUpdate(
   client: SevdeskClient,
   args: OrderUpdateArgs,
-  signal?: AbortSignal,
+  options: DraftCallOptions,
 ): Promise<OrderDraftPlan> {
+  const { signal } = options;
   assertChanges(args, "order");
   const current = await loadCurrentOrder(client, args.id, signal);
   const doc = current.document;
@@ -301,7 +329,7 @@ export async function prepareOrderUpdate(
     current.positions,
     args,
     { scope: ORDER_SCOPE },
-    signal,
+    options,
   );
   const storedDate = berlinDay(doc.orderDate);
   const date = args.date ?? storedDate ?? todayInBerlin();
@@ -433,18 +461,42 @@ export interface OrderDraftResult {
   readonly notes: readonly string[];
 }
 
-/** Sends the prepared body (one request, never retried) and reads the order back. */
+/**
+ * Saves the prepared order (one request, never retried) and reads it back. A create first
+ * reserves the next number of its range (`useNextNumber=true`) and saves with that number, also
+ * when it differs from the previewed one (the result says so); when the save then fails, the
+ * error names the reserved, now skipped number. An update saves its stored number unchanged.
+ */
 export async function executeOrderDraft(
   client: SevdeskClient,
   state: OrderDraftState,
   signal?: AbortSignal,
 ): Promise<OrderDraftResult> {
-  const response = await client.request({
-    method: "POST",
-    path: "/Order/Factory/saveOrder",
-    body: state.body,
-    ...(signal === undefined ? {} : { signal }),
-  });
+  const numbering = state.numbering;
+  const reserved =
+    numbering === undefined ? undefined : await reserveNextNumber(client, numbering.range, signal);
+  const body =
+    reserved === undefined
+      ? state.body
+      : strictBody(
+          saveOrderBodySchema,
+          { ...state.body, order: { ...state.body.order, orderNumber: reserved } },
+          "order",
+        );
+  let response: unknown;
+  try {
+    response = await client.request({
+      method: "POST",
+      path: "/Order/Factory/saveOrder",
+      body,
+      ...(signal === undefined ? {} : { signal }),
+    });
+  } catch (error) {
+    if (reserved !== undefined && error instanceof SevdeskError) {
+      throw reservedNumberError(error, "order", reserved);
+    }
+    throw error;
+  }
   const id = savedDocumentId(response, "order", "order");
   const saved = { objectName: "Order", id: String(id) };
   if (state.orderId !== undefined && id !== state.orderId) {
@@ -457,15 +509,25 @@ export async function executeOrderDraft(
     });
   }
   const details = await readBack(saved, () => getOrder(client, id, signal));
-  const notes = readBackNotes(
-    {
-      number: details.order.number,
-      gross: details.order.totals.gross?.amount,
-      currency: details.order.currency,
-      positionsComplete: details.positionsComplete,
-    },
-    { noun: "order", finalizeTool: FINALIZE_TOOL, expected: state.expected },
-  );
+  const changed =
+    numbering === undefined || reserved === undefined
+      ? undefined
+      : changedNumberNote("order", numbering.peeked, reserved);
+  const stored =
+    reserved === undefined ? undefined : storedNumberNote("order", reserved, details.order.number);
+  const notes = [
+    ...(changed === undefined ? [] : [changed]),
+    ...(stored === undefined ? [] : [stored]),
+    ...readBackNotes(
+      {
+        number: details.order.number,
+        gross: details.order.totals.gross?.amount,
+        currency: details.order.currency,
+        positionsComplete: details.positionsComplete,
+      },
+      { noun: "order", finalizeTool: FINALIZE_TOOL, expected: state.expected },
+    ),
+  ];
   return { id, details, notes };
 }
 

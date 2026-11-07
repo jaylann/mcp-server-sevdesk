@@ -8,8 +8,9 @@
  * the PDF). `toEmail` is "the recipient", one address; nothing shows that it takes several.
  * `additionalAttachments` (ids of other sevDesk documents) is deliberately not offered: attaching
  * arbitrary account documents to an email to a third party is an exfiltration path a prompt
- * injection could use, and the use case is rare. No request or response of these endpoints has
- * been recorded publicly (jernoxit/sevdesk-rs: "per spec, unmeasured").
+ * injection could use, and the use case is rare. Recorded for invoices (2026-11-07, D-069): the
+ * answer is an e-mail record (from, to, subject, text, object); the sender address must be
+ * confirmed in sevDesk, and a trial account only sends to its own login address.
  */
 import { z } from "zod";
 

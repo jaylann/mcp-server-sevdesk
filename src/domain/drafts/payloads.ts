@@ -9,7 +9,9 @@
  * - positions go into `invoicePosSave` / `creditNotePosSave` / `orderPosSave` (the spec's
  *   `required` lists name `invoicePos` etc., which do not exist: D-004);
  * - no derived totals (`sum*`, `priceNet`, `priceGross`, `priceTax`) anywhere (B8);
- * - no document number on create; on update only the stored one, unchanged (B4);
+ * - document numbers only from sevDesk (B4): invoices none on create (`sendBy` assigns it);
+ *   orders and credit notes the number reserved from the number range (`numbering.ts`); on
+ *   update only the stored one, unchanged;
  * - drafts only (`status: 100`), references as `{id, objectName}`, `mapAll: true` on the document
  *   and every position (spec: "you always need to provide them").
  *
@@ -132,6 +134,7 @@ const creditNoteDocumentSchema = z
   .strictObject({
     objectName: z.literal("CreditNote"),
     mapAll: z.literal(true),
+    creditNoteNumber: z.string().min(1),
     creditNoteType: z.literal("CN"),
     status: z.literal(100),
     contact: ref("Contact"),

@@ -4,7 +4,7 @@
     "systemVersion": "2.0",
     "source": "community",
     "ref": "https://github.com/TomDixon63/OrderManager2/blob/HEAD/front/src/app/model/order.ts (GET /api/v1/Order, 2023)",
-    "note": "The new draft offer as GET /Order/3101?embed=contact returns it; keys and scalar types of the recorded row, values fake."
+    "note": "The new draft offer as GET /Order/3101?embed=contact returns it; keys and scalar types of the recorded row, values fake; orderNumber AN-1000 is the reserved number it was saved with."
   },
   "status": 200,
   "body": {
@@ -15,7 +15,7 @@
         "additionalInformation": null,
         "create": "2026-11-07T10:00:00+01:00",
         "update": "2026-11-07T10:00:00+01:00",
-        "orderNumber": null,
+        "orderNumber": "AN-1000",
         "orderDate": "2026-11-07T00:00:00+01:00",
         "status": "100",
         "header": "Angebot",

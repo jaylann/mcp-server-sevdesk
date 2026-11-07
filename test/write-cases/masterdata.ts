@@ -191,8 +191,17 @@ export const MASTERDATA_CASES: readonly WriteToolCase[] = [
         query: { "creditNote[id]": 2101 },
         response: { fixture: "masterdata/credit-note-positions-2101.json" },
       },
+      // The counter still offers the new draft's number GU-1000, so it is moved on once.
+      ...["false", "true"].map((useNextNumber) => ({
+        path: "/CreditNote/Factory/getNextCreditNoteNumber",
+        query: { useNextNumber },
+        response: { body: { objects: "GU-1000" } },
+      })),
     ],
-    writes: [{ method: "POST", path: "/CreditNote/Factory/createFromInvoice" }],
+    writes: [
+      { method: "POST", path: "/CreditNote/Factory/createFromInvoice" },
+      { method: "GET", path: "/CreditNote/Factory/getNextCreditNoteNumber" },
+    ],
   },
   {
     label: "create a reminder for an overdue invoice",

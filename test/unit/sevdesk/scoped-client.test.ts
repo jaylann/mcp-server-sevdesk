@@ -15,7 +15,15 @@ const routes: FakeRoute[] = [
   { method: "POST", path: "/Invoice/1/sendViaEmail", response: ok },
   { method: "POST", path: "/Contact", response: ok },
   { path: "/Invoice/1/getPdf", response: ok },
+  { path: "/Order/Factory/getNextOrderNumber", response: { body: { objects: "AN-1000" } } },
 ];
+
+const reserve = {
+  method: "GET",
+  path: "/Order/Factory/getNextOrderNumber",
+  query: { orderType: "AN", useNextNumber: "true" },
+} as const;
+const peek = { ...reserve, query: { orderType: "AN", useNextNumber: "false" } } as const;
 
 async function blocked(run: () => Promise<unknown>): Promise<SevdeskError> {
   const caught: unknown = await run().catch((error: unknown) => error);
@@ -33,6 +41,8 @@ describe("changesData", () => {
       changesData({ method: "GET", path: "/Invoice/1/getPdf", query: { preventSendBy: false } }),
     ).toBe(true);
     expect(changesData({ method: "GET", path: "/Invoice/1/sendByWithRender" })).toBe(true);
+    expect(changesData(reserve)).toBe(true);
+    expect(changesData(peek)).toBe(false);
   });
 });
 
@@ -61,6 +71,20 @@ describe("readOnlyClient", () => {
     expect(fake.writes()).toEqual([]);
     expect(fake.calls).toHaveLength(1);
   });
+
+  it("lets a next-number peek through and refuses the reserving form", async () => {
+    const fake = new FakeSevdeskClient(routes);
+    const client = readOnlyClient(fake, "preparing a write");
+
+    await expect(client.request(peek)).resolves.toBe("AN-1000");
+    const error = await blocked(() => client.request(reserve));
+
+    expect(error.message).toBe(
+      "Blocked before sending: GET /Order/Factory/getNextOrderNumber changes data in sevDesk, " +
+        "which is not allowed while preparing a write. Nothing was sent.",
+    );
+    expect(fake.calls.map((call) => call.query["useNextNumber"])).toEqual(["false"]);
+  });
 });
 
 describe("tierScopedClient", () => {
@@ -72,6 +96,17 @@ describe("tierScopedClient", () => {
     await client.request({ method: "PUT", path: "/Invoice/1/sendBy", body: {} });
 
     expect(fake.calls.map((call) => call.tier)).toEqual([undefined, "commit"]);
+  });
+
+  it("stamps a reserving next-number GET with the write tier and leaves a peek alone", async () => {
+    const fake = new FakeSevdeskClient(routes);
+    const client = tierScopedClient(fake, "write");
+
+    await client.request(peek);
+    await client.request({ ...reserve, sideEffect: true });
+
+    expect(fake.calls.map((call) => call.tier)).toEqual([undefined, "write"]);
+    expect(fake.writes().map((call) => call.path)).toEqual(["/Order/Factory/getNextOrderNumber"]);
   });
 
   it("refuses a request that declares another tier", async () => {
