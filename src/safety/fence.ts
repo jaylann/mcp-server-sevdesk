@@ -43,6 +43,63 @@ const LINE_BREAKS = new RegExp(
 
 const BACKTICK_RUNS = /`+/g;
 
+/**
+ * Every character a human would not see as it is in sanitized or displayed text: what
+ * `INVISIBLE` removes, what `LINE_BREAKS` turns into a line feed (CR, U+2028, U+2029), the tab
+ * (previews show it as a space) and the line feed itself (allowed per call, see
+ * {@link findHiddenCharacters}). One code point per match.
+ */
+const HIDDEN = new RegExp(
+  `[\\t\\n\\r${escapeCodePoint(0x2028)}${escapeCodePoint(0x2029)}]|${INVISIBLE.source}`,
+  "gu",
+);
+
+export interface HiddenCharacterOptions {
+  /** Treat the line feed (U+000A) as visible, e.g. in multi-line texts. Default false. */
+  readonly allowNewlines?: boolean;
+}
+
+/**
+ * The code points in `text` that a human would not see as they are: those `sanitizeUntrusted`
+ * removes (control characters, format characters such as zero-width spaces and bidi controls,
+ * other default-ignorable code points such as variation selectors, U+034F and Hangul fillers) or
+ * changes (CR, U+2028, U+2029 become line feeds), the tab (shown as a space) and, unless
+ * `allowNewlines`, the line feed. Each code point once, in order of first occurrence; empty when
+ * the text shows as it is. Differences that only Unicode normalization (NFC) would change are not
+ * reported: they render identically.
+ *
+ * Write tools use it to refuse arguments whose hidden characters would reach sevDesk without the
+ * approving human seeing them.
+ */
+export function findHiddenCharacters(text: string, options: HiddenCharacterOptions = {}): number[] {
+  const found = new Set<number>();
+  for (const match of text.matchAll(HIDDEN)) {
+    const codePoint = match[0].codePointAt(0);
+    if (codePoint === undefined || (codePoint === 0x0a && options.allowNewlines === true)) {
+      continue;
+    }
+    found.add(codePoint);
+  }
+  return [...found];
+}
+
+/** `U+XXXX` (at least four hex digits, upper case) for a code point, e.g. `U+FE0F`. */
+export function codePointLabel(codePoint: number): string {
+  return `U+${codePoint.toString(16).toUpperCase().padStart(4, "0")}`;
+}
+
+/**
+ * `text` with every hidden character (see {@link findHiddenCharacters}) replaced by a visible
+ * `\u{…}` escape, e.g. `\u{fe0f}`, so logs keep what was sent without hiding it.
+ */
+export function escapeHiddenCharacters(text: string, options: HiddenCharacterOptions = {}): string {
+  return text.replace(HIDDEN, (char) =>
+    char === "\n" && options.allowNewlines === true
+      ? char
+      : `\\u{${(char.codePointAt(0) ?? 0).toString(16)}}`,
+  );
+}
+
 /** Default cap for a single untrusted field. */
 export const MAX_UNTRUSTED_LENGTH = 2_000;
 

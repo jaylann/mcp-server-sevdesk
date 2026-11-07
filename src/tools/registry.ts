@@ -3,17 +3,18 @@
  * tool call runs through (tier re-check, argument validation, context, output validation, result
  * formatting, error mapping).
  */
-import type {
-  CallToolResult,
-  McpServer,
-  ProtocolEra,
-  ServerContext,
-  StandardSchemaWithJSON,
+import {
+  CLIENT_CAPABILITIES_META_KEY,
+  type McpServer,
+  type ProtocolEra,
+  type ServerContext,
+  type StandardSchemaWithJSON,
 } from "@modelcontextprotocol/server";
 import type { z } from "zod";
 
 import type { Config, StructuredOutputMode } from "../config.js";
-import type { Tier } from "../safety/tiers.js";
+import type { SafetyRuntime } from "../safety/runtime.js";
+import type { Tier, WriteTier } from "../safety/tiers.js";
 import type { SevdeskClient } from "../sevdesk/types.js";
 import { successResult } from "./result.js";
 import {
@@ -31,7 +32,9 @@ import type {
   ToolContext,
   ToolOutput,
   ToolSelectionConfig,
+  WritePlan,
 } from "./types.js";
+import { runWriteTool, type WriteCallResult, writeOutputSchema } from "./write-flow.js";
 
 export interface RegistryDeps {
   readonly config: Config;
@@ -41,6 +44,11 @@ export interface RegistryDeps {
    * instance with {@link resolveStructuredOutput}.
    */
   readonly structuredOutput: boolean;
+  /**
+   * Confirmation and audit state shared by every instance of one server factory (see
+   * `createSafetyRuntime`); write tools cannot run without it.
+   */
+  readonly safety: SafetyRuntime;
 }
 
 /**
@@ -90,8 +98,9 @@ export function resolveStructuredOutput(
 
 /**
  * Registers `tools` on `server`, each with its title, description, strict input JSON Schema, all
- * four annotations (plus `title`) and, when `deps.structuredOutput` is set, its output schema.
- * The callback never throws: every failure becomes an `isError` result.
+ * four annotations (plus `title`) and, when `deps.structuredOutput` is set, its output schema
+ * (for write tools the wrapped one, see `writeOutputSchema`). The callback never throws: every
+ * failure becomes an `isError` result.
  */
 export function registerTools(
   server: McpServer,
@@ -106,16 +115,16 @@ export function registerTools(
         title: tool.title,
         description: tool.description,
         inputSchema: advertiseOnly(tool.input),
-        ...(deps.structuredOutput ? { outputSchema: advertiseOnly(tool.output) } : {}),
+        ...(deps.structuredOutput ? { outputSchema: advertiseOnly(advertisedOutput(tool)) } : {}),
         annotations: { title: tool.title, ...tool.annotations },
       },
-      (args, request) => runTool(tool, args, request, deps),
+      (args, request) => runTool(tool, args, request, server, deps),
     );
   }
 }
 
-/** A tool with its schema generics erased, as the call wrapper sees it. */
-interface ErasedTool {
+/** What every tool has, with its schema generics erased, as the call wrapper sees it. */
+interface ErasedToolBase {
   readonly name: string;
   readonly title: string;
   readonly description: string;
@@ -124,7 +133,29 @@ interface ErasedTool {
   readonly annotations: ToolAnnotationSet;
   readonly input: z.ZodObject;
   readonly output: z.ZodObject;
+}
+
+interface ErasedReadTool extends ErasedToolBase {
+  readonly tier: "read";
   readonly handler: (args: unknown, ctx: ToolContext) => Promise<ToolOutput<unknown>>;
+}
+
+/** A write tool with its schema generics erased (see `WriteToolDefinition`). */
+export interface ErasedWriteTool extends ErasedToolBase {
+  readonly tier: WriteTier;
+  readonly prepare: (args: unknown, ctx: ToolContext) => Promise<WritePlan<unknown>>;
+  readonly execute: (
+    args: unknown,
+    plan: WritePlan<unknown>,
+    ctx: ToolContext,
+  ) => Promise<ToolOutput<unknown>>;
+}
+
+type ErasedTool = ErasedReadTool | ErasedWriteTool;
+
+/** The output schema a tool advertises: its own, or for write tools the wrapped one. */
+function advertisedOutput(tool: ErasedTool): z.ZodObject {
+  return tool.tier === "read" ? tool.output : writeOutputSchema(tool.output);
 }
 
 /**
@@ -157,8 +188,9 @@ async function runTool(
   tool: ErasedTool,
   args: unknown,
   request: ServerContext,
+  server: McpServer,
   deps: RegistryDeps,
-): Promise<CallToolResult> {
+): Promise<WriteCallResult> {
   const errorContext: ToolErrorContext = {
     toolName: tool.name,
     tier: tool.tier,
@@ -181,6 +213,15 @@ async function runTool(
       signal,
       progress: progressReporter(request),
     };
+    if (tool.tier !== "read") {
+      return await runWriteTool(tool, parsed.data, {
+        request,
+        context,
+        deps,
+        errorContext,
+        clientCapabilities: clientCapabilities(request, server),
+      });
+    }
     const output = await tool.handler(parsed.data, context);
     const data = await tool.output.safeParseAsync(output.data);
     if (!data.success) {
@@ -197,6 +238,19 @@ async function runTool(
   } catch (error) {
     return signal.aborted ? cancelledResult(errorContext) : toolErrorResult(error, errorContext);
   }
+}
+
+/**
+ * The client capabilities that apply to `request`, resolved like the SDK resolves them for its
+ * own input-request gate: a 2026-07-28 request carries them in its `_meta` envelope; a 2025-era
+ * connection declared them in `initialize` (per-request legacy instances have none).
+ */
+function clientCapabilities(request: ServerContext, server: McpServer): unknown {
+  const envelope = request.mcpReq.envelope as Readonly<Record<string, unknown>> | undefined;
+  // The SDK names this accessor as the source for 2025-era connections; modern requests use the
+  // envelope above.
+  // eslint-disable-next-line @typescript-eslint/no-deprecated
+  return envelope?.[CLIENT_CAPABILITIES_META_KEY] ?? server.server.getClientCapabilities();
 }
 
 /**

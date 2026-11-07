@@ -17,6 +17,8 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     readOnly: false,
     dryRun: false,
     confirm: "elicit",
+    // Tests never launch a browser; write-flow tests inject an opener.
+    confirmOpen: false,
     toolsets: new Set<ToolsetName>(DEFAULT_TOOLSETS),
     structuredOutput: "auto",
     requestsPerSecond: 4,

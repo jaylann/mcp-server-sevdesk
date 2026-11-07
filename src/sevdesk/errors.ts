@@ -46,6 +46,19 @@ export interface SevdeskErrorInit {
   readonly method?: string;
   readonly path?: string;
   readonly cause?: unknown;
+  /**
+   * Records an earlier step of the same multi-step write already created or changed before this
+   * failure (e.g. the Contact before its address failed). Error rendering lists them so the
+   * model does not repeat the call; the audit log records them for the failed call.
+   */
+  readonly completedWrites?: readonly CompletedWrite[];
+}
+
+/** A sevDesk record a write created or changed (same shape as the tools' `SevdeskObjectRef`). */
+export interface CompletedWrite {
+  /** sevDesk's `objectName`, e.g. `Contact`, `ContactAddress`. */
+  readonly objectName: string;
+  readonly id: string;
 }
 
 export class SevdeskError extends Error {
@@ -55,6 +68,8 @@ export class SevdeskError extends Error {
   readonly upstreamMessage: string | undefined;
   readonly method: string | undefined;
   readonly path: string | undefined;
+  /** Empty unless an earlier step of a multi-step write succeeded (see the init field). */
+  readonly completedWrites: readonly CompletedWrite[];
 
   constructor(init: SevdeskErrorInit) {
     super(init.message, init.cause === undefined ? undefined : { cause: init.cause });
@@ -65,12 +80,35 @@ export class SevdeskError extends Error {
     this.upstreamMessage = init.upstreamMessage;
     this.method = init.method;
     this.path = init.path;
+    this.completedWrites = Object.freeze([...(init.completedWrites ?? [])]);
   }
 
   /** Whether a GET may be retried after this error (writes are never retried). */
   get retryableForReads(): boolean {
     return isRetryableKind(this.kind);
   }
+}
+
+/**
+ * The same failure as `error` (kind, status, message, upstream text and request kept, `error` as
+ * the cause), plus the records earlier steps of the call already created or changed. Use it when
+ * a later step of a multi-step write fails.
+ */
+export function withCompletedWrites(
+  error: SevdeskError,
+  completedWrites: readonly CompletedWrite[],
+): SevdeskError {
+  return new SevdeskError({
+    kind: error.kind,
+    message: error.message,
+    ...(error.status === undefined ? {} : { status: error.status }),
+    ...(error.exceptionUuid === undefined ? {} : { exceptionUuid: error.exceptionUuid }),
+    ...(error.upstreamMessage === undefined ? {} : { upstreamMessage: error.upstreamMessage }),
+    ...(error.method === undefined ? {} : { method: error.method }),
+    ...(error.path === undefined ? {} : { path: error.path }),
+    cause: error,
+    completedWrites: [...error.completedWrites, ...completedWrites],
+  });
 }
 
 /** Kinds after which a side-effect-free GET may be retried. */

@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  codePointLabel,
+  escapeHiddenCharacters,
   fenceBlock,
   fenceInline,
+  findHiddenCharacters,
   MAX_INLINE_UNTRUSTED_LENGTH,
   MAX_UNTRUSTED_LENGTH,
   sanitizeUntrusted,
@@ -167,5 +170,67 @@ describe("fenceBlock", () => {
 
   it("sanitizes the value", () => {
     expect(fenceBlock(`a${RLO}b${TAG_TEXT}`)).toBe("```text\nab\n```");
+  });
+});
+
+describe("findHiddenCharacters", () => {
+  it.each([
+    ["a zero-width space", 0x200b],
+    ["a right-to-left override", 0x202e],
+    ["variation selector 16", 0xfe0f],
+    ["a supplementary variation selector", 0xe0100],
+    ["the combining grapheme joiner", 0x034f],
+    ["a Hangul filler", 0x3164],
+    ["the halfwidth Hangul filler", 0xffa0],
+    ["the Hangul choseong filler", 0x115f],
+    ["a tag character", 0xe0041],
+    ["the line separator", 0x2028],
+    ["the paragraph separator", 0x2029],
+    ["a carriage return", 0x0d],
+    ["a tab", 0x09],
+    ["a NUL", 0x00],
+    ["a soft hyphen", 0xad],
+  ])("reports %s", (_label, codePoint) => {
+    expect(findHiddenCharacters(`a${cp(codePoint)}b`)).toEqual([codePoint]);
+  });
+
+  it("reports line feeds unless they are allowed", () => {
+    expect(findHiddenCharacters("a\nb")).toEqual([0x0a]);
+    expect(findHiddenCharacters("a\nb", { allowNewlines: true })).toEqual([]);
+  });
+
+  it("lists each code point once, in order of first occurrence", () => {
+    expect(findHiddenCharacters(`${cp(0xfe0f)}x${cp(0x200b)}y${cp(0xfe0f)}`)).toEqual([
+      0xfe0f, 0x200b,
+    ]);
+  });
+
+  it("accepts visible text, including umlauts, emoji and non-breaking spaces", () => {
+    expect(findHiddenCharacters(`Müller GmbH ${cp(0x1f600)} 1${cp(0xa0)}190,00 €`)).toEqual([]);
+    // Normalization-only differences render identically and are not reported.
+    expect(findHiddenCharacters(`Mu${cp(0x308)}ller`)).toEqual([]);
+  });
+
+  it("agrees with sanitizeUntrusted: whatever it reports, sanitizing removes or changes", () => {
+    for (const codePoint of [0x200b, 0x202e, 0xfe0f, 0x034f, 0x3164, 0x2028, 0x0d]) {
+      const text = `a${cp(codePoint)}b`;
+      expect(sanitizeUntrusted(text)).not.toBe(text);
+    }
+  });
+});
+
+describe("codePointLabel", () => {
+  it("formats U+XXXX with at least four upper-case hex digits", () => {
+    expect(codePointLabel(0x9)).toBe("U+0009");
+    expect(codePointLabel(0xfe0f)).toBe("U+FE0F");
+    expect(codePointLabel(0xe0100)).toBe("U+E0100");
+  });
+});
+
+describe("escapeHiddenCharacters", () => {
+  it("replaces hidden characters with visible escapes", () => {
+    expect(escapeHiddenCharacters(`a${cp(0x200b)}b\tc\nd`)).toBe("a\\u{200b}b\\u{9}c\\u{a}d");
+    expect(escapeHiddenCharacters("a\nb", { allowNewlines: true })).toBe("a\nb");
+    expect(escapeHiddenCharacters("plain text")).toBe("plain text");
   });
 });

@@ -15,7 +15,7 @@ import {
   fetchDocumentFile,
 } from "../../domain/document-files.js";
 import { defineTool } from "../define-tool.js";
-import type { ToolDefinition } from "../types.js";
+import type { ReadToolDefinition } from "../types.js";
 import { DOCUMENT_FILE_LABELS, DOCUMENT_FILE_TOOLSETS } from "./kinds.js";
 
 /** The `id` argument shared by the file tools and the save tool. */
@@ -37,7 +37,7 @@ export const fileMetadataShape = {
 const input = z.strictObject({ id: documentIdSchema });
 const output = z.object(fileMetadataShape);
 
-type FileToolDefinition = ToolDefinition<typeof input, typeof output>;
+type FileToolDefinition = ReadToolDefinition<typeof input, typeof output>;
 
 /** The output fields of {@link fileMetadataShape} for `file`. */
 export function fileMetadata(file: DocumentFile): z.output<typeof output> {

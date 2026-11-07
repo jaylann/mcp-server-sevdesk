@@ -25,6 +25,7 @@ describe("loadConfig defaults", () => {
     expect(config.readOnly).toBe(false);
     expect(config.dryRun).toBe(false);
     expect(config.confirm).toBe("elicit");
+    expect(config.confirmOpen).toBe(true);
     expect([...config.toolsets].sort()).toEqual([...DEFAULT_TOOLSETS].sort());
     expect(config.toolsets.has("advanced")).toBe(false);
     expect(config.structuredOutput).toBe("auto");
@@ -133,6 +134,19 @@ describe("toolsets", () => {
 });
 
 describe("confirmation", () => {
+  it("opens approval pages unless SEVDESK_CONFIRM_OPEN turns it off", () => {
+    const open = (value: string) =>
+      loadConfig({ SEVDESK_API_TOKEN: TOKEN, SEVDESK_CONFIRM_OPEN: value }).confirmOpen;
+
+    expect(open("0")).toBe(false);
+    expect(open("false")).toBe(false);
+    expect(open("1")).toBe(true);
+    expect(open(" ")).toBe(true);
+    expect(problemsOf({ SEVDESK_API_TOKEN: TOKEN, SEVDESK_CONFIRM_OPEN: "sometimes" })[0]).toMatch(
+      /SEVDESK_CONFIRM_OPEN: expected 1\/0 or true\/false/,
+    );
+  });
+
   it("refuses to turn confirmation off without the explicit acknowledgement", () => {
     expect(problemsOf({ SEVDESK_API_TOKEN: TOKEN, SEVDESK_CONFIRM: "off" })[0]).toMatch(
       /SEVDESK_I_UNDERSTAND_NO_CONFIRM=1/,

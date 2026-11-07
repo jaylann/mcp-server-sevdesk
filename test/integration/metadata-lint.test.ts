@@ -18,6 +18,11 @@ const ANNOTATION_KEYS = ["destructiveHint", "idempotentHint", "openWorldHint", "
 
 const cases = ALL_TOOLS.map((tool): [string, AnyToolDefinition] => [tool.name, tool]);
 
+/** `localEffects` exists on read tools only. */
+function localEffectsOf(tool: AnyToolDefinition): unknown {
+  return tool.tier === "read" ? tool.localEffects : undefined;
+}
+
 function duplicates(values: readonly string[]): string[] {
   return values.filter((value, index) => values.indexOf(value) !== index);
 }
@@ -33,7 +38,7 @@ describe("tool metadata", () => {
   });
 
   it("lets only the reviewed tools write local files (extend this list deliberately)", () => {
-    const writers = ALL_TOOLS.filter((tool) => tool.localEffects !== undefined).map(
+    const writers = ALL_TOOLS.filter((tool) => localEffectsOf(tool) !== undefined).map(
       (tool) => tool.name,
     );
     expect(writers).toEqual(["sevdesk_document_save"]);
@@ -57,8 +62,9 @@ describe("tool metadata", () => {
     });
 
     it('is read-only exactly when it is a read tool without localEffects "writes-files"', () => {
-      const writesFiles = tool.localEffects === "writes-files";
-      expect(tool.localEffects === undefined || writesFiles, "localEffects value").toBe(true);
+      const localEffects = localEffectsOf(tool);
+      const writesFiles = localEffects === "writes-files";
+      expect(localEffects === undefined || writesFiles, "localEffects value").toBe(true);
       if (writesFiles) {
         expect(tool.tier).toBe("read");
       }

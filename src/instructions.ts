@@ -6,7 +6,7 @@ import type { AnyToolDefinition } from "./tools/types.js";
 /** Clients truncate or ignore long instructions; the plan caps them at 1,500 characters. */
 export const MAX_INSTRUCTIONS_LENGTH = 1_500;
 
-interface Section {
+export interface Section {
   readonly text: string;
   /** Optional sections are dropped (last first) when the text would exceed the cap. */
   readonly optional?: boolean;
@@ -72,12 +72,25 @@ function tierSection(config: Config): string {
   );
   if (binding.length > 0) {
     parts.push(
-      "commit tools are legally binding bookkeeping steps and external tools reach third " +
-        "parties: get the user's go-ahead for each such call.",
+      `commit tools are legally binding bookkeeping steps and external tools reach third ` +
+        `parties; ${CONFIRMATION_TEXT[config.confirm]}`,
     );
   }
   return parts.join(" ");
 }
+
+/** How commit/external calls are confirmed, per `SEVDESK_CONFIRM`. */
+const CONFIRMATION_TEXT: Readonly<Record<Config["confirm"], string>> = {
+  elicit:
+    "each such call asks the user to approve it in a confirmation prompt. If the user " +
+    "declines, do not retry unless they ask.",
+  browser:
+    "each such call first opens an approval page for the user (status approval_pending, with a " +
+    "reference code): ask them to decide there, then call the tool again with the same arguments.",
+  off:
+    "confirmation prompts are off (SEVDESK_CONFIRM=off): get the user's explicit go-ahead " +
+    "before each such call.",
+};
 
 function dryRunSections(tools: readonly AnyToolDefinition[], config: Config): Section[] {
   if (config.dryRun) {
@@ -91,7 +104,13 @@ function dryRunSections(tools: readonly AnyToolDefinition[], config: Config): Se
   }
   const perCall = tools.some((tool) => tool.tier !== "read" && hasInputKey(tool, "dryRun"));
   return perCall
-    ? [{ text: "Changing tools accept dryRun: true to preview a change without sending it." }]
+    ? [
+        {
+          text:
+            "Changing tools accept dryRun: true to preview exactly what a call would change, " +
+            "without sending it or asking the user.",
+        },
+      ]
     : [];
 }
 
@@ -121,7 +140,12 @@ function hasInputKey(tool: AnyToolDefinition, key: string): boolean {
   );
 }
 
-function fitToCap(sections: readonly Section[]): string {
+/**
+ * Joins the sections with line breaks, dropping optional sections (last first) until the text
+ * fits {@link MAX_INSTRUCTIONS_LENGTH}; cuts hard only when the required sections alone are too
+ * long. Exported for tests: generated instructions stay far below the cap.
+ */
+export function fitToCap(sections: readonly Section[]): string {
   const kept = [...sections];
   let text = kept.map((section) => section.text).join("\n");
   while (text.length > MAX_INSTRUCTIONS_LENGTH) {

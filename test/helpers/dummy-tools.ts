@@ -6,8 +6,16 @@ import { z } from "zod";
 
 import { SevdeskError, type SevdeskErrorKind } from "../../src/sevdesk/errors.js";
 import type { SevdeskClient } from "../../src/sevdesk/types.js";
-import { defineTool } from "../../src/tools/define-tool.js";
-import type { AnyToolDefinition, ToolAnnotationSet } from "../../src/tools/types.js";
+import { defineTool, defineWriteTool } from "../../src/tools/define-tool.js";
+import {
+  type AnyToolDefinition,
+  type AnyWriteToolDefinition,
+  isWriteTool,
+  type ToolAnnotationSet,
+  type ToolContext,
+} from "../../src/tools/types.js";
+import { dryRunInputShape } from "../../src/tools/write-input.js";
+import type { WriteToolCase } from "./write-cases.js";
 
 export const READ_ANNOTATIONS: ToolAnnotationSet = {
   readOnlyHint: true,
@@ -60,6 +68,77 @@ export function stubClient(overrides: Partial<SevdeskClient> = {}): SevdeskClien
   };
 }
 
+/** What the dummy commit/external tools read in `prepare` (`GET /Invoice/{id}`). */
+interface DummyInvoice {
+  readonly invoiceNumber: string;
+  readonly contactName: string;
+  readonly sumGross: string;
+}
+
+async function readDummyInvoice(ctx: ToolContext, id: number): Promise<DummyInvoice> {
+  const objects = await ctx.client.request({ method: "GET", path: `/Invoice/${id}` });
+  const [invoice] = objects as DummyInvoice[];
+  if (invoice === undefined) {
+    throw new SevdeskError({ kind: "not_found", message: `Invoice ${id} does not exist.` });
+  }
+  return invoice;
+}
+
+/** A dummy invoice body for `GET /Invoice/{id}` routes. */
+export function dummyInvoiceBody(overrides: Partial<DummyInvoice> = {}): unknown {
+  return {
+    objects: [
+      { invoiceNumber: "RE-1042", contactName: "Muster GmbH", sumGross: "1190.00", ...overrides },
+    ],
+  };
+}
+
+/**
+ * Write-tool cases (see `WriteToolCase`) for the dummy write tools of `dummies`, so the generic
+ * safety tests cover every tier even before real tools exist.
+ */
+export function dummyWriteCases(dummies: DummyTools): WriteToolCase[] {
+  const tool = (name: string): AnyWriteToolDefinition => {
+    const found = dummies.tools.find((candidate) => candidate.name === name);
+    if (found === undefined || !isWriteTool(found)) throw new Error(`no dummy write tool ${name}`);
+    return found;
+  };
+  const invoice = { path: "/Invoice/7", response: { body: dummyInvoiceBody() } } as const;
+  return [
+    {
+      label: "dummy: create a contact (write)",
+      tool: tool("sevdesk_dummy_create"),
+      args: { name: "Muster GmbH" },
+      routes: [{ method: "POST", path: "/Contact", response: { body: { objects: { id: "1" } } } }],
+      writes: [{ method: "POST", path: "/Contact" }],
+    },
+    {
+      label: "dummy: finalize an invoice (commit)",
+      tool: tool("sevdesk_dummy_finalize"),
+      args: { id: 7 },
+      routes: [
+        invoice,
+        { method: "PUT", path: "/Invoice/7/sendBy", response: { body: { objects: { id: "7" } } } },
+      ],
+      writes: [{ method: "PUT", path: "/Invoice/7/sendBy" }],
+    },
+    {
+      label: "dummy: email an invoice (external)",
+      tool: tool("sevdesk_dummy_send"),
+      args: { id: 7 },
+      routes: [
+        invoice,
+        {
+          method: "POST",
+          path: "/Invoice/7/sendViaEmail",
+          response: { body: { objects: { id: "7" } } },
+        },
+      ],
+      writes: [{ method: "POST", path: "/Invoice/7/sendViaEmail" }],
+    },
+  ];
+}
+
 /** What the dummy handlers observed. */
 interface DummyProbe {
   /** Names of the tools whose handler ran, in call order. */
@@ -79,8 +158,11 @@ export interface DummyTools {
  * A fresh set of dummy tools covering every tier and a few toolsets:
  *
  * - `sevdesk_dummy_echo` (read, meta): echoes `text` and `count`;
- * - `sevdesk_dummy_create` (write, contacts), `sevdesk_dummy_finalize` (commit, invoices),
- *   `sevdesk_dummy_send` (external, invoices), `sevdesk_dummy_raw_get` (read, advanced);
+ * - `sevdesk_dummy_create` (write, contacts: `POST /Contact`), `sevdesk_dummy_finalize`
+ *   (commit, invoices: reads `GET /Invoice/{id}` for its preview, then `PUT …/sendBy`) and
+ *   `sevdesk_dummy_send` (external, invoices: same read, then `POST …/sendViaEmail`); see
+ *   {@link dummyWriteCases};
+ * - `sevdesk_dummy_raw_get` (read, advanced);
  * - `sevdesk_dummy_fail` (read, meta): throws a `SevdeskError` of the given kind, a plain error
  *   carrying the token (`internal`) or an `AbortError` (`abort`);
  * - `sevdesk_dummy_bad_output` (read, meta): returns data that violates its output schema;
@@ -115,51 +197,104 @@ export function createDummyTools(): DummyTools {
     },
   });
 
-  const create = defineTool({
+  const create = defineWriteTool({
     name: "sevdesk_dummy_create",
     title: "Create (dummy)",
     description: "Pretends to create a contact. Test fixture for the write tier.",
     toolset: "contacts",
     tier: "write",
     annotations: WRITE_ANNOTATIONS,
-    input: z.strictObject({
-      name: z.string().min(1),
-      dryRun: z.boolean().optional().describe("Preview only."),
-    }),
+    input: z.strictObject({ name: z.string().min(1), ...dryRunInputShape }),
     output: z.object({ id: z.string() }),
-    handler: () => {
+    prepare: ({ name }) =>
+      Promise.resolve({
+        preview: {
+          action: "Create a contact.",
+          facts: [{ label: "Name", value: name }],
+          warnings: [],
+          irreversible: false,
+        },
+        state: null,
+      }),
+    execute: async ({ name }, _plan, ctx) => {
       probe.calls.push("sevdesk_dummy_create");
-      return Promise.resolve({ data: { id: "1" }, summary: "Created contact 1." });
+      await ctx.client.request({ method: "POST", path: "/Contact", body: { name } });
+      return {
+        data: { id: "1" },
+        summary: "Created contact 1.",
+        affected: [{ objectName: "Contact", id: "1" }],
+      };
     },
   });
 
-  const finalize = defineTool({
+  const finalize = defineWriteTool({
     name: "sevdesk_dummy_finalize",
     title: "Finalize (dummy)",
     description: "Pretends to finalize an invoice. Test fixture for the commit tier.",
     toolset: "invoices",
     tier: "commit",
     annotations: COMMIT_ANNOTATIONS,
-    input: z.strictObject({ id: z.string().min(1) }),
+    input: z.strictObject({ id: z.number().int().positive(), ...dryRunInputShape }),
     output: z.object({ status: z.string() }),
-    handler: () => {
+    prepare: async ({ id }, ctx) => {
+      const invoice = await readDummyInvoice(ctx, id);
+      return {
+        preview: {
+          action: `Finalize invoice ${invoice.invoiceNumber} and mark it as sent.`,
+          facts: [
+            { label: "Customer", value: invoice.contactName },
+            { label: "Total (gross)", value: `${invoice.sumGross} EUR` },
+          ],
+          warnings: ["The invoice becomes legally binding."],
+          irreversible: false,
+        },
+        state: invoice,
+      };
+    },
+    execute: async ({ id }, _plan, ctx) => {
       probe.calls.push("sevdesk_dummy_finalize");
-      return Promise.resolve({ data: { status: "open" }, summary: "Finalized the invoice." });
+      await ctx.client.request({ method: "PUT", path: `/Invoice/${id}/sendBy`, body: {} });
+      return {
+        data: { status: "open" },
+        summary: "Finalized the invoice.",
+        affected: [{ objectName: "Invoice", id: String(id) }],
+      };
     },
   });
 
-  const send = defineTool({
+  const send = defineWriteTool({
     name: "sevdesk_dummy_send",
     title: "Send (dummy)",
     description: "Pretends to email an invoice. Test fixture for the external tier.",
     toolset: "invoices",
     tier: "external",
     annotations: EXTERNAL_ANNOTATIONS,
-    input: z.strictObject({ id: z.string().min(1) }),
+    input: z.strictObject({ id: z.number().int().positive(), ...dryRunInputShape }),
     output: z.object({ sent: z.boolean() }),
-    handler: () => {
+    prepare: async ({ id }, ctx) => {
+      const invoice = await readDummyInvoice(ctx, id);
+      return {
+        preview: {
+          action: `Email invoice ${invoice.invoiceNumber} to the customer.`,
+          facts: [{ label: "Customer", value: invoice.contactName }],
+          warnings: [],
+          irreversible: true,
+        },
+        state: invoice,
+      };
+    },
+    execute: async ({ id }, _plan, ctx) => {
       probe.calls.push("sevdesk_dummy_send");
-      return Promise.resolve({ data: { sent: true }, summary: "Sent the invoice." });
+      await ctx.client.request({
+        method: "POST",
+        path: `/Invoice/${id}/sendViaEmail`,
+        body: { toEmail: "kunde@example.com" },
+      });
+      return {
+        data: { sent: true },
+        summary: "Sent the invoice.",
+        affected: [{ objectName: "Invoice", id: String(id) }],
+      };
     },
   });
 

@@ -27,6 +27,11 @@ export interface Config {
   readonly dryRun: boolean;
   /** How `commit`/`external` tools get human confirmation. */
   readonly confirm: ConfirmMode;
+  /**
+   * `SEVDESK_CONFIRM=browser`: open each approval page in the user's browser with the OS opener
+   * (`SEVDESK_CONFIRM_OPEN`, default on). Off: the link is only written to the server log.
+   */
+  readonly confirmOpen: boolean;
   readonly toolsets: ReadonlySet<ToolsetName>;
   /** `auto`: outputSchema/structuredContent only for clients on protocol ≥ 2026-07-28. */
   readonly structuredOutput: StructuredOutputMode;
@@ -81,6 +86,7 @@ export function loadConfig(env: Env, deps: LoadConfigDeps = {}): Config {
     readOnly,
     dryRun: readFlag(env, "SEVDESK_DRY_RUN", problems),
     confirm,
+    confirmOpen: readFlag(env, "SEVDESK_CONFIRM_OPEN", problems, true),
     toolsets: readToolsets(env, problems),
     structuredOutput: readEnum(
       env,
@@ -227,13 +233,13 @@ function readConfirm(env: Env, problems: string[]): ConfirmMode {
   return mode;
 }
 
-function readFlag(env: Env, name: string, problems: string[]): boolean {
+function readFlag(env: Env, name: string, problems: string[], fallback = false): boolean {
   const raw = nonEmpty(env[name])?.toLowerCase();
-  if (raw === undefined) return false;
+  if (raw === undefined) return fallback;
   if (["1", "true", "yes", "on"].includes(raw)) return true;
   if (["0", "false", "no", "off"].includes(raw)) return false;
   problems.push(`${name}: expected 1/0 or true/false, got "${raw}".`);
-  return false;
+  return fallback;
 }
 
 function readEnum<T extends string>(

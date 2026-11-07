@@ -93,6 +93,10 @@ export interface RecordedCall {
   /** The query as the real client would send it, paging parameters included. */
   readonly query: Readonly<Record<string, QueryValue>>;
   readonly sideEffect: boolean;
+  /** The JSON body of a `request` (writes), exactly as passed to the client. */
+  readonly body?: unknown;
+  /** The tier the request declared (stamped by the tier-scoped client for writes). */
+  readonly tier?: SevdeskRequest["tier"];
 }
 
 const MIN_LIMIT = 1;
@@ -123,7 +127,10 @@ export class FakeSevdeskClient implements SevdeskClient {
     return Promise.resolve().then(() => {
       checkRequest(request.path, request.signal);
       const query = request.query ?? {};
-      this.record("request", request.method, request.path, query, request.sideEffect ?? false);
+      this.record("request", request.method, request.path, query, request.sideEffect ?? false, {
+        body: request.body,
+        tier: request.tier,
+      });
       return this.envelopeFor(request.method, request.path, query).objects;
     });
   }
@@ -202,7 +209,9 @@ export class FakeSevdeskClient implements SevdeskClient {
     return Promise.resolve().then(() => {
       checkRequest(request.path, request.signal);
       const query = request.query ?? {};
-      this.record("download", request.method, request.path, query, request.sideEffect ?? false);
+      this.record("download", request.method, request.path, query, request.sideEffect ?? false, {
+        tier: request.tier,
+      });
       const response = this.route(request.method, request.path, query).response;
       if ("error" in response) throw response.error;
       if (!("bytes" in response)) {
@@ -218,8 +227,22 @@ export class FakeSevdeskClient implements SevdeskClient {
     path: string,
     query: Readonly<Record<string, QueryValue>>,
     sideEffect: boolean,
+    extra: { readonly body?: unknown; readonly tier?: SevdeskRequest["tier"] } = {},
   ): void {
-    this.calls.push({ operation, method, path, query, sideEffect });
+    this.calls.push({
+      operation,
+      method,
+      path,
+      query,
+      sideEffect,
+      ...(extra.body === undefined ? {} : { body: extra.body }),
+      ...(extra.tier === undefined ? {} : { tier: extra.tier }),
+    });
+  }
+
+  /** Recorded calls that change data (any non-GET, or a GET declared as a side effect). */
+  writes(): RecordedCall[] {
+    return this.calls.filter((call) => call.method !== "GET" || call.sideEffect);
   }
 
   private route(

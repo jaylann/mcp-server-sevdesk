@@ -3,6 +3,7 @@ import { McpServer, type McpServerFactory, type ProtocolEra } from "@modelcontex
 import type { Config } from "./config.js";
 import { buildInstructions } from "./instructions.js";
 import { registerResources } from "./resources/index.js";
+import { createSafetyRuntime, type SafetyRuntime } from "./safety/runtime.js";
 import type { SevdeskClient } from "./sevdesk/types.js";
 import { ToolDefinitionError, validateToolDefinition } from "./tools/define-tool.js";
 import { ALL_TOOLS, assertUniqueNames } from "./tools/index.js";
@@ -24,17 +25,34 @@ export interface ServerDeps {
   readonly client: SevdeskClient;
   /** Catalog to select from; defaults to {@link ALL_TOOLS}. Tests pass their own tools. */
   readonly tools?: readonly AnyToolDefinition[];
+  /**
+   * Confirmation and audit state; defaults to a fresh {@link createSafetyRuntime} per factory.
+   * Tests pass one with a fake clock.
+   */
+  readonly safety?: SafetyRuntime;
 }
 
 /**
- * Builds the factory both serving entries take (`serveStdio`, `createMcpHandler`). The catalog is
- * validated, selected for the configuration and turned into instructions once, here; each call
- * of the factory then creates a fresh instance for the era the entry reports (one per stdio
- * connection, one per HTTP request). Throws {@link ToolDefinitionError} for an invalid tool.
+ * A server factory for both serving entries, plus {@link ServerFactory.close} for shutdown. All
+ * instances it builds share one {@link SafetyRuntime}.
  */
-export function createServerFactory(deps: ServerDeps): McpServerFactory {
+export type ServerFactory = McpServerFactory & {
+  /** Stops what the factory started (the local approval server, if any). */
+  readonly close: () => Promise<void>;
+};
+
+/**
+ * Builds the factory both serving entries take (`serveStdio`, `createMcpHandler`). The catalog is
+ * validated, selected for the configuration and turned into instructions once, here, and the
+ * confirmation state (request-state key, nonces, approval page, audit log) is created once, so
+ * every instance shares it; each call of the factory then creates a fresh instance for the era
+ * the entry reports (one per stdio connection, one per HTTP request). Throws
+ * {@link ToolDefinitionError} for an invalid tool.
+ */
+export function createServerFactory(deps: ServerDeps): ServerFactory {
   const prepared = prepare(deps);
-  return (context) => instantiate(prepared, context.era);
+  const factory: McpServerFactory = (context) => instantiate(prepared, context.era);
+  return Object.assign(factory, { close: () => prepared.safety.close() });
 }
 
 /**
@@ -52,6 +70,7 @@ interface PreparedServer {
   readonly deps: ServerDeps;
   readonly tools: readonly AnyToolDefinition[];
   readonly instructions: string;
+  readonly safety: SafetyRuntime;
 }
 
 function prepare(deps: ServerDeps): PreparedServer {
@@ -64,7 +83,12 @@ function prepare(deps: ServerDeps): PreparedServer {
     }
   }
   const tools = selectTools(catalog, deps.config);
-  return { deps, tools, instructions: buildInstructions(tools, deps.config) };
+  return {
+    deps,
+    tools,
+    instructions: buildInstructions(tools, deps.config),
+    safety: deps.safety ?? createSafetyRuntime(deps.config),
+  };
 }
 
 function instantiate(prepared: PreparedServer, era: ProtocolEra | undefined): McpServer {
@@ -75,11 +99,15 @@ function instantiate(prepared: PreparedServer, era: ProtocolEra | undefined): Mc
     capabilities: { tools: { listChanged: false }, resources: { listChanged: false } },
     instructions: prepared.instructions,
     maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS,
+    // Elicitation rounds (multi-round-trip): the signed state is verified before a retried call
+    // reaches the write flow; tampered or expired state is refused by the SDK (-32602).
+    requestState: { verify: (state, ctx) => prepared.safety.codec.verify(state, ctx) },
   });
   registerTools(server, prepared.tools, {
     config,
     client,
     structuredOutput: resolveStructuredOutput(config.structuredOutput, era),
+    safety: prepared.safety,
   });
   registerResources(server, { config, client });
   return server;
