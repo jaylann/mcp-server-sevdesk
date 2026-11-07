@@ -54,7 +54,8 @@ OpenAPI spec is incomplete and wrong in places. Every known deviation is listed 
 3. Implement the handler through the domain layer. Return compact DTOs, never raw sevDesk payloads.
 4. Add fixtures and tests: happy path, error paths, and tier gating. Update the `tools/list`
    snapshot (`pnpm test -u`) and review the diff.
-5. Regenerate the tool reference (`pnpm docs:tools`) once that script exists.
+5. Regenerate the tool reference with `pnpm docs:tools` and commit `docs/tools.md` (a test fails
+   when it is stale).
 
 ## Fixtures
 
