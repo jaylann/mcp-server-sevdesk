@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rsm:CrossIndustryDocument xmlns:rsm="urn:ferd:CrossIndustryDocument:invoice:1p0" 
+xmlns:ram="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:12">
+<rsm:SpecifiedExchangedDocumentContext><ram:GuidelineSpecifiedDocumentContextParameter>
+<ram:ID>urn:ferd:CrossIndustryDocument:invoice:1p0:comfort</ram:ID>
+</ram:GuidelineSpecifiedDocumentContextParameter></rsm:SpecifiedExchangedDocumentContext>
+<rsm:HeaderExchangedDocument><ram:ID>RE-2014-0001</ram:ID></rsm:HeaderExchangedDocument>
+</rsm:CrossIndustryDocument>

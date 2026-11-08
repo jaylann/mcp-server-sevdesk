@@ -12,17 +12,28 @@
  * for account '4400' with taxation scope 'SMALL_BUSINESS'", recorded), so the draft tools pick
  * the tax rule from the regime.
  *
+ * The same answer also carries the account's own company as printed on outgoing invoices (name,
+ * address, VAT id, tax number, bank account, contact): {@link loadAccountCompany} reads those
+ * fields (recorded keys `name`, `addressStreet`, `addressZip`, `addressCity`, `addressCountry`,
+ * `vatNumber`, `taxNumber`, `bankIban`, `bankBic`, `contactEmail`, `contactPhone`; sevDesk.NET
+ * recording 2026-02-19, the same object our trial answered). The e-invoice tools use them to tell
+ * whether the account is the buyer or the seller of an e-invoice and to check the seller data of
+ * outgoing e-invoices. Every company field is optional and parsed leniently: an unreadable value
+ * is dropped, never fatal. The company IBAN may be compared, but anything shown to a model or a
+ * human masks it (`maskIban`).
+ *
  * Caching: the settings change rarely (the user switches the regime in sevDesk's settings), so
- * {@link loadAccountSettings} keeps a successful read per cache owner for
- * {@link ACCOUNT_SETTINGS_TTL_MS}. Tools pass `ctx.config` as the owner: it identifies the account
- * (token) and lives as long as the server, whereas `ctx.client` is a per-call wrapper inside write
- * tools. Failures are not cached.
+ * {@link loadAccountSettings} and {@link loadAccountCompany} share one successful read per cache
+ * owner for {@link ACCOUNT_SETTINGS_TTL_MS}. Tools pass `ctx.config` as the owner: it identifies
+ * the account (token) and lives as long as the server, whereas `ctx.client` is a per-call wrapper
+ * inside write tools. Failures are not cached.
  */
 import { z } from "zod";
 
 import { SevdeskError, type SevdeskErrorKind } from "../sevdesk/errors.js";
-import { parseUpstream, zBool01, zText } from "../sevdesk/schema.js";
+import { parseUpstream, zBool01, zOptionalRef, zText } from "../sevdesk/schema.js";
 import type { SevdeskClient } from "../sevdesk/types.js";
+import { cleanText } from "./common.js";
 import type { TaxRule } from "./reference-data.js";
 
 /** The VAT regulation of an account, as `TaxRule.regimes` names it. */
@@ -33,6 +44,42 @@ export interface AccountSettings {
   readonly smallBusiness: boolean;
   /** Lower-case chart of accounts code, e.g. "skr04"; absent when sevDesk sent none. */
   readonly chartOfAccounts?: string | undefined;
+}
+
+/**
+ * The account's own company from `GET /SevClient`. Every field is optional (absent when sevDesk
+ * sent nothing readable). Text is user-entered sevDesk data, cleaned with `cleanText`; still
+ * untrusted. `iban` is unmasked for comparisons only: show it through `maskIban`.
+ */
+export interface AccountCompany {
+  /** `name`. */
+  readonly name?: string;
+  /** `vatNumber`: USt-IdNr. */
+  readonly vatNumber?: string;
+  /** `taxNumber`: Steuernummer. */
+  readonly taxNumber?: string;
+  /** `addressStreet`. */
+  readonly street?: string;
+  /** `addressZip`. */
+  readonly zip?: string;
+  /** `addressCity`. */
+  readonly city?: string;
+  /** `addressCountry.id` (StaticCountry). */
+  readonly countryId?: number;
+  /** `bankIban`, spaces removed, upper case. */
+  readonly iban?: string;
+  /** `bankBic`. */
+  readonly bic?: string;
+  /** `contactEmail`. */
+  readonly email?: string;
+  /** `contactPhone`. */
+  readonly phone?: string;
+}
+
+/** Settings and company from one `GET /SevClient` answer (what the cache keeps). */
+interface AccountProfile {
+  readonly settings: AccountSettings;
+  readonly company: AccountCompany;
 }
 
 /** How long cached settings are reused: 5 minutes (a regime switch shows up within that time). */
@@ -46,6 +93,27 @@ const sevClientSchema = z.object({
   chartOfAccounts: zText,
 });
 
+/** Company text: anything that is not text, a number or null is dropped instead of failing. */
+const companyText = zText.catch(undefined);
+
+/** The company fields of `GET /SevClient`; every field falls back to absent (never fatal). */
+const companySchema = z.object({
+  name: companyText,
+  vatNumber: companyText,
+  taxNumber: companyText,
+  addressStreet: companyText,
+  addressZip: companyText,
+  addressCity: companyText,
+  addressCountry: zOptionalRef.catch(undefined),
+  bankIban: companyText,
+  bankBic: companyText,
+  contactEmail: companyText,
+  contactPhone: companyText,
+});
+
+/** Longest company text kept (names, streets, e-mail addresses). */
+const COMPANY_TEXT_MAX = 200;
+
 /**
  * Reads the account settings from `GET /SevClient`. Throws `unexpected_response` when the answer
  * has no object or no readable `smallSettlement` (the regime would be a guess).
@@ -54,6 +122,13 @@ export async function fetchAccountSettings(
   client: SevdeskClient,
   signal?: AbortSignal,
 ): Promise<AccountSettings> {
+  return (await fetchAccountProfile(client, signal)).settings;
+}
+
+async function fetchAccountProfile(
+  client: SevdeskClient,
+  signal: AbortSignal | undefined,
+): Promise<AccountProfile> {
   const payload = await client.request({
     method: "GET",
     path: "/SevClient",
@@ -65,9 +140,35 @@ export async function fetchAccountSettings(
   if (record.smallSettlement === undefined) throw unreadable();
   const chart = record.chartOfAccounts?.trim().toLowerCase();
   return {
-    smallBusiness: record.smallSettlement,
-    ...(chart !== undefined && CHART_OF_ACCOUNTS.test(chart) ? { chartOfAccounts: chart } : {}),
+    settings: {
+      smallBusiness: record.smallSettlement,
+      ...(chart !== undefined && CHART_OF_ACCOUNTS.test(chart) ? { chartOfAccounts: chart } : {}),
+    },
+    company: companyOf(row),
   };
+}
+
+function companyOf(row: object): AccountCompany {
+  const parsed = companySchema.safeParse(row);
+  if (!parsed.success) return {};
+  const record = parsed.data;
+  const text = (value: string | undefined): string | undefined =>
+    cleanText(value, COMPANY_TEXT_MAX);
+  const iban = text(record.bankIban)?.replace(/\s+/g, "").toUpperCase();
+  const company: Record<string, string | number | undefined> = {
+    name: text(record.name),
+    vatNumber: text(record.vatNumber),
+    taxNumber: text(record.taxNumber),
+    street: text(record.addressStreet),
+    zip: text(record.addressZip),
+    city: text(record.addressCity),
+    countryId: record.addressCountry?.id,
+    iban: iban === "" ? undefined : iban,
+    bic: text(record.bankBic),
+    email: text(record.contactEmail),
+    phone: text(record.contactPhone),
+  };
+  return Object.fromEntries(Object.entries(company).filter(([, value]) => value !== undefined));
 }
 
 /** Options of {@link loadAccountSettings}. */
@@ -85,7 +186,7 @@ export interface AccountSettingsCacheOptions {
 
 interface CacheEntry {
   readonly expires: number;
-  readonly value: AccountSettings;
+  readonly value: AccountProfile;
 }
 
 const cache = new WeakMap<object, CacheEntry>();
@@ -120,12 +221,31 @@ export async function loadAccountSettings(
   client: SevdeskClient,
   options: AccountSettingsCacheOptions,
 ): Promise<AccountSettings | undefined> {
+  return (await loadAccountProfile(client, options))?.settings;
+}
+
+/**
+ * The account's own company (see {@link AccountCompany}), from the same cached `GET /SevClient`
+ * read as {@link loadAccountSettings} (one request serves both). `undefined` when sevDesk does
+ * not provide readable settings, exactly when {@link loadAccountSettings} returns `undefined`.
+ */
+export async function loadAccountCompany(
+  client: SevdeskClient,
+  options: AccountSettingsCacheOptions,
+): Promise<AccountCompany | undefined> {
+  return (await loadAccountProfile(client, options))?.company;
+}
+
+async function loadAccountProfile(
+  client: SevdeskClient,
+  options: AccountSettingsCacheOptions,
+): Promise<AccountProfile | undefined> {
   const now = options.now ?? Date.now;
   const hit = cache.get(options.cacheOwner);
   if (options.fresh !== true && hit !== undefined && hit.expires > now()) return hit.value;
-  let value: AccountSettings;
+  let value: AccountProfile;
   try {
-    value = await fetchAccountSettings(client, options.signal);
+    value = await fetchAccountProfile(client, options.signal);
   } catch (error) {
     if (error instanceof SevdeskError && isUnreadable(error)) return undefined;
     throw error;
