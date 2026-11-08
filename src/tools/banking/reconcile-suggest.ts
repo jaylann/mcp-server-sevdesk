@@ -107,9 +107,10 @@ export const reconcileSuggestTool = defineTool({
     "likely pay: exact open amount, document number in the purpose (Verwendungszweck), " +
     "counterparty name, date; plus split suggestions (several documents adding up exactly). " +
     "Each match has reasons, a confidence and the exact sevdesk_transaction_book call; book " +
-    "only after the user agrees. Pass transactionId, or checkAccountId and/or a value-date range " +
-    "(page with offset). Imported bank accounts only: offline and cash accounts get their " +
-    "transactions from bookings. Read-only.",
+    "only after the user agrees. Call it directly: without arguments it scans the unassigned " +
+    "transactions of every bank account; pass transactionId, or checkAccountId and/or a " +
+    "value-date range to narrow it (page with offset). Imported bank accounts only: offline and " +
+    "cash accounts get their transactions from bookings. Read-only.",
   toolset: "banking",
   tier: "read",
   annotations: READ_ANNOTATIONS,

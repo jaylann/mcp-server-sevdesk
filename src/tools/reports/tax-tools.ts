@@ -55,7 +55,8 @@ export const vatSummaryTool = defineTool({
     "credit notes and vouchers (positions read one by one, up to " +
     `${MAX_SCAN_DOCUMENTS.toLocaleString("en-US")} documents; slow for long periods). basis: ` +
     "accrual (Soll, default; sevDesk's API does not expose the account setting) or cash (Ist, " +
-    "from reconciled payments). Kleinunternehmer accounts get no UStVA. An estimate to check, " +
+    "from reconciled payments). It reads the account's tax regime itself (no need for " +
+    "sevdesk_account_info first); Kleinunternehmer accounts get no UStVA. An estimate to check, " +
     "not a filing: submit via ELSTER.",
   toolset: "reports",
   tier: "read",
@@ -94,8 +95,9 @@ export const profitAndLossTool = defineTool({
     "paid to or refunded by the Finanzamt). Fixed assets (Anlagegüter) are listed apart, " +
     "without depreciation (AfA). basis: cash (default, Zufluss-/Abflussprinzip: payments sevDesk " +
     "links to documents, by value date) or accrual (by document date). Positions are read one " +
-    `by one (up to ${MAX_SCAN_DOCUMENTS.toLocaleString("en-US")} documents). Computed here from ` +
-    "sevDesk data: not the Anlage EÜR (which works gross) and not a tax return.",
+    `by one (up to ${MAX_SCAN_DOCUMENTS.toLocaleString("en-US")} documents). Call it directly ` +
+    "with the period: it reads the accounts and payments itself. Computed here from sevDesk " +
+    "data: not the Anlage EÜR (which works gross) and not a tax return.",
   toolset: "reports",
   tier: "read",
   annotations: READ_ANNOTATIONS,

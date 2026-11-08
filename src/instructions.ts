@@ -39,7 +39,7 @@ export function buildInstructions(tools: readonly AnyToolDefinition[], config: C
         "Prefer summary and report tools over paging through many records; results say when " +
         "items were omitted.",
     },
-    ...metaSection(tools),
+    ...callingSection(tools),
   ];
   return fitToCap(sections);
 }
@@ -114,19 +114,27 @@ function dryRunSections(tools: readonly AnyToolDefinition[], config: Config): Se
     : [];
 }
 
-function metaSection(tools: readonly AnyToolDefinition[]): Section[] {
-  // Lookup tools only: reads without local effects (not `sevdesk_document_save`, which writes
-  // files and looks nothing up).
-  const names = tools
-    .filter((tool) => tool.toolset === "meta" && tool.tier === "read" && !tool.localEffects)
-    .map((tool) => tool.name);
-  if (names.length === 0) {
+const REFERENCE_LOOKUP = "sevdesk_reference_lookup";
+
+/**
+ * How to call tools efficiently. Recorded evals (2026-11-08) showed models calling
+ * `sevdesk_account_info` or a get tool before reports and writes "to be safe", although those
+ * tools read the records and settings they need themselves; so the hint says to call directly and
+ * points to search and lookup only for ids the user did not give.
+ */
+function callingSection(tools: readonly AnyToolDefinition[]): Section[] {
+  if (tools.length === 0) {
     return [];
   }
-  const listed = names.slice(0, 3).join(", ");
+  const lookup = tools.some((tool) => tool.name === REFERENCE_LOOKUP)
+    ? ` or ${REFERENCE_LOOKUP}`
+    : "";
   return [
     {
-      text: `Look up ids and account defaults with ${listed} instead of guessing them.`,
+      text:
+        "Call a tool directly when you have its arguments: reports and changing tools read the " +
+        "records and account settings they need themselves. Look up ids you do not have with " +
+        `the search and list tools${lookup} instead of guessing them.`,
       optional: true,
     },
   ];
