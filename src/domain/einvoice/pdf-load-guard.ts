@@ -22,7 +22,7 @@
  * in the load's budget and reported by {@link withPdfLoadBudget} after the load returns.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
-import { inflateRawSync, inflateSync } from "node:zlib";
+import { constants, inflateSync } from "node:zlib";
 
 import {
   PDFArray,
@@ -118,22 +118,29 @@ function decodedSize(stream: PDFRawStream, budget: LoadBudget): number {
       "The PDF compresses its internal structure in a way this server does not read",
     );
   }
-  const options = { maxOutputLength: Math.max(budget.remaining, 1) };
-  for (const inflate of [inflateSync, inflateRawSync]) {
-    try {
-      const size = inflate(contents, options).byteLength;
-      if (size > budget.remaining) return violate(budget, tooLarge(budget.limit));
-      return size;
-    } catch (error) {
-      if (error instanceof RangeError || isBufferTooLarge(error)) {
-        return violate(budget, tooLarge(budget.limit));
-      }
+  // Measured with zlib alone, never with a raw-deflate fallback: pdf-lib's decoder reads
+  // zlib-wrapped data only and is MORE lenient than zlib (no window-size check, odd stored
+  // blocks, back references before the start). A stream that zlib refuses but raw deflate reads
+  // as a few bytes can still be a bomb for pdf-lib, so anything zlib cannot read counts as
+  // damaged and is refused. When zlib does read it, both decoders produce the same bytes, so the
+  // size is exact. Z_SYNC_FLUSH keeps streams without a checksum tail readable, as in pdf-lib.
+  const options = {
+    maxOutputLength: Math.max(budget.remaining, 1),
+    finishFlush: constants.Z_SYNC_FLUSH,
+  };
+  try {
+    const size = inflateSync(contents, options).byteLength;
+    if (size > budget.remaining) return violate(budget, tooLarge(budget.limit));
+    return size;
+  } catch (error) {
+    if (error instanceof RangeError || isBufferTooLarge(error)) {
+      return violate(budget, tooLarge(budget.limit));
     }
+    return violate(
+      budget,
+      "The PDF's internal structure is damaged (a compressed stream cannot be read)",
+    );
   }
-  return violate(
-    budget,
-    "The PDF's internal structure is damaged (a compressed stream cannot be read)",
-  );
 }
 
 /** Filter names (without the slash); `undefined` for anything but a name or an array of names. */

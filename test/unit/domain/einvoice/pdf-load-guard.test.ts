@@ -1,4 +1,4 @@
-import { deflateSync } from "node:zlib";
+import { deflateRawSync, deflateSync } from "node:zlib";
 
 import { AFRelationship, PDFDocument } from "pdf-lib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -59,6 +59,29 @@ describe("PDF load budget (object and cross-reference streams)", () => {
       'The PDF\'s internal structure decompresses to more than 1048576 bytes (a "zip bomb"), ' +
         "so it is not read. Nothing was sent to sevDesk.",
     );
+  });
+
+  it("refuses a zlib/raw-deflate polyglot that pdf-lib would inflate as a bomb", async () => {
+    // A zlib header with an invalid window size (zlib refuses it, pdf-lib ignores it). Raw
+    // deflate would read it as a tiny stored block and a final empty block; pdf-lib reads a
+    // stored block of 0xFFE3 bytes followed by the bomb. Found by the second review of M4.
+    const head = Buffer.from([0x88, 0x1c, 0x00, 0xe3, 0xff, 0x1c, 0x00]);
+    const stored = Buffer.alloc(0xffe3, 0x20);
+    Buffer.from([0x01, 0x00, 0x00, 0xff, 0xff]).copy(stored, 33 - 7);
+    const payload = Buffer.concat([head, stored, deflateRawSync(Buffer.alloc(8 * MIB, 0x20))]);
+    expect(await refused(pdfWithStream(OBJECT_STREAM, payload))).toContain(
+      "internal structure is damaged",
+    );
+  });
+
+  it("still reads a Flate stream without its checksum tail", async () => {
+    const complete = deflateSync(Buffer.from("1 0 << /Type /Catalog >>", "latin1"));
+    const withoutChecksum = complete.subarray(0, complete.byteLength - 4);
+    await expect(
+      extractEInvoiceXml(pdfWithStream(OBJECT_STREAM, withoutChecksum), {
+        maxLoadInflatedBytes: MIB,
+      }),
+    ).rejects.not.toThrow(/damaged|zip bomb/);
   });
 
   it("refuses a cross-reference stream bomb", async () => {
