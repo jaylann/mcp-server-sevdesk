@@ -31,6 +31,8 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
       version: ${{ steps.release.outputs.version }}
+      prs_created: ${{ steps.release.outputs.prs_created }}
+      pr: ${{ steps.release.outputs.pr }}
     steps:
       - name: Run release-please
         id: release
@@ -42,6 +44,55 @@ jobs:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  # release-please bumps package.json, server.json and plugin.json, but cannot write
+  # "mcp-server-sevdesk@<version>" into the plugin's npx argument (its JSON updater replaces whole
+  # values). This job adds that one change to the release PR after every update, so the merged
+  # release pins the version it publishes. Plain Node, no dependency install: the job can push.
+  pin-plugin:
+    name: Pin the plugin in the release PR
+    needs: release-please
+    if: ${{ needs.release-please.outputs.prs_created == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # push the pin commit to the release PR branch
+    env:
+      BRANCH: ${{ fromJSON(needs.release-please.outputs.pr).headBranchName }}
+    steps:
+      - name: Check out the release PR branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.BRANCH }}
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Pin plugin/.mcp.json to the release version
+        run: node scripts/pin-plugin-version.ts
+
+      - name: Commit and push the pin
+        env:
+          # The release-please token, so CI runs on the pushed commit when that token is set.
+          TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+        run: |
+          if git diff --quiet -- plugin/.mcp.json; then
+            echo "plugin/.mcp.json already pins the release version."
+            exit 0
+          fi
+          case "$BRANCH" in
+            release-please--*) ;;
+            *) echo "::error::Refusing to push to $BRANCH (not a release-please branch)."; exit 1 ;;
+          esac
+          version="$(node -p 'require("./package.json").version')"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --quiet -m "chore: pin the plugin to mcp-server-sevdesk@$version" -- plugin/.mcp.json
+          git push --quiet "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
 
   publish:
     name: Publish to npm and the MCP Registry
@@ -79,17 +130,22 @@ jobs:
       - name: Lint the package (publint)
         run: pnpm publint
 
-      - name: Check that package.json and server.json carry the release version
+      - name: Check that package.json, server.json and the plugin carry the release version
         run: |
           node -e '
             const fs = require("node:fs");
             const want = process.env.VERSION;
             const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
             const server = JSON.parse(fs.readFileSync("server.json", "utf8"));
+            const plugin = JSON.parse(fs.readFileSync("plugin/.claude-plugin/plugin.json", "utf8"));
+            const mcp = JSON.parse(fs.readFileSync("plugin/.mcp.json", "utf8"));
+            const pinned = mcp.mcpServers?.sevdesk?.args?.[1] ?? "";
             const found = {
               "package.json version": pkg.version,
               "server.json version": server.version,
               "server.json packages[0].version": server.packages?.[0]?.version,
+              "plugin.json version": plugin.version,
+              "plugin/.mcp.json pin": pinned.startsWith(pkg.name + "@") ? pinned.slice(pkg.name.length + 1) : pinned,
             };
             let ok = true;
             for (const [where, got] of Object.entries(found)) {
@@ -103,7 +159,7 @@ jobs:
               ok = false;
             }
             if (!ok) process.exit(1);
-            console.log("package.json and server.json are at " + want + ".");
+            console.log("package.json, server.json and the plugin are at " + want + ".");
           '
 
       # Trusted publishing needs npm >= 11.5.1. Node 24 bundles a newer npm, so no upgrade step;

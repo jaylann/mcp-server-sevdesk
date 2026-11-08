@@ -26,7 +26,7 @@ bindend ist.
 ## Claude-Code-Plugin
 
 Das Repository ist zugleich ein Plugin-Marktplatz für Claude Code. Das Plugin `sevdesk` startet
-diesen Server und bringt einen Buchhaltungs-Skill mit (Steuerregeln inkl. §13b und §19,
+diesen Server (in der zum Plugin passenden, festen Version) und bringt einen Buchhaltungs-Skill mit (Steuerregeln inkl. §13b und §19,
 SKR03/SKR04-Konten, GoBD, E-Rechnung, Abläufe wie Beleg erfassen, Bankabgleich und
 Umsatzsteuer-Voranmeldung prüfen):
 

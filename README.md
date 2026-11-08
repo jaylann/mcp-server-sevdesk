@@ -100,7 +100,8 @@ logged locally.
 ## Claude Code plugin
 
 The repository is also a Claude Code plugin marketplace. The `sevdesk` plugin starts this server
-(`npx -y mcp-server-sevdesk`) and adds a bookkeeping skill: German tax rules and their sevDesk
+(`npx -y mcp-server-sevdesk@<version>`, pinned to the release the plugin belongs to, so a new npm
+version never runs before the plugin is updated) and adds a bookkeeping skill: German tax rules and their sevDesk
 tax rules (incl. §13b reverse charge and §19 Kleinunternehmer), common SKR03/SKR04 accounts, GoBD,
 the e-invoice obligations, and step-by-step workflows (file a receipt, import an e-invoice,
 reconcile the bank, VAT pre-check, month and year end).

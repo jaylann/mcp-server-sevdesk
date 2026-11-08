@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
+import { pinPackageArgument } from "../../../scripts/pin-plugin-version.js";
 import { ALL_TOOLS } from "../../../src/tools/index.js";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -144,10 +145,49 @@ describe(".mcp.json", () => {
     ),
   );
 
-  it("starts the published package with npx", () => {
+  it("starts the published package with npx, pinned to this version", () => {
     expect(Object.keys(config.mcpServers)).toEqual(["sevdesk"]);
     expect(server?.command).toBe("npx");
-    expect(server?.args).toEqual(["-y", packageJson.name]);
+    // Synced by scripts/pin-plugin-version.ts (release workflow, job pin-plugin).
+    expect(server?.args).toEqual(["-y", `${packageJson.name}@${packageJson.version}`]);
+  });
+
+  describe("pinPackageArgument (scripts/pin-plugin-version.ts)", () => {
+    const text = '{ "args": ["-y", "mcp-server-sevdesk@0.3.1"], "env": {} }\n';
+
+    it("rewrites the pinned or unpinned argument and keeps every other byte", () => {
+      expect(pinPackageArgument(text, "mcp-server-sevdesk", "0.4.0")).toBe(
+        '{ "args": ["-y", "mcp-server-sevdesk@0.4.0"], "env": {} }\n',
+      );
+      expect(pinPackageArgument('["mcp-server-sevdesk"]', "mcp-server-sevdesk", "1.0.0-rc.1")).toBe(
+        '["mcp-server-sevdesk@1.0.0-rc.1"]',
+      );
+      expect(pinPackageArgument(text, "mcp-server-sevdesk", "0.3.1")).toBe(text);
+    });
+
+    it("refuses a missing or repeated argument and malformed input", () => {
+      expect(() => pinPackageArgument("{}", "mcp-server-sevdesk", "0.4.0")).toThrow(
+        'Expected "mcp-server-sevdesk" exactly once in plugin/.mcp.json, found 0.',
+      );
+      expect(() => pinPackageArgument(`${text}${text}`, "mcp-server-sevdesk", "0.4.0")).toThrow(
+        "found 2",
+      );
+      expect(() => pinPackageArgument(text, "mcp-server-sevdesk", "latest")).toThrow(
+        'Unexpected version "latest".',
+      );
+      expect(() => pinPackageArgument(text, "mcp-server-sevdesk", '1.0.0"]')).toThrow(
+        "Unexpected version",
+      );
+      expect(() => pinPackageArgument(text, "Bad Name", "0.4.0")).toThrow(
+        'Unexpected package name "Bad Name".',
+      );
+    });
+
+    it("does not match a longer package name", () => {
+      expect(() =>
+        pinPackageArgument('["mcp-server-sevdesk-extra"]', "mcp-server-sevdesk", "0.4.0"),
+      ).toThrow("found 0");
+    });
   });
 
   it("only passes variables through from the user's environment, read-only by default", () => {
