@@ -57,7 +57,8 @@ describe("sevdesk_invoice_reset (spec resetToOpen/resetToDraft; behaviour per se
     );
     expect(plan.preview.facts).toContainEqual({ label: "Paid so far", value: "177.33 EUR" });
     expect(plan.preview.warnings[0]).toContain(
-      "linked bank transactions are unlinked and return to unbooked (status 100)",
+      "linked bank transactions are unlinked from it and return to unbooked (status 100), or to " +
+        "partly linked (status 200) while they still pay other documents",
     );
     // D-071 measured an offline account only; cash registers are not claimed.
     expect(plan.preview.warnings[0]).toContain(

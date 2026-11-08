@@ -570,6 +570,35 @@ describe("vatSummary (accrual)", () => {
     );
   });
 
+  it("does not confirm 'no UStVA' for a Kleinunternehmer when a cap stopped reading", async () => {
+    const client = new FakeSevdeskClient(
+      scenarioRoutes({
+        invoices: [
+          doc(
+            invoiceDoc({ id: 1, date: "2026-02-01", rule: 11, net: "300", tax: "0" }),
+            invoicePositions(1, [{ rate: "0", net: "300", tax: "0" }]),
+          ),
+          doc(
+            invoiceDoc({ id: 2, date: "2026-02-02", rule: 11, net: "100", tax: "0" }),
+            invoicePositions(2, [{ rate: "0", net: "100", tax: "0" }]),
+          ),
+        ],
+      }),
+    );
+
+    const report = await vatSummary(client, {
+      period: Q1,
+      settings: SMALL,
+      today: TODAY,
+      maxDocuments: 1,
+    });
+
+    expect(report.coverage.truncated).toBe(true);
+    expect(report.applicable).toBe(true);
+    expect(report.notes[0]).toContain("could not be confirmed");
+    expect(vatSummarySentence(report)).not.toContain("no UStVA required");
+  });
+
   it("computes the UStVA of a Kleinunternehmer whose period has § 13b tax or taxable sales", async () => {
     const client = new FakeSevdeskClient(
       scenarioRoutes({

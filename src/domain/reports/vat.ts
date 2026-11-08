@@ -519,10 +519,15 @@ export async function vatSummary(
   // A Kleinunternehmer files no UStVA unless the period has amounts one has to declare (an earlier
   // regular period, § 13b tax owed as recipient): the regime is today's, the period may be older.
   const declarable = aggregate.boxes.filter((box) => box.kz !== "48").map((box) => `Kz ${box.kz}`);
+  // A truncated scan cannot confirm "nothing to declare" (e.g. § 13b invoices past the cap).
   const applicable =
-    regime !== "small_business" || declarable.length > 0 || aggregate.unmapped.length > 0;
+    regime !== "small_business" ||
+    declarable.length > 0 ||
+    aggregate.unmapped.length > 0 ||
+    truncated;
   if (regime === "small_business") {
-    notes.push(...smallBusinessNotes(applicable, declarable));
+    const unconfirmed = declarable.length === 0 && aggregate.unmapped.length === 0 && truncated;
+    notes.push(...smallBusinessNotes(applicable, declarable, unconfirmed));
   }
   notes.push(...aggregate.notes);
   if (truncated && applicable) {
@@ -590,7 +595,18 @@ export function vatSummarySentence(report: VatSummary): string {
 }
 
 /** Notes for a Kleinunternehmer account (§ 19 UStG, sevDesk setting `smallSettlement`). */
-function smallBusinessNotes(applicable: boolean, declarable: readonly string[]): string[] {
+function smallBusinessNotes(
+  applicable: boolean,
+  declarable: readonly string[],
+  unconfirmed: boolean,
+): string[] {
+  if (unconfirmed) {
+    return [
+      "The account uses the Kleinunternehmerregelung (§ 19 UStG), but reading stopped at a cap, " +
+        "so it could not be confirmed that this period has nothing to declare (e.g. VAT owed as " +
+        "recipient under § 13b). Narrow the period and run the summary again.",
+    ];
+  }
   if (!applicable) {
     return [
       "The account uses the Kleinunternehmerregelung (§ 19 UStG, sevDesk setting " +

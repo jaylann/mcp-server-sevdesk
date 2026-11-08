@@ -441,6 +441,16 @@ describe("e-invoice import mapping", () => {
       "The issuer matches several contacts (1, 2); the voucher is saved with the issuer's name " +
         "only. Pass supplierId to link one.",
     );
+    const single = importedVoucher(
+      suggestion({ supplierCandidates: [{ contactId: 7, matchedBy: "vat_id" }] }),
+      breakdown,
+      { accountDatevId: 1 },
+      rule(9),
+      "regular",
+    );
+    const warning = single.extras.warnings?.find((text) => text.includes("Contact 7"));
+    expect(warning).toContain("was not linked automatically");
+    expect(single.extras.warnings?.join(" ")).not.toContain("several contacts");
   });
 
   it("folds VAT into the gross amount at 0 % under a 0 %-only rule, checking gross only", () => {

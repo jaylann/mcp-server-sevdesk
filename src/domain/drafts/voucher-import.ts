@@ -229,8 +229,12 @@ export function importedVoucher(
       candidates.length === 0
         ? "No sevDesk contact matches the issuer; the voucher is saved with the issuer's name " +
             "only. Pass supplierId to link a contact."
-        : `The issuer matches several contacts (${candidates.join(", ")}); the voucher is saved ` +
-            "with the issuer's name only. Pass supplierId to link one.",
+        : candidates.length === 1
+          ? `Contact ${String(candidates[0])} matches the issuer but was not linked ` +
+            "automatically (see the bank-details warning); the voucher is saved with the " +
+            "issuer's name only. Pass supplierId to link it once the bank details are checked."
+          : `The issuer matches several contacts (${candidates.join(", ")}); the voucher is ` +
+            "saved with the issuer's name only. Pass supplierId to link one.",
     );
   }
   if (folded.length > 0) {
