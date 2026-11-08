@@ -45,7 +45,7 @@
         },
         {
           "name": "SEVDESK_DRY_RUN",
-          "description": "Set to true to make write tools return the request they would send instead of sending it.",
+          "description": "Set to true to make write tools only return a preview of what they would do, without sending anything.",
           "format": "boolean",
           "default": "false",
           "isRequired": false,
@@ -62,6 +62,20 @@
         {
           "name": "SEVDESK_TOOLSETS",
           "description": "Comma-separated toolsets to load, e.g. invoices,vouchers,banking. Unset loads all except advanced; all adds advanced.",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SEVDESK_FILE_DIRS",
+          "description": "Absolute folders (separated like PATH) that receipts and e-invoices may be read from, for voucher uploads and e-invoice import. Unset: no local file is read.",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SEVDESK_OUTPUT_DIR",
+          "description": "Folder where PDFs, e-invoice XML, CSV and DATEV exports may be saved. Unset: the file-saving tools are not offered.",
           "format": "string",
           "isRequired": false,
           "isSecret": false

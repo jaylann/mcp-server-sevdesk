@@ -23,4 +23,19 @@ bindend ist.
   (`SEVDESK_AUDIT_LOG`).
 - **sevDesk-Update 2.0:** Steuerregeln und Buchungskonten werden vor dem Senden geprüft.
 
+## Claude-Code-Plugin
+
+Das Repository ist zugleich ein Plugin-Marktplatz für Claude Code. Das Plugin `sevdesk` startet
+diesen Server und bringt einen Buchhaltungs-Skill mit (Steuerregeln inkl. §13b und §19,
+SKR03/SKR04-Konten, GoBD, E-Rechnung, Abläufe wie Beleg erfassen, Bankabgleich und
+Umsatzsteuer-Voranmeldung prüfen):
+
+```text
+/plugin marketplace add jaylann/mcp-server-sevdesk
+/plugin install sevdesk@mcp-server-sevdesk
+```
+
+Die Einstellungen (mindestens `SEVDESK_API_TOKEN`) kommen aus der Umgebung, in der Claude Code
+gestartet wird; ohne `SEVDESK_ALLOW` bleibt der Server nur lesend.
+
 Die vollständige Dokumentation ist auf Englisch: [README.md](README.md).

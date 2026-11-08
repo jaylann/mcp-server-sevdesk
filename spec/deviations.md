@@ -27,6 +27,13 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   results by entry id. "manual check (lead)" marks a one-off script the maintainer ran on the
   same account. Recorded read responses are in `test/fixtures/recorded/2026-11-07/`; every one of
   them runs through its production parser in `test/contract/recorded-fixtures.test.ts`.
+- The M4 session (2026-11-08) ran the M4 probes (`scripts/lib/probes/m4-*-probes.ts`) on the same
+  account, by then on standard VAT, in four runs: a read-only run with a first write run, a second
+  write run (it also created a file-import bank account for hand-made transactions), an opt-in
+  DATEV run that set a fake DATEV configuration on the trial, and a run of split bookings. Its
+  measurements are cited as "recorded 2026-11-08, trial account, Update 2.0 (probe `<id>`)". Its
+  recorded reads are in `test/fixtures/recorded/2026-11-08/`, checked by
+  `test/contract/recorded-fixtures-m4.test.ts`.
 - **Test** names the test that pins our handling of the deviation. Every open entry gets one.
   "Pending: recording session, probe `<id>`" names the probe that checks the behavior against a
   real account and says why the 2026-11-07 session left it open.
@@ -111,6 +118,13 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 | [D-070](#d-070-a-payment-on-a-reminder-ma-pays-only-the-reminder)                                  | A payment on a reminder (MA) pays only the reminder                                    | Open                  |
 | [D-071](#d-071-a-booking-without-a-transaction-creates-one-and-resettoopen-deletes-it)             | A booking without a transaction creates one, and `resetToOpen` deletes it              | Open                  |
 | [D-072](#d-072-getpdf-answers-mimetype-and-base64encoded-not-the-specs-casing)                     | `getPdf` answers `mimetype` and `base64Encoded`, not the spec's casing                 | Open                  |
+| [D-073](#d-073-vouchers-are-finalized-through-savevoucher-put-voucher-refuses-a-status)            | Vouchers are finalized through `saveVoucher`; `PUT /Voucher` refuses a status          | Open                  |
+| [D-074](#d-074-delete-voucher-deletes-only-drafts)                                                 | `DELETE /Voucher` deletes only drafts                                                  | Open                  |
+| [D-075](#d-075-a-full_payment-must-use-the-whole-linked-transaction-type-n-splits-it)              | A `FULL_PAYMENT` must use the whole linked transaction; type `N` splits it             | Open                  |
+| [D-076](#d-076-marking-a-transaction-private-changes-only-its-status)                              | Marking a transaction private changes only its status                                  | Open                  |
+| [D-077](#d-077-the-datev-export-job-starts-with-a-post-and-its-answers-differ-from-the-spec)       | The DATEV export job starts with a POST, and its answers differ from the spec          | Open                  |
+| [D-078](#d-078-receiptguidance-allows-only-0--for-intra-eu-acquisitions-and-reverse-charge)        | ReceiptGuidance allows only 0 % for intra-EU acquisitions and reverse charge           | Open                  |
+| [D-079](#d-079-get-accountdatev-ignores-its-filters-and-lists-fewer-accounts-than-receiptguidance) | `GET /AccountDatev` ignores its filters and lists fewer accounts than ReceiptGuidance  | Open                  |
 
 ## Entries
 
@@ -135,7 +149,13 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   `createFromInvoice` (`{creditNote, creditNotePos, discount}`), `createInvoiceReminder` (the
   reminder invoice, D-064) and `sendViaEmail` (an `Email` record, D-069). `enshrine` answers
   `{objects: null}`, as the spec declares. The next-number endpoints answer a bare string under
-  `objects` (D-066). Only the answer of `createInvoiceFromOrder` is still unrecorded.
+  `objects` (D-066). Only the answer of `createInvoiceFromOrder` is still unrecorded. The M4
+  recordings add the voucher and banking writes, all wrapped as well: `saveVoucher`
+  (`{voucher, voucherPos, vatdrop}`, D-073), `uploadTempFile` (D-011), the voucher `bookAmount` (a
+  `VoucherLog`, D-013), `resetToOpen` and `resetToDraft` on vouchers (the voucher),
+  `DELETE /Voucher/{voucherId}` (`[null]`, D-074), `POST /CheckAccountTransaction` and
+  `PUT /CheckAccountTransaction/{checkAccountTransactionId}` (the transaction; the spec declares
+  both bare) and the DATEV job start (the job id as a string, D-077).
 - **Sources:** [j-mastr/sevdesk-api#12](https://github.com/j-mastr/sevdesk-api/pull/12)
   (createInvoiceReminder), [#28](https://github.com/j-mastr/sevdesk-api/pull/28) (saveVoucher),
   [#53](https://github.com/j-mastr/sevdesk-api/pull/53) (all create/update responses),
@@ -151,7 +171,10 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   `write-book-amount`, `write-cancel-invoice`, `write-credit-note-from-invoice`,
   `write-reminder`, `write-offline-booking-transaction`, `write-part-price-fields`,
   `write-send-email-shape`, `write-next-order-number`; every read in
-  `test/fixtures/recorded/2026-11-07/`).
+  `test/fixtures/recorded/2026-11-07/`); recorded 2026-11-08, trial account, Update 2.0 (probes
+  `write-voucher-open-directly`, `write-voucher-book-amount`, `write-voucher-reset`,
+  `write-voucher-delete`, `write-transaction-create`, `write-transaction-private-status`,
+  `write-export-datev-csv`).
 - **Impact:** `src/sevdesk/envelope.ts` unwraps every response. It accepts both an object and an
   array of one under `objects`, and maps an empty array from a GET-by-id to a not-found error
   (kept as a safety net; sevDesk's 404 is classified as `not_found` by `src/sevdesk/errors.ts`).
@@ -221,17 +244,20 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   schema right before it is sent (`src/domain/drafts/payloads.ts`,
   `src/domain/lifecycle/payments.ts`, `src/domain/lifecycle/email.ts`,
   `src/tools/lifecycle/finalize.ts`, `src/domain/contacts-write.ts`, `src/domain/parts-write.ts`,
-  `src/domain/derived-documents.ts`), so a misspelled key is a bug that fails before sending. Tool
+  `src/domain/derived-documents.ts`, `src/domain/drafts/voucher-payload.ts`,
+  `src/domain/reconciliation/transaction-status.ts`), so a misspelled key is a bug that fails
+  before sending. Tool
   inputs reject unknown parameters with a message that names them. Writes are read back; the
   draft tools compare the stored totals with the preview (D-050).
 - **Test:** `test/unit/domain/drafts/payloads.test.ts` ("draft payloads: strict outgoing schemas
   (D-003, D-004, B8)": unknown and derived keys are refused as internal errors),
+  `test/unit/domain/vouchers-write.test.ts` ("saveVoucher body (D-003, D-004, D-026)"),
   `test/integration/metadata-lint.test.ts` ("has a strict, flat object-root input JSON Schema",
   every tool). sevDesk's own behavior: probe `write-unknown-field`.
 
 ### D-004: The `save*` factories require properties that do not exist
 
-- **Status:** Open. **Evidence:** spec + community.
+- **Status:** Open. **Evidence:** spec + community + recorded.
 - **Spec says:** `saveInvoice.required` is `[invoice, invoicePos]`, but the properties are
   `invoicePosSave` and `invoicePosDelete`. `saveVoucher.required` is `[voucher, voucherPos]`, but
   the properties are `voucherPosSave` and `voucherPosDelete`. The same holds for
@@ -241,23 +267,29 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   `creditNotePos`/`orderPos`, and the InvoicePos tag's update example sends `"invoicePos"` too.
 - **Actual behavior:** The API reads `invoicePosSave`/`creditNotePosSave`/`orderPosSave`/
   `voucherPosSave` (and `*PosDelete`). A client that follows `required` and sends `invoicePos`
-  loses its positions without an error (see D-003).
+  loses its positions without an error (see D-003). Every voucher saved by the M4 write probes sent
+  its positions in `voucherPosSave` and got them (recorded); `voucherPos` was not tried.
 - **Sources:** spec (`components.schemas.saveInvoice`, `saveCreditNote`, `saveOrder`,
   `saveVoucher`; tag `InvoicePos`, "How to create/update an invoice position");
   [jernoxit/sevdesk-rs](https://github.com/jernoxit/sevdesk-rs) (`invoicePosSave` and
   `creditNotePosSave` requests whose answers are recorded in `tests/fixtures/write_invoice_save.json`
   and `write_credit_note_save.json`); `orderPosSave` in the working order bodies of
   [codestra/sevdesk-mcp](https://github.com/codestra/sevdesk-mcp/blob/5de1725c4758ea102fce079329a05b26e5b0f1bb/src/tools/orders.ts)
-  (community, not recorded).
+  (community, not recorded); recorded 2026-11-08, trial account, Update 2.0 (probes
+  `write-voucher-save-with-file`, `write-voucher-update-draft`).
 - **Impact:** The draft builders send `invoicePosSave`/`creditNotePosSave`/`orderPosSave` only;
   the strict body schemas in `src/domain/drafts/payloads.ts` have no `*Pos` key, and our schemas
-  do not copy the spec's `required` lists. `voucherPosSave` follows with the voucher writes (M4).
-  How `*PosDelete` is typed: D-054.
+  do not copy the spec's `required` lists. The voucher writes send `voucherPosSave` only
+  (`saveVoucherBodySchema` in `src/domain/drafts/voucher-payload.ts` has no `voucherPos`). How
+  `*PosDelete` is typed: D-054.
 - **Test:** `test/unit/domain/drafts/payloads.test.ts` ("refuses the spec's non-existent
   invoicePos as an internal error"), `test/regressions/b8-price-fields.test.ts` (positions under
   `invoicePosSave`, `creditNotePosSave`, `orderPosSave`),
   `test/unit/tools/drafts/invoice-update-draft.test.ts` ("replaces all positions in one request
-  (deletes the stored ones)"). `saveVoucher`: pending (M4).
+  (deletes the stored ones)"). `saveVoucher`: `test/unit/domain/vouchers-write.test.ts` ("refuses
+  the spec's non-existent voucherPos as an internal error"),
+  `test/unit/tools/vouchers/create-draft.test.ts` ("creates an expense draft with tax rule 9 and
+  the exact body (D-004: voucherPosSave)").
 
 ### D-005: `Model_Invoice` requires tax fields of both system versions
 
@@ -294,7 +326,7 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 
 ### D-006: `taxRule` id enums are incomplete
 
-- **Status:** Partly fixed upstream. **Evidence:** spec + community.
+- **Status:** Partly fixed upstream. **Evidence:** spec + community + recorded.
 - **Spec says:** `taxRule.id` is a string enum. On invoices, orders and credit notes it is now
   `1, 2, 3, 4, 5, 11, 17, 18, 19, 20, 21`. On vouchers (`Model_Voucher`, `Model_VoucherResponse`,
   `Model_VoucherUpdate`) it is still `1, 2, 3, 4, 5, 11`: the revenue rules only. The spec's own
@@ -306,27 +338,39 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   'SMALL_BUSINESS'. Allowed tax rules: TaxRule(id=10, …), TaxRule(id=13, …)" (recorded, D-067).
   The recorded `GET /TaxRule` lists 20 rules, 1–5 and 8–22, rule 22 included. Credit notes with
   booking category `PROVISION` take the expense rule 9 and refuse rule 1 ("Invalid tax rule"),
-  although the credit note enum allows only revenue rules.
+  although the credit note enum allows only revenue rules. sevDesk does not check the rule against
+  the booking account on a voucher draft: an expense voucher on the expense account 6815 with the
+  revenue rule 1 was saved as a draft (status 50) without complaint (recorded 2026-11-08). Whether
+  finalizing it would be refused was not tried.
 - **Sources:** [j-mastr/sevdesk-api#68](https://github.com/j-mastr/sevdesk-api/pull/68),
   [joosthel/sevdesk-mcp#2](https://github.com/joosthel/sevdesk-mcp/pull/2), spec overview;
   [jernoxit/sevdesk-rs](https://github.com/jernoxit/sevdesk-rs) `src/endpoints/credit_note.rs`
   (PROVISION and rule 9, measured 2026-09-29, not recorded); recorded 2026-11-07, trial account,
   Update 2.0 (probe `write-numbering-credit-note` while the account was still a Kleinunternehmer;
-  `test/fixtures/recorded/2026-11-07/meta/tax-rules.json`).
+  `test/fixtures/recorded/2026-11-07/meta/tax-rules.json`); recorded 2026-11-08, trial account,
+  Update 2.0 (probe `write-voucher-invalid-account-rule`).
 - **Impact:** Response schemas accept any id string. Sales drafts (invoices, orders, credit
   notes) accept the rules of the spec's sales-document enum (`SALES_TAX_RULE_IDS` in
   `src/domain/drafts/tax.ts`), narrowed to the account's taxation regime (D-067); provision credit
   notes accept rule 9 only, or rule 10 (default) or 13 on a Kleinunternehmer account
   (`src/domain/drafts/credit-note.ts`; the regime part is a fix in this PR). For receipts, `validateAccountTaxRule`
   (`src/domain/receipt-guidance.ts`) checks account × tax rule × tax rate against the cached
-  ReceiptGuidance instead of a static enum (D-065); the voucher writes that call it follow in M4.
+  ReceiptGuidance instead of a static enum (D-065). Every voucher write (create, an update that
+  changes the rule, finalize, the e-invoice import) calls it for each position before sending
+  (`checkVoucherAccounts` in `src/domain/drafts/voucher-checks.ts`); since sevDesk accepts any
+  combination on a draft, this check is the only guard (B2).
 - **Test:** `test/regressions/b9-reference-ids.test.ts` (all tax-rule ids, checked against the
   recorded `GET /TaxRule`), `test/unit/domain/drafts/tax.test.ts` ("covers exactly the spec's
   sales-document rule enum"), `test/unit/tools/drafts/credit-note-create-draft.test.ts` ("uses
   tax rule 9 for a provision credit note without a source invoice", "a provision credit note with
   tax rule 1"), `test/unit/domain/receipt-guidance.test.ts` ("checkAccountTaxRule",
   "validateAccountTaxRule"), `test/contract/recorded-fixtures.test.ts` ("knows exactly the tax
-  rules of the recorded GET /TaxRule, with the same codes").
+  rules of the recorded GET /TaxRule, with the same codes"). Vouchers:
+  `test/regressions/b2-account-datev.test.ts` ("refuses a revenue account on an expense voucher,
+  with the allowed alternatives", "checks the stored positions again when an update changes the
+  tax rule", "checks a stored draft once more before it is finalized"),
+  `test/unit/tools/vouchers/create-draft.test.ts` ("refuses account × rule × rate combinations
+  the ReceiptGuidance rejects (B2)"). Live: probe `write-voucher-invalid-account-rule`.
 
 ### D-007: Voucher `status` and `recurringInterval` enums are too narrow
 
@@ -398,35 +442,73 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 
 ### D-011: `uploadTempFile` media type and `filename` type are wrong
 
-- **Status:** Open. **Evidence:** spec.
+- **Status:** Open. **Evidence:** spec + recorded.
 - **Spec says:** `POST /Voucher/Factory/uploadTempFile` declares the request media type
-  `form-data`, which is not a valid media type. The `filename` that `saveVoucher` and
+  `form-data`, which is not a valid media type, and an answer with `pages`, `mimeType`,
+  `originMimeType`, `filename`, `contentHash` and `content`. The `filename` that `saveVoucher` and
   `saveInvoice` take is declared `type: string, format: binary`, as if it were file content.
-- **Actual behavior:** The upload is `multipart/form-data` with a `file` part. The response
-  (`objects.filename`) is a plain string token such as `f019bec36c65f5a0e7d2c63cc33f0681.pdf`, and
-  `saveVoucher` takes that string. The response also carries a base64 JPEG preview in
-  `objects.content` that can be about 100 KB even for tiny files.
+- **Actual behavior:** The upload is `multipart/form-data` with one part `file`. Recorded
+  2026-11-08: the answer, wrapped in `objects` (D-001), has the six declared keys plus an
+  undeclared `isEInvoice`. `filename` is a plain string token (32 hex characters and the file's
+  extension, like the spec's `f019bec36c65f5a0e7d2c63cc33f0681.pdf`), and `saveVoucher` takes that
+  string (D-026). For a PDF, `mimeType` is `image/jpg` (the preview's) and `originMimeType`
+  `application/pdf`; `content` is a list of one base64 JPEG preview of 110,000 to 116,000
+  characters even for a PDF of 1.5 KB (a 70-byte PNG: 96 characters). `isEInvoice` is `false` for
+  a plain PDF or PNG and `true` for a Factur-X PDF; when that file is saved as a voucher, nothing
+  of its XML is taken over (supplier, sums and dates stay as sent, and the voucher has no
+  e-invoice key). Plain text is refused with 415 "File type not supported".
 - **Sources:** spec; [joosthel/sevdesk-mcp#2](https://github.com/joosthel/sevdesk-mcp/pull/2)
-  (preview size).
-- **Impact:** The client sends `multipart/form-data`. `filename` is modeled as a string. The
-  preview is stripped before anything reaches the model.
-- **Test:** pending (M4): receipt upload.
+  (preview size); recorded 2026-11-08, trial account, Update 2.0 (probes
+  `write-voucher-upload-temp-file`, `write-voucher-zugferd-upload`, in both write runs).
+- **Impact:** `uploadForm` (`src/domain/drafts/voucher-payload.ts`) sends one multipart part
+  `file`; `filename` is modeled as a string token. `readUploadAnswer` keeps only the token, the
+  page count and `isEInvoice`; the preview is never parsed and never reaches the model (B6). A
+  receipt must be a PDF, PNG or JPEG, checked by content before the upload (`RECEIPT_FILE_KINDS`
+  in `src/domain/drafts/voucher-checks.ts`), so the 415 is not reached; XML goes only through the
+  e-invoice import, which reads the XML itself. When sevDesk flags an upload as an e-invoice, the
+  create tool points to `sevdesk_voucher_import_einvoice`.
+- **Test:** `test/unit/domain/vouchers-write.test.ts` ("builds one multipart part `file` with the
+  sniffed MIME type", "keeps the token and page count, never the preview content"),
+  `test/regressions/b5-voucher-filename.test.ts` (the multipart part on the wire),
+  `test/regressions/b6-upload-preview-stripped.test.ts`,
+  `test/unit/tools/vouchers/create-draft.test.ts` ("hints at the e-invoice import when sevDesk
+  recognizes the file as an e-invoice"), `test/unit/tools/vouchers/update-draft.test.ts` ("refuses
+  an XML file as a receipt (only the e-invoice import takes XML)"). Live: probes
+  `write-voucher-upload-temp-file`, `write-voucher-zugferd-upload`.
 
 ### D-012: Export endpoints return raw CSV or ZIP with `download=true`
 
-- **Status:** Open. **Evidence:** spec + community.
+- **Status:** Open. **Evidence:** spec + community + recorded.
 - **Spec says:** The `/Export/*` endpoints declare only an `application/json` response
   (`{objects: {filename, mimetype, base64Encoded, content}}`, described as "Successful operation
   without download") although they take a `download` parameter. `/Export/datevCSV` is
   `deprecated` and declares a bare `object`.
 - **Actual behavior:** With `download=true` the body is the raw CSV or ZIP file, not JSON.
-- **Sources:** spec; [peerigon/sevdesk README](https://github.com/peerigon/sevdesk#readme).
+  Recorded 2026-11-08 for `invoiceCsv`, `voucherListCsv`, `transactionsCsv` and `contactListCsv`:
+  `Content-Type: text/csv; charset=UTF-8`, UTF-8 with a byte order mark, `;` as separator, a
+  quoted German header row and LF line ends; the headers have 15, 14, 6 and 38 columns, counting
+  unnamed ones at the end (each line ends with a separator). Without `download`, `invoiceCsv`
+  answers the declared JSON with `mimetype` `text/csv` and `base64Encoded` `true`. `creditNoteCsv`
+  was not probed. The `sevQuery[filter][startDate|endDate]` date filters take **Unix seconds**
+  although the spec says date-time: filtered to one day, `invoiceCsv` returned exactly that day's
+  7 of 88 invoices with Unix seconds, and 0 rows with ISO date-time or `dd.mm.yyyy`. The DATEV
+  export is a job with a download link instead (D-077).
+- **Sources:** spec; [peerigon/sevdesk README](https://github.com/peerigon/sevdesk#readme);
+  recorded 2026-11-08, trial account, Update 2.0 (probes `read-export-csv`, two runs, and
+  `read-export-csv-date-filter`).
 - **Impact:** `client.download` (`src/sevdesk/client.ts`) returns the raw body with its
   `Content-Type` instead of parsing JSON, so the caller decides by the type, not by the endpoint.
-  The export tools are to write files to `SEVDESK_OUTPUT_DIR` or return resources; the bytes never
-  go through the model.
-- **Test:** `test/unit/sevdesk/client.test.ts` ("download": raw bytes and their content type).
-  Export tools: pending (M4, with DATEV).
+  `sevdesk_export_csv` (`exportCsv` in `src/domain/exports/csv.ts`) asks for `download=true`,
+  writes the bytes unchanged (byte order mark included) to `SEVDESK_OUTPUT_DIR` and returns only
+  the file's size and row count; a JSON answer is decoded from its base64 `content` instead. The
+  bytes never go through the model.
+- **Test:** `test/unit/sevdesk/client.test.ts` ("download": raw bytes and their content type),
+  `test/unit/domain/exports/csv.test.ts` ("keeps the bytes as sent and counts the data rows": a
+  sample in the recorded format; "decodes the JSON form with base64 content"),
+  `test/unit/tools/reports/export-tools.test.ts` ("saves sevDesk's CSV as it is and reports size
+  and rows, never the content"), `test/unit/domain/exports/csv.test.ts` ("the date filter": "is
+  sent as Unix seconds (verified for invoiceCsv) …"; "checkCsvPeriod": the downloaded rows are
+  checked against the period). Live: probes `read-export-csv`, `read-export-csv-date-filter`.
 
 ### D-013: Invoice `bookAmount` response has copy-paste errors
 
@@ -441,24 +523,31 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   keys and `creditNote` instead of `invoice`; its `ammountPayed` carries the sign that was sent
   (`"-119"`). `fromStatus`/`toStatus` show the status change (200 → 750 → 1000 for a partial and a
   final payment). `bookingDate` is 12:00 Berlin for a Unix timestamp of 12:00 and 00:00 Berlin for
-  `dd.mm.yyyy` (D-056). The voucher's answer, recorded by another project, is a `VoucherLog`
-  with `amountPayed` (one m).
-- **Sources:** spec (`bookInvoice`, `bookCreditNote`);
+  `dd.mm.yyyy` (D-056). The voucher's answer is a `VoucherLog` with `id`, `objectName`,
+  `additionalInformation`, `create`, `voucher`, `fromStatus`, `toStatus`, `amountPayed` (one m),
+  `bookingDate` and `sevClient` (recorded by another project and by us, 2026-11-08); unlike the
+  credit note's, its `amountPayed` is unsigned (`"10"` for a booking of −10, `"119"` for −119 and
+  for +119).
+- **Sources:** spec (`bookInvoice`, `bookCreditNote`, `bookVoucher`);
   [jernoxit/sevdesk-rs](https://github.com/jernoxit/sevdesk-rs)
   `tests/fixtures/write_voucher_book_amount.json` (recorded `PUT /Voucher/{id}/bookAmount`);
   recorded 2026-11-07, trial account, Update 2.0 (probes `write-book-amount`,
-  `write-credit-note-payout-sign`).
+  `write-credit-note-payout-sign`); recorded 2026-11-08 (probe `write-voucher-book-amount`).
 - **Impact:** We do not model this response. The booking tools
-  (`src/tools/lifecycle/book-payment.ts`) ignore the answer apart from the envelope and read the
-  invoice or credit note back (`paidAmount`, `status`) instead of trusting the log entry, so the
-  misnamed keys do not matter.
+  (`src/tools/lifecycle/book-payment.ts`, and `sevdesk_transaction_book` through
+  `src/domain/reconciliation/allocate.ts`) ignore the answer apart from the envelope and read the
+  invoice, credit note or voucher back (`paidAmount`, `status`) instead of trusting the log entry,
+  so the misnamed keys and the voucher's unsigned amount do not matter.
 - **Test:** `test/unit/tools/lifecycle/book-payment.test.ts` ("books the full open amount linked
   to the bank transaction and reads the invoice back"),
-  `test/regressions/b7-payment-linking.test.ts`; fixtures
-  `test/fixtures/lifecycle/invoice-book-amount.json` and `credit-note-book-amount.json` (built from
-  the recorded VoucherLog, so their key names differ from the real `InvoiceLog`/`CreditNoteLog`;
-  harmless while the answer is ignored). The real answer: probes `write-book-amount`,
-  `write-credit-note-payout-sign`.
+  `test/regressions/b7-payment-linking.test.ts`,
+  `test/unit/tools/lifecycle/voucher-lifecycle.test.ts`; fixtures
+  `test/fixtures/lifecycle/invoice-book-amount.json` (the recorded `InvoiceLog` keys, values
+  fake), `credit-note-book-amount.json` (still built from the community `VoucherLog`, so it spells
+  `amountPayed` where the recorded `CreditNoteLog` has `ammountPayed`; harmless while the answer is
+  ignored) and `test/fixtures/vouchers/voucher-book-amount.json` (the spec's `VoucherLog`, the
+  recorded keys without `additionalInformation`). The real answers: probes `write-book-amount`,
+  `write-credit-note-payout-sign`, `write-voucher-book-amount`.
 
 ### D-014: `accountIntervall` example is a date
 
@@ -507,12 +596,16 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   `Model_CheckAccountTransactionResponse` the two descriptions are the other way round.
 - **Actual behavior:** At most one of the two can be right. The recorded transaction has both
   dates equal, so it does not settle the question; so do all eight transactions of our recording
-  (created by bookings, D-071, and one cash entry). The list filters `startDate`/`endDate`
-  compare `entryDate` (D-047). The response model also has status 350 (D-031).
+  (created by bookings, D-071, and one cash entry). A transaction created through
+  `POST /CheckAccountTransaction` with a `valueDate` three days before its `entryDate` reads both
+  back as sent (recorded 2026-11-08); that does not tell which description is right either. The
+  list filters `startDate`/`endDate` compare `entryDate` (D-047). The response model also has
+  status 350 (D-031).
 - **Sources:** spec;
   [emuuu/sevDesk.NET recorded responses](https://github.com/emuuu/sevDesk.NET) (2026-02-19);
   recorded 2026-11-07, trial account, Update 2.0 (probe `read-transaction-date-filters`:
-  inconclusive). Settling it needs imported bank transactions with different dates.
+  inconclusive); recorded 2026-11-08 (probe `write-transaction-create`). Settling it needs
+  imported bank transactions with different dates.
 - **Impact:** The transaction DTO keeps both dates and describes each one. `valueDate` is treated
   as the transaction's date because the request model requires it, and date ranges apply to it by
   default. `entryDate` is an optional second date (the import date per the request model); a range
@@ -589,14 +682,15 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   which the spec does not declare for `GET /CheckAccountTransaction`, works: `status=100` returns
   only transactions in that status. Recorded: on eight booked (400) transactions, `isBooked=1`,
   `isBooked=0` and `isBooked=false` all returned the eight (so `0` and `false` do not select
-  unbooked rows), and `status=400` returned only rows with that status. The `depth` default could
-  not be checked: the trial account had no person contact.
+  unbooked rows), and `status=400` returned only rows with that status; on 2026-11-08 `status=100`
+  returned only the 3 rows at 100 of 28. The `depth` default could not be checked: the trial
+  account had no person contact.
 - **Sources:** [genz-its/sevdesk](https://github.com/genz-its/sevdesk) docs and
   [`CLAUDE.md`](https://github.com/genz-its/sevdesk/blob/main/CLAUDE.md);
   [jernoxit/sevdesk-rs `src/query.rs`](https://github.com/jernoxit/sevdesk-rs/blob/main/src/query.rs)
   (measured); recorded 2026-11-07, trial account, Update 2.0 (probes
   `read-transaction-boolean-filters`, `read-transaction-status-filter`; `read-contact-depth`
-  inconclusive).
+  inconclusive); recorded 2026-11-08 (probe `read-transaction-status-filter`).
 - **Impact:** The client serializes booleans as `1`/`0` and always sends `depth=1` for contact
   lists. `sevdesk_transactions_list` never sends `isBooked`. With exactly one status (for example
   `created`) it sends `status=<code>` to narrow the read; several statuses cannot go into one
@@ -685,13 +779,20 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   and credit note finalized with `sendBy` carried an `enshrined` timestamp within seconds, so
   automatic enshrining was on there; orders have no `enshrined` field.
 
+  The DATEV export job is not a GET at all (recorded 2026-11-08): a GET of
+  `/Export/createDatevCsvZipExportJob` is refused with 500 "Function createDatevCsvZipExportJob
+  was called with wrong HTTP Type", and the job starts with a POST carrying the same query (D-077).
+  Started without `enshrineDocuments`, it left an invoice and a voucher of the exported period
+  unchanged. The XML job and the deprecated `/Export/datevCSV` were not probed.
+
 - **Sources:** spec; [joosthel/sevdesk-mcp v0.5.0](https://github.com/joosthel/sevdesk-mcp/releases/tag/v0.5.0)
   changelog; [jernoxit/sevdesk-rs](https://github.com/jernoxit/sevdesk-rs) (README and
   `src/endpoints/invoice.rs`, measured 2026-11-05);
   [firsttris/haben `docs/sevdesk.md`](https://github.com/firsttris/haben/blob/main/docs/sevdesk.md);
   recorded 2026-11-07, trial account, Update 2.0 (probes `write-getpdf-preview-drafts`,
   `read-getpdf-preview-finalized`, `read-getpdf-download`; `enshrined` in the recorded invoice and
-  credit note lists).
+  credit note lists); recorded 2026-11-08 (probe `write-export-datev-csv`, first write run and the
+  DATEV run).
 - **Impact:** The client recognizes these endpoints by path (`resolveGetSafety` in
   `src/sevdesk/paths.ts`), not only through the caller's `sideEffect` flag. A `getPdf` that is not
   declared a side effect always goes out with the literal `preventSendBy=true`, the form both
@@ -704,7 +805,12 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   `sevdesk_order_pdf`) and the `sevdesk://…/pdf` resources pass `preventSendBy` explicitly as
   well and never send `download`. The finalize and send-email tools
   (`src/tools/lifecycle/finalize.ts`, `src/tools/lifecycle/send-email.ts`) warn in their previews
-  that an invoice or credit note is also enshrined if the account enshrines on completion.
+  that an invoice or credit note is also enshrined if the account enshrines on completion. The
+  DATEV export (`startDatevExportJob` in `src/domain/exports/datev.ts`) sends the job start as a
+  POST, a `write` that is never retried, with a query built from a fixed key list that never holds
+  `enshrineDocuments`. The client still treats the spec's GET form as a side effect
+  (`EXPORT_JOB_ENDPOINTS` in `src/sevdesk/paths.ts`) and any `enshrine`/`enshrineDocuments` flag as
+  `commit`, so neither form can pass as a read.
 - **Test:** `test/regressions/getpdf-side-effect-blocked.test.ts` (flagged and unflagged
   side-effect GETs), `test/regressions/b1-getpdf-prevent-send.test.ts` (PDF tools and resources
   through the real client in read-only mode: one GET with `preventSendBy=true`, no `download`),
@@ -714,39 +820,48 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   `test/unit/tools/lifecycle/finalize.test.ts` ("warns that the invoice becomes binding and may
   be enshrined automatically"), `test/contract/recorded-fixtures.test.ts` ("fetches the %s from
   the recorded answer", for each kind; "D-023, D-059: finalizing enshrined invoices and credit
-  notes on the trial account…"). Order drafts on Update 2.0: pending: recording session, probe
-  `write-getpdf-preview-drafts` (no order draft without a number, D-027).
+  notes on the trial account…"). DATEV job: `test/unit/domain/exports/datev.test.ts` ("starts the
+  job with a POST and the query, and reads the id", "builds the scope in the spec's order and
+  never sends enshrineDocuments"), `test/unit/sevdesk/paths.test.ts` ("treats the DATEV export job
+  %s as a side effect", "treats DATEV exports with an enshrine flag as commit"),
+  `test/unit/sevdesk/client.test.ts` ("treats starting a DATEV export job with %j as a write (it
+  starts a job)", "never retries a DATEV export job (a retry would start a second job)"). Order
+  drafts on Update 2.0: pending: recording session, probe `write-getpdf-preview-drafts` (no order
+  draft without a number, D-027).
 
 ### D-024: Undocumented endpoints we rely on
 
 - **Status:** Open. **Evidence:** community + recorded.
 - **Spec says:** None of these endpoints appear in the spec.
 - **Actual behavior:** They exist and other integrations use them. "Recorded" means our recording
-  session read or measured the endpoint on a trial account (2026-11-07); "known" means community
-  SDKs use it routinely; "uncertain" means we found only isolated uses.
+  sessions read or measured the endpoint on a trial account (2026-11-07 or 2026-11-08); "known"
+  means community SDKs use it routinely; "uncertain" means we found only isolated uses.
 
-  | Endpoint                                                                               | Used for                                                       | Standing  |
-  | -------------------------------------------------------------------------------------- | -------------------------------------------------------------- | --------- |
-  | `GET /SevUser`                                                                         | `contactPerson`, required on invoices, orders and credit notes | recorded  |
-  | `GET /StaticCountry`                                                                   | country ids for addresses                                      | recorded  |
-  | `GET /PaymentMethod`                                                                   | payment method ids                                             | recorded  |
-  | `GET /Unity`                                                                           | units for positions                                            | recorded  |
-  | `GET /AccountDatev`                                                                    | booking accounts (update 2.0)                                  | recorded  |
-  | `GET /Category`                                                                        | categories                                                     | recorded  |
-  | `GET /TaxRule`                                                                         | tax rule ids and codes (D-006)                                 | recorded  |
-  | `GET /SevClient`                                                                       | the account's taxation regime and chart of accounts (D-067)    | recorded  |
-  | `GET /Order/Factory/getNextOrderNumber`, `/CreditNote/Factory/getNextCreditNoteNumber` | the next order and credit note numbers (D-066)                 | recorded  |
-  | `DELETE /Invoice/{invoiceId}`                                                          | deleting a draft invoice (no tool uses it)                     | recorded  |
-  | `GET /TextTemplate`                                                                    | head and foot texts                                            | known     |
-  | `GET /PartUnity`                                                                       | units for parts                                                | known     |
-  | `GET /Document`, document download                                                     | attached documents and receipts                                | known     |
-  | `GET /SevSequence/Factory/getByType`                                                   | next document number (see D-027)                               | known     |
-  | `DELETE /Voucher/{voucherId}`                                                          | deleting draft vouchers (the spec has only GET and PUT)        | uncertain |
-  | `POST /Voucher/Factory/createVoucherFromFile`                                          | voucher from an uploaded file                                  | uncertain |
+  | Endpoint                                                                               | Used for                                                                                  | Standing  |
+  | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | --------- |
+  | `GET /SevUser`                                                                         | `contactPerson`, required on invoices, orders and credit notes                            | recorded  |
+  | `GET /StaticCountry`                                                                   | country ids for addresses                                                                 | recorded  |
+  | `GET /PaymentMethod`                                                                   | payment method ids                                                                        | recorded  |
+  | `GET /Unity`                                                                           | units for positions                                                                       | recorded  |
+  | `GET /AccountDatev`                                                                    | booking accounts (Update 2.0): names and kinds for previews (D-079)                       | recorded  |
+  | `GET /Category`                                                                        | categories                                                                                | recorded  |
+  | `GET /TaxRule`                                                                         | tax rule ids and codes (D-006)                                                            | recorded  |
+  | `GET /SevClient`                                                                       | the account's taxation regime, chart of accounts, company data and DATEV settings (D-067) | recorded  |
+  | `GET /Order/Factory/getNextOrderNumber`, `/CreditNote/Factory/getNextCreditNoteNumber` | the next order and credit note numbers (D-066)                                            | recorded  |
+  | `GET /CheckAccountTransactionLog`                                                      | what a bank transaction was booked against, and how much (D-057)                          | recorded  |
+  | `DELETE /Invoice/{invoiceId}`                                                          | deleting a draft invoice (no tool uses it)                                                | recorded  |
+  | `DELETE /Voucher/{voucherId}`                                                          | deleting draft vouchers (the spec has only GET and PUT; D-074)                            | recorded  |
+  | `GET /TextTemplate`                                                                    | head and foot texts                                                                       | known     |
+  | `GET /PartUnity`                                                                       | units for parts                                                                           | known     |
+  | `GET /Document`, document download                                                     | attached documents and receipts                                                           | known     |
+  | `GET /SevSequence/Factory/getByType`                                                   | next document number (see D-027)                                                          | known     |
+  | `POST /Voucher/Factory/createVoucherFromFile`                                          | voucher from an uploaded file (no tool uses it)                                           | uncertain |
 
   Recorded shapes: `GET /AccountDatev` rows have 28 keys (`number`, `name`, `accountDatevCategory`,
-  `accountCategory`, …), scalars as strings, and GET by id answers one row; `DELETE` on a draft
-  invoice answers 2xx, after which GET answers 404. The 2026 PDF post (D-025) also names `render`,
+  `accountCategory`, …), scalars as strings, and GET by id answers one row; the list ignores every
+  filter (D-079). `DELETE` on a draft invoice answers 2xx, after which GET answers 404;
+  `DELETE /Voucher/{voucherId}` on a draft answers `{objects: [null]}` and then 404 too, and
+  refuses an open voucher with 409 (D-074). The 2026 PDF post (D-025) also names `render`,
   `changeParameter` and `sendByWithRender` endpoints for orders, credit notes and letters that the
   spec does not list.
 
@@ -756,16 +871,22 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   (`createVoucherFromFile`); recorded 2026-11-07, trial account, Update 2.0 (the reads in
   `test/fixtures/recorded/2026-11-07/meta/`; probes `read-account-datev`,
   `write-delete-draft-invoice`, `write-next-order-number`; `GET /SevClient` and the credit note
-  numbers: manual check (lead)).
+  numbers: manual check (lead)); recorded 2026-11-08, trial account, Update 2.0 (probes
+  `read-account-datev-paging`, `read-sevclient-keys`, `read-transaction-log`,
+  `write-voucher-delete`).
 - **Impact:** Each undocumented endpoint gets a hand-written schema, a smoke test, and lives in
   the `advanced` toolset or behind a lookup until a recording confirms its shape. `uncertain`
-  endpoints are not used by default tools.
+  endpoints are not used by default tools: receipts go through `uploadTempFile` and `saveVoucher`
+  (D-011, D-026), never `createVoucherFromFile`.
 - **Test:** `test/unit/tools/meta/reference-lookup.test.ts`,
   `test/unit/tools/meta/account-info.test.ts` (`/SevUser`, `/StaticCountry`, `/Unity`,
   `/PaymentMethod`), `test/regressions/b3-contact-person.test.ts` (`/SevUser` for the contact
   person of drafts), `test/contract/recorded-fixtures.test.ts` (the recorded reference lists
-  through their readers). Next-number endpoints and `/SevClient`: D-066, D-067. Others: pending
-  with their tools.
+  through their readers, `/AccountDatev` included). `/AccountDatev`:
+  `test/unit/domain/accounts-datev.test.ts` (D-079). `DELETE /Voucher/{voucherId}`:
+  `test/unit/tools/vouchers/finalize-delete.test.ts` (D-074). Next-number endpoints,
+  `/CheckAccountTransactionLog` and `/SevClient`: D-066, D-057, D-067. `GET /TextTemplate`,
+  `/PartUnity`, `/Document` and `/SevSequence/Factory/getByType`: no tool uses them.
 
 ### D-025: PDF rendering returns one base64 `pdf` since 2026-04-07
 
@@ -794,18 +915,29 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072).
 
 ### D-026: `saveVoucher` key order and top-level `filename`
 
-- **Status:** Open. **Evidence:** spec + community.
+- **Status:** Open. **Evidence:** spec + community + recorded.
 - **Spec says:** The `saveVoucher` description says "the order of the last two attributes always
   needs to be kept" (`voucherPosDelete`, then `filename`), and `uploadTempFile` says the file is
   attached only if all parameters are "in the right order". `filename` is a top-level property of
   `saveVoucher`.
 - **Actual behavior:** `filename` must be top-level, next to `voucher`. Inside `voucher` it is
-  dropped silently (D-003), and the voucher has no document.
-- **Sources:** spec; [joosthel/sevdesk-mcp#2](https://github.com/joosthel/sevdesk-mcp/pull/2).
-- **Impact:** The `saveVoucher` builder emits keys in a fixed order (`voucher`, `voucherPosSave`,
-  `voucherPosDelete`, `filename`) and the read-back checks that `document` is set (but see D-044:
-  voucher reads can omit `document`).
-- **Test:** pending (M4): voucher upload, plus regression test B5.
+  dropped silently (D-003), and the voucher has no document. Recorded 2026-11-08: a draft saved
+  with the upload token at the top level got its document both in the spec's key order and with
+  `filename` as the first key, so the key order does not matter; the same token inside `voucher`
+  gave a draft without a document (and without a `document` key, D-044).
+- **Sources:** spec; [joosthel/sevdesk-mcp#2](https://github.com/joosthel/sevdesk-mcp/pull/2);
+  recorded 2026-11-08, trial account, Update 2.0 (probe `write-voucher-save-with-file`).
+- **Impact:** The `saveVoucher` builder (`saveVoucherBodySchema` in
+  `src/domain/drafts/voucher-payload.ts`) emits the keys in the spec's order (`voucher`,
+  `voucherPosSave`, `voucherPosDelete`, `filename`), which costs nothing although the order does
+  not matter, and refuses a `filename` inside `voucher` as an internal error. After a write with a
+  receipt, the read-back notes a missing or `null` `document` (D-044).
+- **Test:** `test/regressions/b5-voucher-filename.test.ts` ("uploads the file as multipart, then
+  saves with filename after voucherPosDelete"), `test/unit/domain/vouchers-write.test.ts` ("keeps
+  the key order voucher, voucherPosSave, voucherPosDelete, filename", "refuses a filename inside
+  voucher as an internal error"), `test/unit/tools/vouchers/create-draft.test.ts` ("attaches a
+  receipt: uploads first, then sends filename at the top level, last (B5)"). Live: probe
+  `write-voucher-save-with-file`.
 
 ### D-027: Document numbers are assigned on finalizing and can show placeholders
 
@@ -920,9 +1052,10 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072).
 - **Status:** Open. **Evidence:** spec.
 - **Spec says:** The CheckAccountTransaction tag docs list statuses 100, 200, 300 and 400.
 - **Actual behavior:** The transaction response model also allows 350 ("auto-booked without
-  confirmation"). Not seen yet: every transaction of the trial account was at 400 (recorded).
-- **Sources:** `spec/openapi.yaml` (`Model_CheckAccountTransactionResponse`); recorded 2026-11-07,
-  trial account, Update 2.0 (probe `read-transaction-status-filter`).
+  confirmation"). Not seen yet: every transaction of the trial account was at 400 (recorded
+  2026-11-07), and at 100 or 400 on 2026-11-08.
+- **Sources:** `spec/openapi.yaml` (`Model_CheckAccountTransactionResponse`); recorded 2026-11-07
+  and 2026-11-08, trial account, Update 2.0 (probe `read-transaction-status-filter`).
 - **Impact:** Reference data includes 350. `sevdesk_transactions_list` labels it ("Auto-booked
   without user confirmation") and can filter for it (`auto_booked`).
 - **Test:** `test/regressions/b9-reference-ids.test.ts` (status list),
@@ -1174,29 +1307,45 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072).
   also be a partial amount." Nothing about its sign. Booking a credit note is "exactly the same as
   the process for invoices and vouchers".
 - **Actual behavior:** The amount is signed as the money moves on the check account: negative for
-  an expense voucher (`creditDebit` `C`), positive for revenue (`D`). A positive amount on an
-  expense voucher is accepted without an error and stored as a negative `paidAmount`; the voucher
-  then stays partially paid (750) with no `payDate`. Credit notes behave the same way (recorded):
-  −119 on an open credit note of 119 pays it out (200 → 1000, `payDate` set), while +119 is
-  accepted without an error and leaves it partially paid (200 → 750, no `payDate`). Invoices take
-  positive amounts.
+  an expense voucher (`creditDebit` `C`), positive for revenue (`D`). genz-its reports that a
+  positive amount on an expense voucher is accepted without an error and stored as a negative
+  `paidAmount`, the voucher then staying partially paid (750) with no `payDate`. Credit notes
+  behave that way (recorded): −119 on an open credit note of 119 pays it out (200 → 1000,
+  `payDate` set), while +119 is accepted without an error and leaves it partially paid (200 → 750,
+  no `payDate`). Invoices take positive amounts. Recorded for vouchers (2026-11-08): on an expense
+  voucher of 119, three bookings of −10 (type `N`) moved it to 750 with `paidAmount` 10, 20 and 30
+  (positive), and −119 `FULL_PAYMENT` paid another one in full (1000). A +119 `FULL_PAYMENT` on an
+  expense voucher was accepted as well and paid it in full (1000, `paidAmount` 119, `payDate`
+  set): for a full payment sevDesk does not enforce the sign. The positive partial booking
+  genz-its describes was not repeated.
 - **Sources:** [genz-its/sevdesk `CLAUDE.md`](https://github.com/genz-its/sevdesk/blob/main/CLAUDE.md)
   (vouchers, verified against a live account); [jernoxit/sevdesk-rs](https://github.com/jernoxit/sevdesk-rs)
   README (credit notes, measured, not recorded); recorded 2026-11-07, trial account, Update 2.0
-  (probe `write-credit-note-payout-sign`).
+  (probe `write-credit-note-payout-sign`); recorded 2026-11-08 (probe `write-voucher-book-amount`,
+  second write run).
 - **Impact:** `bookingAmountSign` in `src/domain/vouchers.ts` gives the sign for each voucher
   kind. The payment tools send invoice payments positive and credit note payouts negative
   (`paymentSign` in `src/domain/lifecycle/payments.ts`, via `bookingAmountSign`), and link a
-  credit note payout only to an outgoing transaction. The voucher tools already warn about a
-  negative `paidAmount`, the trace a wrongly signed booking leaves; booking vouchers follows with
-  the voucher writes (M4).
+  credit note payout only to an outgoing transaction. Voucher payments
+  (`sevdesk_voucher_book_payment`, and `sevdesk_transaction_book` in bank reconciliation) are
+  signed by the voucher's `creditDebit` the same way, expenses negative and revenue positive,
+  although sevDesk would take either sign for a full payment; they link only a transaction that
+  moves money in that direction. A voucher with a negative `paidAmount`, the trace a wrongly signed
+  booking leaves, is refused for further payments.
 - **Test:** `test/regressions/expense-sign.test.ts`, `test/unit/domain/lifecycle/payments.test.ts`
   ("sends a credit note payout as a negative amount (money out)"),
   `test/unit/tools/lifecycle/book-payment.test.ts` ("sends the payout as a negative amount and
   says so in the preview", "links only an outgoing transaction"),
   `test/regressions/b7-payment-linking.test.ts` ("links an outgoing transaction to a credit note
   payout with the negative amount"). Credit notes live: probe `write-credit-note-payout-sign`.
-  Vouchers: pending (M4).
+  Vouchers: `test/unit/domain/lifecycle/vouchers.test.ts` ("signs by the voucher's own direction
+  (D-041)"), `test/unit/tools/lifecycle/voucher-lifecycle.test.ts` ("pays an expense voucher with
+  a negative amount, linked to an outgoing transaction (D-041)", "pays a revenue voucher with a
+  positive amount and refuses an outgoing transaction", "refuses a negative paid amount (the trace
+  of a wrongly signed booking)"), `test/regressions/transaction-partial-use.test.ts` ("pays an
+  expense voucher from a larger outgoing transaction with type N and a negative amount"),
+  `test/unit/domain/reconciliation/allocate.test.ts` ("pays an expense voucher from an outgoing
+  transaction with a negative amount"). Live: probe `write-voucher-book-amount`.
 
 ### D-042: Part `price` can hold the net or the gross price
 
@@ -1268,38 +1417,64 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072).
 
 ### D-044: Voucher reads can omit `document`
 
-- **Status:** Open. **Evidence:** spec + recorded (community recording).
+- **Status:** Open. **Evidence:** spec + recorded.
 - **Spec says:** `Model_VoucherResponse.document` is a nullable `{id, objectName: "Document"}`
   reference to the attached file.
-- **Actual behavior:** The recorded `GET /Voucher` row has no `document` key at all, not even
-  `null`. Whether `GET /Voucher/{voucherId}` includes it has not been recorded.
+- **Actual behavior:** The key is there exactly when a file is attached. The community-recorded
+  `GET /Voucher` row has no `document` key at all, not even `null`. Recorded 2026-11-08: vouchers
+  saved with a file carry `document: {id, objectName: "Document"}` in the list rows and in
+  `GET /Voucher/{voucherId}`; vouchers without a file have no `document` key, in both reads (the
+  recorded voucher list of that day has both kinds). `null` was never seen.
 - **Sources:** [emuuu/sevDesk.NET recorded responses](https://github.com/emuuu/sevDesk.NET)
-  (2026-02-19).
-- **Impact:** The voucher tools report `hasDocument` only when the key is present; otherwise they
-  leave it out instead of saying `false`. The `saveVoucher` read-back planned for D-026 cannot
-  rely on `document` until a recording shows it.
+  (2026-02-19); recorded 2026-11-08, trial account, Update 2.0 (probes
+  `read-voucher-document-key`, `write-voucher-save-with-file`;
+  `test/fixtures/recorded/2026-11-08/vouchers/vouchers-list.json`).
+- **Impact:** The voucher tools report `hasDocument` only when the key is present (a reference:
+  `true`, `null`: `false`); otherwise they leave it out instead of saying `false`, although the
+  recording suggests that a missing key means "no file". After a write with a receipt, the
+  read-back notes a `null` `document` as a missing file and a missing key as unknown
+  (`src/domain/drafts/voucher.ts`).
 - **Test:** `test/unit/tools/vouchers/get.test.ts` ("renders the recorded mix…": no
-  `hasDocument`), `test/unit/domain/vouchers.test.ts`. sevDesk's behavior: pending: recording
-  session, probe `read-voucher-document-key` (no voucher in the trial account).
+  `hasDocument`), `test/unit/domain/vouchers.test.ts`,
+  `test/regressions/b5-voucher-filename.test.ts` (`hasDocument` true after the upload, no note),
+  `test/unit/tools/vouchers/create-draft.test.ts` ("notes when the read-back does not say whether
+  the file is attached (D-044)"). Live: probes `read-voucher-document-key`,
+  `write-voucher-save-with-file`.
 
 ### D-045: Voucher positions can lack `accountDatev` on Update 2.0
 
-- **Status:** Open. **Evidence:** spec + community + recorded (community recording).
+- **Status:** Open. **Evidence:** spec + community + recorded.
 - **Spec says:** `Model_VoucherPos` and `Model_VoucherPosResponse` both list `accountDatev` ("Use
   this in sevdesk-Update 2.0 (replaces accountingType)") and `accountingType` as required.
-- **Actual behavior:** A position carries one of the two. The recorded `GET /VoucherPos` row,
-  which belongs to a voucher with the Update 2.0 tax rule 9, has `accountingType` and no
-  `accountDatev` key. genz-its reports `accountDatev: null` on legacy 1.0 positions, which carry
-  `accountingType` instead.
+- **Actual behavior:** A position carries one of the two. The community-recorded
+  `GET /VoucherPos` row, which belongs to a voucher with the Update 2.0 tax rule 9, has
+  `accountingType` and no `accountDatev` key. genz-its reports `accountDatev: null` on legacy 1.0
+  positions, which carry `accountingType` instead. Recorded 2026-11-08: positions written through
+  the API on Update 2.0 carry `accountDatev` (`{id, objectName: "AccountDatev"}`) and no
+  `accountingType` key (`estimatedAccountingType` is `null`), and `GET /VoucherPos` with
+  `embed=accountDatev` expands the account (number, name and its flags). They also carry keys
+  `Model_VoucherPosResponse` lacks, such as `isGwg`, `isPercentage`, `assetMemoValue` and the
+  `sum…ForeignCurrency` sums.
 - **Sources:** [emuuu/sevDesk.NET recorded responses](https://github.com/emuuu/sevDesk.NET)
-  (2026-02-19); [genz-its/sevdesk `CLAUDE.md`](https://github.com/genz-its/sevdesk/blob/main/CLAUDE.md).
+  (2026-02-19); [genz-its/sevdesk `CLAUDE.md`](https://github.com/genz-its/sevdesk/blob/main/CLAUDE.md);
+  recorded 2026-11-08, trial account, Update 2.0 (probes `write-voucher-net-gross`,
+  `read-voucher-pos-account-datev`;
+  `test/fixtures/recorded/2026-11-08/vouchers/voucher-positions-embed-account.json`).
 - **Impact:** The bookkeeping generation is detected per object: for a voucher from
   `taxRule`/`taxType`, for a position from `accountDatev`/`accountingType`
   (`detectPositionGeneration` in `src/sevdesk/system-version.ts`). A 2.0 voucher can therefore
   show a 1.0 position with its `accountingType` id. Our schemas do not copy the spec's `required`
-  lists.
+  lists and ignore the undeclared keys. The voucher writes send `accountDatev` only, and refuse to
+  carry over a stored position that has only an `accountingType` where its account must be
+  checked (an update with a new tax rule, the finalize), since ReceiptGuidance knows only
+  `accountDatev` ids (`storedPositionsFor` in `src/domain/drafts/voucher-current.ts`). No tool
+  uses `embed=accountDatev`.
 - **Test:** `test/unit/tools/vouchers/get.test.ts` ("renders the recorded mix: a 2.0 voucher with
-  a legacy 1.0 position").
+  a legacy 1.0 position"), `test/unit/tools/vouchers/update-draft.test.ts` ("refuses a stored
+  legacy position when the tax rule changes (D-045)"),
+  `test/unit/tools/vouchers/finalize-delete.test.ts` ("refuses a draft without positions or with a
+  legacy position (D-045)"), `test/contract/recorded-fixtures-m4.test.ts` ("reads Update 2.0
+  positions with their booking account (D-045)").
 
 ### D-046: Date-range filters on document lists are described two ways
 
@@ -1331,18 +1506,21 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072).
 
 ### D-047: Transaction date filters compare `entryDate`
 
-- **Status:** Open. **Evidence:** spec + community.
+- **Status:** Open. **Evidence:** spec + community + recorded.
 - **Spec says:** `GET /CheckAccountTransaction` declares `startDate` ("Only retrieve transactions
   from this date on") and `endDate` ("Only retrieve transactions up to this date") as
   `type: string, format: date-time`. It does not say which of the transaction's two dates they
   compare (see D-016).
 - **Actual behavior:** jernoxit/sevdesk-rs measured on a test account (2026-10-01) that both
   filters cut by `entryDate`, not `valueDate`, and that they accept Unix timestamps as well as ISO
-  dates. Our recording confirms both formats (a one-day window found the transaction either way);
-  which date they compare could not be told apart, since every transaction had equal dates
-  (D-016).
+  dates. Our recordings confirm both. On 2026-11-07 a one-day window found the transaction in
+  either format, while every transaction had equal dates. On 2026-11-08 a transaction with
+  `valueDate` 2026-11-05 and `entryDate` 2026-11-08 (created on a file-import account, D-071) was
+  not found by a window on its value day, with Unix seconds or ISO dates, and was found by a window
+  on its entry day.
 - **Sources:** [jernoxit/sevdesk-rs `src/query.rs`](https://github.com/jernoxit/sevdesk-rs/blob/main/src/query.rs);
-  recorded 2026-11-07, trial account, Update 2.0 (probe `read-transaction-date-filters`).
+  recorded 2026-11-07, trial account, Update 2.0 (probe `read-transaction-date-filters`); recorded
+  2026-11-08 (probes `write-transaction-create`, `read-transaction-date-filters`).
 - **Impact:** `sevdesk_transactions_list` has `dateField: "value" | "entry"` (default `value`).
   For a value-date range it sends no `startDate`/`endDate` and filters `valueDate` itself, reading
   sevDesk pages up to its scan cap (5,000 rows per call; `filteredLocally`, no total). For an
@@ -1352,9 +1530,8 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072).
 - **Test:** `test/unit/tools/banking/transactions.test.ts` ("filters a value-date range here only,
   since sevDesk's date filters cut by entryDate", "lets sevDesk filter an entry-date range and
   re-checks entryDate", "defaults dateField to value"), `test/unit/domain/banking.test.ts` ("drops
-  rows without a value date when a date range is given"). `entryDate` vs `valueDate`: pending:
-  recording session, probe `read-transaction-date-filters` (needs transactions whose two dates
-  differ, e.g. an imported bank statement).
+  rows without a value date when a date range is given"). Live: probe
+  `read-transaction-date-filters` (2026-11-08: the dates differ).
 
 ### D-048: Change filters are documented only in tag texts
 
@@ -1369,10 +1546,12 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072).
   milliseconds returned nothing) and is inclusive (an invoice updated at a given second is found
   with `updateAfter` at that second). A future value empties `/Contact`, `/Invoice` and
   `/CreditNote`, so `/CreditNote` honors it although its filter table does not list it;
-  `/CheckAccountTransaction` ignores it (D-035). `/Order` and `/Voucher` are not measured (no rows
-  at probe time).
+  `/CheckAccountTransaction` ignores it (D-035). A second run (2026-11-08) found that a future
+  value empties `/Order` and `/Voucher` too, and repeated the rest: Unix seconds, inclusive,
+  ignored by `/CheckAccountTransaction`.
 - **Sources:** spec (tag descriptions of Contact, Invoice, Order, Voucher and CreditNote;
-  `getTransactions`); recorded 2026-11-07, trial account, Update 2.0 (probe `read-update-after`).
+  `getTransactions`); recorded 2026-11-07 and 2026-11-08, trial account, Update 2.0 (probe
+  `read-update-after`).
 - **Impact:** `sevdesk_changed_since` sends `updateAfter` as Unix seconds, one second before
   `since`, for contacts, invoices, orders and vouchers, and checks every returned row itself: a
   row counts when its update time, or its creation time if it has none, is at or after `since`;
@@ -1385,8 +1564,7 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072).
   sending updateAfter only where the spec documents it", "keeps rows updated at or after since
   (creation time as fallback), newest first", "switches to full pages when sevDesk evidently
   ignored the filter", "caps the scan of subjects sevDesk cannot filter and continues with
-  nextOffset"). `/Order` and `/Voucher`: pending: recording session, probe `read-update-after`
-  (no orders or vouchers at probe time).
+  nextOffset"). Live: probe `read-update-after`.
 
 ### D-049: Whether lists include templates and reminders is undocumented
 
@@ -1403,9 +1581,12 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072).
   `showAll=true` returns all 43. `showWkr=all` returned 0 rows (no recurring templates in the
   account), so whether templates are hidden by default is not shown. Reminders carry
   `sumGross` 0 and `origin` = the invoice they remind of, so their sums would not double-count
-  (D-064). The voucher default (`noRv`) is not measured: the trial account had no vouchers.
-- **Sources:** spec (filter tables of the Invoice and Voucher tags); recorded 2026-11-07, trial
-  account, Update 2.0 (probes `read-list-defaults`, `write-reminder`).
+  (D-064). A second run (2026-11-08) repeated this (default 74 rows of types RE, AR and SR,
+  `showMa=all` the 10 reminders only, `showAll=true` 84, `showWkr=all` 0). The voucher default
+  (`noRv`) is still not shown: the account then had 11 vouchers, all of type VOU, and
+  `noRv=true` returned the same 11.
+- **Sources:** spec (filter tables of the Invoice and Voucher tags); recorded 2026-11-07 and
+  2026-11-08, trial account, Update 2.0 (probes `read-list-defaults`, `write-reminder`).
 - **Impact:** Templates and reminders are not documents of their own, so the tools keep them out
   of totals whatever the default is. `sevdesk_invoices_list` sends `showWkr=all` or `showMa=all`
   only when the caller asks for type `recurring` or `reminder`, and re-checks the type on every
@@ -1422,9 +1603,9 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072).
   with their EUR base"), `test/unit/tools/reports/aging.test.ts` ("explains approximate, unknown
   and left-out rows in its notes", "flags wrong-signed payments, foreign paid amounts and
   left-out rows"), `test/unit/tools/reports/cash-position.test.ts` ("adds an expected outlook
-  from open items by due date, never mixing currencies"). Templates and vouchers: pending:
-  recording session, probe `read-list-defaults` (no recurring template and no voucher in the
-  trial account).
+  from open items by due date, never mixing currencies"). Templates and RV vouchers: pending:
+  recording session, probe `read-list-defaults` (the trial account has neither a recurring
+  template nor an RV voucher).
 
 ### D-050: A position `price` is read by the document's `showNet`
 
@@ -1586,8 +1767,9 @@ true`) and a lone `priceGross` 119 (with `showNet: false`) give the same totals.
   `creditNotePosDelete: null` and send none of the other trailing parameters are accepted
   (jernoxit/sevdesk-rs, Update 2.0, answers recorded; every draft of our write probes on
   2026-11-07 had this shape and was accepted). Working `saveOrder` bodies leave
-  `orderPosDelete` out entirely (community, not recorded). `saveVoucher` is different: its key
-  order matters (D-026).
+  `orderPosDelete` out entirely (community, not recorded). For `saveVoucher` the spec insists on
+  the order of `voucherPosDelete` and `filename`; the recording shows that the order does not
+  matter there either (D-026).
 - **Sources:** spec (`createInvoiceByFactory`, `createcreditNote`);
   [jernoxit/sevdesk-rs](https://github.com/jernoxit/sevdesk-rs) (`tests/fixtures/write_invoice_save.json`,
   `write_credit_note_save.json`); the order bodies named in D-052.
@@ -1610,9 +1792,10 @@ true`) and a lone `priceGross` 119 (with `showNet: false`) give the same totals.
   for an existing invoice"; the InvoicePos tag shows an update as
   `{"invoice": {"id", "objectName", "mapAll": true}, "invoicePos": [...]}` (but see D-004).
   `saveCreditNote` says the same of credit notes. `saveOrder` says only "Creates an order to which
-  positions can be added later", and `Model_Order.id` is `readOnly`. `invoicePosDelete`,
-  `creditNotePosDelete` and `orderPosDelete` are declared as one `{id, objectName}` object, not as
-  a list. Nothing says whether fields left out of an update keep their values.
+  positions can be added later", and `Model_Order.id` is `readOnly`. `saveVoucher` "can also be
+  used to update draft vouchers". `invoicePosDelete`, `creditNotePosDelete`, `orderPosDelete` and
+  `voucherPosDelete` are declared as one `{id, objectName}` object, not as a list. Nothing says
+  whether fields left out of an update keep their values.
 - **Actual behavior:** FSCreative/fs-creative updates invoice drafts in production with
   `saveInvoice` and `invoice.id`, and replaces all positions by sending `invoicePosDelete` as an
   array of `{id, objectName: "InvoicePos"}` (community, not recorded). For orders nothing is
@@ -1621,13 +1804,20 @@ true`) and a lone `priceGross` 119 (with `showNet: false`) give the same totals.
   invoices: `saveInvoice` with an existing draft's id and only a new `header` updates that draft
   in place (the answer names the same id) and keeps the fields it was not sent (head and foot
   text, payment term, note, contact). For orders it is unrecorded: the probe could not create an
-  order draft (D-027).
+  order draft (D-027). Recorded for vouchers (2026-11-08): `saveVoucher` with
+  `voucher: {id, objectName, mapAll, status: 50}` and no other header field updated the draft in
+  place and kept its header (description, supplier name, dates, tax rule); only the sums changed
+  with the new position. `voucherPosDelete` must be an array: one `{id, objectName}` object was
+  refused with 400 "voucherPosDelete expected array with 'id' and 'objectName'. integer given",
+  while an array of them deleted the stored position, saved the new one and recomputed the
+  voucher's sums in the same request.
 - **Sources:** spec (`createInvoiceByFactory`, `createcreditNote`, `createOrder`, `saveInvoice`,
-  `saveOrder`, `Model_Invoice`, `Model_Order`; tag `InvoicePos`);
+  `saveOrder`, `voucherFactorySaveVoucher`, `Model_Invoice`, `Model_Order`; tag `InvoicePos`);
   [FSCreative/fs-creative](https://github.com/FSCreative/fs-creative) (`server.js`,
   `sevdesk-ops.js` at `2d776fa`, 2026-11-07);
   [codestra/sevdesk-mcp `src/tools/orders.ts`](https://github.com/codestra/sevdesk-mcp/blob/5de1725c4758ea102fce079329a05b26e5b0f1bb/src/tools/orders.ts);
-  recorded 2026-11-07, trial account, Update 2.0 (probe `write-save-update-omitted-fields`).
+  recorded 2026-11-07, trial account, Update 2.0 (probe `write-save-update-omitted-fields`);
+  recorded 2026-11-08 (probe `write-voucher-update-draft`, second write run).
 - **Impact:** `sevdesk_invoice_update_draft` and `sevdesk_order_update_draft` update drafts with
   one `saveInvoice`/`saveOrder` request carrying the draft's id (not `PUT /Order/{orderId}` plus
   position requests, which can fail half-way). Every writable field the tools know is carried
@@ -1636,15 +1826,23 @@ true`) and a lone `priceGross` 119 (with `showNet: false`) give the same totals.
   are either left alone (`*PosSave` and `*PosDelete` null) or replaced as a whole: all stored
   positions in `*PosDelete` as an array of `{id, objectName}` and the new ones in `*PosSave`, in
   the same request. Only drafts are updated. If sevDesk's answer names another id, the call fails
-  and names that document as written.
+  and names that document as written. `sevdesk_voucher_update_draft` works the same way with one
+  `saveVoucher`: the stored header is carried over (`carriedVoucher` in
+  `src/domain/drafts/voucher-current.ts`), and replaced positions go out with `voucherPosDelete`
+  as an array (`voucherPosDelete` in `src/domain/drafts/voucher-payload.ts`).
 - **Test:** `test/unit/tools/drafts/invoice-update-draft.test.ts` ("changes one field and carries
   every stored field over, positions untouched", "replaces all positions in one request (deletes
   the stored ones)", "fails loudly when sevDesk saved a different invoice"),
   `test/unit/tools/drafts/order-drafts.test.ts` ("carries the stored order over, keeps its number
   and replaces the positions", "fails loudly when sevDesk saved a different order"),
-  `test/unit/tools/drafts/update-edges.test.ts`. Orders and `orderPosDelete`: pending: recording
-  session, probe `write-save-update-omitted-fields` (its order draft was refused without a
-  number, D-027).
+  `test/unit/tools/drafts/update-edges.test.ts`. Vouchers:
+  `test/unit/tools/vouchers/update-draft.test.ts` ("changes the Belegnummer and carries every
+  stored field over, positions untouched", "replaces all positions in one request
+  (voucherPosDelete lists the stored ones)", "fails loudly when sevDesk saved another voucher"),
+  `test/unit/domain/vouchers-write.test.ts` ("deletes stored positions as an array of refs
+  (assumption, D-054)"); live: probe `write-voucher-update-draft`. Orders and `orderPosDelete`:
+  pending: recording session, probe `write-save-update-omitted-fields` (its order draft was
+  refused without a number, D-027).
 
 ### D-055: The `saveInvoice` answer has undeclared and oddly typed fields
 
@@ -1679,8 +1877,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Status:** Open. **Evidence:** spec + community + recorded (community recording).
 - **Spec says:** `PUT /Invoice/{invoiceId}/bookAmount`, `PUT /CreditNote/{creditNoteId}/bookAmount`
   (and the voucher variant) take `date`: "The booking date. Most likely the current date."
-  (`type: integer`). The unit and the time zone in which the timestamp becomes a calendar day are
-  not stated; the answer's `bookingDate` is a date-time.
+  (`type: integer`; the voucher variant types it `type: string, format: date-time`). The unit and
+  the time zone in which the timestamp becomes a calendar day are not stated; the answer's
+  `bookingDate` is a date-time.
 - **Actual behavior:** jernoxit/sevdesk-rs sends Unix seconds at 12:00 Berlin time
   (`1787652000` = 2026-08-25 12:00 CEST in its request test), and the recorded voucher booking
   answer has `bookingDate` at 12:00+02:00. sevdesk-rs measured that `getBalanceAtDate` cuts days
@@ -1688,53 +1887,95 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   days earlier (`1793790000`, 2026-11-04) set the invoice's `payDate` to
   `2026-11-04T12:00:00+01:00` and created a transaction with value and entry date 2026-11-04, so
   the noon timestamp keeps its calendar day. `bookAmount` also takes `dd.mm.yyyy`; the booking
-  date is then 00:00 Berlin of that day. Whether sevDesk cuts a timestamp near midnight in Berlin
-  time or in UTC is still not measured.
+  date is then 00:00 Berlin of that day. Vouchers (recorded 2026-11-08) took Unix seconds, an ISO
+  date-time and `dd.mm.yyyy` alike: Unix seconds of 12:00 Berlin and the ISO date-time of that
+  instant gave a `bookingDate` (and a created transaction, D-071) at 12:00 Berlin of that day,
+  `dd.mm.yyyy` at 00:00. Whether sevDesk cuts a timestamp near midnight in Berlin time or in UTC
+  is still not measured.
 - **Sources:** spec (`bookInvoice`, `bookCreditNote`, `bookVoucher`);
   [jernoxit/sevdesk-rs](https://github.com/jernoxit/sevdesk-rs) (`tests/requests.rs`; README;
   recorded `tests/fixtures/write_voucher_book_amount.json`); recorded 2026-11-07, trial account,
-  Update 2.0 (probes `write-book-amount-noon-date`, `write-book-amount`). Document dates: D-018.
+  Update 2.0 (probes `write-book-amount-noon-date`, `write-book-amount`); recorded 2026-11-08
+  (probe `write-voucher-book-amount`). Document dates: D-018.
 - **Impact:** `bookingTimestamp` (`src/domain/lifecycle/payments.ts`) sends Unix seconds of 12:00
   Europe/Berlin on the booking day, so the calendar day is the same under either reading,
-  including on daylight-saving changes. The date defaults to today in Berlin, and a future date
-  draws a warning. `amount` goes out as a JSON number that is checked to equal the decimal exactly
-  (`exactNumber`).
+  including on daylight-saving changes. Vouchers get the same Unix noon, although their spec says
+  date-time (`BOOKING_DATE_FORMATS` and `wireBookingDate` keep the format per kind). The date
+  defaults to today in Berlin, and a future date draws a warning. `amount` goes out as a JSON
+  number that is checked to equal the decimal exactly (`exactNumber`).
 - **Test:** `test/unit/domain/lifecycle/payments.test.ts` ("bookingTimestamp": "is 12:00 Berlin
   time in winter and summer", "keeps the calendar day on DST transition days"; "books the whole
   open amount as FULL_PAYMENT, signed positive, at noon Berlin"),
   `test/regressions/b7-payment-linking.test.ts` ("sends the transaction as an {id, objectName}
   reference next to the check account": `date` 1793617200),
   `test/unit/tools/lifecycle/book-payment.test.ts` ("defaults the booking date to today (Berlin)
-  and warns about future dates"). Live: probes `write-book-amount-noon-date`,
-  `write-book-amount`.
+  and warns about future dates"), `test/unit/domain/lifecycle/vouchers.test.ts` ("writes the
+  booking date as Unix noon, or as ISO when a kind is switched to it"). Live: probes
+  `write-book-amount-noon-date`, `write-book-amount`, `write-voucher-book-amount`.
 
 ### D-057: Transactions report no assigned or remaining amount
 
-- **Status:** Open. **Evidence:** spec + community + recorded (community recording).
+- **Status:** Open. **Evidence:** spec + community + recorded.
 - **Spec says:** `Model_CheckAccountTransactionResponse.status` is "100 Created, 200 Linked, 300
   Private, 350 Auto-booked without user confirmation, 400 Booked" (350: D-031). No field says how
-  much of a transaction is already assigned to documents, and nothing says what separates 200 from 400. The tag says a transaction can be linked to one or several documents.
+  much of a transaction is already assigned to documents, and nothing says what separates the
+  statuses 200 and 400. The tag says a transaction can be linked to one or several documents.
   `CheckAccountTransactionLog`, which holds the assignments, is not in the spec.
 - **Actual behavior:** 200 means partly assigned and 400 fully assigned: in a recorded transaction
   log (firsttris/haben, Update 1.0), a transaction split over two documents moved to `toStatus`
   200 with the first share and to 400 with the second. The assigned amounts are only in the
   undocumented `GET /CheckAccountTransactionLog?checkAccountTransaction[id]=…` (`amountPaid` per
   entry); its transaction filter works, a document filter does not exist (sevdesk-rs, measured).
+  Recorded on Update 2.0 (2026-11-08):
+  - Without a filter the log lists every entry of the account, with a `countAll` total and
+    `limit`/`offset` paging. An entry has `id`, `objectName`, `additionalInformation`, `create`,
+    `checkAccountTransaction`, `fromStatus`, `toStatus`, `amountPaid`, `bookingDate`, `sevClient`
+    and `object`: the booked document (`Invoice`, `Voucher`, …), not the transaction.
+  - `amountPaid` is a JSON number signed like the transaction: −119 for an expense voucher paid
+    from an outgoing transaction, 119 for invoices paid from an incoming one.
+  - A +238 transaction split over two invoices of 119 (type `N`, D-075) went to 200 after the first
+    booking and to 400 after the second, one entry each. Both entries say `fromStatus` 100 (the
+    second one not 200); `toStatus` is 200 and 400.
+  - The filter `checkAccountTransaction[id]` was honored (totals 1, then 2, in an account log of
+    more than 20 entries); `object[id]`, `invoice[id]` and `createAfter` were ignored; `startDate`
+    was honored (a date in the future returned no entry). Marking a transaction private writes no
+    entry (D-076).
 - **Sources:** [firsttris/haben `docs/sevdesk.md`](https://github.com/firsttris/haben/blob/main/docs/sevdesk.md)
   ("Zahlungen", real answers in firsttris/haben#343) and its transaction-log fixture;
   [jernoxit/sevdesk-rs](https://github.com/jernoxit/sevdesk-rs) (README,
-  `src/endpoints/transaction.rs`).
-- **Impact:** The payment tools link only a free transaction: status 100, not enshrined, on the
-  chosen check account, in the document's currency, moving money in the right direction, and at
-  least as large as the payment (`checkPaymentTransaction` in `src/domain/lifecycle/payments.ts`).
-  A transaction at 200 is refused with the reason that sevDesk does not report how much of it is
-  left. A larger transaction draws a warning that the rest stays unassigned and that the tool
-  cannot book more on a partly assigned transaction later. Reading the log is left to the bank
-  reconciliation work (M4).
+  `src/endpoints/transaction.rs`); recorded 2026-11-08, trial account, Update 2.0 (probes
+  `read-transaction-log`, `write-transaction-split-booking`, `write-transaction-split-variants`,
+  `write-voucher-book-amount`; `test/fixtures/recorded/2026-11-08/banking/transaction-log.json`,
+  `transaction-log-unfiltered.json`).
+- **Impact:** The payment tools (`sevdesk_{invoice,credit_note,voucher}_book_payment`) link only a
+  free transaction: status 100, not enshrined, on the chosen check account, in the document's
+  currency, moving money in the right direction, and at least as large as the payment
+  (`checkPaymentTransaction` in `src/domain/lifecycle/payments.ts`). A transaction at 200 is
+  refused there. A larger transaction is booked with type `N` (D-075), and the preview says that
+  the rest stays assignable to other documents. Bank reconciliation reads the log instead
+  (`readTransactionLog`, `entryShare` and `remainingAmount` in
+  `src/domain/reconciliation/transaction-log.ts`): it sends the transaction filter but re-checks
+  every entry's transaction itself, takes the absolute `amountPaid` of entries in the
+  transaction's direction as the assigned shares, and books a partly assigned transaction up to
+  its rest (`planAllocation` in `src/domain/reconciliation/allocate.ts`). A log it cannot read
+  completely or attribute makes the rest unknown, and the booking is refused.
+  `sevdesk_transaction_get` shows the assignments, and the cash-basis reports take their payments
+  from the log (`paymentsInPeriod`). `fromStatus` and `toStatus` are read but not relied on.
 - **Test:** `test/unit/domain/lifecycle/payments.test.ts` ("checkPaymentTransaction": "refuses a
   partly assigned transaction", "warns when the transaction is larger than the payment"),
   `test/regressions/b7-payment-linking.test.ts` ("refuses a transaction that is partly assigned,
-  without writing"). No probe yet.
+  without writing"). The log: `test/unit/domain/reconciliation/transaction-log.test.ts` ("reads
+  the recorded entry shape", "drops entries of other transactions and then also those without a
+  reference", "returns the absolute share of an entry in the transaction's direction", "subtracts
+  the entries exactly for a partly linked transaction"),
+  `test/unit/domain/reconciliation/allocate.test.ts` ("books the rest of a partly linked
+  transaction (status 200) from its log", "refuses a transaction whose remaining amount is unknown
+  or zero"), `test/regressions/over-booking.test.ts` ("refuses more than the rest of a partly
+  linked transaction (remaining from the log)"), `test/unit/tools/banking/transaction-get.test.ts`
+  ("shows the assignments with their documents and the remaining amount"),
+  `test/contract/recorded-fixtures-m4.test.ts` ("reads the log of one transaction: signed
+  amountPaid, object = the document", "parses every entry of the unfiltered log"). Live: probes
+  `read-transaction-log`, `write-transaction-split-variants`.
 
 ### D-058: `cancelInvoice` answers and refusals are undocumented
 
@@ -1821,12 +2062,21 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   - Recorded on Update 2.0: a paid invoice that `sendBy` had enshrined (D-023) was reset to open
     (status 200); afterwards its `paidAmount` was `null` (not 0) and its `payDate` null. The
     transaction sevDesk had created for the booking on an offline account was deleted (D-071).
+  - Recorded for vouchers (2026-11-08): `resetToOpen` on an expense voucher paid on an offline
+    account without a transaction answered the voucher (in `objects`) at status 100 with
+    `paidAmount` 0 (a number, not `null` as on invoices) and no `payDate`; the transaction sevDesk
+    had created for the booking was deleted (D-071). `resetToDraft` then set it to 50.
+  - Recorded on invoices paid from file-import transactions (2026-11-08, D-075): after
+    `resetToOpen` every linked transaction was back at 100. The account's unfiltered log had 24
+    entries after the second write run and again after the split run, which booked four entries
+    and reset all four invoices; that fits sevdesk-rs's finding that the entries are deleted.
 - **Sources:** [jernoxit/sevdesk-rs](https://github.com/jernoxit/sevdesk-rs) (README,
   `src/endpoints/invoice.rs`, `src/endpoints/transaction.rs`; measured, not recorded);
   [firsttris/haben `docs/sevdesk.md`](https://github.com/firsttris/haben/blob/main/docs/sevdesk.md)
   ("Aufgehobene Zuordnungen"); recorded 2026-11-07, trial account, Update 2.0 (probe
   `write-offline-booking-transaction`; the invoice in
-  `test/fixtures/recorded/2026-11-07/invoices/invoices-list.json`).
+  `test/fixtures/recorded/2026-11-07/invoices/invoices-list.json`); recorded 2026-11-08 (probes
+  `write-voucher-reset`, `write-transaction-split-variants`, `read-transaction-log`).
 - **Impact:** `assertResettable` (`src/domain/lifecycle/transitions.ts`): to open, it accepts paid
   and partially paid documents and open ones that still show payments, and refuses drafts,
   cancelled originals (1000 with `paidAmount` 0, D-037), cancellation invoices and recurring
@@ -1836,6 +2086,10 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   transactions sevDesk created for payments on offline accounts are deleted (recorded, D-071;
   cash registers were not measured, so the preview asks to check them), and that sevDesk refuses
   when a payment transaction is enshrined (fix in this PR). Code 170 is not checked locally.
+  Vouchers follow the same rules (`sevdesk_voucher_reset`, with the voucher status codes).
+  `sevdesk_transaction_reset` undoes a transaction's bookings by resetting each document it paid
+  to open, and its preview names the other payments each reset removes as well
+  (`planTransactionReset` in `src/domain/reconciliation/transaction-status.ts`).
 - **Test:** `test/unit/domain/lifecycle/transitions.test.ts` ("resets paid and partially paid
   documents to open, enshrined ones included", "resets an open invoice that still shows payments
   (pre-4.181 partial payment) to open", "resets an open document without payments to draft",
@@ -1844,8 +2098,15 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   are unlinked", "allows resetting an enshrined paid invoice to open, with a warning", "refuses
   resets sevDesk would refuse or that make no sense"), `test/contract/recorded-fixtures.test.ts`
   ("D-060: an enshrined invoice reset to open reads back with paidAmount null and no payDate").
-  Live: probe `write-offline-booking-transaction`. Enshrined payment transactions are not probed
-  (irreversible).
+  Vouchers: `test/unit/domain/lifecycle/vouchers.test.ts` ("resets paid vouchers to open and open
+  ones to draft"), `test/unit/tools/lifecycle/voucher-lifecycle.test.ts` ("resets a paid voucher to
+  open (resetToOpen) with the voucher codes", "resets an open voucher without payments to draft
+  (resetToDraft)"). Transactions: `test/unit/domain/reconciliation/transaction-status.test.ts`
+  ("finds the other transactions on a document in the whole log and names them"),
+  `test/unit/tools/banking/transaction-reset.test.ts` ("resets each document to open in order and
+  reads everything back"). Live: probes `write-offline-booking-transaction`,
+  `write-voucher-reset`, `write-transaction-split-variants`. Enshrined payment transactions are
+  not probed (irreversible).
 
 ### D-061: `POST /Contact` assigns the next customer number
 
@@ -2001,16 +2262,19 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   truncated; `validateAccountTaxRule` then downgrades an unknown account to a warning. Since
   sevDesk ignores the limit and sends everything, the list is complete in practice; only an
   account with 1,000 or more guidance rows would be flagged as truncated without being so, which
-  errs on the safe side. The guidance
-  serves `sevdesk_reference_lookup` (`kind: receipt_guidance`) now and the voucher writes in M4
-  (D-006).
+  errs on the safe side. The guidance serves `sevdesk_reference_lookup`
+  (`kind: receipt_guidance`) and the account check of every voucher write (`checkVoucherAccounts`,
+  D-006); since sevDesk accepts any account × rule on a voucher draft (recorded 2026-11-08, D-006),
+  that check is the only guard. Its rates for intra-EU acquisitions and reverse charge: D-078.
 - **Test:** `test/unit/domain/receipt-guidance.test.ts` ("parses the recorded forAllAccounts
   response into compact guides", "accepts string ids, numeric rates, null lists and keeps unknown
   rate words apart", "warns instead of failing when the allowed rates contain unknown words",
   "reports a full page or a larger total as truncated", "downgrades an unknown account to a
   warning when the guidance was truncated"), `test/unit/tools/meta/reference-lookup.test.ts`,
   `test/contract/recorded-fixtures.test.ts` ("parses every recorded ReceiptGuidance row without
-  unknown tax rate words"). Live: probe `read-receipt-guidance-limit`.
+  unknown tax rate words"), `test/regressions/b2-account-datev.test.ts` (voucher writes against
+  the recorded guidance). Live: probes `read-receipt-guidance-limit`,
+  `write-voucher-invalid-account-rule`.
 
 ### D-066: Undocumented next-number endpoints peek or reserve
 
@@ -2057,13 +2321,22 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Status:** Open. **Evidence:** spec + recorded.
 - **Spec says:** The spec has no `GET /SevClient` (only `PUT /SevClient/{SevClientId}/updateExportConfig`)
   and no other way to learn whether the account uses the small-business scheme (Kleinunternehmer,
-  §19 UStG) or which chart of accounts it has. Documents carry `smallSettlement`: "Defines if the
+  §19 UStG) or which chart of accounts it has, nor where the DATEV settings that
+  `updateExportConfig` writes can be read back. Documents carry `smallSettlement`: "Defines if the
   client uses the small settlement scheme. If yes, the invoice must not contain any vat".
 - **Actual behavior:**
-  - `GET /SevClient` answers the account record (one object, 92 fields) with `smallSettlement`
-    `"1"` on a small-business account and `"0"` with standard VAT, and `chartOfAccounts`
-    (`"skr04"` on the trial account). The same record is embedded as `sevClient` in the
-    `POST /Contact` answer.
+  - `GET /SevClient` answers the account record (92 fields; recorded 2026-11-08 as a list of one
+    under `objects`) with `smallSettlement` `"1"` on a small-business account and `"0"` with
+    standard VAT, and `chartOfAccounts` (`"skr04"` on the trial account). The same record is
+    embedded as `sevClient` in the `POST /Contact` answer.
+  - None of the 92 fields holds the Ist/Soll choice (VAT on payments or on invoices), which the
+    web app keeps in the company settings (recorded 2026-11-08).
+  - The DATEV settings are `accountantNumber`, `accountantClientNumber` and `accountingYearBegin`,
+    all `null` on a fresh trial. `updateExportConfig` sets them (answer `{objects: null}`, as
+    declared); they read back as numeric strings and a date-time. The client id is `id`; the
+    company data are `name`, `addressStreet`, `addressZip`, `addressCity`, `addressCountry`,
+    `vatNumber`, `taxNumber`, `bankIban`, `bankBic`, `contactEmail` and `contactPhone`, most of
+    them `null` on the trial; `type` is `"TRIAL"`.
   - On a small-business account, drafts with tax rule 1 and 19 % positions are saved without
     complaint, get VAT sums (D-050) and read back with `smallSettlement` `"0"`: the document field
     does not reflect the account's regime.
@@ -2078,7 +2351,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   recorded 2026-11-07, trial account, Update 2.0 (the write run while the account was still a
   Kleinunternehmer: probes `write-numbering-invoice`, `write-numbering-credit-note`,
   `write-book-amount` and the other probes that finalize; `POST /Contact` answers in the
-  evidence); manual check (lead) of `GET /SevClient` (field names and the two values only).
+  evidence); manual check (lead) of `GET /SevClient` (field names and the two values only);
+  recorded 2026-11-08 (probes `read-sevclient-keys`, `write-export-datev-config`;
+  `test/fixtures/recorded/2026-11-08/meta/sev-client.json`).
 - **Impact:** `src/domain/account-settings.ts` reads `smallSettlement` and `chartOfAccounts` from
   `GET /SevClient` (cached per configuration for five minutes); the regime is never taken from a
   document's `smallSettlement`. The draft tools use it before anything else
@@ -2087,10 +2362,26 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   with the rules that do (`checkTaxRuleRegime`), and provision credit notes on such an account take
   rule 10 (default) or 13. An update that keeps a stored rule that does not fit only warns. When
   `GET /SevClient` cannot be read, the tools warn that the regime is unknown instead of guessing.
-  `sevdesk_account_info` shows `taxRegime` and `chartOfAccounts` (fix in this PR).
-- **Test:** `test/unit/domain/account-settings.test.ts`, `test/unit/tools/drafts/regime.test.ts`,
-  `test/unit/domain/drafts/tax.test.ts`. Live: the write probes on a small-business account (all
-  finalizing probes then fail with the 422 above); the draft tools refuse rule-1 drafts there.
+  `sevdesk_account_info` shows `taxRegime` and `chartOfAccounts` (fix in this PR). The record is
+  read as an object or as the first row of a list. The same cached read gives the company data
+  (`loadAccountCompany`, used by the e-invoice preflight and the e-invoice import). The DATEV
+  export reads the three DATEV settings fresh (`readDatevExportConfig` in
+  `src/domain/exports/datev.ts`) and refuses to start without them (D-077). The VAT summary cannot
+  learn the Ist/Soll choice, so it takes a `basis` input and defaults to accrual, saying so
+  (`DEFAULT_VAT_BASIS` in `src/domain/reports/vat.ts`).
+- **Test:** `test/unit/domain/account-settings.test.ts` (including "takes a single object as well
+  as the first row of a list, and lenient scalars", "maps every recorded company key, cleans text
+  and compacts the IBAN"), `test/unit/tools/drafts/regime.test.ts`,
+  `test/unit/domain/drafts/tax.test.ts`, `test/unit/domain/exports/datev.test.ts` ("reads the
+  DATEV settings from GET /SevClient", "names every missing setting (null, zero, not digits,
+  unreadable date)"), `test/unit/tools/reports/export-tools.test.ts` ("refuses with guidance when
+  sevDesk's DATEV settings are missing"), `test/unit/domain/reports/vat.test.ts` ("fills every
+  line from a mixed quarter and estimates Kz 83": the default basis and its note),
+  `test/contract/recorded-fixtures-m4.test.ts` ("reads the regime, the chart of accounts and the
+  company fields", "reads the DATEV export configuration the M4 probe set (D-067)"). Live: the
+  write probes on a small-business account (all finalizing probes then fail with the 422 above);
+  the draft tools refuse rule-1 drafts there; probes `read-sevclient-keys`,
+  `write-export-datev-config`.
 
 ### D-068: Finalizing a credit note without a number fails with 500 or repeats a number
 
@@ -2196,26 +2487,46 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 ### D-071: A booking without a transaction creates one, and `resetToOpen` deletes it
 
 - **Status:** Open. **Evidence:** spec + recorded.
-- **Spec says:** `bookAmount` takes `checkAccount` and an optional `checkAccountTransaction`.
-  Nothing says what happens when no transaction is given; `resetToOpen` says "Linked
-  transactions will be unlinked" (D-060).
+- **Spec says:** `bookAmount` takes `checkAccount` and an optional `checkAccountTransaction`. Only
+  the voucher variant says what happens without one: a transaction "is required for online
+  checkaccounts"; for other account types "the transaction will be created automatically".
+  `resetToOpen` says "Linked transactions will be unlinked" (D-060).
+  `POST /CheckAccountTransaction` "should only be used with check account type online, preferably
+  for csv import accounts" and declares no 422.
 - **Actual behavior:** `bookAmount` on an offline account (type `offline`) without a transaction
   creates a booked `CheckAccountTransaction` itself: the booked amount, status 400, value and
   entry date on the booking day (D-056), the contact as counterparty. `resetToOpen` on the invoice
   deletes that transaction again (it is gone from the account), unlike a linked bank transaction,
   which only returns to status 100 (D-060). Cash registers (type `register`) are assumed to
-  behave the same but were not measured.
-- **Sources:** spec (`bookInvoice`, `invoiceResetToOpen`); recorded 2026-11-07, trial account,
-  Update 2.0 (probes `write-offline-booking-transaction`, `write-book-amount-noon-date`;
-  `test/fixtures/recorded/2026-11-07/banking/transactions-list.json`, transactions created this
-  way).
+  behave the same but were not measured. Recorded for vouchers (2026-11-08): every booking on the
+  offline account without a transaction created one with the signed amount (−10, −119) at
+  status 400, and `resetToOpen` deleted it. A transaction cannot be made by hand on such an
+  account: `POST /CheckAccountTransaction` on the offline account is refused with 422 "You can
+  only create transactions on online checkaccounts. Use document bookAmount to create
+  transactions on other types." On a file-import account (created with
+  `POST /CheckAccount/Factory/fileImportAccount`: type `online`, import type CSV) it creates the
+  transaction at status 100.
+- **Sources:** spec (`bookInvoice`, `bookVoucher`, `invoiceResetToOpen`, `createTransaction`);
+  recorded 2026-11-07, trial account, Update 2.0 (probes `write-offline-booking-transaction`,
+  `write-book-amount-noon-date`; `test/fixtures/recorded/2026-11-07/banking/transactions-list.json`,
+  transactions created this way); recorded 2026-11-08 (probes `write-voucher-book-amount`,
+  `write-voucher-reset`, `write-transaction-create`, in both write runs).
 - **Impact:** The payment preview says that sevDesk creates a new transaction on offline and cash
   accounts (`src/domain/lifecycle/payments.ts`). The reset preview says that such transactions on
   offline accounts are deleted and asks to check cash registers, which were not measured (D-060;
-  fix in this PR).
+  fix in this PR); `sevdesk_transaction_reset` names such a transaction as deleted. No tool
+  creates transactions: bank reconciliation works on imported (online) accounts, and
+  `sevdesk_reconcile_suggest` says that offline and cash accounts get their transactions from
+  bookings.
 - **Test:** `test/unit/domain/lifecycle/payments.test.ts` ("warns that sevDesk creates a
-  transaction on offline and cash accounts"). Live: probe `write-offline-booking-transaction`.
-  Cash registers: pending (no probe).
+  transaction on offline and cash accounts"),
+  `test/unit/domain/reconciliation/transaction-status.test.ts` ("warns that sevDesk deletes
+  transactions it created on offline and cash accounts"),
+  `test/unit/tools/banking/transaction-reset.test.ts` ("reports a transaction sevDesk deleted with
+  the reset"). The 422 needs no test: no tool sends `POST /CheckAccountTransaction`; the live M4
+  scenario creates its transaction on a file-import account (`test/live/lifecycle.test.ts`).
+  Live: probes `write-offline-booking-transaction`, `write-voucher-reset`,
+  `write-transaction-create`. Cash registers: pending (no probe).
 
 ### D-072: `getPdf` answers `mimetype` and `base64Encoded`, not the spec's casing
 
@@ -2229,10 +2540,262 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Sources:** spec (`invoiceGetPdf`, `creditNoteGetPdf`, `orderGetPdf`); recorded 2026-11-07,
   trial account, Update 2.0 (probe `read-getpdf-download`;
   `test/fixtures/recorded/2026-11-07/documents/*-pdf.json`).
-- **Impact:** `fetchDocumentFile` (`src/domain/document-files.ts`) reads `mimeType` and
-  `base64encoded`, so with sevDesk's real keys its media-type and base64 checks never run. The
-  content check still does: the decoded bytes must start with `%PDF-`, so a body that is not a PDF
-  is still refused. The parser should read both spellings.
+- **Impact:** `fetchDocumentFile` (`src/domain/document-files.ts`) reads both spellings, the
+  recorded one first, so its media-type and base64 checks run on sevDesk's real answers. The
+  content check runs as well: the decoded bytes must start with `%PDF-`.
 - **Test:** `test/contract/recorded-fixtures.test.ts` ("sevDesk sends mimetype and
-  base64Encoded…"; `it.fails` "refuses a non-PDF media type sent with sevDesk's recorded key
-  casing" until the parser reads the recorded keys).
+  base64Encoded…", "refuses a non-PDF media type sent with sevDesk's recorded key casing"),
+  `test/unit/domain/document-files.test.ts` (the spec's spelling: "accepts objects as an array of
+  one, line-wrapped base64, base64encoded '1' and no mimeType").
+
+### D-073: Vouchers are finalized through `saveVoucher`; `PUT /Voucher` refuses a status
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** Vouchers have no finalize (`sendBy`) endpoint. `PUT /Voucher/{voucherId}` says
+  "You can not change the status using this endpoint", yet its `Model_VoucherUpdate` declares
+  `status` (50, 100, 1000; "Not supported in sevdesk-Update 2.0"). `saveVoucher` takes the
+  statuses 50 and 100 and "can also be used to update draft vouchers", and `resetToDraft` says "To
+  change to higher status use /Voucher/Factory/saveVoucher". That saving an existing draft with
+  status 100 opens it is only implied. `saveVoucherResponse` declares `voucher`, `voucherPos` and
+  `filename`, without the `objects` wrapper.
+- **Actual behavior:** Recorded 2026-11-08:
+  - `PUT /Voucher/{voucherId}` with `{status: 100}` on a draft answers 400 "You cannot change the
+    status this way. Use /Voucher/Factory/saveVoucher instead." and changes nothing.
+  - `saveVoucher` with the draft's `voucher.id` and `status: 100` (no other header field, no
+    positions) moves it from 50 to 100. `saveVoucher` with status 100 and no id creates an open
+    voucher directly; it reads back with `voucherNumber` and `enshrined` both `null`.
+  - Both answers are `{objects: {voucher, voucherPos, vatdrop}}`: an undeclared `vatdrop`, as in
+    the `saveInvoice` answer (D-055), and no `filename`.
+  - sevDesk does not check the booking account against the tax rule on a draft (D-006).
+- **Sources:** spec (`updateVoucher`, `Model_VoucherUpdate`, `voucherFactorySaveVoucher`,
+  `saveVoucherResponse`, `voucherResetToDraft`); recorded 2026-11-08, trial account, Update 2.0
+  (probes `write-voucher-finalize`, first write run; `write-voucher-open-directly`, second write
+  run).
+- **Impact:** `sevdesk_voucher_finalize` opens a draft with one `saveVoucher` carrying the draft's
+  id, status 100 and every stored header field, positions untouched (`prepareVoucherFinalize` in
+  `src/domain/drafts/voucher-finalize.ts`); it never sends `PUT /Voucher/{voucherId}`. Since sevDesk
+  would not catch a wrong account × rule, the finalize checks the stored positions against
+  ReceiptGuidance and the regime first. The HTTP client requires the `commit` tier for any
+  `saveVoucher` body whose status is not 50 (`minimumWriteTier` in `src/sevdesk/paths.ts`), so a
+  `write` tool cannot open a voucher. The voucher writes read only `voucher.id` from the answer
+  (`savedDocumentId` in `src/domain/drafts/payloads.ts`) and read the voucher back.
+- **Test:** `test/unit/tools/vouchers/finalize-delete.test.ts` ("books the draft with saveVoucher,
+  its id, status 100 and the positions untouched", "is blocked for a write-tier client, and a draft
+  body passes the write tier", "refuses a rule of the other direction and an account the guidance
+  rejects (B2)"), `test/unit/sevdesk/paths.test.ts` ("needs commit for a saveVoucher that is not
+  a draft (the voucher's finalize)"), `test/regressions/b2-account-datev.test.ts` ("checks a
+  stored draft once more before it is finalized"). Live: probes `write-voucher-finalize`,
+  `write-voucher-open-directly`.
+
+### D-074: `DELETE /Voucher` deletes only drafts
+
+- **Status:** Open. **Evidence:** recorded.
+- **Spec says:** `/Voucher/{voucherId}` has only GET and PUT (D-024). Nothing says whether or when
+  a voucher can be deleted.
+- **Actual behavior:** Recorded 2026-11-08: `DELETE /Voucher/{voucherId}` on a draft (status 50)
+  answers `{objects: [null]}`, after which GET answers 404. On an open voucher (100) it answers 409
+  "Voucher can only be deleted in status 50 but is status 100", and the voucher stays. Whether
+  the attached receipt file is deleted with a draft was not checked.
+- **Sources:** recorded 2026-11-08, trial account, Update 2.0 (probe `write-voucher-delete`: the
+  draft case in both write runs, the open voucher in the second).
+- **Impact:** `sevdesk_voucher_delete_draft` refuses anything but a draft before sending
+  (`prepareVoucherDelete` in `src/domain/drafts/voucher-finalize.ts`), sends the DELETE once,
+  ignores its answer and confirms with a GET that the voucher is gone (`executeVoucherDelete`). A
+  409 (the voucher was finalized in the meantime) becomes a trusted message that nothing was
+  deleted. The preview warns that an attached receipt file may stay.
+- **Test:** `test/unit/tools/vouchers/finalize-delete.test.ts` ("deletes a draft and confirms it is
+  gone", "explains sevDesk's 409 for a voucher that is no draft anymore", "refuses an open
+  voucher", "warns that an attached receipt may stay"). Live: probe `write-voucher-delete`.
+
+### D-075: A `FULL_PAYMENT` must use the whole linked transaction; type `N` splits it
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `bookAmount` (invoices, credit notes, vouchers) takes a `type`: `FULL_PAYMENT`
+  "Normal booking", `N` "Partial booking (historically used for normal booking)", `CB`, `CF`,
+  `O`, `OF` and `MTC`, and an optional `checkAccountTransaction` to link. A transaction can be
+  linked to several documents (D-057). Nothing says how the booked amount must relate to the
+  linked transaction's amount, or which type books part of a transaction.
+- **Actual behavior:** Recorded 2026-11-08 on a file-import (online) account:
+  - `FULL_PAYMENT` of 119 on an invoice of 119, linked to a transaction of +238, is refused with
+    422 "Payment difference amount must be 0.0 when using type 'NONE'"; nothing is booked and the
+    transaction stays at 100. The same booking linked to a transaction of +119 works (invoice
+    1000, transaction 400), as does a voucher paid with −119 from a transaction of −119.
+  - Type `N` books part of a transaction and settles a document it covers: 119 of the +238
+    transaction on invoice A (119) paid A (1000) and moved the transaction to 200; 119 more on
+    invoice B (119) paid B and moved the transaction to 400, one log entry each (D-057).
+  - `N` of 119 on an invoice of 238 with a +119 transaction left the invoice partly paid (750)
+    and the transaction booked (400).
+
+  Whether `CB`, `MTC`, `O` or `OF` work on part of a transaction was not measured.
+
+- **Sources:** spec (`bookInvoice`, `bookCreditNote`, `bookVoucher`); recorded 2026-11-08, trial
+  account, Update 2.0 (probes `write-transaction-split-booking`, second write run;
+  `write-transaction-split-variants`, split run; `write-voucher-book-amount`).
+- **Impact:** `planPayment` (`src/domain/lifecycle/payments.ts`) takes the linked transaction's
+  amount: when the payment uses only part of it, a planned `FULL_PAYMENT` (or `N`) goes out as
+  `N`, and Skonto, bank fees, other differences and reminder charges are refused, since their
+  handling on part of a transaction is unknown (`transactionBookingType`). The payment tools and
+  bank reconciliation share this rule; reconciliation books a split over several documents with
+  `N` each (`planAllocation` in `src/domain/reconciliation/allocate.ts`). Payments from a larger
+  transaction used to go out as `FULL_PAYMENT` and were refused live (fix in this PR).
+- **Test:** `test/regressions/transaction-partial-use.test.ts` ("pays an invoice's open amount
+  from a larger transaction with type N", "pays an expense voucher from a larger outgoing
+  transaction with type N and a negative amount", "refuses a Skonto on part of a transaction
+  before anything is sent"), `test/unit/domain/lifecycle/payments.test.ts` ("sends a payment of
+  the whole open amount as N (FULL_PAYMENT would be refused, 422)", "keeps FULL_PAYMENT when the
+  payment takes the whole transaction", "refuses a difference type on part of a transaction"),
+  `test/unit/tools/lifecycle/book-payment.test.ts` ("pays the whole open amount from a larger
+  transaction as N, the rest stays assignable", "refuses Skonto on part of a larger transaction"),
+  `test/unit/domain/reconciliation/allocate.test.ts` ("books a transaction 1:1 as a full payment
+  linked to it, amount defaulted", "splits one transaction over two invoices with type N, both
+  settled"). Live: probe `write-transaction-split-variants`.
+
+### D-076: Marking a transaction private changes only its status
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `PUT /CheckAccountTransaction/{checkAccountTransactionId}` takes
+  `Model_CheckAccountTransactionUpdate`, whose `status` is 100, 200, 300 or 400 ("300 <->
+  Private"). It does not say what setting a status does (a booking, a log entry), or whether 200
+  and 400 may be set by hand. The answer is declared as a bare
+  `Model_CheckAccountTransactionResponse`.
+- **Actual behavior:** Recorded 2026-11-08 on an unlinked transaction (status 100) of a
+  file-import account: `{status: 300}` is accepted and changes only `status`, with no log entry
+  (D-057); `{status: 100}` restores the transaction exactly. The answer is the transaction,
+  wrapped in `objects` (D-001). Setting 200 or 400 by hand, and status changes on booked
+  transactions, were not tried: they would fake or change a booking.
+- **Sources:** spec (`updateCheckAccountTransaction`, `Model_CheckAccountTransactionUpdate`);
+  recorded 2026-11-08, trial account, Update 2.0 (probe `write-transaction-private-status`,
+  second write run).
+- **Impact:** `sevdesk_transaction_mark_private` sends exactly `{status: 300}` (the strict
+  `statusPayload` in `src/domain/reconciliation/transaction-status.ts`), only for a transaction
+  that is unbooked (100), not enshrined and not zero (`assertMarkablePrivate`);
+  `sevdesk_transaction_reset` sets a private one back with `{status: 100}`. No other status is
+  written by hand. A `PUT` on a transaction needs the `commit` tier (`minimumWriteTier` in
+  `src/sevdesk/paths.ts`).
+- **Test:** `test/unit/domain/reconciliation/transaction-status.test.ts` ("builds the strict
+  private and unbooked bodies", "names a withdrawal for money out and a deposit for money in",
+  "sets a private transaction back without reading its log"),
+  `test/unit/tools/banking/transaction-private.test.ts` ("sends status 300 with the commit tier
+  and reads the transaction back", "refuses what cannot be marked, before anything is sent"),
+  `test/unit/tools/banking/transaction-reset.test.ts` ("sets a private transaction back to
+  unbooked"), `test/unit/sevdesk/paths.test.ts` ("%s needs %s": `/CheckAccountTransaction/9`
+  needs `commit`). Live: probe `write-transaction-private-status`.
+
+### D-077: The DATEV export job starts with a POST, and its answers differ from the spec
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `GET /Export/createDatevCsvZipExportJob` (query `startDate` and `endDate` as Unix
+  seconds, `scope`, `exportByPaydate`, `includeEnshrined`, `enshrineDocuments`,
+  `includeDocumentImages`) answers the job id; "accountingYearBegin" must be set through
+  `updateExportConfig` first. Then `GET /Progress/generateDownloadHash?jobId` and
+  `GET /Progress/getProgress?hash` are declared to answer a list of `Export_Progress_Data`
+  (integers `current` and `total`; done when `current` reaches `total`), and
+  `GET /ExportJob/jobDownloadInfo?jobId` a list of `Export_Job_Download_Info` (`filename`, `link`,
+  `linkExpireDate`; the description of `filename` is copied from the progress data). No error for
+  a missing configuration is documented.
+- **Actual behavior:** Recorded 2026-11-08:
+  - A GET of the job start is refused with 500 "Function createDatevCsvZipExportJob was called
+    with wrong HTTP Type". A POST with the same query parameters and no body starts the job;
+    `objects` is the job id, a UUID string.
+  - Without the DATEV settings (D-067) the POST fails with 500 "Call to a member function getIso()
+    on null".
+  - `generateDownloadHash` answers one object `{progressHash}`, not progress data; the hash is 40
+    hex characters, `_` and the job id.
+  - `getProgress` answers one object `{percent, current, errors, total, failure}`: `percent` and
+    `current` are fractions on the way (35.29…, 82.35…), `total` is 100, `errors` a list and
+    `failure` a boolean. A small export was done after four polls.
+  - `jobDownloadInfo` answers one object `{jobId, linkExpireDate, link, filename}`:
+    `linkExpireDate` an ISO date-time with offset about seven days ahead, `link` a presigned
+    Amazon S3 URL on `sevexport-filestorage-workload-prod.s3.eu-central-1.amazonaws.com` (the host
+    of the spec's example), `filename` like
+    `BITTE-ENTPACKEN_Buchungsstapel_<accountant>_<client>_<from>_bis_<to>.zip`.
+  - The link downloads without any credentials: 200, `Content-Type: binary/octet-stream`, a ZIP
+    with `EXTF_Buchungsstapel_….csv` and `EXTF_GP_Stamm_….csv`.
+  - An invoice and a voucher of the exported period read back unchanged (no visible "exported"
+    mark).
+- **Sources:** spec (`exportDatevCSV`, `generateDownloadHash`, `getProgress`, `jobDownloadInfo`,
+  `Export_Progress_Data`, `Export_Job_Download_Info`, `updateExportConfig`); recorded 2026-11-08,
+  trial account, Update 2.0 (probe `write-export-datev-csv`: the GET in the first write run, the
+  missing configuration in the second, the whole job in the opt-in DATEV run after
+  `write-export-datev-config`).
+- **Impact:** `sevdesk_datev_export` (`src/tools/reports/export-tools.ts`, a write tool) reads the
+  DATEV settings first and refuses with guidance when one is missing (`readDatevExportConfig`),
+  starts the job with a POST whose query comes from a fixed key list without `enshrineDocuments`
+  (`startDatevExportJob`, `datevJobQuery` in `src/domain/exports/datev.ts`; never retried, D-023),
+  polls the progress (a `failure` or errors end it) and the download info within a bounded wait
+  (`waitForDatevExport`), and downloads the ZIP with `downloadPresignedExport`
+  (`src/sevdesk/export-download.ts`): https only, exactly the recorded host, no redirects, no
+  `Authorization` header, a size cap. The link is a secret for a week: it never appears in
+  output, errors or logs. The file must start like a ZIP (`looksLikeZip`) and is written to
+  `SEVDESK_OUTPUT_DIR`.
+- **Test:** `test/unit/domain/exports/datev.test.ts` ("starts the job with a POST and the query,
+  and reads the id", "builds the scope in the spec's order and never sends enshrineDocuments",
+  "follows the progress to the end and returns the download info", "fails the job when sevDesk
+  reports a failure: %j", "names every missing setting (null, zero, not digits, unreadable
+  date)"), `test/unit/sevdesk/export-download.test.ts` ("accepts only https links to the recorded
+  export host", "downloads without credentials, redirects or an Authorization header", "refuses
+  redirects"), `test/unit/tools/reports/export-tools.test.ts` ("refuses with guidance when
+  sevDesk's DATEV settings are missing", "starts the job with the write tier, downloads the ZIP
+  and saves it under sevDesk's name", "refuses a download link to another host without fetching
+  it"); fixtures `test/fixtures/exports/` (recorded shapes, fake values). Live: probe
+  `write-export-datev-csv`; `test/live/lifecycle.test.ts` ("exports DATEV into the temporary
+  output folder (or says the DATEV setup is missing)").
+
+### D-078: ReceiptGuidance allows only 0 % for intra-EU acquisitions and reverse charge
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** The expense table of the overview ("sevdesk-Update 2.0 → Tax Rules") allows the
+  position rates 0, 7 and 19 % with rule 8 (Innergemeinschaftliche Erwerbe) and only 0 % with the
+  reverse-charge rules 12, 13 and 14, whose names end in "0% (19%)". It does not say how the tax
+  the recipient owes on such a purchase is recorded.
+- **Actual behavior:** The recorded ReceiptGuidance (`forAllAccounts`, SKR04) allows only `ZERO`
+  with rules 8, 12, 13 and 14 on every account that lists them, so an intra-EU acquisition cannot
+  be booked at 7 or 19 % through the API either, contrary to the spec's table. Such positions
+  carry 0 % and no tax, although the recipient owes the VAT (the "(19%)" in the names) and may
+  deduct it as input VAT where the rule allows that. Where sevDesk records the owed tax is not
+  visible through the API.
+- **Sources:** spec overview (section "Tax Rules", expense table); recorded 2026-11-07, trial
+  account, Update 2.0 (`test/fixtures/recorded/2026-11-07/meta/receipt-guidance-all.json`,
+  `meta/tax-rules.json`).
+- **Impact:** The voucher writes check every rate against the guidance (D-006, D-065), so rules 8
+  and 12–14 are booked at 0 % only. The VAT summary (`src/domain/reports/ustva-boxes.ts`,
+  `src/domain/reports/vat.ts`) puts a 0 % position under these rules into the acquisition or §13b
+  lines and computes the tax the recipient owes at 19 % (`RECIPIENT_TAX_DEFAULT_RATE`), with the
+  input VAT where the rule allows it; the report states this assumption. Positions with a real
+  rate keep it.
+- **Test:** `test/unit/domain/reports/ustva-boxes.test.ts` ("rule 8 (intra-EU acquisitions):
+  89/93/95 with input VAT 61; 0 % taxed at 19 % (assumed)", "rules 12, 13, 14 (§13b): 84/85 + 67,
+  84/85 without 67, 46/47 + 67"), `test/unit/domain/reports/vat.test.ts` ("reports a §13b service
+  booked at 0 % under Kz 46/47 and 67"), `test/regressions/b2-account-datev.test.ts` ("refuses a
+  rate the account does not allow with the rule": rule 8 at 19 % against the recorded guidance).
+  That the recorded guidance allows only `ZERO` with rules 12–14 on every account: none yet — a
+  contract test that collects the recorded guidance's rates per rule.
+
+### D-079: `GET /AccountDatev` ignores its filters and lists fewer accounts than ReceiptGuidance
+
+- **Status:** Open. **Evidence:** recorded.
+- **Spec says:** Nothing: the endpoint is undocumented (D-024). The Update 2.0 overview points to
+  ReceiptGuidance for the accounts a receipt may use.
+- **Actual behavior:** Recorded 2026-11-08 on the SKR04 trial: `countAll` gives a total of 100 (a
+  JSON number); `limit=1000` reads 100 distinct rows, and `limit`/`offset` page. Every filter
+  tried is ignored, the total staying 100: `deactivated=1`, `hidden=1`, `deprecated=1` (no row
+  has these flags), `expenseAccount=1` (79 rows have it), `revenueAccount=1` (9),
+  `assetAccount=1` (10) and `number=135` (1 row). ReceiptGuidance names 652 accounts on the same
+  account, 569 of them not among the 100 `AccountDatev` rows (the recorded lists of 2026-11-07).
+- **Sources:** recorded 2026-11-08, trial account, Update 2.0 (probe `read-account-datev-paging`);
+  recorded 2026-11-07 (`test/fixtures/recorded/2026-11-07/meta/account-datev.json`,
+  `meta/receipt-guidance-all.json`). Related: D-035 (ignored filters).
+- **Impact:** `fetchAccountsDatev` (`src/domain/accounts-datev.ts`) sends no filter and pages with
+  an explicit `limit` until the total, stopping at a page without new ids (an ignored `offset`)
+  or at 10,000 rows; each row's kind and validity are read locally. `loadAccountsDatev` caches the
+  list per configuration for 15 minutes. Previews name an account from this list and fall back to
+  the guidance's number and name, then to the bare id (`voucherAccountLabel` in
+  `src/domain/drafts/voucher-checks.ts`); which accounts a voucher may use comes from
+  ReceiptGuidance only (D-006, D-065). When the list cannot be read, the voucher writes go on with
+  the guidance's labels.
+- **Test:** `test/unit/domain/accounts-datev.test.ts` ("pages until sevDesk's total with an
+  explicit limit", "reports an ignored offset (no new ids) as truncated", "parses every recorded
+  row through the production reader"), `test/unit/domain/vouchers-write.test.ts` ("falls back
+  from AccountDatev to the guidance to the bare id"),
+  `test/unit/tools/vouchers/create-draft.test.ts` ("keeps working when the undocumented
+  AccountDatev list fails (labels from the guidance)"). Live: probe `read-account-datev-paging`.

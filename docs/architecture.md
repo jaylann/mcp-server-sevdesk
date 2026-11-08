@@ -5,8 +5,8 @@ anyone who wants to judge whether the server is safe to point at their books. Th
 the bigger decisions is in the [architecture decision records](adr/README.md).
 
 > **Status.** The project is in early development. This page describes the v1 design. Parts that
-> exist (milestones M1 to M3) are not marked. Later parts are marked with the milestone that
-> delivers them, for example _(planned, M4)_. Milestones: M1 core (0.1.0), M2 read coverage
+> exist (milestones M1 to M4) are not marked. Later parts are marked with the milestone that
+> delivers them, for example _(planned, M5)_. Milestones: M1 core (0.1.0), M2 read coverage
 > (0.2.0), M3 document lifecycle (0.3.0), M4 receipt and e-invoice intake, voucher writes,
 > reconciliation and tax reports (0.4.0), M5 remote HTTP (0.5.0), M6 launch (1.0.0).
 
@@ -39,38 +39,44 @@ Each layer only calls the one to its right.
 - **`src/tools/`** defines the MCP tools. A tool declares its schema, tier and annotations and
   calls domain functions. Tools never call `fetch` or the HTTP client directly.
 - **`src/domain/`** holds the business logic: normalized DTOs, the decimal money type, reference
-  data, lifecycle rules (which status may go where), and later validation against sevDesk's
-  ReceiptGuidance, the e-invoice parser and the reconciliation matcher.
+  data, lifecycle rules (which status may go where), validation against sevDesk's
+  ReceiptGuidance, the e-invoice parser, the reconciliation matcher and the tax reports.
 - **`src/sevdesk/`** is the HTTP client. It knows sevDesk's wire format: auth, the response
   envelope, string scalars, date formats, error bodies, pacing. It knows nothing about MCP. It could
   later become its own SDK package.
-- **`src/safety/`** is used by all layers: tiers, redaction of the API token, and fencing of
-  untrusted text; later confirmations, dry-run and the audit log.
+- **`src/safety/`** is used by all layers: tiers, redaction of the API token, fencing of untrusted
+  text, confirmations, dry-run, the audit log and confined reading of local files.
 
 ## Module map
 
-| Path                            | Responsibility                                                                                                                                  |
-| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/index.ts`                  | CLI entry (`mcp-server-sevdesk`): flags and environment → config → server → stdio (or HTTP _(planned, M5)_). stdout belongs to the transport.   |
-| `src/server.ts`                 | Builds the MCP server for a config: registers the selected tools, resources and prompts, and generated `instructions` (under 1,500 characters). |
-| `src/config.ts`                 | Configuration parsed with zod: token sources, tiers, toolsets, output options, account profiles.                                                |
-| `src/sevdesk/client.ts`         | HTTP client: raw-token `Authorization` header, User-Agent, pacing, timeouts, cancellation, write gate, GET-only retries, error classification.  |
-| `src/sevdesk/envelope.ts`       | Unwraps `{objects: …}`, including on writes and PDFs, and array-of-one GET-by-id results.                                                       |
-| `src/sevdesk/schema.ts`         | Lenient zod building blocks for responses (ids, amounts and booleans as strings or numbers).                                                    |
-| `src/sevdesk/dates.ts`          | Per-endpoint date serializers (`dd.mm.yyyy`, Unix seconds, ISO), anchored to Europe/Berlin.                                                     |
-| `src/sevdesk/errors.ts`         | Error body → typed error; spots validation errors that arrive as HTTP 500; trusted, actionable messages.                                        |
-| `src/sevdesk/system-version.ts` | Detects bookkeeping system 1.0 vs 2.0 per account and per object.                                                                               |
-| `src/sevdesk/paths.ts`          | Validates every request path and id before it is sent.                                                                                          |
-| `src/sevdesk/pacing.ts`         | Token-bucket pacing (about 4 requests per second) and an in-flight cap.                                                                         |
-| `src/domain/`                   | DTOs and logic per area (contacts, users, reference data, money; invoices, vouchers, banking, reports as they land).                            |
-| `src/tools/define-tool.ts`      | `defineTool(...)`: name, title, toolset, tier, all four annotations, input and output schemas, handler.                                         |
-| `src/tools/registry.ts`         | Picks the tools for a configuration and wraps every call (tier re-check, validation, output check, error mapping).                              |
-| `src/tools/<toolset>/`          | The tools of one toolset, for example `contacts/`, `meta/`.                                                                                     |
-| `src/safety/`                   | Tiers, redaction, untrusted-text fencing, confirmation (elicitation, approval page), dry-run previews and the audit log.                        |
-| `src/http/`                     | Streamable HTTP adapter, bearer and OAuth 2.1, consent page _(planned, M5)_.                                                                    |
-| `spec/`                         | Reference snapshot of the upstream OpenAPI spec and the [deviations register](../spec/deviations.md).                                           |
-| `scripts/`                      | Spec-drift check, package smoke test; tool-doc generator and fixture recorder _(planned)_.                                                      |
-| `test/`                         | Unit, contract, regression, integration and (opt-in) live tests; fixtures with provenance.                                                      |
+| Path                             | Responsibility                                                                                                                                  |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/index.ts`                   | CLI entry (`mcp-server-sevdesk`): flags and environment → config → server → stdio (or HTTP _(planned, M5)_). stdout belongs to the transport.   |
+| `src/server.ts`                  | Builds the MCP server for a config: registers the selected tools and resources, and generated `instructions` (under 1,500 characters).          |
+| `src/config.ts`                  | Configuration from the environment: token sources, tiers, toolsets, confirmation, output and file folders. One account per process.             |
+| `src/sevdesk/client.ts`          | HTTP client: raw-token `Authorization` header, User-Agent, pacing, timeouts, cancellation, write gate, GET-only retries, error classification.  |
+| `src/sevdesk/envelope.ts`        | Unwraps `{objects: …}`, including on writes and PDFs, and array-of-one GET-by-id results.                                                       |
+| `src/sevdesk/schema.ts`          | Lenient zod building blocks for responses (ids, amounts and booleans as strings or numbers).                                                    |
+| `src/sevdesk/dates.ts`           | Per-endpoint date serializers (`dd.mm.yyyy`, Unix seconds, ISO), anchored to Europe/Berlin.                                                     |
+| `src/sevdesk/errors.ts`          | Error body → typed error; spots validation errors that arrive as HTTP 500; trusted, actionable messages.                                        |
+| `src/sevdesk/system-version.ts`  | Detects bookkeeping system 1.0 vs 2.0 per account and per object.                                                                               |
+| `src/sevdesk/paths.ts`           | Validates every request path and id before it is sent.                                                                                          |
+| `src/sevdesk/pacing.ts`          | Token-bucket pacing (about 4 requests per second) and an in-flight cap.                                                                         |
+| `src/domain/`                    | DTOs and logic per area: contacts, users, reference data, money, invoices, credit notes, orders, vouchers, banking, reports, lifecycle, drafts. |
+| `src/domain/einvoice/`           | Local XRechnung (UBL, CII) and ZUGFeRD/Factur-X parser (EN 16931 subset, business-rule checks), voucher suggestions, outgoing preflight.        |
+| `src/domain/reconciliation/`     | Transaction log reader, the pure match scorer (amount, document number, counterparty, splits), allocation planning and over-booking guards.     |
+| `src/domain/reports/`            | Server-side aggregates: summaries, aging, cash position, changes, the VAT summary (UStVA boxes with sources, ZM, OSS) and the EÜR-style P&L.    |
+| `src/domain/exports/`            | DATEV export job (start, progress, presigned download) and sevDesk CSV exports.                                                                 |
+| `src/sevdesk/export-download.ts` | The only request outside the API base URL: the DATEV ZIP from sevDesk's export bucket (one https host, no credentials, no redirects, capped).   |
+| `src/tools/define-tool.ts`       | `defineTool(...)`: name, title, toolset, tier, all four annotations, input and output schemas, handler.                                         |
+| `src/tools/registry.ts`          | Picks the tools for a configuration and wraps every call (tier re-check, validation, output check, error mapping).                              |
+| `src/tools/<toolset>/`           | The tools of one toolset, for example `contacts/`, `meta/`.                                                                                     |
+| `src/safety/`                    | Tiers, redaction, untrusted-text fencing, confirmation (elicitation, approval page), dry-run previews, the audit log, confined file reading.    |
+| `src/http/`                      | Streamable HTTP adapter, bearer and OAuth 2.1, consent page _(planned, M5)_.                                                                    |
+| `spec/`                          | Reference snapshot of the upstream OpenAPI spec and the [deviations register](../spec/deviations.md).                                           |
+| `scripts/`                       | Spec-drift check, package smoke test, tool-doc generator, fixture recorder, API probes, e-invoice fixture generator.                            |
+| `test/`                          | Unit, contract, regression, integration and (opt-in) live tests; tool-selection evals; fixtures with provenance.                                |
+| `plugin/`, `.claude-plugin/`     | Claude Code plugin (starts this server, bookkeeping skill with cited references) and the repository's plugin marketplace.                       |
 
 ## Lifecycle of a tool call
 
@@ -121,12 +127,12 @@ flowchart LR
 
 Every tool has exactly one tier. Reads and writes never share a tool.
 
-| Tier       | What it covers                                                                                    | Default |
-| ---------- | ------------------------------------------------------------------------------------------------- | ------- |
-| `read`     | list, get, search, reports, PDF preview (with `preventSendBy`)                                    | on      |
-| `write`    | contacts, parts, draft invoices, vouchers and offers, deleting drafts (reversible)                | off     |
-| `commit`   | finalize, book payment, reconcile, cancel, credit note, enshrine, reset (binding or irreversible) | off     |
-| `external` | send by email or letter (reaches third parties)                                                   | off     |
+| Tier       | What it covers                                                                                               | Default |
+| ---------- | ------------------------------------------------------------------------------------------------------------ | ------- |
+| `read`     | list, get, search, reports, PDF preview (with `preventSendBy`)                                               | on      |
+| `write`    | contacts, parts, draft invoices, vouchers and offers, the DATEV export (reversible or harmless)              | off     |
+| `commit`   | finalize, book payment, reconcile, cancel, enshrine, reset, delete a voucher draft (binding or irreversible) | off     |
+| `external` | send by email or letter (reaches third parties)                                                              | off     |
 
 **Switches.** `SEVDESK_ALLOW=read,write,commit,external` chooses the tiers. `SEVDESK_READ_ONLY=1`
 overrides everything else. `SEVDESK_DRY_RUN=1`, or `dryRun` on a single call, runs the tool's
@@ -140,9 +146,10 @@ checks and returns its preview (status `dry_run`) without sending anything or as
    must declare its tier, and is refused before sending in read-only or dry-run mode, when it
    declares no tier, when `SEVDESK_ALLOW` does not enable that tier, or when the tier is below the
    endpoint's minimum (`minimumWriteTier` in `paths.ts`: `sendBy`, `bookAmount`, `enshrine`,
-   `cancelInvoice`, `resetToDraft`, `resetToOpen`, `changeParameter`, a sending `getPdf` and
-   DATEV `enshrine` exports need `commit`; `sendViaEmail` and `sendByWithRender` need
-   `external`). Write tools never set the tier: their `execute` gets a client that stamps it
+   `cancelInvoice`, `resetToDraft`, `resetToOpen`, `changeParameter`, a sending `getPdf`,
+   DATEV `enshrine` exports, a `saveVoucher` whose voucher is not a draft (the voucher's
+   finalize) and `PUT`/`DELETE /CheckAccountTransaction/{id}` (private marking, reset) need
+   `commit`; `sendViaEmail` and `sendByWithRender` need `external`). Write tools never set the tier: their `execute` gets a client that stamps it
    (`tierScopedClient`, which applies the endpoint rule too), their `prepare` one that refuses
    every write (`readOnlyClient`). The client recognizes the
    state-changing GETs by endpoint, not only by the caller's `sideEffect` flag: a `getPdf` read
@@ -192,12 +199,22 @@ retries for writes. Read back after every write. Optional JSONL audit log via `S
 request). A multi-step write that fails half-way reports the records it already changed
 (`SevdeskError.completedWrites`), in the error text and the audit log. Document drafts validate
 tax rule × rate against the reference tax rules before any API call; booking accounts against
-ReceiptGuidance (`src/domain/receipt-guidance.ts`) follow with the voucher writes _(planned, M4)_.
+ReceiptGuidance (`src/domain/receipt-guidance.ts`): voucher drafts and finalizing check every
+account × tax rule × rate against it, because sevDesk itself accepts any combination on a draft.
+Bank bookings plan every allocation against the document's open amount and the transaction's
+remaining amount (from the transaction log) before anything is sent.
 
 **Untrusted text.** Contact names, descriptions, bank transfer purposes (Verwendungszweck) and
 e-invoice fields can be written by third parties and may carry prompt injection. They are stripped
 of invisible and bidi characters, fenced in output, and never interpolated into error messages or
 instructions.
+
+**Local files.** Tools read local files only from `SEVDESK_FILE_DIRS`
+(`src/safety/local-files.ts`: real paths, no symlink escapes, `O_NOFOLLOW` plus an inode check,
+content sniffing, size caps) and write only into `SEVDESK_OUTPUT_DIR` (exclusive creation, mode
+0600, never overwriting). Every such tool declares `localEffects` and is on a reviewed list in the
+metadata lint. E-invoice XML is parsed without entity expansion or DOCTYPEs, with size and depth
+limits.
 
 **Token.** The sevDesk API token has full account access, no scopes and no expiry. It is read from
 the environment, a `*_FILE` or, optionally, the OS keychain. It is checked at startup with
@@ -244,8 +261,9 @@ The HTTP mode is for self-hosting. There is no public hosted instance; see
 There is no shared paid test account, so most tests run against fixtures. Each fixture records its
 provenance (`spec`, `community` or `recorded`, plus date and system version).
 
-1. **Unit:** envelope and coercion, dates, money, tiers, redaction, fencing; later the confirmation
-   codec, ReceiptGuidance validator, e-invoice parser and reconciliation matcher.
+1. **Unit:** envelope and coercion, dates, money, tiers, redaction, fencing, the confirmation
+   codec, ReceiptGuidance validator, e-invoice parser (official KoSIT samples plus an attack
+   corpus) and reconciliation matcher.
 2. **Contract:** domain functions against fixtures served by an in-memory fake client
    (`test/helpers/fake-client.ts`) or a scripted fake `fetch` (`test/helpers/fake-fetch.ts`). Each open entry in the
    deviations register has a test.
@@ -260,8 +278,9 @@ provenance (`spec`, `community` or `recorded`, plus date and system version).
    Linux, macOS and Windows with Node 22 and 24.
 7. **Live tests:** opt-in, run by hand with a real token (`pnpm test:live`), read-only unless a
    trial account runs the lifecycle scenario ([docs/recording-session.md](recording-session.md)).
-8. **Tool-selection evals** _(planned, M4)_: recorded model runs with German and English prompts,
-   on PRs that touch tools.
+8. **Tool-selection evals** (`test/evals/`, `pnpm evals`): about 70 German and English requests,
+   scored on the first tool the model picks; model answers are recorded once and replayed, and
+   `.github/workflows/evals.yml` runs them on PRs that touch tools (informative, not required).
 
 Upstream changes are watched separately: a weekly job compares the spec and the API-news feed with
 the stored snapshot and opens an issue on drift ([spec/README.md](../spec/README.md)).
