@@ -1,0 +1,23 @@
+{
+  "caseId": "voucher-update-en",
+  "model": "claude-sonnet-5-5",
+  "key": "1ac31b6685282f75ce77581bedc1659d55621087f78cb8e05602107a68af13d8",
+  "recordedAt": "2026-11-08T17:38:25.729Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      {
+        "type": "tool_use",
+        "name": "sevdesk_voucher_update_draft",
+        "input": { "id": 9001, "date": "2026-10-30" }
+      }
+    ],
+    "usage": {
+      "inputTokens": 103,
+      "outputTokens": 85,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 56314
+    }
+  }
+}

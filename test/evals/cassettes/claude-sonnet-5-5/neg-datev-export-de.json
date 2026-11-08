@@ -1,0 +1,38 @@
+{
+  "caseId": "neg-datev-export-de",
+  "model": "claude-sonnet-5-5",
+  "key": "12761940b3dd789474305efb96c0fecdf0d3dcbc01ad499385152abc52f73b09",
+  "recordedAt": "2026-11-08T17:06:59.633Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      {
+        "type": "text",
+        "text": "Ein DATEV-Export (Buchungsstapel-CSV) lässt sich mit meinen Tools nicht erzeugen. Ich kann nur lesen und habe keine Exportfunktion. Ich prüfe aber, ob Ihre Daten für Q3 2026 exportbereit sind."
+      },
+      { "type": "tool_use", "name": "sevdesk_account_info", "input": {} },
+      {
+        "type": "tool_use",
+        "name": "sevdesk_transactions_list",
+        "input": { "from": "2026-07-01", "to": "2026-09-30", "status": ["created"], "limit": 100 }
+      },
+      {
+        "type": "tool_use",
+        "name": "sevdesk_vouchers_list",
+        "input": { "from": "2026-07-01", "to": "2026-09-30", "status": "draft", "limit": 100 }
+      },
+      {
+        "type": "tool_use",
+        "name": "sevdesk_invoices_list",
+        "input": { "from": "2026-07-01", "to": "2026-09-30", "status": "draft", "limit": 100 }
+      }
+    ],
+    "usage": {
+      "inputTokens": 103,
+      "outputTokens": 782,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17167
+    }
+  }
+}

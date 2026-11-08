@@ -1,0 +1,27 @@
+{
+  "caseId": "invoice-create-de",
+  "model": "claude-sonnet-5-5",
+  "key": "cae5e55088cc43c3d611eda8a0c03e815aa56016959d5aaa411e499ed3d66b7d",
+  "recordedAt": "2026-11-08T17:37:57.480Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      {
+        "type": "tool_use",
+        "name": "sevdesk_invoice_create_draft",
+        "input": {
+          "contactId": 1234,
+          "positions": [{ "name": "Beratung", "quantity": 10, "unitPrice": 120, "taxRate": 19 }],
+          "timeToPay": 14
+        }
+      }
+    ],
+    "usage": {
+      "inputTokens": 147,
+      "outputTokens": 257,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 56314
+    }
+  }
+}

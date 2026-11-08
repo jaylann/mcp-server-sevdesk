@@ -1,0 +1,31 @@
+{
+  "caseId": "contacts-create-de",
+  "model": "claude-sonnet-5-5",
+  "key": "b4b72fcee7564967a2c6f768dc4e58ff7c2e1941370d029979cf3e5126be5d85",
+  "recordedAt": "2026-11-08T17:37:53.358Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      {
+        "type": "tool_use",
+        "name": "sevdesk_contact_create",
+        "input": {
+          "organisationName": "Beispiel AG",
+          "street": "Musterstraße 1",
+          "zip": "10115",
+          "city": "Berlin",
+          "country": "DE",
+          "vatNumber": "DE123456789",
+          "category": "customer"
+        }
+      }
+    ],
+    "usage": {
+      "inputTokens": 133,
+      "outputTokens": 261,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 56314
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "caseId": "invoice-get-en",
+  "model": "claude-sonnet-5-5",
+  "key": "8ffeea12ab613d77a96524f8c672cbca698b5325ec957c6e321fff8041f171c2",
+  "recordedAt": "2026-11-08T17:37:54.804Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [{ "type": "tool_use", "name": "sevdesk_invoice_get", "input": { "id": 4711 } }],
+    "usage": {
+      "inputTokens": 97,
+      "outputTokens": 56,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 56314
+    }
+  }
+}

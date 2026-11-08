@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100" 
+xmlns:ram="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100" 
+xmlns:udt="urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100">
+<rsm:ExchangedDocumentContext>
+<ram:GuidelineSpecifiedDocumentContextParameter><ram:ID>urn:cen.eu:en16931:2017</ram:ID></ram:GuidelineSpecifiedDocumentContextParameter>
+</rsm:ExchangedDocumentContext>
+<rsm:ExchangedDocument>
+<ram:ID>GS-2026-0001</ram:ID><ram:TypeCode>381</ram:TypeCode>
+<ram:IssueDateTime><udt:DateTimeString format="102">20260120</udt:DateTimeString></ram:IssueDateTime>
+</rsm:ExchangedDocument>
+<rsm:SupplyChainTradeTransaction>
+<ram:IncludedSupplyChainTradeLineItem><ram:AssociatedDocumentLineDocument><ram:LineID>1</ram:LineID></ram:AssociatedDocumentLineDocument><ram:SpecifiedTradeProduct><ram:Name>Gutschrift Beratung</ram:Name></ram:SpecifiedTradeProduct><ram:SpecifiedLineTradeAgreement><ram:NetPriceProductTradePrice><ram:ChargeAmount>100.00</ram:ChargeAmount></ram:NetPriceProductTradePrice></ram:SpecifiedLineTradeAgreement><ram:SpecifiedLineTradeDelivery><ram:BilledQuantity unitCode="HUR">0.5</ram:BilledQuantity></ram:SpecifiedLineTradeDelivery><ram:SpecifiedLineTradeSettlement><ram:ApplicableTradeTax><ram:TypeCode>VAT</ram:TypeCode><ram:CategoryCode>S</ram:CategoryCode><ram:RateApplicablePercent>19</ram:RateApplicablePercent></ram:ApplicableTradeTax><ram:SpecifiedTradeSettlementLineMonetarySummation><ram:LineTotalAmount>50.00</ram:LineTotalAmount></ram:SpecifiedTradeSettlementLineMonetarySummation></ram:SpecifiedLineTradeSettlement></ram:IncludedSupplyChainTradeLineItem>
+<ram:ApplicableHeaderTradeAgreement>
+
+<ram:SellerTradeParty><ram:Name>Musterlieferant GmbH</ram:Name><ram:DefinedTradeContact><ram:EmailURIUniversalCommunication><ram:URIID>rechnung@example.com</ram:URIID></ram:EmailURIUniversalCommunication></ram:DefinedTradeContact><ram:PostalTradeAddress><ram:PostcodeCode>10115</ram:PostcodeCode><ram:LineOne>Musterweg 5</ram:LineOne><ram:CityName>Berlin</ram:CityName><ram:CountryID>DE</ram:CountryID></ram:PostalTradeAddress><ram:URIUniversalCommunication><ram:URIID schemeID="EM">rechnung@example.com</ram:URIID></ram:URIUniversalCommunication><ram:SpecifiedTaxRegistration><ram:ID schemeID="FC">00/000/00001</ram:ID></ram:SpecifiedTaxRegistration><ram:SpecifiedTaxRegistration><ram:ID schemeID="VA">DE000000001</ram:ID></ram:SpecifiedTaxRegistration></ram:SellerTradeParty>
+<ram:BuyerTradeParty><ram:Name>Musterfirma GmbH</ram:Name><ram:DefinedTradeContact><ram:EmailURIUniversalCommunication><ram:URIID>buchhaltung@example.com</ram:URIID></ram:EmailURIUniversalCommunication></ram:DefinedTradeContact><ram:PostalTradeAddress><ram:PostcodeCode>10115</ram:PostcodeCode><ram:LineOne>Musterstraße 1</ram:LineOne><ram:CityName>Berlin</ram:CityName><ram:CountryID>DE</ram:CountryID></ram:PostalTradeAddress><ram:URIUniversalCommunication><ram:URIID schemeID="EM">buchhaltung@example.com</ram:URIID></ram:URIUniversalCommunication><ram:SpecifiedTaxRegistration><ram:ID schemeID="VA">DE000000000</ram:ID></ram:SpecifiedTaxRegistration></ram:BuyerTradeParty>
+</ram:ApplicableHeaderTradeAgreement>
+<ram:ApplicableHeaderTradeDelivery>
+
+</ram:ApplicableHeaderTradeDelivery>
+<ram:ApplicableHeaderTradeSettlement>
+<ram:InvoiceCurrencyCode>EUR</ram:InvoiceCurrencyCode>
+<ram:SpecifiedTradeSettlementPaymentMeans><ram:TypeCode>58</ram:TypeCode><ram:PayeePartyCreditorFinancialAccount><ram:IBANID>DE89370400440532013000</ram:IBANID></ram:PayeePartyCreditorFinancialAccount></ram:SpecifiedTradeSettlementPaymentMeans>
+<ram:ApplicableTradeTax><ram:CalculatedAmount>9.50</ram:CalculatedAmount><ram:TypeCode>VAT</ram:TypeCode><ram:BasisAmount>50.00</ram:BasisAmount><ram:CategoryCode>S</ram:CategoryCode><ram:RateApplicablePercent>19</ram:RateApplicablePercent></ram:ApplicableTradeTax>
+<ram:SpecifiedTradePaymentTerms><ram:Description>Gutschrift wird verrechnet.</ram:Description><ram:DueDateDateTime><udt:DateTimeString format="102">20260203</udt:DateTimeString></ram:DueDateDateTime></ram:SpecifiedTradePaymentTerms>
+<ram:SpecifiedTradeSettlementHeaderMonetarySummation>
+<ram:LineTotalAmount>50.00</ram:LineTotalAmount>
+
+
+<ram:TaxBasisTotalAmount>50.00</ram:TaxBasisTotalAmount>
+<ram:TaxTotalAmount currencyID="EUR">9.50</ram:TaxTotalAmount>
+<ram:GrandTotalAmount>59.50</ram:GrandTotalAmount>
+<ram:DuePayableAmount>59.50</ram:DuePayableAmount>
+</ram:SpecifiedTradeSettlementHeaderMonetarySummation>
+<ram:InvoiceReferencedDocument><ram:IssuerAssignedID>RE-2026-0001</ram:IssuerAssignedID></ram:InvoiceReferencedDocument>
+</ram:ApplicableHeaderTradeSettlement>
+</rsm:SupplyChainTradeTransaction>
+</rsm:CrossIndustryInvoice>

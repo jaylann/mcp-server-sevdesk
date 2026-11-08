@@ -1,0 +1,17 @@
+{
+  "caseId": "bank-balance-de",
+  "model": "claude-sonnet-5-5",
+  "key": "11f0270d4787291e36a086b508914038bd5c826de63c1395bfc2fce94f0b3e3b",
+  "recordedAt": "2026-11-08T17:06:01.336Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [{ "type": "tool_use", "name": "sevdesk_bank_accounts_list", "input": {} }],
+    "usage": {
+      "inputTokens": 103,
+      "outputTokens": 37,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17167
+    }
+  }
+}

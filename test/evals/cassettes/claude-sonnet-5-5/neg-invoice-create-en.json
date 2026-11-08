@@ -1,0 +1,20 @@
+{
+  "caseId": "neg-invoice-create-en",
+  "model": "claude-sonnet-5-5",
+  "key": "6f0eac1ab9cf3dadc78868df607dc49aeb68752fdf582788744d585eca2730cf",
+  "recordedAt": "2026-11-08T17:06:40.736Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_account_info", "input": {} },
+      { "type": "tool_use", "name": "sevdesk_contact_get", "input": { "id": 1234 } }
+    ],
+    "usage": {
+      "inputTokens": 101,
+      "outputTokens": 168,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17167
+    }
+  }
+}

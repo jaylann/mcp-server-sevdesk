@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
@@ -104,12 +104,15 @@ describe("probe catalog", () => {
   });
 
   it("never probes irreversible endpoints, and e-mails only from the e-mail probe", () => {
-    const source = ["read-probes.ts", "write-probes.ts"]
-      .map((file) =>
-        readFileSync(new URL(`../../../scripts/lib/probes/${file}`, import.meta.url), "utf8"),
-      )
-      .join("\n");
-    expect(source).not.toMatch(/\/enshrine|sendByWithRender|Export\/|useNextNumber: "true"/);
+    // Every probe module (`*-probes.ts`), including the M4 ones. Export jobs may be probed (they
+    // only start a job), but never with an enshrine flag.
+    const directory = new URL("../../../scripts/lib/probes/", import.meta.url);
+    const files = readdirSync(directory).filter((file) => file.endsWith("-probes.ts"));
+    expect(files).toEqual(expect.arrayContaining(["read-probes.ts", "write-probes.ts"]));
+    const source = files.map((file) => readFileSync(new URL(file, directory), "utf8")).join("\n");
+    expect(source).not.toMatch(
+      /\/enshrine|sendByWithRender|enshrine(?:Documents)?: (?:true|1|"1"|"true")|useNextNumber: "true"/,
+    );
     expect(source.match(/sendViaEmail`/g)).toHaveLength(1);
     expect(source.match(/tier: "external"/g)).toHaveLength(1);
     expect(

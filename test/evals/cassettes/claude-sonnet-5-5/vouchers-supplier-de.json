@@ -1,0 +1,28 @@
+{
+  "caseId": "vouchers-supplier-de",
+  "model": "claude-sonnet-5-5",
+  "key": "79d1fe08b26b455c56aa517f18f3285eb0b074cd6c7e17b39fc7b3c412b2974b",
+  "recordedAt": "2026-11-08T17:05:35.174Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      {
+        "type": "tool_use",
+        "name": "sevdesk_vouchers_list",
+        "input": {
+          "supplierName": "Hetzner",
+          "from": "2026-01-01",
+          "to": "2026-12-31",
+          "limit": 100
+        }
+      }
+    ],
+    "usage": {
+      "inputTokens": 108,
+      "outputTokens": 137,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17167
+    }
+  }
+}

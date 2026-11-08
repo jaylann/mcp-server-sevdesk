@@ -1,0 +1,19 @@
+{
+  "caseId": "contacts-search-de",
+  "model": "claude-sonnet-5-5",
+  "key": "6ad40fd107a6cf83cc3823166b2a660f33a91ff36b35aff4da843b6c6d4097ca",
+  "recordedAt": "2026-11-08T17:37:50.577Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_contacts_search", "input": { "query": "Hetzner" } }
+    ],
+    "usage": {
+      "inputTokens": 110,
+      "outputTokens": 59,
+      "cacheCreationInputTokens": 56314,
+      "cacheReadInputTokens": 0
+    }
+  }
+}

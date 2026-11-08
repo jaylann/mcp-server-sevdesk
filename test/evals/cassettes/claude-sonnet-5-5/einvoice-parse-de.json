@@ -1,0 +1,23 @@
+{
+  "caseId": "einvoice-parse-de",
+  "model": "claude-sonnet-5-5",
+  "key": "85d8b523a328ad8b53e7d805a27a822aa568a2390f718948984454082c1036df",
+  "recordedAt": "2026-11-08T17:05:46.951Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      {
+        "type": "tool_use",
+        "name": "sevdesk_einvoice_parse",
+        "input": { "file": "/home/user/receipts/rechnung-4711.xml" }
+      }
+    ],
+    "usage": {
+      "inputTokens": 140,
+      "outputTokens": 75,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 18800
+    }
+  }
+}

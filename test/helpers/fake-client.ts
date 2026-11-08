@@ -18,7 +18,7 @@ import { z } from "zod";
 import { type Config, loadConfig } from "../../src/config.js";
 import { parseTotal, readEnvelope } from "../../src/sevdesk/envelope.js";
 import { SevdeskError } from "../../src/sevdesk/errors.js";
-import { assertSafePath } from "../../src/sevdesk/paths.js";
+import { assertSafePath, resolveGetSafety } from "../../src/sevdesk/paths.js";
 import type {
   CollectedList,
   HttpMethod,
@@ -95,8 +95,22 @@ export interface RecordedCall {
   readonly sideEffect: boolean;
   /** The JSON body of a `request` (writes), exactly as passed to the client. */
   readonly body?: unknown;
+  /** The multipart body of a `request` (e.g. `Voucher/Factory/uploadTempFile`). */
+  readonly form?: FormData;
   /** The tier the request declared (stamped by the tier-scoped client for writes). */
   readonly tier?: SevdeskRequest["tier"];
+}
+
+/**
+ * Whether the real client would treat a request as changing data: the declared flag, or a GET
+ * the client recognizes by endpoint (`resolveGetSafety`: a sending `getPdf`, DATEV export jobs,
+ * number reservations), so `writes()` sees what the real write gate sees.
+ */
+function sideEffectOf(request: SevdeskRequest): boolean {
+  if (request.sideEffect === true) return true;
+  return (
+    request.method === "GET" && resolveGetSafety(request.path, request.query, false).sideEffect
+  );
 }
 
 const MIN_LIMIT = 1;
@@ -127,8 +141,9 @@ export class FakeSevdeskClient implements SevdeskClient {
     return Promise.resolve().then(() => {
       checkRequest(request.path, request.signal);
       const query = request.query ?? {};
-      this.record("request", request.method, request.path, query, request.sideEffect ?? false, {
+      this.record("request", request.method, request.path, query, sideEffectOf(request), {
         body: request.body,
+        form: request.form,
         tier: request.tier,
       });
       return this.envelopeFor(request.method, request.path, query).objects;
@@ -209,7 +224,7 @@ export class FakeSevdeskClient implements SevdeskClient {
     return Promise.resolve().then(() => {
       checkRequest(request.path, request.signal);
       const query = request.query ?? {};
-      this.record("download", request.method, request.path, query, request.sideEffect ?? false, {
+      this.record("download", request.method, request.path, query, sideEffectOf(request), {
         tier: request.tier,
       });
       const response = this.route(request.method, request.path, query).response;
@@ -227,7 +242,11 @@ export class FakeSevdeskClient implements SevdeskClient {
     path: string,
     query: Readonly<Record<string, QueryValue>>,
     sideEffect: boolean,
-    extra: { readonly body?: unknown; readonly tier?: SevdeskRequest["tier"] } = {},
+    extra: {
+      readonly body?: unknown;
+      readonly form?: FormData | undefined;
+      readonly tier?: SevdeskRequest["tier"];
+    } = {},
   ): void {
     this.calls.push({
       operation,
@@ -236,6 +255,7 @@ export class FakeSevdeskClient implements SevdeskClient {
       query,
       sideEffect,
       ...(extra.body === undefined ? {} : { body: extra.body }),
+      ...(extra.form === undefined ? {} : { form: extra.form }),
       ...(extra.tier === undefined ? {} : { tier: extra.tier }),
     });
   }

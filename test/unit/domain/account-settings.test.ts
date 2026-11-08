@@ -4,6 +4,7 @@ import {
   ACCOUNT_SETTINGS_TTL_MS,
   clearAccountSettingsCache,
   fetchAccountSettings,
+  loadAccountCompany,
   loadAccountSettings,
   taxRegimeOf,
 } from "../../../src/domain/account-settings.js";
@@ -169,6 +170,95 @@ describe("loadAccountSettings (cached per owner)", () => {
     await expect(
       loadAccountSettings(new FakeSevdeskClient([]), { cacheOwner: {} }),
     ).rejects.toThrow(/no route/);
+  });
+});
+
+describe("loadAccountCompany (same GET /SevClient, same cache)", () => {
+  it("reads the company fields of the recorded fixture", async () => {
+    await expect(
+      loadAccountCompany(new FakeSevdeskClient([regular]), { cacheOwner: {} }),
+    ).resolves.toEqual({
+      name: "Musterfirma GmbH",
+      email: "buchhaltung@example.com",
+      countryId: 1,
+    });
+  });
+
+  it("maps every recorded company key, cleans text and compacts the IBAN", async () => {
+    const zeroWidth = String.fromCodePoint(0x200b);
+    const client = new FakeSevdeskClient([
+      body([
+        {
+          ...recorded,
+          name: ` Musterfirma${zeroWidth} GmbH `,
+          vatNumber: "DE000000000",
+          taxNumber: "00/000/00000",
+          addressStreet: "Musterstraße 1",
+          addressZip: 10115,
+          addressCity: "Berlin",
+          addressCountry: { id: "1", objectName: "StaticCountry" },
+          bankIban: "de00 0000 0000 0000 0000 00",
+          bankBic: "TESTDEFFXXX",
+          contactEmail: "buchhaltung@example.com",
+          contactPhone: "+49 30 0000000",
+        },
+      ]),
+    ]);
+    await expect(loadAccountCompany(client, { cacheOwner: {} })).resolves.toEqual({
+      name: "Musterfirma GmbH",
+      vatNumber: "DE000000000",
+      taxNumber: "00/000/00000",
+      street: "Musterstraße 1",
+      zip: "10115",
+      city: "Berlin",
+      countryId: 1,
+      iban: "DE00000000000000000000",
+      bic: "TESTDEFFXXX",
+      email: "buchhaltung@example.com",
+      phone: "+49 30 0000000",
+    });
+  });
+
+  it("drops unreadable company values instead of failing", async () => {
+    const client = new FakeSevdeskClient([
+      body([
+        {
+          smallSettlement: "0",
+          name: { nested: true },
+          vatNumber: ["DE000000000"],
+          addressCountry: "1",
+          bankIban: "   ",
+          contactEmail: "",
+        },
+      ]),
+    ]);
+    await expect(loadAccountCompany(client, { cacheOwner: {} })).resolves.toEqual({});
+    await expect(
+      loadAccountSettings(new FakeSevdeskClient([body([{ smallSettlement: "0", name: 1 }])]), {
+        cacheOwner: {},
+      }),
+    ).resolves.toEqual({ smallBusiness: false });
+  });
+
+  it("shares one read with loadAccountSettings", async () => {
+    const client = new FakeSevdeskClient([regular]);
+    const owner = {};
+    await loadAccountSettings(client, { cacheOwner: owner });
+    await expect(loadAccountCompany(client, { cacheOwner: owner })).resolves.toMatchObject({
+      name: "Musterfirma GmbH",
+    });
+    expect(client.calls).toHaveLength(1);
+  });
+
+  it("returns undefined exactly when the settings are unreadable", async () => {
+    await expect(
+      loadAccountCompany(new FakeSevdeskClient([failing("not_found")]), { cacheOwner: {} }),
+    ).resolves.toBeUndefined();
+    await expect(
+      loadAccountCompany(new FakeSevdeskClient([body([{ name: "Musterfirma GmbH" }])]), {
+        cacheOwner: {},
+      }),
+    ).resolves.toBeUndefined();
   });
 });
 

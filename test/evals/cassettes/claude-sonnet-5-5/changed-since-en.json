@@ -1,0 +1,19 @@
+{
+  "caseId": "changed-since-en",
+  "model": "claude-sonnet-5-5",
+  "key": "3e35532aa0a5b5a6d173ebdfda01278aaae0b149fcd099c37a8fccf3a7a18193",
+  "recordedAt": "2026-11-08T17:06:24.808Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_changed_since", "input": { "since": "2026-11-02" } }
+    ],
+    "usage": {
+      "inputTokens": 96,
+      "outputTokens": 59,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17167
+    }
+  }
+}

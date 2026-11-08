@@ -14,10 +14,16 @@ import {
   createTestData,
   type DeviationVerdict,
   type Exchange,
+  type ProbeAttachment,
   type ProbeDefinition,
   type ProbeMode,
   type Verdict,
 } from "./core.js";
+
+/** Most characters of one attachment kept in the report. */
+export const MAX_ATTACHMENT_CHARS = 64 * 1024;
+/** Most attachment characters of one report, across all probes. */
+export const MAX_REPORT_ATTACHMENT_CHARS = 256 * 1024;
 
 export interface RunOptions {
   readonly client: SevdeskClient;
@@ -55,6 +61,8 @@ export interface ProbeResult {
     readonly verdict: DeviationVerdict | "not checked";
   }[];
   readonly evidence: readonly Exchange[];
+  /** Scrubbed and capped attachments of the outcome; absent when the probe sent none. */
+  readonly attachments?: readonly ProbeAttachment[];
 }
 
 export interface RunReport {
@@ -113,6 +121,7 @@ export async function runProbes(options: RunOptions): Promise<RunReport> {
     ),
   );
   const results: ProbeResult[] = [];
+  const attachmentBudget = { left: MAX_REPORT_ATTACHMENT_CHARS };
 
   for (const probe of selected) {
     const evidence: Exchange[] = [];
@@ -138,7 +147,13 @@ export async function runProbes(options: RunOptions): Promise<RunReport> {
         ...(options.probeEmail === undefined ? {} : { probeEmail: options.probeEmail }),
         ...(options.makeClient === undefined ? {} : { makeClient: options.makeClient }),
       });
-      results.push(result(probe, outcome.verdict, outcome.finding, evidence, outcome.deviations));
+      const attachments = (outcome.attachments ?? []).map((attachment) =>
+        capAttachment(attachment, options.scrubber, attachmentBudget),
+      );
+      results.push({
+        ...result(probe, outcome.verdict, outcome.finding, evidence, outcome.deviations),
+        ...(attachments.length === 0 ? {} : { attachments }),
+      });
       log(`       ${outcome.verdict}: ${outcome.finding}`);
     } catch (error) {
       const message = options.scrubber.scrubText(
@@ -158,6 +173,29 @@ export async function runProbes(options: RunOptions): Promise<RunReport> {
     results,
     created,
     notProbed: NOT_PROBED,
+  };
+}
+
+/**
+ * Runs an attachment through the run's scrubber (on top of the probe's own scrubbing) and cuts it
+ * to {@link MAX_ATTACHMENT_CHARS} and to what is left of the report's budget, with a visible
+ * marker.
+ */
+function capAttachment(
+  attachment: ProbeAttachment,
+  scrubber: Scrubber,
+  budget: { left: number },
+): ProbeAttachment {
+  const content = scrubber.scrubText(attachment.content);
+  const keep = Math.max(0, Math.min(content.length, MAX_ATTACHMENT_CHARS, budget.left));
+  budget.left -= keep;
+  return {
+    label: scrubber.scrubText(attachment.label).replace(/\r?\n/g, " "),
+    ...(attachment.language === undefined ? {} : { language: attachment.language }),
+    content:
+      keep === content.length
+        ? content
+        : `${content.slice(0, keep)}\n[truncated ${content.length - keep} chars]`,
   };
 }
 

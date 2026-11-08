@@ -1,0 +1,19 @@
+{
+  "caseId": "cash-outlook-de",
+  "model": "claude-sonnet-5-5",
+  "key": "88f521dfa67e95c4c00ab30a5b5cc955e65974997a467422de21e95bdbeb5dfa",
+  "recordedAt": "2026-11-08T17:06:23.086Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_cash_position", "input": { "outlookDays": 30 } }
+    ],
+    "usage": {
+      "inputTokens": 122,
+      "outputTokens": 58,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17167
+    }
+  }
+}

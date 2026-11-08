@@ -1,0 +1,19 @@
+{
+  "caseId": "csv-contacts-en",
+  "model": "claude-sonnet-5-5",
+  "key": "bf79d6941023c1e76026b7b6e43c27e8eced806498139cbf06ca4e38eb59189c",
+  "recordedAt": "2026-11-08T17:06:35.490Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_export_csv", "input": { "kind": "contacts" } }
+    ],
+    "usage": {
+      "inputTokens": 89,
+      "outputTokens": 57,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 18800
+    }
+  }
+}

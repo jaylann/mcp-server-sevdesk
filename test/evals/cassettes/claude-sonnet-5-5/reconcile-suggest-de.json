@@ -1,0 +1,17 @@
+{
+  "caseId": "reconcile-suggest-de",
+  "model": "claude-sonnet-5-5",
+  "key": "b7c511834d17f659817c5dbf125f3d4f15cb40bc1795e48b4aa230eb01714230",
+  "recordedAt": "2026-11-08T17:38:39.651Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [{ "type": "tool_use", "name": "sevdesk_reconcile_suggest", "input": {} }],
+    "usage": {
+      "inputTokens": 126,
+      "outputTokens": 37,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 56314
+    }
+  }
+}

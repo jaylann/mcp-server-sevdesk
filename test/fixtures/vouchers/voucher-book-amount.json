@@ -1,0 +1,29 @@
+{
+  "_provenance": {
+    "date": "2026-11-08",
+    "systemVersion": "2.0",
+    "source": "spec",
+    "ref": "spec/openapi.yaml#/paths/~1Voucher~1{voucherId}~1bookAmount/put/responses/200",
+    "note": "VoucherLog (amountPayed, bookingDate as date-time); the live answer had these keys (probe `write-voucher-book-amount`, 2026-11-08). The tool ignores the body and reads the voucher back."
+  },
+  "status": 200,
+  "body": {
+    "objects": {
+      "id": "8301",
+      "objectName": "VoucherLog",
+      "create": "2026-11-08T10:00:00+01:00",
+      "voucher": {
+        "id": "2001",
+        "objectName": "Voucher"
+      },
+      "fromStatus": "100",
+      "toStatus": "1000",
+      "amountPayed": "298.1",
+      "bookingDate": "2026-11-08T12:00:00+01:00",
+      "sevClient": {
+        "id": "9001",
+        "objectName": "SevClient"
+      }
+    }
+  }
+}

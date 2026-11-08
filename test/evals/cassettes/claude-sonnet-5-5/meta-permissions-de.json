@@ -1,0 +1,22 @@
+{
+  "caseId": "meta-permissions-de",
+  "model": "claude-sonnet-5-5",
+  "key": "0d68c297564da7a0becdb59de9338b76af9af15558e25c2ba7aa4a4bee1503cd",
+  "recordedAt": "2026-11-08T17:37:48.423Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "end_turn",
+    "content": [
+      {
+        "type": "text",
+        "text": "Ich darf in deinem sevDesk lesen und Entwürfe anlegen oder ändern. Verbindlich buchen darf ich nicht.\n\n**Aktive Stufen:** `read` und `write`\n**Deaktiviert:** `commit` und `external`\n\n**Lesen**\n- Kontakte, Rechnungen, Gutschriften, Angebote/Aufträge, Belege, Artikel, Bankkonten und Umsätze.\n- Auswertungen wie Liquidität, offene Posten, EÜR, UStVA-Schätzung und Summen.\n- Abgleichsvorschläge für Bankumsätze. Ich schlage nur vor, was zu was passt.\n\n**Schreiben (nur Entwürfe und Stammdaten)**\n- Kontakte und Artikel anlegen und ändern.\n- Entwürfe für Rechnungen, Gutschriften, Angebote, Auftragsbestätigungen und Lieferscheine anlegen. Rechnungs- und Angebotsentwürfe kann ich danach auch ändern.\n- Rechnungsentwürfe aus Angeboten erzeugen und Mahnungsentwürfe anlegen.\n- **Belege:** Belegentwürfe anlegen und ändern, auch aus E-Rechnungen (XRechnung/ZUGFeRD). Sie bleiben im Status Entwurf.\n- DATEV- und CSV-Exporte erzeugen und PDFs oder XML als Datei speichern. Das ändert nichts in sevDesk.\n\n**Nicht erlaubt**\n- Belege, Rechnungen und Gutschriften finalisieren. Dafür fehlt mir die `commit`-Stufe, deshalb habe ich dafür kein Werkzeug.\n- Bankumsätze Belegen zuordnen oder buchen.\n- Dokumente per E-Mail versenden oder stornieren.\n- Entwürfe zurücksetzen oder löschen.\n\nEinen Beleg kann ich also vorbereiten, mit Konto, Steuerregel und Anhang, und dabei prüfen, ob die Kombination zulässig ist. Das Festschreiben machst du dann selbst in sevDesk. Wenn ich auch finalisieren und buchen soll, musst du `commit` über `SEVDESK_ALLOW` aktivieren und neu starten. Das kann ich nicht selbst ändern.\n\nSoll ich vorab mit `sevdesk_account_info` prüfen, ob die Einstellungen wirklich so gesetzt sind?"
+      }
+    ],
+    "usage": {
+      "inputTokens": 116,
+      "outputTokens": 1248,
+      "cacheCreationInputTokens": 43044,
+      "cacheReadInputTokens": 0
+    }
+  }
+}

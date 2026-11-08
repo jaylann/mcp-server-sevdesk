@@ -1,0 +1,19 @@
+{
+  "caseId": "contacts-search-en",
+  "model": "claude-sonnet-5-5",
+  "key": "9d807e7f3135712800dad65ebee997e32b596d05fa96141b1a17297c4cea9da3",
+  "recordedAt": "2026-11-08T17:04:47.300Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_contacts_search", "input": { "query": "Müller" } }
+    ],
+    "usage": {
+      "inputTokens": 94,
+      "outputTokens": 57,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17167
+    }
+  }
+}

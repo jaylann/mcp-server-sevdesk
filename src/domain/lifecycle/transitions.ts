@@ -1,5 +1,7 @@
 /**
- * Which lifecycle action is allowed for which document type and status. Every check throws a
+ * Which lifecycle action is allowed for which document type and status. Status codes come from
+ * the document's kind (`statusOf`): sales documents use draft 100 / open 200, vouchers draft 50 /
+ * open 100; partially paid (750) and paid (1000) are shared. Every check throws a
  * `validation` SevdeskError with a trusted message (ids and reference-data labels only, never
  * upstream text) that says why and what to do instead; nothing has been sent at that point.
  *
@@ -19,7 +21,8 @@ import {
   KINDS,
   type LifecycleDocument,
   type PaymentKind,
-  STATUS,
+  type SalesKind,
+  statusOf,
 } from "./documents.js";
 
 /** Invoice types that `cancelInvoice` applies to: normal, advance, partial and final invoices. */
@@ -72,7 +75,7 @@ function refuseCancellation(doc: LifecycleDocument, action: string): void {
  * are fine (`sendBy` assigns one reliably, recorded); orders cannot be saved without one.
  */
 function refuseNumberlessCreditNote(doc: LifecycleDocument, action: string): void {
-  if (doc.kind !== "creditNote" || doc.status !== STATUS.draft) return;
+  if (doc.kind !== "creditNote" || doc.status !== statusOf(doc).draft) return;
   if (doc.number !== undefined && doc.number.trim() !== "") return;
   refuse(
     `${documentRef(doc, true)} is a draft without a number, and ${action} it could fail half-way ` +
@@ -83,9 +86,9 @@ function refuseNumberlessCreditNote(doc: LifecycleDocument, action: string): voi
 }
 
 /** Finalize (`sendBy`): drafts only; credit note drafts need a number. */
-export function assertFinalizable(doc: LifecycleDocument): void {
+export function assertFinalizable(doc: LifecycleDocument<SalesKind>): void {
   refuseTemplate(doc, "finalized");
-  if (doc.status !== STATUS.draft) {
+  if (doc.status !== statusOf(doc).draft) {
     refuse(
       `${documentRef(doc, true)} is not a draft (${statusText(doc)}); only drafts can be ` +
         `finalized, and this one already was.`,
@@ -101,10 +104,10 @@ export function assertFinalizable(doc: LifecycleDocument): void {
  * when the caller may finalize (`finalizeAllowed`: the commit tier is enabled); an external-only
  * setup would otherwise finalize documents through the back door.
  */
-export function assertEmailable(doc: LifecycleDocument, finalizeAllowed: boolean): void {
+export function assertEmailable(doc: LifecycleDocument<SalesKind>, finalizeAllowed: boolean): void {
   refuseTemplate(doc, "sent by email");
   refuseNumberlessCreditNote(doc, "sending (and so finalizing)");
-  if (doc.status === STATUS.draft && !finalizeAllowed) {
+  if (doc.status === statusOf(doc).draft && !finalizeAllowed) {
     const { toolPrefix } = KINDS[doc.kind];
     refuse(
       `${documentRef(doc, true)} is a draft: sending it by email would also finalize it ` +
@@ -115,9 +118,10 @@ export function assertEmailable(doc: LifecycleDocument, finalizeAllowed: boolean
   }
 }
 
-/** Book a payment (`bookAmount`): open or partially paid invoices and credit notes. */
+/** Book a payment (`bookAmount`): open or partially paid invoices, credit notes and vouchers. */
 export function assertBookable(doc: LifecycleDocument<PaymentKind>): void {
   const { toolPrefix, noun } = KINDS[doc.kind];
+  const codes = statusOf(doc);
   refuseTemplate(doc, "paid");
   refuseCancellation(doc, "paid");
   if (isInvoiceType(doc, "MA")) {
@@ -126,19 +130,19 @@ export function assertBookable(doc: LifecycleDocument<PaymentKind>): void {
         `invoice it reminds of; sevdesk_invoice_get shows that invoice as origin.`,
     );
   }
-  if (doc.status === STATUS.draft) {
+  if (doc.status === codes.draft) {
     refuse(
       `${documentRef(doc, true)} is a draft; sevDesk books payments only on finalized ` +
         `documents. Finalize it first with ${toolPrefix}_finalize.`,
     );
   }
-  if (doc.status === STATUS.paid) {
+  if (doc.status === codes.paid) {
     refuse(
       `${documentRef(doc, true)} is already paid (${statusText(doc)}). To undo its payments, ` +
         `reset it to open with ${toolPrefix}_reset.`,
     );
   }
-  if (doc.status !== STATUS.open && doc.status !== STATUS.partiallyPaid) {
+  if (doc.status !== codes.open && doc.status !== codes.partiallyPaid) {
     refuse(
       `${documentRef(doc, true)} has ${statusText(doc)}; payments can only be booked on open or ` +
         `partially paid ${noun}s.`,
@@ -149,6 +153,7 @@ export function assertBookable(doc: LifecycleDocument<PaymentKind>): void {
 /** Cancel (`cancelInvoice`, Storno): open, unpaid invoices of type RE, AR, TR or ER. */
 export function assertCancellable(doc: LifecycleDocument<"invoice">): void {
   const ref = documentRef(doc, true);
+  const codes = statusOf(doc);
   refuseCancellation(doc, "cancelled");
   refuseTemplate(doc, "cancelled");
   if (isInvoiceType(doc, "MA")) {
@@ -157,19 +162,19 @@ export function assertCancellable(doc: LifecycleDocument<"invoice">): void {
   if (doc.typeCode === undefined || !CANCELLABLE_INVOICE_TYPES.has(doc.typeCode)) {
     refuse(`${ref} has an invoice type that sevdesk_invoice_cancel does not handle.`);
   }
-  if (doc.status === STATUS.draft) {
+  if (doc.status === codes.draft) {
     refuse(
       `${ref} is a draft: a draft has no legal effect and needs no cancellation. Change it with ` +
         `sevdesk_invoice_update_draft or delete it in sevDesk.`,
     );
   }
-  if (doc.status === STATUS.partiallyPaid || (doc.status === STATUS.open && hasPayments(doc))) {
+  if (doc.status === codes.partiallyPaid || (doc.status === codes.open && hasPayments(doc))) {
     refuse(
       `${ref} is partially paid; sevDesk cancels only unpaid invoices. Create a credit note ` +
         `(Gutschrift) for it with sevdesk_credit_note_create_from_invoice.`,
     );
   }
-  if (doc.status === STATUS.paid) {
+  if (doc.status === codes.paid) {
     refuse(
       `${ref} has ${statusText(doc)}; cancelling only works for open, unpaid invoices. If it ` +
         `was paid, create a credit note with sevdesk_credit_note_create_from_invoice. If it was ` +
@@ -177,25 +182,27 @@ export function assertCancellable(doc: LifecycleDocument<"invoice">): void {
         `its cancellation invoice is listed by sevdesk_invoices_list with type cancellation.`,
     );
   }
-  if (doc.status !== STATUS.open) {
+  if (doc.status !== codes.open) {
     refuse(`${ref} has ${statusText(doc)}; only open, unpaid invoices can be cancelled.`);
   }
 }
 
-/** Enshrine (`enshrine`, festschreiben): from status open (200) on, once. */
+/** Enshrine (`enshrine`, festschreiben): from status open (200; vouchers 100) on, once. */
 export function assertEnshrinable(doc: LifecycleDocument<PaymentKind>): void {
   const ref = documentRef(doc, true);
+  const codes = statusOf(doc);
   refuseTemplate(doc, "enshrined");
   if (doc.enshrined) {
     refuse(`${ref} is already enshrined (festgeschrieben); there is nothing to do.`);
   }
-  if (doc.status === STATUS.draft) {
+  if (doc.status === codes.draft) {
     refuse(
-      `${ref} is a draft; sevDesk enshrines documents only from status open (200) on. Finalize ` +
+      `${ref} is a draft; sevDesk enshrines documents only from status open ` +
+        `(${String(codes.open)}) on. Finalize ` +
         `it first with ${KINDS[doc.kind].toolPrefix}_finalize.`,
     );
   }
-  if (doc.status < STATUS.open) {
+  if (doc.status < codes.open) {
     refuse(`${ref} has ${statusText(doc)}; only open or later documents can be enshrined.`);
   }
 }
@@ -211,10 +218,11 @@ export type ResetTarget = (typeof RESET_TARGETS)[number];
 export function assertResettable(doc: LifecycleDocument<PaymentKind>, to: ResetTarget): void {
   const ref = documentRef(doc, true);
   const { toolPrefix } = KINDS[doc.kind];
+  const codes = statusOf(doc);
   refuseCancellation(doc, "reset");
   refuseTemplate(doc, "reset");
   if (to === "open") {
-    if (doc.status === STATUS.draft) {
+    if (doc.status === codes.draft) {
       refuse(
         `${ref} is a draft; a reset cannot raise the status. Open it by finalizing it with ` +
           `${toolPrefix}_finalize.`,
@@ -222,7 +230,7 @@ export function assertResettable(doc: LifecycleDocument<PaymentKind>, to: ResetT
     }
     if (
       doc.kind === "invoice" &&
-      doc.status === STATUS.paid &&
+      doc.status === codes.paid &&
       doc.paidAmount !== undefined &&
       !hasPayments(doc)
     ) {
@@ -231,19 +239,19 @@ export function assertResettable(doc: LifecycleDocument<PaymentKind>, to: ResetT
           `invoice (Storno); a cancelled invoice cannot be reset.`,
       );
     }
-    if (doc.status === STATUS.open && !hasPayments(doc)) {
+    if (doc.status === codes.open && !hasPayments(doc)) {
       refuse(`${ref} is already open with no payments booked; there is nothing to reset.`);
     }
     if (
-      doc.status !== STATUS.partiallyPaid &&
-      doc.status !== STATUS.paid &&
-      doc.status !== STATUS.open
+      doc.status !== codes.partiallyPaid &&
+      doc.status !== codes.paid &&
+      doc.status !== codes.open
     ) {
       refuse(`${ref} has ${statusText(doc)}; only paid or partially paid documents reset to open.`);
     }
     return;
   }
-  if (doc.status === STATUS.draft) {
+  if (doc.status === codes.draft) {
     refuse(`${ref} is already a draft; there is nothing to reset.`);
   }
   if (doc.enshrined) {
@@ -256,14 +264,14 @@ export function assertResettable(doc: LifecycleDocument<PaymentKind>, to: ResetT
         `draft. ${instead}`,
     );
   }
-  if (doc.status === STATUS.partiallyPaid || doc.status === STATUS.paid || hasPayments(doc)) {
+  if (doc.status === codes.partiallyPaid || doc.status === codes.paid || hasPayments(doc)) {
     refuse(
       `${ref} has payments booked (${statusText(doc)}); sevDesk resets only open documents to ` +
         `draft. Reset it to open first (${toolPrefix}_reset with to "open"), which unlinks the ` +
         `payments, then reset it to draft.`,
     );
   }
-  if (doc.status !== STATUS.open) {
+  if (doc.status !== codes.open) {
     refuse(`${ref} has ${statusText(doc)}; only open documents reset to draft.`);
   }
 }

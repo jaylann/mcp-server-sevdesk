@@ -134,7 +134,24 @@ export type ToolInputSchema = z.ZodObject;
 export type ToolOutputSchema = z.ZodObject;
 
 /** The configuration slice that decides which tools a server registers. */
-export type ToolSelectionConfig = Pick<Config, "toolsets" | "allowedTiers" | "outputDir">;
+export type ToolSelectionConfig = Pick<
+  Config,
+  "toolsets" | "allowedTiers" | "outputDir" | "fileDirs"
+>;
+
+/**
+ * @public Named for tool authors; `localEffects` takes these values.
+ *
+ * Effects of a tool on the local machine, outside sevDesk (see `ToolDefinitionBase.localEffects`).
+ * - `"reads-files"`: reads files, only inside `SEVDESK_FILE_DIRS` and only through
+ *   `readConfinedFile` (`src/safety/local-files.ts`). Reading changes nothing, so a `read` tool
+ *   with this flag stays `readOnlyHint: true`.
+ * - `"writes-files"`: creates files, only inside `SEVDESK_OUTPUT_DIR` and only through
+ *   `writeNewFile` (`src/tools/documents/save-file.ts`). A `read` tool with this flag changes
+ *   nothing in sevDesk but does modify its environment, so it must set `readOnlyHint: false`
+ *   (and stays non-destructive: it never overwrites).
+ */
+export type LocalEffect = "reads-files" | "writes-files";
 
 /** What every tool declares, whatever its tier. */
 interface ToolDefinitionBase<I extends ToolInputSchema, O extends ToolOutputSchema> {
@@ -153,6 +170,13 @@ interface ToolDefinitionBase<I extends ToolInputSchema, O extends ToolOutputSche
    * A tool for which it returns false is not registered (see `selectTools`).
    */
   readonly available?: (config: ToolSelectionConfig) => boolean;
+  /**
+   * Declared effects on the local machine (see {@link LocalEffect}). Required for every tool that
+   * reads or writes local files; the metadata lint keeps the reviewed list of such tools. A `read`
+   * tool may set `readOnlyHint: false` only together with `"writes-files"` (checked by
+   * `validateToolDefinition`).
+   */
+  readonly localEffects?: LocalEffect;
   /** Strict object schema (unknown keys are rejected), flat, object root. */
   readonly input: I;
   /**
@@ -168,13 +192,6 @@ export interface ReadToolDefinition<
   O extends ToolOutputSchema = ToolOutputSchema,
 > extends ToolDefinitionBase<I, O> {
   readonly tier: "read";
-  /**
-   * Effects on the local machine, outside sevDesk: such a tool changes nothing in sevDesk (so it
-   * needs no write tier) but does modify its environment, so it must set `readOnlyHint: false`,
-   * and a `read` tool may set `readOnlyHint: false` only together with this flag (checked by
-   * `validateToolDefinition`). `"writes-files"`: creates files (only inside `SEVDESK_OUTPUT_DIR`).
-   */
-  readonly localEffects?: "writes-files";
   readonly handler: (args: z.output<I>, ctx: ToolContext) => Promise<ToolOutput<z.output<O>>>;
 }
 

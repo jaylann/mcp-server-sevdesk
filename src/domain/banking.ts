@@ -129,6 +129,8 @@ const transactionRecordSchema = z.object({
   entryDate: zBerlinDate,
   amount: zDecimalString.pipe(z.string()),
   payeePayerName: zText,
+  /** Counterparty account number (IBAN for SEPA transfers); untrusted, never shown unmasked. */
+  payeePayerAcctNo: zText,
   paymtPurpose: zText,
   checkAccount: zOptionalRef,
   status: zNullableInt,
@@ -409,6 +411,29 @@ export async function getTransaction(
   transactionId: number,
   signal?: AbortSignal,
 ): Promise<TransactionDto> {
+  return (await getTransactionDetails(client, transactionId, signal)).transaction;
+}
+
+/** One transaction with the counterparty's account number, for matching (see below). */
+export interface TransactionDetails {
+  readonly transaction: TransactionDto;
+  /**
+   * The counterparty's account number (`payeePayerAcctNo`, an IBAN for SEPA transfers) reduced to
+   * upper-case letters and digits, for comparisons only. Untrusted: show it only masked
+   * ({@link maskIban}), never in messages.
+   */
+  readonly counterpartyAccount: string | undefined;
+}
+
+/**
+ * {@link getTransaction} plus the counterparty's account number (the transaction DTO leaves it
+ * out for privacy). Same requests.
+ */
+export async function getTransactionDetails(
+  client: SevdeskClient,
+  transactionId: number,
+  signal?: AbortSignal,
+): Promise<TransactionDetails> {
   const id = toSevdeskId(transactionId);
   const payload = await client.request({
     method: "GET",
@@ -421,7 +446,11 @@ export async function getTransaction(
     const account = await getBankAccount(client, record.checkAccount.id, signal);
     accounts.set(account.id, { name: account.name, currency: account.currency });
   }
-  return toTransactionDto(record, accounts);
+  const accountNumber = (record.payeePayerAcctNo ?? "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  return {
+    transaction: toTransactionDto(record, accounts),
+    counterpartyAccount: accountNumber === "" ? undefined : accountNumber.slice(0, 34),
+  };
 }
 
 /** Which transaction date a `from`/`to` range applies to. */

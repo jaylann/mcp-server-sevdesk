@@ -1,0 +1,58 @@
+{
+  "_provenance": {
+    "source": "community",
+    "ref": "https://github.com/jernoxit/sevdesk-rs/blob/main/tests/fixtures/transaction_log.json (GET /CheckAccountTransactionLog?checkAccountTransaction[id]=…&checkAccountTransaction[objectName]=CheckAccountTransaction)",
+    "date": "2026-11-08",
+    "systemVersion": "2.0",
+    "note": "Key set and scalar types of sevdesk-rs's recorded entry (Apache-2.0 OR MIT): id and statuses as strings, amountPaid a JSON number signed like the transaction, bookingDate ISO at 12:00 Berlin, object = the booked document. The lead's probe on 2026-11-08 saw the same keys (amountPaid 119, fromStatus/toStatus 100 → 400). Values fake: transaction 5201 (+238.00) split over invoices 1001 and 1002; the 100 → 200 → 400 sequence of a split follows firsttris/haben's log (spec/deviations.md D-057)."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "7001",
+        "objectName": "CheckAccountTransactionLog",
+        "additionalInformation": null,
+        "create": "2026-11-02T09:15:00+01:00",
+        "checkAccountTransaction": {
+          "id": "5201",
+          "objectName": "CheckAccountTransaction"
+        },
+        "fromStatus": "100",
+        "toStatus": "200",
+        "amountPaid": 119,
+        "bookingDate": "2026-11-02T12:00:00+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "object": {
+          "id": "1001",
+          "objectName": "Invoice"
+        }
+      },
+      {
+        "id": "7002",
+        "objectName": "CheckAccountTransactionLog",
+        "additionalInformation": null,
+        "create": "2026-11-02T09:16:00+01:00",
+        "checkAccountTransaction": {
+          "id": "5201",
+          "objectName": "CheckAccountTransaction"
+        },
+        "fromStatus": "100",
+        "toStatus": "400",
+        "amountPaid": 119,
+        "bookingDate": "2026-11-02T12:00:00+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "object": {
+          "id": "1002",
+          "objectName": "Invoice"
+        }
+      }
+    ]
+  }
+}

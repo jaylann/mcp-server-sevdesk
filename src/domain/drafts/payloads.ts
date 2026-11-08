@@ -225,7 +225,7 @@ export function strictBody<S extends z.ZodType>(
  */
 export function savedDocumentId(
   payload: unknown,
-  key: "invoice" | "creditNote" | "order",
+  key: "invoice" | "creditNote" | "order" | "voucher",
   noun: string,
 ): number {
   const schema = z.object({ [key]: z.object({ id: zId }) });

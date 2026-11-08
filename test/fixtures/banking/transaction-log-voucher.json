@@ -1,0 +1,36 @@
+{
+  "_provenance": {
+    "source": "community",
+    "ref": "https://github.com/jernoxit/sevdesk-rs/blob/main/tests/fixtures/transaction_log.json (GET /CheckAccountTransactionLog?checkAccountTransaction[id]=…&checkAccountTransaction[objectName]=CheckAccountTransaction)",
+    "date": "2026-11-08",
+    "systemVersion": "2.0",
+    "note": "sevdesk-rs's recorded entry (Apache-2.0 OR MIT, recorded 2026-09-29) with fake ids and amount: one booking of an outgoing transaction (5301, -298.10) on an expense voucher (2001), amountPaid negative like the transaction."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "7101",
+        "objectName": "CheckAccountTransactionLog",
+        "additionalInformation": null,
+        "create": "2026-01-20T15:49:00+01:00",
+        "checkAccountTransaction": {
+          "id": "5301",
+          "objectName": "CheckAccountTransaction"
+        },
+        "fromStatus": "100",
+        "toStatus": "400",
+        "amountPaid": -298.1,
+        "bookingDate": "2026-01-20T12:00:00+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "object": {
+          "id": "2001",
+          "objectName": "Voucher"
+        }
+      }
+    ]
+  }
+}

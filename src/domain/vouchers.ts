@@ -84,7 +84,7 @@ export const VOUCHER_STATUS_KEYS = [
 type VoucherStatusKey = (typeof VOUCHER_STATUS_KEYS)[number];
 
 /** Spec tag `Voucher` → "Types and status of vouchers" (see also spec/deviations.md D-007). */
-const VOUCHER_STATUS_CODES: Readonly<Record<VoucherStatusKey, number>> = {
+export const VOUCHER_STATUS_CODES: Readonly<Record<VoucherStatusKey, number>> = {
   draft: 50,
   open: 100,
   transferred: 150,
@@ -96,7 +96,7 @@ export const VOUCHER_TYPE_KEYS = ["normal", "recurring"] as const;
 type VoucherTypeKey = (typeof VOUCHER_TYPE_KEYS)[number];
 
 /** Spec tag `Voucher`: VOU = normal voucher, RV = recurring voucher. */
-const VOUCHER_TYPE_CODES: Readonly<Record<VoucherTypeKey, string>> = {
+export const VOUCHER_TYPE_CODES: Readonly<Record<VoucherTypeKey, string>> = {
   normal: "VOU",
   recurring: "RV",
 };
@@ -280,7 +280,7 @@ export const voucherDetailDtoSchema = voucherDtoSchema.extend({
   updatedAt: z.string().optional().describe("YYYY-MM-DD, Europe/Berlin."),
 });
 
-type VoucherDetailDto = z.output<typeof voucherDetailDtoSchema>;
+export type VoucherDetailDto = z.output<typeof voucherDetailDtoSchema>;
 
 /** One voucher position (Belegposition). */
 export const voucherPositionDtoSchema = z.object({
@@ -303,7 +303,7 @@ export const voucherPositionDtoSchema = z.object({
   isAsset: z.boolean().optional().describe("Anlagegut (depreciable asset)."),
 });
 
-type VoucherPositionDto = z.output<typeof voucherPositionDtoSchema>;
+export type VoucherPositionDto = z.output<typeof voucherPositionDtoSchema>;
 
 // ---------------------------------------------------------------------------------------------
 // Mapping
@@ -366,6 +366,15 @@ function toVoucherDto(record: VoucherRecord, raw: unknown): VoucherDto {
     warnings,
     link: voucherLink(record.id),
   });
+}
+
+/**
+ * Maps one raw voucher record (`GET /Voucher/{id}`, unwrapped) to the detail DTO, as
+ * `getVoucherDetails` does, without reading positions. A record that does not fit is an
+ * `unexpected_response` error.
+ */
+export function mapVoucherDetail(raw: unknown): VoucherDetailDto {
+  return toVoucherDetailDto(parseVoucherRecord(raw), raw);
 }
 
 function toVoucherDetailDto(record: VoucherRecord, raw: unknown): VoucherDetailDto {
@@ -549,6 +558,25 @@ export async function getVoucherDetails(
     voucher,
     positions: positions.rows.map((row) => toPositionDto(row, voucher.currency)),
     positionsComplete: positions.complete,
+  };
+}
+
+/**
+ * The positions of one voucher (`GET /VoucherPos` filtered by `voucher[id]`) as DTOs in the
+ * voucher's `currency`, without reading the voucher itself: for callers that already have it from
+ * a list (reports read headers with `GET /Voucher` and then one request per voucher).
+ */
+export async function listVoucherPositions(
+  client: SevdeskClient,
+  voucherId: number,
+  currency: string,
+  signal?: AbortSignal,
+): Promise<{ readonly positions: readonly VoucherPositionDto[]; readonly complete: boolean }> {
+  const id = toSevdeskId(voucherId);
+  const rows = await listPositions(client, id, signal);
+  return {
+    positions: rows.rows.map((row) => toPositionDto(row, currency)),
+    complete: rows.complete,
   };
 }
 

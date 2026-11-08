@@ -1,0 +1,17 @@
+{
+  "caseId": "order-to-invoice-en",
+  "model": "claude-sonnet-5-5",
+  "key": "8fa7257913c9e8b4a8d2cd9a7e58940998874ebae0875e8afb02a151aae2e350",
+  "recordedAt": "2026-11-08T17:38:18.661Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [{ "type": "tool_use", "name": "sevdesk_order_get", "input": { "id": 815 } }],
+    "usage": {
+      "inputTokens": 98,
+      "outputTokens": 53,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 56314
+    }
+  }
+}

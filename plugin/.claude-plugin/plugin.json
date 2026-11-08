@@ -1,0 +1,26 @@
+{
+  "name": "sevdesk",
+  "displayName": "sevDesk",
+  "version": "0.0.0",
+  "description": "Unofficial sevDesk bookkeeping for Claude Code: the safety-first mcp-server-sevdesk MCP server (read-only by default, human confirmation for binding steps) and a bookkeeping skill for German businesses: receipts, e-invoices, bank reconciliation, VAT pre-check, month and year end, DATEV.",
+  "author": {
+    "name": "Justin Lanfermann",
+    "email": "Justin@Lanfermann.dev",
+    "url": "https://github.com/jaylann"
+  },
+  "homepage": "https://github.com/jaylann/mcp-server-sevdesk#readme",
+  "repository": "https://github.com/jaylann/mcp-server-sevdesk",
+  "license": "MIT",
+  "keywords": [
+    "sevdesk",
+    "accounting",
+    "bookkeeping",
+    "buchhaltung",
+    "e-rechnung",
+    "xrechnung",
+    "zugferd",
+    "ustva",
+    "datev",
+    "mcp"
+  ]
+}

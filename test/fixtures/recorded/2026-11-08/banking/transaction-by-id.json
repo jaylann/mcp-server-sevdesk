@@ -1,0 +1,48 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /CheckAccountTransaction/{transaction} (recording session 2026-11-08)",
+    "date": "2026-11-08",
+    "systemVersion": "2.0",
+    "note": "Personal and company data replaced by scripts/lib/scrub.ts; keys, nulls and scalar types as recorded. GET by id of one transaction (sevdesk_transaction_get)."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "1910795985",
+        "objectName": "CheckAccountTransaction",
+        "additionalInformation": null,
+        "create": "2026-11-08T16:26:40+01:00",
+        "update": "2026-11-08T16:26:40+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "valueDate": "2026-11-08T12:00:00+01:00",
+        "entryDate": "2026-11-08T12:00:00+01:00",
+        "amount": "69",
+        "feeAmount": null,
+        "gvCode": null,
+        "entryText": null,
+        "primaNotaNo": null,
+        "paymtPurpose": "Muster-Text 14",
+        "payeePayerBankCode": null,
+        "payeePayerAcctNo": null,
+        "payeePayerName": "Musterfirma 3 GmbH",
+        "checkAccount": {
+          "id": "6333721",
+          "objectName": "CheckAccount"
+        },
+        "status": "400",
+        "score": null,
+        "compareHash": null,
+        "enshrined": null,
+        "obonoReceiptUuid": null,
+        "externalId": null,
+        "deletedAt": null,
+        "restoredAt": null
+      }
+    ]
+  }
+}

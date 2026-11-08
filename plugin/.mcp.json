@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "sevdesk": {
+      "command": "npx",
+      "args": ["-y", "mcp-server-sevdesk@0.0.0"],
+      "env": {
+        "SEVDESK_API_TOKEN": "${SEVDESK_API_TOKEN:-}",
+        "SEVDESK_API_TOKEN_FILE": "${SEVDESK_API_TOKEN_FILE:-}",
+        "SEVDESK_ALLOW": "${SEVDESK_ALLOW:-read}",
+        "SEVDESK_READ_ONLY": "${SEVDESK_READ_ONLY:-}",
+        "SEVDESK_DRY_RUN": "${SEVDESK_DRY_RUN:-}",
+        "SEVDESK_CONFIRM": "${SEVDESK_CONFIRM:-}",
+        "SEVDESK_CONFIRM_OPEN": "${SEVDESK_CONFIRM_OPEN:-}",
+        "SEVDESK_TOOLSETS": "${SEVDESK_TOOLSETS:-}",
+        "SEVDESK_STRUCTURED_OUTPUT": "${SEVDESK_STRUCTURED_OUTPUT:-}",
+        "SEVDESK_AUDIT_LOG": "${SEVDESK_AUDIT_LOG:-}",
+        "SEVDESK_FILE_DIRS": "${SEVDESK_FILE_DIRS:-}",
+        "SEVDESK_OUTPUT_DIR": "${SEVDESK_OUTPUT_DIR:-}",
+        "SEVDESK_RATE_LIMIT": "${SEVDESK_RATE_LIMIT:-}",
+        "SEVDESK_TIMEOUT_MS": "${SEVDESK_TIMEOUT_MS:-}",
+        "SEVDESK_BASE_URL": "${SEVDESK_BASE_URL:-}"
+      }
+    }
+  }
+}

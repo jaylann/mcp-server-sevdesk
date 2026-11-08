@@ -1,0 +1,17 @@
+{
+  "caseId": "parts-list-de",
+  "model": "claude-sonnet-5-5",
+  "key": "4a5d056e65edb3f0ff23572db5ef4232f0fab9769fe9db816c363fcd1147e3cc",
+  "recordedAt": "2026-11-08T17:06:15.758Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [{ "type": "tool_use", "name": "sevdesk_parts_list", "input": { "limit": 100 } }],
+    "usage": {
+      "inputTokens": 107,
+      "outputTokens": 55,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17167
+    }
+  }
+}

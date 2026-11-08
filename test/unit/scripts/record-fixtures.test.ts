@@ -207,6 +207,42 @@ describe("recordPlan", () => {
       PLAN.some((entry) => /enshrine|sendBy|sendVia|Factory\/save|bookAmount/i.test(entry.path)),
     ).toBe(false);
   });
+
+  it("never records the export job, its progress, or raw CSV exports", () => {
+    expect(PLAN.some((entry) => /^\/(Export|Progress|ExportJob)\//.test(entry.path))).toBe(false);
+  });
+
+  it("records the M4 reads: SevClient, a transaction, its log, positions with their account", () => {
+    const files = new Map(PLAN.map((entry) => [entry.file, entry]));
+    expect(files.get("meta/sev-client.json")).toMatchObject({ path: "/SevClient" });
+    expect(files.get("banking/transaction-by-id.json")).toMatchObject({
+      path: "/CheckAccountTransaction/{transaction}",
+      requires: ["transaction"],
+    });
+    expect(files.get("banking/transaction-log.json")).toMatchObject({
+      path: "/CheckAccountTransactionLog",
+      list: true,
+      query: {
+        "checkAccountTransaction[id]": "{transaction}",
+        "checkAccountTransaction[objectName]": "CheckAccountTransaction",
+      },
+    });
+    expect(files.get("banking/transaction-log-unfiltered.json")?.query).toBeUndefined();
+    expect(files.get("vouchers/voucher-positions-embed-account.json")?.query).toMatchObject({
+      embed: "accountDatev",
+    });
+    // The transaction slot prefers an assigned transaction (it has log entries).
+    const collect = files.get("banking/transactions-list.json")?.collect;
+    expect(
+      collect?.([
+        { id: "5", status: "100" },
+        { id: "6", status: "400" },
+      ]),
+    ).toEqual({
+      transaction: 6,
+    });
+    expect(collect?.([{ id: "5", status: "100" }])).toEqual({ transaction: 5 });
+  });
 });
 
 describe("plan helpers", () => {
@@ -347,6 +383,70 @@ describe("recordFixtures", () => {
     expect(
       lines.some((line) => line.startsWith("wrote invoices/invoices-list.json (2 rows)")),
     ).toBe(true);
+  });
+
+  it("records the transaction log of an assigned transaction and scrubs the SevClient", async () => {
+    const dir = await tempDir();
+    const client = new ScriptedClient((call) => {
+      if (call.path === "/CheckAccount") return { total: "0", objects: [] };
+      if (call.path === "/CheckAccountTransaction") {
+        return {
+          total: "2",
+          objects: [
+            { id: "71", objectName: "CheckAccountTransaction", status: "100" },
+            { id: "72", objectName: "CheckAccountTransaction", status: "400" },
+          ],
+        };
+      }
+      if (call.path === "/CheckAccountTransactionLog") {
+        return {
+          total: "1",
+          objects: [{ id: "81", objectName: "CheckAccountTransactionLog", amountPaid: "119" }],
+        };
+      }
+      if (call.path === "/SevClient") {
+        return {
+          objects: [
+            {
+              id: "512345",
+              objectName: "SevClient",
+              name: "Huber Bau GmbH",
+              contactEmail: "hans@huber.de",
+              smallSettlement: "0",
+            },
+          ],
+        };
+      }
+      return account(call);
+    });
+    const outcome = await recordFixtures({
+      client,
+      scrubber: createScrubber({ secrets: [TOKEN] }),
+      secrets: [TOKEN],
+      outDir: dir,
+      date: "2026-11-20",
+      limit: 5,
+      entries: PLAN,
+    });
+    expect(outcome.written.map((item) => item.file)).toEqual(
+      expect.arrayContaining([
+        "meta/sev-client.json",
+        "banking/transaction-by-id.json",
+        "banking/transaction-log.json",
+        "banking/transaction-log-unfiltered.json",
+      ]),
+    );
+    expect(client.calls.find((call) => call.path === "/CheckAccountTransaction/72")).toBeDefined();
+    expect(
+      client.calls.find(
+        (call) =>
+          call.path === "/CheckAccountTransactionLog" &&
+          call.query["checkAccountTransaction[id]"] === "72",
+      )?.query,
+    ).toMatchObject({ "checkAccountTransaction[objectName]": "CheckAccountTransaction", limit: 5 });
+    const sevClient = await readFile(join(dir, "meta/sev-client.json"), "utf8");
+    expect(sevClient).not.toMatch(/Huber|huber\.de|512345/);
+    expect(sevClient).toContain('"smallSettlement": "0"');
   });
 
   it("refuses to overwrite a session's files unless forced", async () => {

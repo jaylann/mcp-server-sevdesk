@@ -1,0 +1,19 @@
+{
+  "caseId": "euer-de",
+  "model": "claude-sonnet-5-5",
+  "key": "25f7eb86df886cfbe8cda1ce8fde467b281ebbe5f59f0fad9d359b7e102c113f",
+  "recordedAt": "2026-11-08T17:06:31.706Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_profit_and_loss", "input": { "year": 2025 } }
+    ],
+    "usage": {
+      "inputTokens": 97,
+      "outputTokens": 58,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17167
+    }
+  }
+}

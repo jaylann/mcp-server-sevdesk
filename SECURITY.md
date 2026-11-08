@@ -18,8 +18,9 @@ This server sits between an AI model and a sevDesk account. The design assumes:
    least privilege: tools are grouped into tiers (`read`, `write`, `commit`, `external`), only
    `read` is enabled by default, and tools above the allowed tiers are never registered. The tier
    is enforced again in the dispatcher and in the HTTP client, which also knows the minimum tier of
-   each endpoint (for example `sendBy`, `bookAmount`, `enshrine`, `cancelInvoice` need `commit`;
-   `sendViaEmail` needs `external`) and refuses a request from a tool whose tier is too low.
+   each endpoint (for example `sendBy`, `bookAmount`, `enshrine`, `cancelInvoice`, finalizing a
+   voucher and changing a bank transaction need `commit`; `sendViaEmail` needs `external`) and
+   refuses a request from a tool whose tier is too low.
 2. **The model can be manipulated.** Text stored in sevDesk (contact names, invoice and voucher
    descriptions, bank transfer purposes, e-invoice contents) can be written by third parties and
    may contain prompt injection. Such text is treated as untrusted data: it is fenced in output,
@@ -33,7 +34,18 @@ This server sits between an AI model and a sevDesk account. The design assumes:
    recorded in a local audit log.
 4. **Secrets must not leak.** The token is read from the environment, a file or the OS keychain;
    it is never logged, echoed, or included in errors. Logs go to stderr only.
-5. **Remote mode is single-tenant by default.** The HTTP transport refuses to start without
+5. **Local files are a boundary too.** The model names files, so the server must not become a way
+   to read or write arbitrary files. Tools read only inside `SEVDESK_FILE_DIRS` (absolute folders;
+   real paths are checked, symbolic links may not lead outside, the file is opened without
+   following a link and checked by inode, its type is recognized by content, sizes are capped) and
+   write only inside `SEVDESK_OUTPUT_DIR` (new files only, mode 0600, never overwriting). Without
+   these settings, no tool reads or writes local files. Received e-invoices are hostile input:
+   the XML parser refuses DOCTYPEs and entities and caps size and nesting depth, the PDF attachment
+   reader caps decompressed sizes, and every parsed text field is treated as untrusted. The DATEV
+   export ZIP is fetched from a presigned link that sevDesk returns; the server accepts exactly
+   one https host for it, follows no redirects, sends no credentials, caps the size and never
+   shows the link to the model.
+6. **Remote mode is single-tenant by default.** The HTTP transport refuses to start without
    authentication, validates Origin/Host, and in OAuth mode stores no tokens server-side (the
    sevDesk token is encrypted into the grant).
 

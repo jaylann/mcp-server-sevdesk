@@ -91,6 +91,16 @@ The step-by-step runbook for a recording session on a free trial account, includ
 and what never to commit, is [docs/recording-session.md](docs/recording-session.md). The manual
 workflow `Live E2E` runs `pnpm test:live` in CI behind the protected `live` environment.
 
+## Tool-selection evals
+
+`test/evals/` checks which tool a model picks first for about 70 German and English requests.
+`pnpm evals` replays recorded model answers (no API key, no cost); cases without a recording are
+skipped as "stale cassette". After changing tool names, descriptions or the server instructions,
+re-record with `ANTHROPIC_API_KEY=… pnpm evals:record` (about $1–2 per full run) and commit the
+cassettes. On pull requests that touch tools, `.github/workflows/evals.yml` replays them and, for
+branches of this repository with the `evals` environment configured, records fresh answers. The
+evals are informative, not a required check. Details: [test/evals/README.md](test/evals/README.md).
+
 ## Reporting bugs and security issues
 
 Use the issue forms for bugs and feature requests. Report vulnerabilities privately, see

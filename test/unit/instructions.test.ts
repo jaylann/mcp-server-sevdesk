@@ -96,16 +96,28 @@ describe("buildInstructions", () => {
   it("mentions per-call dry runs only when a registered changing tool supports them", () => {
     expect(build(testConfig({ allowedTiers: tiers("read", "write") }))).toContain(
       "Changing tools accept dryRun: true to preview exactly what a call would change, without " +
-        "sending it or asking the user.",
+        "sending it or asking the user; use that to check a change instead of reading the " +
+        "record first.",
     );
     expect(build()).not.toContain("dryRun");
   });
 
-  it("points to the meta tools for ids", () => {
+  it("tells models to call tools directly and to look up only missing ids", () => {
     expect(build()).toContain(
-      "Look up ids and account defaults with sevdesk_dummy_bad_output, sevdesk_dummy_echo, " +
-        "sevdesk_dummy_fail instead of guessing them.",
+      "Call a tool directly when you have its arguments: reports and changing tools read the " +
+        "records and account settings they need themselves. Look up ids you do not have with " +
+        "the search and list tools instead of guessing them.",
     );
+  });
+
+  it("names the reference lookup when it is registered, and no other tool", () => {
+    const text = build(testConfig({ outputDir: "/tmp/out" }), ALL_TOOLS);
+    expect(text).toContain(
+      "Look up ids you do not have with the search and list tools or sevdesk_reference_lookup " +
+        "instead of guessing them.",
+    );
+    expect(text).not.toContain("sevdesk_account_info");
+    expect(text).not.toContain("sevdesk_document_save");
   });
 
   it("never contains text from tool descriptions or upstream data", () => {

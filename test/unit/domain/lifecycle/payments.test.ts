@@ -331,8 +331,9 @@ describe("checkPaymentTransaction", () => {
 
   it("warns when the transaction is larger than the payment", () => {
     expect(checkPaymentTransaction(invoiceDoc(), 4002, transaction(), "100")).toEqual([
-      "Bank transaction 5101 is 177.33 EUR; 77.33 EUR of it stays unassigned, and this tool " +
-        "cannot book more on a partly assigned transaction later.",
+      "Bank transaction 5101 is 177.33 EUR; the payment uses part of it, so it is sent as a " +
+        "partial booking (N), and 77.33 EUR of the transaction stays assignable to other " +
+        "documents (sevDesk marks it partly assigned, status 200).",
     ]);
   });
 
@@ -379,5 +380,79 @@ describe("checkPaymentTransaction", () => {
     expect(
       refusal(() => checkPaymentTransaction(creditNoteDoc(), 4002, transaction(), "23.80")),
     ).toContain("is not an outgoing payment");
+  });
+});
+
+describe("checkPaymentTransaction with shares already in the log", () => {
+  it("treats only the rest as free and says the payment goes out as N", () => {
+    expect(
+      checkPaymentTransaction(
+        invoiceDoc(),
+        4002,
+        transaction({ amount: { amount: "200", currency: "EUR" } }),
+        "100",
+        "50",
+      ),
+    ).toEqual([
+      "Bank transaction 5101 is marked unbooked (status 100), but its booking log already " +
+        "assigns 50.00 EUR of its 200.00 EUR to other documents; only 150.00 EUR is treated as " +
+        "free. The payment is sent as a partial booking (N), and 50.00 EUR of the transaction " +
+        "stays assignable to other documents.",
+    ]);
+  });
+
+  it("keeps the old behavior without log shares", () => {
+    expect(checkPaymentTransaction(invoiceDoc(), 4002, transaction(), "177.33", "0")).toEqual([]);
+  });
+});
+
+describe("planPayment with a linked transaction larger than the payment", () => {
+  it("sends a payment of the whole open amount as N (FULL_PAYMENT would be refused, 422)", () => {
+    const plan = planPayment(
+      invoiceDoc(),
+      request({ transactionId: 5101, transactionAmount: "200" }),
+    );
+    expect(plan.bookingType).toBe("N");
+    expect(plan.payload.type).toBe("N");
+    expect(plan.remaining).toBeUndefined();
+    expect(plan.warnings).toEqual([]);
+  });
+
+  it("keeps FULL_PAYMENT when the payment takes the whole transaction", () => {
+    const plan = planPayment(
+      invoiceDoc(),
+      request({ transactionId: 5101, transactionAmount: "177.33" }),
+    );
+    expect(plan.bookingType).toBe("FULL_PAYMENT");
+  });
+
+  it("keeps a partial payment N and its warning", () => {
+    const plan = planPayment(
+      invoiceDoc(),
+      request({ amount: "100", transactionId: 5101, transactionAmount: "150" }),
+    );
+    expect(plan.bookingType).toBe("N");
+    expect(plan.warnings[0]).toContain("This is a partial payment: 77.33 EUR stays open");
+  });
+
+  it("refuses a difference type on part of a transaction", () => {
+    expect(
+      refusal(() =>
+        planPayment(
+          invoiceDoc(),
+          request({
+            amount: "170",
+            paymentType: "cash_discount",
+            transactionId: 5101,
+            transactionAmount: "177.33",
+          }),
+        ),
+      ),
+    ).toBe(
+      "Skonto, bank fees and other differences (paymentType cash_discount, bank_fees, " +
+        "other_difference, reminder_charges) can only be booked when the payment takes the " +
+        "whole bank transaction. Book the transaction's full amount, use paymentType " +
+        '"payment" here, or book the difference in the sevDesk web app.',
+    );
   });
 });

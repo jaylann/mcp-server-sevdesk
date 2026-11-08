@@ -40,19 +40,37 @@ describe("tools/list", () => {
     expect(await surface(allEnabledConfig())).toMatchSnapshot();
   });
 
+  it("SEVDESK_FILE_DIRS set: adds only the read-only e-invoice parser to the read tier", async () => {
+    const without = (await surface(testConfig())).map((tool) => tool.name);
+    const tools = await surface(testConfig({ fileDirs: ["/srv/belege"] }));
+
+    expect(without).not.toContain("sevdesk_einvoice_parse");
+    expect(
+      tools.map((tool) => tool.name).filter((name) => name !== "sevdesk_einvoice_parse"),
+    ).toEqual(without);
+    expect(tools.find((tool) => tool.name === "sevdesk_einvoice_parse")?.annotations).toMatchObject(
+      { readOnlyHint: true, destructiveHint: false },
+    );
+  });
+
   it("SEVDESK_OUTPUT_DIR set (adds the file-writing save tool)", async () => {
     const tools = await surface(testConfig({ outputDir: "/srv/sevdesk-exports" }));
     expect(tools.filter((tool) => tool.name === "sevdesk_document_save")).toMatchSnapshot();
   });
 
-  it("SEVDESK_OUTPUT_DIR set: adds sevdesk_document_save, declared as not read-only", async () => {
+  it("SEVDESK_OUTPUT_DIR set: adds the read-tier file writers, declared as not read-only", async () => {
+    const writers = ["sevdesk_document_save", "sevdesk_export_csv"];
     const without = (await surface(testConfig())).map((tool) => tool.name);
     const tools = await surface(testConfig({ outputDir: "/srv/sevdesk-out" }));
 
-    expect(without).not.toContain("sevdesk_document_save");
-    expect(
-      tools.map((tool) => tool.name).filter((name) => name !== "sevdesk_document_save"),
-    ).toEqual(without);
+    for (const name of writers) expect(without).not.toContain(name);
+    expect(tools.map((tool) => tool.name).filter((name) => !writers.includes(name))).toEqual(
+      without,
+    );
+    expect(tools.find((tool) => tool.name === "sevdesk_export_csv")?.annotations).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: false,
+    });
     expect(tools.find((tool) => tool.name === "sevdesk_document_save")).toEqual({
       name: "sevdesk_document_save",
       title: "Save a document file to disk",

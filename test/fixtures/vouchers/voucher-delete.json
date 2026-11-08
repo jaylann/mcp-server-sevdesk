@@ -1,0 +1,13 @@
+{
+  "_provenance": {
+    "date": "2026-11-08",
+    "systemVersion": "2.0",
+    "source": "spec",
+    "ref": "spec/deviations.md D-024 (DELETE /Voucher/{voucherId}, uncertain; the recorded DELETE /Invoice/{id} answered 2xx)",
+    "note": "DELETE /Voucher/{id} of a draft: 2xx, then GET finds nothing (probe `write-voucher-delete`, 2026-11-08; the live body was `[null]`). The tool ignores the body and checks with a GET that the voucher is gone."
+  },
+  "status": 200,
+  "body": {
+    "objects": null
+  }
+}

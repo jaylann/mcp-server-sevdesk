@@ -1,0 +1,20 @@
+{
+  "caseId": "meta-tax-rule-de",
+  "model": "claude-sonnet-5-5",
+  "key": "0850ff4ca2b456763a8214b55ac1fb19916a9133b6f5d5365c9d9d29b83938af",
+  "recordedAt": "2026-11-08T17:04:42.137Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_account_info", "input": {} },
+      { "type": "tool_use", "name": "sevdesk_reference_lookup", "input": { "kind": "tax_rules" } }
+    ],
+    "usage": {
+      "inputTokens": 135,
+      "outputTokens": 165,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17167
+    }
+  }
+}

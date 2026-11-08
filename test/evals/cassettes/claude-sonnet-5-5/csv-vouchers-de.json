@@ -1,0 +1,23 @@
+{
+  "caseId": "csv-vouchers-de",
+  "model": "claude-sonnet-5-5",
+  "key": "1e9b05acfa296c2baca02c5b9c575822b2b8f2af3500c1933c00d3ed0aca3d63",
+  "recordedAt": "2026-11-08T17:06:37.324Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      {
+        "type": "tool_use",
+        "name": "sevdesk_export_csv",
+        "input": { "kind": "vouchers", "from": "2026-01-01", "to": "2026-12-31" }
+      }
+    ],
+    "usage": {
+      "inputTokens": 100,
+      "outputTokens": 110,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 18800
+    }
+  }
+}

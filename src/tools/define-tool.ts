@@ -17,8 +17,9 @@ const TOOL_NAME_PATTERN = /^sevdesk_[a-z0-9]+(?:_[a-z0-9]+)+$/;
 const MAX_TOOL_NAME_LENGTH = 64;
 const MIN_DESCRIPTION_LENGTH = 20;
 export const MAX_DESCRIPTION_LENGTH = 2_048;
-/** The only `localEffects` value (see `ReadToolDefinition.localEffects`). */
+/** The `localEffects` values (see `LocalEffect` in `types.ts`). */
 const WRITES_FILES = "writes-files";
+const LOCAL_EFFECTS: readonly unknown[] = ["reads-files", WRITES_FILES];
 /** The JSON Schema dialect the MCP SDK advertises tool schemas in. */
 export const JSON_SCHEMA_TARGET = "draft-2020-12";
 
@@ -102,9 +103,10 @@ function checked<T extends ToolMetadata>(definition: T): T {
  *   chars; toolset and tier are known;
  * - all four annotations are booleans and agree with the tier: `read` ⇒ read-only and not
  *   destructive; every other tier ⇒ not read-only; `commit` ⇒ destructive; `external` ⇒ open world;
- * - the one exception: a `read` tool with `localEffects: "writes-files"` (changes nothing in
- *   sevDesk, but writes local files) must declare `readOnlyHint: false`. The flag is the only way
- *   for a `read` tool to drop `readOnlyHint`, and it is accepted on `read` tools only;
+ * - `localEffects`, when set, is `"reads-files"` or `"writes-files"`. The one annotation exception:
+ *   a `read` tool with `"writes-files"` (changes nothing in sevDesk, but writes local files) must
+ *   declare `readOnlyHint: false`; the flag is the only way for a `read` tool to drop
+ *   `readOnlyHint`. Write tiers may declare either value without further annotation rules;
  * - input is a strict zod object (unknown keys rejected, see {@link isStrictObject}) whose JSON
  *   Schema has an object root without a top-level union; output is a zod object that converts to
  *   JSON Schema;
@@ -175,13 +177,8 @@ function annotationTierProblems(
       problems.push(`tier "${tier}" requires annotations.${key} = ${String(expected)}.`);
     }
   };
-  if (localEffects !== undefined && localEffects !== WRITES_FILES) {
-    problems.push(`localEffects must be "${WRITES_FILES}" when set.`);
-  }
-  if (localEffects !== undefined && tier !== "read") {
-    problems.push(
-      `localEffects is only for read-tier tools; tier "${tier}" is never read-only anyway.`,
-    );
+  if (localEffects !== undefined && !LOCAL_EFFECTS.includes(localEffects)) {
+    problems.push(`localEffects must be "reads-files" or "${WRITES_FILES}" when set.`);
   }
   if (tier === "read" && localEffects === WRITES_FILES) {
     if (annotations.readOnlyHint !== false) {

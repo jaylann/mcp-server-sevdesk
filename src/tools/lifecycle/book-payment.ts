@@ -1,9 +1,10 @@
 /**
- * `sevdesk_{invoice,credit_note}_book_payment`: book a payment (Zahlung buchen) on an open or
- * partially paid invoice or credit note (`PUT /{Invoice|CreditNote}/{id}/bookAmount`), optionally
- * linked to an imported bank transaction (B7: link the existing transaction instead of letting
- * sevDesk create a second one). Over-booking is refused (see `planPayment`). Payload, sign and
- * date format: `src/domain/lifecycle/payments.ts`.
+ * `sevdesk_{invoice,credit_note,voucher}_book_payment`: book a payment (Zahlung buchen) on an open
+ * or partially paid invoice, credit note or voucher (`PUT /{Invoice|CreditNote|Voucher}/{id}/
+ * bookAmount`), optionally linked to an imported bank transaction (B7: link the existing
+ * transaction instead of letting sevDesk create a second one). Over-booking is refused (see
+ * `planPayment`). Payload, sign and date format: `src/domain/lifecycle/payments.ts`; a voucher's
+ * sign follows its own direction (expense: money out, negative; revenue: in, D-041).
  */
 import { z } from "zod";
 
@@ -28,6 +29,7 @@ import {
   checkPaymentTransaction,
   CREDIT_NOTE_PAYMENT_TYPES,
   PAYMENT_TYPES,
+  paymentDirection,
   type PaymentPlan,
   paymentSign,
   planPayment,
@@ -39,10 +41,12 @@ import {
   formatMoney,
 } from "../../domain/lifecycle/preview.js";
 import { assertBookable, refuse } from "../../domain/lifecycle/transitions.js";
-import { money } from "../../domain/money.js";
+import { add, money, toDecimalString } from "../../domain/money.js";
+import { entryShare, readTransactionLog } from "../../domain/reconciliation/transaction-log.js";
 import { berlinDateOf } from "../../sevdesk/dates.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import { sevdeskPath } from "../../sevdesk/paths.js";
+import type { SevdeskClient } from "../../sevdesk/types.js";
 import { defineWriteTool } from "../define-tool.js";
 import type { SevdeskObjectRef } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
@@ -76,6 +80,24 @@ const DESCRIPTIONS: Readonly<Record<PaymentKind, string>> = {
     "amount unless paymentType other_difference says the extra is intended. Open credit notes " +
     "only (sevDesk reports no paid amount for partially paid ones). Commit tier: asks a human " +
     "to confirm the preview; dryRun only previews. Undo: sevdesk_credit_note_reset to open.",
+  voucher:
+    "Book a payment on a voucher (Beleg bezahlen, Zahlung buchen): amount (gross, positive; " +
+    "sent to sevDesk signed as the money moves: an expense voucher (Ausgabe) as money out, a " +
+    "revenue voucher (Einnahme) as money in), date (default today), check account " +
+    "(Zahlungskonto, sevdesk_bank_accounts_list) and, for an imported bank payment, its " +
+    "transactionId (Kontoumsatz, sevdesk_transactions_list, status created, same direction) so " +
+    "the transaction is linked instead of counted twice. Bank accounts fed by imports need it. " +
+    "Refuses more than the open amount unless paymentType other_difference says the extra is " +
+    "intended; cash_discount (Skonto) and bank_fees settle it with less. Open or partially paid " +
+    "vouchers only (finalize a draft first: sevdesk_voucher_finalize). Commit tier: asks a human " +
+    "to confirm the preview; dryRun only previews. Undo: sevdesk_voucher_reset to open.",
+};
+
+/** How the amount argument describes the money, per kind. */
+const AMOUNT_VERB: Readonly<Record<PaymentKind, string>> = {
+  invoice: "received",
+  creditNote: "paid out",
+  voucher: "paid (expense voucher) or received (revenue voucher)",
 };
 
 const PAYMENT_TYPE_HELP =
@@ -121,6 +143,50 @@ async function lookup<T>(read: () => Promise<T>, missing: string): Promise<T> {
   }
 }
 
+/**
+ * What the booking log of a transaction at status 100 or 200 already assigns to documents,
+ * positive (`readTransactionLog`, m4-reconcile). A partly assigned transaction (200; also what
+ * resetting one document of a split leaves, M4 probe run 4) is bookable for the rest; at 100 the
+ * shares are subtracted defensively. Other statuses are refused by `checkPaymentTransaction`, so
+ * their log is not read. An incomplete log, a 200 without entries or an entry whose share is
+ * unclear is refused: the free amount would be a guess.
+ */
+async function assignedShare(
+  client: SevdeskClient,
+  transaction: TransactionDto,
+  signal: AbortSignal | undefined,
+): Promise<string> {
+  const status = transaction.status?.code;
+  if (status !== 100 && status !== 200) return "0";
+  const ref = `Bank transaction ${String(transaction.id)}`;
+  const log = await readTransactionLog(client, transaction.id, signal);
+  if (status === 200 && log.complete && log.entries.length === 0) {
+    refuse(
+      `${ref} is partly assigned (status 200), but its booking log has no entries, so how much ` +
+        "of it is free is unknown. Book it in the sevDesk web app.",
+    );
+  }
+  if (!log.complete) {
+    refuse(
+      `The booking log of ${ref.toLowerCase()} could not be read completely, so how much of it ` +
+        "is free is unknown. Book it in the sevDesk web app.",
+    );
+  }
+  let assigned = "0";
+  for (const entry of log.entries) {
+    const share = entryShare(entry, transaction.amount.amount);
+    if ("problem" in share) {
+      refuse(
+        `${ref} is ${status === 200 ? "partly assigned (status 200)" : "marked unbooked (status 100)"}` +
+          `, but ${share.problem}, so how much of it is free is unknown. Check it in the sevDesk ` +
+          "web app.",
+      );
+    }
+    assigned = toDecimalString(add(assigned, share.share));
+  }
+  return assigned;
+}
+
 function accountText(account: BankAccountDto): string {
   return `${account.name} (id ${String(account.id)}, ${account.currency}, ${account.type})`;
 }
@@ -146,7 +212,7 @@ function paymentFacts(
   const facts: Fact[] = [
     { label: "Open amount", value: formatMoney(money(plan.open.open, doc.currency)) },
     {
-      label: doc.kind === "invoice" ? "Payment received" : "Payout",
+      label: paymentDirection(doc) === "in" ? "Payment received" : "Payout",
       value: `${formatMoney(plan.amount)}, ${BOOKING_TYPE_TEXT[plan.bookingType]}`,
     },
     { label: "Booking date", value: date },
@@ -162,7 +228,7 @@ function paymentFacts(
         ? `${formatMoney(money(0, doc.currency))} (settled)`
         : formatMoney(plan.remaining),
   });
-  if (paymentSign(doc.kind) < 0) {
+  if (paymentSign(doc) < 0) {
     facts.push({
       label: "Sent to sevDesk as",
       value: `amount ${String(plan.payload.amount)} (money leaving the account)`,
@@ -171,7 +237,7 @@ function paymentFacts(
   return facts;
 }
 
-/** Builds the book-payment tool of invoices or credit notes. */
+/** Builds the book-payment tool of invoices, credit notes or vouchers. */
 export function bookPaymentTool(kind: PaymentKind) {
   const info = KINDS[kind];
   const names = KIND_TOOLS[kind];
@@ -186,8 +252,8 @@ export function bookPaymentTool(kind: PaymentKind) {
     input: z.strictObject({
       id: idInput(kind),
       amount: amountInput({ allowZero: false }).describe(
-        `Amount ${kind === "invoice" ? "received" : "paid out"}, gross, positive, in the ` +
-          `${info.noun}'s currency, e.g. "119.00" (at most 2 decimals).`,
+        `Amount ${AMOUNT_VERB[kind]}, gross, positive, in the ${info.noun}'s currency, e.g. ` +
+          `"119.00" (at most 2 decimals).`,
       ),
       date: isoDateInput
         .optional()
@@ -228,13 +294,15 @@ export function bookPaymentTool(kind: PaymentKind) {
       assertBookable(doc);
       const today = berlinDateOf(Date.now());
       const date = args.date ?? today;
-      const plan = planPayment(doc, {
+      const request = {
         amount: args.amount,
         paymentType: args.paymentType ?? "payment",
         date,
         checkAccountId: args.checkAccountId,
         transactionId: args.transactionId,
-      });
+      } as const;
+      // Planned before any further read, so an impossible payment is refused first.
+      let plan = planPayment(doc, request);
       const account = await lookup(
         () => getBankAccount(ctx.client, args.checkAccountId, ctx.signal),
         `Check account ${String(args.checkAccountId)} does not exist; list the accounts with ` +
@@ -252,14 +320,21 @@ export function bookPaymentTool(kind: PaymentKind) {
           `Bank transaction ${String(transactionId)} does not exist; find it with ` +
             `sevdesk_transactions_list.`,
         );
+        const assigned = await assignedShare(ctx.client, transaction, ctx.signal);
         warnings.push(
-          ...checkPaymentTransaction(doc, args.checkAccountId, transaction, args.amount),
+          ...checkPaymentTransaction(doc, args.checkAccountId, transaction, args.amount, assigned),
         );
+        // A payment that uses part of the transaction goes out as N (see transactionBookingType).
+        const amount = transaction.amount.amount;
+        plan = planPayment(doc, {
+          ...request,
+          transactionAmount: amount.startsWith("-") ? amount.slice(1) : amount,
+        });
       }
       if (date > today) {
         warnings.push(`The booking date ${date} lies in the future.`);
       }
-      const verb = kind === "invoice" ? "payment received" : "payout";
+      const verb = paymentDirection(doc) === "in" ? "payment received" : "payout";
       const state: BookPaymentState = {
         payload: plan.payload,
         plan: { amount: plan.amount, bookingType: plan.bookingType },

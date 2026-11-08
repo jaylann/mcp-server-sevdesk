@@ -4,7 +4,7 @@
  * approval or after a declined one; an approved (or confirmation-free) call makes exactly the
  * case's writes with the tool's tier. New cases are picked up automatically.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { requiresConfirmation } from "../../src/safety/tiers.js";
 import { decideInBrowser } from "../helpers/approval-browser.js";
@@ -32,8 +32,21 @@ const unconfirmed = CASES.filter((testCase) => !requiresConfirmation(testCase.to
 const each = (cases: readonly WriteToolCase[]) =>
   cases.map((testCase) => [testCase.label, testCase] as const);
 
-function setup(testCase: WriteToolCase, options: Partial<WriteHarnessOptions> = {}) {
-  return writeHarness({ tools: [testCase.tool], routes: testCase.routes, ...options });
+/** Undo functions of the cases' environments (`WriteToolCase.setup`), run after each test. */
+const undos: (() => Promise<void> | void)[] = [];
+afterEach(async () => {
+  for (const undo of undos.splice(0)) await undo();
+});
+
+async function setup(testCase: WriteToolCase, options: Partial<WriteHarnessOptions> = {}) {
+  const environment = (await testCase.setup?.()) ?? {};
+  if (environment.undo !== undefined) undos.push(environment.undo);
+  return writeHarness({
+    tools: [testCase.tool],
+    routes: testCase.routes,
+    ...options,
+    config: { ...environment.config, ...options.config },
+  });
 }
 
 function call(testCase: WriteToolCase, extra: Record<string, unknown> = {}) {

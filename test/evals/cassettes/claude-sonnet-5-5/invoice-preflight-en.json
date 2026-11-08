@@ -1,0 +1,20 @@
+{
+  "caseId": "invoice-preflight-en",
+  "model": "claude-sonnet-5-5",
+  "key": "f1f066707d0366c25875ac622785ab18b083005d104dbbb861624336707d87ce",
+  "recordedAt": "2026-11-08T17:05:21.734Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_invoice_einvoice_preflight", "input": { "id": 4711 } },
+      { "type": "tool_use", "name": "sevdesk_invoice_get", "input": { "id": 4711 } }
+    ],
+    "usage": {
+      "inputTokens": 114,
+      "outputTokens": 116,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17167
+    }
+  }
+}

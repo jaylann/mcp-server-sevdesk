@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { ALL_TOOLS } from "../../src/tools/index.js";
 import { isWriteTool } from "../../src/tools/types.js";
 import { FakeSevdeskClient } from "../helpers/fake-client.js";
+import { withCaseEnvironment } from "../helpers/write-cases.js";
 import { executeWrite, prepareWrite } from "../helpers/write-tools.js";
 import { WRITE_TOOL_CASES } from "../write-cases/index.js";
 
@@ -30,7 +31,9 @@ describe("write-tool cases", () => {
     async (_label, testCase) => {
       const client = new FakeSevdeskClient(testCase.routes);
 
-      await prepareWrite(testCase.tool, testCase.args, client);
+      await withCaseEnvironment(testCase, (config) =>
+        prepareWrite(testCase.tool, testCase.args, client, config),
+      );
 
       expect(client.writes()).toEqual([]);
     },
@@ -41,7 +44,9 @@ describe("write-tool cases", () => {
     async (_label, testCase) => {
       const client = new FakeSevdeskClient(testCase.routes);
 
-      const { output } = await executeWrite(testCase.tool, testCase.args, client);
+      const { output } = await withCaseEnvironment(testCase, (config) =>
+        executeWrite(testCase.tool, testCase.args, client, config),
+      );
 
       expect(client.writes().map(({ method, path }) => ({ method, path }))).toEqual(
         testCase.writes,

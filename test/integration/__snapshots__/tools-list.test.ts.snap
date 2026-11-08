@@ -1427,6 +1427,33 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
   },
   {
     "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Check an invoice for e-invoice readiness",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Invoice id (not the invoice number), e.g. from sevdesk_invoices_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_einvoice_preflight",
+    "title": "Check an invoice for e-invoice readiness",
+  },
+  {
+    "annotations": {
       "destructiveHint": true,
       "idempotentHint": false,
       "openWorldHint": false,
@@ -2986,6 +3013,59 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
+      "title": "Profit and loss (EÜR-style)",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "default": "cash",
+          "description": "cash (by payment day, default) or accrual (by document date).",
+          "enum": [
+            "cash",
+            "accrual",
+          ],
+          "type": "string",
+        },
+        "from": {
+          "description": "First day, YYYY-MM-DD (instead of year).",
+          "type": "string",
+        },
+        "month": {
+          "description": "Month 1–12 (with year).",
+          "maximum": 12,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "quarter": {
+          "description": "Quarter 1–4 (with year).",
+          "maximum": 4,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "to": {
+          "description": "Last day, YYYY-MM-DD (instead of year).",
+          "type": "string",
+        },
+        "year": {
+          "description": "Calendar year; alone for the whole year, or with month or quarter.",
+          "maximum": 2100,
+          "minimum": 2000,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_profit_and_loss",
+    "title": "Profit and loss (EÜR-style)",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
       "title": "Receivables aging",
     },
     "inputSchema": {
@@ -3008,6 +3088,65 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     },
     "name": "sevdesk_receivables_aging",
     "title": "Receivables aging",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Suggest matches for sevDesk bank transactions",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "checkAccountId": {
+          "description": "Payment account (Zahlungskonto) id, from sevdesk_bank_accounts_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "from": {
+          "description": "First day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "limit": {
+          "default": 10,
+          "description": "Transactions per call (default 10, at most 25).",
+          "maximum": 25,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "matches": {
+          "default": 3,
+          "description": "Matches per transaction (default 3).",
+          "maximum": 10,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "offset": {
+          "default": 0,
+          "description": "sevDesk transaction rows to skip: pass nextOffset from the previous call.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "to": {
+          "description": "Last day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "transactionId": {
+          "description": "One transaction (Umsatz) id; leave out to scan unassigned ones.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_reconcile_suggest",
+    "title": "Suggest matches for sevDesk bank transactions",
   },
   {
     "annotations": {
@@ -3192,6 +3331,176 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
   },
   {
     "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Book a sevDesk bank transaction to documents",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "allocations": {
+          "description": "Documents to book the transaction to, in this order.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "amount": {
+                "description": "Share of the transaction for this document, positive, e.g. "119.00"; defaults to the smaller of its open amount and what is left of the transaction.",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "id": {
+                "description": "Document id (not its number).",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "kind": {
+                "description": "invoice, credit_note or voucher.",
+                "enum": [
+                  "invoice",
+                  "credit_note",
+                  "voucher",
+                ],
+                "type": "string",
+              },
+              "paymentType": {
+                "description": "payment (default: full or partial). cash_discount (Skonto) / bank_fees: less than open, the rest is written off. other_difference: settles with more or less. reminder_charges (invoices): more than open.",
+                "enum": [
+                  "payment",
+                  "cash_discount",
+                  "bank_fees",
+                  "other_difference",
+                  "reminder_charges",
+                ],
+                "type": "string",
+              },
+            },
+            "required": [
+              "kind",
+              "id",
+            ],
+            "type": "object",
+          },
+          "maxItems": 10,
+          "minItems": 1,
+          "type": "array",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "transactionId": {
+          "description": "Bank transaction (Umsatz) id, from sevdesk_transactions_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "transactionId",
+        "allocations",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_transaction_book",
+    "title": "Book a sevDesk bank transaction to documents",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Get a sevDesk bank transaction with its assignments",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Bank transaction (Umsatz) id, from sevdesk_transactions_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_transaction_get",
+    "title": "Get a sevDesk bank transaction with its assignments",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Mark a sevDesk bank transaction as private",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "transactionId": {
+          "description": "Bank transaction (Umsatz) id, from sevdesk_transactions_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "transactionId",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_transaction_mark_private",
+    "title": "Mark a sevDesk bank transaction as private",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Undo the bookings of a sevDesk bank transaction",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "transactionId": {
+          "description": "Bank transaction (Umsatz) id, from sevdesk_transactions_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "transactionId",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_transaction_reset",
+    "title": "Undo the bookings of a sevDesk bank transaction",
+  },
+  {
+    "annotations": {
       "destructiveHint": false,
       "idempotentHint": true,
       "openWorldHint": false,
@@ -3275,6 +3584,354 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
+      "title": "VAT return estimate (UStVA)",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "description": "accrual (Sollversteuerung, default) or cash (Istversteuerung).",
+          "enum": [
+            "accrual",
+            "cash",
+          ],
+          "type": "string",
+        },
+        "from": {
+          "description": "First day, YYYY-MM-DD (instead of year).",
+          "type": "string",
+        },
+        "month": {
+          "description": "Month 1–12 (with year).",
+          "maximum": 12,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "quarter": {
+          "description": "Quarter 1–4 (with year).",
+          "maximum": 4,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "to": {
+          "description": "Last day, YYYY-MM-DD (instead of year).",
+          "type": "string",
+        },
+        "year": {
+          "description": "Calendar year; alone for the whole year, or with month or quarter.",
+          "maximum": 2100,
+          "minimum": 2000,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_vat_summary",
+    "title": "VAT return estimate (UStVA)",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Book a payment on a sevDesk voucher",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "description": "Amount paid (expense voucher) or received (revenue voucher), gross, positive, in the voucher's currency, e.g. "119.00" (at most 2 decimals).",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "checkAccountId": {
+          "description": "Check account (Zahlungskonto) the money moved on, from sevdesk_bank_accounts_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "date": {
+          "description": "Booking date (Zahlungsdatum), YYYY-MM-DD; defaults to today (Berlin).",
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Voucher id (not the Belegnummer), e.g. from sevdesk_vouchers_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "paymentType": {
+          "description": "payment (default): all of the open amount or a part of it. cash_discount: less than the open amount, the rest is written off as Skonto. bank_fees: less, the rest written off as bank fees (Geldverkehrskosten). other_difference: more or less than the open amount for another reason; the document is settled.",
+          "enum": [
+            "payment",
+            "cash_discount",
+            "bank_fees",
+            "other_difference",
+          ],
+          "type": "string",
+        },
+        "transactionId": {
+          "description": "Imported bank transaction (Umsatz) to link, from sevdesk_transactions_list (status created, same account). Without it sevDesk creates a new transaction (offline and cash accounts only).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+        "amount",
+        "checkAccountId",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_voucher_book_payment",
+    "title": "Book a payment on a sevDesk voucher",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create a draft voucher",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "allowDuplicate": {
+          "description": "Create it although a voucher with the same supplier, Belegnummer, date and gross exists.",
+          "type": "boolean",
+        },
+        "amountsAre": {
+          "description": "Whether position amounts are gross (Brutto, default) or net (Netto).",
+          "enum": [
+            "gross",
+            "net",
+          ],
+          "type": "string",
+        },
+        "date": {
+          "description": "Belegdatum, YYYY-MM-DD; default today (Berlin).",
+          "type": "string",
+        },
+        "deliveryDate": {
+          "description": "Leistungsdatum, YYYY-MM-DD; default the voucher date.",
+          "type": "string",
+        },
+        "deliveryDateUntil": {
+          "description": "End of the service period (Leistungszeitraum bis), YYYY-MM-DD.",
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "file": {
+          "description": "Receipt file (Belegbild: PDF, PNG or JPEG, up to 20 MB) inside SEVDESK_FILE_DIRS, absolute or relative to one of those folders. It is uploaded and attached.",
+          "maxLength": 1000,
+          "minLength": 1,
+          "type": "string",
+        },
+        "kind": {
+          "description": "expense (Ausgabe, default: a receipt or supplier invoice, money out) or revenue (Einnahme, money in).",
+          "enum": [
+            "expense",
+            "revenue",
+          ],
+          "type": "string",
+        },
+        "number": {
+          "description": "Belegnummer: the receipt's or supplier invoice's own number.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "paymentDeadline": {
+          "description": "Fälligkeit (payment deadline), YYYY-MM-DD.",
+          "type": "string",
+        },
+        "positions": {
+          "description": "Belegpositionen: one per booking account and tax rate.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "accountDatevId": {
+                "description": "Buchungskonto (booking account, accountDatev id), from sevdesk_reference_lookup kind=receipt_guidance (it lists the tax rules and rates each account allows).",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "amount": {
+                "description": "Betrag of this position in EUR, gross or net as amountsAre says, e.g. "119.00".",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "comment": {
+                "description": "Buchungstext of the position, e.g. what was bought.",
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string",
+              },
+              "isAsset": {
+                "description": "Anlagegut: a depreciable asset (AfA is not computed here). Default false.",
+                "type": "boolean",
+              },
+              "taxRate": {
+                "description": "Steuersatz in percent, e.g. 19, 7 or 0. May be left out when the tax rule allows one rate only (e.g. 0 for rule 10).",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+            },
+            "required": [
+              "accountDatevId",
+              "amount",
+            ],
+            "type": "object",
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "type": "array",
+        },
+        "supplierId": {
+          "description": "Lieferant (supplier; the customer of a revenue voucher) as a contact id from sevdesk_contacts_search. Pass supplierId or supplierName.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "supplierName": {
+          "description": "Supplier name as text, when there is no contact (e.g. a petrol station).",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
+        "taxRule": {
+          "description": "Steuerregel id. Default: expense 9 (Vorsteuerabziehbare Aufwendungen), on a Kleinunternehmer account 10; revenue 1, or 11 for Kleinunternehmer. Others: 8, 12–14 (intra-EU, reverse charge), 2–5, 17. Not 18–21. sevdesk_reference_lookup kind=tax_rules.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "positions",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_voucher_create_draft",
+    "title": "Create a draft voucher",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Delete a draft voucher",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Voucher id (not the Belegnummer), e.g. from sevdesk_vouchers_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_voucher_delete_draft",
+    "title": "Delete a draft voucher",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Enshrine a sevDesk voucher",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Voucher id (not the Belegnummer), e.g. from sevdesk_vouchers_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_voucher_enshrine",
+    "title": "Enshrine a sevDesk voucher",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Finalize a draft voucher",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Voucher id (not the Belegnummer), e.g. from sevdesk_vouchers_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_voucher_finalize",
+    "title": "Finalize a draft voucher",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
       "title": "Get a sevDesk voucher",
     },
     "inputSchema": {
@@ -3295,6 +3952,177 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     },
     "name": "sevdesk_voucher_get",
     "title": "Get a sevDesk voucher",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Reset a sevDesk voucher",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Voucher id (not the Belegnummer), e.g. from sevdesk_vouchers_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "to": {
+          "description": "open: unlink all payments of a paid or partially paid document (resetToOpen). draft: turn an open document without payments back into a draft (resetToDraft).",
+          "enum": [
+            "draft",
+            "open",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "id",
+        "to",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_voucher_reset",
+    "title": "Reset a sevDesk voucher",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Update a draft voucher",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "amountsAre": {
+          "description": "gross or net position amounts; changing it requires positions too.",
+          "enum": [
+            "gross",
+            "net",
+          ],
+          "type": "string",
+        },
+        "date": {
+          "description": "Belegdatum, YYYY-MM-DD; default today (Berlin).",
+          "type": "string",
+        },
+        "deliveryDate": {
+          "description": "Leistungsdatum, YYYY-MM-DD; default the voucher date.",
+          "type": "string",
+        },
+        "deliveryDateUntil": {
+          "description": "End of the service period (Leistungszeitraum bis), YYYY-MM-DD.",
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "file": {
+          "description": "Receipt file to attach (PDF, PNG or JPEG inside SEVDESK_FILE_DIRS).",
+          "maxLength": 1000,
+          "minLength": 1,
+          "type": "string",
+        },
+        "id": {
+          "description": "Id of the draft voucher, e.g. from sevdesk_vouchers_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "number": {
+          "description": "Belegnummer: the receipt's or supplier invoice's own number.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "paymentDeadline": {
+          "description": "Fälligkeit (payment deadline), YYYY-MM-DD.",
+          "type": "string",
+        },
+        "positions": {
+          "description": "When given, replaces ALL positions; leave out to keep them.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "accountDatevId": {
+                "description": "Buchungskonto (booking account, accountDatev id), from sevdesk_reference_lookup kind=receipt_guidance (it lists the tax rules and rates each account allows).",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "amount": {
+                "description": "Betrag of this position in EUR, gross or net as amountsAre says, e.g. "119.00".",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "comment": {
+                "description": "Buchungstext of the position, e.g. what was bought.",
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string",
+              },
+              "isAsset": {
+                "description": "Anlagegut: a depreciable asset (AfA is not computed here). Default false.",
+                "type": "boolean",
+              },
+              "taxRate": {
+                "description": "Steuersatz in percent, e.g. 19, 7 or 0. May be left out when the tax rule allows one rate only (e.g. 0 for rule 10).",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+            },
+            "required": [
+              "accountDatevId",
+              "amount",
+            ],
+            "type": "object",
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "type": "array",
+        },
+        "supplierId": {
+          "description": "Lieferant (supplier; the customer of a revenue voucher) as a contact id from sevdesk_contacts_search. Pass supplierId or supplierName.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "supplierName": {
+          "description": "Supplier name as text, when there is no contact (e.g. a petrol station).",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
+        "taxRule": {
+          "description": "New Steuerregel id; every position (stored or new) must allow it. See sevdesk_reference_lookup kind=tax_rules.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_voucher_update_draft",
+    "title": "Update a draft voucher",
   },
   {
     "annotations": {
@@ -4462,6 +5290,33 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
     },
     "name": "sevdesk_invoice_create_reminder",
     "title": "Create a sevDesk payment reminder",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Check an invoice for e-invoice readiness",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Invoice id (not the invoice number), e.g. from sevdesk_invoices_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_einvoice_preflight",
+    "title": "Check an invoice for e-invoice readiness",
   },
   {
     "annotations": {
@@ -5727,6 +6582,59 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
+      "title": "Profit and loss (EÜR-style)",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "default": "cash",
+          "description": "cash (by payment day, default) or accrual (by document date).",
+          "enum": [
+            "cash",
+            "accrual",
+          ],
+          "type": "string",
+        },
+        "from": {
+          "description": "First day, YYYY-MM-DD (instead of year).",
+          "type": "string",
+        },
+        "month": {
+          "description": "Month 1–12 (with year).",
+          "maximum": 12,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "quarter": {
+          "description": "Quarter 1–4 (with year).",
+          "maximum": 4,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "to": {
+          "description": "Last day, YYYY-MM-DD (instead of year).",
+          "type": "string",
+        },
+        "year": {
+          "description": "Calendar year; alone for the whole year, or with month or quarter.",
+          "maximum": 2100,
+          "minimum": 2000,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_profit_and_loss",
+    "title": "Profit and loss (EÜR-style)",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
       "title": "Receivables aging",
     },
     "inputSchema": {
@@ -5749,6 +6657,65 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
     },
     "name": "sevdesk_receivables_aging",
     "title": "Receivables aging",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Suggest matches for sevDesk bank transactions",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "checkAccountId": {
+          "description": "Payment account (Zahlungskonto) id, from sevdesk_bank_accounts_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "from": {
+          "description": "First day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "limit": {
+          "default": 10,
+          "description": "Transactions per call (default 10, at most 25).",
+          "maximum": 25,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "matches": {
+          "default": 3,
+          "description": "Matches per transaction (default 3).",
+          "maximum": 10,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "offset": {
+          "default": 0,
+          "description": "sevDesk transaction rows to skip: pass nextOffset from the previous call.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "to": {
+          "description": "Last day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "transactionId": {
+          "description": "One transaction (Umsatz) id; leave out to scan unassigned ones.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_reconcile_suggest",
+    "title": "Suggest matches for sevDesk bank transactions",
   },
   {
     "annotations": {
@@ -5937,6 +6904,33 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
+      "title": "Get a sevDesk bank transaction with its assignments",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Bank transaction (Umsatz) id, from sevdesk_transactions_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_transaction_get",
+    "title": "Get a sevDesk bank transaction with its assignments",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
       "title": "List sevDesk bank transactions",
     },
     "inputSchema": {
@@ -6016,6 +7010,195 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
+      "title": "VAT return estimate (UStVA)",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "description": "accrual (Sollversteuerung, default) or cash (Istversteuerung).",
+          "enum": [
+            "accrual",
+            "cash",
+          ],
+          "type": "string",
+        },
+        "from": {
+          "description": "First day, YYYY-MM-DD (instead of year).",
+          "type": "string",
+        },
+        "month": {
+          "description": "Month 1–12 (with year).",
+          "maximum": 12,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "quarter": {
+          "description": "Quarter 1–4 (with year).",
+          "maximum": 4,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "to": {
+          "description": "Last day, YYYY-MM-DD (instead of year).",
+          "type": "string",
+        },
+        "year": {
+          "description": "Calendar year; alone for the whole year, or with month or quarter.",
+          "maximum": 2100,
+          "minimum": 2000,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_vat_summary",
+    "title": "VAT return estimate (UStVA)",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create a draft voucher",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "allowDuplicate": {
+          "description": "Create it although a voucher with the same supplier, Belegnummer, date and gross exists.",
+          "type": "boolean",
+        },
+        "amountsAre": {
+          "description": "Whether position amounts are gross (Brutto, default) or net (Netto).",
+          "enum": [
+            "gross",
+            "net",
+          ],
+          "type": "string",
+        },
+        "date": {
+          "description": "Belegdatum, YYYY-MM-DD; default today (Berlin).",
+          "type": "string",
+        },
+        "deliveryDate": {
+          "description": "Leistungsdatum, YYYY-MM-DD; default the voucher date.",
+          "type": "string",
+        },
+        "deliveryDateUntil": {
+          "description": "End of the service period (Leistungszeitraum bis), YYYY-MM-DD.",
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "file": {
+          "description": "Receipt file (Belegbild: PDF, PNG or JPEG, up to 20 MB) inside SEVDESK_FILE_DIRS, absolute or relative to one of those folders. It is uploaded and attached.",
+          "maxLength": 1000,
+          "minLength": 1,
+          "type": "string",
+        },
+        "kind": {
+          "description": "expense (Ausgabe, default: a receipt or supplier invoice, money out) or revenue (Einnahme, money in).",
+          "enum": [
+            "expense",
+            "revenue",
+          ],
+          "type": "string",
+        },
+        "number": {
+          "description": "Belegnummer: the receipt's or supplier invoice's own number.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "paymentDeadline": {
+          "description": "Fälligkeit (payment deadline), YYYY-MM-DD.",
+          "type": "string",
+        },
+        "positions": {
+          "description": "Belegpositionen: one per booking account and tax rate.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "accountDatevId": {
+                "description": "Buchungskonto (booking account, accountDatev id), from sevdesk_reference_lookup kind=receipt_guidance (it lists the tax rules and rates each account allows).",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "amount": {
+                "description": "Betrag of this position in EUR, gross or net as amountsAre says, e.g. "119.00".",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "comment": {
+                "description": "Buchungstext of the position, e.g. what was bought.",
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string",
+              },
+              "isAsset": {
+                "description": "Anlagegut: a depreciable asset (AfA is not computed here). Default false.",
+                "type": "boolean",
+              },
+              "taxRate": {
+                "description": "Steuersatz in percent, e.g. 19, 7 or 0. May be left out when the tax rule allows one rate only (e.g. 0 for rule 10).",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+            },
+            "required": [
+              "accountDatevId",
+              "amount",
+            ],
+            "type": "object",
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "type": "array",
+        },
+        "supplierId": {
+          "description": "Lieferant (supplier; the customer of a revenue voucher) as a contact id from sevdesk_contacts_search. Pass supplierId or supplierName.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "supplierName": {
+          "description": "Supplier name as text, when there is no contact (e.g. a petrol station).",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
+        "taxRule": {
+          "description": "Steuerregel id. Default: expense 9 (Vorsteuerabziehbare Aufwendungen), on a Kleinunternehmer account 10; revenue 1, or 11 for Kleinunternehmer. Others: 8, 12–14 (intra-EU, reverse charge), 2–5, 17. Not 18–21. sevdesk_reference_lookup kind=tax_rules.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "positions",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_voucher_create_draft",
+    "title": "Create a draft voucher",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
       "title": "Get a sevDesk voucher",
     },
     "inputSchema": {
@@ -6036,6 +7219,137 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
     },
     "name": "sevdesk_voucher_get",
     "title": "Get a sevDesk voucher",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Update a draft voucher",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "amountsAre": {
+          "description": "gross or net position amounts; changing it requires positions too.",
+          "enum": [
+            "gross",
+            "net",
+          ],
+          "type": "string",
+        },
+        "date": {
+          "description": "Belegdatum, YYYY-MM-DD; default today (Berlin).",
+          "type": "string",
+        },
+        "deliveryDate": {
+          "description": "Leistungsdatum, YYYY-MM-DD; default the voucher date.",
+          "type": "string",
+        },
+        "deliveryDateUntil": {
+          "description": "End of the service period (Leistungszeitraum bis), YYYY-MM-DD.",
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "file": {
+          "description": "Receipt file to attach (PDF, PNG or JPEG inside SEVDESK_FILE_DIRS).",
+          "maxLength": 1000,
+          "minLength": 1,
+          "type": "string",
+        },
+        "id": {
+          "description": "Id of the draft voucher, e.g. from sevdesk_vouchers_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "number": {
+          "description": "Belegnummer: the receipt's or supplier invoice's own number.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "paymentDeadline": {
+          "description": "Fälligkeit (payment deadline), YYYY-MM-DD.",
+          "type": "string",
+        },
+        "positions": {
+          "description": "When given, replaces ALL positions; leave out to keep them.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "accountDatevId": {
+                "description": "Buchungskonto (booking account, accountDatev id), from sevdesk_reference_lookup kind=receipt_guidance (it lists the tax rules and rates each account allows).",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "amount": {
+                "description": "Betrag of this position in EUR, gross or net as amountsAre says, e.g. "119.00".",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "comment": {
+                "description": "Buchungstext of the position, e.g. what was bought.",
+                "maxLength": 500,
+                "minLength": 1,
+                "type": "string",
+              },
+              "isAsset": {
+                "description": "Anlagegut: a depreciable asset (AfA is not computed here). Default false.",
+                "type": "boolean",
+              },
+              "taxRate": {
+                "description": "Steuersatz in percent, e.g. 19, 7 or 0. May be left out when the tax rule allows one rate only (e.g. 0 for rule 10).",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+            },
+            "required": [
+              "accountDatevId",
+              "amount",
+            ],
+            "type": "object",
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "type": "array",
+        },
+        "supplierId": {
+          "description": "Lieferant (supplier; the customer of a revenue voucher) as a contact id from sevdesk_contacts_search. Pass supplierId or supplierName.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "supplierName": {
+          "description": "Supplier name as text, when there is no contact (e.g. a petrol station).",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
+        "taxRule": {
+          "description": "New Steuerregel id; every position (stored or new) must allow it. See sevdesk_reference_lookup kind=tax_rules.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_voucher_update_draft",
+    "title": "Update a draft voucher",
   },
   {
     "annotations": {
@@ -6533,6 +7847,33 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
+      "title": "Check an invoice for e-invoice readiness",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Invoice id (not the invoice number), e.g. from sevdesk_invoices_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_einvoice_preflight",
+    "title": "Check an invoice for e-invoice readiness",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
       "title": "Get a sevDesk invoice",
     },
     "inputSchema": {
@@ -6921,6 +8262,59 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
+      "title": "Profit and loss (EÜR-style)",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "default": "cash",
+          "description": "cash (by payment day, default) or accrual (by document date).",
+          "enum": [
+            "cash",
+            "accrual",
+          ],
+          "type": "string",
+        },
+        "from": {
+          "description": "First day, YYYY-MM-DD (instead of year).",
+          "type": "string",
+        },
+        "month": {
+          "description": "Month 1–12 (with year).",
+          "maximum": 12,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "quarter": {
+          "description": "Quarter 1–4 (with year).",
+          "maximum": 4,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "to": {
+          "description": "Last day, YYYY-MM-DD (instead of year).",
+          "type": "string",
+        },
+        "year": {
+          "description": "Calendar year; alone for the whole year, or with month or quarter.",
+          "maximum": 2100,
+          "minimum": 2000,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_profit_and_loss",
+    "title": "Profit and loss (EÜR-style)",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
       "title": "Receivables aging",
     },
     "inputSchema": {
@@ -6943,6 +8337,65 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
     },
     "name": "sevdesk_receivables_aging",
     "title": "Receivables aging",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Suggest matches for sevDesk bank transactions",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "checkAccountId": {
+          "description": "Payment account (Zahlungskonto) id, from sevdesk_bank_accounts_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "from": {
+          "description": "First day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "limit": {
+          "default": 10,
+          "description": "Transactions per call (default 10, at most 25).",
+          "maximum": 25,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "matches": {
+          "default": 3,
+          "description": "Matches per transaction (default 3).",
+          "maximum": 10,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "offset": {
+          "default": 0,
+          "description": "sevDesk transaction rows to skip: pass nextOffset from the previous call.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "to": {
+          "description": "Last day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "transactionId": {
+          "description": "One transaction (Umsatz) id; leave out to scan unassigned ones.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_reconcile_suggest",
+    "title": "Suggest matches for sevDesk bank transactions",
   },
   {
     "annotations": {
@@ -7131,6 +8584,33 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
+      "title": "Get a sevDesk bank transaction with its assignments",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Bank transaction (Umsatz) id, from sevdesk_transactions_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_transaction_get",
+    "title": "Get a sevDesk bank transaction with its assignments",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
       "title": "List sevDesk bank transactions",
     },
     "inputSchema": {
@@ -7203,6 +8683,58 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
     },
     "name": "sevdesk_transactions_list",
     "title": "List sevDesk bank transactions",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "VAT return estimate (UStVA)",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "description": "accrual (Sollversteuerung, default) or cash (Istversteuerung).",
+          "enum": [
+            "accrual",
+            "cash",
+          ],
+          "type": "string",
+        },
+        "from": {
+          "description": "First day, YYYY-MM-DD (instead of year).",
+          "type": "string",
+        },
+        "month": {
+          "description": "Month 1–12 (with year).",
+          "maximum": 12,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "quarter": {
+          "description": "Quarter 1–4 (with year).",
+          "maximum": 4,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "to": {
+          "description": "Last day, YYYY-MM-DD (instead of year).",
+          "type": "string",
+        },
+        "year": {
+          "description": "Calendar year; alone for the whole year, or with month or quarter.",
+          "maximum": 2100,
+          "minimum": 2000,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_vat_summary",
+    "title": "VAT return estimate (UStVA)",
   },
   {
     "annotations": {

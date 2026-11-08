@@ -1,0 +1,30 @@
+{
+  "caseId": "voucher-book-payment-de",
+  "model": "claude-sonnet-5-5",
+  "key": "b6caf41fdd47d3df9dd9af42d7a7c6c36c32ffae1b873d313baa4368d3e7e787",
+  "recordedAt": "2026-11-08T17:38:32.878Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_voucher_get", "input": { "id": 9001 } },
+      {
+        "type": "tool_use",
+        "name": "sevdesk_transactions_list",
+        "input": {
+          "checkAccountId": 12,
+          "from": "2026-11-03",
+          "to": "2026-11-07",
+          "status": ["created"],
+          "direction": "out"
+        }
+      }
+    ],
+    "usage": {
+      "inputTokens": 162,
+      "outputTokens": 307,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 56314
+    }
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "_provenance": {
+    "date": "2026-11-08",
+    "systemVersion": "2.0",
+    "source": "community",
+    "ref": "https://github.com/emuuu/sevDesk.NET/blob/main/docs/sevdesk-api-responses.txt (GET /api/v1/Voucher)",
+    "note": "Draft expense voucher (status 50) built from the recorded key set of voucher-2001.json: supplier contact 1001, Belegnummer ER-2026-0815, tax rule 9, one gross position of 119.00 at 19 %, `document: null` (spec Model_VoucherResponse; live, the key is present exactly when a file is attached, D-044). Values fake."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "2101",
+        "objectName": "Voucher",
+        "additionalInformation": null,
+        "create": "2026-11-02T09:00:00+01:00",
+        "update": "2026-11-02T09:00:00+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "createUser": {
+          "id": "9101",
+          "objectName": "SevUser"
+        },
+        "voucherDate": "2026-11-02T00:00:00+01:00",
+        "supplier": {
+          "id": "1001",
+          "objectName": "Contact"
+        },
+        "supplierName": "Musterfirma GmbH",
+        "description": "ER-2026-0815",
+        "resultDisdar": null,
+        "payDate": null,
+        "status": "50",
+        "currency": "EUR",
+        "sumNet": "100",
+        "sumTax": "19",
+        "sumGross": "119",
+        "sumNetAccounting": "100",
+        "sumTaxAccounting": "19",
+        "sumGrossAccounting": "119",
+        "showNet": "0",
+        "paidAmount": 0,
+        "taxType": null,
+        "creditDebit": "C",
+        "hidden": "0",
+        "voucherType": "VOU",
+        "recurringIntervall": null,
+        "recurringInterval": null,
+        "recurringStartDate": null,
+        "recurringNextVoucher": null,
+        "recurringLastVoucher": null,
+        "recurringEndDate": null,
+        "enshrined": null,
+        "sendType": null,
+        "inSource": null,
+        "iban": null,
+        "accountingSpecialCase": null,
+        "paymentDeadline": "2026-11-16T00:00:00+01:00",
+        "tip": "0",
+        "mileageRate": "0",
+        "selectedForPaymentFile": "0",
+        "supplierNameAtSave": "Musterfirma GmbH",
+        "taxmaroStockAccount": null,
+        "vatNumber": null,
+        "deliveryDate": "2026-11-02T00:00:00+01:00",
+        "deliveryDateUntil": null,
+        "sumDiscountNet": "0",
+        "sumDiscountGross": "0",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountNetForeignCurrency": "0",
+        "sumDiscountGrossForeignCurrency": "0",
+        "taxRule": {
+          "id": "9",
+          "objectName": "TaxRule"
+        },
+        "document": null
+      }
+    ]
+  }
+}

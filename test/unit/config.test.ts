@@ -226,6 +226,17 @@ describe("other settings", () => {
     expect(config.auditLogPath).toBe("/var/log/sevdesk.audit.jsonl");
   });
 
+  it("refuses relative file directories, naming them", () => {
+    const sep = process.platform === "win32" ? ";" : ":";
+    expect(
+      problemsOf({ SEVDESK_FILE_DIRS: `/abs/Belege${sep}Belege${sep}./in` }).filter((problem) =>
+        problem.startsWith("SEVDESK_FILE_DIRS"),
+      ),
+    ).toEqual([
+      'SEVDESK_FILE_DIRS: every directory must be an absolute path (got "Belege", "./in").',
+    ]);
+  });
+
   it("collects every problem at once", () => {
     const problems = problemsOf({
       SEVDESK_ALLOW: "x",

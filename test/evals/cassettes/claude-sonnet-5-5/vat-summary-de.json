@@ -1,0 +1,19 @@
+{
+  "caseId": "vat-summary-de",
+  "model": "claude-sonnet-5-5",
+  "key": "9d14384972bba1a3d7473656dd72b01598d88a96d2255918ea7132b599663884",
+  "recordedAt": "2026-11-08T17:06:26.377Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_vat_summary", "input": { "year": 2026, "month": 10 } }
+    ],
+    "usage": {
+      "inputTokens": 137,
+      "outputTokens": 77,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17167
+    }
+  }
+}

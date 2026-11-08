@@ -1,0 +1,17 @@
+{
+  "caseId": "voucher-get-en",
+  "model": "claude-sonnet-5-5",
+  "key": "cf445a92d9773657c08a84576e931802b88b9d410a038a769247e845d4d9dbcf",
+  "recordedAt": "2026-11-08T17:05:36.597Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [{ "type": "tool_use", "name": "sevdesk_voucher_get", "input": { "id": 9001 } }],
+    "usage": {
+      "inputTokens": 100,
+      "outputTokens": 56,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17167
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /CheckAccountTransactionLog?checkAccountTransaction[id]={transaction}&checkAccountTransaction[objectName]=CheckAccountTransaction&limit=n (recording session 2026-11-08)",
+    "date": "2026-11-08",
+    "systemVersion": "2.0",
+    "note": "Personal and company data replaced by scripts/lib/scrub.ts; keys, nulls and scalar types as recorded. A recorded single page (has total). Assignments of one transaction: amountPaid per entry (D-057); undocumented endpoint."
+  },
+  "status": 200,
+  "body": {
+    "total": 1,
+    "objects": [
+      {
+        "id": "244035129",
+        "objectName": "CheckAccountTransactionLog",
+        "additionalInformation": null,
+        "create": "2026-11-08T16:26:40+01:00",
+        "checkAccountTransaction": {
+          "id": "1910795985",
+          "objectName": "CheckAccountTransaction"
+        },
+        "fromStatus": "100",
+        "toStatus": "400",
+        "amountPaid": 69,
+        "bookingDate": "2026-11-08T12:00:00+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "object": {
+          "id": "138823265",
+          "objectName": "Invoice"
+        }
+      }
+    ]
+  }
+}

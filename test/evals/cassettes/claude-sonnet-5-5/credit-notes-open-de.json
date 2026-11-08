@@ -1,0 +1,28 @@
+{
+  "caseId": "credit-notes-open-de",
+  "model": "claude-sonnet-5-5",
+  "key": "0ac3f0e87a23f90adfee3cc725c0c32c3326a230df68bfa9bf090e35c1c08d55",
+  "recordedAt": "2026-11-08T17:05:23.730Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      {
+        "type": "tool_use",
+        "name": "sevdesk_credit_notes_list",
+        "input": { "status": "open", "limit": 100 }
+      },
+      {
+        "type": "tool_use",
+        "name": "sevdesk_credit_notes_list",
+        "input": { "status": "partially_paid", "limit": 100 }
+      }
+    ],
+    "usage": {
+      "inputTokens": 92,
+      "outputTokens": 159,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17167
+    }
+  }
+}

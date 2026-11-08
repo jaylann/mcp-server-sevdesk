@@ -1,0 +1,24 @@
+{
+  "caseId": "voucher-enshrine-en",
+  "model": "claude-sonnet-5-5",
+  "key": "e56ec97ee67cac62931e2360e52d93b93d84f40f9df766dda8f2b6662873d775",
+  "recordedAt": "2026-11-08T17:38:35.952Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_voucher_get", "input": { "id": 9001 } },
+      {
+        "type": "tool_use",
+        "name": "sevdesk_voucher_enshrine",
+        "input": { "id": 9001, "dryRun": true }
+      }
+    ],
+    "usage": {
+      "inputTokens": 106,
+      "outputTokens": 295,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 56314
+    }
+  }
+}

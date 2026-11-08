@@ -13,14 +13,32 @@ import {
 } from "../../src/tools/define-tool.js";
 import { ALL_TOOLS } from "../../src/tools/index.js";
 import type { AnyToolDefinition } from "../../src/tools/types.js";
+import { allEnabledConfig } from "../helpers/config.js";
 
 const ANNOTATION_KEYS = ["destructiveHint", "idempotentHint", "openWorldHint", "readOnlyHint"];
 
+/**
+ * The reviewed tools with local file effects (catalog order = `ALL_TOOLS` order). Writers only
+ * write inside `SEVDESK_OUTPUT_DIR` (`writeNewFile`); readers only read inside `SEVDESK_FILE_DIRS`
+ * (`readConfinedFile`).
+ */
+const FILE_WRITERS = ["sevdesk_document_save", "sevdesk_datev_export", "sevdesk_export_csv"];
+const FILE_READERS = [
+  "sevdesk_voucher_create_draft",
+  "sevdesk_voucher_import_einvoice",
+  "sevdesk_voucher_update_draft",
+  "sevdesk_einvoice_parse",
+];
+
 const cases = ALL_TOOLS.map((tool): [string, AnyToolDefinition] => [tool.name, tool]);
 
-/** `localEffects` exists on read tools only. */
 function localEffectsOf(tool: AnyToolDefinition): unknown {
-  return tool.tier === "read" ? tool.localEffects : undefined;
+  return tool.localEffects;
+}
+
+/** Names of the tools that declare `effect`, in catalog order. */
+function toolsWith(effect: string): string[] {
+  return ALL_TOOLS.filter((tool) => localEffectsOf(tool) === effect).map((tool) => tool.name);
 }
 
 function duplicates(values: readonly string[]): string[] {
@@ -38,10 +56,31 @@ describe("tool metadata", () => {
   });
 
   it("lets only the reviewed tools write local files (extend this list deliberately)", () => {
-    const writers = ALL_TOOLS.filter((tool) => localEffectsOf(tool) !== undefined).map(
-      (tool) => tool.name,
+    expect(toolsWith("writes-files")).toEqual(FILE_WRITERS);
+  });
+
+  it("lets only the reviewed tools read local files (extend this list deliberately)", () => {
+    expect(toolsWith("reads-files")).toEqual(FILE_READERS);
+  });
+
+  it("offers file writers only with SEVDESK_OUTPUT_DIR and declares nothing else", () => {
+    const declared = ALL_TOOLS.filter((tool) => tool.localEffects !== undefined);
+    expect(declared.map((tool) => tool.name).sort()).toEqual(
+      [...FILE_WRITERS, ...FILE_READERS].sort(),
     );
-    expect(writers).toEqual(["sevdesk_document_save"]);
+    for (const tool of declared.filter((t) => t.localEffects === "writes-files")) {
+      expect(tool.available?.(allEnabledConfig()), tool.name).toBe(false);
+      expect(tool.available?.(allEnabledConfig({ outputDir: "/out" })), tool.name).toBe(true);
+    }
+  });
+
+  it("offers the tools that only work on local files only with SEVDESK_FILE_DIRS", () => {
+    const fileOnly = ["sevdesk_einvoice_parse", "sevdesk_voucher_import_einvoice"];
+    for (const name of fileOnly) {
+      const tool = ALL_TOOLS.find((candidate) => candidate.name === name);
+      expect(tool?.available?.(allEnabledConfig()), name).toBe(false);
+      expect(tool?.available?.(allEnabledConfig({ fileDirs: ["/in"] })), name).toBe(true);
+    }
   });
 
   describe.each(cases)("%s", (_name, tool) => {
@@ -64,10 +103,10 @@ describe("tool metadata", () => {
     it('is read-only exactly when it is a read tool without localEffects "writes-files"', () => {
       const localEffects = localEffectsOf(tool);
       const writesFiles = localEffects === "writes-files";
-      expect(localEffects === undefined || writesFiles, "localEffects value").toBe(true);
-      if (writesFiles) {
-        expect(tool.tier).toBe("read");
-      }
+      expect(
+        localEffects === undefined || writesFiles || localEffects === "reads-files",
+        "localEffects value",
+      ).toBe(true);
       expect(tool.annotations.readOnlyHint).toBe(tool.tier === "read" && !writesFiles);
     });
 

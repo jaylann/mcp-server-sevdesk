@@ -3,6 +3,7 @@
  * spec/deviations.md, each finding with its scrubbed evidence, the checks that were not probed,
  * and the cleanup list of created test data. All sevDesk data in it was scrubbed on capture.
  */
+import { fenceBlock } from "../../../src/safety/fence.js";
 import type { Exchange } from "./core.js";
 import type { ProbeResult, RunReport } from "./runner.js";
 
@@ -67,6 +68,17 @@ export function renderReport(report: RunReport): string {
       );
       for (const exchange of result.evidence) lines.push(...renderExchange(exchange), "");
       lines.push("</details>", "");
+    }
+    for (const attachment of result.attachments ?? []) {
+      lines.push(
+        `<details><summary>${escapeInline(attachment.label)}</summary>`,
+        "",
+        // The runner capped the content already; the fence is longer than any backtick run in it.
+        fenceBlock(attachment.content, attachment.language ?? "text", Number.MAX_SAFE_INTEGER),
+        "",
+        "</details>",
+        "",
+      );
     }
   }
 

@@ -1,0 +1,19 @@
+{
+  "caseId": "voucher-delete-de",
+  "model": "claude-sonnet-5-5",
+  "key": "3786a04eaf7aa9e697687a5dc3dacfd954134bd264ba028f95fe7f58d8fd4188",
+  "recordedAt": "2026-11-08T17:38:28.684Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_voucher_delete_draft", "input": { "id": 9001 } }
+    ],
+    "usage": {
+      "inputTokens": 111,
+      "outputTokens": 186,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 56314
+    }
+  }
+}

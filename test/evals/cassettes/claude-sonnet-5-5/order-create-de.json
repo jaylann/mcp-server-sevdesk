@@ -1,0 +1,36 @@
+{
+  "caseId": "order-create-de",
+  "model": "claude-sonnet-5-5",
+  "key": "88af8d49c5fa9134bb9d240ef3989b5e369c673899fc02f8018d98923e067a8d",
+  "recordedAt": "2026-11-08T17:38:17.566Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      {
+        "type": "tool_use",
+        "name": "sevdesk_order_create_draft",
+        "input": {
+          "contactId": 1234,
+          "orderType": "offer",
+          "positions": [
+            {
+              "name": "Website-Relaunch",
+              "quantity": 1,
+              "unitPrice": "4800.00",
+              "taxRate": 19,
+              "text": "Pauschale"
+            }
+          ],
+          "priceMode": "net"
+        }
+      }
+    ],
+    "usage": {
+      "inputTokens": 130,
+      "outputTokens": 314,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 56314
+    }
+  }
+}

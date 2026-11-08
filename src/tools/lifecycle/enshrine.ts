@@ -1,7 +1,8 @@
 /**
- * `sevdesk_{invoice,credit_note}_enshrine`: enshrine (festschreiben, GoBD) a document with
- * `PUT /{Invoice|CreditNote}/{id}/enshrine` (no body, answer `{objects: null}`). Spec
- * `invoiceEnshrine`: "only possible if the status is Open (200) or higher … cannot be undone".
+ * `sevdesk_{invoice,credit_note,voucher}_enshrine`: enshrine (festschreiben, GoBD) a document with
+ * `PUT /{Invoice|CreditNote|Voucher}/{id}/enshrine` (no body, answer `{objects: null}`). Spec
+ * `invoiceEnshrine`: "only possible if the status is Open (200) or higher … cannot be undone";
+ * `voucherEnshrine`: the same from voucher status open (100).
  * Measured by jernoxit/sevdesk-rs: 422 on drafts, idempotent on enshrined documents (refused here:
  * nothing to do), payments can still be booked afterwards.
  */
@@ -42,9 +43,16 @@ const DESCRIPTIONS: Readonly<Record<PaymentKind, string>> = {
     "finalized credit notes (status open 200 or later) that are not enshrined yet. Commit tier: " +
     "asks a human to confirm the preview, with an irreversibility warning; dryRun only " +
     "previews. Before: sevdesk_credit_note_get (check it is final).",
+  voucher:
+    "Enshrine a voucher (Beleg festschreiben, GoBD): lock it permanently so it can never be " +
+    "changed, reset to draft or deleted again; corrections then need a new voucher. " +
+    "Irreversible. Only finalized vouchers (status open 100 or later, see " +
+    "sevdesk_voucher_finalize) that are not enshrined yet. Commit tier: asks a human to confirm " +
+    "the preview, with an irreversibility warning; dryRun only previews. Before: " +
+    "sevdesk_voucher_get (check positions, accounts and the attached receipt).",
 };
 
-/** Builds the enshrine tool of invoices or credit notes. */
+/** Builds the enshrine tool of invoices, credit notes or vouchers. */
 export function enshrineTool(kind: PaymentKind) {
   const info = KINDS[kind];
   const names = KIND_TOOLS[kind];
