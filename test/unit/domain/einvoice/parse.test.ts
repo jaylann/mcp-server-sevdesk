@@ -64,6 +64,33 @@ describe("parseEInvoice: KoSIT XRechnung test suite (Apache-2.0)", () => {
     },
   );
 
+  it("reads the XRechnung 3.0 that sevDesk generates (getXml, recorded 2026-11-08)", async () => {
+    // sevDesk writes header amounts without decimals ("100", "19", "119") next to line amounts
+    // with two; both are valid CII decimals and the sums still check (BR-CO-10, -13, -15).
+    const parsed = await parseEInvoice(einvoiceFixture("sevdesk/xrechnung-3.0-cii.xml"));
+    expect(parsedEInvoiceSchema.parse(parsed)).toEqual(parsed);
+    expect(parsed).toMatchObject({
+      syntax: "cii",
+      container: "xml",
+      specificationId: "urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0",
+      profile: "xrechnung",
+      typeCode: "380",
+      number: "RE-0001",
+      issueDate: "2026-11-08",
+      dueDate: "2026-11-22",
+      deliveryDate: "2026-11-08",
+      buyerReference: "00000000-00001-00",
+      seller: { vatId: "DE000000001", taxNumber: "000/000/00001" },
+      payment: { meansCode: "58", iban: "DE00000000000000000002" },
+      vatBreakdown: [{ category: "S", rate: "19.00", taxableAmount: "100.00", taxAmount: "19" }],
+      totals: { lineNet: "100", net: "100", tax: "19", gross: "119", due: "119" },
+    });
+    expect(parsed.lines).toEqual([
+      expect.objectContaining({ unitCode: "C62", netAmount: "100.00", vatRate: "19.00" }),
+    ]);
+    expect(parsed.findings).toEqual([]);
+  });
+
   it("reads the same business terms from UBL and CII (01.21a, reverse charge)", async () => {
     const ubl = await parseEInvoice(einvoiceFixture("kosit/01.21a-INVOICE_ubl.xml"));
     const cii = await parseEInvoice(einvoiceFixture("kosit/01.21a-INVOICE_uncefact.xml"));

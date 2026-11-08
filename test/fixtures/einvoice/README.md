@@ -26,6 +26,19 @@ their provenance here instead of a `_provenance` member.
 - All 66 standard business cases of that commit (UBL and CII) parse without findings; these eight
   are kept as regression samples.
 
+## `sevdesk/`: e-invoices sevDesk generated (recorded, scrubbed)
+
+| File                            | Content                                                              |
+| ------------------------------- | -------------------------------------------------------------------- |
+| `sevdesk/xrechnung-3.0-cii.xml` | `getXml` of a finalized e-invoice: XRechnung 3.0, CII, one 19 % line |
+
+- **Source:** probe `write-einvoice-xml` (`scripts/lib/probes/m4-einvoice-probes.ts`) on a
+  throwaway trial account, 2026-11-08. sevDesk answers `getXml` as JSON with the XML string in
+  `objects`; this file is that string with the XML declaration put back.
+- **Scrubbed** by the probe report's scrubber: names, addresses, e-mail addresses, phone number,
+  VAT id, tax number, IBAN, BIC and free texts are placeholders (Musterfirma, `DE000000001`,
+  `DE00000000000000000002`, "Muster-Text N"). Amounts, dates, codes and structure are sevDesk's.
+
 ## `generated/` and `attacks/`: written by `scripts/gen-einvoice-fixtures.ts`
 
 Synthetic files with fake data (Musterfirma GmbH, Musterlieferant GmbH, VAT ids `DE000000000` /

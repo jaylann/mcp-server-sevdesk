@@ -197,7 +197,8 @@ env $W pnpm probe --allow-writes --only write-export-datev-config,write-export-d
   --out probe-report-m4-datev.md
 
 # 4. Opt-in, after the company data (step 1 above): one e-invoice, FINALIZED (it cannot be
-#    deleted). Attaches the scrubbed getXml answer to the report as a fixture candidate.
+#    deleted). Attaches the scrubbed getXml answer to the report as a fixture candidate; after
+#    a review it goes to test/fixtures/einvoice/sevdesk/ (see the README there).
 env $W pnpm probe --allow-writes --only write-einvoice-xml --out probe-report-m4-einvoice.md
 
 # 5. Fixtures (read-only), then the live checks and the scenarios (M3 and M4).

@@ -1086,12 +1086,17 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072).
   (2026-11-05), and documents a `400` that lists the missing fields when e-invoice data is
   incomplete.
   firsttris/haben treats a refused `getXml` as "not an e-invoice". For an ordinary finalized
-  invoice sevDesk answers 400 "This invoice is not an electronic invoice." (recorded). The
-  `Content-Type` of a successful XML answer has not been recorded (no e-invoice in the account).
+  invoice sevDesk answers 400 "This invoice is not an electronic invoice." (recorded). A
+  finalized e-invoice answers `200` with `Content-Type: application/json` and the XML as a string
+  in `objects`: XRechnung 3.0 in CII syntax (BT-24
+  `urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0`), and its `getPdf`
+  embeds the same XML as `xrechnung.xml` (recorded). Finalizing an e-invoice while the company
+  address (`GET /SevClient` street, postcode, city) is empty fails with 400 "Could not generate
+  ZUGFeRD Invoice since there are validations errors" without naming the fields (recorded).
 - **Sources:** [jernoxit/sevdesk-rs](https://github.com/jernoxit/sevdesk-rs) (README,
   `src/error.rs`); [firsttris/haben](https://github.com/firsttris/haben)
-  (`packages/import/src/sevdesk/client.ts`); recorded 2026-11-07, trial account, Update 2.0
-  (probe `read-getxml-shapes`).
+  (`packages/import/src/sevdesk/client.ts`); recorded 2026-11-07 and 2026-11-08, trial account,
+  Update 2.0 (probes `read-getxml-shapes`, `write-einvoice-xml`).
 - **Impact:** `fetchDocumentFile` (`src/domain/document-files.ts`) calls `getXml` without a
   pre-check (see D-034). A 4xx refusal that is classified as a validation error, or an empty body
   (`null`, `""`, `[]`, `false`), becomes a `not_found` error with our own message: XML exists only
@@ -1099,7 +1104,9 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072).
   (a draft e-invoice gets its XML after finalizing). sevDesk's status, message and exception id
   stay on the error for the logs. A body that is not XML text (or is HTML) is an
   `unexpected_response`.
-- **Test:** `test/unit/domain/document-files.test.ts` ("fetchDocumentFile: e-invoice XML").
+- **Test:** `test/unit/domain/document-files.test.ts` ("fetchDocumentFile: e-invoice XML");
+  `test/unit/domain/einvoice/parse.test.ts` and `preflight.test.ts` read the recorded XML
+  (`test/fixtures/einvoice/sevdesk/xrechnung-3.0-cii.xml`) without findings.
 
 ### D-034: Invoice reads do not say whether an invoice is an e-invoice
 
@@ -1110,7 +1117,8 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072).
 - **Actual behavior:** The recorded `POST /Invoice` response carries `propertyIsEInvoice` (as
   `null`), but the recorded `GET /Invoice` row has no such key. A client cannot tell from a read
   whether an invoice has e-invoice XML. Our recording agrees: the `saveInvoice` and
-  `cancelInvoice` answers carry `propertyIsEInvoice: null`, `GET /Invoice/{id}` has no such key.
+  `cancelInvoice` answers carry `propertyIsEInvoice: null`, `GET /Invoice/{id}` has no such key,
+  also not for a finalized e-invoice (probe `write-einvoice-xml`, 2026-11-08).
 - **Sources:** [emuuu/sevDesk.NET recorded responses](https://github.com/emuuu/sevDesk.NET)
   (2026-02-19); recorded 2026-11-07, trial account, Update 2.0 (probes `read-getxml-shapes`,
   `write-send-email-shape`, `write-cancel-invoice`).

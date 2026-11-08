@@ -301,6 +301,20 @@ describe("preflightInvoice", () => {
       expect(withErrors.result.problems[0]?.message).toMatch(/^XML: /);
     });
 
+    it("checks the XRechnung sevDesk itself generated without findings (recorded)", async () => {
+      // getXml of a finalized trial invoice (probe write-einvoice-xml, 2026-11-08), scrubbed.
+      const recorded = einvoiceText("sevdesk/xrechnung-3.0-cii.xml");
+      const { result } = await run({ invoice: finalized, xml: { body: { objects: recorded } } });
+      expect(result.xml).toEqual({
+        status: "checked",
+        syntax: "cii",
+        profile: "xrechnung",
+        errors: 0,
+        warnings: 0,
+      });
+      expect(result.ready).toBe(true);
+    });
+
     it("reports a finalized invoice without XML", async () => {
       const refused = {
         error: new SevdeskError({ kind: "validation", status: 400, message: "not an e-invoice" }),
