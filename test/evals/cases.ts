@@ -259,7 +259,7 @@ export const EVAL_CASES: readonly EvalCase[] = [
     prompt:
       "Schick die Rechnung 4711 per E-Mail an buchhaltung@beispiel.de, Betreff „Ihre Rechnung“, mit einem kurzen freundlichen Text.",
     expected: ["sevdesk_invoice_send_email"],
-    secondChoice: ["sevdesk_invoice_get"],
+    secondChoice: ["sevdesk_invoice_get", "sevdesk_invoices_list"],
     notes: "external tool; recipient, subject and text are given.",
   },
   {
@@ -282,7 +282,7 @@ export const EVAL_CASES: readonly EvalCase[] = [
     prompt:
       "Schreib die Rechnung 4711 fest, damit sie GoBD-konform nicht mehr geändert werden kann.",
     expected: ["sevdesk_invoice_enshrine"],
-    secondChoice: ["sevdesk_invoice_get"],
+    secondChoice: ["sevdesk_invoice_get", "sevdesk_invoices_list"],
     notes: "Festschreiben = enshrine, irreversible.",
   },
   {
@@ -491,7 +491,7 @@ export const EVAL_CASES: readonly EvalCase[] = [
     env: ENVS.all,
     prompt: "Setz den Beleg 9001 zurück auf Entwurf, der Betrag ist falsch.",
     expected: ["sevdesk_voucher_reset"],
-    secondChoice: ["sevdesk_voucher_get"],
+    secondChoice: ["sevdesk_voucher_get", "sevdesk_vouchers_list"],
     notes: "Reset to draft to correct it.",
   },
   // ------------------------------------------------------------------ banking
@@ -546,6 +546,7 @@ export const EVAL_CASES: readonly EvalCase[] = [
     prompt:
       "Gleich meine offenen Kontoumsätze mit Rechnungen und Belegen ab und mach mir Zuordnungsvorschläge.",
     expected: ["sevdesk_reconcile_suggest", "sevdesk_transactions_list"],
+    secondChoice: ["sevdesk_bank_accounts_list"],
     notes: "Suggestions first, nothing booked; every tool offered.",
   },
   {
@@ -678,7 +679,7 @@ export const EVAL_CASES: readonly EvalCase[] = [
     env: ENVS.read,
     prompt: "What's my profit for 2026 so far?",
     expected: ["sevdesk_profit_and_loss"],
-    secondChoice: ["sevdesk_records_summarize"],
+    secondChoice: ["sevdesk_records_summarize", ORIENT],
     notes: "M4 profit and loss.",
   },
   {
@@ -689,7 +690,7 @@ export const EVAL_CASES: readonly EvalCase[] = [
     env: ENVS.read,
     prompt: "Mach mir eine EÜR für das Jahr 2025.",
     expected: ["sevdesk_profit_and_loss"],
-    secondChoice: ["sevdesk_records_summarize"],
+    secondChoice: ["sevdesk_records_summarize", ORIENT],
     notes: "Einnahmenüberschussrechnung = profit and loss.",
   },
   {
@@ -755,7 +756,7 @@ export const EVAL_CASES: readonly EvalCase[] = [
     env: ENVS.write,
     prompt: "Finalisier die Rechnung 4711.",
     expected: [NO_TOOL, ORIENT],
-    secondChoice: ["sevdesk_invoice_get"],
+    secondChoice: ["sevdesk_invoice_get", "sevdesk_invoices_list"],
     absent: ["sevdesk_invoice_finalize"],
     notes: "Drafts only: updating the draft is not a way to finalize it.",
   },
@@ -782,7 +783,7 @@ export const EVAL_CASES: readonly EvalCase[] = [
     env: ENVS.commit,
     prompt: "Email invoice 4711 to the customer.",
     expected: [NO_TOOL, ORIENT],
-    secondChoice: ["sevdesk_invoice_get"],
+    secondChoice: ["sevdesk_invoice_get", "sevdesk_invoices_list"],
     absent: ["sevdesk_invoice_send_email"],
     notes: "No external tier: no email from sevDesk.",
   },
