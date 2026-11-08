@@ -1,20 +1,36 @@
 {
   "caseId": "order-create-de",
   "model": "claude-sonnet-5-5",
-  "key": "f053ae83c4da94614a7bef883277f6361826b4270ef6c7fd7b307069ccdbcd02",
-  "recordedAt": "2026-11-08T16:37:53.185Z",
+  "key": "dea4fc3ad1313ced019fa5dbf17938a7003a8be706c8f74efe57c92b4c1da024",
+  "recordedAt": "2026-11-08T17:05:31.974Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
     "content": [
-      { "type": "tool_use", "name": "sevdesk_account_info", "input": {} },
-      { "type": "tool_use", "name": "sevdesk_contact_get", "input": { "id": 1234 } }
+      {
+        "type": "tool_use",
+        "name": "sevdesk_order_create_draft",
+        "input": {
+          "contactId": 1234,
+          "orderType": "offer",
+          "positions": [
+            {
+              "name": "Website-Relaunch",
+              "quantity": 1,
+              "unitPrice": "4800.00",
+              "taxRate": 19,
+              "text": "Pauschale"
+            }
+          ],
+          "priceMode": "net"
+        }
+      }
     ],
     "usage": {
       "inputTokens": 130,
-      "outputTokens": 199,
+      "outputTokens": 269,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 56188
+      "cacheReadInputTokens": 56299
     }
   }
 }

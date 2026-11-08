@@ -1,8 +1,8 @@
 {
   "caseId": "contacts-create-de",
   "model": "claude-sonnet-5-5",
-  "key": "35bcd00f37fad6388471538d6b647d1d94268c8acae5318a3012475032bfc783",
-  "recordedAt": "2026-11-08T16:37:10.296Z",
+  "key": "70578a6027016fac378eb8114f31df32dda4ea198d31db31edae847141084668",
+  "recordedAt": "2026-11-08T17:04:51.506Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -12,20 +12,20 @@
         "name": "sevdesk_contact_create",
         "input": {
           "organisationName": "Beispiel AG",
-          "category": "customer",
           "street": "Musterstraße 1",
           "zip": "10115",
           "city": "Berlin",
           "country": "DE",
-          "vatNumber": "DE123456789"
+          "vatNumber": "DE123456789",
+          "category": "customer"
         }
       }
     ],
     "usage": {
       "inputTokens": 133,
-      "outputTokens": 364,
+      "outputTokens": 251,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 56188
+      "cacheReadInputTokens": 56299
     }
   }
 }

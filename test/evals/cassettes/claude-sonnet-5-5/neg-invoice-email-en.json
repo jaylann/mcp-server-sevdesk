@@ -1,8 +1,8 @@
 {
   "caseId": "neg-invoice-email-en",
   "model": "claude-sonnet-5-5",
-  "key": "43878268fddef3f3f4a5a77f3f605caaf0287fa48827571bb1660a43f5d56f81",
-  "recordedAt": "2026-11-08T16:39:12.517Z",
+  "key": "6906d229991ec350eb2bedb423c848b431b21a6577dee452adc4364fa2e8756d",
+  "recordedAt": "2026-11-08T17:06:52.407Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -11,8 +11,8 @@
     ],
     "usage": {
       "inputTokens": 90,
-      "outputTokens": 195,
-      "cacheCreationInputTokens": 53838,
+      "outputTokens": 200,
+      "cacheCreationInputTokens": 53949,
       "cacheReadInputTokens": 0
     }
   }

@@ -1,8 +1,8 @@
 {
   "caseId": "payables-en",
   "model": "claude-sonnet-5-5",
-  "key": "334f82aa9bee85c23c130dd750ba74336af2b982380249cd1849f845158df366",
-  "recordedAt": "2026-11-08T16:38:43.491Z",
+  "key": "497930acc2cffde96e81bcb204651802c2b191556c10ee308b52c19d83652365",
+  "recordedAt": "2026-11-08T17:06:21.556Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -23,7 +23,7 @@
       "inputTokens": 101,
       "outputTokens": 234,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17056
+      "cacheReadInputTokens": 17167
     }
   }
 }

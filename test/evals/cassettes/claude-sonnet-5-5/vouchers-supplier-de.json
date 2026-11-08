@@ -1,8 +1,8 @@
 {
   "caseId": "vouchers-supplier-de",
   "model": "claude-sonnet-5-5",
-  "key": "0ccd13c58ba5803b2dc53ed679202f36af2b7507316fd12d696970c92017ab1d",
-  "recordedAt": "2026-11-08T16:37:56.798Z",
+  "key": "79d1fe08b26b455c56aa517f18f3285eb0b074cd6c7e17b39fc7b3c412b2974b",
+  "recordedAt": "2026-11-08T17:05:35.174Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -22,7 +22,7 @@
       "inputTokens": 108,
       "outputTokens": 137,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17056
+      "cacheReadInputTokens": 17167
     }
   }
 }

@@ -1,28 +1,17 @@
 {
   "caseId": "voucher-delete-de",
   "model": "claude-sonnet-5-5",
-  "key": "c7012499c48e13f7c7da63f4d13d7114d32bb9bde43f2ac83ecefac23cf6d105",
-  "recordedAt": "2026-11-08T16:38:13.087Z",
+  "key": "b55b429acdf5d676a171514c07a07072e35ae136036ecf3804d48a11cde84290",
+  "recordedAt": "2026-11-08T17:05:51.094Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
-    "content": [
-      {
-        "type": "text",
-        "text": "Ich sehe mir den Beleg erst an, damit ich sicher den richtigen Entwurf lösche."
-      },
-      { "type": "tool_use", "name": "sevdesk_voucher_get", "input": { "id": 9001 } },
-      {
-        "type": "tool_use",
-        "name": "sevdesk_voucher_delete_draft",
-        "input": { "id": 9001, "dryRun": true }
-      }
-    ],
+    "content": [{ "type": "tool_use", "name": "sevdesk_voucher_get", "input": { "id": 9001 } }],
     "usage": {
       "inputTokens": 106,
-      "outputTokens": 279,
+      "outputTokens": 152,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 56188
+      "cacheReadInputTokens": 56299
     }
   }
 }

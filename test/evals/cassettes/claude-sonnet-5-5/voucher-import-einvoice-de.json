@@ -1,24 +1,24 @@
 {
   "caseId": "voucher-import-einvoice-de",
   "model": "claude-sonnet-5-5",
-  "key": "eb7f7cd7f575e3fd00fd7eb8a7542c2dcd08b23e3a37ca2930ffcf5140681b1c",
-  "recordedAt": "2026-11-08T16:38:04.770Z",
+  "key": "962e2049d57102607e56aaeca023de8a66ae47e81d5b99ff8aa5f1212cf759f7",
+  "recordedAt": "2026-11-08T17:05:43.432Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
     "content": [
+      { "type": "text", "text": "Ich lese zuerst die E-Rechnung ein." },
       {
         "type": "tool_use",
         "name": "sevdesk_einvoice_parse",
         "input": { "file": "/home/user/receipts/xrechnung-RE-2026-117.xml" }
-      },
-      { "type": "tool_use", "name": "sevdesk_account_info", "input": {} }
+      }
     ],
     "usage": {
       "inputTokens": 124,
-      "outputTokens": 110,
+      "outputTokens": 102,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 56188
+      "cacheReadInputTokens": 56299
     }
   }
 }

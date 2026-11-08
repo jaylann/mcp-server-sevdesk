@@ -1,8 +1,8 @@
 {
   "caseId": "invoice-xml-en",
   "model": "claude-sonnet-5-5",
-  "key": "4e8c3047c8cd0e1a4a706a3e401d81bf6b42def93fd6a56fe7e2bf6a5591af80",
-  "recordedAt": "2026-11-08T16:37:22.426Z",
+  "key": "a67509028b1daf521f68c945401eb0692d587605049144aba96909b5488eedcb",
+  "recordedAt": "2026-11-08T17:05:01.583Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -11,7 +11,7 @@
       "inputTokens": 101,
       "outputTokens": 57,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17056
+      "cacheReadInputTokens": 17167
     }
   }
 }

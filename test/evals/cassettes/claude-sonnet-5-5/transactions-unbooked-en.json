@@ -1,8 +1,8 @@
 {
   "caseId": "transactions-unbooked-en",
   "model": "claude-sonnet-5-5",
-  "key": "c240aceaa0bc22bdb8015270f7976b390c144155f7a4d28cf0f976d59afd1ea8",
-  "recordedAt": "2026-11-08T16:38:26.115Z",
+  "key": "d075b7590ab9742288e6ca83c822ac35dbda27003de6a5d4fa661bff437eea5e",
+  "recordedAt": "2026-11-08T17:06:02.992Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -17,7 +17,7 @@
       "inputTokens": 94,
       "outputTokens": 80,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17056
+      "cacheReadInputTokens": 17167
     }
   }
 }

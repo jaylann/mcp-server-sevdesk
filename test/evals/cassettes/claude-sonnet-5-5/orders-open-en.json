@@ -1,8 +1,8 @@
 {
   "caseId": "orders-open-en",
   "model": "claude-sonnet-5-5",
-  "key": "b82bfe4bb276bbd8f4f19413789a0c5fde1e2a4fa6bf9fdbe81ab89a7318f5cd",
-  "recordedAt": "2026-11-08T16:37:50.089Z",
+  "key": "99564c6af264c35eee38735478c28d86867b4cb5bc342ff7b1164005806316e6",
+  "recordedAt": "2026-11-08T17:05:29.265Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -21,13 +21,18 @@
         "type": "tool_use",
         "name": "sevdesk_orders_list",
         "input": { "type": "offer", "status": "accepted", "limit": 100 }
+      },
+      {
+        "type": "tool_use",
+        "name": "sevdesk_orders_list",
+        "input": { "type": "offer", "status": "partially_invoiced", "limit": 100 }
       }
     ],
     "usage": {
       "inputTokens": 93,
-      "outputTokens": 364,
+      "outputTokens": 530,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17056
+      "cacheReadInputTokens": 17167
     }
   }
 }

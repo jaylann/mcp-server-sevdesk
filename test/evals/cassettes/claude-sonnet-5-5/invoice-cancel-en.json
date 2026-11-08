@@ -1,20 +1,24 @@
 {
   "caseId": "invoice-cancel-en",
   "model": "claude-sonnet-5-5",
-  "key": "bd5ddffa03fb5cddedba7b4105602b72c9862e4a27ab359c6766e448cad22e8e",
-  "recordedAt": "2026-11-08T16:37:33.533Z",
+  "key": "2b83a3aa9f1f23a7891bb17a09a27e52ddc809c18fc2f7962ee0fdd97e83bddc",
+  "recordedAt": "2026-11-08T17:05:13.777Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
     "content": [
-      { "type": "text", "text": "I'll start by checking the invoice's current state." },
-      { "type": "tool_use", "name": "sevdesk_invoice_get", "input": { "id": 4711 } }
+      { "type": "tool_use", "name": "sevdesk_invoice_get", "input": { "id": 4711 } },
+      {
+        "type": "tool_use",
+        "name": "sevdesk_invoice_cancel",
+        "input": { "id": 4711, "dryRun": true }
+      }
     ],
     "usage": {
       "inputTokens": 103,
-      "outputTokens": 147,
+      "outputTokens": 211,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 56188
+      "cacheReadInputTokens": 56299
     }
   }
 }
