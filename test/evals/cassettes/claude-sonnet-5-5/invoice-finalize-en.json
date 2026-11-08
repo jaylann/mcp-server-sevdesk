@@ -1,0 +1,23 @@
+{
+  "caseId": "invoice-finalize-en",
+  "model": "claude-sonnet-5-5",
+  "key": "6da7fb1e22cf32b427972db4200dd496c6a017c6fa061c0aadff972121e79486",
+  "recordedAt": "2026-11-08T16:37:28.255Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      {
+        "type": "tool_use",
+        "name": "sevdesk_invoice_finalize",
+        "input": { "id": 4711, "sentVia": "pdf_download" }
+      }
+    ],
+    "usage": {
+      "inputTokens": 104,
+      "outputTokens": 252,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 56188
+    }
+  }
+}

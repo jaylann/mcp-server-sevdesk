@@ -1,0 +1,53 @@
+{
+  "caseId": "neg-datev-export-de",
+  "model": "claude-sonnet-5-5",
+  "key": "9afc40b8ce3a60d362a02e4735c69a2de2b678035d14a5bf7f1c9a7c4495a325",
+  "recordedAt": "2026-11-08T16:39:22.396Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      {
+        "type": "text",
+        "text": "Ich habe kein Werkzeug, das eine DATEV-Exportdatei (Buchungsstapel-CSV oder DATEV-Format) erzeugt. Ich kann nur lesen. Als Vorbereitung prüfe ich, ob die Daten für Q3 2026 (01.07.–30.09.) vollständig sind."
+      },
+      { "type": "tool_use", "name": "sevdesk_account_info", "input": {} },
+      {
+        "type": "tool_use",
+        "name": "sevdesk_records_summarize",
+        "input": {
+          "subject": "invoices",
+          "from": "2026-07-01",
+          "to": "2026-09-30",
+          "groupBy": "status"
+        }
+      },
+      {
+        "type": "tool_use",
+        "name": "sevdesk_records_summarize",
+        "input": {
+          "subject": "vouchers",
+          "from": "2026-07-01",
+          "to": "2026-09-30",
+          "groupBy": "status"
+        }
+      },
+      {
+        "type": "tool_use",
+        "name": "sevdesk_records_summarize",
+        "input": {
+          "subject": "transactions",
+          "from": "2026-07-01",
+          "to": "2026-09-30",
+          "groupBy": "status"
+        }
+      }
+    ],
+    "usage": {
+      "inputTokens": 103,
+      "outputTokens": 851,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17056
+    }
+  }
+}

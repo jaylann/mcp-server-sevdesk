@@ -1,0 +1,34 @@
+{
+  "caseId": "voucher-create-de",
+  "model": "claude-sonnet-5-5",
+  "key": "678a4f5eb6badf5adc420bdad44fc4dbac04fb3882ca2254642e788965e4c5ae",
+  "recordedAt": "2026-11-08T16:38:00.634Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_account_info", "input": {} },
+      {
+        "type": "tool_use",
+        "name": "sevdesk_contacts_search",
+        "input": { "query": "Muster Bürowelt" }
+      },
+      {
+        "type": "tool_use",
+        "name": "sevdesk_reference_lookup",
+        "input": {
+          "kind": "receipt_guidance",
+          "receiptType": "expense",
+          "taxRuleId": 9,
+          "limit": 100
+        }
+      }
+    ],
+    "usage": {
+      "inputTokens": 170,
+      "outputTokens": 276,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 56188
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "caseId": "meta-permissions-de",
+  "model": "claude-sonnet-5-5",
+  "key": "157a0a73acb97f4bf1f6a1e2d7ef331a0e6135971fc36c0e768bf53cb72765f1",
+  "recordedAt": "2026-11-08T16:36:58.299Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      {
+        "type": "text",
+        "text": "Ich schaue kurz nach, was in deiner Sitzung aktuell freigeschaltet ist."
+      },
+      { "type": "tool_use", "name": "sevdesk_account_info", "input": {} }
+    ],
+    "usage": {
+      "inputTokens": 116,
+      "outputTokens": 188,
+      "cacheCreationInputTokens": 42918,
+      "cacheReadInputTokens": 0
+    }
+  }
+}

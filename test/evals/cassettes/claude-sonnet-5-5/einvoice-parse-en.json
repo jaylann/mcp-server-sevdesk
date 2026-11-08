@@ -1,0 +1,23 @@
+{
+  "caseId": "einvoice-parse-en",
+  "model": "claude-sonnet-5-5",
+  "key": "2e331136f8c4d4d1b7ea4980bef793fa63f82e1fafb04ba3e5dd75a068e4dba5",
+  "recordedAt": "2026-11-08T16:38:06.696Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      {
+        "type": "tool_use",
+        "name": "sevdesk_einvoice_parse",
+        "input": { "file": "/home/user/receipts/invoice-2026-117.pdf" }
+      }
+    ],
+    "usage": {
+      "inputTokens": 125,
+      "outputTokens": 77,
+      "cacheCreationInputTokens": 18689,
+      "cacheReadInputTokens": 0
+    }
+  }
+}

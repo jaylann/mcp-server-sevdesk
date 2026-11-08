@@ -1,0 +1,23 @@
+{
+  "caseId": "transactions-unbooked-en",
+  "model": "claude-sonnet-5-5",
+  "key": "c240aceaa0bc22bdb8015270f7976b390c144155f7a4d28cf0f976d59afd1ea8",
+  "recordedAt": "2026-11-08T16:38:26.115Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      {
+        "type": "tool_use",
+        "name": "sevdesk_transactions_list",
+        "input": { "status": ["created"], "limit": 100 }
+      }
+    ],
+    "usage": {
+      "inputTokens": 94,
+      "outputTokens": 80,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17056
+    }
+  }
+}

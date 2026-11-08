@@ -1,0 +1,29 @@
+{
+  "caseId": "payables-en",
+  "model": "claude-sonnet-5-5",
+  "key": "334f82aa9bee85c23c130dd750ba74336af2b982380249cd1849f845158df366",
+  "recordedAt": "2026-11-08T16:38:43.491Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_payables_aging", "input": {} },
+      {
+        "type": "tool_use",
+        "name": "sevdesk_vouchers_list",
+        "input": { "kind": "expense", "status": "open", "limit": 100 }
+      },
+      {
+        "type": "tool_use",
+        "name": "sevdesk_vouchers_list",
+        "input": { "kind": "expense", "status": "partially_paid", "limit": 100 }
+      }
+    ],
+    "usage": {
+      "inputTokens": 101,
+      "outputTokens": 234,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17056
+    }
+  }
+}

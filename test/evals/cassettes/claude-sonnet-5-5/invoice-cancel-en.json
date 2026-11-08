@@ -1,0 +1,20 @@
+{
+  "caseId": "invoice-cancel-en",
+  "model": "claude-sonnet-5-5",
+  "key": "bd5ddffa03fb5cddedba7b4105602b72c9862e4a27ab359c6766e448cad22e8e",
+  "recordedAt": "2026-11-08T16:37:33.533Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "text", "text": "I'll start by checking the invoice's current state." },
+      { "type": "tool_use", "name": "sevdesk_invoice_get", "input": { "id": 4711 } }
+    ],
+    "usage": {
+      "inputTokens": 103,
+      "outputTokens": 147,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 56188
+    }
+  }
+}

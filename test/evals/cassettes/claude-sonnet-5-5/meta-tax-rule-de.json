@@ -1,0 +1,24 @@
+{
+  "caseId": "meta-tax-rule-de",
+  "model": "claude-sonnet-5-5",
+  "key": "d8f7c9802eb306eb52a2455f92b6aea095ec3ae3309f2ddd5c470e19abcf8395",
+  "recordedAt": "2026-11-08T16:37:00.461Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      {
+        "type": "text",
+        "text": "Ich schaue in Ihrem Account nach, welches Buchhaltungssystem aktiv ist und welche Steuerregeln es gibt."
+      },
+      { "type": "tool_use", "name": "sevdesk_account_info", "input": {} },
+      { "type": "tool_use", "name": "sevdesk_reference_lookup", "input": { "kind": "tax_rules" } }
+    ],
+    "usage": {
+      "inputTokens": 135,
+      "outputTokens": 229,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17056
+    }
+  }
+}

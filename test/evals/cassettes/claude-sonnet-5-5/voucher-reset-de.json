@@ -1,0 +1,20 @@
+{
+  "caseId": "voucher-reset-de",
+  "model": "claude-sonnet-5-5",
+  "key": "fe115aed74e01d413d25a345e0ca71482c9518700a67658e048b37b4e8e81adb",
+  "recordedAt": "2026-11-08T16:38:23.220Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_vouchers_list", "input": { "description": "9001" } },
+      { "type": "tool_use", "name": "sevdesk_voucher_get", "input": { "id": 9001 } }
+    ],
+    "usage": {
+      "inputTokens": 110,
+      "outputTokens": 197,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 56188
+    }
+  }
+}

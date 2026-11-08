@@ -1,0 +1,23 @@
+{
+  "caseId": "invoices-drafts-de",
+  "model": "claude-sonnet-5-5",
+  "key": "4111a0972ef1aa3bd235a2b0eda3069c1eeca94c855b4ac51ab0fc203cd05a62",
+  "recordedAt": "2026-11-08T16:37:15.599Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      {
+        "type": "tool_use",
+        "name": "sevdesk_invoices_list",
+        "input": { "status": "draft", "limit": 100 }
+      }
+    ],
+    "usage": {
+      "inputTokens": 109,
+      "outputTokens": 78,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17056
+    }
+  }
+}

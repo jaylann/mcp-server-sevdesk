@@ -1,0 +1,24 @@
+{
+  "caseId": "invoices-overdue-en",
+  "model": "claude-sonnet-5-5",
+  "key": "84e159b2fd4823fdef91b71ec9f173ab882eaa7d1a0a5416a147852523e4fb95",
+  "recordedAt": "2026-11-08T16:37:13.809Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_receivables_aging", "input": { "top": 50 } },
+      {
+        "type": "tool_use",
+        "name": "sevdesk_invoices_list",
+        "input": { "overdueOnly": true, "limit": 100 }
+      }
+    ],
+    "usage": {
+      "inputTokens": 100,
+      "outputTokens": 135,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17056
+    }
+  }
+}

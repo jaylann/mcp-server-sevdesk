@@ -1,0 +1,17 @@
+{
+  "caseId": "invoice-pdf-de",
+  "model": "claude-sonnet-5-5",
+  "key": "b8764d41927caea283083a04caa460f35ab636d2eaa1ae069d59b1e26ce6ec0d",
+  "recordedAt": "2026-11-08T16:37:19.182Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [{ "type": "tool_use", "name": "sevdesk_invoice_pdf", "input": { "id": 4711 } }],
+    "usage": {
+      "inputTokens": 108,
+      "outputTokens": 58,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17056
+    }
+  }
+}

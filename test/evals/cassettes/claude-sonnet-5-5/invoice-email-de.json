@@ -1,0 +1,20 @@
+{
+  "caseId": "invoice-email-de",
+  "model": "claude-sonnet-5-5",
+  "key": "2e7a67941586daf2e064d149e64697f4585c73d77cf85cabee6f3145324831ba",
+  "recordedAt": "2026-11-08T16:37:35.678Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_invoices_list", "input": { "number": "4711" } },
+      { "type": "tool_use", "name": "sevdesk_invoices_list", "input": { "number": "RE-4711" } }
+    ],
+    "usage": {
+      "inputTokens": 142,
+      "outputTokens": 188,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 56188
+    }
+  }
+}

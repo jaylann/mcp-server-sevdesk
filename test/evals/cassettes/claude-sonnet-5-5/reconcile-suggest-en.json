@@ -1,0 +1,24 @@
+{
+  "caseId": "reconcile-suggest-en",
+  "model": "claude-sonnet-5-5",
+  "key": "e00bc12b12ff6b3fe1f75b82a0777a961dd434ce5b79fd3131c4151c4b51885b",
+  "recordedAt": "2026-11-08T16:38:29.237Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      {
+        "type": "tool_use",
+        "name": "sevdesk_reconcile_suggest",
+        "input": { "transactionId": 555 }
+      },
+      { "type": "tool_use", "name": "sevdesk_transaction_get", "input": { "id": 555 } }
+    ],
+    "usage": {
+      "inputTokens": 97,
+      "outputTokens": 113,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17056
+    }
+  }
+}

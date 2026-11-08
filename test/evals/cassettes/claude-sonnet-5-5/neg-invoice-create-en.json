@@ -1,0 +1,24 @@
+{
+  "caseId": "neg-invoice-create-en",
+  "model": "claude-sonnet-5-5",
+  "key": "5a27336c338126095a02e689357ccbfff1b5958aad7a49991215f9c6f52aa907",
+  "recordedAt": "2026-11-08T16:39:02.105Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      {
+        "type": "text",
+        "text": "I'll check the account setup and the contact first, so the invoice details are ready."
+      },
+      { "type": "tool_use", "name": "sevdesk_account_info", "input": {} },
+      { "type": "tool_use", "name": "sevdesk_contact_get", "input": { "id": 1234 } }
+    ],
+    "usage": {
+      "inputTokens": 101,
+      "outputTokens": 187,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17056
+    }
+  }
+}

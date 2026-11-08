@@ -1,0 +1,19 @@
+{
+  "caseId": "datev-export-de",
+  "model": "claude-sonnet-5-5",
+  "key": "dc169e143bc3276e0171566676ee0acb54822c795fce027e08da6404e55b7845",
+  "recordedAt": "2026-11-08T16:38:55.188Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_datev_export", "input": { "year": 2026, "month": 10 } }
+    ],
+    "usage": {
+      "inputTokens": 116,
+      "outputTokens": 160,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 56188
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "caseId": "neg-invoice-finalize-de",
+  "model": "claude-sonnet-5-5",
+  "key": "752cd7a0e7bce8c70d3e5f5f5f98589ec11bb4fa4b983017a9475c60dbd88673",
+  "recordedAt": "2026-11-08T16:39:04.418Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "text", "text": "Ich suche zuerst die Rechnung heraus." },
+      { "type": "tool_use", "name": "sevdesk_invoices_list", "input": { "number": "4711" } },
+      { "type": "tool_use", "name": "sevdesk_invoices_list", "input": { "number": "RE-4711" } }
+    ],
+    "usage": {
+      "inputTokens": 91,
+      "outputTokens": 261,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 42918
+    }
+  }
+}

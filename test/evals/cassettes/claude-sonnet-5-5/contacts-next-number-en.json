@@ -1,0 +1,19 @@
+{
+  "caseId": "contacts-next-number-en",
+  "model": "claude-sonnet-5-5",
+  "key": "3cc14c82b031e7dfc29002506c92d50b92f3ad7ae8277a98855f03001bc46475",
+  "recordedAt": "2026-11-08T16:37:11.843Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_contacts_next_customer_number", "input": {} }
+    ],
+    "usage": {
+      "inputTokens": 89,
+      "outputTokens": 39,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17056
+    }
+  }
+}

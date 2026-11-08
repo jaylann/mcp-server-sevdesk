@@ -1,0 +1,28 @@
+{
+  "caseId": "revenue-per-month-de",
+  "model": "claude-sonnet-5-5",
+  "key": "ebc7c04f2f2c736ea6aaf8dd8bbd9dea2138ae04527d8676c30e1fbb56fd6e64",
+  "recordedAt": "2026-11-08T16:38:41.338Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      {
+        "type": "tool_use",
+        "name": "sevdesk_records_summarize",
+        "input": {
+          "subject": "invoices",
+          "from": "2026-01-01",
+          "to": "2026-12-31",
+          "groupBy": "month"
+        }
+      }
+    ],
+    "usage": {
+      "inputTokens": 104,
+      "outputTokens": 134,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17056
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "caseId": "meta-account-info-en",
+  "model": "claude-sonnet-5-5",
+  "key": "7165cc46d6179da138cb88d4ff01dc2a24cf8903f8ef231518378cbf7ef0636c",
+  "recordedAt": "2026-11-08T16:36:55.412Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [{ "type": "tool_use", "name": "sevdesk_account_info", "input": {} }],
+    "usage": {
+      "inputTokens": 117,
+      "outputTokens": 32,
+      "cacheCreationInputTokens": 17056,
+      "cacheReadInputTokens": 0
+    }
+  }
+}

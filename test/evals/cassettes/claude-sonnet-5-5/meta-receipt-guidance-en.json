@@ -1,0 +1,29 @@
+{
+  "caseId": "meta-receipt-guidance-en",
+  "model": "claude-sonnet-5-5",
+  "key": "423818e6e0093b5afab07a44b4b1d299f3a1ccb352ebe1fe11c8fb84db676cc4",
+  "recordedAt": "2026-11-08T16:37:02.855Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      {
+        "type": "tool_use",
+        "name": "sevdesk_reference_lookup",
+        "input": {
+          "kind": "receipt_guidance",
+          "taxRuleId": 9,
+          "receiptType": "expense",
+          "limit": 100
+        }
+      },
+      { "type": "tool_use", "name": "sevdesk_reference_lookup", "input": { "kind": "tax_rules" } }
+    ],
+    "usage": {
+      "inputTokens": 117,
+      "outputTokens": 304,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17056
+    }
+  }
+}

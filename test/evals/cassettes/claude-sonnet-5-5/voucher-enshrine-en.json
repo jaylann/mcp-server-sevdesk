@@ -1,0 +1,25 @@
+{
+  "caseId": "voucher-enshrine-en",
+  "model": "claude-sonnet-5-5",
+  "key": "9b65fca60d743775a11058ac596f57bba1f10fe532eab62ec76e8e780ffc8c10",
+  "recordedAt": "2026-11-08T16:38:21.233Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "text", "text": "I'll check the voucher first and preview the enshrinement." },
+      { "type": "tool_use", "name": "sevdesk_voucher_get", "input": { "id": 9001 } },
+      {
+        "type": "tool_use",
+        "name": "sevdesk_voucher_enshrine",
+        "input": { "id": 9001, "dryRun": true }
+      }
+    ],
+    "usage": {
+      "inputTokens": 106,
+      "outputTokens": 235,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 56188
+    }
+  }
+}

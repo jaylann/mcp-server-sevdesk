@@ -1,0 +1,20 @@
+{
+  "caseId": "invoice-create-de",
+  "model": "claude-sonnet-5-5",
+  "key": "b538db91f1766af7a72016e0f90ad8f951b71da8653054fe52005c183157b201",
+  "recordedAt": "2026-11-08T16:37:24.503Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_account_info", "input": {} },
+      { "type": "tool_use", "name": "sevdesk_contact_get", "input": { "id": 1234 } }
+    ],
+    "usage": {
+      "inputTokens": 147,
+      "outputTokens": 172,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 56188
+    }
+  }
+}

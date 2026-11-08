@@ -1,0 +1,34 @@
+{
+  "caseId": "voucher-create-en",
+  "model": "claude-sonnet-5-5",
+  "key": "39fd43d9f363d6ffc6c4f4f84a1243035b974f2bacaed506dbdc856efb2c8753",
+  "recordedAt": "2026-11-08T16:38:02.911Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_account_info", "input": {} },
+      {
+        "type": "tool_use",
+        "name": "sevdesk_contacts_search",
+        "input": { "query": "Deutsche Bahn" }
+      },
+      {
+        "type": "tool_use",
+        "name": "sevdesk_reference_lookup",
+        "input": {
+          "kind": "receipt_guidance",
+          "receiptType": "expense",
+          "taxRuleId": 9,
+          "query": "Reise"
+        }
+      }
+    ],
+    "usage": {
+      "inputTokens": 154,
+      "outputTokens": 290,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 56188
+    }
+  }
+}

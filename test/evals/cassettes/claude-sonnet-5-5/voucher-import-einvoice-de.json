@@ -1,0 +1,24 @@
+{
+  "caseId": "voucher-import-einvoice-de",
+  "model": "claude-sonnet-5-5",
+  "key": "eb7f7cd7f575e3fd00fd7eb8a7542c2dcd08b23e3a37ca2930ffcf5140681b1c",
+  "recordedAt": "2026-11-08T16:38:04.770Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      {
+        "type": "tool_use",
+        "name": "sevdesk_einvoice_parse",
+        "input": { "file": "/home/user/receipts/xrechnung-RE-2026-117.xml" }
+      },
+      { "type": "tool_use", "name": "sevdesk_account_info", "input": {} }
+    ],
+    "usage": {
+      "inputTokens": 124,
+      "outputTokens": 110,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 56188
+    }
+  }
+}

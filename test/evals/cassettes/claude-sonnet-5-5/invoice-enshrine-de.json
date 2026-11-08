@@ -1,0 +1,20 @@
+{
+  "caseId": "invoice-enshrine-de",
+  "model": "claude-sonnet-5-5",
+  "key": "3fe60d756f64358ec08f575f450873e96231c85a0ed3d3cdf6d79b9d5cdb04a7",
+  "recordedAt": "2026-11-08T16:37:39.989Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_invoices_list", "input": { "number": "4711" } },
+      { "type": "tool_use", "name": "sevdesk_invoices_list", "input": { "number": "RE-4711" } }
+    ],
+    "usage": {
+      "inputTokens": 118,
+      "outputTokens": 208,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 56188
+    }
+  }
+}

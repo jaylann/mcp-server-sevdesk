@@ -1,0 +1,20 @@
+{
+  "caseId": "reconcile-suggest-de",
+  "model": "claude-sonnet-5-5",
+  "key": "e93705c010e2a52332be8b165530279fcf1e156a6be9c63192d39f824dd08b54",
+  "recordedAt": "2026-11-08T16:38:30.354Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_bank_accounts_list", "input": {} },
+      { "type": "tool_use", "name": "sevdesk_reconcile_suggest", "input": {} }
+    ],
+    "usage": {
+      "inputTokens": 126,
+      "outputTokens": 71,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 56188
+    }
+  }
+}

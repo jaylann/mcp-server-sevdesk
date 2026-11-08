@@ -1,0 +1,19 @@
+{
+  "caseId": "neg-invoice-email-en",
+  "model": "claude-sonnet-5-5",
+  "key": "43878268fddef3f3f4a5a77f3f605caaf0287fa48827571bb1660a43f5d56f81",
+  "recordedAt": "2026-11-08T16:39:12.517Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_invoices_list", "input": { "number": "4711" } }
+    ],
+    "usage": {
+      "inputTokens": 90,
+      "outputTokens": 195,
+      "cacheCreationInputTokens": 53838,
+      "cacheReadInputTokens": 0
+    }
+  }
+}

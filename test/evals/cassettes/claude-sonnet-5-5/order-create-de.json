@@ -1,0 +1,20 @@
+{
+  "caseId": "order-create-de",
+  "model": "claude-sonnet-5-5",
+  "key": "f053ae83c4da94614a7bef883277f6361826b4270ef6c7fd7b307069ccdbcd02",
+  "recordedAt": "2026-11-08T16:37:53.185Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_account_info", "input": {} },
+      { "type": "tool_use", "name": "sevdesk_contact_get", "input": { "id": 1234 } }
+    ],
+    "usage": {
+      "inputTokens": 130,
+      "outputTokens": 199,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 56188
+    }
+  }
+}

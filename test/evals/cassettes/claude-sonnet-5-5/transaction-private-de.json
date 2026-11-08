@@ -1,0 +1,17 @@
+{
+  "caseId": "transaction-private-de",
+  "model": "claude-sonnet-5-5",
+  "key": "6f231c55d1980059e7c0151637329caade86be83b313a37836e46daa4bb08097",
+  "recordedAt": "2026-11-08T16:38:34.676Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [{ "type": "tool_use", "name": "sevdesk_transaction_get", "input": { "id": 556 } }],
+    "usage": {
+      "inputTokens": 112,
+      "outputTokens": 171,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 56188
+    }
+  }
+}

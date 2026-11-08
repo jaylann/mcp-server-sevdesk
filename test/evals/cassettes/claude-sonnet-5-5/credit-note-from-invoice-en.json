@@ -1,0 +1,24 @@
+{
+  "caseId": "credit-note-from-invoice-en",
+  "model": "claude-sonnet-5-5",
+  "key": "2efa0cdd98b5925cfbae231a8b3336278b102c939748ae6249f247d07ec86990",
+  "recordedAt": "2026-11-08T16:37:46.649Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_invoice_get", "input": { "id": 4711 } },
+      {
+        "type": "tool_use",
+        "name": "sevdesk_credit_note_create_from_invoice",
+        "input": { "invoiceId": 4711, "dryRun": true }
+      }
+    ],
+    "usage": {
+      "inputTokens": 96,
+      "outputTokens": 249,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 56188
+    }
+  }
+}

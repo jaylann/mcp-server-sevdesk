@@ -1,0 +1,23 @@
+{
+  "caseId": "document-save-en",
+  "model": "claude-sonnet-5-5",
+  "key": "8c25c77d046d6e13ff142fff90c7c397f7a425bf92a702ebc114882f0849e160",
+  "recordedAt": "2026-11-08T16:38:59.434Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      {
+        "type": "tool_use",
+        "name": "sevdesk_document_save",
+        "input": { "document": "invoice_pdf", "id": 4711 }
+      }
+    ],
+    "usage": {
+      "inputTokens": 98,
+      "outputTokens": 81,
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 18689
+    }
+  }
+}
