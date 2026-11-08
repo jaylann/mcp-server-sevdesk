@@ -96,7 +96,8 @@ describe("buildInstructions", () => {
   it("mentions per-call dry runs only when a registered changing tool supports them", () => {
     expect(build(testConfig({ allowedTiers: tiers("read", "write") }))).toContain(
       "Changing tools accept dryRun: true to preview exactly what a call would change, without " +
-        "sending it or asking the user.",
+        "sending it or asking the user; use that to check a change instead of reading the " +
+        "record first.",
     );
     expect(build()).not.toContain("dryRun");
   });

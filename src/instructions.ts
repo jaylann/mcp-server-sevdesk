@@ -106,9 +106,12 @@ function dryRunSections(tools: readonly AnyToolDefinition[], config: Config): Se
   return perCall
     ? [
         {
+          // Recorded evals (2026-11-08): models read the record before a change "to be safe";
+          // the dry-run preview checks the same and shows what would change.
           text:
             "Changing tools accept dryRun: true to preview exactly what a call would change, " +
-            "without sending it or asking the user.",
+            "without sending it or asking the user; use that to check a change instead of " +
+            "reading the record first.",
         },
       ]
     : [];
