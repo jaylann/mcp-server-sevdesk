@@ -1,0 +1,17 @@
+{
+  "name": "mcp-server-sevdesk",
+  "description": "Claude Code plugin for mcp-server-sevdesk, the unofficial, safety-first MCP server for the sevDesk accounting API.",
+  "owner": {
+    "name": "Justin Lanfermann",
+    "url": "https://github.com/jaylann"
+  },
+  "plugins": [
+    {
+      "name": "sevdesk",
+      "source": "./plugin",
+      "description": "sevDesk MCP server (read-only by default) plus a bookkeeping skill for German businesses: receipts, e-invoices, bank reconciliation, VAT pre-check, month and year end, DATEV.",
+      "category": "productivity",
+      "tags": ["sevdesk", "accounting", "buchhaltung", "e-rechnung", "datev"]
+    }
+  ]
+}

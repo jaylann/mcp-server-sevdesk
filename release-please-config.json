@@ -71,6 +71,11 @@
           "type": "json",
           "path": "server.json",
           "jsonpath": "$.packages[0].version"
+        },
+        {
+          "type": "json",
+          "path": "plugin/.claude-plugin/plugin.json",
+          "jsonpath": "$.version"
         }
       ]
     }
