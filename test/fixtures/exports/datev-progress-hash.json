@@ -1,0 +1,15 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /Progress/generateDownloadHash?jobId (live probe run 2, 2026-11-08)",
+    "date": "2026-11-08",
+    "systemVersion": "2.0",
+    "note": "An object with key progressHash, as recorded; the value is the spec's example hash."
+  },
+  "status": 200,
+  "body": {
+    "objects": {
+      "progressHash": "22ae177d286f17aac5daac591c70164159b64c7f_0a0e1eff"
+    }
+  }
+}

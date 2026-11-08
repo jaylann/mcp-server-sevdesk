@@ -549,7 +549,7 @@ describe("sevdesk_records_summarize (community fixtures, fake data)", () => {
         "the date range or filters for complete numbers.",
     );
     expect(summary).toContain("Stopped at the cap of 10000 rows read: totals are incomplete.");
-  });
+  }, 20_000); // 10,001 rows: about 1.5 s alone, several seconds under full-suite coverage load.
 
   it("reports progress per page and stops when the call is cancelled mid-scan", async () => {
     const objects = many(2_500, (index) => voucher({ id: String(200_000 + index) }));

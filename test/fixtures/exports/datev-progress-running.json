@@ -1,0 +1,19 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /Progress/getProgress?hash (live probe run 2, 2026-11-08)",
+    "date": "2026-11-08",
+    "systemVersion": "2.0",
+    "note": "Keys as recorded (percent, current, errors, total, failure); values of an unfinished poll, types assumed (numbers, an empty error list, false)."
+  },
+  "status": 200,
+  "body": {
+    "objects": {
+      "percent": 33,
+      "current": 33,
+      "errors": [],
+      "total": 100,
+      "failure": false
+    }
+  }
+}

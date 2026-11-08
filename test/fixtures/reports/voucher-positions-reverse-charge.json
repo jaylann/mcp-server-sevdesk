@@ -1,0 +1,50 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /VoucherPos?voucher[id]&voucher[objectName]=Voucher (live probe run 1, trial account, 2026-11-08)",
+    "date": "2026-11-08",
+    "systemVersion": "2.0",
+    "note": "Keys of the recorded position (accountDatev reference, no accountingType, sum*Accounting, isGwg, isPercentage, sum*ForeignCurrency, assetMemoValue); values fake: a §13b(1) service from an EU supplier (tax rule 14 on the voucher) booked at 0 % as sevDesk requires (ReceiptGuidance allows only ZERO)."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "93001",
+        "objectName": "VoucherPos",
+        "additionalInformation": null,
+        "create": "2026-11-08T15:30:00+01:00",
+        "update": "2026-11-08T15:30:00+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "voucher": {
+          "id": "2101",
+          "objectName": "Voucher"
+        },
+        "accountDatev": {
+          "id": "4266",
+          "objectName": "AccountDatev"
+        },
+        "taxRate": "0",
+        "sum": null,
+        "net": "1",
+        "isAsset": "0",
+        "assetMemoValue": null,
+        "sumNet": "1000",
+        "sumTax": "0",
+        "sumGross": "1000",
+        "sumNetAccounting": "1000",
+        "sumTaxAccounting": "0",
+        "sumGrossAccounting": "1000",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "comment": "Beratungsleistung (Reverse Charge)",
+        "isGwg": "0",
+        "isPercentage": "0"
+      }
+    ]
+  }
+}

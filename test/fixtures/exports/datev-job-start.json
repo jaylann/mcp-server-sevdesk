@@ -1,0 +1,13 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "POST /Export/createDatevCsvZipExportJob?startDate&endDate&scope=EXTCD (live probe run 2, 2026-11-08)",
+    "date": "2026-11-08",
+    "systemVersion": "2.0",
+    "note": "objects is the job id as a string (UUID); the id is the spec's example, not the recorded one."
+  },
+  "status": 200,
+  "body": {
+    "objects": "0a0e1eff-9590-1bea-1195-a3cfc04364cc"
+  }
+}

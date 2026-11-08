@@ -1,0 +1,18 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /ExportJob/jobDownloadInfo?jobId (live probe run 2, 2026-11-08)",
+    "date": "2026-11-08",
+    "systemVersion": "2.0",
+    "note": "Keys and link host as recorded; the path, query and signature of the presigned link are fake (the real link is a secret valid for 7 days); file name in the recorded pattern with fake numbers."
+  },
+  "status": 200,
+  "body": {
+    "objects": {
+      "jobId": "0a0e1eff-9590-1bea-1195-a3cfc04364cc",
+      "linkExpireDate": "2026-11-15T16:12:00+01:00",
+      "link": "https://sevexport-filestorage-workload-prod.s3.eu-central-1.amazonaws.com/9001/0a0e1eff-9590-1bea-1195-a3cfc04364cc/zip/BITTE-ENTPACKEN_Buchungsstapel_1234567_12345_20260101_bis_20260331.zip?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=604800&X-Amz-Signature=fake0000000000000000000000000000",
+      "filename": "BITTE-ENTPACKEN_Buchungsstapel_1234567_12345_20260101_bis_20260331.zip"
+    }
+  }
+}
