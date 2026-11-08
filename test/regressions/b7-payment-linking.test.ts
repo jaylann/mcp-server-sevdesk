@@ -67,9 +67,18 @@ function setup(replies: FakeReply[]) {
   return { client, fake };
 }
 
-/** The reads `prepare` makes with a transaction: document, account, transaction, its account. */
+/**
+ * The reads `prepare` makes with a transaction: document, account, transaction, its account, and
+ * the transaction's booking log (empty here).
+ */
 function readsWithTransaction(document: Row, transaction: Row, account: Row): FakeReply[] {
-  return [envelope([document]), envelope([account]), envelope([transaction]), envelope([account])];
+  return [
+    envelope([document]),
+    envelope([account]),
+    envelope([transaction]),
+    envelope([account]),
+    envelope([]),
+  ];
 }
 
 function requestLines(fake: ReturnType<typeof setup>["fake"]): string[] {
@@ -173,13 +182,15 @@ describe("B7: payments are linked to their bank transaction", () => {
     ["is too small", transactionRow({ amount: "100" }), "less than the payment"],
     ["is enshrined", transactionRow({ enshrined: "2026-10-01T00:00:00+02:00" }), "is enshrined"],
   ])("refuses a transaction that %s, without writing", async (_label, transaction, message) => {
-    // prepare reads the booking account (4002), then the transaction and its own account.
+    // prepare reads the booking account (4002), then the transaction and its own account, and
+    // for a free (status 100) transaction its booking log (empty here).
     const owner = (transaction["checkAccount"] as { id: string }).id;
     const { client, fake } = setup([
       envelope([invoiceRow()]),
       envelope([accountRow(4002)]),
       envelope([transaction]),
       envelope([accountRow(Number(owner))]),
+      envelope([]),
     ]);
 
     const error = await prepareWrite(

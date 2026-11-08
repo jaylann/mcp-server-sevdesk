@@ -1,16 +1,20 @@
 /**
- * Payment booking (Zahlung buchen) for invoices and credit notes: the open-amount maths, the
+ * Payment booking (Zahlung buchen) for invoices, credit notes and vouchers: the open-amount maths, the
  * over-booking guard, the checks on the check account (Zahlungskonto) and on a bank transaction to
  * link, and the strict `bookAmount` payload. All amounts are exact decimals (`money.ts`).
  *
- * Wire format of `PUT /{Invoice|CreditNote}/{id}/bookAmount` (spec `bookInvoice`/`bookCreditNote`):
+ * Wire format of `PUT /{Invoice|CreditNote|Voucher}/{id}/bookAmount` (spec `bookInvoice`,
+ * `bookCreditNote`, `bookVoucher`: "exactly the same as the process for invoices"):
  * - `amount`: a JSON number (spec `type: number`), checked to round-trip exactly. Signed as the
  *   money moves on the check account: positive for an invoice (money in), negative for a credit
- *   note (money out), via `bookingAmountSign` (spec/deviations.md D-041 for vouchers; for credit
- *   notes measured by jernoxit/sevdesk-rs: "−58.31 pays a credit note of 58.31").
- * - `date`: Unix seconds (spec `type: integer`), at 12:00 Europe/Berlin of the booking day, so the
- *   day is the same whether sevDesk reads the instant in Berlin time or UTC. sevdesk-rs sends the
- *   same (`1787652000` = 2026-08-25 12:00 CEST in its request test).
+ *   note (money out), and for a voucher by its own direction (expense out, revenue in), via
+ *   `bookingAmountSign` (spec/deviations.md D-041; for credit notes measured by
+ *   jernoxit/sevdesk-rs: "−58.31 pays a credit note of 58.31", and recorded).
+ * - `date`: Unix seconds (spec `type: integer` for invoices), at 12:00 Europe/Berlin of the
+ *   booking day, so the day is the same whether sevDesk reads the instant in Berlin time or UTC.
+ *   sevdesk-rs sends the same (`1787652000` = 2026-08-25 12:00 CEST in its request test). The
+ *   voucher spec types it `date-time`; vouchers take the Unix noon too (M4 probe,
+ *   {@link BOOKING_DATE_FORMATS}).
  * - `type`: FULL_PAYMENT settles the document, N books a part (status 750); CB, MTC and O settle
  *   it with less money (Skonto, bank fees, other reason), O and OF with more (OF: reminder
  *   charges). CF is deprecated and not offered.
@@ -39,7 +43,14 @@ import {
   toDecimalString,
 } from "../money.js";
 import { bookingAmountSign } from "../vouchers.js";
-import { documentRef, type LifecycleDocument, type PaymentKind, STATUS } from "./documents.js";
+import {
+  documentRef,
+  KINDS,
+  type LifecycleDocument,
+  type PaymentDirection,
+  type PaymentKind,
+  statusOf,
+} from "./documents.js";
 import { formatMoney } from "./preview.js";
 import { hasPayments, refuse } from "./transitions.js";
 
@@ -53,7 +64,7 @@ export const PAYMENT_TYPES = [
 ] as const;
 export type PaymentType = (typeof PAYMENT_TYPES)[number];
 
-/** Payment types offered for credit notes: reminder charges belong to invoices only. */
+/** Payment types offered for credit notes and vouchers: reminder charges belong to invoices only. */
 export const CREDIT_NOTE_PAYMENT_TYPES = [
   "payment",
   "cash_discount",
@@ -75,6 +86,8 @@ const DIFFERENCE_WORDING: Readonly<Record<Exclude<PaymentType, "payment">, strin
 
 const ACCOUNT_ARCHIVED = 0;
 const TRANSACTION_FREE = 100;
+/** Partly assigned: bookable for the rest its booking log leaves (the caller passes `assigned`). */
+const TRANSACTION_PARTLY = 200;
 const TRANSACTION_BUSY: Readonly<Record<number, string>> = {
   200: "is already partly assigned to another document, and sevDesk does not report how much of it is left",
   300: "is marked as private (Privatentnahme/-einlage)",
@@ -105,6 +118,7 @@ export interface OpenAmount {
  */
 export function openAmount(doc: LifecycleDocument<PaymentKind>): OpenAmount {
   const ref = documentRef(doc, true);
+  const codes = statusOf(doc);
   const gross = doc.totals.gross?.amount;
   if (gross === undefined) refuse(`${ref} has no gross total in sevDesk's answer.`);
   if (compare(gross, 0) <= 0) {
@@ -116,13 +130,13 @@ export function openAmount(doc: LifecycleDocument<PaymentKind>): OpenAmount {
         `Check its payments in sevDesk before booking more.`,
     );
   }
-  if (doc.paidAmount === undefined && doc.status === STATUS.partiallyPaid) {
+  if (doc.paidAmount === undefined && doc.status === codes.partiallyPaid) {
     refuse(
       `${ref} is partially paid, and sevDesk does not report how much, so the open amount cannot ` +
         `be checked. Book the rest in the sevDesk web app.`,
     );
   }
-  if (doc.currency !== DEFAULT_CURRENCY && (hasPayments(doc) || doc.status !== STATUS.open)) {
+  if (doc.currency !== DEFAULT_CURRENCY && (hasPayments(doc) || doc.status !== codes.open)) {
     refuse(
       `${ref} is in ${doc.currency} and already has payments; sevDesk does not document the ` +
         `currency of the paid amount of foreign-currency documents, so the open amount cannot be ` +
@@ -141,14 +155,36 @@ export function openAmount(doc: LifecycleDocument<PaymentKind>): OpenAmount {
 // Account and transaction checks
 // ---------------------------------------------------------------------------------------------
 
-/** The direction a payment of this kind moves money on the check account. */
-export function paymentDirection(kind: PaymentKind): "in" | "out" {
-  return paymentSign(kind) > 0 ? "in" : "out";
+/**
+ * What a payment's direction is decided by: a kind whose direction is fixed (invoices in, credit
+ * notes out), or a document (vouchers carry theirs, from `creditDebit`).
+ */
+export type PaymentSubject =
+  | Exclude<PaymentKind, "voucher">
+  | Pick<LifecycleDocument<PaymentKind>, "kind" | "id" | "direction">;
+
+/** The direction a payment moves money on the check account (see {@link paymentSign}). */
+export function paymentDirection(subject: PaymentSubject): PaymentDirection {
+  return paymentSign(subject) > 0 ? "in" : "out";
 }
 
-/** Sign of the booked amount: invoices bring money in (+1), credit notes pay it out (-1). */
-export function paymentSign(kind: PaymentKind): -1 | 1 {
-  return bookingAmountSign(kind === "creditNote" ? "expense" : "revenue");
+/**
+ * Sign of the booked amount: invoices bring money in (+1), credit notes pay it out (-1), vouchers
+ * by their own direction (expense −1, revenue +1; `bookingAmountSign`). Refuses a voucher whose
+ * direction sevDesk did not report (no readable `creditDebit`): the sign would be a guess, and a
+ * wrong sign is accepted silently and leaves the voucher partially paid (D-041).
+ */
+export function paymentSign(subject: PaymentSubject): -1 | 1 {
+  if (typeof subject === "string") {
+    return bookingAmountSign(subject === "creditNote" ? "expense" : "revenue");
+  }
+  if (subject.direction === undefined) {
+    refuse(
+      `${documentRef(subject, true)} does not say whether it is an expense or revenue ` +
+        "(creditDebit), so the sign of the payment is unknown. Check it in sevDesk.",
+    );
+  }
+  return bookingAmountSign(subject.direction === "out" ? "expense" : "revenue");
 }
 
 /**
@@ -197,12 +233,20 @@ export function checkPaymentAccount(
  * Checks a bank transaction to link and returns warnings for the preview. It must belong to the
  * check account, be free (status 100) and not enshrined, move money in the payment's direction and
  * cover the amount.
+ *
+ * `assigned` (positive, default 0) is what the transaction's booking log already assigns to other
+ * documents, read by the caller from the log. A partly assigned transaction (status 200; also
+ * what resetting one document of a split leaves, M4 probe run 4) is bookable for the rest the log
+ * leaves; at status 100 entries are subtracted as well, defensively. Only the rest counts as free,
+ * and the payment then always goes out as a partial booking (N). Without log shares, status 200
+ * stays refused.
  */
 export function checkPaymentTransaction(
   doc: LifecycleDocument<PaymentKind>,
   accountId: number,
   transaction: TransactionDto,
   amount: string,
+  assigned = "0",
 ): string[] {
   const ref = `Bank transaction ${String(transaction.id)}`;
   if (transaction.account?.id !== accountId) {
@@ -216,7 +260,8 @@ export function checkPaymentTransaction(
     refuse(`${ref} is enshrined (festgeschrieben) and cannot be linked to a payment anymore.`);
   }
   const status = transaction.status?.code;
-  if (status !== TRANSACTION_FREE) {
+  const partlyKnown = status === TRANSACTION_PARTLY && compare(assigned, 0) > 0;
+  if (status !== TRANSACTION_FREE && !partlyKnown) {
     const reason =
       status === undefined
         ? "has no status"
@@ -226,12 +271,37 @@ export function checkPaymentTransaction(
   if (transaction.amount.currency !== doc.currency) {
     refuse(`${ref} is in ${transaction.amount.currency}, ${documentRef(doc)} in ${doc.currency}.`);
   }
-  const expected = paymentDirection(doc.kind);
+  const expected = paymentDirection(doc);
   if (transaction.direction !== expected) {
     const wanted = expected === "in" ? "an incoming payment" : "an outgoing payment";
     refuse(`${ref} is not ${wanted}, which a payment of ${documentRef(doc)} needs.`);
   }
-  const available = absolute(transaction.amount.amount);
+  const total = absolute(transaction.amount.amount);
+  const show = (value: DecimalLike): string => formatMoney(money(value, doc.currency));
+  if (compare(assigned, 0) > 0) {
+    const free = toDecimalString(subtract(total, assigned));
+    const marked =
+      status === TRANSACTION_PARTLY
+        ? `${ref} is partly assigned (status 200): its booking log assigns`
+        : `${ref} is marked unbooked (status 100), but its booking log already assigns`;
+    if (compare(free, amount) < 0) {
+      refuse(
+        `${marked} ` +
+          `${show(assigned)} of its ${show(total)} to other documents, so only ${show(free)} is ` +
+          `free, less than the payment of ${show(amount)}. Book at most ${show(free)}.`,
+      );
+    }
+    const rest = toDecimalString(subtract(free, amount));
+    return [
+      `${marked} ` +
+        `${show(assigned)} of its ${show(total)} to other documents; only ${show(free)} is ` +
+        "treated as free. The payment is sent as a partial booking (N)" +
+        (compare(rest, 0) > 0
+          ? `, and ${show(rest)} of the transaction stays assignable to other documents.`
+          : "."),
+    ];
+  }
+  const available = total;
   if (compare(available, amount) < 0) {
     refuse(
       `${ref} is ${formatMoney(money(available, doc.currency))}, less than the payment of ` +
@@ -241,8 +311,9 @@ export function checkPaymentTransaction(
   if (compare(available, amount) > 0) {
     const rest = formatMoney(money(subtract(available, amount), doc.currency));
     return [
-      `${ref} is ${formatMoney(money(available, doc.currency))}; ${rest} of it stays unassigned, ` +
-        `and this tool cannot book more on a partly assigned transaction later.`,
+      `${ref} is ${formatMoney(money(available, doc.currency))}; the payment uses part of it, so ` +
+        `it is sent as a partial booking (N), and ${rest} of the transaction stays assignable ` +
+        `to other documents (sevDesk marks it partly assigned, status 200).`,
     ];
   }
   return [];
@@ -255,10 +326,25 @@ export function checkPaymentTransaction(
 const refSchema = <N extends string>(objectName: N) =>
   z.strictObject({ id: z.number().int().positive(), objectName: z.literal(objectName) });
 
+/**
+ * How each kind's `bookAmount` takes its `date`: Unix seconds at noon Berlin (recorded, D-056).
+ * Vouchers (spec: `date-time`) take Unix seconds, ISO date-times and `dd.mm.yyyy` alike (M4 probe,
+ * 2026-11-08; `dd.mm.yyyy` lands at 00:00), so they get the same Unix noon. Kept per kind so a
+ * kind can switch to `"iso"` in one place.
+ */
+export const BOOKING_DATE_FORMATS: Readonly<Record<PaymentKind, "unix" | "iso">> = {
+  invoice: "unix",
+  creditNote: "unix",
+  voucher: "unix",
+};
+
 /** Outgoing `bookAmount` body (strict: sevDesk ignores unknown fields silently, D-003). */
 const bookAmountPayloadSchema = z.strictObject({
   amount: z.number(),
-  date: z.number().int().positive(),
+  date: z.union([
+    z.number().int().positive(),
+    z.string().regex(/^\d{4}-\d{2}-\d{2}T12:00:00[+-]\d{2}:\d{2}$/),
+  ]),
   type: z.enum(BOOKING_TYPES),
   checkAccount: refSchema("CheckAccount"),
   checkAccountTransaction: refSchema("CheckAccountTransaction").optional(),
@@ -274,6 +360,12 @@ export interface PaymentRequest {
   readonly date: string;
   readonly checkAccountId: number;
   readonly transactionId?: number | undefined;
+  /**
+   * The linked transaction's amount, positive (absolute). When the payment uses only part of it,
+   * a full payment goes out as a partial booking (N) and difference types are refused (see
+   * {@link transactionBookingType}). Leave it out to plan without that rule.
+   */
+  readonly transactionAmount?: string | undefined;
 }
 
 export interface PaymentPlan {
@@ -315,11 +407,11 @@ export function planPayment(
           : `, or choose paymentType "other_difference" if the extra is intended.`),
     );
 
-  let bookingType: BookingType;
+  let documentType: BookingType;
   switch (request.paymentType) {
     case "payment":
       if (versus > 0) overBooking();
-      bookingType = versus === 0 ? "FULL_PAYMENT" : "N";
+      documentType = versus === 0 ? "FULL_PAYMENT" : "N";
       break;
     case "cash_discount":
     case "bank_fees":
@@ -330,7 +422,7 @@ export function planPayment(
             `use paymentType "payment".`,
         );
       }
-      bookingType = request.paymentType === "cash_discount" ? "CB" : "MTC";
+      documentType = request.paymentType === "cash_discount" ? "CB" : "MTC";
       break;
     case "reminder_charges":
       if (doc.kind !== "invoice") refuse("Reminder charges can only be booked on invoices.");
@@ -340,7 +432,7 @@ export function planPayment(
             `for the open amount or less use "payment".`,
         );
       }
-      bookingType = "OF";
+      documentType = "OF";
       break;
     case "other_difference":
       if (versus === 0) {
@@ -349,15 +441,18 @@ export function planPayment(
             `paymentType "payment".`,
         );
       }
-      bookingType = "O";
+      documentType = "O";
       break;
   }
+  const partOfTransaction =
+    request.transactionAmount !== undefined && compare(amount, request.transactionAmount) < 0;
+  const bookingType = transactionBookingType(documentType, partOfTransaction);
 
-  const sign = paymentSign(doc.kind);
+  const sign = paymentSign(doc);
   const signed = sign < 0 ? negate(amount) : amount;
   const payload = bookAmountPayloadSchema.parse({
     amount: exactNumber(toDecimalString(signed)),
-    date: bookingTimestamp(request.date),
+    date: wireBookingDate(doc.kind, request.date),
     type: bookingType,
     checkAccount: { id: request.checkAccountId, objectName: "CheckAccount" },
     ...(request.transactionId === undefined
@@ -374,14 +469,14 @@ export function planPayment(
   const warnings: string[] = [];
   let remaining: Money | undefined;
   let difference: Money | undefined;
-  if (bookingType === "N") {
+  if (documentType === "N") {
     remaining = money(negate(differenceValue), doc.currency);
     warnings.push(
       `This is a partial payment: ${formatMoney(remaining)} stays open and the ${
-        doc.kind === "invoice" ? "invoice" : "credit note"
+        KINDS[doc.kind].noun
       } becomes partially paid (750).`,
     );
-  } else if (bookingType !== "FULL_PAYMENT") {
+  } else if (documentType !== "FULL_PAYMENT") {
     difference = money(differenceValue, doc.currency);
     const wording = DIFFERENCE_WORDING[request.paymentType as Exclude<PaymentType, "payment">];
     const size = formatMoney(money(absolute(differenceValue), doc.currency));
@@ -403,11 +498,46 @@ export function planPayment(
 }
 
 /**
+ * The booking type sent when the payment uses only part of the linked bank transaction
+ * (`partOfTransaction`). sevDesk refuses a FULL_PAYMENT whose amount differs from the linked
+ * transaction's with 422 "Payment difference amount must be 0.0 when using type 'NONE'"; a partial
+ * booking (N) works and settles the document when it covers the open amount, leaving the
+ * transaction partly assigned (status 200; live check by the lead on the trial, 2026-11-08). How
+ * sevDesk treats a Skonto, bank-fee or other difference on part of a transaction is not verified,
+ * so those are refused (the same rule as the bank reconciliation's `bookingTypeForTransactionUse`).
+ */
+function transactionBookingType(planned: BookingType, partOfTransaction: boolean): BookingType {
+  if (!partOfTransaction) return planned;
+  if (planned === "FULL_PAYMENT" || planned === "N") return "N";
+  return refuse(
+    "Skonto, bank fees and other differences (paymentType cash_discount, bank_fees, " +
+      "other_difference, reminder_charges) can only be booked when the payment takes the whole " +
+      'bank transaction. Book the transaction\'s full amount, use paymentType "payment" here, ' +
+      "or book the difference in the sevDesk web app.",
+  );
+}
+
+/**
  * Unix seconds of 12:00 Europe/Berlin on `date`: the calendar day survives a reading in Berlin time
  * and in UTC alike (see the module doc).
  */
 export function bookingTimestamp(date: string): number {
   return toUnixSeconds(date, "start") + NOON_SECONDS;
+}
+
+/**
+ * The booking day `date` (`YYYY-MM-DD`) as `kind`'s `bookAmount` takes it (see
+ * {@link BOOKING_DATE_FORMATS}): Unix seconds of noon Berlin, or the same instant as an ISO 8601
+ * date-time with the Berlin offset of that day (`2026-11-02T12:00:00+01:00`).
+ */
+export function wireBookingDate(kind: PaymentKind, date: string): number | string {
+  const seconds = bookingTimestamp(date);
+  if (BOOKING_DATE_FORMATS[kind] === "unix") return seconds;
+  const offsetMinutes = (seconds - Date.parse(`${date}T12:00:00Z`) / 1000) / -60;
+  const sign = offsetMinutes < 0 ? "-" : "+";
+  const hours = String(Math.floor(Math.abs(offsetMinutes) / 60)).padStart(2, "0");
+  const minutes = String(Math.abs(offsetMinutes) % 60).padStart(2, "0");
+  return `${date}T12:00:00${sign}${hours}:${minutes}`;
 }
 
 /** `value` as a JSON number, refused when the number would not be exactly that decimal. */

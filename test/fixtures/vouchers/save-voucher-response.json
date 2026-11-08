@@ -1,0 +1,136 @@
+{
+  "_provenance": {
+    "date": "2026-11-08",
+    "systemVersion": "2.0",
+    "source": "spec",
+    "ref": "spec/openapi.yaml#/components/schemas/saveVoucherResponse",
+    "note": "saveVoucher answer; the voucher and position use the recorded key sets (sevDesk.NET) of voucher-2101-draft.json with a document attached. The live answer (probes, 2026-11-08) has the keys {voucher, voucherPos, vatdrop}; the spec's `filename` key is kept here because the tools read only voucher.id and read the voucher back."
+  },
+  "status": 201,
+  "body": {
+    "objects": {
+      "voucher": {
+        "id": "2101",
+        "objectName": "Voucher",
+        "additionalInformation": null,
+        "create": "2026-11-02T09:00:00+01:00",
+        "update": "2026-11-02T09:00:00+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "createUser": {
+          "id": "9101",
+          "objectName": "SevUser"
+        },
+        "voucherDate": "2026-11-02T00:00:00+01:00",
+        "supplier": {
+          "id": "1001",
+          "objectName": "Contact"
+        },
+        "supplierName": "Musterfirma GmbH",
+        "description": "ER-2026-0815",
+        "resultDisdar": null,
+        "payDate": null,
+        "status": "50",
+        "currency": "EUR",
+        "sumNet": "100",
+        "sumTax": "19",
+        "sumGross": "119",
+        "sumNetAccounting": "100",
+        "sumTaxAccounting": "19",
+        "sumGrossAccounting": "119",
+        "showNet": "0",
+        "paidAmount": 0,
+        "taxType": null,
+        "creditDebit": "C",
+        "hidden": "0",
+        "voucherType": "VOU",
+        "recurringIntervall": null,
+        "recurringInterval": null,
+        "recurringStartDate": null,
+        "recurringNextVoucher": null,
+        "recurringLastVoucher": null,
+        "recurringEndDate": null,
+        "enshrined": null,
+        "sendType": null,
+        "inSource": null,
+        "iban": null,
+        "accountingSpecialCase": null,
+        "paymentDeadline": "2026-11-16T00:00:00+01:00",
+        "tip": "0",
+        "mileageRate": "0",
+        "selectedForPaymentFile": "0",
+        "supplierNameAtSave": "Musterfirma GmbH",
+        "taxmaroStockAccount": null,
+        "vatNumber": null,
+        "deliveryDate": "2026-11-02T00:00:00+01:00",
+        "deliveryDateUntil": null,
+        "sumDiscountNet": "0",
+        "sumDiscountGross": "0",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountNetForeignCurrency": "0",
+        "sumDiscountGrossForeignCurrency": "0",
+        "taxRule": {
+          "id": "9",
+          "objectName": "TaxRule"
+        },
+        "document": {
+          "id": "7101",
+          "objectName": "Document"
+        }
+      },
+      "voucherPos": [
+        {
+          "id": "3101",
+          "objectName": "VoucherPos",
+          "additionalInformation": null,
+          "create": "2026-11-02T09:00:00+01:00",
+          "update": "2026-11-02T09:00:00+01:00",
+          "sevClient": {
+            "id": "9001",
+            "objectName": "SevClient"
+          },
+          "voucher": {
+            "id": "2101",
+            "objectName": "Voucher"
+          },
+          "taxRate": "19",
+          "sum": "119",
+          "net": "0",
+          "isAsset": "0",
+          "assetMemoValue": "0",
+          "sumNet": "100",
+          "sumTax": "19",
+          "sumGross": "119",
+          "sumNetAccounting": "100",
+          "sumTaxAccounting": "19",
+          "sumGrossAccounting": "119",
+          "comment": "Druckerpapier und Toner",
+          "isGwg": "0",
+          "cateringTaxRate": null,
+          "cateringTip": null,
+          "specialAccountingField1": null,
+          "specialAccountingField2": null,
+          "specialAccountingField3": null,
+          "specialAccountingField4": null,
+          "specialAccountingField5": null,
+          "isPercentage": "1",
+          "discountedValue": "0",
+          "sumNetForeignCurrency": "0",
+          "sumTaxForeignCurrency": "0",
+          "sumGrossForeignCurrency": "0",
+          "sumDiscountForeignCurrency": "0",
+          "createNextPart": null,
+          "accountDatev": {
+            "id": "4266",
+            "objectName": "AccountDatev"
+          }
+        }
+      ],
+      "filename": null
+    }
+  }
+}

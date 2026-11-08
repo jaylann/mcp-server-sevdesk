@@ -114,6 +114,17 @@ export function transactionRoute(row: Row): FakeRoute {
   };
 }
 
+/**
+ * `GET /CheckAccountTransactionLog` (filtered by the transaction) answering `entries`: what the
+ * book-payment tools read for a free transaction. Default: no entries.
+ */
+export function transactionLogRoute(entries: readonly Row[] = []): FakeRoute {
+  return {
+    path: "/CheckAccountTransactionLog",
+    response: { body: { objects: entries, total: entries.length } },
+  };
+}
+
 /** A data-changing route answering with a fixture of `test/fixtures/lifecycle/`. */
 export function writeRoute(method: HttpMethod, path: string, fixture: string): FakeRoute {
   return { method, path, response: { fixture: `lifecycle/${fixture}` } };

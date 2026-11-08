@@ -9,8 +9,8 @@ import { z } from "zod";
 
 import {
   KINDS,
-  type LifecycleKind,
   readLifecycleDocument,
+  type SalesKind,
   STATUS,
 } from "../../domain/lifecycle/documents.js";
 import {
@@ -38,7 +38,7 @@ import {
   readBack,
 } from "./shared.js";
 
-const DESCRIPTIONS: Readonly<Record<LifecycleKind, string>> = {
+const DESCRIPTIONS: Readonly<Record<SalesKind, string>> = {
   invoice:
     "Email an invoice (Rechnung per E-Mail versenden) through sevDesk: sevDesk sends the PDF " +
     "(or, with attachXml, the e-invoice XML) to the recipients and marks the invoice as sent. " +
@@ -105,7 +105,7 @@ function emailFacts(state: SendEmailState, attachment: "pdf" | "xml", noun: stri
 }
 
 /** Builds the send-by-email tool of one document kind. */
-export function sendEmailTool(kind: LifecycleKind) {
+export function sendEmailTool(kind: SalesKind) {
   const info = KINDS[kind];
   const names = KIND_TOOLS[kind];
   const shape = {

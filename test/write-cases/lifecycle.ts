@@ -119,6 +119,8 @@ export const LIFECYCLE_CASES: readonly WriteToolCase[] = [
       documentRoute("invoice", openInvoice),
       accountRoute(accountRow(4002)),
       transactionRoute(transactionRow()),
+      // The transaction's booking log (read for a free transaction): no entries.
+      { path: "/CheckAccountTransactionLog", response: { body: { objects: [] } } },
       writeRoute("PUT", "/Invoice/1001/bookAmount", "invoice-book-amount.json"),
     ],
     writes: [{ method: "PUT", path: "/Invoice/1001/bookAmount" }],

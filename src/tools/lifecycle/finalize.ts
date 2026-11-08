@@ -8,11 +8,7 @@
  */
 import { z } from "zod";
 
-import {
-  KINDS,
-  type LifecycleKind,
-  readLifecycleDocument,
-} from "../../domain/lifecycle/documents.js";
+import { KINDS, readLifecycleDocument, type SalesKind } from "../../domain/lifecycle/documents.js";
 import { documentFacts, documentTitle } from "../../domain/lifecycle/preview.js";
 import { assertFinalizable } from "../../domain/lifecycle/transitions.js";
 import { sevdeskPath } from "../../sevdesk/paths.js";
@@ -52,7 +48,7 @@ const sendByPayloadSchema = z.strictObject({
 
 type SendByPayload = z.output<typeof sendByPayloadSchema>;
 
-const DESCRIPTIONS: Readonly<Record<LifecycleKind, string>> = {
+const DESCRIPTIONS: Readonly<Record<SalesKind, string>> = {
   invoice:
     "Finalize a draft invoice (Rechnung fertigstellen): sevDesk marks it as sent, assigns its " +
     "final invoice number and books it, so it becomes legally binding (draft 100 → open 200). " +
@@ -85,7 +81,7 @@ const BOOKS = {
 } as const;
 
 /** Consequences of finalizing, per kind. */
-function finalizeWarnings(kind: LifecycleKind): string[] {
+function finalizeWarnings(kind: SalesKind): string[] {
   const { toolPrefix } = KINDS[kind];
   const binding =
     kind === "order"
@@ -109,7 +105,7 @@ function finalizeWarnings(kind: LifecycleKind): string[] {
 }
 
 /** Builds the finalize tool of one document kind. */
-export function finalizeTool(kind: LifecycleKind) {
+export function finalizeTool(kind: SalesKind) {
   const info = KINDS[kind];
   const names = KIND_TOOLS[kind];
   return defineWriteTool({

@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { z } from "zod";
 
+import { fetchAccountsDatev } from "../../src/domain/accounts-datev.js";
 import {
   bankAccountDtoSchema,
   listBankAccounts,
@@ -102,7 +103,7 @@ const RECORDED: Readonly<Record<string, string>> = {
   "invoices/invoice-positions-unfiltered.json": "listDocumentPositions + toPositionDto",
   "invoices/invoice-positions.json": "getInvoice",
   "invoices/invoices-list.json": "listInvoices",
-  "meta/account-datev.json": "none yet (voucher writes, M4)",
+  "meta/account-datev.json": "fetchAccountsDatev",
   "meta/bookkeeping-system-version.json": "getBookkeepingSystemVersion",
   "meta/categories.json": "CONTACT_CATEGORIES / ADDRESS_CATEGORIES (static)",
   "meta/communication-way-keys.json": "COMMUNICATION_WAY_KEYS (static)",
@@ -301,9 +302,16 @@ describe("recorded reference data", () => {
     }
   });
 
-  it.todo(
-    "parses the recorded GET /AccountDatev rows (no runtime reader before the voucher writes, M4)",
-  );
+  it("parses every recorded GET /AccountDatev row through the production reader", async () => {
+    const client = new FakeSevdeskClient([route("/AccountDatev", "meta/account-datev.json")]);
+    const list = await fetchAccountsDatev(client);
+    expect(list.accounts).toHaveLength(recordedRows("meta/account-datev.json").length);
+    expect(list.truncated).toBe(false);
+    for (const account of list.accounts) {
+      expect(Number.isSafeInteger(account.id)).toBe(true);
+      expect(account.number).toMatch(/^\d+$/);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------------------------

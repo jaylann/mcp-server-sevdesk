@@ -23,22 +23,37 @@ export function formatMoney(value: Money): string {
 
 /**
  * The document as an action sentence names it: "invoice RE-1001" or, without a number yet,
- * "invoice 1001 (no number yet)". The number is cleaned upstream text (from the DTO).
+ * "invoice 1001 (no number yet)". The number is cleaned upstream text (from the DTO), assigned by
+ * sevDesk's number range. A voucher is always named by its id ("voucher 2001"): its Belegnummer is
+ * free text from the supplier's receipt (BT-1 on an e-invoice import), so it appears only as a
+ * fact value ({@link documentFacts}), never in the action.
  */
 export function documentTitle(doc: LifecycleDocument): string {
-  const noun = KINDS[doc.kind].noun;
+  const { noun } = KINDS[doc.kind];
+  if (doc.kind === "voucher") return `${noun} ${String(doc.id)}`;
   return doc.number === undefined
     ? `${noun} ${String(doc.id)} (no number yet)`
     : `${noun} ${doc.number}`;
 }
 
-/** The customer as a fact value: "Musterfirma GmbH (contact 1001)" or "contact 1001". */
-function customerText(doc: LifecycleDocument): string | undefined {
+/**
+ * The customer (or a voucher's supplier) as a fact value: "Musterfirma GmbH (contact 1001)",
+ * "contact 1001", or a voucher's typed-in name without a contact: "Bürohaus (no contact)".
+ */
+function partyText(doc: LifecycleDocument): string | undefined {
   const contact = doc.contact;
-  if (contact === undefined) return undefined;
+  if (contact === undefined) {
+    return doc.partyName === undefined ? undefined : `${doc.partyName} (no contact)`;
+  }
   return contact.name === undefined
     ? `contact ${String(contact.id)}`
     : `${contact.name} (contact ${String(contact.id)})`;
+}
+
+/** "Customer" for sales documents and revenue vouchers, "Supplier (Lieferant)" for expenses. */
+function partyLabel(doc: LifecycleDocument): string {
+  if (doc.kind !== "voucher") return "Customer";
+  return doc.direction === "out" ? "Supplier (Lieferant)" : "Customer (Kunde)";
 }
 
 /**
@@ -55,14 +70,17 @@ export function documentFacts(doc: LifecycleDocument): Fact[] {
   add(
     `${nounTitle} (${info.nounDe})`,
     doc.number === undefined
-      ? `id ${String(doc.id)}, no number yet`
+      ? `id ${String(doc.id)}, ${info.noNumber}`
       : `${doc.number} (id ${String(doc.id)})`,
   );
   if (doc.typeCode !== undefined) {
     add("Type", doc.typeLabel === undefined ? doc.typeCode : `${doc.typeLabel} (${doc.typeCode})`);
   }
   add("Status", `${doc.statusLabel} (${String(doc.status)})`);
-  add("Customer", customerText(doc));
+  if (doc.kind === "voucher" && doc.direction !== undefined) {
+    add("Kind", doc.direction === "out" ? "expense (Ausgabe)" : "revenue (Einnahme)");
+  }
+  add(partyLabel(doc), partyText(doc));
   add("Date", doc.date);
   add("Due date", doc.dueDate);
   const { net, tax, gross } = doc.totals;

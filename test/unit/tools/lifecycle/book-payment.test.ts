@@ -12,6 +12,7 @@ import {
   invoiceRow,
   type Row,
   StagedClient,
+  transactionLogRoute,
   transactionRoute,
   transactionRow,
   writeRoute,
@@ -46,6 +47,7 @@ function invoiceClient(
     accountRoute(account),
     transactionRoute(options.transaction ?? transactionRow()),
     ...(options.extra ?? []),
+    transactionLogRoute(),
   ];
   return new StagedClient(reads, [
     writeRoute("PUT", "/Invoice/1001/bookAmount", "invoice-book-amount.json"),
@@ -159,6 +161,137 @@ describe("sevdesk_invoice_book_payment (spec bookInvoice; community record shape
     await executeWrite(tool, { ...full, amount: "77.23", transactionId: 5101 }, client);
 
     expect(client.writes()[0]?.body).toMatchObject({ amount: 77.23, type: "FULL_PAYMENT" });
+  });
+
+  it("pays the whole open amount from a larger transaction as N, the rest stays assignable", async () => {
+    const client = invoiceClient({ transaction: transactionRow({ amount: "200" }) });
+
+    const { plan } = await executeWrite(tool, { ...full, transactionId: 5101 }, client);
+
+    expect(client.writes()[0]?.body).toMatchObject({ amount: 177.33, type: "N" });
+    expect(plan.preview.action).toContain("(partial payment (N))");
+    expect(plan.preview.warnings).toEqual([
+      "Bank transaction 5101 is 200.00 EUR; the payment uses part of it, so it is sent as a " +
+        "partial booking (N), and 22.67 EUR of the transaction stays assignable to other " +
+        "documents (sevDesk marks it partly assigned, status 200).",
+    ]);
+    expect(plan.preview.facts).toContainEqual({
+      label: "Open after booking",
+      value: "0.00 EUR (settled)",
+    });
+  });
+
+  it("counts what the booking log of a status-100 transaction already assigns as taken", async () => {
+    const entry = {
+      id: "9001",
+      checkAccountTransaction: { id: "5101", objectName: "CheckAccountTransaction" },
+      object: { id: "1009", objectName: "Invoice" },
+      amountPaid: 22.67,
+    };
+    const client = invoiceClient({
+      transaction: transactionRow({ amount: "200" }),
+      extra: [transactionLogRoute([entry])],
+    });
+
+    const { plan } = await executeWrite(tool, { ...full, transactionId: 5101 }, client);
+
+    expect(client.writes()[0]?.body).toMatchObject({ amount: 177.33, type: "N" });
+    expect(plan.preview.warnings).toEqual([
+      "Bank transaction 5101 is marked unbooked (status 100), but its booking log already " +
+        "assigns 22.67 EUR of its 200.00 EUR to other documents; only 177.33 EUR is treated as " +
+        "free. The payment is sent as a partial booking (N).",
+    ]);
+    expect(client.calls.map((call) => call.path)).toContain("/CheckAccountTransactionLog");
+  });
+
+  it("refuses a payment above what the log leaves free, and a log entry it cannot read", async () => {
+    const taken = {
+      id: "9001",
+      checkAccountTransaction: { id: "5101", objectName: "CheckAccountTransaction" },
+      amountPaid: 100,
+    };
+    let message = await refusalOf(
+      prepareWrite(
+        tool,
+        { ...full, transactionId: 5101 },
+        invoiceClient({
+          transaction: transactionRow({ amount: "200" }),
+          extra: [transactionLogRoute([taken])],
+        }),
+      ),
+    );
+    expect(message).toBe(
+      "Bank transaction 5101 is marked unbooked (status 100), but its booking log already " +
+        "assigns 100.00 EUR of its 200.00 EUR to other documents, so only 100.00 EUR is free, " +
+        "less than the payment of 177.33 EUR. Book at most 100.00 EUR.",
+    );
+    message = await refusalOf(
+      prepareWrite(
+        tool,
+        { ...full, transactionId: 5101 },
+        invoiceClient({ extra: [transactionLogRoute([{ ...taken, amountPaid: null }])] }),
+      ),
+    );
+    expect(message).toBe(
+      "Bank transaction 5101 is marked unbooked (status 100), but its booking log has an entry " +
+        "without an amount, so how much of it is free is unknown. Check it in the sevDesk web app.",
+    );
+  });
+
+  it("books the rest of a partly assigned transaction (status 200) from its log", async () => {
+    const entry = {
+      id: "9002",
+      checkAccountTransaction: { id: "5101", objectName: "CheckAccountTransaction" },
+      object: { id: "1009", objectName: "Invoice" },
+      amountPaid: 100,
+    };
+    const client = invoiceClient({
+      transaction: transactionRow({ amount: "300", status: "200" }),
+      extra: [transactionLogRoute([entry])],
+    });
+    const { plan } = await executeWrite(tool, { ...full, transactionId: 5101 }, client);
+    expect(client.writes()[0]?.body).toMatchObject({ amount: 177.33, type: "N" });
+    expect(plan.preview.warnings).toEqual([
+      "Bank transaction 5101 is partly assigned (status 200): its booking log assigns 100.00 " +
+        "EUR of its 300.00 EUR to other documents; only 200.00 EUR is treated as free. The " +
+        "payment is sent as a partial booking (N), and 22.67 EUR of the transaction stays " +
+        "assignable to other documents.",
+    ]);
+  });
+
+  it("refuses a partly assigned transaction whose log has no entries", async () => {
+    const message = await refusalOf(
+      prepareWrite(
+        tool,
+        { ...full, transactionId: 5101 },
+        invoiceClient({ transaction: transactionRow({ amount: "300", status: "200" }) }),
+      ),
+    );
+    expect(message).toBe(
+      "Bank transaction 5101 is partly assigned (status 200), but its booking log has no " +
+        "entries, so how much of it is free is unknown. Book it in the sevDesk web app.",
+    );
+  });
+
+  it("does not read the log of a transaction it refuses by status", async () => {
+    const client = invoiceClient({ transaction: transactionRow({ status: "400" }) });
+    await refusalOf(prepareWrite(tool, { ...full, transactionId: 5101 }, client));
+    expect(client.calls.map((call) => call.path)).not.toContain("/CheckAccountTransactionLog");
+  });
+
+  it("refuses Skonto on part of a larger transaction", async () => {
+    const client = invoiceClient({ transaction: transactionRow({ amount: "200" }) });
+    const message = await refusalOf(
+      prepareWrite(
+        tool,
+        { ...full, amount: "173.78", transactionId: 5101, paymentType: "cash_discount" },
+        client,
+      ),
+    );
+    expect(message).toContain(
+      "can only be booked when the payment takes the whole bank transaction",
+    );
+    expect(client.writes()).toEqual([]);
   });
 
   it("settles with Skonto (CB) for less than the open amount", async () => {
@@ -350,7 +483,9 @@ describe("sevdesk_credit_note_book_payment", () => {
       [
         documentRoute("creditNote", creditNoteRow()),
         accountRoute(account),
-        ...(transaction === undefined ? [] : [transactionRoute(transaction)]),
+        ...(transaction === undefined
+          ? []
+          : [transactionRoute(transaction), transactionLogRoute()]),
       ],
       [
         writeRoute("PUT", "/CreditNote/2001/bookAmount", "credit-note-book-amount.json"),

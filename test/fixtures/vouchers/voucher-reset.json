@@ -1,0 +1,85 @@
+{
+  "_provenance": {
+    "date": "2026-11-08",
+    "systemVersion": "2.0",
+    "source": "spec",
+    "ref": "spec/openapi.yaml#/paths/~1Voucher~1{voucherId}~1resetToOpen/put/responses/200",
+    "note": "resetToOpen/resetToDraft answer the changed voucher (confirmed by probe `write-voucher-reset`, 2026-11-08: the full voucher record); here voucher 2001's recorded key set at status 100. The tool ignores the body and reads the voucher back."
+  },
+  "status": 200,
+  "body": {
+    "objects": {
+      "id": "2001",
+      "objectName": "Voucher",
+      "additionalInformation": null,
+      "create": "2026-01-12T10:00:00+01:00",
+      "update": "2026-01-13T08:15:00+01:00",
+      "sevClient": {
+        "id": "9001",
+        "objectName": "SevClient"
+      },
+      "createUser": {
+        "id": "9101",
+        "objectName": "SevUser"
+      },
+      "voucherDate": "2026-01-12T00:00:00+01:00",
+      "supplier": {
+        "id": "1003",
+        "objectName": "Contact"
+      },
+      "supplierName": "Beispiel Lieferant AG",
+      "description": "RE-2026-0042",
+      "resultDisdar": null,
+      "payDate": null,
+      "status": "100",
+      "currency": "EUR",
+      "sumNet": "250.5",
+      "sumTax": "47.6",
+      "sumGross": "298.1",
+      "sumNetAccounting": "250.5",
+      "sumTaxAccounting": "47.6",
+      "sumGrossAccounting": "298.1",
+      "showNet": "0",
+      "paidAmount": 0,
+      "taxType": null,
+      "creditDebit": "C",
+      "hidden": "0",
+      "voucherType": "VOU",
+      "recurringIntervall": null,
+      "recurringInterval": null,
+      "recurringStartDate": null,
+      "recurringNextVoucher": null,
+      "recurringLastVoucher": null,
+      "recurringEndDate": null,
+      "enshrined": null,
+      "sendType": null,
+      "inSource": null,
+      "iban": null,
+      "accountingSpecialCase": null,
+      "paymentDeadline": "2026-01-26T00:00:00+01:00",
+      "tip": "0",
+      "mileageRate": "0",
+      "selectedForPaymentFile": "0",
+      "supplierNameAtSave": "Beispiel Lieferant AG",
+      "taxmaroStockAccount": null,
+      "vatNumber": null,
+      "deliveryDate": "2026-01-10T00:00:00+01:00",
+      "deliveryDateUntil": null,
+      "sumDiscountNet": "0",
+      "sumDiscountGross": "0",
+      "sumNetForeignCurrency": "0",
+      "sumTaxForeignCurrency": "0",
+      "sumGrossForeignCurrency": "0",
+      "sumDiscountNetForeignCurrency": "0",
+      "sumDiscountGrossForeignCurrency": "0",
+      "taxRule": {
+        "id": "9",
+        "objectName": "TaxRule"
+      },
+      "document": {
+        "id": "7001",
+        "objectName": "Document"
+      }
+    }
+  }
+}

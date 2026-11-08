@@ -1,12 +1,14 @@
 /**
- * `sevdesk_{invoice,credit_note}_reset`: take a document back one step, `to: "open"`
+ * `sevdesk_{invoice,credit_note,voucher}_reset`: take a document back one step, `to: "open"`
  * (`PUT …/resetToOpen`: unlinks every payment) or `to: "draft"` (`PUT …/resetToDraft`: open →
  * draft). No body. What happens to payments (jernoxit/sevdesk-rs, measured; firsttris/haben): the
  * linked transactions go back to status 100 (created), their log entries are deleted, `paidAmount`
  * returns to 0; there is no counter-booking. sevDesk refuses `resetToOpen` when a payment
  * transaction is enshrined (422/322 "Already enshrined by payment") and `resetToDraft` on an
  * enshrined document (422/322). Unlike the spec says, `resetToOpen` works on a paid, enshrined
- * invoice whose transactions are not enshrined, so that case is not refused here.
+ * invoice whose transactions are not enshrined, so that case is not refused here. Vouchers use the
+ * same endpoints with their own codes (open 100, draft 50; spec `voucherResetToOpen`,
+ * `voucherResetToDraft`); their behavior with payments is assumed to match (not recorded).
  */
 import { z } from "zod";
 
@@ -15,6 +17,7 @@ import {
   type LifecycleDocument,
   type PaymentKind,
   readLifecycleDocument,
+  statusOf,
 } from "../../domain/lifecycle/documents.js";
 import { documentFacts, documentTitle } from "../../domain/lifecycle/preview.js";
 import {
@@ -54,6 +57,14 @@ const DESCRIPTIONS: Readonly<Record<PaymentKind, string>> = {
     "without payouts becomes a draft again; not for enshrined (festgeschrieben) credit notes. " +
     "For a paid credit note reset to open first, then to draft. Commit tier: asks a human to " +
     "confirm the preview; dryRun only previews.",
+  voucher:
+    'Reset a voucher (Beleg) one step back. to "open" (resetToOpen): a paid or partially paid ' +
+    "voucher becomes open (100) again and every booked payment is unlinked (bank transactions " +
+    'return to unbooked; no counter-booking). to "draft" (resetToDraft): an open voucher without ' +
+    "payments becomes a draft (50) again and can be changed with sevdesk_voucher_update_draft " +
+    "or deleted with sevdesk_voucher_delete_draft; not for enshrined (festgeschrieben) " +
+    "vouchers. For a paid voucher reset to open first, then to draft. Commit tier: asks a human " +
+    "to confirm the preview; dryRun only previews.",
 };
 
 const ENDPOINT: Readonly<Record<ResetTarget, string>> = {
@@ -81,6 +92,12 @@ function resetWarnings(doc: LifecycleDocument<PaymentKind>, to: ResetTarget): st
     }
     return warnings;
   }
+  if (doc.kind === "voucher") {
+    return [
+      "The voucher stops being booked and can be changed again (sevdesk_voucher_update_draft); " +
+        "it has to be finalized again afterwards (sevdesk_voucher_finalize).",
+    ];
+  }
   return [
     `The ${noun} stops being binding and booked and can be edited again; it has to be ` +
       "finalized again afterwards.",
@@ -93,7 +110,7 @@ function resetWarnings(doc: LifecycleDocument<PaymentKind>, to: ResetTarget): st
   ];
 }
 
-/** Builds the reset tool of invoices or credit notes. */
+/** Builds the reset tool of invoices, credit notes or vouchers. */
 export function resetTool(kind: PaymentKind) {
   const info = KINDS[kind];
   const names = KIND_TOOLS[kind];
@@ -118,11 +135,13 @@ export function resetTool(kind: PaymentKind) {
     prepare: async (args, ctx) => {
       const doc = await readLifecycleDocument(ctx.client, kind, args.id, ctx.signal);
       assertResettable(doc, args.to);
+      const codes = statusOf(doc);
       const action =
         args.to === "open"
-          ? `Reset ${documentTitle(doc)} to open (${doc.statusLabel} → open 200) and unlink all ` +
-            `its payments.`
-          : `Reset ${documentTitle(doc)} to draft (open 200 → draft 100).`;
+          ? `Reset ${documentTitle(doc)} to open (${doc.statusLabel} → open ` +
+            `${String(codes.open)}) and unlink all its payments.`
+          : `Reset ${documentTitle(doc)} to draft (open ${String(codes.open)} → draft ` +
+            `${String(codes.draft)}).`;
       return {
         preview: {
           action,

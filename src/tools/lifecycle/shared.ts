@@ -14,6 +14,7 @@ import {
   readLifecycleDocument,
 } from "../../domain/lifecycle/documents.js";
 import { orderDetailSchema } from "../../domain/orders.js";
+import { voucherDetailDtoSchema } from "../../domain/vouchers.js";
 import { SevdeskError, withCompletedWrites } from "../../sevdesk/errors.js";
 import type { ToolsetName } from "../toolsets.js";
 import type { SevdeskObjectRef, ToolAnnotationSet, ToolContext } from "../types.js";
@@ -21,13 +22,18 @@ import type { SevdeskObjectRef, ToolAnnotationSet, ToolContext } from "../types.
 /** Tool-layer names of a document kind. */
 export interface KindToolInfo {
   readonly toolset: ToolsetName;
-  /** Key of the document in the tool output, as in the get tools: `invoice`, `creditNote`, `order`. */
-  readonly outputKey: "invoice" | "creditNote" | "order";
+  /**
+   * Key of the document in the tool output, as in the get tools: `invoice`, `creditNote`, `order`,
+   * `voucher`.
+   */
+  readonly outputKey: "invoice" | "creditNote" | "order" | "voucher";
   readonly detailSchema: z.ZodObject;
   /** The list tool to find ids with. */
   readonly listTool: string;
-  /** Title noun: "invoice", "credit note", "order". */
+  /** Title noun: "invoice", "credit note", "order", "voucher". */
   readonly title: string;
+  /** What the id is not, for the id argument: "invoice number", …, "Belegnummer". */
+  readonly numberName: string;
 }
 
 export const KIND_TOOLS: Readonly<Record<LifecycleKind, KindToolInfo>> = {
@@ -37,6 +43,7 @@ export const KIND_TOOLS: Readonly<Record<LifecycleKind, KindToolInfo>> = {
     detailSchema: invoiceDetailSchema,
     listTool: "sevdesk_invoices_list",
     title: "invoice",
+    numberName: "invoice number",
   },
   creditNote: {
     toolset: "credit-notes",
@@ -44,6 +51,7 @@ export const KIND_TOOLS: Readonly<Record<LifecycleKind, KindToolInfo>> = {
     detailSchema: creditNoteDetailSchema,
     listTool: "sevdesk_credit_notes_list",
     title: "credit note",
+    numberName: "credit note number",
   },
   order: {
     toolset: "orders",
@@ -51,6 +59,15 @@ export const KIND_TOOLS: Readonly<Record<LifecycleKind, KindToolInfo>> = {
     detailSchema: orderDetailSchema,
     listTool: "sevdesk_orders_list",
     title: "order",
+    numberName: "order number",
+  },
+  voucher: {
+    toolset: "vouchers",
+    outputKey: "voucher",
+    detailSchema: voucherDetailDtoSchema,
+    listTool: "sevdesk_vouchers_list",
+    title: "voucher",
+    numberName: "Belegnummer",
   },
 };
 
@@ -79,7 +96,7 @@ export function idInput(kind: LifecycleKind) {
     .positive()
     .max(Number.MAX_SAFE_INTEGER)
     .describe(
-      `${capitalize(info.title)} id (not the ${info.title} number), e.g. from ${info.listTool}.`,
+      `${capitalize(info.title)} id (not the ${info.numberName}), e.g. from ${info.listTool}.`,
     );
 }
 
