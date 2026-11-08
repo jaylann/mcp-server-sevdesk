@@ -14,6 +14,7 @@ import {
   facturXml,
   M4_EINVOICE_PROBES,
   scrubEInvoiceXml,
+  withoutMarkup,
   xmlFromAnswer,
 } from "../../../scripts/lib/probes/m4-einvoice-probes.js";
 import {
@@ -94,7 +95,7 @@ function refused(status: number, upstreamMessage: string): never {
  * no stray `<` or unescaped `&` (fast-xml-parser's validator is deprecated).
  */
 function wellFormed(xml: string): boolean {
-  const body = xml.replace(/<\?[\s\S]*?\?>|<!--[\s\S]*?-->/g, "");
+  const body = withoutMarkup(xml);
   const stack: string[] = [];
   let roots = 0;
   for (const match of body.matchAll(

@@ -142,7 +142,7 @@ const PREFIX = String.raw`(?:[\w.-]+:)?`;
  * `xml` without processing instructions and comments, removed until nothing changes (a single
  * pass could leave a new `<!--` behind where two removals meet).
  */
-function withoutMarkup(xml: string): string {
+export function withoutMarkup(xml: string): string {
   let current = xml;
   for (;;) {
     const next = current.replace(/<\?[\s\S]*?\?>|<!--[\s\S]*?-->/g, "");
