@@ -28,6 +28,20 @@ export interface ProbeOutcome {
    * `confirms` for a confirmed probe, `contradicts` for a contradicted one, else `informs`.
    */
   readonly deviations?: Readonly<Record<string, DeviationVerdict>>;
+  /**
+   * Long texts the report shows in full, e.g. a scrubbed XML fixture candidate. The probe scrubs
+   * them; the runner runs them through the run's scrubber again and caps their size.
+   */
+  readonly attachments?: readonly ProbeAttachment[];
+}
+
+/** A block of text attached to a finding (rendered fenced, inside a collapsed section). */
+export interface ProbeAttachment {
+  /** Trusted, one line: what it is (e.g. "Fixture candidate: getXml of an e-invoice"). */
+  readonly label: string;
+  /** Info string of the code fence, e.g. `xml`. */
+  readonly language?: string;
+  readonly content: string;
 }
 
 export interface ProbeDefinition {
@@ -62,7 +76,7 @@ export interface Exchange {
 }
 
 /** A request's outcome for the probe's own logic (unscrubbed). */
-interface HttpResult {
+export interface HttpResult {
   readonly ok: boolean;
   /** HTTP status of a failure; `undefined` on success. */
   readonly status: number | undefined;
@@ -70,6 +84,11 @@ interface HttpResult {
   readonly contentType?: string;
   /** Raw body text (download) or the JSON of the unwrapped objects (writes). */
   readonly text?: string;
+  /**
+   * The raw body bytes of a GET (JSON or not), e.g. to tell a CSV's encoding: the decoded `text`
+   * has lost a byte-order mark and any byte that is not UTF-8.
+   */
+  readonly bytes?: Uint8Array;
   /** Parsed body, when JSON. */
   readonly json?: unknown;
   /** `json.objects` for GETs, the unwrapped payload for writes. */
@@ -78,15 +97,31 @@ interface HttpResult {
   readonly message?: string;
 }
 
+interface GetOptions {
+  /**
+   * Sends the GET as a side effect with this tier (`sideEffect: true`): for the export-job GETs,
+   * which start a job in sevDesk. Only `write`: nothing a probe reads may finalize, enshrine or
+   * e-mail. The client still refuses it in read-only mode and never retries it.
+   */
+  readonly tier?: "write";
+  /** Largest body accepted (`SevdeskRequest.maxBytes`); the client's default otherwise. */
+  readonly maxBytes?: number;
+}
+
 export interface ProbeHttp {
   /** GET through `client.download` (raw body); never throws for HTTP errors. */
-  get(path: string, query?: Query): Promise<HttpResult>;
+  get(path: string, query?: Query, options?: GetOptions): Promise<HttpResult>;
   /** A data-changing request through `client.request` with the given tier; never retried. */
   write(
     method: "POST" | "PUT" | "DELETE",
     path: string,
     options: {
       readonly body?: unknown;
+      /**
+       * A multipart body instead of JSON (e.g. `Voucher/Factory/uploadTempFile`). The evidence
+       * lists its parts (field, scrubbed file name, type, size), never their bytes.
+       */
+      readonly form?: FormData;
       readonly query?: Query;
       readonly tier: "write" | "commit" | "external";
     },
@@ -144,9 +179,10 @@ export function createProbeHttp(
   scrubber: Scrubber,
   evidence: { push(exchange: Exchange): unknown },
 ): ProbeHttp {
-  function failure(error: unknown, request: string, requestBody?: unknown): HttpResult {
+  /** `scrubbedRequestBody` is evidence already: scrubbed exactly once by the caller. */
+  function failure(error: unknown, request: string, scrubbedRequestBody?: unknown): HttpResult {
     const scrubbedBody =
-      requestBody === undefined ? {} : { requestBody: scrubber.scrub(requestBody) };
+      scrubbedRequestBody === undefined ? {} : { requestBody: scrubbedRequestBody };
     if (error instanceof SevdeskError) {
       const message =
         error.upstreamMessage === undefined ? undefined : scrubber.scrubText(error.upstreamMessage);
@@ -170,13 +206,15 @@ export function createProbeHttp(
   }
 
   return {
-    async get(path, query) {
+    async get(path, query, options = {}) {
       const request = requestLine("GET", path, query);
       try {
         const response = await client.download({
           method: "GET",
           path,
           ...(query === undefined ? {} : { query }),
+          ...(options.tier === undefined ? {} : { sideEffect: true, tier: options.tier }),
+          ...(options.maxBytes === undefined ? {} : { maxBytes: options.maxBytes }),
         });
         const text = new TextDecoder().decode(response.body);
         let json: unknown;
@@ -191,8 +229,10 @@ export function createProbeHttp(
           status: "2xx",
           ...(response.contentType === undefined ? {} : { contentType: response.contentType }),
           body:
+            // Only the first line (a CSV's header row, an XML declaration, `%PDF-1.x`), never
+            // the data rows after it.
             json === undefined
-              ? `${scrubber.scrubText(text.slice(0, 120))}… (${response.body.length} bytes, not JSON)`
+              ? `${scrubber.scrubText((text.split(/\r?\n/, 1)[0] ?? "").slice(0, 120))}… (${response.body.length} bytes, not JSON)`
               : scrubber.scrub(json),
         });
         return {
@@ -200,6 +240,7 @@ export function createProbeHttp(
           status: undefined,
           ...(response.contentType === undefined ? {} : { contentType: response.contentType }),
           text: text.length > MAX_TEXT ? text.slice(0, MAX_TEXT) : text,
+          bytes: response.body,
           json,
           objects,
         };
@@ -210,26 +251,50 @@ export function createProbeHttp(
 
     async write(method, path, options) {
       const request = requestLine(method, path, options.query);
+      const requestBody =
+        options.form !== undefined
+          ? describeForm(options.form, scrubber)
+          : options.body === undefined
+            ? undefined
+            : scrubber.scrub(options.body);
       try {
         const objects = await client.request({
           method,
           path,
           tier: options.tier,
           ...(options.body === undefined ? {} : { body: options.body }),
+          ...(options.form === undefined ? {} : { form: options.form }),
           ...(options.query === undefined ? {} : { query: options.query }),
         });
         evidence.push({
           request,
-          ...(options.body === undefined ? {} : { requestBody: scrubber.scrub(options.body) }),
+          ...(requestBody === undefined ? {} : { requestBody }),
           status: "2xx",
           body: scrubber.scrub({ objects }),
         });
         return { ok: true, status: undefined, json: { objects }, objects };
       } catch (error) {
-        return failure(error, request, options.body);
+        return failure(error, request, requestBody);
       }
     },
   };
+}
+
+/**
+ * Evidence of a multipart body: per part its field name (ours), and for files the scrubbed file
+ * name, media type and size. File contents never reach the report.
+ */
+function describeForm(form: FormData, scrubber: Scrubber): { readonly form: unknown[] } {
+  const parts: unknown[] = [];
+  form.forEach((value, field) => {
+    if (typeof value === "string") {
+      parts.push({ field, value: scrubber.scrubText(value) });
+      return;
+    }
+    const scrubbed = scrubber.scrub({ filename: value.name }) as { filename?: unknown };
+    parts.push({ field, filename: scrubbed.filename, type: value.type, size: value.size });
+  });
+  return { form: parts };
 }
 
 // ---------------------------------------------------------------------------------------------

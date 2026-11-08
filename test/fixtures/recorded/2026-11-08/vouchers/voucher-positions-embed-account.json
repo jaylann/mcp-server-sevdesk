@@ -1,0 +1,93 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /VoucherPos?voucher[id]={voucher}&voucher[objectName]=Voucher&embed=accountDatev&limit=n (recording session 2026-11-08)",
+    "date": "2026-11-08",
+    "systemVersion": "2.0",
+    "note": "Personal and company data replaced by scripts/lib/scrub.ts; keys, nulls and scalar types as recorded. A recorded single page (has total). Whether embed=accountDatev expands the booking account (number, name) per position."
+  },
+  "status": 200,
+  "body": {
+    "total": 1,
+    "objects": [
+      {
+        "id": "217609137",
+        "objectName": "VoucherPos",
+        "additionalInformation": null,
+        "create": "2026-11-08T15:34:00+01:00",
+        "update": "2026-11-08T15:34:00+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "voucher": {
+          "id": "160114616",
+          "objectName": "Voucher"
+        },
+        "taxRate": "19",
+        "sum": null,
+        "net": "0",
+        "isAsset": "0",
+        "assetMemoValue": "0",
+        "sumNet": "100",
+        "sumTax": "19",
+        "sumGross": "119",
+        "sumNetAccounting": "100",
+        "sumTaxAccounting": "19",
+        "sumGrossAccounting": "119",
+        "comment": "Muster-Text 12",
+        "isGwg": "0",
+        "cateringTaxRate": null,
+        "cateringTip": null,
+        "specialAccountingField1": null,
+        "specialAccountingField2": null,
+        "specialAccountingField3": null,
+        "specialAccountingField4": null,
+        "specialAccountingField5": null,
+        "accountDatev": {
+          "id": "4266",
+          "objectName": "AccountDatev",
+          "additionalInformation": null,
+          "number": "6815",
+          "number03": "4930",
+          "create": "2020-11-16T21:20:12+01:00",
+          "update": "2023-06-27T13:54:24+02:00",
+          "name": "Bürobedarf",
+          "name03": "Bürobedarf",
+          "taxRate": null,
+          "automaticType": null,
+          "deprecated": "0",
+          "hidden": "0",
+          "expenseAccount": "1",
+          "revenueAccount": "0",
+          "accountDatevCategory": {
+            "id": "152",
+            "objectName": "AccountDatevCategory"
+          },
+          "eur": "1",
+          "deactivated": "0",
+          "assetAccount": "0",
+          "validFrom": null,
+          "validUntil": "3000-01-01T01:00:00+01:00",
+          "assetCategory": null,
+          "simpleName": null,
+          "simpleDescription": "z.B. Papier, Stifte und Blöcke",
+          "accountCategory": {
+            "id": "2",
+            "objectName": "AccountCategory"
+          },
+          "balanceSide": null,
+          "translatedNumber": "6815",
+          "translatedName": "Bürobedarf"
+        },
+        "isPercentage": "1",
+        "discountedValue": "0",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountForeignCurrency": "0",
+        "createNextPart": null
+      }
+    ]
+  }
+}

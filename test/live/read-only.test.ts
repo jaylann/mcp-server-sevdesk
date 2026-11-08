@@ -1,16 +1,24 @@
 /**
  * Live read-only checks (`pnpm test:live`): every read tool, called with minimal arguments against
  * the account behind SEVDESK_API_TOKEN, must answer without `isError` and with output that
- * matches its schema. Nothing is written: the stack runs with SEVDESK_READ_ONLY=1, so the HTTP
- * client refuses any data-changing request before sending it. PDFs are only fetched for documents
- * that are no longer drafts, and the test checks that a preview left their status alone (B1).
+ * matches its schema. Nothing is written to sevDesk: the stack runs with SEVDESK_READ_ONLY=1, so
+ * the HTTP client refuses any data-changing request before sending it. PDFs are only fetched for
+ * documents that are no longer drafts, and the test checks that a preview left their status alone
+ * (B1). The file tools get temporary folders (SEVDESK_FILE_DIRS with a generated Factur-X PDF,
+ * SEVDESK_OUTPUT_DIR), removed afterwards. Arguments live in `cases.ts`.
  *
  * Without a token the whole file is skipped with the reason.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { readOnlyEnv, tokenMissingReason } from "../../scripts/lib/live-env.js";
+import {
+  berlinToday,
+  readOnlyEnv,
+  runTag,
+  tokenMissingReason,
+} from "../../scripts/lib/live-env.js";
 import { ALL_TOOLS } from "../../src/tools/index.js";
+import { type Ids, type LocalFiles, prepareLocalFiles, READ_CASES } from "./cases.js";
 import {
   callOk,
   callTool,
@@ -22,70 +30,7 @@ import {
 } from "./live-stack.js";
 
 const skipReason = tokenMissingReason(process.env);
-
-/** Ids the by-id tools need, learned from the list tools. */
-interface Ids {
-  contact?: number;
-  invoice?: number;
-  invoiceFinal?: number;
-  creditNote?: number;
-  creditNoteFinal?: number;
-  order?: number;
-  orderFinal?: number;
-  voucher?: number;
-  part?: number;
-}
-
-type Args = Readonly<Record<string, unknown>>;
-
-interface LiveCase {
-  readonly tool: string;
-  /** Arguments; `undefined` when the account lacks the record the call needs. */
-  readonly args: (ids: Ids) => Args | undefined;
-  /** A refusal that is a valid answer (e.g. getXml for an invoice that is not an e-invoice). */
-  readonly acceptError?: RegExp;
-  readonly label?: string;
-}
-
-const SINCE = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
-const byId = (key: keyof Ids) => (ids: Ids) =>
-  ids[key] === undefined ? undefined : { id: ids[key] };
-
-const CASES: readonly LiveCase[] = [
-  { tool: "sevdesk_account_info", args: () => ({}) },
-  { tool: "sevdesk_contacts_search", args: () => ({}) },
-  { tool: "sevdesk_contact_get", args: byId("contact") },
-  { tool: "sevdesk_contacts_next_customer_number", args: () => ({}) },
-  { tool: "sevdesk_invoices_list", args: () => ({}) },
-  { tool: "sevdesk_invoice_get", args: byId("invoice") },
-  { tool: "sevdesk_invoice_pdf", args: byId("invoiceFinal") },
-  {
-    tool: "sevdesk_invoice_xml",
-    args: byId("invoiceFinal"),
-    acceptError: /e-invoice|E-Rechnung|XML/i,
-  },
-  { tool: "sevdesk_credit_notes_list", args: () => ({}) },
-  { tool: "sevdesk_credit_note_get", args: byId("creditNote") },
-  { tool: "sevdesk_credit_note_pdf", args: byId("creditNoteFinal") },
-  { tool: "sevdesk_orders_list", args: () => ({}) },
-  { tool: "sevdesk_order_get", args: byId("order") },
-  { tool: "sevdesk_order_pdf", args: byId("orderFinal") },
-  { tool: "sevdesk_vouchers_list", args: () => ({}) },
-  { tool: "sevdesk_voucher_get", args: byId("voucher") },
-  { tool: "sevdesk_bank_accounts_list", args: () => ({}) },
-  { tool: "sevdesk_transactions_list", args: () => ({}) },
-  { tool: "sevdesk_parts_list", args: () => ({}) },
-  { tool: "sevdesk_part_get", args: byId("part") },
-  { tool: "sevdesk_cash_position", args: () => ({}) },
-  { tool: "sevdesk_changed_since", args: () => ({ since: SINCE }) },
-  { tool: "sevdesk_payables_aging", args: () => ({}) },
-  { tool: "sevdesk_receivables_aging", args: () => ({}) },
-  ...(["invoices", "credit_notes", "vouchers", "transactions"] as const).map((subject) => ({
-    tool: "sevdesk_records_summarize",
-    label: `sevdesk_records_summarize (${subject})`,
-    args: () => ({ subject }),
-  })),
-];
+const CASES = READ_CASES;
 
 /** The status of a document before and after its PDF preview (B1 against the real API). */
 const PDF_SOURCES: Readonly<
@@ -107,9 +52,15 @@ describe.skipIf(skipReason !== undefined)("live: read tools against the real acc
     inputSchema: { properties?: Record<string, { enum?: unknown[] }> };
   }[] = [];
   const ids: Ids = {};
+  let files: (LocalFiles & { cleanup(): Promise<void> }) | undefined;
 
   beforeAll(async () => {
-    stack = await connectLive(readOnlyEnv(process.env));
+    files = await prepareLocalFiles(runTag(), berlinToday());
+    stack = await connectLive({
+      ...readOnlyEnv(process.env),
+      SEVDESK_FILE_DIRS: files.fileDir,
+      SEVDESK_OUTPUT_DIR: files.outputDir,
+    });
     listed = (await stack.mcp.listTools()).tools as typeof listed;
 
     const first = (data: unknown, final = false): number | undefined => {
@@ -130,11 +81,13 @@ describe.skipIf(skipReason !== undefined)("live: read tools against the real acc
       orderFinal: first(orders, true),
       voucher: first(await callOk(stack.mcp, "sevdesk_vouchers_list", {})),
       part: first(await callOk(stack.mcp, "sevdesk_parts_list", {})),
+      transaction: first(await callOk(stack.mcp, "sevdesk_transactions_list", {})),
     });
   }, 120_000);
 
   afterAll(async () => {
     await stack.close();
+    await files?.cleanup();
   });
 
   it("is read-only: the server lists read tools only and refuses writes in the client", () => {
@@ -175,7 +128,11 @@ describe.skipIf(skipReason !== undefined)("live: read tools against the real acc
   it.for(CASES.map((item) => [item.label ?? item.tool, item] as const))(
     "%s answers without isError and with schema-valid output",
     async ([, item], ctx) => {
-      const args = item.args(ids);
+      if (!listed.some((tool) => tool.name === item.tool)) {
+        ctx.skip(`${item.tool} is not offered (not shipped yet, or its folder is not configured)`);
+      }
+      if (files === undefined) throw new Error("The local folders were not prepared.");
+      const args = item.args(ids, files);
       if (args === undefined) ctx.skip("the account has no record this call needs");
       const source = PDF_SOURCES[item.tool];
       const before = source === undefined ? undefined : await sendStateOf(source);

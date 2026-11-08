@@ -11,11 +11,26 @@ export interface ScriptedCall {
   readonly path: string;
   readonly query: Readonly<Record<string, unknown>>;
   readonly body?: unknown;
+  /** Multipart body of a request (e.g. `uploadTempFile`). */
+  readonly form?: FormData;
   readonly tier?: string;
+  /** A download sent as a side-effect GET (e.g. an export job). */
+  readonly sideEffect?: boolean;
 }
 
-/** Return a full response body (`{objects: …}`), or throw a `SevdeskError` to refuse. */
+/**
+ * Return a full response body (`{objects: …}`), or throw a `SevdeskError` to refuse. A download
+ * may also answer raw bytes: a `Uint8Array` (served as a PDF) or a {@link RawAnswer}.
+ */
 export type ScriptedHandler = (call: ScriptedCall) => unknown;
+
+/** A raw download body with its content type (CSV, ZIP, XML, …). */
+export class RawAnswer {
+  constructor(
+    readonly body: Uint8Array,
+    readonly contentType: string | undefined,
+  ) {}
+}
 
 export class ScriptedClient implements SevdeskClient {
   readonly calls: ScriptedCall[] = [];
@@ -35,6 +50,7 @@ export class ScriptedClient implements SevdeskClient {
         path: request.path,
         query: request.query ?? {},
         ...(request.body === undefined ? {} : { body: request.body }),
+        ...(request.form === undefined ? {} : { form: request.form }),
         ...(request.tier === undefined ? {} : { tier: request.tier }),
       }) as { objects?: unknown } | undefined;
       return body?.objects;
@@ -50,7 +66,10 @@ export class ScriptedClient implements SevdeskClient {
         method: request.method,
         path: request.path,
         query: request.query ?? {},
+        ...(request.tier === undefined ? {} : { tier: request.tier }),
+        ...(request.sideEffect === undefined ? {} : { sideEffect: request.sideEffect }),
       });
+      if (body instanceof RawAnswer) return { body: body.body, contentType: body.contentType };
       if (body instanceof Uint8Array) return { body, contentType: "application/pdf" };
       return {
         body: new TextEncoder().encode(JSON.stringify(body)),

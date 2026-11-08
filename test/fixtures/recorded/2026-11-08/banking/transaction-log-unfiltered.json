@@ -1,0 +1,125 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /CheckAccountTransactionLog?limit=n (recording session 2026-11-08)",
+    "date": "2026-11-08",
+    "systemVersion": "2.0",
+    "note": "Personal and company data replaced by scripts/lib/scrub.ts; keys, nulls and scalar types as recorded. A recorded single page (has total). Without filter: the log entries of the whole account (D-057, paging)."
+  },
+  "status": 200,
+  "body": {
+    "total": 26,
+    "objects": [
+      {
+        "id": "243964891",
+        "objectName": "CheckAccountTransactionLog",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:41:48+01:00",
+        "checkAccountTransaction": {
+          "id": "1910687003",
+          "objectName": "CheckAccountTransaction"
+        },
+        "fromStatus": "100",
+        "toStatus": "400",
+        "amountPaid": 119,
+        "bookingDate": "2026-11-04T12:00:00+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "object": {
+          "id": "138793706",
+          "objectName": "Invoice"
+        }
+      },
+      {
+        "id": "244029581",
+        "objectName": "CheckAccountTransactionLog",
+        "additionalInformation": null,
+        "create": "2026-11-08T15:43:09+01:00",
+        "checkAccountTransaction": {
+          "id": "1910782418",
+          "objectName": "CheckAccountTransaction"
+        },
+        "fromStatus": "100",
+        "toStatus": "400",
+        "amountPaid": -10,
+        "bookingDate": "2026-11-05T00:00:00+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "object": {
+          "id": "160115561",
+          "objectName": "Voucher"
+        }
+      },
+      {
+        "id": "244029578",
+        "objectName": "CheckAccountTransactionLog",
+        "additionalInformation": null,
+        "create": "2026-11-08T15:43:08+01:00",
+        "checkAccountTransaction": {
+          "id": "1910782284",
+          "objectName": "CheckAccountTransaction"
+        },
+        "fromStatus": "100",
+        "toStatus": "400",
+        "amountPaid": -10,
+        "bookingDate": "2026-11-06T12:00:00+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "object": {
+          "id": "160115561",
+          "objectName": "Voucher"
+        }
+      },
+      {
+        "id": "243964863",
+        "objectName": "CheckAccountTransactionLog",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:41:20+01:00",
+        "checkAccountTransaction": {
+          "id": "1910686967",
+          "objectName": "CheckAccountTransaction"
+        },
+        "fromStatus": "100",
+        "toStatus": "400",
+        "amountPaid": 69,
+        "bookingDate": "2026-11-07T00:00:00+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "object": {
+          "id": "138793687",
+          "objectName": "Invoice"
+        }
+      },
+      {
+        "id": "243964861",
+        "objectName": "CheckAccountTransactionLog",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:41:20+01:00",
+        "checkAccountTransaction": {
+          "id": "1910686966",
+          "objectName": "CheckAccountTransaction"
+        },
+        "fromStatus": "100",
+        "toStatus": "400",
+        "amountPaid": 50,
+        "bookingDate": "2026-11-07T12:00:00+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "object": {
+          "id": "138793687",
+          "objectName": "Invoice"
+        }
+      }
+    ]
+  }
+}

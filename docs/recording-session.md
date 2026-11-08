@@ -25,7 +25,8 @@ the write parts create, finalize, pay and cancel real documents.
   (`SEVDESK_LIVE_MAX_EXISTING_RECORDS` changes the limit). They enable the `write` and `commit`
   tiers. The `external` tier (e-mail) is enabled only when you pass an address of your own
   (`pnpm probe --probe-email`, `SEVDESK_LIVE_EMAIL_TO` for `test:live`), and then exactly one
-  e-mail goes to that address, never to a contact. Nothing is enshrined or exported.
+  e-mail goes to that address, never to a contact. Nothing is enshrined. The only export is the
+  DATEV CSV job of the M4 probe and scenario (it starts a job; never with `enshrineDocuments`).
 - Everything written is named after a run tag such as `MCP-E2E 20261120-1432-k3f9` and listed in a
   cleanup list (end of the probe report, end of the `test:live` log).
 - Recordings and reports are scrubbed (`scripts/lib/scrub.ts`): names, e-mails, phones,
@@ -149,6 +150,100 @@ Notes:
 - The 2026-11-07 session needed three write runs: one on the Kleinunternehmer account (most
   lifecycle probes inconclusive, D-067), one after switching to standard VAT, and e-mail re-runs
   after confirming the sender address. Doing steps 1.4 and 1.5 first saves the extra runs.
+
+## 3a. M4: receipts, reconciliation, exports, e-invoices (about 30 minutes)
+
+The M4 probes (`m4-*-probes.ts`) and the M4 lifecycle scenario need a little more preparation.
+
+### What to prepare
+
+1. **Company data** (Einstellungen → Unternehmen): street, zip, city, IBAN and BIC, contact
+   e-mail and phone, Steuernummer or USt-IdNr. sevDesk needs them to finalize an e-invoice; the
+   probe `write-einvoice-xml` names the empty `GET /SevClient` fields when `sendBy` refuses. Fake
+   values are fine (Musterfirma, a test IBAN such as `DE02120300000000202051`).
+2. **DATEV export configuration** (accountant number, client number, start of the fiscal year).
+   Without it sevDesk refuses the export job. Either enter fake values in the web app (DATEV
+   settings) or let the opt-in probe `write-export-datev-config` set accountant 1001, client 1 and
+   1 January; it checks first that the account looks like a fresh trial and refuses otherwise.
+3. **Nothing for reconciliation.** sevDesk refuses hand-made transactions on offline accounts and
+   cash registers (422 "You can only create transactions on online checkaccounts", recorded
+   2026-11-08). The probes and the M4 scenario therefore create **one tagged file-import bank
+   account** per run (`POST /CheckAccount/Factory/fileImportAccount`, named `MCP-E2E … Import`,
+   type CSV, default booking account) and enter their test transactions there. It is in the
+   cleanup list; delete it in the web app at the end.
+4. The booking accounts come from ReceiptGuidance (SKR04 6815 Bürobedarf with tax rule 9 at 19 %,
+   4400 with rule 1, or the first account that fits), so a standard chart of accounts needs no
+   setup.
+
+### Runs, in this order
+
+```bash
+export SEVDESK_API_TOKEN_FILE=~/.config/sevdesk-trial.token
+W="SEVDESK_LIVE_I_UNDERSTAND_WRITES=1"
+
+# 1. Read-only: SevClient keys, AccountDatev paging, CSV exports, transaction log.
+pnpm probe --only read-sevclient-keys,read-account-datev-paging,read-export-csv,read-transaction-log,read-voucher-pos-account-datev \
+  --out probe-report-m4-read.md
+
+# 2. Writes: vouchers (upload, save, update, delete, finalize, payments, reset), transactions on
+#    the file-import account (create, split, booking types, private), the DATEV job (refused
+#    without a configuration), a ZUGFeRD receipt; then the reads that now have data.
+env $W pnpm probe --allow-writes --only write-voucher-upload-temp-file,write-voucher-save-with-file,write-voucher-net-gross,write-voucher-open-directly,write-voucher-update-draft,write-voucher-invalid-account-rule,write-voucher-revenue,write-voucher-delete,write-voucher-finalize,write-voucher-book-amount,write-voucher-reset,write-transaction-create,write-transaction-split-booking,write-transaction-split-variants,write-transaction-private-status,write-export-datev-csv,write-voucher-zugferd-upload,read-transaction-log,read-sevclient-keys,read-account-datev-paging,read-voucher-pos-account-datev,read-export-csv,read-voucher-document-key,read-transaction-date-filters,read-transaction-status-filter,read-update-after,read-list-defaults \
+  --out probe-report-m4-write.md
+
+# 3. Opt-in: a fake DATEV configuration, then the export job again (job id, progress, the
+#    download link's host and expiry format, the ZIP's entry names).
+env $W pnpm probe --allow-writes --only write-export-datev-config,write-export-datev-csv \
+  --out probe-report-m4-datev.md
+
+# 4. Opt-in, after the company data (step 1 above): one e-invoice, FINALIZED (it cannot be
+#    deleted). Attaches the scrubbed getXml answer to the report as a fixture candidate.
+env $W pnpm probe --allow-writes --only write-einvoice-xml --out probe-report-m4-einvoice.md
+
+# 5. Fixtures (read-only), then the live checks and the scenarios (M3 and M4).
+pnpm fixtures:record
+pnpm test:live
+SEVDESK_LIVE_LIFECYCLE=1 SEVDESK_LIVE_I_UNDERSTAND_WRITES=1 pnpm test:live
+```
+
+Behind a filtering proxy the DATEV download also needs the S3 host that `jobDownloadInfo` names
+(the probe report states it); the probe fetches the ZIP without credentials.
+
+### What the M4 runs create and how they stay safe
+
+- Generated files only: one-page PDFs and a 1×1 PNG with the run tag, and a minimal Factur-X PDF
+  (EN 16931 CII inside). Never upload real receipts.
+- Vouchers (drafts, open, paid and reset ones; the scenario deletes its own draft), transactions
+  on the file-import account (status 100 again after the resets), finalized invoices for the
+  booking probes, one contact, the file-import account. All tagged and in the cleanup list.
+- `saveVoucher` for anything but a draft (status 50) needs the `commit` tier; the client refuses it
+  otherwise. Bookings, resets and transaction status changes are `commit` as well.
+- The DATEV job is a `POST` (the spec's GET answers 500 "wrong HTTP Type"), never with
+  `enshrineDocuments`; the XML job is never started. The report keeps only the download link's
+  host and the expiry format; ZIP entry names have long digit runs (accountant and client numbers)
+  masked. Neither the ZIP nor the link is ever written to the repository.
+- CSV exports: only the header row reaches the report (the evidence keeps the first line of a
+  non-JSON body), never data rows.
+- `read-sevclient-keys` shows only key names, booleans, `0`/`1` flags and short codes, never names,
+  addresses, IBAN or numbers.
+- The e-invoice fixture candidate is scrubbed by a structure-keeping XML scrubber (element names,
+  codes, amounts, dates and the BT-24 profile stay; names, addresses, contact data, bank and tax ids,
+  document numbers and free text become fakes; embedded files become a placeholder) and once more
+  by the report's scrubber. It has no XML declaration: add `<?xml version="1.0" encoding="UTF-8"?>`
+  back when it becomes a fixture.
+- The M4 scenario's local folders (`SEVDESK_FILE_DIRS` with the generated PDFs, `SEVDESK_OUTPUT_DIR`
+  for the DATEV ZIP) are temporary and removed at the end.
+
+### What to commit from M4
+
+- New recordings: `meta/sev-client.json`, `banking/transaction-by-id.json`,
+  `banking/transaction-log.json`, `banking/transaction-log-unfiltered.json`,
+  `vouchers/voucher-positions-embed-account.json` (after the review in section 4).
+- The e-invoice fixture candidate, after review, as a fixture with `_provenance` (source
+  `recorded`, the date, the probe id) and the declaration added back.
+- Findings in `spec/deviations.md` (probe ids as the source).
+- Never: export ZIPs or CSVs, the presigned link, uploaded test files, the probe reports' raw
+  answers outside the scrubbed reports.
 
 ## 4. Review before anything is shared (about 15 minutes)
 

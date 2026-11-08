@@ -82,3 +82,6 @@ account (Update 2.0, SKR04, standard VAT; see `docs/recording-session.md`), writ
   values, keeping every key, every `null` and every scalar type exactly as recorded. System
   reference data (tax rules, units, categories, communication way keys) may stay verbatim.
 - Keep fixtures small: only the rows a test needs, but always the full set of keys of a row.
+
+E-invoice samples (official KoSIT XRechnung test suite files, generated ZUGFeRD PDFs and the parser's
+attack corpus) are described in [einvoice/README.md](einvoice/README.md), with their licenses.

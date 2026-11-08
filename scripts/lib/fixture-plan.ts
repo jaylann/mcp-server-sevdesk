@@ -10,7 +10,9 @@
  *
  * Only GETs, and no endpoint with side effects: PDFs are fetched with `preventSendBy=true` (the
  * client forces it anyway) and only for documents that are no longer drafts, until the probe has
- * confirmed that a preview leaves a 2.0 draft untouched.
+ * confirmed that a preview leaves a 2.0 draft untouched. The DATEV export job and its
+ * `/Progress/*` and `/ExportJob/*` reads are never recorded (the job is a side effect; the probe
+ * `write-export-datev-csv` captures their shapes), nor are the raw CSV exports (not JSON).
  */
 import type { QueryValue } from "../../src/sevdesk/types.js";
 import type { ScrubMode } from "./scrub.js";
@@ -27,6 +29,7 @@ export type IdSlot =
   | "orderFinal"
   | "voucher"
   | "checkAccount"
+  | "transaction"
   | "part";
 
 export type Ids = Partial<Record<IdSlot, number>>;
@@ -62,6 +65,14 @@ export const NOT_RECORDED: Readonly<Record<string, string>> = {
     "Covered by contacts/contacts-list.json, which is recorded as a single page with total.",
   "meta/bookkeeping-system-version-1.json":
     "Needs an Update 1.0 account; a new trial account is on 2.0.",
+  "exports/datev-download-info.json":
+    "DATEV job answer (GET /ExportJob/jobDownloadInfo): only exists after a job was started, which is a write; shape from the M4 probe, fake values.",
+  "exports/datev-progress-done.json":
+    "DATEV job progress (GET /Progress/getProgress): only exists after a job was started; shape from the M4 probe.",
+  "exports/datev-progress-hash.json":
+    "DATEV job progress hash (GET /Progress/generateDownloadHash): only exists after a job was started; shape from the M4 probe.",
+  "exports/datev-progress-running.json":
+    "DATEV job progress while running (GET /Progress/getProgress): transient, cannot be recorded on demand; shape from the M4 probe.",
 };
 
 type Row = Readonly<Record<string, unknown>>;
@@ -230,6 +241,14 @@ export function recordPlan(today: string): readonly RecordEntry[] {
       path: "/ReceiptGuidance/forAllAccounts",
       mode: "reference",
       note: "Needed for ReceiptGuidance validation of tax rule x account x rate.",
+    },
+    {
+      file: "meta/sev-client.json",
+      mirrors: [],
+      path: "/SevClient",
+      note:
+        "Account settings: taxation regime (smallSettlement), chart of accounts and the DATEV " +
+        "export configuration (D-067); undocumented GET (D-024).",
     },
 
     // --- contacts -------------------------------------------------------------------------
@@ -443,6 +462,20 @@ export function recordPlan(today: string): readonly RecordEntry[] {
       query: { "voucher[id]": "{voucher}", "voucher[objectName]": "Voucher" },
       list: true,
       requires: ["voucher"],
+      note: "Shows whether 2.0 positions carry accountDatev or accountingType (D-045).",
+    },
+    {
+      file: "vouchers/voucher-positions-embed-account.json",
+      mirrors: [],
+      path: "/VoucherPos",
+      query: {
+        "voucher[id]": "{voucher}",
+        "voucher[objectName]": "Voucher",
+        embed: "accountDatev",
+      },
+      list: true,
+      requires: ["voucher"],
+      note: "Whether embed=accountDatev expands the booking account (number, name) per position.",
     },
 
     // --- banking --------------------------------------------------------------------------
@@ -465,6 +498,38 @@ export function recordPlan(today: string): readonly RecordEntry[] {
       mirrors: ["banking/transactions-list.json"],
       path: "/CheckAccountTransaction",
       list: true,
+      // A transaction that is assigned (200/400) has log entries; else any transaction.
+      collect: (objects) =>
+        ids({
+          transaction:
+            firstId(objects, (row) => String(row["status"]) !== "100") ?? firstId(objects),
+        }),
+    },
+    {
+      file: "banking/transaction-by-id.json",
+      mirrors: [],
+      path: "/CheckAccountTransaction/{transaction}",
+      requires: ["transaction"],
+      note: "GET by id of one transaction (sevdesk_transaction_get).",
+    },
+    {
+      file: "banking/transaction-log.json",
+      mirrors: [],
+      path: "/CheckAccountTransactionLog",
+      query: {
+        "checkAccountTransaction[id]": "{transaction}",
+        "checkAccountTransaction[objectName]": "CheckAccountTransaction",
+      },
+      list: true,
+      requires: ["transaction"],
+      note: "Assignments of one transaction: amountPaid per entry (D-057); undocumented endpoint.",
+    },
+    {
+      file: "banking/transaction-log-unfiltered.json",
+      mirrors: [],
+      path: "/CheckAccountTransactionLog",
+      list: true,
+      note: "Without filter: the log entries of the whole account (D-057, paging).",
     },
 
     // --- parts ----------------------------------------------------------------------------
