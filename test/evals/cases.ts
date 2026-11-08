@@ -257,7 +257,7 @@ export const EVAL_CASES: readonly EvalCase[] = [
     kind: "positive",
     env: ENVS.all,
     prompt:
-      "Schick die Rechnung 4711 per E-Mail an buchhaltung@beispiel.de, Betreff „Ihre Rechnung“, mit einem kurzen freundlichen Text.",
+      "Schick die Rechnung mit der ID 4711 per E-Mail an buchhaltung@beispiel.de, Betreff „Ihre Rechnung“, mit einem kurzen freundlichen Text.",
     expected: ["sevdesk_invoice_send_email"],
     secondChoice: ["sevdesk_invoice_get", "sevdesk_invoices_list"],
     notes: "external tool; recipient, subject and text are given.",
@@ -280,7 +280,7 @@ export const EVAL_CASES: readonly EvalCase[] = [
     kind: "positive",
     env: ENVS.all,
     prompt:
-      "Schreib die Rechnung 4711 fest, damit sie GoBD-konform nicht mehr geändert werden kann.",
+      "Schreib die Rechnung mit der ID 4711 fest, damit sie GoBD-konform nicht mehr geändert werden kann.",
     expected: ["sevdesk_invoice_enshrine"],
     secondChoice: ["sevdesk_invoice_get", "sevdesk_invoices_list"],
     notes: "Festschreiben = enshrine, irreversible.",
@@ -382,9 +382,10 @@ export const EVAL_CASES: readonly EvalCase[] = [
     kind: "positive",
     env: ENVS.all,
     prompt: `Erfass den Beleg ${RECEIPTS}/2026-11-03-buerobedarf.pdf als Ausgabe: Bürobedarf bei Muster Bürowelt, 23,80 € brutto mit 19 % USt, Belegdatum 03.11.2026.`,
-    expected: ["sevdesk_voucher_create_draft"],
-    secondChoice: ["sevdesk_reference_lookup", "sevdesk_contacts_search", ORIENT],
-    notes: "M4 receipt intake with a file inside SEVDESK_FILE_DIRS.",
+    expected: ["sevdesk_voucher_create_draft", "sevdesk_reference_lookup"],
+    secondChoice: ["sevdesk_contacts_search", ORIENT],
+    notes:
+      "M4 receipt intake with a file inside SEVDESK_FILE_DIRS. The booking account (accountDatevId) is required and not given: the tool says to look it up first (receipt_guidance).",
   },
   {
     id: "voucher-create-en",
@@ -393,9 +394,10 @@ export const EVAL_CASES: readonly EvalCase[] = [
     kind: "positive",
     env: ENVS.all,
     prompt: `File this receipt as an expense: a Deutsche Bahn train ticket, 89.90 EUR gross incl. 7% VAT, dated 2026-10-28. The scan is ${RECEIPTS}/db-ticket.pdf.`,
-    expected: ["sevdesk_voucher_create_draft"],
-    secondChoice: ["sevdesk_reference_lookup", "sevdesk_contacts_search", ORIENT],
-    notes: "M4 receipt intake; looking up the booking account first is reasonable.",
+    expected: ["sevdesk_voucher_create_draft", "sevdesk_reference_lookup"],
+    secondChoice: ["sevdesk_contacts_search", ORIENT],
+    notes:
+      "M4 receipt intake. The booking account (accountDatevId) is required and not given: the tool says to look it up first (receipt_guidance).",
   },
   {
     id: "voucher-import-einvoice-de",
@@ -444,7 +446,7 @@ export const EVAL_CASES: readonly EvalCase[] = [
     toolset: "vouchers",
     kind: "positive",
     env: ENVS.all,
-    prompt: "Lösch den Belegentwurf 9001, den hab ich doppelt erfasst.",
+    prompt: "Lösch den Belegentwurf mit der ID 9001, den hab ich doppelt erfasst.",
     expected: ["sevdesk_voucher_delete_draft"],
     secondChoice: ["sevdesk_voucher_get"],
     notes: "Deleting a draft (not a booked voucher).",
@@ -467,7 +469,7 @@ export const EVAL_CASES: readonly EvalCase[] = [
     kind: "positive",
     env: ENVS.all,
     prompt:
-      "Der Beleg 9001 wurde am 05.11.2026 per Lastschrift vom Geschäftskonto (Zahlungskonto-ID 12) bezahlt, 23,80 €. Bitte als bezahlt buchen.",
+      "Der Beleg mit der ID 9001 wurde am 05.11.2026 per Lastschrift vom Geschäftskonto (Zahlungskonto-ID 12) bezahlt, 23,80 €. Bitte als bezahlt buchen.",
     expected: ["sevdesk_voucher_book_payment"],
     secondChoice: ["sevdesk_voucher_get", "sevdesk_transactions_list", "sevdesk_reconcile_suggest"],
     notes: "Voucher payment; finding the debit transaction first is reasonable.",
@@ -489,7 +491,7 @@ export const EVAL_CASES: readonly EvalCase[] = [
     toolset: "vouchers",
     kind: "positive",
     env: ENVS.all,
-    prompt: "Setz den Beleg 9001 zurück auf Entwurf, der Betrag ist falsch.",
+    prompt: "Setz den Beleg mit der ID 9001 zurück auf Entwurf, der Betrag ist falsch.",
     expected: ["sevdesk_voucher_reset"],
     secondChoice: ["sevdesk_voucher_get", "sevdesk_vouchers_list"],
     notes: "Reset to draft to correct it.",
@@ -600,9 +602,9 @@ export const EVAL_CASES: readonly EvalCase[] = [
     kind: "positive",
     env: ENVS.all,
     prompt: "Create a product 'Consulting hour' priced at 120 EUR net with 19% VAT.",
-    expected: ["sevdesk_part_create"],
-    secondChoice: ["sevdesk_parts_list"],
-    notes: "New part.",
+    expected: ["sevdesk_part_create", "sevdesk_parts_list"],
+    notes:
+      "New part. partNumber is required and not given; the tool says to check existing parts first.",
   },
   // ------------------------------------------------------------------ reports
   {
