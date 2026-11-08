@@ -99,7 +99,11 @@ describe("request headers and URL", () => {
 
   it("sends JSON bodies with Content-Type and keeps key order", async () => {
     const { client, fake } = setup([envelope({ id: "5" }, undefined)]);
-    const body = { voucher: { objectName: "Voucher" }, filename: "abc.pdf", voucherPosSave: [] };
+    const body = {
+      voucher: { objectName: "Voucher", status: 50 },
+      filename: "abc.pdf",
+      voucherPosSave: [],
+    };
 
     await client.request({
       method: "POST",
@@ -111,7 +115,7 @@ describe("request headers and URL", () => {
     const [request] = fake.requests;
     expect(request?.headers.get("content-type")).toBe("application/json");
     expect(request?.body).toBe(
-      '{"voucher":{"objectName":"Voucher"},"filename":"abc.pdf","voucherPosSave":[]}',
+      '{"voucher":{"objectName":"Voucher","status":50},"filename":"abc.pdf","voucherPosSave":[]}',
     );
   });
 
@@ -560,12 +564,25 @@ describe("state-changing GET endpoints", () => {
     expect(writeFake.requests[0]?.url.searchParams.get("useNextNumber")).toBe("true");
   });
 
-  it.each([{ enshrineDocuments: false }, { enshrine: 0 }, { includeEnshrined: true }, {}])(
-    "keeps a DATEV export with %j as a read",
+  it.each([{ enshrine: false }, { enshrine: 0 }, { withEnshrinedDocuments: true }, {}])(
+    "keeps the deprecated DATEV CSV download with %j as a read",
     async (query) => {
       const { client, fake } = setup([envelope({ id: "9" })], { config: readOnly });
-      await client.request({ method: "GET", path: "/Export/createDatevCsvZipExportJob", query });
+      await client.request({ method: "GET", path: "/Export/datevCSV", query });
       expect(fake.requests).toHaveLength(1);
+    },
+  );
+
+  it.each([{ enshrineDocuments: false }, { includeEnshrined: true }, {}])(
+    "treats starting a DATEV export job with %j as a write (it starts a job)",
+    async (query) => {
+      const { client, fake } = setup([], { config: readOnly });
+      const error = await catchError(
+        client.request({ method: "GET", path: "/Export/createDatevCsvZipExportJob", query }),
+      );
+      expect(error.kind).toBe("blocked");
+      expect(error.message).toContain("it starts an export job in sevDesk");
+      expect(fake.requests).toHaveLength(0);
     },
   );
 });
@@ -1058,6 +1075,47 @@ describe("download", () => {
     const error = await catchError(client.download({ method: "GET", path: "/Export/datevZip" }));
     expect(error.kind).toBe("not_found");
     expect(fake.requests).toHaveLength(2);
+  });
+
+  it("cuts off a body above maxBytes while streaming", async () => {
+    const { client } = setup([new Response(new Uint8Array(64).fill(7), { status: 200 })]);
+    const error = await catchError(
+      client.download({ method: "GET", path: "/Export/invoiceCsv", maxBytes: 16 }),
+    );
+    expect(error.kind).toBe("unexpected_response");
+    expect(error.message).toContain("larger than 16 bytes");
+  });
+
+  it("refuses a declared Content-Length above maxBytes before reading", async () => {
+    const { client } = setup([
+      new Response(new Uint8Array(8), { status: 200, headers: { "Content-Length": "999" } }),
+    ]);
+    const error = await catchError(
+      client.download({ method: "GET", path: "/Export/invoiceCsv", maxBytes: 100 }),
+    );
+    expect(error.message).toContain("stopped after 999");
+  });
+
+  it("accepts a body of exactly maxBytes", async () => {
+    const { client } = setup([new Response(new Uint8Array(16).fill(1), { status: 200 })]);
+    const result = await client.download({ method: "GET", path: "/Export/x", maxBytes: 16 });
+    expect(result.body).toHaveLength(16);
+  });
+
+  it("never retries a DATEV export job (a retry would start a second job)", async () => {
+    const { client, fake } = setup([sevdeskErrorResponse(503, "busy")], {
+      config: { allowedTiers: new Set(["read", "write"]) },
+    });
+    const error = await catchError(
+      client.request({
+        method: "GET",
+        path: "/Export/createDatevCsvZipExportJob",
+        query: { scope: "EXTCD" },
+        tier: "write",
+      }),
+    );
+    expect(error.kind).toBe("server");
+    expect(fake.requests).toHaveLength(1);
   });
 
   it("applies the write gate", async () => {

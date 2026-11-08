@@ -80,7 +80,7 @@ export function tierScopedClient(client: SevdeskClient, tier: WriteTier): Sevdes
         path: request.path,
       });
     }
-    const required = minimumWriteTier(request.path, request.query);
+    const required = minimumWriteTier(request.path, request.query, request.body);
     if (!tierCovers(tier, required)) {
       throw new SevdeskError({
         kind: "blocked",

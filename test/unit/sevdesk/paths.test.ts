@@ -129,6 +129,27 @@ describe("assertSafePath", () => {
 });
 
 describe("resolveGetSafety", () => {
+  it.each(["/Export/createDatevCsvZipExportJob", "/Export/createdatevxmlzipexportjob"])(
+    "treats the DATEV export job %s as a side effect",
+    (path) => {
+      expect(resolveGetSafety(path, { scope: "EXTCD" }, false)).toEqual({
+        sideEffect: true,
+        effect: "it starts an export job in sevDesk",
+        query: { scope: "EXTCD" },
+      });
+    },
+  );
+
+  it("keeps the job's progress and download info as reads", () => {
+    for (const path of [
+      "/Progress/getProgress",
+      "/ExportJob/jobDownloadInfo",
+      "/Export/invoiceCsv",
+    ]) {
+      expect(resolveGetSafety(path, undefined, false).sideEffect).toBe(false);
+    }
+  });
+
   it("adds the literal preventSendBy=true to an undeclared getPdf and keeps other parameters", () => {
     expect(resolveGetSafety("/Order/5/getPdf", { download: true }, false)).toEqual({
       sideEffect: false,
@@ -268,8 +289,28 @@ describe("minimumWriteTier", () => {
     ["/ContactAddress", "write"],
     ["/Part/3", "write"],
     ["/Order/12", "write"],
+    ["/CheckAccountTransaction/9", "commit"],
+    ["/checkaccounttransaction/9", "commit"],
+    ["/CheckAccountTransaction/9/enshrine", "commit"],
+    ["/CheckAccountTransaction", "write"],
+    ["/Voucher/4", "write"],
+    ["/Voucher/Factory/uploadTempFile", "write"],
+    ["/Voucher/4/bookAmount", "commit"],
+    ["/Voucher/4/resetToDraft", "commit"],
+    ["/Export/createDatevCsvZipExportJob", "write"],
   ] as const)("%s needs %s", (path, tier) => {
     expect(minimumWriteTier(path, undefined)).toBe(tier);
+  });
+
+  it("needs commit for a saveVoucher that is not a draft (the voucher's finalize)", () => {
+    const save = "/Voucher/Factory/saveVoucher";
+    expect(minimumWriteTier(save, undefined, { voucher: { status: 50 } })).toBe("write");
+    expect(minimumWriteTier(save, undefined, { voucher: { status: "50" } })).toBe("write");
+    expect(minimumWriteTier(save, undefined, { voucher: { status: 100 } })).toBe("commit");
+    expect(minimumWriteTier(save, undefined, { voucher: { status: "1000" } })).toBe("commit");
+    expect(minimumWriteTier(save, undefined, { voucher: {} })).toBe("commit");
+    expect(minimumWriteTier(save, undefined, undefined)).toBe("commit");
+    expect(minimumWriteTier("/Voucher/Factory/uploadTempFile", undefined, undefined)).toBe("write");
   });
 
   it("lets write tools reserve document numbers", () => {

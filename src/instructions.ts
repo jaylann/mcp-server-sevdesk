@@ -115,7 +115,11 @@ function dryRunSections(tools: readonly AnyToolDefinition[], config: Config): Se
 }
 
 function metaSection(tools: readonly AnyToolDefinition[]): Section[] {
-  const names = tools.filter((tool) => tool.toolset === "meta").map((tool) => tool.name);
+  // Lookup tools only: reads without local effects (not `sevdesk_document_save`, which writes
+  // files and looks nothing up).
+  const names = tools
+    .filter((tool) => tool.toolset === "meta" && tool.tier === "read" && !tool.localEffects)
+    .map((tool) => tool.name);
   if (names.length === 0) {
     return [];
   }

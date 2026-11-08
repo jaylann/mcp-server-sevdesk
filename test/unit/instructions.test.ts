@@ -108,6 +108,15 @@ describe("buildInstructions", () => {
     );
   });
 
+  it("names only lookup tools from meta, never the file writer", () => {
+    const text = build(testConfig({ outputDir: "/tmp/out" }), ALL_TOOLS);
+    expect(text).toContain(
+      "Look up ids and account defaults with sevdesk_account_info, sevdesk_reference_lookup " +
+        "instead of guessing them.",
+    );
+    expect(text).not.toContain("sevdesk_document_save");
+  });
+
   it("never contains text from tool descriptions or upstream data", () => {
     expect(build(allEnabledConfig())).not.toContain("Test fixture");
   });

@@ -108,6 +108,10 @@ export type GetSafety =
  * - `…/sendByWithRender` always marks the document as sent.
  * - An `enshrine` or `enshrineDocuments` query flag (DATEV exports) enshrines every exported
  *   document, which is irreversible.
+ * - The DATEV export-job endpoints (`Export/createDatevCsvZipExportJob`,
+ *   `Export/createDatevXmlZipExportJob`) start a job in sevDesk, and the job may mark the exported
+ *   documents as exported (the XML job's `includeExportedDocuments` filter implies such a mark).
+ *   They are never retried (a retry would start a second job) and need the `write` tier.
  * - The next-number endpoints (`…/getNextOrderNumber`, `…/getNextCreditNoteNumber`,
  *   `…/getNextInvoiceNumber`, any `getNext…Number`) reserve the number unless `useNextNumber` is
  *   clearly off: sevDesk returns it and advances the counter (recorded on the trial account,
@@ -138,6 +142,7 @@ export function resolveGetSafety(
   if (endpoint === "sendbywithrender") return { sideEffect: true, effect: MARKS_SENT, query };
 
   if (enshrineFlagSet(query)) return { sideEffect: true, effect: ENSHRINES, query };
+  if (EXPORT_JOB_ENDPOINTS.has(endpoint)) return { sideEffect: true, effect: STARTS_EXPORT, query };
   if (reservesNumber(endpoint, query)) return { sideEffect: true, effect: RESERVES_NUMBER, query };
 
   return declaredSideEffect
@@ -155,6 +160,11 @@ export function resolveGetSafety(
  *   (changes a finalized document's parameters);
  * - `external`: steps that reach third parties: `sendViaEmail`, `sendByWithRender` (renders and
  *   marks as sent, used for letters).
+ *
+ * Besides the table, a change to one bank transaction itself (`PUT`/`DELETE
+ * /CheckAccountTransaction/{id}`: marking it private, setting its status back) and a
+ * `Voucher/Factory/saveVoucher` whose body is not a draft (status ≠ 50: the voucher's finalize)
+ * need `commit` (see {@link minimumWriteTier}): they change what is booked.
  */
 const ENDPOINT_TIERS: Readonly<Record<string, WriteTier>> = {
   sendby: "commit",
@@ -179,13 +189,36 @@ const ENDPOINT_TIERS: Readonly<Record<string, WriteTier>> = {
 export function minimumWriteTier(
   path: string,
   query: Readonly<Record<string, QueryValue>> | undefined,
+  body?: unknown,
 ): WriteTier {
   const endpoint = path.slice(path.lastIndexOf("/") + 1).toLowerCase();
   const listed = ENDPOINT_TIERS[endpoint];
   if (listed !== undefined) return listed;
   if (endpoint === "getpdf" || enshrineFlagSet(query)) return "commit";
+  if (TRANSACTION_RECORD.test(path)) return "commit";
+  if (endpoint === "savevoucher" && savesOpenVoucher(body)) return "commit";
   return "write";
 }
+
+/**
+ * Whether a `saveVoucher` body moves the voucher out of draft: `voucher.status` other than the
+ * draft status 50 (100 = open, booked into the books; sevDesk's spec says higher statuses are set
+ * through `saveVoucher`). That is the voucher's "finalize", so it needs `commit` like `sendBy`;
+ * a missing or unreadable status counts as not a draft, erring towards the stricter tier.
+ */
+function savesOpenVoucher(body: unknown): boolean {
+  if (typeof body !== "object" || body === null) return true;
+  const voucher = (body as { voucher?: unknown }).voucher;
+  if (typeof voucher !== "object" || voucher === null) return true;
+  const status = (voucher as { status?: unknown }).status;
+  return !(status === VOUCHER_DRAFT_STATUS || status === String(VOUCHER_DRAFT_STATUS));
+}
+
+/** sevDesk's voucher draft status (spec: saveVoucher accepts 50 and 100). */
+const VOUCHER_DRAFT_STATUS = 50;
+
+/** `/CheckAccountTransaction/{id}` exactly (case-insensitive), not its sub-resources. */
+const TRANSACTION_RECORD = /^\/checkaccounttransaction\/[^/]+$/i;
 
 function enshrineFlagSet(query: Readonly<Record<string, QueryValue>> | undefined): boolean {
   return Object.entries(query ?? {}).some(
@@ -221,6 +254,12 @@ const MARKS_SENT = "it marks the document as sent";
 const ENSHRINES = "it enshrines (irreversibly locks) the exported documents";
 const ENSHRINE_KEYS: ReadonlySet<string> = new Set(["enshrine", "enshrinedocuments"]);
 const RESERVES_NUMBER = "it reserves the next document number";
+const STARTS_EXPORT = "it starts an export job in sevDesk";
+/** DATEV export-job endpoints, lower case. */
+const EXPORT_JOB_ENDPOINTS: ReadonlySet<string> = new Set([
+  "createdatevcsvzipexportjob",
+  "createdatevxmlzipexportjob",
+]);
 /** `getNextOrderNumber`, `getNextCreditNoteNumber`, `getNextInvoiceNumber`, … (lower case). */
 const NEXT_NUMBER_ENDPOINT = /^getnext[a-z]+number$/;
 /** `Contact/Factory/getNextCustomerNumber`: documented, reads the next customer number only. */

@@ -36,6 +36,12 @@ export interface SevdeskRequest {
    * plain reads.
    */
   readonly tier?: Exclude<Tier, "read">;
+  /**
+   * `download` only: the largest body accepted, in bytes (default
+   * `DEFAULT_MAX_DOWNLOAD_BYTES`, 50 MiB). A larger body is cut off while streaming and fails as
+   * `unexpected_response`, so a runaway export cannot exhaust memory.
+   */
+  readonly maxBytes?: number;
 }
 
 export interface ListOptions {

@@ -191,7 +191,7 @@ describe("validateToolDefinition", () => {
     expect(problems({ tier, annotations })).toEqual([]);
   });
 
-  describe("localEffects (read tools that write local files)", () => {
+  describe("localEffects (tools that read or write local files)", () => {
     const writesFiles = { ...READ_ANNOTATIONS, readOnlyHint: false, idempotentHint: false };
 
     it('accepts a read tool with localEffects "writes-files" and readOnlyHint false', () => {
@@ -224,7 +224,14 @@ describe("validateToolDefinition", () => {
 
     it("rejects other values", () => {
       expect(problems({ localEffects: "deletes-files", annotations: writesFiles })).toEqual([
-        'localEffects must be "writes-files" when set.',
+        'localEffects must be "reads-files" or "writes-files" when set.',
+        'tier "read" requires annotations.readOnlyHint = true.',
+      ]);
+    });
+
+    it('keeps a read tool with "reads-files" read-only', () => {
+      expect(problems({ localEffects: "reads-files" })).toEqual([]);
+      expect(problems({ localEffects: "reads-files", annotations: writesFiles })).toEqual([
         'tier "read" requires annotations.readOnlyHint = true.',
       ]);
     });
@@ -233,10 +240,9 @@ describe("validateToolDefinition", () => {
       ["write", WRITE_ANNOTATIONS],
       ["commit", COMMIT_ANNOTATIONS],
       ["external", EXTERNAL_ANNOTATIONS],
-    ])("is rejected on %s tools", (tier, annotations) => {
-      expect(problems({ tier, annotations, localEffects: "writes-files" })).toEqual([
-        `localEffects is only for read-tier tools; tier "${tier}" is never read-only anyway.`,
-      ]);
+    ])("is accepted on %s tools without extra annotation rules", (tier, annotations) => {
+      expect(problems({ tier, annotations, localEffects: "writes-files" })).toEqual([]);
+      expect(problems({ tier, annotations, localEffects: "reads-files" })).toEqual([]);
     });
   });
 

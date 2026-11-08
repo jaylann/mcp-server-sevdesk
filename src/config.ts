@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { delimiter } from "node:path";
+import { delimiter, isAbsolute } from "node:path";
 
 import { isTier, type Tier, TIERS } from "./safety/tiers.js";
 import { DEFAULT_TOOLSETS, isToolsetName, type ToolsetName, TOOLSETS } from "./tools/toolsets.js";
@@ -42,7 +42,11 @@ export interface Config {
   readonly auditLogPath: string | undefined;
   /** Where PDFs/exports may be written to disk. */
   readonly outputDir: string | undefined;
-  /** Directories receipts may be uploaded from (symlinks are resolved and must stay inside). */
+  /**
+   * Directories local files (receipts, e-invoices) may be read from: absolute paths. Each is
+   * resolved to its real path when used; a file must resolve inside one of them
+   * (`readConfinedFile`, `src/safety/local-files.ts`). Empty: no tool reads local files.
+   */
   readonly fileDirs: readonly string[];
   readonly userAgent: string;
 }
@@ -105,7 +109,7 @@ export function loadConfig(env: Env, deps: LoadConfigDeps = {}): Config {
     ),
     auditLogPath: nonEmpty(env["SEVDESK_AUDIT_LOG"]),
     outputDir: nonEmpty(env["SEVDESK_OUTPUT_DIR"]),
-    fileDirs: readPathList(env["SEVDESK_FILE_DIRS"]),
+    fileDirs: readAbsolutePaths(env, "SEVDESK_FILE_DIRS", problems),
     userAgent: `${PACKAGE_NAME}/${VERSION} (+https://github.com/jaylann/mcp-server-sevdesk)`,
   };
 
@@ -292,6 +296,22 @@ function readPathList(raw: string | undefined): string[] {
     .split(delimiter)
     .map((part) => part.trim())
     .filter((part) => part.length > 0);
+}
+
+/**
+ * A {@link readPathList} whose entries must be absolute: a relative entry would depend on the
+ * client's working directory, which the user rarely knows.
+ */
+function readAbsolutePaths(env: Env, name: string, problems: string[]): string[] {
+  const paths = readPathList(env[name]);
+  const relative = paths.filter((path) => !isAbsolute(path));
+  if (relative.length > 0) {
+    problems.push(
+      `${name}: every directory must be an absolute path (got ${relative.map((p) => JSON.stringify(p)).join(", ")}).`,
+    );
+    return [];
+  }
+  return paths;
 }
 
 function nonEmpty(raw: string | undefined): string | undefined {

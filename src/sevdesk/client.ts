@@ -254,7 +254,11 @@ export function createSevdeskClient(
         : undefined;
     const changesData = safety === undefined || safety.sideEffect;
     if (changesData) {
-      const reason = writeBlockReason(config, request.tier, minimumWriteTier(path, request.query));
+      const reason = writeBlockReason(
+        config,
+        request.tier,
+        minimumWriteTier(path, request.query, request.body),
+      );
       if (reason !== undefined) {
         const effect = safety?.sideEffect === true ? ` (${safety.effect})` : "";
         throw new SevdeskError({
@@ -501,12 +505,62 @@ export function createSevdeskClient(
     list,
     listAll,
     async download(request) {
-      return send(request, "*/*", async (response) => ({
-        body: new Uint8Array(await response.arrayBuffer()),
+      const maxBytes = request.maxBytes ?? DEFAULT_MAX_DOWNLOAD_BYTES;
+      return send(request, "*/*", async (response, context) => ({
+        body: await readCappedBody(response, maxBytes, (received) =>
+          unexpectedResponse(
+            response.status,
+            "",
+            context,
+            `the body is larger than ${String(maxBytes)} bytes (stopped after ${String(received)}).`,
+          ),
+        ),
         contentType: response.headers.get("content-type") ?? undefined,
       }));
     },
   };
+}
+
+/** Default cap of {@link SevdeskClient.download} bodies (see `SevdeskRequest.maxBytes`). */
+const DEFAULT_MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024;
+
+/**
+ * Reads a response body as bytes, at most `maxBytes`: streams it and cancels the stream as soon
+ * as it grows past the cap (then throws `tooLarge(received)`), so a huge body never sits in
+ * memory as a whole.
+ */
+export async function readCappedBody(
+  response: Response,
+  maxBytes: number,
+  tooLarge: (received: number) => Error,
+): Promise<Uint8Array> {
+  const declared = Number(response.headers.get("content-length") ?? Number.NaN);
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    await response.body?.cancel().catch(() => undefined);
+    throw tooLarge(declared);
+  }
+  if (response.body === null) return new Uint8Array();
+  const reader: ReadableStreamDefaultReader<Uint8Array> = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  for (;;) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    const value: Uint8Array = chunk.value;
+    received += value.byteLength;
+    if (received > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      throw tooLarge(received);
+    }
+    chunks.push(value);
+  }
+  const body = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
 }
 
 /**
