@@ -1,8 +1,8 @@
 {
   "caseId": "contacts-create-de",
   "model": "claude-sonnet-5-5",
-  "key": "70578a6027016fac378eb8114f31df32dda4ea198d31db31edae847141084668",
-  "recordedAt": "2026-11-08T17:04:51.506Z",
+  "key": "b4b72fcee7564967a2c6f768dc4e58ff7c2e1941370d029979cf3e5126be5d85",
+  "recordedAt": "2026-11-08T17:37:53.358Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -23,9 +23,9 @@
     ],
     "usage": {
       "inputTokens": 133,
-      "outputTokens": 251,
+      "outputTokens": 261,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 56299
+      "cacheReadInputTokens": 56314
     }
   }
 }

@@ -1,17 +1,19 @@
 {
   "caseId": "voucher-delete-de",
   "model": "claude-sonnet-5-5",
-  "key": "b55b429acdf5d676a171514c07a07072e35ae136036ecf3804d48a11cde84290",
-  "recordedAt": "2026-11-08T17:05:51.094Z",
+  "key": "3786a04eaf7aa9e697687a5dc3dacfd954134bd264ba028f95fe7f58d8fd4188",
+  "recordedAt": "2026-11-08T17:38:28.684Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
-    "content": [{ "type": "tool_use", "name": "sevdesk_voucher_get", "input": { "id": 9001 } }],
+    "content": [
+      { "type": "tool_use", "name": "sevdesk_voucher_delete_draft", "input": { "id": 9001 } }
+    ],
     "usage": {
-      "inputTokens": 106,
-      "outputTokens": 152,
+      "inputTokens": 111,
+      "outputTokens": 186,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 56299
+      "cacheReadInputTokens": 56314
     }
   }
 }

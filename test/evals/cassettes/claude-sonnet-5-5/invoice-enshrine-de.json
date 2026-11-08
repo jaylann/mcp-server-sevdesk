@@ -1,20 +1,19 @@
 {
   "caseId": "invoice-enshrine-de",
   "model": "claude-sonnet-5-5",
-  "key": "8a30acb22dc23a0f2dbbd4674d683044a134f7f04c33b19fc218724e090bb962",
-  "recordedAt": "2026-11-08T17:05:19.800Z",
+  "key": "4809cf0249ca75dde401500fd83d4fc5630c342014bd65f8d11a7ae5ab9eca0a",
+  "recordedAt": "2026-11-08T17:38:13.119Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
     "content": [
-      { "type": "tool_use", "name": "sevdesk_invoices_list", "input": { "number": "4711" } },
-      { "type": "tool_use", "name": "sevdesk_invoices_list", "input": { "number": "RE-4711" } }
+      { "type": "tool_use", "name": "sevdesk_invoice_enshrine", "input": { "id": 4711 } }
     ],
     "usage": {
-      "inputTokens": 118,
-      "outputTokens": 188,
+      "inputTokens": 123,
+      "outputTokens": 207,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 56299
+      "cacheReadInputTokens": 56314
     }
   }
 }

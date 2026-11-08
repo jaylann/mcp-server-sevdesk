@@ -1,20 +1,17 @@
 {
   "caseId": "invoice-email-de",
   "model": "claude-sonnet-5-5",
-  "key": "e2e6dd324c7d8b52234e3dede28fb95010cd8065bfc8e14eb643019c4d8215fc",
-  "recordedAt": "2026-11-08T17:05:15.523Z",
+  "key": "cad46924c9f73f6a3a69a96681f4a3e985f7aa05c7599fd7ad5da4ee0625610c",
+  "recordedAt": "2026-11-08T17:38:08.821Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
-    "content": [
-      { "type": "tool_use", "name": "sevdesk_invoices_list", "input": { "number": "4711" } },
-      { "type": "tool_use", "name": "sevdesk_invoices_list", "input": { "number": "RE-4711" } }
-    ],
+    "content": [{ "type": "tool_use", "name": "sevdesk_invoice_get", "input": { "id": 4711 } }],
     "usage": {
-      "inputTokens": 142,
-      "outputTokens": 186,
+      "inputTokens": 147,
+      "outputTokens": 152,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 56299
+      "cacheReadInputTokens": 56314
     }
   }
 }

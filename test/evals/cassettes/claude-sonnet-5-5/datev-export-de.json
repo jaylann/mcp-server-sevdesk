@@ -1,16 +1,12 @@
 {
   "caseId": "datev-export-de",
   "model": "claude-sonnet-5-5",
-  "key": "322513857da05966eccdbcee7097f32dfea6cd3130df8ba2ff087585237b60af",
-  "recordedAt": "2026-11-08T17:06:33.814Z",
+  "key": "c0b5ed2e2dc4f58c943b43398a15fd9da26a7050240493eb34305e7fe6da5195",
+  "recordedAt": "2026-11-08T17:38:52.294Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
     "content": [
-      {
-        "type": "text",
-        "text": "Ich starte zuerst mit einer Vorschau (dryRun), damit ich prüfen kann, ob die DATEV-Einstellungen vollständig sind."
-      },
       {
         "type": "tool_use",
         "name": "sevdesk_datev_export",
@@ -19,9 +15,9 @@
     ],
     "usage": {
       "inputTokens": 116,
-      "outputTokens": 157,
+      "outputTokens": 100,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 56299
+      "cacheReadInputTokens": 56314
     }
   }
 }

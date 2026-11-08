@@ -1,8 +1,8 @@
 {
   "caseId": "invoice-reminder-en",
   "model": "claude-sonnet-5-5",
-  "key": "1ac4727151dc709feefa5911e45b72e1549d42a3151c8ccf1c85e7cf3d6e5e61",
-  "recordedAt": "2026-11-08T17:05:17.257Z",
+  "key": "b20ae99015d94bae87eda49ee35f3982ae330df2eca7830c1984b75b38614cba",
+  "recordedAt": "2026-11-08T17:38:10.972Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -17,7 +17,7 @@
       "inputTokens": 112,
       "outputTokens": 88,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 56299
+      "cacheReadInputTokens": 56314
     }
   }
 }

@@ -1,17 +1,17 @@
 {
   "caseId": "part-create-en",
   "model": "claude-sonnet-5-5",
-  "key": "877c86c71e8ccd3e82c5d5e4b16d0b944037339d09227b63692e813b8c64222f",
-  "recordedAt": "2026-11-08T17:06:18.043Z",
+  "key": "6cd425fb380a2c0b6484b1ceaa1c5aa5ac77adb8b777897ace73a27c3e014ed0",
+  "recordedAt": "2026-11-08T17:38:48.181Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
     "content": [{ "type": "tool_use", "name": "sevdesk_parts_list", "input": { "limit": 100 } }],
     "usage": {
       "inputTokens": 107,
-      "outputTokens": 85,
+      "outputTokens": 92,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 56299
+      "cacheReadInputTokens": 56314
     }
   }
 }

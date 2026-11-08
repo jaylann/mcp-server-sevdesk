@@ -1,13 +1,12 @@
 {
   "caseId": "voucher-finalize-en",
   "model": "claude-sonnet-5-5",
-  "key": "1720f665213381506751ec4fda4b11d3e4e847d68fee452780807084af09c278",
-  "recordedAt": "2026-11-08T17:05:52.899Z",
+  "key": "f9979839118d2cca062aa9cc6818c352823556f1908232b3f6c581d217acdde8",
+  "recordedAt": "2026-11-08T17:38:30.022Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
     "content": [
-      { "type": "tool_use", "name": "sevdesk_voucher_get", "input": { "id": 9001 } },
       {
         "type": "tool_use",
         "name": "sevdesk_voucher_finalize",
@@ -16,9 +15,9 @@
     ],
     "usage": {
       "inputTokens": 105,
-      "outputTokens": 135,
+      "outputTokens": 82,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 56299
+      "cacheReadInputTokens": 56314
     }
   }
 }
