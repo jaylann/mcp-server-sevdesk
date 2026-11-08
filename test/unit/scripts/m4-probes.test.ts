@@ -1529,6 +1529,21 @@ describe("M4 helpers", () => {
     );
   });
 
+  it("finds the root behind comments that only appear once others are removed", () => {
+    const xml = '<!-<!-- x -->- y --><rsm:CrossIndustryInvoice xmlns:rsm="urn:x"/>';
+    expect(eInvoiceSyntax(xml)).toMatchObject({ syntax: "CII", root: "rsm:CrossIndustryInvoice" });
+  });
+
+  it("escapes quotes in kept attribute values (single-quoted in the source)", () => {
+    const scrubber = createScrubber({ secrets: [TOKEN] });
+    const xml = scrubEInvoiceXml(
+      `<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"><cbc:ID schemeID='0"88'>1</cbc:ID></Invoice>`,
+      scrubber,
+    );
+    expect(xml).not.toContain('schemeID="0"88"');
+    expect(wellFormed(xml)).toBe(true);
+  });
+
   it("scrubs an e-invoice XML for a fixture: structure, codes and amounts stay, data goes", () => {
     const scrubber = createScrubber({ secrets: [TOKEN] });
     const xml = scrubEInvoiceXml(UBL_INVOICE, scrubber);

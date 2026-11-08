@@ -138,6 +138,28 @@ export const FACTUR_X_XMP = [
 
 const PREFIX = String.raw`(?:[\w.-]+:)?`;
 
+/**
+ * `xml` without processing instructions and comments, removed until nothing changes (a single
+ * pass could leave a new `<!--` behind where two removals meet).
+ */
+function withoutMarkup(xml: string): string {
+  let current = xml;
+  for (;;) {
+    const next = current.replace(/<\?[\s\S]*?\?>|<!--[\s\S]*?-->/g, "");
+    if (next === current) return current;
+    current = next;
+  }
+}
+
+/** Escapes a value for a double-quoted XML attribute. */
+function attributeValue(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
 /** Syntax (UBL or CII), root element, BT-24 profile and the XML declaration of an e-invoice. */
 export function eInvoiceSyntax(xml: string): {
   readonly syntax: "UBL" | "CII" | "unknown";
@@ -146,8 +168,7 @@ export function eInvoiceSyntax(xml: string): {
   readonly declaration: string | undefined;
 } {
   const declaration = /^\s*(<\?xml[^>]*\?>)/.exec(xml)?.[1];
-  const root =
-    /<([A-Za-z_][\w.:-]*)[\s>]/.exec(xml.replace(/<\?[\s\S]*?\?>|<!--[\s\S]*?-->/g, ""))?.[1] ?? "";
+  const root = /<([A-Za-z_][\w.:-]*)[\s>]/.exec(withoutMarkup(xml))?.[1] ?? "";
   const local = root.slice(root.indexOf(":") + 1);
   const syntax =
     local === "CrossIndustryInvoice"
@@ -354,7 +375,7 @@ export function scrubEInvoiceXml(xml: string, scrubber: Scrubber): string {
             : CODE_TEXT.test(value) || value === ""
               ? value
               : "x";
-        kept.push(` ${attributeName}="${safe}"`);
+        kept.push(` ${attributeName}="${attributeValue(safe)}"`);
       }
       out.push(`<${name}${kept.join("")}${selfClosing ? "/>" : ">"}`);
       if (!selfClosing) stack.push({ local: localName(name), attributes });
