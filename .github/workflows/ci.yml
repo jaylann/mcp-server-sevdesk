@@ -153,8 +153,10 @@ jobs:
           node-version: ${{ matrix.node }}
       - name: Build
         run: pnpm build
+      # The npm install below is the test itself: it installs the tarball just packed from this
+      # checkout and resolves its dependencies the way a user's install does, without our lockfile.
       - name: Pack, install the tarball and run the stdio smoke test
-        run: |
+        run: | # zizmor: ignore[adhoc-packages]
           # Forward slashes work for bash, npm and node on every runner, including Windows.
           tmp="${RUNNER_TEMP//\\//}/pack-smoke"
           mkdir -p "$tmp/pack" "$tmp/install"
