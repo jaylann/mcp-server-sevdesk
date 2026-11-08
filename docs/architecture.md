@@ -279,7 +279,8 @@ provenance (`spec`, `community` or `recorded`, plus date and system version).
 7. **Live tests:** opt-in, run by hand with a real token (`pnpm test:live`), read-only unless a
    trial account runs the lifecycle scenario ([docs/recording-session.md](recording-session.md)).
 8. **Tool-selection evals** (`test/evals/`, `pnpm evals`): about 70 German and English requests,
-   scored on the first tool the model picks; model answers are recorded once and replayed, and
+   scored on the tools the model picks in its first answer; model answers are recorded once and
+   replayed, and
    `.github/workflows/evals.yml` runs them on PRs that touch tools (informative, not required).
 
 Upstream changes are watched separately: a weekly job compares the spec and the API-news feed with

@@ -1,4 +1,4 @@
-import type { EvalCase } from "./cases.js";
+import { type EvalCase, NO_TOOL } from "./cases.js";
 
 /** What one case run produced (the harness output). JSON only, for the vitest-evals report. */
 export type SelectionOutput = {
@@ -12,30 +12,38 @@ export type SelectionOutput = {
 };
 
 export interface Score {
-  /** 1: an expected first call; 0.5: a second choice; 0: anything else, or a refusal. */
+  /**
+   * 1: the first answer makes an expected call; 0.5: only a second choice; 0: anything else, or
+   * a refusal.
+   */
   readonly score: number;
   readonly rationale: string;
 }
 
-/** Scores the first call of one answer against the case. */
-export function scoreFirstCall(testCase: EvalCase, output: SelectionOutput): Score {
-  const first = output.firstTool;
+/**
+ * Scores the model's first answer against the case. The calls of one answer run in parallel, so
+ * their order is not a decision: an answer that reads the invoice and calls the write tool with
+ * `dryRun` side by side has picked the write tool. The best call counts. Spraying many tools is
+ * not rewarded in practice: the summary lists every call of a case below 1, and a case's
+ * configuration never offers the tools it must not use.
+ */
+export function scoreFirstAnswer(testCase: EvalCase, output: SelectionOutput): Score {
   if (output.stopReason === "refusal") {
     return { score: 0, rationale: "The model refused the request." };
   }
-  if (testCase.expected.includes(first)) {
-    return { score: 1, rationale: `First call ${first} is expected.` };
+  const calls = output.tools.length > 0 ? output.tools : [NO_TOOL];
+  const listed = calls.join(", ");
+  const expected = testCase.expected.join(" or ");
+  if (calls.some((name) => testCase.expected.includes(name))) {
+    return { score: 1, rationale: `First answer (${listed}) makes an expected call.` };
   }
-  if (testCase.secondChoice?.includes(first) === true) {
+  if (calls.some((name) => testCase.secondChoice?.includes(name) === true)) {
     return {
       score: 0.5,
-      rationale: `First call ${first} is a second choice; expected ${testCase.expected.join(" or ")}.`,
+      rationale: `First answer (${listed}) makes only a second-choice call; expected ${expected}.`,
     };
   }
-  return {
-    score: 0,
-    rationale: `First call ${first}; expected ${testCase.expected.join(" or ")}.`,
-  };
+  return { score: 0, rationale: `First answer (${listed}); expected ${expected}.` };
 }
 
 export type CaseResult =
@@ -96,7 +104,7 @@ export function summaryMarkdown(results: readonly CaseResult[], options: Summary
   const cost = recorded.reduce((sum, result) => sum + (result.costUsd ?? 0), 0);
   lines.push(
     `Score **${format(overall)}** over ${scored.length} of ${options.totalCases} cases ` +
-      `(expected first call: ${full}, second choice: ${half}, miss: ${missed.length}; ` +
+      `(expected call: ${full}, second choice: ${half}, miss: ${missed.length}; ` +
       `skipped as stale cassette: ${skipped.length}). ` +
       `Recorded in this run: ${recorded.length}` +
       (cost > 0 ? ` (about $${cost.toFixed(2)}).` : "."),
@@ -114,13 +122,14 @@ export function summaryMarkdown(results: readonly CaseResult[], options: Summary
   if (notFull.length > 0) {
     lines.push(
       "",
-      "### Not the expected first call",
+      "### First answer without an expected call",
       "",
-      "| Case | First call | Score | Expected |",
+      "| Case | Calls in the first answer | Score | Expected |",
       "| --- | --- | ---: | --- |",
       ...notFull.map(
         (result) =>
-          `| ${result.testCase.id} | ${result.output.firstTool} | ${format(result.score)} | ` +
+          `| ${result.testCase.id} | ${result.output.tools.join(", ") || NO_TOOL} | ` +
+          `${format(result.score)} | ` +
           `${result.testCase.expected.join(", ")} |`,
       ),
     );

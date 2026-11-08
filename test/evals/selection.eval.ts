@@ -22,7 +22,7 @@ import { buildRequest, callModel, estimateCostUsd, evalEffort, evalModel } from 
 import {
   accuracy,
   type CaseResult,
-  scoreFirstCall,
+  scoreFirstAnswer,
   type SelectionOutput,
   summaryMarkdown,
 } from "./scoring.js";
@@ -131,10 +131,10 @@ const harness = createHarness<EvalCase, SelectionOutput>({
   },
 });
 
-const FirstToolJudge = createJudge<EvalCase, SelectionOutput>(
-  "FirstToolJudge",
+const FirstAnswerJudge = createJudge<EvalCase, SelectionOutput>(
+  "FirstAnswerJudge",
   ({ input, output }) => {
-    const { score, rationale } = scoreFirstCall(input, output);
+    const { score, rationale } = scoreFirstAnswer(input, output);
     return { score, metadata: { rationale } };
   },
 );
@@ -144,7 +144,7 @@ const results: CaseResult[] = [];
 describeEval(
   "tool selection",
   // Single misses are expected (models vary); the summary test gates on the mean score.
-  { harness, judges: [FirstToolJudge], judgeThreshold: null },
+  { harness, judges: [FirstAnswerJudge], judgeThreshold: null },
   (it) => {
     it("case definitions are well-formed", () => {
       const ids = EVAL_CASES.map((testCase) => testCase.id);
@@ -178,7 +178,7 @@ describeEval(
       results.push({
         testCase,
         status: "scored",
-        score: scoreFirstCall(testCase, result.output).score,
+        score: scoreFirstAnswer(testCase, result.output).score,
         output: result.output,
         costUsd: result.usage.costUsd,
       });

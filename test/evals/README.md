@@ -3,7 +3,8 @@
 Does a model that sees this server's tools pick the right one? Each case is a user request in
 German or English plus a server configuration. The eval builds the tool list and the server
 instructions exactly as a client gets them for that configuration, sends the request to a model
-once, and scores the **first** tool call. The evals are opt-in and never part of `pnpm test`.
+once, and scores the tool calls of its **first answer**. The evals are opt-in and never part of
+`pnpm test`.
 
 ## Run
 
@@ -30,8 +31,8 @@ On Windows PowerShell: `$env:ANTHROPIC_API_KEY = "sk-ant-…"; pnpm evals:record
 | `tools.ts`          | `clientView(env)`: `loadConfig` → in-process MCP client → `tools/list` and `instructions` (2025 era). |
 | `model.ts`          | The single Messages API request per case and the call that records it.                                |
 | `cassette.ts`       | Record/replay. Key: SHA-256 of the whole request (model, system, tools, messages, parameters).        |
-| `scoring.ts`        | First-call score and the Markdown summary.                                                            |
-| `selection.eval.ts` | The `describeEval` suite (vitest-evals) with the `FirstToolJudge`, plus the summary test.             |
+| `scoring.ts`        | First-answer score and the Markdown summary.                                                          |
+| `selection.eval.ts` | The `describeEval` suite (vitest-evals) with the `FirstAnswerJudge`, plus the summary test.           |
 
 The system prompt is the server's generated `instructions`; the tools are the advertised names,
 descriptions and input schemas. `tool_choice` is `auto`, so answering without a tool is possible
@@ -62,17 +63,19 @@ prints the estimate for the answers recorded in a run.
 
 ## Reading the results
 
-The vitest-evals reporter prints every case with its `FirstToolJudge` score; the summary test
-prints (and in CI writes to the job summary) a table:
+The vitest-evals reporter prints every case with its `FirstAnswerJudge` score; the summary test
+prints (and in CI writes to the job summary) a table. The calls of one answer run in parallel,
+so their order is not a decision and the best call counts:
 
-- **Score 1**: the first call is in `expected` (for negative cases: no tool, or
-  `sevdesk_account_info` to check the permissions).
-- **Score 0.5**: a reasonable but not ideal first call from `secondChoice`, usually a read
-  before the write the user asked for.
+- **Score 1**: the first answer makes a call from `expected` (for negative cases: no tool, or
+  `sevdesk_account_info` to check the permissions). Reading the invoice next to
+  `sevdesk_invoice_cancel` with `dryRun` counts as picking the cancel tool.
+- **Score 0.5**: it makes only reasonable but not ideal calls from `secondChoice`, usually a
+  read before the write the user asked for.
 - **Score 0**: anything else, or a refusal.
 
 Scores are averaged per toolset, per language and for positive and negative cases, and every
-case below 1 is listed with its first call. A case also **fails** (whatever the model says) when
+case below 1 is listed with every call of its first answer. A case also **fails** (whatever the model says) when
 its configuration does not offer a tool it names, or a negative case's configuration offers the
 tool it must not see: fix the case or the configuration.
 
@@ -83,7 +86,7 @@ expected the wrong thing. Single misses are normal: models vary between runs.
 ## Adding a case
 
 Add it to `EVAL_CASES` with a new kebab-case `id`, reuse one of the `ENVS` (fewer distinct
-configurations keep recording cheap), list every first call that is fully right in `expected`
+configurations keep recording cheap), list every call that is fully right as a first step in `expected`
 and reasonable detours in `secondChoice`, then run `pnpm evals:record` and commit the new
 cassette.
 
