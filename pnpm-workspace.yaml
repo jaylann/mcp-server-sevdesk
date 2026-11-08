@@ -6,3 +6,9 @@ minimumReleaseAge: 1440
 # pnpm only runs install scripts for packages listed here (esbuild verifies its native binary).
 allowBuilds:
   esbuild: true
+
+# minimatch before 11.0.1 can be driven into a denial of service by crafted glob patterns
+# (Dependabot alert 1). eslint and typescript-eslint still ask for ^10; they only match our own
+# config globs, and lint passes on 11. Remove once they depend on a fixed version.
+overrides:
+  minimatch@<11.0.1: ^11.0.5
