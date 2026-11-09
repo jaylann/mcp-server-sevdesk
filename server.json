@@ -81,6 +81,84 @@
           "isSecret": false
         }
       ]
+    },
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/jaylann/mcp-server-sevdesk:0.0.0",
+      "runtimeHint": "docker",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "valueHint": "transport",
+          "value": "--stdio",
+          "description": "Serve MCP over stdio (the image's default command is --http)."
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "SEVDESK_API_TOKEN",
+          "description": "sevDesk API token (Settings > Users > API token). It has full access to the account; ideally create it for a dedicated user.",
+          "format": "string",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "SEVDESK_ALLOW",
+          "description": "Comma-separated permission tiers to enable: read, write, commit, external, or all. Tools above the allowed tiers are not registered. read is always on.",
+          "format": "string",
+          "default": "read",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SEVDESK_READ_ONLY",
+          "description": "Set to true to allow only read tools, whatever SEVDESK_ALLOW says.",
+          "format": "boolean",
+          "default": "false",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SEVDESK_DRY_RUN",
+          "description": "Set to true to make write tools only return a preview of what they would do, without sending anything.",
+          "format": "boolean",
+          "default": "false",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SEVDESK_CONFIRM",
+          "description": "How a human confirms commit and external actions: elicit (in the client) or off (also needs SEVDESK_I_UNDERSTAND_NO_CONFIRM=1). The browser mode's local approval page is not reachable from outside the container.",
+          "format": "string",
+          "default": "elicit",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SEVDESK_TOOLSETS",
+          "description": "Comma-separated toolsets to load, e.g. invoices,vouchers,banking. Unset loads all except advanced; all adds advanced.",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SEVDESK_FILE_DIRS",
+          "description": "Absolute folders inside the container (separated by colons) that receipts and e-invoices may be read from; mount them into the container. Unset: no local file is read.",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SEVDESK_OUTPUT_DIR",
+          "description": "Folder inside the container (mount it, writable) where PDFs, e-invoice XML, CSV and DATEV exports may be saved. Unset: the file-saving tools are not offered.",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": false
+        }
+      ]
     }
   ]
 }

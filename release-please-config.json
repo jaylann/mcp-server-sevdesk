@@ -76,6 +76,22 @@
           "type": "json",
           "path": "plugin/.claude-plugin/plugin.json",
           "jsonpath": "$.version"
+        },
+        {
+          "type": "generic",
+          "path": "deploy/compose/compose.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "deploy/fly/fly.toml"
+        },
+        {
+          "type": "generic",
+          "path": "deploy/render/render.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "deploy/README.md"
         }
       ]
     }
