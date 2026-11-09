@@ -76,6 +76,7 @@ describe("audit log", () => {
     expect(await lines(path)).toEqual([
       {
         ts: "2026-11-07T20:00:00.000Z",
+        v: 1,
         event: "confirmation_requested",
         callId: "call-1",
         tool: "sevdesk_invoice_finalize",
@@ -205,5 +206,51 @@ describe("audit log", () => {
 
     await expect(log.record(event())).rejects.toThrow();
     expect(await readFile(target, "utf8")).toBe("");
+  });
+
+  it("writes file transfer events with account, grant, reference, kind, size and hash only", async () => {
+    const path = join(await tempDir(), "audit.jsonl");
+    const log = createAuditLog({ path, secrets: [TEST_TOKEN], now: () => NOW });
+    const sha256 = "c".repeat(64);
+
+    await log.record({
+      event: "file_received",
+      account: "1001",
+      grant: "grant-1",
+      reference: "ABC234",
+      kind: "pdf",
+      bytes: 1234,
+      sha256,
+    });
+    await log.record({
+      event: "file_link_created",
+      reference: "XYZ789",
+      kind: "zip",
+      bytes: 9,
+      sha256,
+    });
+
+    expect(await lines(path)).toEqual([
+      {
+        ts: NOW.toISOString(),
+        v: 1,
+        event: "file_received",
+        account: "1001",
+        grant: "grant-1",
+        reference: "ABC234",
+        kind: "pdf",
+        bytes: 1234,
+        sha256,
+      },
+      {
+        ts: NOW.toISOString(),
+        v: 1,
+        event: "file_link_created",
+        reference: "XYZ789",
+        kind: "zip",
+        bytes: 9,
+        sha256,
+      },
+    ]);
   });
 });

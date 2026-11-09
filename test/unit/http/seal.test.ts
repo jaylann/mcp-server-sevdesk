@@ -12,8 +12,10 @@ import {
 } from "../../../src/http/keys.js";
 import {
   MAX_SEALED_LENGTH,
+  openBytes,
   redactSealed,
   seal,
+  sealBytes,
   SEALED_TOKEN_PATTERN,
   sealedWithPrevious,
   unseal,
@@ -127,5 +129,53 @@ describe("seal / unseal", () => {
     const line = `code=${token}&state=x`;
     expect(line.match(SEALED_TOKEN_PATTERN)).toEqual([token]);
     expect(redactSealed(line)).toBe("code=[redacted token]&state=x");
+  });
+});
+
+describe("sealBytes / openBytes", () => {
+  const set = deriveKeySet(secretA);
+  const context = "blob-1|1001|pdf";
+  const plaintext = Buffer.from("%PDF-1.7 Rechnung 4711 IBAN DE02120300000000202051");
+
+  it("round-trips bytes under the file key and hides them", () => {
+    const sealed = sealBytes(set, context, plaintext);
+    expect(sealed.length).toBe(1 + 12 + plaintext.length + 16);
+    expect(sealed.includes(Buffer.from("Rechnung"))).toBe(false);
+    expect(openBytes(set, context, sealed)).toEqual(plaintext);
+    expect(openBytes(set, context, sealBytes(set, context, new Uint8Array(0)))).toEqual(
+      Buffer.alloc(0),
+    );
+  });
+
+  it("uses a fresh nonce and the file key, distinct from every token key", () => {
+    expect(sealBytes(set, context, plaintext).equals(sealBytes(set, context, plaintext))).toBe(
+      false,
+    );
+    const others = ["seal:ac", "seal:at", "seal:rt", "seal:ss", "seal:cs"] as const;
+    for (const purpose of others) {
+      expect(set.key("seal:fl").equals(set.key(purpose))).toBe(false);
+    }
+  });
+
+  it("refuses another context, another key, a flipped byte and garbage", () => {
+    const sealed = sealBytes(set, context, plaintext);
+    expect(openBytes(set, "blob-2|1001|pdf", sealed)).toBeUndefined();
+    expect(openBytes(set, "blob-1|2002|pdf", sealed)).toBeUndefined();
+    expect(openBytes(set, "blob-1|1001|xml", sealed)).toBeUndefined();
+    expect(openBytes(deriveKeySet(secretB), context, sealed)).toBeUndefined();
+    for (let index = 0; index < sealed.length; index += 7) {
+      const copy = Buffer.from(sealed);
+      copy[index] = (copy[index] ?? 0) ^ 0x01;
+      expect(openBytes(set, context, copy)).toBeUndefined();
+    }
+    expect(openBytes(set, context, new Uint8Array(10))).toBeUndefined();
+    expect(openBytes(set, context, sealed.subarray(0, sealed.length - 1))).toBeUndefined();
+  });
+
+  it("opens a view into a larger buffer", () => {
+    const sealed = sealBytes(set, context, plaintext);
+    const padded = new Uint8Array(sealed.length + 8);
+    padded.set(sealed, 4);
+    expect(openBytes(set, context, padded.subarray(4, 4 + sealed.length))).toEqual(plaintext);
   });
 });

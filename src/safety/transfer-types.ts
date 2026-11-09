@@ -43,7 +43,10 @@ export interface DownloadLinkView {
   readonly reference: string;
   readonly filename: string;
   readonly kind: OutputFileKind;
-  readonly size: number;
+  /** As the file tools name it, e.g. `application/pdf`. */
+  readonly mimeType: string;
+  /** Size in bytes. */
+  readonly bytes: number;
   /** ISO 8601. */
   readonly expiresAt: string;
 }

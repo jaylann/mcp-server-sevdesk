@@ -10,10 +10,14 @@
  *   the path is refused); lines are written one at a time, in call order;
  * - the sevDesk token never reaches the file: every string is redacted, and the whole line again
  *   (the log's own secrets plus each event's `secrets`, the token of the account it belongs to);
+ * - every line starts with `ts` and the format version `v` ({@link AUDIT_LINE_VERSION});
  * - over HTTP each line names the account and the grant (`account`, `grant`); stdio lines have
  *   neither, so they stay as before;
  * - `record` rejects when a line could not be written. The write flow treats a failed
- *   `executing` line as fatal (fail closed: nothing is sent), other events as best effort.
+ *   `executing` line as fatal (fail closed: nothing is sent), other events as best effort;
+ * - remote file transfer (HTTP mode) adds {@link FileAuditEvent} lines: a file received on an
+ *   upload page, a download link created by a tool, a download served. They name the account,
+ *   the grant, the reference, the kind, the size and the SHA-256, never the file name or content.
  */
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
@@ -21,7 +25,7 @@ import { open } from "node:fs/promises";
 import type { RequestPrincipal } from "../accounts/types.js";
 import type { ConfirmationPreview, SevdeskObjectRef } from "../tools/types.js";
 import { escapeHiddenCharacters } from "./fence.js";
-import { redactSecrets } from "./redact.js";
+import { REDACTED, redactSecrets } from "./redact.js";
 import type { WriteTier } from "./tiers.js";
 
 /**
@@ -95,11 +99,31 @@ export function auditPrincipal(principal: RequestPrincipal): Pick<AuditEvent, "a
   return { account: principal.accountScope, grant: principal.grantKey };
 }
 
+/**
+ * A file moved through remote file transfer: `file_received` (the human uploaded it on the
+ * upload page), `file_link_created` (a tool handed out a download link), `file_downloaded` (the
+ * browser fetched it). `account` and `grant` name the record's owner (the grant whose tool call
+ * created the ticket or link).
+ */
+export interface FileAuditEvent {
+  readonly event: "file_received" | "file_link_created" | "file_downloaded";
+  readonly account?: string;
+  readonly grant?: string;
+  /** The non-secret reference code shown on the page and in the tool result. */
+  readonly reference: string;
+  /** `pdf`, `png`, `jpeg`, `xml`, `csv` or `zip`. */
+  readonly kind: string;
+  /** Size in bytes. */
+  readonly bytes: number;
+  /** SHA-256 of the content, hex. */
+  readonly sha256: string;
+}
+
 export interface AuditLog {
   /** Whether a path is configured. */
   readonly enabled: boolean;
   /** Appends one line for `event`; rejects when it could not be written. */
-  record(event: AuditEvent): Promise<void>;
+  record(event: AuditEvent | FileAuditEvent): Promise<void>;
 }
 
 export interface AuditLogOptions {
@@ -111,12 +135,23 @@ export interface AuditLogOptions {
   readonly now?: () => Date;
 }
 
+/**
+ * Format version of a line (`v`, right after `ts`): raised when a field changes meaning or is
+ * removed, so tools reading the log can tell the formats apart. Adding a field keeps it.
+ */
+const AUDIT_LINE_VERSION = 1;
 const FILE_MODE = 0o600;
 /**
  * Cap for one string inside the logged arguments (code points), above the 12,000 characters a
  * preview shows, so an email text is logged whole.
  */
 const MAX_ARG_STRING_LENGTH = 20_000;
+/**
+ * Upload references in arguments (`upload:<id>`, `src/safety/file-access.ts`): ids never reach a
+ * log, so the id is redacted. The `file_received` line (reference, SHA-256) and the preview's
+ * file fact still tie a call to its upload.
+ */
+const UPLOAD_ID = /upload:[A-Za-z0-9_-]{43}/g;
 /** `O_NOFOLLOW` is POSIX-only; elsewhere it is 0 and adds nothing. */
 const OPEN_FLAGS =
   constants.O_WRONLY |
@@ -150,8 +185,10 @@ export function createAuditLog(options: AuditLogOptions): AuditLog {
   return {
     enabled: true,
     record(event) {
-      const all = event.secrets === undefined ? secrets : [...secrets, ...event.secrets];
-      const line = `${redactSecrets(JSON.stringify(toLine(event, now(), all)), all)}\n`;
+      const extra = "secrets" in event ? event.secrets : undefined;
+      const all = extra === undefined ? secrets : [...secrets, ...extra];
+      const fields = isFileEvent(event) ? fileLine(event, now()) : toLine(event, now(), all);
+      const line = `${redactSecrets(JSON.stringify(fields), all)}\n`;
       const written = queue.then(() => append(line));
       queue = written.catch(() => undefined);
       return written;
@@ -159,9 +196,32 @@ export function createAuditLog(options: AuditLogOptions): AuditLog {
   };
 }
 
+function isFileEvent(event: AuditEvent | FileAuditEvent): event is FileAuditEvent {
+  return (
+    event.event === "file_received" ||
+    event.event === "file_link_created" ||
+    event.event === "file_downloaded"
+  );
+}
+
+function fileLine(event: FileAuditEvent, at: Date): Record<string, unknown> {
+  return {
+    ts: at.toISOString(),
+    v: AUDIT_LINE_VERSION,
+    event: event.event,
+    ...(event.account === undefined ? {} : { account: event.account }),
+    ...(event.grant === undefined ? {} : { grant: event.grant }),
+    reference: event.reference,
+    kind: event.kind,
+    bytes: event.bytes,
+    sha256: event.sha256,
+  };
+}
+
 function toLine(event: AuditEvent, at: Date, secrets: readonly string[]): Record<string, unknown> {
   return {
     ts: at.toISOString(),
+    v: AUDIT_LINE_VERSION,
     event: event.event,
     ...(event.account === undefined ? {} : { account: event.account }),
     ...(event.grant === undefined ? {} : { grant: event.grant }),
@@ -184,13 +244,14 @@ function toLine(event: AuditEvent, at: Date, secrets: readonly string[]): Record
 }
 
 /**
- * Deep copy with every string redacted, its hidden characters escaped (kept visible instead of
- * stripped, so the log shows what was sent) and capped with an explicit marker; non-JSON values
- * become their type name.
+ * Deep copy with every string redacted (secrets and upload ids), its hidden characters escaped
+ * (kept visible instead of stripped, so the log shows what was sent) and capped with an explicit
+ * marker; non-JSON values become their type name.
  */
 function cleanValue(value: unknown, secrets: readonly string[]): unknown {
   if (typeof value === "string") {
-    return capped(escapeHiddenCharacters(redactSecrets(value, secrets), { allowNewlines: true }));
+    const redacted = redactSecrets(value, secrets).replace(UPLOAD_ID, `upload:${REDACTED}`);
+    return capped(escapeHiddenCharacters(redacted, { allowNewlines: true }));
   }
   if (value === null || typeof value === "number" || typeof value === "boolean") {
     return value;

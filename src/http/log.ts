@@ -8,6 +8,10 @@
  * bearer tokens, the server secret in its encodings), sealed tokens (`sdmcp_..`), and any run of
  * 32 or more hex digits, the shape of a sevDesk API token, because in OAuth mode the server does
  * not know its users' tokens in advance. Over-redaction is the safe failure mode.
+ *
+ * Remote file transfer logs `upload_received`, `upload_refused` (with a `reason`),
+ * `download_served` and `download_refused` with the account, the reference code, the kind and
+ * the size; never upload or link ids (they are 256-bit secrets in the URL) or file names.
  */
 import type { AuthInfo } from "@modelcontextprotocol/server";
 

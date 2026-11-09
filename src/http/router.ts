@@ -11,8 +11,12 @@
  * 7. the route's Origin policy (403);
  * 8. on an {@link AuthenticatedRoute} (`/mcp`), authentication on the headers alone: a client
  *    without valid credentials never gets to send a body;
- * 9. the body, read up to the route's limit (413 beyond) within {@link DEFAULT_BODY_TIMEOUT_MS}
- *    (408 beyond);
+ * 8a. the route's `preflight` (e.g. the upload page's session and ticket checks), also on the
+ *    headers alone;
+ * 8b. for a request with a body, the route's `bodySlots` cap (requests with a body on this route
+ *    at once, until their response is complete);
+ * 9. the body, read up to the route's limit (413 beyond) within the route's `bodyTimeoutMs` or
+ *    {@link DEFAULT_BODY_TIMEOUT_MS} (408 beyond);
  * 10. at most {@link DEFAULT_MAX_IN_FLIGHT} requests being handled (503 beyond). Only requests
  *    whose body has arrived count here, so slow uploads cannot starve the server; they are bounded
  *    per client by step 6 and in time by step 9;
@@ -173,6 +177,8 @@ export function createRouter(options: RouterOptions): Router {
   let handling = 0;
   /** Requests in progress per client key. */
   const perClient = new Map<string, number>();
+  /** Requests with a body in progress per route with `bodySlots`. */
+  const bodies = new Map<HttpRoute, number>();
   let idleWaiters: (() => void)[] = [];
 
   const healthResponse = (): Response =>
@@ -244,6 +250,7 @@ export function createRouter(options: RouterOptions): Router {
     perClient.set(clientKey, held + 1);
     admitted += 1;
     let handlingSlot = false;
+    let bodySlot = false;
     const deadline = new AbortController();
     const timer = setTimeout(() => {
       deadline.abort(new Error(`The request exceeded ${String(deadlineMs / 1000)} s.`));
@@ -255,6 +262,7 @@ export function createRouter(options: RouterOptions): Router {
       finished = true;
       clearTimeout(timer);
       if (handlingSlot) handling -= 1;
+      if (bodySlot) bodies.set(route, (bodies.get(route) ?? 1) - 1);
       release(clientKey);
     };
     const signal = AbortSignal.any([incoming.signal, deadline.signal, shutdown.signal]);
@@ -286,15 +294,32 @@ export function createRouter(options: RouterOptions): Router {
         annotateRequest(ctx, principalLogFields(auth));
       }
 
+      if (route.preflight !== undefined) {
+        const refusal = await route.preflight(head, ctx);
+        if (refusal !== undefined) return answered(refusal);
+      }
+
       let body: Uint8Array | null = null;
       if (incoming.method !== "GET" && incoming.method !== "HEAD") {
+        if (route.bodySlots !== undefined) {
+          const active = bodies.get(route) ?? 0;
+          if (active >= route.bodySlots.max) {
+            return answered(
+              route.bodySlots.busy?.() ??
+                serviceUnavailable("Too many uploads are in progress; retry shortly.", 5),
+            );
+          }
+          bodies.set(route, active + 1);
+          bodySlot = true;
+        }
+        const timeoutMs = route.bodyTimeoutMs ?? bodyTimeoutMs;
         let read: Uint8Array | "too_large" | "timeout";
         try {
-          read = await readBodyWithin(incoming, route.maxBodyBytes, bodyTimeoutMs);
+          read = await readBodyWithin(incoming, route.maxBodyBytes, timeoutMs);
         } catch {
           return answered(badRequest("The request body could not be read."));
         }
-        if (read === "timeout") return answered(requestTimeout(bodyTimeoutMs));
+        if (read === "timeout") return answered(requestTimeout(timeoutMs));
         if (read === "too_large") return answered(payloadTooLarge(route.maxBodyBytes));
         body = read.byteLength > 0 ? read : null;
       }
@@ -447,6 +472,15 @@ function compileRoutes(routes: readonly HttpRoute[]): RouteTable {
       throw new RangeError(`${where}: methods must be upper case.`);
     }
     if (!(route.maxBodyBytes >= 0)) throw new RangeError(`${where}: invalid maxBodyBytes.`);
+    if (route.bodyTimeoutMs !== undefined && !(route.bodyTimeoutMs > 0)) {
+      throw new RangeError(`${where}: invalid bodyTimeoutMs.`);
+    }
+    if (
+      route.bodySlots !== undefined &&
+      !(Number.isInteger(route.bodySlots.max) && route.bodySlots.max >= 1)
+    ) {
+      throw new RangeError(`${where}: bodySlots.max must be a positive integer.`);
+    }
     if (route.match === "prefix") {
       if (!route.path.endsWith("/")) throw new RangeError(`${where}: a prefix must end with /.`);
       if (prefixes.some((other) => other.path === route.path)) {

@@ -633,6 +633,156 @@ describe("router: slow and unauthenticated clients (review #2)", () => {
   });
 });
 
+describe("router: preflight and upload bodies", () => {
+  const never = () => new Promise<Uint8Array>(() => undefined);
+
+  it("runs the preflight on the headers and never reads a refused body", async () => {
+    const seen: string[] = [];
+    const guarded = route({
+      path: "/upload",
+      preflight: (head) => {
+        seen.push(`${head.method} ${head.headers.get("x-ticket") ?? "-"}`);
+        return Promise.resolve(
+          head.headers.get("x-ticket") === "ok"
+            ? undefined
+            : new Response("refused", { status: 403 }),
+        );
+      },
+    });
+    const { router } = setup([guarded]);
+    const readBody = vi.fn(never);
+    const refused = await router.serve(
+      incoming({ method: "POST", target: "/upload", readBody, bodyPending: true }),
+    );
+    expect(refused.status).toBe(403);
+    expect(await refused.text()).toBe("refused");
+    expect(readBody).not.toHaveBeenCalled();
+    expect(router.inFlight).toBe(0);
+
+    const accepted = await router.serve(
+      incoming({
+        method: "POST",
+        target: "/upload",
+        headers: new Headers({ host: "mcp.example.com", "x-ticket": "ok" }),
+        readBody: () => Promise.resolve(new TextEncoder().encode("bytes")),
+      }),
+    );
+    expect(await accepted.text()).toBe("bytes");
+    expect(seen).toEqual(["POST -", "POST ok"]);
+  });
+
+  it("runs the preflight after the Origin policy", async () => {
+    const preflight = vi.fn(() => Promise.resolve(undefined));
+    const { call } = setup([route({ path: "/form", origin: "form", preflight })]);
+    const foreign = await call("/form", {
+      method: "POST",
+      body: "x",
+      headers: { Origin: "https://evil.example" },
+    });
+    expect(foreign.status).toBe(403);
+    expect(preflight).not.toHaveBeenCalled();
+  });
+
+  it("applies the route's own body timeout", async () => {
+    vi.useFakeTimers();
+    const { router } = setup([route({ path: "/upload", bodyTimeoutMs: 90_000 })], {
+      bodyTimeoutMs: 1_000,
+    });
+    const pending = router.serve(
+      incoming({ method: "POST", target: "/upload", readBody: never, bodyPending: true }),
+    );
+    let settled = false;
+    void pending.then(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(89_000);
+    const response = await pending;
+    expect(response.status).toBe(408);
+    expect(await response.json()).toMatchObject({
+      error_description: "The request body did not arrive within 90 s.",
+    });
+  });
+
+  it("caps bodies in progress per route and frees the slot however a request ends", async () => {
+    vi.useFakeTimers();
+    const gate = deferred();
+    const upload = route({
+      path: "/upload",
+      bodyTimeoutMs: 5_000,
+      bodySlots: { max: 2, busy: () => new Response("busy page", { status: 503 }) },
+      handle: async (request) => {
+        const text = await request.text();
+        if (text === "wait") await gate.promise;
+        return new Response(text);
+      },
+    });
+    const { router } = setup([upload]);
+    const post = (readBody: IncomingRequest["readBody"], ip: string) =>
+      router.serve(incoming({ method: "POST", target: "/upload", readBody, remoteAddress: ip }));
+    const encoded = (text: string) => () => Promise.resolve(new TextEncoder().encode(text));
+    // One body never arrives (times out), one is being handled.
+    const stalled = post(never, "10.0.0.1");
+    const handled = post(encoded("wait"), "10.0.0.2");
+    await vi.waitFor(() => {
+      expect(router.inFlight).toBe(2);
+    });
+    const busy = await post(encoded("third"), "10.0.0.3");
+    expect(busy.status).toBe(503);
+    expect(await busy.text()).toBe("busy page");
+    // GET requests and other routes are not counted.
+    const page = await router.serve(incoming({ target: "/upload" }));
+    expect(page.status).toBe(200);
+    await page.text();
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect((await stalled).status).toBe(408);
+    const fourth = await post(encoded("fourth"), "10.0.0.4");
+    expect(await fourth.text()).toBe("fourth");
+    gate.resolve();
+    expect(await (await handled).text()).toBe("wait");
+    const both = await Promise.all([
+      post(encoded("a"), "10.0.0.5"),
+      post(encoded("b"), "10.0.0.6"),
+    ]);
+    expect(await Promise.all(both.map((response) => response.text()))).toEqual(["a", "b"]);
+    expect(router.inFlight).toBe(0);
+  });
+
+  it("answers a JSON 503 when the route names no busy page", async () => {
+    const gate = deferred();
+    const { router } = setup([
+      route({
+        path: "/upload",
+        bodySlots: { max: 1 },
+        handle: async () => {
+          await gate.promise;
+          return new Response("done");
+        },
+      }),
+    ]);
+    const held = router.serve(incoming({ method: "POST", target: "/upload" }));
+    await vi.waitFor(() => {
+      expect(router.inFlight).toBe(1);
+    });
+    const busy = await router.serve(
+      incoming({ method: "POST", target: "/upload", remoteAddress: "10.0.0.9" }),
+    );
+    expect(busy.status).toBe(503);
+    expect(await busy.json()).toMatchObject({ error: "unavailable" });
+    gate.resolve();
+    expect(await (await held).text()).toBe("done");
+  });
+
+  it("refuses invalid upload options", () => {
+    const build = (overrides: Partial<HttpRoute>) => () => setup([route(overrides)]);
+    expect(build({ bodyTimeoutMs: 0 })).toThrow(/bodyTimeoutMs/);
+    expect(build({ bodySlots: { max: 0 } })).toThrow(/bodySlots/);
+    expect(build({ bodySlots: { max: 1.5 } })).toThrow(/bodySlots/);
+  });
+});
+
 function incoming(overrides: Partial<IncomingRequest> & { target?: string }): IncomingRequest {
   return {
     method: "GET",

@@ -376,7 +376,7 @@ const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com\d|lpt\d)(?:\.|$)/i;
 export function safeFilename(
   raw: string | undefined,
   fallbackStem: string,
-  extension: "pdf" | "xml",
+  extension: "pdf" | "xml" | "png" | "jpg" | "csv" | "zip",
 ): string {
   const lastSegment = (raw ?? "").split(/[/\\]/).pop() ?? "";
   let stem = sanitizeUntrusted(lastSegment, 1_000)

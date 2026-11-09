@@ -177,6 +177,29 @@ describe("audit lines", () => {
     expect(lines[0]).toMatchObject({ approval: "not_required", args: { name: "[REDACTED]" } });
   });
 
+  it("never records upload ids: an upload: argument is redacted, a path stays as it is", async () => {
+    const path = await auditPath();
+    const { client } = await writeHarness({
+      tools: [dummy("sevdesk_dummy_create")],
+      routes: [{ method: "POST", path: "/Contact", response: { body: { objects: { id: "1" } } } }],
+      config: { auditLogPath: path },
+    });
+    const id = "Ab3_-".repeat(8) + "xyz";
+
+    await client.callTool({ name: "sevdesk_dummy_create", arguments: { name: `upload:${id}` } });
+    await client.callTool({
+      name: "sevdesk_dummy_create",
+      arguments: { name: "Belege/RE-4711.pdf" },
+    });
+
+    expect(await readFile(path, "utf8")).not.toContain(id);
+    const requests = (await auditLines(path)).filter((line) => line["event"] === "executing");
+    expect(requests.map((line) => line["args"])).toEqual([
+      { name: "upload:[REDACTED]" },
+      { name: "Belege/RE-4711.pdf" },
+    ]);
+  });
+
   it("records confirmation_off when SEVDESK_CONFIRM=off", async () => {
     const path = await auditPath();
     const { client } = await writeHarness({

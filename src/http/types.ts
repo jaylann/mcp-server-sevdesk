@@ -27,6 +27,14 @@ export interface OAuthSettings {
   readonly grantTtlSeconds: number;
 }
 
+/** Remote file transfer (`SEVDESK_HTTP_FILES`, on by default): upload pages and download links. */
+export interface HttpFilesConfig {
+  /** `SEVDESK_HTTP_FILES_MAX_MB` in bytes: what all uploads and links hold together. */
+  readonly maxBytes: number;
+  /** `SEVDESK_HTTP_FILES_TTL`: lifetime of an uploaded file and of a download link. */
+  readonly ttlSeconds: number;
+}
+
 /** Validated HTTP-mode configuration (`loadHttpConfig` in `config.ts`). */
 export interface HttpConfig {
   readonly auth: HttpAuthMode;
@@ -56,6 +64,8 @@ export interface HttpConfig {
   readonly previousSecret: Uint8Array | undefined;
   /** OAuth only. */
   readonly oauth: OAuthSettings | undefined;
+  /** Remote file transfer; `undefined` with `SEVDESK_HTTP_FILES=off`. */
+  readonly files?: HttpFilesConfig | undefined;
 }
 
 /** Structured, redacted log lines on stderr (one JSON object per line). */
@@ -115,6 +125,21 @@ export interface HttpRoute {
   readonly rateLimit?: RateRule;
   /** Default true. `/healthz` opts out: platform health checks send their own `Host`. */
   readonly hostCheck?: boolean;
+  /**
+   * Checks the request on its headers alone, after the Origin policy (and authentication) and
+   * before the body is read: a refusal here means the body is never read (an upload without a
+   * session, of a used ticket, or declaring too many bytes). Runs for every method; `undefined`
+   * lets the request go on.
+   */
+  readonly preflight?: (head: Request, ctx: HttpRequestContext) => Promise<Response | undefined>;
+  /** Time this route's body may take to arrive (default: the router's, 15 s; 408 beyond). */
+  readonly bodyTimeoutMs?: number;
+  /**
+   * Most requests with a body on this route at once, each counted from its preflight until its
+   * response is complete; beyond it the router answers `busy()` (default: a JSON 503). Bounds the
+   * memory large uploads take. The router keeps the count, so no refusal can leak a slot.
+   */
+  readonly bodySlots?: { readonly max: number; readonly busy?: () => Response };
   readonly handle: RouteHandler;
 }
 
