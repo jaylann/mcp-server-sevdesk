@@ -28,11 +28,16 @@ import { createServerKeys, type ServerKeys } from "./keys.js";
 import { createHttpLog } from "./log.js";
 import { createMcpRoute } from "./mcp-route.js";
 import type { HttpsGet } from "./oauth/cimd.js";
-import { createOAuthModule, openGrantStore } from "./oauth/index.js";
+import { createOAuthModule, openGrantStore, type StateDirError } from "./oauth/index.js";
 import type { Resolver } from "./oauth/ssrf.js";
 import { exitOnSignals, type HttpServerHandle, startHttpServer } from "./serve.js";
 import { createEphemeralKeys, createSessionCookie } from "./session.js";
 import type { GrantStore, HttpAuthenticator, HttpLog, HttpRoute, OAuthModule } from "./types.js";
+
+/** Concurrent requests per client address with `SEVDESK_OAUTH_ACCOUNTS=any` (default 8). */
+const MULTI_TENANT_MAX_PER_CLIENT = 32;
+/** After a fatal store error, exit at the latest after this long, drained or not. */
+const FATAL_EXIT_MS = 15_000;
 
 /** What the HTTP mode needs from outside; tests inject the network-facing parts. */
 export interface RunHttpDeps {
@@ -45,6 +50,11 @@ export interface RunHttpDeps {
   readonly sevdeskFetch?: typeof fetch;
   /** Tests: CIMD host resolution and fetching. */
   readonly cimd?: { readonly resolve?: Resolver; readonly httpsGet?: HttpsGet };
+  /**
+   * Called when the grant store can no longer be trusted (its state-directory lock was lost).
+   * Default: close the server and exit 1, so the platform restarts it with a fresh lock.
+   */
+  readonly onFatal?: (error: StateDirError) => void;
 }
 
 /** A running HTTP mode. */
@@ -81,7 +91,22 @@ export async function startHttpMode(deps: RunHttpDeps): Promise<RunningHttp> {
   const fetchDeps = deps.sevdeskFetch === undefined ? {} : { fetch: deps.sevdeskFetch };
   const identity = deps.identity ?? createIdentityLookup(settings, fetchDeps);
   const origin = http.publicOrigin ?? loopbackOrigin(http.host, http.port);
+  // Set once the server listens; a fatal error before that only exits.
+  const lifecycle: { shutdown?: () => Promise<void> } = {};
+  const onFatal = (error: StateDirError): void => {
+    log.warn("fatal_shutdown", { message: error.message });
+    if (deps.onFatal !== undefined) {
+      deps.onFatal(error);
+      return;
+    }
+    const exit = (): void => {
+      process.exit(1);
+    };
+    setTimeout(exit, FATAL_EXIT_MS).unref();
+    void (lifecycle.shutdown?.() ?? Promise.resolve()).finally(exit);
+  };
   const input: PartsInput = {
+    onFatal,
     keys,
     identity,
     log,
@@ -96,7 +121,13 @@ export async function startHttpMode(deps: RunHttpDeps): Promise<RunningHttp> {
   const mcp = createMcpRoute({ authenticator: parts.authenticator, factory: parts.factory, log });
   let server: HttpServerHandle;
   try {
-    server = await startHttpServer({ http, routes: [mcp.route, ...parts.routes], log });
+    server = await startHttpServer({
+      http,
+      routes: [mcp.route, ...parts.routes],
+      log,
+      // Multi-tenant OAuth: many claude.ai users can share one egress address.
+      ...(http.oauth?.accounts === "any" ? { maxPerClient: MULTI_TENANT_MAX_PER_CLIENT } : {}),
+    });
   } catch (error) {
     await parts.factory.close();
     await parts.close();
@@ -113,16 +144,18 @@ export async function startHttpMode(deps: RunHttpDeps): Promise<RunningHttp> {
     return resourcesClosed;
   };
   let closed: Promise<void> | undefined;
+  const close = (): Promise<void> => {
+    closed ??= server.close().then(closeResources);
+    return closed;
+  };
+  lifecycle.shutdown = close;
   return {
     origin: server.origin,
     port: server.port,
     log,
     server,
     closeResources,
-    close: () => {
-      closed ??= server.close().then(closeResources);
-      return closed;
-    },
+    close,
   };
 }
 
@@ -136,6 +169,7 @@ export async function runHttp(deps: RunHttpDeps): Promise<void> {
 }
 
 interface PartsInput {
+  readonly onFatal: (error: StateDirError) => void;
   readonly fetchDeps: { readonly fetch?: typeof fetch };
   readonly cimd: NonNullable<RunHttpDeps["cimd"]>;
   readonly keys: ServerKeys;
@@ -173,7 +207,11 @@ async function bearerParts(loaded: LoadedHttpConfig, input: PartsInput): Promise
   let store: GrantStore | undefined;
   let routes: readonly HttpRoute[] = [];
   if (input.inboxWanted) {
-    store = await openGrantStore({ stateDir: http.stateDir, log: input.log });
+    store = await openGrantStore({
+      stateDir: http.stateDir,
+      log: input.log,
+      onFatal: input.onFatal,
+    });
     const accountScope = config.account?.id ?? "bearer";
     const login: InboxLogin = (token) =>
       Promise.resolve(
@@ -187,6 +225,7 @@ async function bearerParts(loaded: LoadedHttpConfig, input: PartsInput): Promise
       keys: input.keys,
       origin: input.origin,
       login,
+      accountAllowed: (accountId) => accountId === accountScope,
     });
     routes = inbox.routes;
     runtime = createSafetyRuntime(config, { approvalChannel: inbox.channel });
@@ -218,7 +257,11 @@ async function oauthParts(loaded: LoadedHttpConfig, input: PartsInput): Promise<
   }
   const origin = http.publicOrigin;
   const deployment = httpDeployment("oauth", origin, settings.confirm);
-  const store = await openGrantStore({ stateDir: http.stateDir, log: input.log });
+  const store = await openGrantStore({
+    stateDir: http.stateDir,
+    log: input.log,
+    onFatal: input.onFatal,
+  });
 
   let runtime: SafetyRuntime | undefined;
   let inboxRoutes: readonly HttpRoute[] = [];
@@ -229,6 +272,7 @@ async function oauthParts(loaded: LoadedHttpConfig, input: PartsInput): Promise<
       keys: input.keys,
       origin,
       login: oauthLogin(input.identity, oauth.accounts),
+      accountAllowed: accountAllowlist(oauth.accounts),
     });
     inboxRoutes = inbox.routes;
     runtime = createSafetyRuntime({ ...settings, deployment }, { approvalChannel: inbox.channel });
@@ -272,6 +316,13 @@ async function oauthParts(loaded: LoadedHttpConfig, input: PartsInput): Promise<
       await store.close();
     },
   };
+}
+
+/** `SEVDESK_OAUTH_ACCOUNTS` as a check, re-applied to every inbox session (`undefined`: any). */
+function accountAllowlist(
+  accounts: readonly string[] | "any",
+): ((accountId: string) => boolean) | undefined {
+  return accounts === "any" ? undefined : (accountId) => accounts.includes(accountId);
 }
 
 /**
