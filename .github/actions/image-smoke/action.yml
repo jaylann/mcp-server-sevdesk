@@ -1,0 +1,97 @@
+name: Image smoke test
+description: >-
+  Checks a built or pulled container image the way the deploy templates run it: the user, the MCP
+  Registry label and the platform; `--version` and a bearer-mode server on a read-only root
+  filesystem without capabilities; the image's own health check; scripts/smoke-http.ts against
+  the container; no bearer token in its logs; a clean exit on `docker stop`. Prints the container
+  log when a check fails. Needs the toolchain from .github/actions/setup (for the smoke script).
+
+inputs:
+  image:
+    description: The image to test, as a local tag or `registry/name@sha256:…`.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Check and run the image
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        CONTAINER: sevdesk-image-smoke
+        HOST_PORT: "8080"
+      run: |
+        set -euo pipefail
+
+        fail() {
+          echo "::error::$1"
+          exit 1
+        }
+        cleanup() {
+          status=$?
+          if [ "$status" -ne 0 ] && docker container inspect "$CONTAINER" > /dev/null 2>&1; then
+            echo "::group::Container log"
+            docker logs "$CONTAINER" 2>&1 || true
+            echo "::endgroup::"
+          fi
+          docker rm --force "$CONTAINER" > /dev/null 2>&1 || true
+          exit "$status"
+        }
+        trap cleanup EXIT
+
+        want_version="$(node -p 'require("./package.json").version')"
+        want_name="$(node -p 'require("./package.json").mcpName')"
+        case "$RUNNER_ARCH" in
+          X64) want_arch=amd64 ;;
+          ARM64) want_arch=arm64 ;;
+          *) fail "Unexpected runner architecture $RUNNER_ARCH." ;;
+        esac
+
+        user="$(docker image inspect --format '{{.Config.User}}' "$IMAGE")"
+        [ "$user" = "65532:65532" ] || fail "The image runs as '$user', expected 65532:65532."
+        label="$(docker image inspect --format '{{index .Config.Labels "io.modelcontextprotocol.server.name"}}' "$IMAGE")"
+        [ "$label" = "$want_name" ] || fail "io.modelcontextprotocol.server.name is '$label', expected $want_name."
+        arch="$(docker image inspect --format '{{.Architecture}}' "$IMAGE")"
+        [ "$arch" = "$want_arch" ] || fail "The image is for $arch, this runner is $want_arch."
+
+        hardening=(--read-only --tmpfs /tmp:size=16m --cap-drop ALL --security-opt no-new-privileges)
+        version="$(docker run --rm "${hardening[@]}" "$IMAGE" --version)"
+        [ "$version" = "$want_version" ] || fail "--version printed '$version', expected $want_version."
+
+        # Throwaway credentials: a fresh bearer token from the image itself and a dummy sevDesk
+        # token. The sevDesk base URL is loopback port 9, so nothing leaves the runner.
+        SEVDESK_HTTP_BEARER_TOKEN="$(docker run --rm "${hardening[@]}" "$IMAGE" generate-secret)"
+        echo "::add-mask::$SEVDESK_HTTP_BEARER_TOKEN"
+        export SEVDESK_HTTP_BEARER_TOKEN
+        export SEVDESK_API_TOKEN=00000000000000000000000000000000
+        docker run --detach --name "$CONTAINER" "${hardening[@]}" \
+          --publish "127.0.0.1:$HOST_PORT:8080" \
+          --env SEVDESK_HTTP_AUTH=bearer \
+          --env SEVDESK_HTTP_BEARER_TOKEN \
+          --env SEVDESK_API_TOKEN \
+          --env SEVDESK_BASE_URL=https://127.0.0.1:9/api/v1 \
+          --env "SEVDESK_HTTP_PUBLIC_URL=http://127.0.0.1:$HOST_PORT" \
+          "$IMAGE" > /dev/null
+
+        # The image's HEALTHCHECK probes every 2 s while the container starts.
+        health=""
+        for _ in $(seq 1 45); do
+          health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$CONTAINER")"
+          [ "$health" = healthy ] && break
+          [ "$(docker inspect --format '{{.State.Running}}' "$CONTAINER")" = true ] || fail "The container exited during startup."
+          [ "$health" = unhealthy ] && fail "The container's health check failed."
+          sleep 2
+        done
+        [ "$health" = healthy ] || fail "The container did not become healthy within 90 s (status '$health')."
+
+        pnpm exec tsx scripts/smoke-http.ts --url "http://127.0.0.1:$HOST_PORT" --bearer "$SEVDESK_HTTP_BEARER_TOKEN"
+
+        if docker logs "$CONTAINER" 2>&1 | grep -F -q -e "$SEVDESK_HTTP_BEARER_TOKEN" -e "$SEVDESK_API_TOKEN"; then
+          fail "The container log contains a token."
+        fi
+
+        # Node runs as PID 1, which has no default SIGTERM handling: the server must exit by itself.
+        docker stop --time 20 "$CONTAINER" > /dev/null
+        exit_code="$(docker inspect --format '{{.State.ExitCode}}' "$CONTAINER")"
+        [ "$exit_code" = 0 ] || fail "The container exited with $exit_code after SIGTERM, expected 0."
+        echo "Image smoke test passed: $IMAGE ($want_arch, $version)."
