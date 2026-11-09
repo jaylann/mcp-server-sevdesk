@@ -82,11 +82,14 @@ claude mcp add --transport http sevdesk-dev http://127.0.0.1:8080/mcp \
 ```
 
 Pass the flag as `pnpm dev --http`, not `pnpm dev -- --http`: pnpm hands the `--` on to the
-server, which refuses unknown arguments.
+server, which refuses unknown arguments. Plain http on loopback is for development only: browsers
+share cookies across the ports of a host, so another local web server could receive the approval
+inbox's session cookie. Try the inbox in a browser profile you use for nothing else.
 
-OAuth mode works locally too, with a loopback public URL (`SEVDESK_HTTP_PUBLIC_URL=http://localhost:8080`,
-`SEVDESK_HTTP_SECRET`, `SEVDESK_OAUTH_ACCOUNTS`); claude.ai cannot reach it, so the end-to-end
-check with claude.ai runs through a tunnel ([docs/recording-session.md](docs/recording-session.md#3b-m5-remote-check-about-60-to-90-minutes)).
+OAuth mode works locally too, with a loopback public URL
+(`SEVDESK_HTTP_PUBLIC_URL=http://localhost:8080`, `SEVDESK_HTTP_SECRET`, `SEVDESK_OAUTH_ACCOUNTS`);
+claude.ai cannot reach it, so the end-to-end check with claude.ai runs through a tunnel
+([docs/recording-session.md](docs/recording-session.md#3b-m5-remote-check-about-60-to-90-minutes)).
 
 - **HTTP smoke test:** `pnpm build && node scripts/smoke-http.ts --bin dist/index.js` starts the
   built server in bearer mode on a free port (with a dummy sevDesk token, so nothing reaches

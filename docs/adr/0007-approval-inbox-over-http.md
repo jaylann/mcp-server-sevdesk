@@ -42,7 +42,7 @@ gets a session in one of two ways:
   (constant-time compare). The bearer secret never signs in: the client holds it, so anything that
   can read the client's configuration could approve.
 
-Sign-in attempts are limited to 5 a minute and 20 an hour per IP address.
+Sign-in attempts are limited to 5 a minute and 20 an hour per client address (IPv6 per /64).
 
 **The session cookie.** `__Host-sevdesk_session`: sealed (no sevDesk token inside), HttpOnly,
 Secure, path `/`, valid for 12 hours, with a new session id at every sign-in. The session is stored
@@ -63,8 +63,9 @@ principal that asked (grant id, or `bearer`/`stdio`, plus the account). A retry 
 approval its own grant created, so one connection cannot use another's approval, even within the
 same account. The inbox lists and decides per account: a session for account A sees all of A's
 approvals and nothing else. Approvals still bind tool, argument hash and preview hash, expire after
-10 minutes and are used once (ADR 0003). At most 5 approvals per account and 100 overall wait at
-once. The elicitation codec binds the same principal, so a `requestState` issued to one account is
+10 minutes and are used once (ADR 0003). At most 5 approvals per account wait at once; an account
+keeps at most 20 records and makes room only among its own, so one account can never push out
+another's approved request. The elicitation codec binds the same principal, so a `requestState` issued to one account is
 refused for another.
 
 **Code layout.** ADR 0003's approval server is split into a transport-agnostic store

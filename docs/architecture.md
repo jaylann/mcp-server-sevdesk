@@ -214,7 +214,8 @@ that holds state is keyed by the request's principal (grant and account, from
 
 - the confirmation codec binds the principal, so a `requestState` issued to one account is refused
   for another;
-- a retry takes only an approval its own grant created; the inbox lists and decides per account;
+- a retry takes only an approval its own grant created; the inbox lists and decides per account,
+  and one account's approvals cannot push another account's out of the store;
 - every account gets its own frozen `Config` and sevDesk client, and the domain caches (account
   settings, ReceiptGuidance, booking accounts, the bookkeeping system version) are keyed by that
   config object, so accounts never share cached data;
@@ -249,12 +250,14 @@ content sniffing, size caps) and write only into `SEVDESK_OUTPUT_DIR` (exclusive
 metadata lint. E-invoice XML is parsed without entity expansion or DOCTYPEs, with size and depth
 limits.
 
-**Token.** The sevDesk API token has full account access, no scopes and no expiry. Over stdio and
-in bearer mode it is read from the environment, a `*_FILE` or, optionally, the OS keychain, and
-checked at startup with `GET /Tools/bookkeepingSystemVersion`. In OAuth mode each user pastes it on
-the consent page; it is checked with `GET /SevClient`, sealed into that user's tokens and checked
-again on every refresh. It is redacted everywhere, and a 401 is final. The threat model is in
-[SECURITY.md](../SECURITY.md).
+**Token.** The sevDesk API token has full account access, no scopes and no expiry. Over stdio it is
+read from the environment, a `*_FILE` or, optionally, the OS keychain, and checked at startup with
+`GET /Tools/bookkeepingSystemVersion`. In bearer mode it comes from the environment or a `*_FILE`,
+and the server looks up its account (`GET /SevClient`) at startup; a failed lookup is logged as a
+warning and does not stop the server (approvals and audit lines then use the account scope
+`bearer`). In OAuth mode each user pastes it on the consent page; it is checked with
+`GET /SevClient`, sealed into that user's tokens and checked again on every refresh. It is redacted
+everywhere, and a 401 is final. The threat model is in [SECURITY.md](../SECURITY.md).
 
 ## sevDesk API realities that shaped the design
 
@@ -322,18 +325,22 @@ flowchart LR
 2. **Bridge** (`node-bridge.ts`, `serve.ts`): converts between `node:http` and Web
    `Request`/`Response`, refuses bodies over the route's cap with 413 before reading more (1 MiB
    on `/mcp`, 8 KiB on `/authorize`, 4 KiB on `/token` and `/revoke`), aborts the request's signal
-   when the client disconnects, and streams responses without buffering. Server timeouts: 15 s for
-   headers, 30 s to receive a whole request, 65 s keep-alive, at most 256 connections.
+   when the client disconnects, answers 408 when a body does not arrive in time, and streams
+   responses without buffering. Server timeouts: 15 s for headers, 30 s to receive a whole
+   request, 65 s keep-alive, at most 256 connections.
 3. **Hardening** (`router.ts`, `hardening.ts`, `rate-limit.ts`): the `Host` allowlist (the SDK's
    validator; `/healthz` is exempt for platform health checks), the route match (404, or 405 with
-   `Allow` for other methods), token-bucket rate limits per client IP (429 with `Retry-After`), at
-   most 64 requests in flight, a 120 s deadline, the route's `Origin` policy (`/mcp`: the SDK's
-   validator against the allowed origins; HTML forms: same-origin POSTs only, never
-   `Origin: null`), and security headers on every response (`nosniff`, `no-store`, a referrer
-   policy, HSTS on https). One JSON log line per request, redacted (`log.ts`).
+   `Allow` for other methods), token-bucket rate limits per client address (IPv6 per /64; 429 with
+   `Retry-After`), a cap on requests in flight that one client cannot use up for everyone, a 120 s
+   deadline, the route's `Origin` policy (`/mcp`: the SDK's validator, which compares host names
+   against the allowed origins; there is no CORS, so web pages on other origins cannot call `/mcp`;
+   HTML forms: same-origin POSTs only, never `Origin: null`), and security headers on every response
+   (`nosniff`, `no-store`, a referrer policy, HSTS on https). One JSON log line per request,
+   redacted (`log.ts`).
 4. **Auth.** Bearer: `bearer.ts`. OAuth: the SDK's `requireBearerAuth` with our verifier, which
    opens the access token, checks type, issuer, expiry and audience, looks the grant up in the
-   store (so revocation is immediate) and puts a `VerifiedGrant` into `AuthInfo`. Failures answer
+   store (so revocation is immediate), checks its account and client against the current
+   allowlists and puts a `VerifiedGrant` into `AuthInfo`. Failures answer
    401 with `WWW-Authenticate` (in OAuth mode pointing to the protected resource metadata).
 5. **Account resolver** (`src/accounts/resolver.ts`): bearer and stdio have one fixed context.
    OAuth gets a frozen `Config` per account with the tiers of the grant ∩ `SEVDESK_ALLOW`, no
@@ -345,14 +352,14 @@ flowchart LR
 
 **Routes.**
 
-| Route                                                                                             | What                                             | Access                                        |
-| ------------------------------------------------------------------------------------------------- | ------------------------------------------------ | --------------------------------------------- |
-| `POST /mcp`                                                                                       | MCP (Streamable HTTP, stateless)                 | bearer secret or OAuth access token           |
-| `GET /healthz`                                                                                    | `{"status":"ok"}`, 503 while shutting down       | open, no Host check                           |
-| `GET /.well-known/oauth-protected-resource[/mcp]`, `/.well-known/oauth-authorization-server`      | OAuth metadata (404 in bearer mode)              | open, CORS `*`                                |
-| `GET`/`POST /authorize`                                                                           | consent page                                     | CSRF cookie and token, same-origin POSTs      |
-| `POST /token`, `POST /revoke`                                                                     | code and refresh exchange, revocation (RFC 7009) | PKCE, the tokens themselves                   |
-| `GET /approvals`, `GET`/`POST /approvals/<id>`, `POST /approvals/login`, `POST /approvals/logout` | approval inbox                                   | session cookie, CSRF token, same-origin POSTs |
+| Route                                                                                             | What                                                 | Access                                        |
+| ------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------- |
+| `POST /mcp`                                                                                       | MCP (Streamable HTTP, stateless)                     | bearer secret or OAuth access token           |
+| `GET /healthz`                                                                                    | `{"status":"ok"}`, 503 while shutting down           | open, no Host check                           |
+| `GET /.well-known/oauth-protected-resource[/mcp]`, `/.well-known/oauth-authorization-server`      | OAuth metadata (404 in bearer mode)                  | open, CORS `*`                                |
+| `GET`/`POST /authorize`                                                                           | consent page                                         | CSRF cookie and token, same-origin POSTs      |
+| `POST /token`, `POST /revoke`                                                                     | code and refresh exchange, revocation (RFC 7009)     | PKCE, the tokens themselves                   |
+| `GET /approvals`, `GET`/`POST /approvals/<id>`, `POST /approvals/login`, `POST /approvals/logout` | approval inbox (only with `SEVDESK_CONFIRM=browser`) | session cookie, CSRF token, same-origin POSTs |
 
 **Shutdown.** On SIGTERM `/healthz` answers 503, running requests get 10 seconds, then the grant
 store is written and its lock released.

@@ -83,22 +83,28 @@ days from consent (configurable within 5 minutes–24 hours, 1–90 days and 1�
 previous generation is accepted for 30 seconds after a rotation and answered at the current
 generation, so a client that refreshes twice at once keeps working. Any other old generation is a
 replay and revokes the grant, as does a second exchange of an authorization code. Every failure at
-`/token` is `invalid_grant`. Each refresh also checks the sevDesk token with `GET /SevClient`: a 401
+`/token` is `invalid_grant`. Each refresh also checks the sevDesk token with `GET /SevClient` before
+it rotates anything, so a client that drops during the check can retry with the same token: a 401
 from sevDesk revokes the grant, so regenerating the token in sevDesk ends access.
 
 **A small, non-secret grant store** (`grant-store.ts`). A grant is one consented connection of one
 client to one account. The store keeps its id, account, client, tiers, timestamps, status,
 refresh generation and revocation reason, plus the inbox sessions, and never a token. With
-`SEVDESK_HTTP_STATE_DIR` it is an append-only `grants.jsonl` (mode 0600) that is compacted at
-startup; without one it lives in memory. Access tokens are checked against it on every request,
-which makes revocation immediate. A heartbeat lock file (stale after 30 seconds) refuses a second
-live instance without blocking a restart after a crash, and a corrupt file refuses startup. Caps:
-500 grants and 1,000 sessions. The `grants list` and `grants revoke` commands append to the same
-file while the server runs; the server reads new events before every `/token` request and at most
-once a second on `/mcp`.
+`SEVDESK_HTTP_STATE_DIR` it is an append-only `grants.jsonl` (mode 0600, in a 0700 directory)
+that is compacted at startup and while the server runs; without one it lives in memory. Access
+tokens are checked against it on every request, which makes revocation immediate. A heartbeat lock
+file (stale after 30 seconds, taken over atomically) refuses a second live instance without
+blocking a restart after a crash; a server that loses its lock stops serving OAuth and exits, so
+it never answers from state another process replaced. A corrupt file refuses startup. Caps: 500
+grants overall, 20 per account (a new consent beyond that supersedes the account's oldest grant),
+and 1,000 sessions. A checked consent form completes once. The `grants list` and `grants revoke`
+commands append to the same file while the server runs; the server reads new events before every
+`/token` request and at most once a second on `/mcp`.
 
 **Single-tenant by default.** OAuth needs `SEVDESK_OAUTH_ACCOUNTS`: the sevDesk account ids that
-may connect. `any` opts in to serving any account and logs a warning.
+may connect. `any` opts in to serving any account and logs a warning. Both allowlists apply on every
+use, not only at consent: a grant whose account or client host is no longer listed is revoked at
+its next request or refresh, and its inbox sessions end.
 
 **Tiers per grant.** The consent page always grants `read` and offers the other tiers that
 `SEVDESK_ALLOW` enables, unchecked. A request gets the token's tiers ∩ the grant's tiers ∩

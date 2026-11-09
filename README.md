@@ -73,7 +73,7 @@ everything else defaults to the safest option.
 | `SEVDESK_READ_ONLY`         | `0`                            | `1` forces read-only, overriding `SEVDESK_ALLOW`.                                                                                                                                                                                                                                                                                                                         |
 | `SEVDESK_DRY_RUN`           | `0`                            | `1` turns every write into a dry run: write tools check the call and return a preview (status `dry_run`); nothing is sent and nobody is asked. Per call: `dryRun: true`.                                                                                                                                                                                                  |
 | `SEVDESK_CONFIRM`           | `elicit`                       | Human confirmation for `commit`/`external` tools: `elicit` (a prompt in your client), `browser` (an approval page: over stdio a local page on 127.0.0.1, for clients without elicitation, weaker, see [SECURITY.md](SECURITY.md); in remote mode the server's [approval inbox](#approvals-in-remote-mode)), or `off` (also requires `SEVDESK_I_UNDERSTAND_NO_CONFIRM=1`). |
-| `SEVDESK_CONFIRM_OPEN`      | `1` (HTTP: `0`)                | Browser mode over stdio: open the approval page in your default browser. `0` only writes its link to the server log (stderr). The link is never shown to the model. In remote mode it is off unless set, and `1` is refused unless the server binds to loopback.                                                                                                          |
+| `SEVDESK_CONFIRM_OPEN`      | `1` (HTTP: `0`)                | Browser mode over stdio: open the approval page in your default browser. `0` only writes its link to the server log (stderr). The link is never shown to the model. No effect in remote mode, where `1` is refused unless the server binds to loopback.                                                                                                                   |
 | `SEVDESK_TOOLSETS`          | `default`                      | Comma list of `meta`, `contacts`, `invoices`, `credit-notes`, `orders`, `vouchers`, `banking`, `parts`, `reports`, `advanced`, or `default`/`all`. `default` is everything except `advanced`.                                                                                                                                                                             |
 | `SEVDESK_STRUCTURED_OUTPUT` | `auto`                         | `on`/`off`/`auto`: typed `structuredContent` output (auto = only for clients that support it well).                                                                                                                                                                                                                                                                       |
 | `SEVDESK_AUDIT_LOG`         |                                | Path of an append-only JSON Lines log (file mode 0600) of every write: previews, confirmations, executions and failures. If it is set but cannot be written, writes are refused.                                                                                                                                                                                          |
@@ -118,8 +118,8 @@ HTTP refuses to start without authentication (`SEVDESK_HTTP_AUTH`):
   sevDesk accounts you list can connect. claude.ai needs this mode.
 
 The server binds to 127.0.0.1 by default and needs a public URL for any other address. It checks
-`Host` and `Origin`, rate-limits, and logs no secrets. Run one instance; see [SECURITY.md](SECURITY.md#remote-mode) for
-the threat model.
+`Host` and `Origin`, rate-limits, and logs no secrets. Run one instance; see
+[SECURITY.md](SECURITY.md#remote-mode) for the threat model.
 
 ### Quick start with Docker (bearer)
 
@@ -139,8 +139,10 @@ docker run --rm --read-only -p 127.0.0.1:8080:8080 --env-file ~/sevdesk-mcp.env 
 ```
 
 The MCP endpoint is `http://localhost:8080/mcp`, with the header
-`Authorization: Bearer <the generated secret>`. Pin a version instead of `latest` for anything
-beyond a test.
+`Authorization: Bearer <the generated secret>`. This is for a quick test on your own machine: keep
+the port published on `127.0.0.1` only, and remember that browsers share cookies across the ports
+of `localhost`, so another local web server could reach the approval inbox. Anything longer runs
+behind https, with a pinned version instead of `latest`.
 
 ### claude.ai custom connector (OAuth)
 
@@ -167,12 +169,13 @@ tick the tiers, and asks for your sevDesk token once.
 ### Approvals in remote mode
 
 claude.ai cannot be asked for a confirmation inside the chat (at the time of writing), so set
-`SEVDESK_CONFIRM=browser` when you enable `commit` or `external`. A binding call then returns a reference code and the address of the
-server's **approval inbox** (`https://<host>/approvals`). Open it, check the preview, approve, and
-ask Claude to try again. The inbox only shows anything to a browser that proved it may act for the
-account: the browser that completed the consent page is signed in for 12 hours, and any other
-signs in by pasting the sevDesk token. Approvals belong to the connection that asked and are used
-once. Details: [docs/remote.md](docs/remote.md#the-approval-inbox).
+`SEVDESK_CONFIRM=browser` when you enable `commit` or `external`. A binding call then returns a
+reference code and the address of the server's **approval inbox** (`https://<host>/approvals`). Open
+it, check the preview, approve, and ask Claude to try again. The inbox only shows anything to a
+browser that proved it may act for the account: the browser that completed the consent page is
+signed in for 12 hours, and any other signs in by pasting the sevDesk token. Approvals belong to the
+connection that asked and are used once. Details:
+[docs/remote.md](docs/remote.md#the-approval-inbox).
 
 ### HTTP configuration
 
@@ -182,21 +185,21 @@ read from a file (`…_FILE`). OAuth mode refuses `SEVDESK_FILE_DIRS` and
 `SEVDESK_OUTPUT_DIR`: the server's disk would be shared by every connection. All rules:
 [docs/remote.md](docs/remote.md#configuration-reference).
 
-| Variable                                                        | Default                        | Meaning                                                                                                                                                                                 |
-| --------------------------------------------------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SEVDESK_HTTP_AUTH`                                             | (required)                     | `bearer` or `oauth`.                                                                                                                                                                    |
-| `SEVDESK_HTTP_PUBLIC_URL`                                       |                                | The origin clients use, e.g. `https://mcp.example.com`; https unless the host is loopback. Required for OAuth and for any bind other than loopback. The MCP endpoint is `<origin>/mcp`. |
-| `SEVDESK_HTTP_HOST`                                             | `127.0.0.1` (image: `0.0.0.0`) | Bind address.                                                                                                                                                                           |
-| `SEVDESK_HTTP_PORT`                                             | `$PORT`, else `8080`           | Bind port.                                                                                                                                                                              |
-| `SEVDESK_HTTP_BEARER_TOKEN`                                     |                                | Bearer mode: the client secret, or two comma-separated secrets while you rotate. At least 32 characters, not the sevDesk token.                                                         |
-| `SEVDESK_HTTP_SECRET`                                           |                                | OAuth: the server secret every token is sealed with (`generate-secret`). Optional in bearer mode, where it keeps inbox sign-ins across restarts.                                        |
-| `SEVDESK_HTTP_SECRET_PREVIOUS`                                  |                                | The previous server secret, still accepted while you rotate.                                                                                                                            |
-| `SEVDESK_HTTP_STATE_DIR`                                        | memory (image: `/data`)        | Where grants and inbox sessions are kept (no tokens). Without it a restart signs every client out.                                                                                      |
-| `SEVDESK_OAUTH_ACCOUNTS`                                        |                                | OAuth: the sevDesk account ids that may connect (`account-id` prints yours), or `any`.                                                                                                  |
-| `SEVDESK_OAUTH_CLIENTS`                                         | `claude.ai`                    | Hosts allowed to serve a client's metadata document (its `client_id`), or `any`.                                                                                                        |
-| `SEVDESK_OAUTH_ACCESS_TTL` / `_REFRESH_IDLE_TTL` / `_GRANT_TTL` | `1h` / `14d` / `90d`           | Lifetime of access tokens, of unused refresh tokens, and of a grant from consent.                                                                                                       |
-| `SEVDESK_HTTP_ALLOWED_HOSTS` / `_ORIGINS`                       | from the public URL            | More `Host` names and browser origins to accept, comma-separated.                                                                                                                       |
-| `SEVDESK_HTTP_TRUST_PROXY`                                      | `0`                            | How many reverse proxies are in front, for the client IP in rate limits and logs.                                                                                                       |
+| Variable                                                        | Default                              | Meaning                                                                                                                                                                                   |
+| --------------------------------------------------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SEVDESK_HTTP_AUTH`                                             | (required)                           | `bearer` or `oauth`.                                                                                                                                                                      |
+| `SEVDESK_HTTP_PUBLIC_URL`                                       |                                      | The origin clients use, e.g. `https://mcp.example.com`; https unless the host is loopback. Required for OAuth and for any bind other than loopback. The MCP endpoint is `<origin>/mcp`.   |
+| `SEVDESK_HTTP_HOST`                                             | `127.0.0.1` (image: `0.0.0.0`)       | Bind address.                                                                                                                                                                             |
+| `SEVDESK_HTTP_PORT`                                             | `$PORT`, else `8080` (image: `8080`) | Bind port.                                                                                                                                                                                |
+| `SEVDESK_HTTP_BEARER_TOKEN`                                     |                                      | Bearer mode: the client secret, or two comma-separated secrets while you rotate. At least 32 characters, not the sevDesk token.                                                           |
+| `SEVDESK_HTTP_SECRET`                                           |                                      | OAuth: the server secret every token is sealed with (`generate-secret`). Optional in bearer mode, where it keeps inbox sign-ins across restarts.                                          |
+| `SEVDESK_HTTP_SECRET_PREVIOUS`                                  |                                      | The previous server secret, still accepted while you rotate.                                                                                                                              |
+| `SEVDESK_HTTP_STATE_DIR`                                        | memory (image: `/data`)              | Where grants and inbox sessions are kept (no tokens). Without it a restart signs every client out.                                                                                        |
+| `SEVDESK_OAUTH_ACCOUNTS`                                        |                                      | OAuth: the sevDesk account ids that may connect (`account-id` prints yours), or `any`.                                                                                                    |
+| `SEVDESK_OAUTH_CLIENTS`                                         | `claude.ai`                          | Hosts allowed to serve a client's metadata document (its `client_id`), or `any`.                                                                                                          |
+| `SEVDESK_OAUTH_ACCESS_TTL` / `_REFRESH_IDLE_TTL` / `_GRANT_TTL` | `1h` / `14d` / `90d`                 | Lifetime of access tokens, of unused refresh tokens, and of a grant from consent.                                                                                                         |
+| `SEVDESK_HTTP_ALLOWED_HOSTS` / `_ORIGINS`                       | from the public URL                  | More `Host` names, and more `Origin` values for `/mcp`, to accept, comma-separated. `/mcp` has no CORS support, so MCP clients running in a web page on another origin are not supported. |
+| `SEVDESK_HTTP_TRUST_PROXY`                                      | `0`                                  | How many reverse proxies are in front, for the client IP in rate limits and logs.                                                                                                         |
 
 ### Connecting clients
 

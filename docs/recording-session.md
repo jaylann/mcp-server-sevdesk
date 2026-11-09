@@ -317,18 +317,19 @@ The tunnel's address changes every time `cloudflared` starts. If you restart it,
 6. **Claude Code over OAuth.**
    `claude mcp add --transport http sevdesk-m5 https://<random>.trycloudflare.com/mcp`, then `/mcp`
    in Claude Code and authenticate: the consent page opens with Claude Code's client and a loopback
-   redirect warning. If it refuses the client, add the host it names to `SEVDESK_OAUTH_CLIENTS`,
-   recreate the container and try again. Ask for one read.
-7. **Negative checks** (each must be refused; note the status codes):
+   redirect warning. Its metadata document is on `claude.ai`, so the default client allowlist
+   accepts it; if the page refuses the client anyway, note the host it names. Ask for one read.
+7. **Negative checks** (each must be refused with the status in the comment; note anything
+   else):
 
    ```bash
    T=https://<random>.trycloudflare.com
    # No Authorization header: 401 with WWW-Authenticate naming the resource metadata.
    curl -sS -i -X POST "$T/mcp" -H 'content-type: application/json' -d '{}' | head -n 20
-   # A foreign Origin: refused before authentication.
+   # A foreign Origin: 403, before authentication.
    curl -sS -o /dev/null -w '%{http_code}\n' -X POST "$T/mcp" -H 'Origin: https://evil.example' \
      -H 'content-type: application/json' -d '{}'
-   # A wrong Host, straight at the container: refused; /healthz is exempt and answers 200.
+   # A wrong Host, straight at the container: 403; /healthz is exempt and answers 200.
    curl -sS -o /dev/null -w '%{http_code}\n' -X POST http://localhost:8080/mcp \
      -H 'Host: evil.example' -H 'content-type: application/json' -d '{}'
    curl -sS -o /dev/null -w '%{http_code}\n' -H 'Host: evil.example' http://localhost:8080/healthz
@@ -337,7 +338,10 @@ The tunnel's address changes every time `cloudflared` starts. If you restart it,
    Then the account allowlist: recreate the container with `SEVDESK_OAUTH_ACCOUNTS=1` (an id that
    is not the trial's), start a new consent from Claude Code (`/mcp`, re-authenticate) and paste the
    trial token. The page refuses it and shows the trial's account id; the log has an
-   `account_refused` warning. Recreate the container with the right id afterwards.
+   `account_refused` warning. The existing claude.ai connection stops working too: the allowlist
+   applies to every request, so its grant is revoked on the next message (a `grant_revoked` warning
+   with reason `account_removed`). Recreate the container with the right id afterwards and connect
+   claude.ai again.
 
 8. **Restart.** Ask Claude to finalize something that needs approval (or to cancel the invoice
    from step 4) so that an approval is pending, then `docker restart sevdesk-m5`. The connector
