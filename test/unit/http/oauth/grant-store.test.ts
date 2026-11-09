@@ -416,7 +416,8 @@ describe("grant store lock", () => {
       clock.advance(10_000);
       vi.advanceTimersByTime(10_000);
       await vi.waitFor(async () => {
-        expect((await stat(path)).mtimeMs).toBe(clock.now());
+        // File systems store the time with their own precision (e.g. …609.999 for …610).
+        expect(Math.round((await stat(path)).mtimeMs)).toBe(clock.now());
       });
       expect(await readFile(path, "utf8")).toBe(content);
       await writeFile(path, JSON.stringify({ pid: 2, token: "intruder", started: 0 }));
