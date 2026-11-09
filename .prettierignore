@@ -4,3 +4,7 @@ coverage
 pnpm-lock.yaml
 spec/openapi.yaml
 CHANGELOG.md
+build
+# release-please rewrites it with JSON.stringify(…, null, 2), which expands the short arrays
+# Prettier would collapse (test/unit/scripts/mcpb.test.ts keeps that layout).
+mcpb/manifest.json

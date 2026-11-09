@@ -1,8 +1,9 @@
 # Dependencies
 node_modules/
 
-# Build output
+# Build output (build/: the .mcpb bundle, `pnpm mcpb`)
 dist/
+build/
 *.tsbuildinfo
 *.tgz
 *.mcpb

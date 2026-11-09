@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["scripts/*.ts"],
+  "entry": ["scripts/*.ts", "tsdown.mcpb.config.ts"],
   "project": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts"],
   "ignoreDependencies": ["lint-staged"],
   "ignoreBinaries": ["mkfifo"]

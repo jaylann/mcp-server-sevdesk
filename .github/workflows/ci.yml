@@ -214,12 +214,38 @@ jobs:
         with:
           image: mcp-server-sevdesk:ci
 
+  # Builds the Claude Desktop extension (.mcpb) the release attaches: the server bundled into one
+  # file, the manifest with the generated tool list, validated and packed with @anthropic-ai/mcpb,
+  # then unpacked and started the way Claude Desktop starts it (scripts/build-mcpb.ts).
+  mcpb:
+    name: MCP bundle (.mcpb)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read # check out the repository
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up toolchain
+        uses: $/.github/actions/setup
+      - name: Build, validate, pack and smoke-test the bundle
+        run: pnpm mcpb
+      - name: Upload the bundle
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mcpb
+          path: build/*.mcpb
+          retention-days: 14
+          if-no-files-found: error
+
   # The single required status check for the branch ruleset. It runs even when a dependency failed
   # or was skipped (a skipped required check would otherwise count as passing).
   ci-ok:
     name: ci-ok
     if: ${{ always() }}
-    needs: [lint, typecheck, test, knip, build, typos, pack-smoke, docker]
+    needs: [lint, typecheck, test, knip, build, typos, pack-smoke, docker, mcpb]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}

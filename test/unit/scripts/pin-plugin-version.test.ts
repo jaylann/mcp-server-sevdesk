@@ -58,6 +58,11 @@ function releaseFiles(
     mcpJson: JSON.stringify({
       mcpServers: { sevdesk: { command: "npx", args: ["-y", `mcp-server-sevdesk@${version}`] } },
     }),
+    mcpbManifest: JSON.stringify({
+      manifest_version: "0.3",
+      name: "mcp-server-sevdesk",
+      version,
+    }),
   };
 }
 
@@ -120,6 +125,7 @@ describe("releaseVersionProblems", () => {
       'package.json version is "0.3.1", expected "0.4.0".',
       'server.json version is "0.3.1", expected "0.4.0".',
       'plugin/.claude-plugin/plugin.json version is "0.3.1", expected "0.4.0".',
+      'mcpb/manifest.json version is "0.3.1", expected "0.4.0".',
       'server.json npm package version is "0.3.1", expected "0.4.0".',
       'server.json OCI image tag is "0.3.1", expected "0.4.0".',
       'plugin/.mcp.json pin is "0.3.1", expected "0.4.0".',
@@ -178,12 +184,24 @@ describe("releaseVersionProblems", () => {
     ]);
   });
 
+  it("reports a .mcpb manifest on another version or without one", () => {
+    const lagging = { ...releaseFiles("0.4.0"), mcpbManifest: '{"version": "0.3.1"}' };
+    expect(releaseVersionProblems(lagging, "0.4.0")).toEqual([
+      'mcpb/manifest.json version is "0.3.1", expected "0.4.0".',
+    ]);
+    const missing = { ...releaseFiles("0.4.0"), mcpbManifest: "{}" };
+    expect(releaseVersionProblems(missing, "0.4.0")).toEqual([
+      'mcpb/manifest.json version is undefined, expected "0.4.0".',
+    ]);
+  });
+
   it("passes for this repository's files", () => {
     const files: ReleaseFiles = {
       packageJson: read("package.json"),
       serverJson: read("server.json"),
       pluginJson: read("plugin/.claude-plugin/plugin.json"),
       mcpJson: read("plugin/.mcp.json"),
+      mcpbManifest: read("mcpb/manifest.json"),
     };
     expect(releaseVersionProblems(files, packageJson.version, IMAGE)).toEqual([]);
     expect(pinImageTag(files.serverJson, packageJson.version)).toBe(files.serverJson);

@@ -10,7 +10,7 @@ import simpleImportSort from "eslint-plugin-simple-import-sort";
 import tseslint from "typescript-eslint";
 
 export default defineConfig(
-  globalIgnores(["dist/**", "coverage/**", "node_modules/**", "spec/**"]),
+  globalIgnores(["dist/**", "build/**", "coverage/**", "node_modules/**", "spec/**"]),
 
   js.configs.recommended,
   tseslint.configs.strictTypeChecked,

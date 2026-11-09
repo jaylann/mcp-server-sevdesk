@@ -1,0 +1,127 @@
+{
+  "manifest_version": "0.3",
+  "name": "mcp-server-sevdesk",
+  "display_name": "sevDesk",
+  "version": "0.0.0",
+  "description": "Safety-first sevDesk accounting: invoices, receipts, banking and reports. Read-only by default; binding steps need your confirmation. Unofficial.",
+  "long_description": "Connects Claude to your sevDesk account: contacts, invoices, credit notes, orders, receipts (Belege), bank transactions, parts and reports such as a VAT summary (Umsatzsteuer-Voranmeldung) and an EÜR-style profit and loss. It parses received e-invoices (XRechnung, ZUGFeRD), checks outgoing invoices for e-invoice readiness and suggests bank reconciliation matches.\n\n**Safety first.** A sevDesk API token has full access to the account, so the extension is read-only by default. Tools that change data appear only after you enable their tier: write (drafts, contacts, parts), commit (finalize, book, cancel) and external (send e-mails). Commit and external actions ask you to confirm each one; dry run previews writes without sending them.\n\nYou need a sevDesk API token (sevDesk: Settings, Users, API token), ideally for a dedicated user. This is an unofficial community project, not affiliated with sevdesk GmbH.",
+  "author": {
+    "name": "Justin Lanfermann",
+    "email": "Justin@Lanfermann.dev",
+    "url": "https://github.com/jaylann"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jaylann/mcp-server-sevdesk"
+  },
+  "homepage": "https://github.com/jaylann/mcp-server-sevdesk#readme",
+  "documentation": "https://github.com/jaylann/mcp-server-sevdesk#readme",
+  "support": "https://github.com/jaylann/mcp-server-sevdesk/issues",
+  "icon": "icon.png",
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/server/index.mjs"
+      ],
+      "env": {
+        "SEVDESK_API_TOKEN": "${user_config.api_token}",
+        "SEVDESK_ALLOW": "${user_config.allow}",
+        "SEVDESK_READ_ONLY": "${user_config.read_only}",
+        "SEVDESK_DRY_RUN": "${user_config.dry_run}",
+        "SEVDESK_CONFIRM": "${user_config.confirm}",
+        "SEVDESK_TOOLSETS": "${user_config.toolsets}",
+        "SEVDESK_FILE_DIRS": "${user_config.file_dir}",
+        "SEVDESK_OUTPUT_DIR": "${user_config.output_dir}"
+      }
+    }
+  },
+  "prompts_generated": true,
+  "keywords": [
+    "sevdesk",
+    "accounting",
+    "bookkeeping",
+    "buchhaltung",
+    "invoices",
+    "receipts",
+    "e-rechnung",
+    "xrechnung",
+    "zugferd",
+    "datev"
+  ],
+  "license": "MIT",
+  "privacy_policies": [
+    "https://sevdesk.de/datenschutz/",
+    "https://github.com/jaylann/mcp-server-sevdesk/blob/main/PRIVACY.md"
+  ],
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
+    "runtimes": {
+      "node": ">=22.12.0"
+    }
+  },
+  "user_config": {
+    "api_token": {
+      "type": "string",
+      "title": "sevDesk API token",
+      "description": "Your sevDesk API token (sevDesk: Settings, Users, API token). It has full access to the account, so ideally create it for a dedicated user.",
+      "required": true,
+      "sensitive": true
+    },
+    "allow": {
+      "type": "string",
+      "title": "Permission tiers",
+      "description": "Comma-separated tiers to enable: read, write, commit, external, or all. read is always on. write creates and changes drafts, contacts and parts; commit (finalize, book, cancel) and external (send e-mails) ask you to confirm each action.",
+      "required": false,
+      "default": "read"
+    },
+    "read_only": {
+      "type": "boolean",
+      "title": "Read only",
+      "description": "Offer only read tools, whatever the permission tiers say.",
+      "required": false,
+      "default": false
+    },
+    "dry_run": {
+      "type": "boolean",
+      "title": "Dry run",
+      "description": "Write tools only return a preview of what they would send; nothing changes in sevDesk.",
+      "required": false,
+      "default": false
+    },
+    "confirm": {
+      "type": "string",
+      "title": "Confirmation",
+      "description": "How you confirm commit and external actions: elicit (a dialog in Claude) or browser (an approval page in your browser).",
+      "required": false,
+      "default": "elicit"
+    },
+    "toolsets": {
+      "type": "string",
+      "title": "Toolsets",
+      "description": "Comma-separated toolsets to load, e.g. invoices,vouchers,banking. Empty loads all except advanced; all also loads advanced (a generic read of the sevDesk API).",
+      "required": false,
+      "default": ""
+    },
+    "file_dir": {
+      "type": "directory",
+      "title": "Receipt folder",
+      "description": "A folder receipts and e-invoices may be read from, to attach them to vouchers (Belege) or import them. Empty: no local file is read.",
+      "required": false,
+      "default": ""
+    },
+    "output_dir": {
+      "type": "directory",
+      "title": "Output folder",
+      "description": "A folder where PDFs, e-invoice XML, CSV and DATEV exports may be saved. Empty: the file-saving tools are not offered.",
+      "required": false,
+      "default": ""
+    }
+  }
+}
