@@ -18,6 +18,7 @@ import {
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
 import {
+  type AuthInfo,
   createMcpHandler,
   InMemoryTransport,
   type McpServerFactory,
@@ -40,6 +41,11 @@ export interface ConfirmConnectOptions {
   readonly answer?: Answer;
   /** Manual multi-round-trip mode (modern era): `input_required` results are returned as they are. */
   readonly manual?: boolean;
+  /**
+   * `transport: "http"` only: passed to `handler.fetch` with every request, as the HTTP mode does
+   * after authenticating it (bearer, or OAuth with a `VerifiedGrant`).
+   */
+  readonly authInfo?: AuthInfo;
 }
 
 export interface ConfirmHarness {
@@ -78,9 +84,11 @@ export async function connectConfirming(
   let closeServer: () => Promise<void> = () => Promise.resolve();
   if ((options.transport ?? "http") === "http") {
     const handler = createMcpHandler(factory);
+    const { authInfo } = options;
     await client.connect(
       new StreamableHTTPClientTransport(new URL("http://localhost/mcp"), {
-        fetch: (url, init) => handler.fetch(new Request(url, init)),
+        fetch: (url, init) =>
+          handler.fetch(new Request(url, init), authInfo === undefined ? undefined : { authInfo }),
       }),
     );
   } else {

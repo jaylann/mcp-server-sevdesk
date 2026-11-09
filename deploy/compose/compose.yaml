@@ -1,0 +1,103 @@
+# mcp-server-sevdesk behind Caddy (automatic HTTPS) on a host you run. OAuth mode for claude.ai and
+# other OAuth clients. Walkthrough and every setting: docs/remote.md.
+#
+#   cp .env.example .env                          # then fill it in
+#   install -d -m 0700 secrets
+#   docker run --rm ghcr.io/jaylann/mcp-server-sevdesk:latest generate-secret > secrets/http_secret
+#   sudo chown 65532:65532 secrets/http_secret && sudo chmod 0400 secrets/http_secret
+#   docker compose up -d
+#
+# The server runs as uid 65532 and reads its secrets from files: compose mounts each secret file
+# as it is on the host, so the file must be readable by that uid (the chown above).
+#
+# Bearer mode instead of OAuth (one fixed sevDesk account, a static token for clients that send
+# headers): set SEVDESK_HTTP_AUTH=bearer and replace SEVDESK_HTTP_SECRET_FILE and
+# SEVDESK_OAUTH_ACCOUNTS with SEVDESK_API_TOKEN_FILE and SEVDESK_HTTP_BEARER_TOKEN_FILE, each with
+# a secret of its own (see the commented lines).
+
+name: mcp-server-sevdesk
+
+services:
+  mcp:
+    image: ghcr.io/jaylann/mcp-server-sevdesk:0.0.0 # x-release-please-version
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    pids_limit: 128
+    environment:
+      SEVDESK_HTTP_AUTH: oauth
+      SEVDESK_HTTP_PUBLIC_URL: https://${SEVDESK_DOMAIN:?set SEVDESK_DOMAIN in .env}
+      # Caddy is the one proxy in front: the client address is the last X-Forwarded-For entry.
+      SEVDESK_HTTP_TRUST_PROXY: "1"
+      SEVDESK_HTTP_SECRET_FILE: /run/secrets/http_secret
+      SEVDESK_OAUTH_ACCOUNTS: ${SEVDESK_OAUTH_ACCOUNTS:?set SEVDESK_OAUTH_ACCOUNTS in .env}
+      SEVDESK_ALLOW: ${SEVDESK_ALLOW:-read}
+      # Commit and external actions are approved on the server's /approvals page.
+      SEVDESK_CONFIRM: browser
+      SEVDESK_AUDIT_LOG: /data/audit.jsonl
+      # Bearer mode:
+      # SEVDESK_HTTP_AUTH: bearer
+      # SEVDESK_API_TOKEN_FILE: /run/secrets/sevdesk_token
+      # SEVDESK_HTTP_BEARER_TOKEN_FILE: /run/secrets/bearer_token
+    secrets:
+      - http_secret
+      # - sevdesk_token
+      # - bearer_token
+    volumes:
+      - data:/data
+    # Reachable from Caddy only; nothing is published on the host.
+    expose:
+      - "8080"
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  caddy:
+    image: caddy:2-alpine@sha256:78bd35025c7ba85961dd149ae670315129954e77abe2383ac47c89106b35ade9
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      SEVDESK_DOMAIN: ${SEVDESK_DOMAIN:?set SEVDESK_DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      mcp:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+volumes:
+  # Grants, sessions and the audit log. Initialized from the image: owned by uid 65532, mode 0700.
+  data:
+  caddy_data:
+  caddy_config:
+
+secrets:
+  http_secret:
+    file: ./secrets/http_secret
+  # sevdesk_token:
+  #   file: ./secrets/sevdesk_token
+  # bearer_token:
+  #   file: ./secrets/bearer_token

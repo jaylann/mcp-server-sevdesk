@@ -1,8 +1,12 @@
 name: Release
 
 # On every push to main, release-please opens or updates the release PR. Merging that PR creates
-# the GitHub release and tag; the publish job then ships the same commit to npm (trusted
-# publishing with provenance, no NPM_TOKEN) and to the MCP Registry (GitHub OIDC).
+# the GitHub release and tag; the publish jobs then ship the same commit:
+#   publish-npm       npm, trusted publishing with provenance (no NPM_TOKEN)
+#   publish-image     ghcr.io/jaylann/mcp-server-sevdesk for linux/amd64 and linux/arm64, with an
+#                     SBOM and a build provenance attestation
+#   image-smoke       the pushed image, pulled by digest on an amd64 and an arm64 runner
+#   publish-registry  server.json to the MCP Registry (GitHub OIDC), once npm and the image are live
 on:
   push:
     branches: [main]
@@ -45,12 +49,13 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-  # release-please bumps package.json, server.json and plugin.json, but cannot write
-  # "mcp-server-sevdesk@<version>" into the plugin's npx argument (its JSON updater replaces whole
-  # values). This job adds that one change to the release PR after every update, so the merged
-  # release pins the version it publishes. Plain Node, no dependency install: the job can push.
+  # release-please bumps package.json, server.json, plugin.json and the deploy templates, but cannot
+  # write "mcp-server-sevdesk@<version>" into the plugin's npx argument or "<image>:<version>" into
+  # server.json's OCI identifier (its JSON updater replaces whole values). This job adds those two
+  # changes to the release PR after every update, so the merged release pins the version it
+  # publishes. Plain Node, no dependency install: the job can push.
   pin-plugin:
-    name: Pin the plugin in the release PR
+    name: Pin the plugin and the image in the release PR
     needs: release-please
     if: ${{ needs.release-please.outputs.prs_created == 'true' }}
     runs-on: ubuntu-latest
@@ -72,7 +77,7 @@ jobs:
           node-version-file: .nvmrc
           package-manager-cache: false
 
-      - name: Pin plugin/.mcp.json to the release version
+      - name: Pin plugin/.mcp.json and server.json to the release version
         run: node scripts/pin-plugin-version.ts
 
       - name: Commit and push the pin
@@ -80,8 +85,8 @@ jobs:
           # The release-please token, so CI runs on the pushed commit when that token is set.
           TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
         run: |
-          if git diff --quiet -- plugin/.mcp.json; then
-            echo "plugin/.mcp.json already pins the release version."
+          if git diff --quiet -- plugin/.mcp.json server.json; then
+            echo "plugin/.mcp.json and server.json already pin the release version."
             exit 0
           fi
           case "$BRANCH" in
@@ -91,11 +96,11 @@ jobs:
           version="$(node -p 'require("./package.json").version')"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit --quiet -m "chore: pin the plugin to mcp-server-sevdesk@$version" -- plugin/.mcp.json
+          git commit --quiet -m "chore: pin the plugin and the image to $version" -- plugin/.mcp.json server.json
           git push --quiet "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
 
-  publish:
-    name: Publish to npm and the MCP Registry
+  publish-npm:
+    name: Publish to npm
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
@@ -105,12 +110,10 @@ jobs:
       url: https://www.npmjs.com/package/mcp-server-sevdesk
     permissions:
       contents: read # check out the release tag
-      id-token: write # OIDC for npm trusted publishing + provenance and the MCP Registry login
+      id-token: write # OIDC for npm trusted publishing + provenance
     env:
       VERSION: ${{ needs.release-please.outputs.version }}
-      # mcp-publisher release binary, pinned by version and SHA-256 (linux_amd64).
-      MCP_PUBLISHER_VERSION: 1.8.8
-      MCP_PUBLISHER_SHA256: 09f1fa70ee146b640584274a1a6b2b8a0310b05d4321fa9224e6df6a016d67f4
+      IMAGE: ghcr.io/jaylann/mcp-server-sevdesk
     steps:
       - name: Check out the release tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -131,36 +134,7 @@ jobs:
         run: pnpm publint
 
       - name: Check that package.json, server.json and the plugin carry the release version
-        run: |
-          node -e '
-            const fs = require("node:fs");
-            const want = process.env.VERSION;
-            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
-            const server = JSON.parse(fs.readFileSync("server.json", "utf8"));
-            const plugin = JSON.parse(fs.readFileSync("plugin/.claude-plugin/plugin.json", "utf8"));
-            const mcp = JSON.parse(fs.readFileSync("plugin/.mcp.json", "utf8"));
-            const pinned = mcp.mcpServers?.sevdesk?.args?.[1] ?? "";
-            const found = {
-              "package.json version": pkg.version,
-              "server.json version": server.version,
-              "server.json packages[0].version": server.packages?.[0]?.version,
-              "plugin.json version": plugin.version,
-              "plugin/.mcp.json pin": pinned.startsWith(pkg.name + "@") ? pinned.slice(pkg.name.length + 1) : pinned,
-            };
-            let ok = true;
-            for (const [where, got] of Object.entries(found)) {
-              if (got !== want) {
-                console.log("::error::" + where + " is " + got + ", expected " + want);
-                ok = false;
-              }
-            }
-            if (server.name !== pkg.mcpName) {
-              console.log("::error::server.json name " + server.name + " differs from mcpName " + pkg.mcpName);
-              ok = false;
-            }
-            if (!ok) process.exit(1);
-            console.log("package.json, server.json and the plugin are at " + want + ".");
-          '
+        run: node scripts/pin-plugin-version.ts --check "$VERSION" --image "$IMAGE"
 
       # Trusted publishing needs npm >= 11.5.1. Node 24 bundles a newer npm, so no upgrade step;
       # this only fails loudly if that ever stops being true.
@@ -198,6 +172,187 @@ jobs:
           done
           echo "::error::$name@$VERSION did not appear on npm within 5 minutes."
           exit 1
+
+  # Builds on the amd64 runner for both platforms: the build stages run natively and the runtime
+  # stage only copies files, so no emulation. No layer cache, so nothing cached can reach the image.
+  publish-image:
+    name: Publish the container image
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: release
+      url: https://github.com/jaylann/mcp-server-sevdesk/pkgs/container/mcp-server-sevdesk
+    permissions:
+      contents: read # check out the release tag
+      packages: write # push the image to ghcr.io
+      id-token: write # sign the build provenance attestation (Sigstore, GitHub OIDC)
+      attestations: write # store the build provenance attestation
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    env:
+      VERSION: ${{ needs.release-please.outputs.version }}
+      IMAGE: ghcr.io/jaylann/mcp-server-sevdesk
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Check that server.json names this image and version
+        run: node scripts/pin-plugin-version.ts --check "$VERSION" --image "$IMAGE"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          cache-binary: false
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # Tags <version>, <major>.<minor> and latest (not for pre-releases); OCI labels and
+      # annotations from the repository (source, revision, version, license).
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}},value=${{ env.VERSION }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.VERSION }}
+            type=raw,value=latest,enable=${{ !contains(env.VERSION, '-') }}
+
+      - name: Build and push (linux/amd64, linux/arm64)
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          no-cache: true
+          provenance: mode=max
+          sbom: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+
+      # Verifiable with `gh attestation verify oci://ghcr.io/jaylann/mcp-server-sevdesk:<version>
+      # --owner jaylann`.
+      - name: Attest the build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+  # Pulls the pushed image by digest on each platform's runner and runs the checks of CI's docker
+  # job against it (.github/actions/image-smoke).
+  image-smoke:
+    name: Image smoke (${{ matrix.runner }})
+    needs: [release-please, publish-image]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    permissions:
+      contents: read # check out the release tag (the smoke script)
+      packages: read # pull the image while the package is still private
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    env:
+      IMAGE: ghcr.io/jaylann/mcp-server-sevdesk
+      DIGEST: ${{ needs.publish-image.outputs.digest }}
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          persist-credentials: false
+
+      - name: Set up toolchain
+        uses: $/.github/actions/setup
+        with:
+          cache: "false"
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Pull the image by digest
+        run: docker pull "$IMAGE@$DIGEST"
+
+      - name: Smoke-test the image
+        uses: $/.github/actions/image-smoke
+        with:
+          image: ${{ env.IMAGE }}@${{ env.DIGEST }}
+
+  # Runs once npm has the package and the image passed its smoke test on both platforms. The MCP
+  # Registry pulls the image anonymously to check its label, so the GHCR package must be public:
+  # after the first image release, make it public and re-run this job.
+  publish-registry:
+    name: Publish to the MCP Registry
+    needs: [release-please, publish-npm, publish-image, image-smoke]
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # check out the release tag
+      id-token: write # GitHub OIDC login to the MCP Registry
+    env:
+      VERSION: ${{ needs.release-please.outputs.version }}
+      IMAGE: ghcr.io/jaylann/mcp-server-sevdesk
+      # mcp-publisher release binary, pinned by version and SHA-256 (linux_amd64).
+      MCP_PUBLISHER_VERSION: 1.8.8
+      MCP_PUBLISHER_SHA256: 09f1fa70ee146b640584274a1a6b2b8a0310b05d4321fa9224e6df6a016d67f4
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Check that server.json carries the release version (npm and OCI)
+        run: node scripts/pin-plugin-version.ts --check "$VERSION" --image "$IMAGE"
+
+      - name: Check that the image is public
+        run: |
+          repository="${IMAGE#ghcr.io/}"
+          # An anonymous pull token, as the registry's validator gets one (empty when refused).
+          token="$(curl --silent --retry 3 "https://ghcr.io/token?scope=repository:${repository}:pull" \
+            | jq -r '.token // empty' 2> /dev/null || true)"
+          if [ -n "$token" ] && curl --fail --silent --output /dev/null --retry 3 \
+            --header "Authorization: Bearer $token" \
+            --header "Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json" \
+            "https://ghcr.io/v2/${repository}/manifests/${VERSION}"; then
+            echo "$IMAGE:$VERSION can be pulled anonymously."
+          else
+            echo "::error title=Image not public::$IMAGE:$VERSION cannot be pulled anonymously, and the MCP Registry accepts only public images. Make the package public (package settings > Change visibility), then re-run this job."
+            exit 1
+          fi
 
       - name: Install mcp-publisher (checksum-verified)
         run: |

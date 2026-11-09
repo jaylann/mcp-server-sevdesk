@@ -26,7 +26,7 @@ import {
   type SevdeskErrorKind,
   unexpectedResponse,
 } from "./errors.js";
-import { createPacer, realSleep, type Sleep } from "./pacing.js";
+import { createPacer, type Pacer, realSleep, type Sleep } from "./pacing.js";
 import { assertSafePath, minimumWriteTier, resolveGetSafety } from "./paths.js";
 import type {
   CollectedList,
@@ -106,6 +106,12 @@ export interface SevdeskClientDeps {
   readonly random?: () => number;
   /** Diagnostics hook; exceptions it throws are ignored. */
   readonly onEvent?: (event: SevdeskClientEvent) => void;
+  /**
+   * Pacing shared with other clients of the same account (see {@link createClientPacer}), so
+   * several clients for one account (per tier set, in OAuth mode) never exceed its rate together.
+   * Default: a pacer of this client's own.
+   */
+  readonly pacer?: Pacer;
 }
 
 /** Attempts per side-effect-free GET, including the first one. */
@@ -201,6 +207,22 @@ interface Prepared {
 }
 
 /**
+ * The pacing a client applies to one account: a token bucket at `requestsPerSecond` and at most 4
+ * requests in flight. Pass the same pacer to every client of one account (`SevdeskClientDeps.pacer`).
+ */
+export function createClientPacer(
+  config: Pick<SevdeskClientConfig, "requestsPerSecond">,
+  deps: Pick<SevdeskClientDeps, "sleep" | "monotonicNow"> = {},
+): Pacer {
+  return createPacer({
+    requestsPerSecond: config.requestsPerSecond,
+    maxConcurrency: MAX_CONCURRENCY,
+    now: deps.monotonicNow ?? (() => performance.now()),
+    sleep: deps.sleep ?? realSleep,
+  });
+}
+
+/**
  * Creates the sevDesk client. One instance per account/token; it owns that account's pacing
  * (token bucket at `requestsPerSecond`, at most 4 requests in flight). `timeoutMs` applies per
  * attempt (fetch plus reading the body); the caller's signal also covers pacing and backoff waits.
@@ -216,12 +238,7 @@ export function createSevdeskClient(
   const wallNow = deps.now ?? Date.now;
   const now = deps.monotonicNow ?? (() => performance.now());
   const random = deps.random ?? Math.random;
-  const pacer = createPacer({
-    requestsPerSecond: config.requestsPerSecond,
-    maxConcurrency: MAX_CONCURRENCY,
-    now,
-    sleep,
-  });
+  const pacer = deps.pacer ?? createClientPacer(config, { sleep, monotonicNow: now });
   const baseUrl = config.baseUrl.replace(/\/+$/, "");
 
   function emit(event: SevdeskClientEvent): void {

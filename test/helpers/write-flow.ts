@@ -4,14 +4,17 @@
  * plus readers for the wrapped write result.
  */
 import type { CallToolResult } from "@modelcontextprotocol/client";
+import type { AuthInfo } from "@modelcontextprotocol/server";
 import { afterEach } from "vitest";
 
-import type { Config } from "../../src/config.js";
+import { GRANT_EXTRA_KEY, VerifiedGrant } from "../../src/accounts/types.js";
+import type { Config, Deployment } from "../../src/config.js";
 import {
   createSafetyRuntime,
   type SafetyRuntime,
   type SafetyRuntimeOptions,
 } from "../../src/safety/runtime.js";
+import type { Tier } from "../../src/safety/tiers.js";
 import { createServerFactory, type ServerFactory } from "../../src/server.js";
 import type { AnyToolDefinition } from "../../src/tools/types.js";
 import { allEnabledConfig } from "./config.js";
@@ -111,4 +114,49 @@ export function resultSummary(result: CallToolResult): string {
 /** Method and path of every data-changing request the fake client received. */
 export function writesOf(fake: FakeSevdeskClient): { method: string; path: string }[] {
   return fake.writes().map(({ method, path }) => ({ method, path }));
+}
+
+/** The CIMD client id claude.ai uses: shared by every claude.ai user of one server. */
+const CLAUDE_CLIENT_ID = "https://claude.ai/oauth/mcp-oauth-client-metadata";
+
+/** An HTTP deployment as `loadHttpConfig` builds it (`approvalsUrl` with `SEVDESK_CONFIRM=browser`). */
+export function httpDeployment(
+  auth: "oauth" | "bearer",
+  approvalsUrl: string | undefined = "https://mcp.example.com/approvals",
+): Deployment {
+  return { kind: "http", auth, publicOrigin: "https://mcp.example.com", approvalsUrl };
+}
+
+export interface GrantOptions {
+  readonly accountId: string;
+  /** The sevDesk token pasted at consent. */
+  readonly token: string;
+  readonly grantId?: string;
+  readonly tiers?: readonly Tier[];
+  readonly clientId?: string;
+}
+
+/**
+ * The `AuthInfo` the OAuth verifier hands to the MCP handler: a `VerifiedGrant` in
+ * `extra[GRANT_EXTRA_KEY]` (the grant id defaults to `grant-<accountId>`, the tiers to all).
+ */
+export function grantAuthInfo(options: GrantOptions): AuthInfo {
+  const tiers = options.tiers ?? ["read", "write", "commit", "external"];
+  const clientId = options.clientId ?? CLAUDE_CLIENT_ID;
+  return {
+    token: "sdmcp_at.test",
+    clientId,
+    scopes: [...tiers],
+    extra: {
+      [GRANT_EXTRA_KEY]: new VerifiedGrant(
+        {
+          grantId: options.grantId ?? `grant-${options.accountId}`,
+          accountId: options.accountId,
+          clientId,
+          tiers: new Set(tiers),
+        },
+        options.token,
+      ),
+    },
+  };
 }

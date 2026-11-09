@@ -13,10 +13,12 @@
  *      is asked again when the preview changed. On 2025-era connections the SDK's legacy shim
  *      sends a real `elicitation/create` and re-enters this flow, so one code path serves both
  *      eras. Clients without form elicitation get an actionable error;
- *    - `browser`: a pending approval on the local approval page (`approval-server.ts`), opened
- *      in the user's browser by the server and logged to stderr; the model only gets a short
- *      reference code, never the page's URL, and calls again with the same arguments after the
- *      human decided;
+ *    - `browser`: a pending approval in the approval store (`approval-store.ts`), owned by the
+ *      caller's grant and account. Over stdio the local approval page (`approval-local.ts`) opens
+ *      it in the user's browser and logs its URL to stderr, and the model only gets a short
+ *      reference code, never the page's URL; over HTTP the model gets the reference code and the
+ *      approvals inbox URL, where the user signs in to decide. Either way the model calls again
+ *      with the same arguments after the human decided;
  *    - `off`: no confirmation (config requires `SEVDESK_I_UNDERSTAND_NO_CONFIRM=1`);
  * 4. audit `executing` (fail closed: no line, no request), `execute` with a tier-scoped client,
  *    audit `executed` or `failed`.
@@ -24,6 +26,9 @@
  * Results are wrapped as `{status, result?, preview?, approval?}` (`writeOutputSchema`). A
  * `confirm`-style argument never gates anything: approval only ever comes from the client's
  * elicitation answer or the approval page.
+ *
+ * Texts that tell the user what to change depend on `config.deployment`: over stdio they name the
+ * MCP client configuration and the local page, over HTTP the server's settings and the inbox.
  */
 import { randomUUID } from "node:crypto";
 
@@ -36,8 +41,10 @@ import {
 } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
-import { ApprovalLimitError, type ApprovalTicket } from "../safety/approval-server.js";
-import type { AuditApproval, AuditEvent } from "../safety/audit.js";
+import { type RequestPrincipal, requestPrincipal } from "../accounts/types.js";
+import type { Deployment } from "../config.js";
+import { ApprovalLimitError, type ApprovalTicket } from "../safety/approval-types.js";
+import { type AuditApproval, type AuditEvent, auditPrincipal } from "../safety/audit.js";
 import { findHiddenCharacters } from "../safety/fence.js";
 import { argumentsHash, previewHash } from "../safety/hashing.js";
 import { displayPreview, previewSchema, previewText } from "../safety/preview.js";
@@ -175,6 +182,7 @@ export async function runWriteTool(
   const action: Action = {
     tool,
     call,
+    owner: requestPrincipal(call.request.http?.authInfo, deps.config),
     args,
     plan,
     argsHash,
@@ -212,6 +220,8 @@ export async function runWriteTool(
 interface Action {
   readonly tool: ErasedWriteTool;
   readonly call: WriteCall;
+  /** Who asks: owns browser approvals, named in audit lines over HTTP. */
+  readonly owner: RequestPrincipal;
   readonly args: unknown;
   readonly plan: WritePlan<unknown>;
   readonly argsHash: string;
@@ -260,7 +270,7 @@ async function confirmByElicitation(action: Action): Promise<Decision> {
   const rawState = call.request.mcpReq.requestState();
   if (rawState === undefined) {
     if (!supportsFormElicitation(call.clientCapabilities)) {
-      return stop(errorResult(noElicitationText(tool.name)));
+      return stop(errorResult(noElicitationText(tool.name, call.deps.config.deployment)));
     }
     return stop(await askByElicitation(action, randomUUID(), undefined));
   }
@@ -374,7 +384,7 @@ function supportsFormElicitation(capabilities: unknown): boolean {
 async function confirmByBrowser(action: Action): Promise<Decision> {
   const { tool, call } = action;
   const { approvals } = call.deps.safety;
-  const existing = approvals.current(tool.name, action.argsHash);
+  const existing = approvals.current(action.owner, tool.name, action.argsHash);
   if (existing === undefined) {
     return stop(await requestBrowserApproval(action, randomUUID(), undefined));
   }
@@ -386,7 +396,7 @@ async function confirmByBrowser(action: Action): Promise<Decision> {
   }
   // Decided: take it now (single use), with no await since `current`, so no other call can. If
   // it expired in between, it is gone: ask again rather than act on the stale snapshot.
-  const taken = approvals.take(existing.id);
+  const taken = approvals.take(action.owner, existing.id);
   if (taken === undefined) {
     return stop(await requestBrowserApproval(action, existing.callId, undefined));
   }
@@ -406,9 +416,10 @@ async function requestBrowserApproval(
   notice: string | undefined,
 ): Promise<CallToolResult> {
   const { tool, call } = action;
+  const { deployment } = call.deps.config;
   let ticket;
   try {
-    ticket = await call.deps.safety.approvals.create({
+    ticket = await call.deps.safety.approvals.create(action.owner, {
       toolName: tool.name,
       toolTitle: tool.title,
       tier: tool.tier,
@@ -421,11 +432,23 @@ async function requestBrowserApproval(
     });
   } catch (error) {
     if (error instanceof ApprovalLimitError) {
+      const where =
+        deployment.kind === "http"
+          ? `in the approvals inbox (${inboxUrl(deployment)})`
+          : "in the user's browser";
       return errorResult(
         `${tool.name} needs the user's approval, but ${String(error.limit)} approval requests are ` +
-          "already waiting in the user's browser. Ask the user to approve or reject those first " +
+          `already waiting ${where}. Ask the user to approve or reject those first ` +
           "(or wait until they expire, at most 10 minutes), then call the tool again. Nothing " +
           "was sent to sevDesk.",
+      );
+    }
+    if (deployment.kind === "http") {
+      logToStderr(tool.name, `approval request could not be created: ${errorCode(error)}`);
+      return errorResult(
+        `${tool.name} needs the user's approval, but the approval request could not be created ` +
+          "(see the server log). Nothing was sent to sevDesk. Tell the user; they can try again " +
+          "in a moment.",
       );
     }
     logToStderr(tool.name, `approval page could not be started: ${errorCode(error)}`);
@@ -446,17 +469,23 @@ async function requestBrowserApproval(
 }
 
 /**
- * The `approval_pending` result. It carries the non-secret reference code, never the page URL
- * (a capability): the server opened the page itself or wrote the link to its log.
+ * The `approval_pending` result. It carries the non-secret reference code, never a local page URL
+ * (a capability): over stdio the server opened the page itself or wrote the link to its log; over
+ * HTTP it names the approvals inbox, where only a browser signed in to the account can decide.
  */
 function pendingResult(action: Action, ticket: ApprovalTicket, changed: boolean): CallToolResult {
   const { reference, expiresAt, opened } = ticket;
-  const where = opened
-    ? `An approval page was opened in the user's browser (reference ${reference}). Ask the user ` +
-      "to approve or reject it there"
-    : `The approval page (reference ${reference}) could not be opened in the user's browser; ` +
-      "its link is in the MCP server's log (stderr). Ask the user to open it from there and " +
-      "approve or reject it";
+  const { deployment } = action.call.deps.config;
+  const where =
+    deployment.kind === "http"
+      ? `The user must approve or reject this request in the approvals inbox (reference ` +
+        `${reference}). Ask the user to open ${inboxUrl(deployment)}, sign in there and decide`
+      : opened
+        ? `An approval page was opened in the user's browser (reference ${reference}). Ask the ` +
+          "user to approve or reject it there"
+        : `The approval page (reference ${reference}) could not be opened in the user's browser; ` +
+          "its link is in the MCP server's log (stderr). Ask the user to open it from there and " +
+          "approve or reject it";
   const summary =
     (changed ? "The record changed since the last approval request, so it needs a new one. " : "") +
     `Nothing has been changed yet. ${where}, then call ${action.tool.name} again with exactly ` +
@@ -481,10 +510,11 @@ async function execute(
     );
   } catch (error) {
     logToStderr(tool.name, `audit log: could not write the executing line: ${errorCode(error)}`);
+    const who = call.deps.config.deployment.kind === "http" ? "the server's operator" : "the user";
     return errorResult(
       `${tool.name} was not run: the audit log (SEVDESK_AUDIT_LOG) could not be written, and ` +
-        "changes are only made when they can be logged. Nothing was sent to sevDesk. Ask the " +
-        "user to check the audit log path and its permissions.",
+        `changes are only made when they can be logged. Nothing was sent to sevDesk. Ask ${who} ` +
+        "to check the audit log path and its permissions.",
     );
   }
 
@@ -559,7 +589,17 @@ function dryRunSummary(action: Action): string {
   );
 }
 
-function noElicitationText(toolName: string): string {
+function noElicitationText(toolName: string, deployment: Deployment): string {
+  if (deployment.kind === "http") {
+    return (
+      `${toolName} needs the user's approval, but this MCP client cannot be asked for it here ` +
+      "(it does not support MCP elicitation, or not over this HTTP connection). Nothing was sent " +
+      "to sevDesk. Tell the user: to use this tool, the server's operator can set " +
+      "SEVDESK_CONFIRM=browser and restart the server; the user then approves each such action " +
+      `in the approvals inbox (${inboxUrl(deployment)}) after signing in there. dryRun: true ` +
+      "still previews the change."
+    );
+  }
   return (
     `${toolName} needs the user's approval, but this MCP client cannot show confirmation ` +
     "prompts (it does not support MCP elicitation). Nothing was sent to sevDesk. Tell the user: " +
@@ -567,6 +607,14 @@ function noElicitationText(toolName: string): string {
     "local web page) and restart the server, or use a client that supports elicitation. " +
     "dryRun: true still previews the change."
   );
+}
+
+/**
+ * The approvals inbox of an HTTP deployment: `approvalsUrl` when `SEVDESK_CONFIRM=browser` set it,
+ * else where it would be (for the hint that suggests turning it on).
+ */
+function inboxUrl(deployment: Extract<Deployment, { kind: "http" }>): string {
+  return deployment.approvalsUrl ?? `${deployment.publicOrigin}/approvals`;
 }
 
 function mismatchText(toolName: string): string {
@@ -594,10 +642,13 @@ type EventFields = Pick<AuditEvent, "event" | "callId"> &
 function auditEvent(action: Action, fields: EventFields): AuditEvent {
   return {
     ...fields,
+    ...auditPrincipal(action.owner),
     tool: action.tool.name,
     tier: action.tool.tier,
     argsHash: action.argsHash,
     args: action.args,
+    // In OAuth mode the log has no token of its own: each line redacts its account's token.
+    secrets: [action.call.deps.config.token],
   };
 }
 

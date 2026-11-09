@@ -8,13 +8,17 @@
  * - the file is created with mode 0600 (tightened to 0600 if it exists with broader rights) and
  *   opened with `O_APPEND` (and `O_NOFOLLOW` where the platform has it, so a symlink planted at
  *   the path is refused); lines are written one at a time, in call order;
- * - the sevDesk token never reaches the file: every string is redacted, and the whole line again;
+ * - the sevDesk token never reaches the file: every string is redacted, and the whole line again
+ *   (the log's own secrets plus each event's `secrets`, the token of the account it belongs to);
+ * - over HTTP each line names the account and the grant (`account`, `grant`); stdio lines have
+ *   neither, so they stay as before;
  * - `record` rejects when a line could not be written. The write flow treats a failed
  *   `executing` line as fatal (fail closed: nothing is sent), other events as best effort.
  */
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 
+import type { RequestPrincipal } from "../accounts/types.js";
 import type { ConfirmationPreview, SevdeskObjectRef } from "../tools/types.js";
 import { escapeHiddenCharacters } from "./fence.js";
 import { redactSecrets } from "./redact.js";
@@ -23,7 +27,8 @@ import type { WriteTier } from "./tiers.js";
 /**
  * What happened, roughly in the order a call can produce them. `confirmation_refused`: a retried
  * call presented a confirmation that was replayed, expired or made for other arguments;
- * `approval_decided`: the human pressed Approve or Reject on the local approval page.
+ * `approval_decided`: the human pressed Approve or Reject on an approval page (the local page or
+ * the approvals inbox).
  */
 type AuditEventName =
   | "dry_run"
@@ -45,6 +50,10 @@ export interface AuditEvent {
    * confirmation, so the request, the decision and the execution share it.
    */
   readonly callId: string;
+  /** The account scope of the call (see {@link auditPrincipal}); absent over stdio. */
+  readonly account?: string;
+  /** The grant key of the call: `bearer` or the OAuth grant id; absent over stdio. */
+  readonly grant?: string;
   readonly tool: string;
   readonly tier: WriteTier;
   /** `argumentsHash` of the call (tool + arguments without `dryRun`). */
@@ -70,6 +79,20 @@ export interface AuditEvent {
   readonly affected?: readonly SevdeskObjectRef[];
   /** `failed`: the error kind (a `SevdeskError` kind, `internal` or `output_invalid`). */
   readonly error?: string;
+  /**
+   * Values redacted from this line in addition to the log's own (the token of the account the
+   * call ran for, in OAuth mode). Never written.
+   */
+  readonly secrets?: readonly string[];
+}
+
+/**
+ * The `account` and `grant` fields for a call of `principal`: none over stdio (lines stay as they
+ * were before HTTP mode existed), the account scope and grant key otherwise.
+ */
+export function auditPrincipal(principal: RequestPrincipal): Pick<AuditEvent, "account" | "grant"> {
+  if (principal.grantKey === "stdio") return {};
+  return { account: principal.accountScope, grant: principal.grantKey };
 }
 
 export interface AuditLog {
@@ -82,7 +105,7 @@ export interface AuditLog {
 export interface AuditLogOptions {
   /** `SEVDESK_AUDIT_LOG`; `undefined` disables the log. */
   readonly path: string | undefined;
-  /** Values that must never appear in the file (the API token). */
+  /** Values that must never appear in the file (the API token); events can add their own. */
   readonly secrets: readonly string[];
   /** Wall clock for the `ts` field; injectable for tests. */
   readonly now?: () => Date;
@@ -127,7 +150,8 @@ export function createAuditLog(options: AuditLogOptions): AuditLog {
   return {
     enabled: true,
     record(event) {
-      const line = `${redactSecrets(JSON.stringify(toLine(event, now(), secrets)), secrets)}\n`;
+      const all = event.secrets === undefined ? secrets : [...secrets, ...event.secrets];
+      const line = `${redactSecrets(JSON.stringify(toLine(event, now(), all)), all)}\n`;
       const written = queue.then(() => append(line));
       queue = written.catch(() => undefined);
       return written;
@@ -139,6 +163,8 @@ function toLine(event: AuditEvent, at: Date, secrets: readonly string[]): Record
   return {
     ts: at.toISOString(),
     event: event.event,
+    ...(event.account === undefined ? {} : { account: event.account }),
+    ...(event.grant === undefined ? {} : { grant: event.grant }),
     callId: event.callId,
     tool: event.tool,
     tier: event.tier,

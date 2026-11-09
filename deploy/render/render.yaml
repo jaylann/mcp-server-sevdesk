@@ -1,0 +1,46 @@
+# Render Blueprint: one web service running the published image, with a disk at /data for grants,
+# sessions and the audit log. OAuth mode for claude.ai and other OAuth clients. Walkthrough:
+# docs/remote.md. In the Render Dashboard: New > Blueprint, pick this repository (or your fork) and
+# set the Blueprint path to deploy/render/render.yaml.
+#
+# A disk needs a paid instance type and keeps the service at one instance, which this server needs
+# anyway: grants live on the disk and pending approvals in memory.
+
+services:
+  - type: web
+    name: mcp-server-sevdesk
+    runtime: image
+    image:
+      url: ghcr.io/jaylann/mcp-server-sevdesk:0.0.0 # x-release-please-version
+    plan: 0.5c-512mb
+    region: frankfurt
+    numInstances: 1
+    healthCheckPath: /healthz
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      # Render routes to this port (the image listens on 8080).
+      - key: PORT
+        value: "8080"
+      - key: SEVDESK_HTTP_AUTH
+        value: oauth
+      # https://<service>.onrender.com, or your custom domain. Prompted for at creation.
+      - key: SEVDESK_HTTP_PUBLIC_URL
+        sync: false
+      # The sevDesk account ids that may connect, comma-separated. Prompted for at creation.
+      - key: SEVDESK_OAUTH_ACCOUNTS
+        sync: false
+      # Generated once by Render (32 random bytes, base64); never shown in this file.
+      - key: SEVDESK_HTTP_SECRET
+        generateValue: true
+      # Render's proxy appends the client address to X-Forwarded-For.
+      - key: SEVDESK_HTTP_TRUST_PROXY
+        value: "1"
+      - key: SEVDESK_ALLOW
+        value: read
+      - key: SEVDESK_CONFIRM
+        value: browser
+      - key: SEVDESK_AUDIT_LOG
+        value: /data/audit.jsonl

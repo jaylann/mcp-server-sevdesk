@@ -130,7 +130,8 @@ jobs:
         uses: crate-ci/typos@4c8b7f51ca60df14e3c5ca82770dfbbe6c3dae85 # v1.52.0
 
   # Packs the npm tarball, installs it into an empty directory outside the repository (so nothing
-  # resolves from the repo's node_modules) and runs a stdio handshake against the installed bin.
+  # resolves from the repo's node_modules) and runs the stdio and HTTP smoke tests against the
+  # installed bin.
   pack-smoke:
     name: Pack smoke (${{ matrix.os }}, Node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}
@@ -155,7 +156,7 @@ jobs:
         run: pnpm build
       # The npm install below is the test itself: it installs the tarball just packed from this
       # checkout and resolves its dependencies the way a user's install does, without our lockfile.
-      - name: Pack, install the tarball and run the stdio smoke test
+      - name: Pack, install the tarball and run the smoke tests
         run: | # zizmor: ignore[adhoc-packages]
           # Forward slashes work for bash, npm and node on every runner, including Windows.
           tmp="${RUNNER_TEMP//\\//}/pack-smoke"
@@ -174,13 +175,51 @@ jobs:
           bin="$tmp/install/node_modules/mcp-server-sevdesk/dist/index.js"
           test -f "$bin" || { echo "::error::Installed package has no dist/index.js"; exit 1; }
           pnpm exec tsx scripts/smoke.ts "$bin"
+          pnpm exec tsx scripts/smoke-http.ts --bin "$bin"
+
+  # Builds the image for linux/amd64 and runs it the way the deploy templates do (read-only root
+  # filesystem, no capabilities, bearer mode), then the HTTP smoke test against the container. The
+  # release workflow runs the same checks on the published image (.github/actions/image-smoke).
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read # check out the repository
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up toolchain
+        uses: $/.github/actions/setup
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      # The layer cache is scoped to this job; pull requests read main's entries and write their
+      # own. Release builds never use it.
+      - name: Build the image (linux/amd64)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          provenance: false
+          sbom: false
+          tags: mcp-server-sevdesk:ci
+          cache-from: type=gha,scope=docker-ci
+          cache-to: type=gha,scope=docker-ci,mode=max
+      - name: Smoke-test the image
+        uses: $/.github/actions/image-smoke
+        with:
+          image: mcp-server-sevdesk:ci
 
   # The single required status check for the branch ruleset. It runs even when a dependency failed
   # or was skipped (a skipped required check would otherwise count as passing).
   ci-ok:
     name: ci-ok
     if: ${{ always() }}
-    needs: [lint, typecheck, test, knip, build, typos, pack-smoke]
+    needs: [lint, typecheck, test, knip, build, typos, pack-smoke, docker]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}

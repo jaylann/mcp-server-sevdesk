@@ -1,6 +1,6 @@
 # ADR 0003: Permission tiers and human confirmation
 
-- **Status:** Accepted
+- **Status:** Accepted; browser mode over HTTP amended by [0007](0007-approval-inbox-over-http.md)
 - **Date:** 2026-11-07
 
 ## Context

@@ -1,0 +1,13 @@
+# Caddy terminates TLS (automatic HTTPS from Let's Encrypt or ZeroSSL for SEVDESK_DOMAIN) and
+# forwards everything to the MCP server. It keeps the Host header and sets X-Forwarded-For to the
+# client address (incoming X-Forwarded-* headers from clients are not trusted).
+#
+# No `log` directive on purpose: access logs would record OAuth redirect URLs, which carry
+# authorization codes.
+
+{$SEVDESK_DOMAIN} {
+	reverse_proxy mcp:8080 {
+		# Pass Server-Sent Events through as they are written, without buffering.
+		flush_interval -1
+	}
+}

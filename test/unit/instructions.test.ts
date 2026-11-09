@@ -180,3 +180,64 @@ describe("fitToCap", () => {
     expect(text.endsWith("…")).toBe(true);
   });
 });
+
+describe("buildInstructions over HTTP (config.deployment)", () => {
+  const http = (auth: "oauth" | "bearer", approvalsUrl?: string) =>
+    ({
+      kind: "http",
+      auth,
+      publicOrigin: "https://mcp.example.com",
+      approvalsUrl,
+    }) as const;
+
+  it("says tiers are granted on the consent page (OAuth)", () => {
+    const text = build(testConfig({ deployment: http("oauth") }));
+
+    expect(text).toContain(
+      "Disabled: write, commit, external; their tools are not available. Only the user can " +
+        "enable them (by reconnecting and granting them on the consent page, within what the " +
+        "server allows); do not try to work around a missing tool.",
+    );
+  });
+
+  it("says only the server's operator enables tiers (bearer)", () => {
+    expect(build(testConfig({ deployment: http("bearer") }))).toContain(
+      "Only the server's operator can enable them (SEVDESK_ALLOW, e.g. SEVDESK_ALLOW=write, then " +
+        "a restart)",
+    );
+  });
+
+  it("points browser approvals to the inbox, where the user signs in", () => {
+    const text = build(
+      allEnabledConfig({
+        confirm: "browser",
+        deployment: http("oauth", "https://mcp.example.com/approvals"),
+      }),
+    );
+
+    expect(text).toContain(
+      "each such call first creates an approval request (status approval_pending, with a " +
+        "reference code): ask the user to open https://mcp.example.com/approvals, sign in and " +
+        "decide there, then call the tool again with the same arguments.",
+    );
+    expect(text).not.toContain("opens an approval page");
+  });
+
+  it("keeps the elicitation wording over HTTP", () => {
+    expect(build(allEnabledConfig({ deployment: http("bearer") }))).toContain(
+      "each such call asks the user to approve it in a confirmation prompt.",
+    );
+  });
+
+  it("stays within the cap with the shipped tools and a long inbox URL", () => {
+    const text = build(
+      allEnabledConfig({
+        confirm: "browser",
+        deployment: http("oauth", `https://${"x".repeat(200)}.example.com/approvals`),
+      }),
+      ALL_TOOLS,
+    );
+
+    expect(text.length).toBeLessThanOrEqual(MAX_INSTRUCTIONS_LENGTH);
+  });
+});

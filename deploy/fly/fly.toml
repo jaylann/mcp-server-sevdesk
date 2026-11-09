@@ -1,0 +1,55 @@
+# Fly.io: one Machine running the published image, with a volume at /data for grants, sessions and
+# the audit log. OAuth mode for claude.ai and other OAuth clients. Walkthrough: docs/remote.md.
+#
+#   fly apps create <app>                         # then set `app` and SEVDESK_HTTP_PUBLIC_URL below
+#   fly secrets set --app <app> --stage \
+#     SEVDESK_HTTP_SECRET="$(docker run --rm ghcr.io/jaylann/mcp-server-sevdesk:latest generate-secret)"
+#   fly deploy --config deploy/fly/fly.toml --ha=false
+#
+# Keep it at one Machine (`--ha=false`): grants live on its volume and pending approvals in its
+# memory. "suspend" keeps that memory while the Machine is idle.
+
+app = "mcp-server-sevdesk"
+primary_region = "fra"
+
+[build]
+  image = "ghcr.io/jaylann/mcp-server-sevdesk:0.0.0" # x-release-please-version
+
+[env]
+  SEVDESK_HTTP_AUTH = "oauth"
+  SEVDESK_HTTP_PUBLIC_URL = "https://mcp-server-sevdesk.fly.dev"
+  # Fly Proxy appends the client address to X-Forwarded-For.
+  SEVDESK_HTTP_TRUST_PROXY = "1"
+  # The sevDesk account ids that may connect, comma-separated (required).
+  SEVDESK_OAUTH_ACCOUNTS = ""
+  SEVDESK_ALLOW = "read"
+  SEVDESK_CONFIRM = "browser"
+  SEVDESK_AUDIT_LOG = "/data/audit.jsonl"
+
+[[mounts]]
+  source = "sevdesk_data"
+  destination = "/data"
+  initial_size = "1gb"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 48
+    hard_limit = 64
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/healthz"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
