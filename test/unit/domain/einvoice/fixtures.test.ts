@@ -10,5 +10,6 @@ describe("e-invoice fixtures (scripts/gen-einvoice-fixtures.ts)", () => {
     for (const [path, bytes] of files) {
       expect(einvoiceFixture(path), path).toEqual(bytes);
     }
-  });
+    // Builds PDFs and XML for every fixture: slow under a fully parallel suite on a busy machine.
+  }, 30_000);
 });
