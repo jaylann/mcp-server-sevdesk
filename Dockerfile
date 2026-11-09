@@ -49,8 +49,9 @@ LABEL org.opencontainers.image.title="mcp-server-sevdesk" \
       org.opencontainers.image.licenses="MIT" \
       io.modelcontextprotocol.server.name="io.github.jaylann/mcp-server-sevdesk"
 WORKDIR /app
-# package.json marks dist/index.js as an ES module ("type": "module").
-COPY package.json LICENSE ./
+# package.json marks dist/index.js as an ES module ("type": "module"). COPY keeps the checkout's
+# file modes, and a checkout with umask 077 has 0600 files the non-root user could not read.
+COPY --chmod=0644 package.json LICENSE ./
 COPY --from=build /app/dist ./dist
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build --chown=65532:65532 /rootfs/ /
