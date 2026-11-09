@@ -52,6 +52,12 @@ export interface SevdeskErrorInit {
    * model does not repeat the call; the audit log records them for the failed call.
    */
   readonly completedWrites?: readonly CompletedWrite[];
+  /**
+   * `unexpected_response` without a status only: the answer was readable but refused by a known
+   * limit of ours (e.g. a body over a size cap), so error rendering must not call it a sevDesk
+   * API change or a bug. Default false.
+   */
+  readonly expectedLimit?: boolean;
 }
 
 /** A sevDesk record a write created or changed (same shape as the tools' `SevdeskObjectRef`). */
@@ -70,6 +76,8 @@ export class SevdeskError extends Error {
   readonly path: string | undefined;
   /** Empty unless an earlier step of a multi-step write succeeded (see the init field). */
   readonly completedWrites: readonly CompletedWrite[];
+  /** See {@link SevdeskErrorInit.expectedLimit}. */
+  readonly expectedLimit: boolean;
 
   constructor(init: SevdeskErrorInit) {
     super(init.message, init.cause === undefined ? undefined : { cause: init.cause });
@@ -81,6 +89,7 @@ export class SevdeskError extends Error {
     this.method = init.method;
     this.path = init.path;
     this.completedWrites = Object.freeze([...(init.completedWrites ?? [])]);
+    this.expectedLimit = init.expectedLimit ?? false;
   }
 
   /** Whether a GET may be retried after this error (writes are never retried). */

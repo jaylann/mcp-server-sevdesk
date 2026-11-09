@@ -524,7 +524,7 @@ describe("recorded banking", () => {
       ),
     ]);
     const accounts = await listBankAccounts(client, {
-      balanceDate: TODAY,
+      asOf: TODAY,
       includeArchived: true,
     });
     expect(accounts.items.map((account) => account.id)).toEqual([...ACCOUNT_IDS]);

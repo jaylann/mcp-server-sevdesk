@@ -251,6 +251,29 @@ export function recordPlan(today: string): readonly RecordEntry[] {
         "export configuration (D-067); undocumented GET (D-024).",
     },
 
+    // --- advanced: the undocumented reads sevdesk_api_get names (D-024) ---------------------
+    {
+      file: "advanced/text-templates.json",
+      mirrors: ["advanced/text-templates.json"],
+      path: "/TextTemplate",
+      list: true,
+      note: "Head and foot texts; undocumented GET (D-024), read through sevdesk_api_get.",
+    },
+    {
+      file: "advanced/part-unities.json",
+      mirrors: ["advanced/part-unities.json"],
+      path: "/PartUnity",
+      list: true,
+      note: "Alternative units of parts; undocumented GET (D-024), read through sevdesk_api_get.",
+    },
+    {
+      file: "advanced/documents.json",
+      mirrors: ["advanced/documents.json"],
+      path: "/Document",
+      list: true,
+      note: "Attached documents (metadata); undocumented GET (D-024), read through sevdesk_api_get.",
+    },
+
     // --- contacts -------------------------------------------------------------------------
     {
       file: "contacts/contacts-list.json",

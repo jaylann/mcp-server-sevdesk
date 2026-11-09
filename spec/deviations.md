@@ -419,7 +419,8 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   `"VPR"`; the order in `test/fixtures/recorded/2026-11-07/orders/order-by-id.json`, finalized by a
   manual check (lead)).
 - **Impact:** `""`, `"0"`, `null` and unknown codes all count as "no send type". The read tools
-  show a document as sent only with a documented send type or a `sendDate`. The finalize tools
+  show a document as sent only with a documented send type or a `sendDate`, and name the send
+  type readably (`sent.via`: `pdf_download`, `post`, `print`, `email`). The finalize tools
   write only the four documented codes (`VPDF` by default, `VP`, `VPR`, `VM`; strict `sendBy`
   body in `src/tools/lifecycle/finalize.ts`).
 - **Test:** `test/unit/domain/document-positions.test.ts` ("treats empty, '0' and unknown send
@@ -498,7 +499,7 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   `read-export-csv-date-filter`).
 - **Impact:** `client.download` (`src/sevdesk/client.ts`) returns the raw body with its
   `Content-Type` instead of parsing JSON, so the caller decides by the type, not by the endpoint.
-  `sevdesk_export_csv` (`exportCsv` in `src/domain/exports/csv.ts`) asks for `download=true`,
+  `sevdesk_csv_export` (`exportCsv` in `src/domain/exports/csv.ts`) asks for `download=true`,
   writes the bytes unchanged (byte order mark included) to `SEVDESK_OUTPUT_DIR` and returns only
   the file's size and row count; a JSON answer is decoded from its base64 `content` instead. The
   bytes never go through the model.
@@ -811,7 +812,27 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   `enshrineDocuments`. The client still treats the spec's GET form as a side effect
   (`EXPORT_JOB_ENDPOINTS` in `src/sevdesk/paths.ts`) and any `enshrine`/`enshrineDocuments` flag as
   `commit`, so neither form can pass as a read.
-- **Test:** `test/regressions/getpdf-side-effect-blocked.test.ts` (flagged and unflagged
+
+  The generic read `sevdesk_api_get` (advanced toolset, off by default) lets the model choose the
+  path, so it adds a stricter list (`genericGetRefusal` in `src/sevdesk/paths.ts`) that refuses
+  before anything is sent: `getPdf`, `getXml`, `render`, `sendByWithRender`, every endpoint of the
+  tier table (`sendBy`, `bookAmount`, `enshrine`, …) and every next-number endpoint (also when it
+  would only peek) anywhere in the path; everything under `Export`, `ExportJob`, `Progress`,
+  `Report`, `DocServer` and `SevSequence`; a segment after the first that starts with a verb that
+  changes data (`save…`, `create…`, `book…`, `send…`); and the query keys `preventSendBy`,
+  `enshrine…`, `useNextNumber`, `download`, credentials (`token`, …) and HTTP method overrides,
+  compared the way PHP reads keys (case-insensitive, `.` as `_`, the name before `[`). The request
+  then still goes through `readOnlyClient` and the HTTP client, which refuse any side effect
+  `resolveGetSafety` finds. Since sevDesk's routing of extra trailing segments is unknown,
+  `resolveGetSafety` also treats `getPdf`, `sendByWithRender`, an export job or a next-number
+  endpoint before the last segment (`/Invoice/1/getPdf/2`) as that endpoint's side effect, and
+  `minimumWriteTier` takes the highest tier of every segment.
+
+- **Test:** `test/regressions/api-get-side-effects.test.ts` (`sevdesk_api_get`: refused paths and
+  query keys make zero `fetch` calls with every tier enabled; with the refusal list bypassed the
+  read-only guard blocks, and with both bypassed the HTTP client does),
+  `test/unit/sevdesk/paths.test.ts` (`genericGetRefusal`; "endpoint names before the last
+  segment"), `test/regressions/getpdf-side-effect-blocked.test.ts` (flagged and unflagged
   side-effect GETs), `test/regressions/b1-getpdf-prevent-send.test.ts` (PDF tools and resources
   through the real client in read-only mode: one GET with `preventSendBy=true`, no `download`),
   `test/unit/sevdesk/client.test.ts` ("state-changing GET endpoints"),
@@ -851,10 +872,10 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   | `GET /CheckAccountTransactionLog`                                                      | what a bank transaction was booked against, and how much (D-057)                          | recorded  |
   | `DELETE /Invoice/{invoiceId}`                                                          | deleting a draft invoice (no tool uses it)                                                | recorded  |
   | `DELETE /Voucher/{voucherId}`                                                          | deleting draft vouchers (the spec has only GET and PUT; D-074)                            | recorded  |
-  | `GET /TextTemplate`                                                                    | head and foot texts                                                                       | known     |
-  | `GET /PartUnity`                                                                       | units for parts                                                                           | known     |
-  | `GET /Document`, document download                                                     | attached documents and receipts                                                           | known     |
-  | `GET /SevSequence/Factory/getByType`                                                   | next document number (see D-027)                                                          | known     |
+  | `GET /TextTemplate`                                                                    | head and foot texts (read through `sevdesk_api_get`)                                      | known     |
+  | `GET /PartUnity`                                                                       | alternative units of parts, with their own price and factor (`sevdesk_api_get`)           | known     |
+  | `GET /Document`, document download                                                     | attached documents and receipts (metadata through `sevdesk_api_get`)                      | known     |
+  | `GET /SevSequence/Factory/getByType`                                                   | next document number (see D-027); `sevdesk_api_get` refuses it                            | known     |
   | `POST /Voucher/Factory/createVoucherFromFile`                                          | voucher from an uploaded file (no tool uses it)                                           | uncertain |
 
   Recorded shapes: `GET /AccountDatev` rows have 28 keys (`number`, `name`, `accountDatevCategory`,
@@ -865,10 +886,21 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   `changeParameter` and `sendByWithRender` endpoints for orders, credit notes and letters that the
   spec does not list.
 
+  Community model (j-mastr/sevdesk-api, not recorded by us): `GET /TextTemplate` rows carry
+  `name`, `text`, `category` (`DOCUMENT`, `LETTER`, `MAIL`), `objectType` (`RE`, `AN`, `AB`, `LI`,
+  `CN`, `MA`, `PAYMENT_CONFIRMATION`, `ALL`), `textType` (`HEAD`, `FOOT`, `SUBJECT`, `TEXT`,
+  `SIGNATURE`), `main` and a `sevUser`, filterable by those three enums. `GET /PartUnity` holds a
+  part's alternative units (`part`, `unity`, `factor`, `price`), filterable by `part[id]`. The
+  rows of `GET /Document` describe files in the document archive (`filename`, `extension`,
+  `mimeType`, `filesize`, `contentHash`, `folder`, `baseObject`, `object`), without the file
+  content. All three take `limit`, `offset`, `countAll` and `embed`.
+
 - **Sources:** [genz-its/sevdesk](https://github.com/genz-its/sevdesk),
   [exlo89/laravel-sevdesk-api](https://github.com/exlo89/laravel-sevdesk-api),
   [lippoliv/paperlessngx-to-sevdesk](https://github.com/lippoliv/paperlessngx-to-sevdesk)
-  (`createVoucherFromFile`); recorded 2026-11-07, trial account, Update 2.0 (the reads in
+  (`createVoucherFromFile`); [j-mastr/sevdesk-api](https://github.com/j-mastr/sevdesk-api)
+  `openapi.yaml` v1.10.0 (`/TextTemplate`, `/PartUnity`, `/Document` and their response models,
+  read 2026-11-09); recorded 2026-11-07, trial account, Update 2.0 (the reads in
   `test/fixtures/recorded/2026-11-07/meta/`; probes `read-account-datev`,
   `write-delete-draft-invoice`, `write-next-order-number`; `GET /SevClient` and the credit note
   numbers: manual check (lead)); recorded 2026-11-08, trial account, Update 2.0 (probes
@@ -877,7 +909,12 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 - **Impact:** Each undocumented endpoint gets a hand-written schema, a smoke test, and lives in
   the `advanced` toolset or behind a lookup until a recording confirms its shape. `uncertain`
   endpoints are not used by default tools: receipts go through `uploadTempFile` and `saveVoucher`
-  (D-011, D-026), never `createVoucherFromFile`.
+  (D-011, D-026), never `createVoucherFromFile`. `GET /TextTemplate`, `/PartUnity` and `/Document`
+  have no curated tool; the generic read `sevdesk_api_get` (advanced toolset, off by default)
+  reads them without a schema of its own: it returns the raw `objects` sanitized as untrusted
+  text, drops binary fields and `sevClient` echoes, and always sends `limit`, `offset` and
+  `countAll`. It refuses `/SevSequence` and the next-number endpoints, which may reserve a number
+  (D-066).
 - **Test:** `test/unit/tools/meta/reference-lookup.test.ts`,
   `test/unit/tools/meta/account-info.test.ts` (`/SevUser`, `/StaticCountry`, `/Unity`,
   `/PaymentMethod`), `test/regressions/b3-contact-person.test.ts` (`/SevUser` for the contact
@@ -886,7 +923,12 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   `test/unit/domain/accounts-datev.test.ts` (D-079). `DELETE /Voucher/{voucherId}`:
   `test/unit/tools/vouchers/finalize-delete.test.ts` (D-074). Next-number endpoints,
   `/CheckAccountTransactionLog` and `/SevClient`: D-066, D-057, D-067. `GET /TextTemplate`,
-  `/PartUnity`, `/Document` and `/SevSequence/Factory/getByType`: no tool uses them.
+  `/PartUnity`, `/Document`: `test/contract/undocumented-endpoints.test.ts` (the community
+  fixtures in `test/fixtures/advanced/` through `apiGet` and through their probes); pending:
+  recording session, probes `read-text-template`, `read-part-unity`, `read-document` (written
+  for M6, after the 2026-11-07 and 2026-11-08 sessions; `pnpm fixtures:record` records the three
+  lists too). `/SevSequence/Factory/getByType`: no tool uses it, and `sevdesk_api_get` refuses it
+  (`test/unit/sevdesk/paths.test.ts`, `genericGetRefusal`).
 
 ### D-025: PDF rendering returns one base64 `pdf` since 2026-04-07
 
@@ -2187,12 +2229,12 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   `saveOrder` needs an order number (D-027).
 - **Sources:** spec (`Model_CreateInvoiceFromOrder`, `createInvoiceFromOrder`). D-010 for the
   earlier required invoice id.
-- **Impact:** `sevdesk_order_to_invoice` (`src/domain/derived-documents.ts`) always sends
+- **Impact:** `sevdesk_invoice_create_from_order` (`src/domain/derived-documents.ts`) always sends
   `partialType` (whole order RE, partial TR, advance AR) and sends `type` and `amount` only for TR
   and AR, as the part to invoice: a percentage up to 100, or a net or gross amount up to the
   order's total. The preview shows that amount. TR and AR invoices are offered only with tax rule
   1 or 11 (spec section "sevdesk-Update 2.0").
-- **Test:** `test/unit/tools/masterdata/order-to-invoice.test.ts` ("creates partial and advance
+- **Test:** `test/unit/tools/masterdata/invoice-from-order.test.ts` ("creates partial and advance
   invoices with amount and amount type", "checks amounts against the mode and the order totals",
   "allows partial invoices only with tax rule 1 or 11"). Pending: recording session, probe
   `write-invoice-from-order` (no order could be created without a number; the probe needs the
@@ -2237,7 +2279,7 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   (D-070).
 - **Test:** `test/unit/tools/masterdata/credit-note-from-invoice.test.ts` ("accepts a plain credit
   note answer and reports it when the read-back fails"),
-  `test/unit/tools/masterdata/order-to-invoice.test.ts` ("reads the id of a nested answer and
+  `test/unit/tools/masterdata/invoice-from-order.test.ts` ("reads the id of a nested answer and
   reports the invoice when the read-back fails", "fails as unexpected_response when the answer has
   no id"), `test/unit/tools/masterdata/invoice-reminder.test.ts` ("creates the reminder with the
   invoice in query and body, and reads it back"), `test/unit/domain/lifecycle/transitions.test.ts`

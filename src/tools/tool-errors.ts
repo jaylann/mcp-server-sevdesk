@@ -156,6 +156,7 @@ export function describeSevdeskError(error: SevdeskError, context: ToolErrorCont
       // may carry specific guidance (e.g. "do not cancel again"), so it is shown and "try again"
       // is not suggested. Upstream text never appears here (it is only in upstreamMessage).
       if (error.status === undefined) {
+        if (error.expectedLimit) return `${sentence(details)}${mayHaveChanged}`;
         return (
           `${sentence(details)} This is likely a sevDesk API change or a bug in ` +
           `mcp-server-sevdesk (report it at ${ISSUE_TRACKER}).${mayHaveChanged}`
