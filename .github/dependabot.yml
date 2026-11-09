@@ -4,6 +4,8 @@ version: 2
 #   fix(deps): production npm dependencies (shows up in the changelog, triggers a patch release)
 #   chore(deps): development npm dependencies (hidden from the changelog)
 #   ci(deps): GitHub Actions (hidden from the changelog)
+#   fix(deps): the Dockerfile's base images (they ship in the published image)
+#   chore(deps): images in the compose template (Caddy)
 # Minor/patch updates are grouped; majors arrive as one PR each.
 # .github/workflows/dependabot-auto-merge.yml auto-merges minor/patch dev-dependency and Actions PRs.
 updates:
@@ -70,3 +72,46 @@ updates:
         update-types:
           - minor
           - patch
+
+  # Base images, pinned by digest: mostly digest updates of the same tag (OS and Node.js patches).
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    ignore:
+      # The Node.js major moves by hand together with .nvmrc, engines and the distroless nodejsNN
+      # runtime image.
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: fix(deps)
+    groups:
+      docker-images:
+        patterns:
+          - "*"
+
+  - package-ecosystem: docker-compose
+    directory: "/deploy/compose"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    ignore:
+      # Our own image: release-please sets its tag in every release PR.
+      - dependency-name: "*mcp-server-sevdesk"
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      compose-images:
+        patterns:
+          - "*"
