@@ -467,3 +467,101 @@ describe("outputValidationFailedResult", () => {
     expect(result).not.toContain("Try again later");
   });
 });
+
+describe("texts over HTTP (config.deployment)", () => {
+  const oauth = testConfig({
+    deployment: {
+      kind: "http",
+      auth: "oauth",
+      publicOrigin: "https://mcp.example.com",
+      approvalsUrl: undefined,
+    },
+    account: { id: "1001" },
+  });
+  const bearer = testConfig({
+    deployment: {
+      kind: "http",
+      auth: "bearer",
+      publicOrigin: "https://mcp.example.com",
+      approvalsUrl: undefined,
+    },
+  });
+
+  it("tells OAuth users to reconnect and paste a current token on the consent page", () => {
+    const message = describeSevdeskError(
+      error({ kind: "auth", status: 401 }),
+      context("read", { config: oauth }),
+    );
+
+    expect(message).toBe(
+      "sevDesk rejected the API token of this connection (HTTP 401): the token pasted when the " +
+        "connection was approved is wrong or revoked, or its user has no API access (the sevDesk " +
+        "API needs the Buchhaltung Pro plan). Ask the user to reconnect this server in their MCP " +
+        "client and paste a current sevDesk API token on the consent page; retrying will not help.",
+    );
+  });
+
+  it("sends bearer-mode users to the server's operator for SEVDESK_API_TOKEN", () => {
+    const message = describeSevdeskError(
+      error({ kind: "auth", status: 401 }),
+      context("read", { config: bearer }),
+    );
+
+    expect(message).toContain("The token in the server's SEVDESK_API_TOKEN is wrong or revoked");
+    expect(message).toContain("have the server's operator fix SEVDESK_API_TOKEN and restart");
+    expect(message).not.toContain("consent page");
+  });
+
+  it("keeps the stdio wording for stdio", () => {
+    expect(describeSevdeskError(error({ kind: "auth", status: 401 }), context())).toBe(
+      "sevDesk rejected the API token (HTTP 401). The token in SEVDESK_API_TOKEN is wrong or " +
+        "revoked, or its user has no API access (the sevDesk API needs the Buchhaltung Pro " +
+        "plan). Ask the user to check the token; retrying will not help.",
+    );
+  });
+
+  it("points network errors at the server, not the user's connection", () => {
+    const message = describeSevdeskError(
+      error({ kind: "network" }),
+      context("write", { config: bearer }),
+    );
+
+    expect(message).toContain("The MCP server could not reach sevDesk (network error).");
+    expect(message).toContain("the server's operator should check");
+    expect(message).toContain("may or may not have been applied");
+  });
+
+  it("says how a missing tier is granted: consent page (OAuth) or server settings (bearer)", () => {
+    const viaConsent = text(tierNotAllowedResult(context("commit", { config: oauth })));
+    const viaOperator = text(tierNotAllowedResult(context("commit", { config: bearer })));
+    const readOnly = text(
+      tierNotAllowedResult(context("write", { config: { ...bearer, readOnly: true } })),
+    );
+
+    expect(viaConsent).toContain(
+      'reconnect this server in their MCP client and grant "commit" on the consent page',
+    );
+    expect(viaConsent).toContain("add commit to SEVDESK_ALLOW (e.g. SEVDESK_ALLOW=commit)");
+    expect(viaOperator).toContain(
+      "the server's operator can add commit to SEVDESK_ALLOW (e.g. SEVDESK_ALLOW=commit) in the " +
+        "server's configuration and restart the server.",
+    );
+    expect(readOnly).toContain("remove SEVDESK_READ_ONLY");
+    for (const message of [viaConsent, viaOperator]) {
+      expect(message).not.toContain("MCP client configuration");
+      expect(message).toContain("Do not try to work around this.");
+    }
+  });
+
+  it("redacts the account's own token from the server log", () => {
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const own = "fedcba9876543210fedcba9876543210";
+
+    toolErrorResult(
+      new Error(`boom ${own}`),
+      context("read", { config: { ...oauth, token: own } }),
+    );
+
+    expect(stderr.mock.calls.flat().join("\n")).not.toContain(own);
+  });
+});

@@ -16,7 +16,8 @@ export interface Section {
  * Server instructions generated from the tools actually registered and the configuration: what
  * sevDesk is, the trust boundary for sevDesk data, which toolsets and tiers are active (and how
  * the user enables more), dry-run status and how to work efficiently. Never longer than
- * {@link MAX_INSTRUCTIONS_LENGTH}; contains no upstream data.
+ * {@link MAX_INSTRUCTIONS_LENGTH}; contains no upstream data. How more tiers are enabled and where
+ * browser approvals are decided depend on `config.deployment`; the stdio text is unchanged.
  */
 export function buildInstructions(tools: readonly AnyToolDefinition[], config: Config): string {
   const sections: Section[] = [
@@ -62,9 +63,8 @@ function tierSection(config: Config): string {
   }
   if (disabled.length > 0) {
     parts.push(
-      `Disabled: ${disabled.join(", ")}; their tools are not available. Only the user can ` +
-        `enable them (SEVDESK_ALLOW, e.g. SEVDESK_ALLOW=${disabled[0] ?? "write"}, then a ` +
-        "restart); do not try to work around a missing tool.",
+      `Disabled: ${disabled.join(", ")}; their tools are not available. ` +
+        `${enableText(config, disabled[0] ?? "write")}; do not try to work around a missing tool.`,
     );
   }
   const binding = (["commit", "external"] as const satisfies readonly Tier[]).filter((tier) =>
@@ -73,10 +73,45 @@ function tierSection(config: Config): string {
   if (binding.length > 0) {
     parts.push(
       `commit tools are legally binding bookkeeping steps and external tools reach third ` +
-        `parties; ${CONFIRMATION_TEXT[config.confirm]}`,
+        `parties; ${confirmationText(config)}`,
     );
   }
   return parts.join(" ");
+}
+
+/** Who can enable a disabled tier, and how ("Only the user can enable them (…)"). */
+function enableText(config: Config, example: Tier): string {
+  const { deployment } = config;
+  if (deployment.kind === "http" && deployment.auth === "oauth") {
+    return (
+      "Only the user can enable them (by reconnecting and granting them on the consent page, " +
+      "within what the server allows)"
+    );
+  }
+  if (deployment.kind === "http") {
+    return (
+      `Only the server's operator can enable them (SEVDESK_ALLOW, e.g. SEVDESK_ALLOW=${example}, ` +
+      "then a restart)"
+    );
+  }
+  return (
+    `Only the user can enable them (SEVDESK_ALLOW, e.g. SEVDESK_ALLOW=${example}, then a ` +
+    "restart)"
+  );
+}
+
+/** How commit/external calls are confirmed: per `SEVDESK_CONFIRM`, browser approvals per deployment. */
+function confirmationText(config: Config): string {
+  const { deployment } = config;
+  if (config.confirm === "browser" && deployment.kind === "http") {
+    const inbox = deployment.approvalsUrl ?? `${deployment.publicOrigin}/approvals`;
+    return (
+      "each such call first creates an approval request (status approval_pending, with a " +
+      `reference code): ask the user to open ${inbox}, sign in and decide there, then call the ` +
+      "tool again with the same arguments."
+    );
+  }
+  return CONFIRMATION_TEXT[config.confirm];
 }
 
 /** How commit/external calls are confirmed, per `SEVDESK_CONFIRM`. */

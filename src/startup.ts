@@ -1,3 +1,4 @@
+import { IdentityError, type IdentityLookup } from "./accounts/types.js";
 import type { Config } from "./config.js";
 import { SevdeskError } from "./sevdesk/errors.js";
 import { getBookkeepingSystemVersion } from "./sevdesk/system-version.js";
@@ -40,5 +41,33 @@ export async function checkConnection(
         : "unexpected error while contacting sevDesk; tools will report details when called.";
     log(`warning: startup check failed: ${message}`);
     return { ok: false, message };
+  }
+}
+
+/** Upper bound for the startup account lookup (bearer mode). */
+const IDENTIFY_TIMEOUT_MS = 10_000;
+
+/**
+ * Bearer mode: names the account of the configured token, so approvals and audit lines carry
+ * its id. Returns `config` with `account` set, or `config` unchanged when the lookup fails (the
+ * server still starts; approvals are then scoped to `bearer`). Logs one line through `log`; never
+ * throws, never includes the token (`IdentityError` messages are fixed text).
+ */
+export async function identifyAccount(
+  config: Config,
+  lookup: IdentityLookup,
+  log: (line: string) => void,
+): Promise<Config> {
+  try {
+    const identity = await lookup(config.token, AbortSignal.timeout(IDENTIFY_TIMEOUT_MS));
+    log(`serving sevDesk account ${identity.accountId}`);
+    return { ...config, account: { id: identity.accountId } };
+  } catch (error) {
+    const message =
+      error instanceof IdentityError
+        ? error.message
+        : "unexpected error during the account lookup.";
+    log(`warning: could not identify the sevDesk account: ${message}`);
+    return config;
   }
 }

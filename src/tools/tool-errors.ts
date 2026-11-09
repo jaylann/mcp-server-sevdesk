@@ -2,6 +2,10 @@
  * Turns every failure of a tool call into an `isError` result with trusted, actionable text.
  * Upstream text (sevDesk's own error messages) only ever appears fenced; operator details go to
  * stderr with the API token redacted. Nothing here throws.
+ *
+ * Advice on what to change depends on `config.deployment`: over stdio the user edits the MCP
+ * client configuration; over HTTP the token comes from the consent page (OAuth) or the server's
+ * environment (bearer), and settings belong to the server's operator. Stdio texts are unchanged.
  */
 import type { CallToolResult } from "@modelcontextprotocol/server";
 import { z } from "zod";
@@ -80,11 +84,7 @@ export function describeSevdeskError(error: SevdeskError, context: ToolErrorCont
 
   switch (error.kind) {
     case "auth":
-      return (
-        `sevDesk rejected the API token${status}. The token in SEVDESK_API_TOKEN is wrong or ` +
-        "revoked, or its user has no API access (the sevDesk API needs the Buchhaltung Pro " +
-        "plan). Ask the user to check the token; retrying will not help."
-      );
+      return authText(status, context.config.deployment);
     case "not_found":
       return (
         `sevDesk has no such record${status}: ${sentence(details)} Do not guess ids: look the ` +
@@ -126,6 +126,13 @@ export function describeSevdeskError(error: SevdeskError, context: ToolErrorCont
       return `sevDesk had an internal error${status}. Try again later.${reference}${mayHaveChanged}`;
     }
     case "network":
+      if (context.config.deployment.kind === "http") {
+        return (
+          "The MCP server could not reach sevDesk (network error). Try again later; if it keeps " +
+          "failing, the server's operator should check its internet connection and " +
+          `SEVDESK_BASE_URL.${mayHaveChanged}`
+        );
+      }
       return (
         "Could not reach sevDesk (network error). Check the internet connection and " +
         `SEVDESK_BASE_URL, then try again later.${mayHaveChanged}`
@@ -246,10 +253,24 @@ export function tierNotAllowedResult(context: ToolErrorContext): CallToolResult 
   const how = config.readOnly
     ? `remove SEVDESK_READ_ONLY (it allows only read tools) and set SEVDESK_ALLOW=${tier}`
     : `add ${tier} to SEVDESK_ALLOW (e.g. SEVDESK_ALLOW=${tier})`;
+  const intro = `${toolName} needs the "${tier}" permission tier, which is not enabled, so it was not run.`;
+  const { deployment } = config;
+  if (deployment.kind === "http" && deployment.auth === "oauth") {
+    return errorResult(
+      `${intro} To allow it, the user can reconnect this server in their MCP client and grant ` +
+        `"${tier}" on the consent page; the server's operator must allow it too (${how} in the ` +
+        "server's configuration, then a restart). Do not try to work around this.",
+    );
+  }
+  if (deployment.kind === "http") {
+    return errorResult(
+      `${intro} To allow it, the server's operator can ${how} in the server's configuration and ` +
+        "restart the server. Do not try to work around this.",
+    );
+  }
   return errorResult(
-    `${toolName} needs the "${tier}" permission tier, which is not enabled, so it was not run. ` +
-      `To allow it, the user can ${how} in the MCP client configuration and restart the server. ` +
-      "Do not try to work around this.",
+    `${intro} To allow it, the user can ${how} in the MCP client configuration and restart the ` +
+      "server. Do not try to work around this.",
   );
 }
 
@@ -311,6 +332,32 @@ function withoutNothingSent(text: string): string {
       /The request was refused before it was sent to sevDesk/g,
       "The last step was refused before it was sent to sevDesk",
     );
+}
+
+/** sevDesk refused the token: what to do depends on where the token comes from. */
+function authText(status: string, deployment: Config["deployment"]): string {
+  const reasons =
+    "is wrong or revoked, or its user has no API access (the sevDesk API needs the Buchhaltung " +
+    "Pro plan)";
+  if (deployment.kind === "http" && deployment.auth === "oauth") {
+    return (
+      `sevDesk rejected the API token of this connection${status}: the token pasted when the ` +
+      `connection was approved ${reasons}. Ask the user to reconnect this server in their MCP ` +
+      "client and paste a current sevDesk API token on the consent page; retrying will not help."
+    );
+  }
+  if (deployment.kind === "http") {
+    return (
+      `sevDesk rejected the API token${status}. The token in the server's SEVDESK_API_TOKEN ` +
+      `${reasons}. Ask the user to have the server's operator fix SEVDESK_API_TOKEN and restart ` +
+      "the server; retrying will not help."
+    );
+  }
+  return (
+    `sevDesk rejected the API token${status}. The token in SEVDESK_API_TOKEN is wrong or ` +
+    "revoked, or its user has no API access (the sevDesk API needs the Buchhaltung Pro " +
+    "plan). Ask the user to check the token; retrying will not help."
+  );
 }
 
 const UNCERTAIN_WRITE =
