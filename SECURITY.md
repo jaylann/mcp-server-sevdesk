@@ -383,7 +383,7 @@ state directory's lock is taken (a second server never touches a live one's file
 volume or of the server secret opens none of them. Upload pages live 15 minutes, uploads and links
 `SEVDESK_HTTP_FILES_TTL` (30 minutes, at most 24 hours).
 
-**Exhaustion.** One upload is at most 20 MB; one account holds at most 5 open upload pages, 10
+**Exhaustion.** One upload is at most 20 MiB; one account holds at most 5 open upload pages, 10
 uploads and links and half of `SEVDESK_HTTP_FILES_MAX_MB`; the server at most 1,000 records and the
 full budget. Nothing is evicted, so one account cannot push out another's files; new requests are
 refused until older ones expire.

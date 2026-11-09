@@ -1,4 +1,4 @@
-<!-- translated-from: SECURITY.md sha256:54b4e930908a -->
+<!-- translated-from: SECURITY.md sha256:f0cf49b2c4b1 -->
 
 # Sicherheitsrichtlinie
 
@@ -437,7 +437,7 @@ Zustandsverzeichnisses übernommen wurde (ein zweiter Server rührt die Dateien 
 an). Eine Kopie des Volumes oder des Server-Geheimnisses öffnet keine von ihnen. Upload-Seiten
 leben 15 Minuten, Uploads und Links `SEVDESK_HTTP_FILES_TTL` (30 Minuten, höchstens 24 Stunden).
 
-**Erschöpfung.** Ein Upload ist höchstens 20 MB groß; ein Konto hält höchstens 5 offene
+**Erschöpfung.** Ein Upload ist höchstens 20 MiB groß; ein Konto hält höchstens 5 offene
 Upload-Seiten, 10 Uploads und Links und die Hälfte von `SEVDESK_HTTP_FILES_MAX_MB`; der Server
 höchstens 1.000 Datensätze und das volle Budget. Nichts wird verdrängt, sodass ein Konto die
 Dateien eines anderen nicht hinausdrängen kann; neue Anfragen werden abgelehnt, bis ältere

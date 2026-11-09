@@ -21,7 +21,8 @@ Value formats:
 
 ### Token
 
-Set exactly one of these three.
+Set exactly one of these three, unless the [profile](#profiles) you use says where the token is
+kept.
 
 | Variable                     | Default | Meaning                                                                                                                                                                                                                                                                                 |
 | ---------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -243,20 +244,20 @@ Each key sets the variable of the same meaning and is checked the same way. Rule
 other commands are for you. Run them with `npx -y mcp-server-sevdesk <command>`, or with Docker
 as `docker run --rm ghcr.io/jaylann/mcp-server-sevdesk:<version> <command>`.
 
-| Command                    | What it does                                                                                                                    |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `--stdio`                  | Serve MCP over stdio (the default).                                                                                             |
-| `--http`                   | Serve MCP over Streamable HTTP; needs `SEVDESK_HTTP_AUTH` ([remote.md](remote.md)).                                             |
-| `token set <label>`        | Store a sevDesk token in the OS keychain; asks for it, or reads it from stdin. See [above](#keep-the-token-in-the-os-keychain). |
-| `token check <label>`      | Check the token stored under the label with sevDesk.                                                                            |
-| `token delete <label>`     | Delete the token stored under the label.                                                                                        |
-| `profiles list`            | List the profiles of the profiles file.                                                                                         |
-| `account-id`               | Print the sevDesk account id of the configured token (any token source, or a profile), for `SEVDESK_OAUTH_ACCOUNTS`.            |
-| `grants list [--json]`     | Remote mode: list the OAuth grants in `SEVDESK_HTTP_STATE_DIR`.                                                                 |
-| `grants revoke <grant-id>` | Remote mode: revoke one grant; `--account <id>` revokes every grant of an account, `--all` all of them.                         |
-| `generate-secret`          | Print 32 random bytes for `SEVDESK_HTTP_SECRET` or a bearer secret.                                                             |
-| `healthcheck`              | Ask the local HTTP server for `/healthz` (the container health check).                                                          |
-| `--version`, `--help`      | Print the version or the help.                                                                                                  |
+| Command                             | What it does                                                                                                                    |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `--stdio`                           | Serve MCP over stdio (the default).                                                                                             |
+| `--http`                            | Serve MCP over Streamable HTTP; needs `SEVDESK_HTTP_AUTH` ([remote.md](remote.md)).                                             |
+| `token set <label>`                 | Store a sevDesk token in the OS keychain; asks for it, or reads it from stdin. See [above](#keep-the-token-in-the-os-keychain). |
+| `token check <label>`               | Check the token stored under the label with sevDesk.                                                                            |
+| `token delete <label>`              | Delete the token stored under the label.                                                                                        |
+| `profiles list`                     | List the profiles of the profiles file.                                                                                         |
+| `account-id`                        | Print the sevDesk account id of the configured token (any token source, or a profile), for `SEVDESK_OAUTH_ACCOUNTS`.            |
+| `grants list [--json]`              | Remote mode: list the OAuth grants in `SEVDESK_HTTP_STATE_DIR`.                                                                 |
+| `grants revoke <grant-id>`          | Remote mode: revoke one grant; `--account <id>` revokes every grant of an account, `--all` all of them.                         |
+| `generate-secret`                   | Print 32 random bytes for `SEVDESK_HTTP_SECRET` or a bearer secret.                                                             |
+| `healthcheck`                       | Ask the local HTTP server for `/healthz` (the container health check).                                                          |
+| `--version` (`-v`), `--help` (`-h`) | Print the version or the help.                                                                                                  |
 
 Exit codes: `0` success, `1` failure (the reason is printed to stderr), `2` unknown command or
 argument. The remote-mode commands are described in detail in

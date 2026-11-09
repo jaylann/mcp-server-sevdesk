@@ -1,4 +1,4 @@
-<!-- translated-from: docs/configuration.md sha256:41f5e72d0f5c -->
+<!-- translated-from: docs/configuration.md sha256:1d7dffecadde -->
 
 # Konfiguration
 
@@ -25,7 +25,8 @@ Formate der Werte:
 
 ### Token
 
-Setzen Sie genau eine dieser drei.
+Setzen Sie genau eine dieser drei, es sei denn, das [Profil](#profile), das Sie verwenden, gibt an,
+wo das Token liegt.
 
 | Variable                     | Standard | Bedeutung                                                                                                                                                                                                                                                                                                                                       |
 | ---------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -255,20 +256,20 @@ Jeder Schlüssel setzt die Variable mit derselben Bedeutung und wird genauso gep
 übrigen Befehle sind für Sie. Führen Sie sie mit `npx -y mcp-server-sevdesk <command>` aus oder mit
 Docker als `docker run --rm ghcr.io/jaylann/mcp-server-sevdesk:<version> <command>`.
 
-| Befehl                     | Was er tut                                                                                                                                               |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--stdio`                  | MCP über stdio bereitstellen (Standard).                                                                                                                 |
-| `--http`                   | MCP über Streamable HTTP bereitstellen; braucht `SEVDESK_HTTP_AUTH` ([remote.de.md](remote.de.md)).                                                      |
-| `token set <label>`        | Ein sevDesk-Token im Schlüsselbund des Betriebssystems ablegen; fragt danach oder liest es von stdin. Siehe [oben](#das-token-im-schlüsselbund-ablegen). |
-| `token check <label>`      | Das unter der Bezeichnung abgelegte Token bei sevDesk prüfen.                                                                                            |
-| `token delete <label>`     | Das unter der Bezeichnung abgelegte Token löschen.                                                                                                       |
-| `profiles list`            | Die Profile der Profildatei auflisten.                                                                                                                   |
-| `account-id`               | Die sevDesk-Konto-ID des konfigurierten Tokens ausgeben (jede Token-Quelle oder ein Profil), für `SEVDESK_OAUTH_ACCOUNTS`.                               |
-| `grants list [--json]`     | Fernzugriff: die OAuth-Zugänge (Grants) in `SEVDESK_HTTP_STATE_DIR` auflisten.                                                                           |
-| `grants revoke <grant-id>` | Fernzugriff: einen Zugang widerrufen; `--account <id>` widerruft alle Zugänge eines Kontos, `--all` alle.                                                |
-| `generate-secret`          | 32 zufällige Bytes für `SEVDESK_HTTP_SECRET` oder ein Bearer-Geheimnis ausgeben.                                                                         |
-| `healthcheck`              | Den lokalen HTTP-Server nach `/healthz` fragen (die Zustandsprüfung des Containers).                                                                     |
-| `--version`, `--help`      | Die Version oder die Hilfe ausgeben.                                                                                                                     |
+| Befehl                              | Was er tut                                                                                                                                               |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--stdio`                           | MCP über stdio bereitstellen (Standard).                                                                                                                 |
+| `--http`                            | MCP über Streamable HTTP bereitstellen; braucht `SEVDESK_HTTP_AUTH` ([remote.de.md](remote.de.md)).                                                      |
+| `token set <label>`                 | Ein sevDesk-Token im Schlüsselbund des Betriebssystems ablegen; fragt danach oder liest es von stdin. Siehe [oben](#das-token-im-schlüsselbund-ablegen). |
+| `token check <label>`               | Das unter der Bezeichnung abgelegte Token bei sevDesk prüfen.                                                                                            |
+| `token delete <label>`              | Das unter der Bezeichnung abgelegte Token löschen.                                                                                                       |
+| `profiles list`                     | Die Profile der Profildatei auflisten.                                                                                                                   |
+| `account-id`                        | Die sevDesk-Konto-ID des konfigurierten Tokens ausgeben (jede Token-Quelle oder ein Profil), für `SEVDESK_OAUTH_ACCOUNTS`.                               |
+| `grants list [--json]`              | Fernzugriff: die OAuth-Zugänge (Grants) in `SEVDESK_HTTP_STATE_DIR` auflisten.                                                                           |
+| `grants revoke <grant-id>`          | Fernzugriff: einen Zugang widerrufen; `--account <id>` widerruft alle Zugänge eines Kontos, `--all` alle.                                                |
+| `generate-secret`                   | 32 zufällige Bytes für `SEVDESK_HTTP_SECRET` oder ein Bearer-Geheimnis ausgeben.                                                                         |
+| `healthcheck`                       | Den lokalen HTTP-Server nach `/healthz` fragen (die Zustandsprüfung des Containers).                                                                     |
+| `--version` (`-v`), `--help` (`-h`) | Die Version oder die Hilfe ausgeben.                                                                                                                     |
 
 Exit-Codes: `0` Erfolg, `1` Fehlschlag (der Grund steht in stderr), `2` unbekannter Befehl oder
 unbekanntes Argument. Die Befehle für den Fernzugriff beschreibt

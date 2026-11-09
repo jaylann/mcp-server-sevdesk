@@ -10,12 +10,12 @@ them. The threat model behind them is in [SECURITY.md](../SECURITY.md).
 
 Every tool belongs to exactly one tier. Reads and writes never share a tool.
 
-| Tier       | What it allows                                                                                                                                                                                 | Confirmation |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
-| `read`     | List, get, search, reports, PDF previews (which never mark a document as sent), parsing e-invoices. Always on.                                                                                 | no           |
-| `write`    | Contacts, parts, drafts of invoices, credit notes, orders and vouchers, dunning reminders, the DATEV export. Reversible or harmless.                                                           | no           |
-| `commit`   | Finalize, book payments, book bank transactions, mark transactions as private, cancel (Storno), enshrine (festschreiben, GoBD), reset, delete voucher drafts. Legally binding or hard to undo. | **yes**      |
-| `external` | Send invoices, credit notes and orders by email. Reaches third parties.                                                                                                                        | **yes**      |
+| Tier       | What it allows                                                                                                                                                                                         | Confirmation |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------ |
+| `read`     | List, get, search, reports, PDF previews (which never mark a document as sent), parsing e-invoices, saving document files and CSV exports into `SEVDESK_OUTPUT_DIR` (or as download links). Always on. | no           |
+| `write`    | Contacts, parts, drafts of invoices, credit notes, orders and vouchers, dunning reminders, the DATEV export. Reversible or harmless.                                                                   | no           |
+| `commit`   | Finalize, book payments, book bank transactions, mark transactions as private, cancel (Storno), enshrine (festschreiben, GoBD), reset, delete voucher drafts. Legally binding or hard to undo.         | **yes**      |
+| `external` | Send invoices, credit notes and orders by email. Reaches third parties.                                                                                                                                | **yes**      |
 
 Choose the tiers with `SEVDESK_ALLOW`, for example `SEVDESK_ALLOW=write` or
 `SEVDESK_ALLOW=write,commit`; `all` enables every tier. `SEVDESK_READ_ONLY=1` turns everything but
@@ -122,7 +122,8 @@ emailed. The Claude Desktop extension does not offer it.
 ## Audit log
 
 With `SEVDESK_AUDIT_LOG=<path>` the server appends one JSON line per event of every write call to
-that file. It answers "what did the assistant do in my books, and who approved it?".
+that file, and in remote mode one per file that moves through an upload page or a download link.
+It answers "what did the assistant do in my books, and who approved it?".
 
 | Event                    | When                                                                                                                                    |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
@@ -130,17 +131,40 @@ that file. It answers "what did the assistant do in my books, and who approved i
 | `confirmation_requested` | A confirmation was asked for, with the preview (and in browser mode the reference code).                                                |
 | `confirmation_refused`   | A retry presented a confirmation that was replayed, expired or made for other arguments.                                                |
 | `approval_decided`       | Approve or Reject was pressed on an approval page.                                                                                      |
-| `declined`               | You declined in the client.                                                                                                             |
+| `declined`               | You declined in the client, or rejected the approval in the browser.                                                                    |
 | `executing`              | The action is about to be sent, with how it was approved: `elicit`, `browser`, `confirmation_off` or `not_required` (the `write` tier). |
 | `executed`               | The action ran; with the records it changed.                                                                                            |
 | `failed`                 | The action failed; with the error kind and any records an earlier step already changed.                                                 |
+| `file_received`          | Remote mode: a file was uploaded on an upload page.                                                                                     |
+| `file_link_created`      | Remote mode: a tool created a download link.                                                                                            |
+| `file_downloaded`        | Remote mode: a download link was used.                                                                                                  |
 
 Every line starts with `ts` (the time, ISO 8601) and `v`, the version of the line format (`1`),
-followed by `event`, a `callId` shared by the lines of one action, the `tool`, its `tier`, a hash of
-the arguments (`argsHash`), the arguments themselves (token redacted, hidden characters written as
-visible `\u{…}` escapes, strings up to 20,000 characters) and the hash of the preview that was
-shown and approved (`previewHash`). In remote mode each line also names the `account` and the
-`grant`. For example (shortened):
+followed by `event`. In remote mode `account` and `grant` come next. The other fields depend on the
+event:
+
+| Field         | Events                                                               | Meaning                                                                                                                                                          |
+| ------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `account`     | all, remote mode only                                                | The sevDesk account id (in bearer mode `bearer` if the server could not look it up). On file lines, the account whose tool call created the upload page or link. |
+| `grant`       | all, remote mode only                                                | The OAuth grant id, or `bearer`.                                                                                                                                 |
+| `callId`      | write events                                                         | Shared by the lines of one action, from the request to the result.                                                                                               |
+| `tool`        | write events                                                         | The tool name.                                                                                                                                                   |
+| `tier`        | write events                                                         | `write`, `commit` or `external`.                                                                                                                                 |
+| `argsHash`    | write events                                                         | A hash of the tool and its arguments (without `dryRun`).                                                                                                         |
+| `args`        | write events except `approval_decided`                               | The arguments: the token redacted, upload ids redacted, hidden characters written as visible `\u{…}` escapes, strings up to 20,000 characters.                   |
+| `previewHash` | `dry_run`, `confirmation_requested`, `approval_decided`, `executing` | A hash of the preview that was shown and approved.                                                                                                               |
+| `preview`     | `dry_run`, `confirmation_requested`                                  | The preview as shown: `action` (one sentence), `facts` (`label`, `value`), `warnings` and `irreversible`.                                                        |
+| `approval`    | `executing`                                                          | How the action was approved: `elicit`, `browser`, `confirmation_off` or `not_required`.                                                                          |
+| `reason`      | `confirmation_refused`                                               | `replayed_or_expired` or `mismatch` (made for another tool or other arguments).                                                                                  |
+| `decision`    | `approval_decided`                                                   | `approved` or `rejected`.                                                                                                                                        |
+| `reference`   | browser `confirmation_requested`, `approval_decided`, file events    | The reference code shown on the page and in the tool result. Not a secret.                                                                                       |
+| `affected`    | `executed`, `failed`                                                 | The records changed (`objectName`, `id`); for `failed`, those an earlier step already changed.                                                                   |
+| `error`       | `failed`                                                             | The error kind, such as `validation`, `not_found`, `auth`, `timeout`, `network`, `server`, `aborted`, `internal` or `output_invalid`.                            |
+| `kind`        | file events                                                          | `pdf`, `png`, `jpeg`, `xml`, `csv` or `zip`.                                                                                                                     |
+| `bytes`       | file events                                                          | The size of the file.                                                                                                                                            |
+| `sha256`      | file events                                                          | The SHA-256 of the content, hex. File lines never contain the file name or the content.                                                                          |
+
+For example (shortened):
 
 ```json
 {

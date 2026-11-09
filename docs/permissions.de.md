@@ -1,4 +1,4 @@
-<!-- translated-from: docs/permissions.md sha256:bb303dde96ed -->
+<!-- translated-from: docs/permissions.md sha256:12d02d92671a -->
 
 # Berechtigungen und Bestätigung
 
@@ -13,12 +13,12 @@ erklärt jedes davon. Das Bedrohungsmodell dahinter steht in [SECURITY.de.md](..
 
 Jedes Werkzeug gehört zu genau einer Stufe. Lesen und Schreiben teilen sich nie ein Werkzeug.
 
-| Stufe      | Was sie erlaubt                                                                                                                                                                                                  | Bestätigung |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| `read`     | Auflisten, abrufen, suchen, Auswertungen, PDF-Vorschauen (die ein Dokument nie als versendet markieren), E-Rechnungen auslesen. Immer aktiv.                                                                     | nein        |
-| `write`    | Kontakte, Artikel, Entwürfe von Rechnungen, Gutschriften, Aufträgen und Belegen, Mahnungen, der DATEV-Export. Umkehrbar oder harmlos.                                                                            | nein        |
-| `commit`   | Fertigstellen, Zahlungen buchen, Kontoumsätze zuordnen, Umsätze als privat markieren, stornieren, festschreiben (GoBD), zurücksetzen, Belegentwürfe löschen. Rechtlich bindend oder schwer rückgängig zu machen. | **ja**      |
-| `external` | Rechnungen, Gutschriften und Aufträge per E-Mail versenden. Erreicht Dritte.                                                                                                                                     | **ja**      |
+| Stufe      | Was sie erlaubt                                                                                                                                                                                                                          | Bestätigung |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| `read`     | Auflisten, abrufen, suchen, Auswertungen, PDF-Vorschauen (die ein Dokument nie als versendet markieren), E-Rechnungen auslesen, Dokumentdateien und CSV-Exporte in `SEVDESK_OUTPUT_DIR` speichern (oder als Download-Link). Immer aktiv. | nein        |
+| `write`    | Kontakte, Artikel, Entwürfe von Rechnungen, Gutschriften, Aufträgen und Belegen, Mahnungen, der DATEV-Export. Umkehrbar oder harmlos.                                                                                                    | nein        |
+| `commit`   | Fertigstellen, Zahlungen buchen, Kontoumsätze zuordnen, Umsätze als privat markieren, stornieren, festschreiben (GoBD), zurücksetzen, Belegentwürfe löschen. Rechtlich bindend oder schwer rückgängig zu machen.                         | **ja**      |
+| `external` | Rechnungen, Gutschriften und Aufträge per E-Mail versenden. Erreicht Dritte.                                                                                                                                                             | **ja**      |
 
 Die Stufen wählen Sie mit `SEVDESK_ALLOW`, zum Beispiel `SEVDESK_ALLOW=write` oder
 `SEVDESK_ALLOW=write,commit`; `all` aktiviert alle Stufen. `SEVDESK_READ_ONLY=1` schaltet alles
@@ -134,7 +134,8 @@ storniert oder per E-Mail versendet wird. Die Claude-Desktop-Erweiterung bietet 
 ## Audit-Log
 
 Mit `SEVDESK_AUDIT_LOG=<path>` hängt der Server pro Ereignis jedes schreibenden Aufrufs eine
-JSON-Zeile an diese Datei an. Es beantwortet die Frage: „Was hat der Assistent in meiner
+JSON-Zeile an diese Datei an, im Fernzugriff außerdem eine je Datei, die über eine Upload-Seite
+oder einen Download-Link läuft. Es beantwortet die Frage: „Was hat der Assistent in meiner
 Buchhaltung getan, und wer hat es freigegeben?“
 
 | Ereignis                 | Wann                                                                                                                                        |
@@ -143,17 +144,40 @@ Buchhaltung getan, und wer hat es freigegeben?“
 | `confirmation_requested` | Eine Bestätigung wurde angefordert, mit der Vorschau (und im Browser-Modus dem Referenzcode).                                               |
 | `confirmation_refused`   | Ein erneuter Versuch legte eine Bestätigung vor, die schon verwendet, abgelaufen oder für andere Argumente erteilt war.                     |
 | `approval_decided`       | Auf einer Freigabeseite wurde „Approve“ oder „Reject“ gedrückt.                                                                             |
-| `declined`               | Sie haben im Client abgelehnt.                                                                                                              |
+| `declined`               | Sie haben im Client abgelehnt oder die Freigabe im Browser abgelehnt.                                                                       |
 | `executing`              | Die Aktion wird gleich gesendet, mit der Art der Freigabe: `elicit`, `browser`, `confirmation_off` oder `not_required` (die Stufe `write`). |
 | `executed`               | Die Aktion wurde ausgeführt; mit den Datensätzen, die sie geändert hat.                                                                     |
 | `failed`                 | Die Aktion ist gescheitert; mit der Art des Fehlers und allen Datensätzen, die ein früherer Schritt bereits geändert hat.                   |
+| `file_received`          | Fernzugriff: Eine Datei wurde auf einer Upload-Seite hochgeladen.                                                                           |
+| `file_link_created`      | Fernzugriff: Ein Werkzeug hat einen Download-Link angelegt.                                                                                 |
+| `file_downloaded`        | Fernzugriff: Ein Download-Link wurde verwendet.                                                                                             |
 
 Jede Zeile beginnt mit `ts` (der Zeitpunkt, ISO 8601) und `v`, der Version des Zeilenformats
-(`1`), gefolgt von `event`, einer `callId`, die alle Zeilen einer Aktion teilen, dem `tool`, seiner
-`tier`, einem Hash der Argumente (`argsHash`), den Argumenten selbst (Token geschwärzt, versteckte
-Zeichen als sichtbare `\u{…}`-Escapes geschrieben, Zeichenketten bis 20.000 Zeichen) und dem Hash
-der Vorschau, die gezeigt und freigegeben wurde (`previewHash`). Im Fernzugriff nennt jede Zeile
-außerdem das Konto (`account`) und den Zugang (`grant`). Zum Beispiel (gekürzt):
+(`1`), gefolgt von `event`. Im Fernzugriff folgen `account` und `grant`. Die übrigen Felder hängen
+vom Ereignis ab:
+
+| Feld          | Ereignisse                                                                     | Bedeutung                                                                                                                                                                                   |
+| ------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `account`     | alle, nur im Fernzugriff                                                       | Die sevDesk-Konto-ID (im Bearer-Modus `bearer`, falls der Server sie nicht ermitteln konnte). Bei Dateizeilen das Konto, dessen Werkzeugaufruf die Upload-Seite oder den Link angelegt hat. |
+| `grant`       | alle, nur im Fernzugriff                                                       | Die ID des OAuth-Zugangs oder `bearer`.                                                                                                                                                     |
+| `callId`      | Schreibereignisse                                                              | Gemeinsam für alle Zeilen einer Aktion, von der Anfrage bis zum Ergebnis.                                                                                                                   |
+| `tool`        | Schreibereignisse                                                              | Der Name des Werkzeugs.                                                                                                                                                                     |
+| `tier`        | Schreibereignisse                                                              | `write`, `commit` oder `external`.                                                                                                                                                          |
+| `argsHash`    | Schreibereignisse                                                              | Ein Hash des Werkzeugs und seiner Argumente (ohne `dryRun`).                                                                                                                                |
+| `args`        | Schreibereignisse außer `approval_decided`                                     | Die Argumente: Token und Upload-IDs geschwärzt, versteckte Zeichen als sichtbare `\u{…}`-Escapes geschrieben, Zeichenketten bis 20.000 Zeichen.                                             |
+| `previewHash` | `dry_run`, `confirmation_requested`, `approval_decided`, `executing`           | Ein Hash der Vorschau, die gezeigt und freigegeben wurde.                                                                                                                                   |
+| `preview`     | `dry_run`, `confirmation_requested`                                            | Die Vorschau, wie sie gezeigt wurde: `action` (ein Satz), `facts` (`label`, `value`), `warnings` und `irreversible`.                                                                        |
+| `approval`    | `executing`                                                                    | Wie die Aktion freigegeben wurde: `elicit`, `browser`, `confirmation_off` oder `not_required`.                                                                                              |
+| `reason`      | `confirmation_refused`                                                         | `replayed_or_expired` oder `mismatch` (für ein anderes Werkzeug oder andere Argumente erteilt).                                                                                             |
+| `decision`    | `approval_decided`                                                             | `approved` oder `rejected`.                                                                                                                                                                 |
+| `reference`   | `confirmation_requested` im Browser-Modus, `approval_decided`, Dateiereignisse | Der Referenzcode, den die Seite und das Ergebnis des Werkzeugs zeigen. Nicht geheim.                                                                                                        |
+| `affected`    | `executed`, `failed`                                                           | Die geänderten Datensätze (`objectName`, `id`); bei `failed` die, die ein früherer Schritt bereits geändert hat.                                                                            |
+| `error`       | `failed`                                                                       | Die Art des Fehlers, etwa `validation`, `not_found`, `auth`, `timeout`, `network`, `server`, `aborted`, `internal` oder `output_invalid`.                                                   |
+| `kind`        | Dateiereignisse                                                                | `pdf`, `png`, `jpeg`, `xml`, `csv` oder `zip`.                                                                                                                                              |
+| `bytes`       | Dateiereignisse                                                                | Die Größe der Datei.                                                                                                                                                                        |
+| `sha256`      | Dateiereignisse                                                                | Der SHA-256 des Inhalts, hexadezimal. Dateizeilen enthalten nie den Dateinamen oder den Inhalt.                                                                                             |
+
+Zum Beispiel (gekürzt):
 
 ```json
 {

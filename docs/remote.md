@@ -317,7 +317,7 @@ Kubernetes secrets); set one or the other.
 | `SEVDESK_HTTP_SECRET_PREVIOUS` (`_FILE`) |                                      | The previous server secret while you [rotate it](#rotating-the-server-secret): tokens sealed with it are still accepted and resealed on refresh.                                                                                                                                                                                                                                                                                         |
 | `SEVDESK_HTTP_STATE_DIR`                 | memory (image: `/data`)              | Absolute directory for the grant store and the encrypted files of file transfer (`files/`); created with mode 0700 (an existing one is tightened to 0700) and checked for write access at startup. Without it, grants and browser sessions end with the process (OAuth startup warns) and files are kept in memory.                                                                                                                      |
 | `SEVDESK_HTTP_FILES`                     | `on`                                 | [File transfer](#files-uploads-and-download-links): upload pages for receipts and e-invoices, and download links for the files tools create. `on`/`off`, `1`/`0`, `true`/`false` or `yes`/`no`. Off: no `sevdesk_upload_request`, and in OAuth mode no file tools at all.                                                                                                                                                                |
-| `SEVDESK_HTTP_FILES_MAX_MB`              | 256 with a state directory, else 64  | Megabytes the uploaded files and download links of all accounts may take together, 32 to 4096. One account may use a quarter of it (at least 20 MB, at most half); room for one upload stays free for accounts that hold no files yet. With a state directory the files are on disk, otherwise in memory.                                                                                                                                |
+| `SEVDESK_HTTP_FILES_MAX_MB`              | 256 with a state directory, else 64  | Mebibytes (MiB) the uploaded files and download links of all accounts may take together, 32 to 4096. One account may use a quarter of it (at least 20 MiB, at most half); room for one upload stays free for accounts that hold no files yet. With a state directory the files are on disk, otherwise in memory.                                                                                                                         |
 | `SEVDESK_HTTP_FILES_TTL`                 | `30m`                                | How long an uploaded file and a download link stay valid, 5 minutes to 24 hours.                                                                                                                                                                                                                                                                                                                                                         |
 | `SEVDESK_OAUTH_ACCOUNTS`                 |                                      | OAuth, required: the sevDesk account ids that may connect, comma-separated, or `any` (startup warns).                                                                                                                                                                                                                                                                                                                                    |
 | `SEVDESK_OAUTH_CLIENTS`                  | `claude.ai`                          | Hosts allowed to serve a client's metadata document (its `client_id` URL), comma-separated, or `any` (startup warns).                                                                                                                                                                                                                                                                                                                    |
@@ -325,7 +325,8 @@ Kubernetes secrets); set one or the other.
 | `SEVDESK_OAUTH_REFRESH_IDLE_TTL`         | `14d`                                | A refresh token unused this long expires; 1 to 90 days.                                                                                                                                                                                                                                                                                                                                                                                  |
 | `SEVDESK_OAUTH_GRANT_TTL`                | `90d`                                | Lifetime of a grant from consent; 1 to 365 days.                                                                                                                                                                                                                                                                                                                                                                                         |
 
-Durations are written as `30m`, `1h`, `14d`, or a number of seconds.
+Durations are a whole number with the unit `s`, `m`, `h` or `d` (`90s`, `30m`, `1h`, `14d`), or
+a plain number of seconds.
 
 ### Other variables in HTTP mode
 
@@ -362,7 +363,7 @@ differences:
 
 ### Startup refusals and warnings
 
-Startup refuses:
+Startup refuses, among others:
 
 - `--http` without `SEVDESK_HTTP_AUTH`;
 - bearer mode without a valid bearer secret or without a sevDesk token;
@@ -372,11 +373,15 @@ Startup refuses:
 - OAuth together with `SEVDESK_FILE_DIRS` or `SEVDESK_OUTPUT_DIR` (the message points to the
   upload pages and download links);
 - `SEVDESK_API_TOKEN_KEYCHAIN`, `SEVDESK_PROFILE` or `SEVDESK_PROFILES_PATH` (stdio only);
-- `SEVDESK_HTTP_FILES` that is not an on/off value, `SEVDESK_HTTP_FILES_MAX_MB` outside 32–4096, or
-  `SEVDESK_HTTP_FILES_TTL` outside 5 minutes to 24 hours;
+- `SEVDESK_HTTP_FILES` that is not a flag value (see the table), `SEVDESK_HTTP_FILES_MAX_MB`
+  outside 32–4096, or `SEVDESK_HTTP_FILES_TTL` outside 5 minutes to 24 hours;
 - `SEVDESK_CONFIRM_OPEN=1` with a non-loopback bind;
 - a state directory that cannot be written, a corrupt `grants.jsonl`, a state directory that
-  another live instance uses, or a `files/` folder in it that cannot be emptied.
+  another live instance uses, or a `files/` folder in it that cannot be emptied;
+- any other value outside what the tables above allow, for example a variable set together with
+  its `_FILE` variant, `SEVDESK_HTTP_SECRET_PREVIOUS` without `SEVDESK_HTTP_SECRET`, more than two
+  bearer secrets, a relative state directory, an OAuth lifetime out of range, an invalid host or
+  origin entry, or `any` mixed with ids or hosts.
 
 Startup warns (and starts) for `SEVDESK_CONFIRM=elicit` with the `commit` or `external` tier,
 `SEVDESK_OAUTH_ACCOUNTS=any` (with file transfer on, also because the server then briefly holds
@@ -564,22 +569,22 @@ or open the link in the browser where you consented.
 
 **Limits and lifetimes:**
 
-| What                | Limit                                                                                                                                                                 |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Upload page         | Valid 15 minutes, takes one file.                                                                                                                                     |
-| Accepted files      | Receipts: PDF, PNG or JPEG. E-invoices: XML (XRechnung) or PDF (ZUGFeRD, Factur-X). Checked by content.                                                               |
-| One upload          | 20 MB, or half of `SEVDESK_HTTP_FILES_MAX_MB` if that is less.                                                                                                        |
-| Uploaded file, link | Valid for `SEVDESK_HTTP_FILES_TTL` (30 minutes). A link serves at most 5 downloads.                                                                                   |
-| Per account         | 5 upload pages waiting for a file, 10 uploads and links together, a quarter of `SEVDESK_HTTP_FILES_MAX_MB` (at least 20 MB, at most half).                            |
-| All accounts        | `SEVDESK_HTTP_FILES_MAX_MB` (256 MB with a state directory, 64 MB without), 1,000 uploads and links. Room for one upload is kept for accounts that hold no files yet. |
-| Requests per client | 60 a minute to the upload and download pages together; 10 uploads a minute and 60 an hour (IPv6 per /64 network).                                                     |
-| Uploads at once     | 2 for the whole server, 1 per account; another gets "Server busy" or "Upload in progress" (503): try again in a moment.                                               |
-| Upload speed        | The file must arrive within 90 seconds, without a 10-second pause, and at 16 KB/s or more on average after the first 10 seconds; else 408.                            |
-| A restart           | Voids every upload page, upload and link. The model asks for a new one.                                                                                               |
+| What                | Limit                                                                                                                                                                   |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Upload page         | Valid 15 minutes, takes one file.                                                                                                                                       |
+| Accepted files      | Receipts: PDF, PNG or JPEG. E-invoices: XML (XRechnung) or PDF (ZUGFeRD, Factur-X). Checked by content.                                                                 |
+| One upload          | 20 MiB, or half of `SEVDESK_HTTP_FILES_MAX_MB` if that is less.                                                                                                         |
+| Uploaded file, link | Valid for `SEVDESK_HTTP_FILES_TTL` (30 minutes). A link serves at most 5 downloads.                                                                                     |
+| Per account         | 5 upload pages waiting for a file, 10 uploads and links together, a quarter of `SEVDESK_HTTP_FILES_MAX_MB` (at least 20 MiB, at most half).                             |
+| All accounts        | `SEVDESK_HTTP_FILES_MAX_MB` (256 MiB with a state directory, 64 MiB without), 1,000 uploads and links. Room for one upload is kept for accounts that hold no files yet. |
+| Requests per client | 60 a minute to the upload and download pages together; 10 uploads a minute and 60 an hour (IPv6 per /64 network).                                                       |
+| Uploads at once     | 2 for the whole server, 1 per account; another gets "Server busy" or "Upload in progress" (503): try again in a moment.                                                 |
+| Upload speed        | The file must arrive within 90 seconds, without a 10-second pause, and at 16 KB/s or more on average after the first 10 seconds; else 408.                              |
+| A restart           | Voids every upload page, upload and link. The model asks for a new one.                                                                                                 |
 
 Nothing is pushed out to make room: when a limit is reached, new uploads and links are refused
 until older ones expire. Download links count against the same space as uploads, so a large DATEV
-export may not fit (with 64 MB in memory, one account has 20 MB). The tool then says that sevDesk
+export may not fit (with 64 MiB in memory, one account has 20 MiB). The tool then says that sevDesk
 has started the export, and you download it in sevDesk instead; or raise
 `SEVDESK_HTTP_FILES_MAX_MB`, best with a state directory, so the files go to disk.
 
@@ -587,7 +592,7 @@ has started the export, and you download it in sevDesk instead; or raise
 about three times over, which is why at most two are received at once. On a small machine (512 MB)
 keep a state directory and the default limits.
 
-**Reverse proxies.** An upload body is up to 20 MB plus a little form overhead, must arrive within
+**Reverse proxies.** An upload body is up to 20 MiB plus a little form overhead, must arrive within
 90 seconds without a 10-second pause, and must carry `Content-Length`; a chunked upload without it
 is refused with 411. nginx needs `client_max_body_size 25m;` (its default of 1 MB refuses most
 receipts), and its default request buffering sends `Content-Length`. Caddy, as in the compose template, needs nothing.
@@ -608,14 +613,21 @@ servers receive the session cookie too. See [ADR 0008](adr/0008-file-transfer-ov
 The binary has a few commands besides serving. With Docker, append them to `docker run --rm
 <image>` (the image's default command is `--http`).
 
-| Command                                  | What it does                                                                                                                                                                                                  |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `generate-secret`                        | Prints 32 random bytes, base64url: a value for `SEVDESK_HTTP_SECRET` or a bearer secret.                                                                                                                      |
-| `account-id`                             | Asks sevDesk which account `SEVDESK_API_TOKEN` belongs to and prints its id, for `SEVDESK_OAUTH_ACCOUNTS`.                                                                                                    |
-| `grants list [--json]`                   | Lists the grants in `SEVDESK_HTTP_STATE_DIR`, newest first: id, account, client host, tiers, status (with the reason of a revocation), created, expires and last refresh. `--json` adds the full `client_id`. |
-| `grants revoke <grant-id>`               | Revokes one grant and its browser sessions.                                                                                                                                                                   |
-| `grants revoke --account <id>` / `--all` | Revokes every grant of one account, or all grants.                                                                                                                                                            |
-| `healthcheck`                            | Calls `http://127.0.0.1:<port>/healthz` and exits 0 when the server answers; the image's health check uses it.                                                                                                |
+| Command                                  | What it does                                                                                                                                                                                                                                                                                                   |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `generate-secret`                        | Prints 32 random bytes, base64url: a value for `SEVDESK_HTTP_SECRET` or a bearer secret.                                                                                                                                                                                                                       |
+| `account-id`                             | Asks sevDesk which account the configured token belongs to (`SEVDESK_API_TOKEN`, its `_FILE`, the keychain or a profile) and prints its id, for `SEVDESK_OAUTH_ACCOUNTS`.                                                                                                                                      |
+| `grants list [--json]`                   | Lists the grants in `SEVDESK_HTTP_STATE_DIR`, newest first: id, account, client host, tiers, status (with the reason of a revocation), created, expires and last refresh. `--json` prints JSON with the full `client_id` (fields below).                                                                       |
+| `grants revoke <grant-id>`               | Revokes one grant and its browser sessions.                                                                                                                                                                                                                                                                    |
+| `grants revoke --account <id>` / `--all` | Revokes every grant of one account, or all grants.                                                                                                                                                                                                                                                             |
+| `healthcheck`                            | Asks the server at `SEVDESK_HTTP_HOST` and its port for `/healthz` (127.0.0.1 when it binds to all interfaces) and exits 0 when it answers `{"status":"ok"}`; the image's health check uses it. Without `SEVDESK_HTTP_AUTH` (an image started with `--stdio`) it exits 0 without asking; with port 0 it fails. |
+
+`grants list --json` prints an array with one object per grant, newest first: `id`, `account`
+(the sevDesk account id), `client` (the full `client_id` URL), `clientHost`, `tiers`, `status`
+(`pending` until the client has exchanged its authorization code, then `active`, `revoked` or
+`expired`), `reason` (why it was revoked, a short code such as `user`, `operator`, `superseded`
+or `sevdesk_401`; otherwise `null`), and the times `createdAt`, `expiresAt`, `lastRefreshAt` and
+`revokedAt` (ISO 8601, `null` when it has not happened).
 
 The `grants` commands need the same `SEVDESK_HTTP_STATE_DIR` as the server and work while it runs:
 they append to `grants.jsonl`, and the server picks the change up within about a second. With the
@@ -738,7 +750,7 @@ comes from the proxy.
   pass the browser's `Content-Length` on, or buffer request bodies: nginx does by default
   (`proxy_request_buffering on`); Caddy passes it on unchanged.
 - A 413 page of the proxy, not the server's "File too large": the proxy's body limit is below the
-  server's (a little over 20 MB). nginx: `client_max_body_size 25m;` (default 1 MB). Caddy has no
+  server's (a little over 20 MiB). nginx: `client_max_body_size 25m;` (default 1 MB). Caddy has no
   limit unless you set one.
 - A timeout (408) on large files over a slow connection: the body must arrive within 90 seconds,
   at 16 KB/s or more on average, and never pause for 10 seconds. A proxy that buffers request
@@ -818,7 +830,7 @@ deployment.
 - **Files only through the browser in OAuth mode.** No server folders (`SEVDESK_FILE_DIRS`,
   `SEVDESK_OUTPUT_DIR`); receipts are uploaded and files downloaded on the server's pages, which
   need a browser session of the account, and live at most `SEVDESK_HTTP_FILES_TTL`
-  ([Files](#files-uploads-and-download-links)). One upload is at most 20 MB.
+  ([Files](#files-uploads-and-download-links)). One upload is at most 20 MiB.
 - **Clients without Client ID Metadata Documents** cannot use OAuth mode; bearer mode works for
   them.
 - **No hosted instance.** You are the operator of what you deploy.

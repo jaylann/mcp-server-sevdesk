@@ -71,9 +71,9 @@ builds per call (`src/safety/file-sources.ts`). The schemas stay static, so `too
 per configuration. Bearer mode keeps its folders: a plain path still reads `SEVDESK_FILE_DIRS`, and
 `SEVDESK_OUTPUT_DIR` wins over links.
 
-**Bounded.** An upload page lives 15 minutes and takes one file of at most 20 MB; uploads and links
+**Bounded.** An upload page lives 15 minutes and takes one file of at most 20 MiB; uploads and links
 live `SEVDESK_HTTP_FILES_TTL` (30 minutes); a link serves 5 downloads. Per account 5 open pages, 10
-live records and a quarter of `SEVDESK_HTTP_FILES_MAX_MB` (at least one 20 MB upload, at most
+live records and a quarter of `SEVDESK_HTTP_FILES_MAX_MB` (at least one 20 MiB upload, at most
 half); room for one upload stays free for accounts that hold nothing yet. Nothing is evicted, new
 records are refused. Upload bodies: 2 at once on the server and 1 per account, each within 90 s,
 without a 10 s pause and at 16 KB/s on average after 10 s, so a trickled body cannot hold a slot.
@@ -98,12 +98,12 @@ Logs and audit lines carry the reference, kind, size and SHA-256, never ids or f
   while parsed, hence two uploads at once at most. One per account keeps a single account from
   taking both; two accounts together can still keep others waiting for up to 90 s per upload.
 - Bad: uploads over a very slow connection (under 16 KB/s, or with a 10 s stall) fail with 408.
-- Bad: reverse proxies must pass bodies over 20 MB and `Content-Length` (nginx needs
+- Bad: reverse proxies must pass bodies over 20 MiB and `Content-Length` (nginx needs
   `client_max_body_size`).
 - Bad: as with the inbox, an agent that drives a signed-in browser could upload or download on its
   own.
 - Bad: with `SEVDESK_OAUTH_ACCOUNTS=any` the server briefly holds other people's receipts and
-  exports, and a few accounts together (3 with the in-memory default, 4 with 256 MB on disk) can
+  exports, and a few accounts together (3 with the in-memory default, 4 with 256 MiB on disk) can
   fill the space for everyone until their files expire (startup warns).
 
 ## Alternatives considered

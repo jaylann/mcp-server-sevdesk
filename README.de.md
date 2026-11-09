@@ -1,4 +1,4 @@
-<!-- translated-from: README.md sha256:8c522ab8c4a6 -->
+<!-- translated-from: README.md sha256:fda15b4c6ba4 -->
 
 # mcp-server-sevdesk
 
@@ -96,11 +96,11 @@ den Schreibstufen kommen 37 weitere Werkzeuge hinzu, die Daten anlegen und ände
   Artikel; **Belege** mit angehängter Belegdatei und Belege, die **aus einer E-Rechnung
   importiert** werden; der **DATEV-Export** (Buchungsstapel als ZIP, schreibt nie fest).
 - **Buchen** (`commit`, fragt Sie vorher): fertigstellen, Zahlungen buchen (wahlweise mit
-  einem Kontoumsatz verknüpft), stornieren, festschreiben (unumkehrbar), auf Entwurf oder offen
-  zurücksetzen, jeweils für Rechnungen, Gutschriften und Belege; Belegentwürfe löschen; **einen
-  Kontoumsatz einem oder mehreren Dokumenten zuordnen** (Teilzahlungen, gegen Überbuchung
-  abgesichert), einen Umsatz als privat markieren (Privatentnahme/-einlage) und eine Zuordnung
-  aufheben.
+  einem Kontoumsatz verknüpft), festschreiben (unumkehrbar) und auf Entwurf oder offen
+  zurücksetzen, jeweils für Rechnungen, Gutschriften und Belege; Rechnungen stornieren (Storno);
+  Aufträge fertigstellen; Belegentwürfe löschen; **einen Kontoumsatz einem oder mehreren
+  Dokumenten zuordnen** (Teilzahlungen, gegen Überbuchung abgesichert), einen Umsatz als privat
+  markieren (Privatentnahme/-einlage) und eine Zuordnung aufheben.
 - **E-Mail** (`external`, fragt Sie vorher): Rechnungen, Gutschriften und Aufträge per E-Mail
   versenden.
 
@@ -136,7 +136,7 @@ Probelauf und mit Ihrer Bestätigung für bindende Schritte. Keine Steuerberatun
 
 | Stufe      | Was sie erlaubt                                                                                                                                                  | Bestätigung |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| `read`     | Auflisten, abrufen, suchen, Auswertungen, PDF-Vorschauen                                                                                                         | nein        |
+| `read`     | Auflisten, abrufen, suchen, Auswertungen, PDF-Vorschauen, Dokumentdateien und CSV-Exporte im Ausgabeordner speichern (oder als Download-Link)                    | nein        |
 | `write`    | Kontakte, Artikel, Entwürfe von Rechnungen, Gutschriften, Aufträgen und Belegen, Mahnungen, DATEV-Export                                                         | nein        |
 | `commit`   | Fertigstellen, Zahlungen buchen, Kontoumsätze zuordnen, Kontoumsätze als privat markieren, stornieren, festschreiben (GoBD), zurücksetzen, Belegentwürfe löschen | **ja**      |
 | `external` | Dokumente per E-Mail versenden                                                                                                                                   | **ja**      |

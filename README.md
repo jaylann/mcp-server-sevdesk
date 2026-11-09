@@ -87,10 +87,10 @@ create and change data:
   contacts and parts; **vouchers (Belege)** with the receipt file attached, and vouchers
   **imported from an e-invoice**; the **DATEV export** (Buchungsstapel ZIP, never enshrined).
 - **Lifecycle** (`commit`, asks you first): finalize, book payments (optionally linked to a bank
-  transaction), cancel (Storno), enshrine (festschreiben, irreversible), reset to draft or open,
-  for invoices, credit notes and vouchers; delete voucher drafts; **book a bank transaction
-  against one or more documents** (split payments, guarded against over-booking), mark a
-  transaction as private (Privatentnahme/-einlage) and undo an assignment.
+  transaction), enshrine (festschreiben, irreversible) and reset to draft or open, for invoices,
+  credit notes and vouchers; cancel invoices (Storno); finalize orders; delete voucher drafts;
+  **book a bank transaction against one or more documents** (split payments, guarded against
+  over-booking), mark a transaction as private (Privatentnahme/-einlage) and undo an assignment.
 - **Email** (`external`, asks you first): send invoices, credit notes and orders by email.
 
 Parts include their stock (Lagerbestand): `sevdesk_part_get` reports the current stock, and
@@ -123,7 +123,7 @@ run first and your confirmation for binding steps. Not tax advice.
 
 | Tier       | What it allows                                                                                                                                     | Confirmation |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
-| `read`     | List, get, search, reports, PDF previews                                                                                                           | no           |
+| `read`     | List, get, search, reports, PDF previews, saving document files and CSV exports to the output folder (or as download links)                        | no           |
 | `write`    | Contacts, parts, drafts of invoices, credit notes, orders and vouchers, dunning reminders, DATEV export                                            | no           |
 | `commit`   | Finalize, book payments, reconcile bank transactions, mark transactions as private, cancel (Storno), enshrine (GoBD), reset, delete voucher drafts | **yes**      |
 | `external` | Send documents by email                                                                                                                            | **yes**      |

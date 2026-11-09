@@ -1,4 +1,4 @@
-<!-- translated-from: docs/remote.md sha256:06fd4e66d236 -->
+<!-- translated-from: docs/remote.md sha256:bf980ef7bf18 -->
 
 # Fernzugriff (HTTP)
 
@@ -336,7 +336,7 @@ Datei (Docker- und Kubernetes-Secrets); setzen Sie die eine oder die andere.
 | `SEVDESK_HTTP_SECRET_PREVIOUS` (`_FILE`) |                                       | Das vorige Server-Geheimnis, während Sie [es wechseln](#das-server-geheimnis-wechseln): Damit verschlüsselte Tokens werden weiter angenommen und bei der Erneuerung neu verschlüsselt.                                                                                                                                                                                                                                                                                                                                       |
 | `SEVDESK_HTTP_STATE_DIR`                 | Speicher (Image: `/data`)             | Absolutes Verzeichnis für den Zugangsspeicher und die verschlüsselten Dateien der Dateiübertragung (`files/`); angelegt mit Modus 0700 (ein bestehendes wird auf 0700 verschärft) und beim Start auf Schreibrechte geprüft. Ohne die Variable enden Zugänge und Browser-Sitzungen mit dem Prozess (der OAuth-Start warnt), und Dateien werden im Speicher gehalten.                                                                                                                                                          |
 | `SEVDESK_HTTP_FILES`                     | `on`                                  | [Dateiübertragung](#dateien-hochladen-und-herunterladen): Upload-Seiten für Belege und E-Rechnungen und Download-Links für die Dateien, die Werkzeuge erzeugen. `on`/`off`, `1`/`0`, `true`/`false` oder `yes`/`no`. Aus: kein `sevdesk_upload_request`, und im OAuth-Modus gar keine Dateiwerkzeuge.                                                                                                                                                                                                                        |
-| `SEVDESK_HTTP_FILES_MAX_MB`              | 256 mit Zustandsverzeichnis, sonst 64 | Megabyte, die die hochgeladenen Dateien und Download-Links aller Konten zusammen belegen dürfen, 32 bis 4096. Ein Konto darf ein Viertel davon nutzen (mindestens 20 MB, höchstens die Hälfte); Platz für einen Upload bleibt für Konten frei, die noch keine Dateien halten. Mit Zustandsverzeichnis liegen die Dateien auf der Festplatte, sonst im Speicher.                                                                                                                                                              |
+| `SEVDESK_HTTP_FILES_MAX_MB`              | 256 mit Zustandsverzeichnis, sonst 64 | Mebibyte (MiB), die die hochgeladenen Dateien und Download-Links aller Konten zusammen belegen dürfen, 32 bis 4096. Ein Konto darf ein Viertel davon nutzen (mindestens 20 MiB, höchstens die Hälfte); Platz für einen Upload bleibt für Konten frei, die noch keine Dateien halten. Mit Zustandsverzeichnis liegen die Dateien auf der Festplatte, sonst im Speicher.                                                                                                                                                       |
 | `SEVDESK_HTTP_FILES_TTL`                 | `30m`                                 | Wie lange eine hochgeladene Datei und ein Download-Link gültig bleiben, 5 Minuten bis 24 Stunden.                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `SEVDESK_OAUTH_ACCOUNTS`                 |                                       | OAuth, Pflicht: die sevDesk-Konto-IDs, die sich verbinden dürfen, durch Kommas getrennt, oder `any` (der Start warnt).                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `SEVDESK_OAUTH_CLIENTS`                  | `claude.ai`                           | Hosts, die das Metadaten-Dokument eines Clients (seine `client_id`-URL) liefern dürfen, durch Kommas getrennt, oder `any` (der Start warnt).                                                                                                                                                                                                                                                                                                                                                                                 |
@@ -344,7 +344,8 @@ Datei (Docker- und Kubernetes-Secrets); setzen Sie die eine oder die andere.
 | `SEVDESK_OAUTH_REFRESH_IDLE_TTL`         | `14d`                                 | Ein Refresh-Token, das so lange ungenutzt bleibt, läuft ab; 1 bis 90 Tage.                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `SEVDESK_OAUTH_GRANT_TTL`                | `90d`                                 | Laufzeit eines Zugangs ab der Zustimmung; 1 bis 365 Tage.                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
-Dauern schreiben Sie als `30m`, `1h`, `14d` oder als Anzahl Sekunden.
+Dauern schreiben Sie als ganze Zahl mit der Einheit `s`, `m`, `h` oder `d` (`90s`, `30m`, `1h`,
+`14d`) oder als bloße Anzahl Sekunden.
 
 ### Andere Variablen im HTTP-Modus
 
@@ -383,7 +384,7 @@ Unterschieden:
 
 ### Abbrüche und Warnungen beim Start
 
-Der Start verweigert sich bei:
+Der Start verweigert sich unter anderem bei:
 
 - `--http` ohne `SEVDESK_HTTP_AUTH`;
 - Bearer-Modus ohne gültiges Bearer-Geheimnis oder ohne sevDesk-Token;
@@ -394,12 +395,18 @@ Der Start verweigert sich bei:
 - OAuth zusammen mit `SEVDESK_FILE_DIRS` oder `SEVDESK_OUTPUT_DIR` (die Meldung verweist auf die
   Upload-Seiten und Download-Links);
 - `SEVDESK_API_TOKEN_KEYCHAIN`, `SEVDESK_PROFILE` oder `SEVDESK_PROFILES_PATH` (nur stdio);
-- `SEVDESK_HTTP_FILES` mit einem Wert, der weder an noch aus bedeutet, `SEVDESK_HTTP_FILES_MAX_MB`
-  außerhalb von 32–4096 oder `SEVDESK_HTTP_FILES_TTL` außerhalb von 5 Minuten bis 24 Stunden;
+- `SEVDESK_HTTP_FILES` mit einem Wert, der kein Schalterwert ist (siehe Tabelle),
+  `SEVDESK_HTTP_FILES_MAX_MB` außerhalb von 32–4096 oder `SEVDESK_HTTP_FILES_TTL` außerhalb von
+  5 Minuten bis 24 Stunden;
 - `SEVDESK_CONFIRM_OPEN=1` bei einem Lauschen außerhalb von Loopback;
 - einem Zustandsverzeichnis, das nicht beschreibbar ist, einer beschädigten `grants.jsonl`, einem
   Zustandsverzeichnis, das eine andere laufende Instanz nutzt, oder einem Ordner `files/` darin,
-  der sich nicht leeren lässt.
+  der sich nicht leeren lässt;
+- jedem anderen Wert außerhalb dessen, was die Tabellen oben erlauben, etwa einer Variablen, die
+  zusammen mit ihrer `_FILE`-Variante gesetzt ist, `SEVDESK_HTTP_SECRET_PREVIOUS` ohne
+  `SEVDESK_HTTP_SECRET`, mehr als zwei Bearer-Geheimnissen, einem relativen Zustandsverzeichnis,
+  einer OAuth-Lebensdauer außerhalb ihres Bereichs, einem ungültigen Host- oder Origin-Eintrag oder
+  `any` gemischt mit IDs oder Hosts.
 
 Der Start warnt (und startet) bei `SEVDESK_CONFIRM=elicit` mit der Stufe `commit` oder `external`,
 `SEVDESK_OAUTH_ACCOUNTS=any` (mit aktiver Dateiübertragung auch, weil der Server dann kurzzeitig
@@ -602,22 +609,22 @@ Sie zugestimmt haben.
 
 **Grenzen und Laufzeiten:**
 
-| Was                      | Grenze                                                                                                                                                                           |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Upload-Seite             | 15 Minuten gültig, nimmt eine Datei an.                                                                                                                                          |
-| Angenommene Dateien      | Belege: PDF, PNG oder JPEG. E-Rechnungen: XML (XRechnung) oder PDF (ZUGFeRD, Factur-X). Am Inhalt geprüft.                                                                       |
-| Ein Upload               | 20 MB, oder die Hälfte von `SEVDESK_HTTP_FILES_MAX_MB`, falls das weniger ist.                                                                                                   |
-| Hochgeladene Datei, Link | Gültig für `SEVDESK_HTTP_FILES_TTL` (30 Minuten). Ein Link liefert höchstens 5 Downloads.                                                                                        |
-| Je Konto                 | 5 Upload-Seiten, die auf eine Datei warten, 10 Uploads und Links zusammen, ein Viertel von `SEVDESK_HTTP_FILES_MAX_MB` (mindestens 20 MB, höchstens die Hälfte).                 |
-| Alle Konten              | `SEVDESK_HTTP_FILES_MAX_MB` (256 MB mit Zustandsverzeichnis, 64 MB ohne), 1.000 Uploads und Links. Platz für einen Upload bleibt für Konten frei, die noch keine Dateien halten. |
-| Anfragen je Client       | 60 pro Minute an die Upload- und Download-Seiten zusammen; 10 Uploads pro Minute und 60 pro Stunde (IPv6 je /64-Netz).                                                           |
-| Gleichzeitige Uploads    | 2 für den ganzen Server, 1 je Konto; ein weiterer bekommt „Server busy“ oder „Upload in progress“ (503): Versuchen Sie es gleich noch einmal.                                    |
-| Upload-Tempo             | Die Datei muss innerhalb von 90 Sekunden eintreffen, ohne 10 Sekunden Pause und nach den ersten 10 Sekunden mit durchschnittlich mindestens 16 KB/s; sonst 408.                  |
-| Ein Neustart             | Macht jede Upload-Seite, jeden Upload und jeden Link ungültig. Das Modell fordert einen neuen an.                                                                                |
+| Was                      | Grenze                                                                                                                                                                             |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Upload-Seite             | 15 Minuten gültig, nimmt eine Datei an.                                                                                                                                            |
+| Angenommene Dateien      | Belege: PDF, PNG oder JPEG. E-Rechnungen: XML (XRechnung) oder PDF (ZUGFeRD, Factur-X). Am Inhalt geprüft.                                                                         |
+| Ein Upload               | 20 MiB, oder die Hälfte von `SEVDESK_HTTP_FILES_MAX_MB`, falls das weniger ist.                                                                                                    |
+| Hochgeladene Datei, Link | Gültig für `SEVDESK_HTTP_FILES_TTL` (30 Minuten). Ein Link liefert höchstens 5 Downloads.                                                                                          |
+| Je Konto                 | 5 Upload-Seiten, die auf eine Datei warten, 10 Uploads und Links zusammen, ein Viertel von `SEVDESK_HTTP_FILES_MAX_MB` (mindestens 20 MiB, höchstens die Hälfte).                  |
+| Alle Konten              | `SEVDESK_HTTP_FILES_MAX_MB` (256 MiB mit Zustandsverzeichnis, 64 MiB ohne), 1.000 Uploads und Links. Platz für einen Upload bleibt für Konten frei, die noch keine Dateien halten. |
+| Anfragen je Client       | 60 pro Minute an die Upload- und Download-Seiten zusammen; 10 Uploads pro Minute und 60 pro Stunde (IPv6 je /64-Netz).                                                             |
+| Gleichzeitige Uploads    | 2 für den ganzen Server, 1 je Konto; ein weiterer bekommt „Server busy“ oder „Upload in progress“ (503): Versuchen Sie es gleich noch einmal.                                      |
+| Upload-Tempo             | Die Datei muss innerhalb von 90 Sekunden eintreffen, ohne 10 Sekunden Pause und nach den ersten 10 Sekunden mit durchschnittlich mindestens 16 KB/s; sonst 408.                    |
+| Ein Neustart             | Macht jede Upload-Seite, jeden Upload und jeden Link ungültig. Das Modell fordert einen neuen an.                                                                                  |
 
 Nichts wird verdrängt, um Platz zu schaffen: Ist eine Grenze erreicht, werden neue Uploads und
 Links abgelehnt, bis ältere ablaufen. Download-Links zählen gegen denselben Platz wie Uploads; ein
-großer DATEV-Export passt daher unter Umständen nicht (mit 64 MB im Speicher hat ein Konto 20 MB).
+großer DATEV-Export passt daher unter Umständen nicht (mit 64 MiB im Speicher hat ein Konto 20 MiB).
 Das Werkzeug sagt dann, dass sevDesk den Export gestartet hat, und Sie laden ihn stattdessen in
 sevDesk herunter; oder Sie erhöhen `SEVDESK_HTTP_FILES_MAX_MB`, am besten mit einem
 Zustandsverzeichnis, damit die Dateien auf die Festplatte gehen.
@@ -627,7 +634,7 @@ eintrifft, liegt er etwa dreifach im Speicher; deshalb werden höchstens zwei gl
 angenommen. Auf einem kleinen Rechner (512 MB) behalten Sie ein Zustandsverzeichnis und die
 Standardgrenzen bei.
 
-**Reverse Proxys.** Der Body eines Uploads ist bis zu 20 MB groß plus etwas Formular-Overhead, muss
+**Reverse Proxys.** Der Body eines Uploads ist bis zu 20 MiB groß plus etwas Formular-Overhead, muss
 innerhalb von 90 Sekunden ohne 10 Sekunden Pause eintreffen und `Content-Length` tragen; ein Upload
 in Chunks ohne diesen Header wird mit 411 abgelehnt. nginx braucht `client_max_body_size 25m;` (sein Standard von 1 MB
 lehnt die meisten Belege ab), und seine standardmäßige Pufferung von Anfragen sendet
@@ -650,14 +657,22 @@ Sitzungs-Cookie. Siehe [ADR 0008](adr/0008-file-transfer-over-http.md).
 Das Programm hat außer dem Bereitstellen einige Befehle. Mit Docker hängen Sie sie an
 `docker run --rm <image>` an (der Standardbefehl des Images ist `--http`).
 
-| Befehl                                   | Was er tut                                                                                                                                                                                                                              |
-| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `generate-secret`                        | Gibt 32 zufällige Bytes aus, base64url: ein Wert für `SEVDESK_HTTP_SECRET` oder ein Bearer-Geheimnis.                                                                                                                                   |
-| `account-id`                             | Fragt sevDesk, zu welchem Konto `SEVDESK_API_TOKEN` gehört, und gibt dessen ID aus, für `SEVDESK_OAUTH_ACCOUNTS`.                                                                                                                       |
-| `grants list [--json]`                   | Listet die Zugänge in `SEVDESK_HTTP_STATE_DIR` auf, die neuesten zuerst: ID, Konto, Client-Host, Stufen, Status (mit dem Grund eines Widerrufs), angelegt, Ablauf und letzte Erneuerung. `--json` ergänzt die vollständige `client_id`. |
-| `grants revoke <grant-id>`               | Widerruft einen Zugang und seine Browser-Sitzungen.                                                                                                                                                                                     |
-| `grants revoke --account <id>` / `--all` | Widerruft alle Zugänge eines Kontos oder alle Zugänge.                                                                                                                                                                                  |
-| `healthcheck`                            | Ruft `http://127.0.0.1:<port>/healthz` auf und endet mit 0, wenn der Server antwortet; die Zustandsprüfung des Images nutzt ihn.                                                                                                        |
+| Befehl                                   | Was er tut                                                                                                                                                                                                                                                                                                                                                         |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `generate-secret`                        | Gibt 32 zufällige Bytes aus, base64url: ein Wert für `SEVDESK_HTTP_SECRET` oder ein Bearer-Geheimnis.                                                                                                                                                                                                                                                              |
+| `account-id`                             | Fragt sevDesk, zu welchem Konto das konfigurierte Token gehört (`SEVDESK_API_TOKEN`, seine `_FILE`-Variante, der Schlüsselbund oder ein Profil), und gibt dessen ID aus, für `SEVDESK_OAUTH_ACCOUNTS`.                                                                                                                                                             |
+| `grants list [--json]`                   | Listet die Zugänge in `SEVDESK_HTTP_STATE_DIR` auf, die neuesten zuerst: ID, Konto, Client-Host, Stufen, Status (mit dem Grund eines Widerrufs), angelegt, Ablauf und letzte Erneuerung. `--json` gibt JSON mit der vollständigen `client_id` aus (Felder unten).                                                                                                  |
+| `grants revoke <grant-id>`               | Widerruft einen Zugang und seine Browser-Sitzungen.                                                                                                                                                                                                                                                                                                                |
+| `grants revoke --account <id>` / `--all` | Widerruft alle Zugänge eines Kontos oder alle Zugänge.                                                                                                                                                                                                                                                                                                             |
+| `healthcheck`                            | Fragt den Server unter `SEVDESK_HTTP_HOST` und seinem Port nach `/healthz` (unter 127.0.0.1, wenn er auf allen Schnittstellen lauscht) und endet mit 0, wenn er `{"status":"ok"}` antwortet; die Zustandsprüfung des Images nutzt ihn. Ohne `SEVDESK_HTTP_AUTH` (ein Image, das mit `--stdio` startet) endet er mit 0, ohne zu fragen; bei Port 0 schlägt er fehl. |
+
+`grants list --json` gibt ein Array mit einem Objekt je Zugang aus, die neuesten zuerst: `id`,
+`account` (die sevDesk-Konto-ID), `client` (die vollständige `client_id`-URL), `clientHost`,
+`tiers`, `status` (`pending`, bis der Client seinen Autorisierungscode eingelöst hat, danach
+`active`, `revoked` oder `expired`), `reason` (warum er widerrufen wurde, ein kurzer Code wie
+`user`, `operator`, `superseded` oder `sevdesk_401`; sonst `null`) sowie die Zeitpunkte
+`createdAt`, `expiresAt`, `lastRefreshAt` und `revokedAt` (ISO 8601, `null`, solange es nicht
+geschehen ist).
 
 Die `grants`-Befehle brauchen dasselbe `SEVDESK_HTTP_STATE_DIR` wie der Server und funktionieren,
 während er läuft: Sie hängen an `grants.jsonl` an, und der Server übernimmt die Änderung innerhalb
@@ -795,7 +810,7 @@ Servers; alles andere kommt vom Proxy.
   puffern: nginx tut das standardmäßig (`proxy_request_buffering on`); Caddy reicht es unverändert
   weiter.
 - Eine 413-Seite des Proxys, nicht das „File too large“ des Servers: Die Grenze des Proxys für den
-  Body liegt unter der des Servers (etwas über 20 MB). nginx: `client_max_body_size 25m;` (Standard
+  Body liegt unter der des Servers (etwas über 20 MiB). nginx: `client_max_body_size 25m;` (Standard
   1 MB). Caddy hat keine Grenze, sofern Sie keine setzen.
 - Eine Zeitüberschreitung (408) bei großen Dateien über eine langsame Verbindung: Der Body muss
   innerhalb von 90 Sekunden eintreffen, mit durchschnittlich mindestens 16 KB/s und nie 10 Sekunden
@@ -888,7 +903,7 @@ Bereitstellung fest.
   `SEVDESK_OUTPUT_DIR`); Belege werden auf den Seiten des Servers hochgeladen und Dateien dort
   heruntergeladen, was eine Browser-Sitzung des Kontos braucht, und leben höchstens
   `SEVDESK_HTTP_FILES_TTL` ([Dateien](#dateien-hochladen-und-herunterladen)). Ein Upload ist
-  höchstens 20 MB groß.
+  höchstens 20 MiB groß.
 - **Clients ohne Client ID Metadata Documents** können den OAuth-Modus nicht nutzen; für sie
   funktioniert der Bearer-Modus.
 - **Keine gehostete Instanz.** Sie betreiben, was Sie bereitstellen.
