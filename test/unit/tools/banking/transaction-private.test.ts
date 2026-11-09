@@ -41,7 +41,7 @@ describe("sevdesk_transaction_mark_private", () => {
 
   it("previews a Privatentnahme for money out", async () => {
     const fake = client();
-    const plan = await prepareWrite(tool, { transactionId: 5101 }, fake);
+    const plan = await prepareWrite(tool, { id: 5101 }, fake);
     expect(plan.preview.action).toBe(
       "Mark bank transaction 5101 as private (Privatentnahme, status 100 → 300).",
     );
@@ -55,17 +55,13 @@ describe("sevdesk_transaction_mark_private", () => {
   });
 
   it("previews a Privateinlage for money in", async () => {
-    const plan = await prepareWrite(
-      tool,
-      { transactionId: 5101 },
-      client(transactionRow({ amount: "500" })),
-    );
+    const plan = await prepareWrite(tool, { id: 5101 }, client(transactionRow({ amount: "500" })));
     expect(plan.preview.action).toContain("Privateinlage");
   });
 
   it("sends status 300 with the commit tier and reads the transaction back", async () => {
     const fake = client();
-    const { output } = await executeWrite(tool, { transactionId: 5101 }, fake);
+    const { output } = await executeWrite(tool, { id: 5101 }, fake);
     expect(fake.writes()).toEqual([
       expect.objectContaining({
         method: "PUT",
@@ -87,9 +83,7 @@ describe("sevdesk_transaction_mark_private", () => {
       [{ amount: "0" }, "has the amount zero"],
     ] as const) {
       const fake = client(transactionRow(overrides));
-      const error = await prepareWrite(tool, { transactionId: 5101 }, fake).catch(
-        (e: unknown) => e,
-      );
+      const error = await prepareWrite(tool, { id: 5101 }, fake).catch((e: unknown) => e);
       expect((error as SevdeskError).message).toContain(text);
       expect(fake.writes()).toEqual([]);
     }
@@ -105,7 +99,7 @@ describe("sevdesk_transaction_mark_private", () => {
       ],
       [],
     );
-    await expect(prepareWrite(tool, { transactionId: 5101 }, fake)).rejects.toMatchObject({
+    await expect(prepareWrite(tool, { id: 5101 }, fake)).rejects.toMatchObject({
       kind: "validation",
       message: "Bank transaction 5101 does not exist; find it with sevdesk_transactions_list.",
     });
@@ -126,7 +120,7 @@ describe("sevdesk_transaction_mark_private", () => {
         },
       ],
     );
-    const error = (await executeWrite(tool, { transactionId: 5101 }, fake).catch(
+    const error = (await executeWrite(tool, { id: 5101 }, fake).catch(
       (e: unknown) => e,
     )) as SevdeskError;
     expect(error.kind).toBe("timeout");

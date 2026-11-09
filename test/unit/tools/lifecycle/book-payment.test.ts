@@ -115,7 +115,7 @@ describe("sevdesk_invoice_book_payment (spec bookInvoice; community record shape
     expect(output.data["payment"]).toEqual({
       amount: { amount: "177.33", currency: "EUR" },
       date: "2026-11-02",
-      bookingType: "FULL_PAYMENT",
+      paymentType: "payment",
       checkAccountId: 4002,
       transactionId: 5101,
     });

@@ -54,7 +54,7 @@ import {
 import {
   invalidReportRequest,
   plural,
-  REPORT_BASIS,
+  REPORT_SOURCE,
   type ReportRunOptions,
   shiftDays,
 } from "./shared.js";
@@ -303,7 +303,7 @@ export async function profitAndLoss(
   }
 
   return {
-    source: REPORT_BASIS,
+    source: REPORT_SOURCE,
     caveat: PNL_CAVEAT,
     period: { from: period.from, to: period.to, label: period.label },
     basis,

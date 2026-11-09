@@ -6,6 +6,7 @@ import {
   type VoucherSuggestionPlanner,
 } from "../../domain/drafts/voucher-import.js";
 import { voucherImportInputShape } from "../../domain/drafts/voucher-inputs.js";
+import { canReadFiles } from "../../safety/file-access.js";
 import { defineWriteTool } from "../define-tool.js";
 import { dryRunInputShape } from "../write-input.js";
 import { voucherDraftOutput, voucherDraftToolOutput } from "./draft-output.js";
@@ -21,7 +22,8 @@ export function voucherImportEInvoiceTool(planner: VoucherSuggestionPlanner) {
     title: "Import an e-invoice as a voucher",
     description:
       "Import a received e-invoice (E-Rechnung: XRechnung XML or ZUGFeRD/Factur-X PDF from " +
-      "SEVDESK_FILE_DIRS) as a draft voucher (Beleg) and attach the original file. Supplier " +
+      "SEVDESK_FILE_DIRS or, on a remote server, an upload from sevdesk_upload_request) as a " +
+      "draft voucher (Beleg) and attach the original file. Supplier " +
       "(Lieferant: contact matched by VAT id/IBAN, else the issuer's name), Belegnummer, dates " +
       "and one position per VAT rate (net amounts) come from the invoice; you give the " +
       "Buchungskonto (accountDatevId, or accounts per rate). Refused when the invoice's sums or " +
@@ -38,14 +40,14 @@ export function voucherImportEInvoiceTool(planner: VoucherSuggestionPlanner) {
       openWorldHint: false,
     },
     localEffects: "reads-files",
-    available: (config) => config.fileDirs.length > 0,
+    available: canReadFiles,
     input: z.strictObject({ ...voucherImportInputShape, ...dryRunInputShape }),
     output: voucherDraftOutput,
     prepare: (args, ctx) =>
       prepareVoucherImport(
         ctx.client,
         args,
-        { signal: ctx.signal, cacheOwner: ctx.config, fileDirs: ctx.config.fileDirs },
+        { signal: ctx.signal, cacheOwner: ctx.config, files: ctx.files },
         planner,
       ),
     execute: async (_args, plan, ctx) =>

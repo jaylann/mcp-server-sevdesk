@@ -49,7 +49,10 @@ const taxRuleItem = z.object({
   nameEn: z.string(),
   direction: z.enum(["revenue", "expense", "either"]),
   regimes: z.array(z.enum(["regular", "small_business"])),
-  allowedTaxRates: z.array(z.number()).optional(),
+  allowedTaxRates: z
+    .array(z.string())
+    .optional()
+    .describe("Tax rates in percent the rule allows in positions, e.g. '19'."),
   legacyTaxType: z.string().optional(),
   notSupportedFor: z.array(z.string()).optional(),
   documented: z.boolean().describe("False: exists in sevDesk but missing from the API docs."),
@@ -111,7 +114,7 @@ const receiptGuidanceItem = z.object({
       z.object({
         id: z.number().int().describe("Tax rule id (Steuerregel), see kind=tax_rules."),
         code: z.string().optional(),
-        taxRates: z.array(z.number()).describe("Allowed tax rates in percent."),
+        taxRates: z.array(z.string()).describe("Allowed tax rates in percent, e.g. '19'."),
         unknownTaxRates: z
           .array(z.string())
           .optional()
@@ -295,7 +298,7 @@ async function lookupReceiptGuidance(args: LookupArgs, ctx: ToolContext): Promis
           compact({
             id: rule.id,
             code: rule.code,
-            taxRates: [...rule.taxRates],
+            taxRates: rule.taxRates.map(String),
             unknownTaxRates:
               rule.unknownTaxRates.length === 0 ? undefined : [...rule.unknownTaxRates],
           }),
@@ -332,7 +335,7 @@ async function lookup(
         regimes: [...rule.regimes],
         ...(rule.allowedTaxRates === undefined
           ? {}
-          : { allowedTaxRates: [...rule.allowedTaxRates] }),
+          : { allowedTaxRates: rule.allowedTaxRates.map(String) }),
         ...(rule.legacyTaxType === undefined ? {} : { legacyTaxType: rule.legacyTaxType }),
         ...(rule.notSupportedFor === undefined
           ? {}

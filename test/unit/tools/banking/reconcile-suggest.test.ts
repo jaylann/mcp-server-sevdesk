@@ -71,7 +71,7 @@ describe("sevdesk_reconcile_suggest", () => {
       followUp: {
         tool: "sevdesk_transaction_book",
         arguments: {
-          transactionId: 5101,
+          id: 5101,
           allocations: [{ kind: "invoice", id: 1001, amount: "177.33" }],
         },
       },
@@ -85,7 +85,7 @@ describe("sevdesk_reconcile_suggest", () => {
   });
 
   it("turns a split into one follow-up call with every part", async () => {
-    const { result } = await run({ transactionId: 5101, matches: 5 }, [
+    const { result } = await run({ transactionId: 5101, maxMatches: 5 }, [
       transactionRoute(transactionRow({ amount: "238", paymtPurpose: "RE-1 RE-2" })),
       accountRoute(accountRow(4002)),
       logRoute(5101, []),
@@ -175,8 +175,8 @@ describe("sevdesk_reconcile_suggest", () => {
 
   it("validates its input", () => {
     expect(() => tool.input.parse({ limit: 26 })).toThrow();
-    expect(() => tool.input.parse({ matches: 0 })).toThrow();
+    expect(() => tool.input.parse({ maxMatches: 0 })).toThrow();
     expect(() => tool.input.parse({ unknown: 1 })).toThrow();
-    expect(tool.input.parse({})).toMatchObject({ limit: 10, offset: 0, matches: 3 });
+    expect(tool.input.parse({})).toMatchObject({ limit: 10, offset: 0, maxMatches: 3 });
   });
 });

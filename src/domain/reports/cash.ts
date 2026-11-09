@@ -25,8 +25,8 @@ import {
 import {
   coverageOutputShape,
   plural,
-  REPORT_BASIS,
   REPORT_SCAN_MAX,
+  REPORT_SOURCE,
   type ReportRunOptions,
   shiftDays,
 } from "./shared.js";
@@ -144,7 +144,7 @@ export async function cashPosition(
       : referenceDay(params.asOf, today, "an outlook from open items");
   const accounts = await listBankAccounts(
     client,
-    { balanceDate: asOf, includeArchived: params.includeArchived },
+    { asOf, includeArchived: params.includeArchived },
     options.signal,
   );
   const balances = balanceLines(accounts.items);
@@ -229,7 +229,7 @@ export async function cashPosition(
     accountsComplete: accounts.complete,
     archivedHidden: accounts.archivedHidden,
     ...(outlook === undefined ? {} : { outlook }),
-    basis: REPORT_BASIS,
+    source: REPORT_SOURCE,
     recordsScanned: scanned,
     truncated,
     notes,

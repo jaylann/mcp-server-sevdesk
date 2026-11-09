@@ -1,8 +1,8 @@
 import { contactCreateTool } from "../../src/tools/contacts/create.js";
 import { contactUpdateTool } from "../../src/tools/contacts/update.js";
 import { creditNoteFromInvoiceTool } from "../../src/tools/credit-notes/from-invoice.js";
+import { invoiceFromOrderTool } from "../../src/tools/invoices/from-order.js";
 import { invoiceReminderTool } from "../../src/tools/invoices/reminder.js";
-import { orderToInvoiceTool } from "../../src/tools/orders/to-invoice.js";
 import { partCreateTool } from "../../src/tools/parts/create.js";
 import { partUpdateTool } from "../../src/tools/parts/update.js";
 import type { FakeRoute } from "../helpers/fake-client.js";
@@ -108,7 +108,7 @@ export const MASTERDATA_CASES: readonly WriteToolCase[] = [
       name: "Beratungspaket",
       partNumber: "DL-020",
       price: "119",
-      priceType: "gross",
+      priceMode: "gross",
       unitId: 9,
     },
     routes: [
@@ -131,7 +131,7 @@ export const MASTERDATA_CASES: readonly WriteToolCase[] = [
   },
   {
     label: "invoice an accepted order confirmation in full",
-    tool: orderToInvoiceTool,
+    tool: invoiceFromOrderTool,
     args: { orderId: 3002 },
     routes: [
       {

@@ -20,7 +20,7 @@ import {
   zDecimalString,
   zId,
   zNullableInt,
-  zNumberish,
+  zOptionalDecimal,
   zOptionalRef,
   zText,
 } from "../sevdesk/schema.js";
@@ -51,12 +51,12 @@ const partRecordSchema = z.object({
   text: zText,
   category: zOptionalRef,
   unity: zOptionalRef,
-  stock: zNumberish.optional(),
+  stock: zOptionalDecimal,
   stockEnabled: zBool01.optional(),
   priceNet: zDecimalString.optional(),
   priceGross: zDecimalString.optional(),
   pricePurchase: zDecimalString.optional(),
-  taxRate: zNumberish.optional(),
+  taxRate: zOptionalDecimal,
   status: zNullableInt,
   internalComment: zText,
 });
@@ -81,8 +81,8 @@ export const partDtoSchema = z.object({
   priceNet: moneySchema.optional().describe("Net sales price (Verkaufspreis netto)."),
   priceGross: moneySchema.optional().describe("Gross sales price (Verkaufspreis brutto)."),
   pricePurchase: moneySchema.optional().describe("Purchase price (Einkaufspreis)."),
-  taxRate: z.number().optional().describe("Tax rate in percent, e.g. 19."),
-  stock: z.number().optional().describe("Stock (Bestand) stored on the part."),
+  taxRate: z.string().optional().describe("Tax rate in percent, e.g. '19'."),
+  stock: z.string().optional().describe("Stock (Bestand) stored on the part, e.g. '7.5'."),
   stockEnabled: z.boolean().describe("Whether sevDesk tracks stock (Lagerbestand) for it."),
   active: z.boolean().optional().describe("False for inactive parts (status 50)."),
 });
@@ -94,7 +94,7 @@ export const partDetailDtoSchema = partDtoSchema.extend({
   description: z.string().optional().describe("Part text (Beschreibung) used on documents."),
   internalComment: z.string().optional().describe("Internal note, not printed."),
   currentStock: z
-    .number()
+    .string()
     .optional()
     .describe("Current stock from sevDesk's stock endpoint; only when stock tracking is on."),
   createdAt: z.string().optional().describe("YYYY-MM-DD, Europe/Berlin."),
@@ -181,14 +181,14 @@ export async function getPartDetails(
   });
   const record = parsePartRecord(expectSingle(payload, `part ${id}`));
 
-  let currentStock: number | undefined;
+  let currentStock: string | undefined;
   if (record.stockEnabled === true) {
     const stock = await client.request({
       method: "GET",
       path: sevdeskPath("Part", id, "getStock"),
       ...withSignal,
     });
-    currentStock = parseUpstream(zNumberish, stock, "the stock of a part");
+    currentStock = parseUpstream(zDecimalString, stock, "the stock of a part");
   }
 
   return compact({

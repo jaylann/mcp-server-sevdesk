@@ -276,7 +276,7 @@ describe("sevdesk_voucher_finalize", () => {
     );
     expect(message).toContain("Kleinunternehmer regulation (§19 UStG), so tax rule 9");
     expect(message).toContain(
-      "Change the tax rule of voucher 2101 with sevdesk_voucher_update_draft (taxRule) first.",
+      "Change the tax rule of voucher 2101 with sevdesk_voucher_update_draft (taxRuleId) first.",
     );
   });
 

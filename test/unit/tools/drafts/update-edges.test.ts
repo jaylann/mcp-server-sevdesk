@@ -83,7 +83,7 @@ describe("draft order update: several changes at once", () => {
         headText: "Neu",
         footText: "Neu",
         deliveryTerms: "Abholung",
-        taxRule: 1,
+        taxRuleId: 1,
         taxText: "zzgl. USt",
         currency: "CHF",
       },
@@ -165,7 +165,7 @@ describe("draft invoice update: tax and texts", () => {
       prepareWrite(invoiceUpdateDraftTool, { id: 2102, header: "X" }, client),
     ).rejects.toMatchObject({
       kind: "validation",
-      message: "This draft has no tax setting this server can keep. Pass taxRule to set one.",
+      message: "This draft has no tax setting this server can keep. Pass taxRuleId to set one.",
     });
   });
 

@@ -37,6 +37,7 @@ import {
 import { money } from "../../../src/domain/money.js";
 import type { ReceiptGuide } from "../../../src/domain/receipt-guidance.js";
 import { type TaxRule, taxRuleById } from "../../../src/domain/reference-data.js";
+import { localFileAccess } from "../../../src/safety/file-sources.js";
 import { SevdeskError } from "../../../src/sevdesk/errors.js";
 import { FakeSevdeskClient, loadFixture } from "../../helpers/fake-client.js";
 import {
@@ -315,6 +316,12 @@ describe("receipt upload (D-011, B6)", () => {
       filename: "a.pdf",
       isEInvoice: true,
     });
+    // The page count is an integer in the output: anything else is left out, not an error.
+    expect(readUploadAnswer({ filename: "a.pdf", pages: "2" })).toEqual({
+      filename: "a.pdf",
+      pages: 2,
+    });
+    expect(readUploadAnswer({ filename: "a.pdf", pages: "1.5" })).toEqual({ filename: "a.pdf" });
     expect(() => readUploadAnswer({ content: ["x"] })).toThrow(SevdeskError);
     expect(() => readUploadAnswer({ filename: "../x" })).toThrow(SevdeskError);
   });
@@ -384,8 +391,8 @@ describe("e-invoice import mapping", () => {
       deliveryDate: "2026-11-01",
       deliveryDateUntil: undefined,
       paymentDeadline: "2026-11-16",
-      taxRule: 9,
-      amountsAre: "net",
+      taxRuleId: 9,
+      amountMode: "net",
       positions: [
         { accountDatevId: 4266, amount: "100", taxRate: "19", comment: "E-Rechnung, USt 19 % (S)" },
         { accountDatevId: 4236, amount: "50", taxRate: "7", comment: "E-Rechnung, USt 7 % (S)" },
@@ -566,7 +573,7 @@ describe("e-invoice import mapping", () => {
       fake,
       spec,
       { name: "rechnung.xml", kind: "xml", bytes: new TextEncoder().encode("<Invoice/>") },
-      { cacheOwner: {}, fileDirs: [] },
+      { cacheOwner: {}, files: localFileAccess({ fileDirs: [], outputDir: undefined }) },
       extras,
     );
     expect(plan.preview.action).toBe(

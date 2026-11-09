@@ -96,7 +96,7 @@ describe("sevdesk_part_update", () => {
 
   it("takes a gross price and computes the net price", async () => {
     const client = new FakeSevdeskClient(routes());
-    await executeWrite(tool, { id: 6001, price: "59.50", priceType: "gross" }, client);
+    await executeWrite(tool, { id: 6001, price: "59.50", priceMode: "gross" }, client);
     expect(client.writes()[0]?.body).toEqual({ priceNet: 50, priceGross: 59.5, taxRate: 19 });
   });
 
@@ -260,6 +260,7 @@ describe("sevdesk_part_update", () => {
         config: {} as never,
         signal: new AbortController().signal,
         progress: () => Promise.resolve(),
+        files: {} as never,
       }),
     ).rejects.toMatchObject({
       kind: "timeout",

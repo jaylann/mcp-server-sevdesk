@@ -10,8 +10,8 @@ import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { swapPresignedFetch } from "../../../../src/sevdesk/export-download.js";
 import { selectTools } from "../../../../src/tools/registry.js";
 import {
+  csvExportTool,
   datevExportTool,
-  exportCsvTool,
   REPORT_EXPORT_TOOLS,
 } from "../../../../src/tools/reports/export-tools.js";
 import { testConfig } from "../../../helpers/config.js";
@@ -70,7 +70,7 @@ describe("export tools: metadata and registration", () => {
         openWorldHint: false,
       },
     });
-    expect(exportCsvTool).toMatchObject({
+    expect(csvExportTool).toMatchObject({
       tier: "read",
       toolset: "reports",
       localEffects: "writes-files",
@@ -92,10 +92,10 @@ describe("export tools: metadata and registration", () => {
   it("are registered only with SEVDESK_OUTPUT_DIR (and the DATEV export only with the write tier)", () => {
     const all = new Set<Tier>(TIERS);
     expect(names({ allowedTiers: all })).toEqual([]);
-    expect(names({ outputDir: "/srv/out" })).toEqual(["sevdesk_export_csv"]);
+    expect(names({ outputDir: "/srv/out" })).toEqual(["sevdesk_csv_export"]);
     expect(names({ outputDir: "/srv/out", allowedTiers: all })).toEqual([
+      "sevdesk_csv_export",
       "sevdesk_datev_export",
-      "sevdesk_export_csv",
     ]);
   });
 });
@@ -123,7 +123,8 @@ describe("sevdesk_datev_export: prepare", () => {
 
     expect(first.preview).toEqual(second.preview);
     expect(first.preview.action).toBe(
-      "Start a DATEV export (CSV ZIP) in sevDesk for 2026-Q1 and save the ZIP as a new file in SEVDESK_OUTPUT_DIR.",
+      "Start a DATEV export (CSV ZIP) in sevDesk for 2026-Q1 and provide the ZIP as a new file " +
+        `in SEVDESK_OUTPUT_DIR (${directory}).`,
     );
     const facts = Object.fromEntries(first.preview.facts.map((fact) => [fact.label, fact.value]));
     expect(facts).toMatchObject({
@@ -133,7 +134,7 @@ describe("sevdesk_datev_export: prepare", () => {
       "Document images": "not included",
       "DATEV accountant / client number": "1234567 / 12345",
     });
-    expect(facts["Target folder"]).toContain("sevdesk-export-test-");
+    expect(facts["Delivered as"]).toBe(`a new file in SEVDESK_OUTPUT_DIR (${directory})`);
     expect(first.preview.warnings.join(" ")).toContain("nothing is enshrined");
     expect(first.preview.irreversible).toBe(false);
     expect(client.writes()).toEqual([]);
@@ -409,20 +410,24 @@ describe("sevdesk_datev_export: execute", () => {
     await rm(directory, { recursive: true, force: true });
 
     const error = await datevExportTool
-      .execute(datevExportTool.input.parse({ year: 2026 }), plan, testContext(client))
+      .execute(
+        datevExportTool.input.parse({ year: 2026 }),
+        plan,
+        testContext(client, { SEVDESK_OUTPUT_DIR: directory }),
+      )
       .catch((caught: unknown) => caught);
 
     expect(error).toMatchObject({
       kind: "validation",
       completedWrites: [{ objectName: "ExportJob", id: JOB }],
     });
-    expect((error as Error).message).toMatch(
-      /^The file could not be saved in SEVDESK_OUTPUT_DIR \(ENOENT\)\.$/,
+    expect((error as Error).message).toBe(
+      `SEVDESK_OUTPUT_DIR (${directory}) does not exist; the user has to create it.`,
     );
   });
 });
 
-describe("sevdesk_export_csv", () => {
+describe("sevdesk_csv_export", () => {
   const csv = new Uint8Array([
     0xef,
     0xbb,
@@ -441,19 +446,19 @@ describe("sevdesk_export_csv", () => {
     ]);
     const ctx = testContext(client, { SEVDESK_OUTPUT_DIR: directory });
 
-    const args = exportCsvTool.input.parse({
-      kind: "invoices",
+    const args = csvExportTool.input.parse({
+      subject: "invoices",
       from: "2026-01-01",
       to: "2026-01-31",
       limit: 2,
     });
-    const result = await exportCsvTool.handler(args, ctx);
+    const result = await csvExportTool.handler(args, ctx);
 
-    const data = exportCsvTool.output.parse(result.data);
+    const data = csvExportTool.output.parse(result.data);
     expect(data).toMatchObject({
-      kind: "invoices",
+      subject: "invoices",
       bytes: csv.byteLength,
-      contentType: "text/csv; charset=UTF-8",
+      mimeType: "text/csv; charset=UTF-8",
       bom: true,
       rows: 2,
       limit: 2,
@@ -468,8 +473,10 @@ describe("sevdesk_export_csv", () => {
       },
       warnings: ["The file has the maximum of 2 rows; more may exist."],
     });
-    expect(data.savedTo.endsWith("invoices_2026-01-01_2026-01-31.csv")).toBe(true);
-    expect(await readFile(data.savedTo)).toEqual(Buffer.from(csv));
+    const savedTo = data.savedTo ?? "";
+    expect(savedTo.endsWith("invoices_2026-01-01_2026-01-31.csv")).toBe(true);
+    expect(await readFile(savedTo)).toEqual(Buffer.from(csv));
+    expect(data).not.toHaveProperty("download");
     expect(JSON.stringify(result)).not.toContain("RE-1");
     expect(result.summary).toBe(
       `CSV export of invoices: 2 rows (${String(csv.byteLength)} bytes) saved as a new file in SEVDESK_OUTPUT_DIR; nothing changed in sevDesk.`,
@@ -488,8 +495,8 @@ describe("sevdesk_export_csv", () => {
     ]);
     const ctx = testContext(client, { SEVDESK_OUTPUT_DIR: directory });
 
-    const invoices = await exportCsvTool.handler(
-      exportCsvTool.input.parse({ kind: "invoices", from: "2026-01-01", to: "2026-01-31" }),
+    const invoices = await csvExportTool.handler(
+      csvExportTool.input.parse({ subject: "invoices", from: "2026-01-01", to: "2026-01-31" }),
       ctx,
     );
     expect(invoices.data.warnings).toEqual([
@@ -498,8 +505,8 @@ describe("sevdesk_export_csv", () => {
     ]);
     expect(invoices.summary).toContain("Not every row could be confirmed");
 
-    const creditNotes = await exportCsvTool.handler(
-      exportCsvTool.input.parse({ kind: "credit_notes", from: "2026-01-01" }),
+    const creditNotes = await csvExportTool.handler(
+      csvExportTool.input.parse({ subject: "credit_notes", from: "2026-01-01" }),
       ctx,
     );
     expect(creditNotes.data.warnings[0]).toContain("no date column this server knows");
@@ -514,17 +521,17 @@ describe("sevdesk_export_csv", () => {
     const client = new FakeSevdeskClient([
       { path: "/Export/contactListCsv", response: { bytes: csv } },
     ]);
-    const ok = await exportCsvTool.handler(
-      exportCsvTool.input.parse({ kind: "contacts" }),
+    const ok = await csvExportTool.handler(
+      csvExportTool.input.parse({ subject: "contacts" }),
       testContext(client, { SEVDESK_OUTPUT_DIR: directory }),
     );
     expect(ok.data).toMatchObject({ limit: 1000, mayBeTruncated: false });
-    expect(ok.data).not.toHaveProperty("contentType");
+    expect(ok.data).not.toHaveProperty("mimeType");
 
     const before = client.calls.length;
     await expect(
-      exportCsvTool.handler(
-        exportCsvTool.input.parse({ kind: "contacts" }),
+      csvExportTool.handler(
+        csvExportTool.input.parse({ subject: "contacts" }),
         testContext(client, { SEVDESK_OUTPUT_DIR: join(directory, "nope") }),
       ),
     ).rejects.toMatchObject({ kind: "validation" });

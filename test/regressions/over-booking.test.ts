@@ -74,7 +74,7 @@ describe("over-booking: refused before any write", () => {
       invoiceRoute(invoice(1002, "200")),
     ]);
     const message = await refused(fake, {
-      transactionId: 5101,
+      id: 5101,
       allocations: [
         { kind: "invoice", id: 1001, amount: "119" },
         { kind: "invoice", id: 1002, amount: "120" },
@@ -93,7 +93,7 @@ describe("over-booking: refused before any write", () => {
       [logEntry(7001, 5101, "Invoice", 1001, 119)],
     );
     const message = await refused(fake, {
-      transactionId: 5101,
+      id: 5101,
       allocations: [{ kind: "invoice", id: 1002, amount: "120" }],
     });
     expect(message).toContain("more than the 119.00 EUR still unassigned");
@@ -102,7 +102,7 @@ describe("over-booking: refused before any write", () => {
   it("refuses an allocation above the document's open amount", async () => {
     const fake = client(transactionRow({ amount: "238" }), [invoiceRoute(invoice(1001, "119"))]);
     const message = await refused(fake, {
-      transactionId: 5101,
+      id: 5101,
       allocations: [{ kind: "invoice", id: 1001, amount: "119.01" }],
     });
     expect(message).toContain("is more than the open amount of 119.00 EUR of invoice 1001");
@@ -114,18 +114,18 @@ describe("over-booking: refused before any write", () => {
     ]);
     expect(
       await refused(creditNote, {
-        transactionId: 5101,
+        id: 5101,
         allocations: [{ kind: "credit_note", id: 2001 }],
       }),
     ).toContain("Credit note 2001 needs outgoing money, but bank transaction 5101 is incoming");
     const voucher = client(transactionRow({ amount: "298.1" }), [voucherRoute(voucherRow())]);
     expect(
-      await refused(voucher, { transactionId: 5101, allocations: [{ kind: "voucher", id: 2001 }] }),
+      await refused(voucher, { id: 5101, allocations: [{ kind: "voucher", id: 2001 }] }),
     ).toContain("Voucher 2001 needs outgoing money");
     const invoiceOut = client(transactionRow({ amount: "-177.33" }), [invoiceRoute(invoiceRow())]);
     expect(
       await refused(invoiceOut, {
-        transactionId: 5101,
+        id: 5101,
         allocations: [{ kind: "invoice", id: 1001 }],
       }),
     ).toContain("Invoice 1001 needs incoming money");
@@ -136,9 +136,7 @@ describe("over-booking: refused before any write", () => {
       transactionRow({ checkAccount: { id: "4005", objectName: "CheckAccount" } }),
       [invoiceRoute(invoiceRow())],
     );
-    expect(
-      await refused(fake, { transactionId: 5101, allocations: [{ kind: "invoice", id: 1001 }] }),
-    ).toBe(
+    expect(await refused(fake, { id: 5101, allocations: [{ kind: "invoice", id: 1001 }] })).toBe(
       "Invoice 1001 is in EUR, bank transaction 5101 in USD; sevDesk books a transaction only to " +
         "documents in its own currency.",
     );
@@ -153,7 +151,7 @@ describe("over-booking: refused before any write", () => {
     ]);
     expect(
       await refused(foreignInvoice, {
-        transactionId: 5101,
+        id: 5101,
         allocations: [{ kind: "invoice", id: 1001 }],
       }),
     ).toContain("Invoice 1001 is in USD, bank transaction 5101 in EUR");
@@ -165,7 +163,7 @@ describe("over-booking: refused before any write", () => {
       invoiceRoute(invoice(1002, "119")),
     ]);
     const message = await refused(fake, {
-      transactionId: 5101,
+      id: 5101,
       allocations: [
         { kind: "invoice", id: 1001, amount: "119", paymentType: "cash_discount" },
         { kind: "invoice", id: 1002 },
@@ -183,7 +181,7 @@ describe("over-booking: refused before any write", () => {
       [logEntry(7001, 5101, "Invoice", 1003, 238)],
     );
     expect(
-      await refused(fake, { transactionId: 5101, allocations: [{ kind: "invoice", id: 1001 }] }),
+      await refused(fake, { id: 5101, allocations: [{ kind: "invoice", id: 1001 }] }),
     ).toContain("is already fully booked");
   });
 });

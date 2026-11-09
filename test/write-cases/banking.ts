@@ -22,7 +22,7 @@ export const BANKING_CASES: readonly WriteToolCase[] = [
   {
     label: "book a bank transaction to an invoice",
     tool: transactionBookTool,
-    args: { transactionId: 5101, allocations: [{ kind: "invoice", id: 1001 }] },
+    args: { id: 5101, allocations: [{ kind: "invoice", id: 1001 }] },
     routes: [
       transactionRoute(freeTransaction),
       accountRoute(accountRow(4002)),
@@ -35,7 +35,7 @@ export const BANKING_CASES: readonly WriteToolCase[] = [
   {
     label: "mark a bank transaction as private",
     tool: transactionMarkPrivateTool,
-    args: { transactionId: 5101 },
+    args: { id: 5101 },
     routes: [
       transactionRoute(transactionRow({ amount: "-45.99" })),
       accountRoute(accountRow(4002)),
@@ -50,7 +50,7 @@ export const BANKING_CASES: readonly WriteToolCase[] = [
   {
     label: "undo the booking of a bank transaction",
     tool: transactionResetTool,
-    args: { transactionId: 5101 },
+    args: { id: 5101 },
     routes: [
       transactionRoute(bookedTransaction),
       accountRoute(accountRow(4002)),

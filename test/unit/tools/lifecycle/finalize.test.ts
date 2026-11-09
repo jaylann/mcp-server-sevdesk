@@ -135,7 +135,7 @@ describe("sevdesk_invoice_finalize details", () => {
   it.each([
     ["post", "VP"],
     ["print", "VPR"],
-    ["own_email", "VM"],
+    ["email", "VM"],
     ["pdf_download", "VPDF"],
   ])("sends sentVia %s as sendType %s", async (sentVia, sendType) => {
     const client = staged(kind);

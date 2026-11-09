@@ -19,9 +19,13 @@ const output = z.object({
     .describe("The order's status after the call (e.g. 750 partially invoiced), when read back."),
 });
 
-/** `sevdesk_order_to_invoice`: an invoice draft from an offer or order confirmation. */
-export const orderToInvoiceTool = defineWriteTool({
-  name: "sevdesk_order_to_invoice",
+/**
+ * `sevdesk_invoice_create_from_order`: an invoice draft from an offer or order confirmation. It
+ * lives in the `invoices` toolset like its counterpart `sevdesk_credit_note_create_from_invoice`
+ * lives in `credit-notes`: the toolset of the document it creates.
+ */
+export const invoiceFromOrderTool = defineWriteTool({
+  name: "sevdesk_invoice_create_from_order",
   title: "Create an invoice from a sevDesk order",
   description:
     "Create an invoice draft (Rechnung) from an offer (Angebot, AN) or order confirmation " +
@@ -32,7 +36,7 @@ export const orderToInvoiceTool = defineWriteTool({
     "Refuses when an invoice draft from the order exists (allowDuplicate overrides). Tier " +
     "write. Then check it with sevdesk_invoice_get and finalize it with " +
     "sevdesk_invoice_finalize.",
-  toolset: "orders",
+  toolset: "invoices",
   tier: "write",
   annotations: {
     readOnlyHint: false,

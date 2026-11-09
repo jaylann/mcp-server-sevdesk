@@ -68,7 +68,7 @@ describe("sevdesk_invoice_get (community: recorded Invoice/InvoicePos shapes, fa
       dueDate: "2026-10-15",
       overdue: true,
       deliveryDate: "2026-10-01",
-      pricesEnteredAs: "net",
+      priceMode: "net",
       tax: {
         generation: "2.0",
         rule: { id: 1, code: "USTPFL_UMS_EINN", name: "Umsatzsteuerpflichtige Umsätze" },

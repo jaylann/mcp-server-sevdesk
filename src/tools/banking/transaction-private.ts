@@ -46,12 +46,12 @@ export const transactionMarkPrivateTool = defineWriteTool({
   toolset: "banking",
   tier: "commit",
   annotations: COMMIT_ANNOTATIONS,
-  input: z.strictObject({ transactionId: transactionIdInput, ...dryRunInputShape }),
+  input: z.strictObject({ id: transactionIdInput, ...dryRunInputShape }),
   output: z.object({ transaction: transactionDtoSchema }),
   prepare: async (args, ctx) => {
     const transaction = await lookup(
-      () => getTransaction(ctx.client, args.transactionId, ctx.signal),
-      `Bank transaction ${String(args.transactionId)} does not exist; find it with ` +
+      () => getTransaction(ctx.client, args.id, ctx.signal),
+      `Bank transaction ${String(args.id)} does not exist; find it with ` +
         "sevdesk_transactions_list.",
     );
     const term = assertMarkablePrivate(transaction);
@@ -78,16 +78,16 @@ export const transactionMarkPrivateTool = defineWriteTool({
   execute: async (args, plan, ctx) => {
     await ctx.client.request({
       method: "PUT",
-      path: sevdeskPath("CheckAccountTransaction", args.transactionId),
+      path: sevdeskPath("CheckAccountTransaction", args.id),
       body: plan.state.payload,
       signal: ctx.signal,
     });
-    const changed = [transactionObject(args.transactionId)];
-    const transaction = await readBackTransaction(ctx, args.transactionId, changed);
+    const changed = [transactionObject(args.id)];
+    const transaction = await readBackTransaction(ctx, args.id, changed);
     return {
       data: { transaction },
       summary:
-        `Bank transaction ${String(args.transactionId)} marked private; status ` +
+        `Bank transaction ${String(args.id)} marked private; status ` +
         `${transaction.status?.label ?? "unknown"} (${String(transaction.status?.code ?? "?")}).`,
       affected: changed,
     };

@@ -76,10 +76,10 @@ export const transactionResetTool = defineWriteTool({
   toolset: "banking",
   tier: "commit",
   annotations: COMMIT_ANNOTATIONS,
-  input: z.strictObject({ transactionId: transactionIdInput, ...dryRunInputShape }),
+  input: z.strictObject({ id: transactionIdInput, ...dryRunInputShape }),
   output,
   prepare: async (args, ctx) => {
-    const plan = await planTransactionReset(ctx.client, args.transactionId, ctx.signal);
+    const plan = await planTransactionReset(ctx.client, args.id, ctx.signal);
     const state: State =
       plan.mode === "private"
         ? { mode: "private" }
@@ -103,21 +103,21 @@ export const transactionResetTool = defineWriteTool({
   },
   execute: async (args, plan, ctx) => {
     const { state } = plan;
-    const transactionRef = transactionObject(args.transactionId);
+    const transactionRef = transactionObject(args.id);
     if (state.mode === "private") {
       await ctx.client.request({
         method: "PUT",
-        path: sevdeskPath("CheckAccountTransaction", args.transactionId),
+        path: sevdeskPath("CheckAccountTransaction", args.id),
         body: statusPayload("created"),
         signal: ctx.signal,
       });
       const transaction = await readBackOrReport(
-        () => getTransaction(ctx.client, args.transactionId, ctx.signal),
+        () => getTransaction(ctx.client, args.id, ctx.signal),
         [transactionRef],
       );
       return {
         data: { transaction, documents: [] },
-        summary: `Bank transaction ${String(args.transactionId)} is no longer private.`,
+        summary: `Bank transaction ${String(args.id)} is no longer private.`,
         affected: [transactionRef],
       };
     }
@@ -149,7 +149,7 @@ export const transactionResetTool = defineWriteTool({
     const changed = changedSoFar();
     const transaction = await readBackOrReport(async () => {
       try {
-        return await getTransaction(ctx.client, args.transactionId, ctx.signal);
+        return await getTransaction(ctx.client, args.id, ctx.signal);
       } catch (error) {
         if (error instanceof SevdeskError && error.kind === "not_found") return undefined;
         throw error;
@@ -170,7 +170,7 @@ export const transactionResetTool = defineWriteTool({
       },
       summary:
         `Reset ${String(documents.length)} ${documents.length === 1 ? "document" : "documents"} ` +
-        `to open; bank transaction ${String(args.transactionId)} ` +
+        `to open; bank transaction ${String(args.id)} ` +
         (transaction === undefined
           ? "was deleted by sevDesk (it had created it for a booking)."
           : `has status ${transaction.status?.label ?? "unknown"} (${String(transaction.status?.code ?? "?")}).`),

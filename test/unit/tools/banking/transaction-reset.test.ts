@@ -66,7 +66,7 @@ describe("sevdesk_transaction_reset", () => {
 
   it("previews resetting every linked document with its share and the collateral rule", async () => {
     const client = linkedClient([]);
-    const plan = await prepareWrite(tool, { transactionId: 5201 }, client);
+    const plan = await prepareWrite(tool, { id: 5201 }, client);
     expect(plan.preview.action).toBe(
       "Undo the bookings of bank transaction 5201: reset 2 documents to open (invoice RE-1001, " +
         "invoice RE-1002), removing all their payments.",
@@ -95,7 +95,7 @@ describe("sevdesk_transaction_reset", () => {
       invoiceRoute(paidInvoice(1001, "0", "200")),
       invoiceRoute(paidInvoice(1002, "0", "200")),
     ]);
-    const { output } = await executeWrite(tool, { transactionId: 5201 }, client);
+    const { output } = await executeWrite(tool, { id: 5201 }, client);
     expect(client.writes().map((w) => [w.method, w.path, w.tier, w.body])).toEqual([
       ["PUT", "/Invoice/1001/resetToOpen", "commit", undefined],
       ["PUT", "/Invoice/1002/resetToOpen", "commit", undefined],
@@ -132,7 +132,7 @@ describe("sevdesk_transaction_reset", () => {
       put("/Invoice/1001/resetToOpen"),
       put("/Invoice/1002/resetToOpen", { error: failure }),
     ]);
-    const plan = await prepareWrite(tool, { transactionId: 5201 }, partial);
+    const plan = await prepareWrite(tool, { id: 5201 }, partial);
     expect(plan.preview.facts).toContainEqual({
       label: "Other bank transactions changed",
       value: "5302 (→ unbooked 100)",
@@ -144,7 +144,7 @@ describe("sevdesk_transaction_reset", () => {
     expect(plan.preview.facts.find((f) => f.label.startsWith("Document 1"))?.value).toContain(
       "; also unlinks bank transactions 5302 (58.33 EUR)",
     );
-    const error = (await executeWrite(tool, { transactionId: 5201 }, partial).catch(
+    const error = (await executeWrite(tool, { id: 5201 }, partial).catch(
       (e: unknown) => e,
     )) as SevdeskError;
     expect(error.completedWrites).toEqual([
@@ -161,7 +161,7 @@ describe("sevdesk_transaction_reset", () => {
       invoiceRoute(paidInvoice(1001, "0", "200")),
       invoiceRoute(paidInvoice(1002, "0", "200")),
     ]);
-    const { output } = await executeWrite(tool, { transactionId: 5201 }, full);
+    const { output } = await executeWrite(tool, { id: 5201 }, full);
     expect(output.affected).toEqual([
       { objectName: "Invoice", id: "1001" },
       { objectName: "Invoice", id: "1002" },
@@ -193,7 +193,7 @@ describe("sevdesk_transaction_reset", () => {
         voucherRoute(voucherRow({ status: "100", paidAmount: "0", enshrined: null })),
       ],
     );
-    const { plan, output } = await executeWrite(tool, { transactionId: 5201 }, client);
+    const { plan, output } = await executeWrite(tool, { id: 5201 }, client);
     expect(plan.preview.warnings.at(-1)).toContain("deleted by the reset");
     expect(output.data).toMatchObject({ transactionDeleted: true });
     expect(output.data.transaction).toBeUndefined();
@@ -209,7 +209,7 @@ describe("sevdesk_transaction_reset", () => {
       put("/Invoice/1001/resetToOpen"),
       put("/Invoice/1002/resetToOpen", { error: failure }),
     ]);
-    const error = (await executeWrite(tool, { transactionId: 5201 }, client).catch(
+    const error = (await executeWrite(tool, { id: 5201 }, client).catch(
       (e: unknown) => e,
     )) as SevdeskError;
     expect(error.completedWrites).toEqual([
@@ -221,9 +221,7 @@ describe("sevdesk_transaction_reset", () => {
   it("passes a failure of the first reset on unchanged", async () => {
     const failure = new SevdeskError({ kind: "validation", status: 422, message: "322" });
     const client = linkedClient([put("/Invoice/1001/resetToOpen", { error: failure })]);
-    const error = await executeWrite(tool, { transactionId: 5201 }, client).catch(
-      (e: unknown) => e,
-    );
+    const error = await executeWrite(tool, { id: 5201 }, client).catch((e: unknown) => e);
     expect(error).toBe(failure);
   });
 
@@ -236,7 +234,7 @@ describe("sevdesk_transaction_reset", () => {
         response: { error: new SevdeskError({ kind: "server", message: "boom" }) },
       },
     ]);
-    const error = (await executeWrite(tool, { transactionId: 5201 }, client).catch(
+    const error = (await executeWrite(tool, { id: 5201 }, client).catch(
       (e: unknown) => e,
     )) as SevdeskError;
     expect(error.kind).toBe("server");
@@ -255,7 +253,7 @@ describe("sevdesk_transaction_reset", () => {
         accountRoute(accountRow(4002)),
       ],
     );
-    const { plan, output } = await executeWrite(tool, { transactionId: 5101 }, client);
+    const { plan, output } = await executeWrite(tool, { id: 5101 }, client);
     expect(plan.preview.action).toBe(
       "Set bank transaction 5101 back from private to unbooked (status 300 → 100).",
     );
@@ -276,7 +274,7 @@ describe("sevdesk_transaction_reset", () => {
       [transactionRoute(transactionRow()), accountRoute(accountRow(4002))],
       [],
     );
-    await expect(prepareWrite(tool, { transactionId: 5101 }, client)).rejects.toMatchObject({
+    await expect(prepareWrite(tool, { id: 5101 }, client)).rejects.toMatchObject({
       kind: "validation",
       message: "Bank transaction 5101 is not booked (status 100); there is nothing to reset.",
     });

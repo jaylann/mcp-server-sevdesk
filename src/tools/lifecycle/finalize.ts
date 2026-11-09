@@ -8,6 +8,7 @@
  */
 import { z } from "zod";
 
+import { SEND_TYPE_CODES, SENT_VIA, type SentVia } from "../../domain/document-positions.js";
 import { KINDS, readLifecycleDocument, type SalesKind } from "../../domain/lifecycle/documents.js";
 import { documentFacts, documentTitle } from "../../domain/lifecycle/preview.js";
 import { assertFinalizable } from "../../domain/lifecycle/transitions.js";
@@ -25,20 +26,11 @@ import {
   readBack,
 } from "./shared.js";
 
-/** Readable send types → sevDesk's `sendType` codes. */
-const SENT_VIA = {
-  pdf_download: "VPDF",
-  post: "VP",
-  print: "VPR",
-  own_email: "VM",
-} as const;
-type SentVia = keyof typeof SENT_VIA;
-
 const SENT_VIA_TEXT: Readonly<Record<SentVia, string>> = {
   pdf_download: "as a downloaded PDF (VPDF)",
   post: "by post (VP)",
   print: "as printed (VPR)",
-  own_email: "by email outside sevDesk (VM)",
+  email: "by email outside sevDesk (VM)",
 };
 
 const sendByPayloadSchema = z.strictObject({
@@ -71,7 +63,7 @@ const DESCRIPTIONS: Readonly<Record<SalesKind, string>> = {
     "sent to the customer: sentVia only records how you send it. To email it through sevDesk " +
     "use sevdesk_order_send_email instead. Commit tier: asks a human to confirm the shown " +
     "preview; dryRun only previews. Drafts only (create one with sevdesk_order_create_draft). " +
-    "Next: sevdesk_order_pdf, sevdesk_order_to_invoice.",
+    "Next: sevdesk_order_pdf, sevdesk_invoice_create_from_order.",
 };
 
 /** What sevDesk does to an invoice or credit note it finalizes. */
@@ -118,12 +110,12 @@ export function finalizeTool(kind: SalesKind) {
     input: z.strictObject({
       id: idInput(kind),
       sentVia: z
-        .enum(["pdf_download", "post", "print", "own_email"])
+        .enum(SENT_VIA)
         .optional()
         .describe(
           "How the document is or was sent, recorded as its send type: pdf_download (VPDF, " +
             "default: PDF downloaded and sent your own way), post (VP, Briefversand), print " +
-            "(VPR, printed and handed over), own_email (VM, emailed outside sevDesk).",
+            "(VPR, printed and handed over), email (VM, emailed outside sevDesk).",
         ),
       ...dryRunInputShape,
     }),
@@ -133,7 +125,7 @@ export function finalizeTool(kind: SalesKind) {
       assertFinalizable(doc);
       const via: SentVia = args.sentVia ?? "pdf_download";
       const payload: SendByPayload = sendByPayloadSchema.parse({
-        sendType: SENT_VIA[via],
+        sendType: SEND_TYPE_CODES[via],
         sendDraft: false,
       });
       const warnings = finalizeWarnings(kind);

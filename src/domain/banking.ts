@@ -165,7 +165,7 @@ export const bankAccountDtoSchema = z.object({
   balance: moneySchema
     .optional()
     .describe(
-      "Saldo at balanceDate as sevDesk computes it: the sum of all transactions it knows up to " +
+      "Saldo at asOf as sevDesk computes it: the sum of all transactions it knows up to " +
         "and including that day. Differs from the real bank balance if old transactions are missing.",
     ),
   balanceMissing: z
@@ -290,7 +290,7 @@ function toTransactionDto(
 
 export interface BankAccountListParams {
   /** Day the balances refer to, `YYYY-MM-DD` (Berlin). */
-  readonly balanceDate: string;
+  readonly asOf: string;
   readonly includeArchived: boolean;
 }
 
@@ -303,7 +303,7 @@ export interface BankAccountList {
 }
 
 /**
- * Lists the check accounts (`GET /CheckAccount`) with each account's balance at `balanceDate`
+ * Lists the check accounts (`GET /CheckAccount`) with each account's balance at `asOf`
  * (`GET /CheckAccount/{id}/getBalanceAtDate?date=YYYY-MM-DD`: spec `format: date`, also how
  * genz-its/sevdesk and sevDesk.NET send it). One balance call per account, for at most
  * {@link MAX_BALANCE_ACCOUNTS} accounts; the rest are marked `account_cap`. A balance sevDesk
@@ -329,7 +329,7 @@ export async function listBankAccounts(
     visible.map(async (record, index): Promise<BankAccountDto> => {
       const dto = toAccountDto(record);
       if (index >= MAX_BALANCE_ACCOUNTS) return { ...dto, balanceMissing: "account_cap" };
-      const balance = await fetchBalance(client, record.id, params.balanceDate, signal);
+      const balance = await fetchBalance(client, record.id, params.asOf, signal);
       return balance === undefined
         ? { ...dto, balanceMissing: "sevdesk_error" }
         : { ...dto, balance: moneyFromUpstream(balance, dto.currency) };

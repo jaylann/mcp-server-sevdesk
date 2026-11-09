@@ -326,8 +326,8 @@ function voucherHeader(raw: unknown): DocumentHeader {
   const dto = mapVoucherDetail(raw);
   const foreign = dto.currency !== DEFAULT_CURRENCY;
   const direction: Direction | undefined = dto.kind;
-  const tax = taxSetting(dto.taxRule?.id, dto.taxType, direction);
-  const totals = { net: dto.net, tax: dto.tax, gross: dto.gross };
+  const tax = taxSetting(dto.tax.rule?.id, dto.tax.taxType, direction);
+  const totals = dto.totals;
   return {
     kind: "voucher",
     id: dto.id,
@@ -342,8 +342,8 @@ function voucherHeader(raw: unknown): DocumentHeader {
     direction,
     sign: 1,
     contact: dto.supplier,
-    eur: eurTotals(foreign ? dto.base : totals),
-    gross: moneyDecimal(dto.gross),
+    eur: eurTotals(foreign ? dto.totalsEur : totals),
+    gross: moneyDecimal(dto.totals.gross),
     excluded:
       dto.type === "recurring"
         ? "recurring_template"
@@ -647,19 +647,20 @@ function salesPosition(row: PositionRecord, currency: string): RawPosition {
 
 function voucherPosition(position: VoucherPositionDto): RawPosition {
   const own = {
-    net: moneyDecimal(position.net) ?? decimal(0),
-    tax: moneyDecimal(position.tax) ?? decimal(0),
+    net: moneyDecimal(position.totals?.net) ?? decimal(0),
+    tax: moneyDecimal(position.totals?.tax) ?? decimal(0),
   };
-  const foreign = position.net !== undefined && position.net.currency !== DEFAULT_CURRENCY;
+  const foreign =
+    position.totals?.net !== undefined && position.totals.net.currency !== DEFAULT_CURRENCY;
   const base =
-    position.base === undefined
+    position.totalsEur === undefined
       ? undefined
       : {
-          net: moneyDecimal(position.base.net) ?? decimal(0),
-          tax: moneyDecimal(position.base.tax) ?? decimal(0),
+          net: moneyDecimal(position.totalsEur.net) ?? decimal(0),
+          tax: moneyDecimal(position.totalsEur.tax) ?? decimal(0),
         };
   return {
-    rate: normalizeRate(position.taxRate === undefined ? undefined : String(position.taxRate)),
+    rate: normalizeRate(position.taxRate),
     own,
     eur: foreign ? base : own,
     accountDatevId: position.accountDatev?.id,

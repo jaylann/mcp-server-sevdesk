@@ -41,8 +41,8 @@ import {
   monthOf,
   plural,
   quarterOf,
-  REPORT_BASIS,
   REPORT_SCAN_MAX,
+  REPORT_SOURCE,
   type ReportRunOptions,
   type ScanPage,
   scanPages,
@@ -171,7 +171,7 @@ export const summaryReportSchema = z.object({
       contactId: z.number().int().optional(),
       kind: z.enum(VOUCHER_KINDS).optional(),
       invoiceType: z.enum(INVOICE_TYPE_KEYS).optional(),
-      accountId: z.number().int().optional(),
+      checkAccountId: z.number().int().optional(),
       from: z.string().optional(),
       to: z.string().optional(),
     })
@@ -288,7 +288,7 @@ export interface SummaryParams {
   /** Invoices only: one invoice type; WKR and MA rows are counted only when asked for here. */
   readonly invoiceType?: InvoiceTypeFilter | undefined;
   /** Transactions only: the payment account. */
-  readonly accountId?: number | undefined;
+  readonly checkAccountId?: number | undefined;
   readonly maxGroups: number;
   /** Row cap; defaults to {@link REPORT_SCAN_MAX} (lower values for tests). */
   readonly maxRecords?: number | undefined;
@@ -339,7 +339,7 @@ export async function summarizeRecords(
   const totalLines = totals.lineList();
 
   return {
-    basis: REPORT_BASIS,
+    source: REPORT_SOURCE,
     subject: params.subject,
     groupBy: params.groupBy,
     filters: compact({
@@ -347,7 +347,7 @@ export async function summarizeRecords(
       contactId: params.contactId,
       kind: params.kind,
       invoiceType: params.invoiceType,
-      accountId: params.accountId,
+      checkAccountId: params.checkAccountId,
       from: params.from,
       to: params.to,
     }),
@@ -406,12 +406,12 @@ function checkParams(params: SummaryParams): void {
   if (params.kind !== undefined && subject !== "vouchers") {
     throw invalidReportRequest("kind applies to vouchers only.");
   }
-  if (params.accountId !== undefined && subject !== "transactions") {
-    throw invalidReportRequest("accountId applies to transactions only.");
+  if (params.checkAccountId !== undefined && subject !== "transactions") {
+    throw invalidReportRequest("checkAccountId applies to transactions only.");
   }
   if (params.contactId !== undefined && subject === "transactions") {
     throw invalidReportRequest(
-      "transactions have no contact; filter by accountId or summarize invoices or vouchers.",
+      "transactions have no contact; filter by checkAccountId or summarize invoices or vouchers.",
     );
   }
   if (params.groupBy === "contact" && subject === "transactions") {
@@ -487,10 +487,10 @@ function pageFetcher(
             kind: row.kind ?? "unknown",
             amounts: {
               currency: row.currency,
-              net: row.net,
-              tax: row.tax,
-              gross: row.gross,
-              eur: row.base,
+              net: row.totals.net,
+              tax: row.totals.tax,
+              gross: row.totals.gross,
+              eur: row.totalsEur,
             },
             flow: undefined,
             cancellation: false,
@@ -508,7 +508,7 @@ function pageFetcher(
           {
             ...range,
             dateField: "value",
-            checkAccountId: params.accountId,
+            checkAccountId: params.checkAccountId,
             statuses:
               params.status === undefined
                 ? undefined

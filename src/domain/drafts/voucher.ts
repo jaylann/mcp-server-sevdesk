@@ -137,8 +137,8 @@ export interface VoucherCreateSpec {
   readonly deliveryDate?: string | undefined;
   readonly deliveryDateUntil?: string | undefined;
   readonly paymentDeadline?: string | undefined;
-  readonly taxRule?: number | undefined;
-  readonly amountsAre: AmountMode;
+  readonly taxRuleId?: number | undefined;
+  readonly amountMode: AmountMode;
   readonly positions: readonly VoucherPositionInput[];
   readonly allowDuplicate: boolean;
 }
@@ -159,7 +159,7 @@ export async function prepareVoucherCreate(
 ): Promise<VoucherSavePlan> {
   checkSupplierArgs(args.supplierId, args.supplierName, true);
   const file =
-    args.file === undefined ? undefined : await readReceiptFile(options.fileDirs, args.file);
+    args.file === undefined ? undefined : await readReceiptFile(options.files, args.file);
   return prepareVoucherCreateSpec(
     client,
     {
@@ -171,8 +171,8 @@ export async function prepareVoucherCreate(
       deliveryDate: args.deliveryDate,
       deliveryDateUntil: args.deliveryDateUntil,
       paymentDeadline: args.paymentDeadline,
-      taxRule: args.taxRule,
-      amountsAre: args.amountsAre ?? "gross",
+      taxRuleId: args.taxRuleId,
+      amountMode: args.amountMode ?? "gross",
       positions: args.positions,
       allowDuplicate: args.allowDuplicate === true,
     },
@@ -202,9 +202,9 @@ export async function prepareVoucherCreateSpec(
   );
   await assertUpdate2(client, signal);
   const regime = await voucherRegime(client, options);
-  const { rule, warnings: ruleWarnings } = resolveVoucherRule(spec.kind, spec.taxRule, regime);
+  const { rule, warnings: ruleWarnings } = resolveVoucherRule(spec.kind, spec.taxRuleId, regime);
   const positions = resolveVoucherPositions(rule, spec.positions, regime);
-  const expected = expectedVoucherTotals(positions, spec.amountsAre);
+  const expected = expectedVoucherTotals(positions, spec.amountMode);
   extras.checkTotals?.(expected, positions, rule);
   const accounts = await checkVoucherAccounts(
     client,
@@ -253,7 +253,7 @@ export async function prepareVoucherCreateSpec(
         voucherType: "VOU",
         currency: "EUR",
       },
-      voucherPosSave: positions.map((position) => positionPayload(position, spec.amountsAre)),
+      voucherPosSave: positions.map((position) => positionPayload(position, spec.amountMode)),
       voucherPosDelete: null,
     },
     "voucher",
@@ -270,8 +270,8 @@ export async function prepareVoucherCreateSpec(
       ? []
       : [fact("Payment deadline (Fälligkeit)", spec.paymentDeadline)]),
     fact("Tax rule (Steuerregel)", taxRuleLabel(rule)),
-    fact("Amounts entered as", spec.amountsAre),
-    ...positionFacts(positions, spec.amountsAre, accounts.labels),
+    fact("Amounts entered as", spec.amountMode),
+    ...positionFacts(positions, spec.amountMode, accounts.labels),
     fact("Total (expected)", totalsText(expected, "EUR")),
     ...(file === undefined ? [] : [fact("Receipt file (Belegbild)", receiptText(file))]),
     ...(extras.facts ?? []),
@@ -310,28 +310,28 @@ export async function prepareVoucherUpdate(
   assertChanges(args, "voucher");
   checkSupplierArgs(args.supplierId, args.supplierName, false);
   const file =
-    args.file === undefined ? undefined : await readReceiptFile(options.fileDirs, args.file);
+    args.file === undefined ? undefined : await readReceiptFile(options.files, args.file);
   const stored = await loadStoredVoucher(client, args.id, signal);
   const kind = checkDraft(stored, "changed");
   await assertUpdate2(client, signal);
   const regime = await voucherRegime(client, options);
 
   const storedMode = storedAmountMode(stored.positions);
-  const mode = args.amountsAre ?? storedMode;
+  const mode = args.amountMode ?? storedMode;
   if (mode !== storedMode && args.positions === undefined) {
     refuse(
-      `Changing amountsAre from ${storedMode} to ${mode} would make sevDesk read every stored ` +
+      `Changing amountMode from ${storedMode} to ${mode} would make sevDesk read every stored ` +
         `amount as ${mode}. Pass the positions again with ${mode} amounts.`,
     );
   }
 
   const warnings: string[] = [];
   let rule: TaxRule;
-  if (args.taxRule === undefined) {
-    rule = storedRule(stored, "Pass taxRule to set one.");
+  if (args.taxRuleId === undefined) {
+    rule = storedRule(stored, "Pass taxRuleId to set one.");
     warnings.push(...keptRuleWarnings(rule, kind, regime));
   } else {
-    const resolved = resolveVoucherRule(kind, args.taxRule, regime);
+    const resolved = resolveVoucherRule(kind, args.taxRuleId, regime);
     rule = resolved.rule;
     warnings.push(...resolved.warnings);
   }
@@ -344,7 +344,7 @@ export async function prepareVoucherUpdate(
     const check = await checkVoucherAccounts(client, kind, rule, positions, date, options);
     labels = check.labels;
     warnings.push(...check.warnings);
-  } else if (args.taxRule !== undefined) {
+  } else if (args.taxRuleId !== undefined) {
     const kept = storedPositionsFor(stored, rule, regime);
     const check = await checkVoucherAccounts(client, kind, rule, kept, date, options);
     warnings.push(...check.warnings);
@@ -422,7 +422,7 @@ export async function prepareVoucherUpdate(
     stored.dates.paymentDeadline,
     paymentDeadline,
   );
-  if (args.taxRule !== undefined) {
+  if (args.taxRuleId !== undefined) {
     log.value(
       "tax rule",
       "Tax rule (Steuerregel)",
@@ -683,7 +683,7 @@ function afterUpload(error: SevdeskError): SevdeskError {
 function readBackNotes(details: VoucherDetails, state: VoucherSaveState): string[] {
   const notes: string[] = [];
   const { voucher } = details;
-  const gross = voucher.gross?.amount;
+  const gross = voucher.totals.gross?.amount;
   if (
     state.expected !== undefined &&
     gross !== undefined &&
@@ -691,7 +691,7 @@ function readBackNotes(details: VoucherDetails, state: VoucherSaveState): string
   ) {
     notes.push(
       `sevDesk computed a gross total of ${gross} EUR; the preview expected ` +
-        `${state.expected.gross} EUR. Check the positions and amountsAre (gross/net) before ` +
+        `${state.expected.gross} EUR. Check the positions and amountMode (gross/net) before ` +
         `finalizing.`,
     );
   }
@@ -756,17 +756,17 @@ function keptRuleWarnings(
   if (!voucherRuleScope(kind).allowedRuleIds.includes(rule.id)) {
     warnings.push(
       `The draft keeps tax rule ${String(rule.id)} (${rule.nameDe}), which is not a rule for ` +
-        `${kind} vouchers; pass taxRule to fix it before finalizing.`,
+        `${kind} vouchers; pass taxRuleId to fix it before finalizing.`,
     );
   } else if (regime !== undefined && !rule.regimes.includes(regime)) {
     warnings.push(
       `The draft keeps tax rule ${String(rule.id)} (${rule.nameDe}), which does not fit this ` +
-        "account's VAT regulation: sevDesk will refuse to book it. Pass taxRule to fix it.",
+        "account's VAT regulation: sevDesk will refuse to book it. Pass taxRuleId to fix it.",
     );
   }
   if (rule.notSupportedFor?.includes("vouchers") === true) {
     warnings.push(
-      `Tax rule ${String(rule.id)} is not supported for vouchers; pass taxRule to fix it.`,
+      `Tax rule ${String(rule.id)} is not supported for vouchers; pass taxRuleId to fix it.`,
     );
   }
   return warnings;

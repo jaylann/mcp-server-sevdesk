@@ -16,13 +16,15 @@
  *   unhelpfully, so they are refused here with the allowed alternatives;
  * - the supplier contact exists; a possible duplicate (same supplier, Belegnummer, date and gross)
  *   is refused unless the caller says it is intended (`allowDuplicate`);
- * - the receipt file is read only from `SEVDESK_FILE_DIRS` (`readConfinedFile`).
+ * - the receipt file is read only through the call's `FileAccess`: from `SEVDESK_FILE_DIRS`
+ *   (`readConfinedFile`) or, over HTTP with file transfer, from the caller's own uploads.
  *
  * Messages are trusted text: ids, our labels and reference-data names only.
  */
 import { createHash } from "node:crypto";
 
-import { type LocalFileKind, readConfinedFile } from "../../safety/local-files.js";
+import type { FileAccess } from "../../safety/file-access.js";
+import type { LocalFileKind } from "../../safety/local-files.js";
 import { expectSingle } from "../../sevdesk/envelope.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import { sevdeskPath, toSevdeskId } from "../../sevdesk/paths.js";
@@ -62,8 +64,8 @@ export interface VoucherCallOptions {
   readonly signal?: AbortSignal | undefined;
   /** Owner of the settings, guidance and account caches: tools pass `ctx.config`. */
   readonly cacheOwner: object;
-  /** `SEVDESK_FILE_DIRS` (absolute paths); empty: reading files is off. */
-  readonly fileDirs: readonly string[];
+  /** Where receipt files come from: tools pass `ctx.files`. */
+  readonly files: FileAccess;
 }
 
 /** How position amounts are entered: `gross` (Brutto, the default for receipts) or `net`. */
@@ -73,7 +75,7 @@ export type AmountMode = (typeof AMOUNT_MODES)[number];
 /** Positions per voucher a tool accepts in one call. */
 export const MAX_VOUCHER_POSITIONS = 50;
 
-/** Largest receipt file read from disk: 20 MiB. */
+/** Largest receipt file read (from disk or an upload): 20 MiB. */
 const MAX_RECEIPT_BYTES = 20 * 1024 * 1024;
 
 /**
@@ -470,8 +472,8 @@ export async function findVoucherDuplicates(
     .filter(
       (row) =>
         row.currency === "EUR" &&
-        row.gross !== undefined &&
-        compare(row.gross.amount, query.gross) === 0 &&
+        row.totals.gross !== undefined &&
+        compare(row.totals.gross.amount, query.gross) === 0 &&
         (query.number === undefined || same(row.number, query.number)) &&
         (query.supplierId === undefined
           ? same(row.supplier?.name, query.supplierName)
@@ -517,15 +519,16 @@ export function duplicateCheck(
 // ---------------------------------------------------------------------------------------------
 
 /**
- * Reads a receipt from `SEVDESK_FILE_DIRS` (refuses with an actionable message otherwise); `kinds`
+ * Reads the receipt `ref` names (a path inside `SEVDESK_FILE_DIRS`, or an `upload:` reference
+ * over HTTP) through `files`, which refuses with an actionable message otherwise; `kinds`
  * defaults to {@link RECEIPT_FILE_KINDS}.
  */
 export async function readReceiptFile(
-  fileDirs: readonly string[],
-  path: string,
+  files: FileAccess,
+  ref: string,
   kinds: readonly LocalFileKind[] = RECEIPT_FILE_KINDS,
 ): Promise<ReceiptFile> {
-  const file = await readConfinedFile(fileDirs, path, { maxBytes: MAX_RECEIPT_BYTES, kinds });
+  const file = await files.read(ref, { maxBytes: MAX_RECEIPT_BYTES, kinds });
   return { name: file.name, kind: file.kind, bytes: file.bytes };
 }
 

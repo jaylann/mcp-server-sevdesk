@@ -109,7 +109,7 @@ describe("sevdesk_voucher_book_payment", () => {
     });
     expect(output.data).toMatchObject({
       voucher: { id: 2001, status: { code: 1000 } },
-      payment: { bookingType: "FULL_PAYMENT", amount: { amount: "298.10", currency: "EUR" } },
+      payment: { paymentType: "payment", amount: { amount: "298.10", currency: "EUR" } },
     });
     expect(output.affected).toEqual([
       { objectName: "Voucher", id: "2001" },

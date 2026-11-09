@@ -16,7 +16,7 @@ export const voucherDraftOutput = z.object({
       name: z.string().describe("Local file name of the attached receipt (Belegbild)."),
       kind: z.string().describe("pdf, png, jpeg or xml (recognized by content)."),
       bytes: z.number().int(),
-      pages: z.number().optional().describe("Pages sevDesk counted, when it said."),
+      pages: z.number().int().optional().describe("Pages sevDesk counted, when it said."),
     })
     .optional()
     .describe("The receipt file uploaded and attached by this call."),
@@ -34,7 +34,7 @@ export function voucherDraftToolOutput(
   verb: string,
 ): ToolOutput<VoucherDraftOutput> {
   const { voucher, positions, positionsComplete } = result.details;
-  const gross = voucher.gross;
+  const gross = voucher.totals.gross;
   const total = gross === undefined ? "" : `, gross ${gross.amount} ${gross.currency}`;
   const count = `${String(positions.length)} position${positions.length === 1 ? "" : "s"}`;
   const file = result.receipt === undefined ? "" : ", receipt attached";

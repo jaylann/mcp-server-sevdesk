@@ -123,7 +123,7 @@ export const invoiceCreateInputShape = {
   deliveryDateUntil: deliveryDateUntilInput,
   timeToPay: timeToPayInput,
   priceMode: priceModeInput,
-  taxRule: taxRuleInput,
+  taxRuleId: taxRuleInput,
   taxText: taxTextInput,
   currency: currencyInput,
   header: headerInput.describe('Document title (Betreff); default "Rechnung".'),
@@ -152,7 +152,7 @@ export const invoiceUpdateInputShape = {
   priceMode: priceModeInput.describe(
     "Net or gross unit prices (showNet). Changing it requires positions too.",
   ),
-  taxRule: taxRuleInput.describe(
+  taxRuleId: taxRuleInput.describe(
     "New tax rule (Steuerregel) id; see sevdesk_reference_lookup kind=tax_rules.",
   ),
   taxText: taxTextInput,

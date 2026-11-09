@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
-import { orderToInvoiceTool as tool } from "../../../../src/tools/orders/to-invoice.js";
+import { invoiceFromOrderTool as tool } from "../../../../src/tools/invoices/from-order.js";
 import { type FakeRoute, FakeSevdeskClient, loadFixture } from "../../../helpers/fake-client.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import {
@@ -74,10 +74,10 @@ function order(patch: Record<string, unknown>): FakeRoute["response"] {
   return patched(ORDER, patch);
 }
 
-describe("sevdesk_order_to_invoice", () => {
-  it("is a write tool with create annotations in the orders toolset", () => {
+describe("sevdesk_invoice_create_from_order", () => {
+  it("is a write tool with create annotations in the invoices toolset", () => {
     expect(tool.tier).toBe("write");
-    expect(tool.toolset).toBe("orders");
+    expect(tool.toolset).toBe("invoices");
     expect(tool.annotations).toEqual({
       readOnlyHint: false,
       destructiveHint: false,

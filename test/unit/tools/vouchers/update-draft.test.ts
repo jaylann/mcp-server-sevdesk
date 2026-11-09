@@ -115,7 +115,7 @@ describe("sevdesk_voucher_update_draft", () => {
       tool,
       {
         id: 2101,
-        amountsAre: "net",
+        amountMode: "net",
         positions: [{ accountDatevId: 4266, amount: "50", taxRate: 7 }],
       },
       fake,
@@ -173,13 +173,13 @@ describe("sevdesk_voucher_update_draft", () => {
 
   it("checks a new tax rule against the stored positions (B2) before writing", async () => {
     const fake = client();
-    const message = await refusal(prepareWrite(tool, { id: 2101, taxRule: 10 }, fake));
+    const message = await refusal(prepareWrite(tool, { id: 2101, taxRuleId: 10 }, fake));
     expect(message).toContain("Position 1 has a tax rate of 19 %, which tax rule 10");
     expect(fake.writes()).toEqual([]);
 
     const ok = await prepareWrite(
       tool,
-      { id: 2101, taxRule: 8 },
+      { id: 2101, taxRuleId: 8 },
       client(draftRow(), [positionRow({ taxRate: "0" })]),
     );
     expect(ok.preview.facts).toContainEqual({
@@ -194,7 +194,7 @@ describe("sevdesk_voucher_update_draft", () => {
       accountingType: { id: "26", objectName: "AccountingType" },
     });
     const message = await refusal(
-      prepareWrite(tool, { id: 2101, taxRule: 9 }, client(draftRow(), [legacy])),
+      prepareWrite(tool, { id: 2101, taxRuleId: 9 }, client(draftRow(), [legacy])),
     );
     expect(message).toContain("has no Update 2.0 booking account");
   });
@@ -207,7 +207,7 @@ describe("sevdesk_voucher_update_draft", () => {
     );
     expect(preview.warnings).toContain(
       "The draft keeps tax rule 9 (Vorsteuerabziehbare Aufwendungen), which does not fit this " +
-        "account's VAT regulation: sevDesk will refuse to book it. Pass taxRule to fix it.",
+        "account's VAT regulation: sevDesk will refuse to book it. Pass taxRuleId to fix it.",
     );
   });
 
@@ -278,8 +278,8 @@ describe("sevdesk_voucher_update_draft", () => {
     expect(await refusal(prepareWrite(tool, { id: 2101 }, client()))).toBe(
       "Nothing to change: give at least one field of the voucher besides id.",
     );
-    expect(await refusal(prepareWrite(tool, { id: 2101, amountsAre: "net" }, client()))).toContain(
-      "Changing amountsAre from gross to net",
+    expect(await refusal(prepareWrite(tool, { id: 2101, amountMode: "net" }, client()))).toContain(
+      "Changing amountMode from gross to net",
     );
   });
 
@@ -301,7 +301,7 @@ describe("sevdesk_voucher_update_draft", () => {
           client(draftRow({ taxRule: null, taxType: "default" })),
         ),
       ),
-    ).toBe("Voucher 2101 has no Update 2.0 tax rule this server knows. Pass taxRule to set one.");
+    ).toBe("Voucher 2101 has no Update 2.0 tax rule this server knows. Pass taxRuleId to set one.");
   });
 
   it("refuses a voucher whose positions cannot all be read", async () => {

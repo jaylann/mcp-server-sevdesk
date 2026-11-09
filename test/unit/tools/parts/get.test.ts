@@ -36,8 +36,8 @@ describe("sevdesk_part_get (community: recorded Part shape, fake data)", () => {
       categoryId: 1,
       priceNet: { amount: "42.01", currency: "EUR" },
       priceGross: { amount: "49.99", currency: "EUR" },
-      taxRate: 19,
-      stock: 100,
+      taxRate: "19",
+      stock: "100",
       stockEnabled: false,
       active: true,
       description: "Beschreibung des Testartikels",
@@ -55,8 +55,8 @@ describe("sevdesk_part_get (community: recorded Part shape, fake data)", () => {
     expect(client.calls.map((call) => call.path)).toEqual(["/Part/6002", "/Part/6002/getStock"]);
     expect(client.calls.every((call) => call.method === "GET" && !call.sideEffect)).toBe(true);
     expect(result.data.part).toMatchObject({
-      stock: 7.5,
-      currentStock: 7,
+      stock: "7.5",
+      currentStock: "7",
       stockEnabled: true,
       active: false,
       internalComment: "Nur nach Absprache",

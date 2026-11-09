@@ -200,8 +200,8 @@ export function importedVoucher(
     deliveryDate: suggestion.deliveryDate,
     deliveryDateUntil: suggestion.deliveryDateUntil,
     paymentDeadline: suggestion.paymentDeadline,
-    taxRule: rule.id,
-    amountsAre: "net",
+    taxRuleId: rule.id,
+    amountMode: "net",
     positions,
     allowDuplicate: choices.allowDuplicate === true,
   };
@@ -322,9 +322,10 @@ export type VoucherSuggestionPlanner = (
 ) => Promise<VoucherSuggestion>;
 
 /**
- * Prepares `sevdesk_voucher_import_einvoice`: reads the file from `SEVDESK_FILE_DIRS` (PDF or
- * XML), parses it, asks the planner for the suggestion, refuses what cannot be imported, resolves
- * the tax rule against the account's regime and runs the full create path with the file attached.
+ * Prepares `sevdesk_voucher_import_einvoice`: reads the file through `options.files` (PDF or
+ * XML, from `SEVDESK_FILE_DIRS` or an upload), parses it, asks the planner for the suggestion,
+ * refuses what cannot be imported, resolves the tax rule against the account's regime and runs
+ * the full create path with the file attached.
  */
 export async function prepareVoucherImport(
   client: SevdeskClient,
@@ -332,7 +333,7 @@ export async function prepareVoucherImport(
   options: VoucherCallOptions,
   planner: VoucherSuggestionPlanner,
 ): Promise<VoucherSavePlan> {
-  const file = await readReceiptFile(options.fileDirs, args.file, EINVOICE_FILE_KINDS);
+  const file = await readReceiptFile(options.files, args.file, EINVOICE_FILE_KINDS);
   const parsed = await parseEInvoice(file.bytes, { fileName: file.name });
   const suggestion = await planner(parsed, {
     client,

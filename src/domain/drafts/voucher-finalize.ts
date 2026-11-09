@@ -91,12 +91,12 @@ export async function prepareVoucherFinalize(
     );
   }
   const regime = await voucherRegime(client, options);
-  const rule = storedRule(stored, "Set one with sevdesk_voucher_update_draft (taxRule) first.");
+  const rule = storedRule(stored, "Set one with sevdesk_voucher_update_draft (taxRuleId) first.");
   const scope = voucherRuleScope(kind);
   if (!scope.allowedRuleIds.includes(rule.id)) {
     refuse(
       `Voucher ${String(id)} has tax rule ${String(rule.id)} (${rule.nameDe}), which is not a ` +
-        `rule for ${kind} vouchers. Change it with sevdesk_voucher_update_draft (taxRule) first.`,
+        `rule for ${kind} vouchers. Change it with sevdesk_voucher_update_draft (taxRuleId) first.`,
     );
   }
   checkTaxRuleRegime(
@@ -105,7 +105,7 @@ export async function prepareVoucherFinalize(
     scope,
     (bad, actual) =>
       `${regimeReason(bad, actual, "vouchers")} Change the tax rule of voucher ${String(id)} ` +
-      "with sevdesk_voucher_update_draft (taxRule) first.",
+      "with sevdesk_voucher_update_draft (taxRuleId) first.",
   );
   checkTaxRuleUseCase(rule, "vouchers", "voucher");
   const kept = storedPositionsFor(stored, rule, regime);

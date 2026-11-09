@@ -80,7 +80,7 @@ describe("invoice details (spec Model_InvoiceResponse fields, fake data)", () =>
     expect(invoice).toMatchObject({
       status: { code: 50, label: "Deactivated recurring invoice" },
       recurring: { interval: "P0Y1M0W", nextInvoice: "2027-01-01" },
-      pricesEnteredAs: "gross",
+      priceMode: "gross",
       tax: { rule: { id: 11, code: "KLEINUNTERNEHMER_P19" }, smallBusiness: true },
     });
     expect(invoice.paymentTerms).toBeUndefined();

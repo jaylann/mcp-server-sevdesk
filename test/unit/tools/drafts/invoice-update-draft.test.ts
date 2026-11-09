@@ -218,7 +218,7 @@ describe("sevdesk_invoice_update_draft (community shapes, fake data)", () => {
   });
 
   it("validates a new tax rule against the stored rates", async () => {
-    const error = await rejection({ id: 2102, taxRule: 2 });
+    const error = await rejection({ id: 2102, taxRuleId: 2 });
     expect(error.message).toBe(
       "Position 1 has a tax rate of 19 %, which tax rule 2 (Ausfuhren) does not allow. Tax rule " +
         "2 allows 0 %. To charge VAT on domestic sales use tax rule 1.",
@@ -248,7 +248,7 @@ describe("sevdesk_invoice_update_draft (community shapes, fake data)", () => {
         },
       },
     ];
-    const { plan } = await prepare({ id: 2102, taxRule: 4 }, withRoutes(routes, ...zeroRated));
+    const { plan } = await prepare({ id: 2102, taxRuleId: 4 }, withRoutes(routes, ...zeroRated));
     expect(plan.state.body.invoice).toMatchObject({
       taxRule: { id: 4, objectName: "TaxRule" },
       taxText: "Steuerfreie Umsätze §4 UStG",
@@ -448,7 +448,7 @@ describe("sevdesk_invoice_update_draft (community shapes, fake data)", () => {
       [
         "a stored tax setting it cannot check against new positions",
         { taxRule: null, taxType: "custom" },
-        "The stored tax setting of this draft is not a tax rule this server knows (e.g. a custom tax set), so the positions cannot be checked against it. Pass taxRule as well.",
+        "The stored tax setting of this draft is not a tax rule this server knows (e.g. a custom tax set), so the positions cannot be checked against it. Pass taxRuleId as well.",
       ],
       [
         "a draft without a contact",
@@ -465,7 +465,7 @@ describe("sevdesk_invoice_update_draft (community shapes, fake data)", () => {
 
     it("an e-invoice with a One-Stop-Shop rule", async () => {
       const eInvoice = storedDraft({ propertyIsEInvoice: "1" });
-      const error = await rejection({ id: 2102, taxRule: 18 }, withRoutes(routes, eInvoice));
+      const error = await rejection({ id: 2102, taxRuleId: 18 }, withRoutes(routes, eInvoice));
       expect(error.message).toBe(
         "Tax rule 18 (One-Stop-Shop - Warenverkauf in die EU) is not supported for e-invoices, " +
           "and this invoice is one. Choose another tax rule.",

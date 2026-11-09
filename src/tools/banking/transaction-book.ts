@@ -13,10 +13,10 @@ import {
   readLifecycleDocument,
 } from "../../domain/lifecycle/documents.js";
 import {
-  BOOKING_TYPES,
   type BookingType,
   PAYMENT_TYPES,
   type PaymentPlan,
+  paymentTypeOf,
 } from "../../domain/lifecycle/payments.js";
 import { documentTitle, type Fact, formatMoney } from "../../domain/lifecycle/preview.js";
 import { compare, type Money, money } from "../../domain/money.js";
@@ -60,7 +60,12 @@ const BOOKING_TYPE_TEXT: Readonly<Record<BookingType, string>> = {
 const bookingSchema = z.object({
   document: documentSummarySchema.describe("The document as read back after the booking."),
   amount: moneySchema.describe("Share of the transaction booked to it (positive)."),
-  bookingType: z.enum(BOOKING_TYPES).describe("sevDesk booking type (FULL_PAYMENT, N, CB, …)."),
+  paymentType: z
+    .enum(PAYMENT_TYPES)
+    .describe(
+      "How it was booked, as the paymentType input names it: payment (full or partial), " +
+        "cash_discount, bank_fees, other_difference, reminder_charges.",
+    ),
 });
 
 const output = z.object({
@@ -107,7 +112,7 @@ export const transactionBookTool = defineWriteTool({
   tier: "commit",
   annotations: COMMIT_ANNOTATIONS,
   input: z.strictObject({
-    transactionId: transactionIdInput,
+    id: transactionIdInput,
     allocations: z
       .array(
         z.strictObject({
@@ -143,7 +148,7 @@ export const transactionBookTool = defineWriteTool({
   prepare: async (args, ctx) => {
     const plan = await planAllocation(
       ctx.client,
-      args.transactionId,
+      args.id,
       args.allocations.map((allocation) => ({
         kind: kindOfArg(allocation.kind),
         id: allocation.id,
@@ -179,13 +184,8 @@ export const transactionBookTool = defineWriteTool({
   },
   execute: async (args, plan, ctx) => {
     const { state } = plan;
-    const changed = await executeAllocation(
-      ctx.client,
-      args.transactionId,
-      state.allocations,
-      ctx.signal,
-    );
-    const transaction = await readBackTransaction(ctx, args.transactionId, changed);
+    const changed = await executeAllocation(ctx.client, args.id, state.allocations, ctx.signal);
+    const transaction = await readBackTransaction(ctx, args.id, changed);
     const bookings = [];
     for (const allocation of state.allocations) {
       const doc = await readBackOrReport(
@@ -195,7 +195,7 @@ export const transactionBookTool = defineWriteTool({
       bookings.push({
         document: documentSummary(doc),
         amount: allocation.amount,
-        bookingType: allocation.bookingType,
+        paymentType: paymentTypeOf(allocation.bookingType),
       });
     }
     const after = await remainingAfterBooking(ctx, transaction, state.remainingAfter);
@@ -207,7 +207,7 @@ export const transactionBookTool = defineWriteTool({
         ...(after.note === undefined ? {} : { remainingNote: after.note }),
       },
       summary:
-        `Bank transaction ${String(args.transactionId)} booked to ${String(bookings.length)} ` +
+        `Bank transaction ${String(args.id)} booked to ${String(bookings.length)} ` +
         `${bookings.length === 1 ? "document" : "documents"}; ` +
         `${after.remaining.amount} ${after.remaining.currency} left unassigned` +
         (after.note === undefined ? "." : " (planned; the booking log could not be read)."),

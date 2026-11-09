@@ -492,6 +492,7 @@ describe("sevdesk_contact_create", () => {
         config: {} as never,
         signal: new AbortController().signal,
         progress: () => Promise.resolve(),
+        files: {} as never,
       });
       await expect(
         tool.execute(tool.input.parse(organisation), plan, context(failing(abort))),

@@ -46,7 +46,7 @@ describe("sevdesk_order_get (community: recorded Order shapes, fake data)", () =
       number: "AB-1002",
       type: { code: "AB" },
       status: { code: 500, label: "Accepted" },
-      pricesEnteredAs: "gross",
+      priceMode: "gross",
       version: 1,
       origin: { objectName: "Order", id: 3001 },
       paymentTerms: "14 Tage netto",

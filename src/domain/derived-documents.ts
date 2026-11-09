@@ -1,6 +1,6 @@
 /**
  * Documents sevDesk derives from other documents (Factory endpoints), behind
- * `sevdesk_order_to_invoice`, `sevdesk_credit_note_create_from_invoice` and
+ * `sevdesk_invoice_create_from_order`, `sevdesk_credit_note_create_from_invoice` and
  * `sevdesk_invoice_create_reminder`. Each creates a draft; numbers, positions and totals are
  * sevDesk's (B4: no number is ever invented here), and nothing becomes binding until the draft is
  * finalized with the lifecycle tools.

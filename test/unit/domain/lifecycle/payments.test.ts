@@ -9,6 +9,7 @@ import {
   openAmount,
   paymentDirection,
   type PaymentRequest,
+  paymentTypeOf,
   planPayment,
 } from "../../../../src/domain/lifecycle/payments.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
@@ -454,5 +455,20 @@ describe("planPayment with a linked transaction larger than the payment", () => 
         "whole bank transaction. Book the transaction's full amount, use paymentType " +
         '"payment" here, or book the difference in the sevDesk web app.',
     );
+  });
+});
+
+describe("paymentTypeOf", () => {
+  it("names each sevDesk booking type with the paymentType input value", () => {
+    expect(
+      (["FULL_PAYMENT", "N", "CB", "MTC", "O", "OF"] as const).map((type) => paymentTypeOf(type)),
+    ).toEqual([
+      "payment",
+      "payment",
+      "cash_discount",
+      "bank_fees",
+      "other_difference",
+      "reminder_charges",
+    ]);
   });
 });

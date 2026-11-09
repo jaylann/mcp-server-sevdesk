@@ -87,7 +87,7 @@ describe("sevdesk_records_summarize (community fixtures, fake data)", () => {
       ],
     });
     expect(report).toMatchObject({
-      basis: expect.stringContaining("not one of sevDesk's own reports") as string,
+      source: expect.stringContaining("not one of sevDesk's own reports") as string,
       subject: "invoices",
       groupBy: "none",
       filters: {},
@@ -384,7 +384,7 @@ describe("sevdesk_records_summarize (community fixtures, fake data)", () => {
         {
           subject: "transactions",
           status: "created",
-          accountId: 4002,
+          checkAccountId: 4002,
           from: "2026-01-06",
           to: "2026-01-31",
         },
@@ -521,7 +521,10 @@ describe("sevdesk_records_summarize (community fixtures, fake data)", () => {
       [{ subject: "transactions", status: "paid" }, /use one of created, linked/],
       [{ subject: "invoices", kind: "expense" }, /kind applies to vouchers only/],
       [{ subject: "vouchers", invoiceType: "reminder" }, /invoiceType applies to invoices only/],
-      [{ subject: "vouchers", accountId: 4002 }, /accountId applies to transactions only/],
+      [
+        { subject: "vouchers", checkAccountId: 4002 },
+        /checkAccountId applies to transactions only/,
+      ],
       [{ subject: "transactions", contactId: 1 }, /transactions have no contact/],
       [{ subject: "transactions", groupBy: "contact" }, /group them by account/],
       [{ subject: "credit_notes", groupBy: "account" }, /groupBy account applies to transactions/],

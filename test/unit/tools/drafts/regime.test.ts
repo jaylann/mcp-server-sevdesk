@@ -46,7 +46,7 @@ const zeroRated = [{ name: "Beratung", quantity: 2, unitPrice: "50.00" }];
 const KLEINUNTERNEHMER_REFUSAL =
   "This sevDesk account uses the Kleinunternehmer regulation (§19 UStG), so tax rule 1 " +
   "(Umsatzsteuerpflichtige Umsätze) cannot be used: sevDesk refuses to finalize invoices with " +
-  "it. Use tax rule 11 with 0 %: leave out taxRule (rule 11 is the default on this account) and " +
+  "it. Use tax rule 11 with 0 %: leave out taxRuleId (rule 11 is the default on this account) and " +
   "give the positions taxRate 0 or none.";
 
 /** The positions of source invoice 1001, all at 0 %. */
@@ -119,7 +119,7 @@ describe("Kleinunternehmer account (smallSettlement 1)", () => {
     const client = new FakeSevdeskClient(withRoutes(invoiceCreateRoutes, SMALL));
     const error: unknown = await prepareWrite(
       invoiceCreateDraftTool,
-      { ...invoiceCreateArgs, taxRule: 1 },
+      { ...invoiceCreateArgs, taxRuleId: 1 },
       client,
     ).catch((thrown: unknown) => thrown);
     expect(error).toMatchObject({ kind: "validation", message: KLEINUNTERNEHMER_REFUSAL });
@@ -142,7 +142,7 @@ describe("Kleinunternehmer account (smallSettlement 1)", () => {
   it("refuses other rules for regular VAT, naming rule 11", async () => {
     const error = await refusal(
       orderCreateDraftTool,
-      { ...orderCreateArgs, taxRule: 3 },
+      { ...orderCreateArgs, taxRuleId: 3 },
       withRoutes(orderCreateRoutes, SMALL),
     );
     expect(error.message).toMatch(
@@ -179,7 +179,7 @@ describe("Kleinunternehmer account (smallSettlement 1)", () => {
       {
         contactId: 1001,
         bookingCategory: "provision",
-        taxRule: 9,
+        taxRuleId: 9,
         positions: [{ name: "Provision", quantity: 1, unitPrice: 100, taxRate: 19 }],
       },
       withRoutes(creditNoteCreateRoutes, SMALL),
@@ -209,14 +209,14 @@ describe("Kleinunternehmer account (smallSettlement 1)", () => {
     expect(error.message).toBe(sourceRefusal);
     const explicit = await refusal(
       creditNoteCreateDraftTool,
-      { ...creditNoteCreateArgs, taxRule: 1 },
+      { ...creditNoteCreateArgs, taxRuleId: 1 },
       withRoutes(creditNoteCreateRoutes, SMALL),
     );
     expect(explicit.message).toBe(sourceRefusal);
     // Rule 11 fits the account but not the invoice's rate.
     const rule11 = await refusal(
       creditNoteCreateDraftTool,
-      { ...creditNoteCreateArgs, taxRule: 11 },
+      { ...creditNoteCreateArgs, taxRuleId: 11 },
       withRoutes(creditNoteCreateRoutes, SMALL),
     );
     expect(rule11.message).toBe(
@@ -233,12 +233,12 @@ describe("Kleinunternehmer account (smallSettlement 1)", () => {
     expect(error.message).toBe(
       "This sevDesk account uses the Kleinunternehmer regulation (§19 UStG), so tax rule 1 " +
         "(Umsatzsteuerpflichtige Umsätze) cannot be used: sevDesk refuses to finalize credit " +
-        "notes with it. Pass taxRule 11 (Steuer nicht erhoben nach §19UStG) instead: it allows " +
+        "notes with it. Pass taxRuleId 11 (Steuer nicht erhoben nach §19UStG) instead: it allows " +
         "the rates of invoice 1001: 0 %.",
     );
     const { plan: prepared } = await plan(
       creditNoteCreateDraftTool,
-      { ...creditNoteCreateArgs, taxRule: 11 },
+      { ...creditNoteCreateArgs, taxRuleId: 11 },
       routes,
     );
     expect(prepared.state.body["creditNote"]).toMatchObject({
@@ -250,7 +250,7 @@ describe("Kleinunternehmer account (smallSettlement 1)", () => {
   it("refuses a new rule for regular VAT on an update", async () => {
     const error = await refusal(
       invoiceUpdateDraftTool,
-      { id: 2102, taxRule: 1 },
+      { id: 2102, taxRuleId: 1 },
       withRoutes(invoiceUpdateRoutes, SMALL),
     );
     expect(error.message).toBe(KLEINUNTERNEHMER_REFUSAL);
@@ -259,7 +259,7 @@ describe("Kleinunternehmer account (smallSettlement 1)", () => {
   it("checks stored rates against rule 11 on an update with the account's hint", async () => {
     const error = await refusal(
       invoiceUpdateDraftTool,
-      { id: 2102, taxRule: 11 },
+      { id: 2102, taxRuleId: 11 },
       withRoutes(invoiceUpdateRoutes, SMALL),
     );
     expect(error.message).toMatch(
@@ -276,7 +276,7 @@ describe("Kleinunternehmer account (smallSettlement 1)", () => {
     expect(prepared.preview.warnings).toContain(
       "The draft keeps tax rule 1 (Umsatzsteuerpflichtige Umsätze), which does not fit this " +
         "account's VAT regulation (the Kleinunternehmer regulation (§19 UStG)): sevDesk will " +
-        "refuse to finalize it. Pass taxRule 11 (Kleinunternehmer, §19 UStG) with 0 % rates to " +
+        "refuse to finalize it. Pass taxRuleId 11 (Kleinunternehmer, §19 UStG) with 0 % rates to " +
         "fix it.",
     );
   });
@@ -306,13 +306,13 @@ describe("regular VAT account (smallSettlement 0)", () => {
       "sevDesk's settings first.";
     const created = await refusal(
       orderCreateDraftTool,
-      { ...orderCreateArgs, taxRule: 11, positions: zeroRated },
+      { ...orderCreateArgs, taxRuleId: 11, positions: zeroRated },
       orderCreateRoutes,
     );
     expect(created.message).toBe(regular);
     const updated = await refusal(
       orderUpdateDraftTool,
-      { id: 3102, taxRule: 11 },
+      { id: 3102, taxRuleId: 11 },
       orderUpdateRoutes,
     );
     expect(updated.message).toBe(regular);
@@ -336,7 +336,7 @@ describe("regular VAT account (smallSettlement 0)", () => {
     expect(prepared.preview.warnings).toContain(
       "The draft keeps tax rule 11 (Steuer nicht erhoben nach §19UStG), which does not fit this " +
         "account's VAT regulation (regular VAT, not the Kleinunternehmer regulation): sevDesk " +
-        "will refuse to finalize it. Pass taxRule 1 (Umsatzsteuerpflichtige Umsätze) or another " +
+        "will refuse to finalize it. Pass taxRuleId 1 (Umsatzsteuerpflichtige Umsätze) or another " +
         "rule for regular VAT to fix it.",
     );
   });
@@ -364,7 +364,7 @@ describe("underachievement credit note on a regular account", () => {
     expect(error.message).toBe(
       "This sevDesk account charges VAT (regular taxation, not the Kleinunternehmer regulation of " +
         "§19 UStG), so tax rule 11 (Steuer nicht erhoben nach §19UStG) cannot be used: sevDesk " +
-        "refuses to finalize credit notes with it. Pass taxRule 1 (Umsatzsteuerpflichtige " +
+        "refuses to finalize credit notes with it. Pass taxRuleId 1 (Umsatzsteuerpflichtige " +
         "Umsätze) instead: it allows the rates of invoice 1001: 0 %.",
     );
   });
@@ -386,7 +386,7 @@ describe("regime unknown (GET /SevClient unreadable)", () => {
   it("accepts tax rule 11 with both warnings, as before", async () => {
     const { plan: prepared } = await plan(
       invoiceCreateDraftTool,
-      { ...invoiceCreateArgs, taxRule: 11, positions: zeroRated },
+      { ...invoiceCreateArgs, taxRuleId: 11, positions: zeroRated },
       withRoutes(invoiceCreateRoutes, unknownRegimeRoute),
     );
     expect(prepared.state.body["invoice"]).toMatchObject({ smallSettlement: true });

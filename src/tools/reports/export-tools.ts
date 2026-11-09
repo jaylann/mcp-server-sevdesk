@@ -1,12 +1,14 @@
 /**
- * Export tools (M4), both writing files into `SEVDESK_OUTPUT_DIR` only (`resolveOutputDir` +
- * `writeNewFile`, never overwriting) and both registered only when that folder is configured:
+ * Export tools (M4), both handing their file out only through `ToolContext.files`: a new file in
+ * `SEVDESK_OUTPUT_DIR` (never overwriting), or over HTTP with file transfer a download link. Both
+ * are registered only when files can be delivered (`canDeliverFiles`), and both check the
+ * delivery (`checkDelivery`) before their first sevDesk request:
  *
  * - `sevdesk_datev_export` (write tier): starts sevDesk's DATEV export job, waits for it, downloads
  *   the ZIP from the presigned link (never shown to the model) and saves it. A write because the
  *   job is a request that changes state in sevDesk (it may mark the exported documents as
  *   exported); it never enshrines.
- * - `sevdesk_export_csv` (read tier, `writes-files`): one of sevDesk's CSV exports, saved as is.
+ * - `sevdesk_csv_export` (read tier, `writes-files`): one of sevDesk's CSV exports, saved as is.
  */
 import { z } from "zod";
 
@@ -33,10 +35,12 @@ import {
 } from "../../domain/exports/datev.js";
 import { shiftDays } from "../../domain/reports/shared.js";
 import { resolvePeriod } from "../../domain/reports/vat.js";
+import { canDeliverFiles } from "../../safety/file-access.js";
 import { SevdeskError, withCompletedWrites } from "../../sevdesk/errors.js";
 import { downloadPresignedExport } from "../../sevdesk/export-download.js";
 import { defineTool, defineWriteTool } from "../define-tool.js";
-import { refused, resolveOutputDir, writeNewFile } from "../documents/save-file.js";
+import { deliveryData, deliveryOutputShape, downloadText } from "../documents/delivery.js";
+import { refused } from "../documents/save-file.js";
 import type { AnyToolDefinition, ExecuteContext, SevdeskObjectRef } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 import { periodInputShape } from "./period-input.js";
@@ -46,7 +50,7 @@ import { periodInputShape } from "./period-input.js";
 // ---------------------------------------------------------------------------------------------
 
 const datevOutput = z.object({
-  savedTo: z.string().describe("Absolute path of the new ZIP file inside SEVDESK_OUTPUT_DIR."),
+  ...deliveryOutputShape,
   bytes: z.number().int(),
   period: z.object({ from: z.string(), to: z.string(), label: z.string() }),
   scope: z.array(z.enum(DATEV_SCOPE_KEYS)),
@@ -58,17 +62,17 @@ const datevOutput = z.object({
 interface DatevPlanState {
   readonly params: DatevJobParams;
   readonly label: string;
-  readonly directory: string;
 }
 
-/** Saved files' content is never parsed or returned; only their size and path. */
+/** Saved files' content is never parsed or returned; only their size and where they went. */
 export const datevExportTool = defineWriteTool({
   name: "sevdesk_datev_export",
   title: "DATEV export to a ZIP file",
   description:
     "DATEV-Export: let sevDesk build the DATEV booking data (Buchungsstapel, CSV in a ZIP) for a " +
-    "month, quarter, year or date range and save the ZIP as a new file in SEVDESK_OUTPUT_DIR, " +
-    "e.g. for the tax adviser (Steuerberater). scope picks earnings, expenditure, transactions, " +
+    "month, quarter, year or date range and save the ZIP as a new file in SEVDESK_OUTPUT_DIR " +
+    "(on a remote server: a download link for the user), e.g. for the tax adviser " +
+    "(Steuerberater). scope picks earnings, expenditure, transactions, " +
     "cash register and assets (default all); exportByPaydate keeps only documents paid in the " +
     "period; includeDocumentImages adds the receipts (larger). Write tier: it starts an export " +
     "job in sevDesk, which may mark the documents as exported; it never enshrines " +
@@ -78,7 +82,7 @@ export const datevExportTool = defineWriteTool({
   toolset: "reports",
   tier: "write",
   localEffects: "writes-files",
-  available: (config) => config.outputDir !== undefined,
+  available: canDeliverFiles,
   annotations: {
     readOnlyHint: false,
     destructiveHint: false,
@@ -109,7 +113,8 @@ export const datevExportTool = defineWriteTool({
   prepare: async (args, ctx) => {
     const period = resolvePeriod(args);
     // Local checks first: a misconfiguration costs no sevDesk request.
-    const directory = await resolveOutputDir(ctx.config.outputDir);
+    await ctx.files.checkDelivery();
+    const delivery = ctx.files.describeDelivery();
     const config = await readDatevExportConfig(ctx.client, ctx.signal);
     if (config.missing.length > 0) {
       throw refused(
@@ -141,8 +146,8 @@ export const datevExportTool = defineWriteTool({
     return {
       preview: {
         action:
-          `Start a DATEV export (CSV ZIP) in sevDesk for ${period.label} and save the ZIP as ` +
-          "a new file in SEVDESK_OUTPUT_DIR.",
+          `Start a DATEV export (CSV ZIP) in sevDesk for ${period.label} and provide the ZIP as ` +
+          `${delivery}.`,
         facts: [
           { label: "Period", value: `${period.from} to ${period.to}` },
           { label: "Scope", value: scope.map((key) => SCOPE_LABELS[key]).join(", ") },
@@ -161,7 +166,7 @@ export const datevExportTool = defineWriteTool({
             label: "DATEV accountant / client number",
             value: `${config.accountantNumber ?? ""} / ${config.accountantClientNumber ?? ""}`,
           },
-          { label: "Target folder", value: directory },
+          { label: "Delivered as", value: delivery },
           {
             label: "File name",
             value:
@@ -183,11 +188,11 @@ export const datevExportTool = defineWriteTool({
         ],
         irreversible: false,
       },
-      state: { params, label: period.label, directory } satisfies DatevPlanState,
+      state: { params, label: period.label } satisfies DatevPlanState,
     };
   },
   execute: async (_args, plan, ctx) => {
-    const { params, directory, label } = plan.state;
+    const { params, label } = plan.state;
     const jobId = await startJob(ctx, params);
     const job: SevdeskObjectRef = { objectName: "ExportJob", id: jobId };
     try {
@@ -202,14 +207,15 @@ export const datevExportTool = defineWriteTool({
           message: "The DATEV export download is not a ZIP file; nothing was saved.",
         });
       }
-      const savedTo = await saveFile(
-        directory,
-        exportFilename(info.filename, datevFilename(params)),
-        download.bytes,
-      );
+      const delivery = await ctx.files.deliver({
+        filename: exportFilename(info.filename, datevFilename(params)),
+        kind: "zip",
+        bytes: download.bytes,
+      });
+      const size = String(download.bytes.byteLength);
       return {
         data: {
-          savedTo,
+          ...deliveryData(delivery),
           bytes: download.bytes.byteLength,
           period: { from: params.from, to: params.to, label },
           scope: DATEV_SCOPE_KEYS.filter((key) => params.scope.includes(key)),
@@ -218,8 +224,11 @@ export const datevExportTool = defineWriteTool({
           jobId,
         },
         summary:
-          `DATEV export ${label}: saved the ZIP (${String(download.bytes.byteLength)} bytes) as a ` +
-          `new file in SEVDESK_OUTPUT_DIR; sevDesk export job ${jobId}.`,
+          "download" in delivery
+            ? `DATEV export ${label}: the ZIP (${size} bytes) is ready as ` +
+              `${downloadText(delivery.download)}; sevDesk export job ${jobId}.`
+            : `DATEV export ${label}: saved the ZIP (${size} bytes) as a new file in ` +
+              `SEVDESK_OUTPUT_DIR; sevDesk export job ${jobId}.`,
         affected: [job],
       };
     } catch (error) {
@@ -264,34 +273,15 @@ async function startJob(ctx: ExecuteContext, params: DatevJobParams): Promise<st
   }
 }
 
-/** `writeNewFile`, with file system failures as trusted `validation` errors (code only). */
-async function saveFile(directory: string, filename: string, bytes: Uint8Array): Promise<string> {
-  try {
-    return await writeNewFile(directory, filename, bytes);
-  } catch (error) {
-    const code =
-      typeof error === "object" &&
-      error !== null &&
-      "code" in error &&
-      typeof error.code === "string"
-        ? ` (${error.code.replace(/[^A-Z0-9_]/g, "")})`
-        : "";
-    throw new SevdeskError({
-      kind: "validation",
-      message: `The file could not be saved in SEVDESK_OUTPUT_DIR${code}.`,
-    });
-  }
-}
-
 // ---------------------------------------------------------------------------------------------
 // CSV
 // ---------------------------------------------------------------------------------------------
 
 const csvOutput = z.object({
-  kind: z.enum(CSV_EXPORT_KINDS),
-  savedTo: z.string().describe("Absolute path of the new CSV file inside SEVDESK_OUTPUT_DIR."),
+  subject: z.enum(CSV_EXPORT_KINDS),
+  ...deliveryOutputShape,
   bytes: z.number().int(),
-  contentType: z.string().optional().describe("As sevDesk sent it, e.g. text/csv; charset=UTF-8."),
+  mimeType: z.string().optional().describe("As sevDesk sent it, e.g. text/csv; charset=UTF-8."),
   bom: z.boolean().describe("The file starts with a UTF-8 byte order mark (as sevDesk sends it)."),
   rows: z.number().int().describe("Data rows after the header."),
   limit: z.number().int(),
@@ -317,23 +307,24 @@ const csvOutput = z.object({
   warnings: z.array(z.string()).describe("Trusted caveats about the file."),
 });
 
-/** `sevdesk_export_csv`: one of sevDesk's CSV exports, saved as a new file. */
-export const exportCsvTool = defineTool({
-  name: "sevdesk_export_csv",
+/** `sevdesk_csv_export`: one of sevDesk's CSV exports, as a new file or a download link. */
+export const csvExportTool = defineTool({
+  name: "sevdesk_csv_export",
   title: "CSV export to a file",
   description:
     "CSV-Export from sevDesk: invoices (Rechnungen), credit_notes (Gutschriften), vouchers " +
     "(Belege), transactions (Kontoumsätze) or contacts (Kontakte), saved as a new file in " +
-    "SEVDESK_OUTPUT_DIR exactly as sevDesk sends it (UTF-8 with BOM, ';' separated, German " +
+    "SEVDESK_OUTPUT_DIR (on a remote server: a download link for the user) exactly as sevDesk " +
+    "sends it (UTF-8 with BOM, ';' separated, German " +
     `headers), e.g. for Excel or the tax adviser. from/to filter by date in sevDesk (not for ` +
     "contacts); the file's date column is checked as well (periodCheck); " +
     `at most ${String(MAX_CSV_ROWS)} rows per file (mayBeTruncated says when more may exist). ` +
-    "Returns the path, size and row count, never the content; nothing changes in sevDesk. " +
-    "Every call creates another file. For totals use sevdesk_records_summarize instead.",
+    "Returns the path or link, size and row count, never the content; nothing changes in " +
+    "sevDesk. Every call creates another file. For totals use sevdesk_records_summarize instead.",
   toolset: "reports",
   tier: "read",
   localEffects: "writes-files",
-  available: (config) => config.outputDir !== undefined,
+  available: canDeliverFiles,
   annotations: {
     readOnlyHint: false,
     destructiveHint: false,
@@ -341,7 +332,7 @@ export const exportCsvTool = defineTool({
     openWorldHint: false,
   },
   input: z.strictObject({
-    kind: z
+    subject: z
       .enum(CSV_EXPORT_KINDS)
       .describe("invoices, credit_notes, vouchers, transactions or contacts."),
     ...dateRangeInputShape,
@@ -355,12 +346,16 @@ export const exportCsvTool = defineTool({
   }),
   output: csvOutput,
   handler: async (args, ctx) => {
-    // The folder is checked first, so a misconfiguration costs no sevDesk request.
-    const directory = await resolveOutputDir(ctx.config.outputDir);
-    const params = { kind: args.kind, from: args.from, to: args.to, limit: args.limit };
+    // The delivery is checked first, so a misconfiguration costs no sevDesk request.
+    await ctx.files.checkDelivery();
+    const params = { kind: args.subject, from: args.from, to: args.to, limit: args.limit };
     const file = await exportCsv(ctx.client, params, ctx.signal);
-    const savedTo = await saveFile(directory, csvFilename(params), file.bytes);
-    const noun = CSV_EXPORTS[args.kind].noun;
+    const delivery = await ctx.files.deliver({
+      filename: csvFilename(params),
+      kind: "csv",
+      bytes: file.bytes,
+    });
+    const noun = CSV_EXPORTS[args.subject].noun;
     const check = file.periodCheck;
     const warnings: string[] = [];
     if (check !== undefined && !check.verified) {
@@ -378,10 +373,10 @@ export const exportCsvTool = defineTool({
     }
     return {
       data: {
-        kind: args.kind,
-        savedTo,
+        subject: args.subject,
+        ...deliveryData(delivery),
         bytes: file.bytes.byteLength,
-        ...(file.contentType === undefined ? {} : { contentType: file.contentType }),
+        ...(file.contentType === undefined ? {} : { mimeType: file.contentType }),
         bom: file.bom,
         rows: file.rows,
         limit: args.limit,
@@ -393,7 +388,11 @@ export const exportCsvTool = defineTool({
       },
       summary:
         `CSV export of ${noun}: ${String(file.rows)} rows (${String(file.bytes.byteLength)} ` +
-        "bytes) saved as a new file in SEVDESK_OUTPUT_DIR; nothing changed in sevDesk." +
+        `bytes) ${
+          "download" in delivery
+            ? `ready as ${downloadText(delivery.download)}`
+            : "saved as a new file in SEVDESK_OUTPUT_DIR"
+        }; nothing changed in sevDesk.` +
         (check !== undefined && !check.verified
           ? " Not every row could be confirmed to lie in the requested period (see warnings)."
           : ""),
@@ -401,5 +400,5 @@ export const exportCsvTool = defineTool({
   },
 });
 
-/** Export tools, M4: the DATEV export job and CSV exports into SEVDESK_OUTPUT_DIR. */
-export const REPORT_EXPORT_TOOLS: readonly AnyToolDefinition[] = [datevExportTool, exportCsvTool];
+/** Export tools, M4: the DATEV export job and CSV exports, as files or download links. */
+export const REPORT_EXPORT_TOOLS: readonly AnyToolDefinition[] = [datevExportTool, csvExportTool];

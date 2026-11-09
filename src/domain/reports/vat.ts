@@ -59,7 +59,7 @@ import {
 import {
   invalidReportRequest,
   plural,
-  REPORT_BASIS,
+  REPORT_SOURCE,
   type ReportRunOptions,
   shiftDays,
 } from "./shared.js";
@@ -450,7 +450,7 @@ export async function vatSummary(
   const regime: TaxRegime | undefined = taxRegimeOf(params.settings);
   const basis: VatBasis = params.basis ?? DEFAULT_VAT_BASIS;
   const base = {
-    source: REPORT_BASIS,
+    source: REPORT_SOURCE,
     caveat: VAT_CAVEAT,
     form: { name: USTVA_FORM.name, year: USTVA_FORM.year, checked: USTVA_FORM.checked },
     period: { from: period.from, to: period.to, label: period.label },
