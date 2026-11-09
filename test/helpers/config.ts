@@ -27,6 +27,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     outputDir: undefined,
     fileDirs: [],
     userAgent: "mcp-server-sevdesk/0.0.0-test",
+    deployment: { kind: "stdio" },
     ...overrides,
   };
 }

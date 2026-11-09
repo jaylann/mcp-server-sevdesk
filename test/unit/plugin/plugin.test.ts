@@ -139,11 +139,13 @@ describe(".mcp.json", () => {
     .parse(readJson(join(PLUGIN_DIR, ".mcp.json")));
   const server = config.mcpServers["sevdesk"];
   /** `SEVDESK_*` variables the server reads (src/config.ts), from its source text. */
-  const serverVariables = new Set(
-    [...readFileSync(join(ROOT, "src", "config.ts"), "utf8").matchAll(/"(SEVDESK_[A-Z_]+)"/g)].map(
-      (match) => match[1],
-    ),
-  );
+  const serverVariables = new Set([
+    ...[
+      ...readFileSync(join(ROOT, "src", "config.ts"), "utf8").matchAll(/"(SEVDESK_[A-Z_]+)"/g),
+    ].map((match) => match[1]),
+    // readSecret also reads the `_FILE` variant of the token.
+    "SEVDESK_API_TOKEN_FILE",
+  ]);
 
   it("starts the published package with npx, pinned to this version", () => {
     expect(Object.keys(config.mcpServers)).toEqual(["sevdesk"]);

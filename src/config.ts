@@ -7,17 +7,51 @@ import { PACKAGE_NAME, VERSION } from "./version.js";
 
 export const DEFAULT_BASE_URL = "https://my.sevdesk.de/api/v1";
 
-type ConfirmMode = "elicit" | "browser" | "off";
+export type ConfirmMode = "elicit" | "browser" | "off";
 export type StructuredOutputMode = "auto" | "on" | "off";
 
 /**
- * Validated runtime configuration. Built once at startup from the environment by
- * {@link loadConfig}; immutable afterwards.
+ * How the server is reached. Texts that tell the user what to change (tool errors, the
+ * no-elicitation hint, approval results) depend on it, so stdio wording stays exactly as before.
+ */
+export type Deployment =
+  | { readonly kind: "stdio" }
+  | {
+      readonly kind: "http";
+      readonly auth: "bearer" | "oauth";
+      /** Public origin, e.g. `https://mcp.example.com` (no trailing slash, no path). */
+      readonly publicOrigin: string;
+      /**
+       * `SEVDESK_CONFIRM=browser` over HTTP: the approval inbox (`<origin>/approvals`), which the
+       * model may name because approving needs a browser session that proves the account.
+       */
+      readonly approvalsUrl: string | undefined;
+    };
+
+/**
+ * Validated runtime configuration for one sevDesk account. Built at startup from the environment
+ * by {@link loadConfig} (stdio, bearer) or per account by the HTTP layer (OAuth); immutable.
+ * Domain caches are keyed by the config object, so each account needs its own object.
  *
  * Invariant: `token` is a secret. It must never be logged, echoed or put into an error message.
  */
-export interface Config {
+export interface Config extends Settings {
+  /** The account's sevDesk API token. Secret. */
   readonly token: string;
+  /**
+   * The sevDesk account (`SevClient` id) this config serves, when known: always in OAuth mode,
+   * in bearer mode once the startup lookup succeeded, never over stdio. Scopes approvals and
+   * audit lines; never used for authorization on its own.
+   */
+  readonly account?: { readonly id: string } | undefined;
+  readonly deployment: Deployment;
+}
+
+/**
+ * Everything in {@link Config} except the account: what one process applies to every account it
+ * serves. In OAuth mode the HTTP layer derives one frozen {@link Config} per account from it.
+ */
+export interface Settings {
   /** sevDesk API base URL, https only, without trailing slash. */
   readonly baseUrl: string;
   /** Effective tiers after applying `SEVDESK_READ_ONLY` (which wins over everything). */
@@ -66,25 +100,36 @@ export interface LoadConfigDeps {
   readFile?: (path: string) => string;
 }
 
-type Env = Readonly<Record<string, string | undefined>>;
+/** The process environment, or a test double. */
+export type Env = Readonly<Record<string, string | undefined>>;
 
 /**
  * Reads and validates configuration from environment variables. Throws {@link ConfigError}
  * listing every problem. See README "Configuration" for the variables.
  */
 export function loadConfig(env: Env, deps: LoadConfigDeps = {}): Config {
-  const readFile = deps.readFile ?? ((path: string) => readFileSync(path, "utf8"));
+  const readFile = deps.readFile ?? defaultReadFile;
   const problems: string[] = [];
-
   const token = readToken(env, readFile, problems);
+  const settings = readSettings(env, problems);
+  if (problems.length > 0) {
+    throw new ConfigError(problems);
+  }
+  return { ...settings, token, deployment: { kind: "stdio" } };
+}
+
+/**
+ * Reads every setting except the token, appending problems instead of throwing, so callers that
+ * add their own variables (the HTTP mode) can report everything in one {@link ConfigError}.
+ */
+export function readSettings(env: Env, problems: string[]): Settings {
+  // Read in the order problems were always reported: base URL, then the safety switches.
   const baseUrl = readBaseUrl(env, problems);
   const readOnly = readFlag(env, "SEVDESK_READ_ONLY", problems);
   const requestedTiers = readTiers(env, problems);
   const allowedTiers: ReadonlySet<Tier> = readOnly ? new Set<Tier>(["read"]) : requestedTiers;
   const confirm = readConfirm(env, problems);
-
-  const config: Config = {
-    token,
+  return {
     baseUrl,
     allowedTiers,
     readOnly,
@@ -112,45 +157,84 @@ export function loadConfig(env: Env, deps: LoadConfigDeps = {}): Config {
     fileDirs: readAbsolutePaths(env, "SEVDESK_FILE_DIRS", problems),
     userAgent: `${PACKAGE_NAME}/${VERSION} (+https://github.com/jaylann/mcp-server-sevdesk)`,
   };
+}
 
-  if (problems.length > 0) {
-    throw new ConfigError(problems);
+function defaultReadFile(path: string): string {
+  return readFileSync(path, "utf8");
+}
+
+/** Options of {@link readSecret}. */
+export interface ReadSecretOptions {
+  /** Report a problem when neither `NAME` nor `NAME_FILE` is set. */
+  readonly required: boolean;
+  /** Message for a missing required secret (default: "NAME is not set."). */
+  readonly missing?: string;
+  /**
+   * Further checks on the trimmed value; returns a problem (which must not contain the value) or
+   * `undefined` when the value is fine.
+   */
+  readonly validate?: (value: string) => string | undefined;
+}
+
+/**
+ * Reads a secret from `NAME` or the file named by `NAME_FILE` (not both; Docker and Kubernetes
+ * secrets). Problems never contain the value. Returns `undefined` when unset or invalid.
+ */
+export function readSecret(
+  env: Env,
+  name: string,
+  readFile: (path: string) => string,
+  problems: string[],
+  options: ReadSecretOptions,
+): string | undefined {
+  const direct = nonEmpty(env[name]);
+  const file = nonEmpty(env[`${name}_FILE`]);
+  if (direct && file) {
+    problems.push(`Set either ${name} or ${name}_FILE, not both.`);
+    return undefined;
   }
-  return config;
+  let value: string | undefined = direct;
+  if (file) {
+    try {
+      value = readFile(file).trim();
+    } catch {
+      problems.push(`${name}_FILE: cannot read ${file}.`);
+      return undefined;
+    }
+  }
+  if (!value) {
+    if (options.required) problems.push(options.missing ?? `${name} is not set.`);
+    return undefined;
+  }
+  const problem = options.validate?.(value);
+  if (problem !== undefined) {
+    problems.push(problem);
+    return undefined;
+  }
+  return value;
+}
+
+/** The checks every sevDesk API token must pass; a problem, or `undefined` when fine. */
+export function sevdeskTokenProblem(token: string, name = "SEVDESK_API_TOKEN"): string | undefined {
+  if (/^bearer\s/i.test(token)) {
+    return `${name} must be the raw token, without a 'Bearer ' prefix.`;
+  }
+  if (/\s/.test(token)) {
+    return `${name} contains whitespace; paste only the token itself.`;
+  }
+  return undefined;
 }
 
 function readToken(env: Env, readFile: (path: string) => string, problems: string[]): string {
-  const direct = nonEmpty(env["SEVDESK_API_TOKEN"]);
-  const file = nonEmpty(env["SEVDESK_API_TOKEN_FILE"]);
-  if (direct && file) {
-    problems.push("Set either SEVDESK_API_TOKEN or SEVDESK_API_TOKEN_FILE, not both.");
-    return "";
-  }
-  let token: string | undefined = direct;
-  if (file) {
-    try {
-      token = readFile(file).trim();
-    } catch {
-      problems.push(`SEVDESK_API_TOKEN_FILE: cannot read ${file}.`);
-      return "";
-    }
-  }
-  if (!token) {
-    problems.push(
-      "SEVDESK_API_TOKEN is not set. Create a token in sevDesk under Settings → Users → API token " +
-        "(ideally for a dedicated user) and pass it via your MCP client's env config.",
-    );
-    return "";
-  }
-  if (/^bearer\s/i.test(token)) {
-    problems.push("SEVDESK_API_TOKEN must be the raw token, without a 'Bearer ' prefix.");
-    return "";
-  }
-  if (/\s/.test(token)) {
-    problems.push("SEVDESK_API_TOKEN contains whitespace; paste only the token itself.");
-    return "";
-  }
-  return token;
+  return (
+    readSecret(env, "SEVDESK_API_TOKEN", readFile, problems, {
+      required: true,
+      missing:
+        "SEVDESK_API_TOKEN is not set. Create a token in sevDesk under Settings → Users → API " +
+        "token (ideally for a dedicated user) and pass it via your MCP client's env config.",
+      validate: (value) => sevdeskTokenProblem(value),
+    }) ?? ""
+  );
 }
 
 function readBaseUrl(env: Env, problems: string[]): string {
@@ -237,7 +321,7 @@ function readConfirm(env: Env, problems: string[]): ConfirmMode {
   return mode;
 }
 
-function readFlag(env: Env, name: string, problems: string[], fallback = false): boolean {
+export function readFlag(env: Env, name: string, problems: string[], fallback = false): boolean {
   const raw = nonEmpty(env[name])?.toLowerCase();
   if (raw === undefined) return fallback;
   if (["1", "true", "yes", "on"].includes(raw)) return true;
@@ -246,7 +330,7 @@ function readFlag(env: Env, name: string, problems: string[], fallback = false):
   return fallback;
 }
 
-function readEnum<T extends string>(
+export function readEnum<T extends string>(
   env: Env,
   name: string,
   allowed: readonly T[],
@@ -263,7 +347,7 @@ function readEnum<T extends string>(
   return match;
 }
 
-function readNumber(
+export function readNumber(
   env: Env,
   name: string,
   fallback: number,
@@ -283,7 +367,7 @@ function readNumber(
 }
 
 /** Comma-separated keyword list, case-insensitive. */
-function readList(raw: string | undefined): string[] {
+export function readList(raw: string | undefined): string[] {
   return (raw ?? "")
     .split(",")
     .map((part) => part.trim().toLowerCase())
@@ -302,7 +386,7 @@ function readPathList(raw: string | undefined): string[] {
  * A {@link readPathList} whose entries must be absolute: a relative entry would depend on the
  * client's working directory, which the user rarely knows.
  */
-function readAbsolutePaths(env: Env, name: string, problems: string[]): string[] {
+export function readAbsolutePaths(env: Env, name: string, problems: string[]): string[] {
   const paths = readPathList(env[name]);
   const relative = paths.filter((path) => !isAbsolute(path));
   if (relative.length > 0) {
@@ -314,7 +398,7 @@ function readAbsolutePaths(env: Env, name: string, problems: string[]): string[]
   return paths;
 }
 
-function nonEmpty(raw: string | undefined): string | undefined {
+export function nonEmpty(raw: string | undefined): string | undefined {
   const trimmed = raw?.trim();
   return trimmed ? trimmed : undefined;
 }
