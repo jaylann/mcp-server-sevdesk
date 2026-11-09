@@ -1,0 +1,10 @@
+# Allowlist: the build context holds only what the image build reads. Everything else (.env files,
+# tokens, node_modules, dist, coverage, recordings, .git) never reaches the builder.
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tsconfig.json
+!tsdown.config.ts
+!src
+!LICENSE

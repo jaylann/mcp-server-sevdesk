@@ -1,0 +1,2 @@
+# Local secrets for compose.yaml (never commit them).
+/secrets/
