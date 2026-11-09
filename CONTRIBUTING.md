@@ -38,6 +38,9 @@ Read [docs/architecture.md](docs/architecture.md) first. The short version:
 - `src/domain/` holds normalized types, money/date handling and business rules.
 - `src/tools/<toolset>/` defines MCP tools with `defineTool`. Tools never call HTTP directly.
 - `src/safety/` holds tiers, confirmations, dry-run, audit log and redaction.
+- `src/http/` (with `oauth/`) and `src/accounts/` hold the HTTP mode: hardening, bearer and
+  OAuth, the approval inbox, and the per-account contexts the tools run with. Tools never see
+  them; they get a `Config` and a client as over stdio.
 
 Hand-written zod schemas are the source of truth for sevDesk payloads, because the official
 OpenAPI spec is incomplete and wrong in places. Every known deviation is listed in
@@ -56,6 +59,48 @@ OpenAPI spec is incomplete and wrong in places. Every known deviation is listed 
    snapshot (`pnpm test -u`) and review the diff.
 5. Regenerate the tool reference with `pnpm docs:tools` and commit `docs/tools.md` (a test fails
    when it is stale).
+
+## HTTP mode
+
+The remote mode (`--http`) is documented for operators in [docs/remote.md](docs/remote.md). To run
+it locally in bearer mode against a trial account:
+
+```bash
+pnpm build
+export SEVDESK_HTTP_AUTH=bearer
+export SEVDESK_HTTP_BEARER_TOKEN="$(node dist/index.js generate-secret)"
+export SEVDESK_API_TOKEN_FILE=~/.config/sevdesk-trial.token
+node dist/index.js --http      # or from source: pnpm dev --http
+```
+
+It listens on `http://127.0.0.1:8080/mcp` (`SEVDESK_HTTP_PORT` changes the port). Connect a client
+with the bearer header, for example Claude Code:
+
+```bash
+claude mcp add --transport http sevdesk-dev http://127.0.0.1:8080/mcp \
+  --header "Authorization: Bearer $SEVDESK_HTTP_BEARER_TOKEN"
+```
+
+Pass the flag as `pnpm dev --http`, not `pnpm dev -- --http`: pnpm hands the `--` on to the
+server, which refuses unknown arguments.
+
+OAuth mode works locally too, with a loopback public URL (`SEVDESK_HTTP_PUBLIC_URL=http://localhost:8080`,
+`SEVDESK_HTTP_SECRET`, `SEVDESK_OAUTH_ACCOUNTS`); claude.ai cannot reach it, so the end-to-end
+check with claude.ai runs through a tunnel ([docs/recording-session.md](docs/recording-session.md#3b-m5-remote-check-about-60-to-90-minutes)).
+
+- **HTTP smoke test:** `pnpm build && node scripts/smoke-http.ts --bin dist/index.js` starts the
+  built server in bearer mode on a free port (with a dummy sevDesk token, so nothing reaches
+  sevDesk) and checks the health endpoint, the 401s, the Host and Origin refusals, the MCP
+  handshake on both protocol eras and a clean shutdown. Against a running server:
+  `node scripts/smoke-http.ts --url http://127.0.0.1:8080 --bearer "$SEVDESK_HTTP_BEARER_TOKEN"`.
+- **The image:** `docker build -t mcp-server-sevdesk:dev .`, then run it read-only as in the
+  [README](README.md#quick-start-with-docker-bearer) and point the smoke test at it with `--url`.
+  CI does the same in its `docker` job.
+- **Tests:** unit tests in `test/unit/http/` (OAuth in `test/unit/http/oauth/`), integration tests
+  on a real socket in `test/integration/http-*.test.ts` (bearer, OAuth with the real SDK client,
+  the full flow through the approval inbox) and `test/integration/cross-account.test.ts`; helpers
+  for the consent and inbox pages in `test/helpers/`. Every module with secrets has a test with a
+  captured logger or response that asserts no secret appears; keep it that way.
 
 ## Fixtures
 

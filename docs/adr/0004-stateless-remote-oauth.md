@@ -1,6 +1,6 @@
 # ADR 0004: stdio by default, stateless remote HTTP with OAuth
 
-- **Status:** Accepted
+- **Status:** Superseded by [0006](0006-built-in-authorization-server-and-grant-store.md)
 - **Date:** 2026-11-07
 
 ## Context

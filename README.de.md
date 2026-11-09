@@ -38,4 +38,29 @@ Umsatzsteuer-Voranmeldung prüfen):
 Die Einstellungen (mindestens `SEVDESK_API_TOKEN`) kommen aus der Umgebung, in der Claude Code
 gestartet wird; ohne `SEVDESK_ALLOW` bleibt der Server nur lesend.
 
+## Fernzugriff (HTTP)
+
+Mit `--http` läuft der Server als Webdienst, den Sie selbst betreiben (Docker-Image
+`ghcr.io/jaylann/mcp-server-sevdesk`, Vorlagen für Docker Compose mit Caddy, Fly.io, Render und
+Railway). So lässt er sich als benutzerdefinierter Connector in claude.ai (auch in den Claude-Apps)
+oder aus Claude Code, Cursor und VS Code auf einem anderen Rechner nutzen. Ohne Anmeldeverfahren
+(`SEVDESK_HTTP_AUTH`) startet er nicht:
+
+- **`bearer`:** ein gemeinsames Geheimnis schützt ein sevDesk-Konto (das `SEVDESK_API_TOKEN` des
+  Servers). Für Clients, die Sie selbst einrichten.
+- **`oauth`:** der Server ist sein eigener OAuth-2.1-Autorisierungsserver. Wer sich verbindet,
+  wählt auf einer Zustimmungsseite die Berechtigungsstufen und fügt sein sevDesk-Token einmal ein.
+  Das Token steckt verschlüsselt in den Tokens des Clients; der Server speichert keins. Nur die
+  Konten in `SEVDESK_OAUTH_ACCOUNTS` dürfen sich verbinden. claude.ai braucht diesen Modus.
+
+In claude.ai: Einstellungen → Connectors → benutzerdefinierten Connector hinzufügen, mit der URL
+`https://<Ihr Host>/mcp`.
+
+Bindende Aktionen (Festschreiben, Verbuchen, Versenden) bestätigen Sie im Fernzugriff mit
+`SEVDESK_CONFIRM=browser` im **Freigabe-Postfach** des Servers (`https://<Ihr Host>/approvals`).
+Es zeigt nur dann etwas an, wenn der Browser das Konto nachgewiesen hat: über die
+Zustimmungsseite oder durch Einfügen des sevDesk-Tokens.
+
+Einrichtung, alle Einstellungen und Fehlersuche (auf Englisch): [docs/remote.md](docs/remote.md).
+
 Die vollständige Dokumentation ist auf Englisch: [README.md](README.md).

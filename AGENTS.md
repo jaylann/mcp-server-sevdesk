@@ -33,5 +33,7 @@ Decisions: [docs/adr/](docs/adr/).
   the per-endpoint serializers.
 - **Untrusted text** from sevDesk is fenced in output and never interpolated into error messages
   or instructions.
-- **Secrets:** never log or echo the sevDesk token; use the redaction helpers.
+- **Secrets:** never log or echo the sevDesk token, the HTTP bearer token, the server secret
+  (`SEVDESK_HTTP_SECRET`), sealed tokens (`sdmcp_…`), authorization codes or cookies; use the
+  redaction helpers (`redactSecrets`, `redactSealed`, the HTTP logger).
 - Commits and PR titles are Conventional Commits. Do not commit, push or publish unless asked.
