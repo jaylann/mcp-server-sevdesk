@@ -139,7 +139,74 @@ strings up to 20,000 characters, longer ones marked). In remote mode each line a
 created with mode 0600 (and tightened to 0600 if it already exists), opened append-only and never
 through a symlink. If the `executing` line cannot be written, the action is not run and nothing is
 sent (fail closed). The log is local and not tamper-proof: it records what this server did, for the
-user, and is no defense against someone who controls the machine.
+user, and is no defense against someone who controls the machine. Every line starts with `ts` and
+the format version `v` (currently `1`).
+
+## Generic read surface
+
+`sevdesk_api_get` (toolset `advanced`, off by default) lets the model choose a GET path, which a
+curated tool never does. It has four independent guards:
+
+1. The configured sevDesk token anywhere in the path or the query is refused, and the refusal does
+   not repeat the path.
+2. `genericGetRefusal` refuses, before anything is sent, endpoints that change state, return files
+   or start jobs (`getPdf`, `getXml`, `render`, `sendBy`, `bookAmount`, `enshrine`, `cancelInvoice`,
+   the reset endpoints, `getNext…Number`, segments that start with a mutating verb, and everything
+   under `Export`, `ExportJob`, `Progress`, `Report`, `DocServer` and `SevSequence`), and dangerous
+   query keys: credentials (sevDesk accepts `?token=`), paging keys the tool sets itself,
+   `download`, `preventSendBy`, `enshrine…`, `useNextNumber` and method overrides. Query keys are
+   normalized the way PHP reads them, so `Api.Key` or `token[0]` are caught too.
+3. The read-only client refuses every GET with a side effect that `resolveGetSafety` recognizes.
+4. The HTTP client refuses it again, because a read declares no tier.
+
+Answers are read with a 1 MiB cap, must be JSON in sevDesk's `{objects: …}` envelope, and are
+cleaned as untrusted text: invisible characters removed, strings capped, binary content (base64
+files, thumbnails) and `sevClient` echoes removed and listed, and at most about 100 KB returned.
+The residual risk is an undocumented GET with a side effect that none of these rules matches; the
+toolset is off by default for that reason.
+
+## Local token storage and profiles
+
+Over stdio the token comes from the environment, a file (`SEVDESK_API_TOKEN_FILE`) or the OS
+keychain (`SEVDESK_API_TOKEN_KEYCHAIN`).
+
+- **Keychain.** Items live under the fixed service `mcp-server-sevdesk`; configuration names only
+  the label, so a hostile configuration cannot make the server read another keychain item (a
+  password, another token) and send it to a custom `SEVDESK_BASE_URL`. The server runs the
+  operating system's helper (`/usr/bin/security` on macOS, `secret-tool` on Linux) with an
+  argument array, never through a shell. When storing, the token travels on the helper's stdin,
+  never in its arguments, which other local users could see in the process list. The helper's
+  output is capped, never logged or echoed, and errors are fixed texts. The keychain protects the
+  token at rest, in configuration files, backups and screenshots; it does not protect against code
+  that already runs as the same user. On macOS the item trusts `/usr/bin/security`, which created
+  it, so any process of the user can read it that way without a dialog. Windows is not supported
+  yet and is refused with a pointer to `SEVDESK_API_TOKEN_FILE`.
+- **The command line.** `token set` reads the token from stdin (hidden on a terminal), never from
+  an argument, where it would stay in the shell history. It checks the token with sevDesk and
+  stores nothing sevDesk rejects. Labels, profile names and unknown arguments that look like a
+  token are never echoed.
+- **Profiles.** A profile can widen tiers and folders, so on macOS and Linux the profiles file and
+  its folder (also the real folder behind a symbolic link) must belong to the user or root and
+  must not be writable by group or others; otherwise the file is refused. Windows does not check
+  this. Profiles never hold a token, only where it is kept, and a profile's `token.env` may name
+  only `SEVDESK_TOKEN_*` variables, so a profile cannot send an arbitrary secret from the
+  environment to a custom base URL. A variable set both in the environment and by the profile is
+  an error; only `SEVDESK_READ_ONLY=1` and `SEVDESK_DRY_RUN=1` in the environment may tighten a
+  profile silently. Messages about the file never quote its content.
+- The HTTP mode refuses `SEVDESK_PROFILE`, `SEVDESK_PROFILES_PATH` and
+  `SEVDESK_API_TOKEN_KEYCHAIN`: a server has no user keychain, and its configuration belongs in
+  its environment.
+
+## Claude Desktop extension
+
+The `.mcpb` bundle runs the same server over stdio on Claude Desktop's built-in Node.js. Claude
+Desktop stores the token, a setting marked sensitive, in the operating system's secure storage
+(Keychain on macOS, Credential Manager on Windows) and passes it to the server as
+`SEVDESK_API_TOKEN` when it starts it; the token never appears in the command line. The bundle
+contains the server and all its dependencies in one file that imports only Node.js built-ins, with
+the license notices of every bundled package. Confirmation cannot be switched off in the
+extension: it offers no way to set `SEVDESK_I_UNDERSTAND_NO_CONFIRM`. The bundle is not signed
+yet; verify a download with its provenance attestation (see [Supply chain](#supply-chain)).
 
 ## Remote mode
 
@@ -270,6 +337,68 @@ a tunnel; whoever terminates TLS can see tokens in transit, so choose a provider
 quick tunnels for tests), the server secret, a persistent volume for the state directory, exactly
 one instance, narrow allowlists, and updating the image.
 
+## Remote mode: files
+
+With `SEVDESK_HTTP_FILES` on (the default), files reach the tools through upload pages and leave
+as download links on the server ([docs/remote.md](docs/remote.md#files-uploads-and-download-links),
+[ADR 0008](docs/adr/0008-file-transfer-over-http.md)). The model never sees or sends file bytes.
+
+**Links are not capabilities.** `sevdesk_upload_request` returns `<public URL>/uploads/<id>` and
+the delivering tools return `<public URL>/files/<id>`: the model sees both, so neither is a secret.
+Every page needs the browser session of the approval inbox for the record's account (set at OAuth
+consent, or by signing in with the account's sevDesk token; in bearer mode never with the bearer
+secret). Without a session a page shows only the sign-in form, whose `next` accepts only the
+server's own record paths (no open redirect). A record of another account answers exactly like an
+unknown id (404). Tools read only uploads their own grant asked for; another grant, even of the
+same account, gets the same refusal as an unknown id. Ids are 256-bit random; error messages,
+summaries and logs never contain them.
+
+**Uploads.** The page shows only trusted values (purpose, accepted kinds, size limit, account,
+reference, expiry), so a prompt-injected model cannot put instructions on it. An upload is a
+same-origin POST (`Origin: null` refused) with a CSRF token bound to the session, exactly the
+fields `csrf` and `file`, and passes its checks before the body is read: rate limits (10 a minute
+and 60 an hour per client), the session, an open ticket of that account, a declared
+`Content-Length` (411 without) within the limit (413), and at most two bodies at once (503). The
+file type is checked by content (receipts PDF, PNG, JPEG; e-invoices XML, PDF); no ZIP is
+accepted, images are never decoded, and the e-invoice parser keeps its own guards against hostile
+XML and PDFs. Names are cleaned to `[A-Za-z0-9._-]` (umlauts spelled out, path parts, control and
+invisible characters, quotes and markup removed, at most 100 characters, extension from the
+content), always escaped, and never used as paths. Each page takes one file; uploads are never
+served back.
+
+**Downloads.** The bytes are fetched from sevDesk during the tool call (PDFs with
+`preventSendBy=true`); opening a link makes no sevDesk request and has no side effect. Responses
+are attachments only (`Content-Disposition: attachment` with an ASCII and an RFC 5987 name), with
+`Content-Security-Policy: default-src 'none'; sandbox`, `nosniff`, `X-Frame-Options: DENY`,
+`Cross-Origin-Resource-Policy: same-origin`, `Referrer-Policy: no-referrer` and
+`Cache-Control: no-store`: a file is never rendered on the server's origin, where XML could run
+script. HEAD is refused. A link serves at most 5 downloads.
+
+**Storage.** Records live in memory only; the bytes in memory or in `<stateDir>/files/` (folder
+0700, files 0600 created exclusively without following links, random names), encrypted with
+AES-256-GCM under a key drawn at random when the process starts and never written anywhere, with
+the blob id, account and kind authenticated (a blob swapped between records fails to open). Files
+are deleted when they expire and at shutdown, and the folder is emptied at every startup, after the
+state directory's lock is taken (a second server never touches a live one's files). A copy of the
+volume or of the server secret opens none of them. Upload pages live 15 minutes, uploads and links
+`SEVDESK_HTTP_FILES_TTL` (30 minutes, at most 24 hours).
+
+**Exhaustion.** One upload is at most 20 MB; one account holds at most 5 open upload pages, 10
+uploads and links and half of `SEVDESK_HTTP_FILES_MAX_MB`; the server at most 1,000 records and the
+full budget. Nothing is evicted, so one account cannot push out another's files; new requests are
+refused until older ones expire.
+
+**Logs and audit.** Log lines and `file_received`, `file_link_created` and `file_downloaded` audit
+lines carry the account, grant, reference code, kind, size and SHA-256, never ids, file names or
+content; request lines show the route templates `/uploads/*` and `/files/*`, and an `upload:` tool
+argument is written to the audit log as `upload:[REDACTED]`.
+
+**Limits.** An agent that can drive a signed-in browser could upload or download on its own, as it
+could approve in the inbox. On a plain-http loopback URL other local web servers receive the
+session cookie (startup warns). Whoever terminates TLS sees the files in transit. With
+`SEVDESK_OAUTH_ACCOUNTS=any` the server briefly holds other people's receipts and exports (startup
+warns). A downloaded file is whatever sevDesk returned.
+
 ## Supply chain
 
 Releases are published from CI with npm provenance (trusted publishing, no long-lived tokens),
@@ -284,4 +413,11 @@ image before you run it, then pin the digest you verified:
 ```bash
 gh attestation verify oci://ghcr.io/jaylann/mcp-server-sevdesk:<version> --owner jaylann
 docker buildx imagetools inspect ghcr.io/jaylann/mcp-server-sevdesk:<version> --format '{{ json .SBOM }}'
+```
+
+The Claude Desktop extension (`mcp-server-sevdesk-<version>.mcpb`) is built by the release workflow
+too and attached to the GitHub release with a build-provenance attestation:
+
+```bash
+gh attestation verify mcp-server-sevdesk-<version>.mcpb --owner jaylann
 ```

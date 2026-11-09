@@ -1,6 +1,7 @@
 # ADR 0007: Approval inbox over HTTP
 
-- **Status:** Accepted
+- **Status:** Accepted; browser sessions amended by
+  [ADR 0008](0008-file-transfer-over-http.md) (they also open the upload and download pages)
 - **Date:** 2026-11-09
 - **Amends:** [ADR 0003](0003-tiers-and-human-confirmation.md) (the browser mode over HTTP)
 

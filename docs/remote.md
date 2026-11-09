@@ -7,9 +7,9 @@ one server. There is no hosted instance: you run the server yourself, on your ow
 a platform such as Fly.io. For one person on one computer, stdio stays the simpler choice.
 
 This page is the operator's guide. The design is in [architecture.md](architecture.md#transports)
-and in ADRs [0006](adr/0006-built-in-authorization-server-and-grant-store.md) and
-[0007](adr/0007-approval-inbox-over-http.md); the threat model is in
-[SECURITY.md](../SECURITY.md#remote-mode).
+and in ADRs [0006](adr/0006-built-in-authorization-server-and-grant-store.md),
+[0007](adr/0007-approval-inbox-over-http.md) and [0008](adr/0008-file-transfer-over-http.md); the
+threat model is in [SECURITY.md](../SECURITY.md#remote-mode).
 
 ## Concepts
 
@@ -55,8 +55,8 @@ page that looks legitimate (consent phishing).
 
 Both lists apply to every request and every refresh, not only at consent. Remove an account or a
 client host and restart, and its existing grants are revoked the next time they are used (adding
-the entry back later does not restore them; the user connects again), and the inbox sessions of a
-removed account end.
+the entry back later does not restore them; the user connects again), and the browser sessions of
+a removed account end.
 
 ### Tiers per grant
 
@@ -71,26 +71,30 @@ In bearer mode the tiers are `SEVDESK_ALLOW`, as over stdio.
 
 ### What the server stores, and what it never stores
 
-| Where                                                  | What                                                                                                                                                                                                                                                                                                                                                                                                              |
-| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `grants.jsonl` in `SEVDESK_HTTP_STATE_DIR` (or memory) | Per grant: a random id, the sevDesk account id, the client's `client_id` URL and host, the tiers, timestamps (created, expires, last rotation, revoked), the status, the refresh-token generation and why it was revoked. Per inbox session: a random id, the account id, the grant it came from and how it was opened. Append-only, mode 0600, compacted at startup and from time to time while the server runs. |
-| `grants.lock` in the state directory                   | Marks the live instance (a heartbeat every 10 seconds).                                                                                                                                                                                                                                                                                                                                                           |
-| `SEVDESK_AUDIT_LOG`, if set                            | Every write call of every account, with the account and the grant (see [SECURITY.md](../SECURITY.md#audit-log)).                                                                                                                                                                                                                                                                                                  |
-| Memory only (lost on restart)                          | Pending approvals, pending confirmations (their single-use nonces), cached client metadata documents, per-account caches and rate-limit counters.                                                                                                                                                                                                                                                                 |
+| Where                                                  | What                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `grants.jsonl` in `SEVDESK_HTTP_STATE_DIR` (or memory) | Per grant (OAuth): a random id, the sevDesk account id, the client's `client_id` URL and host, the tiers, timestamps (created, expires, last rotation, revoked), the status, the refresh-token generation and why it was revoked. Per browser session (the sign-in of the approval inbox and the upload and download pages): a random id, the account id, the grant it came from and how it was opened. Append-only, mode 0600, compacted at startup and from time to time while the server runs. Bearer mode keeps its browser sessions here too, whenever the inbox or file transfer is on. |
+| `grants.lock` in the state directory                   | Marks the live instance (a heartbeat every 10 seconds).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `files/` in the state directory (or memory)            | Uploaded files and the files behind download links, while they are valid ([Files](#files-uploads-and-download-links)): encrypted with AES-256-GCM under a key drawn at random when the process starts and never written anywhere, under random names (folder 0700, files 0600). Deleted when they expire and at shutdown; the folder is emptied at every startup, so nothing outlives the process.                                                                                                                                                                                            |
+| `SEVDESK_AUDIT_LOG`, if set                            | Every write call of every account, with the account and the grant, and every received upload, created download link and download (reference, kind, size and SHA-256, no name or content). See [SECURITY.md](../SECURITY.md#audit-log).                                                                                                                                                                                                                                                                                                                                                        |
+| Memory only (lost on restart)                          | Pending approvals, pending confirmations (their single-use nonces), upload pages and download links (owner, reference, purpose, the cleaned file name, size, SHA-256, expiry, downloads left), cached client metadata documents, per-account caches and rate-limit counters.                                                                                                                                                                                                                                                                                                                  |
 
 **Never stored**, in files or logs: sevDesk API tokens, authorization codes, access and refresh
-tokens, cookies, the server secret and the bearer secrets. The secrets come from the environment
-only.
+tokens, cookies, the server secret, the bearer secrets and the key of the encrypted files. The
+secrets come from the environment only. Upload and download ids and file names never appear in a
+log.
 
 ### Tokens and lifetimes
 
-| What                 | Lifetime                                          | Notes                                                                                |
-| -------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Authorization code   | 60 seconds                                        | Used once. A second exchange revokes the grant.                                      |
-| Access token         | `SEVDESK_OAUTH_ACCESS_TTL` (1 hour)               | Only valid for `<public URL>/mcp`. Every request is checked against the grant store. |
-| Refresh token        | `SEVDESK_OAUTH_REFRESH_IDLE_TTL` (14 days unused) | Replaced on every use; never valid beyond the grant.                                 |
-| Grant                | `SEVDESK_OAUTH_GRANT_TTL` (90 days from consent)  | Then the user consents again.                                                        |
-| Inbox session cookie | 12 hours                                          | Holds no sevDesk token. Ends with its grant.                                         |
+| What                         | Lifetime                                          | Notes                                                                                   |
+| ---------------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Authorization code           | 60 seconds                                        | Used once. A second exchange revokes the grant.                                         |
+| Access token                 | `SEVDESK_OAUTH_ACCESS_TTL` (1 hour)               | Only valid for `<public URL>/mcp`. Every request is checked against the grant store.    |
+| Refresh token                | `SEVDESK_OAUTH_REFRESH_IDLE_TTL` (14 days unused) | Replaced on every use; never valid beyond the grant.                                    |
+| Grant                        | `SEVDESK_OAUTH_GRANT_TTL` (90 days from consent)  | Then the user consents again.                                                           |
+| Browser session cookie       | 12 hours                                          | Approval inbox, upload and download pages. Holds no sevDesk token. Ends with its grant. |
+| Upload page                  | 15 minutes                                        | Takes one file.                                                                         |
+| Uploaded file, download link | `SEVDESK_HTTP_FILES_TTL` (30 minutes)             | A link serves at most 5 downloads. A restart voids both.                                |
 
 Every token is sealed with keys derived from `SEVDESK_HTTP_SECRET`. Each refresh returns a new
 refresh token. The previous one still works for 30 seconds, because clients sometimes refresh twice
@@ -102,9 +106,11 @@ useless without a working sevDesk token anyway.
 
 ### One instance
 
-MCP requests are handled statelessly, but run **exactly one instance**. Grants, inbox sessions,
-pending approvals, the single-use nonces of confirmations and the rate limits live in the process
-and its state directory, and a second instance on the same state directory refuses to start.
+MCP requests are handled statelessly, but run **exactly one instance**. Grants, browser sessions,
+pending approvals, uploads and download links, the single-use nonces of confirmations and the rate
+limits live in the process and its state directory, and a second instance on the same state
+directory refuses to start. That holds in bearer mode too whenever browser pages are on (file
+transfer is on by default).
 Running several would need a shared database, which this project avoids on purpose
 ([ADR 0006](adr/0006-built-in-authorization-server-and-grant-store.md)). One instance serves a
 small team easily: sevDesk's own pace (`SEVDESK_RATE_LIMIT`, per account) is the bottleneck.
@@ -145,9 +151,11 @@ listening on all interfaces with a loopback public URL); with the port published
 only, the warning does not apply.
 
 Plain http on `localhost` is for a quick test only. Browsers do not separate cookies by port, so
-with `SEVDESK_CONFIRM=browser` the inbox session cookie also goes to any other web server the
-browser reaches on `localhost`, which could then read and decide your approvals. Use https (a
-deployment below), or at least a browser profile used for nothing else.
+the browser session cookie (of the upload and download pages, on by default, and with
+`SEVDESK_CONFIRM=browser` of the approval inbox) also goes to any other web server the browser
+reaches on `localhost`, which could then fetch your files, upload in your name, or read and decide
+your approvals. Startup warns about this while file transfer is on. Use https (a deployment
+below), or at least a browser profile used for nothing else.
 
 For anything that runs longer than a test, pin a version (`:<version>`) or a digest instead of
 `latest`, and pass secrets as files (`SEVDESK_HTTP_BEARER_TOKEN_FILE`, `SEVDESK_API_TOKEN_FILE`)
@@ -191,8 +199,10 @@ https URL.
    - tick the tiers this connection may use (`read` is always included);
    - paste your sevDesk API token; the server checks it with sevDesk and against
      `SEVDESK_OAUTH_ACCOUNTS`, then shows the account it belongs to (never the token again);
-   - confirm that account. You are back in claude.ai, and (with `SEVDESK_CONFIRM=browser`) this
-     browser is now signed in to the [approval inbox](#the-approval-inbox) for 12 hours.
+   - confirm that account. You are back in claude.ai, and this browser is now signed in to the
+     server's own pages for 12 hours: the [upload and download pages](#files-uploads-and-download-links)
+     (on by default) and, with `SEVDESK_CONFIRM=browser`, the
+     [approval inbox](#the-approval-inbox).
 
 ## Deployment
 
@@ -303,9 +313,12 @@ Kubernetes secrets); set one or the other.
 | `SEVDESK_HTTP_ALLOWED_ORIGINS`           |                                      | More values accepted in the `Origin` header of `/mcp` requests, comma-separated; the check compares host names only (any scheme or port). The public origin is always accepted, and requests without `Origin` pass. `/mcp` sends no CORS headers and answers no preflight (`OPTIONS`), so MCP clients running in a web page on another origin are not supported: this only admits clients that send such an `Origin` header themselves.  |
 | `SEVDESK_HTTP_TRUST_PROXY`               | `0`                                  | Reverse proxies in front of the server, 0–5. The client IP (rate limits, logs) is the entry that many places from the right of `X-Forwarded-For`.                                                                                                                                                                                                                                                                                        |
 | `SEVDESK_HTTP_BEARER_TOKEN` (`_FILE`)    |                                      | Bearer mode, required: the client secret, or two comma-separated secrets while you rotate. Each at least 32 characters with at least 16 different ones, no whitespace, and not the sevDesk token.                                                                                                                                                                                                                                        |
-| `SEVDESK_HTTP_SECRET` (`_FILE`)          |                                      | OAuth, required: the server secret all tokens and cookies are sealed with; at least 32 random bytes, hex or base64/base64url (`generate-secret`). Optional in bearer mode, where it keeps inbox sign-ins valid across restarts.                                                                                                                                                                                                          |
+| `SEVDESK_HTTP_SECRET` (`_FILE`)          |                                      | OAuth, required: the server secret all tokens and cookies are sealed with; at least 32 random bytes, hex or base64/base64url (`generate-secret`). Optional in bearer mode, where it keeps browser sign-ins valid across restarts.                                                                                                                                                                                                        |
 | `SEVDESK_HTTP_SECRET_PREVIOUS` (`_FILE`) |                                      | The previous server secret while you [rotate it](#rotating-the-server-secret): tokens sealed with it are still accepted and resealed on refresh.                                                                                                                                                                                                                                                                                         |
-| `SEVDESK_HTTP_STATE_DIR`                 | memory (image: `/data`)              | Absolute directory for the grant store; created with mode 0700 (an existing one is tightened to 0700) and checked for write access at startup. Without it, grants and inbox sessions end with the process (OAuth startup warns).                                                                                                                                                                                                         |
+| `SEVDESK_HTTP_STATE_DIR`                 | memory (image: `/data`)              | Absolute directory for the grant store and the encrypted files of file transfer (`files/`); created with mode 0700 (an existing one is tightened to 0700) and checked for write access at startup. Without it, grants and browser sessions end with the process (OAuth startup warns) and files are kept in memory.                                                                                                                      |
+| `SEVDESK_HTTP_FILES`                     | `on`                                 | [File transfer](#files-uploads-and-download-links): upload pages for receipts and e-invoices, and download links for the files tools create. `on` or `off`. Off: no `sevdesk_upload_request`, and in OAuth mode no file tools at all.                                                                                                                                                                                                    |
+| `SEVDESK_HTTP_FILES_MAX_MB`              | 256 with a state directory, else 64  | Megabytes the uploaded files and download links of all accounts may take together, 32 to 4096. One account may use at most half of it. With a state directory the files are on disk, otherwise in memory.                                                                                                                                                                                                                                |
+| `SEVDESK_HTTP_FILES_TTL`                 | `30m`                                | How long an uploaded file and a download link stay valid, 5 minutes to 24 hours.                                                                                                                                                                                                                                                                                                                                                         |
 | `SEVDESK_OAUTH_ACCOUNTS`                 |                                      | OAuth, required: the sevDesk account ids that may connect, comma-separated, or `any` (startup warns).                                                                                                                                                                                                                                                                                                                                    |
 | `SEVDESK_OAUTH_CLIENTS`                  | `claude.ai`                          | Hosts allowed to serve a client's metadata document (its `client_id` URL), comma-separated, or `any` (startup warns).                                                                                                                                                                                                                                                                                                                    |
 | `SEVDESK_OAUTH_ACCESS_TTL`               | `1h`                                 | Access token lifetime, 5 minutes to 24 hours. Under 10 minutes startup warns: Claude refreshes 5 minutes before expiry, so it would refresh on nearly every request.                                                                                                                                                                                                                                                                     |
@@ -316,12 +329,15 @@ Durations are written as `30m`, `1h`, `14d`, or a number of seconds.
 
 ### Other variables in HTTP mode
 
-The variables of the [README](../README.md#configuration) keep their meaning, with these
+The [variables of the stdio mode](configuration.md#variables) keep their meaning, with these
 differences:
 
 - **`SEVDESK_API_TOKEN` (`_FILE`)**: required in bearer mode, where it is the account the server
-  serves and the token that signs in to the approval inbox. Not used in OAuth mode (startup warns
-  if it is set): every user pastes their own token on the consent page.
+  serves and the token that signs a browser in to the server's pages (approval inbox, uploads and
+  downloads). Not used in OAuth mode (startup warns if it is set): every user pastes their own
+  token on the consent page.
+- **`SEVDESK_API_TOKEN_KEYCHAIN`, `SEVDESK_PROFILE`, `SEVDESK_PROFILES_PATH`**: refused. The OS
+  keychain and local profiles are for local installs over stdio; a container has no keychain.
 - **`SEVDESK_ALLOW`, `SEVDESK_READ_ONLY`**: the most any connection may get. In OAuth mode each
   grant gets the intersection with the tiers ticked on the consent page.
 - **`SEVDESK_CONFIRM`**: `elicit` (the default) works with clients that speak the 2026-07-28
@@ -333,10 +349,15 @@ differences:
   approvals wait in the inbox, which you open yourself. Setting it to `1` together with a
   non-loopback bind is refused.
 - **`SEVDESK_FILE_DIRS`, `SEVDESK_OUTPUT_DIR`**: refused in OAuth mode, because the server's disk
-  would be shared by every connection; the tools that read or write local files are then not
-  offered. Bearer mode keeps them; the folders are on the server, not on the client's machine.
+  would be shared by every connection. Files reach the tools through
+  [upload pages and download links](#files-uploads-and-download-links) instead
+  (`SEVDESK_HTTP_FILES`, on by default). Bearer mode keeps them; the folders are on the server,
+  not on the client's machine. There a file argument may be a path inside `SEVDESK_FILE_DIRS` or
+  an upload, and `SEVDESK_OUTPUT_DIR`, when set, wins over download links: files are then saved
+  on the server.
 - **`SEVDESK_AUDIT_LOG`**: one log for all accounts; every line names the account and the grant.
-  In the image the root filesystem is read-only, so put it under `/data`.
+  It also records each received upload, created download link and download. In the image the
+  root filesystem is read-only, so put it under `/data`.
 - **`SEVDESK_RATE_LIMIT`**: applies per sevDesk account, shared by all its connections.
 
 ### Startup refusals and warnings
@@ -348,17 +369,26 @@ Startup refuses:
 - OAuth without `SEVDESK_HTTP_SECRET`, `SEVDESK_HTTP_PUBLIC_URL` or `SEVDESK_OAUTH_ACCOUNTS`, or
   with a secret that is too short or not random enough;
 - a non-loopback bind without a public URL, or an `http://` public URL whose host is not loopback;
-- OAuth together with `SEVDESK_FILE_DIRS` or `SEVDESK_OUTPUT_DIR`;
+- OAuth together with `SEVDESK_FILE_DIRS` or `SEVDESK_OUTPUT_DIR` (the message points to the
+  upload pages and download links);
+- `SEVDESK_API_TOKEN_KEYCHAIN`, `SEVDESK_PROFILE` or `SEVDESK_PROFILES_PATH` (stdio only);
+- `SEVDESK_HTTP_FILES` other than `on` or `off`, `SEVDESK_HTTP_FILES_MAX_MB` outside 32–4096, or
+  `SEVDESK_HTTP_FILES_TTL` outside 5 minutes to 24 hours;
 - `SEVDESK_CONFIRM_OPEN=1` with a non-loopback bind;
-- a state directory that cannot be written, a corrupt `grants.jsonl`, or a state directory that
-  another live instance uses.
+- a state directory that cannot be written, a corrupt `grants.jsonl`, a state directory that
+  another live instance uses, or a `files/` folder in it that cannot be emptied.
 
 Startup warns (and starts) for `SEVDESK_CONFIRM=elicit` with the `commit` or `external` tier,
-`SEVDESK_OAUTH_ACCOUNTS=any`, `SEVDESK_OAUTH_CLIENTS=any`, OAuth without a state directory,
-`SEVDESK_API_TOKEN` or a bearer secret in OAuth mode, a server or bearer secret that looks like a
-passphrase rather than random bytes (use `generate-secret`), and a non-loopback bind with a
-loopback public URL (anyone who reaches the port can use the server; see the
-[Docker quick start](#quick-start-bearer-mode-with-docker)).
+`SEVDESK_OAUTH_ACCOUNTS=any` (with file transfer on, also because the server then briefly holds
+every connected account's receipts and exports), `SEVDESK_OAUTH_CLIENTS=any`, OAuth without a
+state directory, `SEVDESK_API_TOKEN` or a bearer secret in OAuth mode, a server or bearer secret
+that looks like a passphrase rather than random bytes (use `generate-secret`), a non-loopback bind
+with a loopback public URL (anyone who reaches the port can use the server; see the
+[Docker quick start](#quick-start-bearer-mode-with-docker)), file transfer over plain http (the
+browser session cookie reaches every server on that host name), file transfer without a state
+directory (files are held in memory, up to `SEVDESK_HTTP_FILES_MAX_MB`), and
+`SEVDESK_HTTP_FILES_MAX_MB` or `SEVDESK_HTTP_FILES_TTL` set together with
+`SEVDESK_HTTP_FILES=off` (they have no effect).
 
 ## Connecting clients
 
@@ -389,7 +419,7 @@ With a bearer secret (read it from a file or your password manager instead of ty
 
 ```bash
 claude mcp add --transport http sevdesk https://<host>/mcp \
-  --header "Authorization: Bearer $SEVDESK_MCP_BEARER"
+  --header "Authorization: Bearer $MCP_BEARER_SECRET"
 ```
 
 ### Cursor (bearer)
@@ -401,7 +431,7 @@ In `~/.cursor/mcp.json` (or `.cursor/mcp.json` in a project):
   "mcpServers": {
     "sevdesk": {
       "url": "https://<host>/mcp",
-      "headers": { "Authorization": "Bearer ${env:SEVDESK_MCP_BEARER}" }
+      "headers": { "Authorization": "Bearer ${env:MCP_BEARER_SECRET}" }
     }
   }
 }
@@ -458,7 +488,8 @@ How a confirmation runs:
 the account:
 
 - **after OAuth consent**, automatically: the consent page signs in the browser that completed it
-  (only with `SEVDESK_CONFIRM=browser`; otherwise there is no inbox);
+  (whenever the inbox or [file transfer](#files-uploads-and-download-links) is on; the same
+  session opens both);
 - **by pasting the sevDesk API token** into the sign-in form. In OAuth mode the server checks the
   token with sevDesk and against `SEVDESK_OAUTH_ACCOUNTS`. In bearer mode it must be the server's
   own `SEVDESK_API_TOKEN`; the bearer secret does not sign in, because the client holds it.
@@ -486,6 +517,88 @@ cookie too ([Quick start](#quick-start-bearer-mode-with-docker)). Pending approv
 server restarts; the model then simply asks again.
 See [ADR 0007](adr/0007-approval-inbox-over-http.md).
 
+## Files: uploads and download links
+
+A remote server cannot read files on your computer, and the files it creates cannot land there by
+themselves. With `SEVDESK_HTTP_FILES=on` (the default) files travel through pages of the server
+that you open in your browser. The model never sees or sends file bytes.
+
+**Uploading a receipt or an e-invoice:**
+
+1. The model calls `sevdesk_upload_request` (purpose `receipt` or `einvoice`) and gives you a link,
+   `<public URL>/uploads/<id>`, with a short reference code and an expiry.
+2. You open the link. The page shows only what the server knows: what it accepts, the largest
+   file, until when it is valid, the account and the reference code. The model cannot put text on
+   it.
+3. You choose the file and press Upload. The server checks the file type by its content, not its
+   name, and keeps a cleaned name (letters, digits, `.`, `_`, `-`; umlauts spelled out; at most 100
+   characters; the extension from the content).
+4. You tell the model the upload is done. It passes the `uploadId` it got (`upload:<id>`) as
+   `file` to `sevdesk_voucher_create_draft`, `sevdesk_voucher_update_draft`,
+   `sevdesk_einvoice_parse` or `sevdesk_voucher_import_einvoice`. The upload stays usable until it
+   expires, also for a retry after an error, but only for the connection that asked for it.
+
+**Downloading.** `sevdesk_document_save`, `sevdesk_csv_export` and `sevdesk_datev_export` return a
+download link, `<public URL>/files/<id>`, instead of a file path. The server fetched the file from
+sevDesk during the tool call; opening the link sends nothing to sevDesk. The browser saves the file
+as a download; it is never displayed on the server's page.
+
+**What needs a browser session.** Every upload page and download link. The links are not secrets:
+without a session they show only the sign-in form, and a link of another account looks exactly
+like one that does not exist. The session is the one of the [approval inbox](#the-approval-inbox):
+
+- the browser that completed the OAuth consent is signed in for 12 hours, also when the inbox is
+  off;
+- any other browser signs in on the form with the sevDesk API token of the account (OAuth mode:
+  checked with sevDesk and against `SEVDESK_OAUTH_ACCOUNTS`; bearer mode: the server's
+  `SEVDESK_API_TOKEN`, never the bearer secret), and lands back on the page it came from.
+
+The form posts to `/approvals/login` even when the approval inbox is off. Signed in to an account,
+a browser sees the upload pages and links of every connection of that account; the tools only use
+the uploads of their own connection.
+
+**On the phone.** The Claude apps may open a link in a browser that does not share the cookies of
+the one you consented in: you then see the sign-in form. Sign in with the sevDesk API token there,
+or open the link in the browser where you consented.
+
+**Limits and lifetimes:**
+
+| What                | Limit                                                                                                             |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Upload page         | Valid 15 minutes, takes one file.                                                                                 |
+| Accepted files      | Receipts: PDF, PNG or JPEG. E-invoices: XML (XRechnung) or PDF (ZUGFeRD, Factur-X). Checked by content.           |
+| One upload          | 20 MB, or half of `SEVDESK_HTTP_FILES_MAX_MB` if that is less.                                                    |
+| Uploaded file, link | Valid for `SEVDESK_HTTP_FILES_TTL` (30 minutes). A link serves at most 5 downloads.                               |
+| Per account         | 5 upload pages waiting for a file, 10 uploads and links together, half of `SEVDESK_HTTP_FILES_MAX_MB`.            |
+| All accounts        | `SEVDESK_HTTP_FILES_MAX_MB` (256 MB with a state directory, 64 MB without), 1,000 uploads and links.              |
+| Requests per client | 60 a minute to the upload and download pages together; 10 uploads a minute and 60 an hour (IPv6 per /64 network). |
+| Uploads at once     | 2 for the whole server; a third gets "Server busy" (503): try again in a moment.                                  |
+| A restart           | Voids every upload page, upload and link. The model asks for a new one.                                           |
+
+Nothing is pushed out to make room: when a limit is reached, new uploads and links are refused
+until older ones expire. Download links count against the same space as uploads, so a large DATEV
+export may not fit (with 64 MB in memory, one account has 32 MB). The tool then says that sevDesk
+has started the export, and you download it in sevDesk instead; or raise
+`SEVDESK_HTTP_FILES_MAX_MB`, best with a state directory, so the files go to disk.
+
+**Memory.** Files are kept in memory without a state directory. While an upload arrives it is held
+about three times over, which is why at most two are received at once. On a small machine (512 MB)
+keep a state directory and the default limits.
+
+**Reverse proxies.** An upload body is up to 20 MB plus a little form overhead, must arrive within
+90 seconds, and must carry `Content-Length`; a chunked upload without it is refused with 411. nginx
+needs `client_max_body_size 25m;` (its default of 1 MB refuses most receipts), and its default
+request buffering sends `Content-Length`. Caddy, as in the compose template, needs nothing.
+
+**Turning it off.** `SEVDESK_HTTP_FILES=off` removes `sevdesk_upload_request` and the pages. In
+OAuth mode no file tool is offered then; bearer mode still uses `SEVDESK_FILE_DIRS` and
+`SEVDESK_OUTPUT_DIR` if they are set.
+
+**Limits of the design.** An agent that can drive your signed-in browser could upload or download
+on its own, as it could approve in the inbox. A downloaded file is whatever sevDesk returned; open
+it like any document from your bookkeeping. On a plain-http `localhost` setup, other local web
+servers receive the session cookie too. See [ADR 0008](adr/0008-file-transfer-over-http.md).
+
 ## Operating the server
 
 ### Commands
@@ -498,7 +611,7 @@ The binary has a few commands besides serving. With Docker, append them to `dock
 | `generate-secret`                        | Prints 32 random bytes, base64url: a value for `SEVDESK_HTTP_SECRET` or a bearer secret.                                                                                                                      |
 | `account-id`                             | Asks sevDesk which account `SEVDESK_API_TOKEN` belongs to and prints its id, for `SEVDESK_OAUTH_ACCOUNTS`.                                                                                                    |
 | `grants list [--json]`                   | Lists the grants in `SEVDESK_HTTP_STATE_DIR`, newest first: id, account, client host, tiers, status (with the reason of a revocation), created, expires and last refresh. `--json` adds the full `client_id`. |
-| `grants revoke <grant-id>`               | Revokes one grant and its inbox sessions.                                                                                                                                                                     |
+| `grants revoke <grant-id>`               | Revokes one grant and its browser sessions.                                                                                                                                                                   |
 | `grants revoke --account <id>` / `--all` | Revokes every grant of one account, or all grants.                                                                                                                                                            |
 | `healthcheck`                            | Calls `http://127.0.0.1:<port>/healthz` and exits 0 when the server answers; the image's health check uses it.                                                                                                |
 
@@ -512,13 +625,16 @@ revoke by replacing the server secret or the sevDesk token ([Revoking access](#r
 
 ### Revoking access
 
-| To end                         | Do                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| One connection                 | `grants revoke <grant-id>`. Its next request gets 401 and the client asks to reconnect. Clients that support token revocation (RFC 7009, `/revoke`) do the same when you disconnect them.                                                                                                                                                                                                                                                                                                                                            |
-| Every connection of an account | `grants revoke --account <id>`. It also ends every inbox session of the account, including sign-ins with a pasted token.                                                                                                                                                                                                                                                                                                                                                                                                             |
-| Everything                     | `grants revoke --all`, or replace `SEVDESK_HTTP_SECRET` without keeping the old one as `_PREVIOUS`: no token issued before can be opened any more.                                                                                                                                                                                                                                                                                                                                                                                   |
-| Access with a sevDesk token    | Regenerate the token in sevDesk (Settings → Users → API token). sevDesk refuses the old one at once, so tool calls stop working, and the next refresh of every grant that holds it (within the access-token lifetime) revokes that grant. This works even if the server secret or a client's tokens leaked. Inbox sessions are not tied to the token: a sign-in with the old token stays valid for up to 12 hours, and a consent session until its grant is revoked. Run `grants revoke --account <id>` as well to end them at once. |
-| Bearer access                  | Replace `SEVDESK_HTTP_BEARER_TOKEN` and restart. Inbox sign-ins survive a restart when `SEVDESK_HTTP_SECRET` and the state directory persist; `grants revoke --account <id>` ends them (the id is the one the server logged at startup, or `bearer` if that lookup failed).                                                                                                                                                                                                                                                          |
+| To end                         | Do                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| One connection                 | `grants revoke <grant-id>`. Its next request gets 401 and the client asks to reconnect. Clients that support token revocation (RFC 7009, `/revoke`) do the same when you disconnect them.                                                                                                                                                                                                                                                                                                                                              |
+| Every connection of an account | `grants revoke --account <id>`. It also ends every browser session of the account, including sign-ins with a pasted token.                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Everything                     | `grants revoke --all`, or replace `SEVDESK_HTTP_SECRET` without keeping the old one as `_PREVIOUS`: no token issued before can be opened any more.                                                                                                                                                                                                                                                                                                                                                                                     |
+| Access with a sevDesk token    | Regenerate the token in sevDesk (Settings → Users → API token). sevDesk refuses the old one at once, so tool calls stop working, and the next refresh of every grant that holds it (within the access-token lifetime) revokes that grant. This works even if the server secret or a client's tokens leaked. Browser sessions are not tied to the token: a sign-in with the old token stays valid for up to 12 hours, and a consent session until its grant is revoked. Run `grants revoke --account <id>` as well to end them at once. |
+| Bearer access                  | Replace `SEVDESK_HTTP_BEARER_TOKEN` and restart. Browser sign-ins survive a restart when `SEVDESK_HTTP_SECRET` and the state directory persist; `grants revoke --account <id>` ends them (the id is the one the server logged at startup, or `bearer` if that lookup failed).                                                                                                                                                                                                                                                          |
+
+Uploads and download links are not revoked with a grant: a session's end stops the browser that
+held it, and the files expire within `SEVDESK_HTTP_FILES_TTL`. A restart voids them all at once.
 
 ### Rotating the server secret
 
@@ -533,7 +649,7 @@ revoke by replacing the server secret or the sevDesk token ([Revoking access](#r
 If the secret may have leaked, skip step 3's wait: replace it without `_PREVIOUS`. Every client
 reconnects. If tokens may have leaked as well (the secret opens them and the sevDesk token inside),
 also regenerate the sevDesk tokens and run `grants revoke --account <id>` for each account, which
-ends its inbox sessions too.
+ends its browser sessions too.
 
 Bearer secrets rotate the same way: set `SEVDESK_HTTP_BEARER_TOKEN=<new>,<old>`, update the
 clients, then remove the old value.
@@ -551,11 +667,29 @@ the server does not know in advance in OAuth mode). Security events are logged a
 document was refused) and `grant_revoked` (with its reason, for example `account_removed` when an
 allowlist no longer covers the grant).
 
+The browser pages log their own events. Sign-ins (shared by the inbox and the file pages, and
+named after the inbox): `approval_login`, `approval_login_refused`, `approval_login_limited`,
+`approval_login_unavailable` (sevDesk could not be asked), `approval_logout` and
+`approval_session_refused` (a session of an account no longer allowed). File transfer:
+
+| Event              | Level | Fields                                                                                                                                                                                                                                                 |
+| ------------------ | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `upload_received`  | info  | `account`, `reference`, `kind`, `bytes`                                                                                                                                                                                                                |
+| `upload_refused`   | warn  | `reason` (`rate_limited`, `foreign_origin`, `signed_out`, `unknown`, `expired`, `already_received`, `unsupported_type`, `length_required`, `too_large`, `bad_form`, `csrf`, `empty`, `wrong_kind`, `storage_full`, `failed`), `account` once signed in |
+| `download_served`  | info  | `account`, `reference`, `kind`, `bytes`                                                                                                                                                                                                                |
+| `download_refused` | warn  | `reason` (`signed_out`, `unknown`, `expired`, `exhausted`), `account` once signed in                                                                                                                                                                   |
+| `audit_failed`     | warn  | `event`: a file event could not be written to `SEVDESK_AUDIT_LOG`                                                                                                                                                                                      |
+
+Their request lines show the routes as `/uploads/*` and `/files/*`. Upload and download ids and
+file names are never logged; the reference code connects a log line with the page, the tool result
+and the audit log.
+
 ### Health and shutdown
 
 `GET /healthz` answers `{"status":"ok"}` without authentication and without the Host check, for
 platform health checks. On SIGTERM the server answers 503 there, gives running requests 10 seconds,
-then writes the grant store and releases the lock.
+then deletes the files of uploads and download links, writes the grant store and releases the
+lock.
 
 ## Troubleshooting
 
@@ -595,6 +729,31 @@ clients could then choose their own IP address.
 off for the server: Caddy `flush_interval -1` (the compose template does), nginx
 `proxy_buffering off`.
 
+**Uploads fail behind a proxy.** The upload page answers in the server's own words; anything else
+comes from the proxy.
+
+- "Size missing" (411): the proxy forwarded the upload without `Content-Length` (chunked). Let it
+  pass the browser's `Content-Length` on, or buffer request bodies: nginx does by default
+  (`proxy_request_buffering on`); Caddy passes it on unchanged.
+- A 413 page of the proxy, not the server's "File too large": the proxy's body limit is below the
+  server's (a little over 20 MB). nginx: `client_max_body_size 25m;` (default 1 MB). Caddy has no
+  limit unless you set one.
+- A timeout on large files over a slow connection: the body must arrive within 90 seconds.
+
+**A link from the chat shows the sign-in form.** The browser has no session of that account: it
+is not the browser you consented in (the Claude apps may open links in their own browser), the 12
+hours are over, you signed out, or it is signed in to another account. Sign in with the account's
+sevDesk API token on that form; it brings you back to the page.
+
+**"Upload page not found" or "File not found".** The link is unknown, belongs to another sevDesk
+account, or the server restarted since (a restart voids every upload and link). "Expired" and
+"used up" mean what they say. Ask the model for a new upload link or to create the file again.
+
+**"No space for the file" (507), or the model reports that the limit is reached.** The account's
+uploads and links fill its half of `SEVDESK_HTTP_FILES_MAX_MB`, or 10 of them are alive. Wait until
+older ones expire (`SEVDESK_HTTP_FILES_TTL`), or raise the limit. "Server busy" (503) means two
+other uploads are arriving right now; try again in a moment.
+
 **The model says the client cannot be asked for confirmation.** The client has no form
 elicitation over HTTP (claude.ai at the time of writing). Set `SEVDESK_CONFIRM=browser` and use the
 [approval inbox](#the-approval-inbox).
@@ -602,7 +761,7 @@ elicitation over HTTP (claude.ai at the time of writing). Set `SEVDESK_CONFIRM=b
 **The consent page refuses the account or the client.** It names the account id or the client host;
 add it to `SEVDESK_OAUTH_ACCOUNTS` or `SEVDESK_OAUTH_CLIENTS` and restart, if you mean to allow it.
 Removing an entry and restarting also revokes the existing grants of that account or client at
-their next use, and ends the account's inbox sessions.
+their next use, and ends the account's browser sessions.
 
 **The consent page says there are too many connections.** The grant store is full. `grants list`
 shows the grants; revoke the ones nobody uses.
@@ -643,14 +802,18 @@ deployment.
 ## Limits
 
 - **One instance** per state directory; no horizontal scaling ([One instance](#one-instance)).
-- **A restart voids pending approvals and confirmations.** The model asks again. Grants survive
-  with a state directory; without one, a restart signs every client out.
+- **A restart voids pending approvals and confirmations, and every upload and download link.** The
+  model asks again. Grants and browser sessions survive with a state directory (and, in bearer
+  mode, `SEVDESK_HTTP_SECRET`); without one, a restart signs every client out.
 - **At most 500 grants** in all: beyond that, new consents are refused until grants are revoked
   or expire. Each account also has a smaller limit of live grants: a new consent beyond it revokes
   the account's oldest grant (reason `superseded`), so one account cannot fill the store. Revoked
-  grants stay listed for 7 days. **At most 1,000 inbox sessions**: beyond that the oldest one
+  grants stay listed for 7 days. **At most 1,000 browser sessions**: beyond that the oldest one
   ends.
-- **No local files in OAuth mode** (`SEVDESK_FILE_DIRS`, `SEVDESK_OUTPUT_DIR`).
+- **Files only through the browser in OAuth mode.** No server folders (`SEVDESK_FILE_DIRS`,
+  `SEVDESK_OUTPUT_DIR`); receipts are uploaded and files downloaded on the server's pages, which
+  need a browser session of the account, and live at most `SEVDESK_HTTP_FILES_TTL`
+  ([Files](#files-uploads-and-download-links)). One upload is at most 20 MB.
 - **Clients without Client ID Metadata Documents** cannot use OAuth mode; bearer mode works for
   them.
 - **No hosted instance.** You are the operator of what you deploy.

@@ -4,10 +4,11 @@ This document explains how `mcp-server-sevdesk` is built and why. It is for cont
 anyone who wants to judge whether the server is safe to point at their books. The reasoning behind
 the bigger decisions is in the [architecture decision records](adr/README.md).
 
-> **Status.** The project is in early development. This page describes the v1 design as built
-> through milestone M5. Milestones: M1 core (0.1.0), M2 read coverage (0.2.0), M3 document
-> lifecycle (0.3.0), M4 receipt and e-invoice intake, voucher writes, reconciliation and tax
-> reports (0.4.0), M5 remote HTTP (0.5.0), M6 launch (1.0.0).
+> **Status.** This page describes version 1.0, built through milestones M1 core, M2 read
+> coverage, M3 document lifecycle, M4 receipt and e-invoice intake, voucher writes, reconciliation
+> and tax reports, M5 remote HTTP, and M6 launch (the Claude Desktop extension, prompts, local
+> profiles and the OS keychain, remote file transfer and the generic read). What 1.0 keeps stable
+> is defined in [compatibility.md](compatibility.md).
 
 ## Goals
 
@@ -44,7 +45,12 @@ Each layer only calls the one to its right.
   envelope, string scalars, date formats, error bodies, pacing. It knows nothing about MCP. It could
   later become its own SDK package.
 - **`src/safety/`** is used by all layers: tiers, redaction of the API token, fencing of untrusted
-  text, confirmations, dry-run, the audit log and confined reading of local files.
+  text, confirmations, dry-run, the audit log, the OS keychain, and the file access tools read
+  and deliver files through (local folders, or uploads and download links over HTTP).
+
+Two smaller parts sit beside the tools: **`src/prompts/`** renders the MCP prompts from the
+registered tools ([Prompts](#prompts)), and **`src/resources/`** serves document files and
+reference data as MCP resources.
 
 In HTTP mode two more parts sit in front of the tools. **`src/http/`** turns an HTTP request into
 an authenticated request (hardening, bearer or OAuth), and **`src/accounts/`** turns that into an
@@ -54,40 +60,46 @@ sevDesk call is the identity lookup (`GET /SevClient`) at consent, refresh and i
 
 ## Module map
 
-| Path                             | Responsibility                                                                                                                                                                                                                                                      |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/index.ts`                   | Entry (`mcp-server-sevdesk`): runs what `cli.ts` parsed: the stdio server, the HTTP server, or an operator command. stdout belongs to the transport.                                                                                                                |
-| `src/cli.ts`                     | Command line: `--stdio`, `--http`, `grants list`/`revoke`, `generate-secret`, `account-id`, `healthcheck`; anything unknown is a usage error (exit 2).                                                                                                              |
-| `src/server.ts`                  | Server factory: builds the MCP server for an account context with the tools of its tiers, the resources and generated `instructions` (under 1,500 characters); tools and instructions are cached per tier set.                                                      |
-| `src/config.ts`                  | Configuration from the environment: settings shared by all accounts (tiers, toolsets, confirmation, folders, pacing) and the per-account `Config` (token, account, deployment). One account per process over stdio and in bearer mode; one per grant in OAuth mode. |
-| `src/accounts/`                  | Account contexts: the resolver (one fixed context, or a frozen `Config` and client per OAuth account, cached) and the sevDesk identity lookup (`GET /SevClient`).                                                                                                   |
-| `src/sevdesk/client.ts`          | HTTP client: raw-token `Authorization` header, User-Agent, pacing, timeouts, cancellation, write gate, GET-only retries, error classification.                                                                                                                      |
-| `src/sevdesk/envelope.ts`        | Unwraps `{objects: …}`, including on writes and PDFs, and array-of-one GET-by-id results.                                                                                                                                                                           |
-| `src/sevdesk/schema.ts`          | Lenient zod building blocks for responses (ids, amounts and booleans as strings or numbers).                                                                                                                                                                        |
-| `src/sevdesk/dates.ts`           | Per-endpoint date serializers (`dd.mm.yyyy`, Unix seconds, ISO), anchored to Europe/Berlin.                                                                                                                                                                         |
-| `src/sevdesk/errors.ts`          | Error body → typed error; spots validation errors that arrive as HTTP 500; trusted, actionable messages.                                                                                                                                                            |
-| `src/sevdesk/system-version.ts`  | Detects bookkeeping system 1.0 vs 2.0 per account and per object.                                                                                                                                                                                                   |
-| `src/sevdesk/paths.ts`           | Validates every request path and id before it is sent.                                                                                                                                                                                                              |
-| `src/sevdesk/pacing.ts`          | Token-bucket pacing (about 4 requests per second) and an in-flight cap.                                                                                                                                                                                             |
-| `src/domain/`                    | DTOs and logic per area: contacts, users, reference data, money, invoices, credit notes, orders, vouchers, banking, reports, lifecycle, drafts.                                                                                                                     |
-| `src/domain/einvoice/`           | Local XRechnung (UBL, CII) and ZUGFeRD/Factur-X parser (EN 16931 subset, business-rule checks), voucher suggestions, outgoing preflight.                                                                                                                            |
-| `src/domain/reconciliation/`     | Transaction log reader, the pure match scorer (amount, document number, counterparty, splits), allocation planning and over-booking guards.                                                                                                                         |
-| `src/domain/reports/`            | Server-side aggregates: summaries, aging, cash position, changes, the VAT summary (UStVA boxes with sources, ZM, OSS) and the EÜR-style P&L.                                                                                                                        |
-| `src/domain/exports/`            | DATEV export job (start, progress, presigned download) and sevDesk CSV exports.                                                                                                                                                                                     |
-| `src/sevdesk/export-download.ts` | The only request outside the API base URL: the DATEV ZIP from sevDesk's export bucket (one https host, no credentials, no redirects, capped).                                                                                                                       |
-| `src/tools/define-tool.ts`       | `defineTool(...)`: name, title, toolset, tier, all four annotations, input and output schemas, handler.                                                                                                                                                             |
-| `src/tools/registry.ts`          | Picks the tools for a configuration and wraps every call (tier re-check, validation, output check, error mapping).                                                                                                                                                  |
-| `src/tools/<toolset>/`           | The tools of one toolset, for example `contacts/`, `meta/`.                                                                                                                                                                                                         |
-| `src/safety/`                    | Tiers, redaction, untrusted-text fencing, confirmation (elicitation; the approval store, the local approval page and shared page rendering), dry-run previews, the audit log, confined file reading, web helpers (CSP, cookies, CSRF).                              |
-| `src/http/`                      | Streamable HTTP: the `node:http` bridge, router and hardening (Host, Origin, rate limits, body caps, timeouts), request logs, bearer auth, the MCP route, server keys and sealed tokens, the inbox session and the approval inbox.                                  |
-| `src/http/oauth/`                | The OAuth 2.1 authorization server: metadata, `/authorize` and the consent page, `/token`, `/revoke`, the access-token verifier, CIMD fetching with its SSRF guard, redirect matching, the grant store.                                                             |
-| `src/grants-cli.ts`              | `grants list` and `grants revoke` against the grant store in `SEVDESK_HTTP_STATE_DIR`.                                                                                                                                                                              |
-| `spec/`                          | Reference snapshot of the upstream OpenAPI spec and the [deviations register](../spec/deviations.md).                                                                                                                                                               |
-| `scripts/`                       | Spec-drift check, package and HTTP smoke tests, tool-doc generator, fixture recorder, API probes, e-invoice fixture generator.                                                                                                                                      |
-| `Dockerfile`                     | The image: built on the build platform, run on distroless Node.js as uid 65532 with `--http`, state in `/data`, a health check via `healthcheck`.                                                                                                                   |
-| `deploy/`                        | Deploy templates: Docker Compose with Caddy, Fly.io, Render, Railway ([remote.md](remote.md#deployment)).                                                                                                                                                           |
-| `test/`                          | Unit, contract, regression, integration and (opt-in) live tests; tool-selection evals; fixtures with provenance.                                                                                                                                                    |
-| `plugin/`, `.claude-plugin/`     | Claude Code plugin (starts this server, bookkeeping skill with cited references) and the repository's plugin marketplace.                                                                                                                                           |
+| Path                                      | Responsibility                                                                                                                                                                                                                                                                                                                                                                         |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/index.ts`                            | Entry (`mcp-server-sevdesk`): runs what `cli.ts` parsed: the stdio server, the HTTP server, or an operator command. stdout belongs to the transport.                                                                                                                                                                                                                                   |
+| `src/cli.ts`                              | Command line: `--stdio`, `--http`, `grants list`/`revoke`, `generate-secret`, `account-id`, `healthcheck`, `token set`/`check`/`delete`, `profiles list`; anything unknown is a usage error (exit 2).                                                                                                                                                                                  |
+| `src/server.ts`                           | Server factory: builds the MCP server for an account context with the tools of its tiers, the prompts that fit them, the resources and generated `instructions` (under 1,500 characters); tools, prompts and instructions are cached per tier set.                                                                                                                                     |
+| `src/config.ts`                           | Configuration from the environment: settings shared by all accounts (tiers, toolsets, confirmation, folders, pacing) and the per-account `Config` (token, account, deployment). One account per process over stdio and in bearer mode; one per grant in OAuth mode.                                                                                                                    |
+| `src/accounts/`                           | Account contexts: the resolver (one fixed context, or a frozen `Config` and client per OAuth account, cached) and the sevDesk identity lookup (`GET /SevClient`). Over stdio also the local configuration: `profiles.ts` (the profiles file, its trust checks and the overlay onto the environment) and `local-config.ts` (profile, keychain lookup, then `loadConfig`).               |
+| `src/token-cli.ts`, `src/profiles-cli.ts` | `token set`/`check`/`delete` (the token in the OS keychain, checked with sevDesk before it is stored) and `profiles list`.                                                                                                                                                                                                                                                             |
+| `src/prompts/`                            | The MCP prompts: `catalog.ts` (the workflows, trusted text; each step names its tools) and `index.ts` (selection, planning per configuration, rendering, registration).                                                                                                                                                                                                                |
+| `src/sevdesk/client.ts`                   | HTTP client: raw-token `Authorization` header, User-Agent, pacing, timeouts, cancellation, write gate, GET-only retries, error classification.                                                                                                                                                                                                                                         |
+| `src/sevdesk/envelope.ts`                 | Unwraps `{objects: …}`, including on writes and PDFs, and array-of-one GET-by-id results.                                                                                                                                                                                                                                                                                              |
+| `src/sevdesk/schema.ts`                   | Lenient zod building blocks for responses (ids, amounts and booleans as strings or numbers).                                                                                                                                                                                                                                                                                           |
+| `src/sevdesk/dates.ts`                    | Per-endpoint date serializers (`dd.mm.yyyy`, Unix seconds, ISO), anchored to Europe/Berlin.                                                                                                                                                                                                                                                                                            |
+| `src/sevdesk/errors.ts`                   | Error body → typed error; spots validation errors that arrive as HTTP 500; trusted, actionable messages.                                                                                                                                                                                                                                                                               |
+| `src/sevdesk/system-version.ts`           | Detects bookkeeping system 1.0 vs 2.0 per account and per object.                                                                                                                                                                                                                                                                                                                      |
+| `src/sevdesk/paths.ts`                    | Validates every request path and id before it is sent; knows the minimum tier of every endpoint and which GETs have side effects; `genericGetRefusal` decides what `sevdesk_api_get` may read.                                                                                                                                                                                         |
+| `src/sevdesk/pacing.ts`                   | Token-bucket pacing (about 4 requests per second) and an in-flight cap.                                                                                                                                                                                                                                                                                                                |
+| `src/domain/`                             | DTOs and logic per area: contacts, users, reference data, money, invoices, credit notes, orders, vouchers, banking, reports, lifecycle, drafts.                                                                                                                                                                                                                                        |
+| `src/domain/einvoice/`                    | Local XRechnung (UBL, CII) and ZUGFeRD/Factur-X parser (EN 16931 subset, business-rule checks), voucher suggestions, outgoing preflight.                                                                                                                                                                                                                                               |
+| `src/domain/reconciliation/`              | Transaction log reader, the pure match scorer (amount, document number, counterparty, splits), allocation planning and over-booking guards.                                                                                                                                                                                                                                            |
+| `src/domain/reports/`                     | Server-side aggregates: summaries, aging, cash position, changes, the VAT summary (UStVA boxes with sources, ZM, OSS) and the EÜR-style P&L.                                                                                                                                                                                                                                           |
+| `src/domain/exports/`                     | DATEV export job (start, progress, presigned download) and sevDesk CSV exports.                                                                                                                                                                                                                                                                                                        |
+| `src/domain/api-get.ts`                   | The generic read behind `sevdesk_api_get`: refusal rules, a read-only client, a capped download, the response envelope, cleaning of untrusted and binary content, the output cap.                                                                                                                                                                                                      |
+| `src/sevdesk/export-download.ts`          | The only request outside the API base URL: the DATEV ZIP from sevDesk's export bucket (one https host, no credentials, no redirects, capped).                                                                                                                                                                                                                                          |
+| `src/tools/define-tool.ts`                | `defineTool(...)`: name, title, toolset, tier, all four annotations, input and output schemas, handler.                                                                                                                                                                                                                                                                                |
+| `src/tools/registry.ts`                   | Picks the tools for a configuration and wraps every call (tier re-check, validation, output check, error mapping).                                                                                                                                                                                                                                                                     |
+| `src/tools/<toolset>/`                    | The tools of one toolset, for example `contacts/`, `meta/`; `advanced/` holds `sevdesk_api_get`.                                                                                                                                                                                                                                                                                       |
+| `src/resources/`                          | MCP resources: document files (`sevdesk://invoices/{id}/pdf`, …) and reference data (`sevdesk://reference/…`).                                                                                                                                                                                                                                                                         |
+| `src/safety/`                             | Tiers, redaction, untrusted-text fencing, confirmation (elicitation; the approval store, the local approval page and shared page rendering), dry-run previews, the audit log, confined file reading, the OS keychain (`keychain.ts`), web helpers (CSP, cookies, CSRF).                                                                                                                |
+| `src/safety/` (files)                     | How tools get and hand out files ([Files](#files)): `file-access.ts` (the `FileAccess` contract, `upload:<id>` references), `file-sources.ts` (local folders, or uploads and download links), `transfer-types.ts` and `transfer-store.ts` (upload tickets and download links per account, limits, lifetimes), `blob-store.ts` (encrypted file bytes in memory or the state directory). |
+| `src/http/`                               | Streamable HTTP: the `node:http` bridge, router and hardening (Host, Origin, rate limits, body caps, timeouts), request logs, bearer auth, the MCP route, server keys and sealed tokens, browser sessions (`browser-session.ts`), the approval inbox, and the upload and download pages (`transfer-routes.ts`, `transfer-pages.ts`).                                                   |
+| `src/http/oauth/`                         | The OAuth 2.1 authorization server: metadata, `/authorize` and the consent page, `/token`, `/revoke`, the access-token verifier, CIMD fetching with its SSRF guard, redirect matching, the grant store.                                                                                                                                                                                |
+| `src/grants-cli.ts`                       | `grants list` and `grants revoke` against the grant store in `SEVDESK_HTTP_STATE_DIR`.                                                                                                                                                                                                                                                                                                 |
+| `spec/`                                   | Reference snapshot of the upstream OpenAPI spec and the [deviations register](../spec/deviations.md).                                                                                                                                                                                                                                                                                  |
+| `scripts/`                                | Spec-drift check, package and HTTP smoke tests, tool-doc generator, fixture recorder, API probes, e-invoice fixture generator, the `.mcpb` build.                                                                                                                                                                                                                                      |
+| `Dockerfile`                              | The image: built on the build platform, run on distroless Node.js as uid 65532 with `--http`, state in `/data`, a health check via `healthcheck`.                                                                                                                                                                                                                                      |
+| `mcpb/`, `tsdown.mcpb.config.ts`          | The Claude Desktop extension: its manifest (settings mapped to `SEVDESK_*` variables), icon and bundle build ([Builds](#builds)).                                                                                                                                                                                                                                                      |
+| `deploy/`                                 | Deploy templates: Docker Compose with Caddy, Fly.io, Render, Railway ([remote.md](remote.md#deployment)).                                                                                                                                                                                                                                                                              |
+| `test/`                                   | Unit, contract, regression, integration and (opt-in) live tests; tool-selection evals; fixtures with provenance.                                                                                                                                                                                                                                                                       |
+| `plugin/`, `.claude-plugin/`              | Claude Code plugin (starts this server, bookkeeping skill with cited references) and the repository's plugin marketplace.                                                                                                                                                                                                                                                              |
 
 ## Lifecycle of a tool call
 
@@ -130,9 +142,10 @@ flowchart LR
 6. **Result.** The domain returns a compact DTO: money as exact decimals with currency, ISO dates,
    deep links into the sevDesk web app, and untrusted text fenced. The tool always returns the DTO
    as a JSON text block. It adds `outputSchema` and `structuredContent` only on protocol version
-   2026-07-28 or later, or when `SEVDESK_STRUCTURED_OUTPUT=1`, because some clients mishandle
+   2026-07-28 or later, or when `SEVDESK_STRUCTURED_OUTPUT=on`, because some clients mishandle
    structured output. Truncated lists say how many items were left out. Files (PDF, XML, exports)
-   are returned as resources or written to `SEVDESK_OUTPUT_DIR`, never as base64 text.
+   are returned as resources, written to `SEVDESK_OUTPUT_DIR` or, over HTTP, handed out as
+   download links ([Files](#files)), never as base64 text.
 7. **Errors** become `isError` results with trusted, actionable text. sevDesk's own error wording
    appears only fenced.
 
@@ -145,7 +158,7 @@ Every tool has exactly one tier. Reads and writes never share a tool.
 | `read`     | list, get, search, reports, PDF preview (with `preventSendBy`)                                               | on      |
 | `write`    | contacts, parts, draft invoices, vouchers and offers, the DATEV export (reversible or harmless)              | off     |
 | `commit`   | finalize, book payment, reconcile, cancel, enshrine, reset, delete a voucher draft (binding or irreversible) | off     |
-| `external` | send by email or letter (reaches third parties)                                                              | off     |
+| `external` | send by email (reaches third parties)                                                                        | off     |
 
 **Switches.** `SEVDESK_ALLOW=read,write,commit,external` chooses the tiers. `SEVDESK_READ_ONLY=1`
 overrides everything else. `SEVDESK_DRY_RUN=1`, or `dryRun` on a single call, runs the tool's
@@ -229,8 +242,8 @@ warns that it is irreversible (GoBD).
 
 **Write integrity.** Duplicate check before creating (number, amount, date, description). No
 retries for writes. Read back after every write. Optional JSONL audit log via `SEVDESK_AUDIT_LOG`
-(`src/safety/audit.ts`: one line per event, mode 0600, token redacted; no `executing` line, no
-request). A multi-step write that fails half-way reports the records it already changed
+(`src/safety/audit.ts`: one line per event, each starting with `ts` and the format version `v`,
+mode 0600, token redacted; no `executing` line, no request). A multi-step write that fails half-way reports the records it already changed
 (`SevdeskError.completedWrites`), in the error text and the audit log. Document drafts validate
 tax rule × rate against the reference tax rules before any API call; booking accounts against
 ReceiptGuidance (`src/domain/receipt-guidance.ts`): voucher drafts and finalizing check every
@@ -243,21 +256,70 @@ e-invoice fields can be written by third parties and may carry prompt injection.
 of invisible and bidi characters, fenced in output, and never interpolated into error messages or
 instructions.
 
-**Local files.** Tools read local files only from `SEVDESK_FILE_DIRS`
-(`src/safety/local-files.ts`: real paths, no symlink escapes, `O_NOFOLLOW` plus an inode check,
-content sniffing, size caps) and write only into `SEVDESK_OUTPUT_DIR` (exclusive creation, mode
-0600, never overwriting). Every such tool declares `localEffects` and is on a reviewed list in the
-metadata lint. E-invoice XML is parsed without entity expansion or DOCTYPEs, with size and depth
-limits.
+**Files.** Tools never touch the file system or the transfer store directly; every byte they read
+or hand out passes the `FileAccess` of their context ([Files](#files)). Every tool that reads or
+writes files declares `localEffects` and is on a reviewed list in the metadata lint. E-invoice XML
+is parsed without entity expansion or DOCTYPEs, with size and depth limits.
+
+**Generic read.** `sevdesk_api_get` (toolset `advanced`, off by default) lets the model choose a
+GET path, so it has four independent guards: the configured token anywhere in the URL is refused;
+`genericGetRefusal` (`paths.ts`) refuses state-changing, file, export, report and number endpoints
+and dangerous query keys before anything is sent; the read-only client and the HTTP client refuse
+every side-effect GET that `resolveGetSafety` recognizes. The answer is read with a 1 MiB cap,
+must be a JSON envelope, and is cleaned as untrusted text (binary content and `sevClient` echoes
+removed) and capped at about 100 KB (`src/domain/api-get.ts`).
 
 **Token.** The sevDesk API token has full account access, no scopes and no expiry. Over stdio it is
 read from the environment, a `*_FILE` or, optionally, the OS keychain, and checked at startup with
-`GET /Tools/bookkeepingSystemVersion`. In bearer mode it comes from the environment or a `*_FILE`,
+`GET /Tools/bookkeepingSystemVersion`. Over stdio, `SEVDESK_PROFILE` first overlays a named profile
+from a local JSON file onto the same variables before they are validated
+(`src/accounts/local-config.ts`, [ADR 0009](adr/0009-local-profiles-and-os-keychain.md)); the
+keychain is read through the operating system's helpers (`/usr/bin/security` on macOS,
+`secret-tool` on Linux) under the fixed service `mcp-server-sevdesk`, so configuration names only
+a label. In bearer mode it comes from the environment or a `*_FILE`,
 and the server looks up its account (`GET /SevClient`) at startup; a failed lookup is logged as a
 warning and does not stop the server (approvals and audit lines then use the account scope
 `bearer`). In OAuth mode each user pastes it on the consent page; it is checked with
 `GET /SevClient`, sealed into that user's tokens and checked again on every refresh. It is redacted
 everywhere, and a 401 is final. The threat model is in [SECURITY.md](../SECURITY.md).
+
+## Files
+
+Tools get file bytes and hand files out through a `FileAccess` (`src/safety/file-access.ts`) that
+the registry builds for every call from the configuration and the request's principal. There are
+two implementations (`src/safety/file-sources.ts`):
+
+- **Local** (stdio, and HTTP with file transfer off): reads only inside `SEVDESK_FILE_DIRS`
+  (`src/safety/local-files.ts`: real paths, no symlink escapes, `O_NOFOLLOW` plus an inode check,
+  content sniffing, size caps); deliveries are new files in `SEVDESK_OUTPUT_DIR` (exclusive
+  creation, mode 0600, never overwriting).
+- **Remote** (HTTP with `SEVDESK_HTTP_FILES`, on by default): a file argument may be an
+  `upload:<id>` reference from `sevdesk_upload_request`, for which the human uploads the file on
+  a page of the server; deliveries become short-lived download links. Both pages need a browser
+  session of the record's account (`src/http/browser-session.ts`, shared with the approval
+  inbox), so a link the model passes on is not a capability. The records live in
+  `src/safety/transfer-store.ts` (per grant and account, with limits per account and overall, and
+  nothing ever evicted); the bytes live in `src/safety/blob-store.ts`, encrypted with a key drawn
+  per process, in memory or in the state directory, and gone after a restart. The pages are
+  `src/http/transfer-routes.ts` and `transfer-pages.ts`. Bearer mode can still use local folders,
+  and `SEVDESK_OUTPUT_DIR`, when set, wins over download links.
+
+The model never sees or sends file bytes, and it cannot put text on the upload page. Operator
+details, limits and lifetimes are in [remote.md](remote.md#files-uploads-and-download-links); the
+decisions are in [ADR 0008](adr/0008-file-transfer-over-http.md).
+
+## Prompts
+
+`src/prompts/` holds the MCP prompts: `catalog.ts` (the workflows, trusted text; every step
+declares the tools it names) and `index.ts` (selection, planning, rendering, registration). For
+each configuration, `planPrompts` keeps the prompts whose required tools are registered, shows the
+steps whose tools are registered, and turns the others into "needs <setting>" lines derived from
+the missing tools' tier, toolset and availability, worded for the deployment (stdio, bearer or
+OAuth). The plan is part of the surface cached per tier set, like the tools and the instructions.
+Handlers only render text and never call sevDesk; arguments are pattern-checked by the SDK
+(invalid ones answer InvalidParams) and shown only fenced. A lint
+(`test/integration/prompts-list.test.ts`) renders every prompt in many configurations and both
+protocol eras and checks that every tool a prompt names is in that configuration's `tools/list`.
 
 ## sevDesk API realities that shaped the design
 
@@ -352,17 +414,37 @@ flowchart LR
 
 **Routes.**
 
-| Route                                                                                             | What                                                 | Access                                        |
-| ------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------- |
-| `POST /mcp`                                                                                       | MCP (Streamable HTTP, stateless)                     | bearer secret or OAuth access token           |
-| `GET /healthz`                                                                                    | `{"status":"ok"}`, 503 while shutting down           | open, no Host check                           |
-| `GET /.well-known/oauth-protected-resource[/mcp]`, `/.well-known/oauth-authorization-server`      | OAuth metadata (404 in bearer mode)                  | open, CORS `*`                                |
-| `GET`/`POST /authorize`                                                                           | consent page                                         | CSRF cookie and token, same-origin POSTs      |
-| `POST /token`, `POST /revoke`                                                                     | code and refresh exchange, revocation (RFC 7009)     | PKCE, the tokens themselves                   |
-| `GET /approvals`, `GET`/`POST /approvals/<id>`, `POST /approvals/login`, `POST /approvals/logout` | approval inbox (only with `SEVDESK_CONFIRM=browser`) | session cookie, CSRF token, same-origin POSTs |
+| Route                                                                                        | What                                                 | Access                                        |
+| -------------------------------------------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------------- |
+| `POST /mcp`                                                                                  | MCP (Streamable HTTP, stateless)                     | bearer secret or OAuth access token           |
+| `GET /healthz`                                                                               | `{"status":"ok"}`, 503 while shutting down           | open, no Host check                           |
+| `GET /.well-known/oauth-protected-resource[/mcp]`, `/.well-known/oauth-authorization-server` | OAuth metadata (404 in bearer mode)                  | open, CORS `*`                                |
+| `GET`/`POST /authorize`                                                                      | consent page                                         | CSRF cookie and token, same-origin POSTs      |
+| `POST /token`, `POST /revoke`                                                                | code and refresh exchange, revocation (RFC 7009)     | PKCE, the tokens themselves                   |
+| `GET /approvals`, `GET`/`POST /approvals/<id>`                                               | approval inbox (only with `SEVDESK_CONFIRM=browser`) | session cookie, CSRF token, same-origin POSTs |
+| `POST /approvals/login`, `POST /approvals/logout`                                            | browser sign-in (with the inbox or file transfer)    | sevDesk token, CSRF token, same-origin POSTs  |
+| `GET`/`POST /uploads/<id>`                                                                   | upload page of an upload request (file transfer)     | session of the record's account, CSRF token   |
+| `GET /files/<id>`                                                                            | download link (file transfer), attachment only       | session of the record's account               |
 
 **Shutdown.** On SIGTERM `/healthz` answers 503, running requests get 10 seconds, then the grant
 store is written and its lock released.
+
+## Builds
+
+The same source ships in three forms; no code path is specific to one of them.
+
+- **npm** (`tsdown.config.ts` → `dist/`): the package `mcp-server-sevdesk`, dependencies installed
+  by npm. `npx -y mcp-server-sevdesk` runs it over stdio.
+- **Container image** (`Dockerfile`): `dist/` with production dependencies on distroless Node.js,
+  `--http` by default, `--stdio` on request.
+- **Claude Desktop extension** (`pnpm mcpb`: `tsdown.mcpb.config.ts`, `scripts/build-mcpb.ts`):
+  everything bundled into one file, `server/index.mjs`, that imports only Node.js built-ins, plus
+  `mcpb/manifest.json`, the icon, the license and the notices of every bundled package. The
+  manifest maps Claude Desktop's settings to the same `SEVDESK_*` variables, its tool list is
+  generated from the tool definitions, and every optional setting has a default, because Claude
+  Desktop would pass an empty one as the literal `${user_config.…}`. The build validates and packs
+  the bundle, then starts the unpacked server the way Claude Desktop does. CI builds it on every
+  pull request; a release attaches it to the GitHub release with a provenance attestation.
 
 ## Testing
 
