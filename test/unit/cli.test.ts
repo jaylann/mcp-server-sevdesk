@@ -43,9 +43,9 @@ describe("parseArgs", () => {
   });
 
   it("refuses unknown and malformed input", () => {
-    expect(parseArgs(["--htttp"])).toMatchObject({
+    expect(parseArgs(["--http2"])).toMatchObject({
       kind: "usage-error",
-      message: "Unknown argument: --htttp",
+      message: "Unknown argument: --http2",
     });
     expect(parseArgs(["--http", "extra"])).toMatchObject({ kind: "usage-error" });
     expect(parseArgs(["grants"])).toMatchObject({ kind: "usage-error" });

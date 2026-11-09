@@ -1,7 +1,7 @@
 /**
  * Command-line parsing for `mcp-server-sevdesk`. Hand-written (no dependency): a few commands and
  * flags, unknown input is a usage error (exit code 2) instead of being ignored, so a typo such as
- * `--htttp` cannot silently start the stdio server.
+ * `--http2` cannot silently start the stdio server.
  */
 import { PACKAGE_NAME, VERSION } from "./version.js";
 
