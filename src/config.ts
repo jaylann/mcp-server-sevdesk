@@ -321,7 +321,7 @@ function readConfirm(env: Env, problems: string[]): ConfirmMode {
   return mode;
 }
 
-export function readFlag(env: Env, name: string, problems: string[], fallback = false): boolean {
+function readFlag(env: Env, name: string, problems: string[], fallback = false): boolean {
   const raw = nonEmpty(env[name])?.toLowerCase();
   if (raw === undefined) return fallback;
   if (["1", "true", "yes", "on"].includes(raw)) return true;
@@ -347,7 +347,7 @@ export function readEnum<T extends string>(
   return match;
 }
 
-export function readNumber(
+function readNumber(
   env: Env,
   name: string,
   fallback: number,
@@ -386,7 +386,7 @@ function readPathList(raw: string | undefined): string[] {
  * A {@link readPathList} whose entries must be absolute: a relative entry would depend on the
  * client's working directory, which the user rarely knows.
  */
-export function readAbsolutePaths(env: Env, name: string, problems: string[]): string[] {
+function readAbsolutePaths(env: Env, name: string, problems: string[]): string[] {
   const paths = readPathList(env[name]);
   const relative = paths.filter((path) => !isAbsolute(path));
   if (relative.length > 0) {

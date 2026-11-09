@@ -11,7 +11,7 @@
 import { createHmac, hkdfSync, randomBytes } from "node:crypto";
 
 /** Every purpose a key is derived for. `seal:<type>` keys encrypt tokens (`seal.ts`). */
-export const KEY_PURPOSES = [
+const KEY_PURPOSES = [
   "seal:ac",
   "seal:at",
   "seal:rt",
@@ -22,6 +22,7 @@ export const KEY_PURPOSES = [
   "kid",
 ] as const;
 
+/** @public */
 export type KeyPurpose = (typeof KEY_PURPOSES)[number];
 
 /** Shortest accepted secret, after decoding. */

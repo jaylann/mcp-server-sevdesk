@@ -18,8 +18,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { type KeySet, KID_BYTES, type ServerKeys } from "./keys.js";
 
 /** What a sealed token is: code, access, refresh, session cookie, consent state. */
-export const SEAL_TYPES = ["ac", "at", "rt", "ss", "cs"] as const;
-export type SealType = (typeof SEAL_TYPES)[number];
+export type SealType = "ac" | "at" | "rt" | "ss" | "cs";
 
 const VERSION = 0x01;
 const NONCE_BYTES = 12;

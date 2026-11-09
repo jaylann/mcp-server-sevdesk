@@ -89,10 +89,7 @@ export interface HttpRequestContext {
 }
 
 /** Answers a request, or `undefined` to let the router answer 404. */
-export type RouteHandler = (
-  request: Request,
-  ctx: HttpRequestContext,
-) => Promise<Response | undefined>;
+type RouteHandler = (request: Request, ctx: HttpRequestContext) => Promise<Response | undefined>;
 
 /**
  * Which `Origin` a route accepts:
