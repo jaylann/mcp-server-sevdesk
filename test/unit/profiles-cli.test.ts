@@ -66,7 +66,7 @@ describe("profiles list", () => {
     expect(await list({})).toEqual({
       code: 0,
       out:
-        `No profiles file at ${path}. Create one (see the README, Profiles), or set ` +
+        `No profiles file at ${path}. Create one (see Profiles in docs/configuration.md), or set ` +
         "SEVDESK_PROFILES_PATH to yours.\n",
       err: "",
     });

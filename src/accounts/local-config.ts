@@ -96,7 +96,7 @@ async function selectProfile(env: Env, name: string, deps: LocalConfigDeps): Pro
   if (file === undefined) {
     throw new ConfigError([
       `SEVDESK_PROFILE is set to "${name}", but there is no profiles file at ${location.path}. ` +
-        "Create it (see the README, Profiles), or set SEVDESK_PROFILES_PATH to yours.",
+        "Create it (see Profiles in docs/configuration.md), or set SEVDESK_PROFILES_PATH to yours.",
     ]);
   }
   const profile = file.profiles.get(name);

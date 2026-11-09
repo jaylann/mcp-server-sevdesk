@@ -189,7 +189,7 @@ describe("SEVDESK_PROFILE", () => {
   it("explains a missing file, an unknown profile and a bad name", async () => {
     expect(await problemsOf({ SEVDESK_PROFILE: "work", SEVDESK_PROFILES_PATH: path })).toEqual([
       `SEVDESK_PROFILE is set to "work", but there is no profiles file at ${path}. Create it (see ` +
-        "the README, Profiles), or set SEVDESK_PROFILES_PATH to yours.",
+        "Profiles in docs/configuration.md), or set SEVDESK_PROFILES_PATH to yours.",
     ]);
 
     await write({ home: {}, demo: {} });

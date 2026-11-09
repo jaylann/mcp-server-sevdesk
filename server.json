@@ -60,6 +60,13 @@
           "isSecret": false
         },
         {
+          "name": "SEVDESK_AUDIT_LOG",
+          "description": "Path of a local JSON Lines file that records every write the server makes (redacted). Unset: no audit log.",
+          "format": "filepath",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
           "name": "SEVDESK_TOOLSETS",
           "description": "Comma-separated toolsets to load, e.g. invoices,vouchers,banking. Unset loads all except advanced; all adds advanced.",
           "format": "string",
@@ -134,6 +141,13 @@
           "description": "How a human confirms commit and external actions: elicit (in the client) or off (also needs SEVDESK_I_UNDERSTAND_NO_CONFIRM=1). The browser mode's local approval page is not reachable from outside the container.",
           "format": "string",
           "default": "elicit",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SEVDESK_AUDIT_LOG",
+          "description": "Path inside the container (on a mounted, writable volume) of a JSON Lines file that records every write the server makes (redacted). Unset: no audit log.",
+          "format": "filepath",
           "isRequired": false,
           "isSecret": false
         },
