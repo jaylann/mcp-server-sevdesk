@@ -104,7 +104,7 @@ describe("htmlResponse", () => {
     );
     expect(response.headers.get("x-frame-options")).toBe("DENY");
     expect(response.headers.get("referrer-policy")).toBe("same-origin");
-    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("cache-control")).toBe("no-store, no-transform");
     expect(response.headers.get("cross-origin-opener-policy")).toBe("same-origin");
   });
 

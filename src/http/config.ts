@@ -723,6 +723,9 @@ function readBearerTokens(
   return problems.length > before ? [] : values;
 }
 
+/** Below this access-token lifetime, startup warns (clients refresh 5 minutes early). */
+const SHORT_ACCESS_TTL_SECONDS = 10 * 60;
+
 function readOAuthSettings(
   env: Env,
   problems: string[],
@@ -732,6 +735,12 @@ function readOAuthSettings(
   const accounts = readAccounts(env, problems, warnings);
   const clients = readClients(env, problems, warnings);
   const accessTtlSeconds = readTtl(env, "SEVDESK_OAUTH_ACCESS_TTL", problems);
+  if (accessTtlSeconds < SHORT_ACCESS_TTL_SECONDS) {
+    warnings.push(
+      "SEVDESK_OAUTH_ACCESS_TTL is under 10 minutes. Clients refresh up to 5 minutes before an " +
+        "access token expires (Claude does), so they would refresh on nearly every request.",
+    );
+  }
   const refreshIdleTtlSeconds = readTtl(env, "SEVDESK_OAUTH_REFRESH_IDLE_TTL", problems);
   const grantTtlSeconds = readTtl(env, "SEVDESK_OAUTH_GRANT_TTL", problems);
   if (problems.length > before || accounts === undefined) return undefined;

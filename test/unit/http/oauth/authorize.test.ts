@@ -83,7 +83,7 @@ describe("GET /authorize", () => {
     expect(csp).toContain("default-src 'none'");
     expect(headers.get("x-frame-options")).toBe("DENY");
     expect(headers.get("cross-origin-opener-policy")).toBeNull();
-    expect(headers.get("cache-control")).toBe("no-store");
+    expect(headers.get("cache-control")).toBe("no-store, no-transform");
     const [cookie] = headers.getSetCookie();
     expect(cookie).toMatch(
       /^__Host-sevdesk_csrf=[A-Za-z0-9_-]{43}; Path=\/; Max-Age=600; HttpOnly; SameSite=Strict; Secure$/,
@@ -283,7 +283,7 @@ describe("POST /authorize", () => {
     expect(target.searchParams.get("code")).toMatch(/^sdmcp_ac_[A-Za-z0-9_-]+$/);
     expect(target.searchParams.get("state")).toBe("state-123");
     expect(target.searchParams.get("iss")).toBe(ORIGIN);
-    expect(connected.response.headers.get("cache-control")).toBe("no-store");
+    expect(connected.response.headers.get("cache-control")).toBe("no-store, no-transform");
     expect(connected.response.headers.get("referrer-policy")).toBe("no-referrer");
     const cookies = connected.response.headers.getSetCookie();
     expect(cookies[0]).toMatch(/^__Host-sevdesk_csrf=; Path=\/; Max-Age=0;/);

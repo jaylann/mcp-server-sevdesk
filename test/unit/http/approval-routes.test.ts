@@ -206,7 +206,7 @@ describe("approval inbox routes", () => {
       );
       expect(page.headers.get("cross-origin-opener-policy")).toBe("same-origin");
       expect(page.headers.get("x-frame-options")).toBe("DENY");
-      expect(page.headers.get("cache-control")).toBe("no-store");
+      expect(page.headers.get("cache-control")).toBe("no-store, no-transform");
     }
     expect(env.login).not.toHaveBeenCalled();
   });

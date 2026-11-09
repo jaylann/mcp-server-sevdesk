@@ -55,7 +55,7 @@ const VERIFIER_PATTERN = /^[A-Za-z0-9._~-]{43,128}$/;
 const IDENTITY_TIMEOUT_MS = 5_000;
 
 const JSON_HEADERS: Readonly<Record<string, string>> = {
-  "Cache-Control": "no-store",
+  "Cache-Control": "no-store, no-transform",
   Pragma: "no-cache",
   "Access-Control-Allow-Origin": "*",
 };

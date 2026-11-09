@@ -87,7 +87,7 @@ describe("grants list", () => {
     expect(lines).toHaveLength(4);
     expect(lines[3]).toContain(a.gid);
     expect(lines[3]).toMatch(
-      /4711\s+claude\.ai\s+read,write\s+active\s+2026-11-09 12:00\s+2027-02-07 12:00\s+2026-11-09 12:01$/,
+      /4711\s+claude\.ai\/oauth\/mcp-oauth-client-metadata\s+read,write\s+active\s+2026-11-09 12:00\s+2027-02-07 12:00\s+2026-11-09 12:01$/,
     );
     expect(lines.find((line) => line.includes(c.gid))).toMatch(/expired/);
   });

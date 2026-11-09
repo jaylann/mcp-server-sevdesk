@@ -335,7 +335,7 @@ flowchart LR
    deadline, the route's `Origin` policy (`/mcp`: the SDK's validator, which compares host names
    against the allowed origins; there is no CORS, so web pages on other origins cannot call `/mcp`;
    HTML forms: same-origin POSTs only, never `Origin: null`), and security headers on every response
-   (`nosniff`, `no-store`, a referrer policy, HSTS on https). One JSON log line per request,
+   (`nosniff`, `no-store, no-transform`, a referrer policy, HSTS on https). One JSON log line per request,
    redacted (`log.ts`).
 4. **Auth.** Bearer: `bearer.ts`. OAuth: the SDK's `requireBearerAuth` with our verifier, which
    opens the access token, checks type, issuer, expiry and audience, looks the grant up in the

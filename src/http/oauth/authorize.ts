@@ -174,7 +174,7 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
           state,
           iss: options.issuer,
         }),
-        "Cache-Control": "no-store",
+        "Cache-Control": "no-store, no-transform",
         "Referrer-Policy": "no-referrer",
       },
     });
@@ -488,7 +488,7 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
     });
     const headers = new Headers({
       Location: withQuery(payload.ruri, { code, state: payload.st, iss: options.issuer }),
-      "Cache-Control": "no-store",
+      "Cache-Control": "no-store, no-transform",
       "Referrer-Policy": "no-referrer",
     });
     headers.append("Set-Cookie", clearCookie(cookieName, { secure, sameSite: "Strict" }));

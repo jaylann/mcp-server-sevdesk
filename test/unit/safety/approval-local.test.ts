@@ -167,7 +167,7 @@ describe("local approval page", () => {
     expect(page.body).toContain(`<style nonce="${/'nonce-([^']+)'/.exec(csp)?.[1] ?? ""}">`);
     expect(page.headers["x-frame-options"]).toBe("DENY");
     expect(page.headers["x-content-type-options"]).toBe("nosniff");
-    expect(page.headers["cache-control"]).toBe("no-store");
+    expect(page.headers["cache-control"]).toBe("no-store, no-transform");
     expect(page.headers["referrer-policy"]).toBe("same-origin");
     expect(page.headers["cross-origin-opener-policy"]).toBe("same-origin");
     expect(page.headers["cross-origin-resource-policy"]).toBe("same-origin");

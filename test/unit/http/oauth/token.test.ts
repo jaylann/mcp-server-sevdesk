@@ -44,7 +44,7 @@ async function json(response: Response): Promise<Record<string, unknown>> {
 
 async function expectError(response: Response, error: string, status = 400): Promise<void> {
   expect(response.status).toBe(status);
-  expect(response.headers.get("cache-control")).toBe("no-store");
+  expect(response.headers.get("cache-control")).toBe("no-store, no-transform");
   expect((await json(response))["error"]).toBe(error);
 }
 
@@ -84,7 +84,7 @@ describe("POST /token: authorization_code", () => {
       resource: RESOURCE,
     });
     expect(response.status).toBe(200);
-    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("cache-control")).toBe("no-store, no-transform");
     expect(response.headers.get("pragma")).toBe("no-cache");
     expect(response.headers.get("access-control-allow-origin")).toBe("*");
     const body = await json(response);

@@ -270,6 +270,17 @@ describe("loadHttpConfig: oauth mode", () => {
     expect(loaded.http.oauth?.clients).toEqual(["claude.ai", "example.org"]);
   });
 
+  it("warns about access tokens shorter than the clients' early-refresh window", () => {
+    const short = load({ ...OAUTH_ENV, SEVDESK_OAUTH_ACCESS_TTL: "5m" });
+    expect(short.warnings).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("SEVDESK_OAUTH_ACCESS_TTL is under 10 minutes"),
+      ]),
+    );
+    const normal = load({ ...OAUTH_ENV, SEVDESK_OAUTH_ACCESS_TTL: "10m" });
+    expect(normal.warnings.join("\n")).not.toContain("SEVDESK_OAUTH_ACCESS_TTL");
+  });
+
   it("parses the token lifetimes and enforces their bounds", () => {
     const loaded = load({
       ...OAUTH_ENV,

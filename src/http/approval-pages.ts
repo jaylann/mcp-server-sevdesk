@@ -117,6 +117,10 @@ export function messageResponse(
 export function redirectResponse(location: string, cookie: string): Response {
   return new Response(null, {
     status: 303,
-    headers: { Location: location, "Set-Cookie": cookie, "Cache-Control": "no-store" },
+    headers: {
+      Location: location,
+      "Set-Cookie": cookie,
+      "Cache-Control": "no-store, no-transform",
+    },
   });
 }

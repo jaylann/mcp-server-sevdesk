@@ -55,7 +55,7 @@ export function revokeRoute(options: RevokeOptions): HttpRoute {
       return new Response(null, {
         status: 200,
         headers: {
-          "Cache-Control": "no-store",
+          "Cache-Control": "no-store, no-transform",
           Pragma: "no-cache",
           "Access-Control-Allow-Origin": "*",
         },

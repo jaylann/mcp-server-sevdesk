@@ -157,7 +157,7 @@ other origins cannot call it), and form POSTs must come from the server's own pa
 is refused). Bodies are capped per route and must arrive within a short time, requests have
 deadlines, rate limits apply per client address (IPv6 per /64 network), and the number of requests
 in flight is capped in a way that one client cannot use up for everyone. Responses carry `nosniff`,
-`no-store`, a referrer policy and, on https, HSTS. URLs the server prints or redirects to are built
+`no-store, no-transform` (so proxies do not rewrite pages), a referrer policy and, on https, HSTS. URLs the server prints or redirects to are built
 from the configured public URL, never from request headers. `SEVDESK_HTTP_TRUST_PROXY` must match
 the real number of proxies in front: a higher value lets clients choose the IP address the rate
 limits see. Plain http is only accepted for a loopback public URL; keep such a setup to quick local

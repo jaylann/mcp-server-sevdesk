@@ -114,7 +114,7 @@ function list(store: GrantStore, json: boolean, nowMs: number, io: GrantsCommand
   const rows = grants.map((grant) => [
     grant.gid,
     grant.accountId,
-    grant.clientHost,
+    clientLabel(grant),
     grant.tiers.join(","),
     statusOf(grant, nowSeconds),
     time(grant.createdAt),
@@ -166,4 +166,17 @@ async function revoke(
           "signed out on their next request.\n",
   );
   return 0;
+}
+
+/**
+ * The client as `host/path` of its CIMD `client_id` (claude.ai and Claude Code share the host
+ * `claude.ai` and differ only in the path), or the host when the id is not a URL.
+ */
+function clientLabel(grant: GrantRecord): string {
+  try {
+    const url = new URL(grant.clientId);
+    return `${url.host}${url.pathname}`;
+  } catch {
+    return grant.clientHost;
+  }
 }

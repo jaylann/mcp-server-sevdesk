@@ -182,7 +182,7 @@ export function originHostnames(origins: readonly string[]): string[] {
 
 /**
  * Copies `response` with the headers every response gets: `X-Content-Type-Options: nosniff`,
- * `Cache-Control: no-store` and `Referrer-Policy: no-referrer` unless the route set its own, and
+ * `Cache-Control: no-store, no-transform` and `Referrer-Policy: no-referrer` unless the route set its own, and
  * HSTS when the server is reached over https. Always a new `Response` (the headers of
  * `Response.redirect()` are immutable); `body` replaces the original body stream when given.
  */
@@ -192,7 +192,7 @@ export function withSecurityHeaders(
 ): Response {
   const headers = new Headers(response.headers);
   headers.set("X-Content-Type-Options", "nosniff");
-  if (!headers.has("Cache-Control")) headers.set("Cache-Control", "no-store");
+  if (!headers.has("Cache-Control")) headers.set("Cache-Control", "no-store, no-transform");
   if (!headers.has("Referrer-Policy")) headers.set("Referrer-Policy", "no-referrer");
   if (options.https) headers.set("Strict-Transport-Security", HSTS_VALUE);
   return new Response(options.body === undefined ? response.body : options.body, {

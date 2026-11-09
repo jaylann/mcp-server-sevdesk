@@ -146,7 +146,9 @@ export function htmlResponse(html: string, options: HtmlResponseOptions): Respon
     // Not `no-referrer`: under it browsers send `Origin: null` with form POSTs, which
     // sameOriginPost must refuse. `same-origin` keeps the page's URL from other sites.
     "Referrer-Policy": "same-origin",
-    "Cache-Control": "no-store",
+    // no-transform: proxies must not rewrite the page (Cloudflare, for example, replaces e-mail
+    // addresses in HTML with a script-based link unless told not to).
+    "Cache-Control": "no-store, no-transform",
     "Cross-Origin-Resource-Policy": "same-origin",
   });
   if (options.isolateOpener ?? true) headers.set("Cross-Origin-Opener-Policy", "same-origin");
