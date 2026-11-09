@@ -5,7 +5,7 @@
  *
  * Without a state directory everything lives in memory (a restart signs every client out). With
  * `SEVDESK_HTTP_STATE_DIR` it persists as an append-only `grants.jsonl` (mode 0600, never
- * through a symlink):
+ * through a symlink; the directory is kept at 0700):
  * - one JSON event per line: `grant` (create, also the compacted snapshot), `activate`, `rotate`,
  *   `revoke`, `session`, `session_revoke`; applying an event is idempotent and monotonic
  *   (status only advances, generations only grow, revocation is final), so the server can read
@@ -13,21 +13,29 @@
  * - the server and the `grants revoke` command both append with `O_APPEND`; the server reads
  *   bytes appended by others before every `/token` request and at most once a second otherwise
  *   ({@link GrantStore.sync});
- * - at startup the server compacts the file (one snapshot line per live record, expired and long
- *   revoked records pruned) and replaces it atomically; a `grants` command that appended to the
- *   old file meanwhile notices the replaced inode and appends again;
- * - a heartbeat lock file (`grants.lock`, refreshed every 10 s, stale after 30 s) refuses a second
- *   live server on the same directory without blocking a restart after a crash;
+ * - the server compacts the file (one snapshot line per live record, expired and long revoked
+ *   records pruned) at startup, and while running once 1 MiB was appended or a day passed. It
+ *   writes a new file and renames it over the old one, then carries over whatever was appended to
+ *   the old file meanwhile; a `grants` command that appended to the old file notices the replaced
+ *   inode and appends again. The startup load streams, so a large file of mostly dead lines is
+ *   compacted rather than refused;
+ * - a lock file (`grants.lock`, created exclusively, its modification time refreshed every 10 s,
+ *   stale after 30 s) refuses a second live server without blocking a restart after a crash. A
+ *   stale lock is moved aside with an atomic rename, so of two racing starters only one wins. A
+ *   server that finds its lock taken stops trusting its state: every further call throws
+ *   {@link StateDirError} and `onFatal` asks the process to exit (the platform restarts it);
  * - a corrupt file refuses startup (only a torn last line, from a crash mid-write, is skipped).
  *
- * Caps: 500 grants (a new consent is refused beyond that until grants are revoked or expire) and
- * 1,000 sessions (the oldest session is ended).
+ * Caps: 500 grants (a new consent is refused beyond that until grants are revoked or expire), 20
+ * live grants per account (a new consent revokes the account's oldest one, reason `superseded`)
+ * and 1,000 sessions (the oldest session is ended).
  */
 import { randomBytes } from "node:crypto";
 import {
   chmod,
   constants,
   type FileHandle,
+  link,
   lstat,
   mkdir,
   open,
@@ -35,6 +43,7 @@ import {
   rename,
   stat,
   unlink,
+  utimes,
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
@@ -50,8 +59,13 @@ export const LOCK_FILE = "grants.lock";
 /** How long the previous refresh generation stays usable after a rotation. */
 const REFRESH_GRACE_SECONDS = 30;
 const MAX_GRANTS = 500;
+const MAX_GRANTS_PER_ACCOUNT = 20;
 const MAX_SESSIONS = 1_000;
 const SYNC_INTERVAL_MS = 1_000;
+/** Compact while running once this much was appended since the last compaction … */
+const COMPACT_BYTES = 1024 * 1024;
+/** … or once this long has passed. */
+const COMPACT_INTERVAL_MS = 86_400_000;
 const HEARTBEAT_MS = 10_000;
 const STALE_LOCK_MS = 30_000;
 /** A pending grant whose code was never exchanged is dropped after this long. */
@@ -59,10 +73,15 @@ const PENDING_TTL_SECONDS = 600;
 /** Revoked grants stay listed this long (for `grants list`), then are pruned. */
 const REVOKED_RETENTION_SECONDS = 7 * 86_400;
 const FORMAT_VERSION = 1;
-const MAX_FILE_BYTES = 64 * 1024 * 1024;
+/** Longest line accepted when loading (real events are a few hundred bytes). */
+const MAX_LINE_BYTES = 64 * 1024;
+const READ_CHUNK_BYTES = 64 * 1024;
 const NO_FOLLOW = constants.O_NOFOLLOW;
 
-/** The state directory cannot be used; startup is refused. Trusted text. */
+/**
+ * The state directory cannot be used: startup is refused, or (after the lock was lost) every
+ * further call of the store throws it. Trusted text.
+ */
 export class StateDirError extends Error {
   constructor(message: string) {
     super(message);
@@ -170,7 +189,22 @@ export interface GrantStoreOptions {
   /** Lock heartbeat interval; 0 turns the timer off (tests). */
   readonly heartbeatMs?: number;
   readonly maxGrants?: number;
+  /**
+   * Live (pending or active) grants one account may hold (default 20). A new consent beyond it
+   * revokes the account's oldest grant (reason `superseded`), so one account cannot fill the
+   * global cap.
+   */
+  readonly maxGrantsPerAccount?: number;
   readonly maxSessions?: number;
+  /** Compact while running after this many appended bytes (default 1 MiB) … */
+  readonly compactBytes?: number;
+  /** … or after this long (default 24 h). */
+  readonly compactIntervalMs?: number;
+  /**
+   * Called once when the store can no longer be trusted (another server took its state directory
+   * lock). The store then refuses every call; the process should exit so it is restarted.
+   */
+  readonly onFatal?: (error: StateDirError) => void;
 }
 
 function newId(): string {
@@ -200,17 +234,24 @@ class Store implements GrantStore {
   readonly #dir: string | undefined;
   readonly #role: "server" | "cli";
   readonly #maxGrants: number;
+  readonly #maxGrantsPerAccount: number;
   readonly #maxSessions: number;
   readonly #heartbeatMs: number;
+  readonly #compactBytes: number;
+  readonly #compactIntervalMs: number;
+  readonly #onFatal: ((error: StateDirError) => void) | undefined;
   readonly #grants = new Map<string, GrantState>();
   readonly #sessions = new Map<string, SessionState>();
   #handle: FileHandle | undefined;
   #offset = 0;
   #partial: Buffer = Buffer.alloc(0);
+  #compactedSize = 0;
+  #compactedAt = 0;
   #lastSync = Number.NEGATIVE_INFINITY;
   #syncing: Promise<void> | undefined;
   #writes: Promise<unknown> = Promise.resolve();
   #lock: Lock | undefined;
+  #failed: StateDirError | undefined;
   #closed = false;
 
   constructor(options: GrantStoreOptions) {
@@ -219,40 +260,70 @@ class Store implements GrantStore {
     this.#dir = options.stateDir;
     this.#role = options.role ?? "server";
     this.#maxGrants = options.maxGrants ?? MAX_GRANTS;
+    this.#maxGrantsPerAccount = options.maxGrantsPerAccount ?? MAX_GRANTS_PER_ACCOUNT;
     this.#maxSessions = options.maxSessions ?? MAX_SESSIONS;
     this.#heartbeatMs = options.heartbeatMs ?? HEARTBEAT_MS;
+    this.#compactBytes = options.compactBytes ?? COMPACT_BYTES;
+    this.#compactIntervalMs = options.compactIntervalMs ?? COMPACT_INTERVAL_MS;
+    this.#onFatal = options.onFatal;
   }
 
   #seconds(): number {
     return Math.floor(this.#now() / 1000);
   }
 
+  /** Throws once the store can no longer be trusted (its lock was lost). */
+  #usable(): void {
+    if (this.#failed !== undefined) throw this.#failed;
+  }
+
+  #fail(error: StateDirError): void {
+    if (this.#failed !== undefined) return;
+    this.#failed = error;
+    this.#log?.warn("state_lock_lost", {});
+    try {
+      this.#onFatal?.(error);
+    } catch {
+      // The callback's failure must not keep the store usable.
+    }
+  }
+
   async open(): Promise<void> {
     const dir = this.#dir;
     if (dir === undefined) return;
     if (this.#role === "cli") {
-      const data = await readIfExists(join(dir, GRANTS_FILE));
-      if (data !== undefined) this.#load(data, true);
+      let handle: FileHandle;
+      try {
+        handle = await open(join(dir, GRANTS_FILE), constants.O_RDONLY | NO_FOLLOW);
+      } catch (error) {
+        if (errorCode(error) === "ENOENT") return;
+        throw new StateDirError(
+          `Cannot read ${join(dir, GRANTS_FILE)} (it must be a regular file, not a symlink).`,
+        );
+      }
+      try {
+        await this.#loadFile(handle, true);
+      } finally {
+        await handle.close();
+      }
       return;
     }
-    try {
-      await mkdir(dir, { recursive: true, mode: 0o700 });
-    } catch {
-      throw new StateDirError(`SEVDESK_HTTP_STATE_DIR: cannot create ${dir}.`);
-    }
+    await prepareDirectory(dir, this.#log);
     this.#lock = await acquireLock(dir, this.#now, this.#log);
     try {
-      await this.#compact(dir);
+      await this.#compactAtStart(dir);
     } catch (error) {
       await this.#lock.release();
       this.#lock = undefined;
       throw error;
     }
-    this.#lock.startHeartbeat(this.#heartbeatMs);
+    this.#lock.startHeartbeat(this.#heartbeatMs, (error) => {
+      this.#fail(error);
+    });
   }
 
-  /** Replays the file, writes the live records to a new file and swaps it in. */
-  async #compact(dir: string): Promise<void> {
+  /** Streams the file in, then swaps in a compacted copy. */
+  async #compactAtStart(dir: string): Promise<void> {
     const path = join(dir, GRANTS_FILE);
     await checkRegularFile(path);
     let previous: FileHandle | undefined;
@@ -264,40 +335,76 @@ class Store implements GrantStore {
       }
     }
     try {
-      const data = previous === undefined ? Buffer.alloc(0) : await previous.readFile();
-      if (data.length > MAX_FILE_BYTES) {
-        throw new StateDirError(`${path} is larger than 64 MiB; it is not a grant store.`);
-      }
-      this.#load(data, true);
-      this.#prune(this.#seconds(), false);
-      const snapshot = this.#snapshot();
-      const temporary = `${path}.${newId()}.tmp`;
-      const output = await open(
-        temporary,
-        constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | NO_FOLLOW,
-        0o600,
-      );
-      try {
-        await output.writeFile(snapshot);
-        await output.sync();
-      } finally {
-        await output.close();
-      }
-      await rename(temporary, path);
-      // A `grants` command may have appended to the old file after it was read: carry it over.
-      const tail = previous === undefined ? Buffer.alloc(0) : await readFrom(previous, data.length);
-      this.#handle = await open(
-        path,
-        constants.O_RDWR | constants.O_APPEND | constants.O_CREAT | NO_FOLLOW,
-        0o600,
-      );
-      if (tail.length > 0) {
-        this.#applyText(tail, false);
-        await this.#handle.write(tail);
-      }
-      this.#offset = (await this.#handle.stat()).size;
+      const end = previous === undefined ? 0 : await this.#loadFile(previous, true);
+      await this.#swap(dir, previous, end);
     } finally {
       await previous?.close();
+    }
+  }
+
+  /**
+   * Writes the live records to a new file and renames it over `grants.jsonl`, then carries over
+   * what was appended to the old file (`previous`) after `readEnd` (a `grants` command). Runs
+   * inside the write chain at runtime, so the server's own appends wait for it.
+   */
+  async #swap(dir: string, previous: FileHandle | undefined, readEnd: number): Promise<void> {
+    const path = join(dir, GRANTS_FILE);
+    this.#prune(this.#seconds(), false);
+    const snapshot = this.#snapshot();
+    const temporary = `${path}.${newId()}.tmp`;
+    const output = await open(
+      temporary,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | NO_FOLLOW,
+      0o600,
+    );
+    try {
+      await output.writeFile(snapshot);
+      await output.sync();
+    } finally {
+      await output.close();
+    }
+    await rename(temporary, path);
+    const tail = previous === undefined ? Buffer.alloc(0) : await readFrom(previous, readEnd);
+    // Only complete lines move over: a writer still in the middle of a line appended it to the
+    // old file and appends it again to the new one when it sees the replaced inode.
+    const complete = tail.subarray(0, tail.lastIndexOf(0x0a) + 1);
+    const handle = await open(
+      path,
+      constants.O_RDWR | constants.O_APPEND | constants.O_CREAT | NO_FOLLOW,
+      0o600,
+    );
+    if (complete.length > 0) await handle.write(complete);
+    this.#handle = handle;
+    // Everything after the snapshot (the carried lines, and whatever `grants` appended to the
+    // new file meanwhile) is read back like any other appended bytes.
+    this.#offset = Buffer.byteLength(snapshot);
+    this.#partial = Buffer.alloc(0);
+    await this.#readAppended();
+    this.#compactedSize = this.#offset;
+    this.#compactedAt = this.#now();
+  }
+
+  /** Compacts while running when enough was appended or a day passed (under the lock). */
+  async #maybeCompact(): Promise<void> {
+    const dir = this.#dir;
+    if (dir === undefined || this.#role !== "server" || this.#handle === undefined) return;
+    const grown = this.#offset - this.#compactedSize;
+    if (grown < this.#compactBytes && this.#now() - this.#compactedAt < this.#compactIntervalMs) {
+      return;
+    }
+    const run = this.#writes.then(async () => {
+      const old = this.#handle;
+      if (old === undefined || this.#closed || this.#failed !== undefined) return;
+      await this.#readAppended();
+      await this.#swap(dir, old, this.#offset - this.#partial.length);
+      await old.close();
+      this.#log?.info("grant_store_compacted", { bytes: this.#offset });
+    });
+    this.#writes = run.catch(() => undefined);
+    try {
+      await run;
+    } catch (error) {
+      this.#log?.warn("grant_store_compaction_failed", { code: errorCode(error) });
     }
   }
 
@@ -318,22 +425,49 @@ class Store implements GrantStore {
     return lines.map((line) => `${JSON.stringify(line)}\n`).join("");
   }
 
-  /** Applies a whole file. `strict`: a malformed line (other than a torn last one) throws. */
-  #load(data: Buffer, strict: boolean): void {
-    const text = data.toString("utf8");
-    const lines = text.split("\n");
-    const last = lines.pop() ?? "";
-    lines.forEach((line, index) => {
-      this.#applyLine(line, strict ? index + 1 : undefined);
-    });
-    if (last.trim() !== "") {
-      const event = parseEvent(last);
+  /**
+   * Applies a whole file, streaming it in chunks; returns the number of bytes read. `strict`: a
+   * malformed line (other than a torn last one) throws.
+   */
+  async #loadFile(handle: FileHandle, strict: boolean): Promise<number> {
+    let position = 0;
+    let lineNumber = 0;
+    let carry = Buffer.alloc(0);
+    for (;;) {
+      const buffer = Buffer.alloc(READ_CHUNK_BYTES);
+      const { bytesRead } = await handle.read(buffer, 0, READ_CHUNK_BYTES, position);
+      if (bytesRead === 0) break;
+      position += bytesRead;
+      const data =
+        carry.length === 0
+          ? buffer.subarray(0, bytesRead)
+          : Buffer.concat([carry, buffer.subarray(0, bytesRead)]);
+      let start = 0;
+      for (let end = data.indexOf(0x0a); end !== -1; end = data.indexOf(0x0a, start)) {
+        lineNumber += 1;
+        this.#applyLine(
+          data.subarray(start, end).toString("utf8"),
+          strict ? lineNumber : undefined,
+        );
+        start = end + 1;
+      }
+      carry = Buffer.from(data.subarray(start));
+      if (carry.length > MAX_LINE_BYTES) {
+        throw new StateDirError(
+          `${GRANTS_FILE} line ${String(lineNumber + 1)} is longer than 64 KiB; the file is not ` +
+            "a grant store. Restore it from a backup, or move it away to start without grants.",
+        );
+      }
+    }
+    if (carry.toString("utf8").trim() !== "") {
+      const event = parseEvent(carry.toString("utf8"));
       if (event === undefined) {
-        this.#log?.warn("grant_store_torn_line", { line: lines.length + 1 });
+        this.#log?.warn("grant_store_torn_line", { line: lineNumber + 1 });
       } else {
         this.#apply(event);
       }
     }
+    return position;
   }
 
   /** Applies complete lines of `chunk` (after any partial line kept from before). */
@@ -479,6 +613,7 @@ class Store implements GrantStore {
     const write =
       this.#role === "server"
         ? this.#writes.then(async () => {
+            this.#usable();
             await this.#handle?.write(line);
           })
         : this.#writes.then(() => appendFromCli(join(dir, GRANTS_FILE), line));
@@ -493,7 +628,23 @@ class Store implements GrantStore {
     readonly tiers: readonly Tier[];
     readonly ttlSeconds: number;
   }): Promise<GrantRecord> {
+    this.#usable();
     const now = this.#seconds();
+    const live = [...this.#grants.values()]
+      .filter(
+        (grant) =>
+          grant.accountId === input.accountId &&
+          grant.status !== "revoked" &&
+          grant.expiresAt > now,
+      )
+      .sort((a, b) => a.createdAt - b.createdAt);
+    for (const oldest of live.slice(0, Math.max(0, live.length - this.#maxGrantsPerAccount + 1))) {
+      await this.#revokeGrant(oldest, "superseded", now);
+      this.#log?.warn("grant_superseded", {
+        grant: oldest.gid.slice(0, 8),
+        account: oldest.accountId,
+      });
+    }
     if (this.#grants.size >= this.#maxGrants) this.#prune(now, true);
     if (this.#grants.size >= this.#maxGrants) throw new GrantLimitError();
     const grant: GrantState = {
@@ -516,6 +667,7 @@ class Store implements GrantStore {
   }
 
   async activate(gid: string, codeJti: string): Promise<"activated" | "replay" | "unknown"> {
+    this.#usable();
     const now = this.#seconds();
     const grant = this.#grants.get(gid);
     if (grant === undefined || grant.expiresAt <= now) return "unknown";
@@ -530,6 +682,7 @@ class Store implements GrantStore {
   }
 
   async rotate(gid: string, presentedGen: number): Promise<RotateResult> {
+    this.#usable();
     const now = this.#seconds();
     const grant = this.#grants.get(gid);
     if (grant === undefined || grant.status === "pending") return { ok: false, reason: "unknown" };
@@ -553,6 +706,7 @@ class Store implements GrantStore {
   }
 
   get(gid: string): GrantRecord | undefined {
+    this.#usable();
     const grant = this.#grants.get(gid);
     return grant === undefined ? undefined : snapshotGrant(grant);
   }
@@ -566,6 +720,7 @@ class Store implements GrantStore {
   }
 
   async revoke(gid: string, why: string): Promise<boolean> {
+    this.#usable();
     const grant = this.#grants.get(gid);
     if (grant === undefined) return false;
     await this.#revokeGrant(grant, why, this.#seconds());
@@ -573,6 +728,7 @@ class Store implements GrantStore {
   }
 
   async revokeAccount(accountIdToRevoke: string, why: string): Promise<number> {
+    this.#usable();
     const now = this.#seconds();
     let active = 0;
     for (const grant of [...this.#grants.values()]) {
@@ -589,12 +745,14 @@ class Store implements GrantStore {
   }
 
   list(): readonly GrantRecord[] {
+    this.#usable();
     return [...this.#grants.values()]
       .sort((a, b) => b.createdAt - a.createdAt || a.gid.localeCompare(b.gid))
       .map(snapshotGrant);
   }
 
   async sync(force = false): Promise<void> {
+    this.#usable();
     if (this.#handle === undefined || this.#closed) return;
     const now = this.#now();
     if (!force && now - this.#lastSync < SYNC_INTERVAL_MS) return;
@@ -604,10 +762,13 @@ class Store implements GrantStore {
       await this.#syncing;
       if (!force) return;
     }
-    this.#syncing ??= this.#readAppended().finally(() => {
-      this.#syncing = undefined;
-    });
+    this.#syncing ??= this.#readAppended()
+      .then(() => this.#maybeCompact())
+      .finally(() => {
+        this.#syncing = undefined;
+      });
     await this.#syncing;
+    this.#usable();
   }
 
   async #readAppended(): Promise<void> {
@@ -635,6 +796,7 @@ class Store implements GrantStore {
     readonly via: "consent" | "token";
     readonly ttlSeconds: number;
   }): Promise<SessionRecord> {
+    this.#usable();
     const now = this.#seconds();
     if (this.#sessions.size >= this.#maxSessions) this.#prune(now, false);
     while (this.#sessions.size >= this.#maxSessions) {
@@ -667,8 +829,9 @@ class Store implements GrantStore {
   }
 
   getSession(sid: string): SessionRecord | undefined {
+    this.#usable();
     // Picks up a `grants revoke` from another process for the next request.
-    void this.sync();
+    this.sync().catch(() => undefined);
     const now = this.#seconds();
     const session = this.#sessions.get(sid);
     if (session === undefined || session.revoked || session.expiresAt <= now) return undefined;
@@ -688,6 +851,7 @@ class Store implements GrantStore {
   }
 
   async revokeSession(sid: string): Promise<void> {
+    this.#usable();
     const session = this.#sessions.get(sid);
     if (session !== undefined) await this.#revokeSession(session, this.#seconds());
   }
@@ -695,7 +859,7 @@ class Store implements GrantStore {
   async close(): Promise<void> {
     if (this.#closed) return;
     this.#closed = true;
-    await this.#syncing;
+    await this.#syncing?.catch(() => undefined);
     await this.#writes;
     await this.#handle?.close();
     this.#handle = undefined;
@@ -761,6 +925,33 @@ function snapshotSession(session: SessionState): SessionRecord {
   });
 }
 
+/**
+ * Creates the state directory (0700) or tightens an existing one: group or other access to the
+ * directory would let other local users replace `grants.jsonl` between restarts.
+ */
+async function prepareDirectory(dir: string, log: HttpLog | undefined): Promise<void> {
+  try {
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+  } catch {
+    throw new StateDirError(`SEVDESK_HTTP_STATE_DIR: cannot create ${dir}.`);
+  }
+  const info = await stat(dir).catch(() => undefined);
+  if (info === undefined || !info.isDirectory()) {
+    throw new StateDirError(`SEVDESK_HTTP_STATE_DIR: ${dir} is not a directory.`);
+  }
+  if ((info.mode & 0o077) === 0) return;
+  try {
+    await chmod(dir, 0o700);
+  } catch {
+    throw new StateDirError(
+      `SEVDESK_HTTP_STATE_DIR: other users can access ${dir}, and its mode could not be ` +
+        `changed. Run \`chmod 700 ${dir}\` as its owner, or point the variable to a directory ` +
+        "owned by the user the server runs as.",
+    );
+  }
+  log?.warn("state_dir_mode_tightened", {});
+}
+
 /** Refuses a grants file that is a symlink or not a regular file; tightens its mode to 0600. */
 async function checkRegularFile(path: string): Promise<void> {
   let info;
@@ -773,7 +964,15 @@ async function checkRegularFile(path: string): Promise<void> {
   if (!info.isFile()) {
     throw new StateDirError(`${path} is not a regular file (a symlink or directory is refused).`);
   }
-  if ((info.mode & 0o077) !== 0) await chmod(path, 0o600);
+  if ((info.mode & 0o077) === 0) return;
+  try {
+    await chmod(path, 0o600);
+  } catch {
+    throw new StateDirError(
+      `Other users can read ${path}, and its mode could not be changed. Run ` +
+        `\`chmod 600 ${path}\` as its owner.`,
+    );
+  }
 }
 
 /** The bytes of `handle` from `position` to `end` (default: its end). */
@@ -781,7 +980,7 @@ async function readFrom(handle: FileHandle, position: number, end?: number): Pro
   const chunks: Buffer[] = [];
   let at = position;
   for (;;) {
-    const length = end === undefined ? 64 * 1024 : Math.min(64 * 1024, end - at);
+    const length = end === undefined ? READ_CHUNK_BYTES : Math.min(READ_CHUNK_BYTES, end - at);
     if (length <= 0) break;
     const buffer = Buffer.alloc(length);
     const { bytesRead } = await handle.read(buffer, 0, length, at);
@@ -790,21 +989,6 @@ async function readFrom(handle: FileHandle, position: number, end?: number): Pro
     at += bytesRead;
   }
   return Buffer.concat(chunks);
-}
-
-async function readIfExists(path: string): Promise<Buffer | undefined> {
-  let handle: FileHandle;
-  try {
-    handle = await open(path, constants.O_RDONLY | NO_FOLLOW);
-  } catch (error) {
-    if (errorCode(error) === "ENOENT") return undefined;
-    throw new StateDirError(`Cannot read ${path} (it must be a regular file, not a symlink).`);
-  }
-  try {
-    return await handle.readFile();
-  } finally {
-    await handle.close();
-  }
 }
 
 /**
@@ -832,81 +1016,110 @@ async function appendFromCli(path: string, line: string): Promise<void> {
 }
 
 interface Lock {
-  startHeartbeat(intervalMs: number): void;
+  /** Refreshes the lock every `intervalMs`; calls `onLost` once when another server took it. */
+  startHeartbeat(intervalMs: number, onLost: (error: StateDirError) => void): void;
   release(): Promise<void>;
 }
 
-const lockSchema = z.object({ pid: z.number(), token: z.string(), beat: z.number() });
+interface SeenLock {
+  readonly raw: string;
+  readonly mtimeMs: number;
+}
 
-async function readLock(path: string): Promise<z.infer<typeof lockSchema> | undefined> {
+async function inspectLock(path: string): Promise<SeenLock | undefined> {
   try {
-    const parsed = lockSchema.safeParse(JSON.parse(await readFile(path, "utf8")));
-    return parsed.success ? parsed.data : undefined;
+    const [raw, info] = await Promise.all([readFile(path, "utf8"), stat(path)]);
+    return { raw, mtimeMs: info.mtimeMs };
   } catch {
     return undefined;
   }
 }
 
-async function writeAtomic(path: string, data: string): Promise<void> {
-  const temporary = `${path}.${newId()}.tmp`;
-  await writeFile(temporary, data, { mode: 0o600, flag: "wx" });
-  await rename(temporary, path);
+function lockHeld(dir: string, ageMs: number): StateDirError {
+  return new StateDirError(
+    `Another mcp-server-sevdesk server uses ${dir} (its lock was refreshed ` +
+      `${String(Math.max(0, Math.round(ageMs / 1000)))} s ago). Only one server may run per ` +
+      "state directory: stop the other one, or wait 30 s if it crashed.",
+  );
 }
 
-/** Takes the state directory's lock, or refuses when another live server holds it. */
+/** Creates the lock file exclusively (`O_EXCL`); false when it exists. */
+async function createLock(path: string, content: string, now: () => number): Promise<boolean> {
+  try {
+    await writeFile(path, content, { flag: "wx", mode: 0o600 });
+  } catch (error) {
+    if (errorCode(error) === "EEXIST") return false;
+    throw new StateDirError(`SEVDESK_HTTP_STATE_DIR: cannot write ${path}.`);
+  }
+  const seconds = now() / 1000;
+  await utimes(path, seconds, seconds);
+  return true;
+}
+
+/**
+ * Takes the state directory's lock, or refuses when another live server holds it. The lock's
+ * content never changes (the heartbeat only refreshes its modification time), so a starter that
+ * moved a stale lock aside can tell whether it moved exactly the file it judged stale; if not,
+ * it puts the file back and refuses. Of two starters racing for a stale lock, only one wins.
+ */
 async function acquireLock(
   dir: string,
   now: () => number,
   log: HttpLog | undefined,
 ): Promise<Lock> {
   const path = join(dir, LOCK_FILE);
-  const token = newId();
-  const body = (): string => JSON.stringify({ pid: process.pid, token, beat: now() });
-  try {
-    await writeFile(path, body(), { flag: "wx", mode: 0o600 });
-  } catch (error) {
-    if (errorCode(error) !== "EEXIST") {
-      throw new StateDirError(`SEVDESK_HTTP_STATE_DIR: cannot write ${dir} (lock file).`);
+  const content = JSON.stringify({ pid: process.pid, token: newId(), started: now() });
+  let acquired = await createLock(path, content, now);
+  for (let attempt = 0; !acquired && attempt < 3; attempt += 1) {
+    const seen = await inspectLock(path);
+    if (seen === undefined) {
+      acquired = await createLock(path, content, now);
+      continue;
     }
-    const held = await readLock(path);
-    let beat = held?.beat;
-    if (beat === undefined) {
-      try {
-        beat = (await stat(path)).mtimeMs;
-      } catch {
-        beat = 0;
-      }
+    const age = now() - seen.mtimeMs;
+    if (age < STALE_LOCK_MS) throw lockHeld(dir, age);
+    const aside = `${path}.${newId()}.stale`;
+    try {
+      await rename(path, aside);
+    } catch {
+      continue;
     }
-    const age = now() - beat;
-    if (age < STALE_LOCK_MS) {
-      throw new StateDirError(
-        `Another mcp-server-sevdesk server uses ${dir} (its lock was refreshed ` +
-          `${String(Math.max(0, Math.round(age / 1000)))} s ago). Only one server may run per ` +
-          "state directory: stop the other one, or wait 30 s if it crashed.",
-      );
+    const moved = await inspectLock(aside);
+    if (moved?.raw !== seen.raw || now() - moved.mtimeMs < STALE_LOCK_MS) {
+      // Another starter (or the owner, awake again) got there first: give its lock back.
+      await link(aside, path).catch(() => undefined);
+      await unlink(aside).catch(() => undefined);
+      throw lockHeld(dir, 0);
     }
-    await writeAtomic(path, body());
+    await unlink(aside).catch(() => undefined);
     log?.warn("state_lock_taken_over", { ageSeconds: Math.round(age / 1000) });
+    acquired = await createLock(path, content, now);
+    if (!acquired) throw lockHeld(dir, 0);
   }
+  if (!acquired) throw lockHeld(dir, 0);
 
   let timer: NodeJS.Timeout | undefined;
   let lost = false;
-  const ours = async (): Promise<boolean> => (await readLock(path))?.token === token;
-  const beat = async (): Promise<void> => {
+  const ours = async (): Promise<boolean> => (await inspectLock(path))?.raw === content;
+  const beat = async (onLost: (error: StateDirError) => void): Promise<void> => {
     if (lost) return;
-    if (!(await ours())) {
-      lost = true;
-      clearInterval(timer);
-      log?.warn("state_lock_lost", {});
-      return;
-    }
-    await writeAtomic(path, body());
+    const seconds = now() / 1000;
+    await utimes(path, seconds, seconds).catch(() => undefined);
+    if (await ours()) return;
+    lost = true;
+    clearInterval(timer);
+    onLost(
+      new StateDirError(
+        `Another server took the lock of ${dir}; this server stopped using its grants. ` +
+          "Restart it after the other server stopped.",
+      ),
+    );
   };
   return {
-    startHeartbeat(intervalMs) {
+    startHeartbeat(intervalMs, onLost) {
       if (intervalMs <= 0) return;
       timer = setInterval(() => {
-        beat().catch(() => {
+        beat(onLost).catch(() => {
           log?.warn("state_lock_heartbeat_failed", {});
         });
       }, intervalMs);

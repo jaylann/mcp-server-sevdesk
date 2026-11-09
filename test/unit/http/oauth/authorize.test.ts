@@ -4,6 +4,7 @@ import { createServerKeys } from "../../../../src/http/keys.js";
 import { openGrantStore } from "../../../../src/http/oauth/grant-store.js";
 import { createOAuthModule } from "../../../../src/http/oauth/index.js";
 import { openConsent } from "../../../../src/http/oauth/tokens.js";
+import { createRateLimiter } from "../../../../src/http/rate-limit.js";
 import { SEALED_TOKEN_PATTERN } from "../../../../src/http/seal.js";
 import {
   ACCOUNT,
@@ -19,6 +20,7 @@ import {
   createTestRouter,
   DEAD_TOKEN,
   DEFAULT_OAUTH,
+  failingStore,
   fakeCimd,
   fakeClock,
   fakeIdentity,
@@ -593,5 +595,89 @@ describe("POST /authorize", () => {
     ).toBe(SEVDESK_TOKEN);
     expect(r.log.text()).not.toContain(SEVDESK_TOKEN);
     expect(r.log.text()).not.toMatch(new RegExp(SEALED_TOKEN_PATTERN.source));
+  });
+});
+
+describe("POST /authorize: abuse limits", () => {
+  it("connects once per checked consent state (no series of grants from one token check)", async () => {
+    const r = await rig();
+    const jar = new CookieJar();
+    const page = await openAuthorize(
+      r.fetch,
+      authorizeUrl({ code_challenge: await challenge() }),
+      jar,
+    );
+    const checked = await submitConsent(r.fetch, page.form!, jar, {
+      step: "check",
+      token: SEVDESK_TOKEN,
+    });
+    const cookie = jar.header();
+    const first = await submitConsent(r.fetch, checked.form!, jar, { step: "connect" });
+    expect(first.response.status).toBe(303);
+    // Replaying the same form with the same (kept) CSRF cookie is refused.
+    const replayJar = new CookieJar();
+    replayJar.store(new Response(null, { headers: { "Set-Cookie": cookie } }));
+    const again = await submitConsent(r.fetch, checked.form!, replayJar, { step: "connect" });
+    expect(again.response.status).toBe(400);
+    expect(again.html).toContain("This page was already used");
+    expect(r.module.store.list()).toHaveLength(1);
+    expect(r.identity.calls).toHaveLength(1);
+
+    // Used states are forgotten once they expired (fresh consents keep working).
+    r.clock.advance(601_000);
+    const next = await completeConsent(
+      r.fetch,
+      authorizeUrl({ code_challenge: await challenge() }),
+    );
+    expect(next.redirect.searchParams.get("code")).toBeTruthy();
+  });
+
+  it("limits token checks per IPv6 /64, not per address", async () => {
+    const r = await rig();
+    const jar = new CookieJar();
+    const page = await openAuthorize(
+      r.fetch,
+      authorizeUrl({ code_challenge: await challenge() }),
+      jar,
+    );
+    const limiter = createRateLimiter({ now: r.clock.now });
+    const statuses: number[] = [];
+    for (let index = 1; index <= 7; index += 1) {
+      const fromAddress = createTestRouter(r.module.routes, {
+        log: r.log,
+        context: {
+          clientIp: `2001:db8:1:2::${index.toString(16)}`,
+          limit: (rule, key) => limiter.take(rule, key).allowed,
+        },
+      });
+      const result = await submitConsent(fromAddress, page.form!, jar, {
+        step: "check",
+        token: DEAD_TOKEN,
+      });
+      statuses.push(result.response.status);
+    }
+    expect(statuses).toEqual([400, 400, 400, 400, 400, 429, 429]);
+    expect(r.identity.calls).toHaveLength(5);
+  });
+
+  it("answers 503 while the grant store cannot be trusted", async () => {
+    const failed = { on: false };
+    const store = await openGrantStore({ stateDir: undefined });
+    const r = await rig({ store: failingStore(store, failed) });
+    const jar = new CookieJar();
+    const page = await openAuthorize(
+      r.fetch,
+      authorizeUrl({ code_challenge: await challenge() }),
+      jar,
+    );
+    const checked = await submitConsent(r.fetch, page.form!, jar, {
+      step: "check",
+      token: SEVDESK_TOKEN,
+    });
+    failed.on = true;
+    const connected = await submitConsent(r.fetch, checked.form!, jar, { step: "connect" });
+    expect(connected.response.status).toBe(503);
+    expect(connected.html).toContain("The server is restarting");
+    await store.close();
   });
 });

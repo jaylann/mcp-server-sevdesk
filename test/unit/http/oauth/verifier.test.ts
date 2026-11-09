@@ -21,6 +21,8 @@ import {
   connectClaudeAi,
   createOAuthRig,
   createTestRouter,
+  DEFAULT_OAUTH,
+  failingStore,
   fakeClock,
   mcpRequest,
   type OAuthRig,
@@ -94,6 +96,7 @@ describe("OAuth authenticator", () => {
       issuer: ORIGIN,
       resource: RESOURCE,
       store: r.module.store,
+      oauth: DEFAULT_OAUTH,
       allowedTiers: new Set(["read", "write"]),
       now: r.clock.now,
       log: r.log,
@@ -245,5 +248,51 @@ describe("OAuth authenticator", () => {
       store.createSession({ accountId: "a1", via: "token", ttlSeconds: 60 }),
     ).resolves.toBeDefined();
     await store.close();
+  });
+});
+
+describe("OAuth authenticator: allowlists and store failures", () => {
+  function authenticatorWith(r: OAuthRig, oauth: typeof DEFAULT_OAUTH, store = r.module.store) {
+    return createOAuthAuthenticator({
+      keys: r.keys,
+      issuer: ORIGIN,
+      resource: RESOURCE,
+      store,
+      oauth,
+      allowedTiers: new Set(["read", "write", "commit"]),
+      now: r.clock.now,
+      log: r.log,
+    });
+  }
+
+  it("refuses and revokes a grant whose account or client host was removed from the allowlist", async () => {
+    const r = await rig();
+    const first = await connectClaudeAi(r);
+    const second = await connectClaudeAi(r);
+    const noAccount = authenticatorWith(r, { ...DEFAULT_OAUTH, accounts: ["99999"] });
+    expect(
+      await refused(await noAccount.authenticate(mcpRequest(first.access), testContext(r.log))),
+    ).toContain("no longer accepts");
+    const noClient = authenticatorWith(r, { ...DEFAULT_OAUTH, clients: ["Example.org"] });
+    await refused(await noClient.authenticate(mcpRequest(second.access), testContext(r.log)));
+    const reasons = r.module.store.list().map((grant) => grant.reason);
+    expect(reasons.sort()).toEqual(["account_removed", "client_removed"]);
+    expect(r.log.lines.filter((line) => line.event === "grant_revoked")).toHaveLength(2);
+    // Revoked for good: the original allowlists do not bring it back.
+    await refused(await authenticate(r, first.access));
+  });
+
+  it("answers 500 (not 401) while the grant store cannot be trusted, so clients keep their tokens", async () => {
+    const r = await rig();
+    const tokens = await connectClaudeAi(r);
+    const failed = { on: true };
+    const gate = authenticatorWith(r, DEFAULT_OAUTH, failingStore(r.module.store, failed));
+    const result = await gate.authenticate(mcpRequest(tokens.access), testContext(r.log));
+    expect(result).toBeInstanceOf(Response);
+    expect((result as Response).status).toBe(500);
+    failed.on = false;
+    expect(
+      await gate.authenticate(mcpRequest(tokens.access), testContext(r.log)),
+    ).not.toBeInstanceOf(Response);
   });
 });

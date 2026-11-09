@@ -1,10 +1,13 @@
 import {
   appendFile,
+  chmod,
   lstat,
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   rm,
+  stat,
   symlink,
   truncate,
   utimes,
@@ -347,21 +350,45 @@ describe("grant store lock", () => {
   it("takes over a stale lock after a crash", async () => {
     const clock = fakeClock();
     const log = captureLog();
-    await writeFile(
-      join(dir, LOCK_FILE),
-      JSON.stringify({ pid: 1, token: "dead", beat: clock.now() - 31_000 }),
-    );
+    const path = join(dir, LOCK_FILE);
+    await writeFile(path, JSON.stringify({ pid: 1, token: "dead", started: 0 }));
+    const old = new Date(clock.now() - 31_000);
+    await utimes(path, old, old);
     await server({ stateDir: dir, now: clock.now, log });
     expect(log.lines).toContainEqual({
       level: "warn",
       event: "state_lock_taken_over",
       fields: { ageSeconds: 31 },
     });
-    const lock = JSON.parse(await readFile(join(dir, LOCK_FILE), "utf8")) as { token: string };
+    const lock = JSON.parse(await readFile(path, "utf8")) as { token: string };
     expect(lock.token).not.toBe("dead");
+    // Nothing is left over from the takeover.
+    expect((await readdir(dir)).sort()).toEqual([GRANTS_FILE, LOCK_FILE]);
   });
 
-  it("judges an unreadable lock by its modification time", async () => {
+  it("lets exactly one of two racing starters take over a stale lock", async () => {
+    const path = join(dir, LOCK_FILE);
+    for (let round = 0; round < 5; round += 1) {
+      await writeFile(path, JSON.stringify({ pid: 1, token: `dead-${String(round)}`, started: 0 }));
+      const old = new Date(Date.now() - 60_000);
+      await utimes(path, old, old);
+      const results = await Promise.allSettled([
+        openGrantStore({ stateDir: dir, heartbeatMs: 0 }),
+        openGrantStore({ stateDir: dir, heartbeatMs: 0 }),
+        openGrantStore({ stateDir: dir, heartbeatMs: 0 }),
+      ]);
+      const winners = results.filter((result) => result.status === "fulfilled");
+      expect(winners, `round ${String(round)}`).toHaveLength(1);
+      for (const result of results) {
+        if (result.status === "rejected") expect(result.reason).toBeInstanceOf(StateDirError);
+      }
+      await winners[0]?.value.close();
+      await rm(path, { force: true });
+    }
+    // Five rounds of three file-system races: slow under a fully parallel suite.
+  }, 30_000);
+
+  it("judges a lock by its modification time, also an unreadable one", async () => {
     await writeFile(join(dir, LOCK_FILE), "garbage");
     await expect(openGrantStore({ stateDir: dir, heartbeatMs: 0 })).rejects.toThrow(StateDirError);
     const old = new Date(Date.now() - 60_000);
@@ -369,34 +396,83 @@ describe("grant store lock", () => {
     await expect(server({ stateDir: dir })).resolves.toBeDefined();
   });
 
-  it("refreshes the lock on every heartbeat and notices when it is lost", async () => {
+  it("refreshes the lock on every heartbeat; a lost lock makes the store refuse and calls onFatal", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     try {
       const clock = fakeClock();
       const log = captureLog();
+      const fatal: StateDirError[] = [];
       const store = await openGrantStore({
         stateDir: dir,
         now: clock.now,
         log,
         heartbeatMs: 10_000,
+        onFatal: (error) => fatal.push(error),
       });
       open.push(store);
+      const grant = await pending(store);
       const path = join(dir, LOCK_FILE);
-      const before = JSON.parse(await readFile(path, "utf8")) as { beat: number; token: string };
+      const content = await readFile(path, "utf8");
       clock.advance(10_000);
       vi.advanceTimersByTime(10_000);
       await vi.waitFor(async () => {
-        const after = JSON.parse(await readFile(path, "utf8")) as { beat: number };
-        expect(after.beat).toBe(before.beat + 10_000);
+        expect((await stat(path)).mtimeMs).toBe(clock.now());
       });
-      await writeFile(path, JSON.stringify({ pid: 2, token: "intruder", beat: clock.now() }));
+      expect(await readFile(path, "utf8")).toBe(content);
+      await writeFile(path, JSON.stringify({ pid: 2, token: "intruder", started: 0 }));
       vi.advanceTimersByTime(10_000);
       await vi.waitFor(() => {
-        expect(log.events()).toContain("state_lock_lost");
+        expect(fatal).toHaveLength(1);
       });
+      expect(log.events()).toContain("state_lock_lost");
+      expect(fatal[0]?.message).toMatch(/Another server took the lock/);
+      // Fail closed: nothing answers from the stale state any more.
+      expect(() => store.get(grant.gid)).toThrow(StateDirError);
+      expect(() => store.list()).toThrow(StateDirError);
+      expect(() => store.getSession("any-session-id")).toThrow(StateDirError);
+      await expect(store.sync(true)).rejects.toBeInstanceOf(StateDirError);
+      await expect(store.rotate(grant.gid, 1)).rejects.toBeInstanceOf(StateDirError);
+      await expect(store.revoke(grant.gid, "user")).rejects.toBeInstanceOf(StateDirError);
+      await expect(pending(store)).rejects.toBeInstanceOf(StateDirError);
       await store.close();
       // A lock that is not ours is left alone.
       expect(JSON.parse(await readFile(path, "utf8"))).toMatchObject({ token: "intruder" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops a paused server whose lock another server took over (it never serves a revoked grant)", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      const clock = fakeClock();
+      const fatal: StateDirError[] = [];
+      const a = await openGrantStore({
+        stateDir: dir,
+        now: clock.now,
+        heartbeatMs: 10_000,
+        onFatal: (error) => fatal.push(error),
+      });
+      open.push(a);
+      const grant = await pending(a);
+      await a.activate(grant.gid, "jti-0000000001");
+      // A is paused for more than 30 s; B starts and takes the lock over.
+      const later = (): number => clock.now() + 31_000;
+      const log = captureLog();
+      const b = await openGrantStore({ stateDir: dir, now: later, log, heartbeatMs: 0 });
+      open.push(b);
+      expect(log.events()).toContain("state_lock_taken_over");
+      const cli = await openGrantStore({ stateDir: dir, role: "cli" });
+      await cli.revoke(grant.gid, "operator");
+      await cli.close();
+      await b.sync(true);
+      expect(b.get(grant.gid)?.status).toBe("revoked");
+      // A wakes up: its next heartbeat notices the takeover.
+      vi.advanceTimersByTime(10_000);
+      await vi.waitFor(() => {
+        expect(fatal).toHaveLength(1);
+      });
+      expect(() => a.get(grant.gid)).toThrow(StateDirError);
     } finally {
       vi.useRealTimers();
     }
@@ -476,5 +552,197 @@ describe("grants command next to a running server", () => {
     await running.close();
     await running.close();
     await expect(pending(running)).rejects.toThrow(/closed/);
+  });
+});
+
+describe("per-account grant cap", () => {
+  it("supersedes an account's oldest live grant instead of filling the global cap", async () => {
+    const clock = fakeClock();
+    const log = captureLog();
+    const store = await server({
+      stateDir: undefined,
+      now: clock.now,
+      log,
+      maxGrantsPerAccount: 2,
+    });
+    const first = await pending(store);
+    await store.activate(first.gid, "jti-0000000001");
+    clock.advance(1000);
+    const second = await pending(store);
+    clock.advance(1000);
+    const other = await pending(store, "9999");
+    const third = await pending(store);
+    expect(store.get(first.gid)).toMatchObject({ status: "revoked", reason: "superseded" });
+    expect(store.get(second.gid)?.status).toBe("pending");
+    expect(store.get(third.gid)?.status).toBe("pending");
+    expect(store.get(other.gid)?.status).toBe("pending");
+    expect(log.lines).toContainEqual({
+      level: "warn",
+      event: "grant_superseded",
+      fields: { grant: first.gid.slice(0, 8), account: "4711" },
+    });
+  });
+
+  it("defaults to 20 live grants per account", async () => {
+    const store = await server({ stateDir: undefined });
+    const grants = [];
+    for (let index = 0; index < 21; index += 1) grants.push(await pending(store));
+    expect(store.list().filter((grant) => grant.status !== "revoked")).toHaveLength(20);
+    expect(store.get(grants[0]?.gid ?? "")?.reason).toBe("superseded");
+  });
+});
+
+describe("compaction", () => {
+  it("compacts while running once enough was appended, keeping what the grants command adds", async () => {
+    const clock = fakeClock();
+    const log = captureLog();
+    const store = await server({ stateDir: dir, now: clock.now, log, compactBytes: 2048 });
+    const grant = await pending(store);
+    await store.activate(grant.gid, "jti-0000000001");
+    for (let gen = 1; gen <= 40; gen += 1) await store.rotate(grant.gid, gen);
+    const path = join(dir, GRANTS_FILE);
+    const grown = (await stat(path)).size;
+    expect(grown).toBeGreaterThan(2048);
+    await store.sync(true);
+    expect(log.events()).toContain("grant_store_compacted");
+    expect((await stat(path)).size).toBeLessThan(grown / 4);
+    expect(store.get(grant.gid)).toMatchObject({ status: "active", gen: 41 });
+
+    // The store keeps appending to the new file, and a grants command still reaches it.
+    await store.rotate(grant.gid, 41);
+    const cli = await openGrantStore({ stateDir: dir, role: "cli" });
+    expect(cli.get(grant.gid)?.gen).toBe(42);
+    await cli.revoke(grant.gid, "operator");
+    await cli.close();
+    await store.sync(true);
+    expect(store.get(grant.gid)?.status).toBe("revoked");
+  });
+
+  it("drops a half-written line at compaction; its writer appends it again to the new file", async () => {
+    const clock = fakeClock();
+    const log = captureLog();
+    const store = await server({ stateDir: dir, now: clock.now, log, compactBytes: 1 });
+    const grant = await pending(store);
+    await store.sync(true);
+    const line = JSON.stringify({
+      t: "revoke",
+      gid: grant.gid,
+      why: "operator",
+      at: Math.floor(clock.now() / 1000),
+    });
+    const path = join(dir, GRANTS_FILE);
+    await appendFile(path, line.slice(0, 20));
+    // Compacts (1-byte threshold) while the line is incomplete.
+    await store.sync(true);
+    expect(store.get(grant.gid)?.status).toBe("pending");
+    expect((await readFile(path, "utf8")).endsWith("\n")).toBe(true);
+    // The writer (`appendFromCli`) sees the replaced inode and appends the whole line again.
+    await appendFile(path, `${line}\n`);
+    await store.sync(true);
+    expect(store.get(grant.gid)).toMatchObject({ status: "revoked", reason: "operator" });
+    expect(log.events()).not.toContain("grant_store_invalid_line");
+  });
+
+  it("carries complete lines appended during a compaction over to the new file", async () => {
+    const clock = fakeClock();
+    const store = await server({ stateDir: dir, now: clock.now, compactBytes: 1 });
+    const grant = await pending(store);
+    const other = await pending(store, "9999");
+    const path = join(dir, GRANTS_FILE);
+    const revoke = (gid: string): string =>
+      `${JSON.stringify({ t: "revoke", gid, why: "operator", at: Math.floor(clock.now() / 1000) })}\n`;
+    // Both lines are read in the same sync that triggers the compaction.
+    await appendFile(path, revoke(grant.gid));
+    await store.sync(true);
+    await appendFile(path, revoke(other.gid));
+    await store.sync(true);
+    expect(store.get(grant.gid)?.status).toBe("revoked");
+    expect(store.get(other.gid)?.status).toBe("revoked");
+    const reopened = await openGrantStore({ stateDir: dir, role: "cli" });
+    expect(reopened.list().map((record) => record.status)).toEqual(["revoked", "revoked"]);
+    await reopened.close();
+  });
+
+  it("applies a complete last line without a newline at startup", async () => {
+    const clock = fakeClock();
+    const first = await openGrantStore({ stateDir: dir, now: clock.now, heartbeatMs: 0 });
+    const grant = await pending(first);
+    await first.close();
+    await appendFile(
+      join(dir, GRANTS_FILE),
+      JSON.stringify({ t: "revoke", gid: grant.gid, why: "operator", at: grant.createdAt }),
+    );
+    const second = await server({ stateDir: dir, now: clock.now });
+    expect(second.get(grant.gid)?.status).toBe("revoked");
+  });
+
+  it("compacts once a day", async () => {
+    const clock = fakeClock();
+    const log = captureLog();
+    const store = await server({ stateDir: dir, now: clock.now, log });
+    await pending(store);
+    await store.sync(true);
+    expect(log.events()).not.toContain("grant_store_compacted");
+    clock.advance(86_400_000);
+    await store.sync(true);
+    expect(log.events()).toContain("grant_store_compacted");
+  });
+
+  it("streams a large file of mostly dead lines at startup and compacts it", async () => {
+    const clock = fakeClock();
+    const now = Math.floor(clock.now() / 1000);
+    const live = {
+      t: "grant",
+      gid: "live-grant-0000000000",
+      acct: "4711",
+      cid: CLIENT,
+      host: "claude.ai",
+      tiers: ["read"],
+      at: now,
+      exp: now + 86_400,
+      st: "active",
+      gen: 1,
+    };
+    const lines = [JSON.stringify(live)];
+    for (let index = 0; index < 4000; index += 1) {
+      lines.push(
+        JSON.stringify({
+          ...live,
+          gid: `dead-grant-${String(index).padStart(10, "0")}`,
+          exp: now - 1,
+        }),
+      );
+      lines.push(JSON.stringify({ t: "rotate", gid: live.gid, gen: index + 2, at: now }));
+    }
+    await writeFile(join(dir, GRANTS_FILE), `${lines.join("\n")}\n`, { mode: 0o600 });
+    expect((await stat(join(dir, GRANTS_FILE))).size).toBeGreaterThan(256 * 1024);
+    const store = await server({ stateDir: dir, now: clock.now });
+    expect(store.list()).toHaveLength(1);
+    expect(store.get(live.gid)?.gen).toBe(4001);
+    expect((await stat(join(dir, GRANTS_FILE))).size).toBeLessThan(1024);
+  });
+
+  it("refuses a line longer than 64 KiB", async () => {
+    await writeFile(join(dir, GRANTS_FILE), `{"t":"store","v":1}\n${"x".repeat(70 * 1024)}`);
+    await expect(openGrantStore({ stateDir: dir, heartbeatMs: 0 })).rejects.toThrow(
+      /longer than 64 KiB/,
+    );
+  });
+});
+
+describe("state directory permissions", () => {
+  it("tightens a state directory other users can access to 0700", async () => {
+    const log = captureLog();
+    await chmod(dir, 0o755);
+    await server({ stateDir: dir, log });
+    expect((await lstat(dir)).mode & 0o777).toBe(0o700);
+    expect(log.events()).toContain("state_dir_mode_tightened");
+  });
+
+  it("refuses a state directory path that is a file", async () => {
+    await writeFile(join(dir, "file"), "");
+    await expect(openGrantStore({ stateDir: join(dir, "file"), heartbeatMs: 0 })).rejects.toThrow(
+      StateDirError,
+    );
   });
 });

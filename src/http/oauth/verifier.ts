@@ -9,6 +9,12 @@
  * on every request (an in-memory lookup; other processes' revocations are read at most once a
  * second), so revoking a grant takes effect on the next call.
  *
+ * The grant must also still be covered by `SEVDESK_OAUTH_ACCOUNTS` and `SEVDESK_OAUTH_CLIENTS`;
+ * one that is not any more (the operator removed its account or client host) is revoked
+ * (`account_removed` / `client_removed`). While the grant store cannot be trusted (its state
+ * directory lock was lost) every request gets 500, not 401, so clients keep their tokens for
+ * the restarted server.
+ *
  * The verified request carries a {@link VerifiedGrant} in `AuthInfo.extra[GRANT_EXTRA_KEY]` with
  * the tiers token ∩ grant ∩ `SEVDESK_ALLOW`. `AuthInfo.token` is the marker `"oauth"`, not the
  * access token, so the sealed token goes no further than this module.
@@ -24,13 +30,17 @@ import {
 
 import { GRANT_EXTRA_KEY, VerifiedGrant } from "../../accounts/types.js";
 import type { Tier } from "../../safety/tiers.js";
-import type { GrantStore, HttpAuthenticator, HttpLog } from "../types.js";
+import type { GrantStore, HttpAuthenticator, HttpLog, OAuthSettings } from "../types.js";
+import { StateDirError } from "./grant-store.js";
+import { enforceAllowlists } from "./policy.js";
 import { intersectTiers, openAccess, scopeOf, type TokenScope, toSeconds } from "./tokens.js";
 
 export interface VerifierOptions extends TokenScope {
   /** The MCP endpoint (`<origin>/mcp`), the only accepted audience. */
   readonly resource: string;
   readonly store: GrantStore;
+  /** The account and client allowlists, checked on every request. */
+  readonly oauth: Pick<OAuthSettings, "accounts" | "clients">;
   /** `SEVDESK_ALLOW` (settings): caps the tiers of every grant. */
   readonly allowedTiers: ReadonlySet<Tier>;
   readonly now: () => number;
@@ -52,8 +62,16 @@ function createAccessTokenVerifier(options: VerifierOptions): OAuthTokenVerifier
           "The access token is not for this server.",
         );
       }
-      await options.store.sync();
-      const grant = options.store.get(payload.gid);
+      let grant;
+      try {
+        await options.store.sync();
+        grant = options.store.get(payload.gid);
+      } catch (error) {
+        if (error instanceof StateDirError) {
+          throw new OAuthError(OAuthErrorCode.ServerError, "The server is restarting.");
+        }
+        throw error;
+      }
       if (
         grant?.status !== "active" ||
         grant.expiresAt <= toSeconds(options.now()) ||
@@ -62,6 +80,12 @@ function createAccessTokenVerifier(options: VerifierOptions): OAuthTokenVerifier
       ) {
         options.log.info("access_refused", { grant: payload.gid.slice(0, 8) });
         throw new OAuthError(OAuthErrorCode.InvalidToken, REVOKED);
+      }
+      if (!(await enforceAllowlists(options.store, options.oauth, grant, options.log))) {
+        throw new OAuthError(
+          OAuthErrorCode.InvalidToken,
+          "This server no longer accepts the account or the client of this connection.",
+        );
       }
       const tiers = intersectTiers(
         intersectTiers(payload.tiers, new Set(grant.tiers)),

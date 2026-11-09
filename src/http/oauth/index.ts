@@ -14,8 +14,9 @@ import type { ServerKeys } from "../keys.js";
 import type { GrantStore, HttpLog, OAuthModule, OAuthSettings } from "../types.js";
 import { authorizeRoute, type SessionCookieMinter } from "./authorize.js";
 import { createCimdFetcher, type HttpsGet } from "./cimd.js";
-import { openGrantStore } from "./grant-store.js";
+import { openGrantStore, type StateDirError } from "./grant-store.js";
 import { metadataRoutes } from "./metadata.js";
+import { disallowedReason } from "./policy.js";
 import { revokeRoute } from "./revoke.js";
 import type { Resolver } from "./ssrf.js";
 import { tokenRoute } from "./token.js";
@@ -43,6 +44,11 @@ export interface OAuthModuleOptions {
   readonly httpsGet?: HttpsGet;
   /** An already opened store (shared with the approval inbox, or tests); not closed by `close`. */
   readonly store?: GrantStore;
+  /**
+   * For a store the module opens itself: called when the store stops being trustworthy (its
+   * state directory lock was taken); the process should exit so the platform restarts it.
+   */
+  readonly onFatal?: (error: StateDirError) => void;
 }
 
 /** The MCP endpoint (and OAuth resource) of `origin`. */
@@ -51,16 +57,51 @@ function resourceOf(origin: string): string {
 }
 
 /**
+ * Revokes the grants the allowlists no longer cover (an account or client host the operator
+ * removed): the account's grants and inbox sessions with reason `account_removed`, a client's
+ * grants with `client_removed`. The verifier and the token endpoint check the same on every use.
+ */
+async function sweepRemoved(store: GrantStore, oauth: OAuthSettings, log: HttpLog): Promise<void> {
+  const removedAccounts = new Set<string>();
+  for (const grant of store.list()) {
+    if (grant.status === "revoked") continue;
+    const reason = disallowedReason(oauth, grant);
+    if (reason === "account_removed") {
+      removedAccounts.add(grant.accountId);
+    } else if (reason === "client_removed") {
+      await store.revoke(grant.gid, reason);
+      log.warn("grant_revoked", { grant: grant.gid.slice(0, 8), reason });
+    }
+  }
+  for (const account of removedAccounts) {
+    const count = await store.revokeAccount(account, "account_removed");
+    log.warn("account_removed", { account, grants: count });
+  }
+}
+
+/**
  * Builds the authorization server: opens the grant store (taking the state directory's lock;
- * rejects with `StateDirError` when that fails) unless one is passed, and returns its routes and
- * the `/mcp` authenticator.
+ * rejects with `StateDirError` when that fails) unless one is passed, revokes grants outside the
+ * current allowlists, and returns its routes and the `/mcp` authenticator.
  */
 export async function createOAuthModule(options: OAuthModuleOptions): Promise<OAuthModule> {
   const now = options.now ?? Date.now;
   const resource = resourceOf(options.origin);
   const ownStore = options.store === undefined;
   const store =
-    options.store ?? (await openGrantStore({ stateDir: options.stateDir, now, log: options.log }));
+    options.store ??
+    (await openGrantStore({
+      stateDir: options.stateDir,
+      now,
+      log: options.log,
+      ...(options.onFatal === undefined ? {} : { onFatal: options.onFatal }),
+    }));
+  try {
+    await sweepRemoved(store, options.oauth, options.log);
+  } catch (error) {
+    if (ownStore) await store.close();
+    throw error;
+  }
   const scope = { keys: options.keys, issuer: options.origin };
   const cimd = createCimdFetcher({
     clients: options.oauth.clients,
@@ -99,6 +140,7 @@ export async function createOAuthModule(options: OAuthModuleOptions): Promise<OA
     ...scope,
     resource,
     store,
+    oauth: options.oauth,
     allowedTiers: options.allowedTiers,
     now,
     log: options.log,
@@ -115,3 +157,4 @@ export async function createOAuthModule(options: OAuthModuleOptions): Promise<OA
 
 export type { SessionCookieMinter } from "./authorize.js";
 export { openGrantStore, StateDirError } from "./grant-store.js";
+export { isAccountAllowed, isClientAllowed } from "./policy.js";

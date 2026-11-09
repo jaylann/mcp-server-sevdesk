@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 
+import { IdentityError, type IdentityLookup } from "../../../../src/accounts/types.js";
+import { openGrantStore } from "../../../../src/http/oauth/grant-store.js";
+import { tokenRoute } from "../../../../src/http/oauth/token.js";
 import { openRefresh, toSeconds } from "../../../../src/http/oauth/tokens.js";
 import {
   ACCOUNT,
@@ -9,7 +12,10 @@ import {
   completeConsent,
   connectClaudeAi,
   createOAuthRig,
+  createTestRouter,
   DEFAULT_OAUTH,
+  failingStore,
+  fakeIdentity,
   mcpRequest,
   type OAuthRig,
   ORIGIN,
@@ -18,6 +24,7 @@ import {
   postForm,
   RESOURCE,
   SEVDESK_TOKEN,
+  testContext,
 } from "../../../helpers/oauth-browser.js";
 
 const rigs: OAuthRig[] = [];
@@ -431,5 +438,125 @@ describe("no secrets in token responses' side channels", () => {
     expect(log).toContain(gid.slice(0, 8));
     expect(log).not.toContain(gid);
     expect(log).toContain(ACCOUNT);
+  });
+});
+
+describe("POST /token: fix round", () => {
+  /** The token endpoint of `r` as it would run with other allowlists (no startup sweep). */
+  function routeWith(r: OAuthRig, oauth: typeof DEFAULT_OAUTH) {
+    return createTestRouter(
+      [
+        tokenRoute({
+          keys: r.keys,
+          issuer: ORIGIN,
+          resource: RESOURCE,
+          oauth,
+          store: r.module.store,
+          identity: r.identity.lookup,
+          now: r.clock.now,
+          log: r.log,
+        }),
+      ],
+      { log: r.log },
+    );
+  }
+
+  it("revokes a grant on refresh once its account is no longer allowed", async () => {
+    const r = await rig();
+    const tokens = await connectClaudeAi(r);
+    const fetch = routeWith(r, { ...DEFAULT_OAUTH, accounts: ["99999"] });
+    const response = await postForm(fetch, "/token", {
+      grant_type: "refresh_token",
+      refresh_token: tokens.refresh,
+    });
+    await expectError(response, "invalid_grant");
+    const [grant] = r.module.store.list();
+    expect(grant).toMatchObject({ status: "revoked", reason: "account_removed" });
+    expect(r.log.lines).toContainEqual({
+      level: "warn",
+      event: "grant_revoked",
+      fields: { grant: grant?.gid.slice(0, 8), reason: "account_removed" },
+    });
+    // No sevDesk lookup for a grant that is refused anyway.
+    expect(r.identity.calls).toHaveLength(1);
+  });
+
+  it("revokes a grant on refresh and at the code exchange once its client host is removed", async () => {
+    const r = await rig();
+    const tokens = await connectClaudeAi(r);
+    const fetch = routeWith(r, { ...DEFAULT_OAUTH, clients: ["example.org"] });
+    await expectError(
+      await postForm(fetch, "/token", {
+        grant_type: "refresh_token",
+        refresh_token: tokens.refresh,
+      }),
+      "invalid_grant",
+    );
+    expect(r.module.store.list()[0]?.reason).toBe("client_removed");
+
+    const { code, verifier } = await freshCode(r);
+    const exchanged = await postForm(fetch, "/token", {
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: CLAUDE_AI_REDIRECT,
+      code_verifier: verifier,
+      client_id: CLAUDE_AI_CLIENT,
+    });
+    await expectError(exchanged, "invalid_grant");
+    expect(r.module.store.list()[0]).toMatchObject({ status: "revoked", reason: "client_removed" });
+  });
+
+  it("checks sevDesk before rotating: a client that drops during the check can retry", async () => {
+    let slow = false;
+    const real = fakeIdentity();
+    const identity: IdentityLookup = (token, signal) =>
+      slow
+        ? new Promise((_resolve, reject) => {
+            const fail = (): void => {
+              reject(new IdentityError("unreachable", "aborted"));
+            };
+            if (signal.aborted) fail();
+            signal.addEventListener("abort", fail);
+          })
+        : real.lookup(token, signal);
+    const r = await rig({ identity });
+    const tokens = await connectClaudeAi(r);
+    slow = true;
+    const client = new AbortController();
+    const pending = r.route("/token").handle(
+      new Request(`${ORIGIN}/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: tokens.refresh }),
+      }),
+      testContext(r.log, { signal: client.signal }),
+    );
+    client.abort();
+    const lost = await pending;
+    expect(lost?.status).toBe(503);
+    expect(r.module.store.list()[0]?.gen).toBe(1);
+
+    slow = false;
+    r.clock.advance(31_000);
+    const retry = await refresh(r, tokens.refresh);
+    expect(retry.status).toBe(200);
+    expect(r.module.store.list()[0]).toMatchObject({ status: "active", gen: 2 });
+  });
+
+  it("answers 503 temporarily_unavailable while the grant store cannot be trusted", async () => {
+    const failed = { on: false };
+    const store = await openGrantStore({ stateDir: undefined });
+    const r = await rig({ store: failingStore(store, failed) });
+    const tokens = await connectClaudeAi(r);
+    failed.on = true;
+    await expectError(await refresh(r, tokens.refresh), "temporarily_unavailable", 503);
+    await expectError(
+      await postForm(r.fetch, "/revoke", { token: tokens.refresh }),
+      "temporarily_unavailable",
+      503,
+    );
+    failed.on = false;
+    expect((await refresh(r, tokens.refresh)).status).toBe(200);
+    await store.close();
   });
 });

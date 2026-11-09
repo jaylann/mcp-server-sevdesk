@@ -9,10 +9,15 @@
  * `refresh_token`: refresh tokens rotate. The current generation is exchanged for a new pair; the
  * previous generation is accepted for 30 s after a rotation and answered at the current
  * generation (Claude refreshes proactively and on 401, possibly at once); any other generation is
- * a replay and revokes the grant. Each refresh asks sevDesk whether the token still works (5 s):
- * a 401 revokes the grant, so regenerating the token in sevDesk also ends the connection. When
- * sevDesk cannot be reached the refresh still succeeds: the access token is useless without a
- * working sevDesk token anyway.
+ * a replay and revokes the grant. Each refresh first asks sevDesk whether the token still works
+ * (5 s) and only then commits the rotation, so a client that drops during the check can retry
+ * with the same refresh token: a 401 revokes the grant (regenerating the token in sevDesk ends the
+ * connection); when sevDesk cannot be reached the refresh still succeeds, as the access token is
+ * useless without a working sevDesk token anyway.
+ *
+ * Both grant types also re-check the account and client allowlists (`policy.ts`): a grant they no
+ * longer cover is revoked and answered `invalid_grant`. While the grant store cannot be trusted
+ * (lost state directory lock) the endpoint answers 503 `temporarily_unavailable`.
  *
  * Every failure of a code or refresh token is `invalid_grant` (what clients expect for a dead
  * token); a `resource` other than this server's is `invalid_target`. Responses are JSON with
@@ -31,6 +36,8 @@ import type {
   HttpRoute,
   OAuthSettings,
 } from "../types.js";
+import { StateDirError } from "./grant-store.js";
+import { enforceAllowlists } from "./policy.js";
 import {
   intersectTiers,
   openCode,
@@ -133,6 +140,9 @@ export interface TokenEndpointOptions extends TokenScope {
 }
 
 const INVALID_GRANT = "invalid_grant";
+const GONE = "The connection was revoked or has expired. Connect again.";
+const NOT_ALLOWED =
+  "This server no longer accepts the account or the client of this connection. Connect again.";
 
 /** The `/token` route. */
 export function tokenRoute(options: TokenEndpointOptions): HttpRoute {
@@ -205,6 +215,13 @@ export function tokenRoute(options: TokenEndpointOptions): HttpRoute {
     if (resourceMismatch(form, payload.res)) {
       return oauthError("invalid_target", `The resource must be ${payload.res}.`);
     }
+    const pending = options.store.get(payload.gid);
+    if (
+      pending !== undefined &&
+      !(await enforceAllowlists(options.store, options.oauth, pending, options.log))
+    ) {
+      return oauthError(INVALID_GRANT, NOT_ALLOWED);
+    }
     const outcome = await options.store.activate(payload.gid, payload.jti);
     if (outcome === "replay") {
       options.log.warn("code_replay", { grant: payload.gid.slice(0, 8) });
@@ -241,22 +258,19 @@ export function tokenRoute(options: TokenEndpointOptions): HttpRoute {
     if (before?.clientId !== payload.cid) {
       return oauthError(INVALID_GRANT, "The refresh token is invalid or expired.");
     }
+    if (before.status !== "active" || before.expiresAt <= toSeconds(options.now())) {
+      return oauthError(INVALID_GRANT, GONE);
+    }
+    if (!(await enforceAllowlists(options.store, options.oauth, before, options.log))) {
+      return oauthError(INVALID_GRANT, NOT_ALLOWED);
+    }
     const requested = tiersOfScope(form.get("scope"));
     if (requested !== undefined && [...requested].some((tier) => !before.tiers.includes(tier))) {
       return oauthError("invalid_scope", "A refresh cannot add tiers; connect again for more.");
     }
-    const rotated = await options.store.rotate(payload.gid, payload.gen);
     const prefix = payload.gid.slice(0, 8);
-    if (!rotated.ok) {
-      if (rotated.reason === "replay") options.log.warn("refresh_replay", { grant: prefix });
-      return oauthError(
-        INVALID_GRANT,
-        rotated.reason === "replay"
-          ? "The refresh token was already used; the connection was revoked for safety. " +
-              "Connect again."
-          : "The connection was revoked or has expired. Connect again.",
-      );
-    }
+    // sevDesk is asked before the rotation is committed: a client that gives up during the
+    // check still holds a usable refresh token.
     try {
       const identity = await options.identity(
         payload.tok,
@@ -280,11 +294,26 @@ export function tokenRoute(options: TokenEndpointOptions): HttpRoute {
             "sevDesk API token.",
         );
       }
+      if (ctx.signal.aborted) {
+        // The client is gone: keep the generation, so its retry with the same token works.
+        return oauthError("temporarily_unavailable", "The request was cancelled.", 503);
+      }
       options.log.warn("identity_check_skipped", { grant: prefix });
+    }
+    const rotated = await options.store.rotate(payload.gid, payload.gen);
+    if (!rotated.ok) {
+      if (rotated.reason === "replay") options.log.warn("refresh_replay", { grant: prefix });
+      return oauthError(
+        INVALID_GRANT,
+        rotated.reason === "replay"
+          ? "The refresh token was already used; the connection was revoked for safety. " +
+              "Connect again."
+          : GONE,
+      );
     }
     const grant = options.store.get(payload.gid);
     if (grant?.status !== "active") {
-      return oauthError(INVALID_GRANT, "The connection was revoked or has expired. Connect again.");
+      return oauthError(INVALID_GRANT, GONE);
     }
     const tiers =
       requested === undefined ? grant.tiers : intersectTiers(grant.tiers, new Set(requested));
@@ -309,9 +338,22 @@ export function tokenRoute(options: TokenEndpointOptions): HttpRoute {
           "Only authorization_code and refresh_token are supported.",
         );
       }
-      // Revocations by the `grants` command apply before any token is issued.
-      await options.store.sync(true);
-      return grantType === "authorization_code" ? exchangeCode(form) : refresh(form, ctx);
+      try {
+        // Revocations by the `grants` command apply before any token is issued.
+        await options.store.sync(true);
+        return grantType === "authorization_code"
+          ? await exchangeCode(form)
+          : await refresh(form, ctx);
+      } catch (error) {
+        if (error instanceof StateDirError) {
+          return oauthError(
+            "temporarily_unavailable",
+            "The server is restarting; retry shortly.",
+            503,
+          );
+        }
+        throw error;
+      }
     },
   };
 }

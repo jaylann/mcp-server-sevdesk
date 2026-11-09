@@ -8,6 +8,7 @@
  * RFC 7009 requires, so the endpoint does not tell which tokens are valid.
  */
 import type { GrantStore, HttpLog, HttpRoute } from "../types.js";
+import { StateDirError } from "./grant-store.js";
 import { corsPreflight, oauthError, readOAuthForm } from "./token.js";
 import { grantOfToken, type TokenScope } from "./tokens.js";
 
@@ -35,9 +36,20 @@ export function revokeRoute(options: RevokeOptions): HttpRoute {
         form.get("token_type_hint") === "access_token" ? "access_token" : "refresh_token";
       const grant = grantOfToken(options, token, hint);
       if (grant !== undefined) {
-        await options.store.sync(true);
-        if (await options.store.revoke(grant.gid, "user")) {
-          options.log.info("grant_revoked", { grant: grant.gid.slice(0, 8), reason: "user" });
+        try {
+          await options.store.sync(true);
+          if (await options.store.revoke(grant.gid, "user")) {
+            options.log.info("grant_revoked", { grant: grant.gid.slice(0, 8), reason: "user" });
+          }
+        } catch (error) {
+          if (error instanceof StateDirError) {
+            return oauthError(
+              "temporarily_unavailable",
+              "The server is restarting; retry shortly.",
+              503,
+            );
+          }
+          throw error;
         }
       }
       return new Response(null, {

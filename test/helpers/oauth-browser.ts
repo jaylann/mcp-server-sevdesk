@@ -23,9 +23,11 @@ import {
   createOAuthModule,
   type OAuthModuleOptions,
   type SessionCookieMinter,
+  StateDirError,
 } from "../../src/http/oauth/index.js";
 import type { ResolvedAddress, Resolver } from "../../src/http/oauth/ssrf.js";
 import type {
+  GrantStore,
   HttpAuthenticator,
   HttpLog,
   HttpRequestContext,
@@ -49,6 +51,23 @@ export const OTHER_TOKEN = "fedcba9876543210fedcba9876543210";
 export const DEAD_TOKEN = "deaddeaddeaddeaddeaddeaddeaddead";
 export const ACCOUNT = "4711";
 export const OTHER_ACCOUNT = "4712";
+
+/**
+ * `store`, except that every call throws {@link StateDirError} while `failed.on` is set (as after
+ * the state directory lock was lost).
+ */
+export function failingStore(store: GrantStore, failed: { on: boolean }): GrantStore {
+  return new Proxy(store, {
+    get(target, property) {
+      const value: unknown = Reflect.get(target, property, target);
+      if (typeof value !== "function") return value;
+      return (...args: unknown[]): unknown => {
+        if (failed.on) throw new StateDirError("The state directory lock was lost.");
+        return (value as (...a: unknown[]) => unknown).apply(target, args);
+      };
+    },
+  });
+}
 
 /** A clock that starts now (the SDK compares `expiresAt` with the real time) and only advances. */
 export function fakeClock(start = Date.now()): { now: () => number; advance(ms: number): void } {

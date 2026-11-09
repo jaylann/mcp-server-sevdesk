@@ -93,7 +93,8 @@ const consentSchema = z.strictObject({
   offer: tiers,
   /** The CSRF tag this state belongs to (`keyedTag(csrf, cookie)`). */
   csrf: z.string().min(1).max(128),
-  /** After the token check: the tiers the user chose, the account and its token. */
+  /** After the token check: its id (single use), the chosen tiers, the account and its token. */
+  jti: randomIdField.optional(),
   tiers: tiers.optional(),
   acct: accountId.optional(),
   name: z.string().max(400).optional(),

@@ -11,10 +11,12 @@
  *   a CSRF tag that matches the `__Host-` cookie set with the page and the tag sealed into the
  *   consent state.
  * - The token check (`check`) enforces the token format, asks sevDesk who the token belongs to
- *   (8 s timeout, rate-limited per IP) and checks the account allowlist. The token is never shown
+ *   (8 s timeout, rate-limited per IPv4 address or IPv6 /64) and checks the account allowlist. The token is never shown
  *   again; it travels on sealed inside the consent state.
  * - `connect` creates the pending grant, mints the 60 s code and the approval inbox session, and
- *   answers `303` to the redirect URI with `code`, `state` and `iss`.
+ *   answers `303` to the redirect URI with `code`, `state` and `iss`. A checked consent state
+ *   connects once (its `jti` is remembered until it expires), so one token check cannot mint a
+ *   series of grants.
  */
 import { type AccountIdentity, IdentityError, type IdentityLookup } from "../../accounts/types.js";
 import { sanitizeUntrusted } from "../../safety/fence.js";
@@ -31,6 +33,7 @@ import {
   serializeCookie,
   styleNonce,
 } from "../../safety/web.js";
+import { rateLimitKey } from "../client-ip.js";
 import { keyedTag, type ServerKeys } from "../keys.js";
 import type {
   GrantStore,
@@ -48,7 +51,8 @@ import {
   renderConsentError,
   renderTokenStep,
 } from "./consent-page.js";
-import { GrantLimitError } from "./grant-store.js";
+import { GrantLimitError, StateDirError } from "./grant-store.js";
+import { isAccountAllowed } from "./policy.js";
 import { isLoopbackRedirect, matchRedirectUri } from "./redirect-uri.js";
 import {
   ACCOUNT_ID_PATTERN,
@@ -139,6 +143,11 @@ function redirectHost(uri: string): string {
 /** The `/authorize` route. */
 export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
   const secure = options.origin.startsWith("https://");
+  /**
+   * Checked consent states already used for `connect` (jti → expiry, epoch seconds): one token
+   * check gives one grant. Kept in memory for the state's 10 minutes.
+   */
+  const usedConsents = new Map<string, number>();
   const cookieName = csrfCookieName(options.origin);
 
   function errorPage(status: number, title: string, message: string): Response {
@@ -331,10 +340,6 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
     return offered.filter((tier) => tier === "read" || values.includes(tier));
   }
 
-  function accountAllowed(accountId: string): boolean {
-    return options.oauth.accounts === "any" || options.oauth.accounts.includes(accountId);
-  }
-
   async function check(
     form: URLSearchParams,
     payload: ConsentPayload,
@@ -366,7 +371,7 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
           "from sevDesk, Settings → Users → API token.",
       );
     }
-    if (!ctx.limit(TOKEN_CHECK_RULE, ctx.clientIp)) {
+    if (!ctx.limit(TOKEN_CHECK_RULE, rateLimitKey(ctx.clientIp))) {
       return again(429, "Too many attempts. Wait a minute, then try again.");
     }
     let identity: AccountIdentity;
@@ -392,7 +397,7 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
     if (!ACCOUNT_ID_PATTERN.test(identity.accountId)) {
       return again(502, "sevDesk returned an unexpected account id. Try again in a moment.");
     }
-    if (!accountAllowed(identity.accountId)) {
+    if (!isAccountAllowed(options.oauth, identity.accountId)) {
       options.log.warn("account_refused", { account: identity.accountId });
       return errorPage(
         403,
@@ -407,6 +412,7 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
         : sanitizeUntrusted(identity.name, 120).replace(/\s+/g, " ").trim() || undefined;
     const next = sealConsent(options, {
       ...payload,
+      jti: randomId(16),
       tiers,
       acct: identity.accountId,
       ...(name === undefined ? {} : { name }),
@@ -427,10 +433,28 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
     return consentPage(html, nonce, payload.ruri, 200);
   }
 
+  /** Marks a checked consent state used; false when it was used before. */
+  function firstUse(jti: string, exp: number): boolean {
+    const now = toSeconds(options.now());
+    for (const [used, expires] of usedConsents) {
+      if (expires <= now) usedConsents.delete(used);
+    }
+    if (usedConsents.has(jti)) return false;
+    usedConsents.set(jti, exp);
+    return true;
+  }
+
   async function connect(payload: ConsentPayload): Promise<Response> {
-    const { acct, tok, tiers } = payload;
-    if (acct === undefined || tok === undefined || tiers === undefined) {
+    const { acct, tok, tiers, jti } = payload;
+    if (acct === undefined || tok === undefined || tiers === undefined || jti === undefined) {
       return errorPage(400, "Check the token first", "Start connecting again from your app.");
+    }
+    if (!firstUse(jti, payload.exp)) {
+      return errorPage(
+        400,
+        "This page was already used",
+        "Each consent page connects once. Start connecting again from your app.",
+      );
     }
     let grantId: string;
     try {
@@ -557,6 +581,13 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
           : await handleGet(request);
       } catch (error) {
         if (error instanceof PageError) return errorPage(error.status, error.title, error.message);
+        if (error instanceof StateDirError) {
+          return errorPage(
+            503,
+            "Temporarily unavailable",
+            "The server is restarting. Try again in a minute.",
+          );
+        }
         throw error;
       }
     },
