@@ -1,16 +1,20 @@
 import { EventEmitter } from "node:events";
 import { Agent, createServer, request as httpRequest } from "node:http";
-import type { AddressInfo } from "node:net";
+import { type AddressInfo, connect, type Socket } from "node:net";
 
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+import { McpServer } from "@modelcontextprotocol/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { createBearerAuthenticator } from "../../../src/http/bearer.js";
 import { createHttpLog } from "../../../src/http/log.js";
-import { MCP_PATH } from "../../../src/http/mcp-route.js";
+import { createMcpRoute, MCP_PATH } from "../../../src/http/mcp-route.js";
 import {
   exitOnSignals,
   type HttpServerHandle,
   SERVER_LIMITS,
   startHttpServer,
+  type StartHttpServerOptions,
 } from "../../../src/http/serve.js";
 import type { HttpConfig, HttpRoute } from "../../../src/http/types.js";
 import { openRequest, rawRequest } from "../../helpers/http-raw.js";
@@ -47,6 +51,7 @@ async function start(
   routes: readonly HttpRoute[],
   overrides: Partial<HttpConfig> = {},
   drainMs = 5_000,
+  limits: Pick<StartHttpServerOptions, "maxInFlight" | "maxPerClient" | "bodyTimeoutMs"> = {},
 ) {
   const lines: string[] = [];
   const announced: string[] = [];
@@ -56,6 +61,7 @@ async function start(
     log: createHttpLog({ write: (line) => lines.push(line) }),
     announce: (line) => announced.push(line),
     drainMs,
+    ...limits,
   });
   handles.push(handle);
   return { handle, lines, announced };
@@ -399,5 +405,112 @@ describe("exitOnSignals", () => {
     } finally {
       agent.destroy();
     }
+  });
+});
+
+/** A request whose headers arrive but whose body never does; `status` resolves with the answer. */
+function stall(port: number, path: string, clientIp: string, headers = "") {
+  const socket: Socket = connect(port, "127.0.0.1");
+  socket.on("error", () => undefined);
+  const status = new Promise<number | undefined>((resolve) => {
+    socket.once("data", (chunk: Buffer) => {
+      resolve(Number(/^HTTP\/1\.1 (\d{3})/.exec(chunk.toString("latin1"))?.[1]));
+    });
+    socket.once("close", () => {
+      resolve(undefined);
+    });
+  });
+  socket.write(
+    `POST ${path} HTTP/1.1\r\nHost: 127.0.0.1:${String(port)}\r\nX-Forwarded-For: ${clientIp}\r\n` +
+      `Content-Type: application/json\r\nContent-Length: 1000\r\n${headers}\r\n{`,
+  );
+  return { socket, status };
+}
+
+describe("slow and unauthenticated clients over a real socket (review #2)", () => {
+  const TOKEN = "Zq3xR7pL0vN2mK8sT4wY6bH1cJ5dF9gA-_mcp";
+  const ATTACKER = "203.0.113.7";
+
+  async function startProtected(limits: Parameters<typeof start>[3] = {}) {
+    const mcp = createMcpRoute({
+      authenticator: createBearerAuthenticator([TOKEN], { tiers: ["read"] }),
+      factory: () => {
+        const server = new McpServer({ name: "slow-test", version: "1.0.0" });
+        server.registerTool("ping", { description: "Ping." }, () => ({
+          content: [{ type: "text", text: "pong" }],
+        }));
+        return server;
+      },
+    });
+    const upload: HttpRoute = { ...echo, path: "/upload", methods: ["POST"], maxBodyBytes: 4096 };
+    // One trusted proxy hop: X-Forwarded-For names the client, so one test can play several IPs.
+    return start([mcp.route, upload], { trustProxy: 1 }, 5_000, {
+      maxInFlight: 4,
+      maxPerClient: 8,
+      ...limits,
+    });
+  }
+
+  it("serves authenticated clients while one client holds 64 stalled requests", async () => {
+    const { handle } = await startProtected();
+    const stalls: ReturnType<typeof stall>[] = [];
+    try {
+      // Unauthenticated MCP requests are refused on their headers: no body, no slot.
+      const mcp = Array.from({ length: 64 }, () => stall(handle.port, "/mcp", ATTACKER));
+      stalls.push(...mcp);
+      expect(new Set(await Promise.all(mcp.map((request) => request.status)))).toEqual(
+        new Set([401]),
+      );
+      await vi.waitFor(() => {
+        expect(handle.router.inFlight).toBe(0);
+      });
+
+      // Stalled uploads elsewhere: 8 held (the per-client cap), the rest refused with 429. The
+      // held ones do not count against the global cap of 4.
+      const uploads = Array.from({ length: 64 }, () => stall(handle.port, "/upload", ATTACKER));
+      stalls.push(...uploads);
+      let refused = 0;
+      for (const upload of uploads) {
+        void upload.status.then((status) => {
+          if (status === 429) refused += 1;
+        });
+      }
+      await vi.waitFor(() => {
+        expect(refused).toBe(56);
+        expect(handle.router.inFlight).toBe(8);
+      });
+
+      // Even an authenticated client on the same address gets 429 now…
+      const sameClient = stall(handle.port, "/mcp", ATTACKER, `Authorization: Bearer ${TOKEN}\r\n`);
+      stalls.push(sameClient);
+      expect(await sameClient.status).toBe(429);
+
+      // …while everyone else is served.
+      const client = new Client({ name: "legit", version: "0.0.0" });
+      await client.connect(
+        new StreamableHTTPClientTransport(new URL(`${handle.origin}${MCP_PATH}`), {
+          requestInit: {
+            headers: { Authorization: `Bearer ${TOKEN}`, "X-Forwarded-For": "198.51.100.1" },
+          },
+        }),
+      );
+      const { tools } = await client.listTools();
+      expect(tools.map((tool) => tool.name)).toEqual(["ping"]);
+      await client.close();
+    } finally {
+      for (const request of stalls) request.socket.destroy();
+    }
+    await vi.waitFor(() => {
+      expect(handle.router.inFlight).toBe(0);
+    });
+  });
+
+  it("answers 408 to a stalled body and closes the connection", async () => {
+    const { handle } = await startProtected({ bodyTimeoutMs: 100 });
+    const upload = stall(handle.port, "/upload", ATTACKER);
+    const closed = new Promise<void>((resolve) => upload.socket.once("close", resolve));
+    expect(await upload.status).toBe(408);
+    await closed;
+    expect(handle.router.inFlight).toBe(0);
   });
 });

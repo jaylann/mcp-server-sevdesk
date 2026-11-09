@@ -10,6 +10,7 @@ import {
   isLoopbackHost,
   loadHttpConfig,
   type LoadHttpConfigDeps,
+  looksHumanChosen,
   loopbackOrigin,
   parseDuration,
   prepareStateDir,
@@ -553,5 +554,97 @@ describe("helpers", () => {
       publicOrigin: "https://a.example",
       approvalsUrl: undefined,
     });
+  });
+});
+
+describe("loadHttpConfig: review fixes", () => {
+  it("warns about a loopback public URL on a public bind, but still starts (#8)", () => {
+    // The image smoke: HOST 0.0.0.0 inside the container, the port published on 127.0.0.1.
+    const loaded = load({
+      ...BEARER_ENV,
+      SEVDESK_HTTP_HOST: "0.0.0.0",
+      SEVDESK_HTTP_PUBLIC_URL: "http://127.0.0.1:8080",
+    });
+    expect(loaded.http.publicOrigin).toBe("http://127.0.0.1:8080");
+    expect(loaded.warnings).toEqual([
+      expect.stringContaining("anyone who can reach the port can use the server"),
+    ]);
+    expect(loaded.warnings[0]).toContain("travel in clear text");
+    expect(loaded.warnings[0]).toContain("-p 127.0.0.1:8080:8080");
+
+    const oauth = load({
+      ...OAUTH_ENV,
+      SEVDESK_HTTP_HOST: "::",
+      SEVDESK_HTTP_PUBLIC_URL: "https://localhost:8443",
+    });
+    expect(oauth.warnings).toEqual([expect.stringContaining("is a loopback URL")]);
+    expect(oauth.warnings[0]).not.toContain("clear text");
+  });
+
+  it("does not warn for a loopback bind or a real public URL", () => {
+    expect(
+      load({ ...BEARER_ENV, SEVDESK_HTTP_PUBLIC_URL: "http://localhost:8080" }).warnings,
+    ).toEqual([]);
+    expect(
+      load({
+        ...BEARER_ENV,
+        SEVDESK_HTTP_HOST: "0.0.0.0",
+        SEVDESK_HTTP_PUBLIC_URL: "https://mcp.example.com",
+      }).warnings,
+    ).toEqual([]);
+  });
+
+  it("warns about passphrase-like secrets without printing them (#9)", () => {
+    const passphrase = "ThisIsMyServerSecretForTheSevdeskMcpServer2026";
+    const secret = load({ ...OAUTH_ENV, SEVDESK_HTTP_SECRET: passphrase });
+    expect(secret.warnings).toEqual([
+      expect.stringContaining("SEVDESK_HTTP_SECRET looks like a passphrase"),
+    ]);
+    expect(secret.warnings[0]).toContain("mcp-server-sevdesk generate-secret");
+    expect(secret.warnings.join("\n")).not.toContain(passphrase);
+
+    const previous = load({
+      ...OAUTH_ENV,
+      SEVDESK_HTTP_SECRET_PREVIOUS: "CorrectHorseBatteryStapleSevdeskSecretNovember",
+    });
+    expect(previous.warnings).toEqual([
+      expect.stringContaining("SEVDESK_HTTP_SECRET_PREVIOUS looks like a passphrase"),
+    ]);
+
+    const bearerPhrase = "correct-horse-battery-staple-sevdesk-mcp";
+    const bearer = load({ ...BEARER_ENV, SEVDESK_HTTP_BEARER_TOKEN: `${BEARER},${bearerPhrase}` });
+    expect(bearer.http.bearerTokens).toEqual([BEARER, bearerPhrase]);
+    expect(bearer.warnings).toEqual([
+      expect.stringContaining("value 2 of SEVDESK_HTTP_BEARER_TOKEN looks like a passphrase"),
+    ]);
+    expect(bearer.warnings.join("\n")).not.toContain(bearerPhrase);
+  });
+
+  it("never warns about generated secrets", () => {
+    for (let index = 0; index < 200; index += 1) {
+      const value = generateSecret();
+      const loaded = load({ ...OAUTH_ENV, SEVDESK_HTTP_SECRET: value });
+      expect(loaded.warnings).toEqual([]);
+      const hex = Buffer.from(value, "base64url").toString("hex");
+      expect(looksHumanChosen(hex)).toBe(false);
+    }
+  });
+});
+
+describe("looksHumanChosen", () => {
+  it("flags passphrases, repetitions and ascending runs, not random strings", () => {
+    for (const value of [
+      "ThisIsMyServerSecretForTheSevdeskMcpServer2026",
+      "MySuperSecretBearerTokenForSevdesk2026!!",
+      "sevdesk-mcp-server-bearer-token-for-claude-code",
+      "deadbeef".repeat(8),
+      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKL",
+      "Xk9#qL2v12345678mP0z!Rt7wQ4nB8sJ",
+    ]) {
+      expect(looksHumanChosen(value), value).toBe(true);
+    }
+    for (const value of [BEARER, BEARER_2, "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8", SECRET]) {
+      expect(looksHumanChosen(value), value).toBe(false);
+    }
   });
 });

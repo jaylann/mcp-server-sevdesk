@@ -1,15 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { jsonResponse } from "../../../src/http/hardening.js";
 import { createHttpLog } from "../../../src/http/log.js";
 import type { IncomingRequest } from "../../../src/http/node-bridge.js";
 import { createRateLimiter } from "../../../src/http/rate-limit.js";
 import {
   annotateRequest,
+  type AuthenticatedRoute,
   createRouter,
   HEALTHZ_PATH,
+  requestAuth,
   type RouterOptions,
 } from "../../../src/http/router.js";
-import type { HttpRequestContext, HttpRoute } from "../../../src/http/types.js";
+import type { HttpAuthenticator, HttpRequestContext, HttpRoute } from "../../../src/http/types.js";
 
 const ORIGIN = "https://mcp.example.com";
 const HTTP = {
@@ -498,6 +501,135 @@ describe("router: security headers", () => {
   it("answers 500 when the origin cannot be resolved", async () => {
     const { router } = setup([route()], { origin: () => "not an origin" });
     expect((await router.fetch(new Request("http://127.0.0.1/echo"))).status).toBe(500);
+  });
+});
+
+describe("router: slow and unauthenticated clients (review #2)", () => {
+  const authenticator: HttpAuthenticator = {
+    authenticate: (request) =>
+      Promise.resolve(
+        request.headers.get("authorization") === "Bearer good"
+          ? { token: "bearer", clientId: "bearer", scopes: ["read"] }
+          : jsonResponse(401, { error: "invalid_token" }),
+      ),
+  };
+  const never = () => new Promise<Uint8Array>(() => undefined);
+
+  it("authenticates on the headers and never reads an unauthenticated body", async () => {
+    let seen: unknown;
+    const mcp: AuthenticatedRoute = {
+      ...route({
+        path: "/mcp",
+        methods: ["POST"],
+        handle: async (request, ctx) => {
+          seen = requestAuth(ctx);
+          return new Response(await request.text());
+        },
+      }),
+      authenticator,
+    };
+    const { router, call, requests } = setup([mcp]);
+    const readBody = vi.fn(never);
+    const refused = await router.serve(
+      incoming({ method: "POST", target: "/mcp", readBody, bodyPending: true }),
+    );
+    expect(refused.status).toBe(401);
+    expect(readBody).not.toHaveBeenCalled();
+    expect(router.inFlight).toBe(0);
+
+    const ok = await call("/mcp", {
+      method: "POST",
+      body: "hello",
+      headers: { Authorization: "Bearer good" },
+    });
+    expect(await ok.text()).toBe("hello");
+    expect(seen).toMatchObject({ clientId: "bearer" });
+    expect(requests().at(-1)).toMatchObject({ route: "/mcp", status: 200, grant: "bearer" });
+  });
+
+  it("caps the requests one client has in progress, per IP and IPv6 /64", async () => {
+    const gate = deferred();
+    const { router } = setup(
+      [
+        route({
+          path: "/slow",
+          handle: async () => {
+            await gate.promise;
+            return new Response("slow");
+          },
+        }),
+        route(),
+      ],
+      { maxPerClient: 2, http: { ...HTTP, allowedHosts: ["mcp.example.com"] } },
+    );
+    const from = (path: string, ip: string) =>
+      router.fetch(new Request(`https://mcp.example.com${path}`), ip);
+    const held = [from("/slow", "2001:db8::1"), from("/slow", "2001:db8::2")];
+    await vi.waitFor(() => {
+      expect(router.inFlight).toBe(2);
+    });
+    const refused = await from("/echo", "2001:db8::3");
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get("retry-after")).toBe("1");
+    expect(await refused.text()).toContain("at once");
+    expect((await from("/echo", "2001:db8:0:1::1")).status).toBe(200);
+    expect((await from("/echo", "192.0.2.1")).status).toBe(200);
+    gate.resolve();
+    for (const response of await Promise.all(held)) expect(await response.text()).toBe("slow");
+    expect((await from("/echo", "2001:db8::3")).status).toBe(200);
+  });
+
+  it("answers 408 when a body does not arrive in time, and frees the slots", async () => {
+    vi.useFakeTimers();
+    const { router } = setup([route()], { bodyTimeoutMs: 1_000 });
+    const pending = router.serve(incoming({ method: "POST", readBody: never, bodyPending: true }));
+    await vi.advanceTimersByTimeAsync(1_000);
+    const response = await pending;
+    expect(response.status).toBe(408);
+    expect(await response.json()).toMatchObject({ error: "request_timeout" });
+    expect(router.inFlight).toBe(0);
+  });
+
+  it("counts only requests whose body arrived against the global cap", async () => {
+    vi.useFakeTimers();
+    const gate = deferred();
+    const { router } = setup(
+      [
+        route({
+          path: "/slow",
+          handle: async () => {
+            await gate.promise;
+            return new Response("slow");
+          },
+        }),
+        route(),
+      ],
+      { maxInFlight: 1, bodyTimeoutMs: 5_000 },
+    );
+    // One client uploads three bodies that never arrive: they hold its own slots only.
+    const uploads = [1, 2, 3].map(() =>
+      router.serve(
+        incoming({ method: "POST", readBody: never, bodyPending: true, remoteAddress: "10.0.0.1" }),
+      ),
+    );
+    await vi.waitFor(() => {
+      expect(router.inFlight).toBe(3);
+    });
+    const echo = await router.fetch(new Request("https://mcp.example.com/echo"), "10.0.0.2");
+    expect(echo.status).toBe(200);
+    expect(await echo.text()).toBe("ok");
+    // A request being handled does take the global slot.
+    const slow = router.fetch(new Request("https://mcp.example.com/slow"), "10.0.0.3");
+    await vi.waitFor(() => {
+      expect(router.inFlight).toBe(4);
+    });
+    const busy = await router.fetch(new Request("https://mcp.example.com/echo"), "10.0.0.4");
+    expect(busy.status).toBe(503);
+    gate.resolve();
+    expect(await (await slow).text()).toBe("slow");
+    await vi.advanceTimersByTimeAsync(5_000);
+    for (const response of await Promise.all(uploads)) expect(response.status).toBe(408);
+    expect(router.inFlight).toBe(0);
   });
 });
 

@@ -46,6 +46,8 @@ export interface StartHttpServerOptions {
   readonly drainMs?: number;
   readonly deadlineMs?: number;
   readonly maxInFlight?: number;
+  readonly maxPerClient?: number;
+  readonly bodyTimeoutMs?: number;
   /** Receives the `listening on <origin>/mcp` line (default: stderr). */
   readonly announce?: (line: string) => void;
 }
@@ -73,6 +75,8 @@ export async function startHttpServer(options: StartHttpServerOptions): Promise<
     ...(options.limiter === undefined ? {} : { limiter: options.limiter }),
     ...(options.deadlineMs === undefined ? {} : { deadlineMs: options.deadlineMs }),
     ...(options.maxInFlight === undefined ? {} : { maxInFlight: options.maxInFlight }),
+    ...(options.maxPerClient === undefined ? {} : { maxPerClient: options.maxPerClient }),
+    ...(options.bodyTimeoutMs === undefined ? {} : { bodyTimeoutMs: options.bodyTimeoutMs }),
   });
 
   const server = createServer((req, res) => {

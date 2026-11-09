@@ -1,6 +1,7 @@
 /**
- * The MCP endpoint, `POST /mcp`: authenticates the request (bearer or OAuth, see
- * {@link HttpAuthenticator}) and hands it to the SDK's stateless handler
+ * The MCP endpoint, `POST /mcp`: an {@link AuthenticatedRoute}, so the router authenticates the
+ * request on its headers (bearer or OAuth, see {@link HttpAuthenticator}) before it reads the
+ * body, and the handler hands it to the SDK's stateless handler
  * (`createMcpHandler(factory, {legacy: "stateless"})`), which serves both protocol eras: 2026-07-28
  * requests natively, 2025-era requests through a fresh instance per request. GET and DELETE (2025
  * session operations) are authenticated too and then answered 405 by the SDK. The verified
@@ -12,8 +13,8 @@
 import { createMcpHandler, type McpServerFactory } from "@modelcontextprotocol/server";
 
 import { principalLogFields } from "./log.js";
-import { annotateRequest } from "./router.js";
-import type { HttpAuthenticator, HttpLog, HttpRoute, RateRule } from "./types.js";
+import { annotateRequest, type AuthenticatedRoute, requestAuth } from "./router.js";
+import type { HttpAuthenticator, HttpLog, RateRule } from "./types.js";
 
 export const MCP_PATH = "/mcp";
 /** Largest MCP request body (1 MiB). */
@@ -37,7 +38,7 @@ export interface McpRouteOptions {
 }
 
 export interface McpRoute {
-  readonly route: HttpRoute;
+  readonly route: AuthenticatedRoute;
   /** Aborts in-flight 2026-07-28 exchanges (shutdown). */
   close(): Promise<void>;
 }
@@ -53,16 +54,22 @@ export function createMcpRoute(options: McpRouteOptions): McpRoute {
     maxRequestBodySize: MCP_MAX_BODY_BYTES,
     onerror,
   });
-  const route: HttpRoute = {
+  const route: AuthenticatedRoute = {
     path: MCP_PATH,
     methods: ["POST", "GET", "DELETE"],
     maxBodyBytes: MCP_MAX_BODY_BYTES,
     origin: "mcp",
     rateLimit: options.rateLimit ?? DEFAULT_MCP_RATE_LIMIT,
+    authenticator: options.authenticator,
     handle: async (request, ctx) => {
-      const auth = await options.authenticator.authenticate(request, ctx);
-      if (auth instanceof Response) return auth;
-      annotateRequest(ctx, principalLogFields(auth));
+      // The router has authenticated the headers; a caller outside the router has not.
+      let auth = requestAuth(ctx);
+      if (auth === undefined) {
+        const result = await options.authenticator.authenticate(request, ctx);
+        if (result instanceof Response) return result;
+        auth = result;
+        annotateRequest(ctx, principalLogFields(auth));
+      }
       return handler.fetch(request, { authInfo: auth });
     },
   };

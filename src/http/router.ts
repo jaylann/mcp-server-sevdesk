@@ -6,18 +6,28 @@
  * 2. the Host allowlist (DNS-rebinding defence), except on routes with `hostCheck: false`;
  * 3. 404 for unknown paths, 405 with `Allow` for other methods;
  * 4. while draining, 503 for everything but `/healthz`;
- * 5. the route's token-bucket rate limit per client IP (429 with `Retry-After`);
- * 6. at most {@link DEFAULT_MAX_IN_FLIGHT} requests in flight (503 beyond);
+ * 5. the route's token-bucket rate limit per client (429 with `Retry-After`);
+ * 6. at most {@link DEFAULT_MAX_PER_CLIENT} requests at once per client (429);
  * 7. the route's Origin policy (403);
- * 8. the body, read up to the route's limit (413 beyond);
- * 9. the handler, under a per-request deadline ({@link DEFAULT_DEADLINE_MS}) and the client's
- *    disconnect signal. Authentication is the handler's first step (`mcp-route.ts`).
+ * 8. on an {@link AuthenticatedRoute} (`/mcp`), authentication on the headers alone: a client
+ *    without valid credentials never gets to send a body;
+ * 9. the body, read up to the route's limit (413 beyond) within {@link DEFAULT_BODY_TIMEOUT_MS}
+ *    (408 beyond);
+ * 10. at most {@link DEFAULT_MAX_IN_FLIGHT} requests being handled (503 beyond). Only requests
+ *    whose body has arrived count here, so slow uploads cannot starve the server; they are bounded
+ *    per client by step 6 and in time by step 9;
+ * 11. the handler, under a per-request deadline ({@link DEFAULT_DEADLINE_MS}) and the client's
+ *    disconnect signal.
  *
+ * A "client" is the IP after `SEVDESK_HTTP_TRUST_PROXY`, IPv6 grouped by /64 (`rateLimitKey`).
  * Every response leaves with the security headers of `hardening.ts`, and every request (but a
  * healthy `/healthz`) is logged once: method, route template (never the raw path or query),
- * status, duration, client IP and, once a handler called {@link annotateRequest}, the grant prefix.
- * A request stays "in flight" until its response body is complete, so streaming responses count.
+ * status, duration, client IP and, once authenticated or annotated ({@link annotateRequest}), the
+ * grant prefix. A request stays in progress until its response body is complete, so streaming
+ * responses count.
  */
+import type { AuthInfo } from "@modelcontextprotocol/server";
+
 import { clientIp, rateLimitKey } from "./client-ip.js";
 import {
   badRequest,
@@ -28,20 +38,54 @@ import {
   originHostnames,
   originRefusal,
   payloadTooLarge,
+  requestTimeout,
   serverError,
   serviceUnavailable,
+  tooManyConcurrentRequests,
   tooManyRequests,
   withSecurityHeaders,
 } from "./hardening.js";
+import { principalLogFields } from "./log.js";
 import { fromWebRequest, type IncomingRequest } from "./node-bridge.js";
 import { createRateLimiter, type RateLimiter } from "./rate-limit.js";
-import type { HttpConfig, HttpLog, HttpRequestContext, HttpRoute, LogFields } from "./types.js";
+import type {
+  HttpAuthenticator,
+  HttpConfig,
+  HttpLog,
+  HttpRequestContext,
+  HttpRoute,
+  LogFields,
+} from "./types.js";
 
 export const HEALTHZ_PATH = "/healthz";
-/** Most requests handled at once (streaming responses included). */
+/** Most requests handled at once, once their body has arrived (streaming responses included). */
 const DEFAULT_MAX_IN_FLIGHT = 64;
+/** Most requests of one client in progress at once, from admission to the end of the response. */
+const DEFAULT_MAX_PER_CLIENT = 8;
+/** Longest a request body may take to arrive (408 beyond); Node's own limit is 30 s. */
+const DEFAULT_BODY_TIMEOUT_MS = 15_000;
 /** Longest a request may take before its signal aborts and it is answered 503. */
 const DEFAULT_DEADLINE_MS = 120_000;
+
+/**
+ * A route whose requests are authenticated on their headers before the body is read (`/mcp`).
+ * The handler finds the verified `AuthInfo` with {@link requestAuth}. (A route option in
+ * `HttpRoute` would say the same; this keeps the shared contract unchanged.)
+ */
+export interface AuthenticatedRoute extends HttpRoute {
+  readonly authenticator: HttpAuthenticator;
+}
+
+/** The `AuthInfo` the router verified for the request of `ctx`, on an {@link AuthenticatedRoute}. */
+export function requestAuth(ctx: HttpRequestContext): AuthInfo | undefined {
+  return auths.get(ctx);
+}
+
+const auths = new WeakMap<HttpRequestContext, AuthInfo>();
+
+function isAuthenticated(route: HttpRoute): route is AuthenticatedRoute {
+  return "authenticator" in route && route.authenticator !== undefined;
+}
 
 export interface RouterOptions {
   readonly http: Pick<HttpConfig, "allowedHosts" | "allowedOrigins" | "trustProxy">;
@@ -54,7 +98,12 @@ export interface RouterOptions {
   readonly log: HttpLog;
   /** Shared with route handlers through `ctx.limit` (default: a fresh limiter). */
   readonly limiter?: RateLimiter;
+  /** Global cap on requests being handled (default 64). */
   readonly maxInFlight?: number;
+  /** Cap on one client's requests in progress (default 8). */
+  readonly maxPerClient?: number;
+  /** Time a request body may take to arrive (default 15 s). */
+  readonly bodyTimeoutMs?: number;
   readonly deadlineMs?: number;
   /** Epoch ms, for durations in log lines. */
   readonly now?: () => number;
@@ -71,9 +120,9 @@ export interface Router {
   /** Starts draining: `/healthz` answers 503, every other new request too. */
   drain(): void;
   readonly draining: boolean;
-  /** Requests whose response is not complete yet. */
+  /** Admitted requests whose response is not complete yet (body uploads included). */
   readonly inFlight: number;
-  /** Resolves once no request is in flight. */
+  /** Resolves once no request is in progress. */
   idle(): Promise<void>;
   /** Aborts the signal of every request in flight (the end of a graceful shutdown). */
   abortAll(): void;
@@ -111,12 +160,19 @@ export function createRouter(options: RouterOptions): Router {
   const now = options.now ?? Date.now;
   const limiter = options.limiter ?? createRateLimiter({ now });
   const maxInFlight = options.maxInFlight ?? DEFAULT_MAX_IN_FLIGHT;
+  const maxPerClient = options.maxPerClient ?? DEFAULT_MAX_PER_CLIENT;
+  const bodyTimeoutMs = options.bodyTimeoutMs ?? DEFAULT_BODY_TIMEOUT_MS;
   const deadlineMs = options.deadlineMs ?? DEFAULT_DEADLINE_MS;
   const { log } = options;
   const allowedOriginHostnames = originHostnames(options.http.allowedOrigins);
   const shutdown = new AbortController();
   let draining = false;
-  let inFlight = 0;
+  /** Requests admitted and not finished (all stages). */
+  let admitted = 0;
+  /** Requests past their body, being handled: what the global cap limits. */
+  let handling = 0;
+  /** Requests in progress per client key. */
+  const perClient = new Map<string, number>();
   let idleWaiters: (() => void)[] = [];
 
   const healthResponse = (): Response =>
@@ -136,9 +192,12 @@ export function createRouter(options: RouterOptions): Router {
   const currentOrigin = (): string =>
     new URL(typeof options.origin === "function" ? options.origin() : options.origin).origin;
 
-  const release = (): void => {
-    inFlight -= 1;
-    if (inFlight === 0) {
+  const release = (clientKey: string): void => {
+    const held = (perClient.get(clientKey) ?? 1) - 1;
+    if (held <= 0) perClient.delete(clientKey);
+    else perClient.set(clientKey, held);
+    admitted -= 1;
+    if (admitted === 0) {
       const waiters = idleWaiters;
       idleWaiters = [];
       for (const resolve of waiters) resolve();
@@ -173,16 +232,18 @@ export function createRouter(options: RouterOptions): Router {
     if (draining) {
       return early(serviceUnavailable("The server is shutting down; retry shortly.", 10));
     }
+    const clientKey = rateLimitKey(ip);
     if (route.rateLimit !== undefined) {
-      const decision = limiter.take(route.rateLimit, rateLimitKey(ip));
+      const decision = limiter.take(route.rateLimit, clientKey);
       if (!decision.allowed) return early(tooManyRequests(decision.retryAfterSeconds));
     }
-    if (inFlight >= maxInFlight) {
-      return early(serviceUnavailable("The server is busy; retry shortly."));
-    }
+    const held = perClient.get(clientKey) ?? 0;
+    if (held >= maxPerClient) return early(tooManyConcurrentRequests());
 
-    // From here on the request holds a slot until its response body is done.
-    inFlight += 1;
+    // From here on the request holds its client's slot until its response body is done.
+    perClient.set(clientKey, held + 1);
+    admitted += 1;
+    let handlingSlot = false;
     const deadline = new AbortController();
     const timer = setTimeout(() => {
       deadline.abort(new Error(`The request exceeded ${String(deadlineMs / 1000)} s.`));
@@ -193,35 +254,22 @@ export function createRouter(options: RouterOptions): Router {
       if (finished) return;
       finished = true;
       clearTimeout(timer);
-      release();
+      if (handlingSlot) handling -= 1;
+      release(clientKey);
     };
     const signal = AbortSignal.any([incoming.signal, deadline.signal, shutdown.signal]);
     const served = (response: Response): Served => ({ response, finish, signal });
-    // Answers of the router itself are complete: the request's signal must not cut them short.
-    const answered = (response: Response): Served => ({ response, finish, signal: undefined });
+    // Answers of the router itself (and authentication challenges) are complete: they free the
+    // slots at once, and the request's signal must not cut them short.
+    const answered = (response: Response): Served => {
+      finish();
+      return early(response);
+    };
 
     try {
-      const head = new Request(url, { method: incoming.method, headers: incoming.headers });
+      const head = new Request(url, { method: incoming.method, headers: incoming.headers, signal });
       const refusal = originRefusal(head, route.origin, { origin, allowedOriginHostnames });
       if (refusal !== undefined) return answered(refusal);
-
-      let body: Uint8Array | null = null;
-      if (incoming.method !== "GET" && incoming.method !== "HEAD") {
-        let read: Uint8Array | "too_large";
-        try {
-          read = await incoming.readBody(route.maxBodyBytes);
-        } catch {
-          return answered(badRequest("The request body could not be read."));
-        }
-        if (read === "too_large") return answered(payloadTooLarge(route.maxBodyBytes));
-        body = read.byteLength > 0 ? read : null;
-      }
-      const request = new Request(url, {
-        method: incoming.method,
-        headers: incoming.headers,
-        body,
-        signal,
-      });
       const ctx: HttpRequestContext = {
         clientIp: ip,
         origin,
@@ -230,6 +278,38 @@ export function createRouter(options: RouterOptions): Router {
         limit: (rule, key) => limiter.take(rule, key).allowed,
       };
       lines.set(ctx, line);
+
+      if (isAuthenticated(route)) {
+        const auth = await route.authenticator.authenticate(head, ctx);
+        if (auth instanceof Response) return answered(auth);
+        auths.set(ctx, auth);
+        annotateRequest(ctx, principalLogFields(auth));
+      }
+
+      let body: Uint8Array | null = null;
+      if (incoming.method !== "GET" && incoming.method !== "HEAD") {
+        let read: Uint8Array | "too_large" | "timeout";
+        try {
+          read = await readBodyWithin(incoming, route.maxBodyBytes, bodyTimeoutMs);
+        } catch {
+          return answered(badRequest("The request body could not be read."));
+        }
+        if (read === "timeout") return answered(requestTimeout(bodyTimeoutMs));
+        if (read === "too_large") return answered(payloadTooLarge(route.maxBodyBytes));
+        body = read.byteLength > 0 ? read : null;
+      }
+      if (handling >= maxInFlight) {
+        return answered(serviceUnavailable("The server is busy; retry shortly."));
+      }
+      handling += 1;
+      handlingSlot = true;
+
+      const request = new Request(url, {
+        method: incoming.method,
+        headers: incoming.headers,
+        body,
+        signal,
+      });
 
       const handled = route.handle(request, ctx);
       const timedOut = new Promise<"deadline">((resolve) => {
@@ -311,10 +391,10 @@ export function createRouter(options: RouterOptions): Router {
       return draining;
     },
     get inFlight() {
-      return inFlight;
+      return admitted;
     },
     idle: () =>
-      inFlight === 0
+      admitted === 0
         ? Promise.resolve()
         : new Promise<void>((resolve) => {
             idleWaiters.push(resolve);
@@ -323,6 +403,31 @@ export function createRouter(options: RouterOptions): Router {
       shutdown.abort(new Error("The server is shutting down."));
     },
   };
+}
+
+/**
+ * Reads the body within `ms`: the bytes, `"too_large"`, or `"timeout"` (the read is then left to
+ * fail with the connection, which the response closes). Rejects when the read fails.
+ */
+async function readBodyWithin(
+  incoming: IncomingRequest,
+  maxBytes: number,
+  ms: number,
+): Promise<Uint8Array | "too_large" | "timeout"> {
+  const reading = incoming.readBody(maxBytes);
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<"timeout">((resolve) => {
+    timer = setTimeout(() => {
+      resolve("timeout");
+    }, ms);
+  });
+  try {
+    return await Promise.race([reading, timeout]);
+  } finally {
+    clearTimeout(timer);
+    // A read abandoned at the timeout rejects when the connection closes; nobody waits for it.
+    reading.catch(() => undefined);
+  }
 }
 
 interface RouteTable {

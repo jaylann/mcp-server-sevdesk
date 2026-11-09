@@ -129,6 +129,19 @@ export function loadHttpConfig(env: Env, deps: LoadHttpConfigDeps = {}): LoadedH
     );
   }
 
+  if (!loopbackBind && publicUrl !== undefined && isLoopbackHost(publicUrl.hostname)) {
+    warnings.push(
+      `SEVDESK_HTTP_HOST=${host} listens on every network it is reachable from, but ` +
+        `SEVDESK_HTTP_PUBLIC_URL=${publicUrl.origin} is a loopback URL: anyone who can reach the ` +
+        "port can use the server (the Host check only asks for that loopback name)" +
+        (publicUrl.origin.startsWith("http:")
+          ? ", and bearer tokens, OAuth codes and cookies travel in clear text"
+          : "") +
+        ". Publish the port on 127.0.0.1 only (docker run -p 127.0.0.1:8080:8080), or put an " +
+        "https reverse proxy in front and set SEVDESK_HTTP_PUBLIC_URL to its URL.",
+    );
+  }
+
   // HTTP mode never opens a browser on its own unless asked to, and never on a public bind.
   const confirmOpenSet = nonEmpty(env["SEVDESK_CONFIRM_OPEN"]) !== undefined;
   const confirmOpen = confirmOpenSet && base.confirmOpen;
@@ -146,8 +159,8 @@ export function loadHttpConfig(env: Env, deps: LoadHttpConfigDeps = {}): LoadedH
   const allowedHosts = readAllowedHosts(env, problems, publicUrl, loopbackBind ? host : undefined);
   const allowedOrigins = readAllowedOrigins(env, problems, publicUrl, loopbackBind);
 
-  const secret = readServerSecret(env, readFile, problems, auth === "oauth", secrets);
-  const previousSecret = readPreviousSecret(env, readFile, problems, secret, secrets);
+  const secret = readServerSecret(env, readFile, problems, auth === "oauth", secrets, warnings);
+  const previousSecret = readPreviousSecret(env, readFile, problems, secret, secrets, warnings);
 
   let token: string | undefined;
   let bearerTokens: readonly string[] = [];
@@ -155,7 +168,7 @@ export function loadHttpConfig(env: Env, deps: LoadHttpConfigDeps = {}): LoadedH
   if (auth === "bearer") {
     token = readBearerSevdeskToken(env, readFile, problems);
     if (token !== undefined) secrets.push(token);
-    bearerTokens = readBearerTokens(env, readFile, problems, token);
+    bearerTokens = readBearerTokens(env, readFile, problems, token, warnings);
     secrets.push(...bearerTokens);
   } else if (auth === "oauth") {
     if (publicUrl === undefined && nonEmpty(env["SEVDESK_HTTP_PUBLIC_URL"]) === undefined) {
@@ -310,6 +323,71 @@ export function parseDuration(raw: string): number | undefined {
   const unit = (match[2] ?? "").toLowerCase();
   const factor = unit === "m" ? MINUTE : unit === "h" ? HOUR : unit === "d" ? DAY : 1;
   return Number(match[1]) * factor;
+}
+
+/** Bits per character a value may fall short of a random string's entropy before it is suspect. */
+const ENTROPY_MARGIN_BITS = 0.75;
+/** An ascending run this long (`abcdefgh`, `12345678`) marks a value as typed, not generated. */
+const ASCENDING_RUN = 8;
+
+/**
+ * Whether `value` looks chosen by a person (a passphrase, a pattern) rather than produced by a
+ * random generator: its per-character Shannon entropy falls more than {@link ENTROPY_MARGIN_BITS}
+ * below what a random string of the same length over the same alphabet (hex, base64(url), or
+ * printable ASCII) has on average, or it contains a long ascending run. Calibrated so random
+ * values of 32 to 128 characters are never flagged in 100 000 samples each, while passphrases such
+ * as `ThisIsMyServerSecretForTheSevdeskMcpServer2026` are. A heuristic for a warning only.
+ */
+export function looksHumanChosen(value: string): boolean {
+  const alphabet = /^(?:[0-9a-f]+|[0-9A-F]+)$/.test(value)
+    ? 16
+    : /^[A-Za-z0-9+/_=-]+$/.test(value)
+      ? 64
+      : 94;
+  if (shannonEntropy(value) < expectedEntropy(value.length, alphabet) - ENTROPY_MARGIN_BITS) {
+    return true;
+  }
+  let run = 1;
+  for (let index = 1; index < value.length; index += 1) {
+    run = value.charCodeAt(index) === value.charCodeAt(index - 1) + 1 ? run + 1 : 1;
+    if (run >= ASCENDING_RUN) return true;
+  }
+  return false;
+}
+
+/** Per-character Shannon entropy of `value` (bits). */
+function shannonEntropy(value: string): number {
+  const counts = new Map<string, number>();
+  for (const char of value) counts.set(char, (counts.get(char) ?? 0) + 1);
+  let bits = 0;
+  for (const count of counts.values()) {
+    const p = count / value.length;
+    bits -= p * Math.log2(p);
+  }
+  return bits;
+}
+
+/**
+ * The expected per-character Shannon entropy of `n` characters drawn uniformly from `k` symbols:
+ * `k · Σ_j P(count = j) · −(j/n)·log2(j/n)`, with `count ~ Binomial(n, 1/k)`.
+ */
+function expectedEntropy(n: number, k: number): number {
+  const p = 1 / k;
+  let logBinomial = 0;
+  let sum = 0;
+  for (let j = 1; j <= n; j += 1) {
+    logBinomial += Math.log(n - j + 1) - Math.log(j);
+    const probability = Math.exp(logBinomial + j * Math.log(p) + (n - j) * Math.log1p(-p));
+    sum -= probability * (j / n) * Math.log2(j / n);
+  }
+  return k * sum;
+}
+
+function passphraseWarning(which: string): string {
+  return (
+    `${which} looks like a passphrase or pattern rather than random output, which makes it ` +
+    `guessable offline. Replace it with the output of \`mcp-server-sevdesk generate-secret\`.`
+  );
 }
 
 /**
@@ -519,6 +597,7 @@ function readServerSecret(
   problems: string[],
   required: boolean,
   secrets: string[],
+  warnings: string[],
 ): Uint8Array | undefined {
   const raw = readSecret(env, "SEVDESK_HTTP_SECRET", readFile, problems, {
     required,
@@ -532,7 +611,10 @@ function readServerSecret(
         : undefined,
   });
   const decoded = raw === undefined ? undefined : decodeSecret(raw);
-  if (raw !== undefined && decoded !== undefined) secrets.push(...secretEncodings(raw, decoded));
+  if (raw !== undefined && decoded !== undefined) {
+    secrets.push(...secretEncodings(raw, decoded));
+    if (looksHumanChosen(raw)) warnings.push(passphraseWarning("SEVDESK_HTTP_SECRET"));
+  }
   return decoded;
 }
 
@@ -542,6 +624,7 @@ function readPreviousSecret(
   problems: string[],
   current: Uint8Array | undefined,
   secrets: string[],
+  warnings: string[],
 ): Uint8Array | undefined {
   const raw = readSecret(env, "SEVDESK_HTTP_SECRET_PREVIOUS", readFile, problems, {
     required: false,
@@ -554,6 +637,7 @@ function readPreviousSecret(
   const decoded = raw === undefined ? undefined : decodeSecret(raw);
   if (raw === undefined || decoded === undefined) return undefined;
   secrets.push(...secretEncodings(raw, decoded));
+  if (looksHumanChosen(raw)) warnings.push(passphraseWarning("SEVDESK_HTTP_SECRET_PREVIOUS"));
   if (current === undefined) {
     if (
       nonEmpty(env["SEVDESK_HTTP_SECRET"]) === undefined &&
@@ -593,6 +677,7 @@ function readBearerTokens(
   readFile: (path: string) => string,
   problems: string[],
   sevdeskToken: string | undefined,
+  warnings: string[],
 ): string[] {
   const name = "SEVDESK_HTTP_BEARER_TOKEN";
   const raw = readSecret(env, name, readFile, problems, {
@@ -625,6 +710,8 @@ function readBearerTokens(
       );
     } else if (new Set(value).size < MIN_BEARER_DISTINCT) {
       problems.push(`${which} is not random enough: ${GENERATE_HINT}.`);
+    } else if (looksHumanChosen(value)) {
+      warnings.push(passphraseWarning(which));
     }
     if (sevdeskToken !== undefined && value === sevdeskToken) {
       problems.push(

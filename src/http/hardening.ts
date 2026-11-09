@@ -71,6 +71,25 @@ export function tooManyRequests(retryAfterSeconds: number): Response {
   );
 }
 
+/** 429 for a client with too many requests in progress at once. */
+export function tooManyConcurrentRequests(): Response {
+  return errorResponse(
+    429,
+    "rate_limited",
+    "Too many requests from this client at once; retry when one has finished.",
+    { "Retry-After": "1" },
+  );
+}
+
+/** 408 for a request body that did not arrive in time. */
+export function requestTimeout(timeoutMs: number): Response {
+  return errorResponse(
+    408,
+    "request_timeout",
+    `The request body did not arrive within ${String(timeoutMs / 1000)} s.`,
+  );
+}
+
 export function serviceUnavailable(description: string, retryAfterSeconds = 1): Response {
   return errorResponse(503, "unavailable", description, {
     "Retry-After": String(retryAfterSeconds),

@@ -110,6 +110,31 @@ describe("createMcpRoute", () => {
     expect(seen).toEqual([]);
   });
 
+  it("is authenticated by the router, and authenticates itself when called directly", async () => {
+    const { mcp, seen } = setup();
+    expect(mcp.route.authenticator).toBeDefined();
+    const ctx = {
+      clientIp: "127.0.0.1",
+      origin: ORIGIN,
+      signal: new AbortController().signal,
+      log: createHttpLog({ write: () => undefined }),
+      limit: () => true,
+    };
+    const refused = await mcp.route.handle(
+      new Request(`${ORIGIN}${MCP_PATH}`, { method: "POST", body: "{}" }),
+      ctx,
+    );
+    expect(refused?.status).toBe(401);
+    const allowed = await mcp.route.handle(
+      new Request(`${ORIGIN}${MCP_PATH}`, {
+        headers: { Authorization: `Bearer ${TOKEN}`, Accept: "text/event-stream" },
+      }),
+      ctx,
+    );
+    expect(allowed?.status).toBe(405);
+    expect(seen).toEqual([]);
+  });
+
   it("lets the SDK answer GET with 405 once authenticated", async () => {
     const { router } = setup();
     const response = await router.fetch(
