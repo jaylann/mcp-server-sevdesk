@@ -89,6 +89,14 @@ export interface HttpsGetRequest {
   readonly address: ResolvedAddress;
 }
 
+/** The response headers the fetcher looks at; everything else is dropped. */
+const READ_HEADERS = [
+  "content-type",
+  "content-length",
+  "content-encoding",
+  "cache-control",
+] as const;
+
 export interface HttpsGetResponse {
   readonly status: number;
   /** Lower-cased header names. */
@@ -166,9 +174,15 @@ export function createHttpsGet(options: HttpsGetOptions = {}): HttpsGet {
       });
       request.once("response", (response) => {
         const status = response.statusCode ?? 0;
-        const headers: Record<string, string | undefined> = {};
-        for (const [name, value] of Object.entries(response.headers)) {
-          headers[name] = Array.isArray(value) ? value.join(", ") : value;
+        // Only the headers the fetcher reads, into an object without a prototype: header names
+        // come from the remote host and must never become arbitrary property names.
+        const headers: Record<string, string | undefined> = Object.create(null) as Record<
+          string,
+          string | undefined
+        >;
+        for (const name of READ_HEADERS) {
+          const value = response.headers[name];
+          if (value !== undefined) headers[name] = Array.isArray(value) ? value.join(", ") : value;
         }
         if (status !== 200) {
           // Redirects and errors are not followed or read.

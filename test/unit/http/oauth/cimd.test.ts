@@ -364,6 +364,20 @@ describe("createHttpsGet (real TLS on 127.0.0.1)", () => {
     expect(hosts).toEqual([`${HOST}:${String(port)}`]);
   });
 
+  it("keeps only the headers it reads, in an object without a prototype", async () => {
+    const { port } = await tlsServer((_request, response) => {
+      response.setHeader("__proto__", "polluted");
+      response.setHeader("constructor", "x");
+      response.setHeader("X-Other", "y");
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify(DOC));
+    });
+    const response = await createHttpsGet({ port, ca: cert })(target);
+    expect(Object.getPrototypeOf(response.headers)).toBeNull();
+    expect(Object.keys(response.headers)).toEqual(["content-type"]);
+    expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
+  });
+
   it("verifies the certificate against the host name", async () => {
     const { port } = await tlsServer((_request, response) => response.end("{}"));
     await expect(
