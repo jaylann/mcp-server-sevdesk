@@ -162,6 +162,17 @@ export function loadHttpConfig(env: Env, deps: LoadHttpConfigDeps = {}): LoadedH
   const secret = readServerSecret(env, readFile, problems, auth === "oauth", secrets, warnings);
   const previousSecret = readPreviousSecret(env, readFile, problems, secret, secrets, warnings);
 
+  // Profiles and the OS keychain are for local (stdio) installs: a container has no keychain,
+  // and an HTTP server keeps one source of configuration, its environment.
+  for (const name of ["SEVDESK_PROFILE", "SEVDESK_PROFILES_FILE", "SEVDESK_API_TOKEN_KEYCHAIN"]) {
+    if (nonEmpty(env[name]) !== undefined) {
+      problems.push(
+        `${name} works only over stdio, not with --http. Configure the HTTP server through its ` +
+          "environment (SEVDESK_API_TOKEN or SEVDESK_API_TOKEN_FILE in bearer mode).",
+      );
+    }
+  }
+
   let token: string | undefined;
   let bearerTokens: readonly string[] = [];
   let oauth: OAuthSettings | undefined;

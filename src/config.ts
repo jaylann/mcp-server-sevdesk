@@ -26,6 +26,12 @@ export type Deployment =
        * model may name because approving needs a browser session that proves the account.
        */
       readonly approvalsUrl: string | undefined;
+      /**
+       * Remote file transfer (`SEVDESK_HTTP_FILES`, default on): upload pages and download
+       * links that need a browser session of the account (`src/safety/file-access.ts`).
+       * Undefined when switched off.
+       */
+      readonly files?: { readonly ttlSeconds: number } | undefined;
     };
 
 /**

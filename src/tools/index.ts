@@ -1,3 +1,4 @@
+import { ADVANCED_TOOLS } from "./advanced/index.js";
 import { BANKING_TOOLS } from "./banking/index.js";
 import { CONTACT_TOOLS } from "./contacts/index.js";
 import { CREDIT_NOTE_TOOLS } from "./credit-notes/index.js";
@@ -27,6 +28,7 @@ export const ALL_TOOLS: readonly AnyToolDefinition[] = assertUniqueNames([
   ...PART_TOOLS,
   ...DOCUMENT_FILE_TOOLS,
   ...REPORT_TOOLS,
+  ...ADVANCED_TOOLS,
 ]);
 
 /** Throws when two tools share a name; returns the list unchanged otherwise. */

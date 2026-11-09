@@ -15,6 +15,7 @@ import type { z } from "zod";
 import type { Config, StructuredOutputMode } from "../config.js";
 import type { SafetyRuntime } from "../safety/runtime.js";
 import type { Tier, WriteTier } from "../safety/tiers.js";
+import type { TransferStore } from "../safety/transfer-types.js";
 import type { SevdeskClient } from "../sevdesk/types.js";
 import { successResult } from "./result.js";
 import {
@@ -49,6 +50,11 @@ export interface RegistryDeps {
    * `createSafetyRuntime`); write tools cannot run without it.
    */
   readonly safety: SafetyRuntime;
+  /**
+   * Remote file transfer (HTTP mode with `deployment.files`): uploads and download links, shared
+   * by every instance of the server. Undefined over stdio and when switched off.
+   */
+  readonly transfer?: TransferStore | undefined;
 }
 
 /**

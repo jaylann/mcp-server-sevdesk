@@ -6,6 +6,7 @@ import type { Config, Settings } from "./config.js";
 import { buildInstructions } from "./instructions.js";
 import { registerResources } from "./resources/index.js";
 import { createSafetyRuntime, type SafetyRuntime } from "./safety/runtime.js";
+import type { TransferStore } from "./safety/transfer-types.js";
 import type { SevdeskClient } from "./sevdesk/types.js";
 import { ToolDefinitionError, validateToolDefinition } from "./tools/define-tool.js";
 import { ALL_TOOLS, assertUniqueNames } from "./tools/index.js";
@@ -33,6 +34,11 @@ export interface ServerDeps {
    * Tests pass one with a fake clock.
    */
   readonly safety?: SafetyRuntime;
+  /**
+   * Remote file transfer (HTTP with `deployment.files`): uploads and download links shared by
+   * every instance. Undefined over stdio.
+   */
+  readonly transfer?: TransferStore | undefined;
 }
 
 /**
@@ -51,6 +57,11 @@ export interface AccountServerDeps {
    * the HTTP mode passes a runtime with the approvals inbox channel instead.
    */
   readonly safety?: SafetyRuntime;
+  /**
+   * Remote file transfer (HTTP with `deployment.files`): uploads and download links shared by
+   * every instance. Undefined over stdio.
+   */
+  readonly transfer?: TransferStore | undefined;
 }
 
 /**
@@ -99,6 +110,7 @@ interface PreparedServer {
   readonly tools: readonly AnyToolDefinition[];
   readonly instructions: string;
   readonly safety: SafetyRuntime;
+  readonly transfer: TransferStore | undefined;
 }
 
 /** What one tier set exposes: the selected tools and their instructions. */
@@ -131,6 +143,7 @@ function prepare(deps: ServerDeps): PreparedServer {
     client: deps.client,
     ...surfaceOf(catalog, deps.config),
     safety: deps.safety ?? createSafetyRuntime(deps.config),
+    transfer: deps.transfer,
   };
 }
 
@@ -147,7 +160,10 @@ function accountServerFactory(deps: AccountServerDeps): ServerFactory {
       surface = surfaceOf(catalog, config);
       surfaces.set(key, surface);
     }
-    return instantiate({ config, client, ...surface, safety }, context.era);
+    return instantiate(
+      { config, client, ...surface, safety, transfer: deps.transfer },
+      context.era,
+    );
   };
   return Object.assign(factory, {
     close: async () => {
@@ -175,6 +191,7 @@ function instantiate(prepared: PreparedServer, era: ProtocolEra | undefined): Mc
     client,
     structuredOutput: resolveStructuredOutput(config.structuredOutput, era),
     safety: prepared.safety,
+    transfer: prepared.transfer,
   });
   registerResources(server, { config, client });
   return server;
