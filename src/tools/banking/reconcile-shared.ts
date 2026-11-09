@@ -37,7 +37,7 @@ export function argOfKind(kind: PaymentKind): DocumentKindArg {
   return ARG_BY_KIND[kind];
 }
 
-/** Commit actions: see the M3 brief's annotation table. */
+/** Commit actions: change bookkeeping state that only a further action reverts, never idempotent. */
 export const COMMIT_ANNOTATIONS: ToolAnnotationSet = {
   readOnlyHint: false,
   destructiveHint: true,

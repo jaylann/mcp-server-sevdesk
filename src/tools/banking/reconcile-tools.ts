@@ -5,7 +5,7 @@ import { transactionGetTool } from "./transaction-get.js";
 import { transactionMarkPrivateTool } from "./transaction-private.js";
 import { transactionResetTool } from "./transaction-reset.js";
 
-/** Bank reconciliation tools, M4: transaction details, match suggestions, booking (with splits), private marking and reset. Owned by the m4-reconcile agent. */
+/** Bank reconciliation tools: transaction details, match suggestions, booking (with splits), private marking and reset. */
 export const BANKING_RECONCILE_TOOLS: readonly AnyToolDefinition[] = [
   transactionGetTool,
   reconcileSuggestTool,

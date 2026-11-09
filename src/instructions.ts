@@ -3,7 +3,7 @@ import { type Tier, TIERS } from "./safety/tiers.js";
 import { TOOLSETS } from "./tools/toolsets.js";
 import type { AnyToolDefinition } from "./tools/types.js";
 
-/** Clients truncate or ignore long instructions; the plan caps them at 1,500 characters. */
+/** Clients truncate or ignore long instructions; we cap them at 1,500 characters. */
 export const MAX_INSTRUCTIONS_LENGTH = 1_500;
 
 export interface Section {

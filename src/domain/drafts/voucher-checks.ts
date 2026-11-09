@@ -3,7 +3,7 @@
  * finalize and the e-invoice import:
  *
  * - the bookkeeping generation: voucher writes need Update 2.0 (tax rules and booking accounts);
- *   a 1.0 account is refused with a clear message (decided for M4, see the M4 plan);
+ *   a 1.0 account is refused with a clear message;
  * - the tax rule (Steuerregel): one per voucher, of the voucher's direction (expense rules for
  *   expenses, revenue rules for revenue, "either" rules for both), fitting the account's VAT
  *   regulation (`account-settings.ts`, D-067), never 18–21 (`notSupportedFor: vouchers` in
