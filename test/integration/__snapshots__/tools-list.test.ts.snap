@@ -25,13 +25,77 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
+      "title": "Read any sevDesk API endpoint (advanced)",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 100,
+          "description": "Page size, 1–1000.",
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "path": {
+          "description": "API path below /api/v1, e.g. /TextTemplate or /Contact/123/getTabsItemCount: up to 6 segments of letters, digits and _, ids as plain numbers. Filters go into query.",
+          "maxLength": 200,
+          "pattern": "^\\/[A-Za-z][A-Za-z0-9_]*(?:\\/[A-Za-z0-9_]+){0,5}$",
+          "type": "string",
+        },
+        "query": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string",
+              },
+              {
+                "type": "number",
+              },
+              {
+                "type": "boolean",
+              },
+            ],
+          },
+          "description": "sevDesk query parameters (filters), at most 20, named as sevDesk names them, e.g. {"contact[id]": 5, "contact[objectName]": "Contact"} or {"depth": 1}. Booleans are sent as 1/0. sevDesk silently ignores filters it does not know.",
+          "maxProperties": 20,
+          "propertyNames": {
+            "pattern": "^[A-Za-z][A-Za-z0-9_.[\\]]{0,63}$",
+            "type": "string",
+          },
+          "type": "object",
+        },
+      },
+      "required": [
+        "path",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_api_get",
+    "title": "Read any sevDesk API endpoint (advanced)",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
       "title": "List sevDesk bank accounts",
     },
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
-        "balanceDate": {
+        "asOf": {
           "description": "Balance at the end of this day, YYYY-MM-DD; default today (Berlin).",
           "type": "string",
         },
@@ -740,7 +804,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "maximum": 9007199254740991,
           "type": "integer",
         },
-        "taxRule": {
+        "taxRuleId": {
           "description": "Tax rule (Steuerregel) id. Default: the source invoice's rule (underachievement), 9 (provision; 10 on a Kleinunternehmer account) or the account's: 1 for regular VAT, 11 for Kleinunternehmer. See sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991,
@@ -853,12 +917,12 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "integer",
         },
         "sentVia": {
-          "description": "How the document is or was sent, recorded as its send type: pdf_download (VPDF, default: PDF downloaded and sent your own way), post (VP, Briefversand), print (VPR, printed and handed over), own_email (VM, emailed outside sevDesk).",
+          "description": "How the document is or was sent, recorded as its send type: pdf_download (VPDF, default: PDF downloaded and sent your own way), post (VP, Briefversand), print (VPR, printed and handed over), email (VM, emailed outside sevDesk).",
           "enum": [
             "pdf_download",
             "post",
             "print",
-            "own_email",
+            "email",
           ],
           "type": "string",
         },
@@ -1361,7 +1425,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           ],
           "type": "string",
         },
-        "taxRule": {
+        "taxRuleId": {
           "description": "Tax rule (Steuerregel) id: 1 taxable domestic revenue (default), 2 exports, 3 intra-EU supplies, 4 tax-exempt §4, 5 reverse charge §13b, 11 Kleinunternehmer §19, 17 not taxable in Germany, 18–20 One-Stop-Shop, 21 reverse charge for EU services. Details: sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991,
@@ -1388,6 +1452,69 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     },
     "name": "sevdesk_invoice_create_draft",
     "title": "Create a draft invoice",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create an invoice from a sevDesk order",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "allowDuplicate": {
+          "default": false,
+          "description": "Create it even though an invoice draft from this order exists.",
+          "type": "boolean",
+        },
+        "amount": {
+          "description": "partial/advance only: the amount, in the unit of amountType.",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "amountType": {
+          "default": "percentage",
+          "description": "partial/advance only: percent of the order, or an amount net or gross.",
+          "enum": [
+            "percentage",
+            "net",
+            "gross",
+          ],
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "mode": {
+          "default": "full",
+          "description": "full: whole order; partial: Teilrechnung; advance: Abschlagsrechnung.",
+          "enum": [
+            "full",
+            "partial",
+            "advance",
+          ],
+          "type": "string",
+        },
+        "orderId": {
+          "description": "Order id (not its number), e.g. from sevdesk_orders_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "orderId",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_create_from_order",
+    "title": "Create an invoice from a sevDesk order",
   },
   {
     "annotations": {
@@ -1506,12 +1633,12 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "integer",
         },
         "sentVia": {
-          "description": "How the document is or was sent, recorded as its send type: pdf_download (VPDF, default: PDF downloaded and sent your own way), post (VP, Briefversand), print (VPR, printed and handed over), own_email (VM, emailed outside sevDesk).",
+          "description": "How the document is or was sent, recorded as its send type: pdf_download (VPDF, default: PDF downloaded and sent your own way), post (VP, Briefversand), print (VPR, printed and handed over), email (VM, emailed outside sevDesk).",
           "enum": [
             "pdf_download",
             "post",
             "print",
-            "own_email",
+            "email",
           ],
           "type": "string",
         },
@@ -1864,7 +1991,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           ],
           "type": "string",
         },
-        "taxRule": {
+        "taxRuleId": {
           "description": "New tax rule (Steuerregel) id; see sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991,
@@ -2085,15 +2212,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "minLength": 1,
           "type": "string",
         },
-        "orderType": {
-          "description": "offer (Angebot, AN), order_confirmation (Auftragsbestätigung, AB) or delivery_note (Lieferschein, LI).",
-          "enum": [
-            "offer",
-            "order_confirmation",
-            "delivery_note",
-          ],
-          "type": "string",
-        },
         "paymentTerms": {
           "description": "Zahlungsbedingungen as printed on the document.",
           "maxLength": 5000,
@@ -2179,7 +2297,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           ],
           "type": "string",
         },
-        "taxRule": {
+        "taxRuleId": {
           "description": "Tax rule (Steuerregel) id: 1 taxable domestic revenue (default), 2 exports, 3 intra-EU supplies, 4 tax-exempt §4, 5 reverse charge §13b, 11 Kleinunternehmer §19, 17 not taxable in Germany, 18–20 One-Stop-Shop, 21 reverse charge for EU services. Details: sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991,
@@ -2191,10 +2309,19 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "minLength": 1,
           "type": "string",
         },
+        "type": {
+          "description": "offer (Angebot, AN), order_confirmation (Auftragsbestätigung, AB) or delivery_note (Lieferschein, LI).",
+          "enum": [
+            "offer",
+            "order_confirmation",
+            "delivery_note",
+          ],
+          "type": "string",
+        },
       },
       "required": [
         "contactId",
-        "orderType",
+        "type",
         "positions",
       ],
       "type": "object",
@@ -2225,12 +2352,12 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "integer",
         },
         "sentVia": {
-          "description": "How the document is or was sent, recorded as its send type: pdf_download (VPDF, default: PDF downloaded and sent your own way), post (VP, Briefversand), print (VPR, printed and handed over), own_email (VM, emailed outside sevDesk).",
+          "description": "How the document is or was sent, recorded as its send type: pdf_download (VPDF, default: PDF downloaded and sent your own way), post (VP, Briefversand), print (VPR, printed and handed over), email (VM, emailed outside sevDesk).",
           "enum": [
             "pdf_download",
             "post",
             "print",
-            "own_email",
+            "email",
           ],
           "type": "string",
         },
@@ -2366,69 +2493,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     },
     "name": "sevdesk_order_send_email",
     "title": "Email a sevDesk order",
-  },
-  {
-    "annotations": {
-      "destructiveHint": false,
-      "idempotentHint": false,
-      "openWorldHint": false,
-      "readOnlyHint": false,
-      "title": "Create an invoice from a sevDesk order",
-    },
-    "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "additionalProperties": false,
-      "properties": {
-        "allowDuplicate": {
-          "default": false,
-          "description": "Create it even though an invoice draft from this order exists.",
-          "type": "boolean",
-        },
-        "amount": {
-          "description": "partial/advance only: the amount, in the unit of amountType.",
-          "type": [
-            "string",
-            "number",
-          ],
-        },
-        "amountType": {
-          "default": "percentage",
-          "description": "partial/advance only: percent of the order, or an amount net or gross.",
-          "enum": [
-            "percentage",
-            "net",
-            "gross",
-          ],
-          "type": "string",
-        },
-        "dryRun": {
-          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
-          "type": "boolean",
-        },
-        "mode": {
-          "default": "full",
-          "description": "full: whole order; partial: Teilrechnung; advance: Abschlagsrechnung.",
-          "enum": [
-            "full",
-            "partial",
-            "advance",
-          ],
-          "type": "string",
-        },
-        "orderId": {
-          "description": "Order id (not its number), e.g. from sevdesk_orders_list.",
-          "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
-          "type": "integer",
-        },
-      },
-      "required": [
-        "orderId",
-      ],
-      "type": "object",
-    },
-    "name": "sevdesk_order_to_invoice",
-    "title": "Create an invoice from a sevDesk order",
   },
   {
     "annotations": {
@@ -2608,7 +2672,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           ],
           "type": "string",
         },
-        "taxRule": {
+        "taxRuleId": {
           "description": "New tax rule (Steuerregel) id; see sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991,
@@ -2743,20 +2807,13 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "string",
         },
         "price": {
-          "description": "Sales price (Verkaufspreis) in EUR, net or gross per priceType; the other one is computed with the tax rate.",
+          "description": "Sales price (Verkaufspreis) in EUR, net or gross per priceMode; the other one is computed with the tax rate.",
           "type": [
             "string",
             "number",
           ],
         },
-        "pricePurchase": {
-          "description": "Purchase price (Einkaufspreis), net, EUR.",
-          "type": [
-            "string",
-            "number",
-          ],
-        },
-        "priceType": {
+        "priceMode": {
           "default": "net",
           "description": "Whether price is the net (netto, default) or gross (brutto) price.",
           "enum": [
@@ -2764,6 +2821,13 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
             "gross",
           ],
           "type": "string",
+        },
+        "pricePurchase": {
+          "description": "Purchase price (Einkaufspreis), net, EUR.",
+          "type": [
+            "string",
+            "number",
+          ],
         },
         "stock": {
           "description": "Stock (Bestand).",
@@ -2879,20 +2943,13 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "string",
         },
         "price": {
-          "description": "Sales price (Verkaufspreis) in EUR, net or gross per priceType; the other one is computed with the tax rate.",
+          "description": "Sales price (Verkaufspreis) in EUR, net or gross per priceMode; the other one is computed with the tax rate.",
           "type": [
             "string",
             "number",
           ],
         },
-        "pricePurchase": {
-          "description": "Purchase price (Einkaufspreis), net, EUR.",
-          "type": [
-            "string",
-            "number",
-          ],
-        },
-        "priceType": {
+        "priceMode": {
           "default": "net",
           "description": "Whether price is the net (netto, default) or gross (brutto) price.",
           "enum": [
@@ -2900,6 +2957,13 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
             "gross",
           ],
           "type": "string",
+        },
+        "pricePurchase": {
+          "description": "Purchase price (Einkaufspreis), net, EUR.",
+          "type": [
+            "string",
+            "number",
+          ],
         },
         "stock": {
           "description": "Stock (Bestand).",
@@ -3118,9 +3182,9 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "minimum": 1,
           "type": "integer",
         },
-        "matches": {
+        "maxMatches": {
           "default": 3,
-          "description": "Matches per transaction (default 3).",
+          "description": "Most matches per transaction (default 3).",
           "maximum": 10,
           "minimum": 1,
           "type": "integer",
@@ -3160,7 +3224,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
-        "accountId": {
+        "checkAccountId": {
           "description": "Transactions only: payment account (Zahlungskonto) id.",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991,
@@ -3394,7 +3458,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
           "type": "boolean",
         },
-        "transactionId": {
+        "id": {
           "description": "Bank transaction (Umsatz) id, from sevdesk_transactions_list.",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991,
@@ -3402,7 +3466,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         },
       },
       "required": [
-        "transactionId",
+        "id",
         "allocations",
       ],
       "type": "object",
@@ -3453,7 +3517,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
           "type": "boolean",
         },
-        "transactionId": {
+        "id": {
           "description": "Bank transaction (Umsatz) id, from sevdesk_transactions_list.",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991,
@@ -3461,7 +3525,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         },
       },
       "required": [
-        "transactionId",
+        "id",
       ],
       "type": "object",
     },
@@ -3484,7 +3548,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
           "type": "boolean",
         },
-        "transactionId": {
+        "id": {
           "description": "Bank transaction (Umsatz) id, from sevdesk_transactions_list.",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991,
@@ -3492,7 +3556,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         },
       },
       "required": [
-        "transactionId",
+        "id",
       ],
       "type": "object",
     },
@@ -3712,7 +3776,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "description": "Create it although a voucher with the same supplier, Belegnummer, date and gross exists.",
           "type": "boolean",
         },
-        "amountsAre": {
+        "amountMode": {
           "description": "Whether position amounts are gross (Brutto, default) or net (Netto).",
           "enum": [
             "gross",
@@ -3737,7 +3801,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "boolean",
         },
         "file": {
-          "description": "Receipt file (Belegbild: PDF, PNG or JPEG, up to 20 MB) inside SEVDESK_FILE_DIRS, absolute or relative to one of those folders. It is uploaded and attached.",
+          "description": "Receipt file (Belegbild: PDF, PNG or JPEG, up to 20 MB) inside SEVDESK_FILE_DIRS, absolute or relative to one of those folders, or on a remote server the uploadId from sevdesk_upload_request. It is uploaded and attached.",
           "maxLength": 1000,
           "minLength": 1,
           "type": "string",
@@ -3772,7 +3836,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
                 "type": "integer",
               },
               "amount": {
-                "description": "Betrag of this position in EUR, gross or net as amountsAre says, e.g. "119.00".",
+                "description": "Betrag of this position in EUR, gross or net as amountMode says, e.g. "119.00".",
                 "type": [
                   "string",
                   "number",
@@ -3818,7 +3882,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "minLength": 1,
           "type": "string",
         },
-        "taxRule": {
+        "taxRuleId": {
           "description": "Steuerregel id. Default: expense 9 (Vorsteuerabziehbare Aufwendungen), on a Kleinunternehmer account 10; revenue 1, or 11 for Kleinunternehmer. Others: 8, 12–14 (intra-EU, reverse charge), 2–5, 17. Not 18–21. sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991,
@@ -4005,7 +4069,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
-        "amountsAre": {
+        "amountMode": {
           "description": "gross or net position amounts; changing it requires positions too.",
           "enum": [
             "gross",
@@ -4030,7 +4094,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "boolean",
         },
         "file": {
-          "description": "Receipt file to attach (PDF, PNG or JPEG inside SEVDESK_FILE_DIRS).",
+          "description": "Receipt file to attach (PDF, PNG or JPEG inside SEVDESK_FILE_DIRS, or on a remote server the uploadId from sevdesk_upload_request).",
           "maxLength": 1000,
           "minLength": 1,
           "type": "string",
@@ -4063,7 +4127,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
                 "type": "integer",
               },
               "amount": {
-                "description": "Betrag of this position in EUR, gross or net as amountsAre says, e.g. "119.00".",
+                "description": "Betrag of this position in EUR, gross or net as amountMode says, e.g. "119.00".",
                 "type": [
                   "string",
                   "number",
@@ -4109,7 +4173,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "minLength": 1,
           "type": "string",
         },
-        "taxRule": {
+        "taxRuleId": {
           "description": "New Steuerregel id; every position (stored or new) must allow it. See sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991,
@@ -4243,7 +4307,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
-        "balanceDate": {
+        "asOf": {
           "description": "Balance at the end of this day, YYYY-MM-DD; default today (Berlin).",
           "type": "string",
         },
@@ -4886,7 +4950,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "maximum": 9007199254740991,
           "type": "integer",
         },
-        "taxRule": {
+        "taxRuleId": {
           "description": "Tax rule (Steuerregel) id. Default: the source invoice's rule (underachievement), 9 (provision; 10 on a Kleinunternehmer account) or the account's: 1 for regular VAT, 11 for Kleinunternehmer. See sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991,
@@ -5227,7 +5291,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           ],
           "type": "string",
         },
-        "taxRule": {
+        "taxRuleId": {
           "description": "Tax rule (Steuerregel) id: 1 taxable domestic revenue (default), 2 exports, 3 intra-EU supplies, 4 tax-exempt §4, 5 reverse charge §13b, 11 Kleinunternehmer §19, 17 not taxable in Germany, 18–20 One-Stop-Shop, 21 reverse charge for EU services. Details: sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991,
@@ -5254,6 +5318,69 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
     },
     "name": "sevdesk_invoice_create_draft",
     "title": "Create a draft invoice",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create an invoice from a sevDesk order",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "allowDuplicate": {
+          "default": false,
+          "description": "Create it even though an invoice draft from this order exists.",
+          "type": "boolean",
+        },
+        "amount": {
+          "description": "partial/advance only: the amount, in the unit of amountType.",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "amountType": {
+          "default": "percentage",
+          "description": "partial/advance only: percent of the order, or an amount net or gross.",
+          "enum": [
+            "percentage",
+            "net",
+            "gross",
+          ],
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "mode": {
+          "default": "full",
+          "description": "full: whole order; partial: Teilrechnung; advance: Abschlagsrechnung.",
+          "enum": [
+            "full",
+            "partial",
+            "advance",
+          ],
+          "type": "string",
+        },
+        "orderId": {
+          "description": "Order id (not its number), e.g. from sevdesk_orders_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "orderId",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_create_from_order",
+    "title": "Create an invoice from a sevDesk order",
   },
   {
     "annotations": {
@@ -5544,7 +5671,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           ],
           "type": "string",
         },
-        "taxRule": {
+        "taxRuleId": {
           "description": "New tax rule (Steuerregel) id; see sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991,
@@ -5765,15 +5892,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "minLength": 1,
           "type": "string",
         },
-        "orderType": {
-          "description": "offer (Angebot, AN), order_confirmation (Auftragsbestätigung, AB) or delivery_note (Lieferschein, LI).",
-          "enum": [
-            "offer",
-            "order_confirmation",
-            "delivery_note",
-          ],
-          "type": "string",
-        },
         "paymentTerms": {
           "description": "Zahlungsbedingungen as printed on the document.",
           "maxLength": 5000,
@@ -5859,7 +5977,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           ],
           "type": "string",
         },
-        "taxRule": {
+        "taxRuleId": {
           "description": "Tax rule (Steuerregel) id: 1 taxable domestic revenue (default), 2 exports, 3 intra-EU supplies, 4 tax-exempt §4, 5 reverse charge §13b, 11 Kleinunternehmer §19, 17 not taxable in Germany, 18–20 One-Stop-Shop, 21 reverse charge for EU services. Details: sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991,
@@ -5871,10 +5989,19 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "minLength": 1,
           "type": "string",
         },
+        "type": {
+          "description": "offer (Angebot, AN), order_confirmation (Auftragsbestätigung, AB) or delivery_note (Lieferschein, LI).",
+          "enum": [
+            "offer",
+            "order_confirmation",
+            "delivery_note",
+          ],
+          "type": "string",
+        },
       },
       "required": [
         "contactId",
-        "orderType",
+        "type",
         "positions",
       ],
       "type": "object",
@@ -5935,69 +6062,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
     },
     "name": "sevdesk_order_pdf",
     "title": "Get an order PDF",
-  },
-  {
-    "annotations": {
-      "destructiveHint": false,
-      "idempotentHint": false,
-      "openWorldHint": false,
-      "readOnlyHint": false,
-      "title": "Create an invoice from a sevDesk order",
-    },
-    "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "additionalProperties": false,
-      "properties": {
-        "allowDuplicate": {
-          "default": false,
-          "description": "Create it even though an invoice draft from this order exists.",
-          "type": "boolean",
-        },
-        "amount": {
-          "description": "partial/advance only: the amount, in the unit of amountType.",
-          "type": [
-            "string",
-            "number",
-          ],
-        },
-        "amountType": {
-          "default": "percentage",
-          "description": "partial/advance only: percent of the order, or an amount net or gross.",
-          "enum": [
-            "percentage",
-            "net",
-            "gross",
-          ],
-          "type": "string",
-        },
-        "dryRun": {
-          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
-          "type": "boolean",
-        },
-        "mode": {
-          "default": "full",
-          "description": "full: whole order; partial: Teilrechnung; advance: Abschlagsrechnung.",
-          "enum": [
-            "full",
-            "partial",
-            "advance",
-          ],
-          "type": "string",
-        },
-        "orderId": {
-          "description": "Order id (not its number), e.g. from sevdesk_orders_list.",
-          "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
-          "type": "integer",
-        },
-      },
-      "required": [
-        "orderId",
-      ],
-      "type": "object",
-    },
-    "name": "sevdesk_order_to_invoice",
-    "title": "Create an invoice from a sevDesk order",
   },
   {
     "annotations": {
@@ -6177,7 +6241,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           ],
           "type": "string",
         },
-        "taxRule": {
+        "taxRuleId": {
           "description": "New tax rule (Steuerregel) id; see sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991,
@@ -6312,20 +6376,13 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "string",
         },
         "price": {
-          "description": "Sales price (Verkaufspreis) in EUR, net or gross per priceType; the other one is computed with the tax rate.",
+          "description": "Sales price (Verkaufspreis) in EUR, net or gross per priceMode; the other one is computed with the tax rate.",
           "type": [
             "string",
             "number",
           ],
         },
-        "pricePurchase": {
-          "description": "Purchase price (Einkaufspreis), net, EUR.",
-          "type": [
-            "string",
-            "number",
-          ],
-        },
-        "priceType": {
+        "priceMode": {
           "default": "net",
           "description": "Whether price is the net (netto, default) or gross (brutto) price.",
           "enum": [
@@ -6333,6 +6390,13 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
             "gross",
           ],
           "type": "string",
+        },
+        "pricePurchase": {
+          "description": "Purchase price (Einkaufspreis), net, EUR.",
+          "type": [
+            "string",
+            "number",
+          ],
         },
         "stock": {
           "description": "Stock (Bestand).",
@@ -6448,20 +6512,13 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "string",
         },
         "price": {
-          "description": "Sales price (Verkaufspreis) in EUR, net or gross per priceType; the other one is computed with the tax rate.",
+          "description": "Sales price (Verkaufspreis) in EUR, net or gross per priceMode; the other one is computed with the tax rate.",
           "type": [
             "string",
             "number",
           ],
         },
-        "pricePurchase": {
-          "description": "Purchase price (Einkaufspreis), net, EUR.",
-          "type": [
-            "string",
-            "number",
-          ],
-        },
-        "priceType": {
+        "priceMode": {
           "default": "net",
           "description": "Whether price is the net (netto, default) or gross (brutto) price.",
           "enum": [
@@ -6469,6 +6526,13 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
             "gross",
           ],
           "type": "string",
+        },
+        "pricePurchase": {
+          "description": "Purchase price (Einkaufspreis), net, EUR.",
+          "type": [
+            "string",
+            "number",
+          ],
         },
         "stock": {
           "description": "Stock (Bestand).",
@@ -6687,9 +6751,9 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "minimum": 1,
           "type": "integer",
         },
-        "matches": {
+        "maxMatches": {
           "default": 3,
-          "description": "Matches per transaction (default 3).",
+          "description": "Most matches per transaction (default 3).",
           "maximum": 10,
           "minimum": 1,
           "type": "integer",
@@ -6729,7 +6793,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
-        "accountId": {
+        "checkAccountId": {
           "description": "Transactions only: payment account (Zahlungskonto) id.",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991,
@@ -7072,7 +7136,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "description": "Create it although a voucher with the same supplier, Belegnummer, date and gross exists.",
           "type": "boolean",
         },
-        "amountsAre": {
+        "amountMode": {
           "description": "Whether position amounts are gross (Brutto, default) or net (Netto).",
           "enum": [
             "gross",
@@ -7097,7 +7161,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "boolean",
         },
         "file": {
-          "description": "Receipt file (Belegbild: PDF, PNG or JPEG, up to 20 MB) inside SEVDESK_FILE_DIRS, absolute or relative to one of those folders. It is uploaded and attached.",
+          "description": "Receipt file (Belegbild: PDF, PNG or JPEG, up to 20 MB) inside SEVDESK_FILE_DIRS, absolute or relative to one of those folders, or on a remote server the uploadId from sevdesk_upload_request. It is uploaded and attached.",
           "maxLength": 1000,
           "minLength": 1,
           "type": "string",
@@ -7132,7 +7196,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
                 "type": "integer",
               },
               "amount": {
-                "description": "Betrag of this position in EUR, gross or net as amountsAre says, e.g. "119.00".",
+                "description": "Betrag of this position in EUR, gross or net as amountMode says, e.g. "119.00".",
                 "type": [
                   "string",
                   "number",
@@ -7178,7 +7242,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "minLength": 1,
           "type": "string",
         },
-        "taxRule": {
+        "taxRuleId": {
           "description": "Steuerregel id. Default: expense 9 (Vorsteuerabziehbare Aufwendungen), on a Kleinunternehmer account 10; revenue 1, or 11 for Kleinunternehmer. Others: 8, 12–14 (intra-EU, reverse charge), 2–5, 17. Not 18–21. sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991,
@@ -7232,7 +7296,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
-        "amountsAre": {
+        "amountMode": {
           "description": "gross or net position amounts; changing it requires positions too.",
           "enum": [
             "gross",
@@ -7257,7 +7321,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "boolean",
         },
         "file": {
-          "description": "Receipt file to attach (PDF, PNG or JPEG inside SEVDESK_FILE_DIRS).",
+          "description": "Receipt file to attach (PDF, PNG or JPEG inside SEVDESK_FILE_DIRS, or on a remote server the uploadId from sevdesk_upload_request).",
           "maxLength": 1000,
           "minLength": 1,
           "type": "string",
@@ -7290,7 +7354,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
                 "type": "integer",
               },
               "amount": {
-                "description": "Betrag of this position in EUR, gross or net as amountsAre says, e.g. "119.00".",
+                "description": "Betrag of this position in EUR, gross or net as amountMode says, e.g. "119.00".",
                 "type": [
                   "string",
                   "number",
@@ -7336,7 +7400,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "minLength": 1,
           "type": "string",
         },
-        "taxRule": {
+        "taxRuleId": {
           "description": "New Steuerregel id; every position (stored or new) must allow it. See sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991,
@@ -7447,7 +7511,7 @@ exports[`tools/list > SEVDESK_OUTPUT_DIR set (adds the file-writing save tool) 1
       "idempotentHint": false,
       "openWorldHint": false,
       "readOnlyHint": false,
-      "title": "Save a document file to disk",
+      "title": "Save a document file",
     },
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -7477,7 +7541,7 @@ exports[`tools/list > SEVDESK_OUTPUT_DIR set (adds the file-writing save tool) 1
       "type": "object",
     },
     "name": "sevdesk_document_save",
-    "title": "Save a document file to disk",
+    "title": "Save a document file",
   },
 ]
 `;
@@ -7513,7 +7577,7 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
-        "balanceDate": {
+        "asOf": {
           "description": "Balance at the end of this day, YYYY-MM-DD; default today (Berlin).",
           "type": "string",
         },
@@ -8367,9 +8431,9 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           "minimum": 1,
           "type": "integer",
         },
-        "matches": {
+        "maxMatches": {
           "default": 3,
-          "description": "Matches per transaction (default 3).",
+          "description": "Most matches per transaction (default 3).",
           "maximum": 10,
           "minimum": 1,
           "type": "integer",
@@ -8409,7 +8473,7 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
-        "accountId": {
+        "checkAccountId": {
           "description": "Transactions only: payment account (Zahlungskonto) id.",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991,
@@ -8847,6 +8911,313 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
     },
     "name": "sevdesk_vouchers_list",
     "title": "List sevDesk vouchers",
+  },
+]
+`;
+
+exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds the file tools 1`] = `
+[
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "CSV export to a file",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "description": "First day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+        "limit": {
+          "default": 1000,
+          "description": "Most rows, 1–1000.",
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "subject": {
+          "description": "invoices, credit_notes, vouchers, transactions or contacts.",
+          "enum": [
+            "invoices",
+            "credit_notes",
+            "vouchers",
+            "transactions",
+            "contacts",
+          ],
+          "type": "string",
+        },
+        "to": {
+          "description": "Last day to include, YYYY-MM-DD (Berlin time).",
+          "type": "string",
+        },
+      },
+      "required": [
+        "subject",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_csv_export",
+    "title": "CSV export to a file",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "DATEV export to a ZIP file",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "exportByPaydate": {
+          "description": "Only paid documents whose pay date lies in the period (Zahlungsdatum).",
+          "type": "boolean",
+        },
+        "from": {
+          "description": "First day, YYYY-MM-DD (instead of year).",
+          "type": "string",
+        },
+        "includeDocumentImages": {
+          "default": false,
+          "description": "Add the document images (Belegbilder) to the ZIP; makes it much larger.",
+          "type": "boolean",
+        },
+        "month": {
+          "description": "Month 1–12 (with year).",
+          "maximum": 12,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "quarter": {
+          "description": "Quarter 1–4 (with year).",
+          "maximum": 4,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "scope": {
+          "default": [
+            "earnings",
+            "expenditure",
+            "transactions",
+            "cash_register",
+            "assets",
+          ],
+          "description": "What to include: earnings (Einnahmen), expenditure (Ausgaben), transactions (Kontoumsätze), cash_register (Kasse), assets (Anlagen). Default all.",
+          "items": {
+            "enum": [
+              "earnings",
+              "expenditure",
+              "transactions",
+              "cash_register",
+              "assets",
+            ],
+            "type": "string",
+          },
+          "minItems": 1,
+          "type": "array",
+        },
+        "to": {
+          "description": "Last day, YYYY-MM-DD (instead of year).",
+          "type": "string",
+        },
+        "year": {
+          "description": "Calendar year; alone for the whole year, or with month or quarter.",
+          "maximum": 2100,
+          "minimum": 2000,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_datev_export",
+    "title": "DATEV export to a ZIP file",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Save a document file",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "document": {
+          "description": "Which file: invoice_pdf, credit_note_pdf, order_pdf, or invoice_xml (e-invoice XML).",
+          "enum": [
+            "invoice_pdf",
+            "credit_note_pdf",
+            "order_pdf",
+            "invoice_xml",
+          ],
+          "type": "string",
+        },
+        "id": {
+          "description": "sevDesk id of the document (not its number such as RE-1001).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "document",
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_document_save",
+    "title": "Save a document file",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Parse an e-invoice file",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "description": "The e-invoice file: an absolute path inside one of the SEVDESK_FILE_DIRS folders, or a path relative to one of them, e.g. Rechnungen/RE-4711.xml; or on a remote server the uploadId from sevdesk_upload_request.",
+          "maxLength": 1024,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "file",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_einvoice_parse",
+    "title": "Parse an e-invoice file",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Request a file upload",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "purpose": {
+          "description": "receipt (PDF, PNG, JPEG) for a voucher draft, einvoice (XML, PDF) for sevdesk_einvoice_parse and sevdesk_voucher_import_einvoice.",
+          "enum": [
+            "receipt",
+            "einvoice",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "purpose",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_upload_request",
+    "title": "Request a file upload",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Import an e-invoice as a voucher",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "accountDatevId": {
+          "description": "Buchungskonto (accountDatev id) for every VAT rate of the invoice; see sevdesk_reference_lookup kind=receipt_guidance.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "accounts": {
+          "description": "A Buchungskonto per VAT rate; wins over accountDatevId for its rate.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "accountDatevId": {
+                "description": "Buchungskonto for this rate.",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer",
+              },
+              "taxRate": {
+                "description": "VAT rate in percent, e.g. 19 or 7.",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+            },
+            "required": [
+              "taxRate",
+              "accountDatevId",
+            ],
+            "type": "object",
+          },
+          "maxItems": 10,
+          "minItems": 1,
+          "type": "array",
+        },
+        "allowDuplicate": {
+          "description": "Import it although a voucher with the same supplier, number, date and gross exists.",
+          "type": "boolean",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "file": {
+          "description": "The e-invoice: an XRechnung XML or a ZUGFeRD/Factur-X PDF inside SEVDESK_FILE_DIRS, absolute or relative to one of those folders, or on a remote server the uploadId from sevdesk_upload_request. It is attached to the voucher.",
+          "maxLength": 1000,
+          "minLength": 1,
+          "type": "string",
+        },
+        "supplierId": {
+          "description": "Lieferant contact id. Default: the contact that matches the issuer's VAT id or IBAN (exactly one), else the issuer's name only; contacts are never created.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        "taxRuleId": {
+          "description": "Steuerregel. Default: derived from the invoice's VAT categories and the account's VAT regulation (e.g. 9, or 10 for Kleinunternehmer).",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "file",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_voucher_import_einvoice",
+    "title": "Import an e-invoice as a voucher",
   },
 ]
 `;

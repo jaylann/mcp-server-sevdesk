@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Config } from "../../src/config.js";
 import { allEnabledConfig, testConfig, tiers } from "../helpers/config.js";
 import { connectInProcess } from "../helpers/connect.js";
+import { filesConfig } from "../helpers/transfer.js";
 
 const clients: Client[] = [];
 
@@ -59,7 +60,7 @@ describe("tools/list", () => {
   });
 
   it("SEVDESK_OUTPUT_DIR set: adds the read-tier file writers, declared as not read-only", async () => {
-    const writers = ["sevdesk_document_save", "sevdesk_export_csv"];
+    const writers = ["sevdesk_document_save", "sevdesk_csv_export"];
     const without = (await surface(testConfig())).map((tool) => tool.name);
     const tools = await surface(testConfig({ outputDir: "/srv/sevdesk-out" }));
 
@@ -67,15 +68,15 @@ describe("tools/list", () => {
     expect(tools.map((tool) => tool.name).filter((name) => !writers.includes(name))).toEqual(
       without,
     );
-    expect(tools.find((tool) => tool.name === "sevdesk_export_csv")?.annotations).toMatchObject({
+    expect(tools.find((tool) => tool.name === "sevdesk_csv_export")?.annotations).toMatchObject({
       readOnlyHint: false,
       destructiveHint: false,
     });
     expect(tools.find((tool) => tool.name === "sevdesk_document_save")).toEqual({
       name: "sevdesk_document_save",
-      title: "Save a document file to disk",
+      title: "Save a document file",
       annotations: {
-        title: "Save a document file to disk",
+        title: "Save a document file",
         readOnlyHint: false,
         destructiveHint: false,
         idempotentHint: false,
@@ -92,6 +93,24 @@ describe("tools/list", () => {
         }) as unknown,
       }) as unknown,
     });
+  });
+
+  it("over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds the file tools", async () => {
+    const fileTools = [
+      "sevdesk_csv_export",
+      "sevdesk_datev_export",
+      "sevdesk_document_save",
+      "sevdesk_einvoice_parse",
+      "sevdesk_upload_request",
+      "sevdesk_voucher_import_einvoice",
+    ];
+    const stdio = (await surface(allEnabledConfig())).map((tool) => tool.name);
+    const tools = await surface(filesConfig());
+
+    expect(tools.map((tool) => tool.name).filter((name) => !stdio.includes(name))).toEqual(
+      fileTools,
+    );
+    expect(tools.filter((tool) => fileTools.includes(tool.name))).toMatchSnapshot();
   });
 
   it("is sorted by name", async () => {

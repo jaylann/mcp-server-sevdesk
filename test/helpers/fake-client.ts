@@ -16,6 +16,7 @@ import { readFileSync } from "node:fs";
 import { z } from "zod";
 
 import { type Config, loadConfig } from "../../src/config.js";
+import { localFileAccess } from "../../src/safety/file-sources.js";
 import { parseTotal, readEnvelope } from "../../src/sevdesk/envelope.js";
 import { SevdeskError } from "../../src/sevdesk/errors.js";
 import { assertSafePath, resolveGetSafety } from "../../src/sevdesk/paths.js";
@@ -340,10 +341,12 @@ export function testContext(
   client: SevdeskClient,
   env: Readonly<Record<string, string>> = {},
 ): ToolContext {
+  const config = testConfig(env);
   return {
     client,
-    config: testConfig(env),
+    config,
     signal: new AbortController().signal,
     progress: () => Promise.resolve(),
+    files: localFileAccess(config),
   };
 }

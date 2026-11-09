@@ -103,8 +103,9 @@ function documentFileTool(kind: DocumentFileKind, text: FileToolText): FileToolD
 
 const RESOURCE_NOTE =
   "The result holds the file's metadata and a resource link; the client loads the file itself " +
-  "via resources/read, its content is never put into the text. To save a copy to disk use " +
-  "sevdesk_document_save (available when SEVDESK_OUTPUT_DIR is set).";
+  "via resources/read, its content is never put into the text. To save a copy to disk or as a " +
+  "download link use sevdesk_document_save (available with SEVDESK_OUTPUT_DIR or on a remote " +
+  "server).";
 
 /** `sevdesk_invoice_pdf`: the PDF of an invoice, as a preview that never marks it as sent. */
 export const invoicePdfTool = documentFileTool("invoice_pdf", {

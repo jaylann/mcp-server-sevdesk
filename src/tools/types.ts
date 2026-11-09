@@ -2,6 +2,7 @@ import type { ResourceLink } from "@modelcontextprotocol/server";
 import type { z } from "zod";
 
 import type { Config } from "../config.js";
+import type { FileAccess } from "../safety/file-access.js";
 import type { WriteTier } from "../safety/tiers.js";
 import type { SevdeskClient } from "../sevdesk/types.js";
 import type { ToolsetName } from "./toolsets.js";
@@ -27,6 +28,11 @@ export interface ToolContext {
   readonly signal: AbortSignal;
   /** Report progress for long-running calls (no-op when the client did not ask for progress). */
   readonly progress: (done: number, total?: number, message?: string) => Promise<void>;
+  /**
+   * The only way a tool reads or hands out files: local folders, or uploads and download links
+   * of the calling principal in HTTP mode. Built per call by the registry.
+   */
+  readonly files: FileAccess;
 }
 
 /**
@@ -136,20 +142,21 @@ export type ToolOutputSchema = z.ZodObject;
 /** The configuration slice that decides which tools a server registers. */
 export type ToolSelectionConfig = Pick<
   Config,
-  "toolsets" | "allowedTiers" | "outputDir" | "fileDirs"
+  "toolsets" | "allowedTiers" | "outputDir" | "fileDirs" | "deployment"
 >;
 
 /**
  * @public Named for tool authors; `localEffects` takes these values.
  *
- * Effects of a tool on the local machine, outside sevDesk (see `ToolDefinitionBase.localEffects`).
- * - `"reads-files"`: reads files, only inside `SEVDESK_FILE_DIRS` and only through
- *   `readConfinedFile` (`src/safety/local-files.ts`). Reading changes nothing, so a `read` tool
- *   with this flag stays `readOnlyHint: true`.
- * - `"writes-files"`: creates files, only inside `SEVDESK_OUTPUT_DIR` and only through
- *   `writeNewFile` (`src/tools/documents/save-file.ts`). A `read` tool with this flag changes
- *   nothing in sevDesk but does modify its environment, so it must set `readOnlyHint: false`
- *   (and stays non-destructive: it never overwrites).
+ * Effects of a tool outside sevDesk, on files (see `ToolDefinitionBase.localEffects`). Both go only
+ * through `ToolContext.files` ({@link FileAccess}, `src/safety/file-sources.ts`).
+ * - `"reads-files"`: reads files: inside `SEVDESK_FILE_DIRS` (`readConfinedFile`) or, over HTTP
+ *   with file transfer, the caller's own uploads. Reading changes nothing, so a `read` tool with
+ *   this flag stays `readOnlyHint: true`.
+ * - `"writes-files"`: hands files out: new files inside `SEVDESK_OUTPUT_DIR` (`writeNewFile`,
+ *   never overwriting) or, over HTTP with file transfer, download links of the caller's account.
+ *   A `read` tool with this flag changes nothing in sevDesk but does modify its environment, so
+ *   it must set `readOnlyHint: false` (and stays non-destructive: it never overwrites).
  */
 export type LocalEffect = "reads-files" | "writes-files";
 
@@ -166,7 +173,8 @@ interface ToolDefinitionBase<I extends ToolInputSchema, O extends ToolOutputSche
   readonly toolset: ToolsetName;
   readonly annotations: ToolAnnotationSet;
   /**
-   * Extra registration condition on top of toolset and tier, e.g. "SEVDESK_OUTPUT_DIR is set".
+   * Extra registration condition on top of toolset and tier, e.g. "files can be delivered"
+   * (`canDeliverFiles`).
    * A tool for which it returns false is not registered (see `selectTools`).
    */
   readonly available?: (config: ToolSelectionConfig) => boolean;

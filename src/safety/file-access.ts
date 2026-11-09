@@ -1,7 +1,7 @@
 /**
  * Where tools get file bytes from and where they hand files out, independent of how the server
  * is reached. Tools never touch the file system or the transfer store directly; they go through
- * the {@link FileAccess} in their context:
+ * the {@link FileAccess} in their context (implementations: `./file-sources.ts`):
  *
  * - **stdio** (and bearer mode with local folders): reads come from `SEVDESK_FILE_DIRS` through
  *   `readConfinedFile` (`./local-files.ts`), deliveries are new files in `SEVDESK_OUTPUT_DIR`
@@ -16,6 +16,7 @@
  */
 import type { Config } from "../config.js";
 import type { LocalFileKind } from "./local-files.js";
+import type { UploadPurpose } from "./transfer-types.js";
 
 /** A file a tool read, from a local folder or from an upload. */
 export interface InputFile {
@@ -45,6 +46,22 @@ export interface OutputFile {
   readonly bytes: Uint8Array;
 }
 
+/** A new upload ticket, as `sevdesk_upload_request` reports it. */
+export interface UploadRequest {
+  /** What tools accept as `file`: `upload:<id>` ({@link uploadRef}). */
+  readonly uploadId: string;
+  /** The page where the human uploads the file (needs a browser session of the account). */
+  readonly url: string;
+  /** Short code shown on the page and in the tool result, so the human can match them. */
+  readonly reference: string;
+  /** ISO 8601: the upload must happen before then. */
+  readonly expiresAt: string;
+  /** Kinds the page accepts, recognized by content. */
+  readonly accepts: readonly LocalFileKind[];
+  /** Largest accepted file in bytes. */
+  readonly maxBytes: number;
+}
+
 /** Where a delivered file went. */
 export type Delivery =
   | {
@@ -72,6 +89,12 @@ export interface FileAccess {
   /** Whether {@link FileAccess.deliver} can succeed at all in this configuration. */
   readonly canDeliver: boolean;
   /**
+   * Opens a single-use upload ticket of the calling principal (HTTP with file transfer only).
+   * Throws a local `validation` `SevdeskError` with a trusted message where uploads are not
+   * available or a limit of the transfer store is reached.
+   */
+  requestUpload(purpose: UploadPurpose): UploadRequest;
+  /**
    * Reads the file `ref` names: a path (inside `SEVDESK_FILE_DIRS`) or an `upload:<id>`
    * reference. Throws a local `validation` `SevdeskError` with a trusted message when the
    * reference is not allowed, unknown, expired, too large or of the wrong kind.
@@ -79,6 +102,13 @@ export interface FileAccess {
   read(ref: string, options: ReadFileOptions): Promise<InputFile>;
   /** Hands `file` out: a new file in `SEVDESK_OUTPUT_DIR`, or a download link over HTTP. */
   deliver(file: OutputFile): Promise<Delivery>;
+  /**
+   * Checks, before a tool asks sevDesk for anything, that {@link FileAccess.deliver} can work
+   * now: the output folder exists and is writable. Throws a local `validation` `SevdeskError`
+   * with a trusted message otherwise. Download links need no check here (their limits are
+   * checked when the file is stored).
+   */
+  checkDelivery(): Promise<void>;
   /**
    * Trusted, deterministic text for previews, e.g. "a new file in /srv/exports" or "a download
    * link (signed in to the account, valid 30 minutes)". No clock times, no ids.
@@ -89,7 +119,10 @@ export interface FileAccess {
 /** Prefix of a file reference that names an upload instead of a path. */
 export const UPLOAD_REF_PREFIX = "upload:";
 
-/** An upload reference: the prefix and a 43-character base64url id (`randomId()`, 32 bytes). */
+/**
+ * @public The format of an upload reference: the prefix and a 43-character base64url id
+ * (`randomId()`, 32 bytes). Code goes through {@link parseUploadRef}.
+ */
 export const UPLOAD_REF = /^upload:([A-Za-z0-9_-]{43})$/;
 
 /** The upload id in `ref`, or `undefined` when `ref` is not an upload reference. */

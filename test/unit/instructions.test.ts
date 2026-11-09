@@ -229,6 +229,60 @@ describe("buildInstructions over HTTP (config.deployment)", () => {
     );
   });
 
+  it("explains uploads and download links when remote file transfer is on", () => {
+    const files = { files: { ttlSeconds: 1_800 } };
+    const oauth = build(
+      allEnabledConfig({ deployment: { ...http("oauth"), ...files } }),
+      ALL_TOOLS,
+    );
+    expect(oauth).toContain(
+      "Files arrive via sevdesk_upload_request (uploadId as file) and leave as download links.",
+    );
+    // With every tier and browser approvals, the optional calling hint still fits.
+    expect(
+      build(
+        allEnabledConfig({
+          confirm: "browser",
+          deployment: { ...http("oauth", "https://mcp.example.com/approvals"), ...files },
+        }),
+        ALL_TOOLS,
+      ),
+    ).toContain("Call a tool directly when you have its arguments");
+
+    // Bearer mode with SEVDESK_OUTPUT_DIR: deliveries go to the folder, not to links.
+    const bearer = build(
+      allEnabledConfig({ deployment: { ...http("bearer"), ...files }, outputDir: "/srv/out" }),
+      ALL_TOOLS,
+    );
+    expect(bearer).toContain("Files arrive via sevdesk_upload_request (uploadId as file).");
+    expect(bearer).not.toContain("download links");
+
+    // Off, and over stdio even with every file setting: no word about uploads.
+    expect(build(allEnabledConfig({ deployment: http("oauth") }), ALL_TOOLS)).not.toMatch(
+      /upload|download link/,
+    );
+    expect(
+      build(allEnabledConfig({ fileDirs: ["/in"], outputDir: "/out" }), ALL_TOOLS),
+    ).not.toMatch(/upload|download link/);
+  });
+
+  it("stays within the cap with file transfer, every tier, dry run and a long inbox URL", () => {
+    const text = build(
+      allEnabledConfig({
+        confirm: "browser",
+        dryRun: true,
+        deployment: {
+          ...http("oauth", `https://${"x".repeat(200)}.example.com/approvals`),
+          files: { ttlSeconds: 1_800 },
+        },
+      }),
+      ALL_TOOLS,
+    );
+
+    expect(text).toContain("sevdesk_upload_request");
+    expect(text.length).toBeLessThanOrEqual(MAX_INSTRUCTIONS_LENGTH);
+  });
+
   it("stays within the cap with the shipped tools and a long inbox URL", () => {
     const text = build(
       allEnabledConfig({

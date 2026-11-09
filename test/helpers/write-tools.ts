@@ -9,6 +9,8 @@
 import type { z } from "zod";
 
 import type { Config } from "../../src/config.js";
+import type { FileAccess } from "../../src/safety/file-access.js";
+import { localFileAccess } from "../../src/safety/file-sources.js";
 import { readOnlyClient, tierScopedClient } from "../../src/sevdesk/scoped-client.js";
 import type { SevdeskClient } from "../../src/sevdesk/types.js";
 import type {
@@ -21,12 +23,18 @@ import type {
 } from "../../src/tools/types.js";
 import { allEnabledConfig } from "./config.js";
 
-function context(client: SevdeskClient, config: Partial<Config>): ToolContext {
+/**
+ * `files` defaults to the local folders of the config, as over stdio; tests of remote file
+ * transfer pass a `remoteFileAccess`.
+ */
+function context(client: SevdeskClient, config: Partial<Config>, files?: FileAccess): ToolContext {
+  const full = allEnabledConfig(config);
   return {
     client,
-    config: allEnabledConfig(config),
+    config: full,
     signal: new AbortController().signal,
     progress: () => Promise.resolve(),
+    files: files ?? localFileAccess(full),
   };
 }
 
@@ -39,9 +47,10 @@ export async function prepareWrite<I extends ToolInputSchema, O extends ToolOutp
   args: unknown,
   client: SevdeskClient,
   config: Partial<Config> = {},
+  files?: FileAccess,
 ): Promise<WritePlan<S>> {
   const parsed = tool.input.parse(args);
-  const ctx = context(readOnlyClient(client, "preparing a write"), config);
+  const ctx = context(readOnlyClient(client, "preparing a write"), config, files);
   return tool.prepare(parsed, ctx);
 }
 
@@ -60,13 +69,14 @@ export async function executeWrite<I extends ToolInputSchema, O extends ToolOutp
   args: unknown,
   client: SevdeskClient,
   config: Partial<Config> = {},
+  files?: FileAccess,
 ): Promise<WriteRun<S, z.output<O>>> {
-  const plan = await prepareWrite(tool, args, client, config);
+  const plan = await prepareWrite(tool, args, client, config, files);
   const parsed = tool.input.parse(args);
   const output = await tool.execute(
     parsed,
     plan,
-    context(tierScopedClient(client, tool.tier), config),
+    context(tierScopedClient(client, tool.tier), config, files),
   );
   tool.output.parse(output.data);
   return { plan, output };
