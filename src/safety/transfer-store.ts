@@ -19,11 +19,19 @@
  * pruned on every call and once a minute, their blobs deleted; a short-lived marker (one hour)
  * lets the pages say "expired" instead of "not found".
  *
- * Limits, so no account can crowd out another (nothing is ever evicted; new records are refused
- * with {@link TransferLimitError} instead):
+ * Limits (nothing is ever evicted; new records are refused with {@link TransferLimitError}
+ * instead):
  * - 5 tickets waiting for a file per account, 10 live records per account, 1,000 overall;
- * - bytes: one account holds at most half of `maxBytes` (`SEVDESK_HTTP_FILES_MAX_MB`), all
- *   accounts together at most `maxBytes`; one upload at most 20 MiB (or the account's half).
+ * - bytes (`maxBytes`, `SEVDESK_HTTP_FILES_MAX_MB`): one account holds at most its share, a
+ *   quarter of `maxBytes` but at least one largest upload (20 MiB), never more than half; one
+ *   upload is at most 20 MiB (or the share). Room for one largest upload is kept for accounts
+ *   that hold nothing: an account that already holds files cannot use it.
+ *
+ * So one account alone cannot fill the space, and when accounts that hold files have filled the
+ * rest, one more account can still store a file. Accounts working together can fill it all,
+ * until their files expire: with the defaults 3 of them (64 MB in memory) or 4 (256 MB on disk),
+ * each storing its share at once. With `SEVDESK_OAUTH_ACCOUNTS=any` anyone can bring accounts;
+ * the startup warning says so.
  *
  * Ids are 256-bit random (`randomId`); references are 6-character codes for humans. Neither is
  * ever logged; file names are kept cleaned (the routes clean them) and never used as paths.
@@ -122,13 +130,16 @@ export interface FileTransferStore extends TransferStore {
 
 export interface TransferStoreOptions {
   readonly blobs: BlobStore;
-  /** Most bytes held at once, all accounts together; one account may hold half. */
+  /**
+   * Most bytes held at once, all accounts together; one account may hold a quarter (at least one
+   * largest upload, at most half), and one largest upload is kept for accounts holding nothing.
+   */
   readonly maxBytes: number;
   /** Lifetime of an uploaded file and of a download link (ms). */
   readonly fileTtlMs: number;
   /** Lifetime of an unused upload ticket (default 15 minutes). */
   readonly ticketTtlMs?: number;
-  /** Largest upload (default 20 MiB; never more than an account's half of `maxBytes`). */
+  /** Largest upload (default 20 MiB; never more than an account's share of `maxBytes`). */
   readonly maxUploadBytes?: number;
   /** Tickets waiting for a file per account (default 5). */
   readonly maxPendingPerAccount?: number;
@@ -229,8 +240,11 @@ export function createTransferStore(options: TransferStoreOptions): FileTransfer
   }
   const now = options.now ?? Date.now;
   const ticketTtlMs = options.ticketTtlMs ?? DEFAULT_TICKET_TTL_MS;
-  const accountBytes = Math.floor(maxBytes / 2);
-  const uploadBytes = Math.min(options.maxUploadBytes ?? MAX_UPLOAD_BYTES, accountBytes);
+  const largestUpload = options.maxUploadBytes ?? MAX_UPLOAD_BYTES;
+  const accountBytes = accountShare(maxBytes, largestUpload);
+  const uploadBytes = Math.min(largestUpload, accountBytes);
+  /** Kept for accounts holding nothing (at most half of `maxBytes`, as the share). */
+  const reserveBytes = uploadBytes;
   const maxPending = options.maxPendingPerAccount ?? DEFAULT_MAX_PENDING;
   const maxPerAccount = options.maxRecordsPerAccount ?? DEFAULT_MAX_PER_ACCOUNT;
   const maxRecords = options.maxRecords ?? DEFAULT_MAX_RECORDS;
@@ -327,9 +341,14 @@ export function createTransferStore(options: TransferStoreOptions): FileTransfer
     }
   }
 
-  /** Whether `size` more bytes fit for `accountScope` and overall. */
+  /**
+   * Whether `size` more bytes fit for `accountScope` (its share) and overall: within `maxBytes`
+   * for an account holding nothing, else leaving the reserve free.
+   */
   function fits(accountScope: string, size: number): boolean {
-    return bytesHeld(accountScope) + size <= accountBytes && bytesHeld() + size <= maxBytes;
+    const own = bytesHeld(accountScope);
+    const ceiling = own === 0 ? maxBytes : maxBytes - reserveBytes;
+    return own + size <= accountBytes && bytesHeld() + size <= ceiling;
   }
 
   function uniqueReference(): string {
@@ -455,7 +474,7 @@ export function createTransferStore(options: TransferStoreOptions): FileTransfer
       if (size > accountBytes) {
         throw new TransferLimitError(
           `The file has ${megabytes(size)}, more than this server holds for one sevDesk account ` +
-            `(${megabytes(accountBytes)}, half of SEVDESK_HTTP_FILES_MAX_MB). Download it in ` +
+            `(${megabytes(accountBytes)}, its share of SEVDESK_HTTP_FILES_MAX_MB). Download it in ` +
             "sevDesk instead, or ask the server's operator to raise the limit.",
         );
       }
@@ -610,6 +629,14 @@ export function createTransferStore(options: TransferStoreOptions): FileTransfer
       await blobs.close();
     },
   };
+}
+
+/**
+ * The bytes one account may hold: a quarter of `maxBytes`, but at least one largest upload (so
+ * the default 20 MiB uploads work with the in-memory default of 64 MB), and never more than half.
+ */
+export function accountShare(maxBytes: number, largestUpload: number): number {
+  return Math.min(Math.floor(maxBytes / 2), Math.max(Math.floor(maxBytes / 4), largestUpload));
 }
 
 function sameOwner(a: RequestPrincipal, b: RequestPrincipal): boolean {

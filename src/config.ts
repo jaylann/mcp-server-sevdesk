@@ -434,7 +434,11 @@ function readConfirm(env: Env, problems: string[]): ConfirmMode {
   return mode;
 }
 
-function readFlag(env: Env, name: string, problems: string[], fallback = false): boolean {
+/**
+ * An on/off variable: `1`, `true`, `yes`, `on` or `0`, `false`, `no`, `off` (any case); `fallback`
+ * when unset; anything else is a problem.
+ */
+export function readFlag(env: Env, name: string, problems: string[], fallback = false): boolean {
   const raw = nonEmpty(env[name])?.toLowerCase();
   if (raw === undefined) return fallback;
   if (["1", "true", "yes", "on"].includes(raw)) return true;

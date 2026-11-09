@@ -167,7 +167,9 @@ describe("transfer routes: declaration", () => {
         maxBodyBytes: route.maxBodyBytes,
         rateLimit: route.rateLimit,
         bodyTimeoutMs: route.bodyTimeoutMs,
+        bodyPace: route.bodyPace,
         slots: route.bodySlots?.max,
+        slotsPerAccount: route.bodySlots?.perKey,
       })),
     ).toEqual([
       {
@@ -178,7 +180,9 @@ describe("transfer routes: declaration", () => {
         maxBodyBytes: 20 * 1024 * 1024 + 64 * 1024,
         rateLimit: FILES_RATE,
         bodyTimeoutMs: 90_000,
+        bodyPace: { idleMs: 10_000, graceMs: 10_000, minBytesPerSecond: 16 * 1024 },
         slots: 2,
+        slotsPerAccount: 1,
       },
       {
         path: "/files/",
@@ -188,17 +192,23 @@ describe("transfer routes: declaration", () => {
         maxBodyBytes: 0,
         rateLimit: FILES_RATE,
         bodyTimeoutMs: undefined,
+        bodyPace: undefined,
         slots: undefined,
+        slotsPerAccount: undefined,
       },
     ]);
     expect(MAX_UPLOAD_BODY_BYTES).toBe(20 * 1024 * 1024 + 64 * 1024);
     expect(FILES_RATE).toEqual({ name: "files", perMinute: 60 });
     expect(UPLOAD_RATE_MINUTE).toEqual({ name: "uploads", perMinute: 10 });
     expect(UPLOAD_RATE_HOUR).toEqual({ name: "uploads-hour", perMinute: 1, burst: 60 });
-    const busy = transfer[0]?.bodySlots?.busy?.();
+    const busy = transfer[0]?.bodySlots?.busy?.("route");
     expect(busy?.status).toBe(503);
     expect(busy?.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    expect(busy?.headers.get("retry-after")).toBe("10");
     expect(await busy?.text()).toContain("Other uploads are being received");
+    const mine = transfer[0]?.bodySlots?.busy?.("key");
+    expect(mine?.status).toBe(503);
+    expect(await mine?.text()).toContain("Another upload of this sevDesk account");
   });
 });
 
@@ -526,6 +536,72 @@ describe("transfer routes: upload", () => {
     });
     expect(response.status).toBe(507);
     expect(response.body).toContain("No space for the file");
+  });
+
+  it("lets one account send one body at a time and drops a stalled one", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+    try {
+      const env = await setup();
+      const first = env.store.createTicket(A1, "receipt");
+      const second = env.store.createTicket(A1, "receipt");
+      const other = env.store.createTicket(B, "receipt");
+      const a = await signedIn(env);
+      const b = await signedIn(env, TOKEN_B);
+      const firstPath = `/uploads/${first.id}`;
+      const csrf = csrfOf((await a.get(firstPath)).body) ?? "";
+
+      // Account A starts an upload and stops sending after the first bytes.
+      const { body, type } = await multipart([
+        ["csrf", csrf],
+        ["file", { name: "a.pdf", bytes: PDF }],
+      ]);
+      const stalled = env.send(
+        new Request(`${ORIGIN}${firstPath}`, {
+          method: "POST",
+          headers: {
+            Origin: ORIGIN,
+            "Content-Type": type,
+            "Content-Length": String(body.byteLength),
+            Cookie: [...a.jar].map(([name, value]) => `${name}=${value}`).join("; "),
+          },
+          body: new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(body.subarray(0, 20));
+            },
+          }),
+          duplex: "half",
+        }),
+      );
+      await vi.waitFor(() => {
+        expect(env.router.inFlight).toBe(1);
+      });
+
+      // A second body of A waits; account B still uploads.
+      const busy = await uploadFile(env, a, `/uploads/${second.id}`, { name: "b.pdf", bytes: PDF });
+      expect(busy.status).toBe(503);
+      expect(busy.body).toContain("Another upload of this sevDesk account");
+      const theirs = await uploadFile(env, b, `/uploads/${other.id}`, {
+        name: "c.pdf",
+        bytes: PDF,
+      });
+      expect(theirs.status).toBe(200);
+
+      // Ten seconds without a byte: 408, the slot is free, the ticket can still be used.
+      await vi.advanceTimersByTimeAsync(10_000);
+      const dropped = await stalled;
+      expect(dropped.status).toBe(408);
+      expect(await dropped.text()).toContain("arrived too slowly");
+      expect(env.store.ticketFor(first.id, "1001")).toMatchObject({ status: "pending" });
+      const retried = await uploadFile(env, a, `/uploads/${second.id}`, {
+        name: "b.pdf",
+        bytes: PDF,
+      });
+      expect(retried.status).toBe(200);
+      expect(env.router.inFlight).toBe(0);
+      expect(env.log.lines.join("\n")).not.toContain(first.id);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("answers 500 when the file cannot be stored, and keeps the ticket", async () => {

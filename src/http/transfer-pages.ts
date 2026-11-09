@@ -84,11 +84,18 @@ export const TRANSFER_TEXT = {
     title: "Server busy",
     message: "Other uploads are being received right now. Try again in a moment.",
   },
+  busyAccount: {
+    title: "Upload in progress",
+    message:
+      "Another upload of this sevDesk account is being received right now. Wait until it has " +
+      "finished, then try again.",
+  },
   storageFull: {
     title: "No space for the file",
     message:
-      "The server holds too many files for this sevDesk account right now. Try again once older " +
-      "uploads and download links have expired.",
+      "The server has no room for this file right now: this sevDesk account, or all accounts " +
+      "together, hold too many files. Try again once older uploads and download links have " +
+      "expired.",
   },
   failed: {
     title: "Upload failed",

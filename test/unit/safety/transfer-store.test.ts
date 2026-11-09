@@ -6,6 +6,7 @@ import type { RequestPrincipal } from "../../../src/accounts/types.js";
 import type { AuditLog, FileAuditEvent } from "../../../src/safety/audit.js";
 import { type BlobStore, openBlobStore } from "../../../src/safety/blob-store.js";
 import {
+  accountShare,
   createTransferStore,
   duration,
   type FileTransferStore,
@@ -256,7 +257,7 @@ describe("transfer store: uploads", () => {
     );
   });
 
-  it("caps an upload at half the budget and refuses one that does not fit", async () => {
+  it("caps an upload at the account's share and refuses one that does not fit", async () => {
     const { store } = await setup({ maxBytes: 2_000 });
     const ticket = store.createTicket(A1, "receipt");
     expect(ticket.maxBytes).toBe(1_000);
@@ -320,7 +321,7 @@ describe("transfer store: download links", () => {
     expect(await store.takeDownload(link.id, "1001")).toEqual({ status: "expired" });
   });
 
-  it("refuses a file larger than an account's half and space that is taken", async () => {
+  it("refuses a file larger than an account's share and space that is taken", async () => {
     const { store } = await setup({ maxBytes: 1_000 });
     await expect(
       store.createDownload(A1, { filename: "big.zip", kind: "zip", bytes: new Uint8Array(501) }),
@@ -329,7 +330,7 @@ describe("transfer store: download links", () => {
     await expect(
       store.createDownload(A1, { filename: "b.zip", kind: "zip", bytes: new Uint8Array(200) }),
     ).rejects.toThrow(/space for download links is full/);
-    // Account B still has its half.
+    // Account B, holding nothing, may still use the room kept for newcomers.
     await store.createDownload(B, { filename: "c.zip", kind: "zip", bytes: new Uint8Array(500) });
     await expect(
       store.createDownload(
@@ -341,6 +342,47 @@ describe("transfer store: download links", () => {
         },
       ),
     ).rejects.toThrow(TransferLimitError);
+  });
+
+  it("gives each account a quarter and keeps one upload's room for accounts holding nothing", async () => {
+    const { store } = await setup({ maxBytes: 4_000, maxUploadBytes: 1_000 });
+    const owner = (account: string): RequestPrincipal => ({
+      grantKey: `grant-${account}`,
+      accountScope: account,
+    });
+    const link = (account: string, size: number) =>
+      store.createDownload(owner(account), {
+        filename: "a.zip",
+        kind: "zip",
+        bytes: new Uint8Array(size),
+      });
+    await link("a", 1_000);
+    await expect(link("a", 1)).rejects.toThrow(/space for download links is full/);
+    await link("b", 600);
+    await link("c", 600);
+    await link("b", 400);
+    await link("c", 400);
+    // 3,000 held: accounts that hold files may not use the last 1,000 ...
+    await link("d", 700);
+    await expect(link("d", 100)).rejects.toThrow(TransferLimitError);
+    // ... but an account holding nothing may, also for an upload.
+    const ticket = store.createTicket(owner("e"), "receipt");
+    expect(ticket.maxBytes).toBe(1_000);
+    expect(await store.receive(ticket.id, "e", file(new Uint8Array(400)))).toEqual({
+      status: "storage_full",
+    });
+    expect(await store.receive(ticket.id, "e", file(new Uint8Array(300)))).toMatchObject({
+      status: "received",
+    });
+    await expect(link("f", 1)).rejects.toThrow(TransferLimitError);
+    expect(store.usage()).toEqual({ bytes: 4_000, records: 7 });
+  });
+
+  it("sizes the share: a quarter, at least one largest upload, at most half", () => {
+    expect(accountShare(256 * MB, MAX_UPLOAD_BYTES)).toBe(64 * MB);
+    expect(accountShare(64 * MB, MAX_UPLOAD_BYTES)).toBe(20 * MB);
+    expect(accountShare(32 * MB, MAX_UPLOAD_BYTES)).toBe(16 * MB);
+    expect(accountShare(4_000, 1_000)).toBe(1_000);
   });
 
   it("reserves space while a blob is written, so parallel links cannot overshoot", async () => {

@@ -27,12 +27,14 @@ import {
   type Env,
   nonEmpty,
   readEnum,
+  readFlag,
   readList,
   readSecret,
   readSettings,
   type Settings,
   sevdeskTokenProblem,
 } from "../config.js";
+import { accountShare, MAX_UPLOAD_BYTES } from "../safety/transfer-store.js";
 import { decodeSecret } from "./keys.js";
 import type { HttpAuthMode, HttpConfig, HttpFilesConfig, OAuthSettings } from "./types.js";
 
@@ -315,7 +317,7 @@ interface FilesContext {
 }
 
 /**
- * `SEVDESK_HTTP_FILES` (`on` or `off`, default on), `SEVDESK_HTTP_FILES_MAX_MB` (32 to 4096;
+ * `SEVDESK_HTTP_FILES` (on/off, 1/0, true/false or yes/no, default on), `SEVDESK_HTTP_FILES_MAX_MB` (32 to 4096;
  * default 256 with a state directory, 64 in memory) and `SEVDESK_HTTP_FILES_TTL` (5m to 24h,
  * default 30m). Warns about plain http (the session cookie reaches every local server on the host),
  * files held in memory, and a server open to any account.
@@ -326,11 +328,11 @@ function readFiles(
   warnings: string[],
   context: FilesContext,
 ): HttpFilesConfig | undefined {
-  const mode = readEnum<"on" | "off">(env, "SEVDESK_HTTP_FILES", ["on", "off"], "on", problems);
+  const on = readFlag(env, "SEVDESK_HTTP_FILES", problems, true);
   const tuned = ["SEVDESK_HTTP_FILES_MAX_MB", "SEVDESK_HTTP_FILES_TTL"].filter(
     (name) => nonEmpty(env[name]) !== undefined,
   );
-  if (mode === "off") {
+  if (!on) {
     if (tuned.length > 0 && nonEmpty(env["SEVDESK_HTTP_FILES"]) !== undefined) {
       warnings.push(`${tuned.join(" and ")} have no effect with SEVDESK_HTTP_FILES=off.`);
     }
@@ -355,10 +357,14 @@ function readFiles(
     );
   }
   if (context.anyAccount) {
+    const share = accountShare(maxMb * MEBIBYTE, MAX_UPLOAD_BYTES) / MEBIBYTE;
     warnings.push(
       "SEVDESK_OAUTH_ACCOUNTS=any with SEVDESK_HTTP_FILES=on: the server briefly holds the " +
         "receipts and exports of every account that connects (each up to " +
-        "SEVDESK_HTTP_FILES_TTL, encrypted). Set SEVDESK_HTTP_FILES=off if that is not wanted.",
+        "SEVDESK_HTTP_FILES_TTL, encrypted). One account may use " +
+        `${String(Math.floor(share))} MB of the ${String(maxMb)} MB, but a few accounts ` +
+        "together can fill the space for everyone until their files expire. Set " +
+        "SEVDESK_HTTP_FILES=off if that is not wanted.",
     );
   }
   return { maxBytes: maxMb * MEBIBYTE, ttlSeconds };

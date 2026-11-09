@@ -14,8 +14,10 @@
  * - `POST /uploads/<id>`: `multipart/form-data` with exactly the fields `csrf` and `file`. Before
  *   the body is read (router `preflight`): 10 uploads a minute and 60 an hour per client, a
  *   same-origin POST, a session, a pending ticket of the session's account, a declared
- *   `Content-Length` (411) within the ticket's limit (413), and at most 2 upload bodies at once
- *   (503). Then the CSRF tag (`keyedTag(csrf, sid)`), the kind by content (`sniffKind`, 415), and
+ *   `Content-Length` (411) within the ticket's limit (413), and at most 2 upload bodies at once on
+ *   the server and 1 per account (503). The body must arrive within 90 s, never pause for 10 s and
+ *   average at least 16 KB/s after the first 10 s (408), so a trickled body cannot hold a slot.
+ *   Then the CSRF tag (`keyedTag(csrf, sid)`), the kind by content (`sniffKind`, 415), and
  *   the cleaned name (`safeFilename`, extension from the sniffed kind). 409 for a second upload;
  *   uploads are never served back;
  * - `GET /files/<id>`: the file as an attachment (`downloadResponse`), at most 5 times, 410 once
@@ -47,7 +49,14 @@ import {
   transferMessage,
   UPLOADS_PREFIX,
 } from "./transfer-pages.js";
-import type { HttpRequestContext, HttpRoute, RateRule, SessionRecord } from "./types.js";
+import type {
+  BodyPace,
+  HttpRequestContext,
+  HttpRoute,
+  PreflightPass,
+  RateRule,
+  SessionRecord,
+} from "./types.js";
 
 /** All upload and download requests together per client IP (IPv6 by /64). */
 export const FILES_RATE: RateRule = { name: "files", perMinute: 60 };
@@ -62,8 +71,19 @@ const MULTIPART_OVERHEAD_BYTES = 64 * 1024;
 export const MAX_UPLOAD_BODY_BYTES = MAX_UPLOAD_BYTES + MULTIPART_OVERHEAD_BYTES;
 /** Time an upload body may take (below the router's 120 s request deadline). */
 const UPLOAD_BODY_TIMEOUT_MS = 90_000;
+/**
+ * How fast an upload body must keep coming: no pause of 10 s, and 16 KB/s on average once 10 s
+ * have passed. A legitimate upload is far faster; a trickled one loses its slot within seconds.
+ */
+const UPLOAD_BODY_PACE: BodyPace = {
+  idleMs: 10_000,
+  graceMs: 10_000,
+  minBytesPerSecond: 16 * 1024,
+};
 /** Upload bodies received at once (memory: each is held about three times while parsed). */
 const MAX_CONCURRENT_UPLOADS = 2;
+/** Upload bodies of one sevDesk account at once: no account can take every slot. */
+const MAX_CONCURRENT_UPLOADS_PER_ACCOUNT = 1;
 /** Ticket and link ids: 256 bit, base64url. */
 const RECORD_ID = /^[A-Za-z0-9_-]{43}$/;
 
@@ -165,8 +185,14 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
     return { record, ticket, id };
   }
 
-  /** Before the body: rate limits, {@link admit}, and the declared length. */
-  async function preflight(head: Request, ctx: HttpRequestContext): Promise<Response | undefined> {
+  /**
+   * Before the body: rate limits, {@link admit}, and the declared length. A POST that passes
+   * counts its body slot under its account.
+   */
+  async function preflight(
+    head: Request,
+    ctx: HttpRequestContext,
+  ): Promise<Response | PreflightPass | undefined> {
     if (head.method !== "POST") return undefined;
     const client = rateLimitKey(ctx.clientIp);
     if (!ctx.limit(UPLOAD_RATE_MINUTE, client) || !ctx.limit(UPLOAD_RATE_HOUR, client)) {
@@ -195,7 +221,7 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
         admitted.record,
       );
     }
-    return undefined;
+    return { bodySlotKey: admitted.record.accountId };
   }
 
   async function showUpload(request: Request, ctx: HttpRequestContext): Promise<Response> {
@@ -356,9 +382,14 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
       rateLimit: FILES_RATE,
       preflight,
       bodyTimeoutMs: UPLOAD_BODY_TIMEOUT_MS,
+      bodyPace: UPLOAD_BODY_PACE,
       bodySlots: {
         max: MAX_CONCURRENT_UPLOADS,
-        busy: () => transferMessage(503, TRANSFER_TEXT.busy, { "Retry-After": "10" }),
+        perKey: MAX_CONCURRENT_UPLOADS_PER_ACCOUNT,
+        busy: (scope) =>
+          transferMessage(503, scope === "key" ? TRANSFER_TEXT.busyAccount : TRANSFER_TEXT.busy, {
+            "Retry-After": "10",
+          }),
       },
       handle: (request, ctx) =>
         request.method === "POST" ? upload(request, ctx) : showUpload(request, ctx),

@@ -401,6 +401,7 @@ describe("genericGetRefusal", () => {
     ["/Contact/1/addresses"],
     ["/Invoice/1/links"],
     ["/Tag", { name: "send", tokenizer: "x" }],
+    ["/Contact", { "category[id]": 3, "ids[]": 4 }],
   ];
 
   it.each(allowed)("allows %s %j", (path, query) => {
@@ -482,6 +483,15 @@ describe("genericGetRefusal", () => {
     [{ useNextNumber: false }, /useNextNumber/],
     [{ method: "DELETE" }, /HTTP method/],
     [{ "X.HTTP.Method.Override": "PUT" }, /HTTP method/],
+    [{ "api key": "abc" }, /Credentials/],
+    // PHP reads an unclosed `[` as `_`: these arrive as api_key, access_token, http_method.
+    [{ "api[key": "abc" }, /brackets must pair up/],
+    [{ "access[token": "abc" }, /brackets must pair up/],
+    [{ "http[method": "PUT" }, /brackets must pair up/],
+    [{ "contact[id": 1 }, /brackets must pair up/],
+    [{ "contact]id": 1 }, /brackets must pair up/],
+    [{ "contact[id]x": 1 }, /brackets must pair up/],
+    [{ "a[[b]]": 1 }, /brackets must pair up/],
   ])("refuses the query %j", (query, message) => {
     const refusal = genericGetRefusal("/Invoice", query);
     expect(refusal).toMatch(message);

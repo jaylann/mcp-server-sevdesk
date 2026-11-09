@@ -316,8 +316,8 @@ Kubernetes secrets); set one or the other.
 | `SEVDESK_HTTP_SECRET` (`_FILE`)          |                                      | OAuth, required: the server secret all tokens and cookies are sealed with; at least 32 random bytes, hex or base64/base64url (`generate-secret`). Optional in bearer mode, where it keeps browser sign-ins valid across restarts.                                                                                                                                                                                                        |
 | `SEVDESK_HTTP_SECRET_PREVIOUS` (`_FILE`) |                                      | The previous server secret while you [rotate it](#rotating-the-server-secret): tokens sealed with it are still accepted and resealed on refresh.                                                                                                                                                                                                                                                                                         |
 | `SEVDESK_HTTP_STATE_DIR`                 | memory (image: `/data`)              | Absolute directory for the grant store and the encrypted files of file transfer (`files/`); created with mode 0700 (an existing one is tightened to 0700) and checked for write access at startup. Without it, grants and browser sessions end with the process (OAuth startup warns) and files are kept in memory.                                                                                                                      |
-| `SEVDESK_HTTP_FILES`                     | `on`                                 | [File transfer](#files-uploads-and-download-links): upload pages for receipts and e-invoices, and download links for the files tools create. `on` or `off`. Off: no `sevdesk_upload_request`, and in OAuth mode no file tools at all.                                                                                                                                                                                                    |
-| `SEVDESK_HTTP_FILES_MAX_MB`              | 256 with a state directory, else 64  | Megabytes the uploaded files and download links of all accounts may take together, 32 to 4096. One account may use at most half of it. With a state directory the files are on disk, otherwise in memory.                                                                                                                                                                                                                                |
+| `SEVDESK_HTTP_FILES`                     | `on`                                 | [File transfer](#files-uploads-and-download-links): upload pages for receipts and e-invoices, and download links for the files tools create. `on`/`off`, `1`/`0`, `true`/`false` or `yes`/`no`. Off: no `sevdesk_upload_request`, and in OAuth mode no file tools at all.                                                                                                                                                                |
+| `SEVDESK_HTTP_FILES_MAX_MB`              | 256 with a state directory, else 64  | Megabytes the uploaded files and download links of all accounts may take together, 32 to 4096. One account may use a quarter of it (at least 20 MB, at most half); room for one upload stays free for accounts that hold no files yet. With a state directory the files are on disk, otherwise in memory.                                                                                                                                |
 | `SEVDESK_HTTP_FILES_TTL`                 | `30m`                                | How long an uploaded file and a download link stay valid, 5 minutes to 24 hours.                                                                                                                                                                                                                                                                                                                                                         |
 | `SEVDESK_OAUTH_ACCOUNTS`                 |                                      | OAuth, required: the sevDesk account ids that may connect, comma-separated, or `any` (startup warns).                                                                                                                                                                                                                                                                                                                                    |
 | `SEVDESK_OAUTH_CLIENTS`                  | `claude.ai`                          | Hosts allowed to serve a client's metadata document (its `client_id` URL), comma-separated, or `any` (startup warns).                                                                                                                                                                                                                                                                                                                    |
@@ -372,7 +372,7 @@ Startup refuses:
 - OAuth together with `SEVDESK_FILE_DIRS` or `SEVDESK_OUTPUT_DIR` (the message points to the
   upload pages and download links);
 - `SEVDESK_API_TOKEN_KEYCHAIN`, `SEVDESK_PROFILE` or `SEVDESK_PROFILES_PATH` (stdio only);
-- `SEVDESK_HTTP_FILES` other than `on` or `off`, `SEVDESK_HTTP_FILES_MAX_MB` outside 32–4096, or
+- `SEVDESK_HTTP_FILES` that is not an on/off value, `SEVDESK_HTTP_FILES_MAX_MB` outside 32–4096, or
   `SEVDESK_HTTP_FILES_TTL` outside 5 minutes to 24 hours;
 - `SEVDESK_CONFIRM_OPEN=1` with a non-loopback bind;
 - a state directory that cannot be written, a corrupt `grants.jsonl`, a state directory that
@@ -380,10 +380,11 @@ Startup refuses:
 
 Startup warns (and starts) for `SEVDESK_CONFIRM=elicit` with the `commit` or `external` tier,
 `SEVDESK_OAUTH_ACCOUNTS=any` (with file transfer on, also because the server then briefly holds
-every connected account's receipts and exports), `SEVDESK_OAUTH_CLIENTS=any`, OAuth without a
-state directory, `SEVDESK_API_TOKEN` or a bearer secret in OAuth mode, a server or bearer secret
-that looks like a passphrase rather than random bytes (use `generate-secret`), a non-loopback bind
-with a loopback public URL (anyone who reaches the port can use the server; see the
+every connected account's receipts and exports, and a few accounts together can fill its file
+space), `SEVDESK_OAUTH_CLIENTS=any`, OAuth without a state directory, `SEVDESK_API_TOKEN` or a
+bearer secret in OAuth mode, a server or bearer secret that looks like a passphrase rather than
+random bytes (use `generate-secret`), a non-loopback bind with a loopback public URL (anyone who
+reaches the port can use the server; see the
 [Docker quick start](#quick-start-bearer-mode-with-docker)), file transfer over plain http (the
 browser session cookie reaches every server on that host name), file transfer without a state
 directory (files are held in memory, up to `SEVDESK_HTTP_FILES_MAX_MB`), and
@@ -563,21 +564,22 @@ or open the link in the browser where you consented.
 
 **Limits and lifetimes:**
 
-| What                | Limit                                                                                                             |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Upload page         | Valid 15 minutes, takes one file.                                                                                 |
-| Accepted files      | Receipts: PDF, PNG or JPEG. E-invoices: XML (XRechnung) or PDF (ZUGFeRD, Factur-X). Checked by content.           |
-| One upload          | 20 MB, or half of `SEVDESK_HTTP_FILES_MAX_MB` if that is less.                                                    |
-| Uploaded file, link | Valid for `SEVDESK_HTTP_FILES_TTL` (30 minutes). A link serves at most 5 downloads.                               |
-| Per account         | 5 upload pages waiting for a file, 10 uploads and links together, half of `SEVDESK_HTTP_FILES_MAX_MB`.            |
-| All accounts        | `SEVDESK_HTTP_FILES_MAX_MB` (256 MB with a state directory, 64 MB without), 1,000 uploads and links.              |
-| Requests per client | 60 a minute to the upload and download pages together; 10 uploads a minute and 60 an hour (IPv6 per /64 network). |
-| Uploads at once     | 2 for the whole server; a third gets "Server busy" (503): try again in a moment.                                  |
-| A restart           | Voids every upload page, upload and link. The model asks for a new one.                                           |
+| What                | Limit                                                                                                                                                                 |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Upload page         | Valid 15 minutes, takes one file.                                                                                                                                     |
+| Accepted files      | Receipts: PDF, PNG or JPEG. E-invoices: XML (XRechnung) or PDF (ZUGFeRD, Factur-X). Checked by content.                                                               |
+| One upload          | 20 MB, or half of `SEVDESK_HTTP_FILES_MAX_MB` if that is less.                                                                                                        |
+| Uploaded file, link | Valid for `SEVDESK_HTTP_FILES_TTL` (30 minutes). A link serves at most 5 downloads.                                                                                   |
+| Per account         | 5 upload pages waiting for a file, 10 uploads and links together, a quarter of `SEVDESK_HTTP_FILES_MAX_MB` (at least 20 MB, at most half).                            |
+| All accounts        | `SEVDESK_HTTP_FILES_MAX_MB` (256 MB with a state directory, 64 MB without), 1,000 uploads and links. Room for one upload is kept for accounts that hold no files yet. |
+| Requests per client | 60 a minute to the upload and download pages together; 10 uploads a minute and 60 an hour (IPv6 per /64 network).                                                     |
+| Uploads at once     | 2 for the whole server, 1 per account; another gets "Server busy" or "Upload in progress" (503): try again in a moment.                                               |
+| Upload speed        | The file must arrive within 90 seconds, without a 10-second pause, and at 16 KB/s or more on average after the first 10 seconds; else 408.                            |
+| A restart           | Voids every upload page, upload and link. The model asks for a new one.                                                                                               |
 
 Nothing is pushed out to make room: when a limit is reached, new uploads and links are refused
 until older ones expire. Download links count against the same space as uploads, so a large DATEV
-export may not fit (with 64 MB in memory, one account has 32 MB). The tool then says that sevDesk
+export may not fit (with 64 MB in memory, one account has 20 MB). The tool then says that sevDesk
 has started the export, and you download it in sevDesk instead; or raise
 `SEVDESK_HTTP_FILES_MAX_MB`, best with a state directory, so the files go to disk.
 
@@ -586,9 +588,9 @@ about three times over, which is why at most two are received at once. On a smal
 keep a state directory and the default limits.
 
 **Reverse proxies.** An upload body is up to 20 MB plus a little form overhead, must arrive within
-90 seconds, and must carry `Content-Length`; a chunked upload without it is refused with 411. nginx
-needs `client_max_body_size 25m;` (its default of 1 MB refuses most receipts), and its default
-request buffering sends `Content-Length`. Caddy, as in the compose template, needs nothing.
+90 seconds without a 10-second pause, and must carry `Content-Length`; a chunked upload without it
+is refused with 411. nginx needs `client_max_body_size 25m;` (its default of 1 MB refuses most
+receipts), and its default request buffering sends `Content-Length`. Caddy, as in the compose template, needs nothing.
 
 **Turning it off.** `SEVDESK_HTTP_FILES=off` removes `sevdesk_upload_request` and the pages. In
 OAuth mode no file tool is offered then; bearer mode still uses `SEVDESK_FILE_DIRS` and
@@ -738,7 +740,9 @@ comes from the proxy.
 - A 413 page of the proxy, not the server's "File too large": the proxy's body limit is below the
   server's (a little over 20 MB). nginx: `client_max_body_size 25m;` (default 1 MB). Caddy has no
   limit unless you set one.
-- A timeout on large files over a slow connection: the body must arrive within 90 seconds.
+- A timeout (408) on large files over a slow connection: the body must arrive within 90 seconds,
+  at 16 KB/s or more on average, and never pause for 10 seconds. A proxy that buffers request
+  bodies (nginx by default) sends them on at full speed.
 
 **A link from the chat shows the sign-in form.** The browser has no session of that account: it
 is not the browser you consented in (the Claude apps may open links in their own browser), the 12
@@ -750,9 +754,10 @@ account, or the server restarted since (a restart voids every upload and link). 
 "used up" mean what they say. Ask the model for a new upload link or to create the file again.
 
 **"No space for the file" (507), or the model reports that the limit is reached.** The account's
-uploads and links fill its half of `SEVDESK_HTTP_FILES_MAX_MB`, or 10 of them are alive. Wait until
-older ones expire (`SEVDESK_HTTP_FILES_TTL`), or raise the limit. "Server busy" (503) means two
-other uploads are arriving right now; try again in a moment.
+uploads and links fill its quarter of `SEVDESK_HTTP_FILES_MAX_MB`, the accounts together fill the
+space, or 10 of them are alive. Wait until older ones expire (`SEVDESK_HTTP_FILES_TTL`), or raise
+the limit. "Server busy" (503) means two other uploads are arriving right now, "Upload in progress"
+(503) that another upload of the same account is; try again in a moment.
 
 **The model says the client cannot be asked for confirmation.** The client has no form
 elicitation over HTTP (claude.ai at the time of writing). Set `SEVDESK_CONFIRM=browser` and use the

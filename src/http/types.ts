@@ -129,18 +129,49 @@ export interface HttpRoute {
    * Checks the request on its headers alone, after the Origin policy (and authentication) and
    * before the body is read: a refusal here means the body is never read (an upload without a
    * session, of a used ticket, or declaring too many bytes). Runs for every method; `undefined`
-   * lets the request go on.
+   * or a {@link PreflightPass} lets the request go on.
    */
-  readonly preflight?: (head: Request, ctx: HttpRequestContext) => Promise<Response | undefined>;
+  readonly preflight?: (
+    head: Request,
+    ctx: HttpRequestContext,
+  ) => Promise<Response | PreflightPass | undefined>;
   /** Time this route's body may take to arrive (default: the router's, 15 s; 408 beyond). */
   readonly bodyTimeoutMs?: number;
   /**
-   * Most requests with a body on this route at once, each counted from its preflight until its
-   * response is complete; beyond it the router answers `busy()` (default: a JSON 503). Bounds the
-   * memory large uploads take. The router keeps the count, so no refusal can leak a slot.
+   * How fast this route's body must keep arriving (default: no check besides `bodyTimeoutMs`): a
+   * body that sends nothing for `idleMs`, or that after `graceMs` has averaged fewer than
+   * `minBytesPerSecond`, gets a 408 at once. Keeps a trickled body from holding a body slot for
+   * the whole `bodyTimeoutMs`. Checked about once a second.
    */
-  readonly bodySlots?: { readonly max: number; readonly busy?: () => Response };
+  readonly bodyPace?: BodyPace;
+  /**
+   * Requests with a body on this route at once, each counted from its preflight until its
+   * response is complete. Bounds the memory large uploads take, and keeps one party from taking
+   * them all. The router keeps the counts, so no refusal can leak a slot.
+   * - `max`: on the whole route; beyond it the router answers `busy("route")`;
+   * - `perKey`: per {@link PreflightPass.bodySlotKey} (e.g. the session's account); beyond it the
+   *   router answers `busy("key")`. Requests whose preflight names no key share one key;
+   * - `busy`: the refusal (default: a JSON 503).
+   */
+  readonly bodySlots?: {
+    readonly max: number;
+    readonly perKey?: number;
+    readonly busy?: (scope: "route" | "key") => Response;
+  };
   readonly handle: RouteHandler;
+}
+
+/** What a preflight that lets the request go on may tell the router. */
+export interface PreflightPass {
+  /** The key the route's `bodySlots.perKey` counts this request under. Never logged. */
+  readonly bodySlotKey?: string;
+}
+
+/** See {@link HttpRoute.bodyPace}. */
+export interface BodyPace {
+  readonly idleMs: number;
+  readonly graceMs: number;
+  readonly minBytesPerSecond: number;
 }
 
 /**

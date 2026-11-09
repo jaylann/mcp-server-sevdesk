@@ -716,8 +716,8 @@ describe("loadHttpConfig: remote file transfer", () => {
   });
 
   it.each([
-    ["SEVDESK_HTTP_FILES", "yes", 'SEVDESK_HTTP_FILES: expected one of on, off, got "yes".'],
-    ["SEVDESK_HTTP_FILES", "1", 'SEVDESK_HTTP_FILES: expected one of on, off, got "1".'],
+    ["SEVDESK_HTTP_FILES", "maybe", 'SEVDESK_HTTP_FILES: expected 1/0 or true/false, got "maybe".'],
+    ["SEVDESK_HTTP_FILES", "2", 'SEVDESK_HTTP_FILES: expected 1/0 or true/false, got "2".'],
     ["SEVDESK_HTTP_FILES_MAX_MB", "31", "between 32 and 4096"],
     ["SEVDESK_HTTP_FILES_MAX_MB", "4097", "between 32 and 4096"],
     ["SEVDESK_HTTP_FILES_MAX_MB", "64.5", "between 32 and 4096"],
@@ -731,6 +731,14 @@ describe("loadHttpConfig: remote file transfer", () => {
     ["SEVDESK_HTTP_FILES_TTL", "soon", "between 5m and 24h"],
   ])("refuses %s=%s", (name, value, message) => {
     expect(problemsOf({ ...OAUTH_ENV, [name]: value })).toEqual([expect.stringContaining(message)]);
+  });
+
+  it.each(["on", "ON", "1", "true", "Yes"])("reads SEVDESK_HTTP_FILES=%s as on", (value) => {
+    expect(load({ ...OAUTH_ENV, SEVDESK_HTTP_FILES: value }).http.files).toBeDefined();
+  });
+
+  it.each(["off", "Off", "0", "false", "NO"])("reads SEVDESK_HTTP_FILES=%s as off", (value) => {
+    expect(load({ ...OAUTH_ENV, SEVDESK_HTTP_FILES: value }).http.files).toBeUndefined();
   });
 
   it("can be switched off; its settings then have no effect", () => {
@@ -767,6 +775,9 @@ describe("loadHttpConfig: remote file transfer", () => {
       expect.stringContaining("SEVDESK_OAUTH_ACCOUNTS=any: every sevDesk account"),
       expect.stringContaining("holds the receipts and exports of every account"),
     ]);
+    expect(any.warnings[1]).toContain(
+      "One account may use 64 MB of the 256 MB, but a few accounts together can fill the space",
+    );
     expect(load({ ...OAUTH_ENV, ...FILES_OFF, SEVDESK_OAUTH_ACCOUNTS: "any" }).warnings).toEqual([
       expect.stringContaining("SEVDESK_OAUTH_ACCOUNTS=any: every sevDesk account"),
     ]);

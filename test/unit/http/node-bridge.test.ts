@@ -62,8 +62,9 @@ function serveWith(use: (incoming: IncomingRequest) => Promise<Response>, closeC
 
 describe("fromNodeRequest", () => {
   it("adapts method, target, headers and peer, dropping hop-by-hop headers", async () => {
+    const chunks: number[] = [];
     const seen = serveWith(async (incoming) => {
-      const body = await incoming.readBody(100);
+      const body = await incoming.readBody(100, (bytes) => chunks.push(bytes));
       return new Response(body === "too_large" ? "too large" : new TextDecoder().decode(body));
     });
     const response = await rawRequest(port, {
@@ -73,6 +74,7 @@ describe("fromNodeRequest", () => {
       body: "hello",
     });
     expect(response.body).toBe("hello");
+    expect(chunks.reduce((sum, bytes) => sum + bytes, 0)).toBe(5);
     const incoming = await seen;
     expect(incoming.method).toBe("POST");
     expect(incoming.target).toBe("/mcp?x=1");
@@ -327,7 +329,10 @@ describe("fromWebRequest", () => {
     expect(incoming.target).toBe("/mcp?x=1");
     expect(incoming.remoteAddress).toBe("10.0.0.1");
     expect(incoming.bodyPending).toBe(true);
-    expect(new TextDecoder().decode((await incoming.readBody(3)) as Uint8Array)).toBe("abc");
+    const chunks: number[] = [];
+    const body = await incoming.readBody(3, (bytes) => chunks.push(bytes));
+    expect(new TextDecoder().decode(body as Uint8Array)).toBe("abc");
+    expect(chunks).toEqual([3]);
     expect(incoming.bodyPending).toBe(false);
     await expect(incoming.readBody(3)).rejects.toThrow(/already read/);
   });

@@ -30,8 +30,9 @@ export interface IncomingRequest {
   /**
    * Reads the whole body: its bytes, or `"too_large"` when more than `maxBytes` are declared or
    * arrive (reading stops there). Rejects when the client aborts mid-body. Call at most once.
+   * `onData` hears the size of every chunk as it arrives (the router's pace check).
    */
-  readBody(maxBytes: number): Promise<Uint8Array | "too_large">;
+  readBody(maxBytes: number, onData?: (bytes: number) => void): Promise<Uint8Array | "too_large">;
   /** Whether a declared body is (partly) unread: the connection must not be reused. */
   readonly bodyPending: boolean;
 }
@@ -82,7 +83,7 @@ export function fromNodeRequest(req: IncomingMessage, res: ServerResponse): Inco
     get bodyPending() {
       return declared && !handled;
     },
-    async readBody(maxBytes) {
+    async readBody(maxBytes, onData) {
       if (reading) throw new Error("The request body was already read.");
       reading = true;
       const length = declaredLength(req.headers["content-length"]);
@@ -93,7 +94,7 @@ export function fromNodeRequest(req: IncomingMessage, res: ServerResponse): Inco
         }
         return "too_large";
       }
-      const body = await readNodeBody(req, maxBytes);
+      const body = await readNodeBody(req, maxBytes, onData);
       handled = true;
       return body;
     },
@@ -122,7 +123,7 @@ export function fromWebRequest(request: Request, remoteAddress = "127.0.0.1"): I
     get bodyPending() {
       return !consumed;
     },
-    async readBody(maxBytes) {
+    async readBody(maxBytes, onData) {
       if (reading) throw new Error("The request body was already read.");
       reading = true;
       if (declaredLength(request.headers.get("content-length") ?? undefined) > maxBytes) {
@@ -136,6 +137,7 @@ export function fromWebRequest(request: Request, remoteAddress = "127.0.0.1"): I
         const { done, value } = await reader.read();
         if (done) break;
         size += value.byteLength;
+        onData?.(value.byteLength);
         if (size > maxBytes) {
           await reader.cancel().catch(() => undefined);
           return "too_large";
@@ -231,7 +233,11 @@ function drained(res: ServerResponse): Promise<void> {
   });
 }
 
-function readNodeBody(req: IncomingMessage, maxBytes: number): Promise<Uint8Array | "too_large"> {
+function readNodeBody(
+  req: IncomingMessage,
+  maxBytes: number,
+  onData: ((bytes: number) => void) | undefined,
+): Promise<Uint8Array | "too_large"> {
   return new Promise((resolve, reject) => {
     if (req.readableEnded) {
       resolve(new Uint8Array());
@@ -240,13 +246,14 @@ function readNodeBody(req: IncomingMessage, maxBytes: number): Promise<Uint8Arra
     const chunks: Uint8Array[] = [];
     let size = 0;
     const cleanup = (): void => {
-      req.off("data", onData);
+      req.off("data", onChunk);
       req.off("end", onEnd);
       req.off("error", onError);
       req.off("close", onClose);
     };
-    const onData = (chunk: Buffer): void => {
+    const onChunk = (chunk: Buffer): void => {
       size += chunk.byteLength;
+      onData?.(chunk.byteLength);
       if (size > maxBytes) {
         cleanup();
         void discardBody(req, size, maxBytes + DISCARD_LIMIT_BYTES).then(() => {
@@ -268,7 +275,7 @@ function readNodeBody(req: IncomingMessage, maxBytes: number): Promise<Uint8Arra
       cleanup();
       reject(new Error("The client disconnected while sending the request body."));
     };
-    req.on("data", onData);
+    req.on("data", onChunk);
     req.on("end", onEnd);
     req.on("error", onError);
     req.on("close", onClose);

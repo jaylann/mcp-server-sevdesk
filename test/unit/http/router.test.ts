@@ -775,11 +775,159 @@ describe("router: preflight and upload bodies", () => {
     expect(await (await held).text()).toBe("done");
   });
 
+  it("caps bodies per preflight key and frees the key's slot however a request ends", async () => {
+    vi.useFakeTimers();
+    const upload = route({
+      path: "/upload",
+      bodyTimeoutMs: 5_000,
+      bodyPace: { idleMs: 2_000, graceMs: 2_000, minBytesPerSecond: 10 },
+      bodySlots: {
+        max: 3,
+        perKey: 1,
+        busy: (scope) => new Response(`busy ${scope}`, { status: 503 }),
+      },
+      preflight: (head) => {
+        const key = head.headers.get("x-key");
+        return Promise.resolve(key === null ? undefined : { bodySlotKey: key });
+      },
+      handle: async (request) => {
+        const text = await request.text();
+        if (text === "throw") throw new Error("handler broke");
+        return new Response(text);
+      },
+    });
+    const { router } = setup([upload]);
+    const post = (
+      key: string | undefined,
+      readBody: IncomingRequest["readBody"],
+      ip = "10.0.0.1",
+    ) =>
+      router.serve(
+        incoming({
+          method: "POST",
+          target: "/upload",
+          headers: new Headers({ host: "mcp.example.com", ...(key ? { "x-key": key } : {}) }),
+          readBody,
+          bodyPending: true,
+          remoteAddress: ip,
+        }),
+      );
+    const encoded = (text: string) => () => Promise.resolve(new TextEncoder().encode(text));
+    const text = async (response: Promise<Response>) => {
+      const answer = await response;
+      return `${String(answer.status)} ${await answer.text()}`;
+    };
+
+    // Key "a" holds its one slot; a second body of "a" waits, other keys and no key go on.
+    const held = post("a", never);
+    await vi.waitFor(() => {
+      expect(router.inFlight).toBe(1);
+    });
+    expect(await text(post("a", encoded("second"), "10.0.0.2"))).toBe("503 busy key");
+    expect(await text(post("b", encoded("other"), "10.0.0.3"))).toBe("200 other");
+    expect(await text(post(undefined, encoded("unkeyed"), "10.0.0.4"))).toBe("200 unkeyed");
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect((await held).status).toBe(408);
+    expect(await text(post("a", encoded("free again")))).toBe("200 free again");
+
+    // Every way a body or its handling can fail releases the key's slot.
+    const failures: [string, IncomingRequest["readBody"], number][] = [
+      ["too large", () => Promise.resolve("too_large"), 413],
+      ["read error", () => Promise.reject(new Error("reset")), 400],
+      ["handler error", encoded("throw"), 500],
+    ];
+    for (const [name, readBody, status] of failures) {
+      expect([name, (await post("a", readBody)).status]).toEqual([name, status]);
+      expect(await text(post("a", encoded(`after ${name}`)))).toBe(`200 after ${name}`);
+    }
+    // The whole-body timeout, and a body that stops sending.
+    const timedOut = post("a", (_max, onData) => {
+      const tick = setInterval(() => onData?.(100), 500);
+      return new Promise<Uint8Array>(() => {
+        setTimeout(() => {
+          clearInterval(tick);
+        }, 60_000);
+      });
+    });
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect((await timedOut).status).toBe(408);
+    expect(await text(post("a", encoded("after timeout")))).toBe("200 after timeout");
+    expect(router.inFlight).toBe(0);
+    await vi.advanceTimersByTimeAsync(60_000);
+  });
+
+  it("answers 408 to a body that pauses or trickles, but not to a steady one", async () => {
+    vi.useFakeTimers();
+    const pace = { idleMs: 3_000, graceMs: 5_000, minBytesPerSecond: 1_000 };
+    const { router } = setup([
+      route({ path: "/upload", maxBodyBytes: 1_000_000, bodyTimeoutMs: 60_000, bodyPace: pace }),
+    ]);
+    /** A body that sends `perSecond` bytes each second and ends after `seconds` (or never). */
+    const paced =
+      (perSecond: number, seconds = Infinity): IncomingRequest["readBody"] =>
+      (_max, onData) =>
+        new Promise((resolve) => {
+          let sent = 0;
+          const tick = setInterval(() => {
+            sent += 1;
+            onData?.(perSecond);
+            if (sent >= seconds) {
+              clearInterval(tick);
+              resolve(new Uint8Array(perSecond * seconds));
+            }
+          }, 1_000);
+          setTimeout(() => {
+            clearInterval(tick);
+          }, 30_000);
+        });
+    const post = (readBody: IncomingRequest["readBody"]) => {
+      let status = 0;
+      const pending = router.serve(incoming({ method: "POST", target: "/upload", readBody }));
+      void pending.then((response) => {
+        status = response.status;
+      });
+      return { pending, status: () => status };
+    };
+
+    const stalled = post((_max, onData) => {
+      onData?.(10);
+      return never();
+    });
+    const trickled = post(paced(500));
+    const steady = post(paced(1_200, 12));
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect([stalled.status(), trickled.status(), steady.status()]).toEqual([0, 0, 0]);
+    await vi.advanceTimersByTimeAsync(1_000);
+    const stalledResponse = await stalled.pending;
+    expect(stalledResponse.status).toBe(408);
+    expect(await stalledResponse.json()).toMatchObject({
+      error: "request_timeout",
+      error_description:
+        "The request body arrived too slowly: it must keep sending at least 1 KB/s and never " +
+        "pause for 3 s.",
+    });
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect((await trickled.pending).status).toBe(408);
+    await vi.advanceTimersByTimeAsync(7_000);
+    const steadyResponse = await steady.pending;
+    expect(steadyResponse.status).toBe(200);
+    expect((await steadyResponse.arrayBuffer()).byteLength).toBe(14_400);
+    expect(router.inFlight).toBe(0);
+    await vi.advanceTimersByTimeAsync(30_000);
+  });
+
   it("refuses invalid upload options", () => {
     const build = (overrides: Partial<HttpRoute>) => () => setup([route(overrides)]);
     expect(build({ bodyTimeoutMs: 0 })).toThrow(/bodyTimeoutMs/);
     expect(build({ bodySlots: { max: 0 } })).toThrow(/bodySlots/);
     expect(build({ bodySlots: { max: 1.5 } })).toThrow(/bodySlots/);
+    expect(build({ bodySlots: { max: 2, perKey: 0 } })).toThrow(/perKey/);
+    expect(build({ bodyPace: { idleMs: 0, graceMs: 0, minBytesPerSecond: 1 } })).toThrow(
+      /bodyPace/,
+    );
+    expect(build({ bodyPace: { idleMs: 1, graceMs: -1, minBytesPerSecond: 1 } })).toThrow(
+      /bodyPace/,
+    );
   });
 });
 

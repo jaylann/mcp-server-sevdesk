@@ -335,7 +335,10 @@ const NEXT_CUSTOMER_NUMBER = "getnextcustomernumber";
  *   in the query, which would put it into URLs and could switch the account), paging (`limit`,
  *   `offset`, `countAll`: separate arguments), `download`, `preventSendBy`, `enshrine…`,
  *   `useNextNumber`, and HTTP method overrides. Keys are compared the way PHP reads them: lower
- *   case, `.` as `_`, and the name before a `[` (so `Api.Key` and `token[0]` count as well).
+ *   case, `.` and space as `_`, and the name before a `[` (so `Api.Key` and `token[0]` count as
+ *   well);
+ * - query keys whose brackets do not pair up (`api[key`): PHP turns an unclosed `[` into `_`
+ *   (`api_key`), so such a key could reach a name the list above refuses.
  */
 export function genericGetRefusal(
   path: string,
@@ -358,6 +361,7 @@ export function genericGetRefusal(
   }
 
   for (const key of Object.keys(query ?? {})) {
+    if (!PAIRED_BRACKETS.test(key)) return UNPAIRED_BRACKETS;
     const refusal = queryKeyRefusal(phpQueryName(key));
     if (refusal !== undefined) return refusal;
   }
@@ -484,13 +488,19 @@ function startsWithMutatingVerb(segment: string): boolean {
 }
 
 /**
- * How PHP (sevDesk's backend) names a query key: lower-cased here for comparison, `.` read as
- * `_`, and an array key `name[…]` as `name`.
+ * How PHP (sevDesk's backend) names a query key with paired brackets: lower-cased here for
+ * comparison, `.` and space read as `_`, and an array key `name[…]` as `name`.
  */
 function phpQueryName(key: string): string {
   const bracket = key.indexOf("[");
-  return (bracket < 0 ? key : key.slice(0, bracket)).toLowerCase().replaceAll(".", "_");
+  return (bracket < 0 ? key : key.slice(0, bracket)).toLowerCase().replace(/[. ]/g, "_");
 }
+
+/** A name, then any number of `[…]` groups without brackets inside: `contact[id]`, `a[0][b]`. */
+const PAIRED_BRACKETS = /^[^[\]]+(?:\[[^[\]]*\])*$/;
+const UNPAIRED_BRACKETS =
+  "A query key's brackets must pair up, as in contact[id] or orderBy[0][field]; sevDesk would " +
+  "read a key like api[key as another name.";
 
 const CREDENTIAL_KEYS: ReadonlySet<string> = new Set([
   "token",
