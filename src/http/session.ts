@@ -11,10 +11,15 @@
  *
  * Cookie: `__Host-sevdesk_session` with `Secure` (and `Path=/`, no `Domain`, as the prefix
  * requires) on an https origin. On a plain-http loopback origin (development) browsers refuse the
- * prefix and `Secure`, so the cookie is `sevdesk_session` without them. Always `HttpOnly` and
- * `SameSite=Lax`: the inbox link is clicked inside the client (claude.ai), a cross-site top-level
- * navigation that must carry the cookie, while cross-site POSTs do not get it (decisions also need
- * a CSRF tag and a same-origin `Origin`).
+ * prefix and `Secure`, so the cookie is `sevdesk_session_<port>` without them. Always `HttpOnly`
+ * and `SameSite=Lax`: the inbox link is clicked inside the client (claude.ai), a cross-site
+ * top-level navigation that must carry the cookie, while cross-site POSTs do not get it (decisions
+ * also need a CSRF tag and a same-origin `Origin`).
+ *
+ * Limitation of plain http (loopback only): browsers do not scope cookies by port, so every other
+ * server the browser visits on the same host name (any port) receives the session cookie and could
+ * replay it. The port in the name only keeps two local servers from overwriting each other's
+ * session; it is no isolation. Use https (a tunnel or proxy) beyond local testing.
  *
  * Every login creates a new session id (no fixation). Without `SEVDESK_HTTP_SECRET` (bearer mode),
  * {@link createEphemeralKeys} gives a per-process key set: sessions then end with the process.
@@ -32,7 +37,7 @@ import type { SessionRecord, SessionStore } from "./types.js";
 export const SESSION_TTL_SECONDS = 12 * 60 * 60;
 
 const SECURE_COOKIE_NAME = "__Host-sevdesk_session";
-const PLAIN_COOKIE_NAME = "sevdesk_session";
+const PLAIN_COOKIE_PREFIX = "sevdesk_session_";
 const PAYLOAD_VERSION = 1;
 /** How far `iat` may lie in the future (clock differences between restarts). */
 const MAX_CLOCK_SKEW_SECONDS = 60;
@@ -54,9 +59,15 @@ function isSecureOrigin(origin: string): boolean {
   return origin.startsWith("https://");
 }
 
-/** Name of the session cookie for `origin`: `__Host-sevdesk_session` on https, else `sevdesk_session`. */
+/**
+ * Name of the session cookie for `origin`: `__Host-sevdesk_session` on https; on plain http
+ * `sevdesk_session_<port>` (browsers share cookies across the ports of a host, so servers on
+ * different local ports would otherwise overwrite each other's session).
+ */
 export function sessionCookieName(origin: string): string {
-  return isSecureOrigin(origin) ? SECURE_COOKIE_NAME : PLAIN_COOKIE_NAME;
+  if (isSecureOrigin(origin)) return SECURE_COOKIE_NAME;
+  const { port } = new URL(origin);
+  return `${PLAIN_COOKIE_PREFIX}${port === "" ? "80" : port}`;
 }
 
 export interface CreateSessionCookieInput {

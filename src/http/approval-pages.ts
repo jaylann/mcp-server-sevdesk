@@ -75,6 +75,7 @@ export const TEXT = {
 export const LOGIN_TEXT = {
   empty: "Paste the API token of your sevDesk account exactly as sevDesk shows it.",
   refused: "The token was not accepted.",
+  notAllowed: "This server is not set up for the sevDesk account of this token.",
   unavailable: "The token could not be checked right now. Try again in a moment.",
   limited: "Too many sign-in attempts from this network. Wait a minute, then try again.",
 } as const;

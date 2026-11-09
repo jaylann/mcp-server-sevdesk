@@ -6,11 +6,15 @@ import type { RequestPrincipal } from "../../../src/accounts/types.js";
 import {
   type ApprovalInbox,
   createApprovalRoutes,
+  INBOX_RATE,
   type InboxLogin,
   LOGIN_RATE_HOUR,
   LOGIN_RATE_MINUTE,
 } from "../../../src/http/approval-routes.js";
 import { createServerKeys, keyedTag, type ServerKeys } from "../../../src/http/keys.js";
+import { createHttpLog } from "../../../src/http/log.js";
+import { createRateLimiter } from "../../../src/http/rate-limit.js";
+import { createRouter } from "../../../src/http/router.js";
 import {
   createSessionCookie,
   readSession,
@@ -51,6 +55,7 @@ interface SetupOptions {
   /** Pass a store object instead of the getter the HTTP wiring uses (`() => runtime.approvals`). */
   readonly explicitStore?: boolean;
   readonly login?: InboxLogin;
+  readonly accountAllowed?: (accountId: string) => boolean;
 }
 
 type MemoryStore = ReturnType<typeof createMemoryApprovalStore>;
@@ -82,6 +87,7 @@ function setup(options: SetupOptions = {}) {
     origin,
     login,
     now: clock.now,
+    accountAllowed: options.accountAllowed,
     approvals:
       options.explicitStore === true
         ? {
@@ -105,6 +111,15 @@ async function signedIn(env: ReturnType<typeof setup>, token = TOKEN_A): Promise
   const response = await browser.signIn(token);
   expect(response.status).toBe(303);
   return browser;
+}
+
+/** A sign-in POST as the inbox form sends it. */
+function loginRequest(token: string): Request {
+  return new Request(`${ORIGIN}/approvals/login`, {
+    method: "POST",
+    headers: { Origin: ORIGIN, "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ token }).toString(),
+  });
 }
 
 /** The page body without the per-response style nonce, to compare two pages. */
@@ -146,6 +161,9 @@ describe("approval inbox routes", () => {
         maxBodyBytes: 4096,
       },
     ]);
+    // One router-level rule for all inbox routes together, per client IP or IPv6 /64.
+    expect(inbox.routes.map((route) => route.rateLimit)).toEqual(Array(4).fill(INBOX_RATE));
+    expect(INBOX_RATE).toEqual({ name: "approvals", perMinute: 120 });
   });
 
   it("is a remote channel that names the inbox and opens nothing", async () => {
@@ -726,7 +744,7 @@ describe("approval inbox routes", () => {
     expect(cookies.filter((cookie) => cookie.includes("sdmcp_ss_"))).toHaveLength(1);
   });
 
-  it("works on a plain-http loopback origin with the unprefixed cookie", async () => {
+  it("works on a plain-http loopback origin with the unprefixed, port-named cookie", async () => {
     const origin = "http://127.0.0.1:8080";
     const env = setup({ origin });
     const view = env.approvals.add(A1);
@@ -738,7 +756,7 @@ describe("approval inbox routes", () => {
 
     expect(response.headers.get("location")).toBe("http://127.0.0.1:8080/approvals");
     expect(response.headers.get("set-cookie")).toMatch(
-      /^sevdesk_session=sdmcp_ss_[A-Za-z0-9_-]+; Path=\/; Max-Age=43200; HttpOnly; SameSite=Lax$/,
+      /^sevdesk_session_8080=sdmcp_ss_[A-Za-z0-9_-]+; Path=\/; Max-Age=43200; HttpOnly; SameSite=Lax$/,
     );
     expect(env.inbox.channel.inboxUrl).toBe("http://127.0.0.1:8080/approvals");
     expect((await browser.decide(`/approvals/${view.id}`, "approve")).status).toBe(200);
@@ -858,5 +876,110 @@ describe("approval inbox routes", () => {
     expect(decisions.map((decision) => decision.decision)).toEqual(["approved"]);
     expect(store.take(A1, ticket.id)?.status).toBe("approved");
     await store.close();
+  });
+
+  it("keys the sign-in limits by the IPv6 /64 and the IPv4 address", async () => {
+    const env = setup();
+    const signIn = (clientIp: string) => env.send(loginRequest(WRONG_TOKEN), { clientIp });
+
+    for (let host = 1; host <= 5; host += 1) {
+      expect((await signIn(`2001:db8:1:2::${String(host)}`)).status).toBe(401);
+    }
+    expect((await signIn("2001:db8:1:2:ffff:ffff:ffff:ffff")).status).toBe(429);
+    expect((await signIn("2001:db8:1:3::1")).status).toBe(401);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      expect((await signIn("192.0.2.10")).status).toBe(401);
+    }
+    expect((await signIn("192.0.2.10")).status).toBe(429);
+    expect((await signIn("192.0.2.11")).status).toBe(401);
+    expect(env.login).toHaveBeenCalledTimes(12);
+  });
+
+  it("is rate-limited by the router per IPv6 /64, sign-ins and page loads alike", async () => {
+    const env = setup();
+    const router = createRouter({
+      http: { allowedHosts: ["mcp.example.com"], allowedOrigins: [ORIGIN], trustProxy: 0 },
+      origin: ORIGIN,
+      routes: env.inbox.routes,
+      log: createHttpLog({ write: () => undefined }),
+      limiter: createRateLimiter({ now: env.clock.now }),
+      now: env.clock.now,
+    });
+    let address = 0;
+    // Every request from another address of the same /64.
+    const browser = new RemoteBrowser((request) => {
+      address += 1;
+      const headers = new Headers(request.headers);
+      headers.set("host", "mcp.example.com");
+      return router.fetch(
+        new Request(request, { headers }),
+        `2001:db8:5:6::${address.toString(16)}`,
+      );
+    });
+
+    const signIns: number[] = [];
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      signIns.push((await browser.signIn(WRONG_TOKEN)).status);
+    }
+    expect(signIns).toEqual([401, 401, 401, 401, 401, 429]);
+    expect(env.login).toHaveBeenCalledTimes(5);
+
+    // 120 requests a minute to the inbox routes together: 6 went to the sign-ins.
+    const pages: number[] = [];
+    for (let load = 0; load < 115; load += 1) {
+      pages.push((await browser.get("/approvals")).status);
+    }
+    expect(pages.slice(0, 114).every((status) => status === 200)).toBe(true);
+    const limited = browser.responses.at(-1);
+    expect(limited?.status).toBe(429);
+    expect(limited?.headers.get("retry-after")).toBeTruthy();
+  });
+
+  it("treats a session of an account that is no longer allowed as signed out, and revokes it", async () => {
+    const allowedAccounts = new Set(["1001", "2002"]);
+    const env = setup({ accountAllowed: (id) => allowedAccounts.has(id) });
+    const ofB = env.approvals.add(B);
+    const a = await signedIn(env, TOKEN_A);
+    const b = await signedIn(env, TOKEN_B);
+    const consent = env.browser();
+    consent.accept(
+      await createSessionCookie({
+        keys: env.keys,
+        store: env.sessions,
+        accountId: "2002",
+        gid: "grant-b",
+        via: "consent",
+        origin: ORIGIN,
+        ttlSeconds: SESSION_TTL_SECONDS,
+      }),
+    );
+    const csrf = csrfOf((await b.get("/approvals")).body) ?? "";
+    expect(inboxLinks((await consent.get("/approvals")).body)).toEqual([`/approvals/${ofB.id}`]);
+    expect(env.sessions.records.size).toBe(3);
+
+    // The operator removes account 2002 from the allowlist (and restarts).
+    allowedAccounts.delete("2002");
+
+    const decided = await b.post(`/approvals/${ofB.id}`, { csrf, decision: "approve" });
+    expect(decided.status).toBe(403);
+    expect(decided.body).toContain("Your sign-in has ended.");
+    expect(env.approvals.get(ofB.id)?.status).toBe("pending");
+    expect((await b.get("/approvals")).body).toContain(LOGIN_FORM);
+    const consentPage = await consent.get(`/approvals/${ofB.id}`);
+    expect(consentPage.body).toContain(LOGIN_FORM);
+    expect(consentPage.body).not.toContain(ofB.reference);
+    expect(env.sessions.records.size).toBe(1);
+    expect(env.log.lines).toContain('warn approval_session_refused {"account":"2002"}');
+    expect((await a.get("/approvals")).body).toContain("sevDesk account <strong>1001</strong>");
+
+    // Signing in again is refused before a session exists.
+    const again = await b.signIn(TOKEN_B);
+    expect(again.status).toBe(401);
+    expect(again.body).toContain(
+      "This server is not set up for the sevDesk account of this token.",
+    );
+    expect(again.headers.get("set-cookie")).toBeNull();
+    expect(env.sessions.records.size).toBe(1);
+    expect(env.log.lines).toContain('warn approval_login_refused {"account":"2002"}');
   });
 });

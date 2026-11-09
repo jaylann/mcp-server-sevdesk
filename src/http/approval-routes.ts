@@ -10,17 +10,20 @@
  *   mode checks the token with the identity lookup and the account allowlist, bearer mode compares
  *   it in constant time with the configured token, never with the bearer secret).
  *
- * Routes (all under the `form` origin policy, bodies capped at 4 KiB):
+ * Routes (all under the `form` origin policy, bodies capped at 4 KiB, 120 requests a minute per
+ * client IP or IPv6 /64 together):
  * - `GET /approvals`: the account's approvals, or the sign-in form without a session;
  * - `GET /approvals/<id>`: the preview with Approve / Reject; the sign-in form without a session;
  *   404 for an approval of another account, exactly as for an unknown id;
- * - `POST /approvals/login`: token → session cookie (5 per minute and 20 per hour per client IP);
+ * - `POST /approvals/login`: token → session cookie (5 per minute and 20 per hour per client IP or
+ *   IPv6 /64);
  * - `POST /approvals/<id>`: the decision: session, CSRF tag (`keyedTag(csrf, sid)`), same-origin
  *   POST and the approval's account must all match; 409 when already decided, 410 when expired;
  * - `POST /approvals/logout`: ends the session.
  *
- * Without a session no page shows approval data. The sevDesk token is never echoed, logged or
- * stored. Handlers check the same-origin POST themselves too (the router's `form` policy is the
+ * Without a session no page shows approval data. With `accountAllowed`, every session read also
+ * checks that its account may still use the server: a session of an account the operator removed
+ * is revoked and treated as signed out. The sevDesk token is never echoed, logged or stored. Handlers check the same-origin POST themselves too (the router's `form` policy is the
  * first line), so the routes are safe even when mounted without it.
  */
 import type { RequestPrincipal } from "../accounts/types.js";
@@ -44,6 +47,7 @@ import {
   redirectResponse,
   TEXT,
 } from "./approval-pages.js";
+import { rateLimitKey } from "./client-ip.js";
 import { keyedTag, type ServerKeys } from "./keys.js";
 import {
   clearSessionCookie,
@@ -87,6 +91,12 @@ export interface ApprovalRoutesOptions {
   /** The public origin, e.g. `https://mcp.example.com` (no trailing slash). */
   readonly origin: string;
   readonly login: InboxLogin;
+  /**
+   * Whether an account may (still) use the server, e.g. the OAuth account allowlist. Checked at
+   * every sign-in and on every session read; a session of an account no longer allowed is revoked
+   * and treated as signed out. Default: every account.
+   */
+  readonly accountAllowed?: ((accountId: string) => boolean) | undefined;
   /** Epoch milliseconds (default `Date.now`). */
   readonly now?: () => number;
   /** Lifetime of a session created by signing in (default 12 hours). */
@@ -99,7 +109,12 @@ export interface ApprovalRoutes {
   readonly channel: ApprovalChannel;
 }
 
-/** Sign-in attempts per client IP: 5 per minute … */
+/**
+ * Requests to all inbox routes together per client IP (IPv6 by /64), applied by the router before
+ * a handler runs: generous for a person, a ceiling for scripted page loads.
+ */
+export const INBOX_RATE: RateRule = { name: "approvals", perMinute: 120 };
+/** Sign-in attempts per client IP (IPv6 by /64): 5 per minute … */
 export const LOGIN_RATE_MINUTE: RateRule = { name: "approvals-login", perMinute: 5 };
 /** … and 20 per hour. */
 export const LOGIN_RATE_HOUR: RateRule = {
@@ -129,8 +144,23 @@ export function createApprovalRoutes(options: ApprovalRoutesOptions): ApprovalRo
     return typeof source === "function" ? source() : source;
   }
 
-  function sessionOf(request: Request): SessionRecord | undefined {
-    return readSession(request, { keys, store: sessions, origin, now });
+  /**
+   * The request's session, if any. A session whose account is no longer allowed is revoked here
+   * and counts as none.
+   */
+  async function sessionOf(
+    request: Request,
+    ctx: HttpRequestContext,
+  ): Promise<SessionRecord | undefined> {
+    const session = readSession(request, { keys, store: sessions, origin, now });
+    if (session === undefined || allowed(session.accountId)) return session;
+    await sessions.revokeSession(session.sid);
+    ctx.log.warn("approval_session_refused", { account: session.accountId });
+    return undefined;
+  }
+
+  function allowed(accountId: string): boolean {
+    return options.accountAllowed?.(accountId) ?? true;
   }
 
   function csrfTag(session: SessionRecord): string {
@@ -193,8 +223,8 @@ export function createApprovalRoutes(options: ApprovalRoutesOptions): ApprovalRo
     }
   }
 
-  function showInbox(request: Request): Response {
-    const session = sessionOf(request);
+  async function showInbox(request: Request, ctx: HttpRequestContext): Promise<Response> {
+    const session = await sessionOf(request, ctx);
     if (session === undefined) return loginPage(200);
     const approvals = store();
     if (approvals === undefined) return messageResponse(503, TEXT.notReady, { link: false });
@@ -224,8 +254,12 @@ export function createApprovalRoutes(options: ApprovalRoutesOptions): ApprovalRo
     );
   }
 
-  function showApproval(request: Request, id: string): Response {
-    const session = sessionOf(request);
+  async function showApproval(
+    request: Request,
+    ctx: HttpRequestContext,
+    id: string,
+  ): Promise<Response> {
+    const session = await sessionOf(request, ctx);
     if (session === undefined) return loginPage(200);
     const approvals = store();
     if (approvals === undefined) return messageResponse(503, TEXT.notReady, { link: false });
@@ -254,7 +288,7 @@ export function createApprovalRoutes(options: ApprovalRoutesOptions): ApprovalRo
 
   async function decide(request: Request, ctx: HttpRequestContext, id: string): Promise<Response> {
     if (!sameOriginPost(request, origin)) return messageResponse(403, TEXT.foreignPost);
-    const session = sessionOf(request);
+    const session = await sessionOf(request, ctx);
     if (session === undefined) return messageResponse(403, TEXT.signedOutPost);
     const form = await formOf(request);
     if (form instanceof Response) return form;
@@ -287,7 +321,8 @@ export function createApprovalRoutes(options: ApprovalRoutesOptions): ApprovalRo
 
   async function signIn(request: Request, ctx: HttpRequestContext): Promise<Response> {
     if (!sameOriginPost(request, origin)) return messageResponse(403, TEXT.foreignPost);
-    if (!ctx.limit(LOGIN_RATE_MINUTE, ctx.clientIp) || !ctx.limit(LOGIN_RATE_HOUR, ctx.clientIp)) {
+    const client = rateLimitKey(ctx.clientIp);
+    if (!ctx.limit(LOGIN_RATE_MINUTE, client) || !ctx.limit(LOGIN_RATE_HOUR, client)) {
       ctx.log.warn("approval_login_limited");
       return loginPage(429, LOGIN_TEXT.limited, { "Retry-After": "60" });
     }
@@ -312,7 +347,11 @@ export function createApprovalRoutes(options: ApprovalRoutesOptions): ApprovalRo
       const message = redactSecrets(result.error, [token]).trim();
       return loginPage(401, message.length === 0 ? LOGIN_TEXT.refused : message);
     }
-    const previous = sessionOf(request);
+    if (!allowed(result.accountId)) {
+      ctx.log.warn("approval_login_refused", { account: result.accountId });
+      return loginPage(401, LOGIN_TEXT.notAllowed);
+    }
+    const previous = await sessionOf(request, ctx);
     const cookie = await createSessionCookie({
       keys,
       store: sessions,
@@ -329,7 +368,7 @@ export function createApprovalRoutes(options: ApprovalRoutesOptions): ApprovalRo
 
   async function signOut(request: Request, ctx: HttpRequestContext): Promise<Response> {
     if (!sameOriginPost(request, origin)) return messageResponse(403, TEXT.foreignPost);
-    const session = sessionOf(request);
+    const session = await sessionOf(request, ctx);
     if (session !== undefined) {
       const form = await formOf(request);
       if (form instanceof Response) return form;
@@ -352,7 +391,7 @@ export function createApprovalRoutes(options: ApprovalRoutesOptions): ApprovalRo
       return rest === "login" ? signIn(request, ctx) : signOut(request, ctx);
     }
     if (request.method === "POST") return decide(request, ctx, rest);
-    return showApproval(request, rest);
+    return showApproval(request, ctx, rest);
   }
 
   const routes: HttpRoute[] = [
@@ -361,13 +400,15 @@ export function createApprovalRoutes(options: ApprovalRoutesOptions): ApprovalRo
       methods: ["GET"],
       maxBodyBytes: MAX_BODY_BYTES,
       origin: "form",
-      handle: (request) => Promise.resolve(showInbox(request)),
+      rateLimit: INBOX_RATE,
+      handle: (request, ctx) => showInbox(request, ctx),
     },
     {
       path: LOGIN_PATH,
       methods: ["POST"],
       maxBodyBytes: MAX_BODY_BYTES,
       origin: "form",
+      rateLimit: INBOX_RATE,
       handle: (request, ctx) => signIn(request, ctx),
     },
     {
@@ -375,6 +416,7 @@ export function createApprovalRoutes(options: ApprovalRoutesOptions): ApprovalRo
       methods: ["POST"],
       maxBodyBytes: MAX_BODY_BYTES,
       origin: "form",
+      rateLimit: INBOX_RATE,
       handle: (request, ctx) => signOut(request, ctx),
     },
     {
@@ -383,6 +425,7 @@ export function createApprovalRoutes(options: ApprovalRoutesOptions): ApprovalRo
       methods: ["GET", "POST"],
       maxBodyBytes: MAX_BODY_BYTES,
       origin: "form",
+      rateLimit: INBOX_RATE,
       handle: (request, ctx) => detail(request, ctx),
     },
   ];

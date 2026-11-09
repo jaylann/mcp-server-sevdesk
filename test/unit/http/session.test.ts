@@ -71,17 +71,34 @@ describe("session cookie", () => {
     expect(sessionCookieName(ORIGIN)).toBe("__Host-sevdesk_session");
   });
 
-  it("drops the prefix and Secure on a plain-http loopback origin", async () => {
+  it("drops the prefix and Secure on a plain-http loopback origin and names the port", async () => {
     const { input, read } = setup(LOOPBACK);
     const cookie = await createSessionCookie(input({ origin: LOOPBACK }));
 
     expect(cookie).toMatch(
-      /^sevdesk_session=sdmcp_ss_[A-Za-z0-9_-]+; Path=\/; Max-Age=43200; HttpOnly; SameSite=Lax$/,
+      /^sevdesk_session_8080=sdmcp_ss_[A-Za-z0-9_-]+; Path=\/; Max-Age=43200; HttpOnly; SameSite=Lax$/,
     );
     expect(read(pair(cookie))?.accountId).toBe("4711");
     expect(clearSessionCookie(LOOPBACK)).toBe(
-      "sevdesk_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax",
+      "sevdesk_session_8080=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax",
     );
+    expect(sessionCookieName("http://localhost")).toBe("sevdesk_session_80");
+    expect(sessionCookieName("http://[::1]:3000")).toBe("sevdesk_session_3000");
+  });
+
+  it("keeps the sessions of two loopback servers on different ports apart", async () => {
+    const other = "http://127.0.0.1:9090";
+    const { input, read } = setup(LOOPBACK);
+    const first = pair(await createSessionCookie(input({ origin: LOOPBACK, accountId: "1" })));
+    const second = pair(await createSessionCookie(input({ origin: other, accountId: "2" })));
+
+    // Browsers send the cookies of every port of the host; neither overwrites the other.
+    const both = `${first}; ${second}`;
+    expect(first.split("=")[0]).not.toBe(second.split("=")[0]);
+    expect(read(both)?.accountId).toBe("1");
+    expect(read(both, { origin: other })?.accountId).toBe("2");
+    // A cookie of the other port under this port's name is still refused (sealed per origin).
+    expect(read(`sevdesk_session_8080=${second.split("=")[1] ?? ""}`)).toBeUndefined();
   });
 
   it("seals {v, sid, acct, gid, iat, exp} for the origin and nothing else", async () => {
@@ -153,7 +170,8 @@ describe("readSession", () => {
     expect(read(undefined)).toBeUndefined();
     expect(read("unrelated=1")).toBeUndefined();
     expect(read("__Host-sevdesk_session=")).toBeUndefined();
-    // The plain name is not read on an https origin.
+    // The plain-http name is not read on an https origin.
+    expect(read(`sevdesk_session_443=${valueOf(cookie)}`)).toBeUndefined();
     expect(read(`sevdesk_session=${valueOf(cookie)}`)).toBeUndefined();
   });
 
