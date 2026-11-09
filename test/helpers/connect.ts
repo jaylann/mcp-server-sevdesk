@@ -1,5 +1,6 @@
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import {
+  type AuthInfo,
   createMcpHandler,
   type McpServerFactory,
   type ProtocolEra,
@@ -19,6 +20,11 @@ export interface ConnectOptions {
    * what today's Claude clients speak.
    */
   readonly era?: ProtocolEra;
+  /**
+   * Passed to `handler.fetch` with every request, as the HTTP mode does after authenticating it
+   * (bearer or OAuth). Absent: an unauthenticated request, as over stdio.
+   */
+  readonly authInfo?: AuthInfo;
 }
 
 /**
@@ -52,7 +58,11 @@ export async function connectFactory(
   );
   await client.connect(
     new StreamableHTTPClientTransport(new URL("http://localhost/mcp"), {
-      fetch: (url, init) => handler.fetch(new Request(url, init)),
+      fetch: (url, init) =>
+        handler.fetch(
+          new Request(url, init),
+          options.authInfo === undefined ? undefined : { authInfo: options.authInfo },
+        ),
     }),
   );
   return client;

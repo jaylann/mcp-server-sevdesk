@@ -1,39 +1,67 @@
 #!/usr/bin/env node
 /**
- * CLI entry point (`mcp-server-sevdesk`). Serves MCP over stdio by default.
+ * CLI entry point (`mcp-server-sevdesk`). Serves MCP over stdio by default, or over Streamable
+ * HTTP with `--http`; see `src/cli.ts` for the commands.
  *
- * stdout belongs to the MCP transport: everything else (diagnostics, errors) goes to stderr.
+ * stdout belongs to the MCP transport in stdio mode: everything else (diagnostics, errors) goes
+ * to stderr. Utility commands (`generate-secret`, `grants list`, …) print their result to stdout.
  */
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 
+import { HELP, parseArgs } from "./cli.js";
 import { type Config, loadConfig } from "./config.js";
+import { generateSecret } from "./http/keys.js";
 import { redactSecrets } from "./safety/redact.js";
 import { createServerFactory } from "./server.js";
 import { createSevdeskClient } from "./sevdesk/client.js";
 import { checkConnection } from "./startup.js";
 import { PACKAGE_NAME, VERSION } from "./version.js";
 
-const HELP = `${PACKAGE_NAME} ${VERSION}
-MCP server for the sevDesk accounting API (unofficial).
-
-Usage:
-  ${PACKAGE_NAME}            Serve MCP over stdio (configure it in your MCP client)
-  ${PACKAGE_NAME} --version  Print the version
-  ${PACKAGE_NAME} --help     Print this help
-
-Docs: https://github.com/jaylann/mcp-server-sevdesk#readme
-`;
-
 function main(argv: readonly string[]): void {
-  if (argv.includes("--version") || argv.includes("-v")) {
-    process.stdout.write(`${VERSION}\n`);
-    return;
+  const command = parseArgs(argv);
+  switch (command.kind) {
+    case "version":
+      process.stdout.write(`${VERSION}\n`);
+      return;
+    case "help":
+      process.stdout.write(HELP);
+      return;
+    case "usage-error":
+      return usageExit(command.message);
+    case "generate-secret":
+      process.stdout.write(`${generateSecret()}\n`);
+      return;
+    case "serve":
+      if (command.transport === "stdio") {
+        serveOverStdio();
+        return;
+      }
+      notYet("--http");
+      return;
+    case "grants-list":
+    case "grants-revoke":
+      notYet("grants");
+      return;
+    case "account-id":
+    case "healthcheck":
+      notYet(command.kind);
+      return;
   }
-  if (argv.includes("--help") || argv.includes("-h")) {
-    process.stdout.write(HELP);
-    return;
-  }
+}
 
+/** Prints the usage problem and the help, then exits with code 2. */
+function usageExit(message: string): never {
+  process.stderr.write(`${PACKAGE_NAME}: ${message}\n\n${HELP}`);
+  process.exit(2);
+}
+
+/** Placeholder until the HTTP mode is wired (M5 integration). */
+function notYet(what: string): void {
+  process.stderr.write(`${PACKAGE_NAME}: ${what} is not available in this build yet.\n`);
+  process.exit(1);
+}
+
+function serveOverStdio(): void {
   let config: Config;
   try {
     config = loadConfig(process.env);
