@@ -39,17 +39,17 @@ Usage:
   ${PACKAGE_NAME} --http                 Serve MCP over Streamable HTTP (needs SEVDESK_HTTP_AUTH)
   ${PACKAGE_NAME} grants list [--json]   List OAuth grants (needs SEVDESK_HTTP_STATE_DIR)
   ${PACKAGE_NAME} grants revoke <id>     Revoke one grant (or --account <id>, or --all)
-  ${PACKAGE_NAME} generate-secret        Print a random value for SEVDESK_HTTP_SECRET
+  ${PACKAGE_NAME} generate-secret        Print a random value for SEVDESK_HTTP_SECRET or a bearer secret
   ${PACKAGE_NAME} account-id             Print the account id of the configured sevDesk token
   ${PACKAGE_NAME} healthcheck            Check the local HTTP server (for container health checks)
   ${PACKAGE_NAME} token set <label>      Store a sevDesk token in the OS keychain (asks for it)
   ${PACKAGE_NAME} token check <label>    Check the token stored under <label> with sevDesk
   ${PACKAGE_NAME} token delete <label>   Delete the token stored under <label>
   ${PACKAGE_NAME} profiles list          List the profiles of the profiles file
-  ${PACKAGE_NAME} --version              Print the version
-  ${PACKAGE_NAME} --help                 Print this help
+  ${PACKAGE_NAME} --version, -v          Print the version
+  ${PACKAGE_NAME} --help, -h             Print this help
 
-Docs: https://github.com/jaylann/mcp-server-sevdesk#readme
+Docs: https://sevdesk-mcp.lanfermann.dev/docs/en/configuration#command-line
 `;
 
 /** An OAuth grant id or account id: printable, no spaces, bounded. */

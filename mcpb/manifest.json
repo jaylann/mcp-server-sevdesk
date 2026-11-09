@@ -14,8 +14,8 @@
     "type": "git",
     "url": "https://github.com/jaylann/mcp-server-sevdesk"
   },
-  "homepage": "https://github.com/jaylann/mcp-server-sevdesk#readme",
-  "documentation": "https://github.com/jaylann/mcp-server-sevdesk#readme",
+  "homepage": "https://sevdesk-mcp.lanfermann.dev",
+  "documentation": "https://sevdesk-mcp.lanfermann.dev/docs/en/clients#claude-desktop",
   "support": "https://github.com/jaylann/mcp-server-sevdesk/issues",
   "icon": "icon.png",
   "server": {

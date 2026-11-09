@@ -22,7 +22,7 @@
       "environmentVariables": [
         {
           "name": "SEVDESK_API_TOKEN",
-          "description": "sevDesk API token (Settings > Users > API token). It has full access to the account; ideally create it for a dedicated user.",
+          "description": "sevDesk API token (Settings > Users > API token). It has full access to the account; ideally create it for a dedicated user. To keep it out of the client configuration, set up the server by hand with SEVDESK_API_TOKEN_KEYCHAIN (OS keychain) or SEVDESK_API_TOKEN_FILE instead: https://sevdesk-mcp.lanfermann.dev/docs/en/configuration#token",
           "format": "string",
           "isRequired": true,
           "isSecret": true
@@ -107,7 +107,7 @@
       "environmentVariables": [
         {
           "name": "SEVDESK_API_TOKEN",
-          "description": "sevDesk API token (Settings > Users > API token). It has full access to the account; ideally create it for a dedicated user.",
+          "description": "sevDesk API token (Settings > Users > API token). It has full access to the account; ideally create it for a dedicated user. To keep it out of the client configuration, run the image by hand with SEVDESK_API_TOKEN_FILE and a mounted secret file instead: https://sevdesk-mcp.lanfermann.dev/docs/en/configuration#token",
           "format": "string",
           "isRequired": true,
           "isSecret": true
