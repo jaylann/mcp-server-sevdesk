@@ -21,7 +21,7 @@ function post(headers: Record<string, string>, body?: string): Request {
 describe("safeEqual", () => {
   it("compares strings", () => {
     expect(safeEqual("abc", "abc")).toBe(true);
-    expect(safeEqual("abc", "abd")).toBe(false);
+    expect(safeEqual("abc", "abx")).toBe(false);
     expect(safeEqual("abc", "abcd")).toBe(false);
     expect(safeEqual("", "")).toBe(true);
   });
