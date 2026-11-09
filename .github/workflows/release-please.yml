@@ -2,13 +2,20 @@ name: Release
 
 # On every push to main, release-please opens or updates the release PR. Merging that PR creates
 # the GitHub release and tag; the publish jobs then ship the same commit:
-#   publish-npm       npm, trusted publishing with provenance (no NPM_TOKEN)
+#   build-npm         builds and packs the npm package without privileges (contents: read)
+#   publish-npm       publishes that tarball: npm trusted publishing with provenance (no
+#                     NPM_TOKEN), no dependency install
 #   publish-image     ghcr.io/jaylann/mcp-server-sevdesk for linux/amd64 and linux/arm64, with an
 #                     SBOM and a build provenance attestation
 #   image-smoke       the pushed image, pulled by digest on an amd64 and an arm64 runner
 #   publish-registry  server.json to the MCP Registry (GitHub OIDC), once npm and the image are live
-#   publish-mcpb      the Claude Desktop extension (.mcpb) as a release asset, with a build
-#                     provenance attestation
+#   build-mcpb        builds, validates and smoke-tests the Claude Desktop extension (.mcpb)
+#                     without privileges
+#   publish-mcpb      attests that bundle and attaches it to the release, no dependency install
+#
+# Dependency code (pnpm install, the build tools, the mcpb CLI) runs only in jobs without an OIDC
+# token, a write permission or the release environment. The jobs that hold those take files built
+# earlier in the same run and run only plain Node, npm and gh.
 on:
   push:
     branches: [main]
@@ -101,17 +108,69 @@ jobs:
           git commit --quiet -m "chore: pin the plugin and the image to $version" -- plugin/.mcp.json server.json
           git push --quiet "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
 
-  publish-npm:
-    name: Publish to npm
+  # Builds and packs the package from the release tag without a dependency cache. Read-only, no
+  # OIDC token, no environment: whatever a dependency does here cannot publish anything.
+  build-npm:
+    name: Build the npm package
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
+    permissions:
+      contents: read # check out the release tag
+    env:
+      VERSION: ${{ needs.release-please.outputs.version }}
+      IMAGE: ghcr.io/jaylann/mcp-server-sevdesk
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          persist-credentials: false
+
+      # No dependency cache in release jobs, so a poisoned cache cannot reach the package.
+      - name: Set up toolchain
+        uses: $/.github/actions/setup
+        with:
+          cache: "false"
+
+      - name: Check that package.json, server.json and the plugin carry the release version
+        run: node scripts/pin-plugin-version.ts --check "$VERSION" --image "$IMAGE"
+
+      - name: Build
+        run: pnpm build
+
+      - name: Lint the package (publint)
+        run: pnpm publint
+
+      - name: Pack
+        run: |
+          mkdir -p build/npm
+          npm pack --pack-destination build/npm
+          test -f "build/npm/mcp-server-sevdesk-$VERSION.tgz"
+
+      - name: Hand the tarball to the publish job
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: npm-package
+          path: build/npm/mcp-server-sevdesk-*.tgz
+          if-no-files-found: error
+          retention-days: 1
+
+  # Publishes the tarball build-npm packed. The provenance statement is made here, by the job that
+  # publishes (npm signs it with this job's OIDC token), and names this workflow and the release
+  # tag. Nothing is installed: plain Node and the npm it bundles, with scripts off.
+  publish-npm:
+    name: Publish to npm
+    needs: [release-please, build-npm]
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment:
       name: release
       url: https://www.npmjs.com/package/mcp-server-sevdesk
     permissions:
-      contents: read # check out the release tag
+      contents: read # check out the release tag (package name, version check)
       id-token: write # OIDC for npm trusted publishing + provenance
     env:
       VERSION: ${{ needs.release-please.outputs.version }}
@@ -123,20 +182,34 @@ jobs:
           ref: ${{ needs.release-please.outputs.tag_name }}
           persist-credentials: false
 
-      # No dependency cache in the release job, so a poisoned cache cannot reach the package.
-      - name: Set up toolchain
-        uses: $/.github/actions/setup
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          cache: "false"
-
-      - name: Build
-        run: pnpm build
-
-      - name: Lint the package (publint)
-        run: pnpm publint
+          node-version-file: .nvmrc
+          package-manager-cache: false
 
       - name: Check that package.json, server.json and the plugin carry the release version
         run: node scripts/pin-plugin-version.ts --check "$VERSION" --image "$IMAGE"
+
+      - name: Download the tarball
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: npm-package
+          path: build/npm
+
+      - name: Check the tarball's name and version
+        run: |
+          expected="$(node -p 'require("./package.json").name')@$VERSION"
+          tarball="build/npm/mcp-server-sevdesk-$VERSION.tgz"
+          test -f "$tarball"
+          packed="$(tar -xOzf "$tarball" package/package.json | node -e '
+            const pkg = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+            console.log(pkg.name + "@" + pkg.version);
+          ')"
+          if [ "$packed" != "$expected" ]; then
+            echo "::error::The tarball holds $packed, expected $expected."
+            exit 1
+          fi
 
       # Trusted publishing needs npm >= 11.5.1. Node 24 bundles a newer npm, so no upgrade step;
       # this only fails loudly if that ever stops being true.
@@ -158,7 +231,7 @@ jobs:
           if [ -n "$(npm view "$name@$VERSION" version --prefer-online 2>/dev/null)" ]; then
             echo "$name@$VERSION is already on npm; skipping (re-run)."
           else
-            npm publish --provenance --access public
+            npm publish "build/npm/$name-$VERSION.tgz" --provenance --access public --ignore-scripts
           fi
 
       # The MCP Registry verifies the npm package (mcpName) before accepting server.json.
@@ -386,15 +459,53 @@ jobs:
           "$RUNNER_TEMP/mcp-publisher/mcp-publisher" publish
 
   # Builds the Claude Desktop extension from the release tag without a dependency cache (`pnpm mcpb`
-  # also validates the manifest and smoke-tests the packed file), attests its build provenance and
-  # attaches it to the GitHub release. Verifiable with
-  # `gh attestation verify mcp-server-sevdesk-<version>.mcpb --owner jaylann`.
-  publish-mcpb:
-    name: Attach the .mcpb to the release
+  # also validates the manifest and smoke-tests the packed file). Read-only, no OIDC token.
+  build-mcpb:
+    name: Build the .mcpb
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read # check out the release tag
+    env:
+      VERSION: ${{ needs.release-please.outputs.version }}
+    steps:
+      - name: Check out the release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          persist-credentials: false
+
+      # No dependency cache in release jobs, so a poisoned cache cannot reach the bundle.
+      - name: Set up toolchain
+        uses: $/.github/actions/setup
+        with:
+          cache: "false"
+
+      - name: Check that every file, the .mcpb manifest included, carries the release version
+        run: node scripts/pin-plugin-version.ts --check "$VERSION"
+
+      - name: Build, validate, pack and smoke-test the bundle
+        run: pnpm mcpb
+
+      - name: Hand the bundle to the publish job
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mcpb
+          path: build/mcp-server-sevdesk-*.mcpb
+          if-no-files-found: error
+          retention-days: 1
+
+  # Attests the build provenance of the bundle build-mcpb made and attaches it to the GitHub
+  # release; nothing is installed. Verifiable with
+  # `gh attestation verify mcp-server-sevdesk-<version>.mcpb --owner jaylann`.
+  publish-mcpb:
+    name: Attach the .mcpb to the release
+    needs: [release-please, build-mcpb]
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment:
       name: release
       url: https://github.com/jaylann/mcp-server-sevdesk/releases/tag/${{ needs.release-please.outputs.tag_name }}
@@ -412,22 +523,37 @@ jobs:
           ref: ${{ needs.release-please.outputs.tag_name }}
           persist-credentials: false
 
-      # No dependency cache in the release job, so a poisoned cache cannot reach the bundle.
-      - name: Set up toolchain
-        uses: $/.github/actions/setup
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          cache: "false"
+          node-version-file: .nvmrc
+          package-manager-cache: false
 
       - name: Check that every file, the .mcpb manifest included, carries the release version
         run: node scripts/pin-plugin-version.ts --check "$VERSION"
 
-      - name: Build, validate, pack and smoke-test the bundle
-        run: pnpm mcpb
+      - name: Download the bundle
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: mcpb
+          path: build
+
+      - name: Check the bundle's name and manifest version
+        run: |
+          bundle="build/mcp-server-sevdesk-$VERSION.mcpb"
+          test -f "$bundle"
+          packed="$(unzip -p "$bundle" manifest.json | node -e '
+            console.log(JSON.parse(require("node:fs").readFileSync(0, "utf8")).version);
+          ')"
+          if [ "$packed" != "$VERSION" ]; then
+            echo "::error::The bundle's manifest says $packed, expected $VERSION."
+            exit 1
+          fi
 
       - name: Attest the build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: build/mcp-server-sevdesk-*.mcpb
+          subject-path: build/mcp-server-sevdesk-${{ env.VERSION }}.mcpb
 
       - name: Attach the bundle to the GitHub release
         env:
