@@ -169,7 +169,7 @@ describe("approval store: records", () => {
     expect(approvals.list(A1.accountScope)).toEqual([]);
   });
 
-  it("keeps at most maxApprovals, dropping the oldest", async () => {
+  it("keeps at most maxApprovals overall, taking the largest scope's oldest pending first", async () => {
     const { approvals } = store({ maxApprovals: 2, maxPending: 10 });
     const first = await approvals.create(A1, binding({ argsHash: "1" }));
     await approvals.create(A1, binding({ argsHash: "2" }));
@@ -177,6 +177,7 @@ describe("approval store: records", () => {
 
     expect(approvals.current(A1, TOOL, "1")).toBeUndefined();
     expect(approvals.take(A1, first.id)).toBeUndefined();
+    expect(approvals.current(A1, TOOL, "2")).toBeDefined();
     expect(approvals.current(B, TOOL, "3")).toBeDefined();
   });
 
@@ -318,5 +319,117 @@ describe("approval store: limits", () => {
     await expect(approvals.create(A1, binding({ argsHash: "3" }))).resolves.toMatchObject({
       status: "pending",
     });
+  });
+});
+
+describe("approval store: fair eviction (no account pushes out another's approvals)", () => {
+  const owner = (scope: string): RequestPrincipal => ({
+    grantKey: `grant-${scope}`,
+    accountScope: scope,
+  });
+
+  it("keeps another account's approved request while one account creates and rejects in a loop", async () => {
+    // Review M5 #7 (proof p5): the overall cap used to drop the oldest record of any account.
+    const { approvals } = store();
+    const victim = owner("2002");
+    const attacker = owner("6666");
+    const approved = await approvals.create(victim, binding({ argsHash: "h0" }));
+    approvals.decide(approved.id, "approved");
+
+    for (let n = 1; n <= 150; n += 1) {
+      const ticket = await approvals.create(attacker, binding({ argsHash: `h${String(n)}` }));
+      approvals.decide(ticket.id, "rejected");
+    }
+
+    expect(approvals.current(victim, TOOL, "h0")?.status).toBe("approved");
+    expect(approvals.list("6666")).toHaveLength(20);
+    expect(approvals.list("6666")[0]?.binding.argsHash).toBe("h150");
+    expect(approvals.take(victim, approved.id)?.status).toBe("approved");
+  });
+
+  it("makes room within a scope at its cap: oldest rejected, then oldest approved, then pending", async () => {
+    const { approvals } = store({ maxPerScope: 3, maxPending: 3 });
+    const a = owner("1001");
+    const other = await approvals.create(B, binding({ argsHash: "b" }));
+    approvals.decide(other.id, "approved");
+    const first = await approvals.create(a, binding({ argsHash: "1" }));
+    approvals.decide(first.id, "approved");
+    const second = await approvals.create(a, binding({ argsHash: "2" }));
+    approvals.decide(second.id, "rejected");
+    await approvals.create(a, binding({ argsHash: "3" }));
+
+    await approvals.create(a, binding({ argsHash: "4" }));
+    const afterRejected = approvals.list("1001").map((view) => view.binding.argsHash);
+    await approvals.create(a, binding({ argsHash: "5" }));
+    const afterApproved = approvals.list("1001").map((view) => view.binding.argsHash);
+
+    expect(afterRejected).toEqual(["4", "3", "1"]);
+    expect(afterApproved).toEqual(["5", "4", "3"]);
+    expect(approvals.current(B, TOOL, "b")?.status).toBe("approved");
+  });
+
+  it("drops the oldest pending of the scope with the most records, never an approved one", async () => {
+    const { approvals } = store({ maxApprovals: 4 });
+    const a = owner("1001");
+    const b = owner("2002");
+    const c = owner("3003");
+    const approvedA = await approvals.create(a, binding({ argsHash: "a1" }));
+    approvals.decide(approvedA.id, "approved");
+    await approvals.create(a, binding({ argsHash: "a2" }));
+    await approvals.create(a, binding({ argsHash: "a3" }));
+    const approvedB = await approvals.create(b, binding({ argsHash: "b1" }));
+    approvals.decide(approvedB.id, "approved");
+
+    await approvals.create(c, binding({ argsHash: "c1" }));
+
+    expect(approvals.list("1001").map((view) => view.binding.argsHash)).toEqual(["a3", "a1"]);
+    expect(approvals.current(a, TOOL, "a1")?.status).toBe("approved");
+    expect(approvals.current(b, TOOL, "b1")?.status).toBe("approved");
+    expect(approvals.current(c, TOOL, "c1")?.status).toBe("pending");
+  });
+
+  it("takes a rejected record before a pending one when the overall cap is reached", async () => {
+    const { approvals } = store({ maxApprovals: 3 });
+    const a = owner("1001");
+    await approvals.create(a, binding({ argsHash: "a1" }));
+    const rejected = await approvals.create(a, binding({ argsHash: "a2" }));
+    approvals.decide(rejected.id, "rejected");
+    await approvals.create(B, binding({ argsHash: "b1" }));
+
+    await approvals.create(owner("3003"), binding({ argsHash: "c1" }));
+
+    expect(approvals.list("1001").map((view) => view.binding.argsHash)).toEqual(["a1"]);
+  });
+
+  it("refuses a new approval rather than drop approved requests of other accounts", async () => {
+    const { approvals } = store({ maxApprovals: 2 });
+    const a = owner("1001");
+    const approvedA = await approvals.create(a, binding({ argsHash: "a1" }));
+    approvals.decide(approvedA.id, "approved");
+    const approvedB = await approvals.create(B, binding({ argsHash: "b1" }));
+    approvals.decide(approvedB.id, "approved");
+
+    const refused: unknown = await approvals
+      .create(owner("3003"), binding({ argsHash: "c1" }))
+      .catch((error: unknown) => error);
+
+    expect(refused).toBeInstanceOf(ApprovalLimitError);
+    expect((refused as ApprovalLimitError).limit).toBe(2);
+    expect(approvals.current(a, TOOL, "a1")?.status).toBe("approved");
+    expect(approvals.current(B, TOOL, "b1")?.status).toBe("approved");
+    expect(approvals.list("3003")).toEqual([]);
+  });
+
+  it("does not drop the replaced approval twice, nor anything else, when replacing at the cap", async () => {
+    const { approvals } = store({ maxApprovals: 2 });
+    const approvedB = await approvals.create(B, binding({ argsHash: "b1" }));
+    approvals.decide(approvedB.id, "approved");
+    const first = await approvals.create(A1, binding({ argsHash: "a1" }));
+
+    const replaced = await approvals.create(A1, binding({ argsHash: "a1", previewHash: "q" }));
+
+    expect(replaced.id).not.toBe(first.id);
+    expect(approvals.current(A1, TOOL, "a1")?.id).toBe(replaced.id);
+    expect(approvals.current(B, TOOL, "b1")?.status).toBe("approved");
   });
 });

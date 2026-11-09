@@ -11,8 +11,15 @@
  *
  * Each record has a random 256-bit id (a capability for the local page; never shown to the
  * model), a short reference code for humans, expires after 10 minutes and is decided once and
- * taken once. Limits: 5 pending per account scope (a looping model cannot flood the user), 100
- * records overall (the oldest is dropped).
+ * taken once.
+ *
+ * Limits, so that no account can push another account's approvals out (ADR 0007):
+ * - 5 pending per account scope (a looping model cannot flood the user; more are refused);
+ * - 20 records per account scope, pending and decided: a scope at its cap makes room among its own
+ *   records only (oldest rejected first, then oldest approved, then oldest pending);
+ * - 100 records overall, a last resort once many scopes are active: the scope with the most
+ *   records gives up its oldest rejected (else pending) record. An approved, not yet taken record
+ *   is never dropped for another scope; when nothing else can go, creating is refused instead.
  */
 import { randomInt } from "node:crypto";
 
@@ -37,8 +44,16 @@ export interface ApprovalStoreOptions {
   readonly now?: () => number;
   /** Lifetime of an approval (default 10 minutes). */
   readonly ttlMs?: number;
-  /** Most approvals kept at once; the oldest is dropped beyond it (default 100). */
+  /**
+   * Most approvals kept at once, all scopes together (default 100); see the module comment for
+   * which record makes room. {@link ApprovalLimitError} when only approved ones could.
+   */
   readonly maxApprovals?: number;
+  /**
+   * Most approvals of one account scope kept at once, pending and decided (default 20); the
+   * scope's own oldest record (rejected, then approved, then pending) makes room.
+   */
+  readonly maxPerScope?: number;
   /**
    * Most approvals of one account scope waiting for a decision at once (default 5). Creating
    * another one is refused with {@link ApprovalLimitError}.
@@ -50,7 +65,12 @@ export interface ApprovalStoreOptions {
 
 const DEFAULT_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_MAX_APPROVALS = 100;
+const DEFAULT_MAX_PER_SCOPE = 20;
 const DEFAULT_MAX_PENDING = 5;
+/** What a scope at its own cap drops first. */
+const OWN_EVICTION_ORDER: readonly ApprovalStatus[] = ["rejected", "approved", "pending"];
+/** What the overall cap may take from a scope: never an approved, untaken request. */
+const SHARED_EVICTION_ORDER: readonly ApprovalStatus[] = ["rejected", "pending"];
 /** Reference codes: no 0/O, 1/I, so they can be read out and compared easily. */
 const REFERENCE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const REFERENCE_LENGTH = 6;
@@ -74,8 +94,44 @@ export function createApprovalStore(options: ApprovalStoreOptions): ApprovalStor
   const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
   const maxApprovals = options.maxApprovals ?? DEFAULT_MAX_APPROVALS;
   const maxPending = options.maxPending ?? DEFAULT_MAX_PENDING;
+  const maxPerScope = options.maxPerScope ?? DEFAULT_MAX_PER_SCOPE;
   /** By id, in creation order. */
   const records = new Map<string, ApprovalRecord>();
+
+  /**
+   * The ids `create` drops to make room for a new record of `scope` that replaces `key`, or
+   * `undefined` when the overall cap could only be met by dropping approved requests.
+   */
+  function evictionsFor(scope: string, key: string): Set<string> | undefined {
+    const dropped = new Set<string>();
+    for (const record of records.values()) {
+      if (record.key === key) dropped.add(record.id);
+    }
+    const live = (): ApprovalRecord[] =>
+      [...records.values()].filter((record) => !dropped.has(record.id));
+    // A scope at its own cap makes room among its own records only.
+    while (live().filter((record) => record.owner.accountScope === scope).length >= maxPerScope) {
+      const victim = oldestOf(live(), scope, OWN_EVICTION_ORDER);
+      if (victim === undefined) break;
+      dropped.add(victim.id);
+    }
+    // Last resort: the scope with the most records gives one up, never an approved request.
+    while (live().length >= maxApprovals) {
+      const current = live();
+      const counts = new Map<string, number>();
+      for (const record of current) {
+        const owner = record.owner.accountScope;
+        counts.set(owner, (counts.get(owner) ?? 0) + 1);
+      }
+      const victim = [...counts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([candidate]) => oldestOf(current, candidate, SHARED_EVICTION_ORDER))
+        .find((record) => record !== undefined);
+      if (victim === undefined) return undefined;
+      dropped.add(victim.id);
+    }
+    return dropped;
+  }
 
   function prune(): void {
     const at = now();
@@ -137,9 +193,9 @@ export function createApprovalStore(options: ApprovalStoreOptions): ApprovalStor
           record.key !== key,
       ).length;
       if (waiting >= maxPending) throw new ApprovalLimitError(maxPending);
-      for (const [id, record] of records) {
-        if (record.key === key) records.delete(id);
-      }
+      const dropped = evictionsFor(owner.accountScope, key);
+      if (dropped === undefined) throw new ApprovalLimitError(maxApprovals);
+      for (const id of dropped) records.delete(id);
       const createdAtMs = now();
       const record: ApprovalRecord = {
         id: randomId(),
@@ -153,11 +209,6 @@ export function createApprovalStore(options: ApprovalStoreOptions): ApprovalStor
         opened: false,
       };
       records.set(record.id, record);
-      while (records.size > maxApprovals) {
-        const oldest = records.keys().next().value;
-        if (oldest === undefined) break;
-        records.delete(oldest);
-      }
       try {
         record.opened = (await channel.present(view(record))).opened;
       } catch (error) {
@@ -217,6 +268,21 @@ export function createApprovalStore(options: ApprovalStoreOptions): ApprovalStor
     decide: (id, decision) => store.decide(id, decision),
   });
   return store;
+}
+
+/** The oldest record of `scope` with the first status of `order` that has one. */
+function oldestOf(
+  records: readonly ApprovalRecord[],
+  scope: string,
+  order: readonly ApprovalStatus[],
+): ApprovalRecord | undefined {
+  for (const status of order) {
+    const found = records.find(
+      (record) => record.owner.accountScope === scope && record.status === status,
+    );
+    if (found !== undefined) return found;
+  }
+  return undefined;
 }
 
 function sameOwner(a: RequestPrincipal, b: RequestPrincipal): boolean {

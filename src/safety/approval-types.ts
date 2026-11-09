@@ -84,8 +84,9 @@ export class ApprovalLimitError extends Error {
 
 /**
  * Pending and decided approvals, in memory. Each record expires after 10 minutes (default) and is
- * decided once and taken once. Limits: 5 pending per account scope, 100 records overall (oldest
- * dropped).
+ * decided once and taken once. Limits: 5 pending and 20 records per account scope (a scope makes
+ * room only among its own records); 100 overall as a last resort, never dropping an approved
+ * request that was not taken yet.
  */
 export interface ApprovalStore {
   /** The unexpired approval of `owner.grantKey` for this tool and argument hash, if any. */
