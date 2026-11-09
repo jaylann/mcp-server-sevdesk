@@ -138,11 +138,16 @@ describe(".mcp.json", () => {
     })
     .parse(readJson(join(PLUGIN_DIR, ".mcp.json")));
   const server = config.mcpServers["sevdesk"];
-  /** `SEVDESK_*` variables the server reads (src/config.ts), from its source text. */
+  /**
+   * `SEVDESK_*` variables the server reads over stdio, from the source text of the settings
+   * (src/config.ts) and of the profile loading (src/accounts/).
+   */
   const serverVariables = new Set([
-    ...[
-      ...readFileSync(join(ROOT, "src", "config.ts"), "utf8").matchAll(/"(SEVDESK_[A-Z_]+)"/g),
-    ].map((match) => match[1]),
+    ...["config.ts", "accounts/profiles.ts", "accounts/local-config.ts"].flatMap((file) =>
+      [...readFileSync(join(ROOT, "src", file), "utf8").matchAll(/"(SEVDESK_[A-Z_]+)"/g)].map(
+        (match) => match[1],
+      ),
+    ),
     // readSecret also reads the `_FILE` variant of the token.
     "SEVDESK_API_TOKEN_FILE",
   ]);
@@ -202,7 +207,9 @@ describe(".mcp.json", () => {
         `${name} needs a default, or an unset variable arrives as literal text`,
       ).toBeDefined();
     }
-    expect(env["SEVDESK_ALLOW"]).toBe("${SEVDESK_ALLOW:-read}");
+    // Empty, not "read": unset means read only on the server, and a value here would clash with
+    // the `allow` of a profile (a variable set in both places is refused).
+    expect(env["SEVDESK_ALLOW"]).toBe("${SEVDESK_ALLOW:-}");
     expect(env["SEVDESK_API_TOKEN"]).toBe("${SEVDESK_API_TOKEN:-}");
     expect(env["SEVDESK_API_TOKEN_FILE"]).toBe("${SEVDESK_API_TOKEN_FILE:-}");
   });

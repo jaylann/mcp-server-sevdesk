@@ -13,6 +13,7 @@ rejected. They explain _why_ the code looks the way it does. The overall design 
 | [0005](0005-trunk-based-releases.md)                          | Trunk-based development and automated releases                    | Accepted                                                                             | 2026-11-07 |
 | [0006](0006-built-in-authorization-server-and-grant-store.md) | Built-in authorization server and a small grant store             | Accepted                                                                             | 2026-11-09 |
 | [0007](0007-approval-inbox-over-http.md)                      | Approval inbox over HTTP                                          | Accepted                                                                             | 2026-11-09 |
+| [0009](0009-local-profiles-and-os-keychain.md)                | Local profiles and the OS keychain                                | Accepted                                                                             | 2026-11-09 |
 
 ## Writing a new ADR
 

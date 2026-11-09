@@ -3,7 +3,11 @@
  * flags, unknown input is a usage error (exit code 2) instead of being ignored, so a typo such as
  * `--http2` cannot silently start the stdio server.
  */
+import { localNameProblem, looksLikeToken } from "./config.js";
 import { PACKAGE_NAME, VERSION } from "./version.js";
+
+/** What `token <action> <label>` does with the OS keychain item of `label`. */
+type TokenAction = "set" | "check" | "delete";
 
 export type Command =
   | { readonly kind: "version" }
@@ -17,7 +21,9 @@ export type Command =
     }
   | { readonly kind: "generate-secret" }
   | { readonly kind: "account-id" }
-  | { readonly kind: "healthcheck" };
+  | { readonly kind: "healthcheck" }
+  | { readonly kind: "token"; readonly action: TokenAction; readonly label: string }
+  | { readonly kind: "profiles-list" };
 
 /** A command line that could not be parsed; print `message` and {@link HELP}, exit 2. */
 export interface UsageError {
@@ -34,8 +40,12 @@ Usage:
   ${PACKAGE_NAME} grants list [--json]   List OAuth grants (needs SEVDESK_HTTP_STATE_DIR)
   ${PACKAGE_NAME} grants revoke <id>     Revoke one grant (or --account <id>, or --all)
   ${PACKAGE_NAME} generate-secret        Print a random value for SEVDESK_HTTP_SECRET
-  ${PACKAGE_NAME} account-id             Print the account id of SEVDESK_API_TOKEN
+  ${PACKAGE_NAME} account-id             Print the account id of the configured sevDesk token
   ${PACKAGE_NAME} healthcheck            Check the local HTTP server (for container health checks)
+  ${PACKAGE_NAME} token set <label>      Store a sevDesk token in the OS keychain (asks for it)
+  ${PACKAGE_NAME} token check <label>    Check the token stored under <label> with sevDesk
+  ${PACKAGE_NAME} token delete <label>   Delete the token stored under <label>
+  ${PACKAGE_NAME} profiles list          List the profiles of the profiles file
   ${PACKAGE_NAME} --version              Print the version
   ${PACKAGE_NAME} --help                 Print this help
 
@@ -65,9 +75,37 @@ export function parseArgs(argv: readonly string[]): Command | UsageError {
       return rest.length === 0 ? { kind: first } : unexpected(rest[0]);
     case "grants":
       return parseGrants(rest);
+    case "token":
+      return parseToken(rest);
+    case "profiles":
+      return rest.length === 1 && rest[0] === "list"
+        ? { kind: "profiles-list" }
+        : usage("Use: profiles list");
     default:
       return unexpected(first);
   }
+}
+
+/**
+ * `token set|check|delete <label>`. The token itself never comes from the command line, where it
+ * would stay in the shell history and be visible in the process list: `set` reads it from stdin.
+ */
+function parseToken(args: readonly string[]): Command | UsageError {
+  const [action, label, ...extra] = args;
+  if (action !== "set" && action !== "check" && action !== "delete") {
+    return usage("Use: token set <label> | token check <label> | token delete <label>");
+  }
+  if (label === undefined) return usage(`token ${action} needs a label, for example: work`);
+  if (extra.length > 0) {
+    return usage(
+      action === "set"
+        ? "token set takes only a label and asks for the token (or reads it from stdin); never " +
+            "put the token on the command line, where it stays in your shell history."
+        : `token ${action} takes only a label.`,
+    );
+  }
+  const problem = localNameProblem(label, "The label");
+  return problem === undefined ? { kind: "token", action, label } : usage(problem);
 }
 
 function parseGrants(args: readonly string[]): Command | UsageError {
@@ -100,7 +138,12 @@ function parseGrants(args: readonly string[]): Command | UsageError {
 
 function unexpected(arg: string | undefined): UsageError {
   // Arguments are echoed only as a safe excerpt: a pasted secret must not end up in a log.
-  const shown = arg === undefined ? "" : /^[A-Za-z0-9_.-]{1,40}$/.test(arg) ? arg : "(value)";
+  const shown =
+    arg === undefined
+      ? ""
+      : /^[A-Za-z0-9_.-]{1,40}$/.test(arg) && !looksLikeToken(arg)
+        ? arg
+        : "(value)";
   return usage(`Unknown argument: ${shown}`);
 }
 
