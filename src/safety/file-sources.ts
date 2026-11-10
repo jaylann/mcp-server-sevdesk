@@ -217,8 +217,9 @@ function checkUpload(file: InputFile, options: ReadFileOptions): InputFile {
 async function outputDirectory(outputDir: string | undefined): Promise<string> {
   if (outputDir === undefined) {
     throw refused(
-      "Saving files is off: SEVDESK_OUTPUT_DIR is not set. The user can set it to an existing " +
-        "folder in the MCP client configuration and restart the server",
+      "Saving files is off: SEVDESK_OUTPUT_DIR is not set (in the Claude Desktop extension: " +
+        "the setting Output folder). The user can set it to an existing folder in the MCP " +
+        "client configuration and restart the server",
     );
   }
   return resolveOutputDir(outputDir);
