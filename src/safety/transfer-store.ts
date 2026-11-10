@@ -176,6 +176,8 @@ export const MIME_TYPES: Readonly<Record<OutputFileKind, string>> = {
   xml: "application/xml",
   csv: "text/csv",
   zip: "application/zip",
+  png: "image/png",
+  jpeg: "image/jpeg",
 };
 /** Reference codes: no 0/O, 1/I (as approval references). */
 const REFERENCE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";

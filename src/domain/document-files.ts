@@ -21,10 +21,11 @@ import { Buffer } from "node:buffer";
 import { z } from "zod";
 
 import { sanitizeUntrusted } from "../safety/fence.js";
+import { sniffKind } from "../safety/local-files.js";
 import { expectSingle } from "../sevdesk/envelope.js";
 import { SevdeskError } from "../sevdesk/errors.js";
 import { sevdeskPath } from "../sevdesk/paths.js";
-import { parseUpstream, zBool01, zOptionalString } from "../sevdesk/schema.js";
+import { parseUpstream, zBool01, zOptionalRef, zOptionalString } from "../sevdesk/schema.js";
 import type { SevdeskClient } from "../sevdesk/types.js";
 
 /** The document files this server can fetch. */
@@ -396,6 +397,98 @@ export function safeFilename(
     stem = fallbackStem;
   }
   return `${stem}.${extension}`;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Voucher receipts
+// ---------------------------------------------------------------------------------------------
+
+/** The kinds a receipt attached to a voucher can be, recognized by content. */
+type ReceiptKind = "pdf" | "png" | "jpeg" | "xml";
+
+const RECEIPT_MIME_TYPES: Readonly<Record<ReceiptKind, string>> = {
+  pdf: "application/pdf",
+  png: "image/png",
+  jpeg: "image/jpeg",
+  xml: "application/xml",
+};
+
+const RECEIPT_EXTENSIONS: Readonly<Record<ReceiptKind, "pdf" | "png" | "jpg" | "xml">> = {
+  pdf: "pdf",
+  png: "png",
+  jpeg: "jpg",
+  xml: "xml",
+};
+
+/** The receipt file (Belegbild) attached to a voucher, fetched and checked. */
+export interface VoucherReceipt {
+  readonly voucherId: number;
+  readonly kind: ReceiptKind;
+  readonly mimeType: string;
+  /** Built from our own values only: `receipt-voucher-<id>.<ext>`. */
+  readonly filename: string;
+  readonly bytes: Uint8Array;
+}
+
+const voucherDocumentSchema = z.object({ document: zOptionalRef });
+
+/**
+ * Fetches the receipt attached to voucher `voucherId`: `GET /Voucher/{id}` names the attached
+ * `Document`, and `GET /Document/{id}/download` answers the same envelope as `getPdf`
+ * (`{filename, mimetype, base64Encoded, content}`; undocumented, spec/deviations.md D-024). Both
+ * are plain reads without side effects. The kind is recognized by content (PDF, PNG, JPEG or
+ * XML); anything else, a declared non-base64 body or more than {@link MAX_DOCUMENT_FILE_BYTES} is
+ * an `unexpected_response` error. A voucher without a receipt is `not_found`. The file name sevDesk
+ * stores is a hash, so the name is built from the voucher id instead.
+ */
+export async function fetchVoucherReceipt(
+  client: SevdeskClient,
+  voucherId: number,
+  signal?: AbortSignal,
+): Promise<VoucherReceipt> {
+  const options = signal === undefined ? {} : { signal };
+  const voucherPayload = await client.request({
+    method: "GET",
+    path: sevdeskPath("Voucher", voucherId),
+    ...options,
+  });
+  const voucher = parseUpstream(
+    voucherDocumentSchema,
+    expectSingle(voucherPayload, `voucher ${voucherId}`),
+    "a voucher",
+  );
+  if (voucher.document === undefined) {
+    throw new SevdeskError({
+      kind: "not_found",
+      message: `Voucher ${voucherId} has no receipt file attached in sevDesk.`,
+    });
+  }
+  const what = `the receipt of voucher ${voucherId}`;
+  const filePayload = await client.request({
+    method: "GET",
+    path: sevdeskPath("Document", voucher.document.id, "download"),
+    ...options,
+  });
+  const record = parseUpstream(
+    pdfRecordSchema,
+    expectSingle(filePayload, `receipt of voucher ${voucherId}`),
+    what,
+  );
+  if (record.base64encoded === false) {
+    throw unexpected(`sevDesk returned ${what} without base64 encoding, which is not supported.`);
+  }
+  const bytes = decodeBase64(record.content, what);
+  const kind = sniffKind(bytes);
+  if (kind === undefined) {
+    throw unexpected(`sevDesk returned ${what}, but it is not a PDF, PNG, JPEG or XML file.`);
+  }
+  return {
+    voucherId,
+    kind,
+    mimeType: RECEIPT_MIME_TYPES[kind],
+    filename: safeFilename(undefined, `receipt-voucher-${voucherId}`, RECEIPT_EXTENSIONS[kind]),
+    bytes,
+  };
 }
 
 function unexpected(message: string): SevdeskError {

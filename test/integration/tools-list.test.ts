@@ -60,7 +60,7 @@ describe("tools/list", () => {
   });
 
   it("SEVDESK_OUTPUT_DIR set: adds the read-tier file writers, declared as not read-only", async () => {
-    const writers = ["sevdesk_document_save", "sevdesk_csv_export"];
+    const writers = ["sevdesk_document_save", "sevdesk_csv_export", "sevdesk_voucher_receipt_save"];
     const without = (await surface(testConfig())).map((tool) => tool.name);
     const tools = await surface(testConfig({ outputDir: "/srv/sevdesk-out" }));
 
@@ -103,6 +103,7 @@ describe("tools/list", () => {
       "sevdesk_einvoice_parse",
       "sevdesk_upload_request",
       "sevdesk_voucher_import_einvoice",
+      "sevdesk_voucher_receipt_save",
     ];
     const stdio = (await surface(allEnabledConfig())).map((tool) => tool.name);
     const tools = await surface(filesConfig());

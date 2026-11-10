@@ -9219,5 +9219,32 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
     "name": "sevdesk_voucher_import_einvoice",
     "title": "Import an e-invoice as a voucher",
   },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Save a voucher's receipt file",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Voucher id (not the Belegnummer), e.g. from sevdesk_vouchers_list.",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_voucher_receipt_save",
+    "title": "Save a voucher's receipt file",
+  },
 ]
 `;

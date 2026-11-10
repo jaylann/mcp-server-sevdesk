@@ -35,8 +35,11 @@ export interface ReadFileOptions {
   readonly kinds: readonly LocalFileKind[];
 }
 
-/** Kinds of files tools hand out: document PDFs, e-invoice XML, CSV and DATEV exports. */
-export type OutputFileKind = "pdf" | "xml" | "csv" | "zip";
+/**
+ * Kinds of files tools hand out: document PDFs, e-invoice XML, CSV and DATEV exports, and voucher
+ * receipts (PDF, PNG, JPEG or XML).
+ */
+export type OutputFileKind = "pdf" | "xml" | "csv" | "zip" | "png" | "jpeg";
 
 /** A file a tool hands out. */
 export interface OutputFile {
