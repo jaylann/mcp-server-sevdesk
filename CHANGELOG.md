@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/jaylann/mcp-server-sevdesk/compare/v1.0.0...v1.1.0) (2026-11-10)
+
+
+### Features
+
+* **vouchers:** save the receipt file attached to a voucher ([#25](https://github.com/jaylann/mcp-server-sevdesk/issues/25)) ([239f28f](https://github.com/jaylann/mcp-server-sevdesk/commit/239f28f908078ae47b6b76d67c2415801ba1853c))
+
 ## [1.0.0](https://github.com/jaylann/mcp-server-sevdesk/compare/v0.1.0...v1.0.0) (2026-11-10)
 
 
