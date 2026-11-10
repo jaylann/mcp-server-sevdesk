@@ -44,8 +44,8 @@ FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:088a01637f22908632ba0901
 LABEL org.opencontainers.image.title="mcp-server-sevdesk" \
       org.opencontainers.image.description="Safety-first MCP server for the sevDesk accounting API (remote mode over Streamable HTTP). Unofficial." \
       org.opencontainers.image.source="https://github.com/jaylann/mcp-server-sevdesk" \
-      org.opencontainers.image.url="https://github.com/jaylann/mcp-server-sevdesk" \
-      org.opencontainers.image.documentation="https://github.com/jaylann/mcp-server-sevdesk/blob/main/docs/remote.md" \
+      org.opencontainers.image.url="https://sevdesk-mcp.lanfermann.dev" \
+      org.opencontainers.image.documentation="https://sevdesk-mcp.lanfermann.dev/docs/en/remote" \
       org.opencontainers.image.licenses="MIT" \
       io.modelcontextprotocol.server.name="io.github.jaylann/mcp-server-sevdesk"
 WORKDIR /app
