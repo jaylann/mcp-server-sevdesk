@@ -19,8 +19,8 @@ export const deliveryOutputShape = {
       url: z
         .string()
         .describe(
-          "Give this link to the user: it opens in their browser and needs them signed in to " +
-            "this sevDesk account on this server.",
+          "Give this link to the user: it opens in the browser they connected this server " +
+            "with (any other browser asks for the account's sevDesk API token).",
         ),
       reference: z.string().describe("Short code the download page shows, to match the file."),
       expiresAt: z.string().describe("ISO 8601; the link stops working then."),

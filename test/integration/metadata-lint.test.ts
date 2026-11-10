@@ -25,7 +25,12 @@ const ANNOTATION_KEYS = ["destructiveHint", "idempotentHint", "openWorldHint", "
  * links of the caller's account; readers read inside `SEVDESK_FILE_DIRS` (`readConfinedFile`) or
  * the caller's own uploads.
  */
-const FILE_WRITERS = ["sevdesk_document_save", "sevdesk_datev_export", "sevdesk_csv_export"];
+const FILE_WRITERS = [
+  "sevdesk_voucher_receipt_save",
+  "sevdesk_document_save",
+  "sevdesk_datev_export",
+  "sevdesk_csv_export",
+];
 const FILE_READERS = [
   "sevdesk_voucher_create_draft",
   "sevdesk_voucher_import_einvoice",

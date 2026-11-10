@@ -291,11 +291,11 @@ describe("HTTP mode end to end (OAuth, approvals inbox)", () => {
     const { client } = await connectClaudeAi(setup, []);
     const tools = (await client.listTools()).tools;
     expect(tools.length).toBeGreaterThan(10);
-    // Read tier only; the two file writers change nothing in sevDesk but hand out download
+    // Read tier only; the three file writers change nothing in sevDesk but hand out download
     // links, so they say readOnlyHint: false.
     expect(
       tools.filter((tool) => tool.annotations?.readOnlyHint !== true).map((tool) => tool.name),
-    ).toEqual(["sevdesk_csv_export", "sevdesk_document_save"]);
+    ).toEqual(["sevdesk_csv_export", "sevdesk_document_save", "sevdesk_voucher_receipt_save"]);
   });
 
   it("lists no file tools with SEVDESK_HTTP_FILES=off", async () => {

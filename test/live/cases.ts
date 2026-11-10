@@ -139,6 +139,12 @@ export const READ_CASES: readonly LiveCase[] = [
         ? undefined
         : { document: "invoice_pdf", id: ids.invoiceFinal },
   },
+  {
+    tool: "sevdesk_voucher_receipt_save",
+    args: byId("voucher"),
+    // The first listed voucher may have no receipt; that refusal is a valid answer too.
+    acceptError: /has no receipt file attached/,
+  },
   // M4
   {
     tool: "sevdesk_einvoice_parse",

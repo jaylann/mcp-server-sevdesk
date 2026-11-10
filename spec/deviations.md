@@ -859,25 +859,25 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   sessions read or measured the endpoint on a trial account (2026-11-07, -08 or -10); "known"
   means community SDKs use it routinely; "uncertain" means we found only isolated uses.
 
-  | Endpoint                                                                               | Used for                                                                                  | Standing  |
-  | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | --------- |
-  | `GET /SevUser`                                                                         | `contactPerson`, required on invoices, orders and credit notes                            | recorded  |
-  | `GET /StaticCountry`                                                                   | country ids for addresses                                                                 | recorded  |
-  | `GET /PaymentMethod`                                                                   | payment method ids                                                                        | recorded  |
-  | `GET /Unity`                                                                           | units for positions                                                                       | recorded  |
-  | `GET /AccountDatev`                                                                    | booking accounts (Update 2.0): names and kinds for previews (D-079)                       | recorded  |
-  | `GET /Category`                                                                        | categories                                                                                | recorded  |
-  | `GET /TaxRule`                                                                         | tax rule ids and codes (D-006)                                                            | recorded  |
-  | `GET /SevClient`                                                                       | the account's taxation regime, chart of accounts, company data and DATEV settings (D-067) | recorded  |
-  | `GET /Order/Factory/getNextOrderNumber`, `/CreditNote/Factory/getNextCreditNoteNumber` | the next order and credit note numbers (D-066)                                            | recorded  |
-  | `GET /CheckAccountTransactionLog`                                                      | what a bank transaction was booked against, and how much (D-057)                          | recorded  |
-  | `DELETE /Invoice/{invoiceId}`                                                          | deleting a draft invoice (no tool uses it)                                                | recorded  |
-  | `DELETE /Voucher/{voucherId}`                                                          | deleting draft vouchers (the spec has only GET and PUT; D-074)                            | recorded  |
-  | `GET /TextTemplate`                                                                    | head and foot texts (read through `sevdesk_api_get`)                                      | recorded  |
-  | `GET /PartUnity`                                                                       | alternative units of parts, with their own price and factor (`sevdesk_api_get`)           | known     |
-  | `GET /Document`, document download                                                     | attached documents and receipts (metadata through `sevdesk_api_get`)                      | recorded  |
-  | `GET /SevSequence/Factory/getByType`                                                   | next document number (see D-027); `sevdesk_api_get` refuses it                            | known     |
-  | `POST /Voucher/Factory/createVoucherFromFile`                                          | voucher from an uploaded file (no tool uses it)                                           | uncertain |
+  | Endpoint                                                                               | Used for                                                                                                           | Standing  |
+  | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | --------- |
+  | `GET /SevUser`                                                                         | `contactPerson`, required on invoices, orders and credit notes                                                     | recorded  |
+  | `GET /StaticCountry`                                                                   | country ids for addresses                                                                                          | recorded  |
+  | `GET /PaymentMethod`                                                                   | payment method ids                                                                                                 | recorded  |
+  | `GET /Unity`                                                                           | units for positions                                                                                                | recorded  |
+  | `GET /AccountDatev`                                                                    | booking accounts (Update 2.0): names and kinds for previews (D-079)                                                | recorded  |
+  | `GET /Category`                                                                        | categories                                                                                                         | recorded  |
+  | `GET /TaxRule`                                                                         | tax rule ids and codes (D-006)                                                                                     | recorded  |
+  | `GET /SevClient`                                                                       | the account's taxation regime, chart of accounts, company data and DATEV settings (D-067)                          | recorded  |
+  | `GET /Order/Factory/getNextOrderNumber`, `/CreditNote/Factory/getNextCreditNoteNumber` | the next order and credit note numbers (D-066)                                                                     | recorded  |
+  | `GET /CheckAccountTransactionLog`                                                      | what a bank transaction was booked against, and how much (D-057)                                                   | recorded  |
+  | `DELETE /Invoice/{invoiceId}`                                                          | deleting a draft invoice (no tool uses it)                                                                         | recorded  |
+  | `DELETE /Voucher/{voucherId}`                                                          | deleting draft vouchers (the spec has only GET and PUT; D-074)                                                     | recorded  |
+  | `GET /TextTemplate`                                                                    | head and foot texts (read through `sevdesk_api_get`)                                                               | recorded  |
+  | `GET /PartUnity`                                                                       | alternative units of parts, with their own price and factor (`sevdesk_api_get`)                                    | known     |
+  | `GET /Document`, document download                                                     | attached documents and receipts (metadata through `sevdesk_api_get`, files through `sevdesk_voucher_receipt_save`) | recorded  |
+  | `GET /SevSequence/Factory/getByType`                                                   | next document number (see D-027); `sevdesk_api_get` refuses it                                                     | known     |
+  | `POST /Voucher/Factory/createVoucherFromFile`                                          | voucher from an uploaded file (no tool uses it)                                                                    | uncertain |
 
   Recorded shapes: `GET /AccountDatev` rows have 28 keys (`number`, `name`, `accountDatevCategory`,
   `accountCategory`, …), scalars as strings, and GET by id answers one row; the list ignores every
@@ -892,7 +892,11 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   `additionalInformation` and no `sevUser`, and the `textType` filter is honoured. `GET /Document`
   honours `limit` and `offset` and has the community model's keys; `GET /Document/{id}` adds none
   and no field holds file content. `GET /PartUnity` answered an empty list (no alternative units
-  on the trial), so its shape stays "known".
+  on the trial), so its shape stays "known". `GET /Voucher/{voucherId}` names the attached receipt
+  as `document: {id, objectName: "Document"}` (`null` without one), and
+  `GET /Document/{documentId}/download` answers the `getPdf` envelope (`filename` a hash such as
+  `a9e6….pdf`, `mimetype: null`, `base64Encoded: true`, `content`); the uploaded 1,503-byte PDF came
+  back byte for byte. `/Document/{id}/getContent` and `/Voucher/{id}/getDocument` answer 404.
 
   Community model (j-mastr/sevdesk-api, not recorded by us): `GET /TextTemplate` rows carry
   `name`, `text`, `category` (`DOCUMENT`, `LETTER`, `MAIL`), `objectType` (`RE`, `AN`, `AB`, `LI`,
@@ -935,7 +939,7 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   `/PartUnity`, `/Document`: `test/contract/undocumented-endpoints.test.ts` (the community
   fixtures in `test/fixtures/advanced/` through `apiGet` and through their probes, and the
   recorded answers in `test/fixtures/recorded/2026-11-10/advanced/` against them, the ignored
-  `limit` included). `/SevSequence/Factory/getByType`: no tool uses it, and `sevdesk_api_get` refuses it
+  `limit` included); the receipt download: `test/unit/tools/vouchers/receipt-save.test.ts`. `/SevSequence/Factory/getByType`: no tool uses it, and `sevdesk_api_get` refuses it
   (`test/unit/sevdesk/paths.test.ts`, `genericGetRefusal`).
 
 ### D-025: PDF rendering returns one base64 `pdf` since 2026-04-07
