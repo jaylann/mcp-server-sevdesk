@@ -30,7 +30,7 @@ describe("OAuth metadata", () => {
       scopes_supported: ["sevdesk:read", "sevdesk:commit", "offline_access"],
       client_id_metadata_document_supported: true,
       authorization_response_iss_parameter_supported: true,
-      service_documentation: "https://sevdesk-mcp.lanfermann.dev/docs/en/remote",
+      service_documentation: "https://sevdeskmcp.lanfermann.dev/docs/en/remote",
     });
     expect(metadata).not.toHaveProperty("registration_endpoint");
   });

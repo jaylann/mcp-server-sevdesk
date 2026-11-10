@@ -49,7 +49,7 @@ Usage:
   ${PACKAGE_NAME} --version, -v          Print the version
   ${PACKAGE_NAME} --help, -h             Print this help
 
-Docs: https://sevdesk-mcp.lanfermann.dev/docs/en/configuration#command-line
+Docs: https://sevdeskmcp.lanfermann.dev/docs/en/configuration#command-line
 `;
 
 /** An OAuth grant id or account id: printable, no spaces, bounded. */
