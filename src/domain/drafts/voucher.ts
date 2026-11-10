@@ -290,6 +290,12 @@ export async function prepareVoucherCreateSpec(
       ...accounts.warnings,
       ...deadlineWarnings(spec.date, spec.paymentDeadline),
       ...(extras.warnings ?? []),
+      ...(spec.number === undefined
+        ? [
+            "No Belegnummer: sevDesk saves the draft but books it only with one (D-080); add " +
+              "it with sevdesk_voucher_update_draft (number) before finalizing.",
+          ]
+        : []),
       `The voucher is saved as a draft: it is not booked until ${FINALIZE_TOOL} finalizes it.`,
     ],
   );

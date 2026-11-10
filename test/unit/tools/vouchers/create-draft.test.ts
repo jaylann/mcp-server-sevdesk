@@ -496,6 +496,17 @@ describe("sevdesk_voucher_create_draft", () => {
     ]);
   });
 
+  it("warns that a draft without a Belegnummer cannot be finalized yet (D-080)", async () => {
+    const warning =
+      "No Belegnummer: sevDesk saves the draft but books it only with one (D-080); add it with " +
+      "sevdesk_voucher_update_draft (number) before finalizing.";
+    const { number: _number, ...withoutNumber } = args;
+    const without = await prepareWrite(tool, withoutNumber, client());
+    expect(without.preview.warnings).toContain(warning);
+    const withNumber = await prepareWrite(tool, args, client());
+    expect(withNumber.preview.warnings).not.toContain(warning);
+  });
+
   it("warns about a payment deadline before the voucher date", async () => {
     const { preview } = await prepareWrite(
       tool,

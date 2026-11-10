@@ -125,6 +125,7 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 | [D-077](#d-077-the-datev-export-job-starts-with-a-post-and-its-answers-differ-from-the-spec)       | The DATEV export job starts with a POST, and its answers differ from the spec          | Open                  |
 | [D-078](#d-078-receiptguidance-allows-only-0--for-intra-eu-acquisitions-and-reverse-charge)        | ReceiptGuidance allows only 0 % for intra-EU acquisitions and reverse charge           | Open                  |
 | [D-079](#d-079-get-accountdatev-ignores-its-filters-and-lists-fewer-accounts-than-receiptguidance) | `GET /AccountDatev` ignores its filters and lists fewer accounts than ReceiptGuidance  | Open                  |
+| [D-080](#d-080-a-voucher-is-booked-only-with-a-belegnummer)                                        | A voucher is booked only with a Belegnummer                                            | Open                  |
 
 ## Entries
 
@@ -2856,3 +2857,23 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   from AccountDatev to the guidance to the bare id"),
   `test/unit/tools/vouchers/create-draft.test.ts` ("keeps working when the undocumented
   AccountDatev list fails (labels from the guidance)"). Live: probe `read-account-datev-paging`.
+
+### D-080: A voucher is booked only with a Belegnummer
+
+- **Status:** Open. **Evidence:** recorded.
+- **Spec says:** `Model_Voucher.description` ("the description of the voucher, essentially the
+  voucher number") is optional, also in `saveVoucher`.
+- **Actual behavior:** `saveVoucher` saves a draft (status 50) without `description`, but
+  refuses to book it: status 100 answers 422 "Description must be given". Recorded 2026-11-10 on
+  the trial account, Update 2.0: a draft created through the claude.ai connector without a
+  Belegnummer, finalized after a browser approval.
+- **Sources:** recorded 2026-11-10, trial account, Update 2.0 (M6 remote session, voucher
+  160408733; sevDesk's message read from the client error).
+- **Impact:** `prepareVoucherFinalize` (`src/domain/drafts/voucher-finalize.ts`) refuses a draft
+  without a Belegnummer before the human is asked, naming `sevdesk_voucher_update_draft`
+  (`number`). Creating a draft without one stays allowed (a receipt may lack a number until the
+  user picks a reference), and its preview warns that finalizing will need it.
+- **Test:** `test/unit/tools/vouchers/finalize-delete.test.ts` ("refuses a draft without a
+  Belegnummer before anything is confirmed (D-080)"),
+  `test/unit/tools/vouchers/create-draft.test.ts` ("warns that a draft without a Belegnummer
+  cannot be finalized yet (D-080)").

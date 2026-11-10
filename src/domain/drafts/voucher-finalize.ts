@@ -90,6 +90,14 @@ export async function prepareVoucherFinalize(
       `Voucher ${String(id)} has no positions. Add them with sevdesk_voucher_update_draft first.`,
     );
   }
+  // D-080: a draft may lack the Belegnummer, but sevDesk refuses to book one without it.
+  if (nonBlank(stored.record.description) === undefined) {
+    refuse(
+      `Voucher ${String(id)} has no Belegnummer, and sevDesk books no voucher without one. Set ` +
+        "it with sevdesk_voucher_update_draft (number) first: the receipt's invoice or receipt " +
+        "number, or your own reference if it has none.",
+    );
+  }
   const regime = await voucherRegime(client, options);
   const rule = storedRule(stored, "Set one with sevdesk_voucher_update_draft (taxRuleId) first.");
   const scope = voucherRuleScope(kind);
