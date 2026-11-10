@@ -84,7 +84,7 @@
     },
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/jaylann/mcp-server-sevdesk:0.0.0",
+      "identifier": "ghcr.io/jaylann/mcp-server-sevdesk:0.1.0",
       "runtimeHint": "docker",
       "transport": {
         "type": "stdio"
