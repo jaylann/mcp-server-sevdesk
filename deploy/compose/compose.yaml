@@ -19,7 +19,7 @@ name: mcp-server-sevdesk
 
 services:
   mcp:
-    image: ghcr.io/jaylann/mcp-server-sevdesk:0.0.0 # x-release-please-version
+    image: ghcr.io/jaylann/mcp-server-sevdesk:0.1.0 # x-release-please-version
     restart: unless-stopped
     read_only: true
     tmpfs:

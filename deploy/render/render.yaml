@@ -11,7 +11,7 @@ services:
     name: mcp-server-sevdesk
     runtime: image
     image:
-      url: ghcr.io/jaylann/mcp-server-sevdesk:0.0.0 # x-release-please-version
+      url: ghcr.io/jaylann/mcp-server-sevdesk:0.1.0 # x-release-please-version
     plan: 0.5c-512mb
     region: frankfurt
     numInstances: 1
