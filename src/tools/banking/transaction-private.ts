@@ -7,6 +7,7 @@
 import { z } from "zod";
 
 import { getTransaction, transactionDtoSchema } from "../../domain/banking.js";
+import { bothPreviews, type Phrase, phrase } from "../../domain/preview-text.js";
 import { lookup, transactionObject } from "../../domain/reconciliation/allocate.js";
 import {
   assertMarkablePrivate,
@@ -24,13 +25,35 @@ import {
 } from "./reconcile-shared.js";
 
 const MEANING = {
-  Privatentnahme:
+  Privatentnahme: phrase(
     "Privatentnahme (private withdrawal): the owner took this money out of the business for " +
-    "private purposes; it is no business expense.",
-  Privateinlage:
+      "private purposes; it is no business expense.",
+    "Privatentnahme: Der Inhaber hat dieses Geld für private Zwecke aus dem Unternehmen " +
+      "entnommen; es ist keine Betriebsausgabe.",
+  ),
+  Privateinlage: phrase(
     "Privateinlage (private deposit): the owner put this money into the business from private " +
-    "funds; it is no business income.",
+      "funds; it is no business income.",
+    "Privateinlage: Der Inhaber hat dieses Geld aus privaten Mitteln in das Unternehmen " +
+      "eingelegt; es ist keine Betriebseinnahme.",
+  ),
 } as const;
+
+const PRIVATE_WARNINGS: readonly Phrase[] = [
+  phrase(
+    "The transaction is no longer open for matching to invoices or vouchers and leaves the " +
+      "business income/expense figures. Undo with sevdesk_transaction_reset.",
+    "Der Umsatz steht dann nicht mehr für die Zuordnung zu Rechnungen oder Belegen zur " +
+      "Verfügung und zählt nicht mehr zu den betrieblichen Einnahmen und Ausgaben. Rückgängig " +
+      "machen lässt sich das mit sevdesk_transaction_reset.",
+  ),
+  phrase(
+    "Corporations (GmbH, UG, AG) have no private withdrawals or deposits; for them this is " +
+      "wrong bookkeeping.",
+    "Kapitalgesellschaften (GmbH, UG, AG) kennen keine Privatentnahmen oder Privateinlagen; " +
+      "dort wäre das eine falsche Buchung.",
+  ),
+];
 
 export const transactionMarkPrivateTool = defineWriteTool({
   name: "sevdesk_transaction_mark_private",
@@ -59,19 +82,20 @@ export const transactionMarkPrivateTool = defineWriteTool({
       payload: statusPayload("private"),
     };
     return {
-      preview: {
+      ...bothPreviews((lang) => ({
         action:
-          `Mark bank transaction ${String(transaction.id)} as private (${term}, status 100 → ` +
-          "300).",
-        facts: [...transactionFacts(transaction), { label: "Becomes", value: MEANING[term] }],
-        warnings: [
-          "The transaction is no longer open for matching to invoices or vouchers and leaves " +
-            "the business income/expense figures. Undo with sevdesk_transaction_reset.",
-          "Corporations (GmbH, UG, AG) have no private withdrawals or deposits; for them this " +
-            "is wrong bookkeeping.",
+          lang === "de"
+            ? `Kontoumsatz ${String(transaction.id)} als privat markieren (${term}, Status ` +
+              "100 → 300)."
+            : `Mark bank transaction ${String(transaction.id)} as private (${term}, status ` +
+              "100 → 300).",
+        facts: [
+          ...transactionFacts(transaction, lang),
+          { label: lang === "de" ? "Wird zu" : "Becomes", value: MEANING[term][lang] },
         ],
+        warnings: PRIVATE_WARNINGS.map((warning) => warning[lang]),
         irreversible: false,
-      },
+      })),
       state,
     };
   },

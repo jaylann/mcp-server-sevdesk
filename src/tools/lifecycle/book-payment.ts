@@ -42,6 +42,14 @@ import {
 } from "../../domain/lifecycle/preview.js";
 import { assertBookable, refuse } from "../../domain/lifecycle/transitions.js";
 import { add, money, toDecimalString } from "../../domain/money.js";
+import {
+  bothPreviews,
+  dateText,
+  numberText,
+  type Phrase,
+  phrase,
+  type PreviewLanguage,
+} from "../../domain/preview-text.js";
 import { entryShare, readTransactionLog } from "../../domain/reconciliation/transaction-log.js";
 import { berlinDateOf } from "../../sevdesk/dates.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
@@ -106,14 +114,55 @@ const PAYMENT_TYPE_HELP =
   "bank fees (Geldverkehrskosten). other_difference: more or less than the open amount for " +
   "another reason; the document is settled.";
 
-const BOOKING_TYPE_TEXT: Readonly<Record<BookingType, string>> = {
-  FULL_PAYMENT: "full payment (FULL_PAYMENT)",
-  N: "partial payment (N)",
-  CB: "payment less cash discount (Skonto, CB)",
-  MTC: "payment less bank fees (MTC)",
-  O: "payment with a difference for other reasons (O)",
-  OF: "payment plus reminder charges (OF)",
+const BOOKING_TYPE_TEXT: Readonly<Record<BookingType, Phrase>> = {
+  FULL_PAYMENT: phrase("full payment (FULL_PAYMENT)", "vollständige Zahlung (FULL_PAYMENT)"),
+  N: phrase("partial payment (N)", "Teilzahlung (N)"),
+  CB: phrase("payment less cash discount (Skonto, CB)", "Zahlung abzüglich Skonto (CB)"),
+  MTC: phrase("payment less bank fees (MTC)", "Zahlung abzüglich Kosten des Geldverkehrs (MTC)"),
+  O: phrase(
+    "payment with a difference for other reasons (O)",
+    "Zahlung mit Differenz aus sonstigen Gründen (O)",
+  ),
+  OF: phrase("payment plus reminder charges (OF)", "Zahlung zuzüglich Mahngebühren (OF)"),
 };
+
+/** The account types as the preview names them in German (English: the DTO's own value). */
+const ACCOUNT_TYPE_DE: Readonly<Record<BankAccountDto["type"], string>> = {
+  bank: "Bankkonto",
+  clearing: "Verrechnungskonto",
+  cash: "Kasse",
+  unknown: "unbekannter Typ",
+};
+
+/** The fact labels and fixed values of a payment, per language. */
+const PAYMENT_TEXT = {
+  en: {
+    open: "Open amount",
+    received: "Payment received",
+    payout: "Payout",
+    date: "Booking date",
+    account: "Check account",
+    transaction: "Linked bank transaction",
+    after: "Open after booking",
+    settled: "settled",
+    sentAs: "Sent to sevDesk as",
+    amount: "amount",
+    leaving: "money leaving the account",
+  },
+  de: {
+    open: "Offener Betrag",
+    received: "Zahlungseingang",
+    payout: "Auszahlung",
+    date: "Buchungsdatum",
+    account: "Zahlungskonto",
+    transaction: "Verknüpfter Kontoumsatz",
+    after: "Offen nach der Buchung",
+    settled: "ausgeglichen",
+    sentAs: "An sevDesk gesendet als",
+    amount: "Betrag",
+    leaving: "Geld verlässt das Konto",
+  },
+} as const;
 
 const paymentOutputSchema = z.object({
   amount: moneySchema.describe(
@@ -190,15 +239,18 @@ async function assignedShare(
   return assigned;
 }
 
-function accountText(account: BankAccountDto): string {
-  return `${account.name} (id ${String(account.id)}, ${account.currency}, ${account.type})`;
+function accountText(account: BankAccountDto, lang: PreviewLanguage): string {
+  return lang === "de"
+    ? `${account.name} (ID ${String(account.id)}, ${account.currency}, ` +
+        `${ACCOUNT_TYPE_DE[account.type]})`
+    : `${account.name} (id ${String(account.id)}, ${account.currency}, ${account.type})`;
 }
 
-function transactionText(transaction: TransactionDto): string {
+function transactionText(transaction: TransactionDto, lang: PreviewLanguage): string {
   const parts = [
-    `id ${String(transaction.id)}`,
-    formatMoney(transaction.amount),
-    transaction.valueDate,
+    `${lang === "de" ? "ID" : "id"} ${String(transaction.id)}`,
+    formatMoney(transaction.amount, lang),
+    transaction.valueDate === undefined ? undefined : dateText(transaction.valueDate, lang),
     transaction.counterparty,
     transaction.purpose,
   ].filter((part): part is string => part !== undefined);
@@ -211,30 +263,32 @@ function paymentFacts(
   date: string,
   account: BankAccountDto,
   transaction: TransactionDto | undefined,
+  lang: PreviewLanguage,
 ): Fact[] {
+  const t = PAYMENT_TEXT[lang];
   const facts: Fact[] = [
-    { label: "Open amount", value: formatMoney(money(plan.open.open, doc.currency)) },
+    { label: t.open, value: formatMoney(money(plan.open.open, doc.currency), lang) },
     {
-      label: paymentDirection(doc) === "in" ? "Payment received" : "Payout",
-      value: `${formatMoney(plan.amount)}, ${BOOKING_TYPE_TEXT[plan.bookingType]}`,
+      label: paymentDirection(doc) === "in" ? t.received : t.payout,
+      value: `${formatMoney(plan.amount, lang)}, ${BOOKING_TYPE_TEXT[plan.bookingType][lang]}`,
     },
-    { label: "Booking date", value: date },
-    { label: "Check account", value: accountText(account) },
+    { label: t.date, value: dateText(date, lang) },
+    { label: t.account, value: accountText(account, lang) },
   ];
   if (transaction !== undefined) {
-    facts.push({ label: "Linked bank transaction", value: transactionText(transaction) });
+    facts.push({ label: t.transaction, value: transactionText(transaction, lang) });
   }
   facts.push({
-    label: "Open after booking",
+    label: t.after,
     value:
       plan.remaining === undefined
-        ? `${formatMoney(money(0, doc.currency))} (settled)`
-        : formatMoney(plan.remaining),
+        ? `${formatMoney(money(0, doc.currency), lang)} (${t.settled})`
+        : formatMoney(plan.remaining, lang),
   });
   if (paymentSign(doc) < 0) {
     facts.push({
-      label: "Sent to sevDesk as",
-      value: `amount ${String(plan.payload.amount)} (money leaving the account)`,
+      label: t.sentAs,
+      value: `${t.amount} ${numberText(String(plan.payload.amount), lang)} (${t.leaving})`,
     });
   }
   return facts;
@@ -335,26 +389,41 @@ export function bookPaymentTool(kind: PaymentKind) {
         });
       }
       if (date > today) {
-        warnings.push(`The booking date ${date} lies in the future.`);
+        warnings.push(
+          phrase(
+            `The booking date ${date} lies in the future.`,
+            `Das Buchungsdatum ${dateText(date, "de")} liegt in der Zukunft.`,
+          ),
+        );
       }
-      const verb = paymentDirection(doc) === "in" ? "payment received" : "payout";
+      const incoming = paymentDirection(doc) === "in";
+      const booked = plan;
+      const linked = transaction;
       const state: BookPaymentState = {
         payload: plan.payload,
         plan: { amount: plan.amount, bookingType: plan.bookingType },
         date,
       };
+      const action = phrase(
+        `Book a ${incoming ? "payment received" : "payout"} of ${formatMoney(booked.amount)} ` +
+          `on ${documentTitle(doc)} (${BOOKING_TYPE_TEXT[booked.bookingType].en}) via check ` +
+          `account ${account.name}` +
+          (linked === undefined ? "." : `, linked to bank transaction ${String(linked.id)}.`),
+        `${incoming ? "Zahlungseingang" : "Auszahlung"} von ` +
+          `${formatMoney(booked.amount, "de")} auf ${documentTitle(doc, "de")} buchen ` +
+          `(${BOOKING_TYPE_TEXT[booked.bookingType].de}), über das Zahlungskonto ${account.name}` +
+          (linked === undefined ? "." : `, verknüpft mit dem Kontoumsatz ${String(linked.id)}.`),
+      );
       return {
-        preview: {
-          action:
-            `Book a ${verb} of ${formatMoney(plan.amount)} on ${documentTitle(doc)} ` +
-            `(${BOOKING_TYPE_TEXT[plan.bookingType]}) via check account ${account.name}` +
-            (transaction === undefined
-              ? "."
-              : `, linked to bank transaction ${String(transaction.id)}.`),
-          facts: [...documentFacts(doc), ...paymentFacts(doc, plan, date, account, transaction)],
-          warnings,
+        ...bothPreviews((lang) => ({
+          action: action[lang],
+          facts: [
+            ...documentFacts(doc, lang),
+            ...paymentFacts(doc, booked, date, account, linked, lang),
+          ],
+          warnings: warnings.map((warning) => warning[lang]),
           irreversible: false,
-        },
+        })),
         state,
       };
     },

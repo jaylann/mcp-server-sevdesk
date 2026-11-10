@@ -128,13 +128,33 @@ export interface ConfirmationPreview {
 
 /** The result of {@link WriteToolDefinition.prepare}. */
 export interface WritePlan<S> {
+  /** English: what the model, dry runs, the audit log and a client's own prompt show. */
   readonly preview: ConfirmationPreview;
+  /**
+   * The same preview in German, for the approval pages (`src/domain/preview-text.ts`; build both
+   * with `bothPreviews`). Required by type for `commit` and `external` tools (see
+   * {@link WriteToolDefinition.prepare}); other tiers never reach a page. It must have as many
+   * facts and warnings as `preview` and the same `irreversible`: the flow refuses a pair that
+   * differs, and an approval covers both texts.
+   */
+  readonly previewDe?: ConfirmationPreview;
   /**
    * Whatever `execute` needs from the reads `prepare` made (e.g. the current invoice, the
    * resolved contact person), so `execute` does not read it again. Not shown to anyone.
    */
   readonly state: S;
 }
+
+/** What `prepare` must add for tier `T`: the German preview when a human confirms the tool. */
+type PlanExtra<T extends WriteTier> = T extends "write"
+  ? unknown
+  : { readonly previewDe: ConfirmationPreview };
+
+/**
+ * The plan `prepare` returns for a tool of tier `T`: a {@link WritePlan}, with `previewDe`
+ * required for `commit` and `external`.
+ */
+export type WritePlanOf<S, T extends WriteTier> = WritePlan<S> & PlanExtra<T>;
 
 export type ToolInputSchema = z.ZodObject;
 export type ToolOutputSchema = z.ZodObject;
@@ -209,7 +229,8 @@ export interface ReadToolDefinition<
  *
  * The framework (`src/tools/write-flow.ts`) runs every call as:
  * 1. validate the arguments;
- * 2. `prepare` with a read-only client: reads, checks preconditions, builds the preview;
+ * 2. `prepare` with a read-only client: reads, checks preconditions, builds the preview (in
+ *    English, and for `commit`/`external` also in German for the approval pages);
  * 3. dry run (`dryRun: true` or `SEVDESK_DRY_RUN=1`): return the preview, stop;
  * 4. `commit`/`external`: ask a human (elicitation or the approval page) and stop until the
  *    approval arrives; then `prepare` again and ask again if the preview changed;
@@ -221,15 +242,17 @@ export interface WriteToolDefinition<
   I extends ToolInputSchema = ToolInputSchema,
   O extends ToolOutputSchema = ToolOutputSchema,
   S = unknown,
+  T extends WriteTier = WriteTier,
 > extends ToolDefinitionBase<I, O> {
-  readonly tier: WriteTier;
+  readonly tier: T;
   /**
    * Reads what the action needs and decides whether it is possible. When it is not (wrong
    * status, amount above the open amount, unknown tax rule …), throws a `SevdeskError` of kind
    * `validation` with a trusted, actionable message; nothing was sent. Must follow the
-   * determinism rule of {@link ConfirmationPreview}.
+   * determinism rule of {@link ConfirmationPreview}. A `commit` or `external` tool (tier `T`)
+   * must return `previewDe` as well: it does not compile without it.
    */
-  readonly prepare: (args: z.output<I>, ctx: PrepareContext) => Promise<WritePlan<S>>;
+  readonly prepare: (args: z.output<I>, ctx: PrepareContext) => Promise<WritePlanOf<S, T>>;
   /**
    * Performs exactly the writes the preview describes, then reads the result back and returns
    * it, with every created or changed record in `affected`. Runs only after `prepare` succeeded

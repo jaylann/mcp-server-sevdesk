@@ -183,6 +183,34 @@ describe("GET /authorize", () => {
     expect(parseConsentForm(html)).toBeUndefined();
   });
 
+  it("words its error pages in German for a German browser", async () => {
+    const r = await rig();
+    const german = { "Accept-Language": "de-DE,de;q=0.9,en;q=0.8" };
+    const url = (params: Record<string, string | undefined>): URL =>
+      authorizeUrl({ code_challenge: "c".repeat(43), ...params });
+
+    const incomplete = await r.fetch(
+      new Request(url({ client_id: undefined }), { headers: german }),
+    );
+    expect(incomplete.status).toBe(400);
+    expect(incomplete.headers.get("content-language")).toBe("de");
+    const html = await incomplete.text();
+    expect(html).toContain('<html lang="de">');
+    expect(html).toContain("<h1>Dieser Anmelde-Link ist unvollständig</h1>");
+
+    const foreign = await r.fetch(
+      new Request(url({ client_id: "https://evil.example/oauth/client" }), { headers: german }),
+    );
+    expect(await foreign.text()).toContain(
+      "Dieser Server akzeptiert die App unter evil.example nicht.",
+    );
+    // The server's finding about a metadata document stays English, and says so.
+    const unknown = await r.fetch(
+      new Request(url({ client_id: "https://claude.ai/oauth/unknown" }), { headers: german }),
+    );
+    expect(await unknown.text()).toMatch(/Technischer Hinweis des Servers \(englisch\): .+loaded/);
+  });
+
   it("never redirects for duplicated client_id or redirect_uri", async () => {
     const r = await rig();
     for (const name of ["client_id", "redirect_uri"]) {
@@ -268,7 +296,11 @@ describe("POST /authorize", () => {
     });
     expect(checked.response.status).toBe(200);
     expect(checked.html).toContain("Connect to sevDesk account 4711?");
-    expect(checked.html).toContain("(named “Muster &lt;b&gt;GmbH&lt;/b&gt;” in sevDesk)");
+    // The company name comes from sevDesk: shown escaped, in quotation marks, labelled as such.
+    expect(checked.html).toContain(
+      "<dt>Named in sevDesk</dt><dd>“Muster &lt;b&gt;GmbH&lt;/b&gt;”</dd>",
+    );
+    expect(checked.html).toContain("<dt>sevDesk account</dt><dd><strong>4711</strong></dd>");
     expect(checked.html).toContain("<strong>Write</strong>");
     expect(checked.html).not.toContain("<strong>External</strong>");
     expect(checked.html).not.toContain(SEVDESK_TOKEN);

@@ -82,6 +82,22 @@ describe("sevdesk_transaction_reset", () => {
       expect.objectContaining({ label: "Document 2: invoice RE-1002" }),
     ]);
     expect(plan.preview.warnings[0]).toContain("removes ALL payments booked on it");
+    expect(plan.previewDe.action).toBe(
+      "Buchungen des Kontoumsatzes 5201 rückgängig machen: 2 Dokumente auf offen zurücksetzen " +
+        "(Rechnung RE-1001, Rechnung RE-1002) und dabei alle ihre Zahlungen entfernen.",
+    );
+    expect(plan.previewDe.facts.filter((f) => f.label.startsWith("Dokument"))).toEqual([
+      {
+        label: "Dokument 1: Rechnung RE-1001",
+        value:
+          "Status Bezahlt (1000) → offen (200); dieser Umsatz hat 119,00 EUR bezahlt; weitere " +
+          "entfernte Zahlungen: 0,00 EUR",
+      },
+      expect.objectContaining({ label: "Dokument 2: Rechnung RE-1002" }),
+    ]);
+    expect(plan.previewDe.warnings[0]).toContain(
+      "das entfernt ALLE darauf gebuchten Zahlungen, nicht nur die dieses Umsatzes",
+    );
     expect(plan.preview.irreversible).toBe(false);
     expect(client.writes()).toEqual([]);
   });
@@ -144,6 +160,21 @@ describe("sevdesk_transaction_reset", () => {
     expect(plan.preview.facts.find((f) => f.label.startsWith("Document 1"))?.value).toContain(
       "; also unlinks bank transactions 5302 (58.33 EUR)",
     );
+    expect(plan.previewDe.facts).toContainEqual({
+      label: "Weitere geänderte Kontoumsätze",
+      value: "5302 (→ ungebucht 100)",
+    });
+    expect(plan.previewDe.facts).toContainEqual({
+      label: "Dieser Umsatz nach dem Zurücksetzen",
+      value:
+        "ungebucht (Status 100) oder gelöscht, falls sevDesk ihn für eine Buchung angelegt hat",
+    });
+    expect(plan.previewDe.facts.find((f) => f.label.startsWith("Dokument 1"))?.value).toContain(
+      "; löst auch die Kontoumsätze 5302 (58,33 EUR)",
+    );
+    expect(plan.previewDe.warnings.join(" ")).toContain(
+      "verliert auch die Zahlungen aus Kontoumsatz 5302 (58,33 EUR, danach ungebucht (100))",
+    );
     const error = (await executeWrite(tool, { id: 5201 }, partial).catch(
       (e: unknown) => e,
     )) as SevdeskError;
@@ -195,6 +226,9 @@ describe("sevdesk_transaction_reset", () => {
     );
     const { plan, output } = await executeWrite(tool, { id: 5201 }, client);
     expect(plan.preview.warnings.at(-1)).toContain("deleted by the reset");
+    expect(plan.previewDe.warnings.at(-1)).toContain(
+      "ein solcher Umsatz wird beim Zurücksetzen gelöscht und nicht auf ungebucht gesetzt",
+    );
     expect(output.data).toMatchObject({ transactionDeleted: true });
     expect(output.data.transaction).toBeUndefined();
     expect(output.summary).toBe(
@@ -257,6 +291,13 @@ describe("sevdesk_transaction_reset", () => {
     expect(plan.preview.action).toBe(
       "Set bank transaction 5101 back from private to unbooked (status 300 → 100).",
     );
+    expect(plan.previewDe.action).toBe(
+      "Kontoumsatz 5101 von privat auf ungebucht zurücksetzen (Status 300 → 100).",
+    );
+    expect(plan.previewDe.warnings).toEqual([
+      "Der Umsatz ist dann nicht mehr privat: Er gilt wieder als ungebucht und kann Dokumenten " +
+        "zugeordnet werden (sevdesk_reconcile_suggest, sevdesk_transaction_book).",
+    ]);
     expect(client.writes()).toEqual([
       expect.objectContaining({
         method: "PUT",

@@ -22,6 +22,7 @@ import type { SevdeskClient } from "../../sevdesk/types.js";
 import type { TaxRegime } from "../account-settings.js";
 import { cleanText } from "../common.js";
 import { compare, format } from "../money.js";
+import { inLanguage } from "../preview-text.js";
 import type { TaxRule } from "../reference-data.js";
 import {
   creditDebitForKind,
@@ -113,6 +114,8 @@ export interface VoucherSaveState {
 
 export interface VoucherSavePlan {
   readonly preview: DraftPreview;
+  /** The German preview: set by the finalize, which a human confirms (see `preview-text.ts`). */
+  readonly previewDe?: DraftPreview;
   readonly state: VoucherSaveState;
 }
 
@@ -287,7 +290,7 @@ export async function prepareVoucherCreateSpec(
     [
       duplicate,
       ...ruleWarnings,
-      ...accounts.warnings,
+      ...inLanguage(accounts.warnings, "en"),
       ...deadlineWarnings(spec.date, spec.paymentDeadline),
       ...(extras.warnings ?? []),
       ...(spec.number === undefined
@@ -349,11 +352,11 @@ export async function prepareVoucherUpdate(
     positions = resolveVoucherPositions(rule, args.positions, regime);
     const check = await checkVoucherAccounts(client, kind, rule, positions, date, options);
     labels = check.labels;
-    warnings.push(...check.warnings);
+    warnings.push(...inLanguage(check.warnings, "en"));
   } else if (args.taxRuleId !== undefined) {
     const kept = storedPositionsFor(stored, rule, regime);
     const check = await checkVoucherAccounts(client, kind, rule, kept, date, options);
-    warnings.push(...check.warnings);
+    warnings.push(...inLanguage(check.warnings, "en"));
   }
 
   const delivery = resolveDeliveryPeriod(

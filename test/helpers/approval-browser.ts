@@ -88,9 +88,12 @@ export function browserOrigin(referrerPolicy: string, pageOrigin: string): strin
   return referrerPolicy === "no-referrer" ? "null" : pageOrigin;
 }
 
-/** GETs the approval page like a browser and extracts the form token, the cookie and the policy. */
-export async function openApproval(url: string): Promise<OpenedApproval> {
-  const page = await send(url);
+/**
+ * GETs the approval page like a browser and extracts the form token, the cookie and the policy.
+ * `language` is the browser's `Accept-Language` (none: the page answers in English).
+ */
+export async function openApproval(url: string, language?: string): Promise<OpenedApproval> {
+  const page = await send(url, { headers: { "Accept-Language": language } });
   const csrf = /name="csrf" value="([^"]+)"/.exec(page.body)?.[1];
   const setCookie = page.headers["set-cookie"];
   const first = Array.isArray(setCookie) ? setCookie[0] : setCookie;
@@ -131,10 +134,13 @@ export function submitDecision(
   });
 }
 
-/** Opens the page and approves (or rejects) like a human would. */
+/** Opens the page and approves (or rejects) like a human would, in a browser set to `language`. */
 export async function decideInBrowser(
   url: string,
   decision: "approve" | "reject",
+  language?: string,
 ): Promise<PageResponse> {
-  return submitDecision(url, decision, await openApproval(url));
+  return submitDecision(url, decision, await openApproval(url, language), {
+    "Accept-Language": language,
+  });
 }

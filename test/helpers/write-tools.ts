@@ -11,6 +11,7 @@ import type { z } from "zod";
 import type { Config } from "../../src/config.js";
 import type { FileAccess } from "../../src/safety/file-access.js";
 import { localFileAccess } from "../../src/safety/file-sources.js";
+import type { WriteTier } from "../../src/safety/tiers.js";
 import { readOnlyClient, tierScopedClient } from "../../src/sevdesk/scoped-client.js";
 import type { SevdeskClient } from "../../src/sevdesk/types.js";
 import type {
@@ -18,7 +19,7 @@ import type {
   ToolInputSchema,
   ToolOutput,
   ToolOutputSchema,
-  WritePlan,
+  WritePlanOf,
   WriteToolDefinition,
 } from "../../src/tools/types.js";
 import { allEnabledConfig } from "./config.js";
@@ -42,21 +43,26 @@ function context(client: SevdeskClient, config: Partial<Config>, files?: FileAcc
  * Parses `args` with the tool's input schema and runs `prepare` with a read-only client. Rejects
  * like `prepare` (e.g. a `validation` SevdeskError) or when `prepare` tried to write.
  */
-export async function prepareWrite<I extends ToolInputSchema, O extends ToolOutputSchema, S>(
-  tool: WriteToolDefinition<I, O, S>,
+export async function prepareWrite<
+  I extends ToolInputSchema,
+  O extends ToolOutputSchema,
+  S,
+  T extends WriteTier,
+>(
+  tool: WriteToolDefinition<I, O, S, T>,
   args: unknown,
   client: SevdeskClient,
   config: Partial<Config> = {},
   files?: FileAccess,
-): Promise<WritePlan<S>> {
+): Promise<WritePlanOf<S, T>> {
   const parsed = tool.input.parse(args);
   const ctx = context(readOnlyClient(client, "preparing a write"), config, files);
   return tool.prepare(parsed, ctx);
 }
 
 /** What {@link executeWrite} observed. */
-export interface WriteRun<S, D> {
-  readonly plan: WritePlan<S>;
+export interface WriteRun<P, D> {
+  readonly plan: P;
   readonly output: ToolOutput<D>;
 }
 
@@ -64,13 +70,18 @@ export interface WriteRun<S, D> {
  * {@link prepareWrite}, then `execute` with a client scoped to the tool's tier, as after an
  * approval. Throws when the output does not match the tool's output schema.
  */
-export async function executeWrite<I extends ToolInputSchema, O extends ToolOutputSchema, S>(
-  tool: WriteToolDefinition<I, O, S>,
+export async function executeWrite<
+  I extends ToolInputSchema,
+  O extends ToolOutputSchema,
+  S,
+  T extends WriteTier,
+>(
+  tool: WriteToolDefinition<I, O, S, T>,
   args: unknown,
   client: SevdeskClient,
   config: Partial<Config> = {},
   files?: FileAccess,
-): Promise<WriteRun<S, z.output<O>>> {
+): Promise<WriteRun<WritePlanOf<S, T>, z.output<O>>> {
   const plan = await prepareWrite(tool, args, client, config, files);
   const parsed = tool.input.parse(args);
   const output = await tool.execute(

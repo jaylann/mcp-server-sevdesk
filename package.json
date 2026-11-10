@@ -28,6 +28,7 @@
   },
   "files": [
     "dist",
+    "licenses",
     "LICENSE",
     "README.md",
     "README.de.md"
@@ -57,6 +58,8 @@
     "knip": "knip",
     "publint": "publint --strict",
     "docs:tools": "node --import tsx scripts/gen-tool-docs.ts && prettier --write docs/tools.md",
+    "pages:assets": "node --import tsx scripts/embed-page-assets.ts",
+    "pages:preview": "node --import tsx scripts/preview-pages.ts",
     "plugin:pin": "node scripts/pin-plugin-version.ts",
     "mcpb": "node --import tsx scripts/build-mcpb.ts",
     "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test:coverage && pnpm knip && pnpm build && pnpm publint",

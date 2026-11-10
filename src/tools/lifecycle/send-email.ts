@@ -22,8 +22,20 @@ import {
   type Recipients,
   type SendEmailPayload,
 } from "../../domain/lifecycle/email.js";
-import { documentFacts, documentTitle, type Fact } from "../../domain/lifecycle/preview.js";
+import {
+  documentFacts,
+  documentTitle,
+  type Fact,
+  KIND_DE,
+  kindNoun,
+} from "../../domain/lifecycle/preview.js";
 import { assertEmailable, refuse } from "../../domain/lifecycle/transitions.js";
+import {
+  bothPreviews,
+  type Phrase,
+  phrase,
+  type PreviewLanguage,
+} from "../../domain/preview-text.js";
 import { sevdeskPath } from "../../sevdesk/paths.js";
 import { defineWriteTool } from "../define-tool.js";
 import { dryRunInputShape } from "../write-input.js";
@@ -84,24 +96,69 @@ interface SendEmailState {
   readonly recipients: Recipients;
 }
 
+/** The fact labels and fixed values of the email, per language. */
+const EMAIL_TEXT = {
+  en: {
+    to: "To",
+    copy: "Copy to you",
+    copyYes: "yes, to the sevDesk user's own address",
+    attachment: "Attachment",
+    xml: "the e-invoice XML instead of the PDF",
+    subject: "Subject",
+    text: "Text",
+  },
+  de: {
+    to: "An",
+    copy: "Kopie an Sie",
+    copyYes: "ja, an die eigene Adresse des sevDesk-Benutzers",
+    attachment: "Anhang",
+    xml: "die XML der E-Rechnung statt des PDF",
+    subject: "Betreff",
+    text: "Text",
+  },
+} as const;
+
 /** Recipient and content facts, in the order a human checks them. */
-function emailFacts(state: SendEmailState, attachment: "pdf" | "xml", noun: string): Fact[] {
+function emailFacts(
+  state: SendEmailState,
+  attachment: "pdf" | "xml",
+  kind: SalesKind,
+  lang: PreviewLanguage,
+): Fact[] {
   const { payload, recipients } = state;
-  const facts: Fact[] = [{ label: "To", value: recipients.to }];
+  const t = EMAIL_TEXT[lang];
+  const facts: Fact[] = [{ label: t.to, value: recipients.to }];
   if (recipients.cc.length > 0) facts.push({ label: "Cc", value: recipients.cc.join(", ") });
   if (recipients.bcc.length > 0) facts.push({ label: "Bcc", value: recipients.bcc.join(", ") });
-  if (payload.copy === true) {
-    facts.push({ label: "Copy to you", value: "yes, to the sevDesk user's own address" });
-  }
+  if (payload.copy === true) facts.push({ label: t.copy, value: t.copyYes });
+  const pdf = lang === "de" ? `${kindNoun(kind, lang)} als PDF` : `the ${kindNoun(kind)} PDF`;
   facts.push(
-    {
-      label: "Attachment",
-      value: attachment === "xml" ? "the e-invoice XML instead of the PDF" : `the ${noun} PDF`,
-    },
-    { label: "Subject", value: payload.subject },
-    { label: "Text", value: payload.text },
+    { label: t.attachment, value: attachment === "xml" ? t.xml : pdf },
+    { label: t.subject, value: payload.subject },
+    { label: t.text, value: payload.text },
   );
   return facts;
+}
+
+/** What sending does besides delivering the email: it finalizes a draft. */
+function draftWarning(kind: SalesKind): Phrase {
+  if (kind === "order") {
+    return phrase(
+      "The order is a draft: sending marks it as sent (status 200) and sevDesk assigns its " +
+        "final number.",
+      "Der Auftrag ist ein Entwurf: Mit dem Versand wird er als versendet markiert (Status " +
+        "200), und sevDesk vergibt seine endgültige Nummer.",
+    );
+  }
+  return phrase(
+    `The ${KINDS[kind].noun} is a draft: sending finalizes it (draft → open), sevDesk ` +
+      `assigns its final number and it becomes legally binding. If the account ` +
+      `enshrines documents on completion, it is also enshrined (festgeschrieben).`,
+    `${capitalize(KIND_DE[kind].nominative)} ist ein Entwurf: Der Versand stellt sie fertig ` +
+      `(Entwurf → offen), sevDesk vergibt ihre endgültige Nummer, und sie wird rechtlich ` +
+      `bindend. Schreibt das Konto Dokumente beim Abschließen automatisch fest, wird sie dabei ` +
+      `auch festgeschrieben.`,
+  );
 }
 
 /** Builds the send-by-email tool of one document kind. */
@@ -179,36 +236,42 @@ export function sendEmailTool(kind: SalesKind) {
       const { recipients } = state;
       const copies = recipients.cc.length + recipients.bcc.length;
       const warnings = [
-        "The email goes out from sevDesk immediately to every recipient listed and cannot be " +
-          "recalled.",
+        phrase(
+          "The email goes out from sevDesk immediately to every recipient listed and cannot be " +
+            "recalled.",
+          "Die E-Mail geht sofort aus sevDesk an alle aufgeführten Empfänger und lässt sich " +
+            "nicht zurückholen.",
+        ),
       ];
-      if (doc.status === STATUS.draft) {
-        warnings.push(
-          kind === "order"
-            ? "The order is a draft: sending marks it as sent (status 200) and sevDesk assigns " +
-                "its final number."
-            : `The ${info.noun} is a draft: sending finalizes it (draft → open), sevDesk ` +
-                `assigns its final number and it becomes legally binding. If the account ` +
-                `enshrines documents on completion, it is also enshrined (festgeschrieben).`,
-        );
-      }
+      if (doc.status === STATUS.draft) warnings.push(draftWarning(kind));
       if (attachment === "xml" && doc.eInvoice === undefined) {
         warnings.push(
-          "sevDesk can only attach XML to e-invoices, and its reads do not say whether this " +
-            "invoice is one; if it is not, sevDesk refuses or sends no XML.",
+          phrase(
+            "sevDesk can only attach XML to e-invoices, and its reads do not say whether this " +
+              "invoice is one; if it is not, sevDesk refuses or sends no XML.",
+            "sevDesk kann XML nur an E-Rechnungen anhängen, und beim Lesen ist nicht erkennbar, " +
+              "ob diese Rechnung eine ist; ist sie keine, lehnt sevDesk ab oder sendet keine XML.",
+          ),
         );
       }
+      const action = phrase(
+        `Email ${documentTitle(doc)} through sevDesk to ${recipients.to}` +
+          (copies === 0
+            ? "."
+            : ` and ${String(copies)} more recipient${copies === 1 ? "" : "s"} (cc/bcc).`),
+        `${documentTitle(doc, "de")} über sevDesk per E-Mail senden an ${recipients.to}` +
+          (copies === 0
+            ? "."
+            : ` und ${String(copies)} ${copies === 1 ? "weiteren" : "weitere"} Empfänger ` +
+              "(Cc/Bcc)."),
+      );
       return {
-        preview: {
-          action:
-            `Email ${documentTitle(doc)} through sevDesk to ${recipients.to}` +
-            (copies === 0
-              ? "."
-              : ` and ${String(copies)} more recipient${copies === 1 ? "" : "s"} (cc/bcc).`),
-          facts: [...documentFacts(doc), ...emailFacts(state, attachment, info.noun)],
-          warnings,
+        ...bothPreviews((lang) => ({
+          action: action[lang],
+          facts: [...documentFacts(doc, lang), ...emailFacts(state, attachment, kind, lang)],
+          warnings: warnings.map((warning) => warning[lang]),
           irreversible: true,
-        },
+        })),
         state,
       };
     },

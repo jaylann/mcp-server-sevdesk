@@ -42,6 +42,7 @@ import {
   subtract,
   toDecimalString,
 } from "../money.js";
+import { type Phrase, phrase, type PreviewLanguage } from "../preview-text.js";
 import { bookingAmountSign } from "../vouchers.js";
 import {
   documentRef,
@@ -51,7 +52,7 @@ import {
   type PaymentKind,
   statusOf,
 } from "./documents.js";
-import { formatMoney } from "./preview.js";
+import { formatMoney, KIND_DE } from "./preview.js";
 import { hasPayments, refuse } from "./transitions.js";
 
 /** Readable payment types and the sevDesk booking types behind them. */
@@ -94,11 +95,14 @@ export function paymentTypeOf(bookingType: BookingType): PaymentType {
 }
 
 /** What a settling payment with a difference does with it, for warnings. */
-const DIFFERENCE_WORDING: Readonly<Record<Exclude<PaymentType, "payment">, string>> = {
-  cash_discount: "as cash discount (Skonto)",
-  bank_fees: "as bank fees (Geldverkehrskosten)",
-  other_difference: "as a difference for other reasons",
-  reminder_charges: "as reminder charges (Mahngebühren)",
+const DIFFERENCE_WORDING: Readonly<Record<Exclude<PaymentType, "payment">, Phrase>> = {
+  cash_discount: phrase("as cash discount (Skonto)", "als Skonto"),
+  bank_fees: phrase("as bank fees (Geldverkehrskosten)", "als Kosten des Geldverkehrs"),
+  other_difference: phrase(
+    "as a difference for other reasons",
+    "als Differenz aus sonstigen Gründen",
+  ),
+  reminder_charges: phrase("as reminder charges (Mahngebühren)", "als Mahngebühren"),
 };
 
 const ACCOUNT_ARCHIVED = 0;
@@ -214,7 +218,7 @@ export function checkPaymentAccount(
   doc: LifecycleDocument<PaymentKind>,
   account: BankAccountDto,
   hasTransaction: boolean,
-): string[] {
+): Phrase[] {
   const accountRef = `Check account ${String(account.id)}`;
   if (account.status?.code === ACCOUNT_ARCHIVED) {
     refuse(`${accountRef} is archived; book on an active account (sevdesk_bank_accounts_list).`);
@@ -235,14 +239,24 @@ export function checkPaymentAccount(
   }
   if (account.type === "unknown") {
     return [
-      "sevDesk creates a new transaction for this payment on offline and cash accounts; it may " +
-        "refuse an account of another type.",
+      phrase(
+        "sevDesk creates a new transaction for this payment on offline and cash accounts; it " +
+          "may refuse an account of another type.",
+        "Auf Offline- und Kassenkonten legt sevDesk für diese Zahlung einen neuen Umsatz an; " +
+          "bei einem Konto anderen Typs kann sevDesk ablehnen.",
+      ),
     ];
   }
   return [
-    `sevDesk creates a new bank transaction for this payment on account ${String(account.id)}. ` +
-      `If the payment is already in sevDesk as an imported transaction, pass its transactionId ` +
-      `instead, or it is counted twice.`,
+    phrase(
+      `sevDesk creates a new bank transaction for this payment on account ` +
+        `${String(account.id)}. If the payment is already in sevDesk as an imported ` +
+        `transaction, pass its transactionId instead, or it is counted twice.`,
+      `sevDesk legt für diese Zahlung einen neuen Kontoumsatz auf dem Konto ` +
+        `${String(account.id)} an. Ist die Zahlung bereits als importierter Umsatz in sevDesk ` +
+        `vorhanden, muss stattdessen dieser Umsatz verknüpft werden (transactionId), sonst ` +
+        `wird sie doppelt gezählt.`,
+    ),
   ];
 }
 
@@ -264,8 +278,9 @@ export function checkPaymentTransaction(
   transaction: TransactionDto,
   amount: string,
   assigned = "0",
-): string[] {
+): Phrase[] {
   const ref = `Bank transaction ${String(transaction.id)}`;
+  const refDe = `Kontoumsatz ${String(transaction.id)}`;
   if (transaction.account?.id !== accountId) {
     const owner =
       transaction.account === undefined
@@ -294,7 +309,8 @@ export function checkPaymentTransaction(
     refuse(`${ref} is not ${wanted}, which a payment of ${documentRef(doc)} needs.`);
   }
   const total = absolute(transaction.amount.amount);
-  const show = (value: DecimalLike): string => formatMoney(money(value, doc.currency));
+  const show = (value: DecimalLike, lang: PreviewLanguage = "en"): string =>
+    formatMoney(money(value, doc.currency), lang);
   if (compare(assigned, 0) > 0) {
     const free = toDecimalString(subtract(total, assigned));
     const marked =
@@ -309,13 +325,24 @@ export function checkPaymentTransaction(
       );
     }
     const rest = toDecimalString(subtract(free, amount));
+    const markedDe =
+      status === TRANSACTION_PARTLY
+        ? `${refDe} ist teilweise zugeordnet (Status 200): Sein Buchungsprotokoll ordnet`
+        : `${refDe} gilt als ungebucht (Status 100), sein Buchungsprotokoll ordnet aber bereits`;
     return [
-      `${marked} ` +
-        `${show(assigned)} of its ${show(total)} to other documents; only ${show(free)} is ` +
-        "treated as free. The payment is sent as a partial booking (N)" +
-        (compare(rest, 0) > 0
-          ? `, and ${show(rest)} of the transaction stays assignable to other documents.`
-          : "."),
+      phrase(
+        `${marked} ` +
+          `${show(assigned)} of its ${show(total)} to other documents; only ${show(free)} is ` +
+          "treated as free. The payment is sent as a partial booking (N)" +
+          (compare(rest, 0) > 0
+            ? `, and ${show(rest)} of the transaction stays assignable to other documents.`
+            : "."),
+        `${markedDe} ${show(assigned, "de")} von ${show(total, "de")} anderen Dokumenten zu; ` +
+          `nur ${show(free, "de")} gelten als frei. Die Zahlung wird als Teilbuchung (N) gesendet` +
+          (compare(rest, 0) > 0
+            ? `, und ${show(rest, "de")} des Umsatzes bleiben für andere Dokumente zuordenbar.`
+            : "."),
+      ),
     ];
   }
   const available = total;
@@ -326,11 +353,17 @@ export function checkPaymentTransaction(
     );
   }
   if (compare(available, amount) > 0) {
-    const rest = formatMoney(money(subtract(available, amount), doc.currency));
+    const rest = subtract(available, amount);
     return [
-      `${ref} is ${formatMoney(money(available, doc.currency))}; the payment uses part of it, so ` +
-        `it is sent as a partial booking (N), and ${rest} of the transaction stays assignable ` +
-        `to other documents (sevDesk marks it partly assigned, status 200).`,
+      phrase(
+        `${ref} is ${show(available)}; the payment uses part of it, so it is sent as a partial ` +
+          `booking (N), and ${show(rest)} of the transaction stays assignable to other ` +
+          `documents (sevDesk marks it partly assigned, status 200).`,
+        `${refDe} beträgt ${show(available, "de")}; die Zahlung nutzt nur einen Teil davon und ` +
+          `wird deshalb als Teilbuchung (N) gesendet. ${show(rest, "de")} des Umsatzes bleiben ` +
+          `für andere Dokumente zuordenbar (sevDesk markiert ihn als teilweise zugeordnet, ` +
+          `Status 200).`,
+      ),
     ];
   }
   return [];
@@ -395,7 +428,8 @@ export interface PaymentPlan {
   /** Amount minus open amount for settling bookings with a difference (negative = less). */
   readonly difference: Money | undefined;
   readonly payload: BookAmountPayload;
-  readonly warnings: readonly string[];
+  /** Consequences for the preview, in both languages. */
+  readonly warnings: readonly Phrase[];
 }
 
 /**
@@ -483,24 +517,38 @@ export function planPayment(
   });
 
   const differenceValue = subtract(amount, open.open);
-  const warnings: string[] = [];
+  const warnings: Phrase[] = [];
   let remaining: Money | undefined;
   let difference: Money | undefined;
   if (documentType === "N") {
     remaining = money(negate(differenceValue), doc.currency);
     warnings.push(
-      `This is a partial payment: ${formatMoney(remaining)} stays open and the ${
-        KINDS[doc.kind].noun
-      } becomes partially paid (750).`,
+      phrase(
+        `This is a partial payment: ${formatMoney(remaining)} stays open and the ${
+          KINDS[doc.kind].noun
+        } becomes partially paid (750).`,
+        `Das ist eine Teilzahlung: ${formatMoney(remaining, "de")} bleiben offen, und ` +
+          `${KIND_DE[doc.kind].nominative} gilt danach als teilweise bezahlt (750).`,
+      ),
     );
   } else if (documentType !== "FULL_PAYMENT") {
     difference = money(differenceValue, doc.currency);
     const wording = DIFFERENCE_WORDING[request.paymentType as Exclude<PaymentType, "payment">];
-    const size = formatMoney(money(absolute(differenceValue), doc.currency));
+    const size = money(absolute(differenceValue), doc.currency);
     warnings.push(
       compare(differenceValue, 0) < 0
-        ? `The document is marked as fully paid; the missing ${size} is written off ${wording}.`
-        : `The document is marked as fully paid; the extra ${size} is booked ${wording}.`,
+        ? phrase(
+            `The document is marked as fully paid; the missing ${formatMoney(size)} is written ` +
+              `off ${wording.en}.`,
+            `Das Dokument gilt danach als vollständig bezahlt; die fehlenden ` +
+              `${formatMoney(size, "de")} werden ${wording.de} ausgebucht.`,
+          )
+        : phrase(
+            `The document is marked as fully paid; the extra ${formatMoney(size)} is booked ` +
+              `${wording.en}.`,
+            `Das Dokument gilt danach als vollständig bezahlt; die zusätzlichen ` +
+              `${formatMoney(size, "de")} werden ${wording.de} gebucht.`,
+          ),
     );
   }
   return {

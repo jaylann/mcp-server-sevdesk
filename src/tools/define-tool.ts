@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { isTier, type Tier, TIERS } from "../safety/tiers.js";
+import { isTier, type Tier, TIERS, type WriteTier } from "../safety/tiers.js";
 import { isToolsetName, TOOLSETS } from "./toolsets.js";
 import type {
   ReadToolDefinition,
@@ -79,11 +79,16 @@ export function defineTool<I extends ToolInputSchema, O extends ToolOutputSchema
 
 /**
  * Declares a write tool (`write`, `commit` or `external` tier: `prepare` + `execute`, input with
- * `dryRunInputShape`) and validates it like {@link defineTool}.
+ * `dryRunInputShape`) and validates it like {@link defineTool}. The tier is part of the type: a
+ * `commit` or `external` tool does not compile unless its plan carries the German preview
+ * (`previewDe`), because a human reads it on the approval page.
  */
-export function defineWriteTool<I extends ToolInputSchema, O extends ToolOutputSchema, S>(
-  definition: WriteToolDefinition<I, O, S>,
-): WriteToolDefinition<I, O, S> {
+export function defineWriteTool<
+  I extends ToolInputSchema,
+  O extends ToolOutputSchema,
+  S,
+  const T extends WriteTier,
+>(definition: WriteToolDefinition<I, O, S, T>): WriteToolDefinition<I, O, S, T> {
   return checked(definition);
 }
 

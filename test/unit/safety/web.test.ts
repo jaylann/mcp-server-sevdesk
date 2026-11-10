@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { pageContext } from "../../../src/pages/context.js";
 import {
   clearCookie,
   FormError,
@@ -13,6 +14,7 @@ import {
 } from "../../../src/safety/web.js";
 
 const ORIGIN = "https://mcp.example.com";
+const PAGE = pageContext(undefined, ORIGIN);
 
 function post(headers: Record<string, string>, body?: string): Request {
   return new Request(`${ORIGIN}/approvals/x`, { method: "POST", headers, body: body ?? null });
@@ -97,21 +99,32 @@ describe("readForm", () => {
 
 describe("htmlResponse", () => {
   it("sets the page security headers", () => {
-    const response = htmlResponse("<p>x</p>", { status: 200, nonce: "n1" });
+    const response = htmlResponse("<p>x</p>", { status: 200, nonce: "n1", page: PAGE });
     expect(response.status).toBe(200);
     expect(response.headers.get("content-security-policy")).toBe(
-      "default-src 'none'; style-src 'nonce-n1'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+      "default-src 'none'; style-src 'nonce-n1'; font-src https://mcp.example.com/assets/; " +
+        "img-src https://mcp.example.com/assets/; form-action 'self'; frame-ancestors 'none'; " +
+        "base-uri 'none'",
     );
     expect(response.headers.get("x-frame-options")).toBe("DENY");
     expect(response.headers.get("referrer-policy")).toBe("same-origin");
     expect(response.headers.get("cache-control")).toBe("no-store, no-transform");
     expect(response.headers.get("cross-origin-opener-policy")).toBe("same-origin");
+    expect(response.headers.get("content-language")).toBe("en");
+    expect(response.headers.get("vary")).toBe("Accept-Language");
+  });
+
+  it("names the language the page was rendered in", () => {
+    const german = pageContext("de-DE,de;q=0.9,en;q=0.8", ORIGIN);
+    const response = htmlResponse("", { status: 200, nonce: "n", page: german });
+    expect(response.headers.get("content-language")).toBe("de");
   });
 
   it("adds form-action origins and can leave the opener alone", () => {
     const response = htmlResponse("", {
       status: 200,
       nonce: "n",
+      page: PAGE,
       formActions: ["https://claude.ai"],
       isolateOpener: false,
       headers: { "Set-Cookie": "a=b" },

@@ -64,7 +64,7 @@ async function setup(storeOptions: Partial<TransferStoreOptions> = {}) {
   stores.push(store);
   const login: InboxLogin = (token) => {
     const accountId = ACCOUNTS[token];
-    return Promise.resolve(accountId === undefined ? { error: "Not accepted." } : { accountId });
+    return Promise.resolve(accountId === undefined ? { error: "refused" } : { accountId });
   };
   const session = createBrowserSession({ sessions, keys, origin: ORIGIN, login, now: clock.now });
   const transfer = createTransferRoutes({ store, session, origin: ORIGIN });
@@ -201,12 +201,13 @@ describe("transfer routes: declaration", () => {
     expect(FILES_RATE).toEqual({ name: "files", perMinute: 60 });
     expect(UPLOAD_RATE_MINUTE).toEqual({ name: "uploads", perMinute: 10 });
     expect(UPLOAD_RATE_HOUR).toEqual({ name: "uploads-hour", perMinute: 1, burst: 60 });
-    const busy = transfer[0]?.bodySlots?.busy?.("route");
+    const head = new Request(`${ORIGIN}/uploads/x`, { method: "POST" });
+    const busy = transfer[0]?.bodySlots?.busy?.("route", head);
     expect(busy?.status).toBe(503);
     expect(busy?.headers.get("content-type")).toBe("text/html; charset=utf-8");
     expect(busy?.headers.get("retry-after")).toBe("10");
     expect(await busy?.text()).toContain("Other uploads are being received");
-    const mine = transfer[0]?.bodySlots?.busy?.("key");
+    const mine = transfer[0]?.bodySlots?.busy?.("key", head);
     expect(mine?.status).toBe(503);
     expect(await mine?.text()).toContain("Another upload of this sevDesk account");
   });
@@ -236,7 +237,7 @@ describe("transfer routes: upload page", () => {
     const form = await browser.get(path);
     expect(form.status).toBe(200);
     expect(form.body).toContain("<h1>Upload a receipt</h1>");
-    expect(form.body).toContain("sevDesk account\n<strong>1001</strong>");
+    expect(form.body).toContain("sevDesk account <strong>1001</strong>");
     expect(form.body).toContain("<dd>PDF, PNG or JPEG (checked by content)</dd>");
     expect(form.body).toContain("<dd>20 MB</dd>");
     expect(form.body).toContain("<dd>2026-11-09 12:15 UTC</dd>");
@@ -272,6 +273,25 @@ describe("transfer routes: upload page", () => {
     const ownPage = await other.get(`/uploads/${own.id}`);
     expect(ownPage.status).toBe(200);
     expect(ownPage.body).toContain("<strong>2002</strong>");
+  });
+
+  it("answers a German browser in German, with the size limit in the text", async () => {
+    const env = await setup();
+    const browser = await signedIn(env);
+    browser.language = "de-DE,de;q=0.9,en;q=0.8";
+
+    const missing = await browser.get(`/uploads/${"u".repeat(43)}`);
+    expect(missing.status).toBe(404);
+    expect(missing.headers.get("content-language")).toBe("de");
+    expect(missing.body).toContain('<html lang="de">');
+    expect(missing.body).toContain("<h1>Upload-Seite nicht gefunden</h1>");
+
+    const head = new Request(`${ORIGIN}/uploads/x`, {
+      method: "POST",
+      headers: { "Accept-Language": "de" },
+    });
+    const busy = env.transfer[0]?.bodySlots?.busy?.("key", head);
+    expect(await busy?.text()).toContain("ein anderer Upload dieses sevDesk-Kontos");
   });
 
   it("answers 410 for an expired upload page, on GET and POST", async () => {

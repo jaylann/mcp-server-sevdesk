@@ -40,6 +40,7 @@ import {
 import { cleanText } from "../common.js";
 import { parseContactRecord, toContactDto } from "../contacts.js";
 import { add, compare, decimal, format } from "../money.js";
+import { dateText, type Phrase, phrase, type PreviewLanguage } from "../preview-text.js";
 import {
   loadReceiptGuidance,
   type ReceiptGuide,
@@ -277,9 +278,12 @@ export function expectedVoucherTotals(
 
 /** What the account checks found, for the preview. */
 export interface AccountCheck {
-  readonly warnings: readonly string[];
+  /** In both preview languages; a draft preview (English only) takes `.en`. */
+  readonly warnings: readonly Phrase[];
   /** Preview label per account id ("6815 Bürobedarf"; contains sevDesk text, facts only). */
   readonly labels: ReadonlyMap<number, string>;
+  /** The same labels as the German preview writes them ("… (Konto 4266)"). */
+  readonly labelsDe: ReadonlyMap<number, string>;
 }
 
 /**
@@ -299,7 +303,7 @@ export async function checkVoucherAccounts(
 ): Promise<AccountCheck> {
   const cacheOptions = { cacheOwner: options.cacheOwner, signal: options.signal };
   const problems: string[] = [];
-  const warnings: string[] = [];
+  const warnings: Phrase[] = [];
   for (const [index, position] of positions.entries()) {
     const check = await validateAccountTaxRule(
       client,
@@ -315,7 +319,7 @@ export async function checkVoucherAccounts(
       problems.push(`Position ${String(index + 1)}: ${problem.message}`);
     }
     for (const warning of check.warnings) {
-      if (!warnings.includes(warning)) warnings.push(warning);
+      if (!warnings.some((known) => known.en === warning.en)) warnings.push(warning);
     }
   }
   if (problems.length > 0) {
@@ -328,22 +332,34 @@ export async function checkVoucherAccounts(
   const guides = (await loadReceiptGuidance(client, { kind: "all" }, cacheOptions)).guides;
   const accounts = await accountsOrNone(client, options);
   const labels = new Map<number, string>();
+  const labelsDe = new Map<number, string>();
   for (const position of positions) {
     const accountId = position.accountDatevId;
     if (labels.has(accountId)) continue;
     labels.set(accountId, voucherAccountLabel(accounts, guides, accountId));
+    labelsDe.set(accountId, voucherAccountLabel(accounts, guides, accountId, "de"));
     const account = accounts === undefined ? undefined : findAccountDatev(accounts, accountId);
     if (account === undefined) continue;
     if (!account.active) {
-      warnings.push(`Account ${String(accountId)} is deactivated in sevDesk's chart of accounts.`);
+      warnings.push(
+        phrase(
+          `Account ${String(accountId)} is deactivated in sevDesk's chart of accounts.`,
+          `Das Konto ${String(accountId)} ist im Kontenplan von sevDesk deaktiviert.`,
+        ),
+      );
     } else if (!isValidOn(account, voucherDate)) {
       warnings.push(
-        `Account ${String(accountId)} is not valid on the voucher date ${voucherDate} in ` +
-          "sevDesk's chart of accounts; sevDesk may refuse to book it.",
+        phrase(
+          `Account ${String(accountId)} is not valid on the voucher date ${voucherDate} in ` +
+            "sevDesk's chart of accounts; sevDesk may refuse to book it.",
+          `Das Konto ${String(accountId)} ist im Kontenplan von sevDesk am Belegdatum ` +
+            `${dateText(voucherDate, "de")} nicht gültig; sevDesk lehnt die Buchung ` +
+            "möglicherweise ab.",
+        ),
       );
     }
   }
-  return { warnings, labels };
+  return { warnings, labels, labelsDe };
 }
 
 /** The AccountDatev list, or `undefined` when the undocumented endpoint cannot be read. */
@@ -375,6 +391,7 @@ export function voucherAccountLabel(
   accounts: AccountDatevList | undefined,
   guides: readonly ReceiptGuide[],
   accountId: number,
+  lang: PreviewLanguage = "en",
 ): string {
   const account = accounts === undefined ? undefined : findAccountDatev(accounts, accountId);
   const guide = guides.find((entry) => entry.accountDatevId === accountId);
@@ -382,7 +399,8 @@ export function voucherAccountLabel(
   const name = account?.name ?? guide?.accountName;
   const digits = number !== undefined && /^\d{1,12}$/.test(number) ? number : undefined;
   const text = [digits, name].filter((part): part is string => part !== undefined).join(" ");
-  return text === "" ? `account ${String(accountId)}` : `${text} (account ${String(accountId)})`;
+  const word = lang === "de" ? "Konto" : "account";
+  return text === "" ? `${word} ${String(accountId)}` : `${text} (${word} ${String(accountId)})`;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -417,11 +435,15 @@ export async function loadSupplierName(
 }
 
 /** The supplier as a preview value: "Bürohaus GmbH (contact 1003)" or "Bürohaus (no contact)". */
-export function supplierText(name: string | undefined, contactId: number | undefined): string {
-  const shown = cleanText(name, 200) ?? "(unnamed)";
-  return contactId === undefined
-    ? `${shown} (no contact)`
-    : `${shown} (contact ${String(contactId)})`;
+export function supplierText(
+  name: string | undefined,
+  contactId: number | undefined,
+  lang: PreviewLanguage = "en",
+): string {
+  const german = lang === "de";
+  const shown = cleanText(name, 200) ?? (german ? "(ohne Namen)" : "(unnamed)");
+  if (contactId === undefined) return `${shown} (${german ? "kein Kontakt" : "no contact"})`;
+  return `${shown} (${german ? "Kontakt" : "contact"} ${String(contactId)})`;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -546,13 +568,19 @@ export function receiptText(file: ReceiptFile): string {
 // ---------------------------------------------------------------------------------------------
 
 /** The voucher's direction in a preview. */
-export function kindText(kind: VoucherKind): string {
+export function kindText(kind: VoucherKind, lang: PreviewLanguage = "en"): string {
+  if (lang === "de") {
+    return kind === "expense"
+      ? "Ausgabe: Die Zahlung geht vom Bankkonto ab"
+      : "Einnahme: Die Zahlung geht ein";
+  }
   return kind === "expense"
     ? "expense (Ausgabe): its payment leaves the bank account"
     : "revenue (Einnahme): its payment comes in";
 }
 
 /** The party's label: the supplier of an expense, the customer of revenue. */
-export function partyLabel(kind: VoucherKind): string {
+export function partyLabel(kind: VoucherKind, lang: PreviewLanguage = "en"): string {
+  if (lang === "de") return kind === "expense" ? "Lieferant" : "Kunde";
   return kind === "expense" ? "Supplier (Lieferant)" : "Customer (Kunde)";
 }

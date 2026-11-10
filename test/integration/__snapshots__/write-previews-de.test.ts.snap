@@ -1,0 +1,362 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`German previews > book a bank transaction to an invoice: says the same in German 1`] = `
+"Kontoumsatz 5101 (177,33 EUR) zuordnen zu Rechnung RE-1001: insgesamt 177,33 EUR.
+! Der Status jedes Dokuments ändert sich (siehe die einzelnen Zuordnungen). Rückgängig machen lässt sich das mit sevdesk_transaction_reset: Das setzt diese Dokumente auf offen zurück und entfernt damit alle ihre Zahlungen.
+(umkehrbar)
+Kontoumsatz: ID 5101, 177,33 EUR (Eingang)
+Wertstellung: 05.01.2026
+Zahlungskonto: Geschäftskonto Musterbank (ID 4002)
+Status: Erstellt (100)
+Auftraggeber/Empfänger: Musterfirma GmbH
+Verwendungszweck: RE-1001
+Vorher nicht zugeordnet: 177,33 EUR
+Buchungsdatum: 05.01.2026
+Zuordnung 1: Rechnung RE-1001: 177,33 EUR (vollständige Zahlung, Betrag automatisch gewählt); offen 177,33 EUR; Status Offen / fällig (200) → bezahlt (1000); Musterfirma GmbH
+Danach nicht zugeordnet: 0,00 EUR (Umsatz vollständig gebucht, Status 400)"
+`;
+
+exports[`German previews > book a credit note payout on the offline account: says the same in German 1`] = `
+"Auszahlung von 23,80 EUR auf Gutschrift GU-1001 buchen (vollständige Zahlung (FULL_PAYMENT)), über das Zahlungskonto Basiskonto.
+! sevDesk legt für diese Zahlung einen neuen Kontoumsatz auf dem Konto 4001 an. Ist die Zahlung bereits als importierter Umsatz in sevDesk vorhanden, muss stattdessen dieser Umsatz verknüpft werden (transactionId), sonst wird sie doppelt gezählt.
+(umkehrbar)
+Gutschrift: GU-1001 (ID 2001)
+Status: Offen (200)
+Kunde: Musterfirma GmbH (Kontakt 1001)
+Datum: 22.10.2026
+Netto: 20,00 EUR
+Umsatzsteuer: 3,80 EUR
+Brutto: 23,80 EUR
+Offener Betrag: 23,80 EUR
+Auszahlung: 23,80 EUR, vollständige Zahlung (FULL_PAYMENT)
+Buchungsdatum: 02.11.2026
+Zahlungskonto: Basiskonto (ID 4001, EUR, Verrechnungskonto)
+Offen nach der Buchung: 0,00 EUR (ausgeglichen)
+An sevDesk gesendet als: Betrag -23,8 (Geld verlässt das Konto)"
+`;
+
+exports[`German previews > book an invoice payment linked to a bank transaction: says the same in German 1`] = `
+"Zahlungseingang von 177,33 EUR auf Rechnung RE-1001 buchen (vollständige Zahlung (FULL_PAYMENT)), über das Zahlungskonto Geschäftskonto Musterbank, verknüpft mit dem Kontoumsatz 5101.
+(umkehrbar)
+Rechnung: RE-1001 (ID 1001)
+Typ: Rechnung (RE)
+Status: Offen / fällig (200)
+Kunde: Musterfirma GmbH (Kontakt 1001)
+Datum: 01.10.2026
+Fällig am: 15.10.2026
+Netto: 149,02 EUR
+Umsatzsteuer: 28,31 EUR
+Brutto: 177,33 EUR
+Bisher bezahlt: 0,00 EUR
+Offener Betrag: 177,33 EUR
+Zahlungseingang: 177,33 EUR, vollständige Zahlung (FULL_PAYMENT)
+Buchungsdatum: 02.11.2026
+Zahlungskonto: Geschäftskonto Musterbank (ID 4002, EUR, Bankkonto)
+Verknüpfter Kontoumsatz: ID 5101, 177,33 EUR, 05.01.2026, Musterfirma GmbH, RE-1001
+Offen nach der Buchung: 0,00 EUR (ausgeglichen)"
+`;
+
+exports[`German previews > book the payment of an expense voucher: says the same in German 1`] = `
+"Auszahlung von 298,10 EUR auf Beleg 2001 buchen (vollständige Zahlung (FULL_PAYMENT)), über das Zahlungskonto Basiskonto.
+! sevDesk legt für diese Zahlung einen neuen Kontoumsatz auf dem Konto 4001 an. Ist die Zahlung bereits als importierter Umsatz in sevDesk vorhanden, muss stattdessen dieser Umsatz verknüpft werden (transactionId), sonst wird sie doppelt gezählt.
+(umkehrbar)
+Beleg: RE-2026-0042 (ID 2001)
+Typ: Beleg (VOU)
+Status: Offen / fällig (100)
+Art: Ausgabe
+Lieferant: Beispiel Lieferant AG (Kontakt 1003)
+Datum: 12.01.2026
+Fällig am: 26.01.2026
+Netto: 250,50 EUR
+Umsatzsteuer: 47,60 EUR
+Brutto: 298,10 EUR
+Bisher bezahlt: 0,00 EUR
+Offener Betrag: 298,10 EUR
+Auszahlung: 298,10 EUR, vollständige Zahlung (FULL_PAYMENT)
+Buchungsdatum: 02.11.2026
+Zahlungskonto: Basiskonto (ID 4001, EUR, Verrechnungskonto)
+Offen nach der Buchung: 0,00 EUR (ausgeglichen)
+An sevDesk gesendet als: Betrag -298,1 (Geld verlässt das Konto)"
+`;
+
+exports[`German previews > cancel an open, unpaid invoice: says the same in German 1`] = `
+"Rechnung RE-1001 stornieren: sevDesk erstellt eine Stornorechnung (SR) über -177,33 EUR, die sie ausgleicht.
+! sevDesk erstellt eine neue Stornorechnung mit denselben Beträgen mit umgekehrtem Vorzeichen, die bereits als bezahlt markiert ist. Beide Rechnungen bleiben in der Buchhaltung; das Storno lässt sich nicht rückgängig machen.
+! Die ursprüngliche Rechnung zeigt danach den Status „Bezahlt“ (1000), obwohl nichts bezahlt wurde: sevDesk kennt keinen Status „Storniert“.
+! Hat der Kunde die Rechnung bereits erhalten, senden Sie ihm auch die Stornorechnung.
+(nicht umkehrbar)
+Rechnung: RE-1001 (ID 1001)
+Typ: Rechnung (RE)
+Status: Offen / fällig (200)
+Kunde: Musterfirma GmbH (Kontakt 1001)
+Datum: 01.10.2026
+Fällig am: 15.10.2026
+Netto: 149,02 EUR
+Umsatzsteuer: 28,31 EUR
+Brutto: 177,33 EUR
+Bisher bezahlt: 0,00 EUR"
+`;
+
+exports[`German previews > delete a draft voucher: says the same in German 1`] = `
+"Beleg 2101 (Entwurf) aus sevDesk löschen.
+! Der Entwurf und alle seine Positionen werden aus sevDesk gelöscht; das lässt sich nicht rückgängig machen.
+(nicht umkehrbar)
+Beleg: ER-2026-0815 (ID 2101)
+Typ: Beleg (VOU)
+Status: Entwurf (50)
+Art: Ausgabe
+Lieferant: Musterfirma GmbH (Kontakt 1001)
+Datum: 02.11.2026
+Fällig am: 16.11.2026
+Netto: 100,00 EUR
+Umsatzsteuer: 19,00 EUR
+Brutto: 119,00 EUR
+Bisher bezahlt: 0,00 EUR"
+`;
+
+exports[`German previews > email an open credit note: says the same in German 1`] = `
+"Gutschrift GU-1001 über sevDesk per E-Mail senden an kunde@example.com.
+! Die E-Mail geht sofort aus sevDesk an alle aufgeführten Empfänger und lässt sich nicht zurückholen.
+(nicht umkehrbar)
+Gutschrift: GU-1001 (ID 2001)
+Status: Offen (200)
+Kunde: Musterfirma GmbH (Kontakt 1001)
+Datum: 22.10.2026
+Netto: 20,00 EUR
+Umsatzsteuer: 3,80 EUR
+Brutto: 23,80 EUR
+An: kunde@example.com
+Anhang: Gutschrift als PDF
+Betreff: Ihre Unterlagen
+Text: Guten Tag, anbei."
+`;
+
+exports[`German previews > email an open invoice: says the same in German 1`] = `
+"Rechnung RE-1001 über sevDesk per E-Mail senden an kunde@example.com.
+! Die E-Mail geht sofort aus sevDesk an alle aufgeführten Empfänger und lässt sich nicht zurückholen.
+(nicht umkehrbar)
+Rechnung: RE-1001 (ID 1001)
+Typ: Rechnung (RE)
+Status: Offen / fällig (200)
+Kunde: Musterfirma GmbH (Kontakt 1001)
+Datum: 01.10.2026
+Fällig am: 15.10.2026
+Netto: 149,02 EUR
+Umsatzsteuer: 28,31 EUR
+Brutto: 177,33 EUR
+Bisher bezahlt: 0,00 EUR
+An: kunde@example.com
+Anhang: Rechnung als PDF
+Betreff: Ihre Unterlagen
+Text: Guten Tag, anbei."
+`;
+
+exports[`German previews > email an order: says the same in German 1`] = `
+"Auftrag AB-1002 über sevDesk per E-Mail senden an kunde@example.com.
+! Die E-Mail geht sofort aus sevDesk an alle aufgeführten Empfänger und lässt sich nicht zurückholen.
+(nicht umkehrbar)
+Auftrag: AB-1002 (ID 3002)
+Typ: Auftragsbestätigung (AB)
+Status: Angenommen (500)
+Kunde: Musterfirma GmbH (Kontakt 1001)
+Datum: 20.09.2026
+Netto: 144,02 EUR
+Umsatzsteuer: 27,36 EUR
+Brutto: 171,38 EUR
+An: kunde@example.com
+Anhang: Auftrag als PDF
+Betreff: Ihre Unterlagen
+Text: Guten Tag, anbei."
+`;
+
+exports[`German previews > enshrine an open credit note: says the same in German 1`] = `
+"Gutschrift GU-1001 festschreiben (GoBD): dauerhaft sperren.
+! Nicht umkehrbar (GoBD): Die Gutschrift kann nie wieder geändert, gelöscht oder auf Entwurf zurückgesetzt werden; Korrekturen sind dann nur noch mit einem neuen Dokument möglich.
+! Zahlungen können weiterhin darauf gebucht werden; sie später wieder zu lösen ist nur möglich, solange ihre Kontoumsätze nicht festgeschrieben sind.
+(nicht umkehrbar)
+Gutschrift: GU-1001 (ID 2001)
+Status: Offen (200)
+Kunde: Musterfirma GmbH (Kontakt 1001)
+Datum: 22.10.2026
+Netto: 20,00 EUR
+Umsatzsteuer: 3,80 EUR
+Brutto: 23,80 EUR"
+`;
+
+exports[`German previews > enshrine an open invoice: says the same in German 1`] = `
+"Rechnung RE-1001 festschreiben (GoBD): dauerhaft sperren.
+! Nicht umkehrbar (GoBD): Die Rechnung kann nie wieder geändert, gelöscht oder auf Entwurf zurückgesetzt werden; Korrekturen sind dann nur noch mit einem Storno oder einer Gutschrift möglich.
+! Zahlungen können weiterhin darauf gebucht werden; sie später wieder zu lösen ist nur möglich, solange ihre Kontoumsätze nicht festgeschrieben sind.
+(nicht umkehrbar)
+Rechnung: RE-1001 (ID 1001)
+Typ: Rechnung (RE)
+Status: Offen / fällig (200)
+Kunde: Musterfirma GmbH (Kontakt 1001)
+Datum: 01.10.2026
+Fällig am: 15.10.2026
+Netto: 149,02 EUR
+Umsatzsteuer: 28,31 EUR
+Brutto: 177,33 EUR
+Bisher bezahlt: 0,00 EUR"
+`;
+
+exports[`German previews > enshrine an open voucher: says the same in German 1`] = `
+"Beleg 2001 festschreiben (GoBD): dauerhaft sperren.
+! Nicht umkehrbar (GoBD): Der Beleg kann nie wieder geändert, gelöscht oder auf Entwurf zurückgesetzt werden; Korrekturen sind dann nur noch mit einem neuen Dokument möglich.
+! Zahlungen können weiterhin darauf gebucht werden; sie später wieder zu lösen ist nur möglich, solange ihre Kontoumsätze nicht festgeschrieben sind.
+(nicht umkehrbar)
+Beleg: RE-2026-0042 (ID 2001)
+Typ: Beleg (VOU)
+Status: Offen / fällig (100)
+Art: Ausgabe
+Lieferant: Beispiel Lieferant AG (Kontakt 1003)
+Datum: 12.01.2026
+Fällig am: 26.01.2026
+Netto: 250,50 EUR
+Umsatzsteuer: 47,60 EUR
+Brutto: 298,10 EUR
+Bisher bezahlt: 0,00 EUR"
+`;
+
+exports[`German previews > finalize a draft credit note: says the same in German 1`] = `
+"Gutschrift GU-1101 fertigstellen: Entwurf → offen, als Versandart wird „Post (VP)“ vermerkt.
+! Die Gutschrift wird rechtlich bindend: sevDesk bucht sie unter der Nummer, die der Entwurf trägt. Danach lässt sie sich nur noch durch Zurücksetzen auf Entwurf (solange sie nicht festgeschrieben ist) oder ein neues Dokument korrigieren.
+! sevDesk sendet nichts an den Kunden: Es wird nur vermerkt, wie das Dokument versendet wurde. Für den Versand per E-Mail über sevDesk gibt es stattdessen sevdesk_credit_note_send_email.
+! Schreibt das sevDesk-Konto Dokumente beim Abschließen automatisch fest (Einstellung „Automatische Festschreibung“), wird das Dokument dabei auch festgeschrieben und kann nie wieder geändert oder zurückgesetzt werden.
+(umkehrbar)
+Gutschrift: GU-1101 (ID 2001)
+Status: Entwurf (100)
+Kunde: Musterfirma GmbH (Kontakt 1001)
+Datum: 22.10.2026
+Netto: 20,00 EUR
+Umsatzsteuer: 3,80 EUR
+Brutto: 23,80 EUR
+Vermerkte Versandart: Post (VP)"
+`;
+
+exports[`German previews > finalize a draft invoice: says the same in German 1`] = `
+"Rechnung 1001 (noch ohne Nummer) fertigstellen: Entwurf → offen, als Versandart wird „PDF-Download (VPDF)“ vermerkt.
+! Die Rechnung wird rechtlich bindend: sevDesk vergibt ihre endgültige Nummer und bucht sie. Danach lässt sie sich nur noch durch Zurücksetzen auf Entwurf (solange sie nicht festgeschrieben ist), ein Storno oder eine Gutschrift korrigieren.
+! sevDesk sendet nichts an den Kunden: Es wird nur vermerkt, wie das Dokument versendet wurde. Für den Versand per E-Mail über sevDesk gibt es stattdessen sevdesk_invoice_send_email.
+! Schreibt das sevDesk-Konto Dokumente beim Abschließen automatisch fest (Einstellung „Automatische Festschreibung“), wird das Dokument dabei auch festgeschrieben und kann nie wieder geändert oder zurückgesetzt werden.
+(umkehrbar)
+Rechnung: ID 1001, noch ohne Nummer
+Typ: Rechnung (RE)
+Status: Entwurf (100)
+Kunde: Musterfirma GmbH (Kontakt 1001)
+Datum: 01.10.2026
+Fällig am: 15.10.2026
+Netto: 149,02 EUR
+Umsatzsteuer: 28,31 EUR
+Brutto: 177,33 EUR
+Bisher bezahlt: 0,00 EUR
+Vermerkte Versandart: PDF-Download (VPDF)"
+`;
+
+exports[`German previews > finalize a draft order: says the same in German 1`] = `
+"Auftrag 3002 (noch ohne Nummer) fertigstellen: Entwurf → versendet, als Versandart wird „PDF-Download (VPDF)“ vermerkt.
+! Der Auftrag wird als versendet markiert (Status 200), und sevDesk vergibt seine endgültige Nummer.
+! sevDesk sendet nichts an den Kunden: Es wird nur vermerkt, wie das Dokument versendet wurde. Für den Versand per E-Mail über sevDesk gibt es stattdessen sevdesk_order_send_email.
+(umkehrbar)
+Auftrag: ID 3002, noch ohne Nummer
+Typ: Auftragsbestätigung (AB)
+Status: Entwurf (100)
+Kunde: Musterfirma GmbH (Kontakt 1001)
+Datum: 20.09.2026
+Netto: 144,02 EUR
+Umsatzsteuer: 27,36 EUR
+Brutto: 171,38 EUR
+Vermerkte Versandart: PDF-Download (VPDF)"
+`;
+
+exports[`German previews > finalize a draft voucher: says the same in German 1`] = `
+"Belegentwurf 2101 fertigstellen (Ausgabe, brutto 119 EUR): Entwurf → offen, verbucht.
+! Das Fertigstellen verbucht den Beleg (offen 100): Er zählt ab jetzt in der Buchhaltung (EÜR, UStVA), und seine Zahlung kann gebucht werden (sevdesk_voucher_book_payment). Solange er nicht festgeschrieben ist, lässt er sich mit sevdesk_voucher_reset auf Entwurf zurücksetzen.
+! An diesem Beleg hängt keine Belegdatei; nach den GoBD gehört der Originalbeleg dazu.
+(umkehrbar)
+Beleg: 2101, Entwurf
+Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
+Lieferant: Musterfirma GmbH (Kontakt 1001)
+Belegnummer: ER-2026-0815
+Belegdatum: 02.11.2026
+Steuerregel: 9 Vorsteuerabziehbare Aufwendungen
+Position 1: 6815 Bürobedarf (Konto 4266): 119 EUR brutto, 19 % USt.; Druckerpapier und Toner
+Summe: 119 EUR
+Status: Entwurf 50 → offen 100"
+`;
+
+exports[`German previews > mark a bank transaction as private: says the same in German 1`] = `
+"Kontoumsatz 5101 als privat markieren (Privatentnahme, Status 100 → 300).
+! Der Umsatz steht dann nicht mehr für die Zuordnung zu Rechnungen oder Belegen zur Verfügung und zählt nicht mehr zu den betrieblichen Einnahmen und Ausgaben. Rückgängig machen lässt sich das mit sevdesk_transaction_reset.
+! Kapitalgesellschaften (GmbH, UG, AG) kennen keine Privatentnahmen oder Privateinlagen; dort wäre das eine falsche Buchung.
+(umkehrbar)
+Kontoumsatz: ID 5101, -45,99 EUR (Ausgang)
+Wertstellung: 05.01.2026
+Zahlungskonto: Geschäftskonto Musterbank (ID 4002)
+Status: Erstellt (100)
+Auftraggeber/Empfänger: Musterfirma GmbH
+Verwendungszweck: RE-1001
+Wird zu: Privatentnahme: Der Inhaber hat dieses Geld für private Zwecke aus dem Unternehmen entnommen; es ist keine Betriebsausgabe."
+`;
+
+exports[`German previews > reset a paid invoice to open: says the same in German 1`] = `
+"Rechnung RE-1001 auf offen zurücksetzen (Bezahlt → offen 200) und alle Zahlungen davon lösen.
+! Jede auf dieser Rechnung gebuchte Zahlung wird zurückgenommen: Verknüpfte Kontoumsätze werden davon gelöst und gelten wieder als ungebucht (Status 100) oder, solange sie noch andere Dokumente bezahlen (Sammelzahlungen), als teilweise verknüpft (Status 200); der bezahlte Betrag geht auf 0 zurück. sevDesk erstellt keine Gegenbuchung. Umsätze, die sevDesk für Zahlungen auf Offline-Konten selbst angelegt hat, werden gelöscht; für Kassen wurde das nicht geprüft, kontrollieren Sie diese daher anschließend.
+! sevDesk lehnt das Zurücksetzen ab, wenn einer der Zahlungsumsätze festgeschrieben ist.
+(umkehrbar)
+Rechnung: RE-1001 (ID 1001)
+Typ: Rechnung (RE)
+Status: Bezahlt (1000)
+Kunde: Musterfirma GmbH (Kontakt 1001)
+Datum: 01.10.2026
+Fällig am: 15.10.2026
+Netto: 149,02 EUR
+Umsatzsteuer: 28,31 EUR
+Brutto: 177,33 EUR
+Bisher bezahlt: 177,33 EUR"
+`;
+
+exports[`German previews > reset an open credit note to draft: says the same in German 1`] = `
+"Gutschrift GU-1001 auf Entwurf zurücksetzen (offen 200 → Entwurf 100).
+! Die Gutschrift ist dann nicht mehr bindend und nicht mehr gebucht und kann wieder bearbeitet werden; danach muss sie erneut fertiggestellt werden.
+! Eine Gutschrift zu ändern, die der Kunde bereits erhalten hat, ist kein zulässiger Buchhaltungsvorgang; wurde sie bereits versendet, stellen Sie stattdessen ein neues Dokument aus.
+(umkehrbar)
+Gutschrift: GU-1001 (ID 2001)
+Status: Offen (200)
+Kunde: Musterfirma GmbH (Kontakt 1001)
+Datum: 22.10.2026
+Netto: 20,00 EUR
+Umsatzsteuer: 3,80 EUR
+Brutto: 23,80 EUR"
+`;
+
+exports[`German previews > reset an open voucher to draft: says the same in German 1`] = `
+"Beleg 2001 auf Entwurf zurücksetzen (offen 100 → Entwurf 50).
+! Der Beleg ist dann nicht mehr gebucht und kann wieder geändert werden (sevdesk_voucher_update_draft); danach muss er erneut fertiggestellt werden (sevdesk_voucher_finalize).
+(umkehrbar)
+Beleg: RE-2026-0042 (ID 2001)
+Typ: Beleg (VOU)
+Status: Offen / fällig (100)
+Art: Ausgabe
+Lieferant: Beispiel Lieferant AG (Kontakt 1003)
+Datum: 12.01.2026
+Fällig am: 26.01.2026
+Netto: 250,50 EUR
+Umsatzsteuer: 47,60 EUR
+Brutto: 298,10 EUR
+Bisher bezahlt: 0,00 EUR"
+`;
+
+exports[`German previews > undo the booking of a bank transaction: says the same in German 1`] = `
+"Buchungen des Kontoumsatzes 5101 rückgängig machen: 1 Dokument auf offen zurücksetzen (Rechnung RE-1001) und dabei alle ihre Zahlungen entfernen.
+! sevDesk kann einen einzelnen Umsatz nicht lösen: Jedes Dokument wird auf offen zurückgesetzt, und das entfernt ALLE darauf gebuchten Zahlungen, nicht nur die dieses Umsatzes. Dieser Umsatz verliert alle seine Buchungen und gilt wieder als ungebucht (Status 100). Andere Kontoumsätze, die auf diese Dokumente gebucht sind (je Dokument aufgeführt), verlieren nur diese Buchungen: Bezahlt ein solcher Umsatz noch andere Dokumente, gilt er danach als teilweise verknüpft (200), sonst als ungebucht (100). Umsätze, die sevDesk für Zahlungen ohne Umsatz selbst angelegt hat, werden stattdessen gelöscht.
+(umkehrbar)
+Kontoumsatz: ID 5101, 177,33 EUR (Eingang)
+Wertstellung: 05.01.2026
+Zahlungskonto: Geschäftskonto Musterbank (ID 4002)
+Status: Gebucht (400)
+Auftraggeber/Empfänger: Musterfirma GmbH
+Verwendungszweck: RE-1001
+Dokument 1: Rechnung RE-1001: Status Bezahlt (1000) → offen (200); dieser Umsatz hat 177,33 EUR bezahlt; weitere entfernte Zahlungen: 0,00 EUR
+Dieser Umsatz nach dem Zurücksetzen: ungebucht (Status 100) oder gelöscht, falls sevDesk ihn für eine Buchung angelegt hat"
+`;

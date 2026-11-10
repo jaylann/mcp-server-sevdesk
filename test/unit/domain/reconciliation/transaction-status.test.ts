@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { TransactionDto } from "../../../../src/domain/banking.js";
+import { inLanguage, type Phrase } from "../../../../src/domain/preview-text.js";
 import {
   assertMarkablePrivate,
   MAX_RESET_DOCUMENTS,
@@ -23,6 +24,9 @@ import {
   transactionRoute,
   transactionRow,
 } from "./helpers.js";
+
+/** The English wording of preview sentences. */
+const english = (phrases: readonly Phrase[]): string[] => inLanguage(phrases, "en");
 
 function dto(overrides: Partial<TransactionDto> = {}): TransactionDto {
   return {
@@ -124,7 +128,7 @@ describe("planTransactionReset", () => {
     const fake = client({ transaction: transactionRow({ id: "5201", status: "300" }) });
     const plan = await planTransactionReset(fake, 5201);
     expect(plan.mode).toBe("private");
-    expect(plan.warnings).toEqual([
+    expect(english(plan.warnings)).toEqual([
       "The transaction is no longer private: it counts as unbooked again and can be booked to " +
         "documents (sevdesk_reconcile_suggest, sevdesk_transaction_book).",
     ]);
@@ -139,7 +143,7 @@ describe("planTransactionReset", () => {
       [1002, "119", "0"],
     ]);
     expect(plan.warnings).toHaveLength(1);
-    expect(plan.warnings[0]).toContain("removes ALL payments booked on it");
+    expect(plan.warnings[0]?.en).toContain("removes ALL payments booked on it");
   });
 
   it("finds the other transactions on a document in the whole log and names them", async () => {
@@ -167,15 +171,15 @@ describe("planTransactionReset", () => {
       { id: 5302, amount: "58.33", statusAfter: 100 },
       { id: 5305, amount: "1", statusAfter: 200 },
     ]);
-    expect(plan.warnings).toContain(
+    expect(english(plan.warnings)).toContain(
       "Invoice 1001 also loses its payments from bank transaction 5302 (58.33 EUR, then " +
         "unbooked (100)), bank transaction 5305 (1.00 EUR, then partly linked (200)); book them " +
         "again afterwards if they stand.",
     );
-    expect(plan.warnings[0]).toContain(
+    expect(plan.warnings[0]?.en).toContain(
       "This transaction loses all its bookings and goes back to unbooked (status 100).",
     );
-    expect(plan.warnings[0]).toContain("goes back to partly linked (200)");
+    expect(plan.warnings[0]?.en).toContain("goes back to partly linked (200)");
   });
 
   it("says when the paid amount shows more than the log explains", async () => {
@@ -189,11 +193,11 @@ describe("planTransactionReset", () => {
     expect(plan.documents[0]?.otherTransactions).toEqual([
       { id: 5302, amount: undefined, statusAfter: 100 },
     ]);
-    expect(plan.warnings).toContain(
+    expect(english(plan.warnings)).toContain(
       "Invoice 1001 also loses its payments from bank transaction 5302 (then unbooked (100)); " +
         "book them again afterwards if they stand.",
     );
-    expect(plan.warnings).toContain(
+    expect(english(plan.warnings)).toContain(
       "Invoice 1001 shows 58.33 EUR more paid than its bank transactions explain; that payment " +
         "is removed too.",
     );
@@ -253,7 +257,7 @@ describe("planTransactionReset", () => {
       }),
     });
     const plan = await planTransactionReset(fake, 5201);
-    expect(plan.warnings.at(-1)).toContain("such a transaction is deleted by the reset");
+    expect(plan.warnings.at(-1)?.en).toContain("such a transaction is deleted by the reset");
   });
 
   it("refuses unknown, enshrined and unbooked transactions", async () => {

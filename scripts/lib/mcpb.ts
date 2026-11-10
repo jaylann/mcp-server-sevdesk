@@ -281,8 +281,25 @@ function licenseAllowed(expression: string): boolean {
 
 const RULE = "-".repeat(80);
 
-/** THIRD_PARTY_LICENSES.txt: who wrote the bundled code and under which terms, sorted by name. */
-export function thirdPartyNotices(packages: readonly BundledPackage[], version: string): string {
+/** A font embedded in the server (`src/pages/assets.generated.ts`), with its license text. */
+export interface EmbeddedFont {
+  readonly name: string;
+  /** SPDX identifier, e.g. "OFL-1.1". */
+  readonly license: string;
+  readonly source: string;
+  /** The license file as the font's authors publish it (with their copyright line). */
+  readonly text: string;
+}
+
+/**
+ * THIRD_PARTY_LICENSES.txt: who wrote the bundled code and under which terms, sorted by name,
+ * followed by the fonts the server embeds for its own pages.
+ */
+export function thirdPartyNotices(
+  packages: readonly BundledPackage[],
+  version: string,
+  fonts: readonly EmbeddedFont[] = [],
+): string {
   const sorted = [...packages].sort((a, b) =>
     a.name === b.name ? (a.version < b.version ? -1 : 1) : a.name < b.name ? -1 : 1,
   );
@@ -293,6 +310,7 @@ export function thirdPartyNotices(packages: readonly BundledPackage[], version: 
     "mcp-server-sevdesk itself is MIT-licensed; see LICENSE.",
     "",
     ...sorted.map((pkg) => `- ${pkg.name} ${pkg.version}: ${pkg.license}`),
+    ...fonts.map((font) => `- ${font.name} (font): ${font.license}`),
   ];
   for (const pkg of sorted) {
     lines.push("", RULE, `${pkg.name} ${pkg.version}`, `License: ${pkg.license}`);
@@ -307,6 +325,17 @@ export function thirdPartyNotices(packages: readonly BundledPackage[], version: 
     for (const notice of pkg.notices) {
       lines.push("", ...(pkg.notices.length > 1 ? [`${notice.file}:`, ""] : []), notice.text);
     }
+  }
+  for (const font of fonts) {
+    lines.push(
+      "",
+      RULE,
+      `${font.name} (font, embedded unmodified for the server's own pages)`,
+      `License: ${font.license}`,
+      `Source: ${font.source}`,
+      "",
+      font.text.trim(),
+    );
   }
   return `${lines.join("\n")}\n`;
 }

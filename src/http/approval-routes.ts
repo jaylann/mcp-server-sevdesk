@@ -27,7 +27,14 @@
  * router's `form` policy is the first line), so the routes are safe even when mounted without it.
  */
 import type { RequestPrincipal } from "../accounts/types.js";
-import { type InboxItem, renderApprovalPage, renderInboxPage } from "../safety/approval-page.js";
+import type { PageContext } from "../pages/context.js";
+import {
+  type InboxItem,
+  previewFor,
+  renderApprovalPage,
+  renderDecisionPage,
+  renderInboxPage,
+} from "../safety/approval-page.js";
 import type { ApprovalChannel, ApprovalStore, ApprovalView } from "../safety/approval-types.js";
 import { sameOriginPost } from "../safety/web.js";
 import {
@@ -35,8 +42,8 @@ import {
   INBOX_PATH,
   LOGOUT_PATH,
   messageResponse,
+  pageOf,
   pageResponse,
-  TEXT,
 } from "./approval-pages.js";
 import {
   type BrowserSession,
@@ -97,6 +104,7 @@ const APPROVAL_ID = /^[A-Za-z0-9_-]{22,128}$/;
 /** Creates the inbox routes and the `remote` approval channel. */
 export function createApprovalRoutes(options: ApprovalRoutesOptions): ApprovalRoutes {
   const { origin } = options;
+  const now = options.now ?? Date.now;
   const inboxUrl = `${origin}${INBOX_PATH}`;
   const session = createBrowserSession({
     sessions: options.sessions,
@@ -127,15 +135,36 @@ export function createApprovalRoutes(options: ApprovalRoutesOptions): ApprovalRo
     return view;
   }
 
-  function decidedPage(status: number, decided: "approved" | "rejected"): Response {
-    return messageResponse(status, decided === "approved" ? TEXT.approved : TEXT.rejected);
+  /** The page after a decision: what was decided, with its reference code. */
+  function decidedPage(
+    page: PageContext,
+    status: number,
+    view: ApprovalView,
+    decision: "approved" | "rejected",
+  ): Response {
+    return pageResponse(page, status, (render) =>
+      renderDecisionPage(
+        {
+          decision,
+          reference: view.reference,
+          action: previewFor(view.binding, page.locale).action,
+          inboxHref: INBOX_PATH,
+        },
+        render,
+      ),
+    );
+  }
+
+  function notReady(page: PageContext): Response {
+    return messageResponse(page, 503, page.t.inbox.notReady, { link: false });
   }
 
   async function showInbox(request: Request, ctx: HttpRequestContext): Promise<Response> {
+    const page = pageOf(request, origin);
     const record = await session.sessionOf(request, ctx);
-    if (record === undefined) return session.loginPage(200);
+    if (record === undefined) return session.loginPage(page, 200);
     const approvals = store();
-    if (approvals === undefined) return messageResponse(503, TEXT.notReady, { link: false });
+    if (approvals === undefined) return notReady(page);
     const items: InboxItem[] = approvals
       .list(record.accountId)
       .filter((view) => ownedBy(view.owner, record))
@@ -144,11 +173,11 @@ export function createApprovalRoutes(options: ApprovalRoutesOptions): ApprovalRo
         reference: view.reference,
         toolName: view.binding.toolName,
         toolTitle: view.binding.toolTitle,
-        action: view.binding.preview.action,
+        action: previewFor(view.binding, page.locale).action,
         status: view.status,
         expiresAt: view.expiresAt,
       }));
-    return pageResponse(200, (nonce) =>
+    return pageResponse(page, 200, (render) =>
       renderInboxPage(
         {
           accountId: record.accountId,
@@ -157,7 +186,7 @@ export function createApprovalRoutes(options: ApprovalRoutesOptions): ApprovalRo
           logoutAction: LOGOUT_PATH,
           csrf: session.csrfTag(record),
         },
-        nonce,
+        render,
       ),
     );
   }
@@ -167,63 +196,70 @@ export function createApprovalRoutes(options: ApprovalRoutesOptions): ApprovalRo
     ctx: HttpRequestContext,
     id: string,
   ): Promise<Response> {
+    const page = pageOf(request, origin);
     const record = await session.sessionOf(request, ctx);
-    if (record === undefined) return session.loginPage(200);
+    if (record === undefined) return session.loginPage(page, 200);
     const approvals = store();
-    if (approvals === undefined) return messageResponse(503, TEXT.notReady, { link: false });
+    if (approvals === undefined) return notReady(page);
     const view = APPROVAL_ID.test(id) ? ownedView(approvals, id, record) : undefined;
-    if (view === undefined) return messageResponse(404, TEXT.notFound);
-    if (view.status !== "pending") return decidedPage(200, view.status);
+    if (view === undefined) return messageResponse(page, 404, page.t.inbox.notFound);
+    if (view.status !== "pending") return decidedPage(page, 200, view, view.status);
     const { binding } = view;
-    return pageResponse(200, (nonce) =>
+    return pageResponse(page, 200, (render) =>
       renderApprovalPage(
         {
           toolName: binding.toolName,
           toolTitle: binding.toolTitle,
-          tierText: binding.tierText,
-          preview: binding.preview,
-          notice: binding.notice,
+          tier: binding.tier,
+          preview: previewFor(binding, page.locale),
+          recordChanged: binding.recordChanged === true,
           reference: view.reference,
+          createdAt: view.createdAt,
           expiresAt: view.expiresAt,
+          now: now(),
           formAction: `${DETAIL_PREFIX}${view.id}`,
           csrf: session.csrfTag(record),
           inboxHref: INBOX_PATH,
         },
-        nonce,
+        render,
       ),
     );
   }
 
   async function decide(request: Request, ctx: HttpRequestContext, id: string): Promise<Response> {
-    if (!sameOriginPost(request, origin)) return messageResponse(403, TEXT.foreignPost);
+    const page = pageOf(request, origin);
+    const { t } = page;
+    if (!sameOriginPost(request, origin)) return messageResponse(page, 403, t.inbox.foreignPost);
     const record = await session.sessionOf(request, ctx);
-    if (record === undefined) return messageResponse(403, TEXT.signedOutPost);
-    const form = await session.formOf(request);
+    if (record === undefined) return messageResponse(page, 403, t.inbox.signedOutPost);
+    const form = await session.formOf(request, page);
     if (form instanceof Response) return form;
-    if (!session.csrfValid(record, form.get("csrf"))) return messageResponse(403, TEXT.csrf);
+    if (!session.csrfValid(record, form.get("csrf"))) {
+      return messageResponse(page, 403, t.inbox.csrf);
+    }
     const choice = form.get("decision");
     if (choice !== "approve" && choice !== "reject") {
-      return messageResponse(400, TEXT.noDecision);
+      return messageResponse(page, 400, t.inbox.noDecision);
     }
     const approvals = store();
-    if (approvals === undefined) return messageResponse(503, TEXT.notReady, { link: false });
+    if (approvals === undefined) return notReady(page);
     const view = APPROVAL_ID.test(id) ? ownedView(approvals, id, record) : undefined;
-    if (view === undefined) return messageResponse(404, TEXT.notFound);
+    if (view === undefined) return messageResponse(page, 404, t.inbox.notFound);
     const decision = choice === "approve" ? "approved" : "rejected";
     const outcome = approvals.decide(view.id, decision);
     switch (outcome) {
       case "decided":
         ctx.log.info("approval_decided", { decision, reference: view.reference });
-        return decidedPage(200, decision);
+        return decidedPage(page, 200, view, decision);
       case "already_decided": {
         const status = approvals.get(view.id)?.status;
         return status === "approved" || status === "rejected"
-          ? decidedPage(409, status)
-          : messageResponse(409, TEXT.notFound);
+          ? decidedPage(page, 409, view, status)
+          : messageResponse(page, 409, t.inbox.notFound);
       }
       case "expired":
       case "unknown":
-        return messageResponse(410, TEXT.expired);
+        return messageResponse(page, 410, t.inbox.expired);
     }
   }
 
@@ -232,7 +268,8 @@ export function createApprovalRoutes(options: ApprovalRoutesOptions): ApprovalRo
     const rest = new URL(request.url).pathname.slice(DETAIL_PREFIX.length);
     if (rest === "login" || rest === "logout") {
       if (request.method !== "POST") {
-        return messageResponse(405, TEXT.method, { headers: { Allow: "POST" } });
+        const page = pageOf(request, origin);
+        return messageResponse(page, 405, page.t.inbox.method, { headers: { Allow: "POST" } });
       }
       return rest === "login" ? session.signIn(request, ctx) : session.signOut(request, ctx);
     }

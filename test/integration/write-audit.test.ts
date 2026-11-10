@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
+import { bothPreviews } from "../../src/domain/preview-text.js";
 import { SevdeskError, withCompletedWrites } from "../../src/sevdesk/errors.js";
 import { defineWriteTool } from "../../src/tools/define-tool.js";
 import type { AnyToolDefinition } from "../../src/tools/types.js";
@@ -310,7 +311,12 @@ describe("failures", () => {
     output: z.object({ status: z.string() }),
     prepare: () =>
       Promise.resolve({
-        preview: { action: "Finalize invoice 7.", facts: [], warnings: [], irreversible: false },
+        ...bothPreviews(() => ({
+          action: "Finalize invoice 7.",
+          facts: [],
+          warnings: [],
+          irreversible: false,
+        })),
         state: null,
       }),
     execute: async (_args, _plan, ctx) => {
@@ -414,7 +420,7 @@ describe("failures", () => {
       name: "sevdesk_dummy_broken_preview",
       prepare: () =>
         Promise.resolve({
-          preview: { action: "", facts: [], warnings: [], irreversible: false },
+          ...bothPreviews(() => ({ action: "", facts: [], warnings: [], irreversible: false })),
           state: null,
         }),
     });

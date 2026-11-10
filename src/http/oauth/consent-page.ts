@@ -2,13 +2,21 @@
  * HTML of the consent page (`/authorize`), in two steps: the user picks the tiers and pastes the
  * sevDesk token (step `check`), then confirms the account the token belongs to (step `connect`).
  *
- * Everything shown that comes from outside is untrusted and escaped: the client's self-declared
- * name (sanitized, labelled as self-declared), the account name from sevDesk. The client host and
- * the redirect host come from validated URLs. The page has no script, one nonce'd style block,
- * and posts only to `/authorize`; the sevDesk token is never echoed back into a page.
+ * Everything shown that comes from outside is untrusted and escaped (the `markup` tag escapes every
+ * value it interpolates): the client's self-declared name (sanitized, labelled as self-declared),
+ * the account name from sevDesk. The client host and the redirect host come from validated URLs.
+ * The page has no script, one nonce'd style block, and posts only to `/authorize`; the sevDesk
+ * token is never echoed back into a page.
+ *
+ * The consent form is the first form of the page, and its controls keep their names (`consent`,
+ * `csrf`, `tier`, `sevdesk_token`, `step`): the browser posts them back to `/authorize`.
  */
-import { escapeHtml } from "../../safety/approval-page.js";
-import { type Tier, TIER_DESCRIPTIONS } from "../../safety/tiers.js";
+import { badge, callout, facts } from "../../pages/components.js";
+import type { RenderContext } from "../../pages/context.js";
+import { renderFrame } from "../../pages/frame.js";
+import { type Html, markup, trusted } from "../../pages/html.js";
+import { icon } from "../../pages/icons.js";
+import { requiresConfirmation, type Tier } from "../../safety/tiers.js";
 
 /** The client as the consent page presents it. */
 export interface ConsentClientView {
@@ -47,144 +55,112 @@ export interface ConfirmStepModel {
   readonly csrf: string;
 }
 
-const TIER_LABELS: Readonly<Record<Tier, string>> = {
-  read: "Read",
-  write: "Write",
-  commit: "Commit",
-  external: "External",
-};
+/** The badge colour of each tier, as on the website. */
+const TIER_TONE = { read: "ok", write: "info", commit: "approve", external: "danger" } as const;
 
-function clientSection(client: ConsentClientView): string {
+/** Where the reader is in the two steps. */
+function steps(current: 1 | 2, ctx: RenderContext): Html {
+  const t = ctx.t.connect.steps;
+  const step = (number: 1 | 2, label: string): Html => {
+    const state = number === current ? "now" : number < current ? "done" : "next";
+    const mark = state === "done" ? icon("check", 2.25) : String(number);
+    const here = state === "now" ? trusted(' aria-current="step"') : "";
+    return markup`<li class="step step-${state}"${here}><span class="step-mark">${mark}</span>${label}</li>`;
+  };
+  return markup`<ol class="steps">${step(1, t.token)}${step(2, t.confirm)}</ol>`;
+}
+
+/** Who asks: the app's host, what it calls itself, and where the browser goes afterwards. */
+function clientSection(client: ConsentClientView, ctx: RenderContext): Html {
+  const t = ctx.t.connect;
+  const redirect = markup`<strong>${client.redirectHost}</strong>`;
   const name =
-    client.name === undefined
-      ? ""
-      : `<p class="small">It calls itself “${escapeHtml(client.name)}” (self-declared, not verified).</p>\n`;
+    client.name === undefined ? "" : markup`<p class="small">${t.selfDeclared(client.name)}</p>\n`;
   const back = client.loopbackOnly
-    ? `<p class="notice">This app runs on your own computer: after connecting, your browser returns to
-<strong>${escapeHtml(client.redirectHost)}</strong>. Continue only if you just started connecting from an app on this device.</p>`
-    : `<p>After connecting, your browser returns to <strong>${escapeHtml(client.redirectHost)}</strong>.</p>`;
-  return `<section class="card">
-<p>The app at <strong>${escapeHtml(client.host)}</strong> wants to use your sevDesk account through this server.</p>
+    ? callout(t.loopback(redirect), { icon: "alert" })
+    : markup`<p class="small">${t.returns(redirect)}</p>`;
+  return markup`<section class="sheet app">
+<p>${t.wants(markup`<strong>${client.host}</strong>`)}</p>
 ${name}${back}
 </section>`;
 }
 
-function hidden(consent: string, csrf: string): string {
-  return `<input type="hidden" name="consent" value="${escapeHtml(consent)}">
-<input type="hidden" name="csrf" value="${escapeHtml(csrf)}">`;
+function hidden(consent: string, csrf: string): Html {
+  return markup`<input type="hidden" name="consent" value="${consent}">
+<input type="hidden" name="csrf" value="${csrf}">`;
 }
 
-function tierLine(tier: Tier): string {
-  return `<strong>${escapeHtml(TIER_LABELS[tier])}</strong>: ${escapeHtml(TIER_DESCRIPTIONS[tier])}`;
+/** A tier as a badge with its name, and what it allows in plain words. */
+function tierLine(tier: Tier, ctx: RenderContext): Html {
+  const words = ctx.t.tiers[tier];
+  const mark = requiresConfirmation(tier) ? icon("lock") : markup`<span class="tier-dot"></span>`;
+  const name = badge(markup`${mark}<strong>${words.label}</strong>`, TIER_TONE[tier]);
+  return markup`<span class="tier-words">${name}<span class="small">${words.text}</span></span>`;
 }
 
 /** The first step: tier checkboxes and the token field. */
-export function renderTokenStep(model: TokenStepModel, nonce: string): string {
+export function renderTokenStep(model: TokenStepModel, ctx: RenderContext): string {
+  const t = ctx.t.connect;
   const chosen = new Set(model.chosen);
-  const tiers = model.offered
-    .map((tier) =>
-      tier === "read"
-        ? `<label><input type="checkbox" checked disabled> ${tierLine(tier)}</label>
-<input type="hidden" name="tier" value="read">`
-        : `<label><input type="checkbox" name="tier" value="${escapeHtml(tier)}"${chosen.has(tier) ? " checked" : ""}> ${tierLine(tier)}</label>`,
-    )
-    .join("\n");
+  const tiers = model.offered.map((tier) => {
+    if (tier === "read") {
+      return markup`<label class="tier"><input type="checkbox" checked disabled> ${tierLine(tier, ctx)}</label>
+<input type="hidden" name="tier" value="read">\n`;
+    }
+    const ticked = chosen.has(tier) ? trusted(" checked") : "";
+    return markup`<label class="tier"><input type="checkbox" name="tier" value="${tier}"${ticked}> ${tierLine(tier, ctx)}</label>\n`;
+  });
   const error =
     model.error === undefined
       ? ""
-      : `<p class="error" role="alert">${escapeHtml(model.error)}</p>\n`;
-  const body = `<h1>Connect an app to sevDesk</h1>
-${clientSection(model.client)}
-<form method="post" action="/authorize">
+      : markup`${callout(model.error, { tone: "danger", icon: "alert", alert: true })}\n`;
+  const body = markup`${steps(1, ctx)}
+<h1>${t.heading}</h1>
+${clientSection(model.client, ctx)}
+<form method="post" action="/authorize" class="sheet">
 ${hidden(model.consent, model.csrf)}
-<fieldset>
-<legend>What may it do?</legend>
-${tiers}
-<p class="small">Commit and external actions still ask you to approve each one.</p>
+<fieldset class="tiers">
+<legend>${t.legend}</legend>
+${tiers}<p class="hint">${t.tiersHint}</p>
 </fieldset>
-<label for="sevdesk-token" class="field">Your sevDesk API token</label>
+<label for="sevdesk-token" class="field">${t.tokenLabel}</label>
 <input id="sevdesk-token" type="password" name="sevdesk_token" autocomplete="off" spellcheck="false" required minlength="32" maxlength="32">
-<p class="small">In sevDesk: Settings → Users → API token. It is encrypted into this connection and
-not stored on the server in readable form. Anyone with access to the app can use sevDesk within the
-tiers you choose here, until you disconnect.</p>
-${error}<div class="actions">
-<button type="submit" name="step" value="check" class="primary">Check token</button>
-<button type="submit" name="step" value="deny" formnovalidate>Cancel</button>
+<p class="hint">${t.tokenHint}</p>
+${error}<div class="actions form-actions">
+<button type="submit" name="step" value="check" class="btn btn-ink">${t.check}</button>
+<button type="submit" name="step" value="deny" class="btn btn-ghost" formnovalidate>${t.cancel}</button>
 </div>
 </form>`;
-  return page("Connect to sevDesk", body, nonce);
+  return renderFrame({ title: t.title, body }, ctx);
 }
 
 /** The second step: the account the token belongs to, and the final confirmation. */
-export function renderConfirmStep(model: ConfirmStepModel, nonce: string): string {
-  const name =
-    model.accountName === undefined ? "" : ` (named “${escapeHtml(model.accountName)}” in sevDesk)`;
-  const tiers = model.tiers.map((tier) => `<li>${tierLine(tier)}</li>`).join("\n");
-  const body = `<h1>Connect to sevDesk account ${escapeHtml(model.accountId)}?</h1>
-${clientSection(model.client)}
-<p>The token belongs to sevDesk account <strong>${escapeHtml(model.accountId)}</strong>${name}.
-The app may:</p>
-<ul>
-${tiers}
-</ul>
-<form method="post" action="/authorize">
+export function renderConfirmStep(model: ConfirmStepModel, ctx: RenderContext): string {
+  const t = ctx.t.connect;
+  const account = facts(
+    [
+      { label: t.account, value: markup`<strong>${model.accountId}</strong>` },
+      ...(model.accountName === undefined
+        ? []
+        : [{ label: t.accountName, value: t.quoted(model.accountName), long: false }]),
+    ],
+    { plain: true },
+  );
+  const granted = model.tiers.map((tier) => markup`<li>${tierLine(tier, ctx)}</li>\n`);
+  const body = markup`${steps(2, ctx)}
+<h1>${t.confirmHeading(model.accountId)}</h1>
+${clientSection(model.client, ctx)}
+<form method="post" action="/authorize" class="sheet">
 ${hidden(model.consent, model.csrf)}
-<div class="actions">
-<button type="submit" name="step" value="connect" class="primary">Connect</button>
-<button type="submit" name="step" value="deny">Cancel</button>
+${account}
+<p class="field may">${t.mayLabel}</p>
+<ul class="granted">
+${granted}</ul>
+<div class="actions form-actions">
+<button type="submit" name="step" value="connect" class="btn btn-ink">${t.submit}</button>
+<button type="submit" name="step" value="deny" class="btn btn-ghost">${t.cancel}</button>
 </div>
 </form>
-<p class="small">You can disconnect at any time in the app; the server's operator can revoke the
-connection with <code>mcp-server-sevdesk grants revoke</code>.</p>`;
-  return page("Connect to sevDesk", body, nonce);
+<p class="fine after">${t.fine(markup`<code>mcp-server-sevdesk grants revoke</code>`)}</p>`;
+  return renderFrame({ title: t.title, body }, ctx);
 }
-
-/** A page with a title and one paragraph of trusted text (errors that end the flow). */
-export function renderConsentError(title: string, message: string, nonce: string): string {
-  return page(title, `<h1>${escapeHtml(title)}</h1>\n<p>${escapeHtml(message)}</p>`, nonce);
-}
-
-function page(title: string, body: string, nonce: string): string {
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="referrer" content="same-origin">
-<title>${escapeHtml(title)}</title>
-<style nonce="${escapeHtml(nonce)}">${STYLE}</style>
-</head>
-<body>
-<main>
-${body}
-</main>
-</body>
-</html>
-`;
-}
-
-const STYLE = `
-:root { color-scheme: light dark; --fg: #1d1d1f; --bg: #fafafa; --card: #fff; --line: #d8d8dc;
-  --warn: #8a4b00; --accent: #0a5bd3; --no: #a1121b; }
-@media (prefers-color-scheme: dark) { :root { --fg: #f2f2f4; --bg: #121214; --card: #1c1c1f;
-  --line: #3a3a3f; --warn: #ffb15c; --accent: #6aa5ff; --no: #ff6b73; } }
-body { margin: 0; background: var(--bg); color: var(--fg);
-  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-main { max-width: 40rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
-h1 { font-size: 1.4rem; margin: 0 0 1rem; overflow-wrap: anywhere; }
-.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
-  padding: 0.75rem 1.25rem; margin: 1rem 0 1.5rem; overflow-wrap: anywhere; }
-fieldset { border: 1px solid var(--line); border-radius: 10px; padding: 0.75rem 1.25rem;
-  margin: 0 0 1.25rem; }
-fieldset label { display: block; margin: 0.35rem 0; }
-.field { display: block; font-weight: 600; margin-bottom: 0.35rem; }
-input[type=password] { font: inherit; width: 100%; box-sizing: border-box; padding: 0.5rem;
-  border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--fg); }
-.actions { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem; }
-button { font: inherit; padding: 0.6rem 1.4rem; border-radius: 8px; border: 1px solid var(--line);
-  cursor: pointer; background: var(--card); color: var(--fg); }
-button.primary { border-color: var(--accent); color: var(--accent); font-weight: 600; }
-.notice { border-left: 4px solid var(--warn); padding-left: 0.75rem; }
-.error { color: var(--no); font-weight: 600; }
-.small { font-size: 0.9rem; opacity: 0.8; }
-`;

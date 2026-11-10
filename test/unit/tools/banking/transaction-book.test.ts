@@ -108,6 +108,32 @@ describe("sevdesk_transaction_book", () => {
     expect(plan.preview.warnings).toEqual([
       expect.stringContaining("To undo, use sevdesk_transaction_reset"),
     ]);
+    expect(plan.previewDe.action).toBe(
+      "Kontoumsatz 5101 (177,33 EUR) zuordnen zu Rechnung RE-1001: insgesamt 177,33 EUR.",
+    );
+    expect(plan.previewDe.facts).toEqual([
+      { label: "Kontoumsatz", value: "ID 5101, 177,33 EUR (Eingang)" },
+      { label: "Wertstellung", value: "05.01.2026" },
+      { label: "Zahlungskonto", value: "Geschäftskonto Musterbank (ID 4002)" },
+      { label: "Status", value: "Erstellt (100)" },
+      { label: "Auftraggeber/Empfänger", value: "Musterfirma GmbH" },
+      { label: "Verwendungszweck", value: "RE-1001" },
+      { label: "Vorher nicht zugeordnet", value: "177,33 EUR" },
+      { label: "Buchungsdatum", value: "05.01.2026" },
+      {
+        label: "Zuordnung 1: Rechnung RE-1001",
+        value:
+          "177,33 EUR (vollständige Zahlung, Betrag automatisch gewählt); offen 177,33 EUR; " +
+          "Status Offen / fällig (200) → bezahlt (1000); Musterfirma GmbH",
+      },
+      {
+        label: "Danach nicht zugeordnet",
+        value: "0,00 EUR (Umsatz vollständig gebucht, Status 400)",
+      },
+    ]);
+    expect(plan.previewDe.warnings).toEqual([
+      expect.stringContaining("Rückgängig machen lässt sich das mit sevdesk_transaction_reset"),
+    ]);
     expect(client.writes()).toEqual([]);
   });
 
@@ -193,6 +219,14 @@ describe("sevdesk_transaction_book", () => {
       "Book bank transaction 5101 (238.00 EUR) to invoice RE-1002 and invoice RE-1001: " +
         "238.00 EUR in total.",
     );
+    expect(plan.previewDe.action).toBe(
+      "Kontoumsatz 5101 (238,00 EUR) zuordnen zu Rechnung RE-1002 und Rechnung RE-1001: " +
+        "insgesamt 238,00 EUR.",
+    );
+    expect(plan.previewDe.facts.find((f) => f.label.startsWith("Zuordnung 2"))?.value).toContain(
+      "119,00 EUR (vollständige Zahlung, gesendet als Typ N, da nur ein Teil des Umsatzes " +
+        "genutzt wird)",
+    );
     expect(output.data.bookings.map((b) => b.paymentType)).toEqual(["payment", "payment"]);
   });
 
@@ -221,6 +255,20 @@ describe("sevdesk_transaction_book", () => {
       "50.00 EUR of bank transaction 5101 stays unassigned: it becomes partly linked (status " +
         "200) and can be booked further with sevdesk_transaction_book.",
       expect.stringContaining("To undo"),
+    ]);
+    const german = plan.previewDe.facts.find((f) => f.label.startsWith("Zuordnung 1"));
+    expect(german?.value).toContain("50,00 EUR (Teilzahlung)");
+    expect(german?.value).toContain("→ teilweise bezahlt (750), 127,33 EUR bleiben offen");
+    expect(plan.previewDe.facts.at(-1)).toEqual({
+      label: "Danach nicht zugeordnet",
+      value: "50,00 EUR (Status 200, teilweise verknüpft)",
+    });
+    expect(plan.previewDe.warnings).toEqual([
+      "Rechnung 1001: Das ist eine Teilzahlung: 127,33 EUR bleiben offen, und die Rechnung gilt " +
+        "danach als teilweise bezahlt (750).",
+      "50,00 EUR von Kontoumsatz 5101 bleiben ohne Zuordnung: Der Umsatz gilt dann als teilweise " +
+        "verknüpft (Status 200) und kann mit sevdesk_transaction_book weiter gebucht werden.",
+      expect.stringContaining("Rückgängig machen"),
     ]);
   });
 

@@ -8,8 +8,9 @@ import { z } from "zod";
 import { getTransaction, type TransactionDto } from "../../domain/banking.js";
 import { moneySchema, statusDtoSchema } from "../../domain/common.js";
 import { type LifecycleDocument, type PaymentKind } from "../../domain/lifecycle/documents.js";
-import { type Fact, formatMoney } from "../../domain/lifecycle/preview.js";
+import { type Fact, formatMoney, transactionStatusText } from "../../domain/lifecycle/preview.js";
 import { DEFAULT_CURRENCY, money } from "../../domain/money.js";
+import { dateText, type PreviewLanguage } from "../../domain/preview-text.js";
 import { SevdeskError, withCompletedWrites } from "../../sevdesk/errors.js";
 import type { SevdeskObjectRef, ToolAnnotationSet, ToolContext } from "../types.js";
 
@@ -105,40 +106,74 @@ export function documentSummary(doc: LifecycleDocument<PaymentKind>): DocumentSu
   };
 }
 
-/** The transaction as preview facts (purpose and counterparty: cleaned upstream text). */
-export function transactionFacts(transaction: TransactionDto): Fact[] {
+/** The fact labels and fixed values of a transaction, per language. */
+const TRANSACTION_TEXT = {
+  en: {
+    transaction: "Bank transaction (Umsatz)",
+    id: "id",
+    in: "incoming",
+    out: "outgoing",
+    zero: "zero",
+    valueDate: "Value date",
+    account: "Check account",
+    status: "Status",
+    counterparty: "Counterparty",
+    purpose: "Purpose (Verwendungszweck)",
+  },
+  de: {
+    transaction: "Kontoumsatz",
+    id: "ID",
+    in: "Eingang",
+    out: "Ausgang",
+    zero: "Nullbetrag",
+    valueDate: "Wertstellung",
+    account: "Zahlungskonto",
+    status: "Status",
+    counterparty: "Auftraggeber/Empfänger",
+    purpose: "Verwendungszweck",
+  },
+} as const;
+
+/**
+ * The transaction as preview facts (purpose and counterparty: cleaned upstream text), in the
+ * preview language. Both languages give the same facts in the same order.
+ */
+export function transactionFacts(
+  transaction: TransactionDto,
+  lang: PreviewLanguage = "en",
+): Fact[] {
+  const t = TRANSACTION_TEXT[lang];
+  const direction =
+    transaction.direction === "in" ? t.in : transaction.direction === "out" ? t.out : t.zero;
   const facts: Fact[] = [
     {
-      label: "Bank transaction (Umsatz)",
-      value: `id ${String(transaction.id)}, ${formatMoney(transaction.amount)} (${
-        transaction.direction === "in"
-          ? "incoming"
-          : transaction.direction === "out"
-            ? "outgoing"
-            : "zero"
-      })`,
+      label: t.transaction,
+      value:
+        `${t.id} ${String(transaction.id)}, ${formatMoney(transaction.amount, lang)} ` +
+        `(${direction})`,
     },
   ];
   const add = (label: string, value: string | undefined): void => {
     if (value !== undefined) facts.push({ label, value });
   };
-  add("Value date", transaction.valueDate);
   add(
-    "Check account",
+    t.valueDate,
+    transaction.valueDate === undefined ? undefined : dateText(transaction.valueDate, lang),
+  );
+  add(
+    t.account,
     transaction.account === undefined
       ? undefined
       : transaction.account.name === undefined
-        ? `id ${String(transaction.account.id)}`
-        : `${transaction.account.name} (id ${String(transaction.account.id)})`,
+        ? `${t.id} ${String(transaction.account.id)}`
+        : `${transaction.account.name} (${t.id} ${String(transaction.account.id)})`,
   );
   add(
-    "Status",
-    transaction.status === undefined
-      ? undefined
-      : `${transaction.status.label} (${String(transaction.status.code)})`,
+    t.status,
+    transaction.status === undefined ? undefined : transactionStatusText(transaction.status, lang),
   );
-  add("Counterparty", transaction.counterparty);
-  add("Purpose (Verwendungszweck)", transaction.purpose);
+  add(t.counterparty, transaction.counterparty);
+  add(t.purpose, transaction.purpose);
   return facts;
 }
 

@@ -515,4 +515,42 @@ describe("licenses", () => {
     expect(text).toContain("zeta 1.0.0\nLicense: MIT\n\nzeta license\n");
     expect(text.endsWith("zeta license\n")).toBe(true);
   });
+
+  it("lists the embedded fonts after the packages, with their license texts", () => {
+    const text = thirdPartyNotices(
+      [pkg("zeta", "MIT", [{ file: "LICENSE", text: "zeta license" }])],
+      "1.0.0",
+      [
+        {
+          name: "Archivo",
+          license: "OFL-1.1",
+          source: "https://github.com/Omnibus-Type/Archivo",
+          text: "Copyright 2020 The Archivo Project Authors\n\nSIL OPEN FONT LICENSE\n",
+        },
+      ],
+    );
+    expect(text).toContain("- zeta 1.0.0: MIT\n- Archivo (font): OFL-1.1\n");
+    expect(text).toContain(
+      "Archivo (font, embedded unmodified for the server's own pages)\nLicense: OFL-1.1\n" +
+        "Source: https://github.com/Omnibus-Type/Archivo\n\nCopyright 2020 The Archivo Project Authors",
+    );
+    expect(text.endsWith("SIL OPEN FONT LICENSE\n")).toBe(true);
+  });
+
+  it("ships the license of every embedded font, each with its copyright line", () => {
+    const dir = new URL("../../../licenses/fonts/", import.meta.url);
+    for (const [file, holder] of [
+      ["Archivo-OFL.txt", "The Archivo Project Authors"],
+      ["MartianMono-OFL.txt", "The Martian Mono Project Authors"],
+    ] as const) {
+      const license = readFileSync(new URL(file, dir), "utf8");
+      expect(license).toContain(holder);
+      expect(license).toContain("SIL OPEN FONT LICENSE Version 1.1");
+    }
+    expect(
+      JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8")),
+    ).toMatchObject({
+      files: expect.arrayContaining(["licenses"]) as unknown,
+    });
+  });
 });

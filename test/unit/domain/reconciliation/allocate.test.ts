@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { bookingTimestamp } from "../../../../src/domain/lifecycle/payments.js";
+import { inLanguage, type Phrase } from "../../../../src/domain/preview-text.js";
 import {
   type AllocationRequest,
   documentBookingType,
@@ -25,6 +26,9 @@ import {
   voucherRoute,
   voucherRow,
 } from "./helpers.js";
+
+/** The English wording of preview sentences. */
+const english = (phrases: readonly Phrase[]): string[] => inLanguage(phrases, "en");
 
 const DATE = bookingTimestamp("2026-01-05");
 
@@ -84,7 +88,7 @@ describe("planAllocation", () => {
       checkAccount: { id: 4002, objectName: "CheckAccount" },
       checkAccountTransaction: { id: 5101, objectName: "CheckAccountTransaction" },
     });
-    expect(plan.warnings).toEqual([]);
+    expect(english(plan.warnings)).toEqual([]);
     expect(fake.writes()).toEqual([]);
   });
 
@@ -114,7 +118,7 @@ describe("planAllocation", () => {
     const plan = await planAllocation(fake, 5101, [{ kind: "invoice", id: 1001 }]);
     expect(plan.allocations[0]?.plan.payload.type).toBe("N");
     expect(plan.remainingAfter).toBe("119");
-    expect(plan.warnings).toEqual([
+    expect(english(plan.warnings)).toEqual([
       "119.00 EUR of bank transaction 5101 stays unassigned: it becomes partly linked (status " +
         "200) and can be booked further with sevdesk_transaction_book.",
     ]);
@@ -140,7 +144,7 @@ describe("planAllocation", () => {
     const [allocation] = plan.allocations;
     expect(allocation?.plan.payload.type).toBe("N");
     expect(allocation?.plan.remaining?.amount).toBe("77.33");
-    expect(plan.warnings).toEqual([
+    expect(english(plan.warnings)).toEqual([
       "Invoice 1001: This is a partial payment: 77.33 EUR stays open and the invoice becomes " +
         "partially paid (750).",
     ]);

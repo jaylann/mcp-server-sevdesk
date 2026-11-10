@@ -111,6 +111,14 @@ describe.each(cases)("$name (community record shapes, fake values)", (kind) => {
       /^Finalize .+: draft → (open|sent), marked as sent by post \(VP\)\.$/,
     );
     expect(plan.preview.facts).toContainEqual({ label: "Marked as sent", value: "by post (VP)" });
+    expect(plan.previewDe.action).toMatch(
+      /fertigstellen: Entwurf → (?:offen|versendet), als Versandart wird „Post \(VP\)“ vermerkt\.$/,
+    );
+    expect(plan.previewDe.facts).toContainEqual({
+      label: "Vermerkte Versandart",
+      value: "Post (VP)",
+    });
+    expect(plan.previewDe.warnings.join(" ")).toContain("sevDesk sendet nichts an den Kunden");
     expect(plan.preview.irreversible).toBe(false);
     expect(plan.preview.warnings.join(" ")).toContain("sevDesk sends nothing to the customer");
   });
@@ -178,6 +186,10 @@ describe("sevdesk_invoice_finalize details", () => {
     const client = staged(kind, invoiceRow({ status: "100", invoiceNumber: "RE-%YYYY%MM1038" }));
     const plan = await prepareWrite(tool, { id: 1001 }, client);
     expect(plan.preview.warnings.at(-1)).toContain("still contains placeholders (%…%)");
+    expect(plan.previewDe.warnings.at(-1)).toBe(
+      "Die Dokumentnummer enthält noch Platzhalter (%…%); prüfen Sie den Nummernkreis in sevDesk " +
+        "und die Nummer nach dem Fertigstellen.",
+    );
   });
 
   it("refuses a recurring invoice template", async () => {
@@ -246,6 +258,12 @@ describe("sevdesk_order_finalize details", () => {
       "The order is marked as sent (status 200) and sevDesk assigns its final number.",
     );
     expect(plan.preview.warnings.join(" ")).not.toContain("enshrine");
+    expect(plan.previewDe.action).toContain("fertigstellen: Entwurf → versendet,");
+    expect(plan.previewDe.warnings[0]).toBe(
+      "Der Auftrag wird als versendet markiert (Status 200), und sevDesk vergibt seine endgültige " +
+        "Nummer.",
+    );
+    expect(plan.previewDe.warnings.join(" ")).not.toContain("festgeschrieben");
   });
 
   it("names the credit note correction path for credit notes", async () => {
@@ -256,6 +274,11 @@ describe("sevdesk_order_finalize details", () => {
       "The credit note becomes legally binding: sevDesk books it under the number the draft " +
         "carries. Afterwards it can only be corrected by a reset to draft (while not enshrined), " +
         "or a new document.",
+    );
+    expect(plan.previewDe.warnings[0]).toBe(
+      "Die Gutschrift wird rechtlich bindend: sevDesk bucht sie unter der Nummer, die der Entwurf " +
+        "trägt. Danach lässt sie sich nur noch durch Zurücksetzen auf Entwurf (solange sie nicht " +
+        "festgeschrieben ist) oder ein neues Dokument korrigieren.",
     );
   });
 
@@ -285,5 +308,6 @@ describe("sevdesk_order_finalize details", () => {
     if (kind === undefined) throw new Error("missing case");
     const plan = await prepareWrite(finalizeTool("invoice"), { id: 1001 }, staged(kind));
     expect(plan.preview.action).toContain("no number yet");
+    expect(plan.previewDe.action).toContain("(noch ohne Nummer) fertigstellen");
   });
 });

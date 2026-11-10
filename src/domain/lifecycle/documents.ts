@@ -30,6 +30,7 @@ import { type CreditNoteDetail, mapCreditNoteDetail } from "../credit-notes.js";
 import type { ContactRef } from "../document-positions.js";
 import { type InvoiceDetail, mapInvoiceDetail } from "../invoices.js";
 import { mapOrderDetail, type OrderDetail } from "../orders.js";
+import type { PreviewLanguage } from "../preview-text.js";
 import { documentTypeByCode } from "../reference-data.js";
 import {
   mapVoucherDetail,
@@ -321,12 +322,15 @@ function voucherSnapshot(
 
 /**
  * "invoice 1001" (or "Invoice 1001" with `capitalized`): a trusted reference to a document by its
- * id, for error messages, which never contain upstream text such as the document number.
+ * id, for error messages, which never contain upstream text such as the document number. With
+ * `lang: "de"` (preview sentences only; errors stay English) it is "Rechnung 1001".
  */
 export function documentRef(
   doc: Pick<LifecycleDocument, "kind" | "id">,
   capitalized = false,
+  lang: PreviewLanguage = "en",
 ): string {
+  if (lang === "de") return `${KINDS[doc.kind].nounDe} ${String(doc.id)}`;
   const noun = KINDS[doc.kind].noun;
   const lead = capitalized ? noun.charAt(0).toUpperCase() + noun.slice(1) : noun;
   return `${lead} ${String(doc.id)}`;

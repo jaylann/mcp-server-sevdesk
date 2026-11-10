@@ -8,6 +8,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
+import { bothPreviews } from "../../src/domain/preview-text.js";
 import { createSafetyRuntime } from "../../src/safety/runtime.js";
 import { SERVER_INFO } from "../../src/server.js";
 import { defineWriteTool } from "../../src/tools/define-tool.js";
@@ -18,6 +19,7 @@ import { decideInBrowser, openApproval } from "../helpers/approval-browser.js";
 import { allEnabledConfig } from "../helpers/config.js";
 import { approve, connectConfirming } from "../helpers/confirm-client.js";
 import {
+  COMMIT_ANNOTATIONS,
   createDummyTools,
   dummyInvoiceBody,
   EXTERNAL_ANNOTATIONS,
@@ -137,7 +139,7 @@ describe("the confirmation prompt", () => {
       output: z.object({ sent: z.boolean() }),
       prepare: ({ text }) =>
         Promise.resolve({
-          preview: {
+          ...bothPreviews(() => ({
             action: "Email invoice RE-1042 to the customer.",
             facts: [
               { label: "To", value: "kunde@example.com" },
@@ -146,7 +148,7 @@ describe("the confirmation prompt", () => {
             ],
             warnings: [],
             irreversible: true,
-          },
+          })),
           state: null,
         }),
       execute: () =>
@@ -574,6 +576,94 @@ describe("browser approval lifecycle", () => {
 
     expect(resultData(result)).toMatchObject({ status: "approval_pending" });
     expect(lastApprovalUrl()).not.toBe(firstUrl);
+    expect(writesOf(fake)).toEqual([]);
+  });
+
+  it("shows a German reader the German preview and runs what they approved", async () => {
+    const { callIt, fake, lastApprovalUrl } = await browser();
+    const pending = await callIt();
+    const url = lastApprovalUrl();
+
+    const german = (await openApproval(url, "de-DE,de;q=0.9,en;q=0.5")).page.body;
+    expect(german).toContain('<html lang="de">');
+    expect(german).toContain(
+      "<h2>Rechnung RE-1042 fertigstellen und als versendet markieren.</h2>",
+    );
+    expect(german).toContain("<dt>Kunde</dt><dd>Muster GmbH</dd>");
+    expect(german).toContain("<dt>Summe (brutto)</dt><dd>1.190,00 EUR</dd>");
+    expect(german).toContain("<div>Die Rechnung wird rechtlich bindend.</div>");
+    expect(german).not.toContain("Finalize invoice RE-1042");
+    expect(german).not.toContain("The invoice becomes legally binding.");
+
+    // The same request in an English browser, and what the model was told: English.
+    const english = (await openApproval(url, "en-GB")).page.body;
+    expect(english).toContain("<h2>Finalize invoice RE-1042 and mark it as sent.</h2>");
+    expect(english).toContain("<dt>Total (gross)</dt><dd>1190.00 EUR</dd>");
+    expect(english).not.toContain("fertigstellen");
+    expect(resultData(pending)["preview"]).toMatchObject({
+      action: "Finalize invoice RE-1042 and mark it as sent.",
+      warnings: ["The invoice becomes legally binding."],
+    });
+    expect(JSON.stringify(pending)).not.toContain("fertigstellen");
+
+    const decided = await decideInBrowser(url, "approve", "de");
+    expect(decided.body).toContain("<h1>Freigegeben</h1>");
+    expect(decided.body).toContain(
+      "<dt>Aktion</dt><dd>Rechnung RE-1042 fertigstellen und als versendet markieren.</dd>",
+    );
+    // The approval covers both texts, so the retry (same record, same previews) runs.
+    expect(resultData(await callIt())).toMatchObject({ status: "done" });
+    expect(writesOf(fake)).toHaveLength(1);
+  });
+
+  it("refuses a German preview that does not match the English one, before asking", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const lopsided = defineWriteTool({
+      name: "sevdesk_dummy_lopsided",
+      title: "Lopsided previews (dummy)",
+      description: "A German preview without the warning. Test fixture for the pair check.",
+      toolset: "invoices",
+      tier: "commit",
+      annotations: COMMIT_ANNOTATIONS,
+      input: z.strictObject({ ...dryRunInputShape }),
+      output: z.object({ status: z.string() }),
+      prepare: () =>
+        Promise.resolve({
+          preview: {
+            action: "Enshrine invoice 7.",
+            facts: [],
+            warnings: ["It can never be changed again."],
+            irreversible: true,
+          },
+          previewDe: {
+            action: "Rechnung 7 festschreiben.",
+            facts: [],
+            warnings: [],
+            irreversible: true,
+          },
+          state: null,
+        }),
+      execute: () =>
+        Promise.resolve({
+          data: { status: "enshrined" },
+          summary: "Enshrined.",
+          affected: [{ objectName: "Invoice", id: "7" }],
+        }),
+    });
+    const { client, fake, approvalLog } = await writeHarness({
+      tools: [lopsided],
+      routes: [],
+      config: { confirm: "browser" },
+    });
+
+    for (const args of [{}, { dryRun: true }]) {
+      const result = await client.callTool({ name: "sevdesk_dummy_lopsided", arguments: args });
+      expect(result.isError).toBe(true);
+      expect(resultText(result)).toContain(
+        "Internal output validation failed for sevdesk_dummy_lopsided",
+      );
+    }
+    expect(approvalLog).toEqual([]);
     expect(writesOf(fake)).toEqual([]);
   });
 

@@ -238,7 +238,6 @@ export function testBinding(overrides: Partial<ApprovalBinding> = {}): ApprovalB
     toolName: "sevdesk_invoice_finalize",
     toolTitle: "Finalize invoice",
     tier: "commit",
-    tierText: "legally binding bookkeeping",
     argsHash: "a".repeat(64),
     previewHash: "p".repeat(64),
     preview: {
@@ -356,6 +355,8 @@ export type Send = (request: Request) => Promise<Response>;
 export class RemoteBrowser {
   readonly jar = new Map<string, string>();
   readonly responses: BrowserResponse[] = [];
+  /** The `Accept-Language` the browser sends; none by default (the pages then answer in English). */
+  language: string | undefined;
 
   constructor(
     private readonly send: Send,
@@ -363,7 +364,7 @@ export class RemoteBrowser {
   ) {}
 
   async get(path: string): Promise<BrowserResponse> {
-    return this.request(new Request(`${this.origin}${path}`, { headers: this.cookieHeader() }));
+    return this.request(new Request(`${this.origin}${path}`, { headers: this.baseHeaders() }));
   }
 
   async post(
@@ -376,7 +377,7 @@ export class RemoteBrowser {
       "Sec-Fetch-Site": "same-origin",
       "Sec-Fetch-Mode": "navigate",
       "Content-Type": "application/x-www-form-urlencoded",
-      ...this.cookieHeader(),
+      ...this.baseHeaders(),
       ...headers,
     };
     const finalHeaders: Record<string, string> = {};
@@ -416,10 +417,12 @@ export class RemoteBrowser {
     }
   }
 
-  private cookieHeader(): Record<string, string> {
-    if (this.jar.size === 0) return {};
+  private baseHeaders(): Record<string, string> {
     return {
-      Cookie: [...this.jar].map(([name, value]) => `${name}=${value}`).join("; "),
+      ...(this.language === undefined ? {} : { "Accept-Language": this.language }),
+      ...(this.jar.size === 0
+        ? {}
+        : { Cookie: [...this.jar].map(([name, value]) => `${name}=${value}`).join("; ") }),
     };
   }
 

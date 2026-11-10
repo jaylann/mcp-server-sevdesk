@@ -51,12 +51,35 @@ describe("sevdesk_transaction_mark_private", () => {
     });
     expect(plan.preview.facts).toContainEqual({ label: "Counterparty", value: "Max Mustermann" });
     expect(plan.preview.warnings).toHaveLength(2);
+    expect(plan.previewDe.action).toBe(
+      "Kontoumsatz 5101 als privat markieren (Privatentnahme, Status 100 → 300).",
+    );
+    expect(plan.previewDe.facts.at(-1)).toEqual({
+      label: "Wird zu",
+      value:
+        "Privatentnahme: Der Inhaber hat dieses Geld für private Zwecke aus dem Unternehmen " +
+        "entnommen; es ist keine Betriebsausgabe.",
+    });
+    expect(plan.previewDe.facts).toContainEqual({
+      label: "Auftraggeber/Empfänger",
+      value: "Max Mustermann",
+    });
+    expect(plan.previewDe.warnings).toEqual([
+      expect.stringContaining("zählt nicht mehr zu den betrieblichen Einnahmen und Ausgaben"),
+      "Kapitalgesellschaften (GmbH, UG, AG) kennen keine Privatentnahmen oder Privateinlagen; " +
+        "dort wäre das eine falsche Buchung.",
+    ]);
     expect(fake.writes()).toEqual([]);
   });
 
   it("previews a Privateinlage for money in", async () => {
     const plan = await prepareWrite(tool, { id: 5101 }, client(transactionRow({ amount: "500" })));
     expect(plan.preview.action).toContain("Privateinlage");
+    expect(plan.previewDe.action).toContain("(Privateinlage, Status 100 → 300)");
+    expect(plan.previewDe.facts.at(-1)?.value).toContain(
+      "aus privaten Mitteln in das Unternehmen eingelegt; es ist keine Betriebseinnahme",
+    );
+    expect(plan.previewDe.facts[0]?.value).toContain("(Eingang)");
   });
 
   it("sends status 300 with the commit tier and reads the transaction back", async () => {

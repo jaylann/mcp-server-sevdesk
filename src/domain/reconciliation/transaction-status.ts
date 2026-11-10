@@ -39,6 +39,7 @@ import {
   subtract,
   toDecimalString,
 } from "../money.js";
+import { type Phrase, phrase } from "../preview-text.js";
 import { lookup } from "./allocate.js";
 import {
   entryShare,
@@ -134,12 +135,13 @@ interface ResetDocument {
 }
 
 export type ResetPlan =
-  | { readonly mode: "private"; readonly transaction: TransactionDto; readonly warnings: string[] }
+  | { readonly mode: "private"; readonly transaction: TransactionDto; readonly warnings: Phrase[] }
   | {
       readonly mode: "linked";
       readonly transaction: TransactionDto;
       readonly documents: readonly ResetDocument[];
-      readonly warnings: string[];
+      /** Consequences for the preview, in both languages. */
+      readonly warnings: Phrase[];
     };
 
 /** Most documents one reset may take back. */
@@ -175,8 +177,12 @@ export async function planTransactionReset(
       mode: "private",
       transaction,
       warnings: [
-        "The transaction is no longer private: it counts as unbooked again and can be booked to " +
-          "documents (sevdesk_reconcile_suggest, sevdesk_transaction_book).",
+        phrase(
+          "The transaction is no longer private: it counts as unbooked again and can be booked " +
+            "to documents (sevdesk_reconcile_suggest, sevdesk_transaction_book).",
+          "Der Umsatz ist dann nicht mehr privat: Er gilt wieder als ungebucht und kann " +
+            "Dokumenten zugeordnet werden (sevdesk_reconcile_suggest, sevdesk_transaction_book).",
+        ),
       ],
     };
   }
@@ -340,27 +346,48 @@ function otherPayments(
 function resetWarnings(
   documents: readonly ResetDocument[],
   accountType: string | undefined,
-): string[] {
+): Phrase[] {
   const warnings = [
-    "sevDesk cannot unlink a single transaction: each document is reset to open, which removes " +
-      "ALL payments booked on it, not only this transaction's. This transaction loses all its " +
-      "bookings and goes back to unbooked (status 100). Other bank transactions booked on these " +
-      "documents (listed per document) lose only those bookings: one that still pays other " +
-      "documents goes back to partly linked (200), one without any left to unbooked (100). " +
-      "Transactions sevDesk created for payments booked without one are deleted instead.",
+    phrase(
+      "sevDesk cannot unlink a single transaction: each document is reset to open, which " +
+        "removes ALL payments booked on it, not only this transaction's. This transaction " +
+        "loses all its bookings and goes back to unbooked (status 100). Other bank " +
+        "transactions booked on these documents (listed per document) lose only those " +
+        "bookings: one that still pays other documents goes back to partly linked (200), one " +
+        "without any left to unbooked (100). Transactions sevDesk created for payments booked " +
+        "without one are deleted instead.",
+      "sevDesk kann einen einzelnen Umsatz nicht lösen: Jedes Dokument wird auf offen " +
+        "zurückgesetzt, und das entfernt ALLE darauf gebuchten Zahlungen, nicht nur die dieses " +
+        "Umsatzes. Dieser Umsatz verliert alle seine Buchungen und gilt wieder als ungebucht " +
+        "(Status 100). Andere Kontoumsätze, die auf diese Dokumente gebucht sind (je Dokument " +
+        "aufgeführt), verlieren nur diese Buchungen: Bezahlt ein solcher Umsatz noch andere " +
+        "Dokumente, gilt er danach als teilweise verknüpft (200), sonst als ungebucht (100). " +
+        "Umsätze, die sevDesk für Zahlungen ohne Umsatz selbst angelegt hat, werden stattdessen " +
+        "gelöscht.",
+    ),
   ];
   for (const { doc, otherPayments: other, otherTransactions } of documents) {
     const ref = documentRef(doc, true);
-    const found = otherTransactions
-      .map(({ id, amount, statusAfter }) => {
-        const share = amount === undefined ? "" : `${formatMoney(money(amount, doc.currency))}, `;
-        const after = statusAfter === 200 ? "then partly linked (200)" : "then unbooked (100)";
-        return `bank transaction ${String(id)} (${share}${after})`;
-      })
-      .join(", ");
-    if (found !== "") {
+    const refDe = documentRef(doc, true, "de");
+    const found = otherTransactions.map(({ id, amount, statusAfter }) => {
+      const share = amount === undefined ? undefined : money(amount, doc.currency);
+      return phrase(
+        `bank transaction ${String(id)} (${share === undefined ? "" : `${formatMoney(share)}, `}` +
+          `${statusAfter === 200 ? "then partly linked (200)" : "then unbooked (100)"})`,
+        `Kontoumsatz ${String(id)} (` +
+          (share === undefined ? "" : `${formatMoney(share, "de")}, `) +
+          `${statusAfter === 200 ? "danach teilweise verknüpft (200)" : "danach ungebucht (100)"})`,
+      );
+    });
+    if (found.length > 0) {
       warnings.push(
-        `${ref} also loses its payments from ${found}; book them again afterwards if they stand.`,
+        phrase(
+          `${ref} also loses its payments from ${found.map((item) => item.en).join(", ")}; ` +
+            "book them again afterwards if they stand.",
+          `${refDe} verliert auch die Zahlungen aus ` +
+            `${found.map((item) => item.de).join(", ")}; buchen Sie diese danach erneut, wenn ` +
+            "sie weiterhin gelten.",
+        ),
       );
     }
     const logged = otherTransactions.reduce(
@@ -368,17 +395,27 @@ function resetWarnings(
       "0",
     );
     if (other !== undefined && compare(other, logged) > 0) {
+      const unexplained = money(subtract(other, logged), doc.currency);
       warnings.push(
-        `${ref} shows ${formatMoney(money(subtract(other, logged), doc.currency))} more paid ` +
-          "than its bank transactions explain; that payment is removed too.",
+        phrase(
+          `${ref} shows ${formatMoney(unexplained)} more paid than its bank transactions ` +
+            "explain; that payment is removed too.",
+          `${refDe} weist ${formatMoney(unexplained, "de")} mehr als bezahlt aus, als die ` +
+            "Kontoumsätze erklären; auch diese Zahlung wird entfernt.",
+        ),
       );
     }
   }
   if (accountType === "clearing" || accountType === "cash") {
     warnings.push(
-      "This transaction is on an offline or cash account, where sevDesk creates transactions " +
-        "when a payment is booked without one; such a transaction is deleted by the reset, not " +
-        "set back to unbooked.",
+      phrase(
+        "This transaction is on an offline or cash account, where sevDesk creates " +
+          "transactions when a payment is booked without one; such a transaction is deleted by " +
+          "the reset, not set back to unbooked.",
+        "Dieser Umsatz liegt auf einem Offline- oder Kassenkonto, auf dem sevDesk Umsätze " +
+          "selbst anlegt, wenn eine Zahlung ohne Umsatz gebucht wird; ein solcher Umsatz wird " +
+          "beim Zurücksetzen gelöscht und nicht auf ungebucht gesetzt.",
+      ),
     );
   }
   return warnings;

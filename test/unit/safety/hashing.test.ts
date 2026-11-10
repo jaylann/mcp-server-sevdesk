@@ -76,4 +76,35 @@ describe("hashes", () => {
     expect(previewHash({ ...preview, irreversible: true })).not.toBe(base);
     expect(previewHash({ ...preview, warnings: ["Binding."] })).not.toBe(base);
   });
+
+  it("previewHash covers the German preview a reader approves on the page", () => {
+    const preview = {
+      action: "Finalize invoice RE-1.",
+      facts: [{ label: "Total", value: "119.00 EUR" }],
+      warnings: ["Binding."],
+      irreversible: false,
+    };
+    const german = {
+      action: "Rechnung RE-1 fertigstellen.",
+      facts: [{ label: "Summe", value: "119,00 EUR" }],
+      warnings: ["Bindend."],
+      irreversible: false,
+    };
+    const both = previewHash(preview, german);
+
+    // Without a German preview the hash is the one of the English preview alone, as before.
+    expect(previewHash(preview, undefined)).toBe(previewHash(preview));
+    expect(previewHash(preview)).toBe(sha256Hex(canonicalJson(preview)));
+    expect(both).not.toBe(previewHash(preview));
+    expect(both).toBe(sha256Hex(canonicalJson({ en: preview, de: german })));
+    expect(previewHash({ ...preview }, { ...german })).toBe(both);
+    // A change to either text asks the human again.
+    expect(previewHash(preview, { ...german, warnings: ["Unverbindlich."] })).not.toBe(both);
+    expect(previewHash(preview, { ...german, action: "Rechnung RE-2 fertigstellen." })).not.toBe(
+      both,
+    );
+    expect(previewHash({ ...preview, action: "Finalize invoice RE-2." }, german)).not.toBe(both);
+    // The two texts are not interchangeable.
+    expect(previewHash(german, preview)).not.toBe(both);
+  });
 });

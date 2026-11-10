@@ -11,10 +11,16 @@ import { z } from "zod";
 import type { ConfirmationPreview } from "../tools/types.js";
 import { sanitizeUntrusted } from "./fence.js";
 
-/** Caps for the one-line parts after sanitizing (code points); they are short trusted text. */
+/**
+ * Caps for the one-line parts after sanitizing (code points). They are trusted text written in
+ * this repository, so the caps only bound what a bug could put there. They leave room for the
+ * German wording, which runs about a third longer than the English: a consequence that is cut
+ * off is one the reader never sees (`test/integration/write-previews-de.test.ts` checks that no
+ * preview of a shipped tool reaches a cap in either language).
+ */
 const MAX_ACTION_LENGTH = 500;
 const MAX_LABEL_LENGTH = 100;
-const MAX_WARNING_LENGTH = 500;
+const MAX_WARNING_LENGTH = 900;
 /**
  * Longest fact value shown to a human (code points), e.g. an email text of up to 10,000
  * characters. Longer values end with {@link hiddenMarker}; the model-facing preview keeps them
@@ -38,6 +44,27 @@ export const previewSchema = z.object({
 });
 
 /**
+ * Both previews of a write plan, checked after `prepare`: each a complete preview, and the
+ * German one with as many facts and warnings as the English one and the same `irreversible`.
+ * A German reader must never approve a text that leaves out a consequence the English one names.
+ */
+export const previewPairSchema = z
+  .object({ preview: previewSchema, previewDe: previewSchema.optional() })
+  .superRefine(({ preview, previewDe }, ctx) => {
+    if (previewDe === undefined) return;
+    const differs = (part: string): void => {
+      ctx.addIssue({
+        code: "custom",
+        path: ["previewDe", part],
+        message: `the German preview differs from the English one in ${part}`,
+      });
+    };
+    if (previewDe.irreversible !== preview.irreversible) differs("irreversible");
+    if (previewDe.facts.length !== preview.facts.length) differs("facts");
+    if (previewDe.warnings.length !== preview.warnings.length) differs("warnings");
+  });
+
+/**
  * The preview sanitized for display: invisible, bidi and control characters removed everywhere
  * (`sanitizeUntrusted`; tabs become spaces), the action, labels and warnings folded onto one capped
  * line each (line breaks become " / "), and fact values kept whole with their line breaks
@@ -56,8 +83,11 @@ export function displayPreview(preview: ConfirmationPreview): ConfirmationPrevie
   };
 }
 
-/** The line that states irreversibility, used wherever a preview is shown. */
-export const IRREVERSIBLE_LINE = "This cannot be undone.";
+/**
+ * The line that states irreversibility in the plain-text preview. The approval page says the same
+ * in the reader's language (`approval.irreversible` in `src/pages/text`).
+ */
+const IRREVERSIBLE_LINE = "This cannot be undone.";
 
 /** The explicit marker that replaces the end of a value too long to show. */
 export function hiddenMarker(hidden: number): string {

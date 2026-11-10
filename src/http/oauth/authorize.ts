@@ -19,6 +19,9 @@
  *   series of grants.
  */
 import { type AccountIdentity, IdentityError, type IdentityLookup } from "../../accounts/types.js";
+import { type PageContext, pageContext } from "../../pages/context.js";
+import { renderMessagePage, toneForStatus } from "../../pages/message.js";
+import type { PageMessage, Texts } from "../../pages/text/index.js";
 import { sanitizeUntrusted } from "../../safety/fence.js";
 import { type Tier, TIERS } from "../../safety/tiers.js";
 import {
@@ -45,12 +48,7 @@ import type {
   SessionStore,
 } from "../types.js";
 import { CimdError, type CimdFetcher, type ClientMetadata } from "./cimd.js";
-import {
-  type ConsentClientView,
-  renderConfirmStep,
-  renderConsentError,
-  renderTokenStep,
-} from "./consent-page.js";
+import { type ConsentClientView, renderConfirmStep, renderTokenStep } from "./consent-page.js";
 import { GrantLimitError, StateDirError } from "./grant-store.js";
 import { isAccountAllowed } from "./policy.js";
 import { isLoopbackRedirect, matchRedirectUri } from "./redirect-uri.js";
@@ -110,13 +108,13 @@ function csrfCookieName(origin: string): string {
   return origin.startsWith("https://") ? "__Host-sevdesk_csrf" : "sevdesk_csrf";
 }
 
+/** An error that ends the flow with a page; `text` picks its wording in the page's language. */
 class PageError extends Error {
   constructor(
     readonly status: number,
-    readonly title: string,
-    message: string,
+    readonly text: (errors: Texts["consent"]["errors"]) => PageMessage,
   ) {
-    super(message);
+    super("The consent flow ended with an error page.");
   }
 }
 
@@ -150,11 +148,13 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
   const usedConsents = new Map<string, number>();
   const cookieName = csrfCookieName(options.origin);
 
-  function errorPage(status: number, title: string, message: string): Response {
+  function errorPage(page: PageContext, status: number, text: PageMessage): Response {
     const nonce = styleNonce();
-    return htmlResponse(renderConsentError(title, message, nonce), {
+    const tone = toneForStatus(status);
+    return htmlResponse(renderMessagePage(text, { ...page, nonce }, { tone }), {
       status,
       nonce,
+      page,
       isolateOpener: false,
     });
   }
@@ -189,10 +189,18 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
     };
   }
 
-  function consentPage(html: string, nonce: string, ruri: string, status: number, headers = {}) {
+  function consentPage(
+    html: string,
+    nonce: string,
+    page: PageContext,
+    ruri: string,
+    status: number,
+    headers = {},
+  ) {
     return htmlResponse(html, {
       status,
       nonce,
+      page,
       // Browsers apply form-action to the redirect that follows the POST.
       formActions: [new URL(ruri).origin],
       isolateOpener: false,
@@ -204,42 +212,28 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
     clientId: string | undefined | typeof DUPLICATE,
   ): Promise<ClientMetadata> {
     if (clientId === undefined || clientId === DUPLICATE) {
-      throw new PageError(
-        400,
-        "This sign-in link is incomplete",
-        "The request names no single client (client_id). Start connecting again from your app.",
-      );
+      throw new PageError(400, (errors) => errors.incompleteLink);
     }
     try {
       return await options.cimd.load(clientId);
     } catch (error) {
       const reason = error instanceof CimdError ? error.reason : "fetch_failed";
       if (reason === "client_not_allowed") {
-        throw new PageError(
-          400,
-          "This app is not allowed",
-          `This server does not accept the app at ${new URL(clientId).hostname}. Its operator ` +
-            "can allow it in SEVDESK_OAUTH_CLIENTS.",
-        );
+        const host = new URL(clientId).hostname;
+        throw new PageError(400, (errors) => errors.appNotAllowed(host));
       }
       if (reason === "invalid_client_id") {
-        throw new PageError(
-          400,
-          "Unknown app",
-          "The client_id is not the https address of a client metadata document.",
-        );
+        throw new PageError(400, (errors) => errors.unknownApp);
       }
-      throw new PageError(
-        400,
-        "The app could not be verified",
+      const detail =
         error instanceof CimdError
           ? error.message
-          : "The app's metadata document could not be loaded.",
-      );
+          : "The app's metadata document could not be loaded.";
+      throw new PageError(400, (errors) => errors.unverified(detail));
     }
   }
 
-  async function handleGet(request: Request): Promise<Response> {
+  async function handleGet(request: Request, page: PageContext): Promise<Response> {
     const params = new URL(request.url).searchParams;
     const client = await loadClient(single(params, "client_id"));
     const requestedRedirect = single(params, "redirect_uri");
@@ -248,12 +242,7 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
         ? matchRedirectUri(requestedRedirect, client.redirectUris)
         : undefined;
     if (ruri === undefined) {
-      throw new PageError(
-        400,
-        "Unknown redirect address",
-        `The redirect address is missing or not registered by the app at ${client.host}, so ` +
-          "this server does not send you there. Start connecting again from your app.",
-      );
+      throw new PageError(400, (errors) => errors.unknownRedirect(client.host));
     }
     // From here on, errors go back to the app.
     const state = single(params, "state");
@@ -325,9 +314,9 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
         csrf,
         error: undefined,
       },
-      nonce,
+      { ...page, nonce },
     );
-    return consentPage(html, nonce, ruri, 200, {
+    return consentPage(html, nonce, page, ruri, 200, {
       "Set-Cookie": serializeCookie(cookieName, csrfValue, {
         maxAgeSeconds: CONSENT_TTL_SECONDS,
         secure,
@@ -345,7 +334,9 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
     payload: ConsentPayload,
     consent: string,
     ctx: HttpRequestContext,
+    page: PageContext,
   ): Promise<Response> {
+    const t = page.t.consent;
     const tiers = chosenTiers(form.getAll("tier"), payload.offer);
     const view = clientView(payload.cid, payload.ruri, payload.cn);
     const again = (status: number, message: string): Response => {
@@ -359,20 +350,16 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
           csrf: payload.csrf,
           error: message,
         },
-        nonce,
+        { ...page, nonce },
       );
-      return consentPage(html, nonce, payload.ruri, status);
+      return consentPage(html, nonce, page, payload.ruri, status);
     };
     const token = (form.get("sevdesk_token") ?? "").trim();
     if (!SEVDESK_TOKEN_PATTERN.test(token)) {
-      return again(
-        400,
-        "That is not a sevDesk API token: copy the 32 characters (digits and the letters a to f) " +
-          "from sevDesk, Settings → Users → API token.",
-      );
+      return again(400, t.check.badToken);
     }
     if (!ctx.limit(TOKEN_CHECK_RULE, rateLimitKey(ctx.clientIp))) {
-      return again(429, "Too many attempts. Wait a minute, then try again.");
+      return again(429, t.check.limited);
     }
     let identity: AccountIdentity;
     try {
@@ -382,29 +369,16 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
       );
     } catch (error) {
       if (error instanceof IdentityError && error.kind === "unauthorized") {
-        return again(
-          400,
-          "sevDesk did not accept this token. Copy it again from sevDesk (Settings → Users → " +
-            "API token); a regenerated token replaces the old one.",
-        );
+        return again(400, t.check.unauthorized);
       }
-      return again(
-        502,
-        "The token could not be checked because sevDesk did not answer as expected. Try again " +
-          "in a moment.",
-      );
+      return again(502, t.check.noAnswer);
     }
     if (!ACCOUNT_ID_PATTERN.test(identity.accountId)) {
-      return again(502, "sevDesk returned an unexpected account id. Try again in a moment.");
+      return again(502, t.check.badAccount);
     }
     if (!isAccountAllowed(options.oauth, identity.accountId)) {
       options.log.warn("account_refused", { account: identity.accountId });
-      return errorPage(
-        403,
-        "This sevDesk account is not allowed",
-        `This server does not accept sevDesk account ${identity.accountId}. Its operator can ` +
-          `allow it by adding ${identity.accountId} to SEVDESK_OAUTH_ACCOUNTS.`,
-      );
+      return errorPage(page, 403, t.errors.accountNotAllowed(identity.accountId));
     }
     const name =
       identity.name === undefined
@@ -428,9 +402,9 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
         consent: next,
         csrf: payload.csrf,
       },
-      nonce,
+      { ...page, nonce },
     );
-    return consentPage(html, nonce, payload.ruri, 200);
+    return consentPage(html, nonce, page, payload.ruri, 200);
   }
 
   /** Marks a checked consent state used; false when it was used before. */
@@ -444,17 +418,14 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
     return true;
   }
 
-  async function connect(payload: ConsentPayload): Promise<Response> {
+  async function connect(payload: ConsentPayload, page: PageContext): Promise<Response> {
+    const { errors } = page.t.consent;
     const { acct, tok, tiers, jti } = payload;
     if (acct === undefined || tok === undefined || tiers === undefined || jti === undefined) {
-      return errorPage(400, "Check the token first", "Start connecting again from your app.");
+      return errorPage(page, 400, errors.checkFirst);
     }
     if (!firstUse(jti, payload.exp)) {
-      return errorPage(
-        400,
-        "This page was already used",
-        "Each consent page connects once. Start connecting again from your app.",
-      );
+      return errorPage(page, 400, errors.alreadyUsed);
     }
     let grantId: string;
     try {
@@ -468,7 +439,7 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
       grantId = grant.gid;
     } catch (error) {
       if (error instanceof GrantLimitError) {
-        return errorPage(503, "Too many connections", error.message);
+        return errorPage(page, 503, errors.tooManyConnections(error.limit));
       }
       throw error;
     }
@@ -519,9 +490,14 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
     return new Response(null, { status: 303, headers });
   }
 
-  async function handlePost(request: Request, ctx: HttpRequestContext): Promise<Response> {
+  async function handlePost(
+    request: Request,
+    ctx: HttpRequestContext,
+    page: PageContext,
+  ): Promise<Response> {
+    const { errors } = page.t.consent;
     if (!sameOriginPost(request, options.origin)) {
-      return errorPage(403, "Request refused", "This form can only be sent from its own page.");
+      return errorPage(page, 403, errors.foreignPost);
     }
     let form: URLSearchParams;
     try {
@@ -529,9 +505,9 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
     } catch (error) {
       if (error instanceof FormError) {
         return errorPage(
+          page,
           error.reason === "too_large" ? 413 : 400,
-          "Request refused",
-          error.message,
+          errors.formUnreadable(error.reason),
         );
       }
       throw error;
@@ -539,32 +515,23 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
     const consent = form.get("consent") ?? "";
     const payload = openConsent(options, consent, toSeconds(options.now()));
     if (payload === undefined) {
-      return errorPage(
-        400,
-        "This page has expired",
-        "Consent pages are valid for 10 minutes. Start connecting again from your app.",
-      );
+      return errorPage(page, 400, errors.expired);
     }
     const cookie = readCookie(request.headers.get("cookie"), cookieName);
     const tag = cookie === undefined ? "" : keyedTag(options.keys.current, "csrf", cookie);
     const sent = form.get("csrf") ?? "";
     if (cookie === undefined || !safeEqual(sent, tag) || !safeEqual(payload.csrf, tag)) {
-      return errorPage(
-        403,
-        "Request refused",
-        "This form was not sent from the page this browser opened. Start connecting again from " +
-          "your app (cookies must be allowed for this site).",
-      );
+      return errorPage(page, 403, errors.csrf);
     }
     switch (form.get("step")) {
       case "check":
-        return check(form, payload, consent, ctx);
+        return check(form, payload, consent, ctx, page);
       case "connect":
-        return connect(payload);
+        return connect(payload, page);
       case "deny":
         return redirectError(payload.ruri, "access_denied", "The user cancelled.", payload.st);
       default:
-        return errorPage(400, "Request refused", "Unknown step.");
+        return errorPage(page, 400, errors.unknownStep);
     }
   }
 
@@ -575,18 +542,16 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
     origin: "form",
     rateLimit: { name: "oauth-authorize", perMinute: 30 },
     async handle(request, ctx) {
+      const page = pageContext(request.headers.get("accept-language"), options.origin);
+      const { errors } = page.t.consent;
       try {
         return request.method === "POST"
-          ? await handlePost(request, ctx)
-          : await handleGet(request);
+          ? await handlePost(request, ctx, page)
+          : await handleGet(request, page);
       } catch (error) {
-        if (error instanceof PageError) return errorPage(error.status, error.title, error.message);
+        if (error instanceof PageError) return errorPage(page, error.status, error.text(errors));
         if (error instanceof StateDirError) {
-          return errorPage(
-            503,
-            "Temporarily unavailable",
-            "The server is restarting. Try again in a minute.",
-          );
+          return errorPage(page, 503, errors.unavailable);
         }
         throw error;
       }
