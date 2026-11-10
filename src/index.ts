@@ -21,6 +21,7 @@ import { runHttp } from "./http/run.js";
 import { runProfilesCommand } from "./profiles-cli.js";
 import { redactSecrets } from "./safety/redact.js";
 import { createServerFactory } from "./server.js";
+import { createSetupProblemFactory } from "./setup-problem.js";
 import { createSevdeskClient } from "./sevdesk/client.js";
 import { checkConnection } from "./startup.js";
 import { runTokenCommand } from "./token-cli.js";
@@ -109,11 +110,32 @@ async function printAccountId(env: Env): Promise<number> {
 }
 
 /**
- * Serves stdio. Configuration problems reject with a {@link ConfigError} (every problem, never the
- * token), which `fail` prints before exiting 1.
+ * Serves stdio. A {@link ConfigError} (every problem, never the token) is printed to stderr and
+ * then served by the setup-problem server (`src/setup-problem.ts`), so clients that hide stderr
+ * still tell the user what to fix.
  */
 async function serveOverStdio(): Promise<void> {
-  const { config, warnings } = await loadLocalConfig(process.env);
+  let loaded: Awaited<ReturnType<typeof loadLocalConfig>>;
+  try {
+    loaded = await loadLocalConfig(process.env);
+  } catch (error) {
+    if (!(error instanceof ConfigError)) throw error;
+    console.error(`${PACKAGE_NAME}: ${error.message}`);
+    console.error(
+      `${PACKAGE_NAME}: serving only the setup problem until the configuration is fixed`,
+    );
+    const handle = serveStdio(createSetupProblemFactory(error.problems));
+    const stop = (): void => {
+      handle.close().then(
+        () => process.exit(0),
+        () => process.exit(1),
+      );
+    };
+    process.once("SIGINT", stop);
+    process.once("SIGTERM", stop);
+    return;
+  }
+  const { config, warnings } = loaded;
   const client = createSevdeskClient(config);
   const log = (line: string): void => {
     console.error(`${PACKAGE_NAME}: ${redactSecrets(line, [config.token])}`);

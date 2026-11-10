@@ -1,4 +1,4 @@
-<!-- translated-from: docs/configuration.md sha256:1d7dffecadde -->
+<!-- translated-from: docs/configuration.md sha256:1a839713b6f8 -->
 
 # Konfiguration
 
@@ -274,3 +274,10 @@ Docker als `docker run --rm ghcr.io/jaylann/mcp-server-sevdesk:<version> <comman
 Exit-Codes: `0` Erfolg, `1` Fehlschlag (der Grund steht in stderr), `2` unbekannter Befehl oder
 unbekanntes Argument. Die Befehle für den Fernzugriff beschreibt
 [remote.de.md](remote.de.md#befehle) ausführlich.
+
+Bei einer ungültigen Konfiguration schreibt der stdio-Server die Probleme nach stderr und startet
+trotzdem, weil manche Clients (Claude Desktop) stderr nicht zeigen und nur „Server disconnected“
+melden würden. Er bietet dann kein sevDesk-Werkzeug an, sendet nichts an sevDesk und nennt die
+Probleme in seinen Anweisungen und in seinem einzigen Werkzeug, `sevdesk_setup_problem`, damit der
+Assistent Ihnen sagen kann, welche Einstellung Sie korrigieren müssen. Der HTTP-Modus startet
+weiterhin nicht.

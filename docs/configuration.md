@@ -262,3 +262,9 @@ as `docker run --rm ghcr.io/jaylann/mcp-server-sevdesk:<version> <command>`.
 Exit codes: `0` success, `1` failure (the reason is printed to stderr), `2` unknown command or
 argument. The remote-mode commands are described in detail in
 [remote.md](remote.md#commands).
+
+With an invalid configuration the stdio server prints the problems to stderr and still starts,
+because some clients (Claude Desktop) hide stderr and would only report "Server disconnected". It
+then offers no sevDesk tool, sends nothing to sevDesk, and names the problems in its instructions
+and in its one tool, `sevdesk_setup_problem`, so the assistant can tell you which setting to fix.
+The HTTP mode still refuses to start.
