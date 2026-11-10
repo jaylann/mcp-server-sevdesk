@@ -85,7 +85,8 @@ describe("sevdesk_upload_request: calls", () => {
     });
     expect(resultSummary(result)).toBe(
       `Upload request ${String(data["reference"])} (receipt): give the user the link in url; ` +
-        "they open it in the browser, signed in to this sevDesk account, and upload one PDF, " +
+        "they open it in the browser they connected this server with (any other browser asks " +
+        "for the account's sevDesk API token) and upload one PDF, " +
         "PNG, JPEG file of at most 20 MB before 2026-11-09T12:15:00.000Z. When they say it is " +
         "done, call the tool that needs the file with file set to uploadId. Nothing was sent to " +
         "sevDesk.",

@@ -1051,8 +1051,10 @@ async function createLock(path: string, content: string, now: () => number): Pro
     if (errorCode(error) === "EEXIST") return false;
     throw new StateDirError(`SEVDESK_HTTP_STATE_DIR: cannot write ${path}.`);
   }
+  // Align the time with the injected clock. A racing starter may have just moved the new lock
+  // aside to judge it and is putting it back; the heartbeat sets the time again either way.
   const seconds = now() / 1000;
-  await utimes(path, seconds, seconds);
+  await utimes(path, seconds, seconds).catch(() => undefined);
   return true;
 }
 

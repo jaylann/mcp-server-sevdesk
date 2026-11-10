@@ -111,7 +111,8 @@ export interface FileAccess {
   checkDelivery(): Promise<void>;
   /**
    * Trusted, deterministic text for previews, e.g. "a new file in /srv/exports" or "a download
-   * link (signed in to the account, valid 30 minutes)". No clock times, no ids.
+   * link (opened in the browser they connected this server with; valid 30 minutes)". No clock
+   * times, no ids.
    */
   describeDelivery(): string;
 }

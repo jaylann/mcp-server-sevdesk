@@ -298,7 +298,8 @@ describe("deliveries as download links", () => {
     expect(resultSummary(result)).toBe(
       `Invoice 12: the PDF file (${String(data["bytes"])} bytes) is ready as a download link ` +
         `(reference ${download.reference}, valid until ${download.expiresAt}): give the user the ` +
-        "link in download.url; they open it in the browser, signed in to this sevDesk account; " +
+        "link in download.url; they open it in the browser they connected this server with " +
+        "(any other browser asks for the account's sevDesk API token); " +
         "nothing changed in sevDesk.",
     );
     expect(resultSummary(result)).not.toContain(linkId(download.url));

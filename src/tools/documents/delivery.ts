@@ -46,7 +46,7 @@ export function deliveryData(delivery: Delivery): {
 export function downloadText(download: { reference: string; expiresAt: string }): string {
   return (
     `a download link (reference ${download.reference}, valid until ${download.expiresAt}): ` +
-    "give the user the link in download.url; they open it in the browser, signed in to this " +
-    "sevDesk account"
+    "give the user the link in download.url; they open it in the browser they connected this " +
+    "server with (any other browser asks for the account's sevDesk API token)"
   );
 }

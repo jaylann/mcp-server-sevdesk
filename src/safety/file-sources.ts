@@ -174,8 +174,8 @@ export function remoteFileAccess(
     describeDelivery: () =>
       localOutput
         ? local.describeDelivery()
-        : "a download link for the user (opened in the browser, signed in to this sevDesk " +
-          `account; valid ${lifetime})`,
+        : "a download link for the user (opened in the browser they connected this server " +
+          `with; valid ${lifetime})`,
   };
 }
 

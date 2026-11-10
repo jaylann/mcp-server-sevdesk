@@ -308,7 +308,7 @@ describe("remoteFileAccess: deliveries", () => {
       file: { filename: "RE-1001.pdf", kind: "pdf", bytes: Buffer.from(PDF) },
     });
     expect(files.describeDelivery()).toBe(
-      "a download link for the user (opened in the browser, signed in to this sevDesk account; " +
+      "a download link for the user (opened in the browser they connected this server with; " +
         "valid 30 minutes)",
     );
   });

@@ -23,8 +23,9 @@ const output = z.object({
   url: z
     .string()
     .describe(
-      "Give this link to the user: they open it in the browser, signed in to this sevDesk " +
-        "account, and upload the file there.",
+      "Give this link to the user: they open it in the browser they connected this server " +
+        "with (any other browser asks for the account's sevDesk API token) and upload the " +
+        "file there.",
     ),
   reference: z.string().describe("Short code the upload page shows, to match the request."),
   expiresAt: z.string().describe("ISO 8601: the file must be uploaded before then."),
@@ -43,7 +44,7 @@ export const uploadRequestTool = defineTool({
     "(sevdesk_voucher_create_draft, sevdesk_voucher_update_draft, sevdesk_einvoice_parse, " +
     "sevdesk_voucher_import_einvoice): purpose receipt (Beleg, Belegbild: PDF, PNG or JPEG) or " +
     "einvoice (E-Rechnung: XRechnung XML or ZUGFeRD/Factur-X PDF). Returns a link: give it to " +
-    "the user, who opens it in the browser signed in to this sevDesk account and uploads the " +
+    "the user, who opens it in the browser they connected this server with and uploads the " +
     "file there. Wait until the user says the upload is done, then pass uploadId as file. Each " +
     "request takes one file and expires (expiresAt); the uploaded file stays usable for a while, " +
     "also for a retry. Nothing is sent to sevDesk.",
@@ -79,7 +80,8 @@ export const uploadRequestTool = defineTool({
       },
       summary:
         `Upload request ${upload.reference} (${args.purpose}): give the user the link in url; ` +
-        "they open it in the browser, signed in to this sevDesk account, and upload one " +
+        "they open it in the browser they connected this server with (any other browser asks " +
+        "for the account's sevDesk API token) and upload one " +
         `${upload.accepts.map((kind) => kind.toUpperCase()).join(", ")} file of at most ` +
         `${megabytes(upload.maxBytes)} before ${upload.expiresAt}. When they say it is done, ` +
         "call the tool that needs the file with file set to uploadId. Nothing was sent to sevDesk.",
