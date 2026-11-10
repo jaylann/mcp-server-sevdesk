@@ -140,8 +140,11 @@ describe("mcpb/manifest.json", () => {
       expect(documented.has(name), `server.json documents ${name}`).toBe(true);
       const key = /^\$\{user_config\.(\w+)\}$/.exec(value)?.[1] ?? "";
       const fallback = settings[key]?.default;
+      // Claude Desktop shows no elicitation dialog (checked 2026-11-10), so the extension
+      // confirms in the browser by default; every other client keeps the server's default.
+      const expected = name === "SEVDESK_CONFIRM" ? "browser" : documented.get(name);
       if (fallback !== undefined) {
-        expect(String(fallback), `default of ${name}`).toBe(documented.get(name));
+        expect(String(fallback), `default of ${name}`).toBe(expected);
       }
     }
   });
@@ -157,7 +160,7 @@ describe("settings as Claude Desktop passes them", () => {
       SEVDESK_ALLOW: "read",
       SEVDESK_READ_ONLY: "false",
       SEVDESK_DRY_RUN: "false",
-      SEVDESK_CONFIRM: "elicit",
+      SEVDESK_CONFIRM: "browser",
       SEVDESK_TOOLSETS: "",
       SEVDESK_FILE_DIRS: "",
       SEVDESK_OUTPUT_DIR: "",
@@ -166,7 +169,7 @@ describe("settings as Claude Desktop passes them", () => {
     expect(loaded).toMatchObject({
       readOnly: false,
       dryRun: false,
-      confirm: "elicit",
+      confirm: "browser",
       fileDirs: [],
       outputDir: undefined,
     });

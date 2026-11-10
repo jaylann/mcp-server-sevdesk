@@ -1,4 +1,4 @@
-<!-- translated-from: docs/clients.md sha256:5f23e3b66bcb -->
+<!-- translated-from: docs/clients.md sha256:4b66f356b894 -->
 
 # Clients
 
@@ -30,16 +30,16 @@ Sie vorher ([Berechtigungen](permissions.de.md#bestätigungsarten)). Mit der Vor
 Clients ohne diese Funktion brauchen `SEVDESK_CONFIRM=browser`, eine Freigabeseite in Ihrem
 Browser.
 
-| Client                                      | Bestätigung im Chat                | Einstellung                                                                 |
-| ------------------------------------------- | ---------------------------------- | --------------------------------------------------------------------------- |
-| Claude Code                                 | ja, in interaktiven Sitzungen      | `elicit` (Standard)                                                         |
-| Cursor                                      | ja                                 | `elicit` (Standard)                                                         |
-| VS Code (GitHub Copilot)                    | ja                                 | `elicit` (Standard)                                                         |
-| Claude Desktop                              | noch nicht bestätigt               | `elicit` versuchen; meldet der Server, dass er nicht fragen kann, `browser` |
-| Codex                                       | nicht dokumentiert                 | `browser`                                                                   |
-| Windsurf                                    | nicht dokumentiert                 | `browser`                                                                   |
-| Zed                                         | nein                               | `browser`                                                                   |
-| claude.ai und die Claude-Apps (Fernzugriff) | nein, zum Zeitpunkt des Schreibens | `browser` (das Freigabe-Postfach des Servers)                               |
+| Client                                      | Bestätigung im Chat                | Einstellung                                   |
+| ------------------------------------------- | ---------------------------------- | --------------------------------------------- |
+| Claude Code                                 | ja, in interaktiven Sitzungen      | `elicit` (Standard)                           |
+| Cursor                                      | ja                                 | `elicit` (Standard)                           |
+| VS Code (GitHub Copilot)                    | ja                                 | `elicit` (Standard)                           |
+| Claude Desktop                              | nein (geprüft im November 2026)    | `browser` (Standard der Erweiterung)          |
+| Codex                                       | nicht dokumentiert                 | `browser`                                     |
+| Windsurf                                    | nicht dokumentiert                 | `browser`                                     |
+| Zed                                         | nein                               | `browser`                                     |
+| claude.ai und die Claude-Apps (Fernzugriff) | nein, zum Zeitpunkt des Schreibens | `browser` (das Freigabe-Postfach des Servers) |
 
 Die Funktionen der Clients ändern sich häufig; diese Tabelle gibt ihre Dokumentation vom November
 2026 wieder. Nichts geht unbemerkt schief: Kann ein Client nicht fragen, antwortet das Werkzeug mit
@@ -65,16 +65,16 @@ Claude Desktop bewahrt das Token im sicheren Speicher Ihres Betriebssystems auf 
 unter macOS, Anmeldeinformationsverwaltung unter Windows). Die Einstellungen ändern Sie später
 unter **Settings → Extensions → sevDesk**:
 
-| Einstellung       | Variable             | Bedeutung                                                                                           |
-| ----------------- | -------------------- | --------------------------------------------------------------------------------------------------- |
-| sevDesk API token | `SEVDESK_API_TOKEN`  | Pflicht.                                                                                            |
-| Permission tiers  | `SEVDESK_ALLOW`      | `read` (Standard), `write`, `commit`, `external` oder `all`, durch Kommas getrennt.                 |
-| Read only         | `SEVDESK_READ_ONLY`  | Nur Lesewerkzeuge, unabhängig von den Stufen.                                                       |
-| Dry run           | `SEVDESK_DRY_RUN`    | Schreibwerkzeuge geben nur eine Vorschau zurück.                                                    |
-| Confirmation      | `SEVDESK_CONFIRM`    | `elicit` (Standard) oder `browser`. In der Erweiterung lässt sich die Bestätigung nicht abschalten. |
-| Toolsets          | `SEVDESK_TOOLSETS`   | Leer lädt alle außer `advanced`.                                                                    |
-| Receipt folder    | `SEVDESK_FILE_DIRS`  | Ein Ordner, aus dem Belege und E-Rechnungen gelesen werden dürfen.                                  |
-| Output folder     | `SEVDESK_OUTPUT_DIR` | Ein Ordner, in dem PDFs und Exporte gespeichert werden dürfen.                                      |
+| Einstellung       | Variable             | Bedeutung                                                                                                                                                                                       |
+| ----------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| sevDesk API token | `SEVDESK_API_TOKEN`  | Pflicht.                                                                                                                                                                                        |
+| Permission tiers  | `SEVDESK_ALLOW`      | `read` (Standard), `write`, `commit`, `external` oder `all`, durch Kommas getrennt.                                                                                                             |
+| Read only         | `SEVDESK_READ_ONLY`  | Nur Lesewerkzeuge, unabhängig von den Stufen.                                                                                                                                                   |
+| Dry run           | `SEVDESK_DRY_RUN`    | Schreibwerkzeuge geben nur eine Vorschau zurück.                                                                                                                                                |
+| Confirmation      | `SEVDESK_CONFIRM`    | `browser` (Standard: Eine Freigabeseite öffnet sich in Ihrem Browser) oder `elicit` (Claude Desktop zeigt dafür keinen Dialog). In der Erweiterung lässt sich die Bestätigung nicht abschalten. |
+| Toolsets          | `SEVDESK_TOOLSETS`   | Leer lädt alle außer `advanced`.                                                                                                                                                                |
+| Receipt folder    | `SEVDESK_FILE_DIRS`  | Ein Ordner, aus dem Belege und E-Rechnungen gelesen werden dürfen.                                                                                                                              |
+| Output folder     | `SEVDESK_OUTPUT_DIR` | Ein Ordner, in dem PDFs und Exporte gespeichert werden dürfen.                                                                                                                                  |
 
 So prüfen Sie einen Download vor der Installation:
 `gh attestation verify mcp-server-sevdesk-<version>.mcpb --owner jaylann`. Ein neueres Release

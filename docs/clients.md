@@ -25,16 +25,16 @@ into the same `env` block; without any, the server is read-only.
 the client shows the question in the chat, which needs MCP elicitation. Clients without it need
 `SEVDESK_CONFIRM=browser`, an approval page in your browser.
 
-| Client                                      | Confirmation in the chat     | Set                                                          |
-| ------------------------------------------- | ---------------------------- | ------------------------------------------------------------ |
-| Claude Code                                 | yes, in interactive sessions | `elicit` (default)                                           |
-| Cursor                                      | yes                          | `elicit` (default)                                           |
-| VS Code (GitHub Copilot)                    | yes                          | `elicit` (default)                                           |
-| Claude Desktop                              | not confirmed yet            | try `elicit`; if the server reports it cannot ask, `browser` |
-| Codex                                       | not documented               | `browser`                                                    |
-| Windsurf                                    | not documented               | `browser`                                                    |
-| Zed                                         | no                           | `browser`                                                    |
-| claude.ai and the Claude apps (remote mode) | no, at the time of writing   | `browser` (the server's approval inbox)                      |
+| Client                                      | Confirmation in the chat     | Set                                     |
+| ------------------------------------------- | ---------------------------- | --------------------------------------- |
+| Claude Code                                 | yes, in interactive sessions | `elicit` (default)                      |
+| Cursor                                      | yes                          | `elicit` (default)                      |
+| VS Code (GitHub Copilot)                    | yes                          | `elicit` (default)                      |
+| Claude Desktop                              | no (checked November 2026)   | `browser` (the extension's default)     |
+| Codex                                       | not documented               | `browser`                               |
+| Windsurf                                    | not documented               | `browser`                               |
+| Zed                                         | no                           | `browser`                               |
+| claude.ai and the Claude apps (remote mode) | no, at the time of writing   | `browser` (the server's approval inbox) |
 
 Client features change often; this table reflects their documentation in November 2026. Nothing
 goes wrong silently: when a client cannot be asked, the tool answers with an error that says so,
@@ -57,16 +57,16 @@ built-in Node.js. It is the easiest way to install on macOS and Windows.
 Claude Desktop keeps the token in your operating system's secure storage (Keychain on macOS,
 Credential Manager on Windows). Change the settings later under **Settings → Extensions → sevDesk**:
 
-| Setting           | Variable             | Meaning                                                                                |
-| ----------------- | -------------------- | -------------------------------------------------------------------------------------- |
-| sevDesk API token | `SEVDESK_API_TOKEN`  | Required.                                                                              |
-| Permission tiers  | `SEVDESK_ALLOW`      | `read` (default), `write`, `commit`, `external` or `all`, comma-separated.             |
-| Read only         | `SEVDESK_READ_ONLY`  | Only read tools, whatever the tiers say.                                               |
-| Dry run           | `SEVDESK_DRY_RUN`    | Write tools only return a preview.                                                     |
-| Confirmation      | `SEVDESK_CONFIRM`    | `elicit` (default) or `browser`. Confirmation cannot be switched off in the extension. |
-| Toolsets          | `SEVDESK_TOOLSETS`   | Empty loads all except `advanced`.                                                     |
-| Receipt folder    | `SEVDESK_FILE_DIRS`  | A folder receipts and e-invoices may be read from.                                     |
-| Output folder     | `SEVDESK_OUTPUT_DIR` | A folder where PDFs and exports may be saved.                                          |
+| Setting           | Variable             | Meaning                                                                                                                                                                |
+| ----------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| sevDesk API token | `SEVDESK_API_TOKEN`  | Required.                                                                                                                                                              |
+| Permission tiers  | `SEVDESK_ALLOW`      | `read` (default), `write`, `commit`, `external` or `all`, comma-separated.                                                                                             |
+| Read only         | `SEVDESK_READ_ONLY`  | Only read tools, whatever the tiers say.                                                                                                                               |
+| Dry run           | `SEVDESK_DRY_RUN`    | Write tools only return a preview.                                                                                                                                     |
+| Confirmation      | `SEVDESK_CONFIRM`    | `browser` (default: an approval page opens in your browser) or `elicit` (Claude Desktop shows no dialog for it). Confirmation cannot be switched off in the extension. |
+| Toolsets          | `SEVDESK_TOOLSETS`   | Empty loads all except `advanced`.                                                                                                                                     |
+| Receipt folder    | `SEVDESK_FILE_DIRS`  | A folder receipts and e-invoices may be read from.                                                                                                                     |
+| Output folder     | `SEVDESK_OUTPUT_DIR` | A folder where PDFs and exports may be saved.                                                                                                                          |
 
 To verify a download before you install it:
 `gh attestation verify mcp-server-sevdesk-<version>.mcpb --owner jaylann`. A newer release is

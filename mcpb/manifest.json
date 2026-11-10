@@ -98,9 +98,9 @@
     "confirm": {
       "type": "string",
       "title": "Confirmation",
-      "description": "How you confirm commit and external actions: elicit (a dialog in Claude) or browser (an approval page in your browser).",
+      "description": "How you confirm commit and external actions: browser (an approval page opens in your browser) or elicit (a dialog in the chat, for clients that show one; Claude Desktop does not).",
       "required": false,
-      "default": "elicit"
+      "default": "browser"
     },
     "toolsets": {
       "type": "string",
