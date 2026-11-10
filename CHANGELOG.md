@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.0](https://github.com/jaylann/mcp-server-sevdesk/compare/v0.1.0...v1.0.0) (2026-11-10)
+
+
+### Features
+
+* add file transfer, profiles, prompts and api_get for 1.0 ([#18](https://github.com/jaylann/mcp-server-sevdesk/issues/18)) ([eaf81b9](https://github.com/jaylann/mcp-server-sevdesk/commit/eaf81b9397d16f2664b28fd8038ec501ff6c6311))
+
+
+### Bug Fixes
+
+* link the docs site at sevdeskmcp.lanfermann.dev ([#20](https://github.com/jaylann/mcp-server-sevdesk/issues/20)) ([17f6492](https://github.com/jaylann/mcp-server-sevdesk/commit/17f64929738de3c1fd660ae4885d1b897fecf2b1))
+
 ## 0.1.0 (2026-11-10)
 
 
