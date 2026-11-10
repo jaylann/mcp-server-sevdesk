@@ -114,10 +114,10 @@ const EMAIL_TEXT = [
   "anbei erhalten Sie unsere Rechnung RE-1042 über 1.190,00 EUR für die Leistungen im Oktober.",
   "Bitte überweisen Sie den Betrag bis zum 17.11.2026 auf das unten genannte Konto.",
   "",
-  "Bei Rückfragen erreichen Sie uns jederzeit unter buchhaltung@lanfermann.example.",
+  "Bei Rückfragen erreichen Sie uns jederzeit unter buchhaltung@beispiel-software.example.",
   "",
   "Mit freundlichen Grüßen",
-  "Justin Lanfermann",
+  "Erika Mustermann",
 ].join("\n");
 
 const SEND_EMAIL: ApprovalFixture = {
@@ -382,7 +382,7 @@ export const GALLERY: readonly GalleryPage[] = [
           client: CLAUDE_AI,
           tiers: ["read", "write", "commit"],
           accountId: "4711",
-          accountName: "Lanfermann Software UG (haftungsbeschränkt)",
+          accountName: "Beispiel Software UG (haftungsbeschränkt)",
           consent: "sealed-consent",
           csrf: "csrf-tag",
         },
