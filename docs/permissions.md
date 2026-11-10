@@ -108,6 +108,12 @@ Each approval is bound to the tool, the arguments and the preview, expires after
 used once; at most five wait at a time. The page shows the same reference code as the tool result,
 so you can match them.
 
+The page comes in German and English and follows your browser's language. In German the preview
+is German too (the action, the facts, the warnings, with amounts and dates in German notation),
+while the assistant, dry runs and the audit log keep the English text of the same request: match
+the two by the reference code. The page shows how long the request is still valid and takes the
+buttons away when it has expired. It runs no script and loads nothing from other servers.
+
 The limit of this mode: an agent that can read the server's log or drive your browser (browser
 automation, a computer-use tool) could approve on its own. `browser` protects against a model that
 only talks, for example one steered by text hidden in sevDesk data. Prefer `elicit` in agentic
@@ -152,7 +158,7 @@ event:
 | `tier`        | write events                                                         | `write`, `commit` or `external`.                                                                                                                                 |
 | `argsHash`    | write events                                                         | A hash of the tool and its arguments (without `dryRun`).                                                                                                         |
 | `args`        | write events except `approval_decided`                               | The arguments: the token redacted, upload ids redacted, hidden characters written as visible `\u{…}` escapes, strings up to 20,000 characters.                   |
-| `previewHash` | `dry_run`, `confirmation_requested`, `approval_decided`, `executing` | A hash of the preview that was shown and approved.                                                                                                               |
+| `previewHash` | `dry_run`, `confirmation_requested`, `approval_decided`, `executing` | A hash of the preview that was shown and approved; for `commit` and `external` tools it covers the English and the German text.                                  |
 | `preview`     | `dry_run`, `confirmation_requested`                                  | The preview as shown: `action` (one sentence), `facts` (`label`, `value`), `warnings` and `irreversible`.                                                        |
 | `approval`    | `executing`                                                          | How the action was approved: `elicit`, `browser`, `confirmation_off` or `not_required`.                                                                          |
 | `reason`      | `confirmation_refused`                                               | `replayed_or_expired` or `mismatch` (made for another tool or other arguments).                                                                                  |

@@ -1,6 +1,8 @@
 # ADR 0003: Permission tiers and human confirmation
 
-- **Status:** Accepted; browser mode over HTTP amended by [0007](0007-approval-inbox-over-http.md)
+- **Status:** Accepted; browser mode over HTTP amended by [0007](0007-approval-inbox-over-http.md);
+  the preview's languages and the pages amended by
+  [0010](0010-server-pages-in-two-languages.md)
 - **Date:** 2026-11-07
 
 ## Context

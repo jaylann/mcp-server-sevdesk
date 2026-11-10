@@ -46,7 +46,8 @@ These may change in any release, including patch releases:
 - **Tool annotations** (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) may
   change, but only toward more caution, for example a tool newly marked as destructive.
 - **HTML pages:** the consent page, the approval pages, the sign-in, upload and download pages,
-  their layout, text and form fields.
+  their layout, text, languages and form fields, and the files they load from `/assets/` (fonts
+  and the icon; the names carry a content hash and change with the files).
 - **The setup-problem mode:** with an invalid configuration the stdio server starts with only
   `sevdesk_setup_problem` ([Configuration](configuration.md#command-line)); that tool's name and
   output may change.

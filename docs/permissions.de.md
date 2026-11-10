@@ -120,6 +120,13 @@ Jede Freigabe ist an das Werkzeug, die Argumente und die Vorschau gebunden, läu
 ab und wird einmal verwendet; höchstens fünf warten gleichzeitig. Die Seite zeigt denselben
 Referenzcode wie das Ergebnis des Werkzeugs, sodass Sie beide zuordnen können.
 
+Die Seite gibt es auf Deutsch und Englisch; sie richtet sich nach der Sprache Ihres Browsers. Auf
+Deutsch ist auch die Vorschau deutsch (die Aktion, die Angaben, die Warnungen, Beträge und Daten
+in deutscher Schreibweise), während der Assistent, Probeläufe und das Audit-Log den englischen
+Text derselben Anfrage behalten: Ordnen Sie beide über den Referenzcode zu. Die Seite zeigt, wie
+lange die Anfrage noch gültig ist, und nimmt die Schaltflächen weg, sobald sie abgelaufen ist. Sie
+führt kein Skript aus und lädt nichts von anderen Servern.
+
 Die Grenze dieser Art: Ein Agent, der das Log des Servers lesen oder Ihren Browser steuern kann
 (Browser-Automatisierung, ein Werkzeug zur Computersteuerung), könnte selbst freigeben. `browser`
 schützt vor einem Modell, das nur redet, zum Beispiel einem, das von in sevDesk-Daten verstecktem
@@ -143,7 +150,7 @@ Buchhaltung getan, und wer hat es freigegeben?“
 | `dry_run`                | Ein Probelauf hat seine Vorschau zurückgegeben.                                                                                             |
 | `confirmation_requested` | Eine Bestätigung wurde angefordert, mit der Vorschau (und im Browser-Modus dem Referenzcode).                                               |
 | `confirmation_refused`   | Ein erneuter Versuch legte eine Bestätigung vor, die schon verwendet, abgelaufen oder für andere Argumente erteilt war.                     |
-| `approval_decided`       | Auf einer Freigabeseite wurde „Approve“ oder „Reject“ gedrückt.                                                                             |
+| `approval_decided`       | Auf einer Freigabeseite wurde „Freigeben“ oder „Ablehnen“ gedrückt.                                                                         |
 | `declined`               | Sie haben im Client abgelehnt oder die Freigabe im Browser abgelehnt.                                                                       |
 | `executing`              | Die Aktion wird gleich gesendet, mit der Art der Freigabe: `elicit`, `browser`, `confirmation_off` oder `not_required` (die Stufe `write`). |
 | `executed`               | Die Aktion wurde ausgeführt; mit den Datensätzen, die sie geändert hat.                                                                     |
@@ -165,7 +172,7 @@ vom Ereignis ab:
 | `tier`        | Schreibereignisse                                                              | `write`, `commit` oder `external`.                                                                                                                                                          |
 | `argsHash`    | Schreibereignisse                                                              | Ein Hash des Werkzeugs und seiner Argumente (ohne `dryRun`).                                                                                                                                |
 | `args`        | Schreibereignisse außer `approval_decided`                                     | Die Argumente: Token und Upload-IDs geschwärzt, versteckte Zeichen als sichtbare `\u{…}`-Escapes geschrieben, Zeichenketten bis 20.000 Zeichen.                                             |
-| `previewHash` | `dry_run`, `confirmation_requested`, `approval_decided`, `executing`           | Ein Hash der Vorschau, die gezeigt und freigegeben wurde.                                                                                                                                   |
+| `previewHash` | `dry_run`, `confirmation_requested`, `approval_decided`, `executing`           | Ein Hash der Vorschau, die gezeigt und freigegeben wurde; bei Werkzeugen der Stufen `commit` und `external` umfasst er den englischen und den deutschen Text.                               |
 | `preview`     | `dry_run`, `confirmation_requested`                                            | Die Vorschau, wie sie gezeigt wurde: `action` (ein Satz), `facts` (`label`, `value`), `warnings` und `irreversible`.                                                                        |
 | `approval`    | `executing`                                                                    | Wie die Aktion freigegeben wurde: `elicit`, `browser`, `confirmation_off` oder `not_required`.                                                                                              |
 | `reason`      | `confirmation_refused`                                                         | `replayed_or_expired` oder `mismatch` (für ein anderes Werkzeug oder andere Argumente erteilt).                                                                                             |
