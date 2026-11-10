@@ -47,6 +47,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 
 import { z } from "zod";
 
@@ -68,6 +69,12 @@ const COMPACT_BYTES = 1024 * 1024;
 const COMPACT_INTERVAL_MS = 86_400_000;
 const HEARTBEAT_MS = 10_000;
 const STALE_LOCK_MS = 30_000;
+/**
+ * How long a starter that took part in a stale-lock takeover waits before it checks that the new
+ * lock is still its own: a racing starter may briefly move it aside to judge it, and a third may
+ * create its own lock in that moment. A clean start (no lock found) does not wait.
+ */
+const LOCK_SETTLE_MS = 100;
 /** A pending grant whose code was never exchanged is dropped after this long. */
 const PENDING_TTL_SECONDS = 600;
 /** Revoked grants stay listed this long (for `grants list`), then are pruned. */
@@ -1072,6 +1079,7 @@ async function acquireLock(
   const path = join(dir, LOCK_FILE);
   const content = JSON.stringify({ pid: process.pid, token: newId(), started: now() });
   let acquired = await createLock(path, content, now);
+  const raced = !acquired;
   for (let attempt = 0; !acquired && attempt < 3; attempt += 1) {
     const seen = await inspectLock(path);
     if (seen === undefined) {
@@ -1103,6 +1111,10 @@ async function acquireLock(
   let timer: NodeJS.Timeout | undefined;
   let lost = false;
   const ours = async (): Promise<boolean> => (await inspectLock(path))?.raw === content;
+  if (raced) {
+    await delay(LOCK_SETTLE_MS);
+    if (!(await ours())) throw lockHeld(dir, 0);
+  }
   const beat = async (onLost: (error: StateDirError) => void): Promise<void> => {
     if (lost) return;
     const seconds = now() / 1000;
