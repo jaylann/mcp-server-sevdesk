@@ -855,7 +855,7 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 - **Status:** Open. **Evidence:** community + recorded.
 - **Spec says:** None of these endpoints appear in the spec.
 - **Actual behavior:** They exist and other integrations use them. "Recorded" means our recording
-  sessions read or measured the endpoint on a trial account (2026-11-07 or 2026-11-08); "known"
+  sessions read or measured the endpoint on a trial account (2026-11-07, -08 or -10); "known"
   means community SDKs use it routinely; "uncertain" means we found only isolated uses.
 
   | Endpoint                                                                               | Used for                                                                                  | Standing  |
@@ -872,9 +872,9 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   | `GET /CheckAccountTransactionLog`                                                      | what a bank transaction was booked against, and how much (D-057)                          | recorded  |
   | `DELETE /Invoice/{invoiceId}`                                                          | deleting a draft invoice (no tool uses it)                                                | recorded  |
   | `DELETE /Voucher/{voucherId}`                                                          | deleting draft vouchers (the spec has only GET and PUT; D-074)                            | recorded  |
-  | `GET /TextTemplate`                                                                    | head and foot texts (read through `sevdesk_api_get`)                                      | known     |
+  | `GET /TextTemplate`                                                                    | head and foot texts (read through `sevdesk_api_get`)                                      | recorded  |
   | `GET /PartUnity`                                                                       | alternative units of parts, with their own price and factor (`sevdesk_api_get`)           | known     |
-  | `GET /Document`, document download                                                     | attached documents and receipts (metadata through `sevdesk_api_get`)                      | known     |
+  | `GET /Document`, document download                                                     | attached documents and receipts (metadata through `sevdesk_api_get`)                      | recorded  |
   | `GET /SevSequence/Factory/getByType`                                                   | next document number (see D-027); `sevdesk_api_get` refuses it                            | known     |
   | `POST /Voucher/Factory/createVoucherFromFile`                                          | voucher from an uploaded file (no tool uses it)                                           | uncertain |
 
@@ -885,6 +885,13 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   refuses an open voucher with 409 (D-074). The 2026 PDF post (D-025) also names `render`,
   `changeParameter` and `sendByWithRender` endpoints for orders, credit notes and letters that the
   spec does not list.
+
+  Recorded 2026-11-10 (probes `read-text-template`, `read-document`): `GET /TextTemplate` answers
+  every row whatever `limit` and `offset` say (9 rows for `limit=2`), with `total`; its rows carry
+  `additionalInformation` and no `sevUser`, and the `textType` filter is honoured. `GET /Document`
+  honours `limit` and `offset` and has the community model's keys; `GET /Document/{id}` adds none
+  and no field holds file content. `GET /PartUnity` answered an empty list (no alternative units
+  on the trial), so its shape stays "known".
 
   Community model (j-mastr/sevdesk-api, not recorded by us): `GET /TextTemplate` rows carry
   `name`, `text`, `category` (`DOCUMENT`, `LETTER`, `MAIL`), `objectType` (`RE`, `AN`, `AB`, `LI`,
@@ -905,7 +912,8 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   `write-delete-draft-invoice`, `write-next-order-number`; `GET /SevClient` and the credit note
   numbers: manual check (lead)); recorded 2026-11-08, trial account, Update 2.0 (probes
   `read-account-datev-paging`, `read-sevclient-keys`, `read-transaction-log`,
-  `write-voucher-delete`).
+  `write-voucher-delete`); recorded 2026-11-10, trial account, Update 2.0 (probes
+  `read-text-template`, `read-part-unity`, `read-document`; `pnpm fixtures:record`).
 - **Impact:** Each undocumented endpoint gets a hand-written schema, a smoke test, and lives in
   the `advanced` toolset or behind a lookup until a recording confirms its shape. `uncertain`
   endpoints are not used by default tools: receipts go through `uploadTempFile` and `saveVoucher`
@@ -924,10 +932,9 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   `test/unit/tools/vouchers/finalize-delete.test.ts` (D-074). Next-number endpoints,
   `/CheckAccountTransactionLog` and `/SevClient`: D-066, D-057, D-067. `GET /TextTemplate`,
   `/PartUnity`, `/Document`: `test/contract/undocumented-endpoints.test.ts` (the community
-  fixtures in `test/fixtures/advanced/` through `apiGet` and through their probes); pending:
-  recording session, probes `read-text-template`, `read-part-unity`, `read-document` (written
-  for M6, after the 2026-11-07 and 2026-11-08 sessions; `pnpm fixtures:record` records the three
-  lists too). `/SevSequence/Factory/getByType`: no tool uses it, and `sevdesk_api_get` refuses it
+  fixtures in `test/fixtures/advanced/` through `apiGet` and through their probes, and the
+  recorded answers in `test/fixtures/recorded/2026-11-10/advanced/` against them, the ignored
+  `limit` included). `/SevSequence/Factory/getByType`: no tool uses it, and `sevdesk_api_get` refuses it
   (`test/unit/sevdesk/paths.test.ts`, `genericGetRefusal`).
 
 ### D-025: PDF rendering returns one base64 `pdf` since 2026-04-07

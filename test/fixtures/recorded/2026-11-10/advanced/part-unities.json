@@ -1,0 +1,14 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /PartUnity?limit=n (recording session 2026-11-10)",
+    "date": "2026-11-10",
+    "systemVersion": "2.0",
+    "note": "Personal and company data replaced by scripts/lib/scrub.ts; keys, nulls and scalar types as recorded. Mirrors advanced/part-unities.json. A recorded single page (has total). Alternative units of parts; undocumented GET (D-024), read through sevdesk_api_get."
+  },
+  "status": 200,
+  "body": {
+    "total": 0,
+    "objects": []
+  }
+}

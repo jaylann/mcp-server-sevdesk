@@ -1,0 +1,168 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /TextTemplate?limit=n (recording session 2026-11-10)",
+    "date": "2026-11-10",
+    "systemVersion": "2.0",
+    "note": "Personal and company data replaced by scripts/lib/scrub.ts; keys, nulls and scalar types as recorded. Mirrors advanced/text-templates.json. A recorded single page (has total). Head and foot texts; undocumented GET (D-024), read through sevdesk_api_get."
+  },
+  "status": 200,
+  "body": {
+    "total": 9,
+    "objects": [
+      {
+        "id": "9765948",
+        "objectName": "TextTemplate",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:30:23+01:00",
+        "update": "2026-11-07T23:30:23+01:00",
+        "name": "Mustername 2",
+        "text": "Muster-Text 10",
+        "objectType": "ALL",
+        "textType": "TEXT",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "main": "1",
+        "category": "MAIL"
+      },
+      {
+        "id": "9765945",
+        "objectName": "TextTemplate",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:30:23+01:00",
+        "update": "2026-11-07T23:30:23+01:00",
+        "name": "Mustername 2",
+        "text": "Muster-Text 11",
+        "objectType": "AN",
+        "textType": "FOOT",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "main": "1",
+        "category": "DOCUMENT"
+      },
+      {
+        "id": "9765944",
+        "objectName": "TextTemplate",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:30:23+01:00",
+        "update": "2026-11-07T23:30:23+01:00",
+        "name": "Mustername 2",
+        "text": "Muster-Text 12",
+        "objectType": "AN",
+        "textType": "HEAD",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "main": "1",
+        "category": "DOCUMENT"
+      },
+      {
+        "id": "9765947",
+        "objectName": "TextTemplate",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:30:23+01:00",
+        "update": "2026-11-07T23:30:23+01:00",
+        "name": "Mustername 2",
+        "text": "Muster-Text 13",
+        "objectType": "MA",
+        "textType": "FOOT",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "main": "1",
+        "category": "DOCUMENT"
+      },
+      {
+        "id": "9765946",
+        "objectName": "TextTemplate",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:30:23+01:00",
+        "update": "2026-11-07T23:30:23+01:00",
+        "name": "Mustername 2",
+        "text": "Muster-Text 14",
+        "objectType": "MA",
+        "textType": "HEAD",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "main": "1",
+        "category": "DOCUMENT"
+      },
+      {
+        "id": "9765949",
+        "objectName": "TextTemplate",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:30:23+01:00",
+        "update": "2026-11-07T23:30:23+01:00",
+        "name": "Mustername 2",
+        "text": "Muster-Text 15",
+        "objectType": "PAYMENT_CONFIRMATION",
+        "textType": "TEXT",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "main": "1",
+        "category": "MAIL"
+      },
+      {
+        "id": "9765942",
+        "objectName": "TextTemplate",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:30:23+01:00",
+        "update": "2026-11-07T23:30:23+01:00",
+        "name": "Mustername 2",
+        "text": "Muster-Text 16",
+        "objectType": "RE",
+        "textType": "FOOT",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "main": "1",
+        "category": "DOCUMENT"
+      },
+      {
+        "id": "9765943",
+        "objectName": "TextTemplate",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:30:23+01:00",
+        "update": "2026-11-07T23:30:23+01:00",
+        "name": "Mustername 3",
+        "text": "Muster-Text 17",
+        "objectType": "RE",
+        "textType": "FOOT",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "main": "0",
+        "category": "DOCUMENT"
+      },
+      {
+        "id": "9765941",
+        "objectName": "TextTemplate",
+        "additionalInformation": null,
+        "create": "2026-11-07T23:30:23+01:00",
+        "update": "2026-11-07T23:30:23+01:00",
+        "name": "Mustername 2",
+        "text": "Muster-Text 18",
+        "objectType": "RE",
+        "textType": "HEAD",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "main": "1",
+        "category": "DOCUMENT"
+      }
+    ]
+  }
+}

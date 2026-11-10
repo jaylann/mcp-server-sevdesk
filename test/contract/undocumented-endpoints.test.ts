@@ -1,8 +1,9 @@
 /**
  * The undocumented endpoints `sevdesk_api_get` names as examples (spec/deviations.md D-024):
  * `GET /TextTemplate`, `/PartUnity` and `/Document`. Their fixtures in `test/fixtures/advanced/`
- * come from the community model (j-mastr/sevdesk-api) until the probes `read-text-template`,
- * `read-part-unity` and `read-document` run on the trial account.
+ * come from the community model (j-mastr/sevdesk-api). The probes `read-text-template`,
+ * `read-part-unity` and `read-document` ran on the trial account on 2026-11-10; the recorded
+ * answers are checked against the community model below.
  *
  * Each fixture runs through the production read (`apiGet` over the real client) and through its
  * probe, so a recorded answer that later replaces it is checked by the same contract:
@@ -122,6 +123,66 @@ describe.each(ENDPOINTS)("$path (D-024)", ({ path, fixture, probe }) => {
     }
     expect(result?.finding).toContain("Binary-looking fields: none");
     expect(result?.finding).not.toMatch(/Musterfirma|Sehr geehrte|beleg-/);
+  });
+});
+
+/**
+ * The answers the probes and `pnpm fixtures:record` read on the trial account (2026-11-10,
+ * Update 2.0). `/PartUnity` had no rows there, so only its community fixture exists.
+ * `/TextTemplate` ignores `limit` and `offset` (all 9 rows for limit=2); `/Document` honours both.
+ */
+describe("recorded answers (2026-11-10)", () => {
+  const RECORDED = [
+    {
+      path: "/TextTemplate",
+      fixture: "recorded/2026-11-10/advanced/text-templates.json",
+      community: "advanced/text-templates.json",
+      // The trial rows carry `additionalInformation` and no `sevUser`, unlike the community model.
+      onlyRecorded: ["additionalInformation"],
+      onlyCommunity: ["sevUser"],
+    },
+    {
+      path: "/Document",
+      fixture: "recorded/2026-11-10/advanced/documents.json",
+      community: "advanced/documents.json",
+      onlyRecorded: [],
+      onlyCommunity: [],
+    },
+  ] as const;
+
+  it.each(RECORDED)(
+    "$path: the recorded keys differ from the community model only where noted",
+    ({ fixture, community, onlyRecorded, onlyCommunity }) => {
+      expect(loadFixture(fixture)._provenance.source).toBe("recorded");
+      const recorded = new Set(Object.keys(bodyOf(fixture).objects[0] ?? {}));
+      const modelled = new Set(Object.keys(bodyOf(community).objects[0] ?? {}));
+      expect([...recorded].filter((key) => !modelled.has(key))).toEqual(onlyRecorded);
+      expect([...modelled].filter((key) => !recorded.has(key))).toEqual(onlyCommunity);
+    },
+  );
+
+  it.each(RECORDED)(
+    "$path: the recorded answer reads through sevdesk_api_get",
+    async ({ path, fixture }) => {
+      const body = bodyOf(fixture);
+      const { client } = realClient(jsonResponse(body));
+      const read = await apiGet(client, { path, limit: 100, offset: 0 }, { secrets: [TEST_TOKEN] });
+      expect(apiGetTool.output.parse(read.result)).toEqual(read.result);
+      expect(read.result).toMatchObject({ path, total: body.total });
+    },
+  );
+
+  it("an endpoint that ignores limit sends everything and reports no further page", async () => {
+    const body = bodyOf("recorded/2026-11-10/advanced/text-templates.json");
+    expect(body.objects.length).toBeGreaterThan(2);
+    const { client } = realClient(jsonResponse(body));
+    const read = await apiGet(
+      client,
+      { path: "/TextTemplate", limit: 2, offset: 0 },
+      { secrets: [TEST_TOKEN] },
+    );
+    expect(read.result).toMatchObject({ total: body.total, hasMore: false });
+    expect((read.result as { objects: unknown[] }).objects).toHaveLength(body.objects.length);
   });
 });
 
