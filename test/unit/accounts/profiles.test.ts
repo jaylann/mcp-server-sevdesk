@@ -169,10 +169,10 @@ describe("parseProfiles", () => {
       `Profiles file ${PATH}: the file: unknown key "extra" (known: version, profiles).`,
     ]);
     const problems = problemsOf(() =>
-      parse({ version: 1, profiles: { work: { allow: "write", alow: "x", "b a d": 1 } } }),
+      parse({ version: 1, profiles: { work: { allow: "write", allowed: "x", "b a d": 1 } } }),
     );
     expect(problems).toEqual([
-      `Profiles file ${PATH}: profiles.work: unknown keys "alow", "b?a?d" (known: token, allow, ` +
+      `Profiles file ${PATH}: profiles.work: unknown keys "allowed", "b?a?d" (known: token, allow, ` +
         "readOnly, dryRun, confirm, toolsets, fileDirs, outputDir, auditLog, baseUrl, rateLimit, " +
         "timeoutMs).",
     ]);
