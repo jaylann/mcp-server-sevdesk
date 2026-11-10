@@ -1,4 +1,4 @@
-<!-- translated-from: README.md sha256:fda15b4c6ba4 -->
+<!-- translated-from: README.md sha256:9876d784e650 -->
 
 # mcp-server-sevdesk
 
@@ -17,7 +17,7 @@ rechtlich bindend ist.
 > Dies ist ein **inoffizielles** Community-Projekt. Es ist nicht mit der sevdesk GmbH verbunden und
 > wird von ihr weder empfohlen noch unterstützt. „sevDesk“ ist eine Marke ihres Inhabers.
 
-🇬🇧 [English version](README.md) · Dokumentation: <https://sevdesk-mcp.lanfermann.dev>
+🇬🇧 [English version](README.md) · Dokumentation: <https://sevdeskmcp.lanfermann.dev>
 
 ## Installation
 

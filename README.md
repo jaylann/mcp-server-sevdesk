@@ -14,7 +14,7 @@ permissions you control and a human confirmation step for anything that is legal
 > This is an **unofficial** community project. It is not affiliated with, endorsed by or
 > supported by sevdesk GmbH. "sevDesk" is a trademark of its owner.
 
-🇩🇪 [Deutsche Anleitung](README.de.md) · Documentation: <https://sevdesk-mcp.lanfermann.dev>
+🇩🇪 [Deutsche Anleitung](README.de.md) · Documentation: <https://sevdeskmcp.lanfermann.dev>
 
 ## Install
 
