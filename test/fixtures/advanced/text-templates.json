@@ -1,0 +1,43 @@
+{
+  "_provenance": {
+    "source": "community",
+    "ref": "https://github.com/j-mastr/sevdesk-api/blob/main/openapi.yaml (v1.10.0): GET /TextTemplate, #/components/schemas/Model_TextTemplateResponse",
+    "date": "2026-11-09",
+    "systemVersion": "2.0",
+    "note": "Undocumented in sevDesk's spec (spec/deviations.md D-024). Keys from the community model; values invented. Scalars typed the way recorded sevDesk reads send them (ids as strings, booleans as \"0\"/\"1\", D-002), which the community model types as number/boolean: unrecorded until probe read-text-template runs. Answer to GET /TextTemplate?limit=100&offset=0&countAll=1 as sevdesk_api_get sends it."
+  },
+  "status": 200,
+  "body": {
+    "total": 2,
+    "objects": [
+      {
+        "id": "7001",
+        "objectName": "TextTemplate",
+        "create": "2026-11-09T10:00:00+01:00",
+        "update": "2026-11-09T10:00:00+01:00",
+        "sevClient": { "id": "9001", "objectName": "SevClient" },
+        "sevUser": { "id": "8001", "objectName": "SevUser" },
+        "name": "Kopftext Rechnung",
+        "text": "Sehr geehrte Damen und Herren,\nvielen Dank für Ihren Auftrag.",
+        "category": "DOCUMENT",
+        "objectType": "RE",
+        "textType": "HEAD",
+        "main": "1"
+      },
+      {
+        "id": "7002",
+        "objectName": "TextTemplate",
+        "create": "2026-11-09T10:00:00+01:00",
+        "update": "2026-11-09T10:00:00+01:00",
+        "sevClient": { "id": "9001", "objectName": "SevClient" },
+        "sevUser": { "id": "8001", "objectName": "SevUser" },
+        "name": "Fußtext Rechnung",
+        "text": "Bitte überweisen Sie den Betrag innerhalb von 14 Tagen.\nMit freundlichen Grüßen\nMusterfirma GmbH",
+        "category": "DOCUMENT",
+        "objectType": "RE",
+        "textType": "FOOT",
+        "main": "0"
+      }
+    ]
+  }
+}

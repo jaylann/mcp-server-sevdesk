@@ -34,7 +34,7 @@ export const partUpdateTool = defineWriteTool({
     name: partFieldsShape.name.optional(),
     partNumber: partFieldsShape.partNumber.optional(),
     price: partFieldsShape.price.optional(),
-    priceType: partFieldsShape.priceType,
+    priceMode: partFieldsShape.priceMode,
     taxRate: taxRateInput.optional().describe("Tax rate in percent."),
     unitId: partFieldsShape.unitId.optional(),
     pricePurchase: partFieldsShape.pricePurchase.optional(),

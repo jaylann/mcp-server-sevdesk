@@ -156,7 +156,7 @@ export function exactJsonNumber(value: string): number {
 // Receipt upload
 // ---------------------------------------------------------------------------------------------
 
-/** MIME type sent for each accepted file kind (recognized by content, `readConfinedFile`). */
+/** MIME type sent for each accepted file kind (recognized by content when read or uploaded). */
 const MIME_TYPES: Readonly<Record<LocalFileKind, string>> = {
   pdf: "application/pdf",
   png: "image/png",
@@ -164,9 +164,12 @@ const MIME_TYPES: Readonly<Record<LocalFileKind, string>> = {
   xml: "application/xml",
 };
 
-/** A local receipt file to upload (read in `prepare` by `readConfinedFile`). */
+/** A receipt file to upload to sevDesk (read in `prepare` through the call's `FileAccess`). */
 export interface ReceiptFile {
-  /** Base name, e.g. `Rechnung-4711.pdf`; local text, sanitized before it is shown. */
+  /**
+   * Base name, e.g. `Rechnung-4711.pdf` (a local file's, or an upload's cleaned name); untrusted
+   * text, sanitized before it is shown.
+   */
   readonly name: string;
   readonly kind: LocalFileKind;
   readonly bytes: Uint8Array;
@@ -212,9 +215,14 @@ export function readUploadAnswer(payload: unknown): UploadedReceipt {
     expectSingle(payload, "uploaded file"),
     "the receipt upload answer",
   );
+  // A page count that is not a whole number is dropped rather than failing the upload.
+  const pages =
+    answer.pages !== undefined && Number.isSafeInteger(answer.pages) && answer.pages >= 0
+      ? answer.pages
+      : undefined;
   return {
     filename: answer.filename,
-    ...(answer.pages === undefined ? {} : { pages: answer.pages }),
+    ...(pages === undefined ? {} : { pages }),
     ...(answer.isEInvoice === true ? { isEInvoice: true } : {}),
   };
 }

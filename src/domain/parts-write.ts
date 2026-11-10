@@ -84,7 +84,7 @@ export interface PartCreateInput {
   readonly name: string;
   readonly partNumber: string;
   readonly price?: string | undefined;
-  readonly priceType: PriceKind;
+  readonly priceMode: PriceKind;
   readonly taxRate: string;
   readonly unitId: number;
   readonly pricePurchase?: string | undefined;
@@ -100,7 +100,7 @@ export interface PartUpdateInput {
   readonly name?: string | undefined;
   readonly partNumber?: string | undefined;
   readonly price?: string | undefined;
-  readonly priceType: PriceKind;
+  readonly priceMode: PriceKind;
   readonly taxRate?: string | undefined;
   readonly unitId?: number | undefined;
   readonly pricePurchase?: string | undefined;
@@ -201,7 +201,7 @@ export async function planPartCreate(
     );
   }
   const prices =
-    input.price === undefined ? undefined : pricePair(input.price, input.priceType, input.taxRate);
+    input.price === undefined ? undefined : pricePair(input.price, input.priceMode, input.taxRate);
   const payload = partCreatePayloadSchema.parse({
     name: input.name,
     partNumber: input.partNumber,
@@ -223,8 +223,8 @@ export async function planPartCreate(
   ];
   if (prices !== undefined) {
     facts.push(
-      { label: "Price net", value: amountLabel(prices.net, input.priceType !== "net") },
-      { label: "Price gross", value: amountLabel(prices.gross, input.priceType !== "gross") },
+      { label: "Price net", value: amountLabel(prices.net, input.priceMode !== "net") },
+      { label: "Price gross", value: amountLabel(prices.gross, input.priceMode !== "gross") },
     );
   }
   facts.push(
@@ -339,7 +339,7 @@ export async function planPartUpdate(
     change("partNumber", "Part number", show(part.partNumber), input.partNumber, input.partNumber);
   }
 
-  const currentRate = part.taxRate === undefined ? undefined : String(part.taxRate);
+  const currentRate = part.taxRate;
   const rate = input.taxRate ?? currentRate;
   const rateChanged =
     input.taxRate !== undefined &&
@@ -354,7 +354,7 @@ export async function planPartUpdate(
     const prices =
       basis === undefined
         ? undefined
-        : pricePair(basis, input.price === undefined ? "net" : input.priceType, rate);
+        : pricePair(basis, input.price === undefined ? "net" : input.priceMode, rate);
     const netChanged = prices !== undefined && !sameAmount(prices.net, part.priceNet?.amount);
     const grossChanged = prices !== undefined && !sameAmount(prices.gross, part.priceGross?.amount);
     if (netChanged || grossChanged || rateChanged) {
@@ -364,11 +364,11 @@ export async function planPartUpdate(
         facts.push(
           {
             label: "Price net",
-            value: `${showMoney(part.priceNet?.amount)} → ${amountLabel(prices.net, input.price === undefined || input.priceType !== "net")}`,
+            value: `${showMoney(part.priceNet?.amount)} → ${amountLabel(prices.net, input.price === undefined || input.priceMode !== "net")}`,
           },
           {
             label: "Price gross",
-            value: `${showMoney(part.priceGross?.amount)} → ${amountLabel(prices.gross, input.price === undefined || input.priceType !== "gross")}`,
+            value: `${showMoney(part.priceGross?.amount)} → ${amountLabel(prices.gross, input.price === undefined || input.priceMode !== "gross")}`,
           },
         );
         changed.push("price");
@@ -404,7 +404,7 @@ export async function planPartUpdate(
   }
   if (
     input.stock !== undefined &&
-    (part.stock === undefined || compare(input.stock, String(part.stock)) !== 0)
+    (part.stock === undefined || compare(input.stock, part.stock) !== 0)
   ) {
     change(
       "stock",

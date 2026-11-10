@@ -4,7 +4,7 @@
   "title": "sevDesk",
   "description": "Safety-first MCP server for sevDesk accounting: invoices, receipts, banking, reports. Unofficial.",
   "version": "0.1.0",
-  "websiteUrl": "https://github.com/jaylann/mcp-server-sevdesk#readme",
+  "websiteUrl": "https://sevdesk-mcp.lanfermann.dev",
   "repository": {
     "url": "https://github.com/jaylann/mcp-server-sevdesk",
     "source": "github"
@@ -22,7 +22,7 @@
       "environmentVariables": [
         {
           "name": "SEVDESK_API_TOKEN",
-          "description": "sevDesk API token (Settings > Users > API token). It has full access to the account; ideally create it for a dedicated user.",
+          "description": "sevDesk API token (Settings > Users > API token). It has full access to the account; ideally create it for a dedicated user. To keep it out of the client configuration, set up the server by hand with SEVDESK_API_TOKEN_KEYCHAIN (OS keychain) or SEVDESK_API_TOKEN_FILE instead: https://sevdesk-mcp.lanfermann.dev/docs/en/configuration#token",
           "format": "string",
           "isRequired": true,
           "isSecret": true
@@ -56,6 +56,13 @@
           "description": "How a human confirms commit and external actions: elicit (in the client), browser (local approval page) or off (also needs SEVDESK_I_UNDERSTAND_NO_CONFIRM=1).",
           "format": "string",
           "default": "elicit",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SEVDESK_AUDIT_LOG",
+          "description": "Path of a local JSON Lines file that records every write the server makes (redacted). Unset: no audit log.",
+          "format": "filepath",
           "isRequired": false,
           "isSecret": false
         },
@@ -100,7 +107,7 @@
       "environmentVariables": [
         {
           "name": "SEVDESK_API_TOKEN",
-          "description": "sevDesk API token (Settings > Users > API token). It has full access to the account; ideally create it for a dedicated user.",
+          "description": "sevDesk API token (Settings > Users > API token). It has full access to the account; ideally create it for a dedicated user. To keep it out of the client configuration, run the image by hand with SEVDESK_API_TOKEN_FILE and a mounted secret file instead: https://sevdesk-mcp.lanfermann.dev/docs/en/configuration#token",
           "format": "string",
           "isRequired": true,
           "isSecret": true
@@ -134,6 +141,13 @@
           "description": "How a human confirms commit and external actions: elicit (in the client) or off (also needs SEVDESK_I_UNDERSTAND_NO_CONFIRM=1). The browser mode's local approval page is not reachable from outside the container.",
           "format": "string",
           "default": "elicit",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SEVDESK_AUDIT_LOG",
+          "description": "Path inside the container (on a mounted, writable volume) of a JSON Lines file that records every write the server makes (redacted). Unset: no audit log.",
+          "format": "filepath",
           "isRequired": false,
           "isSecret": false
         },

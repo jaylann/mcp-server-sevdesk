@@ -38,7 +38,7 @@ import {
   loadUnitNames,
   matchesNumber,
   type PositionDto,
-  pricesEnteredAs,
+  priceModeOf,
   refId,
   salesDocumentFields,
   sentDto,
@@ -143,7 +143,7 @@ export const relatedDocumentSchema = z.object({
 type RelatedDocument = z.output<typeof relatedDocumentSchema>;
 
 export const orderDetailSchema = orderRowSchema.extend({
-  pricesEnteredAs: z.enum(["net", "gross"]).optional(),
+  priceMode: z.enum(["net", "gross"]).optional(),
   tax: taxDtoSchema,
   version: z.number().int().optional().describe("Draft version, starting at 0."),
   origin: z
@@ -200,7 +200,7 @@ function toOrderDetail(record: OrderRecord): OrderDetail {
       : (cleanText(record.origin.objectName, 50) ?? cleanText(record.typeOrigin, 50) ?? "");
   return compact({
     ...toOrderRow(record),
-    pricesEnteredAs: pricesEnteredAs(record.showNet),
+    priceMode: priceModeOf(record.showNet),
     tax: taxDto(record),
     version: record.version,
     origin:

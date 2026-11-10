@@ -37,7 +37,9 @@ Read [docs/architecture.md](docs/architecture.md) first. The short version:
 - `src/sevdesk/` talks HTTP to sevDesk (auth, pacing, envelope unwrapping, errors).
 - `src/domain/` holds normalized types, money/date handling and business rules.
 - `src/tools/<toolset>/` defines MCP tools with `defineTool`. Tools never call HTTP directly.
-- `src/safety/` holds tiers, confirmations, dry-run, audit log and redaction.
+- `src/safety/` holds tiers, confirmations, dry-run, audit log, redaction, the OS keychain and
+  the file access tools use for local folders and remote uploads.
+- `src/prompts/` holds the MCP prompts, rendered from the registered tools.
 - `src/http/` (with `oauth/`) and `src/accounts/` hold the HTTP mode: hardening, bearer and
   OAuth, the approval inbox, and the per-account contexts the tools run with. Tools never see
   them; they get a `Config` and a client as over stdio.
@@ -59,6 +61,44 @@ OpenAPI spec is incomplete and wrong in places. Every known deviation is listed 
    snapshot (`pnpm test -u`) and review the diff.
 5. Regenerate the tool reference with `pnpm docs:tools` and commit `docs/tools.md` (a test fails
    when it is stale).
+
+New tools appear in the Claude Desktop extension's manifest by themselves; the build generates its
+tool list.
+
+## Adding a prompt
+
+Prompts are bookkeeping workflows the user picks in the client. They render text only and never
+call sevDesk.
+
+1. Add the prompt to `src/prompts/catalog.ts` with `definePrompt`: a snake_case `name` without a
+   `sevdesk_` prefix (clients namespace prompts per server), title, description, the tools it
+   `requires` to be listed, and its steps. Keep it in line with the matching workflow in
+   `plugin/skills/sevdesk-bookkeeping/references/workflows.md`.
+2. Each step lists every tool its text names (in backticks) in `tools`; the step is shown only
+   when all of them are registered. Give a `fallback` (what is skipped, naming no tool) when the
+   user should learn that a setting would enable the step; the renderer adds which one.
+3. Arguments are optional strings with a pattern or length check. Show a raw argument only
+   through `fenceInline`, never in the trusted text.
+4. Run `test/unit/prompts/` and `test/integration/prompts-list.test.ts`: the lint renders every
+   prompt in many configurations and fails when a step names a tool that configuration does not
+   register. Update the `prompts/list` snapshot
+   (`pnpm test test/integration/prompts-list.test.ts -u`) and review the diff, then
+   `pnpm docs:tools`.
+
+## Compatibility
+
+From 1.0 the tool names, arguments, output fields, toolsets, tiers, prompts, environment
+variables, commands, routes, resource URIs, audit-log fields and the extension's setting keys are
+a public contract ([docs/compatibility.md](docs/compatibility.md)).
+
+- Adding is fine: new tools, optional arguments, output fields, variables.
+- Renaming or removing needs a deprecation first: keep the old name working next to the new one,
+  mark it `Deprecated: use … instead.` in its description, and list it in the PR. Removal happens
+  in the next major release.
+- A PR that breaks the contract anyway marks its title with `!` (`feat(invoices)!: …`) and explains
+  the break in its body.
+- Descriptions, result texts, error messages and logs are not part of the contract; improve them
+  freely, but re-record the evals when you change what models read (below).
 
 ## HTTP mode
 
@@ -97,13 +137,36 @@ claude.ai cannot reach it, so the end-to-end check with claude.ai runs through a
   handshake on both protocol eras and a clean shutdown. Against a running server:
   `node scripts/smoke-http.ts --url http://127.0.0.1:8080 --bearer "$SEVDESK_HTTP_BEARER_TOKEN"`.
 - **The image:** `docker build -t mcp-server-sevdesk:dev .`, then run it read-only as in the
-  [README](README.md#quick-start-with-docker-bearer) and point the smoke test at it with `--url`.
-  CI does the same in its `docker` job.
+  [Docker quick start](docs/remote.md#quick-start-bearer-mode-with-docker) and point the smoke
+  test at it with `--url`. CI does the same in its `docker` job.
 - **Tests:** unit tests in `test/unit/http/` (OAuth in `test/unit/http/oauth/`), integration tests
   on a real socket in `test/integration/http-*.test.ts` (bearer, OAuth with the real SDK client,
   the full flow through the approval inbox) and `test/integration/cross-account.test.ts`; helpers
   for the consent and inbox pages in `test/helpers/`. Every module with secrets has a test with a
   captured logger or response that asserts no secret appears; keep it that way.
+
+## The Claude Desktop extension
+
+`pnpm mcpb` builds the `.mcpb` bundle into `build/`: it bundles the server with all its
+dependencies into one file (`tsdown.mcpb.config.ts`), generates the manifest's tool list, writes
+the license notices of every bundled package, validates and packs the bundle with the `mcpb`
+library, and then starts the unpacked server the way Claude Desktop does. The CI job `mcpb` runs
+it on every pull request and uploads the bundle as an artifact; the release job `publish-mcpb`
+attaches it to the GitHub release with a provenance attestation.
+
+Change the extension's settings only in `mcpb/manifest.json`. Keep its `JSON.stringify` layout
+(release-please rewrites the file when it bumps the version, so Prettier ignores it), and give
+every optional setting a default: Claude Desktop passes an empty setting without one as the
+literal `${user_config.…}`, and the build refuses such a manifest. The setting keys are part of the
+[compatibility](#compatibility) contract, because Claude Desktop stores the user's values under
+them. To try a build, open `build/mcp-server-sevdesk-<version>.mcpb` in Claude Desktop.
+
+## Keychain and profiles
+
+The keychain code (`src/safety/keychain.ts`) takes an injected `spawn`, so tests never run
+`security` or `secret-tool`; the profile code takes an injected platform, user id and home folder. A
+real round trip is a manual check: `token set`, `token check` and `token delete` with a throwaway
+label, then start the server with `SEVDESK_API_TOKEN_KEYCHAIN` set to it.
 
 ## Fixtures
 
@@ -143,9 +206,11 @@ workflow `Live E2E` runs `pnpm test:live` in CI behind the protected `live` envi
 
 `test/evals/` checks which tool a model picks first for about 70 German and English requests.
 `pnpm evals` replays recorded model answers (no API key, no cost); cases without a recording are
-skipped as "stale cassette". After changing tool names, descriptions or the server instructions,
-re-record with `ANTHROPIC_API_KEY=… pnpm evals:record` (about $1–2 per full run) and commit the
-cassettes. On pull requests that touch tools, `.github/workflows/evals.yml` replays them and, for
+skipped as "stale cassette". A cassette is keyed on the whole request, which contains every tool
+of its configuration: changing any tool's name, description or schema, or the server
+instructions, stales every case of that configuration. Re-record with
+`ANTHROPIC_API_KEY=… pnpm evals:record` (about $1–2 per full run) and commit the cassettes; when
+you rename a tool, also update the expected tool names in `test/evals/cases.ts`. On pull requests that touch tools, `.github/workflows/evals.yml` replays them and, for
 branches of this repository with the `evals` environment configured, records fresh answers. The
 evals are informative, not a required check. Details: [test/evals/README.md](test/evals/README.md).
 

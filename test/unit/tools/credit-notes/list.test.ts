@@ -89,7 +89,7 @@ describe("sevdesk_credit_notes_list (community: recorded CreditNote shape, fake 
       },
       sourceInvoiceId: 1004,
       header: "Gutschrift Nr. GU-1001 zur Rechnung Nr. RE-1004",
-      sent: { date: "2026-10-22", via: "VM" },
+      sent: { date: "2026-10-22", via: "email" },
       link: "https://my.sevdesk.de/cn/detail/type/CN/id/2001",
     });
     const [, draft, paid] = result.data.items;

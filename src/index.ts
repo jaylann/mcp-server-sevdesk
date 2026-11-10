@@ -6,31 +6,25 @@
  * stdout belongs to the MCP transport in stdio mode: everything else (diagnostics, errors) goes
  * to stderr. Utility commands (`generate-secret`, `grants list`, …) print their result to stdout.
  */
-import { readFileSync } from "node:fs";
-
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 
 import { createIdentityLookup } from "./accounts/identity.js";
+import { loadLocalConfig } from "./accounts/local-config.js";
 import { IdentityError } from "./accounts/types.js";
 import { HELP, parseArgs } from "./cli.js";
-import {
-  type Config,
-  ConfigError,
-  type Env,
-  loadConfig,
-  readSecret,
-  readSettings,
-  sevdeskTokenProblem,
-} from "./config.js";
+import { ConfigError, type Env } from "./config.js";
 import { runGrantsCommand } from "./grants-cli.js";
 import { runHealthcheck } from "./http/healthcheck.js";
 import { generateSecret } from "./http/keys.js";
 import { StateDirError } from "./http/oauth/index.js";
 import { runHttp } from "./http/run.js";
+import { runProfilesCommand } from "./profiles-cli.js";
 import { redactSecrets } from "./safety/redact.js";
 import { createServerFactory } from "./server.js";
+import { createSetupProblemFactory } from "./setup-problem.js";
 import { createSevdeskClient } from "./sevdesk/client.js";
 import { checkConnection } from "./startup.js";
+import { runTokenCommand } from "./token-cli.js";
 import { PACKAGE_NAME, VERSION } from "./version.js";
 
 function main(argv: readonly string[]): void {
@@ -49,7 +43,7 @@ function main(argv: readonly string[]): void {
       return;
     case "serve":
       if (command.transport === "stdio") {
-        serveOverStdio();
+        void serveOverStdio().catch(fail);
         return;
       }
       void runHttp({ env: process.env }).catch(fail);
@@ -63,6 +57,12 @@ function main(argv: readonly string[]): void {
       return;
     case "healthcheck":
       void runHealthcheck(process.env).then(exitWith, fail);
+      return;
+    case "token":
+      void runTokenCommand(command, process.env).then(exitWith, fail);
+      return;
+    case "profiles-list":
+      void runProfilesCommand(process.env).then(exitWith, fail);
       return;
   }
 }
@@ -91,23 +91,15 @@ function fail(error: unknown): void {
   process.exit(1);
 }
 
-/** `account-id`: the `SevClient` id of `SEVDESK_API_TOKEN`, for `SEVDESK_OAUTH_ACCOUNTS`. */
+/**
+ * `account-id`: the `SevClient` id of the configured token (`SEVDESK_API_TOKEN`, its `_FILE`, the
+ * keychain or a profile), for `SEVDESK_OAUTH_ACCOUNTS`.
+ */
 async function printAccountId(env: Env): Promise<number> {
-  const problems: string[] = [];
-  const token = readSecret(
-    env,
-    "SEVDESK_API_TOKEN",
-    (path) => readFileSync(path, "utf8"),
-    problems,
-    {
-      required: true,
-      validate: (value) => sevdeskTokenProblem(value),
-    },
-  );
-  const settings = readSettings(env, problems);
-  if (token === undefined || problems.length > 0) throw new ConfigError(problems);
+  const { config, warnings } = await loadLocalConfig(env);
+  for (const warning of warnings) console.error(`${PACKAGE_NAME}: warning: ${warning}`);
   try {
-    const identity = await createIdentityLookup(settings)(token, AbortSignal.timeout(15_000));
+    const identity = await createIdentityLookup(config)(config.token, AbortSignal.timeout(15_000));
     process.stdout.write(`${identity.accountId}\n`);
     return 0;
   } catch (error) {
@@ -117,19 +109,39 @@ async function printAccountId(env: Env): Promise<number> {
   }
 }
 
-function serveOverStdio(): void {
-  let config: Config;
+/**
+ * Serves stdio. A {@link ConfigError} (every problem, never the token) is printed to stderr and
+ * then served by the setup-problem server (`src/setup-problem.ts`), so clients that hide stderr
+ * still tell the user what to fix.
+ */
+async function serveOverStdio(): Promise<void> {
+  let loaded: Awaited<ReturnType<typeof loadLocalConfig>>;
   try {
-    config = loadConfig(process.env);
+    loaded = await loadLocalConfig(process.env);
   } catch (error) {
-    // ConfigError lists every problem; it never contains the token.
-    console.error(`${PACKAGE_NAME}: ${error instanceof Error ? error.message : String(error)}`);
-    process.exit(1);
+    if (!(error instanceof ConfigError)) throw error;
+    console.error(`${PACKAGE_NAME}: ${error.message}`);
+    console.error(
+      `${PACKAGE_NAME}: serving only the setup problem until the configuration is fixed`,
+    );
+    const handle = serveStdio(createSetupProblemFactory(error.problems));
+    const stop = (): void => {
+      handle.close().then(
+        () => process.exit(0),
+        () => process.exit(1),
+      );
+    };
+    process.once("SIGINT", stop);
+    process.once("SIGTERM", stop);
+    return;
   }
+  const { config, warnings } = loaded;
   const client = createSevdeskClient(config);
   const log = (line: string): void => {
     console.error(`${PACKAGE_NAME}: ${redactSecrets(line, [config.token])}`);
   };
+  for (const warning of warnings) log(`warning: ${warning}`);
+  if (config.profile !== undefined) log(`using profile "${config.profile}"`);
   // Non-fatal by design; see checkConnection.
   void checkConnection(client, config, log);
 

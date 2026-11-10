@@ -51,7 +51,7 @@ describe("expense and revenue signs", () => {
       { id: "2", creditDebit: "D", sumGross: "119" },
     ]);
     const { items } = await listVouchers(client, PAGE);
-    expect(items.map((item) => [item.id, item.kind, item.gross?.amount])).toEqual([
+    expect(items.map((item) => [item.id, item.kind, item.totals.gross?.amount])).toEqual([
       [1, "expense", "119.00"],
       [2, "revenue", "119.00"],
     ]);

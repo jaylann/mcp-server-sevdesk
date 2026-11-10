@@ -126,8 +126,8 @@ function accountNotes(
 ): string[] {
   const notes: string[] = [
     version === "2.0"
-      ? "Update 2.0 account: documents take a taxRule id (see sevdesk_reference_lookup " +
-        "kind=tax_rules), positions an accountDatev."
+      ? "Update 2.0 account: documents take a tax rule id (taxRuleId, see " +
+        "sevdesk_reference_lookup kind=tax_rules), positions an accountDatev."
       : "Bookkeeping system 1.0: documents use taxType (default, eu, noteu, ss) instead of " +
         "taxRule.",
     REGIME_NOTES[regime],

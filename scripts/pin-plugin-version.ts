@@ -5,17 +5,18 @@
  * - `server.json`: the OCI package's image tag becomes `<version>`. The MCP Registry takes an OCI
  *   package's version from the tag in its `identifier` and refuses a separate `version` field.
  *
- * Why a script: release-please bumps package.json, server.json and plugin.json, but its JSON
- * updater can only replace a whole value with the bare version, not write `name@version` into an
- * npx argument or `image:version` into an identifier. The release workflow runs this on the release
- * PR branch after release-please updated it (`pin-plugin` job), so the merged release pins the
- * version it publishes; `test/unit/plugin/plugin.test.ts` and
+ * Why a script: release-please bumps package.json, server.json, plugin.json and
+ * mcpb/manifest.json, but its JSON updater can only replace a whole value with the bare version,
+ * not write `name@version` into an npx argument or `image:version` into an identifier. The release
+ * workflow runs this on the release PR branch after release-please updated it (`pin-plugin` job),
+ * so the merged release pins the version it publishes; `test/unit/plugin/plugin.test.ts` and
  * `test/unit/scripts/pin-plugin-version.test.ts` fail whenever they drift.
  *
  * `--check <version>` writes nothing: it exits 1 unless package.json, server.json (both packages),
- * plugin.json and plugin/.mcp.json all carry `<version>` and server.json's name is package.json's
- * `mcpName`. With `--image <repository>` it also requires the OCI package to name that repository.
- * The publish jobs run it before anything leaves the repository.
+ * plugin.json, plugin/.mcp.json and the .mcpb manifest (mcpb/manifest.json) all carry `<version>`
+ * and server.json's name is package.json's `mcpName`. With `--image <repository>` it also requires
+ * the OCI package to name that repository. The publish jobs run it before anything leaves the
+ * repository.
  *
  * Dependency-free on purpose: the workflow runs it with plain Node 24 (type stripping) without
  * installing packages, because that job holds a token that can push.
@@ -31,6 +32,7 @@ const MCP_CONFIG = new URL("../plugin/.mcp.json", import.meta.url);
 const PACKAGE_JSON = new URL("../package.json", import.meta.url);
 const SERVER_JSON = new URL("../server.json", import.meta.url);
 const PLUGIN_JSON = new URL("../plugin/.claude-plugin/plugin.json", import.meta.url);
+const MCPB_MANIFEST = new URL("../mcpb/manifest.json", import.meta.url);
 
 /** npm package names and semver versions, as far as this repository uses them. */
 const PACKAGE_NAME = /^[a-z0-9][a-z0-9._-]*$/;
@@ -79,6 +81,8 @@ export interface ReleaseFiles {
   readonly serverJson: string;
   readonly pluginJson: string;
   readonly mcpJson: string;
+  /** mcpb/manifest.json, the Claude Desktop extension's manifest. */
+  readonly mcpbManifest: string;
 }
 
 /**
@@ -102,10 +106,12 @@ export function releaseVersionProblems(
   const server = record(JSON.parse(files.serverJson));
   const plugin = record(JSON.parse(files.pluginJson));
   const mcp = record(JSON.parse(files.mcpJson));
+  const mcpb = record(JSON.parse(files.mcpbManifest));
 
   expect("package.json version", pkg["version"]);
   expect("server.json version", server["version"]);
   expect("plugin/.claude-plugin/plugin.json version", plugin["version"]);
+  expect("mcpb/manifest.json version", mcpb["version"]);
 
   if (server["name"] !== pkg["mcpName"]) {
     problems.push(
@@ -208,6 +214,7 @@ function readFiles(): ReleaseFiles {
     serverJson: readFileSync(SERVER_JSON, "utf8"),
     pluginJson: readFileSync(PLUGIN_JSON, "utf8"),
     mcpJson: readFileSync(MCP_CONFIG, "utf8"),
+    mcpbManifest: readFileSync(MCPB_MANIFEST, "utf8"),
   };
 }
 
@@ -246,7 +253,7 @@ function check(version: string, image: string | undefined): number {
     console.log(`${prefix}${problem}`);
   }
   if (problems.length === 0) {
-    console.log(`package.json, server.json and the plugin are at ${version}.`);
+    console.log(`package.json, server.json, the plugin and the .mcpb manifest are at ${version}.`);
   }
   return problems.length === 0 ? 0 : 1;
 }

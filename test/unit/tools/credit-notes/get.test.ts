@@ -35,7 +35,7 @@ describe("sevdesk_credit_note_get (community: recorded CreditNote shapes, fake d
       number: "GU-1001",
       sourceInvoiceId: 1004,
       deliveryDate: "2026-10-22",
-      pricesEnteredAs: "net",
+      priceMode: "net",
       tax: { generation: "2.0", rule: { id: 1 } },
       address: { text: "Musterfirma GmbH\nMusterstraße 1\n12345 Musterstadt", countryId: 1 },
       contactPersonId: 7001,

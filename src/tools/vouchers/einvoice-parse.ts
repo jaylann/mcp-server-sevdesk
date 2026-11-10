@@ -20,7 +20,7 @@ import {
   planVoucherFromEInvoice,
 } from "../../domain/einvoice/voucher-suggestion.js";
 import { money } from "../../domain/money.js";
-import { readConfinedFile } from "../../safety/local-files.js";
+import { canReadFiles } from "../../safety/file-access.js";
 import { defineTool } from "../define-tool.js";
 
 /** Lines shown in the output; the rest is counted (`linesTotal`). */
@@ -126,12 +126,13 @@ const output = z.object({
 
 type Output = z.output<typeof output>;
 
-/** `sevdesk_einvoice_parse`: read a local XRechnung / ZUGFeRD file and suggest a voucher. */
+/** `sevdesk_einvoice_parse`: read an XRechnung / ZUGFeRD file (local or uploaded). */
 export const einvoiceParseTool = defineTool({
   name: "sevdesk_einvoice_parse",
-  title: "Parse a local e-invoice file",
+  title: "Parse an e-invoice file",
   description:
-    "Read a local e-invoice (E-Rechnung) from a folder listed in SEVDESK_FILE_DIRS: an " +
+    "Read an e-invoice (E-Rechnung) from a folder listed in SEVDESK_FILE_DIRS or, on a remote " +
+    "server, from an upload (sevdesk_upload_request purpose einvoice): an " +
     "XRechnung (UBL or CII XML) or a ZUGFeRD / Factur-X PDF with embedded XML. Returns the " +
     "EN 16931 data (Lieferant/seller, buyer, Rechnungsnummer, dates, lines, VAT breakdown, " +
     "totals), rule findings (sums, VAT categories, XRechnung rules) and a suggested voucher " +
@@ -149,7 +150,7 @@ export const einvoiceParseTool = defineTool({
     openWorldHint: false,
   },
   localEffects: "reads-files",
-  available: (config) => config.fileDirs.length > 0,
+  available: canReadFiles,
   input: z.strictObject({
     file: z
       .string()
@@ -157,12 +158,13 @@ export const einvoiceParseTool = defineTool({
       .max(1_024)
       .describe(
         "The e-invoice file: an absolute path inside one of the SEVDESK_FILE_DIRS folders, or " +
-          "a path relative to one of them, e.g. Rechnungen/RE-4711.xml.",
+          "a path relative to one of them, e.g. Rechnungen/RE-4711.xml; or on a remote server " +
+          "the uploadId from sevdesk_upload_request.",
       ),
   }),
   output,
   handler: async (args, ctx) => {
-    const file = await readConfinedFile(ctx.config.fileDirs, args.file, {
+    const file = await ctx.files.read(args.file, {
       maxBytes: MAX_EINVOICE_FILE_BYTES,
       kinds: ["xml", "pdf"],
     });

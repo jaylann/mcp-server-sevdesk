@@ -26,6 +26,12 @@ export type Deployment =
        * model may name because approving needs a browser session that proves the account.
        */
       readonly approvalsUrl: string | undefined;
+      /**
+       * Remote file transfer (`SEVDESK_HTTP_FILES`, default on): upload pages and download
+       * links that need a browser session of the account (`src/safety/file-access.ts`).
+       * Undefined when switched off.
+       */
+      readonly files?: { readonly ttlSeconds: number } | undefined;
     };
 
 /**
@@ -45,6 +51,11 @@ export interface Config extends Settings {
    */
   readonly account?: { readonly id: string } | undefined;
   readonly deployment: Deployment;
+  /**
+   * The local profile this config was built from (`SEVDESK_PROFILE`, stdio only; see
+   * `src/accounts/profiles.ts`), for the startup log. Not secret.
+   */
+  readonly profile?: string | undefined;
 }
 
 /**
@@ -96,12 +107,71 @@ export class ConfigError extends Error {
   }
 }
 
+/**
+ * The outcome of a keychain lookup made before {@link loadConfig}: the token, or a trusted problem
+ * text without it.
+ */
+export type KeychainLookup = { readonly token: string } | { readonly problem: string };
+
 export interface LoadConfigDeps {
   readFile?: (path: string) => string;
+  /**
+   * The token stored under the `SEVDESK_API_TOKEN_KEYCHAIN` label. The OS keychain is read
+   * asynchronously, so `loadLocalConfig` (`src/accounts/local-config.ts`) looks it up first and
+   * hands the result in here; without this, that variable is reported as a problem.
+   */
+  readKeychain?: (label: string) => KeychainLookup;
 }
 
 /** The process environment, or a test double. */
 export type Env = Readonly<Record<string, string | undefined>>;
+
+/** The variables that name the sevDesk token over stdio; at most one may be set. */
+export const TOKEN_VARIABLES = [
+  "SEVDESK_API_TOKEN",
+  "SEVDESK_API_TOKEN_FILE",
+  "SEVDESK_API_TOKEN_KEYCHAIN",
+] as const;
+
+/** Which of {@link TOKEN_VARIABLES} are set (non-empty) in `env`. */
+export function tokenVariablesIn(env: Env): (typeof TOKEN_VARIABLES)[number][] {
+  return TOKEN_VARIABLES.filter((name) => nonEmpty(env[name]) !== undefined);
+}
+
+/**
+ * Keychain labels and profile names: short, printable, safe in messages and in helper command
+ * lines (a leading `-` could be read as an option).
+ */
+const LOCAL_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
+
+/** A sevDesk API token is 32 hex characters; a "name" of that shape was most likely pasted wrongly. */
+const TOKEN_SHAPED = /^[0-9a-f]{32}$/i;
+
+/** Whether `value` has the shape of a sevDesk API token (and must therefore not be echoed). */
+export function looksLikeToken(value: string): boolean {
+  return TOKEN_SHAPED.test(value);
+}
+
+/**
+ * Checks a keychain label or profile name (`what`, e.g. "SEVDESK_API_TOKEN_KEYCHAIN"). Returns a
+ * problem or `undefined`. The value itself is never part of the problem: a token pasted into the
+ * wrong variable must not end up in a log.
+ */
+export function localNameProblem(value: string, what: string): string | undefined {
+  if (looksLikeToken(value)) {
+    return (
+      `${what} looks like a sevDesk API token. It takes a name you choose (for example "work"), ` +
+      "never the token itself."
+    );
+  }
+  if (!LOCAL_NAME.test(value)) {
+    return (
+      `${what} must be a name of up to 64 letters, digits, '.', '_' or '-' that starts with a ` +
+      'letter or digit (for example "work").'
+    );
+  }
+  return undefined;
+}
 
 /**
  * Reads and validates configuration from environment variables. Throws {@link ConfigError}
@@ -110,7 +180,7 @@ export type Env = Readonly<Record<string, string | undefined>>;
 export function loadConfig(env: Env, deps: LoadConfigDeps = {}): Config {
   const readFile = deps.readFile ?? defaultReadFile;
   const problems: string[] = [];
-  const token = readToken(env, readFile, problems);
+  const token = readToken(env, readFile, deps.readKeychain, problems);
   const settings = readSettings(env, problems);
   if (problems.length > 0) {
     throw new ConfigError(problems);
@@ -225,7 +295,50 @@ export function sevdeskTokenProblem(token: string, name = "SEVDESK_API_TOKEN"): 
   return undefined;
 }
 
-function readToken(env: Env, readFile: (path: string) => string, problems: string[]): string {
+/**
+ * The token from `SEVDESK_API_TOKEN`, `SEVDESK_API_TOKEN_FILE` or the OS keychain label in
+ * `SEVDESK_API_TOKEN_KEYCHAIN`: exactly one of them.
+ */
+function readToken(
+  env: Env,
+  readFile: (path: string) => string,
+  readKeychain: LoadConfigDeps["readKeychain"],
+  problems: string[],
+): string {
+  const label = nonEmpty(env["SEVDESK_API_TOKEN_KEYCHAIN"]);
+  if (label === undefined) return readEnvToken(env, readFile, problems);
+  if (tokenVariablesIn(env).length > 1) {
+    problems.push(
+      "Set only one of SEVDESK_API_TOKEN, SEVDESK_API_TOKEN_FILE and SEVDESK_API_TOKEN_KEYCHAIN.",
+    );
+    return "";
+  }
+  const labelProblem = localNameProblem(label, "SEVDESK_API_TOKEN_KEYCHAIN");
+  if (labelProblem !== undefined) {
+    problems.push(labelProblem);
+    return "";
+  }
+  const lookup: KeychainLookup = readKeychain?.(label) ?? {
+    problem:
+      "SEVDESK_API_TOKEN_KEYCHAIN is read only by the stdio server, which looks the token up in " +
+      "the OS keychain at startup.",
+  };
+  if ("problem" in lookup) {
+    problems.push(lookup.problem);
+    return "";
+  }
+  const problem = sevdeskTokenProblem(
+    lookup.token,
+    `The token stored under keychain label "${label}"`,
+  );
+  if (problem !== undefined) {
+    problems.push(problem);
+    return "";
+  }
+  return lookup.token;
+}
+
+function readEnvToken(env: Env, readFile: (path: string) => string, problems: string[]): string {
   return (
     readSecret(env, "SEVDESK_API_TOKEN", readFile, problems, {
       required: true,
@@ -321,7 +434,11 @@ function readConfirm(env: Env, problems: string[]): ConfirmMode {
   return mode;
 }
 
-function readFlag(env: Env, name: string, problems: string[], fallback = false): boolean {
+/**
+ * An on/off variable: `1`, `true`, `yes`, `on` or `0`, `false`, `no`, `off` (any case); `fallback`
+ * when unset; anything else is a problem.
+ */
+export function readFlag(env: Env, name: string, problems: string[], fallback = false): boolean {
   const raw = nonEmpty(env[name])?.toLowerCase();
   if (raw === undefined) return fallback;
   if (["1", "true", "yes", "on"].includes(raw)) return true;

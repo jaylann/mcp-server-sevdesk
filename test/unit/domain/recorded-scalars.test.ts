@@ -101,7 +101,7 @@ describe("D-002: numeric scalars in recorded responses", () => {
     const id = Number(creditNote.objects[0]?.["id"]);
     const { client } = realClient(creditNote, positions, units);
     const details = await getCreditNote(client, id);
-    expect(details.creditNote.sent).toEqual({ date: "2026-11-07", via: "VPR" });
+    expect(details.creditNote.sent).toEqual({ date: "2026-11-07", via: "print" });
     expect(details.creditNote.totals.gross?.currency).toBe("EUR");
   });
 });

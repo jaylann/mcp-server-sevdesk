@@ -155,7 +155,11 @@ export const READ_CASES: readonly LiveCase[] = [
     args: () => ({ year: NOW.getFullYear(), month: NOW.getMonth() + 1 }),
   },
   { tool: "sevdesk_profit_and_loss", args: () => ({ year: NOW.getFullYear() }) },
-  { tool: "sevdesk_export_csv", args: () => ({ kind: "invoices" }) },
+  { tool: "sevdesk_csv_export", args: () => ({ subject: "invoices" }) },
+  // M6: the generic read (advanced toolset), on an undocumented endpoint no other tool reads.
+  { tool: "sevdesk_api_get", args: () => ({ path: "/TextTemplate", limit: 5 }) },
+  // M6: listed only over HTTP with file transfer, so the stdio run skips it.
+  { tool: "sevdesk_upload_request", args: () => ({ purpose: "receipt" }) },
 ];
 
 /** Placeholder ids and files for the offline schema check of {@link READ_CASES}. */
@@ -194,11 +198,11 @@ export const M4_ARGS = {
   voucherFinalize: (id: number) => ({ id }),
   reconcileSuggest: (transactionId: number) => ({ transactionId }),
   transactionBook: (transactionId: number, voucherId: number) => ({
-    transactionId,
+    id: transactionId,
     allocations: [{ kind: "voucher", id: voucherId, amount: "119.00" }],
   }),
   transactionGet: (id: number) => ({ id }),
-  transactionReset: (transactionId: number) => ({ transactionId }),
+  transactionReset: (id: number) => ({ id }),
   voucherReset: (id: number) => ({ id, to: "draft" }),
   voucherDelete: (id: number) => ({ id }),
   datevExport: (from: string, to: string) => ({ from, to }),

@@ -345,11 +345,11 @@ export const EVAL_CASES: readonly EvalCase[] = [
   {
     id: "order-to-invoice-en",
     lang: "en",
-    toolset: "orders",
+    toolset: "invoices",
     kind: "positive",
     env: ENVS.all,
     prompt: "The customer accepted quote id 815. Turn it into an invoice.",
-    expected: ["sevdesk_order_to_invoice"],
+    expected: ["sevdesk_invoice_create_from_order"],
     secondChoice: ["sevdesk_order_get"],
     notes: "Invoice from order.",
   },
@@ -713,7 +713,7 @@ export const EVAL_CASES: readonly EvalCase[] = [
     kind: "positive",
     env: ENVS.readFiles,
     prompt: "Export my contact list as a CSV file.",
-    expected: ["sevdesk_export_csv"],
+    expected: ["sevdesk_csv_export"],
     notes: "M4 CSV export.",
   },
   {
@@ -723,7 +723,7 @@ export const EVAL_CASES: readonly EvalCase[] = [
     kind: "positive",
     env: ENVS.readFiles,
     prompt: "Exportier alle Belege aus 2026 als CSV-Datei.",
-    expected: ["sevdesk_export_csv"],
+    expected: ["sevdesk_csv_export"],
     notes: "M4 CSV export of vouchers.",
   },
   {
@@ -809,7 +809,7 @@ export const EVAL_CASES: readonly EvalCase[] = [
     env: ENVS.read,
     prompt: "Mach mir einen DATEV-Export für das dritte Quartal 2026.",
     expected: [NO_TOOL, ORIENT],
-    absent: ["sevdesk_datev_export", "sevdesk_export_csv"],
+    absent: ["sevdesk_datev_export", "sevdesk_csv_export"],
     notes: "Read-only and no SEVDESK_OUTPUT_DIR.",
   },
 ];

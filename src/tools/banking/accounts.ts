@@ -10,7 +10,7 @@ import { defineTool } from "../define-tool.js";
 
 const output = z.object({
   items: z.array(bankAccountDtoSchema),
-  balanceDate: z.string().describe("Day the balances refer to, YYYY-MM-DD (Berlin)."),
+  asOf: z.string().describe("Day the balances refer to, YYYY-MM-DD (Berlin)."),
   archivedHidden: z
     .number()
     .int()
@@ -37,7 +37,7 @@ export const bankAccountsListTool = defineTool({
     openWorldHint: false,
   },
   input: z.strictObject({
-    balanceDate: z
+    asOf: z
       .string()
       .refine(isIsoDate, { message: "expected a calendar date as YYYY-MM-DD" })
       .optional()
@@ -49,10 +49,10 @@ export const bankAccountsListTool = defineTool({
   }),
   output,
   handler: async (args, ctx) => {
-    const balanceDate = args.balanceDate ?? berlinDateOf(Date.now());
+    const asOf = args.asOf ?? berlinDateOf(Date.now());
     const result = await listBankAccounts(
       ctx.client,
-      { balanceDate, includeArchived: args.includeArchived },
+      { asOf, includeArchived: args.includeArchived },
       ctx.signal,
     );
     const count = result.items.length;
@@ -71,9 +71,9 @@ export const bankAccountsListTool = defineTool({
     const summary =
       count === 0
         ? "No payment accounts found."
-        : `${count} payment ${count === 1 ? "account" : "accounts"}, balances at ${balanceDate}.`;
+        : `${count} payment ${count === 1 ? "account" : "accounts"}, balances at ${asOf}.`;
     return {
-      data: { items: [...result.items], balanceDate, archivedHidden: result.archivedHidden },
+      data: { items: [...result.items], asOf, archivedHidden: result.archivedHidden },
       summary: notes.length === 0 ? summary : `${summary} Note: ${notes.join("; ")}.`,
     };
   },

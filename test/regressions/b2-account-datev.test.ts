@@ -70,7 +70,7 @@ describe("B2: account × tax rule × rate is checked against ReceiptGuidance bef
         voucherCreateDraftTool,
         {
           ...CREATE_ARGS,
-          taxRule: 8,
+          taxRuleId: 8,
           positions: [{ accountDatevId: 4266, amount: "119", taxRate: 19 }],
         },
         client,
@@ -104,7 +104,7 @@ describe("B2: account × tax rule × rate is checked against ReceiptGuidance bef
       ...guidanceReads(),
     ]);
     const message = await refused(
-      executeWrite(voucherUpdateDraftTool, { id: 2101, taxRule: 12 }, client),
+      executeWrite(voucherUpdateDraftTool, { id: 2101, taxRuleId: 12 }, client),
     );
     expect(message).toContain("Position 1 has a tax rate of 19 %, which tax rule 12");
     expect(fake.requests.every((request) => request.method === "GET")).toBe(true);

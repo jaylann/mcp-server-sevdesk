@@ -603,8 +603,9 @@ function noElicitationText(toolName: string, deployment: Deployment): string {
   return (
     `${toolName} needs the user's approval, but this MCP client cannot show confirmation ` +
     "prompts (it does not support MCP elicitation). Nothing was sent to sevDesk. Tell the user: " +
-    "to use this tool, set SEVDESK_CONFIRM=browser in the server configuration (approval on a " +
-    "local web page) and restart the server, or use a client that supports elicitation. " +
+    "to use this tool, set SEVDESK_CONFIRM=browser in the server configuration (in the Claude " +
+    "Desktop extension: the setting Confirmation; approval on a local web page) and restart " +
+    "the server, or use a client that supports elicitation. " +
     "dryRun: true still previews the change."
   );
 }

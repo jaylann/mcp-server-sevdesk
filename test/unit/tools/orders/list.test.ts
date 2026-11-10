@@ -104,7 +104,7 @@ describe("sevdesk_orders_list (community: recorded Order shape, fake data)", () 
         gross: { amount: "171.38", currency: "EUR" },
       },
       header: "Angebot AN-1001",
-      sent: { date: "2026-09-10", via: "VPDF" },
+      sent: { date: "2026-09-10", via: "pdf_download" },
       link: "https://my.sevdesk.de/om/detail/type/AN/id/3001",
     });
     expect(result.data.items[1]).toMatchObject({

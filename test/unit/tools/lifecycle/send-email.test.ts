@@ -78,12 +78,12 @@ describe("sevdesk_invoice_send_email (spec request body; community record shapes
       }),
     ]);
     expect(client.calls.map(({ method }) => method)).toEqual(["GET", "POST", "GET"]);
-    expect(output.data["invoice"]).toMatchObject({ status: { code: 200 }, sent: { via: "VM" } });
+    expect(output.data["invoice"]).toMatchObject({ status: { code: 200 }, sent: { via: "email" } });
     expect(output.data["email"]).toEqual({
       to: "kunde@example.com",
       cc: ["buchhaltung@example.com"],
       bcc: ["archiv@example.com"],
-      copyToMe: true,
+      sendCopyToMe: true,
       attachment: "xml",
     });
     expect(output.affected).toEqual([{ objectName: "Invoice", id: "1001" }]);
@@ -137,7 +137,7 @@ describe("sevdesk_invoice_send_email (spec request body; community record shapes
     });
     expect(output.data["email"]).toEqual({
       to: "kunde@example.com",
-      copyToMe: false,
+      sendCopyToMe: false,
       attachment: "pdf",
     });
     expect(output.summary).toContain("emailed to 1 recipient:");

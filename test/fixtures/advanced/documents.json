@@ -1,0 +1,57 @@
+{
+  "_provenance": {
+    "source": "community",
+    "ref": "https://github.com/j-mastr/sevdesk-api/blob/main/openapi.yaml (v1.10.0): GET /Document, #/components/schemas/Model_DocumentResponse",
+    "date": "2026-11-09",
+    "systemVersion": "2.0",
+    "note": "Undocumented in sevDesk's spec (spec/deviations.md D-024): metadata of attached documents (receipts in the document archive), not the file content. Keys from the community model; values invented. Scalars typed the way recorded sevDesk reads send them (ids, status and filesize as strings, D-002), which the community model types partly as integer: unrecorded until probe read-document runs, which also looks for base64 or thumbnail fields. Answer to GET /Document?limit=100&offset=0&countAll=1."
+  },
+  "status": 200,
+  "body": {
+    "total": 2,
+    "objects": [
+      {
+        "id": "5101",
+        "objectName": "Document",
+        "additionalInformation": null,
+        "create": "2026-11-09T10:00:00+01:00",
+        "update": "2026-11-09T10:00:00+01:00",
+        "sevClient": { "id": "9001", "objectName": "SevClient" },
+        "createUser": { "id": "8001", "objectName": "SevUser" },
+        "updateUser": { "id": "8001", "objectName": "SevUser" },
+        "baseObject": { "id": "4001", "objectName": "Voucher" },
+        "object": { "id": "4001", "objectName": "Voucher" },
+        "folder": { "id": "5001", "objectName": "DocumentFolder" },
+        "filename": "beleg-musterfirma.pdf",
+        "extension": "pdf",
+        "mimeType": "application/pdf",
+        "filesize": "100253",
+        "contentHash": "1998dea8c6e9e489139caf896690641c0ea065ce5770b51cf2a4d10797f99685",
+        "description": "Bürobedarf Musterfirma GmbH",
+        "documentNumber": null,
+        "status": "100"
+      },
+      {
+        "id": "5102",
+        "objectName": "Document",
+        "additionalInformation": null,
+        "create": "2026-11-09T11:00:00+01:00",
+        "update": "2026-11-09T11:00:00+01:00",
+        "sevClient": { "id": "9001", "objectName": "SevClient" },
+        "createUser": { "id": "8001", "objectName": "SevUser" },
+        "updateUser": null,
+        "baseObject": null,
+        "object": null,
+        "folder": { "id": "5001", "objectName": "DocumentFolder" },
+        "filename": "quittung.png",
+        "extension": "png",
+        "mimeType": "image/png",
+        "filesize": "20480",
+        "contentHash": "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0",
+        "description": null,
+        "documentNumber": null,
+        "status": "100"
+      }
+    ]
+  }
+}

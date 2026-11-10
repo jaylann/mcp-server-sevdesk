@@ -11,8 +11,13 @@
  * 7. the route's Origin policy (403);
  * 8. on an {@link AuthenticatedRoute} (`/mcp`), authentication on the headers alone: a client
  *    without valid credentials never gets to send a body;
- * 9. the body, read up to the route's limit (413 beyond) within {@link DEFAULT_BODY_TIMEOUT_MS}
- *    (408 beyond);
+ * 8a. the route's `preflight` (e.g. the upload page's session and ticket checks), also on the
+ *    headers alone; it may name the key its body slot counts under (e.g. the account);
+ * 8b. for a request with a body, the route's `bodySlots` caps (requests with a body on this route
+ *    at once, overall and per key, until their response is complete);
+ * 9. the body, read up to the route's limit (413 beyond) within the route's `bodyTimeoutMs` or
+ *    {@link DEFAULT_BODY_TIMEOUT_MS} (408 beyond), and at the route's `bodyPace` (408 for a body
+ *    that stalls or trickles);
  * 10. at most {@link DEFAULT_MAX_IN_FLIGHT} requests being handled (503 beyond). Only requests
  *    whose body has arrived count here, so slow uploads cannot starve the server; they are bounded
  *    per client by step 6 and in time by step 9;
@@ -31,6 +36,7 @@ import type { AuthInfo } from "@modelcontextprotocol/server";
 import { clientIp, rateLimitKey } from "./client-ip.js";
 import {
   badRequest,
+  bodyTooSlow,
   hostRefusal,
   jsonResponse,
   methodNotAllowed,
@@ -49,6 +55,7 @@ import { principalLogFields } from "./log.js";
 import { fromWebRequest, type IncomingRequest } from "./node-bridge.js";
 import { createRateLimiter, type RateLimiter } from "./rate-limit.js";
 import type {
+  BodyPace,
   HttpAuthenticator,
   HttpConfig,
   HttpLog,
@@ -173,6 +180,10 @@ export function createRouter(options: RouterOptions): Router {
   let handling = 0;
   /** Requests in progress per client key. */
   const perClient = new Map<string, number>();
+  /** Requests with a body in progress per route with `bodySlots`. */
+  const bodies = new Map<HttpRoute, number>();
+  /** The same per slot key, on routes with `bodySlots.perKey`. */
+  const keyedBodies = new Map<HttpRoute, Map<string, number>>();
   let idleWaiters: (() => void)[] = [];
 
   const healthResponse = (): Response =>
@@ -188,6 +199,13 @@ export function createRouter(options: RouterOptions): Router {
     handle: () => Promise.resolve(healthResponse()),
   };
   const table = compileRoutes(options.routes);
+
+  const releaseKeyed = (route: HttpRoute, key: string): void => {
+    const counts = keyedBodies.get(route);
+    const held = (counts?.get(key) ?? 1) - 1;
+    if (held <= 0) counts?.delete(key);
+    else counts?.set(key, held);
+  };
 
   const currentOrigin = (): string =>
     new URL(typeof options.origin === "function" ? options.origin() : options.origin).origin;
@@ -244,6 +262,8 @@ export function createRouter(options: RouterOptions): Router {
     perClient.set(clientKey, held + 1);
     admitted += 1;
     let handlingSlot = false;
+    let bodySlot = false;
+    let bodySlotKey: string | undefined;
     const deadline = new AbortController();
     const timer = setTimeout(() => {
       deadline.abort(new Error(`The request exceeded ${String(deadlineMs / 1000)} s.`));
@@ -255,6 +275,8 @@ export function createRouter(options: RouterOptions): Router {
       finished = true;
       clearTimeout(timer);
       if (handlingSlot) handling -= 1;
+      if (bodySlot) bodies.set(route, (bodies.get(route) ?? 1) - 1);
+      if (bodySlotKey !== undefined) releaseKeyed(route, bodySlotKey);
       release(clientKey);
     };
     const signal = AbortSignal.any([incoming.signal, deadline.signal, shutdown.signal]);
@@ -286,16 +308,46 @@ export function createRouter(options: RouterOptions): Router {
         annotateRequest(ctx, principalLogFields(auth));
       }
 
+      let slotKey = "";
+      if (route.preflight !== undefined) {
+        const outcome = await route.preflight(head, ctx);
+        if (outcome instanceof Response) return answered(outcome);
+        slotKey = outcome?.bodySlotKey ?? "";
+      }
+
       let body: Uint8Array | null = null;
       if (incoming.method !== "GET" && incoming.method !== "HEAD") {
-        let read: Uint8Array | "too_large" | "timeout";
+        const slots = route.bodySlots;
+        if (slots !== undefined) {
+          const busy = (scope: "route" | "key"): Served =>
+            answered(
+              slots.busy?.(scope) ??
+                serviceUnavailable("Too many uploads are in progress; retry shortly.", 5),
+            );
+          const perKey = keyedBodies.get(route);
+          const activeForKey = perKey?.get(slotKey) ?? 0;
+          if (slots.perKey !== undefined && activeForKey >= slots.perKey) return busy("key");
+          const active = bodies.get(route) ?? 0;
+          if (active >= slots.max) return busy("route");
+          bodies.set(route, active + 1);
+          bodySlot = true;
+          if (slots.perKey !== undefined) {
+            const counts = perKey ?? new Map<string, number>();
+            counts.set(slotKey, activeForKey + 1);
+            keyedBodies.set(route, counts);
+            bodySlotKey = slotKey;
+          }
+        }
+        const timeoutMs = route.bodyTimeoutMs ?? bodyTimeoutMs;
+        let read: Uint8Array | "too_large" | "timeout" | BodyPace;
         try {
-          read = await readBodyWithin(incoming, route.maxBodyBytes, bodyTimeoutMs);
+          read = await readBodyWithin(incoming, route.maxBodyBytes, timeoutMs, route.bodyPace);
         } catch {
           return answered(badRequest("The request body could not be read."));
         }
-        if (read === "timeout") return answered(requestTimeout(bodyTimeoutMs));
+        if (read === "timeout") return answered(requestTimeout(timeoutMs));
         if (read === "too_large") return answered(payloadTooLarge(route.maxBodyBytes));
+        if (!(read instanceof Uint8Array)) return answered(bodyTooSlow(read));
         body = read.byteLength > 0 ? read : null;
       }
       if (handling >= maxInFlight) {
@@ -405,26 +457,54 @@ export function createRouter(options: RouterOptions): Router {
   };
 }
 
+/** How often the pace of a body is checked, at most. */
+const PACE_TICK_MS = 1_000;
+
 /**
- * Reads the body within `ms`: the bytes, `"too_large"`, or `"timeout"` (the read is then left to
- * fail with the connection, which the response closes). Rejects when the read fails.
+ * Reads the body within `ms` and, with a `pace`, as fast as it asks: the bytes, `"too_large"`,
+ * `"timeout"`, or the `pace` it fell behind (the read is then left to fail with the connection,
+ * which the response closes). Rejects when the read fails. The pace is measured in timer ticks (no clock):
+ * time without a byte, and the average since the start once `graceMs` have passed.
  */
 async function readBodyWithin(
   incoming: IncomingRequest,
   maxBytes: number,
   ms: number,
-): Promise<Uint8Array | "too_large" | "timeout"> {
-  const reading = incoming.readBody(maxBytes);
+  pace: BodyPace | undefined,
+): Promise<Uint8Array | "too_large" | "timeout" | BodyPace> {
+  let received = 0;
+  let silentMs = 0;
+  const reading = incoming.readBody(
+    maxBytes,
+    pace === undefined
+      ? undefined
+      : (bytes) => {
+          received += bytes;
+          if (bytes > 0) silentMs = 0;
+        },
+  );
   let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<"timeout">((resolve) => {
+  let ticker: NodeJS.Timeout | undefined;
+  const timeout = new Promise<"timeout" | BodyPace>((resolve) => {
     timer = setTimeout(() => {
       resolve("timeout");
     }, ms);
+    if (pace === undefined) return;
+    const tickMs = Math.min(PACE_TICK_MS, pace.idleMs);
+    let elapsedMs = 0;
+    ticker = setInterval(() => {
+      elapsedMs += tickMs;
+      silentMs += tickMs;
+      const tooSlow =
+        elapsedMs >= pace.graceMs && received < (pace.minBytesPerSecond * elapsedMs) / 1000;
+      if (silentMs >= pace.idleMs || tooSlow) resolve(pace);
+    }, tickMs);
   });
   try {
     return await Promise.race([reading, timeout]);
   } finally {
     clearTimeout(timer);
+    clearInterval(ticker);
     // A read abandoned at the timeout rejects when the connection closes; nobody waits for it.
     reading.catch(() => undefined);
   }
@@ -447,6 +527,26 @@ function compileRoutes(routes: readonly HttpRoute[]): RouteTable {
       throw new RangeError(`${where}: methods must be upper case.`);
     }
     if (!(route.maxBodyBytes >= 0)) throw new RangeError(`${where}: invalid maxBodyBytes.`);
+    if (route.bodyTimeoutMs !== undefined && !(route.bodyTimeoutMs > 0)) {
+      throw new RangeError(`${where}: invalid bodyTimeoutMs.`);
+    }
+    if (
+      route.bodySlots !== undefined &&
+      !(Number.isInteger(route.bodySlots.max) && route.bodySlots.max >= 1)
+    ) {
+      throw new RangeError(`${where}: bodySlots.max must be a positive integer.`);
+    }
+    const perKey = route.bodySlots?.perKey;
+    if (perKey !== undefined && !(Number.isInteger(perKey) && perKey >= 1)) {
+      throw new RangeError(`${where}: bodySlots.perKey must be a positive integer.`);
+    }
+    const pace = route.bodyPace;
+    if (
+      pace !== undefined &&
+      !(pace.idleMs > 0 && pace.graceMs >= 0 && pace.minBytesPerSecond >= 0)
+    ) {
+      throw new RangeError(`${where}: invalid bodyPace.`);
+    }
     if (route.match === "prefix") {
       if (!route.path.endsWith("/")) throw new RangeError(`${where}: a prefix must end with /.`);
       if (prefixes.some((other) => other.path === route.path)) {

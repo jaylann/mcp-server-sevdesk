@@ -196,12 +196,15 @@ describe("HTTP mode end to end (OAuth, approvals inbox)", () => {
     const setup = await start();
     const { client, jar } = await connectClaudeAi(setup, ["write", "commit"]);
 
-    // Tools follow the grant: commit tools are there, external and local-file tools are not.
+    // Tools follow the grant: commit tools are there, external tools are not. File transfer is on
+    // by default, so the file tools are listed (uploads and download links, no server folders).
     const names = (await client.listTools()).tools.map((tool) => tool.name);
     expect(names).toContain("sevdesk_invoice_enshrine");
     expect(names).toContain("sevdesk_contact_create");
     expect(names).not.toContain("sevdesk_invoice_send_email");
-    expect(names).not.toContain("sevdesk_document_save");
+    expect(names).toContain("sevdesk_document_save");
+    expect(names).toContain("sevdesk_upload_request");
+    expect(names).toContain("sevdesk_voucher_import_einvoice");
 
     // 1. The commit call asks for approval in the inbox; nothing is written yet.
     const first = await client.callTool({
@@ -288,7 +291,27 @@ describe("HTTP mode end to end (OAuth, approvals inbox)", () => {
     const { client } = await connectClaudeAi(setup, []);
     const tools = (await client.listTools()).tools;
     expect(tools.length).toBeGreaterThan(10);
-    expect(tools.every((tool) => tool.annotations?.readOnlyHint === true)).toBe(true);
+    // Read tier only; the two file writers change nothing in sevDesk but hand out download
+    // links, so they say readOnlyHint: false.
+    expect(
+      tools.filter((tool) => tool.annotations?.readOnlyHint !== true).map((tool) => tool.name),
+    ).toEqual(["sevdesk_csv_export", "sevdesk_document_save"]);
+  });
+
+  it("lists no file tools with SEVDESK_HTTP_FILES=off", async () => {
+    const setup = await start({ SEVDESK_HTTP_FILES: "off" });
+    const { client } = await connectClaudeAi(setup, ["write"]);
+    const names = (await client.listTools()).tools.map((tool) => tool.name);
+    expect(names).toContain("sevdesk_voucher_create_draft");
+    for (const name of [
+      "sevdesk_upload_request",
+      "sevdesk_document_save",
+      "sevdesk_csv_export",
+      "sevdesk_einvoice_parse",
+      "sevdesk_voucher_import_einvoice",
+    ]) {
+      expect(names, name).not.toContain(name);
+    }
   });
 
   it("lets another browser sign in to the inbox with the token of an allowed account only", async () => {

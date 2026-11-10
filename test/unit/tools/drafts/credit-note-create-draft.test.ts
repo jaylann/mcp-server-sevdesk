@@ -307,7 +307,7 @@ describe("sevdesk_credit_note_create_draft (community: sevdesk-rs request shape 
         {
           contactId: 1001,
           bookingCategory: "provision",
-          taxRule: 1,
+          taxRuleId: 1,
           positions: [{ name: "A", quantity: 1, unitPrice: 1, taxRate: 19 }],
         },
         "Tax rule 1 (Umsatzsteuerpflichtige Umsätze) cannot be used for provision credit notes. " +

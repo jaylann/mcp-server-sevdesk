@@ -73,7 +73,7 @@ const emailOutputSchema = z.object({
   to: z.string().describe("Recipient."),
   cc: z.array(z.string()).optional(),
   bcc: z.array(z.string()).optional(),
-  copyToMe: z.boolean().describe("Whether sevDesk also sent a copy to the sevDesk user."),
+  sendCopyToMe: z.boolean().describe("Whether sevDesk also sent a copy to the sevDesk user."),
   attachment: z
     .enum(["pdf", "xml"])
     .describe("pdf: the document PDF; xml: the e-invoice XML instead of the PDF."),
@@ -229,7 +229,7 @@ export function sendEmailTool(kind: SalesKind) {
             to: recipients.to,
             ...(recipients.cc.length === 0 ? {} : { cc: [...recipients.cc] }),
             ...(recipients.bcc.length === 0 ? {} : { bcc: [...recipients.bcc] }),
-            copyToMe: payload.copy === true,
+            sendCopyToMe: payload.copy === true,
             attachment: payload.sendXml === true ? "xml" : "pdf",
           },
         }),

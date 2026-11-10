@@ -73,8 +73,25 @@ export const CREDIT_NOTE_PAYMENT_TYPES = [
 ] as const satisfies readonly PaymentType[];
 
 /** sevDesk booking types this server sends (spec `bookInvoice.type` without deprecated CF). */
-export const BOOKING_TYPES = ["FULL_PAYMENT", "N", "CB", "O", "OF", "MTC"] as const;
+const BOOKING_TYPES = ["FULL_PAYMENT", "N", "CB", "O", "OF", "MTC"] as const;
 export type BookingType = (typeof BOOKING_TYPES)[number];
+
+const PAYMENT_TYPE_BY_BOOKING_TYPE: Readonly<Record<BookingType, PaymentType>> = {
+  FULL_PAYMENT: "payment",
+  N: "payment",
+  CB: "cash_discount",
+  MTC: "bank_fees",
+  O: "other_difference",
+  OF: "reminder_charges",
+};
+
+/**
+ * The readable payment type (the tools' `paymentType` input value) of a sevDesk booking type, for
+ * outputs: full and partial payments (FULL_PAYMENT, N) are both `payment`.
+ */
+export function paymentTypeOf(bookingType: BookingType): PaymentType {
+  return PAYMENT_TYPE_BY_BOOKING_TYPE[bookingType];
+}
 
 /** What a settling payment with a difference does with it, for warnings. */
 const DIFFERENCE_WORDING: Readonly<Record<Exclude<PaymentType, "payment">, string>> = {

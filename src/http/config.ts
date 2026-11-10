@@ -8,7 +8,8 @@
  * is mandatory, a non-loopback bind needs the public https origin (all URLs the server prints and
  * all Host/Origin checks derive from it), bearer secrets must be long and random, OAuth needs the
  * server secret and an account allowlist, and the server's disk is never shared between OAuth
- * accounts. See `docs/remote.md` for the variables.
+ * accounts. Remote file transfer (`SEVDESK_HTTP_FILES`, upload pages and download links) is on by
+ * default with a byte budget and a lifetime. See `docs/remote.md` for the variables.
  *
  * Invariant: no problem or warning contains a secret value.
  */
@@ -26,14 +27,16 @@ import {
   type Env,
   nonEmpty,
   readEnum,
+  readFlag,
   readList,
   readSecret,
   readSettings,
   type Settings,
   sevdeskTokenProblem,
 } from "../config.js";
+import { accountShare, MAX_UPLOAD_BYTES } from "../safety/transfer-store.js";
 import { decodeSecret } from "./keys.js";
-import type { HttpAuthMode, HttpConfig, OAuthSettings } from "./types.js";
+import type { HttpAuthMode, HttpConfig, HttpFilesConfig, OAuthSettings } from "./types.js";
 
 const DEFAULT_HTTP_HOST = "127.0.0.1";
 const DEFAULT_HTTP_PORT = 8080;
@@ -58,7 +61,17 @@ const TTL_RULES = {
     bounds: "1d and 90d",
   },
   SEVDESK_OAUTH_GRANT_TTL: { fallback: 90 * DAY, min: DAY, max: 365 * DAY, bounds: "1d and 365d" },
+  SEVDESK_HTTP_FILES_TTL: {
+    fallback: 30 * MINUTE,
+    min: 5 * MINUTE,
+    max: DAY,
+    bounds: "5m and 24h",
+  },
 } as const;
+
+const MEBIBYTE = 1024 * 1024;
+/** `SEVDESK_HTTP_FILES_MAX_MB`: bounds, and the defaults with and without a state directory. */
+const FILES_MAX_MB = { min: 32, max: 4096, withStateDir: 256, inMemory: 64 } as const;
 
 const GENERATE_HINT = "generate one with `mcp-server-sevdesk generate-secret`";
 
@@ -162,6 +175,17 @@ export function loadHttpConfig(env: Env, deps: LoadHttpConfigDeps = {}): LoadedH
   const secret = readServerSecret(env, readFile, problems, auth === "oauth", secrets, warnings);
   const previousSecret = readPreviousSecret(env, readFile, problems, secret, secrets, warnings);
 
+  // Profiles and the OS keychain are for local (stdio) installs: a container has no keychain,
+  // and an HTTP server keeps one source of configuration, its environment.
+  for (const name of ["SEVDESK_PROFILE", "SEVDESK_PROFILES_PATH", "SEVDESK_API_TOKEN_KEYCHAIN"]) {
+    if (nonEmpty(env[name]) !== undefined) {
+      problems.push(
+        `${name} works only over stdio, not with --http. Configure the HTTP server through its ` +
+          "environment (SEVDESK_API_TOKEN or SEVDESK_API_TOKEN_FILE in bearer mode).",
+      );
+    }
+  }
+
   let token: string | undefined;
   let bearerTokens: readonly string[] = [];
   let oauth: OAuthSettings | undefined;
@@ -181,7 +205,9 @@ export function loadHttpConfig(env: Env, deps: LoadHttpConfigDeps = {}): LoadedH
       if (nonEmpty(env[name]) !== undefined) {
         problems.push(
           `${name} cannot be used with SEVDESK_HTTP_AUTH=oauth: every connected account would ` +
-            "share the server's disk. Remove it (bearer mode keeps it, since it serves one account).",
+            "share the server's disk. Remove it: users upload receipts on the server's upload " +
+            "pages and download exports through links instead (SEVDESK_HTTP_FILES, on by " +
+            "default). Bearer mode keeps it, since it serves one account.",
         );
       }
     }
@@ -208,6 +234,12 @@ export function loadHttpConfig(env: Env, deps: LoadHttpConfigDeps = {}): LoadedH
       warnings.push("SEVDESK_HTTP_BEARER_TOKEN is not used with SEVDESK_HTTP_AUTH=oauth.");
     }
   }
+
+  const files = readFiles(env, problems, warnings, {
+    stateDir,
+    plainHttp: (publicUrl?.origin ?? "http:").startsWith("http:"),
+    anyAccount: oauth?.accounts === "any",
+  });
 
   if (
     settings.confirm === "elicit" &&
@@ -238,6 +270,7 @@ export function loadHttpConfig(env: Env, deps: LoadHttpConfigDeps = {}): LoadedH
     secret,
     previousSecret,
     oauth,
+    files,
   };
   const fixed: Config | undefined =
     auth === "bearer" && token !== undefined
@@ -248,6 +281,7 @@ export function loadHttpConfig(env: Env, deps: LoadHttpConfigDeps = {}): LoadedH
             "bearer",
             publicUrl?.origin ?? loopbackOrigin(host, port),
             settings.confirm,
+            files,
           ),
         }
       : undefined;
@@ -256,19 +290,100 @@ export function loadHttpConfig(env: Env, deps: LoadHttpConfigDeps = {}): LoadedH
 
 /**
  * The `deployment` of a config served over HTTP at `origin`: the approval inbox URL is set when
- * `SEVDESK_CONFIRM=browser`.
+ * `SEVDESK_CONFIRM=browser`, and `files` when remote file transfer is on.
  */
 export function httpDeployment(
   auth: HttpAuthMode,
   origin: string,
   confirm: ConfirmMode,
+  files?: HttpFilesConfig,
 ): Deployment {
   return {
     kind: "http",
     auth,
     publicOrigin: origin,
     approvalsUrl: confirm === "browser" ? `${origin}/approvals` : undefined,
+    ...(files === undefined ? {} : { files: { ttlSeconds: files.ttlSeconds } }),
   };
+}
+
+interface FilesContext {
+  /** The state directory, when one is set and usable. */
+  readonly stateDir: string | undefined;
+  /** Whether the server is reached over plain http (a loopback origin). */
+  readonly plainHttp: boolean;
+  /** `SEVDESK_OAUTH_ACCOUNTS=any`. */
+  readonly anyAccount: boolean;
+}
+
+/**
+ * `SEVDESK_HTTP_FILES` (on/off, 1/0, true/false or yes/no, default on), `SEVDESK_HTTP_FILES_MAX_MB` (32 to 4096;
+ * default 256 with a state directory, 64 in memory) and `SEVDESK_HTTP_FILES_TTL` (5m to 24h,
+ * default 30m). Warns about plain http (the session cookie reaches every local server on the host),
+ * files held in memory, and a server open to any account.
+ */
+function readFiles(
+  env: Env,
+  problems: string[],
+  warnings: string[],
+  context: FilesContext,
+): HttpFilesConfig | undefined {
+  const on = readFlag(env, "SEVDESK_HTTP_FILES", problems, true);
+  const tuned = ["SEVDESK_HTTP_FILES_MAX_MB", "SEVDESK_HTTP_FILES_TTL"].filter(
+    (name) => nonEmpty(env[name]) !== undefined,
+  );
+  if (!on) {
+    if (tuned.length > 0 && nonEmpty(env["SEVDESK_HTTP_FILES"]) !== undefined) {
+      warnings.push(`${tuned.join(" and ")} have no effect with SEVDESK_HTTP_FILES=off.`);
+    }
+    return undefined;
+  }
+  const maxMb = readFilesMaxMb(env, problems, context.stateDir !== undefined);
+  const ttlSeconds = readTtl(env, "SEVDESK_HTTP_FILES_TTL", problems);
+  if (context.plainHttp) {
+    warnings.push(
+      "SEVDESK_HTTP_FILES=on over plain http: browsers send the sign-in cookie of the upload and " +
+        "download pages to every server on this host name, whatever its port, so another local " +
+        "server could use them as you. Use https (a tunnel or reverse proxy) beyond local " +
+        "testing, or set SEVDESK_HTTP_FILES=off.",
+    );
+  }
+  if (context.stateDir === undefined) {
+    warnings.push(
+      `SEVDESK_HTTP_FILES keeps uploaded files and download links in memory (up to ` +
+        `${String(maxMb)} MB, SEVDESK_HTTP_FILES_MAX_MB). Set SEVDESK_HTTP_STATE_DIR to keep ` +
+        "them on disk instead (encrypted, removed at every restart), or lower the limit if " +
+        "memory is tight.",
+    );
+  }
+  if (context.anyAccount) {
+    const share = accountShare(maxMb * MEBIBYTE, MAX_UPLOAD_BYTES) / MEBIBYTE;
+    warnings.push(
+      "SEVDESK_OAUTH_ACCOUNTS=any with SEVDESK_HTTP_FILES=on: the server briefly holds the " +
+        "receipts and exports of every account that connects (each up to " +
+        "SEVDESK_HTTP_FILES_TTL, encrypted). One account may use " +
+        `${String(Math.floor(share))} MB of the ${String(maxMb)} MB, but a few accounts ` +
+        "together can fill the space for everyone until their files expire. Set " +
+        "SEVDESK_HTTP_FILES=off if that is not wanted.",
+    );
+  }
+  return { maxBytes: maxMb * MEBIBYTE, ttlSeconds };
+}
+
+function readFilesMaxMb(env: Env, problems: string[], withStateDir: boolean): number {
+  const name = "SEVDESK_HTTP_FILES_MAX_MB";
+  const fallback = withStateDir ? FILES_MAX_MB.withStateDir : FILES_MAX_MB.inMemory;
+  const raw = nonEmpty(env[name]);
+  if (raw === undefined) return fallback;
+  const value = /^\d{1,5}$/.test(raw) ? Number(raw) : Number.NaN;
+  if (!(value >= FILES_MAX_MB.min && value <= FILES_MAX_MB.max)) {
+    problems.push(
+      `${name}: expected a whole number of megabytes between ${String(FILES_MAX_MB.min)} and ` +
+        `${String(FILES_MAX_MB.max)}, got "${raw}".`,
+    );
+    return fallback;
+  }
+  return value;
 }
 
 /** `http://<host>:<port>` for a loopback bind without a public URL (IPv6 in brackets). */

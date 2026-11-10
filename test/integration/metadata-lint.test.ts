@@ -14,15 +14,18 @@ import {
 import { ALL_TOOLS } from "../../src/tools/index.js";
 import type { AnyToolDefinition } from "../../src/tools/types.js";
 import { allEnabledConfig } from "../helpers/config.js";
+import { filesDeployment, filesOffDeployment } from "../helpers/transfer.js";
 
 const ANNOTATION_KEYS = ["destructiveHint", "idempotentHint", "openWorldHint", "readOnlyHint"];
 
 /**
- * The reviewed tools with local file effects (catalog order = `ALL_TOOLS` order). Writers only
- * write inside `SEVDESK_OUTPUT_DIR` (`writeNewFile`); readers only read inside `SEVDESK_FILE_DIRS`
- * (`readConfinedFile`).
+ * The reviewed tools with file effects (catalog order = `ALL_TOOLS` order). Both go only through
+ * `ToolContext.files` (`FileAccess`, `src/safety/file-sources.ts`): writers hand files out as new
+ * files inside `SEVDESK_OUTPUT_DIR` (`writeNewFile`) or, over HTTP with file transfer, as download
+ * links of the caller's account; readers read inside `SEVDESK_FILE_DIRS` (`readConfinedFile`) or
+ * the caller's own uploads.
  */
-const FILE_WRITERS = ["sevdesk_document_save", "sevdesk_datev_export", "sevdesk_export_csv"];
+const FILE_WRITERS = ["sevdesk_document_save", "sevdesk_datev_export", "sevdesk_csv_export"];
 const FILE_READERS = [
   "sevdesk_voucher_create_draft",
   "sevdesk_voucher_import_einvoice",
@@ -63,24 +66,50 @@ describe("tool metadata", () => {
     expect(toolsWith("reads-files")).toEqual(FILE_READERS);
   });
 
-  it("offers file writers only with SEVDESK_OUTPUT_DIR and declares nothing else", () => {
+  it("offers file writers only when files can be delivered and declares nothing else", () => {
     const declared = ALL_TOOLS.filter((tool) => tool.localEffects !== undefined);
     expect(declared.map((tool) => tool.name).sort()).toEqual(
       [...FILE_WRITERS, ...FILE_READERS].sort(),
     );
     for (const tool of declared.filter((t) => t.localEffects === "writes-files")) {
       expect(tool.available?.(allEnabledConfig()), tool.name).toBe(false);
+      expect(tool.available?.(allEnabledConfig({ fileDirs: ["/in"] })), tool.name).toBe(false);
+      expect(
+        tool.available?.(allEnabledConfig({ deployment: filesOffDeployment() })),
+        tool.name,
+      ).toBe(false);
       expect(tool.available?.(allEnabledConfig({ outputDir: "/out" })), tool.name).toBe(true);
+      expect(tool.available?.(allEnabledConfig({ deployment: filesDeployment() })), tool.name).toBe(
+        true,
+      );
     }
   });
 
-  it("offers the tools that only work on local files only with SEVDESK_FILE_DIRS", () => {
+  it("offers the tools that only work on a file only when files can be read", () => {
     const fileOnly = ["sevdesk_einvoice_parse", "sevdesk_voucher_import_einvoice"];
     for (const name of fileOnly) {
       const tool = ALL_TOOLS.find((candidate) => candidate.name === name);
       expect(tool?.available?.(allEnabledConfig()), name).toBe(false);
+      expect(tool?.available?.(allEnabledConfig({ outputDir: "/out" })), name).toBe(false);
+      expect(tool?.available?.(allEnabledConfig({ deployment: filesOffDeployment() })), name).toBe(
+        false,
+      );
       expect(tool?.available?.(allEnabledConfig({ fileDirs: ["/in"] })), name).toBe(true);
+      expect(tool?.available?.(allEnabledConfig({ deployment: filesDeployment() })), name).toBe(
+        true,
+      );
     }
+  });
+
+  it("offers the upload request only over HTTP with file transfer, as a plain read tool", () => {
+    const tool = ALL_TOOLS.find((candidate) => candidate.name === "sevdesk_upload_request");
+    expect(tool).toMatchObject({ tier: "read", toolset: "meta" });
+    expect(tool?.localEffects).toBeUndefined();
+    expect(tool?.available?.(allEnabledConfig({ fileDirs: ["/in"], outputDir: "/out" }))).toBe(
+      false,
+    );
+    expect(tool?.available?.(allEnabledConfig({ deployment: filesOffDeployment() }))).toBe(false);
+    expect(tool?.available?.(allEnabledConfig({ deployment: filesDeployment() }))).toBe(true);
   });
 
   describe.each(cases)("%s", (_name, tool) => {

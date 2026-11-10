@@ -22,7 +22,7 @@ const voucherPositionInput = z.strictObject({
       "kind=receipt_guidance (it lists the tax rules and rates each account allows).",
   ),
   amount: amountInput({ allowZero: false }).describe(
-    'Betrag of this position in EUR, gross or net as amountsAre says, e.g. "119.00".',
+    'Betrag of this position in EUR, gross or net as amountMode says, e.g. "119.00".',
   ),
   taxRate: amountInput({ places: 2 })
     .optional()
@@ -55,7 +55,8 @@ const fileInput = z
   .max(1_000)
   .describe(
     "Receipt file (Belegbild: PDF, PNG or JPEG, up to 20 MB) inside SEVDESK_FILE_DIRS, " +
-      "absolute or relative to one of those folders. It is uploaded and attached.",
+      "absolute or relative to one of those folders, or on a remote server the uploadId from " +
+      "sevdesk_upload_request. It is uploaded and attached.",
   );
 
 const supplierIdInput = positiveId
@@ -81,7 +82,7 @@ const numberInput = z
   .optional()
   .describe("Belegnummer: the receipt's or supplier invoice's own number.");
 
-const amountsAreInput = z
+const amountModeInput = z
   .enum(AMOUNT_MODES)
   .optional()
   .describe("Whether position amounts are gross (Brutto, default) or net (Netto).");
@@ -118,8 +119,8 @@ export const voucherCreateInputShape = {
   supplierName: supplierNameInput,
   number: numberInput,
   ...dateInputs,
-  taxRule: taxRuleIdInput,
-  amountsAre: amountsAreInput,
+  taxRuleId: taxRuleIdInput,
+  amountMode: amountModeInput,
   positions: positionsInput,
   file: fileInput.optional(),
   allowDuplicate: z
@@ -137,11 +138,11 @@ export const voucherUpdateInputShape = {
   supplierName: supplierNameInput,
   number: numberInput,
   ...dateInputs,
-  taxRule: taxRuleIdInput.describe(
+  taxRuleId: taxRuleIdInput.describe(
     "New Steuerregel id; every position (stored or new) must allow it. See " +
       "sevdesk_reference_lookup kind=tax_rules.",
   ),
-  amountsAre: amountsAreInput.describe(
+  amountMode: amountModeInput.describe(
     "gross or net position amounts; changing it requires positions too.",
   ),
   positions: positionsInput
@@ -149,7 +150,10 @@ export const voucherUpdateInputShape = {
     .describe("When given, replaces ALL positions; leave out to keep them."),
   file: fileInput
     .optional()
-    .describe("Receipt file to attach (PDF, PNG or JPEG inside SEVDESK_FILE_DIRS)."),
+    .describe(
+      "Receipt file to attach (PDF, PNG or JPEG inside SEVDESK_FILE_DIRS, or on a remote " +
+        "server the uploadId from sevdesk_upload_request).",
+    ),
 };
 
 export interface VoucherCreateArgs {
@@ -161,8 +165,8 @@ export interface VoucherCreateArgs {
   readonly deliveryDate?: string | undefined;
   readonly deliveryDateUntil?: string | undefined;
   readonly paymentDeadline?: string | undefined;
-  readonly taxRule?: number | undefined;
-  readonly amountsAre?: AmountMode | undefined;
+  readonly taxRuleId?: number | undefined;
+  readonly amountMode?: AmountMode | undefined;
   readonly positions: readonly VoucherPositionInput[];
   readonly file?: string | undefined;
   readonly allowDuplicate?: boolean | undefined;
@@ -177,8 +181,8 @@ export interface VoucherUpdateArgs {
   readonly deliveryDate?: string | undefined;
   readonly deliveryDateUntil?: string | undefined;
   readonly paymentDeadline?: string | undefined;
-  readonly taxRule?: number | undefined;
-  readonly amountsAre?: AmountMode | undefined;
+  readonly taxRuleId?: number | undefined;
+  readonly amountMode?: AmountMode | undefined;
   readonly positions?: readonly VoucherPositionInput[] | undefined;
   readonly file?: string | undefined;
 }
@@ -191,7 +195,8 @@ export const voucherImportInputShape = {
     .max(1_000)
     .describe(
       "The e-invoice: an XRechnung XML or a ZUGFeRD/Factur-X PDF inside SEVDESK_FILE_DIRS, " +
-        "absolute or relative to one of those folders. It is attached to the voucher.",
+        "absolute or relative to one of those folders, or on a remote server the uploadId from " +
+        "sevdesk_upload_request. It is attached to the voucher.",
     ),
   accountDatevId: positiveId
     .optional()

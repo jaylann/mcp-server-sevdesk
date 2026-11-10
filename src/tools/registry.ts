@@ -12,9 +12,13 @@ import {
 } from "@modelcontextprotocol/server";
 import type { z } from "zod";
 
+import { requestPrincipal } from "../accounts/types.js";
 import type { Config, StructuredOutputMode } from "../config.js";
+import { type FileAccess, remoteFilesEnabled } from "../safety/file-access.js";
+import { localFileAccess, remoteFileAccess } from "../safety/file-sources.js";
 import type { SafetyRuntime } from "../safety/runtime.js";
 import type { Tier, WriteTier } from "../safety/tiers.js";
+import type { TransferStore } from "../safety/transfer-types.js";
 import type { SevdeskClient } from "../sevdesk/types.js";
 import { successResult } from "./result.js";
 import {
@@ -49,6 +53,11 @@ export interface RegistryDeps {
    * `createSafetyRuntime`); write tools cannot run without it.
    */
   readonly safety: SafetyRuntime;
+  /**
+   * Remote file transfer (HTTP mode with `deployment.files`): uploads and download links, shared
+   * by every instance of the server. Undefined over stdio and when switched off.
+   */
+  readonly transfer?: TransferStore | undefined;
 }
 
 /**
@@ -212,6 +221,7 @@ async function runTool(
       config: deps.config,
       signal,
       progress: progressReporter(request),
+      files: fileAccessFor(request, deps),
     };
     if (tool.tier !== "read") {
       return await runWriteTool(tool, parsed.data, {
@@ -238,6 +248,21 @@ async function runTool(
   } catch (error) {
     return signal.aborted ? cancelledResult(errorContext) : toolErrorResult(error, errorContext);
   }
+}
+
+/**
+ * The {@link FileAccess} of one call: uploads and download links of the request's principal when
+ * remote file transfer is on (and its store was passed in), else the local folders of the config.
+ */
+export function fileAccessFor(
+  request: Pick<ServerContext, "http">,
+  deps: Pick<RegistryDeps, "config" | "transfer">,
+): FileAccess {
+  const { config, transfer } = deps;
+  if (remoteFilesEnabled(config) && transfer !== undefined) {
+    return remoteFileAccess(config, transfer, requestPrincipal(request.http?.authInfo, config));
+  }
+  return localFileAccess(config);
 }
 
 /**

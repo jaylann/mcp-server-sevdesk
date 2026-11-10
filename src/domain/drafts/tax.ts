@@ -132,7 +132,7 @@ export function regimeRefusal(rule: TaxRule, regime: TaxRegime, scope: RuleScope
   const reason = regimeReason(rule, regime, scope.documents);
   if (regime === "small_business" && fitting.includes(SMALL_BUSINESS_RULE_ID)) {
     return (
-      `${reason} Use tax rule 11 with 0 %: leave out taxRule (rule 11 is the default on this ` +
+      `${reason} Use tax rule 11 with 0 %: leave out taxRuleId (rule 11 is the default on this ` +
       "account) and give the positions taxRate 0 or none."
     );
   }

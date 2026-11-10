@@ -31,7 +31,7 @@ import {
   loadUnitNames,
   matchesNumber,
   type PositionDto,
-  pricesEnteredAs,
+  priceModeOf,
   refId,
   salesDocumentFields,
   sentDto,
@@ -139,7 +139,7 @@ export const creditNoteDetailSchema = creditNoteRowSchema.extend({
   deliveryDate: z.string().optional().describe("Lieferdatum, YYYY-MM-DD."),
   deliveryDateUntil: z.string().optional(),
   payDate: z.string().optional(),
-  pricesEnteredAs: z.enum(["net", "gross"]).optional(),
+  priceMode: z.enum(["net", "gross"]).optional(),
   tax: taxDtoSchema,
   address: z
     .object({
@@ -190,7 +190,7 @@ function toCreditNoteDetail(record: CreditNoteRecord): CreditNoteDetail {
     deliveryDate: berlinDate(record.deliveryDate),
     deliveryDateUntil: berlinDate(record.deliveryDateUntil),
     payDate: berlinDate(record.payDate),
-    pricesEnteredAs: pricesEnteredAs(record.showNet),
+    priceMode: priceModeOf(record.showNet),
     tax: taxDto(record),
     address: addressDto(record),
     contactPersonId: refId(record.contactPerson, "a credit note's contact person"),

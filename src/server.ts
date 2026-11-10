@@ -4,8 +4,10 @@ import { tierKey } from "./accounts/resolver.js";
 import type { AccountResolver } from "./accounts/types.js";
 import type { Config, Settings } from "./config.js";
 import { buildInstructions } from "./instructions.js";
+import { type PlannedPrompt, planPrompts, registerPrompts } from "./prompts/index.js";
 import { registerResources } from "./resources/index.js";
 import { createSafetyRuntime, type SafetyRuntime } from "./safety/runtime.js";
+import type { TransferStore } from "./safety/transfer-types.js";
 import type { SevdeskClient } from "./sevdesk/types.js";
 import { ToolDefinitionError, validateToolDefinition } from "./tools/define-tool.js";
 import { ALL_TOOLS, assertUniqueNames } from "./tools/index.js";
@@ -33,6 +35,11 @@ export interface ServerDeps {
    * Tests pass one with a fake clock.
    */
   readonly safety?: SafetyRuntime;
+  /**
+   * Remote file transfer (HTTP with `deployment.files`): uploads and download links shared by
+   * every instance. Undefined over stdio.
+   */
+  readonly transfer?: TransferStore | undefined;
 }
 
 /**
@@ -51,6 +58,11 @@ export interface AccountServerDeps {
    * the HTTP mode passes a runtime with the approvals inbox channel instead.
    */
   readonly safety?: SafetyRuntime;
+  /**
+   * Remote file transfer (HTTP with `deployment.files`): uploads and download links shared by
+   * every instance. Undefined over stdio.
+   */
+  readonly transfer?: TransferStore | undefined;
 }
 
 /**
@@ -84,8 +96,9 @@ export function createServerFactory(deps: ServerDeps | AccountServerDeps): Serve
 
 /**
  * Creates one fully configured server instance: {@link SERVER_INFO}, generated instructions, the
- * tools selected for `deps.config` and the matching resources (`src/resources/`: document file
- * templates of enabled toolsets, reference data). `era` decides structured output in `auto` mode (see
+ * tools selected for `deps.config`, the matching resources (`src/resources/`: document file
+ * templates of enabled toolsets, reference data) and prompts (`src/prompts/`: workflows whose
+ * tools are registered). `era` decides structured output in `auto` mode (see
  * `resolveStructuredOutput`); without it the instance behaves as legacy. Prefer
  * {@link createServerFactory} for serving, which does the preparation once.
  */
@@ -98,13 +111,16 @@ interface PreparedServer {
   readonly client: SevdeskClient;
   readonly tools: readonly AnyToolDefinition[];
   readonly instructions: string;
+  readonly prompts: readonly PlannedPrompt[];
   readonly safety: SafetyRuntime;
+  readonly transfer: TransferStore | undefined;
 }
 
-/** What one tier set exposes: the selected tools and their instructions. */
+/** What one tier set exposes: the selected tools, their instructions and the prompts. */
 interface Surface {
   readonly tools: readonly AnyToolDefinition[];
   readonly instructions: string;
+  readonly prompts: readonly PlannedPrompt[];
 }
 
 function validatedCatalog(tools: readonly AnyToolDefinition[]): readonly AnyToolDefinition[] {
@@ -121,7 +137,11 @@ function validatedCatalog(tools: readonly AnyToolDefinition[]): readonly AnyTool
 
 function surfaceOf(catalog: readonly AnyToolDefinition[], config: Config): Surface {
   const tools = selectTools(catalog, config);
-  return { tools, instructions: buildInstructions(tools, config) };
+  return {
+    tools,
+    instructions: buildInstructions(tools, config),
+    prompts: planPrompts(config, tools, catalog),
+  };
 }
 
 function prepare(deps: ServerDeps): PreparedServer {
@@ -131,6 +151,7 @@ function prepare(deps: ServerDeps): PreparedServer {
     client: deps.client,
     ...surfaceOf(catalog, deps.config),
     safety: deps.safety ?? createSafetyRuntime(deps.config),
+    transfer: deps.transfer,
   };
 }
 
@@ -147,7 +168,10 @@ function accountServerFactory(deps: AccountServerDeps): ServerFactory {
       surface = surfaceOf(catalog, config);
       surfaces.set(key, surface);
     }
-    return instantiate({ config, client, ...surface, safety }, context.era);
+    return instantiate(
+      { config, client, ...surface, safety, transfer: deps.transfer },
+      context.era,
+    );
   };
   return Object.assign(factory, {
     close: async () => {
@@ -160,9 +184,13 @@ function accountServerFactory(deps: AccountServerDeps): ServerFactory {
 function instantiate(prepared: PreparedServer, era: ProtocolEra | undefined): McpServer {
   const { config, client } = prepared;
   const server = new McpServer(SERVER_INFO, {
-    // Declared up front so tools/list and resources/list are valid when empty; neither list
-    // changes at runtime.
-    capabilities: { tools: { listChanged: false }, resources: { listChanged: false } },
+    // Declared up front so tools/list, resources/list and prompts/list are valid when empty;
+    // none of the lists changes at runtime.
+    capabilities: {
+      tools: { listChanged: false },
+      resources: { listChanged: false },
+      prompts: { listChanged: false },
+    },
     instructions: prepared.instructions,
     maxToolInputElements: MAX_TOOL_INPUT_ELEMENTS,
     // Elicitation rounds (multi-round-trip): the signed state is verified before a retried call
@@ -175,7 +203,9 @@ function instantiate(prepared: PreparedServer, era: ProtocolEra | undefined): Mc
     client,
     structuredOutput: resolveStructuredOutput(config.structuredOutput, era),
     safety: prepared.safety,
+    transfer: prepared.transfer,
   });
   registerResources(server, { config, client });
+  registerPrompts(server, prepared.prompts);
   return server;
 }

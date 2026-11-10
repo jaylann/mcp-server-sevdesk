@@ -26,8 +26,8 @@ import { statusByCode, type StatusObjectType } from "../reference-data.js";
 import { voucherKindFromCreditDebit } from "../vouchers.js";
 import {
   invalidReportRequest,
-  REPORT_BASIS,
   REPORT_PAGE_SIZE,
+  REPORT_SOURCE,
   type ReportRunOptions,
   throwIfAborted,
 } from "./shared.js";
@@ -399,7 +399,7 @@ const subjectChangesSchema = z.object({
 type SubjectChanges = z.output<typeof subjectChangesSchema>;
 
 export const changesReportSchema = z.object({
-  basis: z.string(),
+  source: z.string().describe("How the numbers were made."),
   since: z.string().describe("The start instant used, ISO 8601 in Berlin time."),
   subjects: z.array(subjectChangesSchema),
   recordsScanned: z.number().int().describe("sevDesk rows examined across all subjects."),
@@ -466,7 +466,7 @@ export async function changedSince(
     );
   }
   return {
-    basis: REPORT_BASIS,
+    source: REPORT_SOURCE,
     since: formatBerlinInstant(sinceMs),
     subjects: results,
     recordsScanned: scanned,

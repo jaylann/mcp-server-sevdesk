@@ -324,6 +324,22 @@ describe("unexpected_response and internal errors", () => {
     expect(result).toContain("may or may not have been applied");
   });
 
+  it("does not call a known limit of ours a sevDesk change or a bug", () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const failure = error({
+      kind: "unexpected_response",
+      message:
+        "sevDesk's answer is larger than 1 MiB, the limit of sevdesk_api_get. Ask for fewer rows.",
+      expectedLimit: true,
+    });
+
+    const result = text(toolErrorResult(failure, context("read")));
+
+    expect(result).toBe(
+      "sevDesk's answer is larger than 1 MiB, the limit of sevdesk_api_get. Ask for fewer rows.",
+    );
+  });
+
   it("keeps the generic advice when the client could not read sevDesk's response", () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const failure = error({

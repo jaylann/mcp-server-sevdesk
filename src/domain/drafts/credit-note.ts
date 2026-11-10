@@ -169,7 +169,7 @@ export const creditNoteCreateInputShape = {
   deliveryDate: deliveryDateInput,
   deliveryDateUntil: deliveryDateUntilInput,
   priceMode: priceModeInput,
-  taxRule: taxRuleInput.describe(
+  taxRuleId: taxRuleInput.describe(
     "Tax rule (Steuerregel) id. Default: the source invoice's rule (underachievement), 9 " +
       "(provision; 10 on a Kleinunternehmer account) or the account's: 1 for regular VAT, 11 " +
       "for Kleinunternehmer. See sevdesk_reference_lookup kind=tax_rules.",
@@ -584,7 +584,7 @@ function sourceRegimeMessage(invoiceId: number, rates: readonly string[]): Regim
     );
     if (alternative !== undefined) {
       return (
-        `${reason} Pass taxRule ${alternative.id} (${alternative.nameDe}) instead: it allows the ` +
+        `${reason} Pass taxRuleId ${alternative.id} (${alternative.nameDe}) instead: it allows the ` +
         `rates of invoice ${invoiceId}${rateText}.`
       );
     }

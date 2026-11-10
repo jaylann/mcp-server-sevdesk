@@ -1,0 +1,158 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`prompts/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
+[
+  {
+    "arguments": [],
+    "description": "Match unbooked bank transactions in sevDesk to invoices, credit notes and receipts: suggestions with reasons, then each booking the user confirms with a dry run first; private withdrawals and deposits, costs without a receipt and wrong bookings. Not tax advice.",
+    "name": "bank_reconciliation",
+    "title": "Bank reconciliation (Kontoabgleich)",
+  },
+  {
+    "arguments": [],
+    "description": "Find overdue invoices in sevDesk, rule out payments that are not booked yet, and prepare payment reminders (Mahnungen) for the ones the user picks, with a dry run first. Without the write tier it only lists the overdue invoices. Not tax advice.",
+    "name": "dunning_run",
+    "title": "Dunning run (Mahnlauf)",
+  },
+  {
+    "arguments": [
+      {
+        "description": "Month to close, YYYY-MM (e.g. 2026-10). Default: the previous month.",
+        "name": "month",
+        "required": false,
+      },
+    ],
+    "description": "Close a month in sevDesk: what changed, unbooked bank transactions and missing receipts, drafts, overdue invoices, payables and liquidity, the VAT pre-check, profit and the hand-over to the Steuerberater. Steps the configuration does not allow are named, not worked around. Not tax advice.",
+    "name": "month_end_close",
+    "title": "Month-end close (Monatsabschluss)",
+  },
+  {
+    "arguments": [
+      {
+        "description": "The receipt or e-invoice file, as the voucher tools take it (a path inside SEVDESK_FILE_DIRS, or an upload reference). Default: the assistant asks for it.",
+        "name": "file",
+        "required": false,
+      },
+    ],
+    "description": "File a receipt or supplier invoice in sevDesk, or import an e-invoice (E-Rechnung: XRechnung, ZUGFeRD): duplicate check, booking account and tax rule, the voucher draft with a dry run first, then finalizing and the payment. Not tax advice.",
+    "name": "receipt_intake",
+    "title": "File a receipt (Beleg erfassen)",
+  },
+  {
+    "arguments": [
+      {
+        "description": "Month (YYYY-MM, e.g. 2026-10) or quarter (YYYY-Qn, e.g. 2026-Q3). Default: the previous month.",
+        "name": "period",
+        "required": false,
+      },
+    ],
+    "description": "Check a month or quarter in sevDesk before the Umsatzsteuer-Voranmeldung (UStVA): unbooked transactions and drafts, the VAT summary with its Kennzahlen, spot checks and the Zusammenfassende Meldung. The server does not file anything. Not tax advice.",
+    "name": "vat_precheck",
+    "title": "VAT pre-check (UStVA-Vorprüfung)",
+  },
+]
+`;
+
+exports[`prompts/list > SEVDESK_ALLOW=write 1`] = `
+[
+  {
+    "arguments": [],
+    "description": "Match unbooked bank transactions in sevDesk to invoices, credit notes and receipts: suggestions with reasons, then each booking the user confirms with a dry run first; private withdrawals and deposits, costs without a receipt and wrong bookings. Not tax advice.",
+    "name": "bank_reconciliation",
+    "title": "Bank reconciliation (Kontoabgleich)",
+  },
+  {
+    "arguments": [],
+    "description": "Find overdue invoices in sevDesk, rule out payments that are not booked yet, and prepare payment reminders (Mahnungen) for the ones the user picks, with a dry run first. Without the write tier it only lists the overdue invoices. Not tax advice.",
+    "name": "dunning_run",
+    "title": "Dunning run (Mahnlauf)",
+  },
+  {
+    "arguments": [
+      {
+        "description": "Month to close, YYYY-MM (e.g. 2026-10). Default: the previous month.",
+        "name": "month",
+        "required": false,
+      },
+    ],
+    "description": "Close a month in sevDesk: what changed, unbooked bank transactions and missing receipts, drafts, overdue invoices, payables and liquidity, the VAT pre-check, profit and the hand-over to the Steuerberater. Steps the configuration does not allow are named, not worked around. Not tax advice.",
+    "name": "month_end_close",
+    "title": "Month-end close (Monatsabschluss)",
+  },
+  {
+    "arguments": [
+      {
+        "description": "The receipt or e-invoice file, as the voucher tools take it (a path inside SEVDESK_FILE_DIRS, or an upload reference). Default: the assistant asks for it.",
+        "name": "file",
+        "required": false,
+      },
+    ],
+    "description": "File a receipt or supplier invoice in sevDesk, or import an e-invoice (E-Rechnung: XRechnung, ZUGFeRD): duplicate check, booking account and tax rule, the voucher draft with a dry run first, then finalizing and the payment. Not tax advice.",
+    "name": "receipt_intake",
+    "title": "File a receipt (Beleg erfassen)",
+  },
+  {
+    "arguments": [
+      {
+        "description": "Month (YYYY-MM, e.g. 2026-10) or quarter (YYYY-Qn, e.g. 2026-Q3). Default: the previous month.",
+        "name": "period",
+        "required": false,
+      },
+    ],
+    "description": "Check a month or quarter in sevDesk before the Umsatzsteuer-Voranmeldung (UStVA): unbooked transactions and drafts, the VAT summary with its Kennzahlen, spot checks and the Zusammenfassende Meldung. The server does not file anything. Not tax advice.",
+    "name": "vat_precheck",
+    "title": "VAT pre-check (UStVA-Vorprüfung)",
+  },
+]
+`;
+
+exports[`prompts/list > SEVDESK_FILE_DIRS set: adds receipt_intake for the e-invoice check 1`] = `
+[
+  "bank_reconciliation",
+  "dunning_run",
+  "month_end_close",
+  "receipt_intake",
+  "vat_precheck",
+]
+`;
+
+exports[`prompts/list > default configuration (read tier, default toolsets) 1`] = `
+[
+  {
+    "arguments": [],
+    "description": "Match unbooked bank transactions in sevDesk to invoices, credit notes and receipts: suggestions with reasons, then each booking the user confirms with a dry run first; private withdrawals and deposits, costs without a receipt and wrong bookings. Not tax advice.",
+    "name": "bank_reconciliation",
+    "title": "Bank reconciliation (Kontoabgleich)",
+  },
+  {
+    "arguments": [],
+    "description": "Find overdue invoices in sevDesk, rule out payments that are not booked yet, and prepare payment reminders (Mahnungen) for the ones the user picks, with a dry run first. Without the write tier it only lists the overdue invoices. Not tax advice.",
+    "name": "dunning_run",
+    "title": "Dunning run (Mahnlauf)",
+  },
+  {
+    "arguments": [
+      {
+        "description": "Month to close, YYYY-MM (e.g. 2026-10). Default: the previous month.",
+        "name": "month",
+        "required": false,
+      },
+    ],
+    "description": "Close a month in sevDesk: what changed, unbooked bank transactions and missing receipts, drafts, overdue invoices, payables and liquidity, the VAT pre-check, profit and the hand-over to the Steuerberater. Steps the configuration does not allow are named, not worked around. Not tax advice.",
+    "name": "month_end_close",
+    "title": "Month-end close (Monatsabschluss)",
+  },
+  {
+    "arguments": [
+      {
+        "description": "Month (YYYY-MM, e.g. 2026-10) or quarter (YYYY-Qn, e.g. 2026-Q3). Default: the previous month.",
+        "name": "period",
+        "required": false,
+      },
+    ],
+    "description": "Check a month or quarter in sevDesk before the Umsatzsteuer-Voranmeldung (UStVA): unbooked transactions and drafts, the VAT summary with its Kennzahlen, spot checks and the Zusammenfassende Meldung. The server does not file anything. Not tax advice.",
+    "name": "vat_precheck",
+    "title": "VAT pre-check (UStVA-Vorprüfung)",
+  },
+]
+`;

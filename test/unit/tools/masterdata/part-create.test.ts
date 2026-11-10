@@ -27,7 +27,7 @@ const args = {
   name: "Beratungspaket",
   partNumber: "DL-020",
   price: "119",
-  priceType: "gross",
+  priceMode: "gross",
   unitId: 9,
   description: "Vier Stunden Beratung vor Ort",
 };
@@ -189,9 +189,9 @@ describe("sevdesk_part_create", () => {
       unitId: 1,
       stock: "0",
       stockEnabled: false,
-      priceType: "net",
+      priceMode: "net",
     });
-    expect(parse({ price: "1", priceType: "brutto" }).success).toBe(false);
+    expect(parse({ price: "1", priceMode: "brutto" }).success).toBe(false);
   });
 
   it("reports the created part when the read-back fails", async () => {
@@ -228,6 +228,7 @@ describe("sevdesk_part_create", () => {
         config: {} as never,
         signal: new AbortController().signal,
         progress: () => Promise.resolve(),
+        files: {} as never,
       }),
     ).rejects.toMatchObject({
       kind: "unexpected_response",

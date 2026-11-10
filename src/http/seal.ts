@@ -12,6 +12,9 @@
  * The readable prefix lets log redaction and secret scanners find tokens
  * ({@link SEALED_TOKEN_PATTERN}). Opening never throws on bad input: it returns `undefined`, and
  * callers validate the payload's shape and expiry themselves.
+ *
+ * {@link sealBytes} / {@link openBytes} encrypt the bytes of transferred files (uploads, download
+ * links) the same way, as raw bytes without a prefix: they never leave the server.
  */
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
@@ -85,6 +88,49 @@ export function unseal(keys: ServerKeys, type: SealType, issuer: string, token: 
     decipher.setAuthTag(tag);
     const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
     return JSON.parse(plaintext.toString("utf8")) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Version byte of {@link sealBytes} output. */
+const BYTES_VERSION = 0x01;
+
+function bytesAad(context: string): Buffer {
+  return Buffer.from(`mcp-server-sevdesk|v1|fl|${context}`, "utf8");
+}
+
+/**
+ * Encrypts `plaintext` (a transferred file) with AES-256-GCM under the `seal:fl` key of `keys`.
+ * `context` is bound as additional data (the blob store passes `blobId|accountScope|kind`), so
+ * the result opens only with the same context: a blob file swapped for another fails to open.
+ * Output: version (1) ‖ nonce (12) ‖ ciphertext ‖ tag (16). No key id: the blob store's key set
+ * is random per process (`createEphemeralKeys`), so nothing sealed survives a restart.
+ */
+export function sealBytes(keys: KeySet, context: string, plaintext: Uint8Array): Buffer {
+  const nonce = randomBytes(NONCE_BYTES);
+  const cipher = createCipheriv("aes-256-gcm", keys.key("seal:fl"), nonce);
+  cipher.setAAD(bytesAad(context));
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  return Buffer.concat([Buffer.from([BYTES_VERSION]), nonce, ciphertext, cipher.getAuthTag()]);
+}
+
+/**
+ * Opens what {@link sealBytes} produced for the same `keys` and `context`. Returns `undefined`
+ * for anything else (other key, other context, truncated or altered bytes); never throws on bad
+ * input.
+ */
+export function openBytes(keys: KeySet, context: string, sealed: Uint8Array): Buffer | undefined {
+  const body = Buffer.from(sealed.buffer, sealed.byteOffset, sealed.byteLength);
+  if (body.length < 1 + NONCE_BYTES + TAG_BYTES || body[0] !== BYTES_VERSION) return undefined;
+  const nonce = body.subarray(1, 1 + NONCE_BYTES);
+  const ciphertext = body.subarray(1 + NONCE_BYTES, body.length - TAG_BYTES);
+  const tag = body.subarray(body.length - TAG_BYTES);
+  try {
+    const decipher = createDecipheriv("aes-256-gcm", keys.key("seal:fl"), nonce);
+    decipher.setAAD(bytesAad(context));
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
   } catch {
     return undefined;
   }

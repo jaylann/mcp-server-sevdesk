@@ -55,9 +55,12 @@ every write is real, and finalized or enshrined records cannot simply be deleted
 | revenue or costs grouped by month, contact … | `sevdesk_records_summarize`                                         |
 | open receivables or payables                 | `sevdesk_receivables_aging`, `sevdesk_payables_aging`               |
 | liquidity                                    | `sevdesk_cash_position`                                             |
-| hand data to the tax advisor                 | `sevdesk_datev_export`, `sevdesk_export_csv`                        |
+| hand data to the tax advisor                 | `sevdesk_datev_export`, `sevdesk_csv_export`                        |
 | write an invoice                             | `sevdesk_invoice_create_draft`, then `sevdesk_invoice_finalize`     |
 | check an invoice as e-invoice                | `sevdesk_invoice_einvoice_preflight`                                |
+
+The main workflows are also MCP prompts of the server (in Claude Code `/mcp__sevdesk__<name>`):
+`month_end_close`, `receipt_intake`, `dunning_run`, `vat_precheck`, `bank_reconciliation`.
 
 ## Reference files
 

@@ -1,0 +1,210 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /Document?limit=n (recording session 2026-11-10)",
+    "date": "2026-11-10",
+    "systemVersion": "2.0",
+    "note": "Personal and company data replaced by scripts/lib/scrub.ts; keys, nulls and scalar types as recorded. Mirrors advanced/documents.json. A recorded single page (has total). Attached documents (metadata); undocumented GET (D-024), read through sevdesk_api_get."
+  },
+  "status": 200,
+  "body": {
+    "total": 74,
+    "objects": [
+      {
+        "id": "308523311",
+        "objectName": "Document",
+        "additionalInformation": null,
+        "create": "2026-11-10T16:17:44+01:00",
+        "update": "2026-11-10T16:17:44+01:00",
+        "object": {
+          "id": "140917071",
+          "objectName": "Contact"
+        },
+        "documentNumber": null,
+        "baseObject": {
+          "id": "3090972",
+          "objectName": "CreditNote"
+        },
+        "createUser": {
+          "id": "1569401",
+          "objectName": "SevUser"
+        },
+        "updateUser": {
+          "id": "1569401",
+          "objectName": "SevUser"
+        },
+        "mimeType": "application/pdf",
+        "description": null,
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "folder": {
+          "id": "56184077",
+          "objectName": "DocumentFolder"
+        },
+        "filename": "datei-1",
+        "status": "100",
+        "extension": "Muster-Text 19",
+        "filesize": "25772",
+        "contentHash": null
+      },
+      {
+        "id": "308523270",
+        "objectName": "Document",
+        "additionalInformation": null,
+        "create": "2026-11-10T16:17:30+01:00",
+        "update": "2026-11-10T16:17:30+01:00",
+        "object": {
+          "id": "140917071",
+          "objectName": "Contact"
+        },
+        "documentNumber": null,
+        "baseObject": {
+          "id": "31585622",
+          "objectName": "Order"
+        },
+        "createUser": {
+          "id": "1569401",
+          "objectName": "SevUser"
+        },
+        "updateUser": {
+          "id": "1569401",
+          "objectName": "SevUser"
+        },
+        "mimeType": "application/pdf",
+        "description": null,
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "folder": {
+          "id": "56184077",
+          "objectName": "DocumentFolder"
+        },
+        "filename": "datei-2",
+        "status": "100",
+        "extension": "Muster-Text 19",
+        "filesize": "25564",
+        "contentHash": null
+      },
+      {
+        "id": "308523210",
+        "objectName": "Document",
+        "additionalInformation": null,
+        "create": "2026-11-10T16:17:13+01:00",
+        "update": "2026-11-10T16:17:13+01:00",
+        "object": {
+          "id": "140917071",
+          "objectName": "Contact"
+        },
+        "documentNumber": null,
+        "baseObject": {
+          "id": "139032363",
+          "objectName": "Invoice"
+        },
+        "createUser": {
+          "id": "1569401",
+          "objectName": "SevUser"
+        },
+        "updateUser": {
+          "id": "1569401",
+          "objectName": "SevUser"
+        },
+        "mimeType": "application/pdf",
+        "description": null,
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "folder": {
+          "id": "56184077",
+          "objectName": "DocumentFolder"
+        },
+        "filename": "datei-3",
+        "status": "100",
+        "extension": "Muster-Text 19",
+        "filesize": "103392",
+        "contentHash": null
+      },
+      {
+        "id": "308523180",
+        "objectName": "Document",
+        "additionalInformation": null,
+        "create": "2026-11-10T16:17:04+01:00",
+        "update": "2026-11-10T16:17:04+01:00",
+        "object": {
+          "id": "140917071",
+          "objectName": "Contact"
+        },
+        "documentNumber": null,
+        "baseObject": {
+          "id": "139032343",
+          "objectName": "Invoice"
+        },
+        "createUser": {
+          "id": "1569401",
+          "objectName": "SevUser"
+        },
+        "updateUser": {
+          "id": "1569401",
+          "objectName": "SevUser"
+        },
+        "mimeType": "application/pdf",
+        "description": null,
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "folder": {
+          "id": "56184077",
+          "objectName": "DocumentFolder"
+        },
+        "filename": "datei-4",
+        "status": "100",
+        "extension": "Muster-Text 19",
+        "filesize": "103345",
+        "contentHash": null
+      },
+      {
+        "id": "308523139",
+        "objectName": "Document",
+        "additionalInformation": null,
+        "create": "2026-11-10T16:16:53+01:00",
+        "update": "2026-11-10T16:16:53+01:00",
+        "object": {
+          "id": "140917071",
+          "objectName": "Contact"
+        },
+        "documentNumber": null,
+        "baseObject": {
+          "id": "139032322",
+          "objectName": "Invoice"
+        },
+        "createUser": {
+          "id": "1569401",
+          "objectName": "SevUser"
+        },
+        "updateUser": {
+          "id": "1569401",
+          "objectName": "SevUser"
+        },
+        "mimeType": "application/pdf",
+        "description": null,
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "folder": {
+          "id": "56184077",
+          "objectName": "DocumentFolder"
+        },
+        "filename": "datei-5",
+        "status": "100",
+        "extension": "Muster-Text 19",
+        "filesize": "103392",
+        "contentHash": null
+      }
+    ]
+  }
+}

@@ -36,6 +36,12 @@ const OAUTH_ENV: Env = {
   SEVDESK_HTTP_STATE_DIR: "/data",
 };
 
+/** For tests about other settings: remote file transfer adds warnings on loopback http. */
+const FILES_OFF: Env = { SEVDESK_HTTP_FILES: "off" };
+const MIB = 1024 * 1024;
+const PLAIN_HTTP_WARNING = "SEVDESK_HTTP_FILES=on over plain http";
+const IN_MEMORY_WARNING = "SEVDESK_HTTP_FILES keeps uploaded files and download links in memory";
+
 /** State directories are accepted without touching the disk unless a test says otherwise. */
 const NO_DISK: LoadHttpConfigDeps = { prepareStateDir: () => undefined };
 
@@ -69,8 +75,12 @@ describe("loadHttpConfig: bearer mode", () => {
       secret: undefined,
       previousSecret: undefined,
       oauth: undefined,
+      files: { maxBytes: 64 * MIB, ttlSeconds: 1800 },
     });
-    expect(loaded.warnings).toEqual([]);
+    expect(loaded.warnings).toEqual([
+      expect.stringContaining(PLAIN_HTTP_WARNING),
+      expect.stringContaining(IN_MEMORY_WARNING),
+    ]);
     expect(loaded.settings.confirmOpen).toBe(false);
     expect(loaded.fixed).toMatchObject({
       token: TEST_TOKEN,
@@ -80,6 +90,7 @@ describe("loadHttpConfig: bearer mode", () => {
         auth: "bearer",
         publicOrigin: "http://127.0.0.1:8080",
         approvalsUrl: undefined,
+        files: { ttlSeconds: 1800 },
       },
     });
     expect(loaded.fixed?.account).toBeUndefined();
@@ -97,6 +108,7 @@ describe("loadHttpConfig: bearer mode", () => {
       auth: "bearer",
       publicOrigin: "https://mcp.example.com",
       approvalsUrl: "https://mcp.example.com/approvals",
+      files: { ttlSeconds: 1800 },
     });
   });
 
@@ -240,8 +252,9 @@ describe("loadHttpConfig: oauth mode", () => {
     expect(loaded.http.oauth?.accounts).toBe("any");
     expect(loaded.http.oauth?.clients).toBe("any");
     expect(loaded.warnings).toEqual([
-      expect.stringContaining("SEVDESK_OAUTH_ACCOUNTS=any"),
+      expect.stringContaining("SEVDESK_OAUTH_ACCOUNTS=any: every sevDesk account"),
       expect.stringContaining("SEVDESK_OAUTH_CLIENTS=any"),
+      expect.stringContaining("SEVDESK_OAUTH_ACCOUNTS=any with SEVDESK_HTTP_FILES=on"),
     ]);
   });
 
@@ -313,6 +326,7 @@ describe("loadHttpConfig: oauth mode", () => {
     const { SEVDESK_HTTP_STATE_DIR: _dir, ...env } = OAUTH_ENV;
     expect(load(env).warnings).toEqual([
       expect.stringContaining("SEVDESK_HTTP_STATE_DIR is not set"),
+      expect.stringContaining(IN_MEMORY_WARNING),
     ]);
   });
 
@@ -458,13 +472,14 @@ describe("loadHttpConfig: confirmation", () => {
   });
 
   it("warns when elicitation is the only confirmation for commit tools", () => {
-    expect(load({ ...BEARER_ENV, SEVDESK_ALLOW: "write,commit" }).warnings).toEqual([
+    expect(load({ ...BEARER_ENV, ...FILES_OFF, SEVDESK_ALLOW: "write,commit" }).warnings).toEqual([
       expect.stringContaining("Set SEVDESK_CONFIRM=browser"),
     ]);
     expect(
-      load({ ...BEARER_ENV, SEVDESK_ALLOW: "all", SEVDESK_CONFIRM: "browser" }).warnings,
+      load({ ...BEARER_ENV, ...FILES_OFF, SEVDESK_ALLOW: "all", SEVDESK_CONFIRM: "browser" })
+        .warnings,
     ).toEqual([]);
-    expect(load({ ...BEARER_ENV, SEVDESK_ALLOW: "write" }).warnings).toEqual([]);
+    expect(load({ ...BEARER_ENV, ...FILES_OFF, SEVDESK_ALLOW: "write" }).warnings).toEqual([]);
   });
 
   it("reports shared-setting problems together with its own", () => {
@@ -565,6 +580,18 @@ describe("helpers", () => {
       publicOrigin: "https://a.example",
       approvalsUrl: undefined,
     });
+    expect(
+      Object.keys(httpDeployment("oauth", "https://a.example", "elicit")).includes("files"),
+    ).toBe(false);
+    expect(
+      httpDeployment("bearer", "https://a.example", "browser", { maxBytes: 1, ttlSeconds: 600 }),
+    ).toEqual({
+      kind: "http",
+      auth: "bearer",
+      publicOrigin: "https://a.example",
+      approvalsUrl: "https://a.example/approvals",
+      files: { ttlSeconds: 600 },
+    });
   });
 });
 
@@ -573,6 +600,7 @@ describe("loadHttpConfig: review fixes", () => {
     // The image smoke: HOST 0.0.0.0 inside the container, the port published on 127.0.0.1.
     const loaded = load({
       ...BEARER_ENV,
+      ...FILES_OFF,
       SEVDESK_HTTP_HOST: "0.0.0.0",
       SEVDESK_HTTP_PUBLIC_URL: "http://127.0.0.1:8080",
     });
@@ -594,13 +622,15 @@ describe("loadHttpConfig: review fixes", () => {
 
   it("does not warn for a loopback bind or a real public URL", () => {
     expect(
-      load({ ...BEARER_ENV, SEVDESK_HTTP_PUBLIC_URL: "http://localhost:8080" }).warnings,
+      load({ ...BEARER_ENV, ...FILES_OFF, SEVDESK_HTTP_PUBLIC_URL: "http://localhost:8080" })
+        .warnings,
     ).toEqual([]);
     expect(
       load({
         ...BEARER_ENV,
         SEVDESK_HTTP_HOST: "0.0.0.0",
         SEVDESK_HTTP_PUBLIC_URL: "https://mcp.example.com",
+        SEVDESK_HTTP_STATE_DIR: "/data",
       }).warnings,
     ).toEqual([]);
   });
@@ -623,7 +653,11 @@ describe("loadHttpConfig: review fixes", () => {
     ]);
 
     const bearerPhrase = "correct-horse-battery-staple-sevdesk-mcp";
-    const bearer = load({ ...BEARER_ENV, SEVDESK_HTTP_BEARER_TOKEN: `${BEARER},${bearerPhrase}` });
+    const bearer = load({
+      ...BEARER_ENV,
+      ...FILES_OFF,
+      SEVDESK_HTTP_BEARER_TOKEN: `${BEARER},${bearerPhrase}`,
+    });
     expect(bearer.http.bearerTokens).toEqual([BEARER, bearerPhrase]);
     expect(bearer.warnings).toEqual([
       expect.stringContaining("value 2 of SEVDESK_HTTP_BEARER_TOKEN looks like a passphrase"),
@@ -657,5 +691,137 @@ describe("looksHumanChosen", () => {
     for (const value of [BEARER, BEARER_2, "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8", SECRET]) {
       expect(looksHumanChosen(value), value).toBe(false);
     }
+  });
+});
+
+describe("loadHttpConfig: remote file transfer", () => {
+  it("is on by default: 256 MB with a state directory, 30 minutes", () => {
+    const loaded = load(OAUTH_ENV);
+    expect(loaded.http.files).toEqual({ maxBytes: 256 * MIB, ttlSeconds: 1800 });
+    expect(loaded.warnings).toEqual([]);
+  });
+
+  it("reads the limit and the lifetime within their bounds", () => {
+    const loaded = load({
+      ...OAUTH_ENV,
+      SEVDESK_HTTP_FILES: "ON",
+      SEVDESK_HTTP_FILES_MAX_MB: "4096",
+      SEVDESK_HTTP_FILES_TTL: "24h",
+    });
+    expect(loaded.http.files).toEqual({ maxBytes: 4096 * MIB, ttlSeconds: 86_400 });
+    expect(load({ ...OAUTH_ENV, SEVDESK_HTTP_FILES_MAX_MB: "32" }).http.files?.maxBytes).toBe(
+      32 * MIB,
+    );
+    expect(load({ ...OAUTH_ENV, SEVDESK_HTTP_FILES_TTL: "300" }).http.files?.ttlSeconds).toBe(300);
+  });
+
+  it.each([
+    ["SEVDESK_HTTP_FILES", "maybe", 'SEVDESK_HTTP_FILES: expected 1/0 or true/false, got "maybe".'],
+    ["SEVDESK_HTTP_FILES", "2", 'SEVDESK_HTTP_FILES: expected 1/0 or true/false, got "2".'],
+    ["SEVDESK_HTTP_FILES_MAX_MB", "31", "between 32 and 4096"],
+    ["SEVDESK_HTTP_FILES_MAX_MB", "4097", "between 32 and 4096"],
+    ["SEVDESK_HTTP_FILES_MAX_MB", "64.5", "between 32 and 4096"],
+    ["SEVDESK_HTTP_FILES_MAX_MB", "1G", "between 32 and 4096"],
+    [
+      "SEVDESK_HTTP_FILES_TTL",
+      "4m",
+      "SEVDESK_HTTP_FILES_TTL: expected a duration between 5m and 24h",
+    ],
+    ["SEVDESK_HTTP_FILES_TTL", "25h", "between 5m and 24h"],
+    ["SEVDESK_HTTP_FILES_TTL", "soon", "between 5m and 24h"],
+  ])("refuses %s=%s", (name, value, message) => {
+    expect(problemsOf({ ...OAUTH_ENV, [name]: value })).toEqual([expect.stringContaining(message)]);
+  });
+
+  it.each(["on", "ON", "1", "true", "Yes"])("reads SEVDESK_HTTP_FILES=%s as on", (value) => {
+    expect(load({ ...OAUTH_ENV, SEVDESK_HTTP_FILES: value }).http.files).toBeDefined();
+  });
+
+  it.each(["off", "Off", "0", "false", "NO"])("reads SEVDESK_HTTP_FILES=%s as off", (value) => {
+    expect(load({ ...OAUTH_ENV, SEVDESK_HTTP_FILES: value }).http.files).toBeUndefined();
+  });
+
+  it("can be switched off; its settings then have no effect", () => {
+    const off = load({ ...BEARER_ENV, ...FILES_OFF });
+    expect(off.http.files).toBeUndefined();
+    expect(off.warnings).toEqual([]);
+    expect(off.fixed?.deployment).not.toHaveProperty("files");
+    const tuned = load({
+      ...BEARER_ENV,
+      SEVDESK_HTTP_FILES: "off",
+      SEVDESK_HTTP_FILES_MAX_MB: "abc",
+      SEVDESK_HTTP_FILES_TTL: "1h",
+    });
+    expect(tuned.warnings).toEqual([
+      "SEVDESK_HTTP_FILES_MAX_MB and SEVDESK_HTTP_FILES_TTL have no effect with SEVDESK_HTTP_FILES=off.",
+    ]);
+  });
+
+  it("warns about plain http, files in memory and a server open to any account", () => {
+    const local = load(BEARER_ENV);
+    expect(local.warnings).toEqual([
+      expect.stringContaining(PLAIN_HTTP_WARNING),
+      expect.stringContaining("(up to 64 MB, SEVDESK_HTTP_FILES_MAX_MB)"),
+    ]);
+    expect(local.warnings[0]).toContain("another local server could use them as you");
+    const loopbackUrl = load({
+      ...BEARER_ENV,
+      SEVDESK_HTTP_PUBLIC_URL: "http://localhost:8080",
+      SEVDESK_HTTP_STATE_DIR: "/data",
+    });
+    expect(loopbackUrl.warnings).toEqual([expect.stringContaining(PLAIN_HTTP_WARNING)]);
+    const any = load({ ...OAUTH_ENV, SEVDESK_OAUTH_ACCOUNTS: "any" });
+    expect(any.warnings).toEqual([
+      expect.stringContaining("SEVDESK_OAUTH_ACCOUNTS=any: every sevDesk account"),
+      expect.stringContaining("holds the receipts and exports of every account"),
+    ]);
+    expect(any.warnings[1]).toContain(
+      "One account may use 64 MB of the 256 MB, but a few accounts together can fill the space",
+    );
+    expect(load({ ...OAUTH_ENV, ...FILES_OFF, SEVDESK_OAUTH_ACCOUNTS: "any" }).warnings).toEqual([
+      expect.stringContaining("SEVDESK_OAUTH_ACCOUNTS=any: every sevDesk account"),
+    ]);
+  });
+
+  it("points OAuth deployments that set local folders to uploads and download links", () => {
+    const [problem] = problemsOf({ ...OAUTH_ENV, SEVDESK_OUTPUT_DIR: "/srv/out" });
+    expect(problem).toContain("upload pages and download exports through links");
+  });
+
+  it("names the files lifetime in the bearer deployment", () => {
+    const loaded = load({ ...BEARER_ENV, SEVDESK_HTTP_FILES_TTL: "1h" });
+    expect(loaded.fixed?.deployment).toMatchObject({ files: { ttlSeconds: 3600 } });
+  });
+});
+
+describe("loadHttpConfig: local-only settings", () => {
+  it.each(["SEVDESK_PROFILE", "SEVDESK_PROFILES_PATH", "SEVDESK_API_TOKEN_KEYCHAIN"])(
+    "refuses %s in both auth modes, without echoing its value",
+    (name) => {
+      const value = "private-value-7f3a";
+      for (const env of [BEARER_ENV, OAUTH_ENV]) {
+        const problems = problemsOf({ ...env, [name]: value });
+        expect(problems).toEqual([
+          `${name} works only over stdio, not with --http. Configure the HTTP server through its ` +
+            "environment (SEVDESK_API_TOKEN or SEVDESK_API_TOKEN_FILE in bearer mode).",
+        ]);
+        expect(problems.join("\n")).not.toContain(value);
+      }
+    },
+  );
+
+  it("reports all three together and ignores them when empty", () => {
+    expect(
+      problemsOf({
+        ...BEARER_ENV,
+        SEVDESK_PROFILE: "work",
+        SEVDESK_PROFILES_PATH: "/home/me/profiles.json",
+        SEVDESK_API_TOKEN_KEYCHAIN: "work",
+      }),
+    ).toHaveLength(3);
+    expect(
+      load({ ...BEARER_ENV, ...FILES_OFF, SEVDESK_PROFILE: " ", SEVDESK_API_TOKEN_KEYCHAIN: "" })
+        .warnings,
+    ).toEqual([]);
   });
 });

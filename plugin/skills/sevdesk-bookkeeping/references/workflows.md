@@ -137,7 +137,7 @@ no pre-returns.
    (`groupBy: "month"`).
 8. Hand-over to the Steuerberater: `sevdesk_datev_export` (`write`, `SEVDESK_OUTPUT_DIR`; needs
    the DATEV settings in sevDesk: Beraternummer, Mandantennummer, start of the fiscal year; it
-   may mark the documents as exported and never enshrines them) or `sevdesk_export_csv` (`read`,
+   may mark the documents as exported and never enshrines them) or `sevdesk_csv_export` (`read`,
    `SEVDESK_OUTPUT_DIR`; raw CSV as sevDesk exports it).
 
 ## Year end

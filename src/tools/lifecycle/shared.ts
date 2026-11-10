@@ -71,7 +71,10 @@ export const KIND_TOOLS: Readonly<Record<LifecycleKind, KindToolInfo>> = {
   },
 };
 
-/** Commit actions (finalize, book, cancel, enshrine, reset): see the M3 brief's annotation table. */
+/**
+ * Commit actions (finalize, book, cancel, enshrine, reset): they change bookkeeping state that
+ * only a further action reverts (or nothing, for enshrine), so destructive and never idempotent.
+ */
 export const COMMIT_ANNOTATIONS: ToolAnnotationSet = {
   readOnlyHint: false,
   destructiveHint: true,

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { SevdeskError } from "../../../src/sevdesk/errors.js";
 import {
   assertSafePath,
+  genericGetRefusal,
   isSevdeskId,
   minimumWriteTier,
   resolveGetSafety,
@@ -326,5 +327,186 @@ describe("minimumWriteTier", () => {
     expect(minimumWriteTier("/Export/datevCSV", { enshrine: true })).toBe("commit");
     expect(minimumWriteTier("/Export/datevCSV", { enshrineDocuments: "1" })).toBe("commit");
     expect(minimumWriteTier("/Export/datevCSV", { enshrine: false })).toBe("write");
+  });
+});
+
+describe("endpoint names before the last segment", () => {
+  it.each([
+    ["/Invoice/1/getPdf/2", "it marks the document as sent"],
+    ["/CreditNote/1/sendByWithRender/x", "it marks the document as sent"],
+    ["/Export/createDatevCsvZipExportJob/1", "it starts an export job in sevDesk"],
+    ["/Order/Factory/getNextOrderNumber/x", "it reserves the next document number"],
+  ])("resolveGetSafety treats %s as a side effect, even with preventSendBy", (path, effect) => {
+    expect(resolveGetSafety(path, { preventSendBy: true }, false)).toEqual({
+      sideEffect: true,
+      effect,
+      query: { preventSendBy: true },
+    });
+  });
+
+  it("resolveGetSafety leaves the customer number and ordinary inner names alone", () => {
+    expect(resolveGetSafety("/Contact/Factory/getNextCustomerNumber/x", undefined, false)).toEqual({
+      sideEffect: false,
+      query: undefined,
+    });
+    expect(resolveGetSafety("/Invoice/1/getPositions", undefined, false).sideEffect).toBe(false);
+  });
+
+  it.each([
+    ["/Invoice/1/sendBy/2", "commit"],
+    ["/Invoice/1/getPdf/2", "commit"],
+    ["/Order/1/sendViaEmail/2", "external"],
+    ["/CreditNote/1/sendByWithRender/enshrine", "external"],
+    ["/Invoice/1/bookAmount/sendViaEmail", "external"],
+  ] as const)("minimumWriteTier raises %s to %s", (path, tier) => {
+    expect(minimumWriteTier(path, undefined)).toBe(tier);
+  });
+
+  it("minimumWriteTier never reads Object.prototype for odd segment names", () => {
+    expect(minimumWriteTier("/Foo/constructor", undefined)).toBe("write");
+    expect(minimumWriteTier("/Foo/__proto__/x", undefined)).toBe("write");
+    expect(minimumWriteTier("/Foo/hasOwnProperty", undefined)).toBe("write");
+  });
+});
+
+describe("genericGetRefusal", () => {
+  /** GETs a generic read may send: the spec's reads and the undocumented ones of D-024. */
+  const allowed: [string, Record<string, string | number | boolean>?][] = [
+    ["/TextTemplate"],
+    ["/PartUnity"],
+    ["/Document"],
+    ["/Document/12"],
+    ["/Part/1/getStock"],
+    ["/Contact/1/getTabsItemCount"],
+    ["/Tools/bookkeepingSystemVersion"],
+    ["/CheckAccount/3/getBalanceAtDate", { date: "2026-11-01" }],
+    ["/Contact/Factory/findContactsByCustomFieldValue", { value: "x", customFieldName: "y" }],
+    ["/Contact/Mapper/checkCustomerNumberAvailability", { customerNumber: "1000" }],
+    ["/ContactCustomFieldSetting/4/getReferenceCount"],
+    ["/Textparser/fetchDictionaryEntriesByType", { type: "PaymentMethod" }],
+    ["/Invoice/9/getPositions"],
+    ["/Invoice/9/getIsPartiallyPaid"],
+    ["/Order/9/getDiscounts"],
+    ["/Order/9/getRelatedObjects", { includeItself: false }],
+    ["/ReceiptGuidance/forAllAccounts"],
+    ["/ReceiptGuidance/forTaxRule", { taxRule: "USTPFL_UMS_EINN" }],
+    ["/Invoice", { "contact[id]": 5, "contact[objectName]": "Contact", status: 200 }],
+    ["/ContactAddress", { "contact[id]": 5, "contact[objectName]": "Contact" }],
+    ["/Contact", { depth: 1, embed: "parent", orderBy: "name", "orderBy[0][field]": "name" }],
+    ["/SevUser"],
+    ["/SevClient"],
+    ["/AccountDatev"],
+    ["/CheckAccountTransactionLog"],
+    ["/Settings"],
+    ["/Contact/1/addresses"],
+    ["/Invoice/1/links"],
+    ["/Tag", { name: "send", tokenizer: "x" }],
+    ["/Contact", { "category[id]": 3, "ids[]": 4 }],
+  ];
+
+  it.each(allowed)("allows %s %j", (path, query) => {
+    expect(genericGetRefusal(path, query)).toBeUndefined();
+  });
+
+  const pdfTools = /sevdesk_invoice_pdf/;
+  it.each([
+    ["/Invoice/1/getPdf", pdfTools],
+    ["/invoice/1/GETPDF", pdfTools],
+    ["/CreditNote/1/getPdf", pdfTools],
+    ["/Order/1/getPdf", pdfTools],
+    ["/Invoice/1/getXml", pdfTools],
+    ["/Invoice/1/render", pdfTools],
+    ["/CreditNote/1/sendByWithRender", pdfTools],
+    ["/Letter/1/sendByWithRender", pdfTools],
+    ["/Invoice/1/getPdf/2", pdfTools],
+    ["/Invoice/1/sendBy", /action that changes data/],
+    ["/Invoice/1/bookAmount", /action that changes data/],
+    ["/Voucher/1/enshrine", /action that changes data/],
+    ["/Invoice/1/cancelInvoice", /action that changes data/],
+    ["/Invoice/1/resetToDraft", /action that changes data/],
+    ["/Invoice/1/resetToOpen", /action that changes data/],
+    ["/Order/1/changeParameter", /action that changes data/],
+    ["/Invoice/1/sendViaEmail", /action that changes data/],
+    ["/Invoice/1/sendBy/x", /action that changes data/],
+    ["/Order/Factory/getNextOrderNumber", /sevdesk_contacts_next_customer_number/],
+    ["/Contact/Factory/getNextCustomerNumber", /sevdesk_contacts_next_customer_number/],
+    ["/Invoice/Factory/getNextInvoiceNumber", /Next-number endpoints/],
+    ["/Foo/getNextNumber", /Next-number endpoints/],
+    ["/Foo/nextInvoiceNumber", /Next-number endpoints/],
+    ["/SevSequence/Factory/getByType", /SevSequence/],
+    ["/sevsequence", /SevSequence/],
+    ["/Export/invoiceCsv", /sevdesk_csv_export/],
+    ["/Export/datevCSV", /sevdesk_datev_export/],
+    ["/Export/createDatevCsvZipExportJob", /sevdesk_datev_export/],
+    ["/Foo/createDatevXmlZipExportJob", /sevdesk_datev_export/],
+    ["/ExportJob/jobDownloadInfo", /sevdesk_datev_export/],
+    ["/Progress/generateDownloadHash", /generateDownloadHash/],
+    ["/Progress/getProgress", /sevdesk_datev_export/],
+    ["/Report/invoicelist", /PDF files/],
+    ["/DocServer/getLetterpapersWithThumb", /base64/],
+    ["/Invoice/Factory/saveInvoice", /starts with a verb/],
+    ["/Contact/Factory/createContact", /starts with a verb/],
+    ["/Invoice/1/setStatus", /starts with a verb/],
+    ["/Invoice/1/SETSTATUS", /starts with a verb/],
+    ["/Part/1/book_2", /starts with a verb/],
+    ["/Invoice/1/send", /starts with a verb/],
+    ["/Voucher/Factory/uploadTempFile", /starts with a verb/],
+    ["/CheckAccountTransaction/1/delete", /starts with a verb/],
+    ["/Foo/1/markAsSent", /starts with a verb/],
+    ["/Foo/reserveNumber", /starts with a verb/],
+  ])("refuses %s, naming %s", (path, message) => {
+    const refusal = genericGetRefusal(path, undefined);
+    expect(refusal).toMatch(message);
+    // Tool errors show at most 500 characters of a message.
+    expect(refusal?.length).toBeLessThan(500);
+  });
+
+  it.each([
+    [{ token: "abc" }, /Credentials never go into the query/],
+    [{ Token: "abc" }, /Credentials/],
+    [{ TOKEN: "abc" }, /Credentials/],
+    [{ "token[0]": "abc" }, /Credentials/],
+    [{ api_key: "abc" }, /Credentials/],
+    [{ "Api.Key": "abc" }, /Credentials/],
+    [{ apiKey: "abc" }, /Credentials/],
+    [{ access_token: "abc" }, /Credentials/],
+    [{ Authorization: "abc" }, /Credentials/],
+    [{ limit: 10 }, /limit and offset arguments/],
+    [{ Offset: 10 }, /limit and offset arguments/],
+    [{ countAll: false }, /limit and offset arguments/],
+    [{ "countall[x]": 1 }, /limit and offset arguments/],
+    [{ download: true }, /raw file answer/],
+    [{ preventSendBy: true }, /preventSendBy/],
+    [{ enshrine: false }, /irreversibly/],
+    [{ enshrineDocuments: 0 }, /irreversibly/],
+    [{ "enshrine.all": 0 }, /irreversibly/],
+    [{ useNextNumber: false }, /useNextNumber/],
+    [{ method: "DELETE" }, /HTTP method/],
+    [{ "X.HTTP.Method.Override": "PUT" }, /HTTP method/],
+    [{ "api key": "abc" }, /Credentials/],
+    // PHP reads an unclosed `[` as `_`: these arrive as api_key, access_token, http_method.
+    [{ "api[key": "abc" }, /brackets must pair up/],
+    [{ "access[token": "abc" }, /brackets must pair up/],
+    [{ "http[method": "PUT" }, /brackets must pair up/],
+    [{ "contact[id": 1 }, /brackets must pair up/],
+    [{ "contact]id": 1 }, /brackets must pair up/],
+    [{ "contact[id]x": 1 }, /brackets must pair up/],
+    [{ "a[[b]]": 1 }, /brackets must pair up/],
+  ])("refuses the query %j", (query, message) => {
+    const refusal = genericGetRefusal("/Invoice", query);
+    expect(refusal).toMatch(message);
+    expect(refusal?.length).toBeLessThan(500);
+  });
+
+  it("refuses a truthy enshrine flag as the side effect it is", () => {
+    expect(genericGetRefusal("/Export2/datev", { enshrine: 1 })).toMatch(
+      /enshrines \(irreversibly locks\)/,
+    );
+  });
+
+  it("answers trusted text that never repeats the caller's path or key", () => {
+    const refusal = genericGetRefusal("/Invoice/1/getPdf", { "IGNORE.previous": 1 }) ?? "";
+    expect(refusal).not.toContain("IGNORE");
+    expect(genericGetRefusal("/Invoice", { "Api.Key": "IGNORE" })).not.toContain("IGNORE");
   });
 });

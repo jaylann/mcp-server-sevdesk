@@ -37,6 +37,118 @@ async function nonDraft(ctx: ProbeContext, objectName: string): Promise<Row | un
   return ctx.read.first(`/${objectName}`, undefined, (row) => str(row, "status") !== "100");
 }
 
+/** The rows of a GET answer, or `undefined` when `objects` is not a list. */
+function listRows(objects: unknown): Row[] | undefined {
+  return Array.isArray(objects) ? (objects as Row[]) : undefined;
+}
+
+/**
+ * Keys that `sevdesk_api_get` would strip as binary: named file fields, or a long string of
+ * base64 characters. Reported by name and length only, never by value.
+ */
+function binaryLooking(rows: readonly Row[]): string[] {
+  const found = new Map<string, number>();
+  for (const row of rows) {
+    for (const [key, value] of Object.entries(row)) {
+      if (typeof value !== "string" || value === "") continue;
+      const named = /^(?:pdf|base64|content)$|^thumb/i.test(key);
+      const encoded = value.length > 512 && /^[A-Za-z0-9+/=_\r\n-]+$/.test(value);
+      if (named || encoded) found.set(key, Math.max(found.get(key) ?? 0, value.length));
+    }
+  }
+  return [...found].map(([key, length]) => `${key} (${length} chars)`);
+}
+
+/**
+ * Reads an undocumented list endpoint (spec/deviations.md D-024) the way `sevdesk_api_get`
+ * sends it (explicit `limit`, `offset`, `countAll`) and reports what the tool's paging and
+ * cleaning depend on: whether the answer is JSON in the envelope, the row keys and scalar types,
+ * `total`, whether `limit` and `offset` are honored, bytes per row (the tool reads at most 1 MiB)
+ * and fields that look binary. Findings name keys, types and counts only, never account data.
+ */
+async function undocumentedList(
+  ctx: ProbeContext,
+  path: string,
+): Promise<{ readonly outcome: ProbeOutcome; readonly rows: readonly Row[] }> {
+  const first = await ctx.http.get(path, { limit: 2, offset: 0, countAll: true });
+  if (!first.ok) {
+    const reason = `${String(first.status ?? first.kind)} ${first.message ?? ""}`
+      .trim()
+      .replace(/\.$/, "");
+    return { rows: [], outcome: { verdict: "contradicted", finding: `GET ${path}: ${reason}.` } };
+  }
+  const contentType = first.contentType ?? "no content type";
+  const rows = listRows(first.objects);
+  if (first.json === undefined || !/json/i.test(contentType)) {
+    return {
+      rows: [],
+      outcome: {
+        verdict: "contradicted",
+        finding: `GET ${path} answered ${contentType}, not JSON.`,
+      },
+    };
+  }
+  if (rows === undefined) {
+    const kind = first.objects === null ? "null" : typeof first.objects;
+    return {
+      rows: [],
+      outcome: { verdict: "observed", finding: `GET ${path}: objects is ${kind}.` },
+    };
+  }
+  const rawTotal = (first.json as { total?: unknown }).total;
+  const total = Number(rawTotal);
+  const totalText =
+    rawTotal === undefined ? "no total" : `total ${typeof rawTotal} ${String(total)}`;
+  if (rows.length === 0) {
+    return {
+      rows,
+      outcome: inconclusive(
+        `GET ${path} answers JSON (${contentType}, ${totalText}) but the account has no rows.`,
+      ),
+    };
+  }
+
+  const limit =
+    rows.length > 2 ? "ignored" : Number.isFinite(total) && total > 2 ? "honored" : "untested";
+  let offset = "untested (fewer than 2 rows)";
+  if (rows.length >= 2) {
+    const second = listRows(
+      (await ctx.http.get(path, { limit: 1, offset: 1, countAll: true })).objects,
+    );
+    const same = second?.[0]?.["id"] !== undefined && second[0]["id"] === rows[1]?.["id"];
+    offset = same ? "honored" : "ignored or unstable";
+  }
+  const keys = [...new Set(rows.flatMap((row) => Object.keys(row)))];
+  const bytesPerRow = Math.round((first.bytes?.byteLength ?? 0) / rows.length);
+  return {
+    rows,
+    outcome: {
+      verdict: "confirmed",
+      finding:
+        `GET ${path}: JSON (${contentType}), ${rows.length} rows for limit=2, ${totalText}; ` +
+        `limit ${limit}, offset ${offset}; about ${bytesPerRow} bytes per row. ` +
+        `Keys: ${keys.join(", ")}. Types: ${typesOf(rows, keys)}. ` +
+        `Binary-looking fields: ${binaryLooking(rows).join(", ") || "none"}.`,
+    },
+  };
+}
+
+/** Whether `filter` narrows `path` to rows that `matches` (finding text, no values). */
+async function filterCheck(
+  ctx: ProbeContext,
+  path: string,
+  name: string,
+  filter: Readonly<Record<string, string | number>>,
+  matches: (row: Row) => boolean,
+): Promise<string> {
+  const rows = listRows(
+    (await ctx.http.get(path, { ...filter, limit: 1000, offset: 0, countAll: true })).objects,
+  );
+  if (rows === undefined) return `${name}: no list.`;
+  const hits = rows.filter(matches).length;
+  return `${name}: ${rows.length} rows, ${hits} matching (${hits === rows.length ? "honored" : "ignored"}).`;
+}
+
 export const READ_PROBES: readonly ProbeDefinition[] = [
   {
     id: "read-unknown-id",
@@ -925,6 +1037,73 @@ export const READ_PROBES: readonly ProbeDefinition[] = [
         verdict: "observed",
         finding: `Rows without limit: ${String(none)}; limit=5: ${String(five)}; limit=1000: ${String(thousand)}.`,
       };
+    },
+  },
+  // M6: the undocumented endpoints sevdesk_api_get names as examples (fixtures in
+  // test/fixtures/advanced/, from the community model until these run).
+  {
+    id: "read-text-template",
+    title: "Shape and paging of /TextTemplate",
+    mode: "read",
+    question:
+      "What does the undocumented GET /TextTemplate return (keys, scalar types, total), does it honor limit, offset and countAll as sevdesk_api_get sends them, and the textType filter?",
+    deviations: ["D-024"],
+    async run(ctx) {
+      const { outcome, rows } = await undocumentedList(ctx, "/TextTemplate");
+      const textType = str(rows[0], "textType");
+      if (outcome.verdict !== "confirmed" || textType === "") return outcome;
+      const filter = await filterCheck(
+        ctx,
+        "/TextTemplate",
+        "textType filter",
+        { textType },
+        (row) => str(row, "textType") === textType,
+      );
+      return { ...outcome, finding: `${outcome.finding} ${filter}` };
+    },
+  },
+  {
+    id: "read-part-unity",
+    title: "Shape and paging of /PartUnity",
+    mode: "read",
+    question:
+      "What does the undocumented GET /PartUnity return (alternative units of parts: keys, scalar types, total), does it honor limit, offset and countAll, and the part[id] filter?",
+    deviations: ["D-024"],
+    async run(ctx) {
+      const { outcome, rows } = await undocumentedList(ctx, "/PartUnity");
+      const part = refId(rows[0], "part");
+      if (outcome.verdict !== "confirmed" || part === undefined) return outcome;
+      const filter = await filterCheck(
+        ctx,
+        "/PartUnity",
+        "part[id] filter",
+        { "part[id]": part, "part[objectName]": "Part" },
+        (row) => refId(row, "part") === part,
+      );
+      return { ...outcome, finding: `${outcome.finding} ${filter}` };
+    },
+  },
+  {
+    id: "read-document",
+    title: "Shape and paging of /Document, and GET by id",
+    mode: "read",
+    question:
+      "What does the undocumented GET /Document return (keys, scalar types, total, any base64 or thumbnail fields sevdesk_api_get must strip), does it honor limit, offset and countAll, and does GET /Document/{id} answer one row with the same keys?",
+    deviations: ["D-024"],
+    async run(ctx) {
+      const { outcome, rows } = await undocumentedList(ctx, "/Document");
+      const id = Number(rows[0]?.["id"]);
+      if (outcome.verdict !== "confirmed" || !Number.isSafeInteger(id) || id <= 0) return outcome;
+      const single = await ctx.http.get(`/Document/${id}`);
+      const byId = listRows(single.objects);
+      const listKeys = new Set(Object.keys(rows[0] ?? {}));
+      const extra = Object.keys(byId?.[0] ?? {}).filter((key) => !listKeys.has(key));
+      const answer = !single.ok
+        ? `GET /Document/{id}: ${String(single.status ?? single.kind)}.`
+        : byId === undefined
+          ? "GET /Document/{id}: objects is not a list."
+          : `GET /Document/{id}: ${byId.length} rows; keys beyond the list row: ${extra.join(", ") || "none"}; binary-looking fields: ${binaryLooking(byId).join(", ") || "none"}.`;
+      return { ...outcome, finding: `${outcome.finding} ${answer}` };
     },
   },
 ];

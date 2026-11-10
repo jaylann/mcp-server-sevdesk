@@ -3,7 +3,7 @@ import { type Tier, TIERS } from "./safety/tiers.js";
 import { TOOLSETS } from "./tools/toolsets.js";
 import type { AnyToolDefinition } from "./tools/types.js";
 
-/** Clients truncate or ignore long instructions; the plan caps them at 1,500 characters. */
+/** Clients truncate or ignore long instructions; we cap them at 1,500 characters. */
 export const MAX_INSTRUCTIONS_LENGTH = 1_500;
 
 export interface Section {
@@ -16,8 +16,9 @@ export interface Section {
  * Server instructions generated from the tools actually registered and the configuration: what
  * sevDesk is, the trust boundary for sevDesk data, which toolsets and tiers are active (and how
  * the user enables more), dry-run status and how to work efficiently. Never longer than
- * {@link MAX_INSTRUCTIONS_LENGTH}; contains no upstream data. How more tiers are enabled and where
- * browser approvals are decided depend on `config.deployment`; the stdio text is unchanged.
+ * {@link MAX_INSTRUCTIONS_LENGTH}; contains no upstream data. How more tiers are enabled, where
+ * browser approvals are decided and how files travel (uploads and download links) depend on
+ * `config.deployment`; the stdio text is unchanged.
  */
 export function buildInstructions(tools: readonly AnyToolDefinition[], config: Config): string {
   const sections: Section[] = [
@@ -40,6 +41,7 @@ export function buildInstructions(tools: readonly AnyToolDefinition[], config: C
         "Prefer summary and report tools over paging through many records; results say when " +
         "items were omitted.",
     },
+    ...filesSection(tools, config),
     ...callingSection(tools),
   ];
   return fitToCap(sections);
@@ -150,6 +152,25 @@ function dryRunSections(tools: readonly AnyToolDefinition[], config: Config): Se
         },
       ]
     : [];
+}
+
+const UPLOAD_REQUEST = "sevdesk_upload_request";
+
+/**
+ * Remote file transfer (`sevdesk_upload_request` is registered only then): how the user's files
+ * reach the file tools and, unless `SEVDESK_OUTPUT_DIR` takes them, that handed-out files arrive
+ * as links for the user. Absent over stdio.
+ */
+function filesSection(tools: readonly AnyToolDefinition[], config: Config): Section[] {
+  if (!tools.some((tool) => tool.name === UPLOAD_REQUEST)) {
+    return [];
+  }
+  // Kept short: with every tier and browser approvals the optional calling hint must still fit.
+  const links =
+    config.outputDir === undefined && tools.some((tool) => tool.localEffects === "writes-files")
+      ? " and leave as download links"
+      : "";
+  return [{ text: `Files arrive via ${UPLOAD_REQUEST} (uploadId as file)${links}.` }];
 }
 
 const REFERENCE_LOOKUP = "sevdesk_reference_lookup";

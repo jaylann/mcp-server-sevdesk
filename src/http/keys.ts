@@ -10,13 +10,17 @@
  */
 import { createHmac, hkdfSync, randomBytes } from "node:crypto";
 
-/** Every purpose a key is derived for. `seal:<type>` keys encrypt tokens (`seal.ts`). */
+/**
+ * Every purpose a key is derived for. `seal:<type>` keys encrypt tokens (`seal.ts`); `seal:fl`
+ * encrypts the bytes of transferred files (`sealBytes`), only ever under a per-process key set.
+ */
 const KEY_PURPOSES = [
   "seal:ac",
   "seal:at",
   "seal:rt",
   "seal:ss",
   "seal:cs",
+  "seal:fl",
   "csrf",
   "cookie",
   "kid",

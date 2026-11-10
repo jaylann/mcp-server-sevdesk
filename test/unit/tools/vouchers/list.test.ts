@@ -128,11 +128,12 @@ describe("sevdesk_vouchers_list (community: recorded Voucher shape, fake data)",
       kind: "expense",
       type: "normal",
       currency: "EUR",
-      net: { amount: "250.50", currency: "EUR" },
-      tax: { amount: "47.60", currency: "EUR" },
-      gross: { amount: "298.10", currency: "EUR" },
-      paidAmount: { amount: "0.00", currency: "EUR" },
-      generation: "2.0",
+      totals: {
+        net: { amount: "250.50", currency: "EUR" },
+        tax: { amount: "47.60", currency: "EUR" },
+        gross: { amount: "298.10", currency: "EUR" },
+      },
+      paid: { amount: "0.00", currency: "EUR" },
       link: "https://my.sevdesk.de/ex/detail/id/2001",
     });
   });

@@ -69,11 +69,12 @@ describe("voucher DTO mapping", () => {
       kind: "expense",
       type: "normal",
       currency: "EUR",
-      net: { amount: "50.00", currency: "EUR" },
-      tax: { amount: "9.50", currency: "EUR" },
-      gross: { amount: "59.50", currency: "EUR" },
-      paidAmount: { amount: "59.50", currency: "EUR" },
-      generation: "1.0",
+      totals: {
+        net: { amount: "50.00", currency: "EUR" },
+        tax: { amount: "9.50", currency: "EUR" },
+        gross: { amount: "59.50", currency: "EUR" },
+      },
+      paid: { amount: "59.50", currency: "EUR" },
       link: "https://my.sevdesk.de/ex/detail/id/2003",
     });
   });
@@ -82,15 +83,17 @@ describe("voucher DTO mapping", () => {
     const voucher = await row(2004);
     expect(voucher).toMatchObject({
       currency: "USD",
-      net: { amount: "378.00", currency: "USD" },
-      tax: { amount: "0.00", currency: "USD" },
-      gross: { amount: "378.00", currency: "USD" },
-      base: {
+      totals: {
+        net: { amount: "378.00", currency: "USD" },
+        tax: { amount: "0.00", currency: "USD" },
+        gross: { amount: "378.00", currency: "USD" },
+      },
+      totalsEur: {
         net: { amount: "324.59", currency: "EUR" },
         tax: { amount: "0.00", currency: "EUR" },
         gross: { amount: "324.59", currency: "EUR" },
       },
-      paidAmount: { amount: "0.00", currency: "EUR" },
+      paid: { amount: "0.00", currency: "EUR" },
     });
   });
 
@@ -105,14 +108,17 @@ describe("voucher DTO mapping", () => {
     const [voucher] = await rows([
       { id: "2100", currency: "chf", sumGross: "10", sumGrossForeignCurrency: "0" },
     ]);
-    expect(voucher).toMatchObject({ currency: "CHF", gross: { amount: "10.00", currency: "CHF" } });
-    expect(voucher?.base).toBeUndefined();
+    expect(voucher).toMatchObject({
+      currency: "CHF",
+      totals: { gross: { amount: "10.00", currency: "CHF" } },
+    });
+    expect(voucher?.totalsEur).toBeUndefined();
   });
 
   it("warns when paidAmount is negative: a payment booked with the wrong sign", async () => {
     const voucher = await row(2005);
     expect(voucher.status).toEqual({ code: 750, label: "Partially paid" });
-    expect(voucher.paidAmount).toEqual({ amount: "-119.00", currency: "EUR" });
+    expect(voucher.paid).toEqual({ amount: "-119.00", currency: "EUR" });
     expect(voucher.warnings).toEqual([expect.stringContaining("wrong sign")]);
     expect((await row(2001)).warnings).toBeUndefined();
   });
@@ -129,6 +135,7 @@ describe("voucher DTO mapping", () => {
       id: 2100,
       status: { code: 300, label: "unknown" },
       currency: "EUR",
+      totals: {},
       link: "https://my.sevdesk.de/ex/detail/id/2100",
     });
   });
@@ -174,12 +181,10 @@ describe("getVoucherDetails", () => {
       client({ taxRule: { id: "99", objectName: "TaxRule" } }, []),
       2100,
     );
-    expect(withRule.voucher.taxRule).toEqual({ id: 99 });
-    expect(withRule.voucher.generation).toBe("2.0");
+    expect(withRule.voucher.tax).toEqual({ generation: "2.0", rule: { id: 99 } });
 
     const legacy = await getVoucherDetails(client({ taxType: "eu", taxRule: null }, []), 2100);
-    expect(legacy.voucher).toMatchObject({ taxType: "eu", generation: "1.0" });
-    expect(legacy.voucher.taxRule).toBeUndefined();
+    expect(legacy.voucher.tax).toEqual({ generation: "1.0", taxType: "eu" });
     expect(legacy.positions).toEqual([]);
   });
 
@@ -229,10 +234,12 @@ describe("getVoucherDetails", () => {
     expect(details.positions).toEqual([
       {
         id: 3100,
-        taxRate: 0,
-        net: { amount: "378.00", currency: "USD" },
-        gross: { amount: "378.00", currency: "USD" },
-        base: {
+        taxRate: "0",
+        totals: {
+          net: { amount: "378.00", currency: "USD" },
+          gross: { amount: "378.00", currency: "USD" },
+        },
+        totalsEur: {
           net: { amount: "324.59", currency: "EUR" },
           gross: { amount: "324.59", currency: "EUR" },
         },

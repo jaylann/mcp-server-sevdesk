@@ -162,7 +162,7 @@ describe("sevdesk_voucher_create_draft", () => {
         kind: "revenue",
         supplierName: "Barverkauf Markt",
         date: "2026-11-02",
-        amountsAre: "net",
+        amountMode: "net",
         positions: [{ accountDatevId: 5192, amount: "100", taxRate: "19" }],
       },
       fake,
@@ -364,7 +364,7 @@ describe("sevdesk_voucher_create_draft", () => {
   });
 
   it("refuses a revenue rule on an expense voucher", async () => {
-    const message = await refusal(prepareWrite(tool, { ...args, taxRule: 1 }, client()));
+    const message = await refusal(prepareWrite(tool, { ...args, taxRuleId: 1 }, client()));
     expect(message).toBe(
       "Tax rule 1 (Umsatzsteuerpflichtige Umsätze) cannot be used for expense vouchers. Use " +
         "tax rule 8, 9, 10, 12, 13, 14, 15, 16; sevdesk_reference_lookup kind=tax_rules " +
@@ -379,7 +379,7 @@ describe("sevdesk_voucher_create_draft", () => {
         {
           ...args,
           kind: "revenue",
-          taxRule: 21,
+          taxRuleId: 21,
           positions: [{ accountDatevId: 5192, amount: "1" }],
         },
         client(),
@@ -390,7 +390,7 @@ describe("sevdesk_voucher_create_draft", () => {
 
   it("refuses a rule that does not fit the Kleinunternehmer regime", async () => {
     const message = await refusal(
-      prepareWrite(tool, { ...args, taxRule: 9 }, client([smallBusinessRoute])),
+      prepareWrite(tool, { ...args, taxRuleId: 9 }, client([smallBusinessRoute])),
     );
     expect(message).toContain("Kleinunternehmer regulation (§19 UStG), so tax rule 9");
     expect(message).toContain("Use tax rule 10 or 13 or 15 or 16.");
@@ -492,8 +492,19 @@ describe("sevdesk_voucher_create_draft", () => {
     const { output } = await executeWrite(tool, args, fake);
     expect(output.data.notes).toEqual([
       "sevDesk computed a gross total of 120.00 EUR; the preview expected 119.00 EUR. Check the " +
-        "positions and amountsAre (gross/net) before finalizing.",
+        "positions and amountMode (gross/net) before finalizing.",
     ]);
+  });
+
+  it("warns that a draft without a Belegnummer cannot be finalized yet (D-080)", async () => {
+    const warning =
+      "No Belegnummer: sevDesk saves the draft but books it only with one (D-080); add it with " +
+      "sevdesk_voucher_update_draft (number) before finalizing.";
+    const { number: _number, ...withoutNumber } = args;
+    const without = await prepareWrite(tool, withoutNumber, client());
+    expect(without.preview.warnings).toContain(warning);
+    const withNumber = await prepareWrite(tool, args, client());
+    expect(withNumber.preview.warnings).not.toContain(warning);
   });
 
   it("warns about a payment deadline before the voucher date", async () => {

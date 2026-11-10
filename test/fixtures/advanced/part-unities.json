@@ -1,0 +1,27 @@
+{
+  "_provenance": {
+    "source": "community",
+    "ref": "https://github.com/j-mastr/sevdesk-api/blob/main/openapi.yaml (v1.10.0): GET /PartUnity, #/components/schemas/Model_PartUnityResponse",
+    "date": "2026-11-09",
+    "systemVersion": "2.0",
+    "note": "Undocumented in sevDesk's spec (spec/deviations.md D-024): alternative units of a part, each with its own price and conversion factor. Keys from the community model; values invented. Scalars typed the way recorded sevDesk reads send them (ids, factor and price as strings, D-002), which the community model types as integer/number: unrecorded until probe read-part-unity runs. Answer to GET /PartUnity?part[id]=6001&part[objectName]=Part&limit=100&offset=0&countAll=1."
+  },
+  "status": 200,
+  "body": {
+    "total": 1,
+    "objects": [
+      {
+        "id": "6501",
+        "objectName": "PartUnity",
+        "additionalInformation": null,
+        "create": "2026-11-09T10:00:00+01:00",
+        "update": "2026-11-09T10:00:00+01:00",
+        "sevClient": { "id": "9001", "objectName": "SevClient" },
+        "part": { "id": "6001", "objectName": "Part" },
+        "unity": { "id": "1", "objectName": "Unity" },
+        "factor": "6",
+        "price": "282.66"
+      }
+    ]
+  }
+}

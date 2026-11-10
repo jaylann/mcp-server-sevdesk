@@ -81,7 +81,7 @@ describe("sevdesk_transaction_book", () => {
     const client = staged({ documents: [invoiceRow()], after: [] });
     const plan = await prepareWrite(
       tool,
-      { transactionId: 5101, allocations: [{ kind: "invoice", id: 1001 }] },
+      { id: 5101, allocations: [{ kind: "invoice", id: 1001 }] },
       client,
     );
     expect(plan.preview.action).toBe(
@@ -121,7 +121,7 @@ describe("sevdesk_transaction_book", () => {
     });
     const { output } = await executeWrite(
       tool,
-      { transactionId: 5101, allocations: [{ kind: "invoice", id: 1001 }] },
+      { id: 5101, allocations: [{ kind: "invoice", id: 1001 }] },
       client,
     );
     const writes = client.writes();
@@ -147,7 +147,7 @@ describe("sevdesk_transaction_book", () => {
           status: expect.objectContaining({ code: 1000 }) as unknown,
         }) as unknown,
         amount: { amount: "177.33", currency: "EUR" },
-        bookingType: "FULL_PAYMENT",
+        paymentType: "payment",
       },
     ]);
     expect(output.data.remaining).toEqual({ amount: "0.00", currency: "EUR" });
@@ -173,7 +173,7 @@ describe("sevdesk_transaction_book", () => {
       ],
     });
     const args = {
-      transactionId: 5101,
+      id: 5101,
       allocations: [
         { kind: "invoice", id: 1002 },
         { kind: "invoice", id: 1001, amount: "119" },
@@ -193,7 +193,7 @@ describe("sevdesk_transaction_book", () => {
       "Book bank transaction 5101 (238.00 EUR) to invoice RE-1002 and invoice RE-1001: " +
         "238.00 EUR in total.",
     );
-    expect(output.data.bookings.map((b) => b.bookingType)).toEqual(["N", "N"]);
+    expect(output.data.bookings.map((b) => b.paymentType)).toEqual(["payment", "payment"]);
   });
 
   it("previews a partial booking with what stays open and what stays unassigned", async () => {
@@ -205,7 +205,7 @@ describe("sevdesk_transaction_book", () => {
     });
     const plan = await prepareWrite(
       tool,
-      { transactionId: 5101, allocations: [{ kind: "invoice", id: 1001, amount: "50" }] },
+      { id: 5101, allocations: [{ kind: "invoice", id: 1001, amount: "50" }] },
       client,
     );
     const fact = plan.preview.facts.find((f) => f.label.startsWith("Allocation 1"));
@@ -243,7 +243,7 @@ describe("sevdesk_transaction_book", () => {
     );
     const { output } = await executeWrite(
       tool,
-      { transactionId: 5101, allocations: [{ kind: "voucher", id: 2001 }] },
+      { id: 5101, allocations: [{ kind: "voucher", id: 2001 }] },
       client,
     );
     expect(client.writes()[0]?.body).toMatchObject({ amount: -298.1, type: "FULL_PAYMENT" });
@@ -269,7 +269,7 @@ describe("sevdesk_transaction_book", () => {
     });
     const { output } = await executeWrite(
       tool,
-      { transactionId: 5101, allocations: [{ kind: "invoice", id: 1001 }] },
+      { id: 5101, allocations: [{ kind: "invoice", id: 1001 }] },
       client,
     );
     expect(output.data.remaining).toEqual({ amount: "100.00", currency: "EUR" });
@@ -290,7 +290,7 @@ describe("sevdesk_transaction_book", () => {
     });
     const { output } = await executeWrite(
       tool,
-      { transactionId: 5101, allocations: [{ kind: "invoice", id: 1001 }] },
+      { id: 5101, allocations: [{ kind: "invoice", id: 1001 }] },
       unreadable,
     );
     expect(output.data.remaining).toEqual({ amount: "0.00", currency: "EUR" });
@@ -310,7 +310,7 @@ describe("sevdesk_transaction_book", () => {
     });
     const second = await executeWrite(
       tool,
-      { transactionId: 5101, allocations: [{ kind: "invoice", id: 1001 }] },
+      { id: 5101, allocations: [{ kind: "invoice", id: 1001 }] },
       contradictory,
     );
     expect(second.output.data.remainingNote).toBe(
@@ -329,11 +329,7 @@ describe("sevdesk_transaction_book", () => {
       },
     });
     await expect(
-      executeWrite(
-        tool,
-        { transactionId: 5101, allocations: [{ kind: "invoice", id: 1001 }] },
-        client,
-      ),
+      executeWrite(tool, { id: 5101, allocations: [{ kind: "invoice", id: 1001 }] }, client),
     ).rejects.toMatchObject({ kind: "aborted" });
   });
 
@@ -347,7 +343,7 @@ describe("sevdesk_transaction_book", () => {
     const error = (await executeWrite(
       tool,
       {
-        transactionId: 5101,
+        id: 5101,
         allocations: [
           { kind: "invoice", id: 1001 },
           { kind: "invoice", id: 1002 },
@@ -383,7 +379,7 @@ describe("sevdesk_transaction_book", () => {
     );
     const error = (await executeWrite(
       tool,
-      { transactionId: 5101, allocations: [{ kind: "invoice", id: 1001 }] },
+      { id: 5101, allocations: [{ kind: "invoice", id: 1001 }] },
       client,
     ).catch((e: unknown) => e)) as SevdeskError;
     expect(error.kind).toBe("server");
@@ -394,7 +390,7 @@ describe("sevdesk_transaction_book", () => {
   });
 
   it("validates its input", () => {
-    const parse = (allocations: unknown) => tool.input.safeParse({ transactionId: 1, allocations });
+    const parse = (allocations: unknown) => tool.input.safeParse({ id: 1, allocations });
     expect(parse([]).success).toBe(false);
     expect(
       parse(Array.from({ length: 11 }, (_, i) => ({ kind: "invoice", id: i + 1 }))).success,

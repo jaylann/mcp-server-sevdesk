@@ -13,7 +13,7 @@
     "xrechnung",
     "zugferd"
   ],
-  "homepage": "https://github.com/jaylann/mcp-server-sevdesk#readme",
+  "homepage": "https://sevdesk-mcp.lanfermann.dev",
   "bugs": "https://github.com/jaylann/mcp-server-sevdesk/issues",
   "repository": {
     "type": "git",
@@ -58,6 +58,7 @@
     "publint": "publint --strict",
     "docs:tools": "node --import tsx scripts/gen-tool-docs.ts && prettier --write docs/tools.md",
     "plugin:pin": "node scripts/pin-plugin-version.ts",
+    "mcpb": "node --import tsx scripts/build-mcpb.ts",
     "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test:coverage && pnpm knip && pnpm build && pnpm publint",
     "prepare": "git config core.hooksPath githooks || true"
   },
@@ -68,6 +69,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@anthropic-ai/mcpb": "^2.1.2",
     "@anthropic-ai/sdk": "^1.6.0",
     "@eslint/js": "^10.0.1",
     "@modelcontextprotocol/client": "^2.4.0",

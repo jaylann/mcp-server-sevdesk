@@ -125,7 +125,7 @@ describe("sevdesk_order_create_draft (community order bodies, fake data)", () =>
     ["delivery_note", "LI", "Lieferschein"],
   ])("maps %s to %s with the header %s", async (orderType, code, header) => {
     const client = new FakeSevdeskClient(orderCreateRoutes);
-    const plan = await prepareWrite(tool, { ...orderCreateArgs, orderType }, client);
+    const plan = await prepareWrite(tool, { ...orderCreateArgs, type: orderType }, client);
     expect(plan.state.body.order).toMatchObject({ orderType: code, header });
   });
 
@@ -229,7 +229,7 @@ describe("sevdesk_order_create_draft (community order bodies, fake data)", () =>
   });
 
   it("requires a known order type", () => {
-    expect(tool.input.safeParse({ ...orderCreateArgs, orderType: "AN" }).success).toBe(false);
+    expect(tool.input.safeParse({ ...orderCreateArgs, type: "AN" }).success).toBe(false);
     expect(
       tool.input.safeParse({ contactId: 1001, positions: orderCreateArgs.positions }).success,
     ).toBe(false);

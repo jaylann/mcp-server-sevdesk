@@ -74,8 +74,9 @@ export async function readConfinedFile(
 ): Promise<ConfinedFile> {
   if (fileDirs.length === 0) {
     throw refusal(
-      "Reading local files is off: SEVDESK_FILE_DIRS is not set. The user can list the folders " +
-        "that hold receipts and e-invoices in the MCP client configuration and restart the server",
+      "Reading local files is off: SEVDESK_FILE_DIRS is not set (in the Claude Desktop " +
+        "extension: the setting Receipt folder). The user can list the folders that hold " +
+        "receipts and e-invoices in the MCP client configuration and restart the server",
     );
   }
   const shown = displayName(requested);

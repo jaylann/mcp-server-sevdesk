@@ -34,7 +34,7 @@ import {
   loadUnitNames,
   matchesNumber,
   positionDtoSchema,
-  pricesEnteredAs,
+  priceModeOf,
   refId,
   salesDocumentFields,
   sentDto,
@@ -179,7 +179,7 @@ export const invoiceDetailSchema = invoiceRowSchema.extend({
   deliveryDate: z.string().optional().describe("Lieferdatum / Leistungsdatum, YYYY-MM-DD."),
   deliveryDateUntil: z.string().optional().describe("End of the delivery period, YYYY-MM-DD."),
   payDate: z.string().optional().describe("Date the invoice was paid, YYYY-MM-DD."),
-  pricesEnteredAs: z
+  priceMode: z
     .enum(["net", "gross"])
     .optional()
     .describe("Whether position prices were entered net or gross (showNet)."),
@@ -295,7 +295,7 @@ function toInvoiceDetail(record: InvoiceRecord, today: string): InvoiceDetail {
     deliveryDate: berlinDate(record.deliveryDate),
     deliveryDateUntil: berlinDate(record.deliveryDateUntil),
     payDate: berlinDate(record.payDate),
-    pricesEnteredAs: pricesEnteredAs(record.showNet),
+    priceMode: priceModeOf(record.showNet),
     tax: taxDto(record),
     paymentTerms: Object.keys(paymentTerms).length === 0 ? undefined : paymentTerms,
     address: addressDto(record),

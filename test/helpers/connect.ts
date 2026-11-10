@@ -40,6 +40,7 @@ export async function connectInProcess(
     config: deps.config ?? testConfig(),
     client: deps.client ?? stubClient(),
     ...(deps.tools === undefined ? {} : { tools: deps.tools }),
+    ...(deps.transfer === undefined ? {} : { transfer: deps.transfer }),
   });
   return connectFactory(factory, options);
 }

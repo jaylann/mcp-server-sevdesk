@@ -29,7 +29,6 @@ import {
   zBool01,
   zId,
   zNullableInt,
-  zNumberish,
   zOptionalDecimal,
   zOptionalRef,
   zText,
@@ -51,7 +50,7 @@ import {
   statusDto,
   statusDtoSchema,
 } from "./common.js";
-import { listDocuments } from "./document-positions.js";
+import { documentTotalsSchema, listDocuments, taxDtoSchema } from "./document-positions.js";
 import { voucherLink } from "./links.js";
 import { compare, DEFAULT_CURRENCY } from "./money.js";
 import { type ChildRows, listChildRows, type PageState, type PageWindow } from "./paging.js";
@@ -171,7 +170,7 @@ const positionRecordSchema = z.object({
   voucher: zOptionalRef,
   accountDatev: zOptionalRef,
   accountingType: zOptionalRef,
-  taxRate: zNumberish.optional(),
+  taxRate: zOptionalDecimal,
   isAsset: zBool01.optional(),
   sumNet: zOptionalDecimal,
   sumTax: zOptionalDecimal,
@@ -188,16 +187,15 @@ type PositionRecord = z.output<typeof positionRecordSchema>;
 // DTOs (also the tools' output schemas)
 // ---------------------------------------------------------------------------------------------
 
-const baseAmountsSchema = z
-  .object({
-    net: moneySchema.optional(),
-    tax: moneySchema.optional(),
-    gross: moneySchema.optional(),
-  })
-  .describe(
-    "Foreign-currency vouchers only: sevDesk's amounts in EUR (Buchungswährung). net/tax/gross " +
-      "above are in the voucher's own currency.",
-  );
+/**
+ * Money of a voucher or position, as invoices, credit notes and orders show it: `totals` in the
+ * voucher's own currency and, for a foreign-currency voucher, `totalsEur` (sevDesk's EUR base).
+ */
+const voucherTotalsShape = documentTotalsSchema.pick({
+  currency: true,
+  totals: true,
+  totalsEur: true,
+}).shape;
 
 /** Compact voucher, one row of `sevdesk_vouchers_list`. */
 export const voucherDtoSchema = z.object({
@@ -225,22 +223,17 @@ export const voucherDtoSchema = z.object({
         "revenue (Einnahme, creditDebit D: payments come in).",
     ),
   type: z.enum(VOUCHER_TYPE_KEYS).optional().describe("normal (VOU) or recurring (RV)."),
-  currency: z.string().describe("Currency of the voucher (ISO 4217)."),
-  net: moneySchema.optional(),
-  tax: moneySchema.optional(),
-  gross: moneySchema.optional().describe("Bruttobetrag; positive for expenses and revenue alike."),
-  base: baseAmountsSchema.optional(),
-  paidAmount: moneySchema
+  ...voucherTotalsShape,
+  paid: moneySchema
     .optional()
-    .describe("Paid so far; for foreign-currency vouchers taken as EUR (not verified)."),
+    .describe(
+      "Paid so far (bezahlt); positive for expenses and revenue alike. For foreign-currency " +
+        "vouchers taken as EUR (not verified).",
+    ),
   hasDocument: z
     .boolean()
     .optional()
     .describe("Whether a receipt file is attached, when sevDesk reports it."),
-  generation: z
-    .enum(["1.0", "2.0"])
-    .optional()
-    .describe("Bookkeeping generation: 2.0 uses tax rules, 1.0 the legacy tax types."),
   warnings: z.array(z.string()).optional().describe("Problems found in the data, if any."),
   link: z.string().optional().describe("Opens the voucher in the sevDesk web app."),
 });
@@ -249,15 +242,7 @@ export type VoucherDto = z.output<typeof voucherDtoSchema>;
 
 /** One voucher with the details `sevdesk_voucher_get` adds. */
 export const voucherDetailDtoSchema = voucherDtoSchema.extend({
-  taxRule: z
-    .object({
-      id: z.number().int(),
-      name: z.string().optional(),
-      nameEn: z.string().optional(),
-    })
-    .optional()
-    .describe("Update 2.0 tax rule (Steuerregel); details via sevdesk_reference_lookup."),
-  taxType: z.string().optional().describe("Update 1.0 tax type (default, eu, noteu, custom, ss)."),
+  tax: taxDtoSchema.pick({ generation: true, rule: true, taxType: true }),
   deliveryDate: z.string().optional().describe("Leistungsdatum, YYYY-MM-DD."),
   deliveryDateUntil: z.string().optional().describe("End of the service period, YYYY-MM-DD."),
   enshrined: z.boolean().describe("Festgeschrieben: locked, can no longer be changed."),
@@ -286,12 +271,15 @@ export type VoucherDetailDto = z.output<typeof voucherDetailDtoSchema>;
 export const voucherPositionDtoSchema = z.object({
   id: z.number().int(),
   comment: z.string().optional().describe("Position text as entered."),
-  taxRate: z.number().optional().describe("Tax rate in percent, e.g. 19."),
-  net: moneySchema.optional(),
-  tax: moneySchema.optional(),
-  gross: moneySchema.optional(),
-  base: baseAmountsSchema.optional(),
-  generation: z.enum(["1.0", "2.0"]).optional(),
+  taxRate: z.string().optional().describe("VAT rate in percent, e.g. '19'."),
+  totals: voucherTotalsShape.totals.optional().describe("Position sums in the voucher's currency."),
+  totalsEur: voucherTotalsShape.totalsEur.describe(
+    "Only for vouchers in another currency: the EUR sums sevDesk books.",
+  ),
+  generation: z
+    .enum(["1.0", "2.0"])
+    .optional()
+    .describe("Bookkeeping generation of this position: 2.0 books on accountDatev."),
   accountDatev: z
     .object({ id: z.number().int() })
     .optional()
@@ -333,16 +321,14 @@ function toVoucherDto(record: VoucherRecord, raw: unknown): VoucherDto {
   // The foreign-currency rule (EUR base in sumNet…, document amounts in sum…ForeignCurrency).
   const { totals, eur } = splitTotals(record, currency);
   const paidCurrency = eur === undefined ? currency : DEFAULT_CURRENCY;
-  const paidAmount = moneyFromUpstream(record.paidAmount, paidCurrency);
+  const paid = moneyFromUpstream(record.paidAmount, paidCurrency);
   const supplierName = cleanText(record.supplierName ?? record.supplierNameAtSave, NAME_MAX);
   const supplier =
     record.supplier === undefined && supplierName === undefined
       ? undefined
       : compact({ id: record.supplier?.id, name: supplierName });
   const warnings =
-    paidAmount !== undefined && compare(paidAmount.amount, 0) < 0
-      ? [NEGATIVE_PAID_WARNING]
-      : undefined;
+    paid !== undefined && compare(paid.amount, 0) < 0 ? [NEGATIVE_PAID_WARNING] : undefined;
 
   return compact({
     id: record.id,
@@ -355,14 +341,11 @@ function toVoucherDto(record: VoucherRecord, raw: unknown): VoucherDto {
     kind: voucherKindFromCreditDebit(record.creditDebit),
     type: voucherTypeOf(record.voucherType),
     currency,
-    net: totals.net,
-    tax: totals.tax,
-    gross: totals.gross,
-    base: eur,
-    paidAmount,
+    totals,
+    totalsEur: eur,
+    paid,
     // Only when the record carries the key: the recorded list response has no `document` at all.
     hasDocument: hasKey(raw, "document") ? record.document !== undefined : undefined,
-    generation: detectGeneration(record),
     warnings,
     link: voucherLink(record.id),
   });
@@ -383,13 +366,16 @@ function toVoucherDetailDto(record: VoucherRecord, raw: unknown): VoucherDetailD
   const interval = cleanText(record.recurringInterval, 50);
   return compact({
     ...base,
-    taxRule:
-      record.taxRule === undefined
-        ? undefined
-        : rule === undefined
-          ? { id: record.taxRule.id }
-          : { id: rule.id, name: rule.nameDe, nameEn: rule.nameEn },
-    taxType: record.taxRule === undefined ? cleanText(record.taxType, 50) : undefined,
+    tax: compact({
+      generation: detectGeneration(record),
+      rule:
+        record.taxRule === undefined
+          ? undefined
+          : rule === undefined
+            ? { id: record.taxRule.id }
+            : { id: rule.id, code: rule.code, name: rule.nameDe, documented: rule.documented },
+      taxType: record.taxRule === undefined ? cleanText(record.taxType, 50) : undefined,
+    }),
     deliveryDate: record.deliveryDate,
     deliveryDateUntil: record.deliveryDateUntil,
     enshrined: record.enshrined !== undefined,
@@ -415,10 +401,8 @@ function toPositionDto(position: PositionRecord, currency: string): VoucherPosit
     id: position.id,
     comment: cleanText(position.comment, COMMENT_MAX),
     taxRate: position.taxRate,
-    net: totals.net,
-    tax: totals.tax,
-    gross: totals.gross,
-    base: eur,
+    totals: Object.keys(totals).length === 0 ? undefined : totals,
+    totalsEur: eur,
     generation,
     accountDatev:
       generation === "2.0" && position.accountDatev !== undefined

@@ -22,10 +22,10 @@ export const partFieldsShape = {
   name: textInput(255).describe("Part name (Artikelname) as printed on documents."),
   partNumber: textInput(100).describe("Artikelnummer; must not be used by another part."),
   price: amountInput({ places: 2 }).describe(
-    "Sales price (Verkaufspreis) in EUR, net or gross per priceType; the other one is computed " +
+    "Sales price (Verkaufspreis) in EUR, net or gross per priceMode; the other one is computed " +
       "with the tax rate.",
   ),
-  priceType: z
+  priceMode: z
     .enum(["net", "gross"])
     .default("net")
     .describe("Whether price is the net (netto, default) or gross (brutto) price."),

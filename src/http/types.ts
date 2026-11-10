@@ -27,6 +27,14 @@ export interface OAuthSettings {
   readonly grantTtlSeconds: number;
 }
 
+/** Remote file transfer (`SEVDESK_HTTP_FILES`, on by default): upload pages and download links. */
+export interface HttpFilesConfig {
+  /** `SEVDESK_HTTP_FILES_MAX_MB` in bytes: what all uploads and links hold together. */
+  readonly maxBytes: number;
+  /** `SEVDESK_HTTP_FILES_TTL`: lifetime of an uploaded file and of a download link. */
+  readonly ttlSeconds: number;
+}
+
 /** Validated HTTP-mode configuration (`loadHttpConfig` in `config.ts`). */
 export interface HttpConfig {
   readonly auth: HttpAuthMode;
@@ -56,6 +64,8 @@ export interface HttpConfig {
   readonly previousSecret: Uint8Array | undefined;
   /** OAuth only. */
   readonly oauth: OAuthSettings | undefined;
+  /** Remote file transfer; `undefined` with `SEVDESK_HTTP_FILES=off`. */
+  readonly files?: HttpFilesConfig | undefined;
 }
 
 /** Structured, redacted log lines on stderr (one JSON object per line). */
@@ -115,7 +125,53 @@ export interface HttpRoute {
   readonly rateLimit?: RateRule;
   /** Default true. `/healthz` opts out: platform health checks send their own `Host`. */
   readonly hostCheck?: boolean;
+  /**
+   * Checks the request on its headers alone, after the Origin policy (and authentication) and
+   * before the body is read: a refusal here means the body is never read (an upload without a
+   * session, of a used ticket, or declaring too many bytes). Runs for every method; `undefined`
+   * or a {@link PreflightPass} lets the request go on.
+   */
+  readonly preflight?: (
+    head: Request,
+    ctx: HttpRequestContext,
+  ) => Promise<Response | PreflightPass | undefined>;
+  /** Time this route's body may take to arrive (default: the router's, 15 s; 408 beyond). */
+  readonly bodyTimeoutMs?: number;
+  /**
+   * How fast this route's body must keep arriving (default: no check besides `bodyTimeoutMs`): a
+   * body that sends nothing for `idleMs`, or that after `graceMs` has averaged fewer than
+   * `minBytesPerSecond`, gets a 408 at once. Keeps a trickled body from holding a body slot for
+   * the whole `bodyTimeoutMs`. Checked about once a second.
+   */
+  readonly bodyPace?: BodyPace;
+  /**
+   * Requests with a body on this route at once, each counted from its preflight until its
+   * response is complete. Bounds the memory large uploads take, and keeps one party from taking
+   * them all. The router keeps the counts, so no refusal can leak a slot.
+   * - `max`: on the whole route; beyond it the router answers `busy("route")`;
+   * - `perKey`: per {@link PreflightPass.bodySlotKey} (e.g. the session's account); beyond it the
+   *   router answers `busy("key")`. Requests whose preflight names no key share one key;
+   * - `busy`: the refusal (default: a JSON 503).
+   */
+  readonly bodySlots?: {
+    readonly max: number;
+    readonly perKey?: number;
+    readonly busy?: (scope: "route" | "key") => Response;
+  };
   readonly handle: RouteHandler;
+}
+
+/** What a preflight that lets the request go on may tell the router. */
+export interface PreflightPass {
+  /** The key the route's `bodySlots.perKey` counts this request under. Never logged. */
+  readonly bodySlotKey?: string;
+}
+
+/** See {@link HttpRoute.bodyPace}. */
+export interface BodyPace {
+  readonly idleMs: number;
+  readonly graceMs: number;
+  readonly minBytesPerSecond: number;
 }
 
 /**

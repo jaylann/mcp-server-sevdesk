@@ -44,7 +44,7 @@ const matchSchema = z.object({
     .object({
       tool: z.literal(BOOK_TOOL),
       arguments: z.object({
-        transactionId: z.number().int(),
+        id: z.number().int().describe("The bank transaction."),
         allocations: z.array(
           z.object({ kind: z.enum(DOCUMENT_KINDS), id: z.number().int(), amount: z.string() }),
         ),
@@ -144,13 +144,13 @@ export const reconcileSuggestTool = defineTool({
       .max(Number.MAX_SAFE_INTEGER)
       .default(0)
       .describe("sevDesk transaction rows to skip: pass nextOffset from the previous call."),
-    matches: z
+    maxMatches: z
       .number()
       .int()
       .min(1)
       .max(10)
       .default(3)
-      .describe("Matches per transaction (default 3)."),
+      .describe("Most matches per transaction (default 3)."),
   }),
   output,
   handler: async (args, ctx) => {
@@ -169,7 +169,7 @@ export const reconcileSuggestTool = defineTool({
         to: args.to,
         limit: args.limit,
         offset: args.offset,
-        matchesPerTransaction: args.matches,
+        matchesPerTransaction: args.maxMatches,
       },
       { signal: ctx.signal },
     );
@@ -240,7 +240,7 @@ function toMatch(transactionId: number, match: Match): MatchOut {
     followUp: {
       tool: BOOK_TOOL,
       arguments: {
-        transactionId,
+        id: transactionId,
         allocations: parts.map(({ candidate, amount }) => ({
           kind: argOfKind(candidate.kind),
           id: candidate.id,

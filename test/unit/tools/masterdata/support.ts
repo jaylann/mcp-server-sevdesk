@@ -70,6 +70,7 @@ export function directContext<C>(client: C) {
     config: {} as never,
     signal: new AbortController().signal,
     progress: () => Promise.resolve(),
+    files: {} as never,
   };
 }
 

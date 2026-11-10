@@ -333,7 +333,7 @@ const saveOrder3102Route: FakeRoute = {
 /** An offer with the recorded positions (3 × 10 + 1 × 25 net at 19 %). */
 export const orderCreateArgs = {
   contactId: 1001,
-  orderType: "offer",
+  type: "offer",
   positions: invoiceCreateArgs.positions,
 };
 

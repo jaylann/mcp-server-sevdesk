@@ -25,7 +25,7 @@ export const orderCreateDraftTool = defineWriteTool({
     "allow are refused before anything is sent; the preview warns about a possible duplicate. " +
     "dryRun previews without saving. Before: " +
     "sevdesk_contacts_search. After: sevdesk_order_update_draft, sevdesk_order_pdf, " +
-    "sevdesk_order_finalize, sevdesk_order_to_invoice.",
+    "sevdesk_order_finalize, sevdesk_invoice_create_from_order.",
   toolset: "orders",
   tier: "write",
   annotations: {

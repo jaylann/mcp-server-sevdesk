@@ -101,7 +101,7 @@ const ARGS = {
   creditNoteFromInvoice: (invoiceId: number) => ({ invoiceId }),
   draftOffer: (contactId: number, tag: string) => ({
     contactId,
-    orderType: "offer",
+    type: "offer",
     header: `${tag} Angebot`,
     positions: [{ name: `${tag} Beratung`, quantity: 1, unitPrice: "100.00", taxRate: 19 }],
   }),
@@ -360,7 +360,7 @@ describe.skipIf(!gate.open)("live: lifecycle on a TRIAL account (writes!)", () =
       { orderId: offer, mode: "advance", amount: 30, amountType: "percentage" },
       { orderId: offer, mode: "full", allowDuplicate: true },
     ]) {
-      const data = await write("sevdesk_order_to_invoice", args);
+      const data = await write("sevdesk_invoice_create_from_order", args);
       const id = remember("Invoice", findId(data, "Invoice", ["invoice"]), "draft (deletable)");
       const draft = await invoice(id);
       expect(statusCode(draft), `${args.mode}: not a draft`).toBe(100);

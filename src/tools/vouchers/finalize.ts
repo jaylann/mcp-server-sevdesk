@@ -32,7 +32,7 @@ export const voucherFinalizeTool = defineWriteTool({
     prepareVoucherFinalize(ctx.client, args.id, {
       signal: ctx.signal,
       cacheOwner: ctx.config,
-      fileDirs: ctx.config.fileDirs,
+      files: ctx.files,
     }),
   execute: async (_args, plan, ctx) =>
     voucherDraftToolOutput(

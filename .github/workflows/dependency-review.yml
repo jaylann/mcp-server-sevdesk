@@ -27,3 +27,8 @@ jobs:
         with:
           fail-on-severity: high
           comment-summary-in-pr: always
+          # GHSA-mrhx-c7xc-m3w5 (zod < 4.6.6, memory exhaustion on oversized input) has no fixed
+          # 3.x. zod 3 comes in only with the dev tool @anthropic-ai/mcpb, which validates the
+          # manifest we generate at build time; the package and the .mcpb ship zod 4.6.7. Remove
+          # once @anthropic-ai/mcpb moves to zod 4.
+          allow-ghsas: GHSA-mrhx-c7xc-m3w5

@@ -236,16 +236,34 @@ export function taxDto(record: SalesDocumentRecord): TaxDto {
   });
 }
 
-/** How a document was sent (Versandart), per the spec's `sendType` enum. */
-const SEND_TYPES = ["VPR", "VPDF", "VM", "VP"] as const;
-type SendType = (typeof SEND_TYPES)[number];
+/** How a document was sent (Versandart), as the tools name it (`sentVia` in and out). */
+export const SENT_VIA = ["pdf_download", "post", "print", "email"] as const;
+export type SentVia = (typeof SENT_VIA)[number];
+
+/**
+ * sevDesk's `sendType` code of each send way (spec `invoiceSendBy`): `VPDF` downloaded PDF, `VP`
+ * postal, `VPR` printed, `VM` mail (set by sevDesk's own email as well as recorded by hand).
+ */
+export const SEND_TYPE_CODES = {
+  pdf_download: "VPDF",
+  post: "VP",
+  print: "VPR",
+  email: "VM",
+} as const satisfies Readonly<Record<SentVia, string>>;
+
+const SENT_VIA_BY_CODE: ReadonlyMap<string, SentVia> = new Map(
+  SENT_VIA.map((via) => [SEND_TYPE_CODES[via], via]),
+);
 
 export const sentDtoSchema = z.object({
   date: z.string().optional().describe("YYYY-MM-DD the document was sent."),
   via: z
-    .enum(SEND_TYPES)
+    .enum(SENT_VIA)
     .optional()
-    .describe("VPR printed, VPDF downloaded as PDF, VM emailed, VP sent by post."),
+    .describe(
+      "pdf_download (downloaded as PDF), post (sent by post), print (printed), email (emailed, " +
+        "through sevDesk or your own way).",
+    ),
 });
 
 export type SentDto = z.output<typeof sentDtoSchema>;
@@ -256,15 +274,13 @@ export type SentDto = z.output<typeof sentDtoSchema>;
  */
 export function sentDto(record: SalesDocumentRecord): SentDto | undefined {
   const type = record.sendType?.trim().toUpperCase();
-  const via = (SEND_TYPES as readonly string[]).includes(type ?? "")
-    ? (type as SendType)
-    : undefined;
+  const via = type === undefined ? undefined : SENT_VIA_BY_CODE.get(type);
   const date = berlinDate(record.sendDate);
   return date === undefined && via === undefined ? undefined : compact({ date, via });
 }
 
-/** How position prices were entered, from the document's `showNet`; `undefined` when unset. */
-export function pricesEnteredAs(showNet: boolean | undefined): "net" | "gross" | undefined {
+/** How position prices were entered (`priceMode`), from `showNet`; `undefined` when unset. */
+export function priceModeOf(showNet: boolean | undefined): "net" | "gross" | undefined {
   return showNet === undefined ? undefined : showNet ? "net" : "gross";
 }
 

@@ -123,7 +123,7 @@ const positionsInput = z
 /** Input fields of `sevdesk_order_create_draft` (without `dryRun`). */
 export const orderCreateInputShape = {
   contactId: contactIdInput,
-  orderType: z
+  type: z
     .enum(ORDER_TYPE_NAMES)
     .describe(
       "offer (Angebot, AN), order_confirmation (Auftragsbestätigung, AB) or delivery_note " +
@@ -132,7 +132,7 @@ export const orderCreateInputShape = {
   positions: positionsInput,
   date: documentDateInput.describe("Angebots-/Auftragsdatum, YYYY-MM-DD; default today (Berlin)."),
   priceMode: priceModeInput,
-  taxRule: taxRuleInput,
+  taxRuleId: taxRuleInput,
   taxText: taxTextInput,
   currency: currencyInput,
   header: headerInput.describe(
@@ -162,7 +162,7 @@ export const orderUpdateInputShape = {
   priceMode: priceModeInput.describe(
     "Net or gross unit prices (showNet). Changing it requires positions too.",
   ),
-  taxRule: taxRuleInput.describe(
+  taxRuleId: taxRuleInput.describe(
     "New tax rule (Steuerregel) id; see sevdesk_reference_lookup kind=tax_rules.",
   ),
   taxText: taxTextInput,
@@ -177,7 +177,7 @@ export const orderUpdateInputShape = {
 };
 
 export interface OrderCreateArgs extends CreateArgs {
-  readonly orderType: OrderTypeFilter;
+  readonly type: OrderTypeFilter;
   readonly positions: readonly PositionInput[];
   readonly date?: string | undefined;
   readonly header?: string | undefined;
@@ -221,7 +221,7 @@ export async function prepareOrderCreate(
   options: DraftCallOptions,
 ): Promise<OrderDraftPlan> {
   const { signal } = options;
-  const code = ORDER_TYPE_FILTERS[args.orderType];
+  const code = ORDER_TYPE_FILTERS[args.type];
   const typeName = orderTypeLabel(code);
   const date = args.date ?? todayInBerlin();
   const basics = await resolveCreateBasics(
@@ -234,7 +234,7 @@ export async function prepareOrderCreate(
   const duplicateQuery = { contactId: args.contactId, date, gross: expected.gross, currency };
   const duplicates = await findDuplicates(
     client,
-    { kind: "order", orderType: args.orderType },
+    { kind: "order", orderType: args.type },
     duplicateQuery,
     signal,
   );
@@ -297,7 +297,7 @@ export async function prepareOrderCreate(
     facts,
     [
       duplicateWarning("order", duplicates, duplicateQuery),
-      reservationWarning(args.orderType.replace("_", " "), peeked),
+      reservationWarning(args.type.replace("_", " "), peeked),
       ...basics.warnings,
     ],
   );

@@ -218,7 +218,7 @@ function classifyVoucher(row: VoucherRowLike): Classified {
   const status = row.status?.code;
   if (status !== 100 && status !== 750) return "notPayable";
   if (row.kind === undefined) return "openUnknown";
-  const paidRaw = row.paidAmount?.amount;
+  const paidRaw = row.paid?.amount;
   const hasPayments = paidRaw !== undefined && compare(paidRaw, 0) !== 0;
   if (row.currency !== DEFAULT_CURRENCY && (hasPayments || status !== 100)) return "openUnknown";
   if (paidRaw !== undefined && compare(paidRaw, 0) < 0) return "openUnknown";
@@ -235,7 +235,7 @@ function classifyVoucher(row: VoucherRowLike): Classified {
       date: row.date,
       dueDate: row.paymentDeadline,
     },
-    row.gross?.amount,
+    row.totals.gross?.amount,
     paidRaw ?? "0",
   );
 }

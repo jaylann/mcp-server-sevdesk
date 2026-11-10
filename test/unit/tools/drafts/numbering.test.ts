@@ -103,7 +103,7 @@ describe("sevdesk_order_create_draft numbering", () => {
     const client = new FakeSevdeskClient(orderCreateRoutes);
     const plan = await prepareWrite(
       tool,
-      { ...orderCreateArgs, orderType: "order_confirmation" },
+      { ...orderCreateArgs, type: "order_confirmation" },
       client,
     );
     expect(client.writes()).toEqual([]);

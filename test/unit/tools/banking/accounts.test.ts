@@ -62,7 +62,7 @@ describe("sevdesk_bank_accounts_list (community: recorded CheckAccount shape, fa
       "/CheckAccount/4005/getBalanceAtDate",
     ]);
     expect(balanceCalls.every((call) => call.query["date"] === "2027-01-01")).toBe(true);
-    expect(result.data.balanceDate).toBe("2027-01-01");
+    expect(result.data.asOf).toBe("2027-01-01");
     expect(result.summary).toBe(
       "4 payment accounts, balances at 2027-01-01. Note: 1 archived hidden " +
         "(includeArchived=true shows them).",
@@ -70,7 +70,7 @@ describe("sevdesk_bank_accounts_list (community: recorded CheckAccount shape, fa
   });
 
   it("returns readable types, masked IBANs and exact balances in the account currency", async () => {
-    const { result } = await run({ balanceDate: "2026-06-30" }, [accountsRoute, ...balanceRoutes]);
+    const { result } = await run({ asOf: "2026-06-30" }, [accountsRoute, ...balanceRoutes]);
     expect(tool.output.parse(result.data)).toEqual(result.data);
     expect(result.data.archivedHidden).toBe(1);
     expect(result.data.items).toEqual([
@@ -114,7 +114,7 @@ describe("sevdesk_bank_accounts_list (community: recorded CheckAccount shape, fa
   });
 
   it("lists archived accounts on request", async () => {
-    const { result } = await run({ balanceDate: "2026-06-30", includeArchived: true }, [
+    const { result } = await run({ asOf: "2026-06-30", includeArchived: true }, [
       accountsRoute,
       ...balanceRoutes,
     ]);
@@ -129,7 +129,7 @@ describe("sevdesk_bank_accounts_list (community: recorded CheckAccount shape, fa
 
   it("marks a balance sevDesk refuses for one account and keeps the others", async () => {
     const refused = new SevdeskError({ kind: "validation", message: "Invalid request." });
-    const { result } = await run({ balanceDate: "2026-06-30" }, [
+    const { result } = await run({ asOf: "2026-06-30" }, [
       accountsRoute,
       balance(4001, { error: refused }),
       balance(4002, { body: { objects: null } }),
@@ -146,7 +146,7 @@ describe("sevdesk_bank_accounts_list (community: recorded CheckAccount shape, fa
   it("fails the call on errors that concern every account", async () => {
     const auth = new SevdeskError({ kind: "auth", message: "The sevDesk API token was rejected." });
     await expect(
-      run({ balanceDate: "2026-06-30" }, [accountsRoute, balance(4001, { error: auth })]),
+      run({ asOf: "2026-06-30" }, [accountsRoute, balance(4001, { error: auth })]),
     ).rejects.toBe(auth);
   });
 
@@ -162,7 +162,7 @@ describe("sevdesk_bank_accounts_list (community: recorded CheckAccount shape, fa
       { path: "/CheckAccount", response: { body: { objects } } },
       ...objects.map((account) => balance(Number(account.id), { body: { objects: "1" } })),
     ];
-    const { client, result } = await run({ balanceDate: "2026-06-30" }, routes);
+    const { client, result } = await run({ asOf: "2026-06-30" }, routes);
     expect(client.calls.filter((call) => call.path.endsWith("getBalanceAtDate"))).toHaveLength(25);
     expect(result.data.items.slice(25).map((item) => item.balanceMissing)).toEqual([
       "account_cap",
@@ -175,7 +175,7 @@ describe("sevdesk_bank_accounts_list (community: recorded CheckAccount shape, fa
   });
 
   it("handles an account without name, type or currency, and an empty list", async () => {
-    const { result } = await run({ balanceDate: "2026-06-30" }, [
+    const { result } = await run({ asOf: "2026-06-30" }, [
       { path: "/CheckAccount", response: { body: { objects: [{ id: "8100" }] } } },
       balance(8100, { body: { objects: "5" } }),
     ]);
@@ -195,7 +195,7 @@ describe("sevdesk_bank_accounts_list (community: recorded CheckAccount shape, fa
   });
 
   it("says when sevDesk has more accounts than one request returns", async () => {
-    const { result } = await run({ balanceDate: "2026-06-30" }, [
+    const { result } = await run({ asOf: "2026-06-30" }, [
       {
         path: "/CheckAccount",
         response: { body: { total: "1200", objects: [{ id: "8100", status: "100" }] } },
@@ -205,9 +205,9 @@ describe("sevdesk_bank_accounts_list (community: recorded CheckAccount shape, fa
     expect(result.summary).toContain("sevDesk returned only the first 1000 accounts");
   });
 
-  it("validates balanceDate before sending anything", () => {
-    expect(tool.input.safeParse({ balanceDate: "30.06.2026" }).success).toBe(false);
-    expect(tool.input.safeParse({ balanceDate: "2026-02-30" }).success).toBe(false);
+  it("validates asOf before sending anything", () => {
+    expect(tool.input.safeParse({ asOf: "30.06.2026" }).success).toBe(false);
+    expect(tool.input.safeParse({ asOf: "2026-02-30" }).success).toBe(false);
     expect(tool.input.safeParse({ includeArchived: "yes" }).success).toBe(false);
   });
 });

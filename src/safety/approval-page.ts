@@ -69,6 +69,13 @@ export interface LoginPageModel {
   readonly sessionHours: number;
   /** Trusted note above the form (a failed sign-in, a signed-out session). */
   readonly message: string | undefined;
+  /**
+   * Where to go after signing in (a validated path such as `/uploads/<id>`), sent back in a
+   * hidden field. Absent: the server's default (the inbox).
+   */
+  readonly next?: string | undefined;
+  /** Wording of the page: approving actions (default) or uploading and downloading files. */
+  readonly purpose?: "approvals" | "files" | undefined;
 }
 
 /** Escapes `&`, `<`, `>`, `"` and `'` for HTML text and attribute values. */
@@ -169,19 +176,33 @@ to your assistant: it runs the action when it calls the tool again.</p>`;
 export function renderLoginPage(model: LoginPageModel, styleNonce: string): string {
   const message =
     model.message === undefined ? "" : `<p class="notice">${escapeHtml(model.message)}</p>\n`;
-  const body = `<h1>Sign in to approve sevDesk actions</h1>
-${message}<p class="lead">To see and decide approval requests from your AI assistant, sign in with
+  const files = model.purpose === "files";
+  const heading = files ? "Sign in to transfer files" : "Sign in to approve sevDesk actions";
+  const lead = files
+    ? "To upload or download files for your AI assistant, sign in with"
+    : "To see and decide approval requests from your AI assistant, sign in with";
+  const next =
+    model.next === undefined
+      ? ""
+      : `<input type="hidden" name="next" value="${escapeHtml(model.next)}">\n`;
+  const body = `<h1>${heading}</h1>
+${message}<p class="lead">${lead}
 the API token of the sevDesk account (in sevDesk: Settings → Users → API token).</p>
 <p class="warning">Only enter your token on <strong>${escapeHtml(model.host)}</strong>. Check the
 address bar first: anywhere else, a page asking for it is phishing.</p>
 <form method="post" action="${escapeHtml(model.formAction)}" class="login">
-<label for="token">sevDesk API token</label>
+${next}<label for="token">sevDesk API token</label>
 <input type="password" id="token" name="token" autocomplete="off" spellcheck="false" maxlength="256" required>
 <button type="submit" class="approve">Sign in</button>
 </form>
 <p class="small">The token is checked once and not stored. The sign-in lasts
 ${escapeHtml(String(model.sessionHours))} hours in this browser, or until you sign out.</p>`;
-  return page("Sign in: sevDesk approvals", body, styleNonce, INBOX_STYLE);
+  return page(
+    files ? "Sign in: sevDesk files" : "Sign in: sevDesk approvals",
+    body,
+    styleNonce,
+    INBOX_STYLE,
+  );
 }
 
 const STATUS_TEXT: Readonly<Record<ApprovalStatus, string>> = {
@@ -199,6 +220,25 @@ ${escapeHtml(item.toolTitle)} (<code>${escapeHtml(item.toolName)}</code>)</a>
 
 function renderLink(link: PageLink): string {
   return `<p class="small"><a href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a></p>`;
+}
+
+/**
+ * The shared page frame (head, the one nonce-allowed style block, `<main>`) for other pages of the
+ * server, such as the upload and download pages. `body` is inserted as HTML: every dynamic value
+ * in it must already be escaped with {@link escapeHtml}; `extraStyle` is trusted CSS.
+ */
+export function renderPage(
+  title: string,
+  body: string,
+  styleNonce: string,
+  extraStyle = "",
+): string {
+  return page(title, body, styleNonce, `${INBOX_STYLE}${extraStyle}`);
+}
+
+/** An ISO 8601 time as the pages show it: `2026-11-09 12:15 UTC`. */
+export function formatPageTime(iso: string): string {
+  return formatTime(iso);
 }
 
 function page(title: string, body: string, styleNonce: string, extraStyle = ""): string {

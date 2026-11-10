@@ -120,7 +120,7 @@ export interface CreateArgs extends AddressInput {
   readonly contactId: number;
   readonly contactPersonId?: number | undefined;
   readonly priceMode?: PriceMode | undefined;
-  readonly taxRule?: number | undefined;
+  readonly taxRuleId?: number | undefined;
   readonly taxText?: string | undefined;
   readonly currency?: string | undefined;
   readonly positions: readonly PositionInput[];
@@ -159,7 +159,7 @@ export async function resolveCreateBasics(
   const special = regime === "small_business" ? tax.smallBusiness : undefined;
   const scope = special?.scope ?? tax.scope;
   const ruleId =
-    args.taxRule ??
+    args.taxRuleId ??
     special?.defaultRuleId ??
     (tax.keepDefault === true ? tax.defaultRuleId : regimeDefaultRuleId(tax.defaultRuleId, regime));
   const named = taxRuleById(ruleId);
@@ -263,7 +263,7 @@ export interface UpdateArgs extends AddressInput {
   readonly contactId?: number | undefined;
   readonly contactPersonId?: number | undefined;
   readonly priceMode?: PriceMode | undefined;
-  readonly taxRule?: number | undefined;
+  readonly taxRuleId?: number | undefined;
   readonly taxText?: string | undefined;
   readonly currency?: string | undefined;
   readonly positions?: readonly PositionInput[] | undefined;
@@ -335,16 +335,16 @@ export async function resolveUpdateBasics(
     stored.taxRule === undefined
       ? ruleForLegacyTaxType(stored.taxType)
       : taxRuleById(stored.taxRule.id);
-  const named = args.taxRule === undefined ? undefined : taxRuleById(args.taxRule);
+  const named = args.taxRuleId === undefined ? undefined : taxRuleById(args.taxRuleId);
   if (named !== undefined) checkTaxRuleRegime(named, regime, tax.scope, tax.regimeMessage);
-  const rule = args.taxRule === undefined ? storedRule : taxRuleFor(args.taxRule, tax.scope);
-  const taxChanged = args.taxRule !== undefined || args.taxText !== undefined;
+  const rule = args.taxRuleId === undefined ? storedRule : taxRuleFor(args.taxRuleId, tax.scope);
+  const taxChanged = args.taxRuleId !== undefined || args.taxText !== undefined;
   if (rule === undefined && (args.positions !== undefined || taxChanged)) {
     throw new SevdeskError({
       kind: "validation",
       message:
         "The stored tax setting of this draft is not a tax rule this server knows (e.g. a " +
-        "custom tax set), so the positions cannot be checked against it. Pass taxRule as well.",
+        "custom tax set), so the positions cannot be checked against it. Pass taxRuleId as well.",
     });
   }
   if (rule !== undefined && tax.useCase !== undefined) {
@@ -356,7 +356,7 @@ export async function resolveUpdateBasics(
       args.positions,
       resolveTaxRates(rule, args.positions, tax.rateLimit, regime),
     );
-  } else if (args.taxRule !== undefined && rule !== undefined) {
+  } else if (args.taxRuleId !== undefined && rule !== undefined) {
     // The stored positions stay: each must be allowed by the new rule.
     resolveTaxRates(
       rule,
@@ -393,7 +393,7 @@ export async function resolveUpdateBasics(
       ? documentTaxFields(
           rule,
           version,
-          args.taxText ?? (args.taxRule === undefined ? cleanStored(stored.taxText) : undefined),
+          args.taxText ?? (args.taxRuleId === undefined ? cleanStored(stored.taxText) : undefined),
           regime,
         )
       : undefined;
@@ -426,7 +426,7 @@ export async function resolveUpdateBasics(
       ...(regime === undefined && (taxChanged || positions !== undefined)
         ? [UNKNOWN_REGIME_WARNING]
         : []),
-      ...(args.taxRule === undefined &&
+      ...(args.taxRuleId === undefined &&
       rule !== undefined &&
       regime !== undefined &&
       !rule.regimes.includes(regime)
@@ -444,8 +444,8 @@ export async function resolveUpdateBasics(
 function keptRuleWarning(rule: TaxRule, regime: TaxRegime): string {
   const fix =
     regime === "small_business"
-      ? `taxRule ${SMALL_BUSINESS_RULE_ID} (Kleinunternehmer, §19 UStG) with 0 % rates`
-      : `taxRule ${DEFAULT_TAX_RULE_ID} (Umsatzsteuerpflichtige Umsätze) or another rule for ` +
+      ? `taxRuleId ${SMALL_BUSINESS_RULE_ID} (Kleinunternehmer, §19 UStG) with 0 % rates`
+      : `taxRuleId ${DEFAULT_TAX_RULE_ID} (Umsatzsteuerpflichtige Umsätze) or another rule for ` +
         "regular VAT";
   const account =
     regime === "small_business"
@@ -479,7 +479,7 @@ function storedTaxFields(stored: StoredDocument): UpdateTaxFields {
   if (taxType === undefined) {
     throw new SevdeskError({
       kind: "validation",
-      message: "This draft has no tax setting this server can keep. Pass taxRule to set one.",
+      message: "This draft has no tax setting this server can keep. Pass taxRuleId to set one.",
     });
   }
   return {

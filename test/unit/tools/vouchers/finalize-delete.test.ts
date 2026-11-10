@@ -266,6 +266,17 @@ describe("sevdesk_voucher_finalize", () => {
     ).toContain("Position 1 of voucher 2101 has no Update 2.0 booking account");
   });
 
+  it("refuses a draft without a Belegnummer before anything is confirmed (D-080)", async () => {
+    for (const description of [null, "", "  "]) {
+      const client = finalizeClient(draftRow({ description }));
+      expect(await refusal(prepareWrite(tool, { id: 2101 }, client))).toBe(
+        "Voucher 2101 has no Belegnummer, and sevDesk books no voucher without one. Set it with " +
+          "sevdesk_voucher_update_draft (number) first: the receipt's invoice or receipt number, " +
+          "or your own reference if it has none.",
+      );
+    }
+  });
+
   it("refuses a tax rule that does not fit the regime, with the fix", async () => {
     const message = await refusal(
       prepareWrite(
@@ -276,7 +287,7 @@ describe("sevdesk_voucher_finalize", () => {
     );
     expect(message).toContain("Kleinunternehmer regulation (§19 UStG), so tax rule 9");
     expect(message).toContain(
-      "Change the tax rule of voucher 2101 with sevdesk_voucher_update_draft (taxRule) first.",
+      "Change the tax rule of voucher 2101 with sevdesk_voucher_update_draft (taxRuleId) first.",
     );
   });
 

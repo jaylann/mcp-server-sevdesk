@@ -53,23 +53,32 @@ describe("sevdesk_voucher_get (community: recorded Voucher/VoucherPos shapes, fa
       id: 2001,
       kind: "expense",
       paymentDirection: "out",
-      taxRule: { id: 9, name: "Vorsteuerabziehbare Aufwendungen" },
+      tax: {
+        generation: "2.0",
+        rule: {
+          id: 9,
+          code: "VORST_ABZUGSF_AUFW",
+          name: "Vorsteuerabziehbare Aufwendungen",
+          documented: true,
+        },
+      },
       deliveryDate: "2026-01-10",
       enshrined: true,
       hasDocument: true,
-      generation: "2.0",
       createdAt: "2026-01-12",
       updatedAt: "2026-01-13",
     });
-    expect(result.data.voucher.taxType).toBeUndefined();
+    expect(result.data.voucher.tax.taxType).toBeUndefined();
     expect(result.data.positions).toEqual([
       {
         id: 3001,
         comment: "Druckerpapier und Toner",
-        taxRate: 19,
-        net: { amount: "200.00", currency: "EUR" },
-        tax: { amount: "38.00", currency: "EUR" },
-        gross: { amount: "238.00", currency: "EUR" },
+        taxRate: "19",
+        totals: {
+          net: { amount: "200.00", currency: "EUR" },
+          tax: { amount: "38.00", currency: "EUR" },
+          gross: { amount: "238.00", currency: "EUR" },
+        },
         generation: "2.0",
         accountDatev: { id: 3797 },
         isAsset: false,
@@ -77,10 +86,12 @@ describe("sevdesk_voucher_get (community: recorded Voucher/VoucherPos shapes, fa
       {
         id: 3003,
         comment: "Schreibtischlampe",
-        taxRate: 19,
-        net: { amount: "50.50", currency: "EUR" },
-        tax: { amount: "9.60", currency: "EUR" },
-        gross: { amount: "60.10", currency: "EUR" },
+        taxRate: "19",
+        totals: {
+          net: { amount: "50.50", currency: "EUR" },
+          tax: { amount: "9.60", currency: "EUR" },
+          gross: { amount: "60.10", currency: "EUR" },
+        },
         generation: "1.0",
         accountingType: { id: 26 },
         isAsset: true,
@@ -96,7 +107,7 @@ describe("sevdesk_voucher_get (community: recorded Voucher/VoucherPos shapes, fa
       id: 2002,
       kind: "revenue",
       paymentDirection: "in",
-      generation: "2.0",
+      tax: expect.objectContaining({ generation: "2.0" }) as unknown,
       enshrined: false,
     });
     // The recorded voucher has no `document` key, so nothing is claimed about a file.

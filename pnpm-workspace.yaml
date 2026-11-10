@@ -10,5 +10,11 @@ allowBuilds:
 # minimatch before 11.0.1 can be driven into a denial of service by crafted glob patterns
 # (Dependabot alert 1). eslint and typescript-eslint still ask for ^10; they only match our own
 # config globs, and lint passes on 11. Remove once they depend on a fixed version.
+#
+# tmp before 0.2.6 allows path traversal through its prefix and postfix (GHSA-ph9p-34f9-6g65).
+# It comes in only with the .mcpb build tool (@anthropic-ai/mcpb → @inquirer/editor →
+# external-editor, which asks for ^0.0.33 and calls only tmpNameSync, still in 0.2). Remove once
+# external-editor depends on a fixed version.
 overrides:
   minimatch@<11.0.1: ^11.0.5
+  tmp@<0.2.6: ^0.2.6

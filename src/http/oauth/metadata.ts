@@ -23,7 +23,7 @@ import { OFFLINE_ACCESS, scopeOf } from "./tokens.js";
 
 const PROTECTED_RESOURCE_PATH = "/.well-known/oauth-protected-resource";
 const AUTHORIZATION_SERVER_PATH = "/.well-known/oauth-authorization-server";
-const DOCUMENTATION_URL = "https://github.com/jaylann/mcp-server-sevdesk/blob/main/docs/remote.md";
+const DOCUMENTATION_URL = "https://sevdesk-mcp.lanfermann.dev/docs/en/remote";
 
 export interface MetadataOptions {
   /** The public origin, which is also the issuer. */

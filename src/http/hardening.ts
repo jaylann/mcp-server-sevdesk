@@ -9,7 +9,7 @@
 import { validateHostHeader, validateOriginHeader } from "@modelcontextprotocol/server";
 
 import { sameOriginPost } from "../safety/web.js";
-import type { OriginPolicy } from "./types.js";
+import type { BodyPace, OriginPolicy } from "./types.js";
 
 /** `Strict-Transport-Security` on https origins: one year, this host only. */
 const HSTS_VALUE = "max-age=31536000";
@@ -87,6 +87,17 @@ export function requestTimeout(timeoutMs: number): Response {
     408,
     "request_timeout",
     `The request body did not arrive within ${String(timeoutMs / 1000)} s.`,
+  );
+}
+
+/** 408 for a body that stalled or trickled (see `HttpRoute.bodyPace`). */
+export function bodyTooSlow(pace: BodyPace): Response {
+  return errorResponse(
+    408,
+    "request_timeout",
+    `The request body arrived too slowly: it must keep sending at least ` +
+      `${String(Math.round(pace.minBytesPerSecond / 1024))} KB/s and never pause for ` +
+      `${String(pace.idleMs / 1000)} s.`,
   );
 }
 

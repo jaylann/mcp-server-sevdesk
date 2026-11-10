@@ -23,7 +23,6 @@ import {
 } from "../../domain/lifecycle/documents.js";
 import {
   type BookAmountPayload,
-  BOOKING_TYPES,
   type BookingType,
   checkPaymentAccount,
   checkPaymentTransaction,
@@ -32,6 +31,7 @@ import {
   paymentDirection,
   type PaymentPlan,
   paymentSign,
+  paymentTypeOf,
   planPayment,
 } from "../../domain/lifecycle/payments.js";
 import {
@@ -120,9 +120,12 @@ const paymentOutputSchema = z.object({
     "Amount booked, positive: received for an invoice, paid out for a credit note.",
   ),
   date: z.string().describe("Booking date, YYYY-MM-DD."),
-  bookingType: z
-    .enum(BOOKING_TYPES)
-    .describe("sevDesk booking type: FULL_PAYMENT, N (partial), CB, MTC, O, OF."),
+  paymentType: z
+    .enum(PAYMENT_TYPES)
+    .describe(
+      "How it was booked, as the paymentType input names it: payment (full or partial), " +
+        "cash_discount, bank_fees, other_difference, reminder_charges.",
+    ),
   checkAccountId: z.number().int(),
   transactionId: z.number().int().optional().describe("The linked bank transaction, if any."),
 });
@@ -373,7 +376,7 @@ export function bookPaymentTool(kind: PaymentKind) {
           payment: {
             amount: state.plan.amount,
             date: state.date,
-            bookingType: state.plan.bookingType,
+            paymentType: paymentTypeOf(state.plan.bookingType),
             checkAccountId: args.checkAccountId,
             ...(args.transactionId === undefined ? {} : { transactionId: args.transactionId }),
           },

@@ -181,7 +181,10 @@ describe("status, tax and send state", () => {
     expect(sentDto(salesRecord({ sendType: "0" }))).toBeUndefined();
     expect(sentDto(salesRecord({ sendType: "" }))).toBeUndefined();
     expect(sentDto(salesRecord({ sendType: "FAX" }))).toBeUndefined();
-    expect(sentDto(salesRecord({ sendType: "vp" }))).toEqual({ via: "VP" });
+    expect(sentDto(salesRecord({ sendType: "vp" }))).toEqual({ via: "post" });
+    expect(sentDto(salesRecord({ sendType: "VPR" }))).toEqual({ via: "print" });
+    expect(sentDto(salesRecord({ sendType: "VPDF" }))).toEqual({ via: "pdf_download" });
+    expect(sentDto(salesRecord({ sendType: "VM" }))).toEqual({ via: "email" });
     expect(sentDto(salesRecord({ sendDate: "2026-11-02T08:00:00+01:00" }))).toEqual({
       date: "2026-11-02",
     });

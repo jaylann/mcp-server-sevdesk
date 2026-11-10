@@ -107,7 +107,7 @@ describe("sevdesk_invoices_list (community: recorded Invoice shape, fake data)",
       },
       paid: { amount: "0.00", currency: "EUR" },
       header: "Rechnung RE-1001",
-      sent: { date: "2026-10-01", via: "VM" },
+      sent: { date: "2026-10-01", via: "email" },
       link: "https://my.sevdesk.de/fi/detail/type/RE/id/1001",
     });
   });
@@ -132,7 +132,10 @@ describe("sevdesk_invoices_list (community: recorded Invoice shape, fake data)",
     });
 
     const paid = byId.get(1004);
-    expect(paid).toMatchObject({ enshrined: true, sent: { date: "2026-10-01", via: "VPDF" } });
+    expect(paid).toMatchObject({
+      enshrined: true,
+      sent: { date: "2026-10-01", via: "pdf_download" },
+    });
     expect(paid?.overdue).toBeUndefined();
 
     const advance = byId.get(1005);

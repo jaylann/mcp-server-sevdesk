@@ -17,7 +17,7 @@ export const REPORT_SCAN_MAX = 10_000;
 export const REPORT_PAGE_SIZE = 1_000;
 
 /** Stated in every report's output. */
-export const REPORT_BASIS =
+export const REPORT_SOURCE =
   "Computed by this server from sevDesk records (exact decimals, per currency, never " +
   "converted); not one of sevDesk's own reports.";
 
@@ -144,7 +144,7 @@ export function quarterOf(date: string): string {
 
 /** Coverage fields every scanning report returns. */
 export const coverageOutputShape = {
-  basis: z.string().describe("How the numbers were made: computed here, not a sevDesk report."),
+  source: z.string().describe("How the numbers were made: computed here, not a sevDesk report."),
   recordsScanned: z.number().int().describe("sevDesk rows read for this report."),
   truncated: z
     .boolean()

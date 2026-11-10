@@ -42,8 +42,8 @@ import {
   daysBetween,
   invalidReportRequest,
   plural,
-  REPORT_BASIS,
   REPORT_SCAN_MAX,
+  REPORT_SOURCE,
   type ReportRunOptions,
   type ScanPage,
   scanPages,
@@ -243,18 +243,18 @@ function classifyVoucher(row: VoucherDto): Classified {
   const code = row.status?.code;
   if (row.kind !== "expense") return "mismatched";
   if (code !== OPEN_VOUCHER_CODE && code !== PARTIALLY_PAID_VOUCHER_CODE) return "mismatched";
-  // A foreign-currency voucher's paidAmount is taken as EUR by the vouchers module (unverified),
-  // so it is only used when the voucher has no separate EUR base values.
+  // A foreign-currency voucher's paid amount is taken as EUR by the vouchers module (unverified),
+  // so it is only used when the voucher has no separate EUR values (totalsEur).
   const paid =
-    row.base === undefined && row.paidAmount?.currency === row.currency
-      ? row.paidAmount.amount
+    row.totalsEur === undefined && row.paid?.currency === row.currency
+      ? row.paid.amount
       : undefined;
   const wrongSign = paid !== undefined && compare(paid, 0) < 0;
   const item = openItem({
     id: row.id,
     party: row.supplier,
     currency: row.currency,
-    gross: row.gross?.amount,
+    gross: row.totals.gross?.amount,
     // With a wrong-signed payment, what is still open cannot be told: unknown.
     paid: wrongSign ? undefined : paid,
     nothingPaidByStatus: !wrongSign && code === OPEN_VOUCHER_CODE,
@@ -742,7 +742,7 @@ export async function receivablesAging(
       reminders: open.excluded.reminders,
       nothingOutstanding: open.excluded.settled,
     },
-    basis: REPORT_BASIS,
+    source: REPORT_SOURCE,
     recordsScanned: open.scanned,
     truncated: open.truncated,
     notes: agingNotes("receivables", open, {
@@ -776,7 +776,7 @@ export async function payablesAging(
       recurringTemplates: open.excluded.templates,
       nothingOutstanding: open.excluded.settled,
     },
-    basis: REPORT_BASIS,
+    source: REPORT_SOURCE,
     recordsScanned: open.scanned,
     truncated: open.truncated,
     notes: agingNotes("payables", open, {

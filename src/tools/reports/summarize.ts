@@ -26,7 +26,7 @@ export const recordsSummarizeTool = defineTool({
     "outgoing for transactions), optionally grouped by month, quarter, status, contact " +
     "(Kunde/Lieferant) or account. Prefer it over paging list tools for totals such as revenue " +
     "per month (Umsatz), expenses per supplier or amounts per status. Filters: from/to, " +
-    "status, contactId, kind (vouchers: expense/revenue), invoiceType, accountId " +
+    "status, contactId, kind (vouchers: expense/revenue), invoiceType, checkAccountId " +
     "(transactions). Templates (recurring RV/WKR) and reminders (MA) are left out unless " +
     `invoiceType asks for them. Reads up to ${REPORT_SCAN_MAX.toLocaleString("en-US")} rows; ` +
     "truncated says if more existed. " +
@@ -74,7 +74,9 @@ export const recordsSummarizeTool = defineTool({
           "reminder (MA) or recurring (WKR template); reminders and templates count only when " +
           "asked for here.",
       ),
-    accountId: id.optional().describe("Transactions only: payment account (Zahlungskonto) id."),
+    checkAccountId: id
+      .optional()
+      .describe("Transactions only: payment account (Zahlungskonto) id."),
     maxGroups: z
       .number()
       .int()

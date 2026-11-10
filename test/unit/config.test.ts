@@ -1,13 +1,27 @@
 import { describe, expect, it } from "vitest";
 
-import { ConfigError, DEFAULT_BASE_URL, loadConfig } from "../../src/config.js";
+import {
+  ConfigError,
+  DEFAULT_BASE_URL,
+  type KeychainLookup,
+  loadConfig,
+  localNameProblem,
+  tokenVariablesIn,
+} from "../../src/config.js";
 import { DEFAULT_TOOLSETS, TOOLSETS } from "../../src/tools/toolsets.js";
 
 const TOKEN = "0123456789abcdef0123456789abcdef";
 
-function problemsOf(env: Record<string, string>, readFile?: (path: string) => string): string[] {
+function problemsOf(
+  env: Record<string, string>,
+  readFile?: (path: string) => string,
+  readKeychain?: (label: string) => KeychainLookup,
+): string[] {
   try {
-    loadConfig(env, readFile ? { readFile } : {});
+    loadConfig(env, {
+      ...(readFile ? { readFile } : {}),
+      ...(readKeychain ? { readKeychain } : {}),
+    });
   } catch (error) {
     if (error instanceof ConfigError) return [...error.problems];
     throw error;
@@ -82,6 +96,89 @@ describe("token", () => {
     } catch (error) {
       expect(String(error)).not.toContain(secret);
     }
+  });
+});
+
+describe("keychain token source", () => {
+  const found = (token: string) => () => ({ token });
+
+  it("takes the token looked up for SEVDESK_API_TOKEN_KEYCHAIN", () => {
+    const labels: string[] = [];
+    const config = loadConfig(
+      { SEVDESK_API_TOKEN_KEYCHAIN: "work" },
+      {
+        readKeychain: (label) => {
+          labels.push(label);
+          return { token: TOKEN };
+        },
+      },
+    );
+    expect(config.token).toBe(TOKEN);
+    expect(labels).toEqual(["work"]);
+  });
+
+  it("accepts exactly one of the three token variables", () => {
+    const expected =
+      "Set only one of SEVDESK_API_TOKEN, SEVDESK_API_TOKEN_FILE and SEVDESK_API_TOKEN_KEYCHAIN.";
+    for (const other of ["SEVDESK_API_TOKEN", "SEVDESK_API_TOKEN_FILE"]) {
+      expect(
+        problemsOf({ SEVDESK_API_TOKEN_KEYCHAIN: "work", [other]: TOKEN }, () => TOKEN),
+      ).toEqual([expected]);
+    }
+    expect(
+      problemsOf({
+        SEVDESK_API_TOKEN: TOKEN,
+        SEVDESK_API_TOKEN_FILE: "/x",
+        SEVDESK_API_TOKEN_KEYCHAIN: "work",
+      }),
+    ).toEqual([expected]);
+    expect(tokenVariablesIn({ SEVDESK_API_TOKEN: " ", SEVDESK_API_TOKEN_KEYCHAIN: "w" })).toEqual([
+      "SEVDESK_API_TOKEN_KEYCHAIN",
+    ]);
+  });
+
+  it("checks the label without echoing it", () => {
+    const tokenAsLabel = problemsOf({ SEVDESK_API_TOKEN_KEYCHAIN: TOKEN });
+    expect(tokenAsLabel).toEqual([
+      'SEVDESK_API_TOKEN_KEYCHAIN looks like a sevDesk API token. It takes a name you choose (for example "work"), never the token itself.',
+    ]);
+    expect(tokenAsLabel.join()).not.toContain(TOKEN);
+    for (const label of ["a b", "-a", ".hidden", "x".repeat(65), "läbel"]) {
+      expect(problemsOf({ SEVDESK_API_TOKEN_KEYCHAIN: label })[0]).toMatch(
+        /^SEVDESK_API_TOKEN_KEYCHAIN must be a name of up to 64/,
+      );
+    }
+    expect(localNameProblem("work.2026_a-b", "x")).toBeUndefined();
+  });
+
+  it("reports the keychain problem, a missing lookup, and a malformed stored token", () => {
+    expect(
+      problemsOf({ SEVDESK_API_TOKEN_KEYCHAIN: "work" }, undefined, () => ({
+        problem: 'No token is stored under keychain label "work".',
+      })),
+    ).toEqual(['No token is stored under keychain label "work".']);
+    expect(problemsOf({ SEVDESK_API_TOKEN_KEYCHAIN: "work" })[0]).toMatch(
+      /read only by the stdio server/,
+    );
+    const problems = problemsOf(
+      { SEVDESK_API_TOKEN_KEYCHAIN: "work" },
+      undefined,
+      found(`${TOKEN} x`),
+    );
+    expect(problems).toEqual([
+      'The token stored under keychain label "work" contains whitespace; paste only the token itself.',
+    ]);
+    expect(problems.join()).not.toContain(TOKEN);
+  });
+
+  it("still validates the other settings", () => {
+    expect(
+      problemsOf(
+        { SEVDESK_API_TOKEN_KEYCHAIN: "work", SEVDESK_ALLOW: "bogus" },
+        undefined,
+        found(TOKEN),
+      ),
+    ).toEqual([expect.stringMatching(/SEVDESK_ALLOW: unknown tier/)]);
   });
 });
 

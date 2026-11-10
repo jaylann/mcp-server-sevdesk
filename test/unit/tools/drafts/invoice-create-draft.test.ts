@@ -167,7 +167,7 @@ describe("sevdesk_invoice_create_draft (community: sevdesk-rs request shape + re
         net: { amount: "55.00", currency: "EUR" },
         gross: { amount: "65.45", currency: "EUR" },
       },
-      pricesEnteredAs: "net",
+      priceMode: "net",
       contactPersonId: 2001,
     });
     expect(output.data.positions.map((position) => position.name)).toEqual(["Beratung", "Paket"]);
@@ -314,14 +314,14 @@ describe("sevdesk_invoice_create_draft (community: sevdesk-rs request shape + re
       ],
       [
         "an expense tax rule",
-        { taxRule: 9 },
+        { taxRuleId: 9 },
         "Tax rule 9 (Vorsteuerabziehbare Aufwendungen) cannot be used for invoices (it is a rule " +
           "for expenses). Use tax rule 1, 2, 3, 4, 5, 11, 17, 18, 19, 20, 21; " +
           "sevdesk_reference_lookup kind=tax_rules explains them.",
       ],
       [
         "an unknown tax rule",
-        { taxRule: 99 },
+        { taxRuleId: 99 },
         "Tax rule 99 does not exist. Invoices take tax rule 1, 2, 3, 4, 5, 11, 17, 18, 19, 20, " +
           "21; sevdesk_reference_lookup kind=tax_rules explains them.",
       ],

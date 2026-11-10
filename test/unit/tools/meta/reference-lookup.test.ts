@@ -50,7 +50,7 @@ describe("sevdesk_reference_lookup", () => {
       nameEn: "Taxable domestic revenue",
       direction: "revenue",
       regimes: ["regular"],
-      allowedTaxRates: [0, 7, 19],
+      allowedTaxRates: ["0", "7", "19"],
       legacyTaxType: "default",
       documented: true,
     });
@@ -180,7 +180,7 @@ describe("sevdesk_reference_lookup kind=receipt_guidance", () => {
       accountName: "Kautionen",
       description: "Gezahlte Kautionen z. B. für Büroräume",
       receiptTypes: ["expense"],
-      taxRules: [{ id: 16, code: "NICHT_STEUERBAR_EXPENSE", taxRates: [0] }],
+      taxRules: [{ id: 16, code: "NICHT_STEUERBAR_EXPENSE", taxRates: ["0"] }],
     });
     expect(result.summary).toBe(
       "2 of 4 matching receipt guidance accounts (4 in total). More: call again with offset 2.",
