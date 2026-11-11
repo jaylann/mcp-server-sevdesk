@@ -1,14 +1,27 @@
-<!-- translated-from: PRIVACY.md sha256:c99c09377cd5 -->
+<!-- translated-from: PRIVACY.md sha256:e0d789e4b31f -->
 
 # Datenschutz
 
 mcp-server-sevdesk ist Software, die Sie selbst betreiben. Das Projekt betreibt keinen Dienst und
 erhebt **keine Telemetrie**.
 
-- **Datenfluss.** Der Server spricht nur mit der sevDesk-API (`https://my.sevdesk.de/api/v1`), mit
-  Ihrem Token, und gibt Ergebnisse an den MCP-Client zurück, den Sie verbunden haben (zum Beispiel
+- **Datenfluss.** Der Server sendet seine Anfragen an die sevDesk-API
+  (`https://my.sevdesk.de/api/v1`, oder die von Ihnen gesetzte `SEVDESK_BASE_URL`), mit Ihrem
+  Token, und gibt Ergebnisse an den MCP-Client zurück, den Sie verbunden haben (zum Beispiel
   Claude Desktop). Was Ihr Client oder Ihr Modellanbieter mit diesen Daten tut, regeln deren
-  Bedingungen.
+  Bedingungen. Einen anderen Host kontaktiert er nicht, mit zwei Ausnahmen:
+  - **DATEV-Export.** `sevdesk_datev_export` (Stufe `write`) lädt das fertige ZIP aus dem
+    Export-Speicher von sevDesk bei Amazon S3
+    (`sevexport-filestorage-workload-prod.s3.eu-central-1.amazonaws.com`), über den vorsignierten
+    Link, den sevDesk für den Export zurückgibt. Die Anfrage enthält diesen Link und kein
+    sevDesk-Token; der Speicher-Host sieht die IP-Adresse des Servers und den Zeitpunkt. Ein Link
+    zu einem anderen Host wird abgelehnt, und Weiterleitungen werden nicht verfolgt.
+  - **Client-Metadaten im Fernzugriff mit OAuth**: siehe „Dritte“ unter
+    [Fernzugriff](#fernzugriff).
+- **Freigabeseite.** Mit `SEVDESK_CONFIRM=browser` (lokale Nutzung) wird die Vorschau einer Aktion
+  auf einer Seite gezeigt, die der Server auf `127.0.0.1` bereitstellt und über den Öffner des
+  Betriebssystems in Ihrem Standardbrowser öffnet; mit `SEVDESK_CONFIRM_OPEN=0` schreibt er den
+  Link nur in sein Log. Die Seite lädt nichts von anderen Hosts.
 - **Lokale Speicherung.** Nichts wird gespeichert, solange Sie es nicht aktivieren: Das optionale
   Audit-Log (`SEVDESK_AUDIT_LOG`) und der Ausgabeordner (`SEVDESK_OUTPUT_DIR`) sind Dateien
   auf Ihrem Rechner.
@@ -48,8 +61,8 @@ Betreiber und für die dort verarbeiteten personenbezogenen Daten verantwortlich
   Inhalt. Hoch- und Herunterladen brauchen eine Browser-Sitzung des Kontos. Mit
   `SEVDESK_OAUTH_ACCOUNTS=any` betrifft das die Dokumente jedes Kontos, das sich verbindet.
 - **Das Audit-Log umfasst jedes Konto.** Mit `SEVDESK_AUDIT_LOG` hält eine Datei die schreibenden
-  Aufrufe jedes verbundenen Kontos fest, mit Vorschauen, die Kundennamen, Beträge und E-Mail-Texte
-  enthalten, und nennt in jeder Zeile das Konto und den Zugang.
+  Aufrufe jedes verbundenen Kontos fest, mit Vorschauen, die Kundennamen, Beträge, E-Mail-Texte
+  und die Namen von Belegdateien enthalten, und nennt in jeder Zeile das Konto und den Zugang.
 - **Dritte.** Startet jemand eine OAuth-Verbindung, ruft der Server das Metadaten-Dokument des
   Clients von dessen Host ab (bei claude.ai: `claude.ai`); dieser Host sieht die IP-Adresse des
   Servers und den Zeitpunkt. Wer TLS vor dem Server terminiert (ein Tunnel wie der von Cloudflare

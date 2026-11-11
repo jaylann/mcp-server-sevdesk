@@ -8,6 +8,7 @@ import {
   prepareCreditNoteCreate,
 } from "../../domain/drafts/credit-note.js";
 import { defineWriteTool } from "../define-tool.js";
+import { ACCOUNT_CREDIT_NOTE_NUMBERS } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 
 const output = z.object({
@@ -50,6 +51,15 @@ export const creditNoteCreateDraftTool = defineWriteTool({
   },
   input: z.strictObject({ ...creditNoteCreateInputShape, ...dryRunInputShape }),
   output,
+  // The number range it reserves from is the one sevdesk_credit_note_create_from_invoice takes
+  // its numbers from, so the two run one at a time; with a source invoice, also the "no credit
+  // note for it yet" check of both tools (review 2026-11, round 3).
+  locks: (args) => [
+    ACCOUNT_CREDIT_NOTE_NUMBERS,
+    ...(args.sourceInvoiceId === undefined
+      ? []
+      : [{ objectName: "Invoice", id: String(args.sourceInvoiceId) }]),
+  ],
   prepare: (args, ctx) =>
     prepareCreditNoteCreate(ctx.client, args, { signal: ctx.signal, cacheOwner: ctx.config }),
   execute: async (_args, plan, ctx) => {

@@ -29,7 +29,10 @@
  *   code), BR-DE-8/BR-DE-9 (buyer city and post code), BR-DE-15 (buyer reference BT-10, the
  *   Leitweg-ID for public buyers), BR-DE-23-a (credit transfer needs the payee account, BG-17).
  * - Ours (`SD-…`): SD-PROFILE (MINIMUM / BASIC WL carry no lines and are booking aids, not
- *   invoices under §14 UStG), SD-TYPE (BT-3 is neither an invoice nor a credit note code).
+ *   invoices under §14 UStG), SD-TYPE (BT-3 is neither an invoice nor a credit note code),
+ *   SD-LINE-NET (a warning: a line net amount BT-131 is not quantity × net price ÷ base quantity
+ *   plus line charges minus line allowances; EN 16931 has no rule for it, Peppol BIS Billing 3.0
+ *   has PEPPOL-EN16931-R120).
  *
  * Every message is trusted text: it names business terms and may quote amounts, which are
  * validated decimal numbers; it never quotes text from the invoice.
@@ -58,6 +61,13 @@ const ZERO_TAX: ReadonlySet<VatCategoryCode> = new Set(["Z", "E", "AE", "K", "G"
 const NEEDS_EXEMPTION_REASON: ReadonlySet<VatCategoryCode> = new Set(["E", "AE", "K", "G", "O"]);
 /** BR-CO-17 tolerance of the CEN Schematron: one currency unit. */
 const VAT_AMOUNT_TOLERANCE = "1";
+/**
+ * How far a line net amount may be from what its quantity and price give: two cents, which
+ * covers rounding the product to cents and a price rounded by the sender.
+ */
+const LINE_NET_TOLERANCE = "0.02";
+/** Most line positions named in the SD-LINE-NET warning. */
+const MAX_LINES_NAMED = 5;
 
 /** Runs the checks of the module doc; findings in rule order, errors before warnings. */
 export function checkEInvoice(content: EInvoiceContent, facts: EInvoiceFacts): EInvoiceFinding[] {
@@ -76,6 +86,7 @@ export function checkEInvoice(content: EInvoiceContent, facts: EInvoiceFacts): E
   }
   checkRequiredTerms(content, facts, error);
   checkTotals(content, facts, error);
+  checkLineAmounts(content, facts, warning);
   checkVatBreakdown(content, error);
   checkIdentifiers(content, facts, error);
   checkPayment(content, error);
@@ -226,6 +237,39 @@ function checkTotals(content: EInvoiceContent, facts: EInvoiceFacts, error: Repo
       "The amount due (BT-115) does not equal BT-112 − BT-113 + BT-114",
     );
   }
+}
+
+/**
+ * SD-LINE-NET (review 2026-11, round 3): the totals and the VAT breakdown are checked against the
+ * stated line net amounts, but nothing compared a line net amount with the line's own quantity
+ * and price, so "2 × 10.00 = 200.00" went through. A warning, never an error: the import books
+ * the stated amounts, which the other rules tie to the totals, and a difference here is as often
+ * a sender's price rounding as a mistake. Only lines whose parts were all readable are checked
+ * (`linePricing`); the comparison is exact, without dividing:
+ * |(BT-131 − adjustment) × BT-149 − BT-129 × BT-146| ≤ tolerance × BT-149.
+ */
+function checkLineAmounts(content: EInvoiceContent, facts: EInvoiceFacts, warning: Report): void {
+  const { linePricing } = facts;
+  if (linePricing === undefined) return;
+  const off: number[] = [];
+  content.lines.forEach((line, index) => {
+    const pricing = linePricing[index];
+    if (pricing === undefined) return;
+    const stated = multiply(subtract(line.netAmount, pricing.adjustment), pricing.baseQuantity);
+    const computed = multiply(pricing.quantity, pricing.price);
+    const allowed = multiply(LINE_NET_TOLERANCE, pricing.baseQuantity);
+    if (!withinTolerance(stated, computed, allowed)) off.push(index + 1);
+  });
+  if (off.length === 0) return;
+  const named = off.slice(0, MAX_LINES_NAMED).join(", ");
+  const more = off.length > MAX_LINES_NAMED ? ` and ${off.length - MAX_LINES_NAMED} more` : "";
+  warning(
+    "SD-LINE-NET",
+    `On ${off.length} line(s) the net amount (BT-131) is not the quantity times the net price ` +
+      "(BT-129 × BT-146 ÷ BT-149) plus line charges minus line allowances: line position " +
+      `${named}${more}. The totals follow the stated line amounts; compare these lines with the ` +
+      "visual invoice before booking.",
+  );
 }
 
 function checkVatBreakdown(content: EInvoiceContent, error: Report): void {

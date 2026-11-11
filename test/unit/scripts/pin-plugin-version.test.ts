@@ -3,8 +3,11 @@
  * carries the release version; the repository's own files pass that check. The deploy templates
  * and the Dockerfile are checked here too: their image tags are bumped by release-please
  * (`x-release-please-version` markers, registered as generic extra-files), so a missing marker or
- * registration would leave a template on an old release. `pinPackageArgument` is tested with the
- * plugin (test/unit/plugin/plugin.test.ts).
+ * registration would leave a template on an old release. The same holds for an image tag in a
+ * Markdown document (docs/clients.md pinned `:1.0` while 1.2.0 was current; review 2026-11,
+ * round 3): a JSON snippet cannot carry a line comment, so it sits in a
+ * `x-release-please-start-version` … `x-release-please-end` block. `pinPackageArgument` is tested
+ * with the plugin (test/unit/plugin/plugin.test.ts).
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
@@ -29,6 +32,31 @@ function read(path: string): string {
 const packageJson = z
   .object({ name: z.string(), version: z.string(), mcpName: z.string() })
   .parse(JSON.parse(read("package.json")));
+
+/** What release-please's generic updater replaces on a line of scope `version`: the first x.y.z. */
+const RELEASE_PLEASE_VERSION = /\d+\.\d+\.\d+(?:-[\w.]+)?(?:\+[-\w.]+)?/;
+
+/**
+ * The indexes of the lines release-please's generic updater rewrites with the new version, by
+ * its rules (googleapis/release-please, src/updaters/generic.ts): a line that carries
+ * `x-release-please-version`, and every line after a `x-release-please-start-version` line up to
+ * and including the next `x-release-please-end` line.
+ */
+function releasePleaseVersionLines(lines: readonly string[]): Set<number> {
+  const updated = new Set<number>();
+  let inBlock = false;
+  lines.forEach((line, index) => {
+    if (line.includes("x-release-please-version")) {
+      updated.add(index);
+    } else if (inBlock) {
+      updated.add(index);
+      if (line.includes("x-release-please-end")) inBlock = false;
+    } else if (line.includes("x-release-please-start-version")) {
+      inBlock = true;
+    }
+  });
+  return updated;
+}
 
 /** A consistent set of release files at `version`, with `edit` applied to server.json. */
 function releaseFiles(
@@ -286,7 +314,51 @@ describe("deploy templates and the Dockerfile", () => {
       ).toContain(path);
     }
     for (const path of generic) {
-      expect(read(path), path).toContain("x-release-please-version");
+      expect(read(path), path).toMatch(/x-release-please-(?:start-)?version/);
+    }
+  });
+
+  it("the documents pin the image to this version, inside what release-please updates", () => {
+    const documents = [
+      ...readdirSync(ROOT).filter((name) => name.endsWith(".md") && name !== "CHANGELOG.md"),
+      ...readdirSync(join(ROOT, "docs"), { recursive: true, encoding: "utf8" })
+        .filter((entry) => entry.endsWith(".md"))
+        .map((entry) => `docs/${entry.split("\\").join("/")}`),
+    ];
+    // Any tag that starts with a digit, so a minor-line tag such as `:1.0` is caught too:
+    // release-please cannot keep one current (its `minor` scope rewrites one integer per line).
+    const anyNumericTag = new RegExp(`${IMAGE.replaceAll(".", String.raw`\.`)}:(\\d[\\w.+-]*)`);
+    const pinned = new Set<string>();
+    for (const path of documents) {
+      const lines = read(path).split("\n");
+      const updated = releasePleaseVersionLines(lines);
+      lines.forEach((line, index) => {
+        const tag = anyNumericTag.exec(line)?.[1];
+        if (tag === undefined) return;
+        pinned.add(path);
+        expect(tag, `${path}: ${line.trim()}`).toBe(packageJson.version);
+        expect(updated.has(index), `${path}: ${line.trim()} is not updated by release-please`).toBe(
+          true,
+        );
+      });
+    }
+    expect([...pinned].sort()).toEqual(["docs/clients.de.md", "docs/clients.md"]);
+    for (const path of pinned) {
+      expect(
+        generic,
+        `${path} must be a generic extra-file in release-please-config.json`,
+      ).toContain(path);
+    }
+  });
+
+  it("every line release-please rewrites carries this version", () => {
+    for (const path of generic) {
+      const lines = read(path).split("\n");
+      const versions = [...releasePleaseVersionLines(lines)]
+        .map((index) => RELEASE_PLEASE_VERSION.exec(lines[index] ?? "")?.[0])
+        .filter((version) => version !== undefined);
+      expect(versions.length, `${path} has no version on a marked line`).toBeGreaterThan(0);
+      expect([...new Set(versions)], path).toEqual([packageJson.version]);
     }
   });
 

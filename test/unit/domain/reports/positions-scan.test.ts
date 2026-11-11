@@ -557,6 +557,30 @@ describe("scanPositions", () => {
     expect(scan.notRead).toBe(2);
     expect(scan.unconvertible).toEqual([{ objectName: "Invoice", id: 99, number: "RE-99" }]);
     expect(progress.at(-1)).toEqual([4, 4, "Read the positions of 4 of 4 documents."]);
+    expect(scan.timedOut).toBe(false);
+  });
+
+  it("starts no position read after the time budget and returns what was read (fake clock)", async () => {
+    const invoices = Array.from({ length: 10 }, (_, index) => ({
+      row: invoiceDoc({ id: index + 1, date: "2026-03-05", net: "10", tax: "1.9" }),
+      positions: invoicePositions(index + 1, [{ rate: "19", net: "10", tax: "1.9" }]),
+    }));
+    const { client, headers } = await headersOf({ invoices });
+    // Every look at the clock is 30 s later: 0, 30 and 60 s are inside a 90 s budget, 90 s is not.
+    let clock = -30_000;
+    const now = (): number => (clock += 30_000);
+
+    const scan = await scanPositions(client, headers, { deadline: { at: 90_000, now } });
+
+    expect(scan.documents.map((doc) => doc.header.id)).toEqual([1, 2, 3]);
+    expect(scan.notRead).toBe(7);
+    expect(scan.timedOut).toBe(true);
+    expect(client.callsTo("/InvoicePos")).toHaveLength(3);
+
+    // Without a budget (stdio) the same scan reads everything.
+    const whole = await scanPositions(client, headers);
+    expect(whole.documents).toHaveLength(10);
+    expect(whole.timedOut).toBe(false);
   });
 
   it("stops with an aborted error when cancelled", async () => {
@@ -634,6 +658,18 @@ describe("exact helpers", () => {
     ).rejects.toThrow("boom");
     expect(started).toBe(2);
     await expect(mapLimited([], 4, () => Promise.resolve(1))).resolves.toEqual([]);
+  });
+
+  it("mapLimited with a stop returns the results of the items started before it", async () => {
+    let calls = 0;
+    const results = await mapLimited(
+      [1, 2, 3, 4, 5],
+      2,
+      (value) => Promise.resolve(value * 10),
+      undefined,
+      () => (calls += 1) > 3,
+    );
+    expect(results).toEqual([10, 20, 30]);
   });
 });
 
@@ -739,7 +775,8 @@ describe("payments", () => {
       contributions.map((c) =>
         c.share === undefined ? "all" : `${s(c.share.paid)}/${s(c.share.gross)}`,
       ),
-    ).toEqual(["59.5/119", "119/119", "119/119", "119/119", "-119/119"]);
+      // The share keeps the gross with its sign (document 3 has a negative gross).
+    ).toEqual(["59.5/119", "119/119", "119/-119", "119/119", "-119/119"]);
     const amounts = contributedAmounts(doc.groups[0] as never, contributions[0]?.share);
     expect([s(amounts.net), s(amounts.tax)]).toEqual(["50", "9.5"]);
     // A bounced debit takes back what its payment added.
@@ -747,6 +784,164 @@ describe("payments", () => {
     expect([s(bounced.net), s(bounced.tax)]).toEqual(["-100", "-19"]);
     const none = contributionsOf([whole], new Map());
     expect(none).toEqual([{ document: whole }]);
+  });
+
+  /** Net and tax a document contributes through its payments, per payment and in total. */
+  const contributed = (
+    document: Parameters<typeof contributionsOf>[0][number],
+    payments: readonly DocumentPayment[],
+  ) => {
+    const key = documentKey({
+      objectName:
+        document.header.kind === "voucher"
+          ? "Voucher"
+          : document.header.kind === "invoice"
+            ? "Invoice"
+            : "CreditNote",
+      id: document.header.id,
+    });
+    const parts = contributionsOf([document], new Map([[key, payments]])).map((c) =>
+      contributedAmounts(document.groups[0] as never, c.share),
+    );
+    return {
+      parts: parts.map((part) => [s(part.net), s(part.tax)]),
+      net: s(sumOf(parts.map((part) => part.net))),
+      tax: s(sumOf(parts.map((part) => part.tax))),
+    };
+  };
+
+  it("keeps the sign of a negative document that is refunded (invoice to the customer, voucher by the supplier)", () => {
+    // A negative invoice (net −100, tax −19): the customer gets 119 back, money against an
+    // invoice's usual direction, so `signedForDocument` is −119.
+    const negativeInvoice = {
+      header: header({
+        id: 7,
+        eur: { net: decimal(-100), tax: decimal(-19), gross: decimal(-119) },
+        gross: decimal(-119),
+      }),
+      groups: [{ rate: "19", net: decimal(-100), tax: decimal(-19), isAsset: false }],
+      positionsComplete: true,
+      adjusted: false,
+      derivedRate: false,
+    };
+    const refunded = contributed(negativeInvoice, [payment(7, "119", "EUR", "Invoice", "-119")]);
+    // Revenue and VAT go down by the document's amounts; they were +100 / +19 before the fix.
+    expect([refunded.net, refunded.tax]).toEqual(["-100", "-19"]);
+
+    // Half of it refunded: half of the negative amounts.
+    const half = contributed(negativeInvoice, [payment(7, "59.5", "EUR", "Invoice", "-59.5")]);
+    expect([half.net, half.tax]).toEqual(["-50", "-9.5"]);
+
+    // A negative expense voucher (a supplier's credit booked as a negative receipt): the supplier
+    // pays 59.50 back, money against an expense voucher's usual direction.
+    const negativeVoucher = {
+      header: header({
+        kind: "voucher",
+        id: 8,
+        direction: "expense",
+        eur: { net: decimal(-50), tax: decimal("-9.5"), gross: decimal("-59.5") },
+        gross: decimal("-59.5"),
+      }),
+      groups: [
+        {
+          rate: "19",
+          net: decimal(-50),
+          tax: decimal("-9.5"),
+          accountDatevId: 4266,
+          isAsset: false,
+        },
+      ],
+      positionsComplete: true,
+      adjusted: false,
+      derivedRate: false,
+    };
+    const supplierRefund = contributed(negativeVoucher, [
+      payment(8, "59.5", "EUR", "Voucher", "-59.5"),
+    ]);
+    expect([supplierRefund.net, supplierRefund.tax]).toEqual(["-50", "-9.5"]);
+
+    // The refund of a negative invoice bounces: nothing stays settled.
+    const bouncedRefund = contributed(negativeInvoice, [
+      payment(7, "119", "EUR", "Invoice", "-119"),
+      payment(7, "119", "EUR", "Invoice", "119"),
+    ]);
+    expect(bouncedRefund.parts).toEqual([
+      ["-100", "-19"],
+      ["100", "19"],
+    ]);
+    expect([bouncedRefund.net, bouncedRefund.tax]).toEqual(["0", "0"]);
+
+    // Unchanged: a positive invoice paid and then refunded in part.
+    const positive = {
+      ...negativeInvoice,
+      header: header({ id: 9 }),
+      groups: [{ rate: "19", net: decimal(100), tax: decimal(19), isAsset: false }],
+    };
+    const partRefund = contributed(positive, [
+      payment(9, "119"),
+      payment(9, "59.5", "EUR", "Invoice", "-59.5"),
+    ]);
+    expect([partRefund.net, partRefund.tax]).toEqual(["50", "9.5"]);
+  });
+
+  it("makes the payments of a fully settled document add up to its totals to the cent", () => {
+    const doc = {
+      header: header({ id: 5 }),
+      groups: [{ rate: "19", net: decimal(100), tax: decimal(19), isAsset: false }],
+      positionsComplete: true,
+      adjusted: false,
+      derivedRate: false,
+    };
+
+    // 119.00 in three payments: each rounded alone gave 33.34 × 2 + 33.33 = 100.01 net and
+    // 6.33 × 3 = 18.99 tax.
+    const three = contributed(doc, [payment(5, "39.67"), payment(5, "39.67"), payment(5, "39.66")]);
+    expect(three.parts).toEqual([
+      ["33.34", "6.33"],
+      ["33.33", "6.34"],
+      ["33.33", "6.33"],
+    ]);
+    expect([three.net, three.tax]).toEqual(["100", "19"]);
+
+    // A payment, its reversal and the replacement: what stays paid is the whole document.
+    const replaced = contributed(doc, [
+      payment(5, "39.67"),
+      payment(5, "39.67", "EUR", "Invoice", "-39.67"),
+      payment(5, "119"),
+    ]);
+    expect([replaced.net, replaced.tax]).toEqual(["100", "19"]);
+  });
+
+  it("fetches no document by id after the time budget and says which payments are missing", async () => {
+    const routes = [1, 2, 3].map((id) => ({
+      path: `/Invoice/${String(id)}`,
+      response: {
+        body: { objects: [invoiceDoc({ id, date: "2026-03-05", net: "10", tax: "1.9" })] },
+      },
+    }));
+    const client = new FakeSevdeskClient(routes);
+    let clock = -30_000;
+    const now = (): number => (clock += 30_000);
+
+    const paid = await collectPaidDocuments(
+      client,
+      {
+        payments: [payment(1, "1"), payment(2, "1"), payment(3, "1"), payment(3, "2")],
+        truncated: false,
+        notes: [],
+        transactionsScanned: 4,
+        transactionsRead: 4,
+      },
+      // The clock reads 0 s and 30 s (two fetches start), then 60 s: past the 45 s budget.
+      { accept: () => true, today: TODAY, deadline: { at: 45_000, now } },
+    );
+
+    expect(paid.headers.map((h) => h.id)).toEqual([1, 2]);
+    expect(paid.timedOut).toBe(true);
+    expect(paid.coverage).toEqual({ read: 4, used: 2, documentsFetched: 2, truncated: true });
+    expect(paid.notes.join(" ")).toContain("2 payment(s) were left out");
+    expect(paid.notes.join(" ")).toContain("time budget");
+    expect(client.callsTo("/Invoice/3")).toEqual([]);
   });
 
   it("caps the documents read by id and fetches them a few at a time", async () => {

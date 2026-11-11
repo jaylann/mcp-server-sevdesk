@@ -37,6 +37,7 @@ import { type DraftPreview, fact, type PreviewFact } from "./preview.js";
 import { checkTaxRuleRegime, checkTaxRuleUseCase, regimeReason, taxRuleLabel } from "./tax.js";
 import type { VoucherSavePlan } from "./voucher.js";
 import {
+  type AmountMode,
   assertUpdate2,
   checkVoucherAccounts,
   kindText,
@@ -57,6 +58,7 @@ import {
   storedRule,
   storedTotal,
   type StoredVoucher,
+  type StoredVoucherPosition,
 } from "./voucher-current.js";
 import {
   type SaveVoucherBody,
@@ -83,9 +85,15 @@ const FINALIZE_TEXT = {
     noNumber: "(none)",
     date: "Voucher date (Belegdatum)",
     noDate: "(none)",
+    delivery: "Service date or period (Leistungsdatum)",
+    deadline: "Payment deadline (Fälligkeit)",
     rule: "Tax rule (Steuerregel)",
     account: "account",
+    asset: ", asset (Anlagegut)",
     total: "Total",
+    receipt: "Receipt file (Belegdatei)",
+    receiptYes: "attached (its content is not shown here)",
+    receiptNo: "none attached",
   },
   de: {
     voucher: "Beleg",
@@ -95,11 +103,50 @@ const FINALIZE_TEXT = {
     noNumber: "(keine)",
     date: "Belegdatum",
     noDate: "(keins)",
+    delivery: "Leistungsdatum oder -zeitraum",
+    deadline: "Fälligkeit",
     rule: "Steuerregel",
     account: "Konto",
+    asset: ", Anlagegut",
     total: "Summe",
+    receipt: "Belegdatei",
+    receiptYes: "angehängt (ihr Inhalt wird hier nicht gezeigt)",
+    receiptNo: "keine angehängt",
   },
 } as const;
+
+/** The stored service date, or `from – until` when the period has an end; in `lang`'s notation. */
+function servicePeriod(
+  from: string | undefined,
+  until: string | undefined,
+  lang: PreviewLanguage,
+): string | undefined {
+  if (from !== undefined && (until === undefined || until === from)) return dateText(from, lang);
+  if (until === undefined) return undefined;
+  return `${from === undefined ? "?" : dateText(from, lang)} – ${dateText(until, lang)}`;
+}
+
+/**
+ * One position of the finalize preview: account, amount and rate (short values, cleaned and
+ * capped like every other fact), then the asset flag and the comment as stored. The comment is
+ * not cut: it is free text a `write` tool sets, and the human approves all of it
+ * (`displayPreview` removes invisible characters where the preview is shown).
+ */
+function positionFact(
+  label: string,
+  account: string,
+  row: StoredVoucherPosition,
+  mode: AmountMode,
+  lang: PreviewLanguage,
+): PreviewFact {
+  const head = fact(
+    label,
+    `${account}: ${storedPositionText({ ...row, comment: undefined }, mode, lang)}`,
+  ).value;
+  const asset = row.isAsset === true ? FINALIZE_TEXT[lang].asset : "";
+  const comment = nonBlank(row.comment)?.trim();
+  return { label, value: `${head}${asset}${comment === undefined ? "" : `; ${comment}`}` };
+}
 
 /**
  * Prepares the finalize of a draft voucher (50 → open 100): the stored voucher must be a complete
@@ -121,7 +168,7 @@ export async function prepareVoucherFinalize(
     );
   }
   const kind = checkDraft(stored, "finalized");
-  await assertUpdate2(client, signal);
+  await assertUpdate2(client, signal, options.cacheOwner);
   if (stored.positions.length === 0) {
     refuse(
       `Voucher ${String(id)} has no positions. Add them with sevdesk_voucher_update_draft first.`,
@@ -161,6 +208,7 @@ export async function prepareVoucherFinalize(
   const mode = storedAmountMode(stored.positions);
   const facts = (lang: PreviewLanguage): PreviewFact[] => {
     const t = FINALIZE_TEXT[lang];
+    const period = servicePeriod(stored.dates.deliveryDate, stored.dates.deliveryDateUntil, lang);
     return [
       fact(t.voucher, `${String(id)}, ${t.draft}`),
       fact(t.kind, kindText(kind, lang)),
@@ -175,15 +223,29 @@ export async function prepareVoucherFinalize(
           ? t.noDate
           : dateText(stored.dates.voucherDate, lang),
       ),
+      // Everything else sevdesk_voucher_update_draft writes without confirmation is listed too
+      // (review 2026-11, round 3): the service period, the payment deadline, each position's
+      // asset flag and whole comment, and whether a receipt file is attached. Dates sevDesk
+      // does not store are left out, so the preview changes only when the voucher does.
+      ...(period === undefined ? [] : [fact(t.delivery, period)]),
+      ...(stored.dates.paymentDeadline === undefined
+        ? []
+        : [fact(t.deadline, dateText(stored.dates.paymentDeadline, lang))]),
       fact(t.rule, taxRuleLabel(rule)),
       ...stored.positions.map((row, index) =>
-        fact(
+        positionFact(
           `Position ${String(index + 1)}`,
-          `${(lang === "de" ? accounts.labelsDe : accounts.labels).get(row.accountDatev?.id ?? 0) ?? t.account}: ` +
-            storedPositionText(row, mode, lang),
+          (lang === "de" ? accounts.labelsDe : accounts.labels).get(row.accountDatev?.id ?? 0) ??
+            t.account,
+          row,
+          mode,
+          lang,
         ),
       ),
       fact(t.total, storedTotal(stored, lang)),
+      ...(stored.hasDocument === undefined
+        ? []
+        : [fact(t.receipt, stored.hasDocument ? t.receiptYes : t.receiptNo)]),
       fact(
         "Status",
         `${t.draft} ${String(VOUCHER_DRAFT_STATUS)} → ${t.open} ${String(VOUCHER_OPEN_STATUS)}`,
@@ -234,10 +296,10 @@ export async function prepareVoucherFinalize(
       warnings: inLanguage(warnings, lang),
       irreversible: false,
     })),
-    // The approval covers the exact save payload and the stored voucher, positions included: the
-    // preview leaves out dates such as the delivery date and the payment deadline, and a draft
-    // changed after the human was asked must be asked about again (security review 2026-11,
-    // wave 2).
+    // The approval covers the exact save payload and the stored voucher, positions included: a
+    // draft changed after the human was asked must be asked about again, also in what the
+    // preview does not show, such as the cost centre or which file is attached (security review
+    // 2026-11, wave 2).
     binding: sha256Hex(canonicalJson({ body, record: stored.record, positions: stored.positions })),
     state: {
       body,

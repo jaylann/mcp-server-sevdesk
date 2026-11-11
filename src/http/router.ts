@@ -10,7 +10,9 @@
  * 6. at most {@link DEFAULT_MAX_PER_CLIENT} requests at once per client (429);
  * 7. the route's Origin policy (403);
  * 8. on an {@link AuthenticatedRoute} (`/mcp`), authentication on the headers alone: a client
- *    without valid credentials never gets to send a body;
+ *    without valid credentials never gets to send a body; then at most
+ *    {@link DEFAULT_MAX_PER_ACCOUNT} requests at once per account (429), so one account spread
+ *    over many addresses cannot take every handler slot;
  * 8a. the route's `preflight` (e.g. the upload page's session and ticket checks), also on the
  *    headers alone; it may name the key its body slot counts under (e.g. the account);
  * 8b. for a request with a body, the route's `bodySlots` caps (requests with a body on this route
@@ -20,7 +22,9 @@
  *    that stalls or trickles);
  * 10. at most {@link DEFAULT_MAX_IN_FLIGHT} requests being handled (503 beyond). Only requests
  *    whose body has arrived count here, so slow uploads cannot starve the server; they are bounded
- *    per client by step 6 and in time by step 9;
+ *    per client by step 6 and in time by step 9. An authenticated route may use all but
+ *    {@link RESERVED_SHARE} of these slots: the rest stays free for the other routes (token
+ *    refresh, sign-in, the approval inbox, the file pages) when `/mcp` is saturated;
  * 11. the handler, under a per-request deadline ({@link DEFAULT_DEADLINE_MS}) and the client's
  *    disconnect signal.
  *
@@ -33,6 +37,7 @@
  */
 import type { AuthInfo } from "@modelcontextprotocol/server";
 
+import { grantOf } from "../accounts/types.js";
 import { clientIp, rateLimitKey } from "./client-ip.js";
 import {
   badRequest,
@@ -47,6 +52,7 @@ import {
   requestTimeout,
   serverError,
   serviceUnavailable,
+  tooManyAccountRequests,
   tooManyConcurrentRequests,
   tooManyRequests,
   withSecurityHeaders,
@@ -69,8 +75,22 @@ export const HEALTHZ_PATH = "/healthz";
 const DEFAULT_MAX_IN_FLIGHT = 64;
 /** Most requests of one client in progress at once, from admission to the end of the response. */
 const DEFAULT_MAX_PER_CLIENT = 8;
-/** Longest a request body may take to arrive (408 beyond); Node's own limit is 30 s. */
-const DEFAULT_BODY_TIMEOUT_MS = 15_000;
+/**
+ * Most requests of one account in progress at once on an authenticated route, from authentication
+ * to the end of the response. The per-client cap counts addresses, and one account can come from
+ * many: without this cap a single account could hold every handler slot (review 2026-11, round 3).
+ */
+const DEFAULT_MAX_PER_ACCOUNT = 8;
+/**
+ * The share of the handler slots an authenticated route cannot use, as a divisor: one eighth (8 of
+ * the default 64).
+ */
+const RESERVED_SHARE = 8;
+/**
+ * Longest a request body may take to arrive (408 beyond), unless the route sets its own time.
+ * Node's own limit is set above the longest of these (`requestTimeoutMs` in `serve.ts`).
+ */
+export const DEFAULT_BODY_TIMEOUT_MS = 15_000;
 /** Longest a request may take before its signal aborts and it is answered 503. */
 const DEFAULT_DEADLINE_MS = 120_000;
 
@@ -94,6 +114,16 @@ function isAuthenticated(route: HttpRoute): route is AuthenticatedRoute {
   return "authenticator" in route && route.authenticator !== undefined;
 }
 
+/**
+ * What the per-account cap counts a request under: the sevDesk account of its grant (every grant
+ * and address of the account together), or, without a grant (bearer mode serves one account), the
+ * `clientId`. Never logged.
+ */
+function accountKey(auth: AuthInfo): string {
+  const grant = grantOf(auth);
+  return grant === undefined ? `client:${auth.clientId}` : `account:${grant.accountId}`;
+}
+
 export interface RouterOptions {
   readonly http: Pick<HttpConfig, "allowedHosts" | "allowedOrigins" | "trustProxy">;
   /**
@@ -109,6 +139,17 @@ export interface RouterOptions {
   readonly maxInFlight?: number;
   /** Cap on one client's requests in progress (default 8). */
   readonly maxPerClient?: number;
+  /**
+   * Cap on one account's requests in progress on an authenticated route (default 8). The account
+   * is the grant's sevDesk account; without a grant (bearer mode: one account) the `clientId`
+   * of the `AuthInfo`.
+   */
+  readonly maxPerAccount?: number;
+  /**
+   * Handler slots of `maxInFlight` that authenticated routes cannot use (default: an eighth of
+   * `maxInFlight`, rounded down; 8 of 64). At least 0 and below `maxInFlight`.
+   */
+  readonly reservedInFlight?: number;
   /** Time a request body may take to arrive (default 15 s). */
   readonly bodyTimeoutMs?: number;
   readonly deadlineMs?: number;
@@ -168,6 +209,18 @@ export function createRouter(options: RouterOptions): Router {
   const limiter = options.limiter ?? createRateLimiter({ now });
   const maxInFlight = options.maxInFlight ?? DEFAULT_MAX_IN_FLIGHT;
   const maxPerClient = options.maxPerClient ?? DEFAULT_MAX_PER_CLIENT;
+  const maxPerAccount = options.maxPerAccount ?? DEFAULT_MAX_PER_ACCOUNT;
+  const reservedInFlight = options.reservedInFlight ?? Math.floor(maxInFlight / RESERVED_SHARE);
+  if (!(Number.isInteger(maxPerAccount) && maxPerAccount >= 1)) {
+    throw new RangeError("maxPerAccount must be a positive integer.");
+  }
+  if (!(
+    Number.isInteger(reservedInFlight) &&
+    reservedInFlight >= 0 &&
+    reservedInFlight < maxInFlight
+  )) {
+    throw new RangeError("reservedInFlight must be an integer from 0 to below maxInFlight.");
+  }
   const bodyTimeoutMs = options.bodyTimeoutMs ?? DEFAULT_BODY_TIMEOUT_MS;
   const deadlineMs = options.deadlineMs ?? DEFAULT_DEADLINE_MS;
   const { log } = options;
@@ -180,6 +233,8 @@ export function createRouter(options: RouterOptions): Router {
   let handling = 0;
   /** Requests in progress per client key. */
   const perClient = new Map<string, number>();
+  /** Authenticated requests in progress per account key. */
+  const perAccount = new Map<string, number>();
   /** Requests with a body in progress per route with `bodySlots`. */
   const bodies = new Map<HttpRoute, number>();
   /** The same per slot key, on routes with `bodySlots.perKey`. */
@@ -264,6 +319,7 @@ export function createRouter(options: RouterOptions): Router {
     let handlingSlot = false;
     let bodySlot = false;
     let bodySlotKey: string | undefined;
+    let accountSlot: string | undefined;
     const deadline = new AbortController();
     const timer = setTimeout(() => {
       deadline.abort(new Error(`The request exceeded ${String(deadlineMs / 1000)} s.`));
@@ -277,6 +333,11 @@ export function createRouter(options: RouterOptions): Router {
       if (handlingSlot) handling -= 1;
       if (bodySlot) bodies.set(route, (bodies.get(route) ?? 1) - 1);
       if (bodySlotKey !== undefined) releaseKeyed(route, bodySlotKey);
+      if (accountSlot !== undefined) {
+        const left = (perAccount.get(accountSlot) ?? 1) - 1;
+        if (left <= 0) perAccount.delete(accountSlot);
+        else perAccount.set(accountSlot, left);
+      }
       release(clientKey);
     };
     const signal = AbortSignal.any([incoming.signal, deadline.signal, shutdown.signal]);
@@ -306,6 +367,12 @@ export function createRouter(options: RouterOptions): Router {
         if (auth instanceof Response) return answered(auth);
         auths.set(ctx, auth);
         annotateRequest(ctx, principalLogFields(auth));
+        // Counted before the body is read: a refused request never gets to send one.
+        const account = accountKey(auth);
+        const inProgress = perAccount.get(account) ?? 0;
+        if (inProgress >= maxPerAccount) return answered(tooManyAccountRequests());
+        perAccount.set(account, inProgress + 1);
+        accountSlot = account;
       }
 
       let slotKey = "";
@@ -350,7 +417,10 @@ export function createRouter(options: RouterOptions): Router {
         if (!(read instanceof Uint8Array)) return answered(bodyTooSlow(read));
         body = read.byteLength > 0 ? read : null;
       }
-      if (handling >= maxInFlight) {
+      // An authenticated route leaves the reserved slots to the other routes, so token refresh,
+      // sign-in and the pages stay reachable while `/mcp` is saturated (review 2026-11, round 3).
+      const handlingCap = isAuthenticated(route) ? maxInFlight - reservedInFlight : maxInFlight;
+      if (handling >= handlingCap) {
         return answered(serviceUnavailable("The server is busy; retry shortly."));
       }
       handling += 1;

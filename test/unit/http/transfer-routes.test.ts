@@ -7,6 +7,7 @@ import { createBrowserSession, type InboxLogin } from "../../../src/http/browser
 import { createServerKeys } from "../../../src/http/keys.js";
 import { createRateLimiter } from "../../../src/http/rate-limit.js";
 import { createRouter } from "../../../src/http/router.js";
+import { requestTimeoutMs } from "../../../src/http/serve.js";
 import { contentDisposition, kindList } from "../../../src/http/transfer-pages.js";
 import {
   atMostDelimiters,
@@ -203,6 +204,9 @@ describe("transfer routes: declaration", () => {
     expect(FILES_RATE).toEqual({ name: "files", perMinute: 60 });
     expect(UPLOAD_RATE_MINUTE).toEqual({ name: "uploads", perMinute: 10 });
     expect(UPLOAD_RATE_HOUR).toEqual({ name: "uploads-hour", perMinute: 1, burst: 60 });
+    // Node's request timeout leaves the upload its whole 90 s (it cut it at 30 s; review
+    // 2026-11, round 3).
+    expect(requestTimeoutMs(transfer)).toBe(120_000);
     const head = new Request(`${ORIGIN}/uploads/x`, { method: "POST" });
     const busy = transfer[0]?.bodySlots?.busy?.("route", head);
     expect(busy?.status).toBe(503);
@@ -782,12 +786,42 @@ describe("transfer routes: many-part forms (security review 2026-11, finding 2)"
     vi.restoreAllMocks();
   });
 
+  /**
+   * Both ways the platform parses a multipart body. The route parses through a `Response`; a
+   * spy on that alone would not notice the route going back to `request.formData()` (review
+   * 2026-11, round 3).
+   */
+  function formParsers() {
+    return {
+      ofResponse: vi.spyOn(Response.prototype, "formData"),
+      ofRequest: vi.spyOn(Request.prototype, "formData"),
+    };
+  }
+
+  it("parses a well-formed upload once, through the checked copy and never the raw request", async () => {
+    // The control for the two tests below: the spies do see the route's parser.
+    const env = await setup();
+    const ticket = env.store.createTicket(A1, "receipt");
+    const browser = await signedIn(env);
+    const page = await browser.get(`/uploads/${ticket.id}`);
+    const parse = formParsers();
+
+    const response = await upload(env, browser, `/uploads/${ticket.id}`, [
+      ["csrf", csrfOf(page.body) ?? ""],
+      ["file", { name: "a.pdf", bytes: PDF }],
+    ]);
+
+    expect(response.status).toBe(200);
+    expect(parse.ofResponse).toHaveBeenCalledTimes(1);
+    expect(parse.ofRequest).not.toHaveBeenCalled();
+  });
+
   it("refuses a form of many empty parts before parsing it", async () => {
     const env = await setup();
     const ticket = env.store.createTicket(A1, "receipt");
     const browser = await signedIn(env);
     const page = await browser.get(`/uploads/${ticket.id}`);
-    const parse = vi.spyOn(Response.prototype, "formData");
+    const parse = formParsers();
     const empties = Array.from(
       { length: 2000 },
       () => ["file", { name: "", bytes: Buffer.alloc(0) }] as const,
@@ -799,7 +833,8 @@ describe("transfer routes: many-part forms (security review 2026-11, finding 2)"
     ]);
 
     expect(response.status).toBe(400);
-    expect(parse).not.toHaveBeenCalled();
+    expect(parse.ofResponse).not.toHaveBeenCalled();
+    expect(parse.ofRequest).not.toHaveBeenCalled();
     expect(env.store.ticketFor(ticket.id, "1001")).toMatchObject({ status: "pending" });
   });
 
@@ -835,7 +870,7 @@ describe("transfer routes: many-part forms (security review 2026-11, finding 2)"
     const ticket = env.store.createTicket(A1, "receipt");
     const browser = await signedIn(env);
     const page = await browser.get(`/uploads/${ticket.id}`);
-    const parse = vi.spyOn(Response.prototype, "formData");
+    const parse = formParsers();
     const part = (name: string) =>
       `--${delimiter}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\nv\r\n`;
     const body = Buffer.from(
@@ -859,7 +894,8 @@ describe("transfer routes: many-part forms (security review 2026-11, finding 2)"
     );
 
     expect(response.status).toBe(400);
-    expect(parse).not.toHaveBeenCalled();
+    expect(parse.ofResponse).not.toHaveBeenCalled();
+    expect(parse.ofRequest).not.toHaveBeenCalled();
     expect(env.store.ticketFor(ticket.id, "1001")).toMatchObject({ status: "pending" });
   });
 

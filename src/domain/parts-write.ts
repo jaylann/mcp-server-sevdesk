@@ -16,12 +16,12 @@
  */
 import { z } from "zod";
 
+import type { ConfirmationFact, ConfirmationPreview } from "../safety/write-types.js";
 import { expectSingle } from "../sevdesk/envelope.js";
 import { type CompletedWrite, SevdeskError, withCompletedWrites } from "../sevdesk/errors.js";
 import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
 import { parseUpstream, zId } from "../sevdesk/schema.js";
 import type { SevdeskClient } from "../sevdesk/types.js";
-import type { ConfirmationFact, ConfirmationPreview } from "../tools/types.js";
 import { cleanText } from "./common.js";
 import {
   add,

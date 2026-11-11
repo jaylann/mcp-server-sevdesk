@@ -67,9 +67,16 @@ approval its own grant created, so one connection cannot use another's approval,
 same account. The inbox lists and decides per account: a session for account A sees all of A's
 approvals and nothing else. Approvals still bind tool, argument hash and preview hash, expire after
 10 minutes and are used once (ADR 0003). At most 5 approvals per account wait at once; an account
-keeps at most 20 records and makes room only among its own, so one account can never push out
-another's approved request. The elicitation codec binds the same principal, so a `requestState` issued to one account is
-refused for another.
+keeps at most 20 records and makes room only among its own. The store keeps 100 records in all.
+When it is full, room comes only from an account that holds more records than the one asking: the
+largest such account that has a rejected (else waiting) record gives up its oldest, and when only
+approved, unused records are left, the largest gives up its oldest approved one; its owner is
+asked again on the retry, as after an expiry. An account that holds the most itself makes room
+among its own. So no account loses a record to one that holds as many or more. (Until the review
+of 2026-11, round 3, an approved record was never dropped for another account and creating was
+refused instead: five accounts with 20 unused approvals each then locked every other account
+out.) The elicitation codec binds the same principal, so a `requestState` issued to one account
+is refused for another.
 
 **Code layout.** ADR 0003's approval server is split into a transport-agnostic store
 (`src/safety/approval-store.ts`), the local page (`approval-local.ts`) and the inbox routes; the
@@ -92,6 +99,9 @@ HTML helpers are shared (`src/safety/web.ts`, `approval-page.ts`).
   approvals. They hold the account's token anyway.
 - Bad: a session lasts up to 12 hours on that browser. A shared computer should sign out.
 - Bad: pending approvals live in memory: a restart voids them, and the model asks again.
+- Bad: with the store full, an account that holds the most records can lose an approved, unused
+  request to an account that holds fewer, and is asked again. Filling the store against one
+  account takes about as many other accounts as the store has room (100), each with a record.
 
 ## Alternatives considered
 

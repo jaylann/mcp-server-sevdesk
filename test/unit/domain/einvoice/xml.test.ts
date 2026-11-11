@@ -5,6 +5,7 @@ import {
   attribute,
   child,
   childrenNamed,
+  elementsOf,
   hasWideByteOrderMark,
   MAX_XML_DEPTH,
   parseXmlDocument,
@@ -22,7 +23,7 @@ describe("parseXmlDocument", () => {
     const document = parseXmlDocument(
       utf8(
         '<?xml version="1.0" encoding="UTF-8"?>\n' +
-          '<rsm:Root xmlns:rsm="urn:example:root" xmlns:ram="urn:example:ram" rsm:kind="a&amp;b">' +
+          '<rsm:Root xmlns:rsm="urn:example:root" xmlns:ram="urn:example:ram" kind="a&amp;b">' +
           "<!-- a comment --><?pi data?>" +
           "<ram:Name>Station&amp;Service &lt;AG&gt; &#228;&#xFC; &quot;x&quot; &apos;y&apos; &unknown;</ram:Name>" +
           "<ram:Raw><![CDATA[&amp; <kept>]]></ram:Raw>" +
@@ -63,6 +64,88 @@ describe("parseXmlDocument", () => {
     expect(document.namespace).toBe("urn:x");
     expect(document.root.prefix).toBeUndefined();
     expect(parseXmlDocument(utf8("<a/>")).namespace).toBeUndefined();
+  });
+
+  it("resolves the namespace of every element from the declarations in scope", () => {
+    const { root } = parseXmlDocument(
+      utf8(
+        '<Root xmlns="urn:default" xmlns:a="urn:a">' +
+          "<Plain/><a:Prefixed/>" +
+          // A declaration counts for its own element and everything below, not for siblings.
+          '<a:Rebound xmlns:a="urn:other"><a:Inner/><Plain/></a:Rebound><a:After/>' +
+          // `xmlns=""` takes the default namespace away; an undeclared prefix has none.
+          '<None xmlns=""><Below/></None><b:Undeclared/>' +
+          '<c:Late xmlns:c=" urn:c "/>' +
+          "</Root>",
+      ),
+    );
+    const namespaces = (element: typeof root): unknown[] =>
+      element.children.map((entry) => [entry.name, entry.namespace]);
+    expect(root.namespace).toBe("urn:default");
+    expect(namespaces(root)).toEqual([
+      ["Plain", "urn:default"],
+      ["Prefixed", "urn:a"],
+      ["Rebound", "urn:other"],
+      ["After", "urn:a"],
+      ["None", undefined],
+      ["Undeclared", undefined],
+      ["Late", "urn:c"],
+    ]);
+    expect(namespaces(child(root, "Rebound") ?? root)).toEqual([
+      ["Inner", "urn:other"],
+      ["Plain", "urn:default"],
+    ]);
+    expect(namespaces(child(root, "None") ?? root)).toEqual([["Below", undefined]]);
+  });
+
+  it("drops attributes with a prefix, so none can stand in for a plain one", () => {
+    const { root } = parseXmlDocument(
+      utf8(
+        '<Amount xmlns:x="urn:x" xmlns:xsi="urn:xsi" x:currencyID="EUR" currencyID="USD" ' +
+          'xsi:type="t" xml:lang="de">1</Amount>',
+      ),
+    );
+    expect(root.attributes).toEqual({ currencyID: "USD" });
+    const { root: only } = parseXmlDocument(
+      utf8('<Amount xmlns:x="urn:x" x:currencyID="EUR">1</Amount>'),
+    );
+    expect(attribute(only, "currencyID")).toBeUndefined();
+  });
+
+  it("keeps only the elements of a syntax (elementsOf)", () => {
+    const { root } = parseXmlDocument(
+      utf8(
+        '<r:Root xmlns:r="urn:root" xmlns:f="urn:fields" xmlns:x="urn:foreign">' +
+          "<x:Code>foreign first</x:Code><f:Code>real</f:Code>" +
+          "<x:Group><f:Code>inside a foreign group</f:Code></x:Group>" +
+          "<f:Group><x:Code>foreign inside</x:Code><f:Code>inner</f:Code></f:Group>" +
+          "</r:Root>",
+      ),
+    );
+    // Without the filter the first element of that local name wins, whatever its namespace.
+    expect(textAt(root, "Code")).toBe("foreign first");
+    const fields = elementsOf(root, (_name, namespace) => namespace === "urn:fields");
+    expect(textAt(fields, "Code")).toBe("real");
+    expect(childrenNamed(fields, "Group")).toHaveLength(1);
+    expect(textAt(fields, "Group", "Code")).toBe("inner");
+    expect(fields.children.map((entry) => entry.name)).toEqual(["Code", "Group"]);
+    // The copy is new; the parsed tree is unchanged.
+    expect(root.children).toHaveLength(4);
+  });
+
+  it("resolves many declarations without copying them for every element", () => {
+    // 20,000 declarations on the root and 20,000 children that each declare one more: a merged
+    // map per element would be 400 million entries.
+    const declarations = Array.from(
+      { length: 20_000 },
+      (_unused, index) => ` xmlns:p${String(index)}="urn:${String(index)}"`,
+    ).join("");
+    const children = '<p7:C xmlns:q="urn:q"/>'.repeat(20_000);
+    const started = performance.now();
+    const { root } = parseXmlDocument(utf8(`<Root${declarations}>${children}</Root>`));
+    expect(root.children).toHaveLength(20_000);
+    expect(root.children.at(-1)?.namespace).toBe("urn:7");
+    expect(performance.now() - started).toBeLessThan(5000);
   });
 
   it.each([

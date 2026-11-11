@@ -8,8 +8,8 @@
  */
 import { z } from "zod";
 
-import type { ConfirmationPreview } from "../tools/types.js";
 import { sanitizeUntrusted } from "./fence.js";
+import type { ConfirmationPreview } from "./write-types.js";
 
 /**
  * Caps for the one-line parts after sanitizing (code points). They are trusted text written in

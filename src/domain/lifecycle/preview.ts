@@ -186,9 +186,14 @@ const LABELS = {
 /**
  * The facts that identify a document, most important first. Absent values are left out, so the
  * list (and with it the preview) only changes when the document does. Both languages give the
- * same facts in the same order.
+ * same facts in the same order. `afterParty` are facts placed right after the customer: the
+ * address printed on the document, which can differ from the customer (`content.ts`).
  */
-export function documentFacts(doc: LifecycleDocument, lang: PreviewLanguage = "en"): Fact[] {
+export function documentFacts(
+  doc: LifecycleDocument,
+  lang: PreviewLanguage = "en",
+  afterParty: readonly Fact[] = [],
+): Fact[] {
   const info = KINDS[doc.kind];
   const t = LABELS[lang];
   const german = lang === "de";
@@ -215,6 +220,7 @@ export function documentFacts(doc: LifecycleDocument, lang: PreviewLanguage = "e
     add(t.kind, directionText(doc.direction, lang));
   }
   add(partyLabel(doc, lang), partyText(doc, lang));
+  facts.push(...afterParty);
   add(t.date, doc.date === undefined ? undefined : dateText(doc.date, lang));
   add(t.dueDate, doc.dueDate === undefined ? undefined : dateText(doc.dueDate, lang));
   const { net, tax, gross } = doc.totals;

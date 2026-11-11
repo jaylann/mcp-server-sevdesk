@@ -40,6 +40,7 @@ describe("USTVA_LINES (USt 1 A 2026)", () => {
       "45": 36,
       "66": 38,
       "61": 39,
+      "62": 40,
       "67": 41,
     });
   });
@@ -51,7 +52,9 @@ describe("USTVA_LINES (USt 1 A 2026)", () => {
     expect(ustvaLine("84")).toMatchObject({ taxKz: "85", side: "output" });
     expect(ustvaLine("81")).toMatchObject({ taxOnForm: "computed", rate: "19" });
     expect(ustvaLine("86")).toMatchObject({ taxOnForm: "computed", rate: "7" });
-    for (const key of ["66", "61", "67"] as const) {
+    // Kz 62 (import VAT, Zeile 40) sits between Kz 61 and Kz 67 on the form.
+    expect(ustvaLine("62").labelDe).toContain("Einfuhrumsatzsteuer");
+    for (const key of ["66", "61", "62", "67"] as const) {
       expect(ustvaLine(key)).toMatchObject({ taxKz: key, taxOnForm: "tax_only", side: "input" });
       expect(ustvaLine(key).baseKz).toBeUndefined();
     }
@@ -93,7 +96,8 @@ describe("ustvaTarget: every tax rule", () => {
     [5, "60", undefined, "supply"],
     [11, "48", undefined, "supply"],
     [17, "45", undefined, "supply"],
-    [21, "21", "S", "invoice_or_next_month"],
+    // § 18b services count when they are performed (§ 18b Satz 3 UStG), unlike goods (rule 3).
+    [21, "21", "S", "supply"],
   ] as const)("revenue rule %i → Kz %s", (rule, line, zm, timing) => {
     const target = ustvaTarget(rule, "revenue", "0");
     expect(target).toMatchObject({ kind: "line", line, cashBasis: false, timing });

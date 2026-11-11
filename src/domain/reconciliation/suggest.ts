@@ -169,12 +169,18 @@ function classifyInvoice(row: InvoiceRowLike): Classified {
   if (code === "SR" || code === "WKR" || code === "MA") return "notPayable";
   const status = row.status.code;
   if (status !== 200 && status !== 750) return "notPayable";
-  // Invoices report `paid` in EUR only (D-043); a foreign-currency invoice counts only while
-  // nothing is paid, as in `openAmount`.
-  let paid: string;
-  if (row.currency === DEFAULT_CURRENCY) paid = row.paid?.amount ?? "0";
-  else if (status === 200) paid = "0";
-  else return "openUnknown";
+  // The same rules as `openAmount` (`lifecycle/payments.ts`), which guards the booking: a
+  // suggestion must not name an open amount the booking would refuse to trust.
+  const paidRaw = row.paid?.amount;
+  // The invoice list leaves `paid` out for foreign-currency invoices (its currency is
+  // undocumented, D-043), so such an invoice counts only while it is open: nothing paid yet.
+  if (row.currency !== DEFAULT_CURRENCY && status !== 200) return "openUnknown";
+  // A negative paid amount is the trace of a wrongly signed booking (D-041).
+  if (paidRaw !== undefined && compare(paidRaw, 0) < 0) return "openUnknown";
+  // Partially paid without a paid amount: how much is open is not known. Reading the missing
+  // amount as 0 suggested the whole gross as the "exact open amount" (review 2026-11, round 3).
+  if (paidRaw === undefined && status === 750) return "openUnknown";
+  const paid = paidRaw ?? "0";
   return candidate(
     {
       kind: "invoice",

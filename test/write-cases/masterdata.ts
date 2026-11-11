@@ -176,6 +176,9 @@ export const MASTERDATA_CASES: readonly WriteToolCase[] = [
       UNITS,
       { path: "/Invoice", query: { "origin[id]": 1004, "contact[id]": 1001 }, response: EMPTY },
       { path: "/CreditNote", query: { "contact[id]": 1001 }, response: EMPTY },
+      // All credit notes, without a filter: after the counter is moved on, the check whether an
+      // older credit note carries the new draft's number already (a lagging counter).
+      { path: "/CreditNote", response: EMPTY },
       {
         method: "POST",
         path: "/CreditNote/Factory/createFromInvoice",

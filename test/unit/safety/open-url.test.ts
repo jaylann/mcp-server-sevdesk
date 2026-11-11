@@ -5,7 +5,8 @@ import { describe, expect, it } from "vitest";
 
 import { openerCommand, openInBrowser } from "../../../src/safety/open-url.js";
 
-const URL = `http://127.0.0.1:51234/approve/${"A".repeat(43)}`;
+/** A launch link as the local approval server hands it to the opener. */
+const URL = `http://127.0.0.1:51234/open/${"A".repeat(43)}`;
 
 interface Spawned {
   readonly command: string;
@@ -89,5 +90,20 @@ describe("openInBrowser", () => {
     const { spawn } = fakeSpawn();
 
     expect(await openInBrowser(URL, { platform: "linux", spawn, settleMs: 5 })).toBe(true);
+  });
+
+  // Review 2026-11, round 3: a command line is readable by other local users, so only the
+  // single-use launch link may be put on one.
+  it.each([
+    ["the approval page's own address", `http://127.0.0.1:51234/approve/${"A".repeat(43)}`],
+    ["a launch link of another host", `http://localhost:51234/open/${"A".repeat(43)}`],
+    ["a launch link with a query", `http://127.0.0.1:51234/open/${"A".repeat(43)}?x=1`],
+    ["something cmd would interpret", `http://127.0.0.1:51234/open/${"A".repeat(43)}&calc`],
+    ["a file", "file:///etc/passwd"],
+  ])("starts no opener for %s", async (_label, url) => {
+    const { spawn, spawned } = fakeSpawn((child) => child.emit("exit", 0));
+
+    expect(await openInBrowser(url, { platform: "win32", spawn })).toBe(false);
+    expect(spawned).toEqual([]);
   });
 });

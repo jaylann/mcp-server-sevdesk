@@ -44,17 +44,26 @@
  */
 import { z } from "zod";
 
+import type {
+  ConfirmationFact,
+  ConfirmationPreview,
+  SevdeskObjectRef,
+} from "../safety/write-types.js";
 import { berlinDateOf } from "../sevdesk/dates.js";
 import { expectSingle } from "../sevdesk/envelope.js";
 import { type CompletedWrite, SevdeskError, withCompletedWrites } from "../sevdesk/errors.js";
 import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
 import { parseUpstream, zId, zIntish, zOptionalRef, zText } from "../sevdesk/schema.js";
 import type { QueryValue, SevdeskClient } from "../sevdesk/types.js";
-import type { ConfirmationFact, ConfirmationPreview, SevdeskObjectRef } from "../tools/types.js";
 import { cleanText } from "./common.js";
 import { type CreditNoteDetails, getCreditNote } from "./credit-notes.js";
 import type { DocumentTotals } from "./document-positions.js";
-import { peekNextNumber, quotableNumber, reserveNextNumber } from "./drafts/numbering.js";
+import {
+  findCreditNotesWithNumber,
+  peekNextNumber,
+  quotableNumber,
+  reserveNextNumber,
+} from "./drafts/numbering.js";
 import {
   getInvoice,
   type InvoiceDetail,
@@ -510,18 +519,28 @@ export async function executeCreditNoteFromInvoice(
       : ["it does not refer to the invoice it was created from"],
     affected,
   );
-  const notes = await advanceCreditNoteCounter(client, details.creditNote.number, signal);
+  const notes = await advanceCreditNoteCounter(
+    client,
+    creditNoteId,
+    details.creditNote.number,
+    signal,
+  );
   return { details, affected, notes };
 }
 
 /**
  * After `createFromInvoice`: when the credit note counter still offers the new draft's number
  * (peek, `useNextNumber=false`), reserves it once (`useNextNumber=true`, a write-tier side-effect
- * GET) so that the next credit note cannot get the same number. The credit note exists already,
- * so a failure here never fails the call: it becomes a trusted note. Returns the notes.
+ * GET) so that the next credit note cannot get the same number. When the counter offers another
+ * number, someone moved it since the draft got its number (the tools of this server run one at a
+ * time on the number range, so that is the web app or another client), and whoever did may have
+ * taken the same number: the credit notes are then checked for it ({@link sameNumberNotes}). The
+ * credit note exists already, so a failure here never fails the call: it becomes a trusted note.
+ * Returns the notes.
  */
 async function advanceCreditNoteCounter(
   client: SevdeskClient,
+  draftId: number,
   draftNumber: string | undefined,
   signal: AbortSignal | undefined,
 ): Promise<string[]> {
@@ -536,7 +555,9 @@ async function advanceCreditNoteCounter(
   const range = { kind: "creditNote" } as const;
   const same = (number: string) => number.trim().toLowerCase() === draftNumber.trim().toLowerCase();
   try {
-    if (!same(await peekNextNumber(client, range, signal))) return [];
+    if (!same(await peekNextNumber(client, range, signal))) {
+      return await sameNumberNotes(client, draftId, draftNumber, label, signal);
+    }
     const reserved = await reserveNextNumber(client, range, signal);
     if (!same(reserved)) {
       // The counter moved between the peek and the reservation (another client): the reserved
@@ -551,6 +572,7 @@ async function advanceCreditNoteCounter(
     return [
       `sevDesk's credit note counter was moved past ${label} (the new draft's number), so the ` +
         "next credit note cannot get it again.",
+      ...(await laggingCounterNotes(client, draftId, draftNumber, label, signal)),
     ];
   } catch (error) {
     if (!(error instanceof SevdeskError)) throw error;
@@ -560,6 +582,74 @@ async function advanceCreditNoteCounter(
         "use; elsewhere check the number before finalizing.",
     ];
   }
+}
+
+/**
+ * The counter can lag behind the numbers in use (`createFromInvoice` never advances it, see
+ * `drafts/numbering.ts`), so the number it just handed out may belong to an older credit note
+ * already. A trusted note when one carries it; nothing when none does or when the check could
+ * not be made (the counter itself was handled, and that note stands).
+ */
+async function laggingCounterNotes(
+  client: SevdeskClient,
+  draftId: number,
+  draftNumber: string,
+  label: string,
+  signal: AbortSignal | undefined,
+): Promise<string[]> {
+  let others: Awaited<ReturnType<typeof findCreditNotesWithNumber>>;
+  try {
+    others = await findCreditNotesWithNumber(client, draftNumber, draftId, signal);
+  } catch (error) {
+    if (!(error instanceof SevdeskError)) throw error;
+    return [];
+  }
+  if (others.ids.length === 0) return [];
+  return [
+    `The new draft has the same number (${label}) as ${idList("credit note", others.ids)}: ` +
+      "sevDesk's counter was behind the numbers in use when it handed that number out. Give " +
+      "one of them another number in the sevDesk web app before finalizing either.",
+  ];
+}
+
+/**
+ * Trusted notes about other credit notes that carry the new draft's number (review 2026-11,
+ * round 3: before, a counter that had moved on was taken as "nothing to do", although that is
+ * exactly when another credit note may have got the same number). Nothing when none does; a note
+ * too when the check was incomplete or failed, since the number then cannot be called unique.
+ */
+async function sameNumberNotes(
+  client: SevdeskClient,
+  draftId: number,
+  draftNumber: string,
+  label: string,
+  signal: AbortSignal | undefined,
+): Promise<string[]> {
+  let others: Awaited<ReturnType<typeof findCreditNotesWithNumber>>;
+  try {
+    others = await findCreditNotesWithNumber(client, draftNumber, draftId, signal);
+  } catch (error) {
+    if (!(error instanceof SevdeskError)) throw error;
+    return [
+      `sevDesk's credit note counter does not offer ${label} (the new draft's number) any more, ` +
+        "and whether another credit note carries the same number could not be checked. Check " +
+        "it with sevdesk_credit_notes_list before finalizing.",
+    ];
+  }
+  if (others.ids.length > 0) {
+    return [
+      `The new draft has the same number (${label}) as ${idList("credit note", others.ids)}: ` +
+        "sevDesk's counter was moved on by someone else after it handed out that number. " +
+        "Give one of them another number in the sevDesk web app before finalizing either.",
+    ];
+  }
+  return others.truncated
+    ? [
+        `sevDesk's credit note counter does not offer ${label} (the new draft's number) any ` +
+          "more, and not every credit note could be checked for the same number. Check it with " +
+          "sevdesk_credit_notes_list before finalizing.",
+      ]
+    : [];
 }
 
 /**
@@ -701,28 +791,30 @@ export async function planInvoiceReminder(
   const snapshot = await readInvoiceSnapshot(client, invoiceId, today, signal);
   const invoice = snapshot.detail;
   const label = documentLabel("Invoice", invoice.id, invoice.number);
-  requireRevenueInvoice(invoice.type.code, label, "a reminder");
+  // Refusals name the invoice by its id, never by its stored number (see documentLabel).
+  const ref = `Invoice ${String(invoice.id)}`;
+  requireRevenueInvoice(invoice.type.code, ref, "a reminder");
   switch (invoice.status.code) {
     case 100:
-      throw validation(`${label} is still a draft; only finalized, unpaid invoices are dunned.`);
+      throw validation(`${ref} is still a draft; only finalized, unpaid invoices are dunned.`);
     case 1000:
-      throw validation(`${label} is paid (or cancelled); there is nothing to remind of.`);
+      throw validation(`${ref} is paid (or cancelled); there is nothing to remind of.`);
     case 200:
     case 750:
       break;
     default:
       throw validation(
-        `${label} has status ${invoice.status.code}; reminders are created for open or partially ` +
+        `${ref} has status ${invoice.status.code}; reminders are created for open or partially ` +
           "paid invoices only.",
       );
   }
   const dueDate = invoice.dueDate ?? invoice.date;
   if (dueDate === undefined) {
-    throw validation(`${label} has no invoice date, so it cannot be overdue.`);
+    throw validation(`${ref} has no invoice date, so it cannot be overdue.`);
   }
   if (dueDate >= today) {
     throw validation(
-      `${label} is due on ${dueDate}; a reminder (Mahnung) is only possible after the due date.`,
+      `${ref} is due on ${dueDate}; a reminder (Mahnung) is only possible after the due date.`,
     );
   }
 
@@ -742,7 +834,7 @@ export async function planInvoiceReminder(
   );
   if (existing.ids.length > 0 && !input.allowDuplicate) {
     throw validation(
-      `An unsent reminder draft for ${label} exists already: ${idList("invoice", existing.ids)}. ` +
+      `An unsent reminder draft for ${ref} exists already: ${idList("invoice", existing.ids)}. ` +
         "Finalize or send that one (sevdesk_invoice_finalize, sevdesk_invoice_send_email), or " +
         "call again with allowDuplicate: true.",
     );
@@ -1009,17 +1101,20 @@ async function readBack<T>(read: () => Promise<T>, written: readonly CompletedWr
   }
 }
 
-function requireRevenueInvoice(typeCode: string, label: string, what: string): void {
+/**
+ * Refuses an invoice that is no receivable. `ref` names it by its id (trusted); the stored type
+ * is quoted only when it looks like one of sevDesk's codes, like in {@link typeProblem}.
+ */
+function requireRevenueInvoice(typeCode: string, ref: string, what: string): void {
   if (REVENUE_INVOICE_TYPES.has(typeCode)) return;
   const reason: Readonly<Record<string, string>> = {
     SR: "a cancellation invoice (Stornorechnung)",
     MA: "a reminder (Mahnung); use the invoice it reminds of",
     WKR: "a recurring invoice template (Abo-Rechnung); use one of the invoices it created",
   };
-  throw validation(
-    `${label} is ${reason[typeCode] ?? `of type ${typeCode}`}, so ${what} cannot be created ` +
-      "from it.",
-  );
+  const known = Object.hasOwn(reason, typeCode) ? reason[typeCode] : undefined;
+  const why = known ?? (/^[A-Z]{2,3}$/.test(typeCode) ? `of type ${typeCode}` : "of another type");
+  throw validation(`${ref} is ${why}, so ${what} cannot be created from it.`);
 }
 
 /**

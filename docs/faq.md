@@ -36,8 +36,9 @@ create it for a dedicated sevDesk user.
 ### Where does my data go?
 
 The server runs on your computer (or on your own server in remote mode) and talks only to the
-sevDesk API. The one exception is the DATEV export, which sevDesk delivers as a download from its
-own storage. Results go to your MCP client, and from there to your model provider: invoices,
+sevDesk API. There are two exceptions: the DATEV export, which sevDesk delivers as a download from
+its own storage (on Amazon S3), and a remote server in OAuth mode, which fetches a connecting
+client's metadata document from the client's host. Results go to your MCP client, and from there to your model provider: invoices,
 contacts and bank transactions are then part of your conversation, under that provider's terms.
 Accounting data contains personal data of your customers, so check your provider's
 data-processing terms before you connect a live account.
@@ -119,6 +120,29 @@ link in remote mode. It never enshrines (festschreiben) the documents. It needs 
 in sevDesk (Beraternummer, Mandantennummer, start of the fiscal year). `sevdesk_csv_export` saves
 sevDesk's CSV exports of invoices, credit notes, vouchers, transactions or contacts, for example
 for Excel.
+
+### How far can I rely on the VAT summary and the profit and loss?
+
+`sevdesk_vat_summary` and `sevdesk_profit_and_loss` are estimates for checking. The server computes
+them from your documents and their positions; they are not sevDesk's own reports and not a filing.
+What they do and what they leave to you:
+
+- **Timing (accrual basis).** Revenue counts at the end of the supply. That also holds for services
+  to businesses in other EU states (Kz 21 and the Zusammenfassende Meldung), which belong to the
+  period in which they are performed. Intra-EU supplies of goods count by the invoice date, at the
+  latest in the month after the supply.
+- **Advance invoices (Abschlagsrechnungen).** Their VAT is due when the payment arrives. On the
+  accrual basis the VAT summary does not compute that: it counts an advance invoice at its supply
+  date like any invoice and lists the ones concerned (`coverage.advanceInvoices`, with a note), so
+  you can check them by hand.
+- **Import VAT (Einfuhrumsatzsteuer).** sevDesk books it as the amount of a position on the import
+  VAT account (SKR04 1433, SKR03 1588) under tax rule 9. Such amounts go to Kz 62 and count as
+  input VAT, not as an expense. Import VAT booked on another account is not recognized.
+- **Incomplete reads.** When a cap is reached, when a document's positions cannot all be read, or
+  when a remote server runs out of time, the report says so (`coverage.truncated`, with a note) and
+  the VAT summary gives no Kz 83 estimate. Over HTTP a report stops reading documents after about
+  90 seconds, because a request may take 120. At the default request rate that is a few hundred
+  documents: ask for a month instead of a quarter or a year.
 
 ### Does it support sevDesk in Austria?
 

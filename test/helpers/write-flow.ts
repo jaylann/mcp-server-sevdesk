@@ -60,7 +60,8 @@ export interface WriteHarnessOptions {
   readonly opener?: "opens" | "fails";
 }
 
-const APPROVAL_URL = /http:\/\/127\.0\.0\.1:\d+\/approve\/[A-Za-z0-9_-]{43}/;
+/** The launch link of a local approval page: a single-use ticket (`approval-local.ts`). */
+const APPROVAL_URL = /http:\/\/127\.0\.0\.1:\d+\/open\/[A-Za-z0-9_-]{43}/;
 
 /** A connected client against a server with exactly `tools`, every tier and toolset enabled. */
 export async function writeHarness(options: WriteHarnessOptions): Promise<WriteHarness> {

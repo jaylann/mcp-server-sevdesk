@@ -18,7 +18,7 @@ import { loopbackOrigin } from "./config.js";
 import { MCP_PATH } from "./mcp-route.js";
 import { fromNodeRequest, writeNodeResponse } from "./node-bridge.js";
 import type { RateLimiter } from "./rate-limit.js";
-import { createRouter, type Router } from "./router.js";
+import { createRouter, DEFAULT_BODY_TIMEOUT_MS, type Router } from "./router.js";
 import type { HttpConfig, HttpLog, HttpRoute } from "./types.js";
 
 /** How long requests in flight may take to finish after shutdown starts. */
@@ -31,8 +31,12 @@ const SHUTDOWN_GRACE_MS = 5_000;
 export const SERVER_LIMITS = {
   /** The request headers must arrive within this time. */
   headersTimeoutMs: 15_000,
-  /** The whole request (headers and body) must arrive within this time. */
-  requestTimeoutMs: 30_000,
+  /**
+   * The whole request (headers and body) must arrive within the longest body window of any route
+   * plus this (see {@link requestTimeoutMs}): room for the headers and for the checks that run
+   * before the router starts timing the body.
+   */
+  requestMarginMs: 30_000,
   /** Idle keep-alive connections are closed after this (above common proxy defaults of 60 s). */
   keepAliveTimeoutMs: 65_000,
   maxConnections: 256,
@@ -44,6 +48,20 @@ export const SERVER_LIMITS = {
   maxConnectionsPerClient: 64,
 } as const;
 
+/**
+ * Node's `requestTimeout` for a server with these routes: above the longest time any route gives
+ * its body (`HttpRoute.bodyTimeoutMs`, else the router's default). Each route times its own body
+ * and answers 408 itself; Node's limit is only the backstop behind that. A fixed 30 s cut uploads
+ * off while their route still allowed them 90 s (review 2026-11, round 3).
+ */
+export function requestTimeoutMs(
+  routes: readonly Pick<HttpRoute, "bodyTimeoutMs">[],
+  bodyTimeoutMs: number = DEFAULT_BODY_TIMEOUT_MS,
+): number {
+  const longest = Math.max(bodyTimeoutMs, ...routes.map((route) => route.bodyTimeoutMs ?? 0));
+  return longest + SERVER_LIMITS.requestMarginMs;
+}
+
 export interface StartHttpServerOptions {
   readonly http: HttpConfig;
   /** Application routes; `/healthz` is built in. */
@@ -54,6 +72,10 @@ export interface StartHttpServerOptions {
   readonly deadlineMs?: number;
   readonly maxInFlight?: number;
   readonly maxPerClient?: number;
+  /** One account's `/mcp` requests in progress (the router's default: 8). */
+  readonly maxPerAccount?: number;
+  /** Handler slots `/mcp` cannot use (the router's default: an eighth of `maxInFlight`). */
+  readonly reservedInFlight?: number;
   readonly bodyTimeoutMs?: number;
   /** Receives the `listening on <origin>/mcp` line (default: stderr). */
   readonly announce?: (line: string) => void;
@@ -65,6 +87,8 @@ export interface HttpServerHandle {
   /** The bound port (the real one when 0 was configured). */
   readonly port: number;
   readonly router: Router;
+  /** Node's `requestTimeout` as set on the server (see {@link requestTimeoutMs}). */
+  readonly requestTimeoutMs: number;
   /** Graceful shutdown (see the module comment); idempotent. */
   close(): Promise<void>;
 }
@@ -83,6 +107,10 @@ export async function startHttpServer(options: StartHttpServerOptions): Promise<
     ...(options.deadlineMs === undefined ? {} : { deadlineMs: options.deadlineMs }),
     ...(options.maxInFlight === undefined ? {} : { maxInFlight: options.maxInFlight }),
     ...(options.maxPerClient === undefined ? {} : { maxPerClient: options.maxPerClient }),
+    ...(options.maxPerAccount === undefined ? {} : { maxPerAccount: options.maxPerAccount }),
+    ...(options.reservedInFlight === undefined
+      ? {}
+      : { reservedInFlight: options.reservedInFlight }),
     ...(options.bodyTimeoutMs === undefined ? {} : { bodyTimeoutMs: options.bodyTimeoutMs }),
   });
 
@@ -90,7 +118,7 @@ export async function startHttpServer(options: StartHttpServerOptions): Promise<
     void handleNodeRequest(router, req, res);
   });
   server.headersTimeout = SERVER_LIMITS.headersTimeoutMs;
-  server.requestTimeout = SERVER_LIMITS.requestTimeoutMs;
+  server.requestTimeout = requestTimeoutMs(options.routes, options.bodyTimeoutMs);
   server.keepAliveTimeout = SERVER_LIMITS.keepAliveTimeoutMs;
   server.maxConnections = SERVER_LIMITS.maxConnections;
   if (http.trustProxy === 0)
@@ -144,7 +172,7 @@ export async function startHttpServer(options: StartHttpServerOptions): Promise<
       await raceTimeout(closed, CLOSE_GRACE_MS);
     })());
 
-  return { origin, port, router, close };
+  return { origin, port, router, requestTimeoutMs: server.requestTimeout, close };
 }
 
 export interface ExitOnSignalsOptions {

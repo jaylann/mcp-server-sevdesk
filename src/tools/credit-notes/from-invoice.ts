@@ -7,6 +7,7 @@ import {
 } from "../../domain/derived-documents.js";
 import { positionDtoSchema } from "../../domain/document-positions.js";
 import { defineWriteTool } from "../define-tool.js";
+import { ACCOUNT_CREDIT_NOTE_NUMBERS } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 
 const output = z.object({
@@ -58,6 +59,14 @@ export const creditNoteFromInvoiceTool = defineWriteTool({
     ...dryRunInputShape,
   }),
   output,
+  // The number range: sevDesk hands out the counter's current number without advancing it, so
+  // two creations at once (different invoices too) got the same one. The invoice: the "no credit
+  // note for it yet" check, and it serializes with the lifecycle tools on that invoice (review
+  // 2026-11, round 3).
+  locks: (args) => [
+    ACCOUNT_CREDIT_NOTE_NUMBERS,
+    { objectName: "Invoice", id: String(args.invoiceId) },
+  ],
   prepare: (args, ctx) => planCreditNoteFromInvoice(ctx.client, args, ctx.signal),
   execute: async (_args, plan, ctx) => {
     const { details, affected, notes } = await executeCreditNoteFromInvoice(

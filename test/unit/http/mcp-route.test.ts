@@ -5,8 +5,10 @@ import { describe, expect, it, vi } from "vitest";
 import { createBearerAuthenticator } from "../../../src/http/bearer.js";
 import { createHttpLog } from "../../../src/http/log.js";
 import {
+  batchRefusal,
   createMcpRoute,
   DEFAULT_MCP_RATE_LIMIT,
+  MCP_MAX_BATCH_MESSAGES,
   MCP_MAX_BODY_BYTES,
   MCP_PATH,
 } from "../../../src/http/mcp-route.js";
@@ -180,5 +182,149 @@ describe("createMcpRoute", () => {
     await custom.router.fetch(initialize());
     expect(onerror).toHaveBeenCalledWith(expect.any(Error));
     await custom.mcp.close();
+  });
+});
+
+describe("createMcpRoute: legacy batches (review 2026-11, round 3)", () => {
+  /** A server whose `slow` tool runs until `release()`; counts starts and aborts. */
+  function slowSetup() {
+    const state = { started: 0, aborted: 0 };
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const factory: McpServerFactory = () => {
+      const server = new McpServer({ name: "batch-test", version: "0.0.0" });
+      server.registerTool("slow", { description: "Slow." }, async (ctx) => {
+        state.started += 1;
+        ctx.mcpReq.signal.addEventListener("abort", () => {
+          state.aborted += 1;
+        });
+        await released;
+        return { content: [{ type: "text", text: "done" }] };
+      });
+      return server;
+    };
+    return { ...setup(factory), state, release };
+  }
+  const post = (router: ReturnType<typeof createRouter>, body: unknown) =>
+    router.fetch(
+      new Request(`${ORIGIN}${MCP_PATH}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${TOKEN}`,
+          "Content-Type": "application/json",
+          Accept: "application/json, text/event-stream",
+        },
+        body: typeof body === "string" ? body : JSON.stringify(body),
+      }),
+    );
+  const call = (id: number | string) => ({
+    jsonrpc: "2.0",
+    id,
+    method: "tools/call",
+    params: { name: "slow", arguments: {} },
+  });
+  const ping = (id: number | string) => ({ jsonrpc: "2.0", id, method: "ping" });
+  /** The JSON-RPC messages of an SSE (or JSON) response body. */
+  const messages = (text: string): { id?: unknown; result?: unknown; error?: unknown }[] => {
+    const parse = (json: string) => JSON.parse(json) as unknown;
+    const found = text.startsWith("{") || text.startsWith("[") ? [parse(text)] : [];
+    for (const line of text.split("\n")) {
+      if (line.startsWith("data:") && line.slice(5).trim() !== "") found.push(parse(line.slice(5)));
+    }
+    return found.flat() as { id?: unknown; result?: unknown; error?: unknown }[];
+  };
+
+  it.each([
+    ["the same number", 7, 7],
+    ["a number and its text", 7, "7"],
+  ])("refuses a batch whose requests share an id (%s): no tool starts", async (_, a, b) => {
+    const { router, state, lines, release } = slowSetup();
+    const response = await post(router, [call(a), ping(b)]);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      jsonrpc: "2.0",
+      error: { code: -32_600, message: expect.stringContaining("same id") as string },
+      id: null,
+    });
+    // Without the check the ping's answer ends the response while the tool call runs on,
+    // unaborted and outside the router's slot.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(state).toEqual({ started: 0, aborted: 0 });
+    expect(router.inFlight).toBe(0);
+    expect(lines.some((line) => line["event"] === "mcp_error")).toBe(true);
+    release();
+  });
+
+  it("serves a small batch with distinct ids, and holds the slot until every answer is out", async () => {
+    const { router, state, release } = slowSetup();
+    const pending = post(router, [call(1), ping(2), { jsonrpc: "2.0", method: "notifications/x" }]);
+    await vi.waitFor(() => {
+      expect(state.started).toBe(1);
+    });
+    expect(router.inFlight).toBe(1);
+    release();
+    const response = await pending;
+    expect(response.status).toBe(200);
+    const answers = messages(await response.text());
+    expect(answers.map((message) => message.id).sort()).toEqual([1, 2]);
+    expect(answers.every((message) => message.error === undefined)).toBe(true);
+    expect(router.inFlight).toBe(0);
+  });
+
+  it("refuses a batch of more than 8 messages, and serves one of 8", async () => {
+    const { router, state, release } = slowSetup();
+    expect(MCP_MAX_BATCH_MESSAGES).toBe(8);
+    const nine = await post(
+      router,
+      Array.from({ length: 9 }, (_, index) => call(index)),
+    );
+    expect(nine.status).toBe(400);
+    expect(await nine.json()).toMatchObject({
+      error: { code: -32_600, message: expect.stringContaining("at most 8") as string },
+      id: null,
+    });
+    expect(state.started).toBe(0);
+
+    const eight = await post(
+      router,
+      Array.from({ length: 8 }, (_, index) => ping(index)),
+    );
+    expect(eight.status).toBe(200);
+    expect(messages(await eight.text())).toHaveLength(8);
+    release();
+  });
+
+  it("leaves single messages, notifications and bodies that are not JSON to the SDK", async () => {
+    const { router, release } = slowSetup();
+    release();
+    const single = await post(router, ping(7));
+    expect(single.status).toBe(200);
+    expect(messages(await single.text())).toMatchObject([{ id: 7, result: {} }]);
+    const notifications = await post(router, [
+      { jsonrpc: "2.0", method: "notifications/x" },
+      { jsonrpc: "2.0", method: "notifications/x" },
+    ]);
+    expect(notifications.status).toBe(202);
+    const broken = await post(router, '[{"jsonrpc":"2.0","id":7,"method":"ping"},');
+    expect(broken.status).toBe(400);
+    expect(await broken.json()).toMatchObject({ error: { code: -32_700 } });
+  });
+
+  it("counts only requests when it compares ids", () => {
+    const encode = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
+    // Answers to the server's own requests live in another id space.
+    expect(
+      batchRefusal(encode([ping(1), { jsonrpc: "2.0", id: 1, result: {} }, ping(2)])),
+    ).toBeUndefined();
+    expect(batchRefusal(encode([ping(1), ping(2), ping(1)]))?.message).toContain("same id");
+    expect(batchRefusal(encode({ jsonrpc: "2.0", id: 1, method: "ping" }))).toBeUndefined();
+    expect(batchRefusal(encode("[1, 1]"))).toBeUndefined();
+    expect(batchRefusal(new TextEncoder().encode(" \n\t[1, 2"))).toBeUndefined();
+    expect(batchRefusal(new Uint8Array())).toBeUndefined();
+    // Leading white space and a byte order mark do not hide a batch.
+    const padded = new TextEncoder().encode(`\uFEFF \n${JSON.stringify([ping("a"), ping("a")])}`);
+    expect(batchRefusal(padded)?.message).toContain("same id");
   });
 });

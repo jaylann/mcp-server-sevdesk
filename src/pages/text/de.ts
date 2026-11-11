@@ -294,6 +294,26 @@ export const de: Texts = {
     ),
     noDecision: message("Ungültige Anfrage", "Wählen Sie „Freigeben“ oder „Ablehnen“."),
     badForm: message("Ungültige Anfrage", "Das Formular konnte nicht gelesen werden."),
+    needLink: message(
+      "Freigabe-Link öffnen",
+      "Diese Seite öffnet sich nur über den Freigabe-Link, den der Server in sein Protokoll " +
+        "geschrieben oder für Sie geöffnet hat, und nur in dem Browser, der ihn geöffnet hat. " +
+        "Die Adresse allein zeigt die Anfrage nicht.",
+    ),
+    linkUsed: message(
+      "Link bereits verwendet",
+      "Dieser Freigabe-Link wurde ein zweites Mal geöffnet, von einem anderen Browser oder " +
+        "Programm. Ein Link funktioniert nur einmal. Deshalb wurde die Anfrage abgebrochen, in " +
+        "sevDesk wurde nichts geändert. Bitten Sie Ihren Assistenten, es erneut zu versuchen: " +
+        "Sie erhalten dann einen neuen Link.",
+    ),
+    linkUsedDecided: message(
+      "Link bereits verwendet",
+      "Dieser Freigabe-Link wurde schon einmal geöffnet, von einem anderen Browser oder " +
+        "Programm, und die Anfrage wurde dort entschieden. Ein Link funktioniert nur einmal. " +
+        "Waren das nicht Sie, stoppen Sie Ihren Assistenten und prüfen Sie, wer diesen " +
+        "Computer noch nutzt.",
+    ),
   },
 
   transfer: {

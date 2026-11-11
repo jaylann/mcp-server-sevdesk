@@ -155,16 +155,28 @@ export interface WriteResponseOptions {
   readonly head: boolean;
   /** Send `Connection: close` (draining, or an unread request body). */
   readonly closeConnection: boolean;
-  /** How long a write may wait for the client to read before the connection is dropped. */
+  /**
+   * How long one write (at most {@link WRITE_SLICE_BYTES}) may wait for the client to take it
+   * before the connection is dropped.
+   */
   readonly stallMs?: number;
 }
 
-/** Default of {@link WriteResponseOptions.stallMs}: a minute without the client taking a byte. */
+/** Default of {@link WriteResponseOptions.stallMs}: a minute in which the client takes no slice. */
 const WRITE_STALL_MS = 60_000;
+/**
+ * The most that is written at once. A large chunk (a download is one chunk of up to 20 MiB) goes
+ * out in slices of this size, each waiting for the one before, so the stall timer measures a
+ * client that stopped reading (under about 1 KiB/s for a minute) and not the time the whole body
+ * takes: written in one piece, a download over a slow but steady connection was cut after
+ * `stallMs`, however well the client kept reading (review 2026-11, round 3).
+ */
+export const WRITE_SLICE_BYTES = 64 * 1024;
 
 /**
  * Writes `response` to `res`, streaming its body chunk by chunk (headers are flushed first, so an
- * SSE stream starts immediately). Stops reading the body when the client is gone. Never throws.
+ * SSE stream starts immediately), a large chunk in slices of {@link WRITE_SLICE_BYTES}. Stops
+ * reading the body when the client is gone. Never throws.
  */
 export async function writeNodeResponse(
   res: ServerResponse,
@@ -206,7 +218,12 @@ export async function writeNodeResponse(
         }
         const { done, value } = await reader.read();
         if (done) break;
-        if (!res.write(value)) await drained(res, options.stallMs ?? WRITE_STALL_MS);
+        let offset = 0;
+        while (offset < value.byteLength && !gone(res)) {
+          const slice = value.subarray(offset, offset + WRITE_SLICE_BYTES);
+          offset += slice.byteLength;
+          if (!res.write(slice)) await drained(res, options.stallMs ?? WRITE_STALL_MS);
+        }
       }
     } finally {
       res.off("close", onClose);
@@ -226,11 +243,13 @@ function gone(res: ServerResponse): boolean {
 }
 
 /**
- * Resolves when `res` can take more data, or is closed. A client that takes nothing for `stallMs`
- * has its connection destroyed: otherwise a client that stops reading a large response holds the
- * request's slot for as long as it keeps the connection open, past the router's deadline
- * (security review 2026-11, finding 5). Only a write waiting for the client is timed, so an idle
- * SSE stream (nothing to write) is not affected.
+ * Resolves when `res` can take more data, or is closed. A client that does not take the pending
+ * write within `stallMs` has its connection destroyed: otherwise a client that stops reading a
+ * large response holds the connection (and the response in memory) for as long as it likes
+ * (security review 2026-11, finding 5). The timer runs per write, and the caller writes at most
+ * {@link WRITE_SLICE_BYTES} at once, so it measures a stall and not the length of the response.
+ * Only a write waiting for the client is timed: an idle SSE stream (nothing to write) is not
+ * affected.
  */
 function drained(res: ServerResponse, stallMs: number): Promise<void> {
   return new Promise((resolve) => {

@@ -6,6 +6,11 @@
  * `Origin` follows from the page's effective referrer policy as the Fetch standard defines it
  * ("append a request Origin header": under `no-referrer` a non-CORS POST carries `Origin: null`),
  * plus the browser-set `Sec-Fetch-*` headers. It never forges the origin the server wants to see.
+ *
+ * {@link openApproval} takes the launch link the server logged (`/open/<ticket>`) and behaves
+ * like one browser profile: the first time it presents the ticket, keeps the cookies and follows
+ * the redirect to the page; later calls for the same link are that browser opening the link
+ * again, with its cookies. A second party is played with a raw {@link send} (no cookies).
  */
 import { request } from "node:http";
 
@@ -58,13 +63,66 @@ export function send(url: string, options: RawRequest = {}): Promise<PageRespons
 }
 
 export interface OpenedApproval {
+  /** The last answer: the approval page, or the launch link's answer when it did not redirect. */
   readonly page: PageResponse;
   /** The CSRF token from the form (undefined when the page has no form). */
   readonly csrf: string | undefined;
-  /** `name=value` of the cookie the page set. */
+  /** `name=value` of the cookie the launch link set for the approval page. */
   readonly cookie: string | undefined;
   /** The referrer policy a browser applies to the page (see {@link effectiveReferrerPolicy}). */
   readonly referrerPolicy: string;
+  /** The approval page's address (where the launch link redirected to), if it was reached. */
+  readonly pageUrl: string | undefined;
+}
+
+/** What the browser keeps per launch link: the cookies, and where the link led. */
+interface Visit {
+  readonly launchCookie: string | undefined;
+  readonly pageCookie: string | undefined;
+  readonly pageUrl: string;
+}
+
+/** The browser profile of this test file: one cookie jar, by launch link. */
+const visits = new Map<string, Visit>();
+
+function isLaunchLink(url: string): boolean {
+  return new URL(url).pathname.startsWith("/open/");
+}
+
+/** `name=value` of the response's cookie that is scoped to a path under `prefix`. */
+function cookieFor(response: PageResponse, prefix: string): string | undefined {
+  const header = response.headers["set-cookie"];
+  const all = header === undefined ? [] : Array.isArray(header) ? header : [header];
+  return all.find((cookie) => cookie.includes(`Path=${prefix}`))?.split(";")[0];
+}
+
+/**
+ * Presents a launch link like a browser: the ticket (with this browser's cookie for the link, if
+ * it was here before), then the redirect with the page cookie. Without a redirect the launch
+ * link's own answer is the result.
+ */
+async function followLaunchLink(
+  url: string,
+  language: string | undefined,
+): Promise<{ readonly page: PageResponse; readonly visit: Visit | undefined }> {
+  const before = visits.get(url);
+  const launch = await send(url, {
+    headers: { "Accept-Language": language, Cookie: before?.launchCookie },
+  });
+  const location = launch.headers["location"];
+  if (launch.status !== 303 || typeof location !== "string") {
+    return { page: launch, visit: undefined };
+  }
+  const visit: Visit = {
+    launchCookie: cookieFor(launch, "/open/") ?? before?.launchCookie,
+    pageCookie: cookieFor(launch, "/approve/") ?? before?.pageCookie,
+    pageUrl: new URL(location, url).href,
+  };
+  visits.set(url, visit);
+  const page = await send(visit.pageUrl, {
+    headers: { "Accept-Language": language, Cookie: visit.pageCookie },
+  });
+  return { page, visit };
 }
 
 /**
@@ -89,19 +147,24 @@ export function browserOrigin(referrerPolicy: string, pageOrigin: string): strin
 }
 
 /**
- * GETs the approval page like a browser and extracts the form token, the cookie and the policy.
- * `language` is the browser's `Accept-Language` (none: the page answers in English).
+ * Opens the approval like a browser and extracts the form token, the cookie and the policy. `url`
+ * is the launch link from the server log (the ticket is presented, the redirect followed), or
+ * the page's own address, which is then requested as it is, without a cookie. `language` is the
+ * browser's `Accept-Language` (none: the page answers in English).
  */
 export async function openApproval(url: string, language?: string): Promise<OpenedApproval> {
-  const page = await send(url, { headers: { "Accept-Language": language } });
-  const csrf = /name="csrf" value="([^"]+)"/.exec(page.body)?.[1];
-  const setCookie = page.headers["set-cookie"];
-  const first = Array.isArray(setCookie) ? setCookie[0] : setCookie;
+  const { page, visit } = isLaunchLink(url)
+    ? await followLaunchLink(url, language)
+    : {
+        page: await send(url, { headers: { "Accept-Language": language } }),
+        visit: undefined,
+      };
   return {
     page,
-    csrf,
-    cookie: first?.split(";")[0],
+    csrf: /name="csrf" value="([^"]+)"/.exec(page.body)?.[1],
+    cookie: visit?.pageCookie,
     referrerPolicy: effectiveReferrerPolicy(page),
+    pageUrl: visit?.pageUrl,
   };
 }
 
@@ -109,6 +172,9 @@ export async function openApproval(url: string, language?: string): Promise<Open
  * POSTs a decision the way a browser submits the page's form: `Origin` derived from the page's
  * referrer policy, `Sec-Fetch-Site: same-origin`, the form token and the cookie. `overrides`
  * replace or (with `undefined`) remove headers, to send what a browser would not.
+ *
+ * The form posts to the page `opened` reached. `url` may be the launch link that led there (the
+ * usual case) or another page's address, to send one approval's token and cookie to another.
  */
 export function submitDecision(
   url: string,
@@ -116,9 +182,10 @@ export function submitDecision(
   opened: OpenedApproval,
   overrides: Readonly<Record<string, string | undefined>> = {},
 ): Promise<PageResponse> {
-  const pageOrigin = new URL(url).origin;
+  const target = isLaunchLink(url) ? (opened.pageUrl ?? url) : url;
+  const pageOrigin = new URL(target).origin;
   const body = new URLSearchParams({ csrf: opened.csrf ?? "", decision }).toString();
-  return send(url, {
+  return send(target, {
     method: "POST",
     headers: {
       Origin: browserOrigin(opened.referrerPolicy, pageOrigin),

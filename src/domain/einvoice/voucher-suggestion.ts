@@ -19,8 +19,11 @@
  * normalized name; when the scan is cut off, a `name` search adds candidates beyond it.
  * `supplierId` is suggested only for exactly one VAT id or IBAN match, and not when that
  * contact's stored IBAN differs from the invoice's payee IBAN (BT-84): then a warning with both
- * IBANs masked asks to check the bank details (payment redirection). A name-only match stays a
- * candidate with a warning.
+ * IBANs masked asks to check the bank details (payment redirection). An IBAN match alone is
+ * not taken either when the invoice names a payee of its own (BG-10, factoring: the account is
+ * the payee's) or when the contact with that IBAN carries another VAT id than the seller; the
+ * contact stays a candidate and a warning says why. A name-only match stays a candidate with a
+ * warning.
  *
  * **Own invoices.** For revenue (the account is the seller) the invoice number (BT-1) is looked up
  * among the account's invoices (`GET /Invoice?invoiceNumber=…`, re-checked exactly): an XRechnung
@@ -415,12 +418,24 @@ export function suggestVoucherFields(
   const strong = candidates.filter((candidate) => candidate.matchedBy !== "name");
   const byVat = matches.filter((match) => match.candidate.matchedBy === "vat_id");
   const byIban = matches.filter((match) => match.candidate.matchedBy === "iban");
-  const picked =
-    byVat.length === 1
-      ? byVat[0]
-      : byVat.length === 0 && byIban.length === 1
-        ? byIban[0]
-        : undefined;
+  // The payee account identifies the seller only when it is the seller's (review 2026-11, round
+  // 3). It is not when the invoice names a payee of its own (BG-10, e.g. a factoring company:
+  // the account is the factor's), and it is doubtful when the contact that has the account
+  // carries another VAT id than the seller. Then the contact stays a candidate and a warning
+  // says why it was not chosen.
+  const ibanMatch = byVat.length === 0 && byIban.length === 1 ? byIban[0] : undefined;
+  const sellerVatId = normalizeVatId(counterparty.vatId);
+  const ibanDoubt: "payee" | "vat_id" | undefined =
+    ibanMatch === undefined
+      ? undefined
+      : hasSeparatePayee(parsed)
+        ? "payee"
+        : sellerVatId !== undefined &&
+            ibanMatch.vatId !== undefined &&
+            ibanMatch.vatId !== sellerVatId
+          ? "vat_id"
+          : undefined;
+  const picked = byVat.length === 1 ? byVat[0] : ibanDoubt === undefined ? ibanMatch : undefined;
   const ibanConflict =
     picked !== undefined &&
     counterpartyIban !== undefined &&
@@ -433,6 +448,20 @@ export function suggestVoucherFields(
         `IBAN stored for the matching supplier contact ${String(picked.candidate.contactId)} ` +
         `(${maskIban(picked.iban) ?? "(unknown)"}). Check the bank details with the supplier ` +
         "before paying (possible payment redirection); the contact is not chosen automatically.",
+    );
+  } else if (ibanMatch !== undefined && ibanDoubt !== undefined) {
+    const account =
+      `Contact ${String(ibanMatch.candidate.contactId)} has the invoice's payee IBAN ` +
+      (maskIban(counterpartyIban) ?? "(unknown)");
+    warnings.push(
+      ibanDoubt === "payee"
+        ? `${account}, but the invoice names a payee of its own (BG-10, e.g. a factoring ` +
+            "company), so the account is the payee's and does not tell who the supplier is. The " +
+            "contact is not chosen automatically: pass the supplier's contact, not the payee's."
+        : `${account}, but its VAT id differs from the seller's VAT id on the invoice, so the ` +
+            "account may belong to someone else (e.g. a factoring company) or the contact is " +
+            "outdated. The contact is not chosen automatically: check the bank details before " +
+            "booking and paying.",
     );
   } else if (candidates.length === 0) {
     warnings.push(
@@ -809,6 +838,13 @@ function addFindingNotes(parsed: ParsedEInvoice, blocking: string[], warnings: s
         "are consistent, but the input VAT deduction (§15 UStG) needs a correct invoice.",
     );
   }
+  if (parsed.findings.some((finding) => finding.code === "SD-LINE-NET")) {
+    warnings.push(
+      "On at least one line the net amount is not the quantity times the price (finding " +
+        "SD-LINE-NET). The voucher uses the stated amounts; compare those lines with the visual " +
+        "invoice before booking.",
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -868,6 +904,8 @@ interface ContactMatch {
   readonly candidate: Candidate;
   /** The contact's stored IBAN (normalized), for the payee check; never shown unmasked. */
   readonly iban: string | undefined;
+  /** The contact's stored VAT id (normalized), to compare with the seller's. */
+  readonly vatId: string | undefined;
 }
 
 function matchContacts(
@@ -897,6 +935,7 @@ function matchContacts(
         matchedBy,
       }),
       iban: row.iban,
+      vatId: row.vatId,
     });
   }
   return matches.sort(
@@ -923,6 +962,18 @@ export function normalizeName(name: string | undefined): string | undefined {
 function normalizeTaxNumber(value: string | undefined): string | undefined {
   const digits = value?.replace(/\D+/g, "");
   return digits === undefined || digits === "" ? undefined : digits;
+}
+
+/**
+ * Whether the invoice names a payee (BG-10) that is not the seller: a payee group is present and
+ * its name is none of the seller's names. A payee without a name counts as separate, because
+ * nothing says it is the seller.
+ */
+function hasSeparatePayee(parsed: ParsedEInvoice): boolean {
+  const { payee } = parsed.payment;
+  if (payee === undefined) return false;
+  const name = normalizeName(payee.name);
+  return name === undefined || !partyNames(parsed.seller).includes(name);
 }
 
 function partyNames(party: EInvoiceParty): string[] {

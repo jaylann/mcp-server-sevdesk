@@ -3,6 +3,7 @@ import { z } from "zod";
 import { executeVoucherSave, prepareVoucherCreate } from "../../domain/drafts/voucher.js";
 import { voucherCreateInputShape } from "../../domain/drafts/voucher-inputs.js";
 import { defineWriteTool } from "../define-tool.js";
+import { ACCOUNT_VOUCHER_DRAFTS } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 import { voucherDraftOutput, voucherDraftToolOutput } from "./draft-output.js";
 
@@ -34,6 +35,9 @@ export const voucherCreateDraftTool = defineWriteTool({
   localEffects: "reads-files",
   input: z.strictObject({ ...voucherCreateInputShape, ...dryRunInputShape }),
   output: voucherDraftOutput,
+  // The duplicate refusal reads the existing vouchers, then the draft is created: two identical
+  // creations at once both passed it (review 2026-11, round 3).
+  locks: () => [ACCOUNT_VOUCHER_DRAFTS],
   prepare: (args, ctx) =>
     prepareVoucherCreate(ctx.client, args, {
       signal: ctx.signal,

@@ -8,6 +8,8 @@
  * - the file is created with mode 0600 (tightened to 0600 if it exists with broader rights) and
  *   opened with `O_APPEND` (and `O_NOFOLLOW` where the platform has it, so a symlink planted at
  *   the path is refused); lines are written one at a time, in call order;
+ * - a file that belongs to another user is refused (POSIX; the mode alone does not show who may
+ *   change it), so nothing is appended to a file someone else can rewrite;
  * - the sevDesk token never reaches the file: every string is redacted, and the whole line again
  *   (the log's own secrets plus each event's `secrets`, the token of the account it belongs to);
  * - every line starts with `ts` and the format version `v` ({@link AUDIT_LINE_VERSION});
@@ -20,13 +22,14 @@
  *   the grant, the reference, the kind, the size and the SHA-256, never the file name or content.
  */
 import { constants } from "node:fs";
-import { type FileHandle, open } from "node:fs/promises";
+import { open } from "node:fs/promises";
 
 import type { RequestPrincipal } from "../accounts/types.js";
-import type { ConfirmationPreview, SevdeskObjectRef } from "../tools/types.js";
+import { appendLine, type GetUid, ownedByOtherUser } from "./append-file.js";
 import { escapeHiddenCharacters } from "./fence.js";
 import { REDACTED, redactSecrets } from "./redact.js";
 import type { WriteTier } from "./tiers.js";
+import type { ConfirmationPreview, SevdeskObjectRef } from "./write-types.js";
 
 /**
  * What happened, roughly in the order a call can produce them. `confirmation_refused`: a retried
@@ -133,6 +136,8 @@ export interface AuditLogOptions {
   readonly secrets: readonly string[];
   /** Wall clock for the `ts` field; injectable for tests. */
   readonly now?: () => Date;
+  /** The user this process runs as (default `process.getuid`, absent on Windows); for tests. */
+  readonly getuid?: GetUid;
 }
 
 /**
@@ -162,13 +167,19 @@ const OPEN_FLAGS =
   constants.O_CREAT |
   ("O_NOFOLLOW" in constants ? constants.O_NOFOLLOW : 0);
 
-/** Writes all of `bytes`, or rejects; a write that makes no progress is an error. */
-async function writeAll(handle: FileHandle, bytes: Buffer): Promise<void> {
-  let written = 0;
-  while (written < bytes.length) {
-    const { bytesWritten } = await handle.write(bytes, written, bytes.length - written);
-    if (bytesWritten <= 0) throw new Error("audit log: a write made no progress");
-    written += bytesWritten;
+/**
+ * The audit file belongs to another user: nothing is appended. `code` is what the write flow
+ * prints to stderr; the message is trusted text.
+ */
+class AuditLogOwnerError extends Error {
+  readonly code = "AUDIT_LOG_OWNED_BY_ANOTHER_USER";
+
+  constructor(path: string) {
+    super(
+      `audit log: ${path} belongs to another user, who could rewrite it. Point ` +
+        "SEVDESK_AUDIT_LOG to a file owned by the user the server runs as.",
+    );
+    this.name = "AuditLogOwnerError";
   }
 }
 
@@ -185,20 +196,19 @@ export function createAuditLog(options: AuditLogOptions): AuditLog {
   async function append(line: string): Promise<void> {
     const handle = await open(path as string, OPEN_FLAGS, FILE_MODE);
     try {
-      const { mode } = await handle.stat();
-      if ((mode & 0o077) !== 0) {
+      const info = await handle.stat();
+      // Judged on the opened file, so the answer is about the file the line goes to. The mode
+      // check below cannot stand in for it: on macOS an ACL grants access no mode bit shows, and
+      // the owner can loosen the mode again at any time (review 2026-11, round 3).
+      if (ownedByOtherUser(info, options.getuid)) throw new AuditLogOwnerError(path as string);
+      if ((info.mode & 0o077) !== 0) {
         await handle.chmod(FILE_MODE);
       }
       // `write` may write less than asked (a nearly full volume) and still resolve: ignoring that
       // let an action run without a complete `executing` line (security review 2026-11, wave 2).
       // Every byte is written or the append rejects, so the fail-closed gate holds. A line cut
       // short by an earlier failure is closed first, so this one stays parseable.
-      const { size } = await handle.stat();
-      const last = Buffer.alloc(1);
-      const endsLine =
-        size === 0 ||
-        ((await handle.read(last, 0, 1, size - 1)).bytesRead === 1 && last[0] === 0x0a);
-      await writeAll(handle, Buffer.from(endsLine ? line : `\n${line}`, "utf8"));
+      await appendLine(handle, line);
     } finally {
       await handle.close();
     }

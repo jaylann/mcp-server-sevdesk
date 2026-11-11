@@ -74,12 +74,16 @@ describe("sevdesk_transaction_reset", () => {
     const documentFacts = plan.preview.facts.filter((f) => f.label.startsWith("Document"));
     expect(documentFacts).toEqual([
       {
-        label: "Document 1: invoice RE-1001",
+        // The label (trusted text) names the invoice by id; the stored number opens the value.
+        label: "Document 1: invoice 1001",
         value: expect.stringMatching(
-          /^status .+ \(1000\) → open \(200\); this transaction paid 119\.00 EUR; other payments removed too: 0\.00 EUR$/,
+          /^number RE-1001; status .+ \(1000\) → open \(200\); this transaction paid 119\.00 EUR; other payments removed too: 0\.00 EUR$/,
         ) as unknown,
       },
-      expect.objectContaining({ label: "Document 2: invoice RE-1002" }),
+      expect.objectContaining({
+        label: "Document 2: invoice 1002",
+        value: expect.stringMatching(/^number RE-1002; /) as unknown,
+      }),
     ]);
     expect(plan.preview.warnings[0]).toContain("removes ALL payments booked on it");
     expect(plan.previewDe.action).toBe(
@@ -88,12 +92,12 @@ describe("sevdesk_transaction_reset", () => {
     );
     expect(plan.previewDe.facts.filter((f) => f.label.startsWith("Dokument"))).toEqual([
       {
-        label: "Dokument 1: Rechnung RE-1001",
+        label: "Dokument 1: Rechnung 1001",
         value:
-          "Status Bezahlt (1000) → offen (200); dieser Umsatz hat 119,00 EUR bezahlt; weitere " +
-          "entfernte Zahlungen: 0,00 EUR",
+          "Nummer RE-1001; Status Bezahlt (1000) → offen (200); dieser Umsatz hat 119,00 EUR " +
+          "bezahlt; weitere entfernte Zahlungen: 0,00 EUR",
       },
-      expect.objectContaining({ label: "Dokument 2: Rechnung RE-1002" }),
+      expect.objectContaining({ label: "Dokument 2: Rechnung 1002" }),
     ]);
     expect(plan.previewDe.warnings[0]).toContain(
       "das entfernt ALLE darauf gebuchten Zahlungen, nicht nur die dieses Umsatzes",

@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
+import { readOnlyClient } from "../../../../src/sevdesk/scoped-client.js";
 import { invoiceCreateDraftTool as tool } from "../../../../src/tools/invoices/draft-create.js";
-import { type FakeRoute, FakeSevdeskClient } from "../../../helpers/fake-client.js";
+import { type FakeRoute, FakeSevdeskClient, testContext } from "../../../helpers/fake-client.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import {
   invoiceCreateArgs as args,
@@ -248,6 +249,20 @@ describe("sevdesk_invoice_create_draft (community: sevdesk-rs request shape + re
       label: "Tax",
       value: "tax type default (from tax rule 1 Umsatzsteuerpflichtige Umsätze), bookkeeping 1.0",
     });
+  });
+
+  // Review 2026-11, round 3: the write flow prepares with a new read-only client wrapper on
+  // every call, and the version cache was keyed by that wrapper.
+  it("asks for the bookkeeping version once across preparations of one account", async () => {
+    const client = new FakeSevdeskClient(routes);
+    const ctx = testContext(client);
+    const parsed = tool.input.parse(args);
+
+    for (let call = 0; call < 3; call += 1) {
+      await tool.prepare(parsed, { ...ctx, client: readOnlyClient(client, "preparing a write") });
+    }
+
+    expect(client.callsTo("/Tools/bookkeepingSystemVersion")).toHaveLength(1);
   });
 
   it("warns about a possible duplicate without blocking", async () => {

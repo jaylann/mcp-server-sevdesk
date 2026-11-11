@@ -15,6 +15,7 @@ import {
   type TransactionDto,
 } from "../../domain/banking.js";
 import { amountInput, isoDateInput, moneySchema } from "../../domain/common.js";
+import { bookPayment } from "../../domain/lifecycle/actions.js";
 import {
   KINDS,
   type LifecycleDocument,
@@ -53,7 +54,6 @@ import {
 import { entryShare, readTransactionLog } from "../../domain/reconciliation/transaction-log.js";
 import { berlinDateOf } from "../../sevdesk/dates.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
-import { sevdeskPath } from "../../sevdesk/paths.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { defineWriteTool } from "../define-tool.js";
 import { ACCOUNT_BOOKINGS, type SevdeskObjectRef } from "../types.js";
@@ -436,12 +436,7 @@ export function bookPaymentTool(kind: PaymentKind) {
       };
     },
     execute: async (args, plan, ctx) => {
-      await ctx.client.request({
-        method: "PUT",
-        path: sevdeskPath(info.objectName, args.id, "bookAmount"),
-        body: plan.state.payload,
-        signal: ctx.signal,
-      });
+      await bookPayment(ctx.client, kind, args.id, plan.state.payload, ctx.signal);
       const changed: SevdeskObjectRef[] = [documentObject(kind, args.id)];
       if (args.transactionId !== undefined) {
         changed.push({ objectName: "CheckAccountTransaction", id: String(args.transactionId) });

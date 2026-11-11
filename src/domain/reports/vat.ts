@@ -8,16 +8,28 @@
  * Bases (sevDesk help "Umsatzsteuervoranmeldung"; § 13, § 20 UStG):
  * - **accrual** (Sollversteuerung, the default): each document counts in the period of its tax
  *   point (`ustva-boxes.ts` `TaxPointRule`): revenue by the end of the supply (delivery date,
- *   else the document date), input VAT once both invoice and supply exist, intra-EU supplies,
- *   § 18b services, intra-EU acquisitions and § 13b(2) purchases by the invoice date but no later
- *   than the month after the supply. Corrections (cancellation invoices, credit notes) count at
- *   their own document date (§ 17 UStG). Documents are listed by document date with a margin of
- *   {@link ACCRUAL_MARGIN_DAYS} days on both sides of the period, so a document whose tax point
- *   lies in the period but whose date is further away is missed (said in the notes).
+ *   else the document date; § 18b services too, § 18b Satz 3 UStG), input VAT once both invoice
+ *   and supply exist, intra-EU supplies of goods, intra-EU acquisitions and § 13b(2) purchases by
+ *   the invoice date but no later than the month after the supply. Corrections (cancellation
+ *   invoices, credit notes) count at their own document date (§ 17 UStG). Documents are listed by
+ *   document date with a margin of {@link ACCRUAL_MARGIN_DAYS} days on both sides of the period,
+ *   so a document whose tax point lies in the period but whose date is further away is missed
+ *   (said in the notes). Advance invoices (Abschlagsrechnungen, type AR) are the exception this
+ *   report does not compute: their VAT falls due when the payment is received (§ 13 Abs. 1 Nr. 1
+ *   Buchst. a Satz 4 UStG), but they count here like any invoice, at their supply date. They are
+ *   listed in `coverage.advanceInvoices` with a note, to be checked by hand.
  * - **cash** (Istversteuerung, only with the Finanzamt's permission): taxable revenue (rule 1)
  *   counts when it is paid, split over each document's rates in proportion to the amount paid;
  *   input VAT, § 13b and acquisition tax and tax-free supplies stay on accrual (they do not depend
  *   on payment). Payments come from the bank reconciliation log (`PaymentsInPeriod`).
+ *
+ * Import VAT (Einfuhrumsatzsteuer) is recognized by its booking account and goes to Kz 62
+ * (`import-vat.ts`).
+ *
+ * Completeness: the Kz 83 estimate is left out and `coverage.truncated` is set whenever something
+ * was not read: a cap, the time budget of an HTTP deployment (`ReportDeadline`), or a document
+ * whose positions could not all be read (its amounts were then split over the positions that
+ * were read, so the lines may hold the wrong rates).
  *
  * Kleinunternehmer accounts (§ 19 UStG) file no UStVA; the report says so and reads nothing else.
  * The result is an estimate for checking, never a filing.
@@ -26,6 +38,7 @@ import { z } from "zod";
 
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { type AccountSettings, type TaxRegime, taxRegimeOf } from "../account-settings.js";
+import type { AccountDatevList } from "../accounts-datev.js";
 import { moneySchema } from "../common.js";
 import {
   add,
@@ -39,6 +52,7 @@ import {
   subtract,
 } from "../money.js";
 import { listCountries, taxRuleById } from "../reference-data.js";
+import { importVatAccountIds, isImportVat } from "./import-vat.js";
 import {
   collectPaidDocuments,
   contributedAmounts,
@@ -52,11 +66,14 @@ import {
   type PaidDocuments,
   type PaymentsInPeriod,
   percentOf,
+  refOf,
   type ScannedDocument,
   scanPositions,
   voucherDirections,
 } from "./positions-scan.js";
 import {
+  incompleteSuffix,
+  incompleteTaxReportNotes,
   invalidReportRequest,
   plural,
   REPORT_SOURCE,
@@ -88,6 +105,10 @@ const DEFAULT_VAT_BASIS: VatBasis = "accrual";
 const ACCRUAL_MARGIN_DAYS = 62;
 /** Documents listed by reference in `coverage.unconvertible` (the count is complete). */
 const MAX_LISTED_REFS = 20;
+/** Invoice type of an advance invoice (Abschlagsrechnung). */
+const ADVANCE_INVOICE_TYPE = "AR";
+/** Invoice statuses that say money was received: partially paid, paid. */
+const INVOICE_STATUSES_WITH_PAYMENT: ReadonlySet<number> = new Set([750, 1000]);
 
 /** Stated in every VAT summary. */
 export const VAT_CAVEAT =
@@ -326,13 +347,16 @@ export const vatSummarySchema = z.object({
   estimate: z
     .object({
       outputVat: moneySchema.describe("Sum of the tax of the output VAT lines."),
-      inputVat: moneySchema.describe("Sum of Kz 66, 61, 67."),
+      inputVat: moneySchema.describe("Sum of Kz 66, 61, 62, 67."),
       kz83: moneySchema.describe(
         "Remaining advance payment (positive) or refund (negative), before Sondervorauszahlung.",
       ),
     })
     .optional()
-    .describe("Left out when no UStVA is required or reading was incomplete (truncated)."),
+    .describe(
+      "Left out when no UStVA is required or reading was incomplete (coverage.truncated: a cap, " +
+        "the time budget, or documents with unread positions).",
+    ),
   zm: z.object({
     entries: z.array(zmEntrySchema).describe("Zusammenfassende Meldung, per VAT id and kind."),
     withoutVatId: z
@@ -371,7 +395,17 @@ export const vatSummarySchema = z.object({
     documentsScanned: z.number().int().describe("Documents whose positions were read."),
     truncated: z
       .boolean()
-      .describe(`True when a cap (${MAX_SCAN_DOCUMENTS} documents) stopped reading.`),
+      .describe(
+        `True when the figures are incomplete: a cap (${MAX_SCAN_DOCUMENTS} documents) or the ` +
+          "time budget stopped reading, or a document's positions could not all be read.",
+      ),
+    timeBudgetReached: z
+      .boolean()
+      .optional()
+      .describe(
+        "True when this server stopped reading documents to answer within its time limit " +
+          "(HTTP deployments): narrow the period.",
+      ),
     excluded: z.object({
       drafts: z.number().int(),
       recurringTemplates: z.number().int(),
@@ -391,7 +425,40 @@ export const vatSummarySchema = z.object({
       .number()
       .int()
       .describe("Documents whose totals were split over their positions in proportion."),
-    positionsIncomplete: z.number().int(),
+    positionsIncomplete: z
+      .number()
+      .int()
+      .describe(
+        "Documents whose positions could not all be read: their totals were split over the " +
+          "positions that were read, so rates may be wrong. Makes the report truncated.",
+      ),
+    positionsIncompleteDocuments: z
+      .array(documentRefSchema)
+      .optional()
+      .describe(`The first ${MAX_LISTED_REFS} of those documents.`),
+    advanceInvoices: z
+      .object({
+        count: z.number().int(),
+        countedInPeriod: z
+          .number()
+          .int()
+          .describe(
+            "In this period's lines at their supply date; the VAT may have been due earlier.",
+          ),
+        paidBeforeCounted: z
+          .number()
+          .int()
+          .describe(
+            "Paid or partly paid by the end of this period but counted in a later one: their " +
+              "VAT is missing from this period's lines.",
+          ),
+        documents: z.array(documentRefSchema).describe(`The first ${MAX_LISTED_REFS}.`),
+      })
+      .optional()
+      .describe(
+        "Accrual basis: advance invoices (Abschlagsrechnungen, type AR). Their VAT is due on " +
+          "receipt of the payment, which this report does not compute: check them by hand.",
+      ),
     payments: z
       .object({
         read: z.number().int(),
@@ -419,6 +486,11 @@ export interface VatSummaryParams {
   readonly settings: AccountSettings | undefined;
   /** Cash basis source; required for `basis: "cash"`. */
   readonly payments?: PaymentsInPeriod | undefined;
+  /**
+   * Booking accounts (`loadAccountsDatev`), to find the import VAT account by its number
+   * (`import-vat.ts`); without them only the recorded account id is recognized.
+   */
+  readonly accounts?: AccountDatevList | undefined;
   readonly maxDocuments?: number | undefined;
   readonly maxRows?: number | undefined;
   readonly today?: string | undefined;
@@ -488,6 +560,8 @@ export async function vatSummary(
     datedBy[point.by] += 1;
     accrual.push(header);
   }
+  const advances =
+    basis === "accrual" ? advanceInvoicesOf(listed.headers, new Set(accrual), period) : undefined;
 
   // Cash basis: payments on rule-1 revenue documents in the period.
   let paid: PaidDocuments | undefined;
@@ -501,6 +575,7 @@ export async function vatSummary(
       accept: countsByPayment,
       signal: options.signal,
       today: params.today,
+      deadline: options.deadline,
     });
     notes.push(...paid.notes);
   }
@@ -511,11 +586,30 @@ export async function vatSummary(
     maxDocuments: params.maxDocuments,
     signal: options.signal,
     onProgress: options.onProgress,
+    deadline: options.deadline,
   });
   const contributions = contributionsOf(scan.documents, paid?.payments ?? new Map());
 
-  const aggregate = await aggregateVat(client, contributions, options.signal);
-  const truncated = listed.truncated || scan.notRead > 0 || paymentsCoverage?.truncated === true;
+  const aggregate = await aggregateVat(
+    client,
+    contributions,
+    importVatAccountIds({
+      accounts: params.accounts,
+      chartOfAccounts: params.settings?.chartOfAccounts,
+    }),
+    options.signal,
+  );
+  // Three ways of not having read everything; each makes the report truncated (no Kz 83).
+  const timedOut = scan.timedOut || paid?.timedOut === true;
+  const capped =
+    listed.truncated ||
+    (scan.notRead > 0 && !scan.timedOut) ||
+    (paymentsCoverage?.truncated === true && paid?.timedOut !== true);
+  // A document whose positions could not all be read was split over the positions that were
+  // read: its amounts may sit in the wrong lines, so the lines are not complete either (review
+  // 2026-11, round 3).
+  const incomplete = scan.documents.filter((doc) => !doc.positionsComplete);
+  const truncated = capped || timedOut || incomplete.length > 0;
   // A Kleinunternehmer files no UStVA unless the period has amounts one has to declare (an earlier
   // regular period, § 13b tax owed as recipient): the regime is today's, the period may be older.
   const declarable = aggregate.boxes.filter((box) => box.kz !== "48").map((box) => `Kz ${box.kz}`);
@@ -533,9 +627,12 @@ export async function vatSummary(
   if (truncated && applicable) {
     notes.push("Kz 83 is not estimated: reading was incomplete, so the balance would be biased.");
   }
+  if (advances !== undefined) notes.push(advanceInvoiceNote(advances));
   notes.push(
     ...coverageNotes({
-      truncated,
+      capped,
+      timedOut,
+      documentsToScan: toScan.length,
       basis,
       margin: ACCRUAL_MARGIN_DAYS,
       settingsUnread: params.settings === undefined,
@@ -559,6 +656,7 @@ export async function vatSummary(
       documentsInPeriod: toScan.length,
       documentsScanned: scan.documents.length,
       truncated,
+      ...(timedOut ? { timeBudgetReached: true } : {}),
       excluded: {
         drafts: listed.excluded.draft,
         recurringTemplates: listed.excluded.recurring_template,
@@ -570,11 +668,104 @@ export async function vatSummary(
       datedBy,
       legacyTaxTypes: scan.documents.filter((doc) => doc.header.legacyTaxType !== undefined).length,
       adjustedToTotals: scan.documents.filter((doc) => doc.adjusted).length,
-      positionsIncomplete: scan.documents.filter((doc) => !doc.positionsComplete).length,
+      positionsIncomplete: incomplete.length,
+      ...(incomplete.length === 0
+        ? {}
+        : {
+            positionsIncompleteDocuments: incomplete
+              .slice(0, MAX_LISTED_REFS)
+              .map((doc) => refOf(doc.header)),
+          }),
+      ...(advances === undefined
+        ? {}
+        : {
+            advanceInvoices: {
+              count: advances.counted.length + advances.paidBeforeCounted.length,
+              countedInPeriod: advances.counted.length,
+              paidBeforeCounted: advances.paidBeforeCounted.length,
+              documents: [...advances.paidBeforeCounted, ...advances.counted]
+                .slice(0, MAX_LISTED_REFS)
+                .map(refOf),
+            },
+          }),
       ...(paymentsCoverage === undefined ? {} : { payments: paymentsCoverage }),
     },
     notes,
   };
+}
+
+/** Advance invoices (type AR) the accrual report cannot time correctly. */
+interface AdvanceInvoices {
+  /** Counted in this period's lines (at their supply date, like any invoice). */
+  readonly counted: readonly DocumentHeader[];
+  /** Not counted in this period (tax point later), but money was received by its end. */
+  readonly paidBeforeCounted: readonly DocumentHeader[];
+}
+
+/**
+ * The advance invoices (Abschlagsrechnungen, type AR) with taxable domestic revenue that matter
+ * for `period` under accrual, or `undefined` when there are none. VAT on an advance falls due in
+ * the period the payment is received (§ 13 Abs. 1 Nr. 1 Buchst. a Satz 4 UStG), which needs the
+ * payments of every period; this report does not build that. It counts an advance invoice like
+ * any other invoice, at its supply date, and names the ones where that can be wrong (review
+ * 2026-11, round 3):
+ * - `counted`: in this period's lines; when it was paid in an earlier period, its VAT was due
+ *   there;
+ * - `paidBeforeCounted`: its tax point lies after the period (so it is in no line here), but its
+ *   status says money was received (partially paid or paid) and its pay date, when sevDesk has
+ *   one, is not after the period: its VAT is due in this or an earlier period and is missing.
+ *   One paid before the period started is left out (it belongs to that period's report).
+ * Only documents in the listed window (the margin around the period) can be seen.
+ */
+function advanceInvoicesOf(
+  headers: readonly DocumentHeader[],
+  countedHeaders: ReadonlySet<DocumentHeader>,
+  period: ReportPeriod,
+): AdvanceInvoices | undefined {
+  const counted: DocumentHeader[] = [];
+  const paidBeforeCounted: DocumentHeader[] = [];
+  for (const header of headers) {
+    if (header.kind !== "invoice" || header.invoiceType !== ADVANCE_INVOICE_TYPE) continue;
+    if (!countsByPayment(header)) continue;
+    if (countedHeaders.has(header)) {
+      counted.push(header);
+      continue;
+    }
+    const point = taxPoint(header, timingOf(header)).date;
+    if (point === undefined || point <= period.to) continue;
+    if (!INVOICE_STATUSES_WITH_PAYMENT.has(header.statusCode)) continue;
+    if (header.payDate !== undefined) {
+      if (header.payDate < period.from || header.payDate > period.to) continue;
+    } else if (header.date !== undefined && header.date > period.to) {
+      continue;
+    }
+    paidBeforeCounted.push(header);
+  }
+  return counted.length + paidBeforeCounted.length === 0
+    ? undefined
+    : { counted, paidBeforeCounted };
+}
+
+function advanceInvoiceNote(advances: AdvanceInvoices): string {
+  const total = advances.counted.length + advances.paidBeforeCounted.length;
+  const parts: string[] = [];
+  if (advances.counted.length > 0) {
+    parts.push(
+      `${String(advances.counted.length)} in this period's lines at the supply date (if paid ` +
+        "in an earlier period, the VAT was due there)",
+    );
+  }
+  if (advances.paidBeforeCounted.length > 0) {
+    parts.push(
+      `${String(advances.paidBeforeCounted.length)} paid or partly paid by the end of this ` +
+        "period but counted in a later one (their VAT is missing here)",
+    );
+  }
+  return (
+    `${plural(total, "advance invoice")} (Abschlagsrechnung, type AR): VAT on an advance is due ` +
+    "when the payment is received (§ 13 Abs. 1 Nr. 1 Buchst. a Satz 4 UStG), which this report " +
+    `does not compute: ${parts.join("; ")}. Check these by hand (coverage.advanceInvoices).`
+  );
 }
 
 /** Trusted one-line summary (counts and the Kz 83 estimate only). */
@@ -587,10 +778,9 @@ export function vatSummarySentence(report: VatSummary): string {
   }
   const kz83 = report.estimate?.kz83;
   const estimate = kz83 === undefined ? "" : `; Kz 83 estimate ${kz83.amount} ${kz83.currency}`;
-  const truncated = report.coverage.truncated ? " Incomplete: a cap stopped reading." : "";
   return (
     `VAT summary ${report.period.label} (${report.basis}): ${plural(report.coverage.documentsScanned, "document")} ` +
-    `scanned, ${plural(report.boxes.length, "form line")}${estimate}.${truncated}`
+    `scanned, ${plural(report.boxes.length, "form line")}${estimate}.${incompleteSuffix(report.coverage)}`
   );
 }
 
@@ -602,7 +792,7 @@ function smallBusinessNotes(
 ): string[] {
   if (unconfirmed) {
     return [
-      "The account uses the Kleinunternehmerregelung (§ 19 UStG), but reading stopped at a cap, " +
+      "The account uses the Kleinunternehmerregelung (§ 19 UStG), but reading was incomplete, " +
         "so it could not be confirmed that this period has nothing to declare (e.g. VAT owed as " +
         "recipient under § 13b). Narrow the period and run the summary again.",
     ];
@@ -673,10 +863,17 @@ function emptyOss(): OssAccumulator {
   return { rates: new Map(), documents: new Set() };
 }
 
+/** Reason of an import VAT position that carries a VAT rate (see `import-vat.ts`). */
+const IMPORT_VAT_WITH_RATE =
+  "Position on the import VAT account (Einfuhrumsatzsteuer) booked with a VAT rate: sevDesk " +
+  "books import VAT as the position's amount at 0 %, so which part is deductible import VAT " +
+  "(Kz 62) cannot be told. Check the voucher and place it by hand.";
+
 /** Adds the positions of every contribution to the form lines and side sections. */
 async function aggregateVat(
   client: SevdeskClient,
   contributions: readonly Contribution[],
+  importVatAccounts: ReadonlySet<number>,
   signal: AbortSignal | undefined,
 ): Promise<VatAggregate> {
   const lines = new Map<UstvaLineKey, LineAccumulator>();
@@ -701,6 +898,7 @@ async function aggregateVat(
   const zmItems: ZmItem[] = [];
   const oss = new Map<number | undefined, OssAccumulator>();
   let taxOnTaxFree = 0;
+  let importVat = false;
 
   for (const { document, share } of contributions) {
     const { header } = document;
@@ -709,6 +907,31 @@ async function aggregateVat(
     const direction = header.direction ?? "revenue";
     for (const group of document.groups) {
       const { net, tax } = contributedAmounts(group, share);
+      if (isImportVat(header, group, importVatAccounts)) {
+        // The amount on the import VAT account is the deductible tax itself (`import-vat.ts`).
+        if (isZero(tax)) {
+          const entry = line("62");
+          entry.tax = add(entry.tax, net);
+          entry.documents.add(key);
+          entry.touched = true;
+          importVat = true;
+        } else {
+          // Booked with a VAT rate: which part is import VAT cannot be told, so nothing is guessed.
+          const unmappedKey = `${String(header.taxRuleId)}|${direction}|${group.rate}|import-vat`;
+          const entry = unmapped.get(unmappedKey) ?? {
+            ...emptyAmounts(),
+            ruleId: header.taxRuleId,
+            direction,
+            rate: group.rate,
+            reason: IMPORT_VAT_WITH_RATE,
+          };
+          entry.net = add(entry.net, net);
+          entry.tax = add(entry.tax, tax);
+          entry.documents.add(key);
+          unmapped.set(unmappedKey, entry);
+        }
+        continue;
+      }
       const target = targetOf(header, direction, group.rate);
       switch (target.kind) {
         case "line": {
@@ -818,6 +1041,13 @@ async function aggregateVat(
   }
 
   const notes: string[] = [];
+  if (importVat) {
+    notes.push(
+      "Kz 62 holds the amounts booked on the import VAT account (Einfuhrumsatzsteuer, SKR04 " +
+        "1433 / SKR03 1588) under tax rule 9: sevDesk books the tax itself as the position's " +
+        "amount at 0 %. Import VAT booked on another account is not recognized.",
+    );
+  }
   if (taxOnTaxFree > 0) {
     notes.push(
       `${plural(taxOnTaxFree, "position group")} under a tax-free or non-taxable rule carried ` +
@@ -1002,7 +1232,11 @@ async function buildOss(
 }
 
 function coverageNotes(input: {
-  readonly truncated: boolean;
+  /** A row or document cap stopped reading. */
+  readonly capped: boolean;
+  /** The time budget stopped reading. */
+  readonly timedOut: boolean;
+  readonly documentsToScan: number;
   readonly basis: VatBasis;
   readonly margin: number;
   readonly settingsUnread: boolean;
@@ -1011,12 +1245,20 @@ function coverageNotes(input: {
   readonly basisDefaulted: boolean;
 }): string[] {
   const notes: string[] = [];
-  if (input.truncated) {
+  if (input.capped) {
     notes.push(
       "Reading stopped at a cap: the figures are incomplete. Use a shorter period (month or " +
         "quarter).",
     );
   }
+  notes.push(
+    ...incompleteTaxReportNotes({
+      timedOut: input.timedOut,
+      documentsScanned: input.scan.length,
+      documentsToScan: input.documentsToScan,
+      positionsIncomplete: input.scan.filter((doc) => !doc.positionsComplete).length,
+    }),
+  );
   if (input.basisDefaulted) {
     notes.push(
       "Basis accrual (Sollversteuerung) by default: sevDesk's API does not expose the account's " +

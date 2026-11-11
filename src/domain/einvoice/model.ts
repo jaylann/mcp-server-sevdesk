@@ -223,6 +223,12 @@ export const parsedEInvoiceSchema = z.object({
     remittance: z.string().optional(),
     /** BT-20 payment terms text. */
     terms: z.string().optional(),
+    /**
+     * BG-10: present when the invoice names a payee of its own (CII `PayeeTradeParty`, UBL
+     * `PayeeParty`), e.g. a factoring company. The payment account (BT-84) is then the payee's,
+     * so it says nothing about who the seller is. `name` is BT-59 (untrusted, cleaned).
+     */
+    payee: z.object({ name: z.string().optional() }).optional(),
   }),
   /** BT-22 notes (capped). */
   notes: z.array(z.string()),

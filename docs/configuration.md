@@ -8,6 +8,21 @@ human confirmation for binding steps, no access to local files.
 The server reads the variables once at startup, reports every problem at once and does not start
 until all of them are fixed. Restart the client (or the server) after a change.
 
+It checks the names as well. A variable whose name starts with `SEVDESK_` and is not one of the
+settings on this page or in [Remote mode](remote.md) is not ignored silently:
+
+- A name that is a near-miss of a setting counts as a problem, and the server does not start
+  until it is renamed or removed. A near-miss has the same letters with other separators or
+  another case (`SEVDESK_READONLY` or `sevdesk_read_only` for `SEVDESK_READ_ONLY`), or differs
+  by one or two characters (`SEVDESK_ALOW`). The setting you meant, perhaps a safety switch
+  such as `SEVDESK_READ_ONLY` or `SEVDESK_DRY_RUN`, would otherwise not apply. The problem names
+  the variable and the setting it resembles, never the value.
+- Any other unknown `SEVDESK_…` name, for example a variable of another tool in your shell, is
+  ignored with one warning in the server log that lists the names.
+
+Variables with an empty value are not checked, and the `SEVDESK_TOKEN_…` names a
+[profile](#profiles) may read its token from are known.
+
 Value formats:
 
 - **Flags** take `1`, `true`, `yes` or `on`, and `0`, `false`, `no` or `off`.
@@ -29,6 +44,11 @@ kept.
 | `SEVDESK_API_TOKEN`          |         | Your sevDesk API token (sevDesk: Settings → Users → API token), ideally of a dedicated user. The raw token, without a `Bearer ` prefix. Required over stdio and in bearer mode; not used in OAuth mode, where every user pastes their own on the consent page.                          |
 | `SEVDESK_API_TOKEN_FILE`     |         | Read the token from this file instead (trimmed). For Docker and Kubernetes secrets, or a file only you can read (`chmod 600`).                                                                                                                                                          |
 | `SEVDESK_API_TOKEN_KEYCHAIN` |         | Over stdio: read the token from the operating system's keychain, stored under this label with [`token set`](#keep-the-token-in-the-os-keychain). macOS and Linux; not available on Windows yet. A label is up to 64 letters, digits, `.`, `_` or `-` and starts with a letter or digit. |
+
+A `…_FILE` variable (this one and those of the [remote mode](remote.md)) takes the path of a file
+that holds the value, never the value itself; use an absolute path. When the file cannot be read,
+the problem quotes the path only if it is an absolute path. Anything else is not shown, because
+it may be the secret itself, pasted into the wrong variable.
 
 ### Permissions
 

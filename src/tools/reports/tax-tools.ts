@@ -15,7 +15,7 @@ import {
   profitAndLossSentence,
 } from "../../domain/reports/pnl.js";
 import { MAX_SCAN_DOCUMENTS } from "../../domain/reports/positions-scan.js";
-import type { ReportRunOptions } from "../../domain/reports/shared.js";
+import { HTTP_REPORT_BUDGET_MS, type ReportRunOptions } from "../../domain/reports/shared.js";
 import {
   resolvePeriod,
   VAT_BASES,
@@ -35,10 +35,23 @@ const READ_ANNOTATIONS = {
   openWorldHint: false,
 } as const;
 
-function runOptions(ctx: ToolContext): ReportRunOptions {
+/**
+ * Progress, cancellation and, in an HTTP deployment, the time budget: the HTTP router stops a
+ * request after 120 s and the caller then gets nothing, while one position request per document
+ * at the default pacing reads only a few hundred documents in that time. With the budget the
+ * report stops reading in time and comes back as truncated, telling the caller to narrow the
+ * period (review 2026-11, round 3). Over stdio there is no deadline, so no budget either.
+ */
+export function taxReportRunOptions(
+  ctx: ToolContext,
+  now: () => number = Date.now,
+): ReportRunOptions {
   return {
     signal: ctx.signal,
     onProgress: (done, total, message) => ctx.progress(done, total, message),
+    ...(ctx.config.deployment.kind === "http"
+      ? { deadline: { at: now() + HTTP_REPORT_BUDGET_MS, now } }
+      : {}),
   };
 }
 
@@ -71,14 +84,17 @@ export const vatSummaryTool = defineTool({
   output: vatSummarySchema,
   handler: async (args, ctx) => {
     const period = resolvePeriod(args);
+    const options = taxReportRunOptions(ctx);
     const settings = await loadAccountSettings(ctx.client, {
       cacheOwner: ctx.config,
       signal: ctx.signal,
     });
+    // The account list finds the import VAT account by its number (Kz 62); see `import-vat.ts`.
+    const accounts = await loadAccounts(ctx);
     const report = await vatSummary(
       ctx.client,
-      { period, basis: args.basis, settings, payments: paymentsInPeriod },
-      runOptions(ctx),
+      { period, basis: args.basis, settings, payments: paymentsInPeriod, accounts },
+      options,
     );
     return { data: report, summary: vatSummarySentence(report) };
   },
@@ -111,15 +127,34 @@ export const profitAndLossTool = defineTool({
   output: profitAndLossSchema,
   handler: async (args, ctx) => {
     const period = resolvePeriod(args);
+    const options = taxReportRunOptions(ctx);
     const accounts = await loadAccounts(ctx);
+    const chartOfAccounts = await loadChartOfAccounts(ctx);
     const report = await profitAndLoss(
       ctx.client,
-      { period, basis: args.basis, payments: paymentsInPeriod, accounts },
-      runOptions(ctx),
+      { period, basis: args.basis, payments: paymentsInPeriod, accounts, chartOfAccounts },
+      options,
     );
     return { data: report, summary: profitAndLossSentence(report) };
   },
 });
+
+/**
+ * The chart of accounts (skr03/skr04) only helps to find the import VAT account by its number:
+ * when the settings cannot be read, the report still runs (the recorded account id is known).
+ */
+async function loadChartOfAccounts(ctx: ToolContext): Promise<string | undefined> {
+  try {
+    const settings = await loadAccountSettings(ctx.client, {
+      cacheOwner: ctx.config,
+      signal: ctx.signal,
+    });
+    return settings?.chartOfAccounts;
+  } catch (error) {
+    if (error instanceof SevdeskError && error.kind !== "aborted") return undefined;
+    throw error;
+  }
+}
 
 /** Booking account names are a convenience: unreadable ones leave the accounts as ids. */
 async function loadAccounts(ctx: ToolContext): Promise<AccountDatevList | undefined> {

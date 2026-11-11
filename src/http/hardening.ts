@@ -40,8 +40,16 @@ export function errorResponse(
  * A JSON-RPC error envelope (`id: null`), the shape MCP clients parse on `/mcp`; used for Host
  * and Origin refusals, as the SDK's own validators answer.
  */
-function jsonRpcErrorResponse(status: number, message: string): Response {
-  return jsonResponse(status, { jsonrpc: "2.0", error: { code: -32000, message }, id: null });
+function jsonRpcErrorResponse(
+  status: number,
+  message: string,
+  headers: Readonly<Record<string, string>> = {},
+): Response {
+  return jsonResponse(
+    status,
+    { jsonrpc: "2.0", error: { code: -32000, message }, id: null },
+    headers,
+  );
 }
 
 export function notFound(): Response {
@@ -77,6 +85,19 @@ export function tooManyConcurrentRequests(): Response {
     429,
     "rate_limited",
     "Too many requests from this client at once; retry when one has finished.",
+    { "Retry-After": "1" },
+  );
+}
+
+/**
+ * 429 for an account with too many `/mcp` requests in progress at once, whatever addresses they
+ * come from. A JSON-RPC envelope: only MCP clients ever get it.
+ */
+export function tooManyAccountRequests(): Response {
+  return jsonRpcErrorResponse(
+    429,
+    "Too many requests of this sevDesk account are in progress at once; retry when one has " +
+      "finished.",
     { "Retry-After": "1" },
   );
 }

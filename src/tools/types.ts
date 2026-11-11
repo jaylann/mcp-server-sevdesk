@@ -4,8 +4,13 @@ import type { z } from "zod";
 import type { Config } from "../config.js";
 import type { FileAccess } from "../safety/file-access.js";
 import type { WriteTier } from "../safety/tiers.js";
+import type { ConfirmationPreview, SevdeskObjectRef } from "../safety/write-types.js";
 import type { SevdeskClient } from "../sevdesk/types.js";
 import type { ToolsetName } from "./toolsets.js";
+
+// The record a write changes and the preview a human confirms are defined in `src/safety/`, which
+// `src/domain/` and `src/safety/` may import; tool authors keep importing them from here.
+export type { ConfirmationPreview, SevdeskObjectRef } from "../safety/write-types.js";
 
 /**
  * All four MCP tool annotations, required. The spec defaults are unsafe (an omitted
@@ -60,13 +65,6 @@ export type ExecuteContext = ToolContext;
  */
 type ExtraContentBlock = ResourceLink;
 
-/** A sevDesk record a write created or changed, for the audit log and read-back. */
-export interface SevdeskObjectRef {
-  /** sevDesk's `objectName`, e.g. `Invoice`, `CreditNote`, `Contact`. */
-  readonly objectName: string;
-  readonly id: string;
-}
-
 /**
  * A lock key (see `WriteToolDefinition.locks`) for all of an account's bookings: tools that book
  * or undo payments take it besides their own records, so they run one at a time per account. A
@@ -74,6 +72,40 @@ export interface SevdeskObjectRef {
  * let a payment on one of them interleave with it and be erased (security review 2026-11, wave 2).
  */
 export const ACCOUNT_BOOKINGS: SevdeskObjectRef = { objectName: "Bookings", id: "account" };
+
+/**
+ * A lock key for an account's credit note number range: every tool that gives a new credit note
+ * a number takes it. `createFromInvoice` hands out the counter's current value without advancing
+ * it (`src/domain/drafts/numbering.ts`), so two creations that interleave, also from different
+ * invoices, got the same number before either moved the counter on (review 2026-11, round 3).
+ */
+export const ACCOUNT_CREDIT_NOTE_NUMBERS: SevdeskObjectRef = {
+  objectName: "CreditNoteNumbers",
+  id: "account",
+};
+
+/**
+ * A lock key for an account's customer numbers (Kundennummern): creating a contact and setting a
+ * contact's customer number check first that the number (and, on create, the name and e-mail) is
+ * not in use, then write. Two such calls at once both passed the check (review 2026-11, round 3).
+ */
+export const ACCOUNT_CONTACT_NUMBERS: SevdeskObjectRef = {
+  objectName: "ContactNumbers",
+  id: "account",
+};
+
+/** The same for part numbers (Artikelnummern): creating a part, or giving one another number. */
+export const ACCOUNT_PART_NUMBERS: SevdeskObjectRef = { objectName: "PartNumbers", id: "account" };
+
+/**
+ * A lock key for creating voucher drafts in an account: a new voucher is refused when one with
+ * the same supplier, number, date and gross exists already, then it is created. Two identical
+ * creations at once both passed that check and left two drafts (review 2026-11, round 3).
+ */
+export const ACCOUNT_VOUCHER_DRAFTS: SevdeskObjectRef = {
+  objectName: "VoucherDrafts",
+  id: "account",
+};
 
 /**
  * A handler's successful result. `data` must match the tool's output schema; `summary` is one
@@ -93,45 +125,6 @@ export interface ToolOutput<O> {
    * `execute`, ignored for reads). The framework writes them to the audit log.
    */
   readonly affected?: readonly SevdeskObjectRef[];
-}
-
-/** One labelled fact in a confirmation, e.g. `{ label: "Total (gross)", value: "1,190.00 EUR" }`. */
-export interface ConfirmationFact {
-  /** Trusted text written by us. */
-  readonly label: string;
-  /**
-   * May contain sevDesk text (a customer name, a document number). The framework sanitizes it
-   * (invisible and bidi characters stripped, length capped) before a human sees it, but build it
-   * with `cleanText` anyway.
-   */
-  readonly value: string;
-}
-
-/**
- * What a human approves before a `commit`/`external` action, and what a dry run returns. Shown
- * in the elicitation form, on the local approval page and in dry-run results, so it must say
- * exactly what will happen, in plain words, with the amounts and recipients involved.
- *
- * Determinism rule: for an unchanged sevDesk state and the same arguments, `prepare` must return
- * an identical preview (no clock times, no random ids, stable order). The framework prepares
- * again after the approval and asks again when the preview changed, so the human always approves
- * what actually runs.
- */
-export interface ConfirmationPreview {
-  /**
-   * One trusted sentence in the imperative, e.g. "Finalize invoice RE-1042 (draft → open) and
-   * mark it as sent by post." Identifiers from sevDesk only through `cleanText`.
-   */
-  readonly action: string;
-  /** Key facts, most important first: record, customer, amounts, dates, recipients. */
-  readonly facts: readonly ConfirmationFact[];
-  /**
-   * Consequences the human must read, trusted text, e.g. "The invoice number is assigned and
-   * the invoice becomes legally binding." Empty when there are none.
-   */
-  readonly warnings: readonly string[];
-  /** True when the action cannot be undone at all (enshrine, an email that was sent). */
-  readonly irreversible: boolean;
 }
 
 /** The result of {@link WriteToolDefinition.prepare}. */
@@ -183,7 +176,7 @@ export type ToolSelectionConfig = Pick<
 /**
  * @public Named for tool authors; `localEffects` takes these values.
  *
- * Effects of a tool outside sevDesk, on files (see `ToolDefinitionBase.localEffects`). Both go only
+ * Effects of a tool outside sevDesk, on files (see `ToolDefinitionBase.localEffects`). All go only
  * through `ToolContext.files` ({@link FileAccess}, `src/safety/file-sources.ts`).
  * - `"reads-files"`: reads files: inside `SEVDESK_FILE_DIRS` (`readConfinedFile`) or, over HTTP
  *   with file transfer, the caller's own uploads. Reading changes nothing, so a `read` tool with
@@ -192,8 +185,12 @@ export type ToolSelectionConfig = Pick<
  *   never overwriting) or, over HTTP with file transfer, download links of the caller's account.
  *   A `read` tool with this flag changes nothing in sevDesk but does modify its environment, so
  *   it must set `readOnlyHint: false` (and stays non-destructive: it never overwrites).
+ * - `"opens-upload"`: opens an upload page on this server (`requestUpload`: a ticket in the
+ *   transfer store, of which an account holds only a few at a time). Like a download link it
+ *   changes the server's state and nothing in sevDesk, so a `read` tool with this flag must set
+ *   `readOnlyHint: false` too (review 2026-11, round 3).
  */
-export type LocalEffect = "reads-files" | "writes-files";
+export type LocalEffect = "reads-files" | "writes-files" | "opens-upload";
 
 /** What every tool declares, whatever its tier. */
 interface ToolDefinitionBase<I extends ToolInputSchema, O extends ToolOutputSchema> {
@@ -215,9 +212,9 @@ interface ToolDefinitionBase<I extends ToolInputSchema, O extends ToolOutputSche
   readonly available?: (config: ToolSelectionConfig) => boolean;
   /**
    * Declared effects on the local machine (see {@link LocalEffect}). Required for every tool that
-   * reads or writes local files; the metadata lint keeps the reviewed list of such tools. A `read`
-   * tool may set `readOnlyHint: false` only together with `"writes-files"` (checked by
-   * `validateToolDefinition`).
+   * reads or writes local files or opens an upload page; the metadata lint keeps the reviewed
+   * list of such tools. A `read` tool may set `readOnlyHint: false` only together with
+   * `"writes-files"` or `"opens-upload"`, and then must (checked by `validateToolDefinition`).
    */
   readonly localEffects?: LocalEffect;
   /** Strict object schema (unknown keys are rejected), flat, object root. */
@@ -273,7 +270,11 @@ export interface WriteToolDefinition<
    * interleave with another call (e.g. a payment's document and bank transaction: the open
    * amount is checked, then booked). Calls of the same account that share a record run one at a
    * time, from `prepare` to the end of `execute` (`RecordLocks`), so the second one reads what the
-   * first one booked. Omit for tools whose checks do not depend on such state.
+   * first one booked. Besides records, a key can stand for something account-wide that is
+   * checked and then taken, e.g. a number range ({@link ACCOUNT_CREDIT_NOTE_NUMBERS}). Omit only
+   * for tools whose checks do not depend on such state: the metadata lint
+   * (`test/integration/metadata-lint.test.ts`) lists every write tool without locks with its
+   * reason.
    */
   readonly locks?: (args: z.output<I>) => readonly SevdeskObjectRef[];
   /**

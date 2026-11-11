@@ -92,6 +92,153 @@ describe("token bucket", () => {
   });
 });
 
+describe("cancelled callers leave no reservation (review 2026-11, round 3)", () => {
+  /** A clock whose sleeps end only when the test advances it, or reject when aborted. */
+  function manualClock() {
+    let time = 0;
+    const timers: { at: number; resolve: () => void }[] = [];
+    const sleeps: number[] = [];
+    const flush = async (): Promise<void> => {
+      for (let index = 0; index < 30; index += 1) await Promise.resolve();
+    };
+    return {
+      now: () => time,
+      sleeps,
+      sleep: (ms: number, signal?: AbortSignal) =>
+        new Promise<void>((resolve, reject) => {
+          if (signal?.aborted === true) {
+            reject(abortReason(signal));
+            return;
+          }
+          sleeps.push(ms);
+          const timer = { at: time + ms, resolve };
+          timers.push(timer);
+          signal?.addEventListener(
+            "abort",
+            () => {
+              timers.splice(timers.indexOf(timer), 1);
+              reject(abortReason(signal));
+            },
+            { once: true },
+          );
+        }),
+      flush,
+      /** Moves the time on by `ms`, ending the sleeps that fall due on the way, in order. */
+      async advance(ms: number): Promise<void> {
+        const end = time + ms;
+        for (;;) {
+          await flush();
+          const [next] = timers.filter((timer) => timer.at <= end).sort((a, b) => a.at - b.at);
+          if (next === undefined) break;
+          timers.splice(timers.indexOf(next), 1);
+          time = next.at;
+          next.resolve();
+        }
+        time = end;
+        await flush();
+      },
+    };
+  }
+
+  it("starts the next request without the delay of 40 cancelled ones", async () => {
+    const clock = manualClock();
+    const pacer = createPacer({ requestsPerSecond: 4, now: clock.now, sleep: clock.sleep });
+    (await pacer.acquire())();
+
+    for (let index = 0; index < 40; index += 1) {
+      const controller = new AbortController();
+      const cancelled = pacer.acquire(controller.signal);
+      expect(await settled(cancelled)).toBe("pending");
+      controller.abort();
+      await expect(cancelled).rejects.toThrow();
+    }
+
+    // The 40 calls were given up while they waited: none took a token. With a start time
+    // reserved for each, this request waited 10,250 ms.
+    const next = pacer.acquire();
+    await clock.flush();
+    expect(clock.sleeps.at(-1)).toBe(250);
+    expect(await settled(next)).toBe("pending");
+    await clock.advance(250);
+    expect(await settled(next)).toBe("resolved");
+    expect(clock.now()).toBe(250);
+  });
+
+  it("gives a cancelled caller's start time to the one behind it, in arrival order", async () => {
+    const clock = manualClock();
+    const pacer = createPacer({ requestsPerSecond: 4, now: clock.now, sleep: clock.sleep });
+    const granted: string[] = [];
+    const acquire = (name: string, signal?: AbortSignal): Promise<void> =>
+      pacer.acquire(signal).then(() => {
+        granted.push(`${name}@${String(clock.now())}`);
+      });
+    const second = new AbortController();
+    const fourth = new AbortController();
+
+    const all = [
+      acquire("first"),
+      acquire("second", second.signal),
+      acquire("third"),
+      acquire("fourth", fourth.signal),
+    ];
+    // `fifth` waits for a concurrency slot (4 by default), behind the four that wait for tokens.
+    all.push(acquire("fifth"));
+    await clock.flush();
+    expect(granted).toEqual(["first@0"]);
+
+    // `second` is being timed, `fourth` waits behind `third`: both give up.
+    second.abort();
+    fourth.abort();
+    await expect(all[1]).rejects.toThrow();
+    await expect(all[3]).rejects.toThrow();
+
+    await clock.advance(250);
+    expect(granted).toEqual(["first@0", "third@250"]);
+    await clock.advance(250);
+    expect(granted).toEqual(["first@0", "third@250", "fifth@500"]);
+    await Promise.all([all[0], all[2], all[4]]);
+  });
+
+  it("keeps the rate with cancelled callers in between: granted requests stay an interval apart", async () => {
+    const clock = manualClock();
+    const pacer = createPacer({
+      requestsPerSecond: 10,
+      maxConcurrency: 2,
+      now: clock.now,
+      sleep: clock.sleep,
+    });
+    const starts: number[] = [];
+    const pending: Promise<void>[] = [];
+    const controllers: AbortController[] = [];
+    for (let index = 0; index < 12; index += 1) {
+      const controller = new AbortController();
+      controllers.push(controller);
+      const acquired = pacer.acquire(controller.signal).then((release) => {
+        starts.push(clock.now());
+        release();
+      });
+      // Every third caller will give up.
+      pending.push(index % 3 === 1 ? acquired.catch(() => undefined) : acquired);
+    }
+    // Two give up at once, two after 150 ms (while they still wait).
+    await clock.flush();
+    controllers[1]?.abort();
+    controllers[7]?.abort();
+    await clock.advance(150);
+    controllers[4]?.abort();
+    controllers[10]?.abort();
+    await clock.advance(5_000);
+    await Promise.all(pending);
+
+    expect(starts).toHaveLength(8);
+    for (let index = 1; index < starts.length; index += 1) {
+      expect(starts[index]! - starts[index - 1]!).toBeGreaterThanOrEqual(100);
+    }
+    // No gaps either: eight requests at 10 per second take 700 ms, not the 1,100 ms of twelve.
+    expect(starts.at(-1)).toBe(700);
+  });
+});
+
 describe("concurrency limit", () => {
   it("holds callers beyond the limit until a slot is released", async () => {
     const clock = createFakeClock();

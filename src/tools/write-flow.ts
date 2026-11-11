@@ -45,6 +45,7 @@ import { z } from "zod";
 
 import { type RequestPrincipal, requestPrincipal } from "../accounts/types.js";
 import type { Deployment } from "../config.js";
+import { ApprovalStoreFullError } from "../safety/approval-store.js";
 import { ApprovalLimitError, type ApprovalTicket } from "../safety/approval-types.js";
 import { type AuditApproval, type AuditEvent, auditPrincipal } from "../safety/audit.js";
 import { findHiddenCharacters } from "../safety/fence.js";
@@ -464,6 +465,17 @@ async function requestBrowserApproval(
     });
   } catch (error) {
     if (error instanceof ApprovalLimitError) {
+      // The store's overall cap: the requests in the way belong to other accounts, so the user
+      // is not sent to an inbox that may be empty (review 2026-11, round 3).
+      if (error instanceof ApprovalStoreFullError) {
+        return errorResult(
+          `${tool.name} needs the user's approval, but the server cannot take another approval ` +
+            "request right now: too many are open across all accounts. This is not about the " +
+            "user's own requests; there is nothing for them to approve or reject. Nothing was " +
+            "sent to sevDesk. Call the tool again in a few minutes (requests expire after at " +
+            "most 10 minutes), and tell the user if it keeps happening.",
+        );
+      }
       const where =
         deployment.kind === "http"
           ? `in the approvals inbox (${inboxUrl(deployment)})`

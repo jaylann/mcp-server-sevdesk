@@ -1,7 +1,8 @@
 /**
  * Contract of browser approvals (`SEVDESK_CONFIRM=browser`), independent of where the human sees
  * them:
- * - over stdio, a local page on 127.0.0.1 whose URL is a capability (`approval-local.ts`);
+ * - over stdio, a local page on 127.0.0.1, reached through a single-use launch link
+ *   (`approval-local.ts`);
  * - over HTTP, the server's own approval inbox (`/approvals`), unlocked per browser by proving
  *   the account (`src/http/approval-routes.ts`).
  *
@@ -10,8 +11,8 @@
  * approval created for its own grant, and the inbox lists and decides per account.
  */
 import type { RequestPrincipal } from "../accounts/types.js";
-import type { ConfirmationPreview } from "../tools/types.js";
 import type { WriteTier } from "./tiers.js";
+import type { ConfirmationPreview } from "./write-types.js";
 
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 
@@ -40,7 +41,7 @@ export interface ApprovalBinding {
 
 /** A pending or decided approval, as the write flow sees it. */
 export interface ApprovalTicket {
-  /** Random 256-bit id (base64url). Secret for the local page (it is the URL); never shown to the model. */
+  /** Random 256-bit id (base64url), part of the local page's address; never shown to the model. */
   readonly id: string;
   /** Short, non-secret code shown in the tool result and on the page, so the user can match them. */
   readonly reference: string;
@@ -91,8 +92,10 @@ export class ApprovalLimitError extends Error {
 /**
  * Pending and decided approvals, in memory. Each record expires after 10 minutes (default) and is
  * decided once and taken once. Limits: 5 pending and 20 records per account scope (a scope makes
- * room only among its own records); 100 overall as a last resort, never dropping an approved
- * request that was not taken yet.
+ * room only among its own records); 100 overall as a last resort. At the overall cap a scope that
+ * holds more records than the creating one gives one up (rejected or pending first, an approved,
+ * untaken one only when nothing else is left); a scope never loses a record to one that holds as
+ * many or more (review 2026-11, round 3).
  */
 export interface ApprovalStore {
   /** The unexpired approval of `owner.grantKey` for this tool and argument hash, if any. */
@@ -100,7 +103,8 @@ export interface ApprovalStore {
   /**
    * Creates a pending approval for `owner` (replacing the owner's other one for the same tool and
    * arguments) and presents it through the channel. Rejects with {@link ApprovalLimitError} at the
-   * per-account pending limit, or with the channel's error when it cannot present the page.
+   * per-account pending limit (its subclass `ApprovalStoreFullError` when the whole store is full
+   * and nothing can make room), or with the channel's error when it cannot present the page.
    */
   create(owner: RequestPrincipal, binding: ApprovalBinding): Promise<ApprovalTicket>;
   /**
@@ -114,6 +118,13 @@ export interface ApprovalStore {
   get(id: string): ApprovalView | undefined;
   /** Decides a pending approval (once) and reports it through `onDecision`. */
   decide(id: string, decision: "approved" | "rejected"): DecideOutcome;
+  /**
+   * Turns an approval that was not taken yet into a rejected one, whatever was decided before,
+   * and reports that through `onDecision`. For a channel that learns its page reached someone
+   * else: an approval given there must not run. `false` when the approval is unknown, expired or
+   * taken already (then the action ran, or will not).
+   */
+  withdraw(id: string): boolean;
   /** Forgets every approval and closes the channel. */
   close(): Promise<void>;
 }
@@ -131,7 +142,7 @@ export interface ApprovalChannel {
    * Called once by the store factory with the store the channel serves, so a page the channel
    * runs (the local one) can show and decide records.
    */
-  attach(store: Pick<ApprovalStore, "get" | "decide">): void;
+  attach(store: Pick<ApprovalStore, "get" | "decide" | "withdraw">): void;
   /**
    * Makes a new approval reachable. Resolves whether a page was opened in the user's browser;
    * rejects when it cannot be presented at all (for example, the local server cannot listen).

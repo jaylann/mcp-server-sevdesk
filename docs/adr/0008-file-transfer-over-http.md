@@ -38,7 +38,11 @@ neither:
   reference code and the expiry. The user uploads one file there; the model then passes the
   `uploadId` as the existing `file` argument. The page shows only trusted values (purpose,
   accepted kinds, size limit, account, reference, expiry): the model cannot put text on it. The
-  file type is checked by content, the name is cleaned and never used as a path.
+  file type is checked by content, the name is cleaned and never used as a path. The tool stays in
+  the read tier (it changes nothing in sevDesk) but declares `readOnlyHint: false`: every call
+  opens a ticket on this server, and an account holds only a few at a time, so a client must not
+  treat it as free of effects (the same rule as for the read-tier tools that create a download
+  link).
 - **Downloads.** The delivering tools return `download {url, reference, expiresAt}` instead of
   `savedTo`. The bytes are fetched from sevDesk **during the tool call** (PDFs still with
   `preventSendBy=true`) and kept; `GET /files/<id>` serves them and makes no sevDesk request.
@@ -78,6 +82,12 @@ live records and a quarter of `SEVDESK_HTTP_FILES_MAX_MB` (at least one 20 MiB u
 half); room for one upload stays free for accounts that hold nothing yet. Nothing is evicted, new
 records are refused. Upload bodies: 2 at once on the server and 1 per account, each within 90 s,
 without a 10 s pause and at 16 KB/s on average after 10 s, so a trickled body cannot hold a slot.
+Node's own request timeout is set above the longest body window of any route (the 90 s plus 30 s
+for the headers and the checks before the body), so it never cuts an upload the route still
+allows; with a fixed 30 s it did. A download is written in slices of 64 KiB, and the connection
+is dropped when the client takes no slice for a minute: that timer measures a client that stopped
+reading, not the size of the file. (Written as one piece, every download that took longer than a
+minute was cut, however steadily the client read; review 2026-11, round 3.)
 Logs and audit lines carry the reference, kind, size and SHA-256, never ids or file names.
 
 ## Consequences
@@ -99,6 +109,10 @@ Logs and audit lines carry the reference, kind, size and SHA-256, never ids or f
   while parsed, hence two uploads at once at most. One per account keeps a single account from
   taking both; two accounts together can still keep others waiting for up to 90 s per upload.
 - Bad: uploads over a very slow connection (under 16 KB/s, or with a 10 s stall) fail with 408.
+- Bad: a download that stalls (under 64 KiB in a minute) is cut and still counts as one of the
+  link's 5. A client that reads just fast enough can keep a connection, and the file in memory,
+  for a long time (a 20 MiB file for hours); the request's slot is freed at the 120 s deadline
+  all the same, and connections are capped per client address.
 - Bad: reverse proxies must pass bodies over 20 MiB and `Content-Length` (nginx needs
   `client_max_body_size`).
 - Bad: as with the inbox, an agent that drives a signed-in browser could upload or download on its

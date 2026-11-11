@@ -18,7 +18,6 @@
 import type { RequestPrincipal } from "../accounts/types.js";
 import type { Config } from "../config.js";
 import { SevdeskError } from "../sevdesk/errors.js";
-import { refused, resolveOutputDir, writeNewFile } from "../tools/documents/save-file.js";
 import { sanitizeUntrusted } from "./fence.js";
 import {
   type FileAccess,
@@ -31,6 +30,7 @@ import {
   type UploadRequest,
 } from "./file-access.js";
 import { type LocalFileKind, readConfinedFile } from "./local-files.js";
+import { refused, resolveOutputDir, writeNewFile } from "./output-files.js";
 import { duration } from "./transfer-store.js";
 import {
   type DownloadLinkView,

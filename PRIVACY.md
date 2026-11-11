@@ -3,9 +3,23 @@
 mcp-server-sevdesk is software you run yourself. The project does not operate any service and
 collects **no telemetry**.
 
-- **Data flow.** The server talks only to the sevDesk API (`https://my.sevdesk.de/api/v1`) with
-  your token, and returns results to the MCP client you connected (for example Claude Desktop).
-  What your client or model provider does with that data is governed by their terms.
+- **Data flow.** The server sends its requests to the sevDesk API
+  (`https://my.sevdesk.de/api/v1`, or the `SEVDESK_BASE_URL` you set) with your token, and returns
+  results to the MCP client you connected (for example Claude Desktop). What your client or model
+  provider does with that data is governed by their terms. It contacts no other host, with two
+  exceptions:
+  - **DATEV export.** `sevdesk_datev_export` (`write` tier) downloads the finished ZIP from
+    sevDesk's export storage on Amazon S3
+    (`sevexport-filestorage-workload-prod.s3.eu-central-1.amazonaws.com`), through the presigned
+    link sevDesk returns for the export. The request carries that link and no sevDesk token; the
+    storage host sees the server's IP address and the time. A link to any other host is refused,
+    and redirects are not followed.
+  - **Client metadata in remote mode with OAuth**: see "Third parties" under
+    [Remote mode](#remote-mode).
+- **Confirmation page.** With `SEVDESK_CONFIRM=browser` (local use) the preview of an action is
+  shown on a page the server serves on `127.0.0.1` and opens in your default browser through the
+  operating system's opener; `SEVDESK_CONFIRM_OPEN=0` only writes the link to the server log. The
+  page loads nothing from other hosts.
 - **Local storage.** Nothing is stored unless you enable it: the optional audit log
   (`SEVDESK_AUDIT_LOG`) and output directory (`SEVDESK_OUTPUT_DIR`) are files on your machine.
 - **Your token.** If you use `token set`, the token is stored in your operating system's keychain
@@ -40,8 +54,8 @@ can include other people's accounts.
   of the account. With `SEVDESK_OAUTH_ACCOUNTS=any` this covers the documents of every account
   that connects.
 - **The audit log covers every account.** With `SEVDESK_AUDIT_LOG`, one file records the write
-  calls of every connected account, with previews that contain customer names, amounts and e-mail
-  texts, and names the account and the grant on each line.
+  calls of every connected account, with previews that contain customer names, amounts, e-mail
+  texts and the names of receipt files, and names the account and the grant on each line.
 - **Third parties.** When someone starts an OAuth connection, the server fetches the client's
   metadata document from the client's host (for claude.ai: `claude.ai`); that host sees the
   server's IP address and the time. Whoever terminates TLS in front of the server (a tunnel such

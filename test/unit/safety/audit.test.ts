@@ -308,3 +308,47 @@ describe("audit log: incomplete writes (security review 2026-11, wave 2)", () =>
     expect(JSON.parse(executed ?? "")).toMatchObject({ event: "executed" });
   });
 });
+
+// Review 2026-11, round 3: the file was trusted by its mode bits alone.
+describe.skipIf(process.getuid === undefined)("audit log: ownership", () => {
+  /** As if the process ran as another user than the one who owns the test file. */
+  const otherUser = (): number => (process.getuid?.() ?? 0) + 1;
+
+  it("refuses a file that belongs to another user, also with mode 0600", async () => {
+    const path = join(await tempDir(), "audit.jsonl");
+    await writeFile(path, '{"existing":true}\n', { mode: 0o600 });
+    const log = createAuditLog({ path, secrets: [TEST_TOKEN], getuid: otherUser });
+
+    const recording = log.record(event({ event: "executing" }));
+
+    // The write flow prints `code` and refuses the action: nothing runs without its line.
+    await expect(recording).rejects.toMatchObject({
+      code: "AUDIT_LOG_OWNED_BY_ANOTHER_USER",
+      message: expect.stringContaining("belongs to another user") as string,
+    });
+    expect(await readFile(path, "utf8")).toBe('{"existing":true}\n');
+  });
+
+  it("does not loosen or tighten the mode of someone else's file", async () => {
+    const path = join(await tempDir(), "audit.jsonl");
+    await writeFile(path, "", { mode: 0o644 });
+    await chmod(path, 0o644);
+    const log = createAuditLog({ path, secrets: [TEST_TOKEN], getuid: otherUser });
+
+    await expect(log.record(event())).rejects.toThrow(/belongs to another user/);
+    expect((await stat(path)).mode & 0o777).toBe(0o644);
+  });
+
+  it("writes to a file of its own user", async () => {
+    const path = join(await tempDir(), "audit.jsonl");
+    const log = createAuditLog({
+      path,
+      secrets: [TEST_TOKEN],
+      getuid: () => process.getuid?.() ?? 0,
+    });
+
+    await log.record(event());
+
+    expect(await lines(path)).toHaveLength(1);
+  });
+});

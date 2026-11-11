@@ -11,15 +11,20 @@
  *    reminders (MA, D-049) are counted and left out.
  * 2. **Positions** ({@link scanPositions}): one request per document (`GET /InvoicePos`,
  *    `/CreditNotePos`, `/VoucherPos` filtered by parent), at most {@link MAX_SCAN_DOCUMENTS}
- *    documents, a few in parallel (the client paces them), with progress and cancellation.
+ *    documents, a few in parallel (the client paces them), with progress and cancellation. With
+ *    a time budget (`ReportDeadline`, HTTP deployments) no read starts after the budget; the
+ *    documents not read make the report truncated.
  *
  * Amounts. Positions give the composition (rate, account, asset flag); the document's EUR totals
  * give the amounts. When the positions add up to the document's totals they are used as they are;
  * otherwise (document discounts, foreign-currency positions without EUR sums, rounding) the
  * document's EUR net and tax are split over the position groups in proportion, so the report
- * always matches the documents' own sums. Foreign-currency documents count with sevDesk's EUR
- * values (D-043); one without any EUR value cannot be converted and is listed instead. Optional
- * positions are not part of a document's total and are skipped.
+ * always matches the documents' own sums. A document whose positions could not all be read
+ * (`positionsComplete: false`) is split the same way over the positions that were read, so its
+ * rates and accounts may be wrong: the reports name such documents and count as incomplete.
+ * Foreign-currency documents count with sevDesk's EUR values (D-043); one without any EUR value
+ * cannot be converted and is listed instead. Optional positions are not part of a document's
+ * total and are skipped.
  *
  * Signs. Invoices count as revenue as they are (a cancellation invoice, SR, has negative sums and
  * offsets its original, D-037). A credit note reduces revenue (negative), unless its tax rule is an
@@ -59,7 +64,13 @@ import type {
 } from "../reconciliation/transaction-log.js";
 import { taxRuleById } from "../reference-data.js";
 import { listVoucherPositions, mapVoucherDetail, type VoucherPositionDto } from "../vouchers.js";
-import { type ReportRunOptions, scanPages, throwIfAborted } from "./shared.js";
+import {
+  deadlineReached,
+  type ReportDeadline,
+  type ReportRunOptions,
+  scanPages,
+  throwIfAborted,
+} from "./shared.js";
 
 /** Most documents whose positions one report reads; more are reported as truncated. */
 export const MAX_SCAN_DOCUMENTS = 1_500;
@@ -179,7 +190,8 @@ interface DocumentRef {
   readonly number?: string | undefined;
 }
 
-function refOf(header: DocumentHeader): DocumentRef {
+/** The reference of `header` for a report's lists of documents. */
+export function refOf(header: DocumentHeader): DocumentRef {
   return header.number === undefined
     ? { objectName: OBJECT_NAMES[header.kind], id: header.id }
     : { objectName: OBJECT_NAMES[header.kind], id: header.id, number: header.number };
@@ -565,9 +577,12 @@ export interface ScannedDocument {
 }
 
 export interface PositionScan {
+  /** The documents read: a prefix of the input order. */
   readonly documents: readonly ScannedDocument[];
-  /** Documents not read because of the cap (in input order, after the first `max`). */
+  /** Documents not read because of the cap or the time budget (the rest of the input order). */
   readonly notRead: number;
+  /** True when the time budget (`options.deadline`) stopped the scan before the cap did. */
+  readonly timedOut: boolean;
   /** Foreign-currency documents without EUR values (left out). */
   readonly unconvertible: readonly DocumentRef[];
 }
@@ -589,7 +604,9 @@ interface RawPosition {
 /**
  * Reads the positions of `headers` (in the given order, the first `maxDocuments`), at most
  * {@link POSITION_CONCURRENCY} at a time, and returns each document's position groups in EUR.
- * Reports progress per document and stops with an `aborted` error when `signal` fires.
+ * Reports progress per document and stops with an `aborted` error when `signal` fires. Once
+ * `options.deadline` has passed no further document is started: the result then holds the
+ * documents read so far, counts the others in `notRead` and says `timedOut`.
  */
 export async function scanPositions(
   client: SevdeskClient,
@@ -615,8 +632,14 @@ export async function scanPositions(
       return toScannedDocument(header, read.positions, read.complete);
     },
     options.signal,
+    () => deadlineReached(options.deadline),
   );
-  return { documents, notRead: convertible.length - selected.length, unconvertible };
+  return {
+    documents,
+    notRead: convertible.length - documents.length,
+    timedOut: documents.length < selected.length,
+    unconvertible,
+  };
 }
 
 async function readPositions(
@@ -883,6 +906,8 @@ export interface PaidDocuments {
     readonly documentsFetched: number;
     readonly truncated: boolean;
   };
+  /** True when the time budget stopped the reads by id (payments on those documents are out). */
+  readonly timedOut: boolean;
   /** Fetched documents left out, by reason. */
   readonly excluded: Readonly<Record<ExclusionReason, number>>;
   /** Trusted text: the payment source's notes plus what was skipped here. */
@@ -893,8 +918,9 @@ export interface PaidDocuments {
  * Matches payments to their documents: headers already listed (`known`, by {@link documentKey})
  * are reused, the others are fetched by id ({@link POSITION_CONCURRENCY} at a time, at most
  * `maxFetches`, default {@link MAX_SCAN_DOCUMENTS}; payments on documents beyond the cap are left
- * out and the result is `truncated`). A payment counts when its document is not excluded, is
- * accepted by `accept`, and the payment is in the document's currency.
+ * out and the result is `truncated`; the same happens to documents not fetched because
+ * `deadline` passed). A payment counts when its document is not excluded, is accepted by
+ * `accept`, and the payment is in the document's currency.
  */
 export async function collectPaidDocuments(
   client: SevdeskClient,
@@ -905,6 +931,8 @@ export async function collectPaidDocuments(
     readonly maxFetches?: number | undefined;
     readonly signal?: AbortSignal | undefined;
     readonly today?: string | undefined;
+    /** Time budget: no document is fetched by id after it (see `ReportDeadline`). */
+    readonly deadline?: ReportDeadline | undefined;
   },
 ): Promise<PaidDocuments> {
   const headers = new Map<string, DocumentHeader>(options.known ?? []);
@@ -931,9 +959,12 @@ export async function collectPaidDocuments(
     POSITION_CONCURRENCY,
     (entry) => fetchDocumentHeader(client, entry.ref, options.signal, options.today),
     options.signal,
+    () => deadlineReached(options.deadline),
   );
-  toFetch.forEach((entry, index) => {
-    const header = fetchedHeaders[index] as DocumentHeader;
+  // `fetchedHeaders` is a prefix of `toFetch` when the time budget ran out.
+  const beyondCap = new Set(missing.slice(maxFetches).map((entry) => entry.key));
+  fetchedHeaders.forEach((header, index) => {
+    const entry = toFetch[index] as (typeof toFetch)[number];
     headers.set(entry.key, header);
     if (header.excluded !== undefined) excluded[header.excluded] += 1;
   });
@@ -942,12 +973,14 @@ export async function collectPaidDocuments(
   const order: DocumentHeader[] = [];
   let mismatched = 0;
   let skippedByCap = 0;
+  let skippedByTime = 0;
   let used = 0;
   for (const payment of result.payments) {
     const key = documentKey(payment.document);
     const header = headers.get(key);
     if (header === undefined) {
-      skippedByCap += 1;
+      if (beyondCap.has(key)) skippedByCap += 1;
+      else skippedByTime += 1;
       continue;
     }
     if (header.excluded !== undefined || !options.accept(header)) continue;
@@ -977,15 +1010,22 @@ export async function collectPaidDocuments(
         "documents read by id were left out: the figures are incomplete.",
     );
   }
+  if (skippedByTime > 0) {
+    notes.push(
+      `${String(skippedByTime)} payment(s) were left out because their documents could not be ` +
+        "read by id within the time budget of this server: the figures are incomplete.",
+    );
+  }
   return {
     headers: order,
     payments,
     coverage: {
       read: result.payments.length,
       used,
-      documentsFetched: toFetch.length,
-      truncated: result.truncated || skippedByCap > 0,
+      documentsFetched: fetchedHeaders.length,
+      truncated: result.truncated || skippedByCap > 0 || skippedByTime > 0,
     },
+    timedOut: skippedByTime > 0,
     excluded,
     notes,
   };
@@ -995,15 +1035,26 @@ export async function collectPaidDocuments(
 export interface Contribution {
   readonly document: ScannedDocument;
   /**
-   * Paid share `paid` ÷ `gross` (`gross` positive; `paid` negative for a reversal or refund that
-   * moved money against the document's usual direction); `undefined` for the whole document.
+   * The part of the document one payment settled, as the fraction `paid` ÷ `gross`; `undefined`
+   * for the whole document.
+   * - `gross` is the document's gross with its own sign, so the fraction keeps the sign of the
+   *   document's amounts: a negative document (e.g. an invoice with negative sums) settled by
+   *   money in the direction a negative document implies (a refund to the customer) has a
+   *   negative `paid` and a negative `gross`, a positive fraction, and contributes its negative
+   *   amounts. Dividing by the absolute gross turned such a refund into positive revenue and
+   *   VAT (review 2026-11, round 3).
+   * - `paid` is the payment's `signedForDocument` (negative when money moved against the
+   *   document's usual direction: a bounced debit, a refund), capped at the whole document.
+   * - `before` is the sum of `paid` of the document's earlier payments in this scan. Amounts
+   *   are rounded on the running total (see {@link contributedAmounts}).
    */
-  readonly share?: { readonly paid: Decimal; readonly gross: Decimal } | undefined;
+  readonly share?:
+    { readonly paid: Decimal; readonly gross: Decimal; readonly before: Decimal } | undefined;
 }
 
 /**
  * One contribution per scanned document, or one per payment for documents in `payments`: the
- * share is the payment's `signedForDocument` over the absolute gross (capped at the whole
+ * share is the payment's `signedForDocument` over the document's gross (capped at the whole
  * document), so a bounced debit or a refund reduces what the document's other payments added.
  * Documents with payments but a gross of zero contribute nothing.
  */
@@ -1021,30 +1072,40 @@ export function contributionsOf(
     const gross = document.header.gross;
     if (gross === undefined || isZero(gross)) continue;
     const whole = compare(gross, 0) < 0 ? negate(gross) : gross;
+    let before = decimal(0);
     for (const payment of paid) {
       const signed = decimal(payment.signedForDocument.amount);
       const negative = compare(signed, 0) < 0;
       const amount = negative ? negate(signed) : signed;
       const capped = compare(amount, whole) > 0 ? whole : amount;
-      contributions.push({
-        document,
-        share: { paid: negative ? negate(capped) : capped, gross: whole },
-      });
+      const share = { paid: negative ? negate(capped) : capped, gross, before };
+      contributions.push({ document, share });
+      before = add(before, share.paid);
     }
   }
   return contributions;
 }
 
-/** A group's amounts for a contribution: as they are, or the paid share (rounded to cents). */
+/**
+ * A group's amounts for a contribution: as they are, or the paid share in cents.
+ *
+ * The share is the difference of two rounded running totals (the group's amount for everything
+ * paid up to and including this payment, minus the amount for everything paid before it), not
+ * the payment's own fraction rounded alone. So the payments of a document add up exactly: one
+ * settled in full within the scan contributes its totals to the cent (three payments of a
+ * 119.00 invoice gave 100.01 net and 18.99 tax when each was rounded by itself), and payments
+ * and their reversals add up to the amount for what stays paid (review 2026-11, round 3).
+ * Payments in other periods are not known here, so the running total starts at each scan.
+ */
 export function contributedAmounts(
   group: PositionGroup,
   share: Contribution["share"],
 ): { readonly net: Decimal; readonly tax: Decimal } {
   if (share === undefined) return { net: group.net, tax: group.tax };
-  return {
-    net: ratioOf(group.net, share.paid, share.gross),
-    tax: ratioOf(group.tax, share.paid, share.gross),
-  };
+  const after = add(share.before, share.paid);
+  const part = (amount: Decimal): Decimal =>
+    subtract(ratioOf(amount, after, share.gross), ratioOf(amount, share.before, share.gross));
+  return { net: part(group.net), tax: part(group.tax) };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1090,13 +1151,16 @@ export async function loadContactVatIds(
 
 /**
  * Maps `items` with at most `limit` calls in flight, keeping the input order in the result. Stops
- * starting new calls after the first failure (which is rethrown) or a cancellation.
+ * starting new calls after the first failure (which is rethrown) or a cancellation. With `stop`,
+ * no call starts once it returns true (checked before every call): the result then holds only
+ * the items started, a prefix of `items`.
  */
 export async function mapLimited<T, R>(
   items: readonly T[],
   limit: number,
   fn: (item: T, index: number) => Promise<R>,
   signal?: AbortSignal,
+  stop?: () => boolean,
 ): Promise<R[]> {
   const results: R[] = new Array<R>(items.length);
   let next = 0;
@@ -1104,6 +1168,7 @@ export async function mapLimited<T, R>(
   const worker = async (): Promise<void> => {
     while (!failed && next < items.length) {
       throwIfAborted(signal);
+      if (stop?.() === true) return;
       const index = next;
       next += 1;
       try {
@@ -1120,5 +1185,7 @@ export async function mapLimited<T, R>(
     (result): result is PromiseRejectedResult => result.status === "rejected",
   );
   if (rejection !== undefined) throw rejection.reason;
+  // Items are started in order, so after a `stop` the first `next` results are the ones set.
+  results.length = next;
   return results;
 }

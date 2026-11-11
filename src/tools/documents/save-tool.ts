@@ -21,11 +21,11 @@ import {
   fetchDocumentFile,
 } from "../../domain/document-files.js";
 import { canDeliverFiles } from "../../safety/file-access.js";
+import { refused } from "../../safety/output-files.js";
 import { defineTool } from "../define-tool.js";
 import { deliveryData, deliveryOutputShape, downloadText } from "./delivery.js";
 import { documentIdSchema, fileLink, fileMetadata, fileMetadataShape } from "./file-tools.js";
 import { DOCUMENT_FILE_LABELS, DOCUMENT_FILE_TOOLSETS } from "./kinds.js";
-import { refused } from "./save-file.js";
 
 const output = z.object({
   ...fileMetadataShape,

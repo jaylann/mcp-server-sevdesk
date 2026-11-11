@@ -67,6 +67,38 @@ describe("sevdesk_invoice_enshrine (spec invoiceEnshrine; community answer {obje
     expect(plan.previewDe.irreversible).toBe(true);
   });
 
+  it("lists what it locks for good: address, texts, positions (review 2026-11, round 3)", async () => {
+    const plan = await prepareWrite(tool, { id: 1001 }, invoiceClient());
+
+    expect(plan.preview.facts).toContainEqual({
+      label: "Address on the document",
+      value: "Musterfirma GmbH\nMusterstraße 1\n12345 Musterstadt",
+    });
+    expect(plan.preview.facts.slice(-3)).toEqual([
+      { label: "Head text (Kopftext)", value: "Vielen Dank für Ihren Auftrag." },
+      { label: "Positions", value: "none" },
+      {
+        label: "Foot text (Fußtext)",
+        value: "Bitte überweisen Sie den Betrag innerhalb von 14 Tagen.",
+      },
+    ]);
+    expect(plan.previewDe.facts.slice(-3)).toEqual([
+      { label: "Kopftext", value: "Vielen Dank für Ihren Auftrag." },
+      { label: "Positionen", value: "keine" },
+      { label: "Fußtext", value: "Bitte überweisen Sie den Betrag innerhalb von 14 Tagen." },
+    ]);
+    expect(plan.preview.warnings.at(-1)).toContain("Not shown: the contact person");
+    expect(plan.previewDe.warnings.at(-1)).toContain("Nicht gezeigt werden: der Ansprechpartner");
+    expect(plan.previewDe.warnings).toHaveLength(plan.preview.warnings.length);
+  });
+
+  it("runs one at a time with bookings and their undo (review 2026-11, round 3)", () => {
+    expect(tool.locks?.({ id: 1001 })).toEqual([
+      { objectName: "Bookings", id: "account" },
+      { objectName: "Invoice", id: "1001" },
+    ]);
+  });
+
   it.each([
     ["an enshrined invoice", invoiceRow({ enshrined: ENSHRINED }), "already enshrined"],
     ["a draft", invoiceRow({ status: "100" }), "is a draft"],

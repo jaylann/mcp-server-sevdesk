@@ -1,4 +1,4 @@
-<!-- translated-from: docs/remote.md sha256:bf980ef7bf18 -->
+<!-- translated-from: docs/remote.md sha256:24e0dac351b9 -->
 
 # Fernzugriff (HTTP)
 
@@ -91,7 +91,12 @@ Im Bearer-Modus sind die Stufen `SEVDESK_ALLOW`, wie über stdio.
 **Nie gespeichert**, weder in Dateien noch in Logs: sevDesk-API-Tokens, Autorisierungscodes,
 Access- und Refresh-Tokens, Cookies, das Server-Geheimnis, die Bearer-Geheimnisse und der Schlüssel
 der verschlüsselten Dateien. Die Geheimnisse kommen nur aus der Umgebung. Upload- und Download-IDs
-und Dateinamen erscheinen nie in einem Log.
+erscheinen nie in einem Log, und das Log des Servers (stderr) enthält keine Dateinamen. Das
+Audit-Log kann einen enthalten: Die Vorschau, die es bei einem Probelauf oder einer angefragten
+Bestätigung festhält, enthält die Fakten des Aufrufs (Kundennamen, Beträge), und bei einem
+Belegentwurf mit Belegdatei gehört dazu der bereinigte Name der hochgeladenen Datei, mit ihrer
+Größe und dem Anfang ihres SHA-256. Im Bearer-Modus mit `SEVDESK_FILE_DIRS` wird ein als `file`
+übergebener Pfad mit den übrigen Argumenten protokolliert.
 
 ### Tokens und Laufzeiten
 
@@ -335,7 +340,7 @@ Datei (Docker- und Kubernetes-Secrets); setzen Sie die eine oder die andere.
 | `SEVDESK_HTTP_SECRET` (`_FILE`)          |                                       | OAuth, Pflicht: das Server-Geheimnis, mit dem alle Tokens und Cookies verschlüsselt werden; mindestens 32 zufällige Bytes, hex oder base64/base64url (`generate-secret`). Optional im Bearer-Modus, wo es Browser-Anmeldungen über einen Neustart hinweg gültig hält.                                                                                                                                                                                                                                                        |
 | `SEVDESK_HTTP_SECRET_PREVIOUS` (`_FILE`) |                                       | Das vorige Server-Geheimnis, während Sie [es wechseln](#das-server-geheimnis-wechseln): Damit verschlüsselte Tokens werden weiter angenommen und bei der Erneuerung neu verschlüsselt.                                                                                                                                                                                                                                                                                                                                       |
 | `SEVDESK_HTTP_STATE_DIR`                 | Speicher (Image: `/data`)             | Absolutes Verzeichnis für den Zugangsspeicher und die verschlüsselten Dateien der Dateiübertragung (`files/`); angelegt mit Modus 0700 (ein bestehendes wird auf 0700 verschärft) und beim Start auf Schreibrechte geprüft. Ohne die Variable enden Zugänge und Browser-Sitzungen mit dem Prozess (der OAuth-Start warnt), und Dateien werden im Speicher gehalten.                                                                                                                                                          |
-| `SEVDESK_HTTP_FILES`                     | `on`                                  | [Dateiübertragung](#dateien-hochladen-und-herunterladen): Upload-Seiten für Belege und E-Rechnungen und Download-Links für die Dateien, die Werkzeuge erzeugen. `on`/`off`, `1`/`0`, `true`/`false` oder `yes`/`no`. Aus: kein `sevdesk_upload_request`, und im OAuth-Modus gar keine Dateiwerkzeuge.                                                                                                                                                                                                                        |
+| `SEVDESK_HTTP_FILES`                     | `on`                                  | [Dateiübertragung](#dateien-hochladen-und-herunterladen): Upload-Seiten für Belege und E-Rechnungen und Download-Links für die Dateien, die Werkzeuge erzeugen. `on`/`off`, `1`/`0`, `true`/`false` oder `yes`/`no`. Aus: keine Seiten und kein `sevdesk_upload_request`; im OAuth-Modus außerdem kein Werkzeug, das eine Datei zum Lesen oder einen Ort zum Speichern braucht. Die PDF- und XML-Werkzeuge und die `sevdesk://`-Ressourcen bleiben: Ein Client liest Dokumentdateien weiterhin über MCP.                     |
 | `SEVDESK_HTTP_FILES_MAX_MB`              | 256 mit Zustandsverzeichnis, sonst 64 | Mebibyte (MiB), die die hochgeladenen Dateien und Download-Links aller Konten zusammen belegen dürfen, 32 bis 4096. Ein Konto darf ein Viertel davon nutzen (mindestens 20 MiB, höchstens die Hälfte); Platz für einen Upload bleibt für Konten frei, die noch keine Dateien halten. Mit Zustandsverzeichnis liegen die Dateien auf der Festplatte, sonst im Speicher.                                                                                                                                                       |
 | `SEVDESK_HTTP_FILES_TTL`                 | `30m`                                 | Wie lange eine hochgeladene Datei und ein Download-Link gültig bleiben, 5 Minuten bis 24 Stunden.                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `SEVDESK_OAUTH_ACCOUNTS`                 |                                       | OAuth, Pflicht: die sevDesk-Konto-IDs, die sich verbinden dürfen, durch Kommas getrennt, oder `any` (der Start warnt).                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -564,7 +569,8 @@ enden, wenn der Server neu startet; das Modell fragt dann einfach erneut. Siehe
 Ein entfernter Server kann keine Dateien auf Ihrem Rechner lesen, und die Dateien, die er erzeugt,
 gelangen nicht von selbst dorthin. Mit `SEVDESK_HTTP_FILES=on` (der Standard) wandern Dateien über
 Seiten des Servers, die Sie in Ihrem Browser öffnen. Das Modell sieht und sendet nie den Inhalt
-einer Datei.
+dieser Dateien. (Dokument-PDFs und -XML, die ein Client als `sevdesk://`-Ressource anfordert,
+nehmen einen anderen Weg: Sie gehen per MCP an den Client.)
 
 **Einen Beleg oder eine E-Rechnung hochladen:**
 
@@ -582,8 +588,8 @@ einer Datei.
    Ablauf nutzbar, auch für einen erneuten Versuch nach einem Fehler, aber nur für die Verbindung,
    die ihn angefordert hat.
 
-**Herunterladen.** `sevdesk_document_save`, `sevdesk_csv_export` und `sevdesk_datev_export` geben
-statt eines Dateipfads einen Download-Link zurück, `<public URL>/files/<id>`. Der Server hat die
+**Herunterladen.** `sevdesk_document_save`, `sevdesk_voucher_receipt_save`, `sevdesk_csv_export`
+und `sevdesk_datev_export` geben statt eines Dateipfads einen Download-Link zurück, `<public URL>/files/<id>`. Der Server hat die
 Datei während des Werkzeugaufrufs von sevDesk geholt; das Öffnen des Links sendet nichts an
 sevDesk. Der Browser speichert die Datei als Download; sie wird nie auf der Seite des Servers
 angezeigt.
@@ -622,6 +628,7 @@ Sie zugestimmt haben.
 | Anfragen je Client       | 60 pro Minute an die Upload- und Download-Seiten zusammen; 10 Uploads pro Minute und 60 pro Stunde (IPv6 je /64-Netz).                                                             |
 | Gleichzeitige Uploads    | 2 für den ganzen Server, 1 je Konto; ein weiterer bekommt „Server busy“ oder „Upload in progress“ (503): Versuchen Sie es gleich noch einmal.                                      |
 | Upload-Tempo             | Die Datei muss innerhalb von 90 Sekunden eintreffen, ohne 10 Sekunden Pause und nach den ersten 10 Sekunden mit durchschnittlich mindestens 16 KB/s; sonst 408.                    |
+| Download-Tempo           | Der Browser muss die Datei laufend abnehmen: Ein Download, von dem er in einer Minute weniger als 64 KiB abnimmt, wird abgebrochen und zählt trotzdem als einer der 5 des Links.   |
 | Ein Neustart             | Macht jede Upload-Seite, jeden Upload und jeden Link ungültig. Das Modell fordert einen neuen an.                                                                                  |
 
 Nichts wird verdrängt, um Platz zu schaffen: Ist eine Grenze erreicht, werden neue Uploads und
@@ -643,8 +650,13 @@ lehnt die meisten Belege ab), und seine standardmäßige Pufferung von Anfragen 
 `Content-Length`. Caddy, wie in der Compose-Vorlage, braucht nichts.
 
 **Abschalten.** `SEVDESK_HTTP_FILES=off` entfernt `sevdesk_upload_request` und die Seiten. Im
-OAuth-Modus wird dann kein Dateiwerkzeug angeboten; der Bearer-Modus nutzt weiterhin
-`SEVDESK_FILE_DIRS` und `SEVDESK_OUTPUT_DIR`, wenn sie gesetzt sind.
+OAuth-Modus werden dann die Werkzeuge nicht angeboten, die eine Datei zum Lesen oder einen Ort
+zum Speichern brauchen (`sevdesk_einvoice_parse`, `sevdesk_voucher_import_einvoice`,
+`sevdesk_document_save`, `sevdesk_voucher_receipt_save`, `sevdesk_csv_export`,
+`sevdesk_datev_export`), und das Argument `file` der Belegentwurf-Werkzeuge wird abgelehnt; der
+Bearer-Modus nutzt weiterhin `SEVDESK_FILE_DIRS` und `SEVDESK_OUTPUT_DIR`, wenn sie gesetzt sind.
+Die PDF- und XML-Werkzeuge und die `sevdesk://`-Ressourcen sind nicht betroffen: Ein Client liest
+Dokumentdateien über sie per MCP.
 
 **Grenzen des Entwurfs.** Ein Agent, der Ihren angemeldeten Browser steuern kann, könnte selbst
 hoch- oder herunterladen, so wie er im Postfach freigeben könnte. Eine heruntergeladene Datei ist
@@ -803,7 +815,9 @@ Ablehnungen antworten mit 403.
 hinter einem Proxy `SEVDESK_HTTP_TRUST_PROXY` auf die Anzahl der Proxys, die etwas an
 `X-Forwarded-For` anhängen; sonst teilen sich alle Clients die Ratenbegrenzung der Adresse des
 Proxys. Setzen Sie den Wert nie höher als die tatsächliche Anzahl: Clients könnten sonst ihre
-eigene IP-Adresse wählen.
+eigene IP-Adresse wählen. Eine 429, deren Meldung das sevDesk-Konto nennt, ist eine andere Grenze:
+Für dieses Konto laufen bereits 8 Anfragen an `/mcp`, gleich von welchen Adressen
+([Grenzen](#grenzen)). Sie vergeht, sobald eine davon endet.
 
 **Antworten hängen oder kommen alle auf einmal.** Ein Proxy puffert die gestreamten Antworten.
 Schalten Sie die Pufferung für den Server ab: Caddy `flush_interval -1` (die Compose-Vorlage tut
@@ -906,11 +920,32 @@ Bereitstellung fest.
   Zugänge: Eine neue Zustimmung darüber hinaus widerruft den ältesten Zugang des Kontos (Grund
   `superseded`), damit ein Konto den Speicher nicht füllen kann. Widerrufene Zugänge bleiben 7 Tage
   gelistet. **Höchstens 1.000 Browser-Sitzungen**: Darüber hinaus endet die älteste.
-- **Dateien im OAuth-Modus nur über den Browser.** Keine Server-Ordner (`SEVDESK_FILE_DIRS`,
-  `SEVDESK_OUTPUT_DIR`); Belege werden auf den Seiten des Servers hochgeladen und Dateien dort
+- **Gleichzeitige Anfragen.** Der Server bearbeitet höchstens 64 Anfragen gleichzeitig. Eine
+  Client-Adresse (IPv6: ihr /64-Netz) darf 8 laufende haben, mit `SEVDESK_OAUTH_ACCOUNTS=any` 32,
+  weil sich dort viele Nutzer die Adressen von claude.ai teilen. Ein sevDesk-Konto darf 8 laufende
+  Anfragen an `/mcp` haben, über alle seine Verbindungen und Adressen hinweg. Weitere bekommen 429
+  mit `Retry-After: 1`. Von den 64 bleiben 8 der Token-Erneuerung, der Anmeldung, dem
+  Freigabe-Postfach und den Dateiseiten vorbehalten, damit diese erreichbar bleiben, während `/mcp`
+  ausgelastet ist; `/mcp` selbst antwortet mit 503, sobald seine 56 belegt sind, was sieben Konten
+  an ihrer Grenze bewirken können. Eine Anfrage darf 120 Sekunden dauern; die Steuerberichte
+  (`sevdesk_vat_summary`, `sevdesk_profit_and_loss`) hören nach 90 Sekunden auf zu lesen und
+  geben zurück, was sie haben, als unvollständig markiert. Diese Zahlen sind fest.
+- **JSON-RPC-Batches** (mehrere Nachrichten in einer Anfrage, nur von Clients der Protokollversion
+  2025-03-26 gesendet) dürfen höchstens 8 Nachrichten enthalten und keine Anfrage-ID doppelt;
+  sonst wird der ganze Batch mit 400 abgelehnt, und nichts davon läuft. Ein Batch zählt als eine
+  Anfrage.
+- **Freigaben** (`SEVDESK_CONFIRM=browser`): 5 wartende und 20 aufbewahrte je Konto, 100 für den
+  ganzen Server. Hält der Server 100, kommt Platz von einem Konto, das mehr hält als das
+  anfragende (zuerst dessen älteste abgelehnte oder wartende Anfrage, zuletzt eine erteilte,
+  ungenutzte; zu diesem Aufruf wird dann erneut gefragt). Ein Konto verliert nie eine Anfrage an
+  eines, das gleich viele oder mehr hält.
+- **Keine Server-Ordner im OAuth-Modus.** `SEVDESK_FILE_DIRS` und `SEVDESK_OUTPUT_DIR` werden
+  abgelehnt; Belege werden auf den Seiten des Servers hochgeladen und gespeicherte Dateien dort
   heruntergeladen, was eine Browser-Sitzung des Kontos braucht, und leben höchstens
   `SEVDESK_HTTP_FILES_TTL` ([Dateien](#dateien-hochladen-und-herunterladen)). Ein Upload ist
-  höchstens 20 MiB groß.
+  höchstens 20 MiB groß. Das PDF einer Rechnung, einer Gutschrift oder eines Auftrags und das XML
+  einer E-Rechnung erreichen den Client außerdem ohne den Browser, als MCP-Ressourcen
+  (`sevdesk://…`), gleich wie `SEVDESK_HTTP_FILES` gesetzt ist.
 - **Clients ohne Client ID Metadata Documents** können den OAuth-Modus nicht nutzen; für sie
   funktioniert der Bearer-Modus.
 - **Keine gehostete Instanz.** Sie betreiben, was Sie bereitstellen.

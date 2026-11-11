@@ -5,7 +5,7 @@
  *
  * - **stdio** (and bearer mode with local folders): reads come from `SEVDESK_FILE_DIRS` through
  *   `readConfinedFile` (`./local-files.ts`), deliveries are new files in `SEVDESK_OUTPUT_DIR`
- *   (`src/tools/documents/save-file.ts`).
+ *   (`./output-files.ts`).
  * - **HTTP with remote file transfer** (`deployment.files`): a file reference may be an
  *   `upload:<id>` from `sevdesk_upload_request` (the human uploads the file on a page of this
  *   server, signed in to the account), and deliveries become short-lived download links that also

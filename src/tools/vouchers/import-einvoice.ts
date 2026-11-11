@@ -8,6 +8,7 @@ import {
 import { voucherImportInputShape } from "../../domain/drafts/voucher-inputs.js";
 import { canReadFiles } from "../../safety/file-access.js";
 import { defineWriteTool } from "../define-tool.js";
+import { ACCOUNT_VOUCHER_DRAFTS } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 import { voucherDraftOutput, voucherDraftToolOutput } from "./draft-output.js";
 
@@ -43,6 +44,8 @@ export function voucherImportEInvoiceTool(planner: VoucherSuggestionPlanner) {
     available: canReadFiles,
     input: z.strictObject({ ...voucherImportInputShape, ...dryRunInputShape }),
     output: voucherDraftOutput,
+    // Shares the duplicate refusal of sevdesk_voucher_create_draft, so it shares its lock.
+    locks: () => [ACCOUNT_VOUCHER_DRAFTS],
     prepare: (args, ctx) =>
       prepareVoucherImport(
         ctx.client,

@@ -5,7 +5,7 @@
  */
 import { createHash } from "node:crypto";
 
-import type { ConfirmationPreview } from "../tools/types.js";
+import type { ConfirmationPreview } from "./write-types.js";
 
 /**
  * JSON with object keys sorted (code-unit order, recursively) and no whitespace, so equal values

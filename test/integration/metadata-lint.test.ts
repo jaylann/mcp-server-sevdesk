@@ -12,7 +12,7 @@ import {
   validateToolDefinition,
 } from "../../src/tools/define-tool.js";
 import { ALL_TOOLS } from "../../src/tools/index.js";
-import type { AnyToolDefinition } from "../../src/tools/types.js";
+import { type AnyToolDefinition, isWriteTool } from "../../src/tools/types.js";
 import { allEnabledConfig } from "../helpers/config.js";
 import { filesDeployment, filesOffDeployment } from "../helpers/transfer.js";
 
@@ -37,6 +37,22 @@ const FILE_READERS = [
   "sevdesk_voucher_update_draft",
   "sevdesk_einvoice_parse",
 ];
+/** The reviewed tools that open an upload page (a ticket in the transfer store). */
+const UPLOAD_OPENERS = ["sevdesk_upload_request"];
+
+/**
+ * The reviewed write tools without `locks` (`WriteToolDefinition.locks`), each with the reason
+ * why its calls may interleave. Every other tool that changes sevDesk declares the records (or
+ * the account-wide key) its checks depend on: a check followed by a write is void when two calls
+ * run at once (review 2026-11, round 3). Extend this list deliberately.
+ */
+const WITHOUT_LOCKS: Readonly<Record<string, string>> = {
+  sevdesk_invoice_create_draft:
+    "creates a new draft; its duplicate check only warns, and sevDesk assigns the number at finalization",
+  sevdesk_order_create_draft:
+    "creates a new draft; its duplicate check only warns, and the number is reserved by one sevDesk request",
+  sevdesk_datev_export: "starts an export job from its arguments; no record is checked before it",
+};
 
 const cases = ALL_TOOLS.map((tool): [string, AnyToolDefinition] => [tool.name, tool]);
 
@@ -74,7 +90,7 @@ describe("tool metadata", () => {
   it("offers file writers only when files can be delivered and declares nothing else", () => {
     const declared = ALL_TOOLS.filter((tool) => tool.localEffects !== undefined);
     expect(declared.map((tool) => tool.name).sort()).toEqual(
-      [...FILE_WRITERS, ...FILE_READERS].sort(),
+      [...FILE_WRITERS, ...FILE_READERS, ...UPLOAD_OPENERS].sort(),
     );
     for (const tool of declared.filter((t) => t.localEffects === "writes-files")) {
       expect(tool.available?.(allEnabledConfig()), tool.name).toBe(false);
@@ -106,10 +122,23 @@ describe("tool metadata", () => {
     }
   });
 
-  it("offers the upload request only over HTTP with file transfer, as a plain read tool", () => {
+  it("lists only shipped tools as write tools without locks", () => {
+    const names = new Set(ALL_TOOLS.map((tool) => tool.name));
+    expect(Object.keys(WITHOUT_LOCKS).filter((name) => !names.has(name))).toEqual([]);
+  });
+
+  it("lets only the reviewed tools open an upload page (extend this list deliberately)", () => {
+    expect(toolsWith("opens-upload")).toEqual(UPLOAD_OPENERS);
+  });
+
+  it("offers the upload request only over HTTP with file transfer, as a read tool that is not read-only", () => {
     const tool = ALL_TOOLS.find((candidate) => candidate.name === "sevdesk_upload_request");
     expect(tool).toMatchObject({ tier: "read", toolset: "meta" });
-    expect(tool?.localEffects).toBeUndefined();
+    // It changes nothing in sevDesk but opens a ticket on this server, of which an account holds
+    // only a few: like a tool that creates a download link, it must not claim to be read-only.
+    expect(tool?.localEffects).toBe("opens-upload");
+    expect(tool?.annotations.readOnlyHint).toBe(false);
+    expect(tool?.annotations.destructiveHint).toBe(false);
     expect(tool?.available?.(allEnabledConfig({ fileDirs: ["/in"], outputDir: "/out" }))).toBe(
       false,
     );
@@ -134,14 +163,29 @@ describe("tool metadata", () => {
       }
     });
 
-    it('is read-only exactly when it is a read tool without localEffects "writes-files"', () => {
+    it("is read-only exactly when it is a read tool that changes nothing outside sevDesk either", () => {
       const localEffects = localEffectsOf(tool);
-      const writesFiles = localEffects === "writes-files";
+      // A new file or download link, or an upload ticket: state outside sevDesk.
+      const changesState = localEffects === "writes-files" || localEffects === "opens-upload";
       expect(
-        localEffects === undefined || writesFiles || localEffects === "reads-files",
+        localEffects === undefined || changesState || localEffects === "reads-files",
         "localEffects value",
       ).toBe(true);
-      expect(tool.annotations.readOnlyHint).toBe(tool.tier === "read" && !writesFiles);
+      expect(tool.annotations.readOnlyHint).toBe(tool.tier === "read" && !changesState);
+    });
+
+    it("declares locks when it changes sevDesk, or is on the reviewed list with a reason", () => {
+      const reason = WITHOUT_LOCKS[tool.name];
+      if (!isWriteTool(tool)) {
+        expect(reason, "a read tool takes no locks").toBeUndefined();
+        return;
+      }
+      const declares = typeof tool.locks === "function";
+      // Exactly one of the two: a tool with locks must not stay on the list.
+      expect(declares, `${tool.name}: locks, or an entry in WITHOUT_LOCKS`).toBe(
+        reason === undefined,
+      );
+      if (reason !== undefined) expect(reason.trim().length).toBeGreaterThan(20);
     });
 
     it("has a strict, flat object-root input JSON Schema", () => {

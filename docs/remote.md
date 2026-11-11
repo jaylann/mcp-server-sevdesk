@@ -81,8 +81,12 @@ In bearer mode the tiers are `SEVDESK_ALLOW`, as over stdio.
 
 **Never stored**, in files or logs: sevDesk API tokens, authorization codes, access and refresh
 tokens, cookies, the server secret, the bearer secrets and the key of the encrypted files. The
-secrets come from the environment only. Upload and download ids and file names never appear in a
-log.
+secrets come from the environment only. Upload and download ids never appear in a log, and the
+server log (stderr) holds no file names. The audit log can hold one: the preview it records for a
+dry run or a requested confirmation contains the facts of the call (customer names, amounts), and
+for a voucher draft with a receipt that includes the cleaned name of the uploaded file, with its
+size and the start of its SHA-256. In bearer mode with `SEVDESK_FILE_DIRS`, a path passed as
+`file` is logged with the other arguments.
 
 ### Tokens and lifetimes
 
@@ -316,7 +320,7 @@ Kubernetes secrets); set one or the other.
 | `SEVDESK_HTTP_SECRET` (`_FILE`)          |                                      | OAuth, required: the server secret all tokens and cookies are sealed with; at least 32 random bytes, hex or base64/base64url (`generate-secret`). Optional in bearer mode, where it keeps browser sign-ins valid across restarts.                                                                                                                                                                                                        |
 | `SEVDESK_HTTP_SECRET_PREVIOUS` (`_FILE`) |                                      | The previous server secret while you [rotate it](#rotating-the-server-secret): tokens sealed with it are still accepted and resealed on refresh.                                                                                                                                                                                                                                                                                         |
 | `SEVDESK_HTTP_STATE_DIR`                 | memory (image: `/data`)              | Absolute directory for the grant store and the encrypted files of file transfer (`files/`); created with mode 0700 (an existing one is tightened to 0700) and checked for write access at startup. Without it, grants and browser sessions end with the process (OAuth startup warns) and files are kept in memory.                                                                                                                      |
-| `SEVDESK_HTTP_FILES`                     | `on`                                 | [File transfer](#files-uploads-and-download-links): upload pages for receipts and e-invoices, and download links for the files tools create. `on`/`off`, `1`/`0`, `true`/`false` or `yes`/`no`. Off: no `sevdesk_upload_request`, and in OAuth mode no file tools at all.                                                                                                                                                                |
+| `SEVDESK_HTTP_FILES`                     | `on`                                 | [File transfer](#files-uploads-and-download-links): upload pages for receipts and e-invoices, and download links for the files tools create. `on`/`off`, `1`/`0`, `true`/`false` or `yes`/`no`. Off: no pages and no `sevdesk_upload_request`; in OAuth mode also no tool that needs a file to read or a place to save one. The PDF and XML tools and the `sevdesk://` resources stay: a client still reads document files over MCP.     |
 | `SEVDESK_HTTP_FILES_MAX_MB`              | 256 with a state directory, else 64  | Mebibytes (MiB) the uploaded files and download links of all accounts may take together, 32 to 4096. One account may use a quarter of it (at least 20 MiB, at most half); room for one upload stays free for accounts that hold no files yet. With a state directory the files are on disk, otherwise in memory.                                                                                                                         |
 | `SEVDESK_HTTP_FILES_TTL`                 | `30m`                                | How long an uploaded file and a download link stay valid, 5 minutes to 24 hours.                                                                                                                                                                                                                                                                                                                                                         |
 | `SEVDESK_OAUTH_ACCOUNTS`                 |                                      | OAuth, required: the sevDesk account ids that may connect, comma-separated, or `any` (startup warns).                                                                                                                                                                                                                                                                                                                                    |
@@ -528,7 +532,9 @@ See [ADR 0007](adr/0007-approval-inbox-over-http.md).
 
 A remote server cannot read files on your computer, and the files it creates cannot land there by
 themselves. With `SEVDESK_HTTP_FILES=on` (the default) files travel through pages of the server
-that you open in your browser. The model never sees or sends file bytes.
+that you open in your browser. The model never sees or sends the bytes of those files. (Document
+PDFs and XML that a client asks for as `sevdesk://` resources are a different path: they go to the
+client over MCP.)
 
 **Uploading a receipt or an e-invoice:**
 
@@ -545,8 +551,8 @@ that you open in your browser. The model never sees or sends file bytes.
    `sevdesk_einvoice_parse` or `sevdesk_voucher_import_einvoice`. The upload stays usable until it
    expires, also for a retry after an error, but only for the connection that asked for it.
 
-**Downloading.** `sevdesk_document_save`, `sevdesk_csv_export` and `sevdesk_datev_export` return a
-download link, `<public URL>/files/<id>`, instead of a file path. The server fetched the file from
+**Downloading.** `sevdesk_document_save`, `sevdesk_voucher_receipt_save`, `sevdesk_csv_export` and
+`sevdesk_datev_export` return a download link, `<public URL>/files/<id>`, instead of a file path. The server fetched the file from
 sevDesk during the tool call; opening the link sends nothing to sevDesk. The browser saves the file
 as a download; it is never displayed on the server's page.
 
@@ -581,6 +587,7 @@ or open the link in the browser where you consented.
 | Requests per client | 60 a minute to the upload and download pages together; 10 uploads a minute and 60 an hour (IPv6 per /64 network).                                                       |
 | Uploads at once     | 2 for the whole server, 1 per account; another gets "Server busy" or "Upload in progress" (503): try again in a moment.                                                 |
 | Upload speed        | The file must arrive within 90 seconds, without a 10-second pause, and at 16 KB/s or more on average after the first 10 seconds; else 408.                              |
+| Download speed      | The browser must keep taking the file: a download from which it takes less than 64 KiB within a minute is cut, and still counts as one of the link's 5.                 |
 | A restart           | Voids every upload page, upload and link. The model asks for a new one.                                                                                                 |
 
 Nothing is pushed out to make room: when a limit is reached, new uploads and links are refused
@@ -599,8 +606,12 @@ is refused with 411. nginx needs `client_max_body_size 25m;` (its default of 1 M
 receipts), and its default request buffering sends `Content-Length`. Caddy, as in the compose template, needs nothing.
 
 **Turning it off.** `SEVDESK_HTTP_FILES=off` removes `sevdesk_upload_request` and the pages. In
-OAuth mode no file tool is offered then; bearer mode still uses `SEVDESK_FILE_DIRS` and
-`SEVDESK_OUTPUT_DIR` if they are set.
+OAuth mode the tools that need a file to read or a place to save one are not offered then
+(`sevdesk_einvoice_parse`, `sevdesk_voucher_import_einvoice`, `sevdesk_document_save`,
+`sevdesk_voucher_receipt_save`, `sevdesk_csv_export`, `sevdesk_datev_export`), and the `file`
+argument of the voucher draft tools is refused; bearer mode still uses `SEVDESK_FILE_DIRS` and
+`SEVDESK_OUTPUT_DIR` if they are set. The PDF and XML tools and the `sevdesk://` resources are not
+affected: a client reads document files through them over MCP.
 
 **Limits of the design.** An agent that can drive your signed-in browser could upload or download
 on its own, as it could approve in the inbox. A downloaded file is whatever sevDesk returned; open
@@ -743,7 +754,9 @@ support. `/healthz` is never refused for its host. Both refusals answer 403.
 **Many 429 answers, or every request logged with the proxy's IP.** Behind a proxy, set
 `SEVDESK_HTTP_TRUST_PROXY` to the number of proxies that add to `X-Forwarded-For`; otherwise all
 clients share the rate limits of the proxy's address. Never set it higher than the real number:
-clients could then choose their own IP address.
+clients could then choose their own IP address. A 429 whose message names the sevDesk account is
+a different limit: that account already has 8 `/mcp` requests in progress, from whatever
+addresses ([Limits](#limits)). It passes as soon as one of them ends.
 
 **Responses hang or arrive all at once.** A proxy buffers the streamed responses. Turn buffering
 off for the server: Caddy `flush_interval -1` (the compose template does), nginx
@@ -833,10 +846,28 @@ deployment.
   the account's oldest grant (reason `superseded`), so one account cannot fill the store. Revoked
   grants stay listed for 7 days. **At most 1,000 browser sessions**: beyond that the oldest one
   ends.
-- **Files only through the browser in OAuth mode.** No server folders (`SEVDESK_FILE_DIRS`,
-  `SEVDESK_OUTPUT_DIR`); receipts are uploaded and files downloaded on the server's pages, which
-  need a browser session of the account, and live at most `SEVDESK_HTTP_FILES_TTL`
-  ([Files](#files-uploads-and-download-links)). One upload is at most 20 MiB.
+- **Requests at once.** The server handles at most 64 requests at a time. One client address
+  (IPv6: its /64 network) may have 8 in progress, 32 with `SEVDESK_OAUTH_ACCOUNTS=any`, where many
+  users share the addresses of claude.ai. One sevDesk account may have 8 `/mcp` requests in
+  progress, across all its connections and addresses. More get 429 with `Retry-After: 1`. Of the
+  64, 8 are kept for token refresh, sign-in, the approvals inbox and the file pages, so those stay
+  reachable while `/mcp` is busy; `/mcp` itself answers 503 once its 56 are taken, which seven
+  accounts at their limit can cause. A request may take 120 seconds; the tax reports
+  (`sevdesk_vat_summary`, `sevdesk_profit_and_loss`) stop reading after 90 seconds and return
+  what they have, marked incomplete. These numbers are fixed.
+- **JSON-RPC batches** (several messages in one request, sent only by clients of protocol version
+  2025-03-26) may hold at most 8 messages and no request id twice; otherwise the whole batch is
+  refused with 400 and nothing of it runs. A batch counts as one request.
+- **Approvals** (`SEVDESK_CONFIRM=browser`): 5 waiting and 20 kept per account, 100 for the whole
+  server. When the server holds 100, room comes from an account that holds more than the one
+  asking (its oldest rejected or waiting request first, an approved, unused one last; that call is
+  then asked about again). An account never loses a request to one that holds as many or more.
+- **No server folders in OAuth mode.** `SEVDESK_FILE_DIRS` and `SEVDESK_OUTPUT_DIR` are refused;
+  receipts are uploaded and saved files downloaded on the server's pages, which need a browser
+  session of the account, and live at most `SEVDESK_HTTP_FILES_TTL`
+  ([Files](#files-uploads-and-download-links)). One upload is at most 20 MiB. The PDF of an
+  invoice, credit note or order and the XML of an e-invoice also reach the client without the
+  browser, as MCP resources (`sevdesk://…`), whatever `SEVDESK_HTTP_FILES` is set to.
 - **Clients without Client ID Metadata Documents** cannot use OAuth mode; bearer mode works for
   them.
 - **No hosted instance.** You are the operator of what you deploy.

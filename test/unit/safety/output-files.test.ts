@@ -4,8 +4,8 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { SevdeskError } from "../../../../src/sevdesk/errors.js";
-import { resolveOutputDir, writeNewFile } from "../../../../src/tools/documents/save-file.js";
+import { resolveOutputDir, writeNewFile } from "../../../src/safety/output-files.js";
+import { SevdeskError } from "../../../src/sevdesk/errors.js";
 
 const temporary: string[] = [];
 

@@ -8,11 +8,7 @@
 import { z } from "zod";
 
 import { getTransaction, transactionDtoSchema } from "../../domain/banking.js";
-import {
-  KINDS,
-  type PaymentKind,
-  readLifecycleDocument,
-} from "../../domain/lifecycle/documents.js";
+import { KINDS, readLifecycleDocument } from "../../domain/lifecycle/documents.js";
 import {
   documentTitle,
   type Fact,
@@ -21,19 +17,24 @@ import {
 } from "../../domain/lifecycle/preview.js";
 import { money } from "../../domain/money.js";
 import { bothPreviews, type PreviewLanguage } from "../../domain/preview-text.js";
-import { documentObject, transactionObject } from "../../domain/reconciliation/allocate.js";
+import { transactionObject } from "../../domain/reconciliation/allocate.js";
 import {
   planTransactionReset,
   type ResetPlan,
   statusPayload,
 } from "../../domain/reconciliation/transaction-status.js";
-import { SevdeskError, withCompletedWrites } from "../../sevdesk/errors.js";
-import { sevdeskPath } from "../../sevdesk/paths.js";
+import {
+  type DocumentToReset,
+  executeTransactionReset,
+  updateTransactionStatus,
+} from "../../domain/reconciliation/transaction-writes.js";
+import { SevdeskError } from "../../sevdesk/errors.js";
 import { defineWriteTool } from "../define-tool.js";
-import { ACCOUNT_BOOKINGS, type SevdeskObjectRef } from "../types.js";
+import { ACCOUNT_BOOKINGS } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 import {
   COMMIT_ANNOTATIONS,
+  documentFactParts,
   documentSummary,
   documentSummarySchema,
   readBackOrReport,
@@ -57,15 +58,7 @@ const output = z.object({
 
 type State =
   | { readonly mode: "private" }
-  | {
-      readonly mode: "linked";
-      readonly documents: readonly {
-        readonly kind: PaymentKind;
-        readonly id: number;
-        /** Other bank transactions booked on it, which its reset unlinks too. */
-        readonly otherTransactionIds: readonly number[];
-      }[];
-    };
+  | { readonly mode: "linked"; readonly documents: readonly DocumentToReset[] };
 
 export const transactionResetTool = defineWriteTool({
   name: "sevdesk_transaction_reset",
@@ -116,12 +109,7 @@ export const transactionResetTool = defineWriteTool({
     const { state } = plan;
     const transactionRef = transactionObject(args.id);
     if (state.mode === "private") {
-      await ctx.client.request({
-        method: "PUT",
-        path: sevdeskPath("CheckAccountTransaction", args.id),
-        body: statusPayload("created"),
-        signal: ctx.signal,
-      });
+      await updateTransactionStatus(ctx.client, args.id, statusPayload("created"), ctx.signal);
       const transaction = await readBackOrReport(
         () => getTransaction(ctx.client, args.id, ctx.signal),
         [transactionRef],
@@ -133,31 +121,8 @@ export const transactionResetTool = defineWriteTool({
       };
     }
 
-    const done: SevdeskObjectRef[] = [];
-    const unlinked = new Set<number>();
-    /** The documents reset so far, this transaction, and the other transactions they unlinked. */
-    const changedSoFar = (): SevdeskObjectRef[] => [
-      ...done,
-      transactionRef,
-      ...[...unlinked].sort((a, b) => a - b).map((id) => transactionObject(id)),
-    ];
-    for (const { kind, id, otherTransactionIds } of state.documents) {
-      try {
-        await ctx.client.request({
-          method: "PUT",
-          path: sevdeskPath(KINDS[kind].objectName, id, "resetToOpen"),
-          signal: ctx.signal,
-        });
-      } catch (error) {
-        if (done.length > 0 && error instanceof SevdeskError) {
-          throw withCompletedWrites(error, changedSoFar());
-        }
-        throw error;
-      }
-      done.push(documentObject(kind, id));
-      for (const other of otherTransactionIds) unlinked.add(other);
-    }
-    const changed = changedSoFar();
+    // The documents reset, this transaction, and the other transactions the resets unlinked.
+    const changed = await executeTransactionReset(ctx.client, args.id, state.documents, ctx.signal);
     const transaction = await readBackOrReport(async () => {
       try {
         return await getTransaction(ctx.client, args.id, ctx.signal);
@@ -256,9 +221,12 @@ function resetFacts(plan: ResetPlan, lang: PreviewLanguage): Fact[] {
           : `${String(id)} (${formatMoney(money(amount, doc.currency), lang)})`,
       )
       .join(", ");
+    // The label is trusted text: the document by id; its stored number opens the value.
+    const named = documentFactParts(doc, lang);
     facts.push({
-      label: `${t.document} ${String(index + 1)}: ${documentTitle(doc, lang)}`,
+      label: `${t.document} ${String(index + 1)}: ${named.label}`,
       value:
+        named.number +
         `${t.status} ${statusText(doc, lang)} → ${t.open} (${String(open)}); ` +
         `${t.paid(formatMoney(money(share, currency), lang))}; ${t.others}: ` +
         (otherPayments === undefined

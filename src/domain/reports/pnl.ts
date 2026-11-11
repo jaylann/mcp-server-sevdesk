@@ -17,7 +17,11 @@
  * count gross; § 13b purchases without deduction (rule 13) add the VAT owed as recipient (19 %
  * where sevDesk booked 0 %). Payments against a document's usual direction (a bounced debit, a
  * refund) reduce it. Not taxable movements (rules 16 private, 22 transitory items) are left out
- * and listed.
+ * and listed. Import VAT (Einfuhrumsatzsteuer), which sevDesk books as the amount of a position
+ * on the import VAT account, is input VAT and not an expense (`import-vat.ts`).
+ *
+ * `coverage.truncated` is set whenever something was not read: a cap, the time budget of an HTTP
+ * deployment (`ReportDeadline`), or a document whose positions could not all be read.
  */
 import { z } from "zod";
 
@@ -35,6 +39,7 @@ import {
   subtract,
 } from "../money.js";
 import { taxRuleById } from "../reference-data.js";
+import { importVatAccountIds, isImportVat } from "./import-vat.js";
 import {
   collectPaidDocuments,
   contributedAmounts,
@@ -48,10 +53,13 @@ import {
   type PaymentsInPeriod,
   percentOf,
   type PositionGroup,
+  refOf,
   scanPositions,
   voucherDirections,
 } from "./positions-scan.js";
 import {
+  incompleteSuffix,
+  incompleteTaxReportNotes,
   invalidReportRequest,
   plural,
   REPORT_SOURCE,
@@ -140,7 +148,15 @@ export const profitAndLossSchema = z.object({
   result: moneySchema.describe("income − expenses (Gewinn/Verlust before AfA)."),
   vatFlows: z.object({
     collected: moneySchema.describe("VAT on income (vereinnahmte Umsatzsteuer)."),
-    inputVat: moneySchema.describe("Input VAT on expenses and assets (gezahlte Vorsteuer)."),
+    inputVat: moneySchema.describe(
+      "Input VAT on expenses and assets (gezahlte Vorsteuer), including importVat.",
+    ),
+    importVat: moneySchema
+      .optional()
+      .describe(
+        "Import VAT (Einfuhrumsatzsteuer) booked on the import VAT account: part of inputVat, " +
+          "not an expense. Present when there is any.",
+      ),
     paidToTaxOffice: moneySchema.describe("VAT paid to the Finanzamt (tax rule 15 expenses)."),
     refundedByTaxOffice: moneySchema.describe("VAT refunded by the Finanzamt (rule 15 income)."),
   }),
@@ -164,7 +180,17 @@ export const profitAndLossSchema = z.object({
     documentsScanned: z.number().int(),
     truncated: z
       .boolean()
-      .describe(`True when a cap (${MAX_SCAN_DOCUMENTS} documents) stopped reading.`),
+      .describe(
+        `True when the figures are incomplete: a cap (${MAX_SCAN_DOCUMENTS} documents) or the ` +
+          "time budget stopped reading, or a document's positions could not all be read.",
+      ),
+    timeBudgetReached: z
+      .boolean()
+      .optional()
+      .describe(
+        "True when this server stopped reading documents to answer within its time limit " +
+          "(HTTP deployments): narrow the period.",
+      ),
     excluded: z.object({
       drafts: z.number().int(),
       recurringTemplates: z.number().int(),
@@ -174,7 +200,17 @@ export const profitAndLossSchema = z.object({
     unconvertible: z.array(documentRefSchema),
     unconvertibleCount: z.number().int(),
     adjustedToTotals: z.number().int(),
-    positionsIncomplete: z.number().int(),
+    positionsIncomplete: z
+      .number()
+      .int()
+      .describe(
+        "Documents whose positions could not all be read: their totals were split over the " +
+          "positions that were read, so accounts may be wrong. Makes the report truncated.",
+      ),
+    positionsIncompleteDocuments: z
+      .array(documentRefSchema)
+      .optional()
+      .describe(`The first ${MAX_LISTED_REFS} of those documents.`),
     payments: z
       .object({
         read: z.number().int(),
@@ -200,6 +236,11 @@ export interface ProfitAndLossParams {
   readonly payments?: PaymentsInPeriod | undefined;
   /** Booking accounts for names and numbers; `undefined` leaves accounts as ids. */
   readonly accounts?: AccountDatevList | undefined;
+  /**
+   * The account's chart (`AccountSettings.chartOfAccounts`, e.g. "skr04"), to find the import
+   * VAT account by its number in `accounts`; without it only the recorded id is recognized.
+   */
+  readonly chartOfAccounts?: string | undefined;
   readonly maxDocuments?: number | undefined;
   readonly maxRows?: number | undefined;
   readonly today?: string | undefined;
@@ -261,6 +302,7 @@ export async function profitAndLoss(
       accept: () => true,
       signal: options.signal,
       today: params.today,
+      deadline: options.deadline,
     });
     notes.push(...paid.notes);
     for (const reason of Object.keys(excluded) as (keyof typeof excluded)[]) {
@@ -274,15 +316,37 @@ export async function profitAndLoss(
     maxDocuments: params.maxDocuments,
     signal: options.signal,
     onProgress: options.onProgress,
+    deadline: options.deadline,
   });
   const contributions = contributionsOf(scan.documents, paid?.payments ?? new Map());
 
-  const totals = aggregate(contributions, params.accounts);
-  const truncated = listTruncated || scan.notRead > 0 || paymentsCoverage?.truncated === true;
+  const totals = aggregate(
+    contributions,
+    params.accounts,
+    importVatAccountIds({ accounts: params.accounts, chartOfAccounts: params.chartOfAccounts }),
+  );
+  // Three ways of not having read everything; each makes the report truncated.
+  const timedOut = scan.timedOut || paid?.timedOut === true;
+  const capped =
+    listTruncated ||
+    (scan.notRead > 0 && !scan.timedOut) ||
+    (paymentsCoverage?.truncated === true && paid?.timedOut !== true);
+  // Split over the positions that were read: amounts may sit on the wrong account (review
+  // 2026-11, round 3).
+  const incomplete = scan.documents.filter((doc) => !doc.positionsComplete);
+  const truncated = capped || timedOut || incomplete.length > 0;
   notes.push(...totals.notes);
-  if (truncated) {
+  if (capped) {
     notes.push("Reading stopped at a cap: the figures are incomplete. Use a shorter period.");
   }
+  notes.push(
+    ...incompleteTaxReportNotes({
+      timedOut,
+      documentsScanned: scan.documents.length,
+      documentsToScan: headers.length,
+      positionsIncomplete: incomplete.length,
+    }),
+  );
   if (basis === "cash") {
     notes.push(
       "Cash basis: only payments sevDesk links to documents (bank reconciliation, booked " +
@@ -319,6 +383,7 @@ export async function profitAndLoss(
       rowsRead,
       documentsScanned: scan.documents.length,
       truncated,
+      ...(timedOut ? { timeBudgetReached: true } : {}),
       excluded: {
         drafts: excluded.draft,
         recurringTemplates: excluded.recurring_template,
@@ -328,7 +393,14 @@ export async function profitAndLoss(
       unconvertible: scan.unconvertible.slice(0, MAX_LISTED_REFS),
       unconvertibleCount: scan.unconvertible.length,
       adjustedToTotals: scan.documents.filter((doc) => doc.adjusted).length,
-      positionsIncomplete: scan.documents.filter((doc) => !doc.positionsComplete).length,
+      positionsIncomplete: incomplete.length,
+      ...(incomplete.length === 0
+        ? {}
+        : {
+            positionsIncompleteDocuments: incomplete
+              .slice(0, MAX_LISTED_REFS)
+              .map((doc) => refOf(doc.header)),
+          }),
       ...(paymentsCoverage === undefined ? {} : { payments: paymentsCoverage }),
     },
     notes,
@@ -337,11 +409,11 @@ export async function profitAndLoss(
 
 /** Trusted one-line summary (counts and the result only). */
 export function profitAndLossSentence(report: ProfitAndLoss): string {
-  const truncated = report.coverage.truncated ? " Incomplete: a cap stopped reading." : "";
   return (
     `Profit and loss ${report.period.label} (${report.basis}): income ${report.income.total.amount}, ` +
     `expenses ${report.expenses.total.amount}, result ${report.result.amount} EUR (net, before ` +
-    `AfA); ${plural(report.coverage.documentsScanned, "document")} scanned.${truncated}`
+    `AfA); ${plural(report.coverage.documentsScanned, "document")} scanned.` +
+    incompleteSuffix(report.coverage)
   );
 }
 
@@ -403,6 +475,7 @@ function ruleRef(id: number): z.output<typeof taxRuleRefSchema> {
 function aggregate(
   contributions: readonly Contribution[],
   accounts: AccountDatevList | undefined,
+  importVatAccounts: ReadonlySet<number>,
 ): {
   income: ProfitAndLoss["income"];
   expenses: ProfitAndLoss["expenses"];
@@ -419,6 +492,8 @@ function aggregate(
   let inputVat = decimal(0);
   let paidToTaxOffice = decimal(0);
   let refunded = decimal(0);
+  let importVat = decimal(0);
+  let importVatSeen = false;
   let reverseChargeCost = false;
 
   for (const { document, share } of contributions) {
@@ -439,6 +514,15 @@ function aggregate(
       if (header.direction === "revenue") {
         bump(income, rule, net, decimal(0), key);
         collected = add(collected, tax);
+        continue;
+      }
+      if (isImportVat(header, group, importVatAccounts)) {
+        // The whole amount on the import VAT account is tax paid to customs, deductible as
+        // input VAT: a VAT flow under the net method, never a cost (`import-vat.ts`).
+        const paidAsTax = add(net, tax);
+        importVat = add(importVat, paidAsTax);
+        inputVat = add(inputVat, paidAsTax);
+        importVatSeen = true;
         continue;
       }
       const deductible = rule !== NO_DEDUCTION_RULE;
@@ -466,6 +550,14 @@ function aggregate(
       }));
 
   const notes: string[] = [];
+  if (importVatSeen) {
+    notes.push(
+      "Amounts booked on the import VAT account (Einfuhrumsatzsteuer, SKR04 1433 / SKR03 1588) " +
+        "under tax rule 9 are deductible import VAT: they count as input VAT " +
+        "(vatFlows.importVat), not as expenses. Import VAT booked on another account is not " +
+        "recognized and counts as an expense.",
+    );
+  }
   if (reverseChargeCost) {
     notes.push(
       "§ 13b purchases without input VAT deduction (tax rule 13) include the VAT owed as " +
@@ -501,6 +593,7 @@ function aggregate(
     vatFlows: {
       collected: eur(collected),
       inputVat: eur(inputVat),
+      ...(importVatSeen ? { importVat: eur(importVat) } : {}),
       paidToTaxOffice: eur(paidToTaxOffice),
       refundedByTaxOffice: eur(refunded),
     },

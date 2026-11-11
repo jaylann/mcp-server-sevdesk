@@ -13,6 +13,7 @@ import {
   exitOnSignals,
   type HttpServerHandle,
   limitConnectionsPerClient,
+  requestTimeoutMs,
   SERVER_LIMITS,
   startHttpServer,
   type StartHttpServerOptions,
@@ -154,11 +155,28 @@ describe("startHttpServer", () => {
   it("sets the socket limits", () => {
     expect(SERVER_LIMITS).toEqual({
       headersTimeoutMs: 15_000,
-      requestTimeoutMs: 30_000,
+      requestMarginMs: 30_000,
       keepAliveTimeoutMs: 65_000,
       maxConnections: 256,
       maxConnectionsPerClient: 64,
     });
+  });
+
+  it("gives a whole request longer than the longest body window of any route (review 2026-11, round 3)", async () => {
+    // Node cut uploads off at a fixed 30 s while their route still allowed them 90 s.
+    const upload: HttpRoute = { ...echo, path: "/upload", bodyTimeoutMs: 90_000 };
+    expect(requestTimeoutMs([echo])).toBe(45_000);
+    expect(requestTimeoutMs([echo, upload])).toBe(120_000);
+    expect(requestTimeoutMs([echo, upload], 200_000)).toBe(230_000);
+    expect(requestTimeoutMs([])).toBe(45_000);
+
+    const plain = await start([echo]);
+    expect(plain.handle.requestTimeoutMs).toBe(45_000);
+    const withUpload = await start([echo, upload]);
+    expect(withUpload.handle.requestTimeoutMs).toBeGreaterThan(90_000);
+    expect(withUpload.handle.requestTimeoutMs).toBe(120_000);
+    const slowBodies = await start([echo], {}, 5_000, { bodyTimeoutMs: 60_000 });
+    expect(slowBodies.handle.requestTimeoutMs).toBe(90_000);
   });
 });
 

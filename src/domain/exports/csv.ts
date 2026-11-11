@@ -207,30 +207,37 @@ export function checkCsvPeriod(
   bytes: Uint8Array,
   params: Pick<CsvExportParams, "kind" | "from" | "to">,
 ): CsvPeriodCheck {
-  const records = parseCsv(new TextDecoder().decode(hasBom(bytes) ? bytes.subarray(3) : bytes));
-  const [header = [], ...rows] = records;
-  const names = header.map((name) => name.trim().toLowerCase());
-  const column = CSV_DATE_COLUMNS[params.kind].find((candidate) =>
-    names.includes(candidate.toLowerCase()),
-  );
-  if (column === undefined) {
-    return { rowsOutsidePeriod: 0, rowsUnchecked: rows.length, verified: false };
-  }
-  const index = names.indexOf(column.toLowerCase());
+  const found: { column?: string } = {};
   let outside = 0;
   let unchecked = 0;
-  for (const row of rows) {
-    const date = csvDate(row[index]);
-    if (date === undefined) unchecked += 1;
-    else if (
-      (params.from !== undefined && date < params.from) ||
-      (params.to !== undefined && date > params.to)
-    ) {
-      outside += 1;
-    }
+  scanCsvColumn(
+    bytes,
+    (header) => {
+      const names = header.map((name) => name.trim().toLowerCase());
+      const column = CSV_DATE_COLUMNS[params.kind].find((candidate) =>
+        names.includes(candidate.toLowerCase()),
+      );
+      if (column === undefined) return undefined;
+      found.column = column;
+      return names.indexOf(column.toLowerCase());
+    },
+    // Without a date column every cell is `undefined`, so every row counts as unchecked.
+    (cell) => {
+      const date = csvDate(cell);
+      if (date === undefined) unchecked += 1;
+      else if (
+        (params.from !== undefined && date < params.from) ||
+        (params.to !== undefined && date > params.to)
+      ) {
+        outside += 1;
+      }
+    },
+  );
+  if (found.column === undefined) {
+    return { rowsOutsidePeriod: 0, rowsUnchecked: unchecked, verified: false };
   }
   return {
-    column,
+    column: found.column,
     rowsOutsidePeriod: outside,
     rowsUnchecked: unchecked,
     verified: outside === 0 && unchecked === 0,
@@ -250,44 +257,112 @@ function csvDate(cell: string | undefined): string | undefined {
 }
 
 /**
- * Splits CSV text into records of fields: `;` separates fields, `"` quotes them (`""` inside is
- * a quote), LF or CRLF ends a record outside quotes; empty lines are skipped.
+ * Most bytes kept of a header name or of a cell of the chosen column; the rest of a longer one
+ * is dropped. A date and the column names looked for are far shorter.
  */
-export function parseCsv(text: string): string[][] {
-  const records: string[][] = [];
-  let record: string[] = [];
-  let field = "";
+export const CSV_CELL_MAX_BYTES = 256;
+
+const QUOTE = 0x22;
+const SEMICOLON = 0x3b;
+const LINE_FEED = 0x0a;
+const CARRIAGE_RETURN = 0x0d;
+
+/**
+ * Walks a CSV file record by record and hands out one column, without building the table: `;`
+ * separates fields, `"` quotes them (`""` inside is a quote), LF or CRLF ends a record outside
+ * quotes, empty lines are skipped, a byte order mark is ignored. The first record is the header:
+ * `pickColumn` gets its names and returns the index of the column wanted (or `undefined` for
+ * none); `onRow` is then called once per data record with that column's cell (`undefined` when
+ * no column was picked or the record is shorter).
+ *
+ * Works on the bytes (the four characters that matter are ASCII, which never occurs inside a
+ * UTF-8 sequence) and keeps only the header names and the current cell, each cut at
+ * {@link CSV_CELL_MAX_BYTES}. The parser before it decoded the whole file and built every field
+ * of every row by appending single characters, to read one date column: for a file near the
+ * 20 MiB limit that took many times the file's size in memory and blocked the process meanwhile
+ * (review 2026-11, round 3).
+ */
+export function scanCsvColumn(
+  bytes: Uint8Array,
+  pickColumn: (header: readonly string[]) => number | undefined,
+  onRow: (cell: string | undefined) => void,
+): void {
+  const decoder = new TextDecoder();
+  const kept = new Uint8Array(CSV_CELL_MAX_BYTES);
+  let keptLength = 0;
+  const header: string[] = [];
+  let headerDone = false;
+  let column: number | undefined;
+  let cell: string | undefined;
+  let fieldIndex = 0;
+  /** True until the current field got a character (a record of one empty field is a blank line). */
+  let fieldEmpty = true;
   let quoted = false;
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text.charAt(index);
-    if (quoted) {
-      if (char === '"' && text.charAt(index + 1) === '"') {
-        field += '"';
-        index += 1;
-      } else if (char === '"') {
-        quoted = false;
-      } else {
-        field += char;
+  /** A quote inside a quoted field: an escaped quote when another follows, else the closing one. */
+  let pendingQuote = false;
+
+  const keep = (byte: number): void => {
+    fieldEmpty = false;
+    if ((!headerDone || fieldIndex === column) && keptLength < CSV_CELL_MAX_BYTES) {
+      kept[keptLength] = byte;
+      keptLength += 1;
+    }
+  };
+  const endField = (): void => {
+    if (!headerDone) header.push(decoder.decode(kept.subarray(0, keptLength)));
+    else if (fieldIndex === column) cell = decoder.decode(kept.subarray(0, keptLength));
+    keptLength = 0;
+  };
+  const endRecord = (): void => {
+    endField();
+    const blank = fieldIndex === 0 && fieldEmpty;
+    if (blank) {
+      // A blank line before the header left one empty name behind.
+      if (!headerDone) header.length = 0;
+    } else if (headerDone) {
+      onRow(cell);
+    } else {
+      headerDone = true;
+      column = pickColumn(header);
+    }
+    cell = undefined;
+    fieldIndex = 0;
+    fieldEmpty = true;
+  };
+  const nextField = (): void => {
+    endField();
+    fieldIndex += 1;
+    fieldEmpty = true;
+  };
+  // The field state is written by the helpers above, so it is read in a helper too.
+  const endInput = (): void => {
+    // A last record without a line end.
+    if (!fieldEmpty || fieldIndex > 0) endRecord();
+  };
+
+  for (const byte of hasBom(bytes) ? bytes.subarray(3) : bytes) {
+    if (pendingQuote) {
+      pendingQuote = false;
+      if (byte === QUOTE) {
+        keep(QUOTE);
+        continue;
       }
-    } else if (char === '"') {
+      quoted = false;
+    }
+    if (quoted) {
+      if (byte === QUOTE) pendingQuote = true;
+      else keep(byte);
+    } else if (byte === QUOTE) {
       quoted = true;
-    } else if (char === ";") {
-      record.push(field);
-      field = "";
-    } else if (char === "\n") {
-      record.push(field);
-      if (record.length > 1 || record[0] !== "") records.push(record);
-      record = [];
-      field = "";
-    } else if (char !== "\r") {
-      field += char;
+    } else if (byte === SEMICOLON) {
+      nextField();
+    } else if (byte === LINE_FEED) {
+      endRecord();
+    } else if (byte !== CARRIAGE_RETURN) {
+      keep(byte);
     }
   }
-  if (field !== "" || record.length > 0) {
-    record.push(field);
-    records.push(record);
-  }
-  return records;
+  endInput();
 }
 
 /** File name of a saved export: `<kind>[_<from>][_<to>].csv` (ASCII, from our own values). */

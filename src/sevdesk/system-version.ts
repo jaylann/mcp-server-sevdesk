@@ -10,19 +10,47 @@ import type { SevdeskClient } from "./types.js";
 
 export type SystemVersion = "1.0" | "2.0";
 
-const cache = new WeakMap<SevdeskClient, SystemVersion>();
+/** How long a cached version is reused: 15 minutes, like the account settings. */
+const SYSTEM_VERSION_TTL_MS = 15 * 60_000;
+
+/** Options of {@link getBookkeepingSystemVersion}'s cache. */
+interface SystemVersionCacheOptions {
+  /**
+   * Object the cache belongs to (a `WeakMap` key). Tools pass `ctx.config`, as for the account
+   * settings and ReceiptGuidance: it identifies the account and lives as long as the server,
+   * whereas the client a write tool prepares with is a new read-only wrapper on every call
+   * (`src/tools/write-flow.ts`), so a cache keyed by the client never hit there and every write
+   * preparation asked sevDesk again (review 2026-11, round 3). Defaults to `client`.
+   */
+  readonly cacheOwner?: object | undefined;
+  /** Defaults to {@link SYSTEM_VERSION_TTL_MS}. */
+  readonly ttlMs?: number | undefined;
+  /** Clock in epoch milliseconds (tests). */
+  readonly now?: (() => number) | undefined;
+}
+
+interface CacheEntry {
+  readonly expires: number;
+  readonly version: SystemVersion;
+}
+
+const cache = new WeakMap<object, CacheEntry>();
 
 /**
- * The account's bookkeeping system version from `GET /Tools/bookkeepingSystemVersion`, memoized
- * per client instance once it succeeded (failures are not cached). Throws an
- * `unexpected_response` error for any value other than 1.0 or 2.0 rather than guessing.
+ * The account's bookkeeping system version from `GET /Tools/bookkeepingSystemVersion`, cached per
+ * owner (`options.cacheOwner`, else the client instance) once it succeeded; failures are not
+ * cached. An account can move from 1.0 to 2.0 while the server runs, so the cached value expires.
+ * Throws an `unexpected_response` error for any value other than 1.0 or 2.0 rather than guessing.
  */
 export async function getBookkeepingSystemVersion(
   client: SevdeskClient,
   signal?: AbortSignal,
+  options: SystemVersionCacheOptions = {},
 ): Promise<SystemVersion> {
-  const cached = cache.get(client);
-  if (cached !== undefined) return cached;
+  const owner = options.cacheOwner ?? client;
+  const now = options.now ?? Date.now;
+  const cached = cache.get(owner);
+  if (cached !== undefined && cached.expires > now()) return cached.version;
 
   const payload = await client.request({
     method: "GET",
@@ -31,7 +59,7 @@ export async function getBookkeepingSystemVersion(
   });
   const record = expectSingle(payload, "bookkeeping system version");
   const version = parseSystemVersion((record as Record<string, unknown>)["version"]);
-  cache.set(client, version);
+  cache.set(owner, { expires: now() + (options.ttlMs ?? SYSTEM_VERSION_TTL_MS), version });
   return version;
 }
 

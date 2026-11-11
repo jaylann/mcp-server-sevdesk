@@ -19,10 +19,10 @@ import { renderFrame } from "../pages/frame.js";
 import { type Html, markup } from "../pages/html.js";
 import { icon } from "../pages/icons.js";
 import type { Locale } from "../pages/locale.js";
-import type { ConfirmationPreview } from "../tools/types.js";
 import type { ApprovalBinding, ApprovalStatus } from "./approval-types.js";
 import { shownValue } from "./preview.js";
 import type { WriteTier } from "./tiers.js";
+import type { ConfirmationPreview } from "./write-types.js";
 
 /** What the approval page shows. */
 export interface ApprovalPageModel {
