@@ -27,6 +27,7 @@ import { constants, inflateSync } from "node:zlib";
 import {
   PDFArray,
   PDFName,
+  PDFNumber,
   type PDFObject,
   PDFObjectStreamParser,
   type PDFRawStream,
@@ -76,18 +77,91 @@ function installGuard(): void {
   installed = true;
   const objectStream = PDFObjectStreamParser.forStream;
   PDFObjectStreamParser.forStream = (rawStream, shouldWaitForTick) => {
-    charge(rawStream);
+    const { size, budget } = charge(rawStream);
+    checkObjectStreamShape(rawStream, size, budget);
     return objectStream(rawStream, shouldWaitForTick);
   };
   const xrefStream = PDFXRefStreamParser.forStream;
   PDFXRefStreamParser.forStream = (rawStream) => {
-    charge(rawStream);
+    const { size, budget } = charge(rawStream);
+    checkXRefShape(rawStream, size, budget);
     return xrefStream(rawStream);
   };
 }
 
-/** Charges a stream's decoded size to the current budget; throws when it does not fit. */
-function charge(stream: PDFRawStream): void {
+/**
+ * Most cross-reference and object-stream entries one PDF may declare in total. pdf-lib loops once
+ * per declared entry whatever the stream holds, so a 238-byte PDF declaring `/Size 1000000000`
+ * with zero-width fields made a billion entries under a one-byte budget (security review
+ * 2026-11, wave 2). An e-invoice PDF has a few thousand objects.
+ */
+const MAX_PDF_ENTRIES = 200_000;
+/** A field of a cross-reference stream is at most this many bytes wide (PDF uses 1–4, 8 at most). */
+const MAX_XREF_FIELD_WIDTH = 8;
+
+const entryCounts = new WeakMap<LoadBudget, number>();
+
+function integerOf(value: PDFObject | undefined): number | undefined {
+  return value instanceof PDFNumber && Number.isSafeInteger(value.asNumber())
+    ? value.asNumber()
+    : undefined;
+}
+
+function integersOf(value: PDFObject | undefined): number[] | undefined {
+  if (!(value instanceof PDFArray)) return undefined;
+  const numbers = value.asArray().map(integerOf);
+  return numbers.every((n): n is number => n !== undefined && n >= 0) ? numbers : undefined;
+}
+
+/** Counts `entries` against the PDF's total; throws when it runs over. */
+function countEntries(budget: LoadBudget, entries: number): void {
+  const total = (entryCounts.get(budget) ?? 0) + entries;
+  entryCounts.set(budget, total);
+  if (total > MAX_PDF_ENTRIES) {
+    violate(budget, "The PDF declares more internal objects than this server reads");
+  }
+}
+
+/**
+ * Checks a cross-reference stream before pdf-lib reads it: field widths `/W` of three small
+ * integers, entries from `/Index` (pairs) or `/Size`, and the decoded data large enough to hold
+ * every entry (each takes the sum of the widths). Zero-width entries are refused: they cost
+ * nothing in bytes but a loop round each.
+ */
+function checkXRefShape(stream: PDFRawStream, size: number, budget: LoadBudget): void {
+  const malformed = (): never => violate(budget, "The PDF's cross-reference stream is malformed");
+  const widths = integersOf(stream.dict.lookup(PDFName.of("W")));
+  if (widths?.length !== 3 || widths.some((w) => w > MAX_XREF_FIELD_WIDTH)) return malformed();
+  const entryWidth = widths.reduce((sum, w) => sum + w, 0);
+  const index = stream.dict.lookup(PDFName.of("Index"));
+  let entries: number;
+  if (index === undefined) {
+    entries = integerOf(stream.dict.lookup(PDFName.of("Size"))) ?? malformed();
+  } else {
+    const pairs = integersOf(index);
+    if (pairs === undefined || pairs.length % 2 !== 0) return malformed();
+    entries = pairs.reduce((sum, n, i) => (i % 2 === 1 ? sum + n : sum), 0);
+  }
+  if (entries < 0) return malformed();
+  if (entries > 0 && (entryWidth === 0 || entries * entryWidth > size)) return malformed();
+  countEntries(budget, entries);
+}
+
+/** Checks an object stream's `/N` against its data: each object needs at least its header pair. */
+function checkObjectStreamShape(stream: PDFRawStream, size: number, budget: LoadBudget): void {
+  const objects = integerOf(stream.dict.lookup(PDFName.of("N")));
+  // "1 0 " is the shortest header pair: four bytes per object at least.
+  if (objects === undefined || objects < 0 || objects * 4 > size) {
+    violate(budget, "The PDF's object stream is malformed");
+  }
+  countEntries(budget, objects);
+}
+
+/**
+ * Charges a stream's decoded size to the current budget; throws when it does not fit. Returns the
+ * size and the budget it was charged to.
+ */
+function charge(stream: PDFRawStream): { size: number; budget: LoadBudget } {
   // Outside withPdfLoadBudget (not used by this server) every stream gets the full limit.
   const budget = budgets.getStore() ?? {
     limit: MAX_PDF_LOAD_INFLATED_BYTES,
@@ -97,6 +171,7 @@ function charge(stream: PDFRawStream): void {
   if (budget.violation !== undefined) throw new Error(budget.violation);
   const size = decodedSize(stream, budget);
   budget.remaining -= size;
+  return { size, budget };
 }
 
 function decodedSize(stream: PDFRawStream, budget: LoadBudget): number {
