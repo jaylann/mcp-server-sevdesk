@@ -1,11 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { readConfinedFile, sniffKind } from "../../../src/safety/local-files.js";
+import { openedInside, readConfinedFile, sniffKind } from "../../../src/safety/local-files.js";
 import { SevdeskError } from "../../../src/sevdesk/errors.js";
 
 const PDF = new TextEncoder().encode("%PDF-1.7\n%âãÏÓ\n1 0 obj<<>>endobj\n%%EOF\n");
@@ -181,5 +181,43 @@ describe("sniffKind", () => {
   it("returns undefined for anything else", () => {
     expect(sniffKind(new TextEncoder().encode("hello"))).toBeUndefined();
     expect(sniffKind(new Uint8Array())).toBeUndefined();
+  });
+});
+
+describe("openedInside: a folder swapped for a link (security review 2026-11, finding 10)", () => {
+  it("refuses a file opened through a folder that was replaced after resolving", async () => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), "sevdesk-swap-")));
+    const elsewhere = await realpath(await mkdtemp(join(tmpdir(), "sevdesk-elsewhere-")));
+    try {
+      await mkdir(join(root, "sub"));
+      await writeFile(join(root, "sub", "invoice.xml"), XML);
+      await writeFile(join(root, "sub", "control.xml"), XML);
+      await writeFile(join(elsewhere, "invoice.xml"), XML);
+      // `root` is a real path already, so these are the files' real paths. Each path is opened
+      // once: the control file before the swap, the target after it.
+      const real = join(root, "sub", "invoice.xml");
+      const control = join(root, "sub", "control.xml");
+      const inRoot = (path: string): boolean => path.startsWith(`${root}/`);
+
+      const before = await open(control, "r");
+      try {
+        expect(await openedInside(before, control, await before.stat(), inRoot)).toBe(true);
+      } finally {
+        await before.close();
+      }
+
+      // Between resolving and opening, `sub` becomes a link to a folder outside.
+      await rename(join(root, "sub"), join(root, "sub-old"));
+      await symlink(elsewhere, join(root, "sub"));
+      const swapped = await open(real, "r");
+      try {
+        expect(await openedInside(swapped, real, await swapped.stat(), inRoot)).toBe(false);
+      } finally {
+        await swapped.close();
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      await rm(elsewhere, { recursive: true, force: true });
+    }
   });
 });

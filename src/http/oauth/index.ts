@@ -30,6 +30,11 @@ export interface OAuthModuleOptions {
   readonly oauth: OAuthSettings;
   /** `SEVDESK_ALLOW` after `SEVDESK_READ_ONLY` (`Settings.allowedTiers`): caps every grant. */
   readonly allowedTiers: ReadonlySet<Tier>;
+  /**
+   * `SEVDESK_CONFIRM` is `off`: commit and external actions run without asking, and the consent
+   * page says so instead of promising approvals (default false).
+   */
+  readonly unconfirmed?: boolean;
   /** `SEVDESK_HTTP_STATE_DIR`; `undefined` keeps grants in memory. Ignored with `store`. */
   readonly stateDir: string | undefined;
   /** Who a sevDesk token belongs to (consent check, refresh check). */
@@ -118,6 +123,7 @@ export async function createOAuthModule(options: OAuthModuleOptions): Promise<OA
       resource,
       oauth: options.oauth,
       allowedTiers: options.allowedTiers,
+      unconfirmed: options.unconfirmed ?? false,
       cimd,
       store,
       identity: options.identity,

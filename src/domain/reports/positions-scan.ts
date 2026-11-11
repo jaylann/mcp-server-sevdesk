@@ -202,6 +202,17 @@ const LEGACY_RULES: Readonly<Record<string, Partial<Record<Direction, number>>>>
   ss: { revenue: 11, expense: 10 },
 };
 
+/**
+ * Direction of an Update 1.0 credit note (no tax rule) by its booking category: commissions and
+ * royalties are self-billed by a supplier (expense), a shortfall refunds a sale (revenue).
+ */
+const LEGACY_CREDIT_NOTE_DIRECTIONS: Readonly<Record<string, Direction>> = {
+  PROVISION: "expense",
+  ROYALTY_ASSIGNED: "expense",
+  ROYALTY_UNASSIGNED: "expense",
+  UNDERACHIEVEMENT: "revenue",
+};
+
 /** The rule and the normalized legacy type of a document's tax setting. */
 function taxSetting(
   ruleId: number | undefined,
@@ -298,8 +309,21 @@ function creditNoteHeader(raw: unknown): DocumentHeader {
   const foreign = dto.currency !== DEFAULT_CURRENCY;
   const rule = dto.tax.rule === undefined ? undefined : taxRuleById(dto.tax.rule.id);
   // A credit note under an expense rule is self-billed to a supplier: an expense, not a refund.
-  const direction: Direction = rule?.direction === "expense" ? "expense" : "revenue";
-  const tax = taxSetting(dto.tax.rule?.id, dto.tax.taxType, direction);
+  // Without a rule (Update 1.0) the booking category says which it is; a legacy credit note
+  // without a known category gets no rule (unmapped) instead of a guessed revenue one, which
+  // turned commission credit notes into negative sales (security review 2026-11, wave 2).
+  const legacyDirection = LEGACY_CREDIT_NOTE_DIRECTIONS[dto.bookingCategory?.code ?? ""];
+  const direction: Direction =
+    rule === undefined
+      ? (legacyDirection ?? "revenue")
+      : rule.direction === "expense"
+        ? "expense"
+        : "revenue";
+  const tax = taxSetting(
+    dto.tax.rule?.id,
+    dto.tax.taxType,
+    rule === undefined ? legacyDirection : direction,
+  );
   return {
     kind: "credit_note",
     id: dto.id,

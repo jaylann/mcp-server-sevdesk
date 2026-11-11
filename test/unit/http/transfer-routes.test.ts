@@ -9,9 +9,11 @@ import { createRateLimiter } from "../../../src/http/rate-limit.js";
 import { createRouter } from "../../../src/http/router.js";
 import { contentDisposition, kindList } from "../../../src/http/transfer-pages.js";
 import {
+  atMostDelimiters,
   createTransferRoutes,
   FILES_RATE,
   MAX_UPLOAD_BODY_BYTES,
+  multipartBoundary,
   UPLOAD_RATE_HOUR,
   UPLOAD_RATE_MINUTE,
   uploadName,
@@ -772,5 +774,106 @@ describe("transfer pages: helpers", () => {
     expect(kindList(["xml", "pdf"])).toBe("XML or PDF");
     expect(uploadName("scan.jpeg", "jpeg")).toBe("scan.jpg");
     expect(uploadName("", "png")).toBe("upload.png");
+  });
+});
+
+describe("transfer routes: many-part forms (security review 2026-11, finding 2)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("refuses a form of many empty parts before parsing it", async () => {
+    const env = await setup();
+    const ticket = env.store.createTicket(A1, "receipt");
+    const browser = await signedIn(env);
+    const page = await browser.get(`/uploads/${ticket.id}`);
+    const parse = vi.spyOn(Response.prototype, "formData");
+    const empties = Array.from(
+      { length: 2000 },
+      () => ["file", { name: "", bytes: Buffer.alloc(0) }] as const,
+    );
+
+    const response = await upload(env, browser, `/uploads/${ticket.id}`, [
+      ["csrf", csrfOf(page.body) ?? ""],
+      ...empties,
+    ]);
+
+    expect(response.status).toBe(400);
+    expect(parse).not.toHaveBeenCalled();
+    expect(env.store.ticketFor(ticket.id, "1001")).toMatchObject({ status: "pending" });
+  });
+
+  it("finds the boundary of a browser's multipart content type only", () => {
+    expect(multipartBoundary("multipart/form-data; boundary=abc")).toBe("abc");
+    expect(
+      multipartBoundary("multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW"),
+    ).toBe("----WebKitFormBoundary7MA4YWxkTrZu0gW");
+    expect(multipartBoundary('Multipart/Form-Data; boundary="a:b"')).toBe("a:b");
+    expect(multipartBoundary("multipart/form-data")).toBeUndefined();
+    expect(multipartBoundary("text/plain; boundary=abc")).toBeUndefined();
+    expect(multipartBoundary(`multipart/form-data; boundary=${"x".repeat(71)}`)).toBeUndefined();
+    // Anything a parser could read differently is refused (security review 2026-11, wave 2).
+    expect(multipartBoundary('multipart/form-data; charset=utf-8; boundary="a b"')).toBeUndefined();
+    expect(multipartBoundary('multipart/form-data; boundary="a\\b"')).toBeUndefined();
+    expect(multipartBoundary('multipart/form-data; boundary="é"')).toBeUndefined();
+    expect(
+      multipartBoundary('multipart/form-data; ignored="; boundary=fake;"; boundary=real'),
+    ).toBeUndefined();
+    expect(multipartBoundary("multipart/form-data; boundary=a; boundary=b")).toBeUndefined();
+  });
+
+  it.each([
+    ['escaped quotes ("a\\b" parses as "ab")', 'multipart/form-data; boundary="a\\b"', "ab"],
+    [
+      "a boundary inside another parameter",
+      'multipart/form-data; ignored="; boundary=fake;"; boundary=real',
+      "real",
+    ],
+    ["a non-ASCII boundary", 'multipart/form-data; boundary="é"', "é"],
+  ])("refuses %s before parsing", async (_label, contentType, delimiter) => {
+    const env = await setup();
+    const ticket = env.store.createTicket(A1, "receipt");
+    const browser = await signedIn(env);
+    const page = await browser.get(`/uploads/${ticket.id}`);
+    const parse = vi.spyOn(Response.prototype, "formData");
+    const part = (name: string) =>
+      `--${delimiter}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\nv\r\n`;
+    const body = Buffer.from(
+      `--${delimiter}\r\nContent-Disposition: form-data; name="csrf"\r\n\r\n${csrfOf(page.body) ?? ""}\r\n` +
+        Array.from({ length: 200 }, (_, i) => part(`x${String(i)}`)).join("") +
+        `--${delimiter}--\r\n`,
+    );
+
+    const response = await env.send(
+      new Request(`${ORIGIN}/uploads/${ticket.id}`, {
+        method: "POST",
+        headers: {
+          Origin: ORIGIN,
+          "Sec-Fetch-Site": "same-origin",
+          "Content-Type": contentType,
+          "Content-Length": String(body.byteLength),
+          Cookie: [...browser.jar].map(([name, value]) => `${name}=${value}`).join("; "),
+        },
+        body,
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(parse).not.toHaveBeenCalled();
+    expect(env.store.ticketFor(ticket.id, "1001")).toMatchObject({ status: "pending" });
+  });
+
+  it("counts delimiter lines, stopping at the first one too many", () => {
+    const part = (name: string) =>
+      `--b\r\nContent-Disposition: form-data; name="${name}"\r\n\r\nv\r\n`;
+    const form = (parts: number) =>
+      new TextEncoder().encode(
+        Array.from({ length: parts }, (_, i) => part(`f${String(i)}`)).join("") + "--b--\r\n",
+      );
+    expect(atMostDelimiters(form(2), "b", 3)).toBe(true);
+    expect(atMostDelimiters(form(3), "b", 3)).toBe(false);
+    // A delimiter inside a line (not after CRLF) is part of the content, not a new part.
+    const inline = new TextEncoder().encode(`${part("a")}x--b y\r\n--b--\r\n`);
+    expect(atMostDelimiters(inline, "b", 2)).toBe(true);
   });
 });

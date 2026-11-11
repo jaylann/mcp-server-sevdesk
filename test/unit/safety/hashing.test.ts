@@ -107,4 +107,20 @@ describe("hashes", () => {
     // The two texts are not interchangeable.
     expect(previewHash(german, preview)).not.toBe(both);
   });
+
+  it("previewHash covers a binding, and is unchanged without one", () => {
+    const preview = {
+      action: "Finalize invoice RE-1.",
+      facts: [],
+      warnings: [],
+      irreversible: false,
+    };
+    const german = { ...preview, action: "Rechnung RE-1 fertigstellen." };
+
+    expect(previewHash(preview, german, undefined)).toBe(previewHash(preview, german));
+    const bound = previewHash(preview, german, "a".repeat(64));
+    expect(bound).not.toBe(previewHash(preview, german));
+    expect(previewHash(preview, german, "b".repeat(64))).not.toBe(bound);
+    expect(previewHash(preview, undefined, "a".repeat(64))).not.toBe(bound);
+  });
 });

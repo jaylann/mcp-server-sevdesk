@@ -137,6 +137,23 @@ export const en = {
     external: { label: "External", text: TIER_DESCRIPTIONS.external },
   },
 
+  /**
+   * The confirmed tiers on a server that runs them without asking (`SEVDESK_CONFIRM=off`): the
+   * consent page must not promise an approval.
+   */
+  tiersUnconfirmed: {
+    commit: {
+      label: "Commit",
+      text:
+        "legally binding or hard-to-undo bookkeeping (finalize, book payments, cancel, " +
+        "enshrine); on this server it runs without asking you",
+    },
+    external: {
+      label: "External",
+      text: "reaches third parties, e.g. emails a document to a customer; on this server it runs without asking you",
+    },
+  },
+
   /** The two consent steps (`/authorize`). */
   connect: {
     title: "Connect to sevDesk",
@@ -152,6 +169,10 @@ export const en = {
       markup`This app runs on your own computer: after connecting, your browser returns to ${host}. Continue only if you just started connecting from an app on this device.`,
     legend: "What may it do?",
     tiersHint: "Commit and external actions still ask you to approve each one.",
+    tiersHintUnconfirmed:
+      "This server is set to run commit and external actions without asking anyone: whatever " +
+      "the app does in those tiers takes effect at once. Grant them only if you trust the app " +
+      "completely.",
     tokenLabel: "Your sevDesk API token",
     tokenHint:
       "In sevDesk: Settings → Users → API token. It is encrypted into this connection and " +

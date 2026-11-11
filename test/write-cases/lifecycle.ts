@@ -12,6 +12,7 @@ import {
   fixtureRow,
   invoiceRow,
   orderRow,
+  positionRoutes,
   transactionRoute,
   transactionRow,
   writeRoute,
@@ -44,7 +45,7 @@ const draftOrder = orderRow({ status: "100", orderNumber: null });
 const email = { to: "kunde@example.com", subject: "Ihre Unterlagen", text: "Guten Tag, anbei." };
 
 /** Write-tool cases owned by the M3 lifecycle work (see test/helpers/write-cases.ts). */
-export const LIFECYCLE_CASES: readonly WriteToolCase[] = [
+const CASES: readonly WriteToolCase[] = [
   {
     label: "finalize a draft invoice",
     tool: tool("sevdesk_invoice_finalize"),
@@ -188,3 +189,9 @@ export const LIFECYCLE_CASES: readonly WriteToolCase[] = [
     writes: [{ method: "PUT", path: "/CreditNote/2001/resetToDraft" }],
   },
 ];
+
+/** Every case also serves empty position lists, read by the approval binding (`documentBinding`). */
+export const LIFECYCLE_CASES: readonly WriteToolCase[] = CASES.map((testCase) => ({
+  ...testCase,
+  routes: [...testCase.routes, ...positionRoutes()],
+}));

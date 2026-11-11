@@ -22,6 +22,7 @@ import type { ApprovalChannel, ApprovalStore } from "./approval-types.js";
 import { type AuditLog, auditPrincipal, createAuditLog } from "./audit.js";
 import { createNonceStore, type NonceStore } from "./nonces.js";
 import { openInBrowser, type OpenUrl } from "./open-url.js";
+import { createRecordLocks, type RecordLocks } from "./record-locks.js";
 
 /** How long an elicitation round (signed state and nonce) stays valid. */
 export const CONFIRMATION_TTL_SECONDS = 600;
@@ -49,6 +50,8 @@ export interface SafetyRuntime {
   /** Browser approvals, presented through the runtime's approval channel. */
   readonly approvals: ApprovalStore;
   readonly audit: AuditLog;
+  /** Serializes write calls on the same records (`WriteToolDefinition.locks`). */
+  readonly locks: RecordLocks;
   /** Forgets the approvals and closes the channel (stops the local approval server, if started). */
   close(): Promise<void>;
 }
@@ -151,6 +154,7 @@ export function createSafetyRuntime(
     }),
     approvals,
     audit,
+    locks: createRecordLocks(),
     close: () => approvals.close(),
   };
 }

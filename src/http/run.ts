@@ -420,6 +420,7 @@ async function oauthParts(loaded: LoadedHttpConfig, input: PartsInput): Promise<
       keys: input.keys,
       oauth,
       allowedTiers: settings.allowedTiers,
+      unconfirmed: settings.confirm === "off",
       stateDir: http.stateDir,
       identity: input.identity,
       log: input.log,

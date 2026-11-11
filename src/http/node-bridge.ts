@@ -155,7 +155,12 @@ export interface WriteResponseOptions {
   readonly head: boolean;
   /** Send `Connection: close` (draining, or an unread request body). */
   readonly closeConnection: boolean;
+  /** How long a write may wait for the client to read before the connection is dropped. */
+  readonly stallMs?: number;
 }
+
+/** Default of {@link WriteResponseOptions.stallMs}: a minute without the client taking a byte. */
+const WRITE_STALL_MS = 60_000;
 
 /**
  * Writes `response` to `res`, streaming its body chunk by chunk (headers are flushed first, so an
@@ -201,7 +206,7 @@ export async function writeNodeResponse(
         }
         const { done, value } = await reader.read();
         if (done) break;
-        if (!res.write(value)) await drained(res);
+        if (!res.write(value)) await drained(res, options.stallMs ?? WRITE_STALL_MS);
       }
     } finally {
       res.off("close", onClose);
@@ -220,10 +225,19 @@ function gone(res: ServerResponse): boolean {
   return res.destroyed;
 }
 
-/** Resolves when `res` can take more data, or is closed. */
-function drained(res: ServerResponse): Promise<void> {
+/**
+ * Resolves when `res` can take more data, or is closed. A client that takes nothing for `stallMs`
+ * has its connection destroyed: otherwise a client that stops reading a large response holds the
+ * request's slot for as long as it keeps the connection open, past the router's deadline
+ * (security review 2026-11, finding 5). Only a write waiting for the client is timed, so an idle
+ * SSE stream (nothing to write) is not affected.
+ */
+function drained(res: ServerResponse, stallMs: number): Promise<void> {
   return new Promise((resolve) => {
+    const stalled = setTimeout(() => res.destroy(), stallMs);
+    stalled.unref();
     const done = (): void => {
+      clearTimeout(stalled);
       res.off("drain", done);
       res.off("close", done);
       resolve();

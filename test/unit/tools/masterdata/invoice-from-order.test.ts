@@ -192,8 +192,7 @@ describe("sevdesk_invoice_create_from_order", () => {
     await refuse({ mode: "advance", amount: 101 }, "A percentage amount is at most 100.");
     await refuse(
       { mode: "advance", amount: "171.39", amountType: "gross" },
-      "amount (171.39 gross) is more than the gross total of Order AB-1002 (id 3002) " +
-        "(171.38 EUR).",
+      "amount (171.39 gross) is more than the gross total of Order 3002 " + "(171.38 EUR).",
     );
     await expect(
       prepareWrite(
@@ -269,7 +268,7 @@ describe("sevdesk_invoice_create_from_order", () => {
     const client = new FakeSevdeskClient(routes({ related }));
     await expect(prepareWrite(tool, { orderId: 3002 }, client)).rejects.toMatchObject({
       message:
-        "An invoice draft from Order AB-1002 (id 3002) exists already: invoice 1101. Finish or " +
+        "An invoice draft from Order 3002 exists already: invoice 1101. Finish or " +
         "delete that draft (sevdesk_invoice_get), or call again with allowDuplicate: true to " +
         "create another one.",
     });

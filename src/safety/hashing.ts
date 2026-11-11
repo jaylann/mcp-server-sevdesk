@@ -57,9 +57,18 @@ export function argumentsHash(toolName: string, args: Readonly<Record<string, un
  * SHA-256 of the canonical JSON of a confirmation preview. With a German preview (`previewDe`,
  * the text a German reader approves on the approval page) the hash covers both texts, so an
  * approval is bound to everything either reader saw; without one it is the hash of `preview`
- * alone.
+ * alone. A `binding` (a digest of content the action depends on but the preview does not show,
+ * see `WritePlan.binding`) is covered too, so the approval no longer matches once that content
+ * changes; without one the hash is the same as before bindings existed.
  */
-export function previewHash(preview: ConfirmationPreview, previewDe?: ConfirmationPreview): string {
+export function previewHash(
+  preview: ConfirmationPreview,
+  previewDe?: ConfirmationPreview,
+  binding?: string,
+): string {
+  if (binding !== undefined) {
+    return sha256Hex(canonicalJson({ en: preview, de: previewDe, binding }));
+  }
   return sha256Hex(
     canonicalJson(previewDe === undefined ? preview : { en: preview, de: previewDe }),
   );

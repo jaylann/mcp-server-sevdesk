@@ -15,6 +15,7 @@
  * deleted a draft (GET then 404) and saw 409 "Voucher can only be deleted in status 50 but is
  * status 100" on an open one. Drafts only, refused locally first; a GET afterwards confirms it.
  */
+import { canonicalJson, sha256Hex } from "../../safety/hashing.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import { sevdeskPath } from "../../sevdesk/paths.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
@@ -109,7 +110,7 @@ export async function prepareVoucherFinalize(
   client: SevdeskClient,
   voucherId: number,
   options: VoucherCallOptions,
-): Promise<VoucherSavePlan & { readonly previewDe: DraftPreview }> {
+): Promise<VoucherSavePlan & { readonly previewDe: DraftPreview; readonly binding: string }> {
   const { signal } = options;
   const stored = await loadStoredVoucher(client, voucherId, signal);
   const id = stored.record.id;
@@ -233,6 +234,11 @@ export async function prepareVoucherFinalize(
       warnings: inLanguage(warnings, lang),
       irreversible: false,
     })),
+    // The approval covers the exact save payload and the stored voucher, positions included: the
+    // preview leaves out dates such as the delivery date and the payment deadline, and a draft
+    // changed after the human was asked must be asked about again (security review 2026-11,
+    // wave 2).
+    binding: sha256Hex(canonicalJson({ body, record: stored.record, positions: stored.positions })),
     state: {
       body,
       voucherId: id,

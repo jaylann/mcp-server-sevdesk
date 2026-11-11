@@ -189,6 +189,28 @@ describe("grants revoke", () => {
       all.io,
     );
     expect(all.out.join("")).toMatch(/^Revoked 1 active grant\. /);
+    expect(all.out.join("")).toContain("Every browser session was signed out as well.");
+  });
+
+  it("signs out sessions without a grant on --all (security review 2026-11, finding 6)", async () => {
+    await seed();
+    // A bearer-mode sign-in with the sevDesk token: a session of an account with no grant.
+    const session = await server!.createSession({
+      accountId: "5555",
+      via: "token",
+      ttlSeconds: 600,
+    });
+    await server!.sync(true);
+
+    const all = io();
+    await runGrantsCommand(
+      { kind: "grants-revoke", target: { all: true } },
+      { SEVDESK_HTTP_STATE_DIR: dir },
+      all.io,
+    );
+
+    await server!.sync(true);
+    expect(server!.getSession(session.sid)).toBeUndefined();
   });
 
   it("fails for an unknown grant id", async () => {

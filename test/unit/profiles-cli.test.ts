@@ -62,6 +62,23 @@ describe("profiles list", () => {
     );
   });
 
+  it("does not print a token pasted into tiers or toolsets (security review 2026-11, wave 2)", async () => {
+    await writeFile(
+      path,
+      JSON.stringify({
+        version: 1,
+        profiles: { work: { allow: TOKEN }, home: { toolsets: `invoices,${TOKEN}` } },
+      }),
+      { mode: 0o600 },
+    );
+
+    // `list` already checks that the token appears nowhere in the output.
+    const result = await list({});
+
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("[redacted]");
+  });
+
   it("explains a missing or empty file", async () => {
     expect(await list({})).toEqual({
       code: 0,

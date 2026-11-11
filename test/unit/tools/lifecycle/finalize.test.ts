@@ -83,6 +83,8 @@ describe.each(cases)("$name (community record shapes, fake values)", (kind) => {
 
     expect(client.calls.map(({ method, path }) => `${method} ${path}`)).toEqual([
       `GET ${kind.path}`,
+      // The approval binding reads the positions too (documentBinding).
+      `GET /${kind.path.split("/")[1] ?? ""}Pos`,
       `PUT ${kind.path}/sendBy`,
       `GET ${kind.path}`,
     ]);
@@ -238,7 +240,7 @@ describe("sevdesk_invoice_finalize details", () => {
       kind: "validation",
       completedWrites: [],
     });
-    expect(client.calls.map(({ method }) => method)).toEqual(["GET", "PUT"]);
+    expect(client.calls.map(({ method }) => method)).toEqual(["GET", "GET", "PUT"]);
   });
 
   it("accepts dryRun and rejects unknown arguments", () => {

@@ -491,7 +491,7 @@ async function checkSourceInvoice(
     throw new SevdeskError({
       kind: "validation",
       message:
-        `A credit note for ${invoiceLabel(invoice.id, invoice.number)} exists already: ` +
+        `A credit note for Invoice ${String(invoice.id)} exists already: ` +
         `${credits}. Check it with sevdesk_credit_note_get, or call again with ` +
         "allowDuplicate: true to create another one (e.g. a second partial refund).",
     });
@@ -504,11 +504,6 @@ async function checkSourceInvoice(
     warnings.push("Not every credit note could be checked for an earlier one from this invoice.");
   }
   return { source, warnings };
-}
-
-/** "Invoice RE-1001 (id 1001)", as the master-data tools label invoices. */
-function invoiceLabel(id: number, number: string | undefined): string {
-  return number === undefined ? `Invoice ${id}` : `Invoice ${number} (id ${id})`;
 }
 
 /** "credit note 7, credit note 9", at most five, as the master-data tools list them. */

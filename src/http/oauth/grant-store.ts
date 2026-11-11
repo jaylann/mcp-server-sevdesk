@@ -62,6 +62,8 @@ const REFRESH_GRACE_SECONDS = 30;
 const MAX_GRANTS = 500;
 const MAX_GRANTS_PER_ACCOUNT = 20;
 const MAX_SESSIONS = 1_000;
+/** Browser sessions one account may hold; signing in again past it ends its oldest. */
+const MAX_SESSIONS_PER_ACCOUNT = 50;
 const SYNC_INTERVAL_MS = 1_000;
 /** Compact while running once this much was appended since the last compaction … */
 const COMPACT_BYTES = 1024 * 1024;
@@ -206,6 +208,7 @@ export interface GrantStoreOptions {
    */
   readonly maxGrantsPerAccount?: number;
   readonly maxSessions?: number;
+  readonly maxSessionsPerAccount?: number;
   /** Compact while running after this many appended bytes (default 1 MiB) … */
   readonly compactBytes?: number;
   /** … or after this long (default 24 h). */
@@ -246,6 +249,7 @@ class Store implements GrantStore {
   readonly #maxGrants: number;
   readonly #maxGrantsPerAccount: number;
   readonly #maxSessions: number;
+  readonly #maxSessionsPerAccount: number;
   readonly #heartbeatMs: number;
   readonly #compactBytes: number;
   readonly #compactIntervalMs: number;
@@ -272,6 +276,7 @@ class Store implements GrantStore {
     this.#maxGrants = options.maxGrants ?? MAX_GRANTS;
     this.#maxGrantsPerAccount = options.maxGrantsPerAccount ?? MAX_GRANTS_PER_ACCOUNT;
     this.#maxSessions = options.maxSessions ?? MAX_SESSIONS;
+    this.#maxSessionsPerAccount = options.maxSessionsPerAccount ?? MAX_SESSIONS_PER_ACCOUNT;
     this.#heartbeatMs = options.heartbeatMs ?? HEARTBEAT_MS;
     this.#compactBytes = options.compactBytes ?? COMPACT_BYTES;
     this.#compactIntervalMs = options.compactIntervalMs ?? COMPACT_INTERVAL_MS;
@@ -285,6 +290,20 @@ class Store implements GrantStore {
   /** Throws once the store can no longer be trusted (its lock was lost). */
   #usable(): void {
     if (this.#failed !== undefined) throw this.#failed;
+  }
+
+  /**
+   * Checks the lock is still ours before state is read or compacted; when another server took it
+   * over, the store fails at once. The heartbeat alone noticed only on its next beat: a server
+   * that was paused past the stale-lock age could serve a request from its old file handle (which
+   * misses revocations the new owner recorded) and, at its daily compaction, write that stale
+   * state over the new owner's file (security review 2026-11, wave 2). True when still ours.
+   */
+  async #confirmOwnership(): Promise<boolean> {
+    if (this.#role !== "server" || this.#lock === undefined) return this.#failed === undefined;
+    return this.#lock.confirm((error) => {
+      this.#fail(error);
+    });
   }
 
   #fail(error: StateDirError): void {
@@ -405,6 +424,7 @@ class Store implements GrantStore {
     const run = this.#writes.then(async () => {
       const old = this.#handle;
       if (old === undefined || this.#closed || this.#failed !== undefined) return;
+      if (!(await this.#confirmOwnership())) return;
       await this.#readAppended();
       await this.#swap(dir, old, this.#offset - this.#partial.length);
       await old.close();
@@ -754,6 +774,24 @@ class Store implements GrantStore {
     return active;
   }
 
+  async revokeAll(why: string): Promise<number> {
+    this.#usable();
+    const now = this.#seconds();
+    let active = 0;
+    for (const grant of [...this.#grants.values()]) {
+      if (grant.status === "revoked") continue;
+      if (grant.status === "active") active += 1;
+      await this.#revokeGrant(grant, why, now);
+    }
+    // Sessions without a grant too: a bearer-mode sign-in with the sevDesk token has none, and an
+    // account whose grants were all pruned can still have one (security review 2026-11,
+    // finding 6).
+    for (const session of [...this.#sessions.values()]) {
+      if (!session.revoked) await this.#revokeSession(session, now);
+    }
+    return active;
+  }
+
   list(): readonly GrantRecord[] {
     this.#usable();
     return [...this.#grants.values()]
@@ -764,17 +802,21 @@ class Store implements GrantStore {
   async sync(force = false): Promise<void> {
     this.#usable();
     if (this.#handle === undefined || this.#closed) return;
-    const now = this.#now();
-    if (!force && now - this.#lastSync < SYNC_INTERVAL_MS) return;
-    this.#lastSync = now;
+    // A caller arriving while a read runs waits for it: answering from the state before that
+    // read let a concurrent request pass on a grant the read was about to revoke (security
+    // review 2026-11, finding 9). A forced sync must also see bytes appended after the running
+    // read started, so it reads again.
     if (this.#syncing !== undefined) {
-      // A forced sync must see bytes appended after the running read started.
       await this.#syncing;
       if (!force) return;
     }
-    this.#syncing ??= this.#readAppended()
+    if (!force && this.#now() - this.#lastSync < SYNC_INTERVAL_MS) return;
+    this.#syncing ??= this.#confirmOwnership()
+      .then(() => this.#readAppended())
       .then(() => this.#maybeCompact())
       .finally(() => {
+        // The interval counts from the last completed read, not from one still running.
+        this.#lastSync = this.#now();
         this.#syncing = undefined;
       });
     await this.#syncing;
@@ -808,13 +850,31 @@ class Store implements GrantStore {
   }): Promise<SessionRecord> {
     this.#usable();
     const now = this.#seconds();
-    if (this.#sessions.size >= this.#maxSessions) this.#prune(now, false);
-    while (this.#sessions.size >= this.#maxSessions) {
-      const oldest = [...this.#sessions.values()].reduce((a, b) =>
-        b.createdAt < a.createdAt ? b : a,
-      );
+    // Room is made at the expense of whoever holds the most sessions: first within the signing-in
+    // account (its own cap), then, at the global cap, the account with the most sessions. Evicting
+    // the globally oldest let one account, signing in again and again, sign every other account
+    // out (security review 2026-11, wave 2).
+    const live = (): SessionState[] =>
+      [...this.#sessions.values()].filter((s) => !s.revoked && s.expiresAt > now);
+    const evictOldestOf = async (accountId: string): Promise<void> => {
+      const oldest = live()
+        .filter((s) => s.accountId === accountId)
+        .reduce((a, b) => (b.createdAt < a.createdAt ? b : a));
       await this.#revokeSession(oldest, now);
       this.#sessions.delete(oldest.sid);
+    };
+    while (
+      live().filter((s) => s.accountId === input.accountId).length >= this.#maxSessionsPerAccount
+    ) {
+      await evictOldestOf(input.accountId);
+    }
+    if (this.#sessions.size >= this.#maxSessions) this.#prune(now, false);
+    while (this.#sessions.size >= this.#maxSessions) {
+      const counts = new Map<string, number>();
+      for (const s of live()) counts.set(s.accountId, (counts.get(s.accountId) ?? 0) + 1);
+      if (counts.size === 0) break;
+      const busiest = [...counts.entries()].reduce((a, b) => (b[1] > a[1] ? b : a))[0];
+      await evictOldestOf(busiest);
     }
     const session: SessionState = {
       sid: newId(),
@@ -1028,6 +1088,11 @@ async function appendFromCli(path: string, line: string): Promise<void> {
 interface Lock {
   /** Refreshes the lock every `intervalMs`; calls `onLost` once when another server took it. */
   startHeartbeat(intervalMs: number, onLost: (error: StateDirError) => void): void;
+  /**
+   * Refreshes and checks the lock now (one heartbeat); calls `onLost` and resolves `false` when
+   * another server took it.
+   */
+  confirm(onLost: (error: StateDirError) => void): Promise<boolean>;
   release(): Promise<void>;
 }
 
@@ -1141,6 +1206,10 @@ async function acquireLock(
         });
       }, intervalMs);
       timer.unref();
+    },
+    async confirm(onLost) {
+      await beat(onLost);
+      return !lost;
     },
     async release() {
       clearInterval(timer);

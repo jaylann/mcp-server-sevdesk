@@ -143,10 +143,11 @@ export async function planOrderToInvoice(
   const details = await getOrder(client, orderId, signal);
   const { order } = details;
   const label = documentLabel("Order", order.id, order.number);
+  const ref = `Order ${String(order.id)}`;
 
   if (order.type.code !== "AN" && order.type.code !== "AB") {
     throw validation(
-      `${label} is a ${order.type.label.toLowerCase()} (${order.type.code}); only offers (AN) and ` +
+      `${ref} is a ${order.type.label.toLowerCase()} (${order.type.code}); only offers (AN) and ` +
         "order confirmations (AB) can be turned into an invoice. Use the offer or confirmation " +
         "it belongs to, or create the invoice with sevdesk_invoice_create_draft.",
     );
@@ -154,14 +155,14 @@ export async function planOrderToInvoice(
   switch (order.status.code) {
     case 100:
       throw validation(
-        `${label} is still a draft. Finalize it first (sevdesk_order_finalize), or create the ` +
+        `${ref} is still a draft. Finalize it first (sevdesk_order_finalize), or create the ` +
           "invoice draft directly with sevdesk_invoice_create_draft.",
       );
     case 300:
-      throw validation(`${label} was rejected (status 300); a rejected order is not invoiced.`);
+      throw validation(`${ref} was rejected (status 300); a rejected order is not invoiced.`);
     case 1000:
       throw validation(
-        `${label} is already fully invoiced (status 1000, Berechnet). sevdesk_order_get lists ` +
+        `${ref} is already fully invoiced (status 1000, Berechnet). sevdesk_order_get lists ` +
           "the invoices created from it.",
       );
     case 200:
@@ -170,7 +171,7 @@ export async function planOrderToInvoice(
       break;
     default:
       throw validation(
-        `${label} has status ${order.status.code}, which this tool does not know; only sent ` +
+        `${ref} has status ${order.status.code}, which this tool does not know; only sent ` +
           "(200), accepted (500) or partially invoiced (750) orders are invoiced.",
       );
   }
@@ -186,12 +187,12 @@ export async function planOrderToInvoice(
     );
   }
   if (partial && input.amount !== undefined) {
-    checkOrderAmount(input.amount, input.amountType, order.totals, label);
+    checkOrderAmount(input.amount, input.amountType, order.totals, ref);
   }
   const ruleId = order.tax.rule?.id;
   if (partial && ruleId !== undefined && !PARTIAL_TAX_RULES.has(ruleId)) {
     throw validation(
-      `${label} uses tax rule ${ruleId}; sevDesk creates advance and partial invoices only with ` +
+      `${ref} uses tax rule ${ruleId}; sevDesk creates advance and partial invoices only with ` +
         "tax rule 1 (Umsatzsteuerpflichtige Umsätze) or 11 (Kleinunternehmer). Invoice the " +
         "whole order instead (mode full).",
     );
@@ -202,7 +203,7 @@ export async function planOrderToInvoice(
   );
   if (drafts.length > 0 && !input.allowDuplicate) {
     throw validation(
-      `An invoice draft from ${label} exists already: ${idList(
+      `An invoice draft from ${ref} exists already: ${idList(
         "invoice",
         drafts.map((doc) => doc.id),
       )}. ` +
@@ -415,6 +416,7 @@ export async function planCreditNoteFromInvoice(
   const snapshot = await readInvoiceSnapshot(client, invoiceId, berlinDateOf(Date.now()), signal);
   const invoice = snapshot.detail;
   const label = documentLabel("Invoice", invoice.id, invoice.number);
+  const ref = `Invoice ${String(invoice.id)}`;
   const checked = await checkInvoiceCreditable(client, invoice, signal);
 
   const existing = await findCreditNotesForInvoice(
@@ -424,7 +426,7 @@ export async function planCreditNoteFromInvoice(
   );
   if (existing.ids.length > 0 && !input.allowDuplicate) {
     throw validation(
-      `A credit note for ${label} exists already: ${idList("credit note", existing.ids)}. Check it ` +
+      `A credit note for ${ref} exists already: ${idList("credit note", existing.ids)}. Check it ` +
         "with sevdesk_credit_note_get, or call again with allowDuplicate: true to create another " +
         "one (e.g. a second partial refund).",
     );
@@ -577,17 +579,17 @@ export async function checkInvoiceCreditable(
   invoice: InvoiceDetail,
   signal?: AbortSignal,
 ): Promise<{ readonly warnings: readonly string[] }> {
-  const label = documentLabel("Invoice", invoice.id, invoice.number);
-  requireRevenueInvoice(invoice.type.code, label, "a credit note");
+  const ref = `Invoice ${String(invoice.id)}`;
+  requireRevenueInvoice(invoice.type.code, ref, "a credit note");
   if (invoice.status.code === 100) {
     throw validation(
-      `${label} is still a draft: change it with sevdesk_invoice_update_draft instead; a credit ` +
+      `${ref} is still a draft: change it with sevdesk_invoice_update_draft instead; a credit ` +
         "note corrects finalized invoices only.",
     );
   }
   if (![200, 750, 1000].includes(invoice.status.code)) {
     throw validation(
-      `${label} has status ${invoice.status.code}; credit notes are created from open, ` +
+      `${ref} has status ${invoice.status.code}; credit notes are created from open, ` +
         "partially paid or paid invoices only.",
     );
   }
@@ -604,7 +606,7 @@ export async function checkInvoiceCreditable(
   );
   if (cancellations.ids.length > 0) {
     throw validation(
-      `${label} was cancelled (Storno) by ${idList("cancellation invoice", cancellations.ids)}; ` +
+      `${ref} was cancelled (Storno) by ${idList("cancellation invoice", cancellations.ids)}; ` +
         "its revenue is already reversed, so a credit note would reverse it twice. Use " +
         "sevdesk_invoice_get on the cancellation invoice to check.",
     );
@@ -617,7 +619,7 @@ export async function checkInvoiceCreditable(
     compare(invoice.paid.amount, 0) === 0;
   if (cancellations.truncated && paidNothing) {
     throw validation(
-      `${label} is marked paid but nothing was paid, which is how a cancelled invoice looks, and ` +
+      `${ref} is marked paid but nothing was paid, which is how a cancelled invoice looks, and ` +
         "sevDesk listed too many invoices to find its cancellation. Check with " +
         "sevdesk_invoices_list (type cancellation) first; no credit note was created.",
     );
@@ -1020,7 +1022,11 @@ function requireRevenueInvoice(typeCode: string, label: string, what: string): v
   );
 }
 
-/** "Invoice RE-1001 (id 1001)", or "Invoice 1001" without a number. */
+/**
+ * "Invoice RE-1001 (id 1001)", or "Invoice 1001" without a number: for previews only. Error texts
+ * name a document by its id (`ref`): the number is sevDesk text, and a hostile one read like
+ * instructions inside a trusted error (security review 2026-11, wave 2).
+ */
 function documentLabel(kind: "Invoice" | "Order", id: number, number: string | undefined): string {
   const shown = cleanText(number, DISPLAY_MAX);
   return shown === undefined ? `${kind} ${id}` : `${kind} ${shown} (id ${id})`;

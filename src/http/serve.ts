@@ -9,10 +9,11 @@
  * signals are aborted and the remaining connections closed. Stores and the account resolver are
  * the caller's to close afterwards.
  */
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import type { AddressInfo, Socket } from "node:net";
 
 import { PACKAGE_NAME } from "../version.js";
+import { normalizeIp, rateLimitKey } from "./client-ip.js";
 import { loopbackOrigin } from "./config.js";
 import { MCP_PATH } from "./mcp-route.js";
 import { fromNodeRequest, writeNodeResponse } from "./node-bridge.js";
@@ -35,6 +36,12 @@ export const SERVER_LIMITS = {
   /** Idle keep-alive connections are closed after this (above common proxy defaults of 60 s). */
   keepAliveTimeoutMs: 65_000,
   maxConnections: 256,
+  /**
+   * Connections one client address (IPv6: its /64) may hold when no proxy is trusted, so one
+   * peer keeping idle keep-alive connections cannot take all of `maxConnections`. Behind a
+   * trusted proxy every connection comes from the proxy, which must limit its clients instead.
+   */
+  maxConnectionsPerClient: 64,
 } as const;
 
 export interface StartHttpServerOptions {
@@ -86,6 +93,8 @@ export async function startHttpServer(options: StartHttpServerOptions): Promise<
   server.requestTimeout = SERVER_LIMITS.requestTimeoutMs;
   server.keepAliveTimeout = SERVER_LIMITS.keepAliveTimeoutMs;
   server.maxConnections = SERVER_LIMITS.maxConnections;
+  if (http.trustProxy === 0)
+    limitConnectionsPerClient(server, SERVER_LIMITS.maxConnectionsPerClient);
 
   await new Promise<void>((resolve, reject) => {
     const onError = (error: NodeJS.ErrnoException): void => {
@@ -241,4 +250,29 @@ async function handleNodeRequest(
 
 function bindLabel(host: string): string {
   return host.includes(":") ? `[${host}]` : host;
+}
+
+/**
+ * Drops a new connection from a client address that already holds `max` (security review
+ * 2026-11, wave 2: one unauthenticated peer could hold all `maxConnections` with idle keep-alive
+ * connections, refusing everyone else). Counted per address (IPv6 by /64, like the rate limits).
+ */
+export function limitConnectionsPerClient(server: Server, max: number): void {
+  const open = new Map<string, number>();
+  server.on("connection", (socket: Socket) => {
+    const ip = normalizeIp(socket.remoteAddress);
+    if (ip === undefined) return;
+    const key = rateLimitKey(ip);
+    const count = (open.get(key) ?? 0) + 1;
+    if (count > max) {
+      socket.destroy();
+      return;
+    }
+    open.set(key, count);
+    socket.once("close", () => {
+      const left = (open.get(key) ?? 1) - 1;
+      if (left <= 0) open.delete(key);
+      else open.set(key, left);
+    });
+  });
 }

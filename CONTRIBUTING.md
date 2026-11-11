@@ -157,8 +157,9 @@ claude.ai cannot reach it, so the end-to-end check with claude.ai runs through a
 - **HTTP smoke test:** `pnpm build && node scripts/smoke-http.ts --bin dist/index.js` starts the
   built server in bearer mode on a free port (with a dummy sevDesk token, so nothing reaches
   sevDesk) and checks the health endpoint, the 401s, the Host and Origin refusals, the MCP
-  handshake on both protocol eras and a clean shutdown. Against a running server:
-  `node scripts/smoke-http.ts --url http://127.0.0.1:8080 --bearer "$SEVDESK_HTTP_BEARER_TOKEN"`.
+  handshake on both protocol eras and a clean shutdown. Against a running server, with
+  `SEVDESK_HTTP_BEARER_TOKEN` exported (the script reads the token from the environment only, so
+  it never shows up in the process list): `node scripts/smoke-http.ts --url http://127.0.0.1:8080`.
 - **The image:** `docker build -t mcp-server-sevdesk:dev .`, then run it read-only as in the
   [Docker quick start](docs/remote.md#quick-start-bearer-mode-with-docker) and point the smoke
   test at it with `--url`. CI does the same in its `docker` job.

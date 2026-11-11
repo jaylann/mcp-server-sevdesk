@@ -38,6 +38,8 @@ export const voucherDeleteDraftTool = defineWriteTool({
     deleted: z.boolean().describe("True when a read afterwards confirmed it is gone."),
     notes: z.array(z.string()).optional(),
   }),
+  // Serialized with other calls on the same record (see WriteToolDefinition.locks).
+  locks: (args) => [{ objectName: "Voucher", id: String(args.id) }],
   prepare: (args, ctx) => prepareVoucherDelete(ctx.client, args.id, ctx.signal),
   execute: async (args, plan, ctx) => {
     const result = await executeVoucherDelete(ctx.client, args.id, ctx.signal);

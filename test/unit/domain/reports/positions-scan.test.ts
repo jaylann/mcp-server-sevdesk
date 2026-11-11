@@ -206,6 +206,37 @@ describe("listDocumentHeaders", () => {
     });
   });
 
+  it("takes an Update 1.0 credit note's direction from its booking category (security review 2026-11, wave 2)", async () => {
+    const legacy = (id: number, bookingCategory: string | null) => ({
+      row: creditNoteDoc(
+        { id, date: "2026-03-05", net: "100", tax: "19", rule: null },
+        { taxType: "default", bookingCategory },
+      ),
+      positions: [],
+    });
+    const client = new FakeSevdeskClient(
+      scenarioRoutes({
+        creditNotes: [legacy(31, "PROVISION"), legacy(32, "UNDERACHIEVEMENT"), legacy(33, null)],
+      }),
+    );
+
+    const { headers } = await listDocumentHeaders(client, {
+      from: "2026-03-01",
+      to: "2026-03-31",
+      today: TODAY,
+    });
+
+    expect(
+      headers.map(({ id, direction, sign, taxRuleId }) => [id, direction, sign, taxRuleId]),
+    ).toEqual([
+      // A commission credit note is a supplier's self-billed expense: input VAT, not negative sales.
+      [31, "expense", 1, 9],
+      [32, "revenue", -1, 1],
+      // Without a category the direction cannot be told: no rule is guessed (reported unmapped).
+      [33, "revenue", -1, undefined],
+    ]);
+  });
+
   it("maps Update 1.0 tax types to the rules that replace them and flags them", async () => {
     const client = new FakeSevdeskClient(
       scenarioRoutes({

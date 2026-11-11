@@ -29,7 +29,7 @@
  * only by its sanitized base name.
  */
 import { constants } from "node:fs";
-import { type FileHandle, open, realpath, stat } from "node:fs/promises";
+import { type FileHandle, open, readlink, realpath, stat } from "node:fs/promises";
 import { basename, isAbsolute, relative, resolve, sep } from "node:path";
 
 import { SevdeskError } from "../sevdesk/errors.js";
@@ -112,6 +112,10 @@ export async function readConfinedFile(
     const info = await handle.stat();
     if (!info.isFile()) throw refusal(`${shown} is not a regular file`);
     if (info.ino !== target.ino || info.dev !== target.dev) {
+      throw refusal(`${shown} changed while it was being read; try again`);
+    }
+    const inRoots = (path: string): boolean => roots.some((root) => isInside(root.real, path));
+    if (!(await openedInside(handle, target.real, info, inRoots))) {
       throw refusal(`${shown} changed while it was being read; try again`);
     }
     if (info.size > options.maxBytes) {
@@ -202,6 +206,30 @@ async function locate(roots: readonly Root[], requested: string, shown: string):
 function isInside(root: string, path: string): boolean {
   const rel = relative(root, path);
   return rel !== "" && !rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel);
+}
+
+/**
+ * Whether the file `handle` opened (stat `info`) is still the one at `real` inside the allowed
+ * folders. `O_NOFOLLOW` guards only the last path component: a folder on the way replaced by a
+ * symbolic link between resolving the path and opening it led outside (security review 2026-11,
+ * finding 10). On Linux the kernel tells the opened file's path (`/proc/self/fd`), which settles
+ * it. Elsewhere (macOS has no such lookup, and Node has no `openat`) the path is resolved again: it
+ * must still be `real`, inside, and the same file. That catches a lasting swap; a swap undone in
+ * the microseconds between the calls is not caught, and needs someone who can already rename
+ * folders inside the allowed ones on the server's machine.
+ */
+export async function openedInside(
+  handle: FileHandle,
+  real: string,
+  info: { readonly dev: number; readonly ino: number },
+  inside: (path: string) => boolean,
+): Promise<boolean> {
+  const kernelPath = await readlink(`/proc/self/fd/${String(handle.fd)}`).catch(() => undefined);
+  if (kernelPath !== undefined && isAbsolute(kernelPath)) return inside(kernelPath);
+  const again = await realpath(real).catch(() => undefined);
+  if (again !== real || !inside(again)) return false;
+  const current = await stat(again).catch(() => undefined);
+  return current?.dev === info.dev && current.ino === info.ino;
 }
 
 async function readAtMost(handle: FileHandle, maxBytes: number): Promise<Uint8Array> {

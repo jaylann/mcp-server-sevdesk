@@ -96,14 +96,29 @@ export interface Settings {
   readonly userAgent: string;
 }
 
+/** 32 hex characters standing alone: the shape of a sevDesk API token (see `looksLikeToken`). */
+const TOKEN_SHAPED_RUN = /(?<![0-9A-Za-z])[0-9a-f]{32}(?![0-9A-Za-z])/gi;
+
+/**
+ * `problem` with every sevDesk-token-shaped value replaced by `[redacted]`. Problems quote the
+ * value they reject, and they reach stderr, the MCP instructions and `sevdesk_setup_problem` (so
+ * the model): a token pasted into the wrong setting must not travel with them (security review
+ * 2026-11, finding 8). Other secrets have no fixed shape; whoever shows problems also redacts the
+ * configured secret values (`redactSecrets`, see src/index.ts).
+ */
+export function redactConfigProblem(problem: string): string {
+  return problem.replace(TOKEN_SHAPED_RUN, "[redacted]");
+}
+
 /** All problems found in the environment, so users can fix them in one go. */
 export class ConfigError extends Error {
   readonly problems: readonly string[];
 
   constructor(problems: readonly string[]) {
-    super(`Invalid configuration:\n${problems.map((problem) => `  - ${problem}`).join("\n")}`);
+    const redacted = problems.map(redactConfigProblem);
+    super(`Invalid configuration:\n${redacted.map((problem) => `  - ${problem}`).join("\n")}`);
     this.name = "ConfigError";
-    this.problems = problems;
+    this.problems = redacted;
   }
 }
 

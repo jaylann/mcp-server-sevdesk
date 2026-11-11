@@ -172,3 +172,41 @@ describe("PDF load budget (object and cross-reference streams)", () => {
     expect(String((large as PromiseRejectedResult).reason)).toContain("no embedded e-invoice XML");
   });
 });
+
+describe("PDF structure counts (security review 2026-11, wave 2)", () => {
+  it.each([
+    [
+      "a huge /Size with zero-width fields",
+      "/Type /XRef /Size 1000000000 /W [0 0 0]",
+      "cross-reference",
+    ],
+    ["more entries than the data holds", "/Type /XRef /Size 10000 /W [1 2 1]", "cross-reference"],
+    [
+      "an /Index that declares too many",
+      "/Type /XRef /Size 4 /Index [0 900000] /W [1 2 1]",
+      "cross-reference",
+    ],
+    ["field widths out of range", "/Type /XRef /Size 1 /W [1 2000000 1]", "cross-reference"],
+    ["more objects than the data holds", "/Type /ObjStm /N 100000 /First 4", "object"],
+  ])("refuses %s before pdf-lib loops over it", async (_label, dictionary, what) => {
+    const bytes = pdfWithStream(dictionary, Buffer.from("1 0 2 0 "));
+    expect(bytes.byteLength).toBeLessThan(1024);
+    expect(await refused(bytes)).toContain(`The PDF's ${what} stream is malformed`);
+  });
+
+  it("caps the entries of all streams together", async () => {
+    // 3 streams of 80,000 well-formed entries each: every one fits its data, together too many.
+    const width = 4;
+    const stream = (n: number) =>
+      `${String(n)} 0 obj\n<< /Type /XRef /Size 80000 /W [1 2 1] /Length ${String(80_000 * width)} >>\nstream\n` +
+      `${"\u0001\u0000\u0000\u0000".repeat(80_000)}\nendstream\nendobj\n`;
+    const bytes = pdfWithStream(
+      "/Type /XRef /Size 80000 /W [1 2 1]",
+      Buffer.alloc(80_000 * width, 1),
+      stream(4) + stream(5),
+    );
+    expect(await refused(bytes, 64 * MIB)).toContain(
+      "declares more internal objects than this server reads",
+    );
+  });
+});

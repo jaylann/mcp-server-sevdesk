@@ -105,6 +105,18 @@ der Zeit von 2025 über zustandsloses HTTP (die keine Anfragen vom Server an den
 können) bekommen einen Fehler, der dem Benutzer sagt, zu `browser` zu wechseln; nichts wird
 gesendet.
 
+Die Elicitation vertraut der MCP-Client-Anwendung: Der Client zeigt das Formular und schickt die
+Antwort zurück, und der signierte Zustand beweist nur, dass der Server gefragt hat, nicht, dass ein
+Mensch geantwortet hat. Ein Client, der selbst bösartig oder kompromittiert ist (nicht ein
+manipuliertes Modell in einem ehrlichen Client), kann von sich aus „freigeben“ antworten. Die
+Elicitation hält eine Prompt-Injection im Modell auf, das das Formular nicht beantworten kann; einen
+feindlichen Client hält sie nicht auf. Mit einem Client, dem Sie nicht vertrauen, verwenden Sie
+`SEVDESK_CONFIRM=browser` (über HTTP den Freigabe-Posteingang), wo der Mensch auf einer Seite
+entscheidet, die der Server selbst ausliefert. Beim Fertigstellen, Festschreiben und Versenden
+eines Dokuments deckt die Freigabe außerdem das ganze Dokument ab, wie sevDesk es speichert (Texte,
+Anschrift, Zahlungsbedingungen, Positionen über seine letzte Änderung), nicht nur die Angaben der
+Vorschau: Zu einem Entwurf, der nach der Frage bearbeitet wurde, wird erneut gefragt.
+
 **`SEVDESK_CONFIRM=browser`** über stdio. Für Clients ohne Elicitation legt der Server eine
 Freigabeseite an, die er selbst nur auf `127.0.0.1` und einem flüchtigen Port bereitstellt, und
 öffnet sie im Browser des Benutzers mit dem Öffner des Betriebssystems (`open`, `xdg-open` oder

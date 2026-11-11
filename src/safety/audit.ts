@@ -20,7 +20,7 @@
  *   the grant, the reference, the kind, the size and the SHA-256, never the file name or content.
  */
 import { constants } from "node:fs";
-import { open } from "node:fs/promises";
+import { type FileHandle, open } from "node:fs/promises";
 
 import type { RequestPrincipal } from "../accounts/types.js";
 import type { ConfirmationPreview, SevdeskObjectRef } from "../tools/types.js";
@@ -152,12 +152,25 @@ const MAX_ARG_STRING_LENGTH = 20_000;
  * file fact still tie a call to its upload.
  */
 const UPLOAD_ID = /upload:[A-Za-z0-9_-]{43}/g;
-/** `O_NOFOLLOW` is POSIX-only; elsewhere it is 0 and adds nothing. */
+/**
+ * `O_NOFOLLOW` is POSIX-only; elsewhere it is 0 and adds nothing. Read access only to look at the
+ * last byte (is the previous line complete?); every write appends.
+ */
 const OPEN_FLAGS =
-  constants.O_WRONLY |
+  constants.O_RDWR |
   constants.O_APPEND |
   constants.O_CREAT |
   ("O_NOFOLLOW" in constants ? constants.O_NOFOLLOW : 0);
+
+/** Writes all of `bytes`, or rejects; a write that makes no progress is an error. */
+async function writeAll(handle: FileHandle, bytes: Buffer): Promise<void> {
+  let written = 0;
+  while (written < bytes.length) {
+    const { bytesWritten } = await handle.write(bytes, written, bytes.length - written);
+    if (bytesWritten <= 0) throw new Error("audit log: a write made no progress");
+    written += bytesWritten;
+  }
+}
 
 export function createAuditLog(options: AuditLogOptions): AuditLog {
   const { path, secrets } = options;
@@ -176,7 +189,16 @@ export function createAuditLog(options: AuditLogOptions): AuditLog {
       if ((mode & 0o077) !== 0) {
         await handle.chmod(FILE_MODE);
       }
-      await handle.write(line);
+      // `write` may write less than asked (a nearly full volume) and still resolve: ignoring that
+      // let an action run without a complete `executing` line (security review 2026-11, wave 2).
+      // Every byte is written or the append rejects, so the fail-closed gate holds. A line cut
+      // short by an earlier failure is closed first, so this one stays parseable.
+      const { size } = await handle.stat();
+      const last = Buffer.alloc(1);
+      const endsLine =
+        size === 0 ||
+        ((await handle.read(last, 0, 1, size - 1)).bytesRead === 1 && last[0] === 0x0a);
+      await writeAll(handle, Buffer.from(endsLine ? line : `\n${line}`, "utf8"));
     } finally {
       await handle.close();
     }

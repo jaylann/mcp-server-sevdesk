@@ -19,6 +19,7 @@ import { dryRunInputShape } from "../write-input.js";
 import {
   capitalize,
   COMMIT_ANNOTATIONS,
+  documentBinding,
   documentObject,
   documentOutput,
   documentOutputSchema,
@@ -145,6 +146,8 @@ export function finalizeTool(kind: SalesKind) {
       ...dryRunInputShape,
     }),
     output: documentOutputSchema(kind),
+    // Serialized with other calls on the same record (see WriteToolDefinition.locks).
+    locks: (args) => [documentObject(kind, args.id)],
     prepare: async (args, ctx) => {
       const doc = await readLifecycleDocument(ctx.client, kind, args.id, ctx.signal);
       assertFinalizable(doc);
@@ -184,6 +187,7 @@ export function finalizeTool(kind: SalesKind) {
           warnings: warnings.map((warning) => warning[lang]),
           irreversible: false,
         })),
+        binding: await documentBinding(ctx, doc),
         state: { payload },
       };
     },

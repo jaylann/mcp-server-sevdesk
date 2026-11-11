@@ -95,6 +95,8 @@ export interface AuthorizeOptions extends TokenScope {
   readonly resource: string;
   readonly oauth: OAuthSettings;
   readonly allowedTiers: ReadonlySet<Tier>;
+  /** Commit and external actions run without asking (`SEVDESK_CONFIRM=off`); see the page. */
+  readonly unconfirmed: boolean;
   readonly cimd: CimdFetcher;
   readonly store: GrantStore;
   readonly identity: IdentityLookup;
@@ -313,6 +315,7 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
         consent,
         csrf,
         error: undefined,
+        unconfirmed: options.unconfirmed,
       },
       { ...page, nonce },
     );
@@ -349,6 +352,7 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
           consent,
           csrf: payload.csrf,
           error: message,
+          unconfirmed: options.unconfirmed,
         },
         { ...page, nonce },
       );
@@ -401,6 +405,7 @@ export function authorizeRoute(options: AuthorizeOptions): HttpRoute {
         accountName: name,
         consent: next,
         csrf: payload.csrf,
+        unconfirmed: options.unconfirmed,
       },
       { ...page, nonce },
     );

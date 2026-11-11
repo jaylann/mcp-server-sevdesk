@@ -69,6 +69,8 @@ export const UPLOAD_RATE_HOUR: RateRule = { name: "uploads-hour", perMinute: 1, 
 const MULTIPART_OVERHEAD_BYTES = 64 * 1024;
 /** The route's body limit: the largest upload plus framing. */
 export const MAX_UPLOAD_BODY_BYTES = MAX_UPLOAD_BYTES + MULTIPART_OVERHEAD_BYTES;
+/** Boundary delimiters of the upload form: one before `csrf`, one before `file`, the closing one. */
+const UPLOAD_FORM_DELIMITERS = 3;
 /** Time an upload body may take (below the router's 120 s request deadline). */
 const UPLOAD_BODY_TIMEOUT_MS = 90_000;
 /**
@@ -316,9 +318,20 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
     try {
       // undici marks `formData()` as not recommended for servers: it buffers the whole body. Here
       // the router already holds the whole body, capped at 20 MiB + 64 KiB, with at most 2
-      // uploads at once and only after the session and ticket checks; no extra dependency.
-      // eslint-disable-next-line @typescript-eslint/no-deprecated
-      form = await request.formData();
+      // uploads at once and only after the session and ticket checks; no extra dependency. It
+      // also builds an object for every part before anything can be checked, and 20 MiB of empty
+      // parts made several hundred MiB of them (security review 2026-11, finding 2): so the parts
+      // are counted on the raw bytes first, and a form with more than `csrf` and `file` is
+      // refused before it is parsed.
+      const body = new Uint8Array(await request.arrayBuffer());
+      const boundary = multipartBoundary(request.headers.get("content-type") ?? "");
+      if (boundary === undefined || !atMostDelimiters(body, boundary, UPLOAD_FORM_DELIMITERS)) {
+        throw new Error("not the upload form");
+      }
+      form = await new Response(body, {
+        headers: { "content-type": multipartContentType(boundary) },
+        // eslint-disable-next-line @typescript-eslint/no-deprecated
+      }).formData();
     } catch {
       return refuse(
         "bad_form",
@@ -508,4 +521,42 @@ export function uploadName(raw: string, kind: LocalFileKind): string {
   const extension = kind === "jpeg" ? "jpg" : kind;
   const stem = raw.replace(/\.(?:pdf|png|jpe?g|xml)$/i, "");
   return safeFilename(stem, "upload", extension);
+}
+
+/**
+ * The boundary of an upload's content type, which must be exactly `multipart/form-data;
+ * boundary=<b>` (`<b>` quoted or not): 1–70 of RFC 2046's boundary characters without space,
+ * quote or backslash, as every browser sends. Anything else (more parameters, escapes, non-ASCII,
+ * a `boundary=` inside another parameter) is `undefined` and refused: the part count and the
+ * parser must agree on one boundary, and the parser is then given only this one (see
+ * {@link multipartContentType}). Lenient parsing let escaped and nested boundaries count zero
+ * parts while the parser found thousands (security review 2026-11, wave 2).
+ */
+export function multipartBoundary(contentType: string): string | undefined {
+  const match =
+    /^\s*multipart\/form-data\s*;\s*boundary=(?:"([0-9A-Za-z'()+_,\-./:=?]{1,70})"|([0-9A-Za-z'()+_,\-./:=?]{1,70}))\s*$/i.exec(
+      contentType,
+    );
+  return match?.[1] ?? match?.[2];
+}
+
+/** The content type the parser gets: built from the checked boundary, not the client's header. */
+function multipartContentType(boundary: string): string {
+  return `multipart/form-data; boundary="${boundary}"`;
+}
+
+/**
+ * Whether `body` holds at most `max` delimiter lines `--<boundary>` (at the start or after CRLF,
+ * the closing `--<boundary>--` included). Stops counting at the first one too many, so a body of
+ * many tiny parts costs one scan and no allocation per part.
+ */
+export function atMostDelimiters(body: Uint8Array, boundary: string, max: number): boolean {
+  const bytes = Buffer.from(body.buffer, body.byteOffset, body.byteLength);
+  const delimiter = Buffer.from(`--${boundary}`, "latin1");
+  let count = 0;
+  for (let at = bytes.indexOf(delimiter); at !== -1; at = bytes.indexOf(delimiter, at + 1)) {
+    const atLineStart = at === 0 || (bytes[at - 2] === 0x0d && bytes[at - 1] === 0x0a);
+    if (atLineStart && ++count > max) return false;
+  }
+  return true;
 }

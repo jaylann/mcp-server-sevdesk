@@ -12,7 +12,13 @@ import {
   type ProfilesPathDeps,
   readProfilesFile,
 } from "./accounts/profiles.js";
-import { ConfigError, type Env, localNameProblem, nonEmpty } from "./config.js";
+import {
+  ConfigError,
+  type Env,
+  localNameProblem,
+  nonEmpty,
+  redactConfigProblem,
+} from "./config.js";
 
 /** Where the command writes; the defaults are stdout and stderr. */
 export interface ProfilesCommandIo {
@@ -57,12 +63,14 @@ export async function runProfilesCommand(
   }
   const active = nonEmpty(env["SEVDESK_PROFILE"]);
   const header = ["", "PROFILE", "TOKEN", "TIERS", "TOOLSETS"];
+  // Tiers and toolsets are shown as written, but a token pasted into them is not (security review
+  // 2026-11, wave 2); profile names are checked for that shape already.
   const rows = [...file.profiles.values()].map((profile) => [
     profile.name === active ? "*" : "",
     profile.name,
     describeProfileToken(profile.token),
-    access(profile),
-    profile.values.toolsets ?? "-",
+    redactConfigProblem(access(profile)),
+    redactConfigProblem(profile.values.toolsets ?? "-"),
   ]);
   const widths = header.map((title, column) =>
     Math.max(title.length, ...rows.map((row) => (row[column] ?? "").length)),

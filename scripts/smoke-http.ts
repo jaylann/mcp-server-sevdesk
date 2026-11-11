@@ -6,15 +6,15 @@
  *   nothing leaves the machine), reads the origin from its `listening on <origin>/mcp` line, runs
  *   the checks, then checks that `--http` without `SEVDESK_HTTP_AUTH` exits 1, that SIGTERM stops
  *   the server with exit code 0 within 5 s, and that no secret appeared in its output.
- * - `--url <origin> --bearer <token>`: runs the checks against a running server (the Docker CI
- *   job). The token may also come from `SEVDESK_HTTP_BEARER_TOKEN`; the origin must be the
- *   server's public URL (its Host is checked).
+ * - `--url <origin>`: runs the checks against a running server (the Docker CI job), with the
+ *   token from `SEVDESK_HTTP_BEARER_TOKEN` (never an argument, which other users of the machine
+ *   could read); the origin must be the server's public URL (its Host is checked).
  *
  * Checks: `/healthz`; 401 without and with a wrong token; a foreign Host and a foreign Origin get
  * 403; the SDK client in both protocol eras sees the server name, the version and a non-empty
  * tool list.
  *
- * Usage: pnpm exec tsx scripts/smoke-http.ts --bin <dist/index.js> | --url <origin> [--bearer <t>]
+ * Usage: pnpm exec tsx scripts/smoke-http.ts --bin <dist/index.js> | --url <origin>
  * (or `node scripts/smoke-http.ts …` on Node with type stripping; the script imports packages
  * only, no project sources). On Windows the SIGTERM check only expects the server to stop.
  * Exit codes: 0 ok, 1 failure, 2 usage error.
@@ -44,26 +44,28 @@ const FOREIGN_HOST = "smoke-foreign.invalid";
 interface Options {
   readonly bin?: string;
   readonly url?: string;
-  readonly bearer?: string;
 }
 
 function usage(message: string): never {
   console.error(`smoke-http: ${message}`);
   console.error(
-    "usage: smoke-http.ts --bin <path-to-dist/index.js> | --url <origin> [--bearer <token>]",
+    "usage: smoke-http.ts --bin <path-to-dist/index.js> | --url <origin> " +
+      "(with SEVDESK_HTTP_BEARER_TOKEN set)",
   );
   process.exit(2);
 }
 
 function parseOptions(argv: readonly string[]): Options {
-  const options: { bin?: string; url?: string; bearer?: string } = {};
+  const options: { bin?: string; url?: string } = {};
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index];
     const value = argv[index + 1];
+    // The token is never an argument: other users of the machine can read a process's arguments
+    // (security review 2026-11, finding 11).
+    if (flag === "--bearer") usage("--bearer was removed; set SEVDESK_HTTP_BEARER_TOKEN instead");
     if (value === undefined || value.startsWith("--")) usage(`${String(flag)} needs a value`);
     if (flag === "--bin") options.bin = value;
     else if (flag === "--url") options.url = value;
-    else if (flag === "--bearer") options.bearer = value;
     else usage(`unknown argument ${String(flag)}`);
   }
   if ((options.bin === undefined) === (options.url === undefined)) {
@@ -325,9 +327,8 @@ try {
   if (options.bin !== undefined) {
     await runBin(options.bin);
   } else {
-    const bearer = options.bearer ?? process.env["SEVDESK_HTTP_BEARER_TOKEN"];
-    if (bearer === undefined || bearer === "")
-      usage("--url needs --bearer or SEVDESK_HTTP_BEARER_TOKEN");
+    const bearer = process.env["SEVDESK_HTTP_BEARER_TOKEN"];
+    if (bearer === undefined || bearer === "") usage("--url needs SEVDESK_HTTP_BEARER_TOKEN");
     let origin: string;
     try {
       origin = new URL(options.url ?? "").origin;

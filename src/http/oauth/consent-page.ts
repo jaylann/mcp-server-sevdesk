@@ -42,6 +42,8 @@ export interface TokenStepModel {
   readonly csrf: string;
   /** Trusted text shown above the token field after a failed check. */
   readonly error: string | undefined;
+  /** The server runs commit and external actions without asking (`SEVDESK_CONFIRM=off`). */
+  readonly unconfirmed: boolean;
 }
 
 /** Step 2: confirm the account. */
@@ -53,6 +55,8 @@ export interface ConfirmStepModel {
   readonly accountName: string | undefined;
   readonly consent: string;
   readonly csrf: string;
+  /** See {@link TokenStepModel.unconfirmed}. */
+  readonly unconfirmed: boolean;
 }
 
 /** The badge colour of each tier, as on the website. */
@@ -90,10 +94,18 @@ function hidden(consent: string, csrf: string): Html {
 <input type="hidden" name="csrf" value="${csrf}">`;
 }
 
-/** A tier as a badge with its name, and what it allows in plain words. */
-function tierLine(tier: Tier, ctx: RenderContext): Html {
-  const words = ctx.t.tiers[tier];
-  const mark = requiresConfirmation(tier) ? icon("lock") : markup`<span class="tier-dot"></span>`;
+/**
+ * A tier as a badge with its name, and what it allows in plain words. With `unconfirmed` the
+ * confirmed tiers lose their lock and say they run without asking: the page must not promise an
+ * approval the server will not ask for (security review 2026-11, wave 2).
+ */
+function tierLine(tier: Tier, ctx: RenderContext, unconfirmed: boolean): Html {
+  const asks = requiresConfirmation(tier) && !unconfirmed;
+  const words =
+    unconfirmed && (tier === "commit" || tier === "external")
+      ? ctx.t.tiersUnconfirmed[tier]
+      : ctx.t.tiers[tier];
+  const mark = asks ? icon("lock") : markup`<span class="tier-dot"></span>`;
   const name = badge(markup`${mark}<strong>${words.label}</strong>`, TIER_TONE[tier]);
   return markup`<span class="tier-words">${name}<span class="small">${words.text}</span></span>`;
 }
@@ -104,11 +116,11 @@ export function renderTokenStep(model: TokenStepModel, ctx: RenderContext): stri
   const chosen = new Set(model.chosen);
   const tiers = model.offered.map((tier) => {
     if (tier === "read") {
-      return markup`<label class="tier"><input type="checkbox" checked disabled> ${tierLine(tier, ctx)}</label>
+      return markup`<label class="tier"><input type="checkbox" checked disabled> ${tierLine(tier, ctx, model.unconfirmed)}</label>
 <input type="hidden" name="tier" value="read">\n`;
     }
     const ticked = chosen.has(tier) ? trusted(" checked") : "";
-    return markup`<label class="tier"><input type="checkbox" name="tier" value="${tier}"${ticked}> ${tierLine(tier, ctx)}</label>\n`;
+    return markup`<label class="tier"><input type="checkbox" name="tier" value="${tier}"${ticked}> ${tierLine(tier, ctx, model.unconfirmed)}</label>\n`;
   });
   const error =
     model.error === undefined
@@ -121,7 +133,7 @@ ${clientSection(model.client, ctx)}
 ${hidden(model.consent, model.csrf)}
 <fieldset class="tiers">
 <legend>${t.legend}</legend>
-${tiers}<p class="hint">${t.tiersHint}</p>
+${tiers}<p class="hint">${model.unconfirmed ? t.tiersHintUnconfirmed : t.tiersHint}</p>
 </fieldset>
 <label for="sevdesk-token" class="field">${t.tokenLabel}</label>
 <input id="sevdesk-token" type="password" name="sevdesk_token" autocomplete="off" spellcheck="false" required minlength="32" maxlength="32">
@@ -146,7 +158,9 @@ export function renderConfirmStep(model: ConfirmStepModel, ctx: RenderContext): 
     ],
     { plain: true },
   );
-  const granted = model.tiers.map((tier) => markup`<li>${tierLine(tier, ctx)}</li>\n`);
+  const granted = model.tiers.map(
+    (tier) => markup`<li>${tierLine(tier, ctx, model.unconfirmed)}</li>\n`,
+  );
   const body = markup`${steps(2, ctx)}
 <h1>${t.confirmHeading(model.accountId)}</h1>
 ${clientSection(model.client, ctx)}

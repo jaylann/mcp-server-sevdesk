@@ -217,6 +217,36 @@ describe("grant lifecycle (memory)", () => {
     expect(store.getSession(third.sid)).toBeDefined();
   });
 
+  it("never lets one account's sign-ins end another account's sessions (security review 2026-11, wave 2)", async () => {
+    const clock = fakeClock();
+    const store = await server({ stateDir: undefined, now: clock.now, maxSessions: 5 });
+    const victim = await store.createSession({ accountId: "1001", via: "token", ttlSeconds: 600 });
+    const attacker = [];
+    for (let i = 0; i < 20; i += 1) {
+      clock.advance(1000);
+      attacker.push(
+        await store.createSession({ accountId: "6666", via: "token", ttlSeconds: 600 }),
+      );
+    }
+    expect(store.getSession(victim.sid)).toBeDefined();
+    expect(attacker.filter((s) => store.getSession(s.sid) !== undefined)).toHaveLength(4);
+  });
+
+  it("caps the sessions of one account, ending its oldest", async () => {
+    const clock = fakeClock();
+    const store = await server({ stateDir: undefined, now: clock.now, maxSessionsPerAccount: 2 });
+    const other = await store.createSession({ accountId: "1001", via: "token", ttlSeconds: 600 });
+    const first = await store.createSession({ accountId: "4711", via: "token", ttlSeconds: 600 });
+    clock.advance(1000);
+    const second = await store.createSession({ accountId: "4711", via: "token", ttlSeconds: 600 });
+    clock.advance(1000);
+    const third = await store.createSession({ accountId: "4711", via: "token", ttlSeconds: 600 });
+    expect(store.getSession(first.sid)).toBeUndefined();
+    expect(store.getSession(second.sid)).toBeDefined();
+    expect(store.getSession(third.sid)).toBeDefined();
+    expect(store.getSession(other.sid)).toBeDefined();
+  });
+
   it("prunes stale pending grants under cap pressure", async () => {
     const clock = fakeClock();
     const store = await server({ stateDir: undefined, now: clock.now, maxGrants: 1 });
@@ -443,6 +473,28 @@ describe("grant store lock", () => {
     }
   });
 
+  it("refuses at the next sync, before any heartbeat, once another server took the lock (security review 2026-11, wave 2)", async () => {
+    const clock = fakeClock();
+    const a = await openGrantStore({ stateDir: dir, now: clock.now, heartbeatMs: 0 });
+    open.push(a);
+    const grant = await pending(a);
+    await a.activate(grant.gid, "jti-0000000001");
+    // A is paused past the stale-lock age; B takes the lock over and the operator revokes.
+    const later = (): number => clock.now() + 31_000;
+    const b = await openGrantStore({ stateDir: dir, now: later, heartbeatMs: 0 });
+    open.push(b);
+    const cli = await openGrantStore({ stateDir: dir, role: "cli" });
+    await cli.revoke(grant.gid, "operator");
+    await cli.close();
+
+    // A wakes up and gets a request: it must not answer from its old file handle.
+    clock.advance(2_000);
+    await expect(a.sync()).rejects.toBeInstanceOf(StateDirError);
+    expect(() => a.get(grant.gid)).toThrow(StateDirError);
+    await b.sync(true);
+    expect(b.get(grant.gid)?.status).toBe("revoked");
+  });
+
   it("stops a paused server whose lock another server took over (it never serves a revoked grant)", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     try {
@@ -507,6 +559,25 @@ describe("grants command next to a running server", () => {
     await running.sync();
     expect(running.get(grant.gid)).toMatchObject({ status: "revoked", reason: "operator" });
     expect(running.getSession(session.sid)).toBeUndefined();
+  });
+
+  it("makes a concurrent sync wait for the read already running (security review 2026-11, finding 9)", async () => {
+    const clock = fakeClock();
+    const running = await server({ stateDir: dir, now: clock.now });
+    const grant = await pending(running);
+    await running.activate(grant.gid, "jti-0000000001");
+    await running.sync(true);
+    const cli = await openGrantStore({ stateDir: dir, role: "cli", now: clock.now });
+    await cli.revoke(grant.gid, "operator");
+    await cli.close();
+    clock.advance(1000);
+
+    // Two requests at once: the second must not answer from the state before the first's read.
+    const first = running.sync();
+    const second = running.sync();
+    await second;
+    expect(running.get(grant.gid)?.status).toBe("revoked");
+    await first;
   });
 
   it("reads an empty or missing directory as no grants", async () => {

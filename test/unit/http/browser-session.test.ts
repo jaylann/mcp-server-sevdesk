@@ -42,7 +42,7 @@ function setup(homePath?: string) {
   });
   const context = contextFactory({ now: clock.now, log });
   const browser = new RemoteBrowser((request) => dispatch(session.routes, request, context()));
-  return { session, sessions, log, browser };
+  return { session, sessions, log, browser, context };
 }
 
 describe("browser session: sign-in target", () => {
@@ -112,6 +112,26 @@ describe("browser session: sign-in target", () => {
     expect(out.body).not.toContain("<a href");
     expect(browser.jar.size).toBe(0);
     expect(sessions.records.size).toBe(0);
+  });
+});
+
+describe("browser session: revocation by another process (security review 2026-11, finding 4)", () => {
+  it("syncs the store before trusting a session, so the first request after a revoke fails", async () => {
+    const { browser, session, sessions, context } = setup();
+    await browser.post("/approvals/login", { token: TOKEN });
+    const cookie = [...browser.jar].map(([name, value]) => `${name}=${value}`).join("; ");
+    const request = () => new Request(`${ORIGIN}${APPROVAL_PATH}`, { headers: { cookie } });
+    expect(await session.sessionOf(request(), context())).toBeDefined();
+
+    // `grants revoke` in another process: the server learns of it only when it syncs.
+    const [record] = [...sessions.records.values()];
+    if (record === undefined) throw new Error("no session");
+    sessions.sync = () => {
+      sessions.records.delete(record.sid);
+      return Promise.resolve();
+    };
+
+    expect(await session.sessionOf(request(), context())).toBeUndefined();
   });
 });
 

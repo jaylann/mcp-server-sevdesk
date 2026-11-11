@@ -134,6 +134,21 @@ export const de: Texts = {
     },
   },
 
+  tiersUnconfirmed: {
+    commit: {
+      label: "Buchen",
+      text:
+        "rechtlich bindende oder schwer umkehrbare Buchhaltung (festschreiben, Zahlungen " +
+        "buchen, stornieren); auf diesem Server ohne Rückfrage",
+    },
+    external: {
+      label: "Versenden",
+      text:
+        "erreicht Dritte, z. B. sendet ein Dokument per E-Mail an Kunden; auf diesem Server " +
+        "ohne Rückfrage",
+    },
+  },
+
   connect: {
     title: "Mit sevDesk verbinden",
     heading: "Eine App mit sevDesk verbinden",
@@ -146,6 +161,9 @@ export const de: Texts = {
       markup`Diese App läuft auf Ihrem eigenen Computer: Nach dem Verbinden kehrt Ihr Browser zu ${host} zurück. Fahren Sie nur fort, wenn Sie das Verbinden gerade selbst in einer App auf diesem Gerät gestartet haben.`,
     legend: "Was darf sie tun?",
     tiersHint: "Buchen und Versenden fragen Sie weiterhin bei jeder einzelnen Aktion.",
+    tiersHintUnconfirmed:
+      "Dieser Server führt Buchen und Versenden ohne jede Rückfrage aus: Was die App in diesen " +
+      "Stufen tut, wirkt sofort. Erteilen Sie sie nur, wenn Sie der App voll vertrauen.",
     tokenLabel: "Ihr sevDesk-API-Token",
     tokenHint:
       "In sevDesk: Einstellungen → Benutzer → API-Token. Es wird in diese Verbindung " +
