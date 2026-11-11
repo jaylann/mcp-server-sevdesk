@@ -410,7 +410,8 @@ describe("vatSummary (accrual)", () => {
       truncated: false,
       excluded: { drafts: 2, recurringTemplates: 0, reminders: 0, unknownDirection: 0 },
       unconvertibleCount: 0,
-      datedBy: { delivery: 12, document: 8 },
+      // The § 18b service (invoice 6) is dated by its performance, like the other supplies.
+      datedBy: { delivery: 13, document: 7 },
     });
     expect(report.notes.join(" ")).toContain("computed here at 19 %");
     expect(report.notes.join(" ")).toContain("Rule 13");
@@ -757,5 +758,388 @@ describe("vatSummary (cash)", () => {
     await expect(
       vatSummary(new FakeSevdeskClient([]), { period: Q1, basis: "cash", settings: REGULAR }),
     ).rejects.toMatchObject({ kind: "validation" });
+  });
+});
+
+// Review 2026-11, round 3.
+describe("vatSummary: § 18b services count when they are performed", () => {
+  const Q2 = resolvePeriod({ year: 2026, quarter: 2 });
+  // Both performed on 31 March and invoiced on 5 April: a service (rule 21) and goods (rule 3).
+  const scenario = () =>
+    scenarioRoutes({
+      invoices: [
+        doc(
+          invoiceDoc({
+            id: 1,
+            date: "2026-04-05",
+            delivery: "2026-03-31",
+            rule: 21,
+            net: "1000",
+            tax: "0",
+            vatNumber: "FR123",
+          }),
+          invoicePositions(1, [{ rate: "0", net: "1000", tax: "0" }]),
+        ),
+        doc(
+          invoiceDoc({
+            id: 2,
+            date: "2026-04-05",
+            delivery: "2026-03-31",
+            rule: 3,
+            net: "400",
+            tax: "0",
+            vatNumber: "ATU12345678",
+          }),
+          invoicePositions(2, [{ rate: "0", net: "400", tax: "0" }]),
+        ),
+      ],
+    });
+  const zm = (report: VatSummary) =>
+    report.zm.entries.map((entry) => [entry.vatId, entry.kind, entry.amount.amount]);
+
+  it("puts the service into the quarter of its performance, Kz 21 and ZM alike", async () => {
+    const first = await vatSummary(new FakeSevdeskClient(scenario()), {
+      period: Q1,
+      settings: REGULAR,
+      today: TODAY,
+    });
+
+    expect(box(first, "21")).toEqual({ base: "1000.00", tax: undefined, documents: 1 });
+    expect(zm(first)).toEqual([["FR123", "S", "1000.00"]]);
+    // Goods keep the invoice date (at the latest the month after the supply): not in Q1.
+    expect(box(first, "41")).toBeUndefined();
+  });
+
+  it("leaves the service out of the quarter it was invoiced in", async () => {
+    const second = await vatSummary(new FakeSevdeskClient(scenario()), {
+      period: Q2,
+      settings: REGULAR,
+      today: TODAY,
+    });
+
+    expect(box(second, "21")).toBeUndefined();
+    expect(box(second, "41")).toEqual({ base: "400.00", tax: undefined, documents: 1 });
+    expect(zm(second)).toEqual([["ATU12345678", "L", "400.00"]]);
+  });
+});
+
+describe("vatSummary: import VAT (Einfuhrumsatzsteuer)", () => {
+  /** A customs voucher: 190.00 import VAT on `account`, plus a 100.00 + 19 % handling fee. */
+  const customs = (account: number, rate = "0", tax = "0") =>
+    scenarioRoutes({
+      vouchers: [
+        doc(
+          voucherDoc({
+            id: 31,
+            date: "2026-02-11",
+            net: "290",
+            tax: String(19 + Number(tax)),
+          }),
+          voucherPositions(31, [
+            { rate, net: "190", tax, account },
+            { rate: "19", net: "100", tax: "19", account: 4266 },
+          ]),
+        ),
+      ],
+    });
+
+  it("counts the amount on the import VAT account as Kz 62 and as input VAT of Kz 83", async () => {
+    const report = await vatSummary(new FakeSevdeskClient(customs(2624)), {
+      period: Q1,
+      settings: REGULAR,
+      today: TODAY,
+    });
+
+    // Before the fix: no Kz 62 at all, input VAT 19.00.
+    expect(box(report, "62")).toEqual({ base: undefined, tax: "190.00", documents: 1 });
+    expect(box(report, "66")).toEqual({ base: undefined, tax: "19.00", documents: 1 });
+    expect(report.estimate).toEqual({
+      outputVat: { amount: "0.00", currency: "EUR" },
+      inputVat: { amount: "209.00", currency: "EUR" },
+      kz83: { amount: "-209.00", currency: "EUR" },
+    });
+    expect(report.boxes.find((entry) => entry.kz === "62")).toMatchObject({ line: 40 });
+    expect(report.unmapped).toEqual([]);
+    expect(report.notes.join(" ")).toContain("Kz 62 holds the amounts booked on the import VAT");
+  });
+
+  it("finds the account by its number only when the chart is known", async () => {
+    // Account 7777 is "1588" in this account's chart: the import VAT account in SKR03 only.
+    const accounts = {
+      accounts: [{ id: 7777, number: "1588", kind: "other" as const, active: true }],
+      truncated: false,
+    };
+    const run = (settings: AccountSettings | undefined) =>
+      vatSummary(new FakeSevdeskClient(customs(7777)), {
+        period: Q1,
+        settings,
+        accounts,
+        today: TODAY,
+      });
+
+    const skr03 = await run({ smallBusiness: false, chartOfAccounts: "skr03" });
+    expect(box(skr03, "62")).toEqual({ base: undefined, tax: "190.00", documents: 1 });
+
+    // In SKR04 number 1588 is another account, and without a chart nothing is guessed.
+    for (const settings of [REGULAR, { smallBusiness: false }, undefined]) {
+      const report = await run(settings);
+      expect(box(report, "62")).toBeUndefined();
+      expect(box(report, "66")).toEqual({ base: undefined, tax: "19.00", documents: 1 });
+    }
+  });
+
+  it("does not guess when the import VAT position carries a VAT rate", async () => {
+    const report = await vatSummary(new FakeSevdeskClient(customs(2624, "19", "36.1")), {
+      period: Q1,
+      settings: REGULAR,
+      today: TODAY,
+    });
+
+    expect(box(report, "62")).toBeUndefined();
+    expect(box(report, "66")).toEqual({ base: undefined, tax: "19.00", documents: 1 });
+    expect(report.unmapped).toEqual([
+      {
+        taxRule: { id: 9, name: expect.any(String) as unknown },
+        direction: "expense",
+        rate: "19",
+        net: { amount: "190.00", currency: "EUR" },
+        tax: { amount: "36.10", currency: "EUR" },
+        documents: 1,
+        reason: expect.stringContaining("booked with a VAT rate") as unknown,
+      },
+    ]);
+  });
+});
+
+describe("vatSummary: advance invoices under accrual", () => {
+  // Advance invoice of 10 January for a delivery on 10 February, paid on 15 January: the VAT is
+  // due in January (receipt of the payment), but the report counts it at the delivery.
+  const scenario = () =>
+    scenarioRoutes({
+      invoices: [
+        doc(
+          invoiceDoc(
+            {
+              id: 1,
+              date: "2026-01-10",
+              delivery: "2026-02-10",
+              status: "1000",
+              payDate: "2026-01-15",
+              net: "1000",
+              tax: "190",
+            },
+            { invoiceType: "AR" },
+          ),
+          invoicePositions(1, [{ rate: "19", net: "1000", tax: "190" }]),
+        ),
+        // An unpaid advance invoice for a later delivery: nothing is due yet, so it is not listed.
+        doc(
+          invoiceDoc(
+            { id: 2, date: "2026-01-12", delivery: "2026-02-20", net: "500", tax: "95" },
+            { invoiceType: "AR" },
+          ),
+          invoicePositions(2, [{ rate: "19", net: "500", tax: "95" }]),
+        ),
+      ],
+    });
+
+  it("names an advance invoice paid in the period but counted later", async () => {
+    const january = await vatSummary(new FakeSevdeskClient(scenario()), {
+      period: resolvePeriod({ year: 2026, month: 1 }),
+      settings: REGULAR,
+      today: TODAY,
+    });
+
+    expect(box(january, "81")).toBeUndefined();
+    expect(january.coverage.advanceInvoices).toEqual({
+      count: 1,
+      countedInPeriod: 0,
+      paidBeforeCounted: 1,
+      documents: [{ objectName: "Invoice", id: 1, number: "RE-1" }],
+    });
+    const note = january.notes.find((entry) => entry.includes("advance invoice"));
+    expect(note).toContain("1 advance invoice (Abschlagsrechnung, type AR)");
+    expect(note).toContain(
+      "1 paid or partly paid by the end of this period but counted in a later",
+    );
+    expect(note).toContain("Check these by hand (coverage.advanceInvoices).");
+  });
+
+  it("names the advance invoices counted in the period at their delivery", async () => {
+    const february = await vatSummary(new FakeSevdeskClient(scenario()), {
+      period: resolvePeriod({ year: 2026, month: 2 }),
+      settings: REGULAR,
+      today: TODAY,
+    });
+
+    expect(box(february, "81")).toEqual({ base: "1500.00", tax: "285.00", documents: 2 });
+    expect(february.coverage.advanceInvoices).toMatchObject({
+      count: 2,
+      countedInPeriod: 2,
+      paidBeforeCounted: 0,
+    });
+    expect(february.notes.join(" ")).toContain("2 in this period's lines at the supply date");
+  });
+
+  it("lists only advance invoices on which money can have arrived in the period", async () => {
+    const advance = (
+      id: number,
+      spec: { date: string; delivery: string; status: string; payDate?: string },
+    ) =>
+      doc(
+        invoiceDoc({ id, net: "100", tax: "19", ...spec }, { invoiceType: "AR" }),
+        invoicePositions(id, [{ rate: "19", net: "100", tax: "19" }]),
+      );
+    const client = new FakeSevdeskClient(
+      scenarioRoutes({
+        invoices: [
+          // Paid before the period started: it belongs to the December report.
+          advance(3, {
+            date: "2025-12-15",
+            delivery: "2026-02-15",
+            status: "1000",
+            payDate: "2025-12-20",
+          }),
+          // Partly paid, sevDesk has no pay date: money may have arrived in January.
+          advance(4, { date: "2026-01-20", delivery: "2026-02-25", status: "750" }),
+          // Issued after the period: nothing can have been paid in January.
+          advance(5, { date: "2026-02-05", delivery: "2026-03-05", status: "750" }),
+          // Paid after the period.
+          advance(6, {
+            date: "2026-01-05",
+            delivery: "2026-02-10",
+            status: "1000",
+            payDate: "2026-02-03",
+          }),
+          // Delivered (and counted) before the period.
+          advance(7, { date: "2025-12-10", delivery: "2025-12-20", status: "1000" }),
+        ],
+      }),
+    );
+
+    const january = await vatSummary(client, {
+      period: resolvePeriod({ year: 2026, month: 1 }),
+      settings: REGULAR,
+      today: TODAY,
+    });
+
+    expect(january.coverage.advanceInvoices).toEqual({
+      count: 1,
+      countedInPeriod: 0,
+      paidBeforeCounted: 1,
+      documents: [{ objectName: "Invoice", id: 4, number: "RE-4" }],
+    });
+  });
+
+  it("says nothing without advance invoices and on the cash basis", async () => {
+    const plain = await vatSummary(
+      new FakeSevdeskClient(
+        scenarioRoutes({
+          invoices: [
+            doc(
+              invoiceDoc({ id: 1, date: "2026-02-10", net: "100", tax: "19" }),
+              invoicePositions(1, [{ rate: "19", net: "100", tax: "19" }]),
+            ),
+          ],
+        }),
+      ),
+      { period: Q1, settings: REGULAR, today: TODAY },
+    );
+    expect(plain.coverage.advanceInvoices).toBeUndefined();
+    expect(plain.notes.join(" ")).not.toContain("advance invoice");
+
+    const cash = await vatSummary(new FakeSevdeskClient(scenario()), {
+      period: Q1,
+      basis: "cash",
+      settings: REGULAR,
+      payments: () =>
+        Promise.resolve({
+          payments: [],
+          truncated: false,
+          notes: [],
+          transactionsScanned: 0,
+          transactionsRead: 0,
+        }),
+      today: TODAY,
+    });
+    expect(cash.coverage.advanceInvoices).toBeUndefined();
+  });
+});
+
+describe("vatSummary: incomplete reads", () => {
+  it("is truncated and without estimate when a document's positions could not all be read", async () => {
+    // 10,001 position rows: the read stops at 10,000, so the last one (100.00 at 7 %) is missing
+    // and the header's 200.00 / 26.00 is split over the 19 % position that was read.
+    const positions = invoicePositions(1, [
+      { rate: "19", net: "100", tax: "19" },
+      ...Array.from({ length: 9_999 }, () => ({ rate: "19", net: "0", tax: "0" })),
+      { rate: "7", net: "100", tax: "7" },
+    ]);
+    const client = new FakeSevdeskClient(
+      scenarioRoutes({
+        invoices: [
+          doc(invoiceDoc({ id: 1, date: "2026-02-10", net: "200", tax: "26" }), positions),
+        ],
+      }),
+    );
+
+    const report = await vatSummary(client, { period: Q1, settings: REGULAR, today: TODAY });
+
+    expect(box(report, "81")).toEqual({ base: "200.00", tax: "26.00", documents: 1 });
+    expect(box(report, "86")).toBeUndefined();
+    expect(report.coverage).toMatchObject({
+      truncated: true,
+      positionsIncomplete: 1,
+      positionsIncompleteDocuments: [{ objectName: "Invoice", id: 1, number: "RE-1" }],
+    });
+    expect(report.estimate).toBeUndefined();
+    const notes = report.notes.join(" ");
+    expect(notes).toContain("The positions of 1 document could not all be read");
+    expect(notes).toContain("Kz 83 is not estimated");
+    expect(notes).not.toContain("Reading stopped at a cap");
+    expect(vatSummarySentence(report)).toContain(
+      "Incomplete: not every position could be read (see the notes).",
+    );
+  });
+
+  it("returns a truncated report when the time budget runs out (fake clock)", async () => {
+    const invoices = Array.from({ length: 8 }, (_, index) =>
+      doc(
+        invoiceDoc({ id: index + 1, date: "2026-02-01", net: "10", tax: "1.9" }),
+        invoicePositions(index + 1, [{ rate: "19", net: "10", tax: "1.9" }]),
+      ),
+    );
+    const client = new FakeSevdeskClient(scenarioRoutes({ invoices }));
+    // Every look at the clock is 30 s later; the budget of 90 s lets three documents start.
+    let clock = -30_000;
+    const now = (): number => (clock += 30_000);
+
+    const report = await vatSummary(
+      client,
+      { period: Q1, settings: REGULAR, today: TODAY },
+      { deadline: { at: 90_000, now } },
+    );
+
+    expect(box(report, "81")).toEqual({ base: "30.00", tax: "5.70", documents: 3 });
+    expect(report.coverage).toMatchObject({
+      documentsInPeriod: 8,
+      documentsScanned: 3,
+      truncated: true,
+      timeBudgetReached: true,
+    });
+    expect(report.estimate).toBeUndefined();
+    const notes = report.notes.join(" ");
+    expect(notes).toContain("positions of 3 of 8 documents read");
+    expect(notes).toContain("Use a shorter period");
+    expect(notes).not.toContain("Reading stopped at a cap");
+    expect(vatSummarySentence(report)).toContain(
+      "Incomplete: the time budget stopped reading; use a shorter period.",
+    );
+
+    // Without a budget (stdio) the same period is read in full.
+    const whole = await vatSummary(client, { period: Q1, settings: REGULAR, today: TODAY });
+    expect(whole.coverage).toMatchObject({ documentsScanned: 8, truncated: false });
+    expect(whole.coverage.timeBudgetReached).toBeUndefined();
+    expect(whole.estimate?.kz83).toEqual({ amount: "15.20", currency: "EUR" });
   });
 });

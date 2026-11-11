@@ -28,9 +28,37 @@ type ReportProgress = (
   message: string,
 ) => Promise<void> | void;
 
+/**
+ * A time budget for the one-request-per-document steps of a report (position reads, documents
+ * fetched by id). Once `now()` reaches `at`, no further read is started; what was read is
+ * returned as an explicitly truncated report. HTTP deployments set it, because the HTTP router
+ * stops every request after 120 s and a stopped report returns nothing at all, while the client's
+ * pacing (4 requests per second by default) cannot read more than a few hundred documents in that
+ * time (review 2026-11, round 3). Over stdio there is no deadline and no budget.
+ */
+export interface ReportDeadline {
+  /** Epoch milliseconds after which no new per-document read starts. */
+  readonly at: number;
+  /** Clock in epoch milliseconds (`Date.now`; tests pass a fake one). */
+  readonly now: () => number;
+}
+
+/**
+ * How long a report in an HTTP deployment starts per-document reads: 90 s of the router's 120 s,
+ * which leaves room for the reads in flight, the contact lookups of the ZM and the response.
+ */
+export const HTTP_REPORT_BUDGET_MS = 90_000;
+
+/** Whether `deadline` has passed (never without one). */
+export function deadlineReached(deadline: ReportDeadline | undefined): boolean {
+  return deadline !== undefined && deadline.now() >= deadline.at;
+}
+
 export interface ReportRunOptions {
   readonly signal?: AbortSignal | undefined;
   readonly onProgress?: ReportProgress | undefined;
+  /** No per-document read starts after it (HTTP deployments); see {@link ReportDeadline}. */
+  readonly deadline?: ReportDeadline | undefined;
 }
 
 /** One page as the domain list functions describe it. */
@@ -159,4 +187,58 @@ export const coverageOutputShape = {
 /** "1 invoice" / "3 invoices". */
 export function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
   return `${count} ${count === 1 ? singular : pluralForm}`;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Tax reports (VAT summary, profit and loss): wording for incomplete reads
+// ---------------------------------------------------------------------------------------------
+
+/** What the tax reports say about themselves when not everything was read. */
+interface TaxReportCompleteness {
+  readonly truncated: boolean;
+  readonly timeBudgetReached?: boolean | undefined;
+  readonly positionsIncomplete: number;
+}
+
+/** The trusted "Incomplete: …" ending of a tax report's summary sentence ("" when complete). */
+export function incompleteSuffix(coverage: TaxReportCompleteness): string {
+  if (!coverage.truncated) return "";
+  if (coverage.timeBudgetReached === true) {
+    return " Incomplete: the time budget stopped reading; use a shorter period.";
+  }
+  if (coverage.positionsIncomplete > 0) {
+    return " Incomplete: not every position could be read (see the notes).";
+  }
+  return " Incomplete: a cap stopped reading.";
+}
+
+/**
+ * Trusted notes of a tax report for the two ways of reading too little that are not a cap: the
+ * time budget of an HTTP deployment and documents whose positions could not all be read.
+ */
+export function incompleteTaxReportNotes(input: {
+  readonly timedOut: boolean;
+  /** Documents whose positions were read, and how many the report wanted to read. */
+  readonly documentsScanned: number;
+  readonly documentsToScan: number;
+  readonly positionsIncomplete: number;
+}): string[] {
+  const notes: string[] = [];
+  if (input.timedOut) {
+    notes.push(
+      "This server stopped reading documents when its time budget for one report ran out " +
+        `(positions of ${String(input.documentsScanned)} of ${String(input.documentsToScan)} ` +
+        "documents read; a request over HTTP must answer within two minutes): the figures are " +
+        "incomplete. Use a shorter period (a month instead of a quarter or year).",
+    );
+  }
+  if (input.positionsIncomplete > 0) {
+    notes.push(
+      `The positions of ${plural(input.positionsIncomplete, "document")} could not all be read ` +
+        "(coverage.positionsIncompleteDocuments). Their totals were split over the positions " +
+        "that were read, so amounts may sit under the wrong rate or account: the figures are " +
+        "incomplete. Check these documents by hand.",
+    );
+  }
+  return notes;
 }

@@ -339,3 +339,130 @@ describe("profitAndLoss: § 13b without deduction", () => {
     expect(report.notes.join(" ")).toContain("tax rule 13");
   });
 });
+
+// Review 2026-11, round 3.
+describe("profitAndLoss: import VAT (Einfuhrumsatzsteuer)", () => {
+  /** A customs voucher: 190.00 import VAT on `account`, plus a 100.00 + 19 % handling fee. */
+  const customs = (account: number) =>
+    scenarioRoutes({
+      vouchers: [
+        doc(
+          voucherDoc({ id: 31, date: "2026-02-11", net: "290", tax: "19" }),
+          voucherPositions(31, [
+            { rate: "0", net: "190", tax: "0", account },
+            { rate: "19", net: "100", tax: "19", account: 4930 },
+          ]),
+        ),
+      ],
+    });
+
+  it("counts the amount on the import VAT account as input VAT, not as an expense", async () => {
+    const report = await profitAndLoss(new FakeSevdeskClient(customs(2624)), {
+      period: Q1,
+      basis: "accrual",
+      accounts,
+      today: TODAY,
+    });
+
+    // Before the fix: expenses 290.00 and input VAT 19.00.
+    expect(report.expenses.total).toEqual(EUR("100.00"));
+    expect(report.expenses.byAccount.map((entry) => entry.account.id)).toEqual([4930]);
+    expect(report.vatFlows.inputVat).toEqual(EUR("209.00"));
+    expect(report.vatFlows.importVat).toEqual(EUR("190.00"));
+    expect(report.result).toEqual(EUR("-100.00"));
+    expect(report.notes.join(" ")).toContain("deductible import VAT");
+  });
+
+  it("finds the account by its number only with the chart, and leaves other accounts alone", async () => {
+    const chart: AccountDatevList = {
+      accounts: [{ id: 7777, number: "1588", kind: "other", active: true }],
+      truncated: false,
+    };
+    const run = (chartOfAccounts: string | undefined) =>
+      profitAndLoss(new FakeSevdeskClient(customs(7777)), {
+        period: Q1,
+        basis: "accrual",
+        accounts: chart,
+        chartOfAccounts,
+        today: TODAY,
+      });
+
+    const skr03 = await run("skr03");
+    expect(skr03.expenses.total).toEqual(EUR("100.00"));
+    expect(skr03.vatFlows.importVat).toEqual(EUR("190.00"));
+
+    for (const chartOfAccounts of ["skr04", undefined]) {
+      const report = await run(chartOfAccounts);
+      expect(report.expenses.total).toEqual(EUR("290.00"));
+      expect(report.vatFlows.inputVat).toEqual(EUR("19.00"));
+      expect(report.vatFlows.importVat).toBeUndefined();
+    }
+  });
+});
+
+describe("profitAndLoss: incomplete reads", () => {
+  it("is truncated when a document's positions could not all be read, and names it", async () => {
+    // 10,001 position rows: the read stops at 10,000, so the last account (4900) is missing.
+    const positions = voucherPositions(31, [
+      { rate: "19", net: "100", tax: "19", account: 4930 },
+      ...Array.from({ length: 9_999 }, () => ({ rate: "19", net: "0", tax: "0", account: 4930 })),
+      { rate: "19", net: "100", tax: "19", account: 4900 },
+    ]);
+    const client = new FakeSevdeskClient(
+      scenarioRoutes({
+        vouchers: [
+          doc(voucherDoc({ id: 31, date: "2026-02-11", net: "200", tax: "38" }), positions),
+        ],
+      }),
+    );
+
+    const report = await profitAndLoss(client, {
+      period: Q1,
+      basis: "accrual",
+      accounts,
+      today: TODAY,
+    });
+
+    expect(report.coverage).toMatchObject({
+      truncated: true,
+      positionsIncomplete: 1,
+      positionsIncompleteDocuments: [{ objectName: "Voucher", id: 31, number: "B-31" }],
+    });
+    const notes = report.notes.join(" ");
+    expect(notes).toContain("The positions of 1 document could not all be read");
+    expect(notes).not.toContain("Reading stopped at a cap");
+    expect(profitAndLossSentence(report)).toContain(
+      "Incomplete: not every position could be read (see the notes).",
+    );
+  });
+
+  it("returns a truncated report when the time budget runs out (fake clock)", async () => {
+    const vouchers = Array.from({ length: 6 }, (_, index) =>
+      doc(
+        voucherDoc({ id: index + 1, date: "2026-02-01", net: "10", tax: "1.9" }),
+        voucherPositions(index + 1, [{ rate: "19", net: "10", tax: "1.9", account: 4930 }]),
+      ),
+    );
+    const client = new FakeSevdeskClient(scenarioRoutes({ vouchers }));
+    // Every look at the clock is 30 s later; the budget of 60 s lets two documents start.
+    let clock = -30_000;
+    const now = (): number => (clock += 30_000);
+
+    const report = await profitAndLoss(
+      client,
+      { period: Q1, basis: "accrual", accounts, today: TODAY },
+      { deadline: { at: 60_000, now } },
+    );
+
+    expect(report.expenses.total).toEqual(EUR("20.00"));
+    expect(report.coverage).toMatchObject({
+      documentsScanned: 2,
+      truncated: true,
+      timeBudgetReached: true,
+    });
+    const notes = report.notes.join(" ");
+    expect(notes).toContain("positions of 2 of 6 documents read");
+    expect(notes).not.toContain("Reading stopped at a cap");
+    expect(profitAndLossSentence(report)).toContain("the time budget stopped reading");
+  });
+});

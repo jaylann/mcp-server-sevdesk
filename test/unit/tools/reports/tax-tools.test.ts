@@ -6,9 +6,11 @@ import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import {
   profitAndLossTool,
   REPORT_TAX_TOOLS,
+  taxReportRunOptions,
   vatSummaryTool,
 } from "../../../../src/tools/reports/tax-tools.js";
-import type { FakeRoute } from "../../../helpers/fake-client.js";
+import { type FakeRoute, FakeSevdeskClient, testContext } from "../../../helpers/fake-client.js";
+import { httpDeployment } from "../../../helpers/write-flow.js";
 import {
   invoiceDoc,
   invoicePositions,
@@ -92,7 +94,7 @@ describe("sevdesk_vat_summary", () => {
     const { data, result } = await runTool(
       vatSummaryTool,
       { year: 2026, quarter: 1 },
-      [regularAccount, ...documents],
+      [regularAccount, accountDatev, ...documents],
       (client) => {
         const context = progressContext(client);
         calls = context.calls;
@@ -112,6 +114,7 @@ describe("sevdesk_vat_summary", () => {
   it("says that a Kleinunternehmer without taxable amounts needs no UStVA", async () => {
     const { data, result } = await runTool(vatSummaryTool, { year: 2026, month: 3 }, [
       smallBusinessAccount,
+      accountDatev,
       ...scenarioRoutes({}),
     ]);
 
@@ -131,7 +134,7 @@ describe("sevdesk_vat_summary", () => {
     const { data } = await runTool(
       vatSummaryTool,
       { from: "2026-02-01", to: "2026-02-28", basis: "cash" },
-      [regularAccount, ...documents, ...noTransactions],
+      [regularAccount, accountDatev, ...documents, ...noTransactions],
     );
     const report = data as VatSummary;
 
@@ -139,12 +142,57 @@ describe("sevdesk_vat_summary", () => {
     expect(report.coverage.payments).toMatchObject({ read: 0, used: 0 });
     expect(report.boxes.map((box) => box.kz)).toEqual(["66"]);
   });
+
+  // Review 2026-11, round 3: import VAT is booked as the amount on the import VAT account.
+  const customs = scenarioRoutes({
+    vouchers: [
+      {
+        row: voucherDoc({ id: 31, date: "2026-02-11", net: "190", tax: "0" }),
+        positions: voucherPositions(31, [{ rate: "0", net: "190", tax: "0", account: 2624 }]),
+      },
+    ],
+  });
+
+  it("reports import VAT under Kz 62, also when the account list cannot be read", async () => {
+    const { data } = await runTool(vatSummaryTool, { year: 2026, quarter: 1 }, [
+      regularAccount,
+      accountDatev,
+      ...customs,
+    ]);
+    const report = data as VatSummary;
+    expect(report.boxes.map((box) => [box.kz, box.tax?.amount])).toEqual([["62", "190.00"]]);
+    expect(report.estimate?.kz83).toEqual({ amount: "-190.00", currency: "EUR" });
+
+    const unreadable: FakeRoute = {
+      path: "/AccountDatev",
+      response: { error: new SevdeskError({ kind: "server", message: "Simulated." }) },
+    };
+    const fallback = await runTool(vatSummaryTool, { year: 2026, quarter: 1 }, [
+      regularAccount,
+      unreadable,
+      ...customs,
+    ]);
+    expect((fallback.data as VatSummary).boxes.map((box) => box.kz)).toEqual(["62"]);
+  });
+});
+
+describe("taxReportRunOptions", () => {
+  it("gives no time budget over stdio and 90 s in an HTTP deployment", () => {
+    const stdio = testContext(new FakeSevdeskClient([]));
+    expect(taxReportRunOptions(stdio, () => 1_000).deadline).toBeUndefined();
+
+    const http = { ...stdio, config: { ...stdio.config, deployment: httpDeployment("bearer") } };
+    const options = taxReportRunOptions(http, () => 1_000);
+    expect(options.deadline?.at).toBe(91_000);
+    expect(options.deadline?.now()).toBe(1_000);
+  });
 });
 
 describe("sevdesk_profit_and_loss", () => {
   it("defaults to the cash basis", async () => {
     const { data, result } = await runTool(profitAndLossTool, { year: 2026, month: 2 }, [
       accountDatev,
+      regularAccount,
       ...noTransactions,
       ...scenarioRoutes({}),
     ]);
@@ -159,7 +207,7 @@ describe("sevdesk_profit_and_loss", () => {
     const { data } = await runTool(
       profitAndLossTool,
       { year: 2026, quarter: 1, basis: "accrual" },
-      [accountDatev, ...documents],
+      [accountDatev, regularAccount, ...documents],
     );
     const report = data as ProfitAndLoss;
 
@@ -182,13 +230,37 @@ describe("sevdesk_profit_and_loss", () => {
     const { data } = await runTool(
       profitAndLossTool,
       { year: 2026, quarter: 1, basis: "accrual" },
-      [failing("server"), ...documents],
+      [failing("server"), regularAccount, ...documents],
     );
     expect((data as ProfitAndLoss).expenses.byAccount[0]?.account).toEqual({ id: 2185 });
 
     await expect(
       runTool(profitAndLossTool, { year: 2026, basis: "accrual" }, [
         failing("aborted"),
+        ...documents,
+      ]),
+    ).rejects.toMatchObject({ kind: "aborted" });
+  });
+
+  it("still runs when the account settings (chart of accounts) cannot be read", async () => {
+    const settings = (kind: SevdeskError["kind"]): FakeRoute => ({
+      path: "/SevClient",
+      response: { error: new SevdeskError({ kind, message: "Simulated." }) },
+    });
+
+    for (const kind of ["server", "network"] as const) {
+      const { data } = await runTool(
+        profitAndLossTool,
+        { year: 2026, quarter: 1, basis: "accrual" },
+        [accountDatev, settings(kind), ...documents],
+      );
+      expect((data as ProfitAndLoss).income.total).toEqual({ amount: "1000.00", currency: "EUR" });
+    }
+
+    await expect(
+      runTool(profitAndLossTool, { year: 2026, basis: "accrual" }, [
+        accountDatev,
+        settings("aborted"),
         ...documents,
       ]),
     ).rejects.toMatchObject({ kind: "aborted" });

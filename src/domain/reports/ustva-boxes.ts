@@ -40,6 +40,14 @@
  * - Rule 1 at 0 % is not placed in Kz 87: that rate applies only to solar installations
  *   (§ 12 Abs. 3 UStG), and a 0 % position under rule 1 is more often a wrong rate or rule. It is
  *   reported as unmapped with that explanation, and Kz 87 is not in the table.
+ * - § 18b services (rule 21, Kz 21, ZM "S") count in the period in which the service is performed
+ *   (§ 18b Satz 3, § 18a Abs. 8 Satz 2 UStG; instructions to Zeile 35: "im Voranmeldungszeitraum
+ *   der Leistungsausführung"), not by the invoice like intra-EU supplies of goods (review 2026-11,
+ *   round 3).
+ * - Import VAT (Einfuhrumsatzsteuer) is booked in sevDesk as the amount of a position on the
+ *   import VAT account under rule 9 at 0 % (recorded ReceiptGuidance: account 1433, AccountDatev
+ *   2624, only rule 9 with rate ZERO). That amount is the deductible tax itself: Kz 62 (Zeile 40,
+ *   "Entstandene Einfuhrumsatzsteuer"), see `import-vat.ts` (review 2026-11, round 3).
  */
 import { compare } from "../money.js";
 
@@ -101,6 +109,7 @@ export const USTVA_LINE_KEYS = [
   "45",
   "66",
   "61",
+  "62",
   "67",
 ] as const;
 export type UstvaLineKey = (typeof USTVA_LINE_KEYS)[number];
@@ -280,6 +289,16 @@ export const USTVA_LINES: readonly UstvaLine[] = [
     label: "Input VAT from intra-EU acquisitions",
   },
   {
+    key: "62",
+    line: 40,
+    taxKz: "62",
+    taxOnForm: "tax_only",
+    side: "input",
+    section: "F",
+    labelDe: "Entstandene Einfuhrumsatzsteuer (§ 15 Absatz 1 Satz 1 Nummer 2 UStG)",
+    label: "Import VAT incurred (deductible)",
+  },
+  {
     key: "67",
     line: 41,
     taxKz: "67",
@@ -303,9 +322,10 @@ export function ustvaLine(key: UstvaLineKey): UstvaLine {
  * When the tax of a position falls due under accrual (Sollversteuerung), from the document's
  * dates; `vat.ts` turns it into a date:
  * - `supply`: the end of the supply or service (`deliveryDateUntil`, else `deliveryDate`, else the
- *   document date), as sevDesk's own UStVA does ("zum letzten Tag des Zeitraumes");
+ *   document date), as sevDesk's own UStVA does ("zum letzten Tag des Zeitraumes"); also § 18b
+ *   services (rule 21), which belong to the period of their performance (§ 18b Satz 3 UStG);
  * - `invoice_or_next_month`: the document date, but no later than the last day of the month after
- *   the supply (§ 18b for intra-EU supplies and § 18b services, § 13 Abs. 1 Nr. 6 for intra-EU
+ *   the supply (§ 18b Satz 2 for intra-EU supplies of goods, § 13 Abs. 1 Nr. 6 for intra-EU
  *   acquisitions, § 13b Abs. 2 for reverse-charge purchases);
  * - `supply_and_invoice`: input VAT needs both the invoice and the supply (§ 15), so the later of
  *   the document date and the end of the supply.
@@ -443,13 +463,9 @@ const REVENUE_TARGETS: Readonly<Record<number, TargetOf>> = {
   18: () => ({ kind: "line", line: "45", oss: true, cashBasis: false, timing: "supply" }),
   19: () => ({ kind: "line", line: "45", oss: true, cashBasis: false, timing: "supply" }),
   20: () => ({ kind: "line", line: "45", oss: true, cashBasis: false, timing: "supply" }),
-  21: () => ({
-    kind: "line",
-    line: "21",
-    zm: "S",
-    cashBasis: false,
-    timing: "invoice_or_next_month",
-  }),
+  // Services, unlike goods (rule 3), count when they are performed (§ 18b Satz 3 UStG), in the
+  // UStVA and in the ZM (§ 18a Abs. 8 Satz 2 UStG); review 2026-11, round 3.
+  21: () => ({ kind: "line", line: "21", zm: "S", cashBasis: false, timing: "supply" }),
 };
 
 const EXPENSE_TARGETS: Readonly<Record<number, TargetOf>> = {

@@ -95,6 +95,7 @@ part of the document amount (sevDesk's rule names say "0% (19%)").
 | 84 / 85 | Other § 13b cases (base / tax)                                                                                   | 12, 13            |
 | 66      | Input VAT from invoices                                                                                          | 9                 |
 | 61      | Input VAT from intra-EU acquisitions                                                                             | 8                 |
+| 62      | Import VAT paid to customs (Einfuhrumsatzsteuer, booking account 1433 in SKR04 / 1588 in SKR03, rate 0)          | 9                 |
 | 67      | Input VAT from § 13b cases                                                                                       | 12, 14            |
 | 39      | Deduction of the Sondervorauszahlung (Dauerfristverlängerung)                                                    | –                 |
 | 83      | Amount payable or refundable                                                                                     | –                 |
