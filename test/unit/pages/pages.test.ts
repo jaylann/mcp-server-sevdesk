@@ -344,6 +344,44 @@ describe("consent pages", () => {
     loopbackOnly: false,
   };
 
+  it("never promises approvals on a server that runs commit and external without asking (security review 2026-11, wave 2)", () => {
+    const model = {
+      client,
+      offered: ["read", "write", "commit", "external"] as const,
+      chosen: ["read", "commit"] as const,
+      consent: "sealed",
+      csrf: "tag",
+      error: undefined,
+      unconfirmed: true,
+    };
+    for (const [lang, promise, warning] of [
+      ["en", "still ask you to approve", "without asking anyone"],
+      ["de", "fragen Sie weiterhin", "ohne jede Rückfrage"],
+    ] as const) {
+      const token = renderTokenStep(
+        { ...model, offered: [...model.offered], chosen: [...model.chosen] },
+        ctx(lang),
+      );
+      const confirm = renderConfirmStep(
+        {
+          client,
+          tiers: ["read", "commit", "external"],
+          accountId: "4711",
+          accountName: undefined,
+          consent: "sealed",
+          csrf: "tag",
+          unconfirmed: true,
+        },
+        ctx(lang),
+      );
+      for (const html of [token, confirm]) {
+        expect(html).not.toContain(promise);
+        expect(html).not.toMatch(/asks a human first|fragt vorher einen Menschen/);
+      }
+      expect(token).toContain(warning);
+    }
+  });
+
   it("offers the tiers as checkboxes, read fixed, with the step the reader is on", () => {
     const html = renderTokenStep(
       {
@@ -353,6 +391,7 @@ describe("consent pages", () => {
         consent: "sealed",
         csrf: "tag",
         error: undefined,
+        unconfirmed: false,
       },
       ctx(),
     );
@@ -385,6 +424,7 @@ describe("consent pages", () => {
         consent: "sealed",
         csrf: "tag",
         error: "No <token>.",
+        unconfirmed: false,
       },
       ctx(),
     );
@@ -404,6 +444,7 @@ describe("consent pages", () => {
         accountName: "Muster & Co",
         consent: "s",
         csrf: "t",
+        unconfirmed: false,
       },
       ctx("de"),
     );
@@ -422,6 +463,7 @@ describe("consent pages", () => {
         accountName: undefined,
         consent: "s",
         csrf: "t",
+        unconfirmed: false,
       },
       ctx("de"),
     );
