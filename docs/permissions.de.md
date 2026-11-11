@@ -1,4 +1,4 @@
-<!-- translated-from: docs/permissions.md sha256:12d02d92671a -->
+<!-- translated-from: docs/permissions.md sha256:ce8835620b8c -->
 
 # Berechtigungen und Bestätigung
 
@@ -61,8 +61,11 @@ Verbindung die Stufen, die auf der Zustimmungsseite angehakt wurden, höchstens 
 2. **Vorbereiten.** Das Werkzeug liest, was es braucht, mit einem Client, der nicht schreiben
    kann, prüft den Aufruf lokal (Status, Beträge, Steuerregel × Steuersatz, Buchungskonten,
    Dubletten, offene Beträge) und erstellt eine Vorschau: die Aktion in einem Satz, Warnungen und
-   die wichtigsten Angaben wie Beträge, Empfänger und den vollständigen E-Mail-Text. Die meisten
-   Fehler werden hier abgelehnt, bevor etwas gesendet wird.
+   die wichtigsten Angaben wie Beträge, Empfänger und den vollständigen E-Mail-Text. Beim
+   Fertigstellen, Versenden per E-Mail und Festschreiben eines Dokuments führt sie außerdem auf,
+   was im Dokument steht, so wie sevDesk es speichert: die Anschrift darauf, Kopf- und Fußtext,
+   jede Position mit ihrem Text, Bedingungen und Daten. Die meisten Fehler werden hier abgelehnt,
+   bevor etwas gesendet wird.
 3. **Probelauf?** Dann ist die Vorschau das Ergebnis (Status `dry_run`), und der Aufruf endet.
 4. **Bestätigen.** Bei `commit` und `external` sehen Sie die Vorschau und geben frei oder lehnen
    ab ([Bestätigungsarten](#bestätigungsarten)). Der Server bereitet danach erneut vor; hat sich
@@ -239,4 +242,8 @@ zurück; diese brauchen eine Browser-Sitzung Ihres sevDesk-Kontos ([remote.de.md
 - **Laden Sie nur die Werkzeuggruppen, die Sie brauchen** (`SEVDESK_TOOLSETS`); lassen Sie
   `advanced` aus, solange keine Aufgabe es braucht.
 - Prüfen Sie die Vorschau, bevor Sie freigeben. Sie entsteht aus dem, was das Werkzeug gerade
-  gelesen hat, nicht aus dem, was das Modell sagt.
+  gelesen hat, nicht aus dem, was das Modell sagt. Lesen Sie vor dem Fertigstellen, Versenden oder
+  Festschreiben eines Dokuments dessen Anschrift, Texte und Positionen in der Vorschau: Ein Entwurf
+  lässt sich ohne Bestätigung ändern, der Fußtext dort (etwa die Bankverbindung) ist also der, der
+  verbindlich wird. Eine Warnung in der Vorschau nennt, was sie nicht zeigt, etwa das Layout des
+  PDF.

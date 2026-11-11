@@ -8,21 +8,22 @@
  */
 import { z } from "zod";
 
+import { enshrineDocument } from "../../domain/lifecycle/actions.js";
 import {
   KINDS,
   type PaymentKind,
   readLifecycleDocument,
 } from "../../domain/lifecycle/documents.js";
-import { documentFacts, documentTitle, KIND_DE } from "../../domain/lifecycle/preview.js";
+import { documentTitle, KIND_DE } from "../../domain/lifecycle/preview.js";
 import { assertEnshrinable } from "../../domain/lifecycle/transitions.js";
 import { bothPreviews, type Phrase, phrase } from "../../domain/preview-text.js";
-import { sevdeskPath } from "../../sevdesk/paths.js";
 import { defineWriteTool } from "../define-tool.js";
+import { ACCOUNT_BOOKINGS } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 import {
   capitalize,
   COMMIT_ANNOTATIONS,
-  documentBinding,
+  documentContent,
   documentObject,
   documentOutput,
   documentOutputSchema,
@@ -95,32 +96,34 @@ export function enshrineTool(kind: PaymentKind) {
     annotations: COMMIT_ANNOTATIONS,
     input: z.strictObject({ id: idInput(kind), ...dryRunInputShape }),
     output: documentOutputSchema(kind),
-    // Serialized with other calls on the same record (see WriteToolDefinition.locks).
-    locks: (args) => [documentObject(kind, args.id)],
+    // Serialized with other calls on the same record (see WriteToolDefinition.locks), and with
+    // every booking and its undo: a transaction reset checks that the documents it unbooks are
+    // not enshrined and holds only the bookings lock and its transaction, so with the document
+    // lock alone an enshrine could run between that check and the reset (review 2026-11, round 3).
+    locks: (args) => [ACCOUNT_BOOKINGS, documentObject(kind, args.id)],
     prepare: async (args, ctx) => {
       const doc = await readLifecycleDocument(ctx.client, kind, args.id, ctx.signal);
       assertEnshrinable(doc);
-      const warnings = enshrineWarnings(kind);
+      // What is locked for good: the stored texts, address and positions as facts, and the
+      // binding over the same read (review 2026-11, round 3).
+      const content = await documentContent(ctx, doc);
+      const warnings = [...enshrineWarnings(kind), content.notShown];
       return {
         ...bothPreviews((lang) => ({
           action:
             lang === "de"
               ? `${documentTitle(doc, lang)} festschreiben (GoBD): dauerhaft sperren.`
               : `Enshrine ${documentTitle(doc)} (festschreiben, GoBD): lock it permanently.`,
-          facts: documentFacts(doc, lang),
+          facts: content.facts(lang),
           warnings: warnings.map((warning) => warning[lang]),
           irreversible: true,
         })),
-        binding: await documentBinding(ctx, doc),
+        binding: content.binding,
         state: {},
       };
     },
     execute: async (args, _plan, ctx) => {
-      await ctx.client.request({
-        method: "PUT",
-        path: sevdeskPath(info.objectName, args.id, "enshrine"),
-        signal: ctx.signal,
-      });
+      await enshrineDocument(ctx.client, kind, args.id, ctx.signal);
       const changed = documentObject(kind, args.id);
       const after = await readBack(ctx, kind, args.id, [changed]);
       return {

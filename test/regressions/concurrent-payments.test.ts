@@ -17,6 +17,7 @@ import { transactionMarkPrivateTool } from "../../src/tools/banking/transaction-
 import { transactionResetTool } from "../../src/tools/banking/transaction-reset.js";
 import { bookPaymentTool } from "../../src/tools/lifecycle/book-payment.js";
 import { invoiceCancelTool } from "../../src/tools/lifecycle/cancel.js";
+import { enshrineTool } from "../../src/tools/lifecycle/enshrine.js";
 import { resetTool } from "../../src/tools/lifecycle/reset.js";
 import { ACCOUNT_BOOKINGS, type AnyWriteToolDefinition } from "../../src/tools/types.js";
 import {
@@ -112,9 +113,22 @@ describe("bookings and their undo run one at a time per account (security review
       [transactionMarkPrivateTool, { id: 5101 }],
       [resetTool("invoice"), { id: 1001 }],
       [invoiceCancelTool, { id: 1001 }],
+      // Review 2026-11, round 3: a transaction reset refuses enshrined documents, but it holds
+      // only this lock and its transaction, so an enshrine with the document lock alone could
+      // run between that check and the reset.
+      [enshrineTool("invoice"), { id: 1001 }],
+      [enshrineTool("creditNote"), { id: 2001 }],
+      [enshrineTool("voucher"), { id: 2001 }],
     ];
     for (const [tool, args] of tools) {
       expect(tool.locks?.(args as never), tool.name).toContainEqual(ACCOUNT_BOOKINGS);
     }
+  });
+
+  it("an enshrine still locks its own document too", () => {
+    expect(enshrineTool("invoice").locks?.({ id: 1001 })).toEqual([
+      ACCOUNT_BOOKINGS,
+      { objectName: "Invoice", id: "1001" },
+    ]);
   });
 });

@@ -8,18 +8,22 @@
  */
 import { z } from "zod";
 
-import { SEND_TYPE_CODES, SENT_VIA, type SentVia } from "../../domain/document-positions.js";
+import { SENT_VIA, type SentVia } from "../../domain/document-positions.js";
+import {
+  finalizeDocument,
+  type SendByPayload,
+  sendByPayload,
+} from "../../domain/lifecycle/actions.js";
 import { KINDS, readLifecycleDocument, type SalesKind } from "../../domain/lifecycle/documents.js";
-import { documentFacts, documentTitle } from "../../domain/lifecycle/preview.js";
+import { documentTitle } from "../../domain/lifecycle/preview.js";
 import { assertFinalizable } from "../../domain/lifecycle/transitions.js";
 import { bothPreviews, type Phrase, phrase } from "../../domain/preview-text.js";
-import { sevdeskPath } from "../../sevdesk/paths.js";
 import { defineWriteTool } from "../define-tool.js";
 import { dryRunInputShape } from "../write-input.js";
 import {
   capitalize,
   COMMIT_ANNOTATIONS,
-  documentBinding,
+  documentContent,
   documentObject,
   documentOutput,
   documentOutputSchema,
@@ -35,13 +39,6 @@ const SENT_VIA_TEXT: Readonly<Record<SentVia, Phrase>> = {
   print: phrase("as printed (VPR)", "Ausdruck (VPR)"),
   email: phrase("by email outside sevDesk (VM)", "E-Mail außerhalb von sevDesk (VM)"),
 };
-
-const sendByPayloadSchema = z.strictObject({
-  sendType: z.enum(["VPDF", "VP", "VPR", "VM"]),
-  sendDraft: z.literal(false),
-});
-
-type SendByPayload = z.output<typeof sendByPayloadSchema>;
 
 const DESCRIPTIONS: Readonly<Record<SalesKind, string>> = {
   invoice:
@@ -152,11 +149,12 @@ export function finalizeTool(kind: SalesKind) {
       const doc = await readLifecycleDocument(ctx.client, kind, args.id, ctx.signal);
       assertFinalizable(doc);
       const via: SentVia = args.sentVia ?? "pdf_download";
-      const payload: SendByPayload = sendByPayloadSchema.parse({
-        sendType: SEND_TYPE_CODES[via],
-        sendDraft: false,
-      });
-      const warnings = finalizeWarnings(kind);
+      const payload: SendByPayload = sendByPayload(via);
+      // The stored texts, address and positions, and the binding over the same read: all of
+      // it is writable without confirmation, so the human sees it here (review 2026-11, round 3).
+      const content = await documentContent(ctx, doc);
+      // Consequences first, then what the facts leave out, then notes on this document.
+      const warnings = [...finalizeWarnings(kind), content.notShown];
       if (doc.number?.includes("%") === true) {
         warnings.push(
           phrase(
@@ -178,26 +176,22 @@ export function finalizeTool(kind: SalesKind) {
               : `Finalize ${documentTitle(doc)}: draft → ${kind === "order" ? "sent" : "open"}, ` +
                 `marked as sent ${sent.en}.`,
           facts: [
-            ...documentFacts(doc, lang),
+            ...content.identity(lang),
             {
               label: lang === "de" ? "Vermerkte Versandart" : "Marked as sent",
               value: sent[lang],
             },
+            ...content.printed(lang),
           ],
           warnings: warnings.map((warning) => warning[lang]),
           irreversible: false,
         })),
-        binding: await documentBinding(ctx, doc),
+        binding: content.binding,
         state: { payload },
       };
     },
     execute: async (args, plan, ctx) => {
-      await ctx.client.request({
-        method: "PUT",
-        path: sevdeskPath(info.objectName, args.id, "sendBy"),
-        body: plan.state.payload,
-        signal: ctx.signal,
-      });
+      await finalizeDocument(ctx.client, kind, args.id, plan.state.payload, ctx.signal);
       const changed = documentObject(kind, args.id);
       const after = await readBack(ctx, kind, args.id, [changed]);
       return {

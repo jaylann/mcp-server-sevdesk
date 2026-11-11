@@ -54,7 +54,10 @@ capped by `SEVDESK_ALLOW` ([remote.md](remote.md#tiers-per-grant)).
 2. **Prepare.** The tool reads what it needs with a client that cannot write, checks the call
    locally (status, amounts, tax rule × rate, booking accounts, duplicates, open amounts) and
    builds a preview: the action in one sentence, warnings, and the key facts such as amounts,
-   recipients and the full email text. Most mistakes are refused here, before anything is sent.
+   recipients and the full email text. Finalizing, emailing and enshrining a document also list
+   what the document says as sevDesk stores it: the address on it, head and foot text, every
+   position with its text, terms and dates. Most mistakes are refused here, before anything is
+   sent.
 3. **Dry run?** Then the preview is the result (status `dry_run`) and the call ends.
 4. **Confirm.** For `commit` and `external`, you see the preview and approve or decline
    ([Confirmation modes](#confirmation-modes)). The server then prepares again; if the record
@@ -222,4 +225,7 @@ account ([remote.md](remote.md#files-uploads-and-download-links)).
 - **Load only the toolsets you need** (`SEVDESK_TOOLSETS`); leave `advanced` off unless a task
   needs it.
 - Check the preview before you approve. It is built from what the tool just read, not from what
-  the model says.
+  the model says. Before you finalize, email or enshrine a document, read its address, texts and
+  positions in the preview: a draft can be changed without a confirmation, so the foot text you
+  see there (the bank details, for example) is the one that becomes binding. A warning in the
+  preview names what it does not show, such as the PDF layout.

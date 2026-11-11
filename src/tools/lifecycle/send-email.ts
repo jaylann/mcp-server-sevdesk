@@ -2,11 +2,14 @@
  * `sevdesk_{invoice,credit_note,order}_send_email`: sevDesk emails the document to a customer
  * (`POST /{Invoice|CreditNote|Order}/{id}/sendViaEmail`) and marks it as sent; a draft is
  * finalized by it (spec: "This will automatically mark the invoice as sent"). External tier: the
- * email reaches a third party and cannot be recalled, so the preview names every recipient and
- * shows the full subject and text. Body: see `src/domain/lifecycle/email.ts`.
+ * email reaches a third party and cannot be recalled, so the preview names every recipient,
+ * shows the full subject and text, and lists what the attached document says (its stored texts,
+ * address and positions, `src/domain/lifecycle/content.ts`). Body: see
+ * `src/domain/lifecycle/email.ts`.
  */
 import { z } from "zod";
 
+import { emailDocument } from "../../domain/lifecycle/actions.js";
 import {
   KINDS,
   readLifecycleDocument,
@@ -22,13 +25,7 @@ import {
   type Recipients,
   type SendEmailPayload,
 } from "../../domain/lifecycle/email.js";
-import {
-  documentFacts,
-  documentTitle,
-  type Fact,
-  KIND_DE,
-  kindNoun,
-} from "../../domain/lifecycle/preview.js";
+import { documentTitle, type Fact, KIND_DE, kindNoun } from "../../domain/lifecycle/preview.js";
 import { assertEmailable, refuse } from "../../domain/lifecycle/transitions.js";
 import {
   bothPreviews,
@@ -36,12 +33,11 @@ import {
   phrase,
   type PreviewLanguage,
 } from "../../domain/preview-text.js";
-import { sevdeskPath } from "../../sevdesk/paths.js";
 import { defineWriteTool } from "../define-tool.js";
 import { dryRunInputShape } from "../write-input.js";
 import {
   capitalize,
-  documentBinding,
+  documentContent,
   documentObject,
   documentOutput,
   documentOutputSchema,
@@ -238,6 +234,10 @@ export function sendEmailTool(kind: SalesKind) {
       const attachment = attachXml ? "xml" : "pdf";
       const { recipients } = state;
       const copies = recipients.cc.length + recipients.bcc.length;
+      // What the recipient gets with the PDF: the stored texts, address and positions, all
+      // writable without confirmation, and the binding over the same read (review 2026-11,
+      // round 3).
+      const content = await documentContent(ctx, doc);
       const warnings = [
         phrase(
           "The email goes out from sevDesk immediately to every recipient listed and cannot be " +
@@ -247,6 +247,8 @@ export function sendEmailTool(kind: SalesKind) {
         ),
       ];
       if (doc.status === STATUS.draft) warnings.push(draftWarning(kind));
+      // Consequences first, then what the facts leave out, then notes on this document.
+      warnings.push(content.notShown);
       if (attachment === "xml" && doc.eInvoice === undefined) {
         warnings.push(
           phrase(
@@ -271,21 +273,22 @@ export function sendEmailTool(kind: SalesKind) {
       return {
         ...bothPreviews((lang) => ({
           action: action[lang],
-          facts: [...documentFacts(doc, lang), ...emailFacts(state, attachment, kind, lang)],
+          // The recipients and the email text stay right below the identifying facts; the
+          // document's texts and positions follow.
+          facts: [
+            ...content.identity(lang),
+            ...emailFacts(state, attachment, kind, lang),
+            ...content.printed(lang),
+          ],
           warnings: warnings.map((warning) => warning[lang]),
           irreversible: true,
         })),
-        binding: await documentBinding(ctx, doc),
+        binding: content.binding,
         state,
       };
     },
     execute: async (args, plan, ctx) => {
-      await ctx.client.request({
-        method: "POST",
-        path: sevdeskPath(info.objectName, args.id, "sendViaEmail"),
-        body: plan.state.payload,
-        signal: ctx.signal,
-      });
+      await emailDocument(ctx.client, kind, args.id, plan.state.payload, ctx.signal);
       const changed = documentObject(kind, args.id);
       const after = await readBack(ctx, kind, args.id, [changed]);
       const { recipients, payload } = plan.state;

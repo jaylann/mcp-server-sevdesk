@@ -105,7 +105,16 @@ describe("sevdesk_invoice_send_email (spec request body; community record shapes
       "Email invoice 1001 (no number yet) through sevDesk to kunde@example.com and 2 more " +
         "recipients (cc/bcc).",
     );
-    expect(plan.preview.facts.slice(-7)).toEqual([
+    // The email block follows the identifying facts; the document's stored texts and positions
+    // come after it (review 2026-11, round 3), so the recipients stay near the top.
+    const to = plan.preview.facts.findIndex((fact) => fact.label === "To");
+    expect(plan.preview.facts[to - 1]?.label).toBe("Paid so far");
+    expect(plan.preview.facts[to + 7]?.label).toBe("Title on the document (Betreff)");
+    expect(plan.preview.facts.at(-1)).toEqual({
+      label: "Foot text (Fußtext)",
+      value: "Bitte überweisen Sie den Betrag innerhalb von 14 Tagen.",
+    });
+    expect(plan.preview.facts.slice(to, to + 7)).toEqual([
       { label: "To", value: "kunde@example.com" },
       { label: "Cc", value: "a@example.com" },
       { label: "Bcc", value: "b@example.com" },
@@ -118,7 +127,7 @@ describe("sevdesk_invoice_send_email (spec request body; community record shapes
       "Rechnung 1001 (noch ohne Nummer) über sevDesk per E-Mail senden an kunde@example.com und 2 " +
         "weitere Empfänger (Cc/Bcc).",
     );
-    expect(plan.previewDe.facts.slice(-7)).toEqual([
+    expect(plan.previewDe.facts.slice(to, to + 7)).toEqual([
       { label: "An", value: "kunde@example.com" },
       { label: "Cc", value: "a@example.com" },
       { label: "Bcc", value: "b@example.com" },
@@ -133,6 +142,10 @@ describe("sevdesk_invoice_send_email (spec request body; community record shapes
       "Die Rechnung ist ein Entwurf: Der Versand stellt sie fertig (Entwurf → offen), sevDesk " +
         "vergibt ihre endgültige Nummer, und sie wird rechtlich bindend. Schreibt das Konto " +
         "Dokumente beim Abschließen automatisch fest, wird sie dabei auch festgeschrieben.",
+      "Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht " +
+        "gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und " +
+        "verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfen Sie bei Bedarf " +
+        "sevdesk_invoice_pdf.",
     ]);
     expect(plan.previewDe.irreversible).toBe(true);
     expect(plan.preview.warnings).toEqual([
@@ -141,6 +154,9 @@ describe("sevdesk_invoice_send_email (spec request body; community record shapes
       "The invoice is a draft: sending finalizes it (draft → open), sevDesk assigns its final " +
         "number and it becomes legally binding. If the account enshrines documents on " +
         "completion, it is also enshrined (festgeschrieben).",
+      "The facts list the stored texts, the address and the positions. Not shown: the contact " +
+        "person (Ansprechpartner), the country of the address, the units and linked articles " +
+        "of the positions, and the layout of the PDF. Check sevdesk_invoice_pdf if they matter.",
     ]);
   });
 
@@ -153,7 +169,9 @@ describe("sevdesk_invoice_send_email (spec request body; community record shapes
     expect(plan.previewDe.action).toBe(
       "Rechnung RE-1001 über sevDesk per E-Mail senden an kunde@example.com.",
     );
-    expect(plan.preview.warnings).toHaveLength(1);
+    // No draft warning: only that it cannot be recalled, and what the facts do not show.
+    expect(plan.preview.warnings).toHaveLength(2);
+    expect(plan.preview.warnings.join(" ")).not.toContain("is a draft");
     expect(client.writes()[0]?.body).toEqual({
       toEmail: "kunde@example.com",
       subject: "Ihre Rechnung",

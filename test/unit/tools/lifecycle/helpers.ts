@@ -102,8 +102,8 @@ export function documentRoute(kind: keyof typeof OBJECT_PATHS, row: Row): FakeRo
 }
 
 /**
- * Empty position lists of every kind: what the approval binding of finalize, send and enshrine
- * reads (`documentBinding`). `rows` for one path replace its empty list.
+ * Empty position lists of every kind: what finalize, send and enshrine read for their preview
+ * facts and approval binding (`readDocumentContent`). `rows` for one path replace its empty list.
  */
 export function positionRoutes(rows: Readonly<Record<string, readonly Row[]>> = {}): FakeRoute[] {
   return ["/InvoicePos", "/CreditNotePos", "/OrderPos", "/VoucherPos"].map((path) => ({

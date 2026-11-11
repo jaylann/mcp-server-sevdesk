@@ -83,7 +83,8 @@ describe.each(cases)("$name (community record shapes, fake values)", (kind) => {
 
     expect(client.calls.map(({ method, path }) => `${method} ${path}`)).toEqual([
       `GET ${kind.path}`,
-      // The approval binding reads the positions too (documentBinding).
+      // One read of the positions, for the preview facts and the approval binding
+      // (readDocumentContent).
       `GET /${kind.path.split("/")[1] ?? ""}Pos`,
       `PUT ${kind.path}/sendBy`,
       `GET ${kind.path}`,
@@ -175,7 +176,118 @@ describe("sevdesk_invoice_finalize details", () => {
       'If the sevDesk account enshrines documents on completion (setting "Automatische ' +
         'Festschreibung"), it is also enshrined (festgeschrieben) and can never be changed or ' +
         "reset again.",
+      // Review 2026-11, round 3: the facts now list the stored content; this names the rest.
+      "The facts list the stored texts, the address and the positions. Not shown: the contact " +
+        "person (Ansprechpartner), the country of the address, the units and linked articles " +
+        "of the positions, and the layout of the PDF. Check sevdesk_invoice_pdf if they matter.",
     ]);
+  });
+
+  it("lists the stored address, texts and positions in both languages (review 2026-11, round 3)", async () => {
+    const draft = invoiceRow({
+      status: "100",
+      invoiceNumber: null,
+      sendType: null,
+      sendDate: null,
+      address: "Andere Firma GmbH\nPostfach 1\n54321 Anderswo",
+      headText: "Sehr geehrte Damen und Herren,",
+      footText: "Bitte überweisen Sie an IBAN DE00 1234 5678 9012 3456 78.",
+    });
+    const client = new FakeSevdeskClient([
+      documentRoute("invoice", draft),
+      {
+        path: "/InvoicePos",
+        response: {
+          body: {
+            objects: [
+              {
+                id: "7002",
+                objectName: "InvoicePos",
+                invoice: { id: "1001", objectName: "Invoice" },
+                positionNumber: "1",
+                name: "Wartung",
+                text: null,
+                quantity: "2",
+                price: "24.51",
+                taxRate: "19",
+                sumNet: "49.02",
+                sumGross: "58.33",
+              },
+              {
+                id: "7001",
+                objectName: "InvoicePos",
+                invoice: { id: "1001", objectName: "Invoice" },
+                positionNumber: "0",
+                name: "Beratung",
+                text: "Beratung im November",
+                quantity: "1",
+                price: "100",
+                taxRate: "19",
+                discount: "0",
+                sumNet: "100",
+                sumGross: "119",
+              },
+            ],
+          },
+        },
+      },
+    ]);
+
+    const plan = await prepareWrite(tool, { id: 1001 }, client);
+
+    const labels = plan.preview.facts.map((fact) => fact.label);
+    expect(labels.slice(0, 5)).toEqual([
+      "Invoice (Rechnung)",
+      "Type",
+      "Status",
+      "Customer",
+      "Address on the document",
+    ]);
+    expect(plan.preview.facts).toContainEqual({
+      label: "Address on the document",
+      value: "Andere Firma GmbH\nPostfach 1\n54321 Anderswo",
+    });
+    // In printed order: head text, the positions by position number, foot text.
+    expect(plan.preview.facts.slice(labels.indexOf("Head text (Kopftext)"))).toEqual([
+      { label: "Head text (Kopftext)", value: "Sehr geehrte Damen und Herren," },
+      {
+        label: "Position 1",
+        value:
+          "Beratung: 1 × 100.00 EUR net, 19 % VAT → 100.00 EUR net, 119.00 EUR gross\n" +
+          "Text: Beratung im November",
+      },
+      {
+        label: "Position 2",
+        value: "Wartung: 2 × 24.51 EUR net, 19 % VAT → 49.02 EUR net, 58.33 EUR gross",
+      },
+      {
+        label: "Foot text (Fußtext)",
+        value: "Bitte überweisen Sie an IBAN DE00 1234 5678 9012 3456 78.",
+      },
+    ]);
+    const labelsDe = plan.previewDe.facts.map((fact) => fact.label);
+    expect(labelsDe).toHaveLength(labels.length);
+    expect(plan.previewDe.facts.slice(labelsDe.indexOf("Kopftext"))).toEqual([
+      { label: "Kopftext", value: "Sehr geehrte Damen und Herren," },
+      {
+        label: "Position 1",
+        value:
+          "Beratung: 1 × 100,00 EUR netto, 19 % USt. → 100,00 EUR netto, 119,00 EUR brutto\n" +
+          "Text: Beratung im November",
+      },
+      {
+        label: "Position 2",
+        value: "Wartung: 2 × 24,51 EUR netto, 19 % USt. → 49,02 EUR netto, 58,33 EUR brutto",
+      },
+      {
+        label: "Fußtext",
+        value: "Bitte überweisen Sie an IBAN DE00 1234 5678 9012 3456 78.",
+      },
+    ]);
+    expect(plan.previewDe.facts).toContainEqual({
+      label: "Anschrift auf dem Dokument",
+      value: "Andere Firma GmbH\nPostfach 1\n54321 Anderswo",
+    });
   });
 
   it("is deterministic for an unchanged invoice", async () => {
