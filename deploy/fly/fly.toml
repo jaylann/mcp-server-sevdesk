@@ -13,7 +13,7 @@ app = "mcp-server-sevdesk"
 primary_region = "fra"
 
 [build]
-  image = "ghcr.io/jaylann/mcp-server-sevdesk:1.1.0" # x-release-please-version
+  image = "ghcr.io/jaylann/mcp-server-sevdesk:1.2.0" # x-release-please-version
 
 [env]
   SEVDESK_HTTP_AUTH = "oauth"
