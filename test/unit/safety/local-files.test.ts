@@ -192,7 +192,8 @@ describe("openedInside: a folder swapped for a link (security review 2026-11, fi
       await mkdir(join(root, "sub"));
       await writeFile(join(root, "sub", "invoice.xml"), XML);
       await writeFile(join(elsewhere, "invoice.xml"), XML);
-      const real = await realpath(join(root, "sub", "invoice.xml"));
+      // `root` is a real path already, so this is the file's real path (no check-then-use).
+      const real = join(root, "sub", "invoice.xml");
       const inRoot = (path: string): boolean => path.startsWith(`${root}/`);
 
       const before = await open(real, "r");
