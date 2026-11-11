@@ -11,11 +11,20 @@ extend-exclude = [
   # Half of the eval prompts are German; cassettes hold recorded model text.
   "test/evals/cases.ts",
   "test/evals/cassettes/**",
+  # The German page texts, the German wording of every confirmed tool's preview, and the
+  # embedded fonts (base64).
+  "src/pages/text/de.ts",
+  "test/integration/__snapshots__/write-previews-de.test.ts.snap",
+  "src/pages/assets.generated.ts",
 ]
 
 [default]
-# German accounting vocabulary and sevDesk API identifiers are not typos.
-extend-ignore-re = ["(?i)\\b(rechnung|beleg|gutschrift|angebot|mahnung|steuer|umsatz)\\w*"]
+# German accounting vocabulary and sevDesk API identifiers are not typos; neither are the
+# code points of a CSS unicode-range (U+0100-02BA).
+extend-ignore-re = [
+  "(?i)\\b(rechnung|beleg|gutschrift|angebot|mahnung|steuer|umsatz)\\w*",
+  "U\\+[0-9A-Fa-f]{1,6}(-[0-9A-Fa-f]{1,6})?",
+]
 
 [default.extend-words]
 # sevDesk API field names (spelled this way upstream).
@@ -51,3 +60,21 @@ TNE = "TNE"
 referenz = "referenz"
 rech = "rech"
 HANDELS = "HANDELS"
+# German words in the German wording of confirmation previews, which stands next to the English
+# one in the tools and their tests (docs/adr/0010-server-pages-in-two-languages.md).
+Sie = "Sie"
+sie = "sie"
+als = "als"
+oder = "oder"
+ein = "ein"
+alle = "alle"
+ALLE = "ALLE"
+unter = "unter"
+Dokument = "Dokument"
+Aktion = "Aktion"
+Adresse = "Adresse"
+legt = "legt"
+Offener = "Offener"
+Typs = "Typs"
+# Informal address the German page texts must not use (asserted by a test).
+deine = "deine"
