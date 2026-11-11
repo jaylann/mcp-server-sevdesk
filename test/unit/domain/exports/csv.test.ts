@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   checkCsvPeriod,
   countCsvRows,
+  CSV_CELL_MAX_BYTES,
   CSV_DATE_COLUMNS,
   CSV_EXPORT_KINDS,
   CSV_EXPORTS,
@@ -12,7 +13,7 @@ import {
   csvFilterDate,
   exportCsv,
   MAX_CSV_BYTES,
-  parseCsv,
+  scanCsvColumn,
 } from "../../../../src/domain/exports/csv.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { FakeSevdeskClient } from "../../../helpers/fake-client.js";
@@ -226,13 +227,85 @@ describe("checkCsvPeriod", () => {
     expect(CSV_DATE_COLUMNS.transactions[0]).toBe("Bezahldatum");
   });
 
-  it("parses quotes, escaped quotes, separators and line breaks inside fields", () => {
-    expect(parseCsv(`"a";"b ""c"";d"\r\n"multi\nline";x\n\n"last"`)).toEqual([
-      ["a", 'b "c";d'],
-      ["multi\nline", "x"],
-      ["last"],
-    ]);
-    expect(parseCsv("")).toEqual([]);
+  it("checks a large file with long text columns, quoted line breaks and separators", () => {
+    // 20,000 rows of about 1 KiB each, close to the largest file accepted: only the date column
+    // is kept while it is read.
+    const filler = `"${'Leistung; mit ""Zitat""\nund Zeilenumbruch '.repeat(24)}"`;
+    const lines = [`"Nr";"Beschreibung";"Rechnungs-Datum";"Betrag"`];
+    for (let index = 0; index < 20_000; index += 1) {
+      const date = index % 1_000 === 0 ? "01.02.2026" : index % 2_500 === 1 ? "" : "15.01.2026";
+      lines.push(`"RE-${String(index)}";${filler};"${date}";"1,00"`);
+    }
+    const file = new TextEncoder().encode(lines.join("\r\n"));
+    expect(file.length).toBeGreaterThan(19 * 1024 * 1024);
+    expect(file.length).toBeLessThanOrEqual(MAX_CSV_BYTES);
+
+    expect(checkCsvPeriod(file, range)).toEqual({
+      column: "Rechnungs-Datum",
+      rowsOutsidePeriod: 20,
+      rowsUnchecked: 8,
+      verified: false,
+    });
+    expect(countCsvRows(file)).toBe(20_000);
+  });
+});
+
+describe("scanCsvColumn", () => {
+  /** The header and the cells of column `index` (`null` for a record without that field). */
+  const scan = (text: string, index: number | undefined) => {
+    const headers: string[][] = [];
+    const cells: (string | null)[] = [];
+    scanCsvColumn(
+      new TextEncoder().encode(text),
+      (header) => {
+        headers.push([...header]);
+        return index;
+      },
+      (cell) => cells.push(cell ?? null),
+    );
+    return { header: headers[0], cells };
+  };
+
+  it("reads quotes, escaped quotes, separators and line breaks inside fields", () => {
+    const text = `"a";"b ""c"";d"\r\n"multi\nline";x\n\n"last"`;
+    expect(scan(text, 0)).toEqual({ header: ["a", 'b "c";d'], cells: ["multi\nline", "last"] });
+    // The last record has one field only.
+    expect(scan(text, 1)).toEqual({ header: ["a", 'b "c";d'], cells: ["x", null] });
+    expect(scan(text, undefined).cells).toEqual([null, null]);
+  });
+
+  it("skips blank lines (also before the header), ignores a byte order mark and CR", () => {
+    expect(scan(`\n\r\n"Nr";"Datum"\r\n\r\n"1";"05.01.2026"\r\n`, 1)).toEqual({
+      header: ["Nr", "Datum"],
+      cells: ["05.01.2026"],
+    });
+    const withBom = new Uint8Array([0xef, 0xbb, 0xbf, ...new TextEncoder().encode(`"Ä";ö\nü;ß`)]);
+    const cells: (string | undefined)[] = [];
+    let header: readonly string[] = [];
+    scanCsvColumn(
+      withBom,
+      (names) => {
+        header = [...names];
+        return 1;
+      },
+      (cell) => cells.push(cell),
+    );
+    expect(header).toEqual(["Ä", "ö"]);
+    expect(cells).toEqual(["ß"]);
+  });
+
+  it("calls back once per data record, none for an empty file or a header alone", () => {
+    expect(scan("", 0)).toEqual({ header: undefined, cells: [] });
+    expect(scan(`"a";"b"\n`, 0)).toEqual({ header: ["a", "b"], cells: [] });
+    expect(scan(`a;b\n1;2\n;\n3;4`, 1).cells).toEqual(["2", "", "4"]);
+  });
+
+  it("keeps only the first bytes of an overlong cell, so no table of the file is held", () => {
+    const long = "x".repeat(CSV_CELL_MAX_BYTES + 5_000);
+    const { header, cells } = scan(`"${long}";"Datum"\n"1";"${long}"\n"2";"05.01.2026"`, 1);
+    expect(header?.[0]).toHaveLength(CSV_CELL_MAX_BYTES);
+    expect(header?.[1]).toBe("Datum");
+    expect(cells.map((cell) => cell?.length)).toEqual([CSV_CELL_MAX_BYTES, 10]);
   });
 });
 
