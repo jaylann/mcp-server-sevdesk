@@ -9,7 +9,11 @@
  * sevDesk ignores filters it does not understand (measured by the sevdesk-rs project), so every
  * row is checked here in any case; when a page shows that sevDesk did not apply the filter, the
  * scan switches to full pages. A scan reads at most {@link CHANGE_SCAN_MAX_ROWS} rows per subject
- * and call; `nextOffset` (sevDesk rows) continues it.
+ * and call; `nextOffset` (sevDesk rows) continues it. Invoices are read with `showAll=true`,
+ * because sevDesk's default list hides reminders (D-049).
+ *
+ * Counts. `total` is exact and given only when one call checked every row. While more rows
+ * follow, sevDesk's count for the widened filter is given as `totalAtMost`, an upper bound.
  *
  * Deleted records cannot be seen: sevDesk's lists only return records that still exist.
  */
@@ -264,7 +268,10 @@ const SUBJECT_SPECS: Readonly<Record<ChangeSubject, SubjectSpec>> = {
   },
   invoices: {
     path: "/Invoice",
-    query: {},
+    // sevDesk's default invoice list leaves reminders (MA) out (D-049), so a reminder created or
+    // changed since `since` was never reported and no paging could find it. `showAll=true`
+    // returns invoices of all types; the row's `type` says which it is (review 2026-11, round 3).
+    query: { showAll: "true" },
     serverFilter: true,
     noun: "invoices",
     statusType: "invoice",
@@ -377,7 +384,21 @@ const subjectChangesSchema = z.object({
         "this_server: no documented filter, rows were read and checked here.",
     ),
   items: z.array(changeRowSchema).describe("Changed records, newest first within this page."),
-  total: z.number().int().optional().describe("All changed records of this subject, when known."),
+  total: z
+    .number()
+    .int()
+    .optional()
+    .describe(
+      "All changed records of this subject: exact, given only when this call checked every row.",
+    ),
+  totalAtMost: z
+    .number()
+    .int()
+    .optional()
+    .describe(
+      "Upper bound when the exact total is not known: sevDesk's count for its filter, which " +
+        "starts one second before since and so may include records this report leaves out.",
+    ),
   rowsScanned: z.number().int().describe("sevDesk rows examined for this page."),
   hasMore: z.boolean().describe("More rows may follow: page with offset = nextOffset."),
   nextOffset: z
@@ -565,12 +586,15 @@ async function scanSubject(
 
   const rowsScanned = position - params.offset;
   const hasMore = !ended && (total === undefined || position < total);
-  const knownTotal =
-    params.offset === 0 && !hasMore
-      ? kept.length
-      : spec.serverFilter && allMatched && total !== undefined
-        ? total
-        : undefined;
+  // Exact only when this call checked every row from the start. sevDesk's own count is for the
+  // filter sent, which starts one second before `since` (and sevDesk may ignore the filter), so
+  // it can include records this report rejects on a later page: it was published as `total`
+  // while every row seen so far matched (review 2026-11, round 3). It is an upper bound.
+  const knownTotal = params.offset === 0 && !hasMore ? kept.length : undefined;
+  const upperBound =
+    knownTotal === undefined && spec.serverFilter && allMatched && total !== undefined
+      ? total
+      : undefined;
   kept.sort((a, b) => b.changedMs - a.changedMs);
   return {
     subject,
@@ -580,6 +604,7 @@ async function scanSubject(
       updatedAt: formatBerlinInstant(changedMs),
     })),
     ...(knownTotal === undefined ? {} : { total: knownTotal }),
+    ...(upperBound === undefined ? {} : { totalAtMost: upperBound }),
     rowsScanned,
     hasMore,
     ...(hasMore ? { nextOffset: position } : {}),

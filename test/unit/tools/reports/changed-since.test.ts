@@ -51,7 +51,8 @@ describe("sevdesk_changed_since (community row shapes, fake data)", () => {
     const updateAfter = Date.parse("2026-02-18T23:00:00Z") / 1000 - 1;
     expect(client.calls.map((call) => [call.path, call.query])).toEqual([
       ["/Contact", { depth: "1", updateAfter, limit: 20, offset: 0, countAll: true }],
-      ["/Invoice", { updateAfter, limit: 20, offset: 0, countAll: true }],
+      // showAll: sevDesk's default invoice list leaves reminders out (D-049).
+      ["/Invoice", { showAll: "true", updateAfter, limit: 20, offset: 0, countAll: true }],
       ["/CreditNote", { limit: 1000, offset: 0, countAll: true }],
       ["/Order", { updateAfter, limit: 20, offset: 0, countAll: true }],
       ["/Voucher", { updateAfter, limit: 20, offset: 0, countAll: true }],
@@ -98,6 +99,7 @@ describe("sevdesk_changed_since (community row shapes, fake data)", () => {
       ]),
     ]);
     expect(client.callsTo("/Invoice")[0]?.query).toEqual({
+      showAll: "true",
       updateAfter: SINCE_UNIX - 1,
       limit: 20,
       offset: 0,
@@ -131,7 +133,52 @@ describe("sevdesk_changed_since (community row shapes, fake data)", () => {
     );
   });
 
-  it("trusts sevDesk's count while every row matches, and pages with nextOffset", async () => {
+  it("reports a reminder that sevDesk's default invoice list hides", async () => {
+    const reminder = invoice({
+      id: "77",
+      invoiceType: "MA",
+      invoiceNumber: "MA-1001",
+      update: "2026-11-02T09:00:00+01:00",
+    });
+    // As recorded (D-049): reminders come only with showAll=true, never in the default list.
+    const routes: FakeRoute[] = [
+      rows("/Invoice", [reminder], { showAll: "true" }),
+      rows("/Invoice", []),
+    ];
+
+    const { report } = await run({ since: SINCE, subjects: ["invoices"] }, routes);
+
+    expect(report.subjects[0]).toMatchObject({ total: 1, rowsScanned: 1, hasMore: false });
+    expect(report.subjects[0]?.items).toEqual([
+      expect.objectContaining({ id: 77, type: "MA", number: "MA-1001" }),
+    ]);
+  });
+
+  it("gives sevDesk's count only as an upper bound while rows are unchecked", async () => {
+    // sevDesk's filter starts one second before since (D-048): it counts both invoices, but the
+    // second one was updated at 07:59:59 and is not a change since 08:00:00.
+    const objects = [
+      invoice({ id: "1", update: "2026-11-01T08:00:00+01:00" }),
+      invoice({ id: "2", update: "2026-11-01T07:59:59+01:00" }),
+    ];
+    const first = await run({ since: SINCE, subjects: ["invoices"], limit: 1 }, [
+      rows("/Invoice", objects),
+    ]);
+    const [page] = first.report.subjects;
+    expect(page?.items.map((row) => row.id)).toEqual([1]);
+    // Before the fix this page said total: 2.
+    expect(page).not.toHaveProperty("total");
+    expect(page).toMatchObject({ totalAtMost: 2, rowsScanned: 1, hasMore: true, nextOffset: 1 });
+
+    // Checked in one call from the start, the exact count is known: 1.
+    const whole = await run({ since: SINCE, subjects: ["invoices"], limit: 5 }, [
+      rows("/Invoice", objects),
+    ]);
+    expect(whole.report.subjects[0]).toMatchObject({ total: 1, rowsScanned: 2, hasMore: false });
+    expect(whole.report.subjects[0]).not.toHaveProperty("totalAtMost");
+  });
+
+  it("pages with nextOffset, with sevDesk's count as an upper bound", async () => {
     const objects = many(5, (index) =>
       voucher({ id: String(10 + index), update: "2026-11-03T10:00:00+01:00" }),
     );
@@ -141,11 +188,12 @@ describe("sevdesk_changed_since (community row shapes, fake data)", () => {
     );
     expect(client.callsTo("/Voucher")).toHaveLength(1);
     expect(report.subjects[0]).toMatchObject({
-      total: 5,
+      totalAtMost: 5,
       rowsScanned: 2,
       hasMore: true,
       nextOffset: 2,
     });
+    expect(report.subjects[0]).not.toHaveProperty("total");
     expect(report.subjects[0]?.items[0]).toEqual({
       id: 10,
       type: "expense",
@@ -165,7 +213,13 @@ describe("sevdesk_changed_since (community row shapes, fake data)", () => {
       rows("/Voucher", objects),
     ]);
     expect(next.client.callsTo("/Voucher")[0]?.query).toMatchObject({ offset: 4, limit: 2 });
-    expect(next.report.subjects[0]).toMatchObject({ total: 5, rowsScanned: 1, hasMore: false });
+    // A later page did not check the rows before its offset: still an upper bound.
+    expect(next.report.subjects[0]).toMatchObject({
+      totalAtMost: 5,
+      rowsScanned: 1,
+      hasMore: false,
+    });
+    expect(next.report.subjects[0]).not.toHaveProperty("total");
   });
 
   it("switches to full pages when sevDesk evidently ignored the filter", async () => {

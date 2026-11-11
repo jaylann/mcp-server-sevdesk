@@ -1658,8 +1658,13 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072).
   `sevdesk_payables_aging` read vouchers with `voucherType=VOU` (not `noRv`) and drop RV rows that
   sevDesk returns anyway; the payables aging reports those as `excluded.recurringTemplates`.
   `sevdesk_cash_position` leaves all three out of its outlook and counts them in a note.
-- **Test:** `test/unit/tools/invoices/list.test.ts` ("asks sevDesk to show recurring templates
-  and reminders when that type is requested"), `test/unit/tools/reports/summarize.test.ts`
+  `sevdesk_changed_since` is the exception: a changed reminder is a change, so it reads invoices
+  with `showAll=true` and reports every type (the row's `type` says which).
+- **Test:** `test/regressions/changed-since-reminders.test.ts`,
+  `test/unit/tools/reports/changed-since.test.ts` ("reports a reminder that sevDesk's default
+  invoice list hides"), `test/unit/tools/invoices/list.test.ts` ("asks sevDesk to show
+  recurring templates and reminders when that type is requested"),
+  `test/unit/tools/reports/summarize.test.ts`
   ("leaves recurring templates (WKR) and reminders (MA) out unless asked for", "counts reminders
   when invoiceType asks for them", "totals expense and revenue in separate lines, foreign ones
   with their EUR base"), `test/unit/tools/reports/aging.test.ts` ("explains approximate, unknown
