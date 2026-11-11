@@ -6,6 +6,8 @@
  * stdout belongs to the MCP transport in stdio mode: everything else (diagnostics, errors) goes
  * to stderr. Utility commands (`generate-secret`, `grants list`, …) print their result to stdout.
  */
+import { readFileSync } from "node:fs";
+
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 
 import { createIdentityLookup } from "./accounts/identity.js";
@@ -19,7 +21,7 @@ import { generateSecret } from "./http/keys.js";
 import { StateDirError } from "./http/oauth/index.js";
 import { runHttp } from "./http/run.js";
 import { runProfilesCommand } from "./profiles-cli.js";
-import { redactSecrets } from "./safety/redact.js";
+import { configuredSecrets, redactSecrets } from "./safety/redact.js";
 import { createServerFactory } from "./server.js";
 import { createSetupProblemFactory } from "./setup-problem.js";
 import { createSevdeskClient } from "./sevdesk/client.js";
@@ -84,11 +86,24 @@ function exitWith(code: number): void {
 function fail(error: unknown): void {
   const message =
     error instanceof ConfigError || error instanceof StateDirError
-      ? error.message
+      ? withoutConfiguredSecrets(error.message)
       : `unexpected error (${error instanceof Error ? error.name : "unknown"}); see the docs for ` +
         "the configuration, or report it at https://github.com/jaylann/mcp-server-sevdesk/issues.";
   console.error(`${PACKAGE_NAME}: ${message}`);
   process.exit(1);
+}
+
+/**
+ * `text` without the secrets the environment configures (`configuredSecrets`: values, rotation
+ * members, `*_FILE` contents). A configuration problem quotes the value it rejects; when a secret
+ * was pasted into the wrong setting, that value is the secret (security review 2026-11,
+ * finding 8). `ConfigError` already redacts sevDesk-token-shaped values.
+ */
+function withoutConfiguredSecrets(text: string): string {
+  return redactSecrets(
+    text,
+    configuredSecrets(process.env, (path) => readFileSync(path, "utf8")),
+  );
 }
 
 /**
@@ -120,11 +135,13 @@ async function serveOverStdio(): Promise<void> {
     loaded = await loadLocalConfig(process.env);
   } catch (error) {
     if (!(error instanceof ConfigError)) throw error;
-    console.error(`${PACKAGE_NAME}: ${error.message}`);
+    console.error(`${PACKAGE_NAME}: ${withoutConfiguredSecrets(error.message)}`);
     console.error(
       `${PACKAGE_NAME}: serving only the setup problem until the configuration is fixed`,
     );
-    const handle = serveStdio(createSetupProblemFactory(error.problems));
+    const handle = serveStdio(
+      createSetupProblemFactory(error.problems.map((problem) => withoutConfiguredSecrets(problem))),
+    );
     const stop = (): void => {
       handle.close().then(
         () => process.exit(0),

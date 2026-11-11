@@ -328,30 +328,30 @@ describe("sevdesk_credit_note_create_draft (community: sevdesk-rs request shape 
       [
         "a cancellation invoice (SR) as source",
         sourceInvoice({ invoiceType: "SR", status: "1000" }),
-        "Invoice RE-1001 (id 1001) is a cancellation invoice (Stornorechnung), so a credit note " +
+        "Invoice 1001 is a cancellation invoice (Stornorechnung), so a credit note " +
           "cannot be created from it.",
       ],
       [
         "a reminder (MA) as source",
         sourceInvoice({ invoiceType: "MA" }),
-        "Invoice RE-1001 (id 1001) is a reminder (Mahnung); use the invoice it reminds of, so a " +
+        "Invoice 1001 is a reminder (Mahnung); use the invoice it reminds of, so a " +
           "credit note cannot be created from it.",
       ],
       [
         "an unknown invoice type as source",
         sourceInvoice({ invoiceType: "XX" }),
-        "Invoice RE-1001 (id 1001) is of type XX, so a credit note cannot be created from it.",
+        "Invoice 1001 is of type XX, so a credit note cannot be created from it.",
       ],
       [
         "a deactivated recurring invoice as source",
         sourceInvoice({ status: "50" }),
-        "Invoice RE-1001 (id 1001) has status 50; credit notes are created from open, partially " +
+        "Invoice 1001 has status 50; credit notes are created from open, partially " +
           "paid or paid invoices only.",
       ],
       [
         "a draft source invoice",
         sourceInvoice({ status: "100" }),
-        "Invoice RE-1001 (id 1001) is still a draft: change it with sevdesk_invoice_update_draft " +
+        "Invoice 1001 is still a draft: change it with sevdesk_invoice_update_draft " +
           "instead; a credit note corrects finalized invoices only.",
       ],
       [
@@ -378,14 +378,14 @@ describe("sevdesk_credit_note_create_draft (community: sevdesk-rs request shape 
             },
           },
         },
-        "Invoice RE-1001 (id 1001) was cancelled (Storno) by cancellation invoice 1050; its " +
+        "Invoice 1001 was cancelled (Storno) by cancellation invoice 1050; its " +
           "revenue is already reversed, so a credit note would reverse it twice. Use " +
           "sevdesk_invoice_get on the cancellation invoice to check.",
       ],
       [
         "an existing credit note for the source invoice",
         existingCreditNote,
-        "A credit note for Invoice RE-1001 (id 1001) exists already: credit note 2150. Check it " +
+        "A credit note for Invoice 1001 exists already: credit note 2150. Check it " +
           "with sevdesk_credit_note_get, or call again with allowDuplicate: true to create another " +
           "one (e.g. a second partial refund).",
       ],

@@ -6,6 +6,7 @@ import {
   type KeychainLookup,
   loadConfig,
   localNameProblem,
+  redactConfigProblem,
   tokenVariablesIn,
 } from "../../src/config.js";
 import { DEFAULT_TOOLSETS, TOOLSETS } from "../../src/tools/toolsets.js";
@@ -95,6 +96,38 @@ describe("token", () => {
       expect.unreachable();
     } catch (error) {
       expect(String(error)).not.toContain(secret);
+    }
+  });
+
+  // Security review 2026-11, finding 8: a token pasted into the wrong setting was quoted back.
+  it.each([
+    ["SEVDESK_ALLOW", "0123456789abcdef0123456789abcdef"],
+    ["SEVDESK_CONFIRM", "DEADBEEF0123456789ABCDEF01234567"],
+    ["SEVDESK_TOOLSETS", "invoices,4f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c"],
+  ])("does not quote a token-shaped value pasted into %s", (name, misplaced) => {
+    const token = /[0-9a-f]{32}/i.exec(misplaced)?.[0] ?? misplaced;
+    let problems: readonly string[] = [];
+    try {
+      loadConfig({ SEVDESK_API_TOKEN: "a1c3".repeat(8), [name]: misplaced });
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConfigError);
+      problems = (error as ConfigError).problems;
+      expect((error as Error).message).not.toContain(token);
+    }
+    expect(problems.join("\n")).not.toContain(token);
+    expect(problems.join("\n")).toContain("[redacted]");
+  });
+
+  it("keeps ordinary rejected values readable", () => {
+    for (const problem of [
+      'SEVDESK_ALLOW: unknown tier "admin" (expected read, write).',
+      "SEVDESK_HTTP_STATE_DIR: /tmp/sevdesk-state-5gUhbV is not writable by this process.",
+      "SEVDESK_CONFIRM_OPEN opens approval pages in a browser on the server's own machine.",
+      // 33 hex characters are not a token.
+      `SEVDESK_TOOLSETS: unknown toolset "${"a".repeat(33)}".`,
+    ]) {
+      expect(redactConfigProblem(problem)).toBe(problem);
     }
   });
 });
