@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { delimiter, isAbsolute } from "node:path";
 
+import { SECRET_SETTINGS, secretFileSetting } from "./safety/redact.js";
 import { isTier, type Tier, TIERS } from "./safety/tiers.js";
 import { DEFAULT_TOOLSETS, isToolsetName, type ToolsetName, TOOLSETS } from "./tools/toolsets.js";
 import { PACKAGE_NAME, VERSION } from "./version.js";
@@ -204,8 +205,171 @@ export function loadConfig(env: Env, deps: LoadConfigDeps = {}): Config {
 }
 
 /**
+ * Every `SEVDESK_*` environment variable the server reads, in any mode (stdio, `--http`, the CLI
+ * commands). The one list {@link checkSettingNames} judges the environment by; a test greps `src/`
+ * for `SEVDESK_` names and fails when one is missing here. The secret settings and their `_FILE`
+ * twins come from the list the redaction uses, so the two cannot drift either.
+ */
+export const KNOWN_SETTINGS: readonly string[] = [
+  // Every mode.
+  "SEVDESK_BASE_URL",
+  "SEVDESK_READ_ONLY",
+  "SEVDESK_ALLOW",
+  "SEVDESK_DRY_RUN",
+  "SEVDESK_CONFIRM",
+  "SEVDESK_CONFIRM_OPEN",
+  "SEVDESK_I_UNDERSTAND_NO_CONFIRM",
+  "SEVDESK_TOOLSETS",
+  "SEVDESK_STRUCTURED_OUTPUT",
+  "SEVDESK_RATE_LIMIT",
+  "SEVDESK_TIMEOUT_MS",
+  "SEVDESK_AUDIT_LOG",
+  "SEVDESK_OUTPUT_DIR",
+  "SEVDESK_FILE_DIRS",
+  // Secrets (`readSecret`): the value, or the file that holds it.
+  ...SECRET_SETTINGS,
+  ...SECRET_SETTINGS.map(secretFileSetting),
+  // Local installs (stdio): keychain and profiles.
+  "SEVDESK_API_TOKEN_KEYCHAIN",
+  "SEVDESK_PROFILE",
+  "SEVDESK_PROFILES_PATH",
+  // `--http`.
+  "SEVDESK_HTTP_AUTH",
+  "SEVDESK_HTTP_HOST",
+  "SEVDESK_HTTP_PORT",
+  "SEVDESK_HTTP_PUBLIC_URL",
+  "SEVDESK_HTTP_ALLOWED_HOSTS",
+  "SEVDESK_HTTP_ALLOWED_ORIGINS",
+  "SEVDESK_HTTP_TRUST_PROXY",
+  "SEVDESK_HTTP_STATE_DIR",
+  "SEVDESK_HTTP_FILES",
+  "SEVDESK_HTTP_FILES_MAX_MB",
+  "SEVDESK_HTTP_FILES_TTL",
+  "SEVDESK_OAUTH_ACCOUNTS",
+  "SEVDESK_OAUTH_CLIENTS",
+  "SEVDESK_OAUTH_ACCESS_TTL",
+  "SEVDESK_OAUTH_REFRESH_IDLE_TTL",
+  "SEVDESK_OAUTH_GRANT_TTL",
+];
+
+/**
+ * Names a profile may take its token from (`{"env": "SEVDESK_TOKEN_<NAME>"}`, see
+ * `src/accounts/profiles.ts`): known by their shape, since the profile chooses the name.
+ */
+const PROFILE_TOKEN_VARIABLE = /^SEVDESK_TOKEN_[A-Z0-9_]{1,48}$/;
+
+/** Whether the server reads a variable of this exact name. */
+export function isKnownSetting(name: string): boolean {
+  return KNOWN_SETTINGS.includes(name) || PROFILE_TOKEN_VARIABLE.test(name);
+}
+
+/** Most single-character edits between a misspelt name and the setting it is taken for. */
+const NEAR_MISS_EDITS = 2;
+/** Most ignored names one warning lists. */
+const MAX_NAMES_IN_WARNING = 8;
+
+/** What {@link checkSettingNames} found; trusted text that names variables, never their values. */
+export interface SettingNameFindings {
+  /** Misspelt settings: the configuration is refused. */
+  readonly problems: readonly string[];
+  /** Other unknown `SEVDESK_*` names: ignored, worth a line in the startup log. */
+  readonly warnings: readonly string[];
+}
+
+/**
+ * Judges the `SEVDESK_*` names in `env` that no part of the server reads. Such a variable used to
+ * be ignored without a word, so `SEVDESK_READ_ONLY` or `SEVDESK_DRY_RUN` written without the inner
+ * underscore left real writes on while the operator believed them off (review 2026-11, round 3).
+ * (The misspellings are not written out here: the test that greps `src/` for setting names would
+ * take them for settings.)
+ *
+ * - A near-miss of a known setting (the same name once case and separators are ignored, or at most
+ *   {@link NEAR_MISS_EDITS} edits away) is a problem, so the server does not start with it: the
+ *   setting the operator meant may be a safety switch.
+ * - Any other unknown name is a warning only: shells carry `SEVDESK_*` variables of other tools
+ *   (this repository's live tests use `SEVDESK_LIVE_…`).
+ *
+ * Variables without a value are skipped (they set nothing), and so is a differently-cased name
+ * whose upper-case form reads as set: Windows environments ignore case.
+ */
+export function checkSettingNames(env: Env): SettingNameFindings {
+  const problems: string[] = [];
+  const ignored: string[] = [];
+  for (const name of Object.keys(env)) {
+    const upper = name.toUpperCase();
+    if (!upper.startsWith("SEVDESK_") || nonEmpty(env[name]) === undefined) continue;
+    if (isKnownSetting(name)) continue;
+    if (KNOWN_SETTINGS.includes(upper) && nonEmpty(env[upper]) !== undefined) continue;
+    const meant = nearestSetting(upper);
+    if (meant === undefined) {
+      ignored.push(printableName(name));
+    } else {
+      problems.push(
+        `${printableName(name)} is not a setting of this server. Did you mean ${meant}? ` +
+          "Rename or remove it: a setting under an unknown name does not apply.",
+      );
+    }
+  }
+  if (ignored.length === 0) return { problems, warnings: [] };
+  const listed = ignored.slice(0, MAX_NAMES_IN_WARNING).join(", ");
+  const more = ignored.length - MAX_NAMES_IN_WARNING;
+  return {
+    problems,
+    warnings: [
+      redactConfigProblem(
+        `ignoring ${listed}${more > 0 ? ` and ${String(more)} more` : ""}: no setting of this ` +
+          "server has that name (see docs/configuration.md).",
+      ),
+    ],
+  };
+}
+
+/** The known setting `upper` (an upper-cased unknown name) is a near-miss of, if any. */
+function nearestSetting(upper: string): string | undefined {
+  const squashed = withoutSeparators(upper);
+  const sameLetters = KNOWN_SETTINGS.find((known) => withoutSeparators(known) === squashed);
+  if (sameLetters !== undefined) return sameLetters;
+  let nearest: string | undefined;
+  let fewest = NEAR_MISS_EDITS + 1;
+  for (const known of KNOWN_SETTINGS) {
+    const edits = editDistance(upper, known);
+    if (edits < fewest) {
+      nearest = known;
+      fewest = edits;
+    }
+  }
+  return nearest;
+}
+
+/** A name without `_`, `-` and other separators, so a setting spelt without them compares equal. */
+function withoutSeparators(name: string): string {
+  return name.replace(/[^A-Z0-9]/g, "");
+}
+
+/** Levenshtein distance (insert, delete, replace). Names are short, so the full table is fine. */
+function editDistance(a: string, b: string): number {
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i += 1) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j += 1) {
+      const replace = (previous[j - 1] ?? 0) + (a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1);
+      current.push(Math.min(replace, (previous[j] ?? 0) + 1, (current[j - 1] ?? 0) + 1));
+    }
+    previous = current;
+  }
+  return previous[b.length] ?? 0;
+}
+
+/** A variable name as shown in a message: at most 64 characters, anything unusual as `?`. */
+function printableName(name: string): string {
+  return name.slice(0, 64).replace(/[^A-Za-z0-9_.-]/g, "?");
+}
+
+/**
  * Reads every setting except the token, appending problems instead of throwing, so callers that
  * add their own variables (the HTTP mode) can report everything in one {@link ConfigError}.
+ * Misspelt setting names ({@link checkSettingNames}) are among the problems; the caller logs the
+ * warnings about other unknown names.
  */
 export function readSettings(env: Env, problems: string[]): Settings {
   // Read in the order problems were always reported: base URL, then the safety switches.
@@ -214,7 +378,7 @@ export function readSettings(env: Env, problems: string[]): Settings {
   const requestedTiers = readTiers(env, problems);
   const allowedTiers: ReadonlySet<Tier> = readOnly ? new Set<Tier>(["read"]) : requestedTiers;
   const confirm = readConfirm(env, problems);
-  return {
+  const settings: Settings = {
     baseUrl,
     allowedTiers,
     readOnly,
@@ -242,6 +406,8 @@ export function readSettings(env: Env, problems: string[]): Settings {
     fileDirs: readAbsolutePaths(env, "SEVDESK_FILE_DIRS", problems),
     userAgent: `${PACKAGE_NAME}/${VERSION} (+https://github.com/jaylann/mcp-server-sevdesk)`,
   };
+  problems.push(...checkSettingNames(env).problems);
+  return settings;
 }
 
 function defaultReadFile(path: string): string {
@@ -283,7 +449,15 @@ export function readSecret(
     try {
       value = readFile(file).trim();
     } catch {
-      problems.push(`${name}_FILE: cannot read ${file}.`);
+      // Only an absolute path is quoted. Anything else is more likely the secret itself, pasted
+      // into the variable that wants the path, and this text reaches stderr and the model
+      // (review 2026-11, round 3).
+      problems.push(
+        isAbsolute(file)
+          ? `${name}_FILE: cannot read ${file}.`
+          : `${name}_FILE: cannot read the file it names. It takes the absolute path of a file ` +
+              "that holds the value, never the value itself (what it is set to is not shown here).",
+      );
       return undefined;
     }
   }

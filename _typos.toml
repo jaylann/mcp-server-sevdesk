@@ -24,6 +24,10 @@ extend-exclude = [
 extend-ignore-re = [
   "(?i)\\b(rechnung|beleg|gutschrift|angebot|mahnung|steuer|umsatz)\\w*",
   "U\\+[0-9A-Fa-f]{1,6}(-[0-9A-Fa-f]{1,6})?",
+  # Deliberately misspelled setting names (the check for near-misses and its documentation), and
+  # the base64url test secret of the configuration tests.
+  "SEVDESK_(ALOW|CONFRIM)\\b",
+  "Qm9ndXMtc2VjcmV0[A-Za-z0-9_-]+",
 ]
 
 [default.extend-words]

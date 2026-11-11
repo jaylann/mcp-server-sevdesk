@@ -3,6 +3,7 @@
  * log lines. The sevDesk token grants full account access (no scopes, never expires), so every
  * string that could contain it goes through here first.
  */
+import { isAbsolute } from "node:path";
 
 /** Replacement text for a redacted value. */
 export const REDACTED = "[REDACTED]";
@@ -64,19 +65,22 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Settings that hold a secret themselves (a rotation list holds several, comma-separated). */
-const SECRET_SETTINGS = [
+/**
+ * Settings that hold a secret themselves (a rotation list holds several, comma-separated). Each is
+ * read through `readSecret` (`src/config.ts`), so each also has a `NAME_FILE` twin.
+ */
+export const SECRET_SETTINGS = [
   "SEVDESK_API_TOKEN",
   "SEVDESK_HTTP_BEARER_TOKEN",
   "SEVDESK_HTTP_SECRET",
   "SEVDESK_HTTP_SECRET_PREVIOUS",
 ] as const;
-/** Settings that name a file holding a secret. */
-const SECRET_FILE_SETTINGS = [
-  "SEVDESK_API_TOKEN_FILE",
-  "SEVDESK_HTTP_BEARER_TOKEN_FILE",
-  "SEVDESK_HTTP_SECRET_FILE",
-] as const;
+
+/** The setting that names the file holding the secret of `name` (`readSecret`'s convention). */
+export function secretFileSetting(name: (typeof SECRET_SETTINGS)[number]): string {
+  return `${name}_FILE`;
+}
+
 /** Shorter pieces are not redacted on their own: they would blank out ordinary words. */
 const MIN_SECRET_PIECE = 8;
 
@@ -84,9 +88,15 @@ const MIN_SECRET_PIECE = 8;
  * Every secret the environment configures, for {@link redactSecrets} over configuration problems
  * (which quote the values they reject, so a secret pasted into the wrong setting would be
  * printed): each secret setting whole and each member of a comma- or whitespace-separated list
- * (bearer and server-secret rotation), and the contents of the `*_FILE` settings. A file that
- * cannot be read is skipped. A token kept in the OS keychain is not read here; sevDesk tokens are
- * caught by their shape instead (`redactConfigProblem`). Security review 2026-11, wave 2.
+ * (bearer and server-secret rotation), and the contents of the `*_FILE` settings. A token kept in
+ * the OS keychain is not read here; sevDesk tokens are caught by their shape instead
+ * (`redactConfigProblem`). Security review 2026-11, wave 2.
+ *
+ * The `*_FILE` names are derived from {@link SECRET_SETTINGS}: a hand-kept second list had missed
+ * `SEVDESK_HTTP_SECRET_PREVIOUS_FILE`. A `*_FILE` value that cannot be read and is not an absolute
+ * path counts as a secret itself: it is most likely the secret, pasted into the variable that
+ * wants the path (review 2026-11, round 3). An unreadable absolute path stays readable in the
+ * problem that names it.
  */
 export function configuredSecrets(
   env: Readonly<Record<string, string | undefined>>,
@@ -97,13 +107,14 @@ export function configuredSecrets(
     const value = env[name];
     if (value !== undefined) values.push(value);
   }
-  for (const name of SECRET_FILE_SETTINGS) {
-    const path = env[name];
-    if (path === undefined || path === "") continue;
+  for (const name of SECRET_SETTINGS) {
+    const path = env[secretFileSetting(name)];
+    if (path === undefined || path.trim() === "") continue;
     try {
-      values.push(readFile(path));
+      // Trimmed as `readSecret` reads it.
+      values.push(readFile(path.trim()));
     } catch {
-      // Unreadable: the configuration problem says so; there is nothing to redact from it.
+      if (!isAbsolute(path.trim())) values.push(path);
     }
   }
   const pieces = values.flatMap((value) => [value.trim(), ...value.split(/[\s,]+/)]);

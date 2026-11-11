@@ -20,6 +20,7 @@ import { isAbsolute } from "node:path";
 import { localhostAllowedHostnames } from "@modelcontextprotocol/server";
 
 import {
+  checkSettingNames,
   type Config,
   ConfigError,
   type ConfirmMode,
@@ -34,6 +35,7 @@ import {
   type Settings,
   sevdeskTokenProblem,
 } from "../config.js";
+import { type GetUid, ownedByOtherUser } from "../safety/append-file.js";
 import { accountShare, MAX_UPLOAD_BYTES } from "../safety/transfer-store.js";
 import { decodeSecret } from "./keys.js";
 import type { HttpAuthMode, HttpConfig, HttpFilesConfig, OAuthSettings } from "./types.js";
@@ -125,6 +127,8 @@ export function loadHttpConfig(env: Env, deps: LoadHttpConfigDeps = {}): LoadedH
 
   const auth = readAuthMode(env, problems);
   const base = readSettings(env, problems);
+  // Misspelt setting names are among the problems above; other unknown SEVDESK_* names only warn.
+  warnings.push(...checkSettingNames(env).warnings);
   const host = readHttpHost(env, problems);
   const port = readHttpPort(env, problems);
   const loopbackBind = isLoopbackHost(host);
@@ -677,14 +681,24 @@ function readStateDir(
 
 /**
  * Creates `path` with mode 0700 when it does not exist yet, then checks that it is a directory
- * this process can write to (a read-only volume or another owner fails here, not at the first
- * consent).
+ * this process owns and can write to (a read-only volume or another owner fails here, not at the
+ * first consent). The owner is checked on POSIX because the mode alone does not settle who may
+ * change the directory: its owner can, and on macOS so can anyone an ACL names (review 2026-11,
+ * round 3). The grants, the upload space and the sign-in sessions under it would be theirs to
+ * replace. `getuid` is for tests.
  */
-export function prepareStateDir(path: string): string | undefined {
+export function prepareStateDir(path: string, getuid?: GetUid): string | undefined {
   const name = "SEVDESK_HTTP_STATE_DIR";
   let exists = true;
   try {
-    if (!statSync(path).isDirectory()) return `${name}: ${path} exists but is not a directory.`;
+    const info = statSync(path);
+    if (!info.isDirectory()) return `${name}: ${path} exists but is not a directory.`;
+    if (ownedByOtherUser(info, getuid)) {
+      return (
+        `${name}: ${path} belongs to another user, who could replace the files in it. Use a ` +
+        "directory owned by the user the server runs as (the Docker image runs as uid 65532)."
+      );
+    }
   } catch {
     exists = false;
   }

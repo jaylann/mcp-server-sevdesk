@@ -216,8 +216,11 @@ describe(".mcp.json", () => {
 
   it("passes every server setting except the no-confirmation opt-out", () => {
     const passed = Object.keys(server?.env ?? {}).sort();
+    // The plugin starts the server over stdio: the settings of `--http` (which src/config.ts
+    // lists too, to tell a misspelled name from an unknown one) are not its business.
     const expected = [...serverVariables]
       .filter((name) => name !== "SEVDESK_I_UNDERSTAND_NO_CONFIRM")
+      .filter((name) => !/^SEVDESK_(HTTP|OAUTH)_/.test(name ?? ""))
       .sort();
     expect(passed).toEqual(expected);
   });

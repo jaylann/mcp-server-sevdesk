@@ -74,6 +74,19 @@ describe("token", () => {
     expect(problems).toEqual(["SEVDESK_API_TOKEN_FILE: cannot read /nope."]);
   });
 
+  // Review 2026-11, round 3: the message quoted whatever the variable held, also a pasted secret.
+  it("does not quote the value of a _FILE variable that is no absolute path", () => {
+    // base64url, as `generate-secret` prints: the token-shape redaction does not know this form.
+    const pasted = "Qm9ndXMtc2VjcmV0LWZvci1hLXRlc3QtMDEyMzQ1Njc4OQ";
+    const problems = problemsOf({ SEVDESK_API_TOKEN_FILE: pasted }, () => {
+      throw new Error("ENOENT");
+    });
+
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatch(/^SEVDESK_API_TOKEN_FILE: cannot read the file it names\./);
+    expect(problems.join("\n").includes(pasted)).toBe(false);
+  });
+
   it("rejects both token sources at once", () => {
     expect(problemsOf({ SEVDESK_API_TOKEN: TOKEN, SEVDESK_API_TOKEN_FILE: "/x" })[0]).toMatch(
       /either SEVDESK_API_TOKEN or SEVDESK_API_TOKEN_FILE/,
@@ -87,16 +100,27 @@ describe("token", () => {
 
   it("never puts the token into an error message", () => {
     const secret = "deadbeefdeadbeefdeadbeefdeadbeef";
+    // The error is caught first and judged afterwards: an assertion inside the `try` would be
+    // swallowed by the `catch`, and the test would pass without any ConfigError (review 2026-11,
+    // round 3).
+    let thrown: unknown;
     try {
       loadConfig({
         SEVDESK_API_TOKEN: secret,
         SEVDESK_ALLOW: "bogus",
         SEVDESK_BASE_URL: "http://x",
       });
-      expect.unreachable();
     } catch (error) {
-      expect(String(error)).not.toContain(secret);
+      thrown = error;
     }
+    expect(thrown).toBeInstanceOf(ConfigError);
+    const error = thrown as ConfigError;
+    expect(error.problems).toHaveLength(2);
+    expect(error.problems[0]).toMatch(/SEVDESK_BASE_URL must use https/);
+    expect(error.problems[1]).toMatch(/SEVDESK_ALLOW: unknown tier "bogus"/);
+    // `includes` instead of `not.toContain`: a failure must not print the text with the secret.
+    expect(error.message.includes(secret)).toBe(false);
+    expect(error.problems.join("\n").includes(secret)).toBe(false);
   });
 
   // Security review 2026-11, finding 8: a token pasted into the wrong setting was quoted back.

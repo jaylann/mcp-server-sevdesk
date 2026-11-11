@@ -14,7 +14,7 @@ import { createIdentityLookup } from "./accounts/identity.js";
 import { loadLocalConfig } from "./accounts/local-config.js";
 import { IdentityError } from "./accounts/types.js";
 import { HELP, parseArgs } from "./cli.js";
-import { ConfigError, type Env } from "./config.js";
+import { checkSettingNames, ConfigError, type Env } from "./config.js";
 import { runGrantsCommand } from "./grants-cli.js";
 import { runHealthcheck } from "./http/healthcheck.js";
 import { generateSecret } from "./http/keys.js";
@@ -112,7 +112,9 @@ function withoutConfiguredSecrets(text: string): string {
  */
 async function printAccountId(env: Env): Promise<number> {
   const { config, warnings } = await loadLocalConfig(env);
-  for (const warning of warnings) console.error(`${PACKAGE_NAME}: warning: ${warning}`);
+  for (const warning of [...warnings, ...checkSettingNames(env).warnings]) {
+    console.error(`${PACKAGE_NAME}: warning: ${warning}`);
+  }
   try {
     const identity = await createIdentityLookup(config)(config.token, AbortSignal.timeout(15_000));
     process.stdout.write(`${identity.accountId}\n`);
@@ -130,11 +132,15 @@ async function printAccountId(env: Env): Promise<number> {
  * still tell the user what to fix.
  */
 async function serveOverStdio(): Promise<void> {
+  // SEVDESK_* names nothing reads: a misspelt setting is a configuration problem (below); the
+  // rest only gets a line here, names only (review 2026-11, round 3).
+  const unknownNames = checkSettingNames(process.env).warnings;
   let loaded: Awaited<ReturnType<typeof loadLocalConfig>>;
   try {
     loaded = await loadLocalConfig(process.env);
   } catch (error) {
     if (!(error instanceof ConfigError)) throw error;
+    for (const warning of unknownNames) console.error(`${PACKAGE_NAME}: warning: ${warning}`);
     console.error(`${PACKAGE_NAME}: ${withoutConfiguredSecrets(error.message)}`);
     console.error(
       `${PACKAGE_NAME}: serving only the setup problem until the configuration is fixed`,
@@ -157,7 +163,7 @@ async function serveOverStdio(): Promise<void> {
   const log = (line: string): void => {
     console.error(`${PACKAGE_NAME}: ${redactSecrets(line, [config.token])}`);
   };
-  for (const warning of warnings) log(`warning: ${warning}`);
+  for (const warning of [...warnings, ...unknownNames]) log(`warning: ${warning}`);
   if (config.profile !== undefined) log(`using profile "${config.profile}"`);
   // Non-fatal by design; see checkConnection.
   void checkConnection(client, config, log);

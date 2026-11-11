@@ -1,4 +1,4 @@
-<!-- translated-from: docs/configuration.md sha256:1a839713b6f8 -->
+<!-- translated-from: docs/configuration.md sha256:4e0faaf061dd -->
 
 # Konfiguration
 
@@ -10,6 +10,23 @@ auf lokale Dateien.
 
 Der Server liest die Variablen einmal beim Start, meldet alle Probleme auf einmal und startet erst,
 wenn alle behoben sind. Starten Sie nach einer Änderung den Client (oder den Server) neu.
+
+Er prüft auch die Namen. Eine Variable, deren Name mit `SEVDESK_` beginnt und die keine der
+Einstellungen auf dieser Seite oder im [Fernzugriff](remote.de.md) ist, wird nicht stillschweigend
+ignoriert:
+
+- Ein Name, der einer Einstellung fast gleicht, gilt als Problem, und der Server startet erst,
+  wenn er umbenannt oder entfernt ist. Fast gleich heißt: dieselben Buchstaben mit anderen
+  Trennzeichen oder anderer Groß- und Kleinschreibung (`SEVDESK_READONLY` oder
+  `sevdesk_read_only` für `SEVDESK_READ_ONLY`) oder ein bis zwei Zeichen Unterschied
+  (`SEVDESK_ALOW`). Die gemeinte Einstellung, womöglich ein Sicherheitsschalter wie
+  `SEVDESK_READ_ONLY` oder `SEVDESK_DRY_RUN`, würde sonst nicht gelten. Das Problem nennt die
+  Variable und die Einstellung, der sie ähnelt, nie den Wert.
+- Jeder andere unbekannte Name mit `SEVDESK_…`, zum Beispiel eine Variable eines anderen Werkzeugs
+  in Ihrer Shell, wird ignoriert; das Log des Servers nennt die Namen in einer Warnung.
+
+Variablen mit leerem Wert werden nicht geprüft, und die Namen `SEVDESK_TOKEN_…`, aus denen ein
+[Profil](#profile) sein Token lesen darf, sind bekannt.
 
 Formate der Werte:
 
@@ -33,6 +50,11 @@ wo das Token liegt.
 | `SEVDESK_API_TOKEN`          |          | Ihr sevDesk-API-Token (sevDesk: Einstellungen → Benutzer → API-Token), am besten eines eigenen Benutzers. Das reine Token, ohne vorangestelltes `Bearer `. Pflicht über stdio und im Bearer-Modus; im OAuth-Modus nicht verwendet, dort fügt jeder Benutzer sein eigenes auf der Zustimmungsseite ein.                                          |
 | `SEVDESK_API_TOKEN_FILE`     |          | Das Token stattdessen aus dieser Datei lesen (ohne umgebende Leerzeichen). Für Docker- und Kubernetes-Secrets oder eine Datei, die nur Sie lesen können (`chmod 600`).                                                                                                                                                                          |
 | `SEVDESK_API_TOKEN_KEYCHAIN` |          | Über stdio: das Token aus dem Schlüsselbund des Betriebssystems lesen, abgelegt unter dieser Bezeichnung mit [`token set`](#das-token-im-schlüsselbund-ablegen). macOS und Linux; unter Windows noch nicht verfügbar. Eine Bezeichnung hat bis zu 64 Buchstaben, Ziffern, `.`, `_` oder `-` und beginnt mit einem Buchstaben oder einer Ziffer. |
+
+Eine Variable mit `…_FILE` (diese und die des [Fernzugriffs](remote.de.md)) nimmt den Pfad einer
+Datei, die den Wert enthält, nie den Wert selbst; verwenden Sie einen absoluten Pfad. Kann die
+Datei nicht gelesen werden, nennt das Problem den Pfad nur, wenn er absolut ist. Alles andere wird
+nicht gezeigt, weil es das Geheimnis selbst sein kann, in die falsche Variable eingefügt.
 
 ### Berechtigungen
 
