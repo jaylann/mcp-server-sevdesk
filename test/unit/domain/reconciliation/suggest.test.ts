@@ -95,6 +95,30 @@ describe("loadOpenItems", () => {
     expect(client.callsTo("/CreditNote")).toEqual([]);
   });
 
+  // Review 2026-11, round 3: the same rules as the booking guard (`openAmount`).
+  it("does not invent an open amount for an invoice whose paid amount is unknown or implausible", async () => {
+    const client = new FakeSevdeskClient(
+      openItemRoutes({
+        invoices: [
+          // Open and nothing reported as paid: the whole gross is open.
+          invoiceRow({ id: "1301", paidAmount: null }),
+          // A negative paid amount is the trace of a wrongly signed booking.
+          invoiceRow({ id: "1302", paidAmount: "-5" }),
+        ],
+        // Partially paid, but sevDesk does not say how much: it was suggested with the whole
+        // gross as "exact open amount" before.
+        invoicesPartly: [invoiceRow({ id: "1304", status: "750", paidAmount: null })],
+      }),
+    );
+
+    const read = await loadOpenItems(client, new Set(["in"]));
+
+    expect(read.candidates.map((c) => [c.kind, c.id, c.open])).toEqual([
+      ["invoice", 1301, "177.33"],
+    ]);
+    expect(read.excluded).toEqual({ notPayable: 0, openUnknown: 2, settled: 0 });
+  });
+
   it("reads open credit notes and expense vouchers for money out", async () => {
     const client = new FakeSevdeskClient(
       openItemRoutes({
