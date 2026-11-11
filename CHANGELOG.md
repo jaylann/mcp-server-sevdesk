@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/jaylann/mcp-server-sevdesk/compare/v1.1.0...v1.2.0) (2026-11-11)
+
+
+### Features
+
+* **pages:** redesign the server's pages, with German pages and previews ([#27](https://github.com/jaylann/mcp-server-sevdesk/issues/27)) ([1f5df98](https://github.com/jaylann/mcp-server-sevdesk/commit/1f5df98301fb74bed1f55e5fea2a1e664715d7a5))
+
 ## [1.1.0](https://github.com/jaylann/mcp-server-sevdesk/compare/v1.0.0...v1.1.0) (2026-11-10)
 
 

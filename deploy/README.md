@@ -51,7 +51,7 @@ export default defineRailway(() => {
   const data = volume("sevdesk-data", { sizeMB: 1024 });
   const mcp = service("mcp-server-sevdesk", {
     source: image(
-      "ghcr.io/jaylann/mcp-server-sevdesk:1.1.0", // x-release-please-version
+      "ghcr.io/jaylann/mcp-server-sevdesk:1.2.0", // x-release-please-version
       { autoUpdates: { type: "patch" } },
     ),
     healthcheck: "/healthz",
