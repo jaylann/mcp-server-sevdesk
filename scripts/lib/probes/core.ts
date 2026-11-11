@@ -173,6 +173,44 @@ export function requestLine(method: string, path: string, query: Query | undefin
   return `${method} ${path}${search === "" ? "" : `?${search}`}`;
 }
 
+/**
+ * Query parameters that only steer a request (paging, embedding, the model a reference names):
+ * the probe's own constants, never account data, so the evidence shows them as sent.
+ */
+const STRUCTURAL_QUERY_KEY =
+  /^(?:limit|offset|countAll|emptyState|embed|.+\[(?:objectName|modelName|limit)\])$/;
+/** Switch values a probe writes out as text. */
+const SWITCH_VALUE = /^(?:true|false|all)$/;
+
+/**
+ * The query as the evidence shows it. Filter values can be account data (a probe reads an invoice
+ * number and filters by it), and the report is meant to be shared, so each value goes through the
+ * scrubber under its own key, like a field of a response body: document and customer numbers,
+ * names and free text become fakes; ids, amounts, dates and upper-case codes stay. The request
+ * itself is sent with the real values (review 2026-11, round 3: the request line of a "scrubbed"
+ * report still held the invoice numbers).
+ */
+export function evidenceQuery(query: Query | undefined, scrubber: Scrubber): Query | undefined {
+  if (query === undefined) return undefined;
+  const shown: Record<string, Exclude<QueryValue, undefined>> = {};
+  for (const [key, value] of Object.entries(query)) {
+    if (
+      typeof value === "boolean" ||
+      STRUCTURAL_QUERY_KEY.test(key) ||
+      (typeof value === "string" && SWITCH_VALUE.test(value))
+    ) {
+      shown[key] = value;
+      continue;
+    }
+    const scrubbed = (scrubber.scrub({ [key]: value }) as Record<string, unknown>)[key];
+    shown[key] =
+      typeof scrubbed === "string" || typeof scrubbed === "number" || typeof scrubbed === "boolean"
+        ? scrubbed
+        : "<redacted>";
+  }
+  return shown;
+}
+
 /** An HTTP wrapper that appends a scrubbed {@link Exchange} to `evidence` for every request. */
 export function createProbeHttp(
   client: SevdeskClient,
@@ -207,7 +245,7 @@ export function createProbeHttp(
 
   return {
     async get(path, query, options = {}) {
-      const request = requestLine("GET", path, query);
+      const request = requestLine("GET", path, evidenceQuery(query, scrubber));
       try {
         const response = await client.download({
           method: "GET",
@@ -250,7 +288,7 @@ export function createProbeHttp(
     },
 
     async write(method, path, options) {
-      const request = requestLine(method, path, options.query);
+      const request = requestLine(method, path, evidenceQuery(options.query, scrubber));
       const requestBody =
         options.form !== undefined
           ? describeForm(options.form, scrubber)

@@ -8,6 +8,7 @@ import {
   berlinMidnight,
   createdId,
   diffState,
+  evidenceQuery,
   germanDate,
   type ProbeDefinition,
   requestLine,
@@ -290,6 +291,43 @@ describe("runProbes (read-only)", () => {
       preventSendBy: "true",
     });
   });
+
+  // Review 2026-11, round 3: the request line of the "scrubbed" report held the invoice number
+  // the probe had read from the account and filtered by.
+  it("sends the real invoice number to sevDesk and keeps it out of the report", async () => {
+    const number = "RE-2026-98765";
+    const handler: ScriptedHandler = (call) => {
+      if (call.path === "/Invoice") {
+        return {
+          total: "1",
+          objects: [{ id: "5", invoiceType: "RE", invoiceNumber: number, status: "200" }],
+        };
+      }
+      return emptyAccount(call);
+    };
+    const client = new ScriptedClient(handler);
+
+    const report = await runProbes(options(client, { only: ["read-invoice-filters"] }));
+
+    // sevDesk was asked with the real values: exact, without the last character, lower case.
+    const sent = client.calls.map((call) => call.query["invoiceNumber"]).filter(Boolean);
+    expect(sent).toEqual([number, number.slice(0, -1), number.toLowerCase()]);
+    const markdown = renderReport(report);
+    for (const text of [markdown, JSON.stringify(report)]) {
+      expect(text.toLowerCase().includes("98765")).toBe(false);
+      expect(text.toLowerCase().includes(number.slice(0, -1).toLowerCase())).toBe(false);
+    }
+    // The evidence still shows which filter was sent: a fake of the same shape (length, case)
+    // from the scrubber's counter, the steering parameters as they were.
+    expect(report.results[0]?.evidence.map((exchange) => exchange.request)).toEqual([
+      "GET /Invoice?invoiceType=RE&limit=1000&offset=0&countAll=1",
+      "GET /Invoice?invoiceType=SR&limit=1000&offset=0&countAll=1",
+      "GET /Invoice?invoiceNumber=RE-0000-00001&limit=1000&offset=0&countAll=1",
+      "GET /Invoice?invoiceNumber=RE-0000-0002&limit=1000&offset=0&countAll=1",
+      "GET /Invoice?invoiceNumber=re-0000-00003&limit=1000&offset=0&countAll=1",
+      "GET /Invoice?limit=1&offset=0&countAll=1",
+    ]);
+  });
 });
 
 describe("runProbes (write mode)", () => {
@@ -527,6 +565,38 @@ describe("core helpers", () => {
     expect(requestLine("GET", "/CreditNotePos", { "creditNote[id]": 5, flag: true })).toBe(
       "GET /CreditNotePos?creditNote[id]=5&flag=1",
     );
+    // The evidence copy of a query: steering parameters as sent, account data scrubbed by key.
+    expect(
+      evidenceQuery(
+        {
+          "contact[id]": 4711,
+          "contact[objectName]": "Contact",
+          embed: "contact,contact.parent",
+          limit: 100,
+          countAll: true,
+          download: "true",
+          showMa: "all",
+          invoiceType: "RE",
+          startDate: 1_795_000_000,
+          customerNumber: "K-1001",
+          name: "Erika Beispiel",
+        },
+        createScrubber({ secrets: [TOKEN] }),
+      ),
+    ).toEqual({
+      "contact[id]": 4711,
+      "contact[objectName]": "Contact",
+      embed: "contact,contact.parent",
+      limit: 100,
+      countAll: true,
+      download: "true",
+      showMa: "all",
+      invoiceType: "RE",
+      startDate: 1_795_000_000,
+      customerNumber: "K-0001",
+      name: "Musterfirma 1 GmbH",
+    });
+    expect(evidenceQuery(undefined, createScrubber({ secrets: [] }))).toBeUndefined();
     expect(createdId({ invoice: { id: "12" } }, "invoice")).toBe(12);
     expect(createdId([{ id: "3" }])).toBe(3);
     expect(createdId({ id: "4", objectName: "Invoice" }, "creditNote")).toBe(4);
