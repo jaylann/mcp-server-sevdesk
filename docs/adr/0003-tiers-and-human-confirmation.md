@@ -131,6 +131,14 @@ text, and all four MCP tool annotations declared explicitly on every tool.
 - Bad: the browser mode is weaker than elicitation. The model never sees the link, but an agent
   that can read the server's stderr log or drive the user's browser could still approve on its
   own; it only stops a model that can do nothing but talk. Elicitation stays the recommended mode.
+- Bad: elicitation trusts the client application. The client renders the form and returns the
+  answer; the signed state proves the server asked, not that a human answered, so a malicious or
+  compromised client can approve its own calls. It stops a manipulated model, not a hostile
+  client; for a client that is not trusted, the browser approval (inbox) is the stronger choice.
+  (Security review 2026-11, finding 7; documented, the default is unchanged.)
+- Good: an approval covers more than the preview's text. A tool can add a `binding` (a digest of
+  content the preview leaves out); finalize, enshrine and send bind the whole stored document, so a
+  draft edited after the human was asked is asked about again (finding 1).
 - Bad: after a timeout on a write the outcome is unknown. The tool reports this and tells the user
   how to check, instead of retrying.
 

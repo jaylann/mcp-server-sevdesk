@@ -90,6 +90,16 @@ sends a real `elicitation/create` request on the same connection, so the same ch
 that do not declare form elicitation, and 2025-era clients over stateless HTTP (which cannot receive
 server-to-client requests), get an error telling the user to switch to `browser`; nothing is sent.
 
+Elicitation trusts the MCP client application: the client shows the form and sends the answer
+back, and the signed state proves only that the server asked, not that a human answered. A client
+that is itself malicious or compromised (not a manipulated model inside an honest client) can
+answer "approve" on its own. It stops prompt injection in the model, which cannot answer the form;
+it does not stop a hostile client. With a client you do not trust, use `SEVDESK_CONFIRM=browser`
+(over HTTP, the approvals inbox), where the human decides on a page the server itself serves.
+For finalizing, enshrining and sending a document, the approval also covers the whole document as
+sevDesk stores it (texts, address, payment terms, positions through its last change), not only
+the facts the preview shows: a draft edited after the human was asked is asked about again.
+
 **`SEVDESK_CONFIRM=browser`** over stdio. For clients without elicitation, the server creates an
 approval page, served by itself on `127.0.0.1` and an ephemeral port only, and opens it in the user's
 browser with the operating system's opener (`open`, `xdg-open` or `cmd /c start`, spawned with an
