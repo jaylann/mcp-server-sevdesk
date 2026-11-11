@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:6a68346a8278 -->
+<!-- translated-from: docs/faq.md sha256:7f726a6e7dff -->
 
 # Häufige Fragen
 
@@ -41,8 +41,10 @@ sevDesk-Benutzer an.
 ### Wohin gehen meine Daten?
 
 Der Server läuft auf Ihrem Rechner (oder im Fernzugriff auf Ihrem eigenen Server) und spricht nur
-mit der sevDesk-API. Die einzige Ausnahme ist der DATEV-Export, den sevDesk als Download aus seinem
-eigenen Speicher ausliefert. Ergebnisse gehen an Ihren MCP-Client und von dort an Ihren
+mit der sevDesk-API. Es gibt zwei Ausnahmen: den DATEV-Export, den sevDesk als Download aus seinem
+eigenen Speicher (bei Amazon S3) ausliefert, und einen Server im Fernzugriff mit OAuth, der das
+Metadaten-Dokument eines Clients, der sich verbindet, vom Host dieses Clients abruft. Ergebnisse
+gehen an Ihren MCP-Client und von dort an Ihren
 Modellanbieter: Rechnungen, Kontakte und Kontoumsätze sind dann Teil Ihrer Unterhaltung, zu den
 Bedingungen dieses Anbieters. Buchhaltungsdaten enthalten personenbezogene Daten Ihrer Kunden;
 prüfen Sie daher die Bedingungen Ihres Anbieters zur Auftragsverarbeitung, bevor Sie ein echtes
@@ -131,6 +133,32 @@ Ausgabeordner oder bietet ihn im Fernzugriff als Download-Link an. Es schreibt d
 fest. Es braucht die DATEV-Einstellungen in sevDesk (Beraternummer, Mandantennummer, Beginn des
 Wirtschaftsjahres). `sevdesk_csv_export` speichert die CSV-Exporte von sevDesk für Rechnungen,
 Gutschriften, Belege, Kontoumsätze oder Kontakte, zum Beispiel für Excel.
+
+### Wie weit kann ich mich auf die Umsatzsteuer-Auswertung und die Gewinn- und Verlustrechnung verlassen?
+
+`sevdesk_vat_summary` und `sevdesk_profit_and_loss` sind Schätzungen zum Prüfen. Der Server
+berechnet sie aus Ihren Dokumenten und deren Positionen; sie sind weder die Auswertungen von
+sevDesk noch eine Steuererklärung. Was sie leisten und was bei Ihnen bleibt:
+
+- **Zeitpunkt (Sollversteuerung).** Umsätze zählen zum Ende der Leistung. Das gilt auch für
+  Leistungen an Unternehmen in anderen EU-Staaten (Kz 21 und die Zusammenfassende Meldung): Sie
+  gehören in den Zeitraum, in dem sie ausgeführt werden. Innergemeinschaftliche Lieferungen zählen
+  nach dem Rechnungsdatum, spätestens im Monat nach der Lieferung.
+- **Abschlagsrechnungen.** Ihre Umsatzsteuer entsteht, wenn die Zahlung eingeht. Bei der
+  Sollversteuerung berechnet die Umsatzsteuer-Auswertung das nicht: Sie zählt eine
+  Abschlagsrechnung wie jede Rechnung zum Leistungsdatum und listet die betroffenen auf
+  (`coverage.advanceInvoices`, mit einem Hinweis), damit Sie sie von Hand prüfen können.
+- **Einfuhrumsatzsteuer.** sevDesk bucht sie als Betrag einer Position auf dem Konto
+  Einfuhrumsatzsteuer (SKR04 1433, SKR03 1588) mit Steuerregel 9. Solche Beträge gehen in Kz 62
+  und zählen als Vorsteuer, nicht als Ausgabe. Auf einem anderen Konto gebuchte
+  Einfuhrumsatzsteuer wird nicht erkannt.
+- **Unvollständiges Lesen.** Wenn eine Obergrenze erreicht ist, wenn sich die Positionen eines
+  Dokuments nicht vollständig lesen lassen oder wenn einem Server im Fernzugriff die Zeit ausgeht,
+  sagt die Auswertung das (`coverage.truncated`, mit einem Hinweis), und die
+  Umsatzsteuer-Auswertung schätzt Kz 83 nicht. Über HTTP hört eine Auswertung nach etwa
+  90 Sekunden auf, Dokumente zu lesen, weil eine Anfrage 120 Sekunden dauern darf. Bei der
+  voreingestellten Anfragerate sind das einige hundert Dokumente: Fragen Sie nach einem Monat
+  statt nach einem Quartal oder Jahr.
 
 ### Unterstützt es sevDesk in Österreich?
 

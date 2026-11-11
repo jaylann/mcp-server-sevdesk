@@ -1,4 +1,4 @@
-<!-- translated-from: README.md sha256:9876d784e650 -->
+<!-- translated-from: README.md sha256:098449816b25 -->
 
 # mcp-server-sevdesk
 
@@ -79,7 +79,7 @@ Testumgebung. Dieser Server ist um diese Tatsache herum gebaut:
 
 ## Werkzeuge
 
-73 Werkzeuge in 10 Werkzeuggruppen. Die 36 Lesewerkzeuge decken Kontoinformationen und
+74 Werkzeuge in 10 Werkzeuggruppen. Die 37 Lesewerkzeuge decken Kontoinformationen und
 Stammdaten ab, Kontakte, Rechnungen, Gutschriften, Aufträge, Belege, Bank, Artikel, PDFs und
 E-Rechnungs-XML (als MCP-Ressourcen) sowie Auswertungen, die der Server selbst berechnet:
 Zusammenfassungen, Altersstruktur offener Forderungen und Verbindlichkeiten, Liquidität,

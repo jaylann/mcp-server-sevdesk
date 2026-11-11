@@ -1,6 +1,7 @@
 # ADR 0001: Curated task tools, toolsets and a read-only generic GET
 
-- **Status:** Accepted
+- **Status:** Accepted; the tool-count targets of the Decision were given up, see
+  [Update 2026-11-11](#update-2026-11-11-the-tool-count-targets-are-given-up)
 - **Date:** 2026-11-07
 
 ## Context
@@ -74,3 +75,28 @@ Evidence that shaped the choice:
   confirmation. Kept for reads as `api_get`.
 - **Server-side dynamic toolsets or tool-search gateway.** Rejected: clients now do progressive
   discovery themselves, it does not fit a stateless server, and GitHub dropped the same mode.
+
+## Update 2026-11-11: the tool-count targets are given up
+
+The Decision says the default read-only set is "about 20 tools" and everything enabled "stays at
+or below 45". Both numbers were estimates from before the first tool was written, and neither
+holds: as of release 1.2.0 the server has 74 tools (37 `read`, 16 `write`, 18 `commit`, 3
+`external`; [docs/tools.md](../tools.md)). The default configuration lists 31 of them, and a
+server with every toolset, every tier and file transfer lists all 74. Nothing in the code or the
+tests enforces a count.
+
+The numbers are given up, not the tools, because the count follows from the other rules of this
+decision and from what the server covers:
+
+- One task and one tier per tool makes every lifecycle step of every document type its own tool:
+  18 `commit` tools (finalize, book a payment, enshrine, reset, cancel, delete a draft, and book,
+  mark private or reset a bank transaction) and 3 `external` ones (send by email). Fewer, broader
+  tools would break that rule.
+- Coverage grew: vouchers with receipt files, e-invoices, bank reconciliation, VAT and
+  profit-and-loss reports, and the DATEV and CSV exports.
+
+What limits the list a model sees is unchanged: `SEVDESK_TOOLSETS` and `SEVDESK_ALLOW` filter it
+at startup, tools above the enabled tiers are not registered, 7 tools appear only where files can
+be read or delivered, and clients defer tool definitions themselves (see Context). The rest of
+the decision stands: curated task tools, static registration, no meta-tools, no generic write
+tool.

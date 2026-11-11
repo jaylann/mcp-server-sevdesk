@@ -72,7 +72,7 @@ server is designed around that fact:
 
 ## Tools
 
-73 tools across 10 toolsets. The 36 read tools cover account info and reference data, contacts,
+74 tools across 10 toolsets. The 37 read tools cover account info and reference data, contacts,
 invoices, credit notes, orders, vouchers (Belege), banking, parts, PDFs and e-invoice XML (as MCP
 resources), and server-side reports: summaries, receivables and payables aging, cash position,
 changes since a date, a **VAT summary** (Umsatzsteuer-Voranmeldung boxes, Zusammenfassende Meldung

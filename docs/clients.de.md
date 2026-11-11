@@ -1,4 +1,4 @@
-<!-- translated-from: docs/clients.md sha256:4b66f356b894 -->
+<!-- translated-from: docs/clients.md sha256:2cb01a4bfa63 -->
 
 # Clients
 
@@ -300,6 +300,8 @@ Zed unterstützt Werkzeuge und Prompts, aber keine Elicitation: Setzen Sie
 Das Container-Image führt denselben Server aus, ohne Node.js auf Ihrem Rechner. `--stdio` ersetzt
 das voreingestellte `--http` des Images:
 
+<!-- x-release-please-start-version -->
+
 ```json
 {
   "mcpServers": {
@@ -312,7 +314,7 @@ das voreingestellte `--http` des Images:
         "--read-only",
         "-e",
         "SEVDESK_API_TOKEN",
-        "ghcr.io/jaylann/mcp-server-sevdesk:1.0",
+        "ghcr.io/jaylann/mcp-server-sevdesk:1.2.0",
         "--stdio"
       ],
       "env": {
@@ -323,6 +325,8 @@ das voreingestellte `--http` des Images:
 }
 ```
 
+<!-- x-release-please-end -->
+
 - `-e NAME` ohne Wert reicht die Variable aus `env` an den Container weiter. Ergänzen Sie ein `-e`
   pro Einstellung, zum Beispiel `"-e", "SEVDESK_ALLOW"`.
 - Ordner müssen eingebunden und mit ihrem Pfad im Container angegeben werden, zum Beispiel
@@ -331,8 +335,12 @@ das voreingestellte `--http` des Images:
   Token oder binden Sie eine Token-Datei ein und setzen Sie `SEVDESK_API_TOKEN_FILE`.
 - `SEVDESK_CONFIRM=browser` funktioniert auf diese Weise nicht: Die Freigabeseite würde im
   Container lauschen. Verwenden Sie einen Client mit Elicitation.
-- `1.0` folgt den Patch-Releases 1.0.x. Prüfen Sie das Image vorher
-  ([SECURITY.de.md](../SECURITY.de.md#lieferkette)).
+- Das Tag nennt genau ein Release, nämlich das, mit dem diese Seite veröffentlicht wurde: Das Image
+  ändert sich erst, wenn Sie das Tag ändern. Nur das neueste Release erhält Sicherheitskorrekturen;
+  passen Sie das Tag also an, wenn ein neues Release erscheint. Das Image hat außerdem ein Tag für
+  die Minor-Linie (nur Haupt- und Nebenversionsnummer), das zu jedem neuen Patch-Release
+  weiterwandert, und `latest`; Docker holt ein weitergewandertes Tag erst bei `docker pull` neu.
+  Prüfen Sie das Image vorher ([SECURITY.de.md](../SECURITY.de.md#lieferkette)).
 
 ## Andere Clients
 

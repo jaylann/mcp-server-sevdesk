@@ -284,6 +284,8 @@ Zed supports tools and prompts, not elicitation: set `SEVDESK_CONFIRM=browser` b
 The container image runs the same server without Node.js on your computer. `--stdio` replaces the
 image's default `--http`:
 
+<!-- x-release-please-start-version -->
+
 ```json
 {
   "mcpServers": {
@@ -296,7 +298,7 @@ image's default `--http`:
         "--read-only",
         "-e",
         "SEVDESK_API_TOKEN",
-        "ghcr.io/jaylann/mcp-server-sevdesk:1.0",
+        "ghcr.io/jaylann/mcp-server-sevdesk:1.2.0",
         "--stdio"
       ],
       "env": {
@@ -307,6 +309,8 @@ image's default `--http`:
 }
 ```
 
+<!-- x-release-please-end -->
+
 - `-e NAME` without a value hands the variable from `env` to the container. Add one `-e` per
   setting, for example `"-e", "SEVDESK_ALLOW"`.
 - Folders must be mounted and named by their path inside the container, for example
@@ -315,8 +319,11 @@ image's default `--http`:
   set `SEVDESK_API_TOKEN_FILE`.
 - `SEVDESK_CONFIRM=browser` does not work this way: the approval page would listen inside the
   container. Use a client with elicitation.
-- `1.0` follows the 1.0.x patch releases. Verify the image first
-  ([SECURITY.md](../SECURITY.md#supply-chain)).
+- The tag names one release, the one this page was published with: the image changes only when
+  you change the tag. Only the latest release gets security fixes, so move the tag when a new
+  release appears. The image also has a tag for the minor line (major and minor number only),
+  which moves to each new patch release, and `latest`; Docker fetches a moved tag again only on
+  `docker pull`. Verify the image first ([SECURITY.md](../SECURITY.md#supply-chain)).
 
 ## Other clients
 

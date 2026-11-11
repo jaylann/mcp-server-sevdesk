@@ -97,6 +97,14 @@
         {
           "type": "generic",
           "path": "deploy/README.md"
+        },
+        {
+          "type": "generic",
+          "path": "docs/clients.md"
+        },
+        {
+          "type": "generic",
+          "path": "docs/clients.de.md"
         }
       ]
     }

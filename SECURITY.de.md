@@ -1,4 +1,4 @@
-<!-- translated-from: SECURITY.md sha256:f0cf49b2c4b1 -->
+<!-- translated-from: SECURITY.md sha256:8d88d5ca78f4 -->
 
 # Sicherheitsrichtlinie
 
@@ -49,12 +49,16 @@ Dieser Server steht zwischen einem KI-Modell und einem sevDesk-Konto. Der Entwur
    geprüft, ihr Typ wird am Inhalt erkannt, Größen sind begrenzt) und schreiben nur innerhalb von
    `SEVDESK_OUTPUT_DIR` (nur neue Dateien, Modus 0600, nie überschreibend). Ohne diese
    Einstellungen liest oder schreibt kein Werkzeug lokale Dateien. Empfangene E-Rechnungen sind
-   feindliche Eingaben: Der XML-Parser lehnt DOCTYPEs und Entitäten ab und begrenzt Größe und
-   Verschachtelungstiefe, der Leser für PDF-Anhänge begrenzt die entpackten Größen, und jedes
-   ausgelesene Textfeld gilt als nicht vertrauenswürdig. Das ZIP des DATEV-Exports wird über einen
-   vorsignierten Link geholt, den sevDesk zurückgibt; der Server akzeptiert dafür genau einen
-   https-Host, folgt keinen Weiterleitungen, sendet keine Zugangsdaten, begrenzt die Größe und
-   zeigt den Link nie dem Modell.
+   feindliche Eingaben: Der XML-Parser lehnt DOCTYPEs und Entitäten ab, begrenzt Größe und
+   Verschachtelungstiefe und liest ein Element nur in dem Namensraum, den das Rechnungsformat
+   dafür festlegt; der Leser für PDF-Anhänge begrenzt die entpackten Größen, die Zahl der Werte,
+   die er aus einem PDF aufbaut (eine Million), die Länge von Namen, Zahlen und Zeichenketten
+   und den Leseaufwand je Byte der Datei; und jedes ausgelesene Textfeld gilt als nicht
+   vertrauenswürdig. Ein PDF wird weiterhin im Serverprozess gelesen: Eine feindliche Datei an
+   diesen Grenzen kann ihn mehrere Sekunden beschäftigen, aber nicht länger. Das ZIP des
+   DATEV-Exports wird über einen vorsignierten Link geholt, den sevDesk zurückgibt; der Server
+   akzeptiert dafür genau einen https-Host, folgt keinen Weiterleitungen, sendet keine
+   Zugangsdaten, begrenzt die Größe und zeigt den Link nie dem Modell.
 6. **Der Fernzugriff fügt eine Netzwerkgrenze hinzu.** Der HTTP-Transport startet nicht ohne
    Authentifizierung, lauscht standardmäßig auf 127.0.0.1 (jede andere Adresse braucht eine
    konfigurierte öffentliche URL) und prüft Host und Origin. Im OAuth-Modus ist er standardmäßig
@@ -79,6 +83,36 @@ damit keine Zeile eines Werts sich als Beschriftung oder Warnung ausgeben kann; 
 statt stillschweigend gekürzt zu werden, und der Probelauf gibt ihn vollständig zurück. Die
 Freigabe bindet einen Hash der vollständigen Vorschau, nicht dessen, was auf den Bildschirm passte.
 Nur die Antwort des Menschen zählt: Kein Argument eines Werkzeugs kann etwas freigeben.
+
+Fertigstellen, Versenden und Festschreiben machen ein gespeichertes Dokument verbindlich, und alles,
+was auf einem Entwurf gedruckt wird (Texte, Anschrift, Positionen, Bedingungen), lässt sich mit der
+Stufe `write` schreiben, die niemanden fragt. Deshalb führen diese Vorschauen das Dokument so auf,
+wie sevDesk es speichert, nicht nur Nummer und Summen:
+
+- die Anschrift, die auf dem Dokument steht, direkt nach dem Kunden (beide können sich
+  unterscheiden); sind der Anschriftstext und die strukturierten Adressfelder beide gespeichert und
+  verschieden, dann beide;
+- Betreff, Leistungsdatum oder -zeitraum, Skonto, Steuerregel und Steuerhinweis, bei einem Auftrag
+  die Zahlungs- und Lieferbedingungen, bei einer Gutschrift die Buchungskategorie und die Rechnung,
+  die sie mindert;
+- Kopftext und Fußtext wie gespeichert, mit ihren HTML-Tags, ungekürzt;
+- jede Position: Bezeichnung, Menge × Einzelpreis (netto oder brutto), Steuersatz, Rabatt,
+  Zeilensummen und ihr Text wie gespeichert. Bis zu 100 Positionen werden aufgeführt, so viele, wie
+  die Entwurfswerkzeuge schreiben; eine längere Liste endet mit einer Zeile, die sagt, wie viele
+  nicht aufgeführt sind und wie viele es insgesamt gibt;
+- bei einem Beleg: Leistungsdatum oder -zeitraum, Fälligkeit, Steuerregel, jede Position mit
+  Buchungskonto, Betrag, Steuersatz, Anlagegut-Kennzeichen und ihrem ganzen Buchungstext sowie die
+  Angabe, ob eine Belegdatei angehängt ist.
+
+Eine feste Warnung in jeder dieser Vorschauen nennt, was die Angaben nicht zeigen: den
+Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen und
+das Layout des PDF; bei einem festzuschreibenden Beleg die Namen der Buchungskonten und den Inhalt
+der Belegdatei. Die Angaben und die Bindung der Freigabe stammen aus demselben Lesevorgang: Neben
+der Vorschau deckt die Freigabe einen Hash des ganzen Datensatzes und all seiner Positionen ab, so
+wie sevDesk sie geliefert hat (Texte, Anschrift, Zahlungsbedingungen, Positionen, Zeitpunkt der
+letzten Änderung). Zu einem Dokument, das nach der Frage geändert wurde, auch in einem Teil, den
+die Vorschau nicht zeigt, wird erneut gefragt; ein Text, der vor der Frage geändert wurde, steht in
+der Vorschau, die der Mensch liest.
 
 Umgekehrt darf auch Text, den der Mensch nicht sehen kann, sevDesk nicht erreichen. Bevor etwas
 gelesen oder gesendet wird, lehnt jedes Schreibwerkzeug (Probeläufe eingeschlossen) Argumente ab,
@@ -112,10 +146,7 @@ manipuliertes Modell in einem ehrlichen Client), kann von sich aus „freigeben�
 Elicitation hält eine Prompt-Injection im Modell auf, das das Formular nicht beantworten kann; einen
 feindlichen Client hält sie nicht auf. Mit einem Client, dem Sie nicht vertrauen, verwenden Sie
 `SEVDESK_CONFIRM=browser` (über HTTP den Freigabe-Posteingang), wo der Mensch auf einer Seite
-entscheidet, die der Server selbst ausliefert. Beim Fertigstellen, Festschreiben und Versenden
-eines Dokuments deckt die Freigabe außerdem das ganze Dokument ab, wie sevDesk es speichert (Texte,
-Anschrift, Zahlungsbedingungen, Positionen über seine letzte Änderung), nicht nur die Angaben der
-Vorschau: Zu einem Entwurf, der nach der Frage bearbeitet wurde, wird erneut gefragt.
+entscheidet, die der Server selbst ausliefert.
 
 **`SEVDESK_CONFIRM=browser`** über stdio. Für Clients ohne Elicitation legt der Server eine
 Freigabeseite an, die er selbst nur auf `127.0.0.1` und einem flüchtigen Port bereitstellt, und
@@ -123,6 +154,18 @@ Freigabeseite an, die er selbst nur auf `127.0.0.1` und einem flüchtigen Port b
 `cmd /c start`, gestartet mit einem Argument-Array, ohne Shell). `SEVDESK_CONFIRM_OPEN=0` schaltet
 das Öffnen ab. Der Link der Seite ist geheim: Er geht in das Log des Servers (stderr, eine Zeile je
 Freigabe) und an den Öffner, nie an das Modell, das Ergebnis des Werkzeugs oder das Audit-Log. Der
+Link ist ein Startlink, `http://127.0.0.1:<port>/open/<ticket>`, mit einem zufälligen
+256-Bit-Ticket, das einmal funktioniert: Die erste Anfrage setzt ein Cookie für die Freigabeseite
+und leitet dorthin weiter. Die Seite (`/approve/<id>`) und die Entscheidung brauchen dieses
+Cookie; die Adresse der Seite allein zeigt nichts und gibt kein Cookie aus. Der Öffner nimmt
+keine andere Art von URL an, die Adresse der Seite steht also nie in einer Befehlszeile. Der
+Browser, der den Link verwendet hat, darf ihn erneut öffnen (der Öffner hat zweimal ausgelöst,
+der Link wurde zusätzlich im Log angeklickt). Wird der Link ein zweites Mal von anderswo
+vorgelegt, kann der Server nicht erkennen, welcher der beiden der Browser des Benutzers ist: Die
+Anfrage wird zurückgezogen (eine dort schon erteilte Freigabe wird nicht ausgeführt), beide sehen
+eine Seite, die sagt, dass der Link zweimal verwendet wurde,
+und der Assistent muss erneut fragen. Ein Browser, der den Link vorab lädt (Prerendering aus der
+Adresszeile), verbraucht ihn nicht. Der
 Aufruf gibt `approval_pending` mit einem kurzen, nicht geheimen Referenzcode zurück (auch auf der
 Seite gezeigt, damit der Benutzer beide zuordnen kann), den Ablauf und ob die Seite geöffnet wurde.
 Jede Freigabe bindet Werkzeug, Hash der Argumente und Hash der Vorschau, hat eine zufällige
@@ -131,8 +174,8 @@ der Freigabe durch den Menschen mit denselben Argumenten erneut auf, bereitet de
 und führt die Aktion nur aus, wenn die Vorschau unverändert ist. Die Seite ist statisches HTML,
 jeder Wert ist maskiert, unter einer strengen Content Security Policy (keine Skripte, kein
 Einbetten in Frames, Formulare nur an sich selbst). Approve und Reject sind POST-Formulare, die ein
-CSRF-Token der Seite je Freigabe tragen müssen, ein `SameSite=Strict`-Cookie je Freigabe, das beim
-Laden der Seite gesetzt wurde, `Host: 127.0.0.1:<port>` (jede Anfrage wird auf den Host geprüft,
+CSRF-Token der Seite je Freigabe tragen müssen, das `SameSite=Strict`-Cookie je Freigabe, das der
+Startlink gesetzt hat, `Host: 127.0.0.1:<port>` (jede Anfrage wird auf den Host geprüft,
 gegen DNS-Rebinding), und von der Seite selbst kommen müssen: `Origin: http://127.0.0.1:<port>`
 oder, bei Clients, die kein `Origin` senden, das vom Browser gesetzte
 `Sec-Fetch-Site: same-origin`. `Origin: null` wird abgelehnt; die Seite verwendet die
@@ -150,12 +193,25 @@ Browser-Modus schützt daher vor einem Modell, das nur redet (zum Beispiel einem
 Injection in sevDesk-Daten gesteuert wird), nicht vor einem Agenten mit solchem Zugriff. `elicit`
 bleibt der empfohlene Modus, besonders in agentischen Clients, die Befehle ausführen können.
 
+Andere Benutzer desselben Computers können die Befehlszeile des Öffners lesen (`ps`, `/proc`) und
+damit den Startlink. Was sie damit tun können: nichts, sobald der Browser des Benutzers den Link
+verwendet hat (sie bekommen eine Seite ohne Inhalt und ohne Cookie, und ihr Versuch bricht eine
+noch nicht ausgeführte Anfrage ab, was der Benutzer sieht). Legen sie den Link vor, bevor der
+Browser des Benutzers es tut, haben sie die Seite, bis dieser Browser ankommt: Seine Ankunft
+zieht die Anfrage dann zurück, auch wenn sie schon freigegeben wurde. Nur eine Aktion, die der
+Assistent in dieser Lücke bereits ausgeführt hat (er hat das Werkzeug erneut aufgerufen, bevor
+der Browser des Benutzers ankam), lässt sich nicht rückgängig machen; der Browser des Benutzers
+zeigt dann, dass der Link anderswo verwendet und entschieden wurde. Auf einem Computer, an dem sich
+Personen anmelden können, denen Sie nicht vertrauen, setzen Sie deshalb `SEVDESK_CONFIRM_OPEN=0`
+(der Link steht dann nur im Log des Servers, nicht in einer Befehlszeile) oder verwenden `elicit`.
+
 **`SEVDESK_CONFIRM=off`** wird nur zusammen mit `SEVDESK_I_UNDERSTAND_NO_CONFIRM=1` angenommen.
 
 ## Audit-Log
 
 Mit `SEVDESK_AUDIT_LOG=<path>` hängt jeder schreibende Aufruf JSON Lines an diese Datei an:
-`dry_run`, `confirmation_requested` (mit der Vorschau und im Browser-Modus dem Referenzcode),
+`dry_run` (mit der Vorschau), `confirmation_requested` (mit der Vorschau und im Browser-Modus
+dem Referenzcode),
 `confirmation_refused` (eine wiederverwendete, abgelaufene oder nicht passende Bestätigung),
 `approval_decided` (Approve oder Reject auf der Freigabeseite gedrückt, mit dem Referenzcode),
 `declined`, `executing` (mit der Art der Freigabe: `elicit`, `browser`, `confirmation_off` oder
@@ -168,7 +224,11 @@ geschrieben, Zeichenketten bis 20.000 Zeichen, längere markiert). Im Fernzugrif
 außerdem `account` (die sevDesk-Konto-ID; `bearer` im Bearer-Modus, falls die Abfrage des Kontos
 beim Start fehlschlug) und `grant` (die ID des Zugangs oder `bearer`), und ein Log umfasst jedes
 Konto, das der Server bedient. Die Datei wird mit Modus 0600 angelegt (und auf 0600 verschärft,
-falls sie schon existiert), nur zum Anhängen geöffnet und nie über einen symbolischen Link. Kann
+falls sie schon existiert), nur zum Anhängen geöffnet und nie über einen symbolischen Link. Unter
+macOS und Linux wird eine Datei abgelehnt, die einem anderen Benutzer gehört, gleich mit welchem
+Modus: Ihr Besitzer könnte sie umschreiben, und eine ACL kann Zugriff geben, den der Modus nicht
+zeigt. Jede Zeile wird ganz geschrieben, oder das Schreiben schlägt fehl; ein unvollständiger
+Schreibvorgang wird fortgesetzt, nicht hingenommen. Kann
 die Zeile `executing` nicht geschrieben werden, wird die Aktion nicht ausgeführt und nichts
 gesendet (fail closed). Das Log ist lokal und nicht fälschungssicher: Es hält für den Benutzer
 fest, was dieser Server getan hat, und schützt nicht vor jemandem, der den Rechner kontrolliert.
@@ -264,11 +324,17 @@ Zustandsprüfungen von Plattformen). Ein `Origin`-Header an `/mcp` muss einen er
 (die Prüfung vergleicht Hostnamen; `/mcp` sendet keine CORS-Header, sodass Webseiten auf anderen
 Origins es nicht aufrufen können), und Formular-POSTs müssen von den eigenen Seiten des Servers
 kommen (`Origin: null` wird abgelehnt). Bodys sind je Route begrenzt und müssen in kurzer Zeit
-eintreffen, Anfragen haben Fristen, Ratenbegrenzungen gelten je Client-Adresse (IPv6 je
-/64-Netz), und die Zahl gleichzeitig laufender Anfragen ist so begrenzt, dass ein Client sie nicht
-für alle aufbrauchen kann. Antworten tragen `nosniff`, `no-store, no-transform` (damit Proxys
-Seiten nicht umschreiben), eine Referrer-Policy und über https HSTS. URLs, die der Server ausgibt
-oder auf die er weiterleitet, werden aus der konfigurierten öffentlichen URL gebaut, nie aus
+eintreffen, Anfragen haben Fristen, und Ratenbegrenzungen gelten je Client-Adresse (IPv6 je
+/64-Netz). Der Server bearbeitet höchstens 64 Anfragen gleichzeitig: 8 je Client-Adresse (32 mit
+`SEVDESK_OAUTH_ACCOUNTS=any`) und an `/mcp` 8 je sevDesk-Konto, gleich von welchen Adressen und
+Verbindungen sie kommen (darüber 429). 8 der 64 bleiben den anderen Routen vorbehalten, sodass
+Token-Erneuerung, Anmeldung, Freigabe-Postfach und Dateiseiten erreichbar bleiben, während `/mcp`
+ausgelastet ist. Sieben Konten, die je ihre 8 ausschöpfen, können `/mcp` für die anderen weiterhin
+füllen (503, bis eine Anfrage endet). Ein JSON-RPC-Batch, den nur Clients der Protokollversion
+2025-03-26 senden, darf höchstens 8 Nachrichten enthalten und keine Anfrage-ID doppelt; sonst wird
+er abgelehnt, bevor etwas davon läuft. Antworten tragen `nosniff`, `no-store, no-transform`
+(damit Proxys Seiten nicht umschreiben), eine Referrer-Policy und über https HSTS. URLs, die der
+Server ausgibt oder auf die er weiterleitet, werden aus der konfigurierten öffentlichen URL gebaut, nie aus
 Headern der Anfrage. `SEVDESK_HTTP_TRUST_PROXY` muss der tatsächlichen Zahl der Proxys davor
 entsprechen: Ein höherer Wert lässt Clients die IP-Adresse wählen, die die Ratenbegrenzung sieht.
 Einfaches http wird nur für eine öffentliche Loopback-URL angenommen; beschränken Sie eine solche
@@ -363,9 +429,13 @@ kommen müssen (Origin oder `Sec-Fetch-Site: same-origin`; nie `Origin: null`). 
 prüft, dass die Freigabe zum Konto der Sitzung gehört. Eine Freigabe gehört dem Zugang, der gefragt
 hat: Ein erneuter Versuch aus einer anderen Verbindung, auch desselben Kontos, kann sie nicht
 nutzen. Freigaben binden weiterhin Werkzeug, Argumente und Vorschau, laufen nach 10 Minuten ab,
-werden einmal verwendet, und höchstens fünf je Konto warten gleichzeitig; die Gesamtgrenze des
-Speichers kann nicht von einem Konto genutzt werden, um die Freigaben eines anderen Kontos zu
-verdrängen.
+werden einmal verwendet, und höchstens fünf je Konto warten gleichzeitig. Ein Konto behält
+höchstens 20 Freigaben, wartende und entschiedene, und schafft Platz unter seinen eigenen. Der
+Server behält insgesamt 100. Ist das erreicht, kommt Platz nur von einem Konto, das mehr Freigaben
+hält als das anfragende: zuerst dessen älteste abgelehnte oder wartende, zuletzt eine erteilte,
+die noch nicht verwendet wurde (ihr Besitzer wird beim nächsten Versuch erneut gefragt, wie nach
+einem Ablauf). So verliert kein Konto eine Freigabe an eines, das gleich viele oder mehr hält, und
+wenige Konten, die erteilte Freigaben ungenutzt lassen, können die anderen nicht am Fragen hindern.
 
 **Grenzen des Postfachs.** Ein Agent, der einen angemeldeten Browser steuern kann
 (Browser-Automatisierung, ein Werkzeug zur Computersteuerung), kann trotzdem selbst freigeben: Wie
@@ -437,7 +507,10 @@ einem RFC-5987-Namen), mit `Content-Security-Policy: default-src 'none'; sandbox
 `X-Frame-Options: DENY`, `Cross-Origin-Resource-Policy: same-origin`,
 `Referrer-Policy: no-referrer` und `Cache-Control: no-store`: Eine Datei wird nie auf dem Origin
 des Servers dargestellt, wo XML Skripte ausführen könnte. HEAD wird abgelehnt. Ein Link liefert
-höchstens 5 Downloads.
+höchstens 5 Downloads. Eine Antwort wird in Stücken von 64 KiB geschrieben, und die Verbindung
+wird geschlossen, wenn der Browser eine Minute lang keines davon abnimmt: Ein Browser, der nicht
+mehr liest, kann die Datei nicht lange im Speicher halten, während eine langsame Verbindung, die
+weiterliest, die ganze Datei bekommt.
 
 **Speicherung.** Datensätze liegen nur im Speicher; die Bytes im Speicher oder in
 `<stateDir>/files/` (Ordner 0700, Dateien 0600, exklusiv angelegt, ohne Links zu folgen, zufällige

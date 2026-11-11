@@ -41,11 +41,15 @@ This server sits between an AI model and a sevDesk account. The design assumes:
    following a link and checked by inode, its type is recognized by content, sizes are capped) and
    write only inside `SEVDESK_OUTPUT_DIR` (new files only, mode 0600, never overwriting). Without
    these settings, no tool reads or writes local files. Received e-invoices are hostile input:
-   the XML parser refuses DOCTYPEs and entities and caps size and nesting depth, the PDF attachment
-   reader caps decompressed sizes, and every parsed text field is treated as untrusted. The DATEV
-   export ZIP is fetched from a presigned link that sevDesk returns; the server accepts exactly
-   one https host for it, follows no redirects, sends no credentials, caps the size and never
-   shows the link to the model.
+   the XML parser refuses DOCTYPEs and entities, caps size and nesting depth and reads an element
+   only in the namespace the invoice format defines for it; the PDF attachment reader caps
+   decompressed sizes, the number of values it builds from a PDF (one million), the length of
+   names, numbers and strings, and the parsing work per byte of the file; and every parsed text
+   field is treated as untrusted. A PDF is still parsed inside the server process, so a hostile
+   file at these limits can keep it busy for several seconds, but no longer. The DATEV export ZIP
+   is fetched from a presigned link that sevDesk returns; the server accepts exactly one https
+   host for it, follows no redirects, sends no credentials, caps the size and never shows the
+   link to the model.
 6. **Remote mode adds a network boundary.** The HTTP transport refuses to start without
    authentication, binds 127.0.0.1 by default (any other address needs a configured public URL), and
    validates Host and Origin. In OAuth mode it is single-tenant by default (only listed sevDesk
@@ -68,6 +72,31 @@ under its label so that no line of a value can pose as a label or a warning; a v
 instead of being cut silently, and the dry run returns it whole. The approval binds a hash of the
 complete preview, not of what fit on the screen. Only the human's answer counts: no tool argument
 can approve anything.
+
+Finalizing, sending and enshrining make a stored document binding, and everything printed on a
+draft (texts, address, positions, terms) can be written with the `write` tier, which asks nobody.
+So these previews list the document as sevDesk stores it, not only its number and totals:
+
+- the address printed on the document, right after the customer (the two can differ); when the
+  address text and the structured address fields are both stored and differ, both;
+- title, delivery date or period, cash discount, tax rule and tax note, an order's payment and
+  delivery terms, a credit note's booking category and the invoice it reduces;
+- head text and foot text as stored, with their HTML tags, not shortened;
+- every position: name, quantity × unit price (net or gross), tax rate, discount, line sums, and
+  its text as stored. Up to 100 positions are listed, as many as the draft tools write; a longer
+  list ends with a line that says how many are not listed and how many there are;
+- for a voucher: service date or period, payment deadline, tax rule, every position with booking
+  account, amount, tax rate, asset flag and its whole comment, and whether a receipt file is
+  attached.
+
+A fixed warning in each of these previews names what the facts do not show: the contact person,
+the country of the address, the units and linked articles of the positions and the layout of the
+PDF; for an enshrined voucher the names of the booking accounts and the content of the receipt
+file. The facts and the approval's binding come from the same read: besides the preview, the
+approval covers a hash of the whole record and all its positions as sevDesk sent them (texts,
+address, payment terms, positions, the time of the last change). A document that is changed after
+the human was asked, also in a part the preview does not show, is asked about again; a text that
+was changed before the human was asked is in the preview they read.
 
 The other way round, text the human cannot see must not reach sevDesk either. Before anything is
 read or sent, every write tool (dry runs included) refuses arguments that contain characters a
@@ -96,18 +125,25 @@ that is itself malicious or compromised (not a manipulated model inside an hones
 answer "approve" on its own. It stops prompt injection in the model, which cannot answer the form;
 it does not stop a hostile client. With a client you do not trust, use `SEVDESK_CONFIRM=browser`
 (over HTTP, the approvals inbox), where the human decides on a page the server itself serves.
-For finalizing, enshrining and sending a document, the approval also covers the whole document as
-sevDesk stores it (texts, address, payment terms, positions through its last change), not only
-the facts the preview shows: a draft edited after the human was asked is asked about again.
 
 **`SEVDESK_CONFIRM=browser`** over stdio. For clients without elicitation, the server creates an
 approval page, served by itself on `127.0.0.1` and an ephemeral port only, and opens it in the user's
 browser with the operating system's opener (`open`, `xdg-open` or `cmd /c start`, spawned with an
 argument array, no shell). `SEVDESK_CONFIRM_OPEN=0` turns the opening off. The page's link is a
 secret: it goes to the server log (stderr, one line per approval) and to the opener, never to the
-model, the tool result or the audit log. The call returns `approval_pending` with a short,
-non-secret reference code (also shown on the page, so the user can match them), the expiry and
-whether the page was opened. Each approval binds tool, argument hash and preview hash, has a random
+model, the tool result or the audit log. The link is a launch link,
+`http://127.0.0.1:<port>/open/<ticket>`, with a random 256-bit ticket that works once: its first
+request sets a cookie for the approval page and redirects there. The page (`/approve/<id>`) and
+the decision need that cookie; the page's address alone shows nothing and hands out no cookie.
+The opener accepts no other kind of URL, so the page's address never appears on a command line.
+The browser that used the link may open it again (the opener fired twice, the link clicked in
+the log as well). When the link is presented a second time from anywhere else, the server
+cannot tell which of the two is the user's browser: the request is withdrawn (an approval
+already given there does not run), both see a page that says the link was used twice, and the
+assistant has to ask again. A browser that loads the
+link ahead of time (address-bar prerendering) does not use it up. The call returns
+`approval_pending` with a short, non-secret reference code (also shown on the page, so the user
+can match them), the expiry and whether the page was opened. Each approval binds tool, argument hash and preview hash, has a random
 256-bit id, expires after 10 minutes and is used once; when the model calls the tool again with the
 same arguments after the human approved, the server prepares again and runs the action only if the
 preview is unchanged. The page is static HTML with every value escaped, under a strict Content
@@ -116,8 +152,8 @@ own fonts and icon from the server's `/assets/` path, nothing from anyone else).
 for a browser that asks for German, including the preview: tools that need a confirmation write
 it in both languages, the server refuses a pair that does not have the same facts and warnings,
 and the approval is bound to both texts. Approve and Reject are POST forms
-that must carry a per-approval CSRF token from the page, a per-approval `SameSite=Strict` cookie
-set when the page was loaded, `Host: 127.0.0.1:<port>` (every request is checked for the Host,
+that must carry a per-approval CSRF token from the page, the per-approval `SameSite=Strict` cookie
+set by the launch link, `Host: 127.0.0.1:<port>` (every request is checked for the Host,
 against DNS rebinding) and come from the page itself: `Origin: http://127.0.0.1:<port>`, or, from
 clients that send no `Origin`, the browser-set `Sec-Fetch-Site: same-origin`. `Origin: null` is
 refused; the page uses the `same-origin` referrer policy, under which browsers send the real
@@ -134,12 +170,24 @@ a model that only talks (for example one steered by prompt injection in sevDesk 
 an agent with such access. `elicit` stays the recommended mode, especially in agentic clients
 that can run commands.
 
+Other users of the same computer can read the opener's command line (`ps`, `/proc`), and with it
+the launch link. What they can do with it: nothing once the user's browser has used the link
+(they get a page without content and without a cookie, and their attempt cancels a request that
+has not run yet, which the user sees). If they present the link before the user's browser does,
+they hold the page until that browser arrives: the browser's arrival then withdraws the request,
+also when they had approved it already. Only an action the assistant ran in that gap (it called
+the tool again before the user's browser arrived) cannot be undone; the user's browser then
+shows that the link was used and decided elsewhere. So on a
+computer that people you do not trust can log in to, set `SEVDESK_CONFIRM_OPEN=0` (the link is
+then only in the server log, not on a command line) or use `elicit`.
+
 **`SEVDESK_CONFIRM=off`** is accepted only together with `SEVDESK_I_UNDERSTAND_NO_CONFIRM=1`.
 
 ## Audit log
 
-With `SEVDESK_AUDIT_LOG=<path>` every write call appends JSON Lines to that file: `dry_run`,
-`confirmation_requested` (with the preview and, in browser mode, the reference code),
+With `SEVDESK_AUDIT_LOG=<path>` every write call appends JSON Lines to that file: `dry_run`
+(with the preview), `confirmation_requested` (with the preview and, in browser mode, the
+reference code),
 `confirmation_refused` (a replayed, expired or mismatched confirmation), `approval_decided` (Approve
 or Reject pressed on the approval page, with the reference code), `declined`, `executing` (with how
 it was approved: `elicit`, `browser`, `confirmation_off` or `not_required` for the `write` tier),
@@ -151,8 +199,10 @@ strings up to 20,000 characters, longer ones marked). In remote mode each line a
 (the sevDesk account id; `bearer` in bearer mode if the startup lookup of the account failed) and
 `grant` (the grant id, or `bearer`), and one log covers every account the server serves. The file is
 created with mode 0600 (and tightened to 0600 if it already exists), opened append-only and never
-through a symlink. If the `executing` line cannot be written, the action is not run and nothing is
-sent (fail closed). The log is local and not tamper-proof: it records what this server did, for the
+through a symlink. On macOS and Linux a file that belongs to another user is refused, whatever its
+mode: its owner could rewrite it, and an ACL can grant access the mode does not show. Every line
+is written whole or the write fails; a short write is continued, not accepted. If the `executing`
+line cannot be written, the action is not run and nothing is sent (fail closed). The log is local and not tamper-proof: it records what this server did, for the
 user, and is no defense against someone who controls the machine. Every line starts with `ts` and
 the format version `v` (currently `1`).
 
@@ -236,8 +286,14 @@ rebinding; only `/healthz` is exempt, for platform health checks). An `Origin` h
 name an allowed host (the check compares host names; `/mcp` sends no CORS headers, so web pages on
 other origins cannot call it), and form POSTs must come from the server's own pages (`Origin: null`
 is refused). Bodies are capped per route and must arrive within a short time, requests have
-deadlines, rate limits apply per client address (IPv6 per /64 network), and the number of requests
-in flight is capped in a way that one client cannot use up for everyone. Responses carry `nosniff`,
+deadlines, and rate limits apply per client address (IPv6 per /64 network). The server handles at
+most 64 requests at once: 8 per client address (32 with `SEVDESK_OAUTH_ACCOUNTS=any`) and, on
+`/mcp`, 8 per sevDesk account, whatever addresses and connections they come from (429 beyond). 8
+of the 64 are kept for the other routes, so token refresh, sign-in, the approval inbox and the
+file pages stay reachable while `/mcp` is busy. Seven accounts that each use their 8 can still
+fill `/mcp` for the others (503 until a request ends). A JSON-RPC batch, which only clients of
+protocol version 2025-03-26 send, may hold at most 8 messages and no request id twice; otherwise
+it is refused before any of it runs. Responses carry `nosniff`,
 `no-store, no-transform` (so proxies do not rewrite pages), a referrer policy and, on https, HSTS. URLs the server prints or redirects to are built
 from the configured public URL, never from request headers. `SEVDESK_HTTP_TRUST_PROXY` must match
 the real number of proxies in front: a higher value lets clients choose the IP address the rate
@@ -323,8 +379,12 @@ POSTs that must also carry a CSRF token bound to the session and come from the i
 approval belongs to the session's account. An approval belongs to the grant that asked: a retry
 from another connection, even of the same account, cannot use it. Approvals still bind tool,
 arguments and preview, expire after 10 minutes, are used once, and at most five per account wait at
-a time; the store's overall limit cannot be used by one account to push out another account's
-approvals.
+a time. An account keeps at most 20 approvals, waiting and decided, and makes room among its own.
+The server keeps 100 in all. When that is reached, room comes only from an account that holds
+more approvals than the one asking: its oldest rejected or waiting one first, an approved one
+that was not used yet last (its owner is asked again on the next try, as after an expiry). So no
+account loses an approval to one that holds as many or more, and a few accounts that leave
+approved requests unused cannot keep the others from asking.
 
 **Limits of the inbox.** An agent that can drive a signed-in browser (browser automation, a
 computer-use tool) can still approve on its own: like the local page, the inbox protects against a
@@ -386,7 +446,10 @@ are attachments only (`Content-Disposition: attachment` with an ASCII and an RFC
 `Content-Security-Policy: default-src 'none'; sandbox`, `nosniff`, `X-Frame-Options: DENY`,
 `Cross-Origin-Resource-Policy: same-origin`, `Referrer-Policy: no-referrer` and
 `Cache-Control: no-store`: a file is never rendered on the server's origin, where XML could run
-script. HEAD is refused. A link serves at most 5 downloads.
+script. HEAD is refused. A link serves at most 5 downloads. A response is written in pieces of 64
+KiB, and the connection is closed when the browser takes none of them for a minute: a browser
+that stops reading cannot hold the file in memory for long, while a slow connection that keeps
+reading gets the whole file.
 
 **Storage.** Records live in memory only; the bytes in memory or in `<stateDir>/files/` (folder
 0700, files 0600 created exclusively without following links, random names), encrypted with

@@ -101,6 +101,23 @@ and 1,000 sessions. A checked consent form completes once. The `grants list` and
 commands append to the same file while the server runs; the server reads new events before every
 `/token` request and at most once a second on `/mcp`.
 
+Two rules of the file were added after review 2026-11, round 3:
+
+- **Whole lines.** A write can put fewer bytes on disk than asked and still succeed (a nearly
+  full volume). A line cut that way is a torn last line, which a reader skips, so a revocation
+  could vanish while `grants revoke` printed success. Every append (the server's, the command's,
+  the lines carried over at a compaction) now writes the whole line or fails, and starts on a new
+  line when the file ends in an unfinished one (shared with the audit log,
+  `src/safety/append-file.ts`). `grants revoke` reads the file back the way the server does and
+  reports success only when each of its revocations is in it. A cut line that a later append
+  closed is a broken line in the middle of the file, which a start and the `grants` command
+  refuse; a running server that meets one, or whose own append failed, rewrites the file from
+  what it holds at its next sync instead of waiting for the daily compaction.
+- **Owner.** The server uses the state directory and `grants.jsonl` only when they belong to the
+  user it runs as (macOS and Linux). The mode alone does not settle who may change them: the
+  owner can loosen it again, and on macOS an ACL grants access that no mode bit shows. The
+  `grants` command does not check this, so an operator can run it as root.
+
 **Single-tenant by default.** OAuth needs `SEVDESK_OAUTH_ACCOUNTS`: the sevDesk account ids that
 may connect. `any` opts in to serving any account and logs a warning. Both allowlists apply on every
 use, not only at consent: a grant whose account or client host is no longer listed is revoked at
@@ -131,6 +148,12 @@ one process and its state directory. The deploy templates run one instance with 
   `_PREVIOUS` signs everyone out.
 - Bad: the server keeps state: a volume to mount and back up, a lock, and no horizontal scaling.
   Several instances would need a shared store or sticky routing.
+- Bad: the owner rule refuses setups that worked before by mode alone: a server run as root on a
+  state directory (or with an audit log) that another user owns. The directory has to be given
+  to the server's user (`chown`).
+- Bad: when no server runs and an append of the `grants` command fails half-way, the file keeps a
+  broken line that nothing repairs; the next start refuses the file (fail closed) and the
+  operator has to restore or move it.
 - Bad: clients that only support DCR cannot use OAuth mode; they have to use bearer mode.
 - Bad: the sevDesk token itself never expires. Grant lifetimes, revocation and the refresh-time
   check are the only limits we can enforce.

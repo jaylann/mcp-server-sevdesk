@@ -82,6 +82,18 @@ always approves what actually runs:
   CSP and decides through POST forms checked for a CSRF token, a `SameSite=Strict` cookie, Origin
   and Host. The model calls the tool again with the same arguments; the framework runs the action
   only if the human approved and the preview is unchanged.
+
+  The link is a launch link with a single-use ticket (`/open/<ticket>`, 256 bit), not the page's
+  address (review 2026-11, round 3). The opener gets the link as an argument, and a command line
+  is readable by other local users; before, the page's address was the capability, and whoever
+  requested it got the cookie and the form token. Now the first request of the ticket sets the
+  cookie and redirects to the page (`/approve/<id>`), which shows and decides only with that
+  cookie. A second request of the ticket from another browser withdraws the request, also one
+  that was approved but not run yet (the server cannot tell which of the two is the user's; the
+  store's `withdraw`), and the opener refuses every URL that is not a
+  launch link. The browser that used the ticket may open the link again; a speculative load
+  (prerender) does not use it up.
+
 - `off`: allowed only together with `SEVDESK_I_UNDERSTAND_NO_CONFIRM=1`.
 
 Write-tool results are wrapped as `{status: "done" | "dry_run" | "approval_pending" | "declined",
@@ -98,6 +110,19 @@ sevDesk is what the human saw. The approval page accepts decisions only from its
 equal to its origin, or `Sec-Fetch-Site: same-origin` without `Origin`; never `Origin: null`,
 which is why the page uses the `same-origin` referrer policy) and lets at most five approvals wait
 at once.
+
+**The preview shows what the approval makes binding.** Finalize, send and enshrine act on a stored
+document, and everything printed on a draft can be written with the `write` tier, which asks
+nobody. Their previews therefore list the stored content (`src/domain/lifecycle/content.ts`): the
+address block after the customer, title, delivery period, tax rule and note, head and foot text
+as stored, an order's terms, and every position with its figures and text (up to 100, then a line
+with the number not listed). A fixed warning names what is not shown (contact person, country of
+the address, units and linked articles, the PDF layout). The facts come from the same read as the
+`binding` below, so what is shown and what is bound cannot differ. Voucher finalization lists
+every field `sevdesk_voucher_update_draft` writes (dates, positions with their whole comment,
+asset flag, whether a file is attached). Before this (review 2026-11, round 3) these previews
+showed number, customer, dates and totals only: the binding stopped an edit made after the human
+was asked, but a foot text changed before the human was asked was approved unseen.
 
 `enshrine` always carries an "irreversible (GoBD)" warning.
 
@@ -131,6 +156,16 @@ text, and all four MCP tool annotations declared explicitly on every tool.
 - Bad: the browser mode is weaker than elicitation. The model never sees the link, but an agent
   that can read the server's stderr log or drive the user's browser could still approve on its
   own; it only stops a model that can do nothing but talk. Elicitation stays the recommended mode.
+- Bad: the launch link closes the process list only in part. Another local user who presents the
+  ticket before the user's browser does holds the page until that browser arrives. The arrival
+  rejects a request that is still open, but a decision made in the gap stands: the local page
+  reaches the approval store only through `get` and `decide`, and a decision cannot be withdrawn.
+  The user's browser then says that the link was used and decided elsewhere. Withdrawing an
+  approval that was not taken yet would close this; holding approvals back for some seconds was
+  considered and dropped, because it delays every approval. Until then: `SEVDESK_CONFIRM_OPEN=0`
+  or `elicit` on a computer shared with people one does not trust.
+- Bad: a link opened twice in two different browsers (not the same one) cancels the request, and
+  the user has to ask again. The rejection is recorded as `approval_decided` with `rejected`.
 - Bad: elicitation trusts the client application. The client renders the form and returns the
   answer; the signed state proves the server asked, not that a human answered, so a malicious or
   compromised client can approve its own calls. It stops a manipulated model, not a hostile
@@ -139,6 +174,11 @@ text, and all four MCP tool annotations declared explicitly on every tool.
 - Good: an approval covers more than the preview's text. A tool can add a `binding` (a digest of
   content the preview leaves out); finalize, enshrine and send bind the whole stored document, so a
   draft edited after the human was asked is asked about again (finding 1).
+- Good: the human reads the document they make binding, not only its number and totals (review
+  2026-11, round 3).
+- Bad: these previews are long for a document with many positions or long texts (no extra
+  request, but more text in the prompt and on the page). What would need further reads to be
+  shown by name (contact person, country, units) is named in a warning instead.
 - Bad: after a timeout on a write the outcome is unknown. The tool reports this and tells the user
   how to check, instead of retrying.
 

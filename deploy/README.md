@@ -18,8 +18,10 @@ PRs bump the image version in these files, so a template always names the releas
 
 ## The image
 
-- Tags: the exact version (`0.4.1`), the minor line (`0.4`) and `latest`, for `linux/amd64` and
-  `linux/arm64`. Each release carries a build provenance attestation and an SBOM:
+- Tags: the exact version (`1.2.0`), <!-- x-release-please-version -->
+  the minor line (the same without the patch number; it moves to each new patch release) and
+  `latest` (not for pre-releases), for `linux/amd64` and `linux/arm64`. Each release carries a
+  build provenance attestation and an SBOM:
   `gh attestation verify oci://ghcr.io/jaylann/mcp-server-sevdesk:<version> --owner jaylann`.
 - Distroless, runs as uid 65532 with a read-only root filesystem; `/data` is the only writable
   path (a volume, owned by 65532). Listens on port 8080; `GET /healthz` is the health check.
