@@ -1,8 +1,18 @@
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  open,
+  readFile,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { type AuditEvent, createAuditLog } from "../../../src/safety/audit.js";
 import { TEST_TOKEN } from "../../helpers/config.js";
@@ -252,5 +262,49 @@ describe("audit log", () => {
         sha256,
       },
     ]);
+  });
+});
+
+describe("audit log: incomplete writes (security review 2026-11, wave 2)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("completes a line that the first write only partly wrote", async () => {
+    const path = join(await tempDir(), "audit.jsonl");
+    const probe = await open(path, "a");
+    const proto = Object.getPrototypeOf(probe) as { write: (...args: unknown[]) => unknown };
+    await probe.close();
+    const original = proto.write;
+    let first = true;
+    vi.spyOn(proto, "write").mockImplementation(function (this: unknown, ...args: unknown[]) {
+      if (first) {
+        first = false;
+        // A nearly full volume: only 16 bytes go through, and `write` still resolves.
+        const [data] = args;
+        return typeof data === "string"
+          ? original.call(this, data.slice(0, 16))
+          : original.call(this, data, args[1], 16);
+      }
+      return original.apply(this, args);
+    });
+    const log = createAuditLog({ path, secrets: [TEST_TOKEN] });
+
+    await log.record(event({ event: "executing" }));
+
+    expect(await lines(path)).toEqual([expect.objectContaining({ event: "executing" })]);
+  });
+
+  it("starts a new line after one an earlier failure cut short", async () => {
+    const path = join(await tempDir(), "audit.jsonl");
+    await writeFile(path, '{"event":"executing","cut', { mode: 0o600 });
+    const log = createAuditLog({ path, secrets: [TEST_TOKEN] });
+
+    await log.record(event({ event: "executed" }));
+
+    const text = await readFile(path, "utf8");
+    const [cut, executed] = text.trimEnd().split("\n");
+    expect(cut).toBe('{"event":"executing","cut');
+    expect(JSON.parse(executed ?? "")).toMatchObject({ event: "executed" });
   });
 });

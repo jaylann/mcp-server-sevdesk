@@ -19,6 +19,7 @@ import { constants } from "node:fs";
 import { access, type FileHandle, open, realpath, stat, unlink } from "node:fs/promises";
 import { basename, dirname, extname, join } from "node:path";
 
+import { openedInside } from "../../safety/local-files.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
 
 /** Suffixes tried after the plain name before giving up. */
@@ -86,11 +87,33 @@ export async function writeNewFile(
       if (errorCode(error) === "EEXIST") continue;
       throw error;
     }
+    // Before a byte is written: the output folder (or one above it) may have been replaced by a
+    // link elsewhere since it was resolved. The new file stays empty and is not removed: removing
+    // it by its path would follow the replaced folder and could delete someone else's file of
+    // the same name there (security review 2026-11, wave 2).
+    const created = await handle.stat();
+    const placed = await openedInside(handle, target, created, (path) => {
+      return dirname(path) === directory;
+    });
+    if (!placed) {
+      await handle.close();
+      throw refused(
+        `SEVDESK_OUTPUT_DIR changed while the file was being created (a folder was replaced); ` +
+          `nothing was saved, an empty file named ${candidate} may be left behind. The user ` +
+          "should check the folder",
+      );
+    }
     try {
       await handle.writeFile(bytes);
     } catch (error) {
+      // Empty it through the handle (no path involved), then remove it only while its path still
+      // names this very file.
+      await handle.truncate(0).catch(() => undefined);
       await handle.close();
-      await unlink(target).catch(() => undefined);
+      const now = await stat(target).catch(() => undefined);
+      if (now?.dev === created.dev && now.ino === created.ino) {
+        await unlink(target).catch(() => undefined);
+      }
       throw error;
     }
     await handle.close();

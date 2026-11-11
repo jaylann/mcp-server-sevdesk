@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -68,5 +68,29 @@ describe("writeNewFile", () => {
     await expect(
       writeNewFile(join(dir, "missing"), "RE.pdf", new Uint8Array([1])),
     ).rejects.toMatchObject({ code: "ENOENT" });
+  });
+});
+
+describe("writeNewFile: an output folder swapped for a link (security review 2026-11, finding 10)", () => {
+  it("creates nothing outside and refuses when the folder now leads elsewhere", async () => {
+    const parent = await tempDir();
+    const elsewhere = await tempDir();
+    await mkdir(join(parent, "out"));
+    const directory = await resolveOutputDir(join(parent, "out"));
+
+    // After resolving, `out` is replaced by a link to another folder.
+    await rename(join(parent, "out"), join(parent, "out-old"));
+    await symlink(elsewhere, join(parent, "out"));
+
+    const error: unknown = await writeNewFile(directory, "RE-1001.pdf", new Uint8Array([1])).catch(
+      (reason: unknown) => reason,
+    );
+    expect(error).toBeInstanceOf(SevdeskError);
+    expect((error as SevdeskError).message).toContain("SEVDESK_OUTPUT_DIR changed");
+    // No byte reached the other folder. The empty file is left, not removed by its path: that
+    // path leads through the replaced folder, where removing could hit someone else's file
+    // (security review 2026-11, wave 2).
+    expect(await readdir(elsewhere)).toEqual(["RE-1001.pdf"]);
+    expect((await stat(join(elsewhere, "RE-1001.pdf"))).size).toBe(0);
   });
 });
