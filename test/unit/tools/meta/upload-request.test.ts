@@ -40,12 +40,14 @@ async function connect(transfer: TransferFixture, config: Config = filesConfig()
 }
 
 describe("sevdesk_upload_request: metadata", () => {
-  it("is a read tool of the meta toolset that is not idempotent", () => {
+  it("is a read tool of the meta toolset that is neither read-only nor idempotent", () => {
     expect(META_TOOLS).toContain(tool);
     expect(tool).toMatchObject({ tier: "read", toolset: "meta" });
-    expect(tool.localEffects).toBeUndefined();
+    // Every call opens an upload ticket on this server (an account holds only a few), so the
+    // tool does not claim to be read-only although it changes nothing in sevDesk.
+    expect(tool.localEffects).toBe("opens-upload");
     expect(tool.annotations).toEqual({
-      readOnlyHint: true,
+      readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: false,
       openWorldHint: false,

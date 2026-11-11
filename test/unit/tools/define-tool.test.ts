@@ -222,9 +222,23 @@ describe("validateToolDefinition", () => {
       ]);
     });
 
+    it('treats "opens-upload" like "writes-files": a read tool with it is not read-only', () => {
+      // An upload ticket is state on this server, like a download link (review 2026-11, round 3).
+      expect(problems({ localEffects: "opens-upload", annotations: writesFiles })).toEqual([]);
+      expect(problems({ localEffects: "opens-upload" })).toEqual([
+        'localEffects "opens-upload" requires annotations.readOnlyHint = false.',
+      ]);
+      expect(
+        problems({
+          localEffects: "opens-upload",
+          annotations: { ...writesFiles, destructiveHint: true },
+        }),
+      ).toEqual(['tier "read" requires annotations.destructiveHint = false.']);
+    });
+
     it("rejects other values", () => {
       expect(problems({ localEffects: "deletes-files", annotations: writesFiles })).toEqual([
-        'localEffects must be "reads-files" or "writes-files" when set.',
+        'localEffects must be "reads-files", "writes-files" or "opens-upload" when set.',
         'tier "read" requires annotations.readOnlyHint = true.',
       ]);
     });
@@ -243,6 +257,7 @@ describe("validateToolDefinition", () => {
     ])("is accepted on %s tools without extra annotation rules", (tier, annotations) => {
       expect(problems({ tier, annotations, localEffects: "writes-files" })).toEqual([]);
       expect(problems({ tier, annotations, localEffects: "reads-files" })).toEqual([]);
+      expect(problems({ tier, annotations, localEffects: "opens-upload" })).toEqual([]);
     });
   });
 

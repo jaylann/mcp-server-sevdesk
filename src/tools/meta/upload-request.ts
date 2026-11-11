@@ -5,7 +5,10 @@
  * upload page (it shows only trusted values); the upload needs a browser session of the account.
  * See `src/safety/file-access.ts` and docs/adr/0008-file-transfer-over-http.md.
  *
- * Read tier: it changes nothing in sevDesk. Not idempotent: every call opens another ticket.
+ * Read tier: it changes nothing in sevDesk. It is not read-only all the same (`readOnlyHint:
+ * false`, `localEffects: "opens-upload"`): every call opens another ticket in the transfer store,
+ * of which an account holds only a few at a time, so a client that runs read-only tools without
+ * asking could use them up (review 2026-11, round 3). For the same reason it is not idempotent.
  */
 import { z } from "zod";
 
@@ -51,11 +54,12 @@ export const uploadRequestTool = defineTool({
   toolset: "meta",
   tier: "read",
   annotations: {
-    readOnlyHint: true,
+    readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: false,
     openWorldHint: false,
   },
+  localEffects: "opens-upload",
   available: remoteFilesEnabled,
   input: z.strictObject({
     purpose: z

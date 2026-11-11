@@ -9113,7 +9113,7 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
       "destructiveHint": false,
       "idempotentHint": false,
       "openWorldHint": false,
-      "readOnlyHint": true,
+      "readOnlyHint": false,
       "title": "Request a file upload",
     },
     "inputSchema": {
