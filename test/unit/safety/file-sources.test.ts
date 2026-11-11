@@ -294,15 +294,15 @@ describe("remoteFileAccess: deliveries", () => {
 
     expect(delivery).toEqual({
       download: {
-        url: expect.stringMatching(
-          // The origin is matched literally: its dots must not stand for any character.
-          new RegExp(`^${FILES_ORIGIN.replaceAll(".", String.raw`\.`)}/files/[A-Za-z0-9_-]{43}$`),
-        ) as unknown,
+        url: expect.stringMatching(/\/files\/[A-Za-z0-9_-]{43}$/) as unknown,
         reference: expect.stringMatching(/^[A-HJ-NP-Z2-9]{6}$/) as unknown,
         expiresAt: "2026-11-09T12:30:00.000Z",
       },
     });
-    const id = ("download" in delivery ? delivery.download.url : "").split("/").pop() ?? "";
+    const url = "download" in delivery ? delivery.download.url : "";
+    // The origin is compared as text, not put into a pattern (its dots would match anything).
+    expect(url.startsWith(`${FILES_ORIGIN}/files/`)).toBe(true);
+    const id = url.split("/").pop() ?? "";
     expect(await transfer.store.takeDownload(id, "4712")).toEqual({ status: "unknown" });
     expect(await transfer.store.takeDownload(id, "4711")).toMatchObject({
       status: "served",

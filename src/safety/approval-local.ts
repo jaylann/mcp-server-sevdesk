@@ -106,10 +106,11 @@ export function createLocalApprovalChannel(
   const launchOf = new Map<string, Launch>();
 
   /**
-   * The secret for `purpose` and an approval id (or, for `launch`, a ticket): 43 base64url
-   * characters, like a random id.
+   * The tag for `purpose` and an approval id (or, for `launch`, a ticket): an HMAC under the
+   * key of this process, 43 base64url characters. It is what the cookies and the form carry; it
+   * is derived on every request and never stored.
    */
-  function secretFor(purpose: "csrf" | "cookie" | "launch", id: string): string {
+  function tagFor(purpose: "csrf" | "cookie" | "launch", id: string): string {
     return createHmac("sha256", key).update(`${purpose}\0${id}`, "utf8").digest("base64url");
   }
 
@@ -117,7 +118,7 @@ export function createLocalApprovalChannel(
   function hasPageCookie(request: IncomingMessage, approvalId: string): boolean {
     return safeEqual(
       readCookie(request.headers.cookie, COOKIE_NAME) ?? "",
-      secretFor("cookie", approvalId),
+      tagFor("cookie", approvalId),
     );
   }
 
@@ -128,10 +129,10 @@ export function createLocalApprovalChannel(
     );
     const attributes = `HttpOnly; SameSite=Strict; Max-Age=${String(lifetimeSeconds)}`;
     return [
-      `${COOKIE_NAME}=${secretFor("cookie", approval.id)}; Path=/approve/${approval.id}; ${attributes}`,
+      `${COOKIE_NAME}=${tagFor("cookie", approval.id)}; Path=/approve/${approval.id}; ${attributes}`,
       // Marks the browser that used the ticket, so opening the link again there is no "second
       // party" (the opener firing twice, the same link clicked in the log).
-      `${LAUNCH_COOKIE_NAME}=${secretFor("launch", ticket)}; Path=/open/${ticket}; ${attributes}`,
+      `${LAUNCH_COOKIE_NAME}=${tagFor("launch", ticket)}; Path=/open/${ticket}; ${attributes}`,
     ];
   }
 
@@ -250,7 +251,7 @@ export function createLocalApprovalChannel(
       // this request, say that: a decision made there can no longer be withdrawn.
       const firstUser = safeEqual(
         readCookie(request.headers.cookie, LAUNCH_COOKIE_NAME) ?? "",
-        secretFor("launch", ticket),
+        tagFor("launch", ticket),
       );
       if (launch.used && !firstUser) replyVoided(response, page, { cancelled: false });
       else reply(response, page, 404, t.notFound);
@@ -269,7 +270,7 @@ export function createLocalApprovalChannel(
     }
     const sameBrowser = safeEqual(
       readCookie(request.headers.cookie, LAUNCH_COOKIE_NAME) ?? "",
-      secretFor("launch", ticket),
+      tagFor("launch", ticket),
     );
     if (launch.used && !sameBrowser) {
       launch.voided ??= {
@@ -310,7 +311,7 @@ export function createLocalApprovalChannel(
         expiresAt: approval.expiresAt,
         now: now(),
         formAction: `/approve/${approval.id}`,
-        csrf: secretFor("csrf", approval.id),
+        csrf: tagFor("csrf", approval.id),
       },
       { ...page, nonce },
     );
@@ -325,7 +326,7 @@ export function createLocalApprovalChannel(
     approval: ApprovalView,
     form: URLSearchParams,
   ): void {
-    const csrfOk = safeEqual(form.get("csrf") ?? "", secretFor("csrf", approval.id));
+    const csrfOk = safeEqual(form.get("csrf") ?? "", tagFor("csrf", approval.id));
     if (!csrfOk || !hasPageCookie(request, approval.id)) {
       reply(response, page, 403, page.t.local.csrf);
       return;

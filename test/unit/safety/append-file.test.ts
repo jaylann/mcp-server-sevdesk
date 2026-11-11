@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync } from "node:fs";
 import { type FileHandle, open } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -36,17 +36,23 @@ function shortWrites(handle: FileHandle, limit: number): FileHandle {
   });
 }
 
+/** What the file behind `handle` holds, read through the handle (the path is opened only once). */
+async function contentOf(handle: FileHandle): Promise<string> {
+  const { size } = await handle.stat();
+  const bytes = Buffer.alloc(size);
+  await handle.read(bytes, 0, size, 0);
+  return bytes.toString("utf8");
+}
+
 describe("writeAll", () => {
   it("keeps writing until every byte is in the file", async () => {
-    const path = join(tempDir(), "file");
-    const handle = await open(path, "a+");
+    const handle = await open(join(tempDir(), "file"), "a+");
     try {
       await writeAll(shortWrites(handle, 3), Buffer.from("0123456789\n"));
+      expect(await contentOf(handle)).toBe("0123456789\n");
     } finally {
       await handle.close();
     }
-
-    expect(readFileSync(path, "utf8")).toBe("0123456789\n");
   });
 
   it("rejects when a write makes no progress", async () => {
@@ -67,16 +73,14 @@ describe("appendLine", () => {
     ["a file that ends a line", "old\n", "old\nnew\n"],
     ["a file whose last line was cut short", "old\ncu", "old\ncu\nnew\n"],
   ])("appends to %s", async (_, before, after) => {
-    const path = join(tempDir(), "file");
-    writeFileSync(path, before);
-    const handle = await open(path, "a+");
+    const handle = await open(join(tempDir(), "file"), "a+");
     try {
+      await handle.write(before);
       await appendLine(shortWrites(handle, 2), "new\n");
+      expect(await contentOf(handle)).toBe(after);
     } finally {
       await handle.close();
     }
-
-    expect(readFileSync(path, "utf8")).toBe(after);
   });
 });
 
