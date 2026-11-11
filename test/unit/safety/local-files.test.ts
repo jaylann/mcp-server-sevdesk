@@ -191,14 +191,17 @@ describe("openedInside: a folder swapped for a link (security review 2026-11, fi
     try {
       await mkdir(join(root, "sub"));
       await writeFile(join(root, "sub", "invoice.xml"), XML);
+      await writeFile(join(root, "sub", "control.xml"), XML);
       await writeFile(join(elsewhere, "invoice.xml"), XML);
-      // `root` is a real path already, so this is the file's real path (no check-then-use).
+      // `root` is a real path already, so these are the files' real paths. Each path is opened
+      // once: the control file before the swap, the target after it.
       const real = join(root, "sub", "invoice.xml");
+      const control = join(root, "sub", "control.xml");
       const inRoot = (path: string): boolean => path.startsWith(`${root}/`);
 
-      const before = await open(real, "r");
+      const before = await open(control, "r");
       try {
-        expect(await openedInside(before, real, await before.stat(), inRoot)).toBe(true);
+        expect(await openedInside(before, control, await before.stat(), inRoot)).toBe(true);
       } finally {
         await before.close();
       }
