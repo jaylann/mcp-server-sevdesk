@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Tier } from "../../../src/safety/tiers.js";
 import { createSevdeskClient } from "../../../src/sevdesk/client.js";
 import { SevdeskError } from "../../../src/sevdesk/errors.js";
+import { readOnlyClient } from "../../../src/sevdesk/scoped-client.js";
 import {
   detectGeneration,
   detectPositionGeneration,
@@ -50,6 +51,46 @@ describe("getBookkeepingSystemVersion", () => {
     expect(await getBookkeepingSystemVersion(second)).toBe("2.0");
     expect(firstRequest).toHaveBeenCalledTimes(1);
     expect(secondRequest).toHaveBeenCalledTimes(1);
+  });
+
+  // Review 2026-11, round 3: a write tool prepares with a new read-only wrapper on every call.
+  it("asks once for one cache owner, through separate client wrappers", async () => {
+    const request = vi.fn(() => Promise.resolve({ version: "2.0" }));
+    const base = fakeClient(request);
+    const owner = {};
+    const first = readOnlyClient(base, "preparing a write");
+    const second = readOnlyClient(base, "preparing a write");
+    expect(first).not.toBe(second);
+
+    expect(await getBookkeepingSystemVersion(first, undefined, { cacheOwner: owner })).toBe("2.0");
+    expect(await getBookkeepingSystemVersion(second, undefined, { cacheOwner: owner })).toBe("2.0");
+    expect(request).toHaveBeenCalledTimes(1);
+
+    // Keyed by the wrapper (no owner), every preparation asked again: the behavior before.
+    await getBookkeepingSystemVersion(readOnlyClient(base, "preparing a write"));
+    await getBookkeepingSystemVersion(readOnlyClient(base, "preparing a write"));
+    expect(request).toHaveBeenCalledTimes(3);
+
+    // Another owner (another account) has its own entry.
+    await getBookkeepingSystemVersion(first, undefined, { cacheOwner: {} });
+    expect(request).toHaveBeenCalledTimes(4);
+  });
+
+  it("asks again when the cached version has expired", async () => {
+    const answers = ["1.0", "2.0"];
+    const request = vi.fn(() => Promise.resolve({ version: answers.shift() }));
+    const client = fakeClient(request);
+    const owner = {};
+    let clock = 0;
+    const options = { cacheOwner: owner, now: () => clock };
+
+    expect(await getBookkeepingSystemVersion(client, undefined, options)).toBe("1.0");
+    clock = 15 * 60_000 - 1;
+    expect(await getBookkeepingSystemVersion(client, undefined, options)).toBe("1.0");
+    // The account was moved to Update 2.0 meanwhile: seen after 15 minutes.
+    clock = 15 * 60_000;
+    expect(await getBookkeepingSystemVersion(client, undefined, options)).toBe("2.0");
+    expect(request).toHaveBeenCalledTimes(2);
   });
 
   it("passes the signal and does not cache failures", async () => {

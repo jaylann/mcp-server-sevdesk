@@ -107,12 +107,17 @@ function refuse(message: string): never {
 // Bookkeeping generation and regime
 // ---------------------------------------------------------------------------------------------
 
-/** Refuses accounts on bookkeeping system 1.0 (voucher writes need Update 2.0). */
+/**
+ * Refuses accounts on bookkeeping system 1.0 (voucher writes need Update 2.0). `cacheOwner` is
+ * the owner of the version cache (callers pass `options.cacheOwner`, i.e. `ctx.config`); without
+ * it the version is cached per client, which a write preparation gets anew on every call.
+ */
 export async function assertUpdate2(
   client: SevdeskClient,
   signal: AbortSignal | undefined,
+  cacheOwner?: object,
 ): Promise<void> {
-  if ((await getBookkeepingSystemVersion(client, signal)) === "2.0") return;
+  if ((await getBookkeepingSystemVersion(client, signal, { cacheOwner })) === "2.0") return;
   refuse(
     "This sevDesk account still uses bookkeeping system 1.0. Voucher writes need sevDesk " +
       "Update 2.0 (tax rules and booking accounts); create the voucher (Beleg) in the sevDesk " +

@@ -203,7 +203,7 @@ export async function prepareVoucherCreateSpec(
     spec.deliveryDateUntil,
     false,
   );
-  await assertUpdate2(client, signal);
+  await assertUpdate2(client, signal, options.cacheOwner);
   const regime = await voucherRegime(client, options);
   const { rule, warnings: ruleWarnings } = resolveVoucherRule(spec.kind, spec.taxRuleId, regime);
   const positions = resolveVoucherPositions(rule, spec.positions, regime);
@@ -322,7 +322,7 @@ export async function prepareVoucherUpdate(
     args.file === undefined ? undefined : await readReceiptFile(options.files, args.file);
   const stored = await loadStoredVoucher(client, args.id, signal);
   const kind = checkDraft(stored, "changed");
-  await assertUpdate2(client, signal);
+  await assertUpdate2(client, signal, options.cacheOwner);
   const regime = await voucherRegime(client, options);
 
   const storedMode = storedAmountMode(stored.positions);

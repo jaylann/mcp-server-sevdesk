@@ -174,7 +174,7 @@ export async function resolveCreateBasics(
   const mode = args.priceMode ?? "net";
 
   const [version, contact, contactPerson, countries] = await Promise.all([
-    getBookkeepingSystemVersion(client, signal),
+    getBookkeepingSystemVersion(client, signal, { cacheOwner: options.cacheOwner }),
     loadContact(client, args.contactId, signal),
     resolveContactPerson(client, args.contactPersonId, signal),
     loadCountries(client, signal),
@@ -379,7 +379,7 @@ export async function resolveUpdateBasics(
   const addressChanged = contactChanged || hasAddressInput(args);
 
   const [version, contact, contactPerson, countries] = await Promise.all([
-    getBookkeepingSystemVersion(client, signal),
+    getBookkeepingSystemVersion(client, signal, { cacheOwner: options.cacheOwner }),
     loadContact(client, contactId, signal),
     args.contactPersonId !== undefined || stored.contactPerson === undefined
       ? resolveContactPerson(client, args.contactPersonId, signal)
