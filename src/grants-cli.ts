@@ -2,7 +2,8 @@
  * The `grants list` and `grants revoke` commands: manage the OAuth grants of a server's state
  * directory (`SEVDESK_HTTP_STATE_DIR`), also while the server runs. Revocations are appended to
  * the grant store file; the running server reads them before its next token request and within
- * a second on `/mcp`, so a revoked client is signed out on its next call.
+ * a second on `/mcp`, so a revoked client is signed out on its next call. `revoke` reads the file
+ * back before it reports success.
  *
  * Grants of a server without a state directory live only in that process and cannot be managed
  * from here.
@@ -11,7 +12,7 @@ import { isAbsolute } from "node:path";
 
 import type { Command } from "./cli.js";
 import { type Env, nonEmpty } from "./config.js";
-import { openGrantStore, StateDirError } from "./http/oauth/grant-store.js";
+import { openGrantStore, StateDirError, unconfirmedRevocations } from "./http/oauth/grant-store.js";
 import type { GrantRecord, GrantStore } from "./http/types.js";
 
 export type GrantsCommand = Extract<Command, { kind: "grants-list" | "grants-revoke" }>;
@@ -58,9 +59,31 @@ export async function runGrantsCommand(
     return command.kind === "grants-list"
       ? list(store, command.json, now(), io)
       : await revoke(store, command.target, io);
+  } catch (error) {
+    // A revocation that could not be written, or a file that cannot be read back.
+    if (!(error instanceof StateDirError)) throw error;
+    io.err(`grants: ${error.message}\n`);
+    return 1;
   } finally {
     await store.close();
   }
+}
+
+/**
+ * Reads the store back after the revocations were appended and says whether they are all in it.
+ * "Revoked" is printed only after this: a line the volume cut short is skipped by the server as
+ * a torn last line, so the client would have stayed signed in (review 2026-11, round 3).
+ */
+async function confirmed(store: GrantStore, io: GrantsCommandIo): Promise<boolean> {
+  const missing = await unconfirmedRevocations(store);
+  if (missing === 0) return true;
+  io.err(
+    `grants: ${String(missing)} revocation${missing === 1 ? " is" : "s are"} not in the grant ` +
+      "store when it is read back, so the server will not apply " +
+      `${missing === 1 ? "it" : "them"}. Check the free space of the state directory and run ` +
+      "the command again.\n",
+  );
+  return false;
 }
 
 function time(seconds: number | undefined): string {
@@ -149,6 +172,7 @@ async function revoke(
       return 0;
     }
     await store.revoke(target.grantId, "operator");
+    if (!(await confirmed(store, io))) return 1;
     io.out(`Revoked grant ${target.grantId}. Its client is signed out on its next request.\n`);
     return 0;
   }
@@ -156,6 +180,7 @@ async function revoke(
   const count = all
     ? await store.revokeAll("operator")
     : await store.revokeAccount(target.accountId, "operator");
+  if (!(await confirmed(store, io))) return 1;
   const scope = all ? "" : ` of account ${target.accountId}`;
   io.out(
     (count === 0

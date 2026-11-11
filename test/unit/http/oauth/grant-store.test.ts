@@ -4,6 +4,7 @@ import {
   lstat,
   mkdir,
   mkdtemp,
+  open as fsOpen,
   readdir,
   readFile,
   rm,
@@ -816,5 +817,184 @@ describe("state directory permissions", () => {
     await expect(openGrantStore({ stateDir: join(dir, "file"), heartbeatMs: 0 })).rejects.toThrow(
       StateDirError,
     );
+  });
+});
+
+// Review 2026-11, round 3: the mode says nothing about the owner (or about a macOS ACL).
+describe.skipIf(process.getuid === undefined)("state directory ownership", () => {
+  /** As if the process ran as another user than the one who owns the test directory. */
+  const otherUser = (): number => (process.getuid?.() ?? 0) + 1;
+
+  it("refuses a state directory that belongs to another user, whatever its mode", async () => {
+    await chmod(dir, 0o700);
+
+    const opening = openGrantStore({ stateDir: dir, heartbeatMs: 0, getuid: otherUser });
+
+    await expect(opening).rejects.toThrow(StateDirError);
+    await expect(opening).rejects.toThrow(/belongs to another user/);
+    // Refused before anything was written into it.
+    expect(await readdir(dir)).toEqual([]);
+  });
+
+  it("refuses a grants file that belongs to another user", async () => {
+    const first = await server({ stateDir: dir });
+    await pending(first);
+    await first.close();
+    // The directory is the server's own, the file in it is not.
+    let calls = 0;
+    const getuid = (): number => {
+      calls += 1;
+      return calls === 1 ? (process.getuid?.() ?? 0) : otherUser();
+    };
+
+    await expect(openGrantStore({ stateDir: dir, heartbeatMs: 0, getuid })).rejects.toThrow(
+      /grants\.jsonl belongs to another user/,
+    );
+    // The lock taken on the way is released again.
+    expect(await readdir(dir)).toEqual([GRANTS_FILE]);
+  });
+
+  it("opens a directory and a file of its own user", async () => {
+    const first = await server({ stateDir: dir });
+    const grant = await pending(first);
+    await first.close();
+
+    const second = await server({ stateDir: dir, getuid: () => process.getuid?.() ?? 0 });
+
+    expect(second.get(grant.gid)?.status).toBe("pending");
+  });
+});
+
+describe("grant store: incomplete writes (review 2026-11, round 3)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /**
+   * Makes the next `FileHandle.write` behave like a nearly full volume: only `bytes` bytes go
+   * through and the call still resolves. Later writes are untouched.
+   */
+  async function shortenNextWrite(bytes: number): Promise<void> {
+    const probe = await fsOpen(join(dir, "probe"), "a");
+    const proto = Object.getPrototypeOf(probe) as { write: (...args: unknown[]) => unknown };
+    await probe.close();
+    await rm(join(dir, "probe"));
+    const original = proto.write;
+    let first = true;
+    vi.spyOn(proto, "write").mockImplementation(function (this: unknown, ...args: unknown[]) {
+      if (!first) return original.apply(this, args);
+      first = false;
+      const [data] = args;
+      return typeof data === "string"
+        ? original.call(this, data.slice(0, bytes))
+        : original.call(this, data, args[1], bytes);
+    });
+  }
+
+  async function fileLines(): Promise<string[]> {
+    return (await readFile(join(dir, GRANTS_FILE), "utf8")).trimEnd().split("\n");
+  }
+
+  it("the server completes a revocation the first write only partly wrote", async () => {
+    const running = await server({ stateDir: dir });
+    const grant = await pending(running);
+    await running.activate(grant.gid, "jti-0000000001");
+    await shortenNextWrite(12);
+
+    await running.revoke(grant.gid, "operator");
+
+    const lines = await fileLines();
+    expect(lines.map((line) => (JSON.parse(line) as { t: string }).t)).toEqual([
+      "store",
+      "grant",
+      "activate",
+      "revoke",
+    ]);
+    // What a restart reads: before the fix the cut line was skipped and the grant was active.
+    await running.close();
+    const restarted = await server({ stateDir: dir });
+    expect(restarted.get(grant.gid)).toMatchObject({ status: "revoked", reason: "operator" });
+  });
+
+  it("the grants command completes a revocation the first write only partly wrote", async () => {
+    const running = await server({ stateDir: dir });
+    const grant = await pending(running);
+    const cli = await openGrantStore({ stateDir: dir, role: "cli" });
+    await shortenNextWrite(12);
+
+    await cli.revoke(grant.gid, "operator");
+    await cli.close();
+
+    expect(JSON.parse((await fileLines()).at(-1) ?? "")).toMatchObject({
+      t: "revoke",
+      gid: grant.gid,
+    });
+    await running.sync(true);
+    expect(running.get(grant.gid)?.status).toBe("revoked");
+  });
+
+  it("starts a new line after one an earlier failure cut short", async () => {
+    const log = captureLog();
+    const running = await server({ stateDir: dir, log });
+    const grant = await pending(running);
+    await appendFile(join(dir, GRANTS_FILE), '{"t":"rotate","gid":"cut');
+    const cli = await openGrantStore({ stateDir: dir, role: "cli" });
+
+    await cli.revoke(grant.gid, "operator");
+    await cli.close();
+
+    // Glued to the cut line, the revocation would have been unreadable.
+    const lines = await fileLines();
+    expect(lines.at(-2)).toBe('{"t":"rotate","gid":"cut');
+    expect(JSON.parse(lines.at(-1) ?? "")).toMatchObject({ t: "revoke", gid: grant.gid });
+    await running.sync(true);
+    expect(running.get(grant.gid)?.status).toBe("revoked");
+    // The server found the broken line and rewrote the file at once: a strict reader (the next
+    // start, the next `grants` command) accepts it again.
+    expect(log.events()).toEqual(
+      expect.arrayContaining(["grant_store_invalid_line", "grant_store_compacted"]),
+    );
+    for (const line of await fileLines()) expect(() => JSON.parse(line) as unknown).not.toThrow();
+    const reader = await openGrantStore({ stateDir: dir, role: "cli" });
+    expect(reader.get(grant.gid)?.status).toBe("revoked");
+    await reader.close();
+  });
+
+  it("the server closes a cut line before its own append", async () => {
+    const running = await server({ stateDir: dir });
+    const grant = await pending(running);
+    await appendFile(join(dir, GRANTS_FILE), '{"t":"rotate","gid":"cut');
+
+    await running.revoke(grant.gid, "operator");
+
+    const lines = await fileLines();
+    expect(lines.at(-2)).toBe('{"t":"rotate","gid":"cut');
+    expect(JSON.parse(lines.at(-1) ?? "")).toMatchObject({ t: "revoke", gid: grant.gid });
+  });
+
+  it("rewrites the file from memory after an append that failed", async () => {
+    const log = captureLog();
+    const running = await server({ stateDir: dir, log });
+    const grant = await pending(running);
+    await running.activate(grant.gid, "jti-0000000001");
+    const probe = await fsOpen(join(dir, "probe"), "a");
+    const proto = Object.getPrototypeOf(probe) as { write: (...args: unknown[]) => unknown };
+    await probe.close();
+    await rm(join(dir, "probe"));
+    vi.spyOn(proto, "write").mockRejectedValueOnce(
+      Object.assign(new Error("no space"), { code: "ENOSPC" }),
+    );
+
+    await expect(running.revoke(grant.gid, "operator")).rejects.toThrow("no space");
+    // In memory the grant is revoked; the file does not know yet.
+    expect(running.get(grant.gid)?.status).toBe("revoked");
+    expect((await fileLines()).join("\n")).not.toContain('"revoke"');
+
+    await running.sync(true);
+
+    expect(log.events()).toContain("grant_store_compacted");
+    await running.close();
+    const restarted = await server({ stateDir: dir });
+    expect(restarted.get(grant.gid)).toMatchObject({ status: "revoked", reason: "operator" });
   });
 });

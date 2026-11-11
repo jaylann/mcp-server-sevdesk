@@ -24,7 +24,12 @@
  *   stale lock is moved aside with an atomic rename, so of two racing starters only one wins. A
  *   server that finds its lock taken stops trusting its state: every further call throws
  *   {@link StateDirError} and `onFatal` asks the process to exit (the platform restarts it);
- * - a corrupt file refuses startup (only a torn last line, from a crash mid-write, is skipped).
+ * - a corrupt file refuses startup (only a torn last line, from a crash mid-write, is skipped);
+ * - every append writes the whole line or rejects (a short write is continued), and starts on a
+ *   fresh line when the file ends in an unfinished one; `grants revoke` reads the file back and
+ *   reports success only when its revocations are in it ({@link unconfirmedRevocations});
+ * - the server uses the directory and the file only when they belong to the user it runs as
+ *   (POSIX): the mode does not show an ACL, and an owner can change the mode back.
  *
  * Caps: 500 grants (a new consent is refused beyond that until grants are revoked or expire), 20
  * live grants per account (a new consent revokes the account's oldest one, reason `superseded`)
@@ -51,6 +56,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import { z } from "zod";
 
+import { appendLine, type GetUid, ownedByOtherUser, writeAll } from "../../safety/append-file.js";
 import { type Tier, TIERS } from "../../safety/tiers.js";
 import type { GrantRecord, GrantStore, HttpLog, RotateResult, SessionRecord } from "../types.js";
 import { ACCOUNT_ID_PATTERN } from "./tokens.js";
@@ -218,6 +224,8 @@ export interface GrantStoreOptions {
    * lock). The store then refuses every call; the process should exit so it is restarted.
    */
   readonly onFatal?: (error: StateDirError) => void;
+  /** The user this process runs as (default `process.getuid`, absent on Windows); for tests. */
+  readonly getuid?: GetUid;
 }
 
 function newId(): string {
@@ -241,6 +249,17 @@ export async function openGrantStore(options: GrantStoreOptions): Promise<GrantS
   return store;
 }
 
+/**
+ * For `grants revoke`, before it reports success: how many of the revocations `store` (opened in
+ * the `cli` role) made are missing when `grants.jsonl` is read again from the start, the way the
+ * server reads it. Zero means every one is on disk as a whole line. Rejects with
+ * {@link StateDirError} when the file cannot be read back. Review 2026-11, round 3: the command
+ * printed "Revoked" for a line the volume had cut short.
+ */
+export async function unconfirmedRevocations(store: GrantStore): Promise<number> {
+  return store instanceof Store ? store.missingRevocations() : 0;
+}
+
 class Store implements GrantStore {
   readonly #now: () => number;
   readonly #log: HttpLog | undefined;
@@ -254,13 +273,21 @@ class Store implements GrantStore {
   readonly #compactBytes: number;
   readonly #compactIntervalMs: number;
   readonly #onFatal: ((error: StateDirError) => void) | undefined;
+  readonly #getuid: GetUid | undefined;
   readonly #grants = new Map<string, GrantState>();
   readonly #sessions = new Map<string, SessionState>();
+  /** `cli` role: what this instance revoked (grant and session ids), for the read-back. */
+  readonly #revokedHere = { grants: new Set<string>(), sessions: new Set<string>() };
   #handle: FileHandle | undefined;
   #offset = 0;
   #partial: Buffer = Buffer.alloc(0);
   #compactedSize = 0;
   #compactedAt = 0;
+  /**
+   * The file holds a broken line, or misses an event this server holds (a failed append): compact
+   * at the next sync instead of waiting for the size or the day (review 2026-11, round 3).
+   */
+  #repair = false;
   #lastSync = Number.NEGATIVE_INFINITY;
   #syncing: Promise<void> | undefined;
   #writes: Promise<unknown> = Promise.resolve();
@@ -281,6 +308,7 @@ class Store implements GrantStore {
     this.#compactBytes = options.compactBytes ?? COMPACT_BYTES;
     this.#compactIntervalMs = options.compactIntervalMs ?? COMPACT_INTERVAL_MS;
     this.#onFatal = options.onFatal;
+    this.#getuid = options.getuid;
   }
 
   #seconds(): number {
@@ -337,7 +365,7 @@ class Store implements GrantStore {
       }
       return;
     }
-    await prepareDirectory(dir, this.#log);
+    await prepareDirectory(dir, this.#log, this.#getuid);
     this.#lock = await acquireLock(dir, this.#now, this.#log);
     try {
       await this.#compactAtStart(dir);
@@ -354,7 +382,7 @@ class Store implements GrantStore {
   /** Streams the file in, then swaps in a compacted copy. */
   async #compactAtStart(dir: string): Promise<void> {
     const path = join(dir, GRANTS_FILE);
-    await checkRegularFile(path);
+    await checkRegularFile(path, this.#getuid);
     let previous: FileHandle | undefined;
     try {
       previous = await open(path, constants.O_RDONLY | NO_FOLLOW);
@@ -389,6 +417,10 @@ class Store implements GrantStore {
     try {
       await output.writeFile(snapshot);
       await output.sync();
+    } catch (error) {
+      // A full volume: do not leave a partial copy behind for every retry.
+      await unlink(temporary).catch(() => undefined);
+      throw error;
     } finally {
       await output.close();
     }
@@ -402,12 +434,24 @@ class Store implements GrantStore {
       constants.O_RDWR | constants.O_APPEND | constants.O_CREAT | NO_FOLLOW,
       0o600,
     );
-    if (complete.length > 0) await handle.write(complete);
+    // The new file is the store from here on, also when carrying the lines over fails below.
     this.#handle = handle;
-    // Everything after the snapshot (the carried lines, and whatever `grants` appended to the
-    // new file meanwhile) is read back like any other appended bytes.
     this.#offset = Buffer.byteLength(snapshot);
     this.#partial = Buffer.alloc(0);
+    if (complete.length > 0) {
+      try {
+        // Every carried byte, or the swap fails: a short write here would cut a revocation a
+        // `grants` command had appended to the old file (review 2026-11, round 3).
+        await writeAll(handle, Buffer.from(complete));
+      } catch (error) {
+        // The file misses carried lines now. They still apply in this process (applying twice
+        // changes nothing), so a revocation among them holds and reaches the next snapshot.
+        this.#applyText(Buffer.from(complete), false);
+        throw error;
+      }
+    }
+    // Everything after the snapshot (the carried lines, and whatever `grants` appended to the
+    // new file meanwhile) is read back like any other appended bytes.
     await this.#readAppended();
     this.#compactedSize = this.#offset;
     this.#compactedAt = this.#now();
@@ -418,7 +462,11 @@ class Store implements GrantStore {
     const dir = this.#dir;
     if (dir === undefined || this.#role !== "server" || this.#handle === undefined) return;
     const grown = this.#offset - this.#compactedSize;
-    if (grown < this.#compactBytes && this.#now() - this.#compactedAt < this.#compactIntervalMs) {
+    if (
+      !this.#repair &&
+      grown < this.#compactBytes &&
+      this.#now() - this.#compactedAt < this.#compactIntervalMs
+    ) {
       return;
     }
     const run = this.#writes.then(async () => {
@@ -426,14 +474,21 @@ class Store implements GrantStore {
       if (old === undefined || this.#closed || this.#failed !== undefined) return;
       if (!(await this.#confirmOwnership())) return;
       await this.#readAppended();
-      await this.#swap(dir, old, this.#offset - this.#partial.length);
-      await old.close();
+      // Reset before the swap: a broken line that arrives while it runs asks for another one.
+      this.#repair = false;
+      try {
+        await this.#swap(dir, old, this.#offset - this.#partial.length);
+      } finally {
+        // Also when the swap failed after it put the new file in place.
+        if (this.#handle !== old) await old.close();
+      }
       this.#log?.info("grant_store_compacted", { bytes: this.#offset });
     });
     this.#writes = run.catch(() => undefined);
     try {
       await run;
     } catch (error) {
+      // Counted from the last success, so the next sync tries again.
       this.#log?.warn("grant_store_compaction_failed", { code: errorCode(error) });
     }
   }
@@ -519,7 +574,11 @@ class Store implements GrantStore {
             "is corrupt: restore it from a backup, or move it away to start without grants.",
         );
       }
+      // A line someone's failed write cut short (and a later append closed). The strict load of
+      // the next start or the next `grants` command would refuse the file over it, so the server
+      // rewrites the file from what it holds at its next sync.
       this.#log?.warn("grant_store_invalid_line", {});
+      this.#repair = true;
       return;
     }
     if (event.t === "store" && event.v !== FORMAT_VERSION && strictLine !== undefined) {
@@ -640,11 +699,22 @@ class Store implements GrantStore {
     if (dir === undefined) return;
     if (this.#closed) throw new Error("The grant store is closed.");
     const line = `${JSON.stringify(event)}\n`;
+    // `appendLine`: a short write is continued until the line is whole, or the append rejects.
+    // A plain `write` resolved after writing part of a line, and a cut last line is skipped at
+    // the next load: a revocation could vanish that way (review 2026-11, round 3).
     const write =
       this.#role === "server"
         ? this.#writes.then(async () => {
             this.#usable();
-            await this.#handle?.write(line);
+            if (this.#handle === undefined) return;
+            try {
+              await appendLine(this.#handle, line);
+            } catch (error) {
+              // The event is in memory but not (or only partly) in the file: the next sync
+              // rewrites the file from memory. The caller still learns that the write failed.
+              this.#repair = true;
+              throw error;
+            }
           })
         : this.#writes.then(() => appendFromCli(join(dir, GRANTS_FILE), line));
     this.#writes = write.catch(() => undefined);
@@ -746,7 +816,31 @@ class Store implements GrantStore {
     grant.status = "revoked";
     grant.revokedAt = now;
     grant.reason = why;
+    if (this.#role === "cli") this.#revokedHere.grants.add(grant.gid);
     await this.#append({ t: "revoke", gid: grant.gid, why, at: now });
+  }
+
+  /**
+   * For {@link unconfirmedRevocations}: reads the grants file afresh, as the server will, and
+   * counts the revocations this instance made that are not in it. A record the file no longer
+   * holds counts as confirmed (the server prunes revoked records when it compacts).
+   */
+  async missingRevocations(): Promise<number> {
+    const dir = this.#dir;
+    if (dir === undefined) return 0;
+    await this.#writes;
+    const fresh = new Store({ stateDir: dir, role: "cli", now: this.#now });
+    await fresh.open();
+    let missing = 0;
+    for (const gid of this.#revokedHere.grants) {
+      const grant = fresh.#grants.get(gid);
+      if (grant !== undefined && grant.status !== "revoked") missing += 1;
+    }
+    for (const sid of this.#revokedHere.sessions) {
+      const session = fresh.#sessions.get(sid);
+      if (session !== undefined && !session.revoked) missing += 1;
+    }
+    return missing;
   }
 
   async revoke(gid: string, why: string): Promise<boolean> {
@@ -917,6 +1011,7 @@ class Store implements GrantStore {
   async #revokeSession(session: SessionState, now: number): Promise<void> {
     if (session.revoked) return;
     session.revoked = true;
+    if (this.#role === "cli") this.#revokedHere.sessions.add(session.sid);
     await this.#append({ t: "session_revoke", sid: session.sid, at: now });
   }
 
@@ -997,9 +1092,15 @@ function snapshotSession(session: SessionState): SessionRecord {
 
 /**
  * Creates the state directory (0700) or tightens an existing one: group or other access to the
- * directory would let other local users replace `grants.jsonl` between restarts.
+ * directory would let other local users replace `grants.jsonl` between restarts. A directory
+ * that belongs to another user is refused whatever its mode: its owner can replace the files in
+ * it, and on macOS an ACL can open it without any mode bit showing (review 2026-11, round 3).
  */
-async function prepareDirectory(dir: string, log: HttpLog | undefined): Promise<void> {
+async function prepareDirectory(
+  dir: string,
+  log: HttpLog | undefined,
+  getuid: GetUid | undefined,
+): Promise<void> {
   try {
     await mkdir(dir, { recursive: true, mode: 0o700 });
   } catch {
@@ -1008,6 +1109,12 @@ async function prepareDirectory(dir: string, log: HttpLog | undefined): Promise<
   const info = await stat(dir).catch(() => undefined);
   if (info === undefined || !info.isDirectory()) {
     throw new StateDirError(`SEVDESK_HTTP_STATE_DIR: ${dir} is not a directory.`);
+  }
+  if (ownedByOtherUser(info, getuid)) {
+    throw new StateDirError(
+      `SEVDESK_HTTP_STATE_DIR: ${dir} belongs to another user, who could replace the files in ` +
+        "it. Point the variable to a directory owned by the user the server runs as.",
+    );
   }
   if ((info.mode & 0o077) === 0) return;
   try {
@@ -1022,8 +1129,11 @@ async function prepareDirectory(dir: string, log: HttpLog | undefined): Promise<
   log?.warn("state_dir_mode_tightened", {});
 }
 
-/** Refuses a grants file that is a symlink or not a regular file; tightens its mode to 0600. */
-async function checkRegularFile(path: string): Promise<void> {
+/**
+ * Refuses a grants file that is a symlink, not a regular file, or owned by another user (who
+ * could rewrite it, whatever its mode says); tightens its mode to 0600.
+ */
+async function checkRegularFile(path: string, getuid: GetUid | undefined): Promise<void> {
   let info;
   try {
     info = await lstat(path);
@@ -1033,6 +1143,12 @@ async function checkRegularFile(path: string): Promise<void> {
   }
   if (!info.isFile()) {
     throw new StateDirError(`${path} is not a regular file (a symlink or directory is refused).`);
+  }
+  if (ownedByOtherUser(info, getuid)) {
+    throw new StateDirError(
+      `${path} belongs to another user, who could rewrite it. Make the user the server runs as ` +
+        "its owner (chown), or move the file away to start without grants.",
+    );
   }
   if ((info.mode & 0o077) === 0) return;
   try {
@@ -1064,24 +1180,33 @@ async function readFrom(handle: FileHandle, position: number, end?: number): Pro
 /**
  * Appends `line` as a `grants` command does: if the server replaced the file (compaction) while
  * the line was being written to the old one, the line is appended to the new file too (applying
- * an event twice changes nothing).
+ * an event twice changes nothing). The whole line is written or the call rejects with
+ * {@link StateDirError} (`appendLine`; read access is for its look at the file's last byte).
  */
 async function appendFromCli(path: string, line: string): Promise<void> {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const handle = await open(
-      path,
-      constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | NO_FOLLOW,
-      0o600,
-    );
-    let written;
-    try {
-      await handle.write(line);
-      written = await handle.stat();
-    } finally {
-      await handle.close();
+  try {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const handle = await open(
+        path,
+        constants.O_RDWR | constants.O_APPEND | constants.O_CREAT | NO_FOLLOW,
+        0o600,
+      );
+      let written;
+      try {
+        await appendLine(handle, line);
+        written = await handle.stat();
+      } finally {
+        await handle.close();
+      }
+      const current = await stat(path);
+      if (current.ino === written.ino && current.dev === written.dev) return;
     }
-    const current = await stat(path);
-    if (current.ino === written.ino && current.dev === written.dev) return;
+  } catch (error) {
+    throw new StateDirError(
+      `Cannot write ${path} (${errorCode(error) ?? "unknown error"}). Nothing can be relied on ` +
+        "to be revoked: check the free space and the permissions of the state directory, then " +
+        "run the command again.",
+    );
   }
 }
 

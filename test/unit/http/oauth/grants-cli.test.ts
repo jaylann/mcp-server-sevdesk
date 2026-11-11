@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, open, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -224,6 +224,113 @@ describe("grants revoke", () => {
       ),
     ).resolves.toBe(1);
     expect(result.err.join("")).toContain("no grant nope");
+  });
+});
+
+// Review 2026-11, round 3: "Revoked" was printed for a line the volume had cut short, which the
+// server then skips as a torn last line.
+describe("grants revoke: reading the store back", () => {
+  type Write = (...args: unknown[]) => Promise<{ bytesWritten: number }>;
+
+  /** The `FileHandle` prototype, whose `write` the tests replace for one call. */
+  async function handlePrototype(): Promise<{ write: Write }> {
+    const probe = await open(join(dir, "probe"), "a");
+    const proto = Object.getPrototypeOf(probe) as { write: Write };
+    await probe.close();
+    await rm(join(dir, "probe"));
+    return proto;
+  }
+
+  /** The next write puts 12 bytes on disk and claims it wrote everything. */
+  async function loseMostOfNextWrite(): Promise<void> {
+    const proto = await handlePrototype();
+    const original = proto.write;
+    let first = true;
+    vi.spyOn(proto, "write").mockImplementation(async function (this: unknown, ...args: unknown[]) {
+      if (!first) return original.apply(this, args);
+      first = false;
+      const [data, offset, length] = args as [Buffer, number, number];
+      await original.call(this, data, offset, 12);
+      return { bytesWritten: length };
+    });
+  }
+
+  it("reports a revocation that is not in the file, and no success", async () => {
+    const { a } = await seed();
+    await loseMostOfNextWrite();
+    const result = io();
+
+    await expect(
+      runGrantsCommand(
+        { kind: "grants-revoke", target: { grantId: a.gid } },
+        { SEVDESK_HTTP_STATE_DIR: dir },
+        result.io,
+      ),
+    ).resolves.toBe(1);
+
+    expect(result.out).toEqual([]);
+    expect(result.err.join("")).toBe(
+      "grants: 1 revocation is not in the grant store when it is read back, so the server will " +
+        "not apply it. Check the free space of the state directory and run the command again.\n",
+    );
+    // What the command would otherwise have claimed: the server still serves the grant.
+    await server?.sync(true);
+    expect(server?.get(a.gid)?.status).toBe("active");
+  });
+
+  it("reports success for --all only when every revocation can be read back", async () => {
+    await seed();
+    await server!.createSession({ accountId: "5555", via: "token", ttlSeconds: 600 });
+    await loseMostOfNextWrite();
+    const result = io();
+
+    await expect(
+      runGrantsCommand(
+        { kind: "grants-revoke", target: { all: true } },
+        { SEVDESK_HTTP_STATE_DIR: dir },
+        result.io,
+      ),
+    ).resolves.toBe(1);
+
+    expect(result.out).toEqual([]);
+    expect(result.err.join("")).toMatch(/^grants: /);
+  });
+
+  it("reports a write that fails, without a stack trace", async () => {
+    const { a } = await seed();
+    const proto = await handlePrototype();
+    vi.spyOn(proto, "write").mockRejectedValueOnce(
+      Object.assign(new Error("no space"), { code: "ENOSPC" }),
+    );
+    const result = io();
+
+    await expect(
+      runGrantsCommand(
+        { kind: "grants-revoke", target: { grantId: a.gid } },
+        { SEVDESK_HTTP_STATE_DIR: dir },
+        result.io,
+      ),
+    ).resolves.toBe(1);
+
+    expect(result.out).toEqual([]);
+    expect(result.err.join("")).toMatch(/^grants: Cannot write .*grants\.jsonl \(ENOSPC\)\./);
+  });
+
+  it("still reports success when everything was written", async () => {
+    const { a } = await seed();
+    await server!.createSession({ accountId: "4711", gid: a.gid, via: "consent", ttlSeconds: 600 });
+    const result = io();
+
+    await expect(
+      runGrantsCommand(
+        { kind: "grants-revoke", target: { all: true } },
+        { SEVDESK_HTTP_STATE_DIR: dir },
+        result.io,
+      ),
+    ).resolves.toBe(0);
+
+    expect(result.err).toEqual([]);
+    expect(result.out.join("")).toMatch(/^Revoked 3 active grants\. /);
   });
 });
 
