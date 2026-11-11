@@ -8,7 +8,12 @@ import { z } from "zod";
 import { getTransaction, type TransactionDto } from "../../domain/banking.js";
 import { moneySchema, statusDtoSchema } from "../../domain/common.js";
 import { type LifecycleDocument, type PaymentKind } from "../../domain/lifecycle/documents.js";
-import { type Fact, formatMoney, transactionStatusText } from "../../domain/lifecycle/preview.js";
+import {
+  type Fact,
+  formatMoney,
+  kindNoun,
+  transactionStatusText,
+} from "../../domain/lifecycle/preview.js";
 import { DEFAULT_CURRENCY, money } from "../../domain/money.js";
 import { dateText, type PreviewLanguage } from "../../domain/preview-text.js";
 import { SevdeskError, withCompletedWrites } from "../../sevdesk/errors.js";
@@ -104,6 +109,27 @@ export function documentSummary(doc: LifecycleDocument<PaymentKind>): DocumentSu
       ? {}
       : { paid: money(doc.paidAmount, doc.currency) }),
   };
+}
+
+/**
+ * A document in a per-document preview fact, split where the trust boundary runs: fact labels are
+ * trusted text (`ConfirmationFact.label`), so `label` names the document by kind and id
+ * ("invoice 1001", "Rechnung 1001"), and the number sevDesk stored opens the value (`number`:
+ * "number RE-1001; ", or "no number yet; "). Before, the label carried the stored number
+ * (review 2026-11, round 3). A voucher has no number part: its Belegnummer is the supplier's free
+ * text and was never shown here (see `documentTitle`).
+ */
+export function documentFactParts(
+  doc: LifecycleDocument,
+  lang: PreviewLanguage = "en",
+): { readonly label: string; readonly number: string } {
+  const label = `${kindNoun(doc.kind, lang)} ${String(doc.id)}`;
+  if (doc.kind === "voucher") return { label, number: "" };
+  const german = lang === "de";
+  if (doc.number === undefined) {
+    return { label, number: german ? "noch ohne Nummer; " : "no number yet; " };
+  }
+  return { label, number: `${german ? "Nummer" : "number"} ${doc.number}; ` };
 }
 
 /** The fact labels and fixed values of a transaction, per language. */

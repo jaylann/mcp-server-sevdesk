@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { executeContactCreate, planContactCreate } from "../../domain/contacts-write.js";
 import { defineWriteTool } from "../define-tool.js";
+import { ACCOUNT_CONTACT_NUMBERS } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 import {
   addressAndCommunicationShape,
@@ -46,6 +47,9 @@ export const contactCreateTool = defineWriteTool({
     ...dryRunInputShape,
   }),
   output: contactWriteOutput,
+  // "No contact with this name or e-mail yet" and "the customer number is free" are checked,
+  // then the contact is created: two creations at once both passed (review 2026-11, round 3).
+  locks: () => [ACCOUNT_CONTACT_NUMBERS],
   prepare: (args, ctx) => planContactCreate(ctx.client, args, ctx.signal),
   execute: async (_args, plan, ctx) => {
     const { details, affected } = await executeContactCreate(ctx.client, plan.state, ctx.signal);

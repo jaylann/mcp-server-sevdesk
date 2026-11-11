@@ -69,6 +69,10 @@ export const invoiceFromOrderTool = defineWriteTool({
     ...dryRunInputShape,
   }),
   output,
+  // The order: its status and the "no invoice draft from it yet" check are read, then the
+  // invoice is created. Two calls at once both passed; the key is the one the order's lifecycle
+  // and draft-update tools take (review 2026-11, round 3).
+  locks: (args) => [{ objectName: "Order", id: String(args.orderId) }],
   prepare: (args, ctx) => planOrderToInvoice(ctx.client, args, ctx.signal),
   execute: async (_args, plan, ctx) => {
     const { details, affected, order } = await executeOrderToInvoice(

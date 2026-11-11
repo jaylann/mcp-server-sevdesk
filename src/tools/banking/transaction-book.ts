@@ -51,6 +51,7 @@ import { dryRunInputShape } from "../write-input.js";
 import {
   COMMIT_ANNOTATIONS,
   DOCUMENT_KINDS,
+  documentFactParts,
   documentSummary,
   documentSummarySchema,
   kindOfArg,
@@ -353,9 +354,12 @@ function bookFacts(plan: AllocationPlan, lang: PreviewLanguage): Fact[] {
       doc.contact?.name ??
       doc.partyName ??
       (doc.contact === undefined ? undefined : `${t.contact} ${String(doc.contact.id)}`);
+    // The label is trusted text: the document by id; its stored number opens the value.
+    const named = documentFactParts(doc, lang);
     facts.push({
-      label: `${t.allocation} ${String(index + 1)}: ${documentTitle(doc, lang)}`,
+      label: `${t.allocation} ${String(index + 1)}: ${named.label}`,
       value:
+        named.number +
         `${formatMoney(payment.amount, lang)} (${BOOKING_TYPE_TEXT[documentType][lang]}` +
         (documentType === payment.bookingType ? "" : t.sentAs(payment.bookingType)) +
         `${allocation.amountDefaulted ? t.defaulted : ""}); ${t.open} ` +

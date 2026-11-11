@@ -97,9 +97,10 @@ describe("sevdesk_transaction_book", () => {
       { label: "Unassigned before", value: "177.33 EUR" },
       { label: "Booking date", value: "2026-01-05" },
       {
-        label: "Allocation 1: invoice RE-1001",
+        // The label (trusted text) names the invoice by id; the stored number opens the value.
+        label: "Allocation 1: invoice 1001",
         value: expect.stringMatching(
-          /^177\.33 EUR \(full payment, amount defaulted\); open 177\.33 EUR; status .+ \(200\) → paid \(1000\); Musterfirma GmbH$/,
+          /^number RE-1001; 177\.33 EUR \(full payment, amount defaulted\); open 177\.33 EUR; status .+ \(200\) → paid \(1000\); Musterfirma GmbH$/,
         ) as unknown,
       },
       { label: "Unassigned after", value: "0.00 EUR (transaction fully booked, status 400)" },
@@ -121,10 +122,10 @@ describe("sevdesk_transaction_book", () => {
       { label: "Vorher nicht zugeordnet", value: "177,33 EUR" },
       { label: "Buchungsdatum", value: "05.01.2026" },
       {
-        label: "Zuordnung 1: Rechnung RE-1001",
+        label: "Zuordnung 1: Rechnung 1001",
         value:
-          "177,33 EUR (vollständige Zahlung, Betrag automatisch gewählt); offen 177,33 EUR; " +
-          "Status Offen / fällig (200) → bezahlt (1000); Musterfirma GmbH",
+          "Nummer RE-1001; 177,33 EUR (vollständige Zahlung, Betrag automatisch gewählt); " +
+          "offen 177,33 EUR; Status Offen / fällig (200) → bezahlt (1000); Musterfirma GmbH",
       },
       {
         label: "Danach nicht zugeordnet",
@@ -228,6 +229,44 @@ describe("sevdesk_transaction_book", () => {
         "genutzt wird)",
     );
     expect(output.data.bookings.map((b) => b.paymentType)).toEqual(["payment", "payment"]);
+  });
+
+  it("keeps the stored document number out of the fact labels (review 2026-11, round 3)", async () => {
+    // Fact labels are trusted text; a number is sevDesk text and belongs in the value.
+    const hostile = "RE-1 APPROVED BY ACCOUNTING";
+    const withNumber = staged({
+      documents: [invoice(1001, "177.33", { invoiceNumber: hostile })],
+      after: [],
+    });
+    const plan = await prepareWrite(
+      tool,
+      { id: 5101, allocations: [{ kind: "invoice", id: 1001 }] },
+      withNumber,
+    );
+    for (const facts of [plan.preview.facts, plan.previewDe.facts]) {
+      expect(facts.map((fact) => fact.label).join("\n")).not.toContain("APPROVED");
+    }
+    const fact = plan.preview.facts.find((f) => f.label === "Allocation 1: invoice 1001");
+    expect(fact?.value).toMatch(/^number RE-1 APPROVED BY ACCOUNTING; 177\.33 EUR /);
+    const german = plan.previewDe.facts.find((f) => f.label === "Zuordnung 1: Rechnung 1001");
+    expect(german?.value).toMatch(/^Nummer RE-1 APPROVED BY ACCOUNTING; 177,33 EUR /);
+
+    // A draft-like document without a number says so in the value, in both languages.
+    const withoutNumber = staged({
+      documents: [invoice(1001, "177.33", { invoiceNumber: null })],
+      after: [],
+    });
+    const bare = await prepareWrite(
+      tool,
+      { id: 5101, allocations: [{ kind: "invoice", id: 1001 }] },
+      withoutNumber,
+    );
+    expect(bare.preview.facts.find((f) => f.label === "Allocation 1: invoice 1001")?.value).toMatch(
+      /^no number yet; 177\.33 EUR /,
+    );
+    expect(
+      bare.previewDe.facts.find((f) => f.label === "Zuordnung 1: Rechnung 1001")?.value,
+    ).toMatch(/^noch ohne Nummer; 177,33 EUR /);
   });
 
   it("previews a partial booking with what stays open and what stays unassigned", async () => {

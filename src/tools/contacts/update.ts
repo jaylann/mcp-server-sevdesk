@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { executeContactUpdate, planContactUpdate } from "../../domain/contacts-write.js";
 import { defineWriteTool } from "../define-tool.js";
+import { ACCOUNT_CONTACT_NUMBERS } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 import {
   addressAndCommunicationShape,
@@ -44,6 +45,13 @@ export const contactUpdateTool = defineWriteTool({
     ...dryRunInputShape,
   }),
   output: contactWriteOutput,
+  // The contact: the change is worked out from what was read (an address or e-mail entry is
+  // added when there is none), so two updates at once added two. A new customer number is
+  // checked against the other contacts first, like on create (review 2026-11, round 3).
+  locks: (args) => [
+    { objectName: "Contact", id: String(args.id) },
+    ...(args.customerNumber === undefined ? [] : [ACCOUNT_CONTACT_NUMBERS]),
+  ],
   prepare: (args, ctx) => planContactUpdate(ctx.client, args, ctx.signal),
   execute: async (_args, plan, ctx) => {
     const { details, affected } = await executeContactUpdate(ctx.client, plan.state, ctx.signal);

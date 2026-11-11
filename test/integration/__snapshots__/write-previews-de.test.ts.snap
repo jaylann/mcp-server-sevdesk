@@ -12,7 +12,7 @@ Auftraggeber/Empfänger: Musterfirma GmbH
 Verwendungszweck: RE-1001
 Vorher nicht zugeordnet: 177,33 EUR
 Buchungsdatum: 05.01.2026
-Zuordnung 1: Rechnung RE-1001: 177,33 EUR (vollständige Zahlung, Betrag automatisch gewählt); offen 177,33 EUR; Status Offen / fällig (200) → bezahlt (1000); Musterfirma GmbH
+Zuordnung 1: Rechnung 1001: Nummer RE-1001; 177,33 EUR (vollständige Zahlung, Betrag automatisch gewählt); offen 177,33 EUR; Status Offen / fällig (200) → bezahlt (1000); Musterfirma GmbH
 Danach nicht zugeordnet: 0,00 EUR (Umsatz vollständig gebucht, Status 400)"
 `;
 
@@ -117,10 +117,14 @@ Bisher bezahlt: 0,00 EUR"
 exports[`German previews > email an open credit note: says the same in German 1`] = `
 "Gutschrift GU-1001 über sevDesk per E-Mail senden an kunde@example.com.
 ! Die E-Mail geht sofort aus sevDesk an alle aufgeführten Empfänger und lässt sich nicht zurückholen.
+! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfen Sie bei Bedarf sevdesk_credit_note_pdf.
 (nicht umkehrbar)
 Gutschrift: GU-1001 (ID 2001)
 Status: Offen (200)
 Kunde: Musterfirma GmbH (Kontakt 1001)
+Anschrift auf dem Dokument: Musterfirma GmbH
+Musterstraße 1
+12345 Musterstadt
 Datum: 22.10.2026
 Netto: 20,00 EUR
 Umsatzsteuer: 3,80 EUR
@@ -128,17 +132,28 @@ Brutto: 23,80 EUR
 An: kunde@example.com
 Anhang: Gutschrift als PDF
 Betreff: Ihre Unterlagen
-Text: Guten Tag, anbei."
+Text: Guten Tag, anbei.
+Betreff auf dem Dokument: Gutschrift Nr. GU-1001 zur Rechnung Nr. RE-1004
+Leistungsdatum oder -zeitraum: 22.10.2026
+Steuerregel: 1 Umsatzsteuerpflichtige Umsätze
+Buchungskategorie: Minderleistung einer Rechnung oder eines Belegs (UNDERACHIEVEMENT)
+Mindert Rechnung: ID 1004
+Kopftext: Wir schreiben Ihnen folgenden Betrag gut.
+Positionen: keine"
 `;
 
 exports[`German previews > email an open invoice: says the same in German 1`] = `
 "Rechnung RE-1001 über sevDesk per E-Mail senden an kunde@example.com.
 ! Die E-Mail geht sofort aus sevDesk an alle aufgeführten Empfänger und lässt sich nicht zurückholen.
+! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfen Sie bei Bedarf sevdesk_invoice_pdf.
 (nicht umkehrbar)
 Rechnung: RE-1001 (ID 1001)
 Typ: Rechnung (RE)
 Status: Offen / fällig (200)
 Kunde: Musterfirma GmbH (Kontakt 1001)
+Anschrift auf dem Dokument: Musterfirma GmbH
+Musterstraße 1
+12345 Musterstadt
 Datum: 01.10.2026
 Fällig am: 15.10.2026
 Netto: 149,02 EUR
@@ -148,17 +163,29 @@ Bisher bezahlt: 0,00 EUR
 An: kunde@example.com
 Anhang: Rechnung als PDF
 Betreff: Ihre Unterlagen
-Text: Guten Tag, anbei."
+Text: Guten Tag, anbei.
+Betreff auf dem Dokument: Rechnung RE-1001
+Leistungsdatum oder -zeitraum: 01.10.2026
+Skonto: 2 % innerhalb von 7 Tagen
+Steuerregel: 1 Umsatzsteuerpflichtige Umsätze
+Kopftext: Vielen Dank für Ihren Auftrag.
+Positionen: keine
+Fußtext: Bitte überweisen Sie den Betrag innerhalb von 14 Tagen."
 `;
 
 exports[`German previews > email an order: says the same in German 1`] = `
 "Auftrag AB-1002 über sevDesk per E-Mail senden an kunde@example.com.
 ! Die E-Mail geht sofort aus sevDesk an alle aufgeführten Empfänger und lässt sich nicht zurückholen.
+! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfen Sie bei Bedarf sevdesk_order_pdf.
 (nicht umkehrbar)
 Auftrag: AB-1002 (ID 3002)
 Typ: Auftragsbestätigung (AB)
 Status: Angenommen (500)
 Kunde: Musterfirma GmbH (Kontakt 1001)
+Anschrift auf dem Dokument: Musterfirma GmbH
+Musterstraße 1
+12345 Musterstadt
+Adressfelder (strukturiert): Musterfirma GmbH
 Datum: 20.09.2026
 Netto: 144,02 EUR
 Umsatzsteuer: 27,36 EUR
@@ -166,44 +193,75 @@ Brutto: 171,38 EUR
 An: kunde@example.com
 Anhang: Auftrag als PDF
 Betreff: Ihre Unterlagen
-Text: Guten Tag, anbei."
+Text: Guten Tag, anbei.
+Betreff auf dem Dokument: Auftragsbestätigung AB-1002
+Steuerregel: 1 Umsatzsteuerpflichtige Umsätze
+Steuerhinweis: 0
+Kopftext: <p>Gerne bieten wir Ihnen an:</p>
+Positionen: keine
+Fußtext: <p>Das Angebot ist 30 Tage gültig.</p>
+Zahlungsbedingungen: 14 Tage netto
+Lieferbedingungen: Lieferung frei Haus"
 `;
 
 exports[`German previews > enshrine an open credit note: says the same in German 1`] = `
 "Gutschrift GU-1001 festschreiben (GoBD): dauerhaft sperren.
 ! Nicht umkehrbar (GoBD): Die Gutschrift kann nie wieder geändert, gelöscht oder auf Entwurf zurückgesetzt werden; Korrekturen sind dann nur noch mit einem neuen Dokument möglich.
 ! Zahlungen können weiterhin darauf gebucht werden; sie später wieder zu lösen ist nur möglich, solange ihre Kontoumsätze nicht festgeschrieben sind.
+! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfen Sie bei Bedarf sevdesk_credit_note_pdf.
 (nicht umkehrbar)
 Gutschrift: GU-1001 (ID 2001)
 Status: Offen (200)
 Kunde: Musterfirma GmbH (Kontakt 1001)
+Anschrift auf dem Dokument: Musterfirma GmbH
+Musterstraße 1
+12345 Musterstadt
 Datum: 22.10.2026
 Netto: 20,00 EUR
 Umsatzsteuer: 3,80 EUR
-Brutto: 23,80 EUR"
+Brutto: 23,80 EUR
+Betreff auf dem Dokument: Gutschrift Nr. GU-1001 zur Rechnung Nr. RE-1004
+Leistungsdatum oder -zeitraum: 22.10.2026
+Steuerregel: 1 Umsatzsteuerpflichtige Umsätze
+Buchungskategorie: Minderleistung einer Rechnung oder eines Belegs (UNDERACHIEVEMENT)
+Mindert Rechnung: ID 1004
+Kopftext: Wir schreiben Ihnen folgenden Betrag gut.
+Positionen: keine"
 `;
 
 exports[`German previews > enshrine an open invoice: says the same in German 1`] = `
 "Rechnung RE-1001 festschreiben (GoBD): dauerhaft sperren.
 ! Nicht umkehrbar (GoBD): Die Rechnung kann nie wieder geändert, gelöscht oder auf Entwurf zurückgesetzt werden; Korrekturen sind dann nur noch mit einem Storno oder einer Gutschrift möglich.
 ! Zahlungen können weiterhin darauf gebucht werden; sie später wieder zu lösen ist nur möglich, solange ihre Kontoumsätze nicht festgeschrieben sind.
+! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfen Sie bei Bedarf sevdesk_invoice_pdf.
 (nicht umkehrbar)
 Rechnung: RE-1001 (ID 1001)
 Typ: Rechnung (RE)
 Status: Offen / fällig (200)
 Kunde: Musterfirma GmbH (Kontakt 1001)
+Anschrift auf dem Dokument: Musterfirma GmbH
+Musterstraße 1
+12345 Musterstadt
 Datum: 01.10.2026
 Fällig am: 15.10.2026
 Netto: 149,02 EUR
 Umsatzsteuer: 28,31 EUR
 Brutto: 177,33 EUR
-Bisher bezahlt: 0,00 EUR"
+Bisher bezahlt: 0,00 EUR
+Betreff auf dem Dokument: Rechnung RE-1001
+Leistungsdatum oder -zeitraum: 01.10.2026
+Skonto: 2 % innerhalb von 7 Tagen
+Steuerregel: 1 Umsatzsteuerpflichtige Umsätze
+Kopftext: Vielen Dank für Ihren Auftrag.
+Positionen: keine
+Fußtext: Bitte überweisen Sie den Betrag innerhalb von 14 Tagen."
 `;
 
 exports[`German previews > enshrine an open voucher: says the same in German 1`] = `
 "Beleg 2001 festschreiben (GoBD): dauerhaft sperren.
 ! Nicht umkehrbar (GoBD): Der Beleg kann nie wieder geändert, gelöscht oder auf Entwurf zurückgesetzt werden; Korrekturen sind dann nur noch mit einem neuen Dokument möglich.
 ! Zahlungen können weiterhin darauf gebucht werden; sie später wieder zu lösen ist nur möglich, solange ihre Kontoumsätze nicht festgeschrieben sind.
+! Die Angaben nennen die gespeicherten Positionen. Nicht gezeigt werden: die Namen der Buchungskonten (nur ihre IDs) und der Inhalt der angehängten Belegdatei. Prüfen Sie bei Bedarf sevdesk_voucher_get und den Beleg.
 (nicht umkehrbar)
 Beleg: RE-2026-0042 (ID 2001)
 Typ: Beleg (VOU)
@@ -215,7 +273,11 @@ Fällig am: 26.01.2026
 Netto: 250,50 EUR
 Umsatzsteuer: 47,60 EUR
 Brutto: 298,10 EUR
-Bisher bezahlt: 0,00 EUR"
+Bisher bezahlt: 0,00 EUR
+Leistungsdatum oder -zeitraum: 10.01.2026
+Steuerregel: 9 Vorsteuerabziehbare Aufwendungen
+Positionen: keine
+Belegdatei: angehängt (ihr Inhalt wird hier nicht gezeigt)"
 `;
 
 exports[`German previews > finalize a draft credit note: says the same in German 1`] = `
@@ -223,15 +285,26 @@ exports[`German previews > finalize a draft credit note: says the same in German
 ! Die Gutschrift wird rechtlich bindend: sevDesk bucht sie unter der Nummer, die der Entwurf trägt. Danach lässt sie sich nur noch durch Zurücksetzen auf Entwurf (solange sie nicht festgeschrieben ist) oder ein neues Dokument korrigieren.
 ! sevDesk sendet nichts an den Kunden: Es wird nur vermerkt, wie das Dokument versendet wurde. Für den Versand per E-Mail über sevDesk gibt es stattdessen sevdesk_credit_note_send_email.
 ! Schreibt das sevDesk-Konto Dokumente beim Abschließen automatisch fest (Einstellung „Automatische Festschreibung“), wird das Dokument dabei auch festgeschrieben und kann nie wieder geändert oder zurückgesetzt werden.
+! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfen Sie bei Bedarf sevdesk_credit_note_pdf.
 (umkehrbar)
 Gutschrift: GU-1101 (ID 2001)
 Status: Entwurf (100)
 Kunde: Musterfirma GmbH (Kontakt 1001)
+Anschrift auf dem Dokument: Musterfirma GmbH
+Musterstraße 1
+12345 Musterstadt
 Datum: 22.10.2026
 Netto: 20,00 EUR
 Umsatzsteuer: 3,80 EUR
 Brutto: 23,80 EUR
-Vermerkte Versandart: Post (VP)"
+Vermerkte Versandart: Post (VP)
+Betreff auf dem Dokument: Gutschrift Nr. GU-1001 zur Rechnung Nr. RE-1004
+Leistungsdatum oder -zeitraum: 22.10.2026
+Steuerregel: 1 Umsatzsteuerpflichtige Umsätze
+Buchungskategorie: Minderleistung einer Rechnung oder eines Belegs (UNDERACHIEVEMENT)
+Mindert Rechnung: ID 1004
+Kopftext: Wir schreiben Ihnen folgenden Betrag gut.
+Positionen: keine"
 `;
 
 exports[`German previews > finalize a draft invoice: says the same in German 1`] = `
@@ -239,34 +312,58 @@ exports[`German previews > finalize a draft invoice: says the same in German 1`]
 ! Die Rechnung wird rechtlich bindend: sevDesk vergibt ihre endgültige Nummer und bucht sie. Danach lässt sie sich nur noch durch Zurücksetzen auf Entwurf (solange sie nicht festgeschrieben ist), ein Storno oder eine Gutschrift korrigieren.
 ! sevDesk sendet nichts an den Kunden: Es wird nur vermerkt, wie das Dokument versendet wurde. Für den Versand per E-Mail über sevDesk gibt es stattdessen sevdesk_invoice_send_email.
 ! Schreibt das sevDesk-Konto Dokumente beim Abschließen automatisch fest (Einstellung „Automatische Festschreibung“), wird das Dokument dabei auch festgeschrieben und kann nie wieder geändert oder zurückgesetzt werden.
+! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfen Sie bei Bedarf sevdesk_invoice_pdf.
 (umkehrbar)
 Rechnung: ID 1001, noch ohne Nummer
 Typ: Rechnung (RE)
 Status: Entwurf (100)
 Kunde: Musterfirma GmbH (Kontakt 1001)
+Anschrift auf dem Dokument: Musterfirma GmbH
+Musterstraße 1
+12345 Musterstadt
 Datum: 01.10.2026
 Fällig am: 15.10.2026
 Netto: 149,02 EUR
 Umsatzsteuer: 28,31 EUR
 Brutto: 177,33 EUR
 Bisher bezahlt: 0,00 EUR
-Vermerkte Versandart: PDF-Download (VPDF)"
+Vermerkte Versandart: PDF-Download (VPDF)
+Betreff auf dem Dokument: Rechnung RE-1001
+Leistungsdatum oder -zeitraum: 01.10.2026
+Skonto: 2 % innerhalb von 7 Tagen
+Steuerregel: 1 Umsatzsteuerpflichtige Umsätze
+Kopftext: Vielen Dank für Ihren Auftrag.
+Positionen: keine
+Fußtext: Bitte überweisen Sie den Betrag innerhalb von 14 Tagen."
 `;
 
 exports[`German previews > finalize a draft order: says the same in German 1`] = `
 "Auftrag 3002 (noch ohne Nummer) fertigstellen: Entwurf → versendet, als Versandart wird „PDF-Download (VPDF)“ vermerkt.
 ! Der Auftrag wird als versendet markiert (Status 200), und sevDesk vergibt seine endgültige Nummer.
 ! sevDesk sendet nichts an den Kunden: Es wird nur vermerkt, wie das Dokument versendet wurde. Für den Versand per E-Mail über sevDesk gibt es stattdessen sevdesk_order_send_email.
+! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfen Sie bei Bedarf sevdesk_order_pdf.
 (umkehrbar)
 Auftrag: ID 3002, noch ohne Nummer
 Typ: Auftragsbestätigung (AB)
 Status: Entwurf (100)
 Kunde: Musterfirma GmbH (Kontakt 1001)
+Anschrift auf dem Dokument: Musterfirma GmbH
+Musterstraße 1
+12345 Musterstadt
+Adressfelder (strukturiert): Musterfirma GmbH
 Datum: 20.09.2026
 Netto: 144,02 EUR
 Umsatzsteuer: 27,36 EUR
 Brutto: 171,38 EUR
-Vermerkte Versandart: PDF-Download (VPDF)"
+Vermerkte Versandart: PDF-Download (VPDF)
+Betreff auf dem Dokument: Auftragsbestätigung AB-1002
+Steuerregel: 1 Umsatzsteuerpflichtige Umsätze
+Steuerhinweis: 0
+Kopftext: <p>Gerne bieten wir Ihnen an:</p>
+Positionen: keine
+Fußtext: <p>Das Angebot ist 30 Tage gültig.</p>
+Zahlungsbedingungen: 14 Tage netto
+Lieferbedingungen: Lieferung frei Haus"
 `;
 
 exports[`German previews > finalize a draft voucher: says the same in German 1`] = `
@@ -279,9 +376,12 @@ Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
 Lieferant: Musterfirma GmbH (Kontakt 1001)
 Belegnummer: ER-2026-0815
 Belegdatum: 02.11.2026
+Leistungsdatum oder -zeitraum: 02.11.2026
+Fälligkeit: 16.11.2026
 Steuerregel: 9 Vorsteuerabziehbare Aufwendungen
 Position 1: 6815 Bürobedarf (Konto 4266): 119 EUR brutto, 19 % USt.; Druckerpapier und Toner
 Summe: 119 EUR
+Belegdatei: keine angehängt
 Status: Entwurf 50 → offen 100"
 `;
 
@@ -357,6 +457,6 @@ Zahlungskonto: Geschäftskonto Musterbank (ID 4002)
 Status: Gebucht (400)
 Auftraggeber/Empfänger: Musterfirma GmbH
 Verwendungszweck: RE-1001
-Dokument 1: Rechnung RE-1001: Status Bezahlt (1000) → offen (200); dieser Umsatz hat 177,33 EUR bezahlt; weitere entfernte Zahlungen: 0,00 EUR
+Dokument 1: Rechnung 1001: Nummer RE-1001; Status Bezahlt (1000) → offen (200); dieser Umsatz hat 177,33 EUR bezahlt; weitere entfernte Zahlungen: 0,00 EUR
 Dieser Umsatz nach dem Zurücksetzen: ungebucht (Status 100) oder gelöscht, falls sevDesk ihn für eine Buchung angelegt hat"
 `;

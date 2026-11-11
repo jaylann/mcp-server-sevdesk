@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { executePartCreate, planPartCreate } from "../../domain/parts-write.js";
 import { defineWriteTool } from "../define-tool.js";
+import { ACCOUNT_PART_NUMBERS } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 import { partFieldsShape, partWriteOutput, taxRateInput } from "./part-fields.js";
 
@@ -39,6 +40,9 @@ export const partCreateTool = defineWriteTool({
     ...dryRunInputShape,
   }),
   output: partWriteOutput,
+  // "The part number is free" is checked, then the part is created: two creations at once both
+  // passed (review 2026-11, round 3).
+  locks: () => [ACCOUNT_PART_NUMBERS],
   prepare: (args, ctx) => planPartCreate(ctx.client, args, ctx.signal),
   execute: async (_args, plan, ctx) => {
     const part = await executePartCreate(ctx.client, plan.state, ctx.signal);

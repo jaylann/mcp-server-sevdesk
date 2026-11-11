@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { executePartUpdate, planPartUpdate } from "../../domain/parts-write.js";
 import { defineWriteTool } from "../define-tool.js";
+import { ACCOUNT_PART_NUMBERS } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 import { partFieldsShape, partWriteOutput, taxRateInput } from "./part-fields.js";
 
@@ -49,6 +50,14 @@ export const partUpdateTool = defineWriteTool({
     ...dryRunInputShape,
   }),
   output: partWriteOutput,
+  // The part: a new price or tax rate is sent as net, gross and rate together, computed from
+  // what was read. A price change and a tax change at once each sent the other's old value, and
+  // the later one won. A new part number is checked against the other parts first, like on
+  // create (review 2026-11, round 3).
+  locks: (args) => [
+    { objectName: "Part", id: String(args.id) },
+    ...(args.partNumber === undefined ? [] : [ACCOUNT_PART_NUMBERS]),
+  ],
   prepare: (args, ctx) => planPartUpdate(ctx.client, args, ctx.signal),
   execute: async (_args, plan, ctx) => {
     const part = await executePartUpdate(ctx.client, plan.state, ctx.signal);

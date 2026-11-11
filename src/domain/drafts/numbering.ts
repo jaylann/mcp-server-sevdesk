@@ -25,7 +25,7 @@
 import { z } from "zod";
 
 import { SevdeskError, type SevdeskErrorKind } from "../../sevdesk/errors.js";
-import { parseUpstream, zText } from "../../sevdesk/schema.js";
+import { parseUpstream, zId, zText } from "../../sevdesk/schema.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 
 /** The number range a draft takes its number from. */
@@ -211,7 +211,7 @@ export interface FreeNumber {
   readonly truncated: boolean;
 }
 
-const numberRowSchema = z.object({ creditNoteNumber: zText });
+const numberRowSchema = z.object({ id: zId.optional(), creditNoteNumber: zText });
 
 /**
  * Reserves the next credit note number and checks it against the numbers of existing credit
@@ -272,21 +272,50 @@ export function numberList(numbers: readonly string[]): string {
   return [...shown, ...(hidden > 0 ? [`${hidden} more`] : [])].join(", ");
 }
 
+/**
+ * The ids (ascending) of the credit notes that carry `number`, other than `exceptId`: the same
+ * scan and comparison as {@link reserveFreeCreditNoteNumber}. For the check after
+ * `createFromInvoice`, whose draft gets the counter's current number whether or not another
+ * credit note has it already. Reads only.
+ */
+export async function findCreditNotesWithNumber(
+  client: SevdeskClient,
+  number: string,
+  exceptId: number,
+  signal?: AbortSignal,
+): Promise<{ readonly ids: readonly number[]; readonly truncated: boolean }> {
+  const scan = await scanCreditNoteNumbers(client, signal);
+  const wanted = normalize(number);
+  const ids = scan.rows.flatMap((row) =>
+    row.id !== undefined && row.id !== exceptId && row.number === wanted ? [row.id] : [],
+  );
+  return { ids: [...new Set(ids)].sort((a, b) => a - b), truncated: scan.truncated };
+}
+
 async function creditNoteNumbersInUse(
   client: SevdeskClient,
   signal: AbortSignal | undefined,
 ): Promise<{ numbers: ReadonlySet<string>; truncated: boolean }> {
+  const scan = await scanCreditNoteNumbers(client, signal);
+  return { numbers: new Set(scan.rows.map((row) => row.number)), truncated: scan.truncated };
+}
+
+/** Every credit note that has a number, with the number normalized (up to the scan's cap). */
+async function scanCreditNoteNumbers(
+  client: SevdeskClient,
+  signal: AbortSignal | undefined,
+): Promise<{ rows: { id: number | undefined; number: string }[]; truncated: boolean }> {
   const list = await client.listAll("/CreditNote", undefined, {
     max: CREDIT_NOTE_SCAN_MAX,
     pageSize: SCAN_PAGE_SIZE,
     ...(signal === undefined ? {} : { signal }),
   });
-  const numbers = new Set<string>();
+  const rows: { id: number | undefined; number: string }[] = [];
   for (const raw of list.items) {
-    const { creditNoteNumber } = parseUpstream(numberRowSchema, raw, "credit notes");
-    if (creditNoteNumber !== undefined) numbers.add(normalize(creditNoteNumber));
+    const { id, creditNoteNumber } = parseUpstream(numberRowSchema, raw, "credit notes");
+    if (creditNoteNumber !== undefined) rows.push({ id, number: normalize(creditNoteNumber) });
   }
-  return { numbers, truncated: list.truncated };
+  return { rows, truncated: list.truncated };
 }
 
 function normalize(number: string): string {
