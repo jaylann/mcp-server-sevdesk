@@ -17,9 +17,15 @@
  * - 5 pending per account scope (a looping model cannot flood the user; more are refused);
  * - 20 records per account scope, pending and decided: a scope at its cap makes room among its own
  *   records only (oldest rejected first, then oldest approved, then oldest pending);
- * - 100 records overall, a last resort once many scopes are active: the scope with the most
- *   records gives up its oldest rejected (else pending) record. An approved, not yet taken record
- *   is never dropped for another scope; when nothing else can go, creating is refused instead.
+ * - 100 records overall, a last resort once many scopes are active. Room comes only from scopes
+ *   that hold more records than the creating one: the largest of them that has a rejected (else
+ *   pending) record gives up its oldest; when they hold only approved, not yet taken records, the
+ *   largest gives up its oldest approved one. A scope that holds the most itself makes room among
+ *   its own records. So no scope ever loses a record to one that holds as many or more, and a few
+ *   accounts that leave approvals unused cannot lock every other account out (review 2026-11,
+ *   round 3: five accounts with 20 approved records each used to fill the store, and everyone
+ *   else was refused). The owner of a dropped approved record is asked again when the call is
+ *   retried, as after an expiry.
  */
 import { randomInt } from "node:crypto";
 
@@ -45,8 +51,8 @@ export interface ApprovalStoreOptions {
   /** Lifetime of an approval (default 10 minutes). */
   readonly ttlMs?: number;
   /**
-   * Most approvals kept at once, all scopes together (default 100); see the module comment for
-   * which record makes room. {@link ApprovalLimitError} when only approved ones could.
+   * Most approvals kept at once, all scopes together (default 100, at least 1); see the module
+   * comment for which record makes room.
    */
   readonly maxApprovals?: number;
   /**
@@ -69,8 +75,23 @@ const DEFAULT_MAX_PER_SCOPE = 20;
 const DEFAULT_MAX_PENDING = 5;
 /** What a scope at its own cap drops first. */
 const OWN_EVICTION_ORDER: readonly ApprovalStatus[] = ["rejected", "approved", "pending"];
-/** What the overall cap may take from a scope: never an approved, untaken request. */
+/** What the overall cap takes from a larger scope first: not an approved, untaken request. */
 const SHARED_EVICTION_ORDER: readonly ApprovalStatus[] = ["rejected", "pending"];
+/** What it takes from the largest scope when nothing else is left. */
+const APPROVED_ONLY: readonly ApprovalStatus[] = ["approved"];
+
+/**
+ * Thrown by `create` when the overall cap is reached and no record can make room. With the
+ * eviction rules of the module comment this needs a cap below 1; it stays as the answer of last
+ * resort. The write flow tells it from the per-account limit (it must not send a user to an
+ * inbox that may be empty).
+ */
+export class ApprovalStoreFullError extends ApprovalLimitError {
+  constructor(limit: number) {
+    super(limit);
+    this.name = "ApprovalStoreFullError";
+  }
+}
 /** Reference codes: no 0/O, 1/I, so they can be read out and compared easily. */
 const REFERENCE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const REFERENCE_LENGTH = 6;
@@ -100,7 +121,7 @@ export function createApprovalStore(options: ApprovalStoreOptions): ApprovalStor
 
   /**
    * The ids `create` drops to make room for a new record of `scope` that replaces `key`, or
-   * `undefined` when the overall cap could only be met by dropping approved requests.
+   * `undefined` when the overall cap cannot be met (nothing is left to drop).
    */
   function evictionsFor(scope: string, key: string): Set<string> | undefined {
     const dropped = new Set<string>();
@@ -115,7 +136,7 @@ export function createApprovalStore(options: ApprovalStoreOptions): ApprovalStor
       if (victim === undefined) break;
       dropped.add(victim.id);
     }
-    // Last resort: the scope with the most records gives one up, never an approved request.
+    // Last resort: a scope that holds more than the creating one gives a record up.
     while (live().length >= maxApprovals) {
       const current = live();
       const counts = new Map<string, number>();
@@ -123,10 +144,23 @@ export function createApprovalStore(options: ApprovalStoreOptions): ApprovalStor
         const owner = record.owner.accountScope;
         counts.set(owner, (counts.get(owner) ?? 0) + 1);
       }
-      const victim = [...counts.entries()]
+      const own = counts.get(scope) ?? 0;
+      // Only scopes that hold more than the creating one, largest first (scopes of one size in
+      // the order of their oldest record): holding more gives no power over a scope that holds
+      // as many or fewer.
+      const larger = [...counts.entries()]
+        .filter(([, count]) => count > own)
         .sort((a, b) => b[1] - a[1])
-        .map(([candidate]) => oldestOf(current, candidate, SHARED_EVICTION_ORDER))
-        .find((record) => record !== undefined);
+        .map(([candidate]) => candidate);
+      const victim =
+        // The largest of them that has a rejected (else pending) record gives up its oldest;
+        larger
+          .map((candidate) => oldestOf(current, candidate, SHARED_EVICTION_ORDER))
+          .find((record) => record !== undefined) ??
+        // with only approved, untaken requests left, the largest gives up its oldest one;
+        (larger[0] === undefined ? undefined : oldestOf(current, larger[0], APPROVED_ONLY)) ??
+        // and a scope that holds the most itself makes room among its own records.
+        oldestOf(current, scope, OWN_EVICTION_ORDER);
       if (victim === undefined) return undefined;
       dropped.add(victim.id);
     }
@@ -194,7 +228,7 @@ export function createApprovalStore(options: ApprovalStoreOptions): ApprovalStor
       ).length;
       if (waiting >= maxPending) throw new ApprovalLimitError(maxPending);
       const dropped = evictionsFor(owner.accountScope, key);
-      if (dropped === undefined) throw new ApprovalLimitError(maxApprovals);
+      if (dropped === undefined) throw new ApprovalStoreFullError(maxApprovals);
       for (const id of dropped) records.delete(id);
       const createdAtMs = now();
       const record: ApprovalRecord = {
@@ -258,6 +292,28 @@ export function createApprovalStore(options: ApprovalStoreOptions): ApprovalStor
       }
       return "decided";
     },
+    withdraw(id): boolean {
+      const record = records.get(id);
+      if (record === undefined) return false;
+      if (record.expiresAtMs <= now()) {
+        records.delete(id);
+        return false;
+      }
+      // Rejected already: nothing will run, and it was reported when it was decided.
+      if (record.status === "rejected") return true;
+      record.status = "rejected";
+      try {
+        options.onDecision?.({
+          owner: record.owner,
+          binding: record.binding,
+          reference: record.reference,
+          decision: "rejected",
+        });
+      } catch {
+        // Reporting must never undo or hide the withdrawal.
+      }
+      return true;
+    },
     async close() {
       records.clear();
       await channel.close();
@@ -266,6 +322,7 @@ export function createApprovalStore(options: ApprovalStoreOptions): ApprovalStor
   channel.attach({
     get: (id) => store.get(id),
     decide: (id, decision) => store.decide(id, decision),
+    withdraw: (id) => store.withdraw(id),
   });
   return store;
 }

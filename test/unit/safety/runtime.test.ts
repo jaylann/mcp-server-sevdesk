@@ -45,7 +45,7 @@ function grant(grantId: string, accountId: string): VerifiedGrant {
 }
 
 const STDIO: RequestPrincipal = { grantKey: "stdio", accountScope: "local" };
-const PAGE_URL = /http:\/\/127\.0\.0\.1:\d+\/approve\/[A-Za-z0-9_-]{43}/;
+const PAGE_URL = /http:\/\/127\.0\.0\.1:\d+\/open\/[A-Za-z0-9_-]{43}/;
 
 const STATE: ConfirmState = {
   v: 1,

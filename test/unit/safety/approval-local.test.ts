@@ -33,7 +33,8 @@ import {
 const STDIO: RequestPrincipal = { grantKey: "stdio", accountScope: "local" };
 const TOOL = "sevdesk_invoice_finalize";
 const ARGS = "a".repeat(64);
-const PAGE_URL = /http:\/\/127\.0\.0\.1:\d+\/approve\/[A-Za-z0-9_-]{43}/;
+/** The launch link the channel logs and hands to the opener: a single-use ticket, not the id. */
+const LAUNCH_URL = /http:\/\/127\.0\.0\.1:\d+\/open\/[A-Za-z0-9_-]{43}/;
 
 const stores: ApprovalStore[] = [];
 
@@ -45,8 +46,10 @@ interface Harness {
   readonly approvals: ApprovalStore;
   /** Lines the channel logged. */
   readonly lines: string[];
-  /** The page URL of `ticket`, as the log names it. */
+  /** The launch link of `ticket`, as the log names it. */
   readonly url: (ticket: ApprovalTicket) => string;
+  /** The address of the approval page itself, which only the store's id gives away. */
+  readonly pageOf: (ticket: ApprovalTicket) => string;
   readonly current: (argsHash?: string) => ApprovalTicket | undefined;
 }
 
@@ -67,15 +70,19 @@ function harness(
   const { channel: _channel, ...storeOptions } = options;
   const approvals = createApprovalStore({ channel, ...storeOptions });
   stores.push(approvals);
+  const url = (ticket: ApprovalTicket): string => {
+    const line = lines.find((candidate) =>
+      candidate.includes(`approval ${ticket.reference} waiting at `),
+    );
+    const link = LAUNCH_URL.exec(line ?? "")?.[0];
+    if (link === undefined) throw new Error("no link was logged for this approval");
+    return link;
+  };
   return {
     approvals,
     lines,
-    url: (ticket) => {
-      const line = lines.find((candidate) => candidate.includes(`/approve/${ticket.id} `));
-      const url = PAGE_URL.exec(line ?? "")?.[0];
-      if (url === undefined) throw new Error("no page was logged for this approval");
-      return url;
-    },
+    url,
+    pageOf: (ticket) => `${new URL(url(ticket)).origin}/approve/${ticket.id}`,
     current: (argsHash = ARGS) => approvals.current(STDIO, TOOL, argsHash),
   };
 }
@@ -106,16 +113,18 @@ describe("local approval page", () => {
     expect(channel.inboxUrl).toBeUndefined();
   });
 
-  it("starts lazily on 127.0.0.1 with an ephemeral port and a 256-bit id in the URL", async () => {
-    const { approvals, url, current } = harness();
+  it("starts lazily on 127.0.0.1 with an ephemeral port and a 256-bit ticket in the link", async () => {
+    const { approvals, url, lines, current } = harness();
     expect(current()).toBeUndefined();
 
     const ticket = await approvals.create(STDIO, binding());
 
-    const page = new URL(url(ticket));
-    expect(page.hostname).toBe("127.0.0.1");
-    expect(Number(page.port)).toBeGreaterThan(0);
-    expect(page.pathname).toBe(`/approve/${ticket.id}`);
+    const link = new URL(url(ticket));
+    expect(link.hostname).toBe("127.0.0.1");
+    expect(Number(link.port)).toBeGreaterThan(0);
+    expect(link.pathname).toMatch(/^\/open\/[A-Za-z0-9_-]{43}$/);
+    // The link names a ticket: the approval's id (the page's address) is not in the log.
+    expect(lines.join("\n")).not.toContain(ticket.id);
     expect(ticket.id).toHaveLength(43);
     expect(ticket.status).toBe("pending");
     expect(ticket.callId).toBe("call-1");
@@ -133,7 +142,7 @@ describe("local approval page", () => {
     expect((await send(url(first))).status).toBe(404);
   });
 
-  it("shows the preview HTML-escaped under a strict CSP and sets a SameSite=Strict cookie", async () => {
+  it("shows the preview HTML-escaped under a strict CSP, to the browser with the link's cookie", async () => {
     const { approvals, url } = harness();
     const ticket = await approvals.create(
       STDIO,
@@ -180,10 +189,8 @@ describe("local approval page", () => {
     expect(csrf).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(cookie).toMatch(/^sevdesk_approval=[A-Za-z0-9_-]{43}$/);
     expect(cookie?.split("=")[1]).not.toBe(csrf);
-    const setCookie = String(page.headers["set-cookie"]);
-    expect(setCookie).toBe(
-      `${cookie ?? ""}; Path=/approve/${ticket.id}; HttpOnly; SameSite=Strict; Max-Age=600`,
-    );
+    // The cookie came from the launch link; the page itself hands none out.
+    expect(page.headers["set-cookie"]).toBeUndefined();
     expect(page.body).not.toContain("<script");
   });
 
@@ -234,7 +241,9 @@ describe("local approval page", () => {
     expect(approvals.take(STDIO, ticket.id)?.status).toBe("approved");
     expect(approvals.take(STDIO, ticket.id)).toBeUndefined();
     expect(current()).toBeUndefined();
-    expect((await send(url(ticket))).status).toBe(404);
+    // The link is spent: another party that presents it now is told that it was used before
+    // (it is not the browser that decided, which holds the link's cookie).
+    expect((await send(url(ticket))).status).toBe(410);
   });
 
   /** A store on a channel whose view of the store a test can replace (`attach`). */
@@ -244,7 +253,7 @@ describe("local approval page", () => {
     const approvals = createApprovalStore({ channel });
     stores.push(approvals);
     const ticket = await approvals.create(STDIO, binding());
-    const page = PAGE_URL.exec(lines[0] ?? "")?.[0] ?? "";
+    const page = LAUNCH_URL.exec(lines[0] ?? "")?.[0] ?? "";
     return { channel, approvals, ticket, page };
   }
 
@@ -256,6 +265,7 @@ describe("local approval page", () => {
     channel.attach({
       get: (id) => (lookups++ === 0 ? approvals.get(id) : undefined),
       decide: (id, decision) => approvals.decide(id, decision),
+      withdraw: (id) => approvals.withdraw(id),
     });
 
     const decided = await submitDecision(page, "approve", opened);
@@ -281,6 +291,7 @@ describe("local approval page", () => {
         decided = true;
         return outcome;
       },
+      withdraw: (id) => approvals.withdraw(id),
     });
 
     const response = await submitDecision(page, "approve", opened);
@@ -338,15 +349,19 @@ describe("local approval page", () => {
   });
 
   it("does not accept one approval's token and cookie for another", async () => {
-    const { approvals, url, current } = harness();
+    const { approvals, url, pageOf, current } = harness();
     const first = await approvals.create(STDIO, binding());
     const second = await approvals.create(STDIO, binding({ argsHash: "b".repeat(64) }));
     const openedFirst = await openApproval(url(first));
 
-    const decided = await submitDecision(url(second), "approve", openedFirst);
+    const decided = await submitDecision(pageOf(second), "approve", openedFirst);
 
     expect(decided.status).toBe(403);
     expect(current("b".repeat(64))?.status).toBe("pending");
+    // Not for showing the other page either.
+    const shown = await send(pageOf(second), { headers: { Cookie: openedFirst.cookie } });
+    expect(shown.status).toBe(403);
+    expect(shown.body).not.toContain("csrf");
   });
 
   it("accepts a same-origin POST without Origin when the browser marks it Sec-Fetch-Site: same-origin", async () => {
@@ -412,7 +427,7 @@ describe("local approval page", () => {
     });
     expect(json.status).toBe(400);
 
-    const huge = await send(url(ticket), {
+    const huge = await send(opened.pageUrl ?? "", {
       method: "POST",
       headers: {
         Origin: new URL(url(ticket)).origin,
@@ -426,16 +441,30 @@ describe("local approval page", () => {
   });
 
   it("answers 404 for other paths and unknown ids, 405 for other methods", async () => {
-    const { approvals, url } = harness();
+    const { approvals, url, pageOf, current } = harness();
     const ticket = await approvals.create(STDIO, binding());
     const origin = new URL(url(ticket)).origin;
 
     expect((await send(`${origin}/`)).status).toBe(404);
     expect((await send(`${origin}/approve/short`)).status).toBe(404);
     expect((await send(`${origin}/approve/${"A".repeat(43)}`)).status).toBe(404);
-    const put = await send(url(ticket), { method: "PUT" });
+    expect((await send(`${origin}/open/short`)).status).toBe(404);
+    expect((await send(`${origin}/open/${"A".repeat(43)}`)).status).toBe(404);
+    // The approval's id is no ticket, and a ticket is no page address.
+    expect((await send(`${origin}/open/${ticket.id}`)).status).toBe(404);
+    expect((await send(url(ticket).replace("/open/", "/approve/"))).status).toBe(404);
+    const put = await send(pageOf(ticket), { method: "PUT" });
     expect(put.status).toBe(405);
     expect(put.headers["allow"]).toBe("GET, POST");
+    // Other methods do not use the ticket up.
+    for (const method of ["POST", "HEAD", "PUT"]) {
+      const response = await send(url(ticket), { method });
+      expect(response.status).toBe(405);
+      expect(response.headers["allow"]).toBe("GET");
+      expect(response.headers["set-cookie"]).toBeUndefined();
+    }
+    expect((await openApproval(url(ticket))).page.status).toBe(200);
+    expect(current()?.status).toBe("pending");
   });
 
   it("serves the page's fonts and icon from /assets/, and nothing else there", async () => {
@@ -484,7 +513,7 @@ describe("local approval page", () => {
     expect(rejected.body).toContain("<h1>Abgelehnt</h1>");
     expect(rejected.body).toContain("In sevDesk wurde nichts geändert.");
     // Without the header the same page is English.
-    const english = await send(url(ticket));
+    const english = (await openApproval(url(ticket))).page;
     expect(english.headers["content-language"]).toBe("en");
     expect(english.body).toContain("<h1>Rejected</h1>");
   });
@@ -521,7 +550,7 @@ describe("local approval page", () => {
     });
     await approvals.close();
     await approvals.create(STDIO, binding());
-    const page = PAGE_URL.exec(lines[0] ?? "")?.[0] ?? "";
+    const page = LAUNCH_URL.exec(lines[0] ?? "")?.[0] ?? "";
 
     await approvals.close();
     await approvals.close();
@@ -546,6 +575,228 @@ describe("local approval page", () => {
     await expect(approvals.create(STDIO, binding())).rejects.toThrow("listen EPERM");
     expect(approvals.current(STDIO, TOOL, ARGS)).toBeUndefined();
     await expect(approvals.create(STDIO, binding())).resolves.toMatchObject({ status: "pending" });
+  });
+});
+
+/**
+ * Review 2026-11, round 3. The page's address used to be the capability and was passed to the OS
+ * opener as an argument, where other local users can read it; whoever requested it got the
+ * cookie and the form token. Now the opener gets a single-use ticket.
+ */
+describe("launch link", () => {
+  it("sets the cookies once and redirects to the page", async () => {
+    const { approvals, url, pageOf } = harness();
+    const ticket = await approvals.create(STDIO, binding());
+    const link = new URL(url(ticket));
+
+    const launch = await send(url(ticket));
+
+    expect(launch.status).toBe(303);
+    expect(launch.headers["location"]).toBe(`/approve/${ticket.id}`);
+    expect(launch.headers["cache-control"]).toBe("no-store");
+    expect(launch.body).toBe("");
+    const cookies = launch.headers["set-cookie"] as string[];
+    expect(cookies).toHaveLength(2);
+    expect(cookies[0]).toMatch(
+      new RegExp(
+        `^sevdesk_approval=[A-Za-z0-9_-]{43}; Path=/approve/${ticket.id}; HttpOnly; ` +
+          "SameSite=Strict; Max-Age=600$",
+      ),
+    );
+    expect(cookies[1]).toMatch(
+      new RegExp(
+        `^sevdesk_approval_link=[A-Za-z0-9_-]{43}; Path=${link.pathname}; HttpOnly; ` +
+          "SameSite=Strict; Max-Age=600$",
+      ),
+    );
+    // With the cookie the page shows, and a reload keeps working.
+    const pageCookie = cookies[0]?.split(";")[0];
+    for (const _reload of [1, 2]) {
+      const page = await send(pageOf(ticket), { headers: { Cookie: pageCookie } });
+      expect(page.status).toBe(200);
+      expect(page.body).toContain("Finalize invoice RE-1042.");
+    }
+  });
+
+  it("shows nothing and hands out no cookie for the page's address alone", async () => {
+    const { approvals, pageOf, current } = harness();
+    const ticket = await approvals.create(STDIO, binding());
+
+    const page = await send(pageOf(ticket));
+
+    expect(page.status).toBe(403);
+    expect(page.body).toContain("<h1>Open the approval link</h1>");
+    expect(page.headers["set-cookie"]).toBeUndefined();
+    expect(page.body).not.toContain("csrf");
+    expect(page.body).not.toContain("RE-1042");
+    expect(page.body).not.toContain(ticket.reference);
+    // Nor can the id decide: there is no token to send and no cookie to send it with.
+    const decided = await send(pageOf(ticket), {
+      method: "POST",
+      headers: {
+        Origin: new URL(pageOf(ticket)).origin,
+        "Sec-Fetch-Site": "same-origin",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: "decision=approve&csrf=",
+    });
+    expect(decided.status).toBe(403);
+    expect(current()?.status).toBe("pending");
+  });
+
+  it("gives a second presenter nothing and cancels the request", async () => {
+    const decisions: ApprovalDecision[] = [];
+    const { approvals, url, current } = harness({
+      onDecision: (decision) => decisions.push(decision),
+    });
+    const ticket = await approvals.create(STDIO, binding());
+    // The user's browser opens the link; then someone who read it elsewhere presents it too.
+    const opened = await openApproval(url(ticket));
+    expect(opened.page.status).toBe(200);
+
+    const second = await send(url(ticket));
+
+    expect(second.status).toBe(410);
+    expect(second.body).toContain("<h1>Link already used</h1>");
+    expect(second.body).toContain("the request was cancelled and nothing was changed in sevDesk");
+    expect(second.headers["set-cookie"]).toBeUndefined();
+    expect(second.headers["location"]).toBeUndefined();
+    expect(second.body).not.toContain("csrf");
+    expect(second.body).not.toContain("RE-1042");
+    // Fail closed: the request is over, and the user's own page says why.
+    expect(current()?.status).toBe("rejected");
+    expect(decisions.map((decision) => decision.decision)).toEqual(["rejected"]);
+    const approve = await submitDecision(url(ticket), "approve", opened);
+    expect(approve.status).toBe(410);
+    expect(approve.body).toContain("<h1>Link already used</h1>");
+    expect((await openApproval(url(ticket))).page.status).toBe(410);
+    expect(current()?.status).toBe("rejected");
+  });
+
+  it("cancels the request when the user's browser comes second", async () => {
+    const { approvals, url, pageOf, current } = harness();
+    const ticket = await approvals.create(STDIO, binding());
+    // Someone else read the link from the process list and was faster: they hold the cookie.
+    const stolen = await send(url(ticket));
+    const cookie = (stolen.headers["set-cookie"] as string[])[0]?.split(";")[0];
+    const theirPage = await send(pageOf(ticket), { headers: { Cookie: cookie } });
+    const csrf = /name="csrf" value="([^"]+)"/.exec(theirPage.body)?.[1] ?? "";
+
+    // The user's browser arrives with the same link.
+    const users = await openApproval(url(ticket));
+
+    expect(users.page.status).toBe(410);
+    expect(users.page.body).toContain("<h1>Link already used</h1>");
+    expect(users.cookie).toBeUndefined();
+    expect(current()?.status).toBe("rejected");
+    // What the other party holds is worth nothing from here on.
+    const approve = await send(pageOf(ticket), {
+      method: "POST",
+      headers: {
+        Origin: new URL(pageOf(ticket)).origin,
+        "Sec-Fetch-Site": "same-origin",
+        "Content-Type": "application/x-www-form-urlencoded",
+        Cookie: cookie,
+      },
+      body: new URLSearchParams({ csrf, decision: "approve" }).toString(),
+    });
+    expect(approve.status).toBe(410);
+    expect(current()?.status).toBe("rejected");
+  });
+
+  it("withdraws an approval the first presenter gave before the second one arrived", async () => {
+    const decisions: ApprovalDecision[] = [];
+    const { approvals, url, current } = harness({
+      onDecision: (decision) => decisions.push(decision),
+    });
+    const ticket = await approvals.create(STDIO, binding());
+    // Whoever read the link first was fast and approved at once.
+    await decideInBrowser(url(ticket), "approve");
+    expect(current()?.status).toBe("approved");
+
+    const second = await send(url(ticket));
+
+    // Two parties held the link, so the approval must not run: it is withdrawn, and the tool's
+    // next call finds a rejected request.
+    expect(second.status).toBe(410);
+    expect(second.body).toContain("the request was cancelled and nothing was changed in sevDesk");
+    expect(second.headers["set-cookie"]).toBeUndefined();
+    expect(current()?.status).toBe("rejected");
+    expect(decisions.map((decision) => decision.decision)).toEqual(["approved", "rejected"]);
+    expect(approvals.take(STDIO, ticket.id)?.status).toBe("rejected");
+  });
+
+  it("says so when the tool ran the approval before the second presentation", async () => {
+    const { approvals, url } = harness();
+    const ticket = await approvals.create(STDIO, binding());
+    await decideInBrowser(url(ticket), "approve");
+    // The tool's retry took the approval: the action ran, nothing is left to withdraw.
+    expect(approvals.take(STDIO, ticket.id)?.status).toBe("approved");
+
+    const second = await send(url(ticket));
+
+    // The page does not claim it was cancelled.
+    expect(second.status).toBe(410);
+    expect(second.body).toContain("the request was decided there");
+    expect(second.body).not.toContain("was cancelled");
+    expect(second.headers["set-cookie"]).toBeUndefined();
+  });
+
+  it("lets the browser that used the link open it again", async () => {
+    const { approvals, url, current } = harness();
+    const ticket = await approvals.create(STDIO, binding());
+
+    const first = await openApproval(url(ticket));
+    const again = await openApproval(url(ticket));
+
+    expect(again.page.status).toBe(200);
+    expect(again.pageUrl).toBe(first.pageUrl);
+    expect(again.csrf).toBe(first.csrf);
+    expect(current()?.status).toBe("pending");
+    expect((await submitDecision(url(ticket), "approve", again)).status).toBe(200);
+    expect(current()?.status).toBe("approved");
+  });
+
+  it.each([
+    ["Sec-Purpose", "prefetch;prerender"],
+    ["Purpose", "prefetch"],
+    ["X-Moz", "prefetch"],
+  ])("does not use the ticket up for a speculative load (%s: %s)", async (name, value) => {
+    const { approvals, url, current } = harness();
+    const ticket = await approvals.create(STDIO, binding());
+
+    const speculative = await send(url(ticket), { headers: { [name]: value } });
+
+    expect(speculative.status).toBe(503);
+    expect(speculative.headers["set-cookie"]).toBeUndefined();
+    expect(speculative.headers["location"]).toBeUndefined();
+    expect((await openApproval(url(ticket))).page.status).toBe(200);
+    expect(current()?.status).toBe("pending");
+  });
+
+  it("answers in German", async () => {
+    const { approvals, url, pageOf } = harness();
+    const ticket = await approvals.create(STDIO, binding());
+    const german = { "Accept-Language": "de" };
+
+    const noCookie = await send(pageOf(ticket), { headers: german });
+    expect(noCookie.body).toContain("<h1>Freigabe-Link öffnen</h1>");
+    await openApproval(url(ticket));
+    const second = await send(url(ticket), { headers: german });
+    expect(second.body).toContain("<h1>Link bereits verwendet</h1>");
+    expect(second.body).toContain("Deshalb wurde die Anfrage abgebrochen");
+  });
+
+  it("forgets the links of approvals that are gone", async () => {
+    let now = 1_000_000;
+    const { approvals, url } = harness({ now: () => now });
+    const first = await approvals.create(STDIO, binding());
+    const firstLink = url(first);
+
+    now += 600_000;
+    await approvals.create(STDIO, binding({ argsHash: "b".repeat(64) }));
+
+    expect((await send(firstLink)).status).toBe(404);
   });
 });
 
@@ -579,9 +830,10 @@ describe("reference codes, log line and opener", () => {
 
     expect(stderr).toHaveBeenCalledWith(
       expect.stringMatching(
-        new RegExp(`^mcp-server-sevdesk: .*${ticket.reference}.*/approve/${ticket.id} `),
+        new RegExp(`^mcp-server-sevdesk: .*${ticket.reference}.*/open/[A-Za-z0-9_-]{43} `),
       ),
     );
+    expect(stderr).not.toHaveBeenCalledWith(expect.stringContaining(ticket.id));
   });
 
   it.each([

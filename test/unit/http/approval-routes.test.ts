@@ -920,7 +920,11 @@ describe("approval inbox routes", () => {
   it("keeps nothing from attach and presents without opening a page", async () => {
     const env = setup({ explicitStore: true });
     const view = env.approvals.add(A1);
-    env.inbox.channel.attach({ get: () => undefined, decide: () => "unknown" });
+    env.inbox.channel.attach({
+      get: () => undefined,
+      decide: () => "unknown",
+      withdraw: () => false,
+    });
     const browser = await signedIn(env);
     expect(inboxLinks((await browser.get("/approvals")).body)).toEqual([`/approvals/${view.id}`]);
     await expect(env.inbox.channel.present(view)).resolves.toEqual({ opened: false });

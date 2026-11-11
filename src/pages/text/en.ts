@@ -285,6 +285,26 @@ export const en = {
     ),
     noDecision: message("Bad request", "Choose Approve or Reject."),
     badForm: message("Bad request", "The form could not be read."),
+    /** The page's address was opened without the cookie its link sets. */
+    needLink: message(
+      "Open the approval link",
+      "This page opens only through the approval link the server wrote to its log or opened " +
+        "for you, in the browser that opened it. The address alone does not show the request.",
+    ),
+    /** The link was opened a second time by someone else; the request was still open. */
+    linkUsed: message(
+      "Link already used",
+      "This approval link was opened a second time, from another browser or program. A link " +
+        "works once, so the request was cancelled and nothing was changed in sevDesk. Ask your " +
+        "assistant to try again: you get a new link.",
+    ),
+    /** As `linkUsed`, but the request had been decided before the second opening. */
+    linkUsedDecided: message(
+      "Link already used",
+      "This approval link was opened before, from another browser or program, and the request " +
+        "was decided there. A link works once. If that was not you, tell your assistant to " +
+        "stop and check who else uses this computer.",
+    ),
   },
 
   /** Upload pages and download links (`/uploads/<id>`, `/files/<id>`). */

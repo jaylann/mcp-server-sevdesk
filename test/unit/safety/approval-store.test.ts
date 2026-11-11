@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { RequestPrincipal } from "../../../src/accounts/types.js";
-import { createApprovalStore } from "../../../src/safety/approval-store.js";
+import { ApprovalStoreFullError, createApprovalStore } from "../../../src/safety/approval-store.js";
 import {
   type ApprovalBinding,
   type ApprovalChannel,
@@ -33,7 +33,7 @@ function binding(overrides: Partial<ApprovalBinding> = {}): ApprovalBinding {
 
 interface FakeChannel extends ApprovalChannel {
   readonly presented: ApprovalView[];
-  attached: Pick<ApprovalStore, "get" | "decide"> | undefined;
+  attached: Pick<ApprovalStore, "get" | "decide" | "withdraw"> | undefined;
   closed: number;
 }
 
@@ -281,6 +281,56 @@ describe("approval store: decisions", () => {
     expect(approvals.decide(ticket.id, "rejected")).toBe("decided");
     expect(approvals.current(A1, TOOL, ARGS)?.status).toBe("rejected");
   });
+
+  it("withdraws a pending or an approved request that was not taken yet (review 2026-11, round 3)", async () => {
+    const decisions: ApprovalDecision[] = [];
+    const { approvals } = store({ onDecision: (decision) => decisions.push(decision) });
+    const pending = await approvals.create(A1, binding());
+    const approved = await approvals.create(A1, binding({ argsHash: "b".repeat(64) }));
+    approvals.decide(approved.id, "approved");
+
+    expect(approvals.withdraw(pending.id)).toBe(true);
+    expect(approvals.withdraw(approved.id)).toBe(true);
+
+    // The tool's next call finds a rejected request: the approval does not run.
+    expect(approvals.take(A1, pending.id)?.status).toBe("rejected");
+    expect(approvals.take(A1, approved.id)?.status).toBe("rejected");
+    expect(decisions.map((decision) => decision.decision)).toEqual([
+      "approved",
+      "rejected",
+      "rejected",
+    ]);
+  });
+
+  it("reports a withdrawal once, and cannot withdraw what is taken, expired or unknown", async () => {
+    const decisions: ApprovalDecision[] = [];
+    const { approvals, advance } = store({ onDecision: (decision) => decisions.push(decision) });
+    const rejected = await approvals.create(A1, binding());
+    approvals.decide(rejected.id, "rejected");
+    const taken = await approvals.create(A1, binding({ argsHash: "b".repeat(64) }));
+    approvals.decide(taken.id, "approved");
+    approvals.take(A1, taken.id);
+    const expired = await approvals.create(A1, binding({ argsHash: "c".repeat(64) }));
+
+    expect(approvals.withdraw(rejected.id)).toBe(true);
+    expect(approvals.withdraw(taken.id)).toBe(false);
+    expect(approvals.withdraw("x".repeat(43))).toBe(false);
+    advance(600_000);
+    expect(approvals.withdraw(expired.id)).toBe(false);
+    expect(decisions.map((decision) => decision.decision)).toEqual(["rejected", "approved"]);
+  });
+
+  it("keeps a withdrawal when reporting it throws", async () => {
+    const { approvals } = store({
+      onDecision: () => {
+        throw new Error("audit down");
+      },
+    });
+    const ticket = await approvals.create(A1, binding());
+
+    expect(approvals.withdraw(ticket.id)).toBe(true);
+    expect(approvals.current(A1, TOOL, ARGS)?.status).toBe("rejected");
+  });
 });
 
 describe("approval store: limits", () => {
@@ -400,23 +450,102 @@ describe("approval store: fair eviction (no account pushes out another's approva
     expect(approvals.list("1001").map((view) => view.binding.argsHash)).toEqual(["a1"]);
   });
 
-  it("refuses a new approval rather than drop approved requests of other accounts", async () => {
-    const { approvals } = store({ maxApprovals: 2 });
+  /** Creates and approves one request per hash for `who`. */
+  async function createApproved(
+    approvals: ApprovalStore,
+    who: RequestPrincipal,
+    argsHashes: string[],
+  ) {
+    for (const argsHash of argsHashes) {
+      const ticket = await approvals.create(who, binding({ argsHash }));
+      approvals.decide(ticket.id, "approved");
+    }
+  }
+  const hashes = (approvals: ApprovalStore, scope: string): string[] =>
+    approvals.list(scope).map((view) => view.binding.argsHash);
+
+  it("gives a scope that holds fewer the oldest approved request of the largest scope, when only approved ones are left", async () => {
+    // Review 2026-11, round 3: this used to be refused, so accounts that left approved requests
+    // unused locked everyone else out.
+    const { approvals } = store({ maxApprovals: 3 });
     const a = owner("1001");
-    const approvedA = await approvals.create(a, binding({ argsHash: "a1" }));
-    approvals.decide(approvedA.id, "approved");
-    const approvedB = await approvals.create(B, binding({ argsHash: "b1" }));
-    approvals.decide(approvedB.id, "approved");
+    await createApproved(approvals, a, ["a1", "a2"]);
+    await createApproved(approvals, B, ["b1"]);
 
+    const created = await approvals.create(owner("3003"), binding({ argsHash: "c1" }));
+
+    expect(created.status).toBe("pending");
+    expect(hashes(approvals, "1001")).toEqual(["a2"]);
+    expect(hashes(approvals, "2002")).toEqual(["b1"]);
+    expect(hashes(approvals, "3003")).toEqual(["c1"]);
+    // The owner of the dropped request is asked again on its retry, as after an expiry.
+    expect(approvals.current(a, TOOL, "a1")).toBeUndefined();
+  });
+
+  it("never drops a record of a scope that holds as many or fewer: such a scope makes room among its own", async () => {
+    const { approvals } = store({ maxApprovals: 4 });
+    const a = owner("1001");
+    await createApproved(approvals, a, ["a1", "a2"]);
+    await createApproved(approvals, B, ["b1"]);
+    // A waiting request of the smaller scope is as safe as an approved one.
+    await approvals.create(B, binding({ argsHash: "b2" }));
+
+    // 1001 holds as many as 2002 (two each): it drops its own oldest, nothing of 2002.
+    await approvals.create(a, binding({ argsHash: "a3" }));
+    expect(hashes(approvals, "1001")).toEqual(["a3", "a2"]);
+    expect(hashes(approvals, "2002")).toEqual(["b2", "b1"]);
+
+    // With every scope at one size, each can only replace its own records.
+    await approvals.create(B, binding({ argsHash: "b3" }));
+    expect(hashes(approvals, "1001")).toEqual(["a3", "a2"]);
+    expect(hashes(approvals, "2002")).toEqual(["b3", "b2"]);
+  });
+
+  it("lets other accounts in when five accounts fill the store with approved, unused requests", async () => {
+    const { approvals } = store();
+    const hoarders = ["1", "2", "3", "4", "5"].map((n) => owner(`hoarder-${n}`));
+    for (const hoarder of hoarders) {
+      await createApproved(
+        approvals,
+        hoarder,
+        Array.from({ length: 20 }, (_, index) => `h${String(index)}`),
+      );
+    }
+    expect(hoarders.map((hoarder) => approvals.list(hoarder.accountScope).length)).toEqual([
+      20, 20, 20, 20, 20,
+    ]);
+
+    // A sixth account with an empty inbox: it gets its requests, up to its own pending limit.
+    const newcomer = owner("7007");
+    for (const argsHash of ["n1", "n2", "n3", "n4", "n5"]) {
+      await expect(approvals.create(newcomer, binding({ argsHash }))).resolves.toMatchObject({
+        status: "pending",
+      });
+    }
+    expect(hashes(approvals, "7007")).toEqual(["n5", "n4", "n3", "n2", "n1"]);
+    // Each one cost the largest scope at that moment its oldest approved request: one per hoarder.
+    expect(hoarders.map((hoarder) => approvals.list(hoarder.accountScope).length)).toEqual([
+      19, 19, 19, 19, 19,
+    ]);
+    expect(approvals.current(hoarders[0]!, TOOL, "h0")).toBeUndefined();
+    expect(approvals.current(hoarders[0]!, TOOL, "h1")?.status).toBe("approved");
+    // A hoarder at its own cap still only replaces its own records.
+    await createApproved(approvals, hoarders[4]!, ["extra"]);
+    expect(approvals.list("7007")).toHaveLength(5);
+    expect(hoarders.map((hoarder) => approvals.list(hoarder.accountScope).length)).toEqual([
+      19, 19, 19, 19, 19,
+    ]);
+  });
+
+  it("refuses with ApprovalStoreFullError only when nothing at all can make room", async () => {
+    const { approvals } = store({ maxApprovals: 0 });
     const refused: unknown = await approvals
-      .create(owner("3003"), binding({ argsHash: "c1" }))
+      .create(A1, binding({ argsHash: "a1" }))
       .catch((error: unknown) => error);
-
+    expect(refused).toBeInstanceOf(ApprovalStoreFullError);
     expect(refused).toBeInstanceOf(ApprovalLimitError);
-    expect((refused as ApprovalLimitError).limit).toBe(2);
-    expect(approvals.current(a, TOOL, "a1")?.status).toBe("approved");
-    expect(approvals.current(B, TOOL, "b1")?.status).toBe("approved");
-    expect(approvals.list("3003")).toEqual([]);
+    expect((refused as ApprovalLimitError).name).toBe("ApprovalStoreFullError");
+    expect((refused as ApprovalLimitError).limit).toBe(0);
   });
 
   it("does not drop the replaced approval twice, nor anything else, when replacing at the cap", async () => {

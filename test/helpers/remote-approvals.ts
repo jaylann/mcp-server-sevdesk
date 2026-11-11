@@ -226,6 +226,19 @@ export function createMemoryApprovalStore(
       });
       return "decided";
     },
+    withdraw(id): boolean {
+      const record = live(records.get(id));
+      if (record === undefined) return false;
+      if (record.status === "rejected") return true;
+      record.status = "rejected";
+      decisions.push({
+        owner: record.owner,
+        binding: record.binding,
+        reference: record.reference,
+        decision: "rejected",
+      });
+      return true;
+    },
     close() {
       records.clear();
       return options.channel?.close() ?? Promise.resolve();

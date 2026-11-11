@@ -1,11 +1,15 @@
 /**
  * Opens a local approval page in the user's browser with the operating system's opener, so the
- * page's capability URL never has to pass through the model (`SEVDESK_CONFIRM=browser`,
- * `SEVDESK_CONFIRM_OPEN`).
+ * link never has to pass through the model (`SEVDESK_CONFIRM=browser`, `SEVDESK_CONFIRM_OPEN`).
  *
  * The opener is spawned with an argument array (no shell parsing of the URL), detached, with all
  * output discarded, and never throws: any failure yields `false`, and the caller falls back to
  * the link it wrote to the server log.
+ *
+ * A command line is readable by other local users (`ps`, `/proc/<pid>/cmdline`). So the only URL
+ * that may reach the opener is a launch link, `http://127.0.0.1:<port>/open/<ticket>`, whose
+ * ticket works once (`approval-local.ts`); the address of the approval page itself is refused
+ * here (review 2026-11, round 3).
  */
 import { type ChildProcess, spawn as spawnProcess, type SpawnOptions } from "node:child_process";
 
@@ -28,11 +32,14 @@ export interface OpenInBrowserDeps {
 
 const DEFAULT_SETTLE_MS = 3_000;
 
+/** A launch link of the local approval server: the one shape {@link openInBrowser} opens. */
+const LAUNCH_LINK = /^http:\/\/127\.0\.0\.1:\d{1,5}\/open\/[A-Za-z0-9_-]{43}$/;
+
 /**
  * The opener command for `platform`: `open` (macOS), `cmd /c start "" <url>` (Windows; the empty
- * string is the window title `start` expects first) or `xdg-open` (everything else). Only URLs of
- * the approval server reach it: `http://127.0.0.1:<port>/approve/<base64url id>`, which contains no
- * character that `cmd` would interpret.
+ * string is the window title `start` expects first) or `xdg-open` (everything else). Only launch
+ * links reach it ({@link LAUNCH_LINK}): `http://127.0.0.1:<port>/open/<base64url ticket>`, which
+ * contains no character that `cmd` would interpret.
  */
 export function openerCommand(
   platform: NodeJS.Platform,
@@ -48,8 +55,13 @@ export function openerCommand(
   }
 }
 
-/** The default {@link OpenUrl}: the OS opener for the current platform. */
+/**
+ * The default {@link OpenUrl}: the OS opener for the current platform. Resolves `false` without
+ * starting anything for a URL that is not a launch link, so neither a page address (a standing
+ * capability) nor anything `cmd` could interpret ends up on a command line.
+ */
 export function openInBrowser(url: string, deps: OpenInBrowserDeps = {}): Promise<boolean> {
+  if (!LAUNCH_LINK.test(url)) return Promise.resolve(false);
   const { command, args } = openerCommand(deps.platform ?? process.platform, url);
   const spawn = deps.spawn ?? spawnProcess;
   return new Promise<boolean>((resolve) => {

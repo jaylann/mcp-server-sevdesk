@@ -1,8 +1,8 @@
 /**
  * The `local` {@link ApprovalChannel}: an approval page on 127.0.0.1 for `SEVDESK_CONFIRM=browser`
- * over stdio, for MCP clients that cannot show elicitation prompts. Each new approval gets a page
- * whose URL the channel writes to the server log and (with `SEVDESK_CONFIRM_OPEN`) opens in the
- * user's browser, so the URL never reaches the model, which only gets the short, non-secret
+ * over stdio, for MCP clients that cannot show elicitation prompts. Each new approval gets a
+ * launch link that the channel writes to the server log and (with `SEVDESK_CONFIRM_OPEN`) opens in
+ * the user's browser, so the link never reaches the model, which only gets the short, non-secret
  * reference code that the page shows as well. The human reads the preview and approves or
  * rejects; the model then calls the tool again with the same arguments, and the write flow takes
  * the decision from the store (once).
@@ -10,15 +10,24 @@
  * Security properties:
  * - one HTTP server per channel (per safety runtime, i.e. per process), started lazily, bound to
  *   127.0.0.1 on an ephemeral port only, `unref`ed and closed with the store;
- * - the page URL carries the approval's random 256-bit id (a capability); every request must carry
- *   `Host: 127.0.0.1:<port>` (DNS rebinding); the decision is a POST from the page itself (same
- *   origin), with a CSRF token from the page and a `SameSite=Strict` cookie set by the GET, both
- *   bound to the approval (HMAC with a per-channel random key) and compared in constant time;
+ * - every request must carry `Host: 127.0.0.1:<port>` (DNS rebinding);
+ * - the launch link is `/open/<ticket>` with a random 256-bit ticket that works once: its first
+ *   GET sets the approval's cookie (`HttpOnly`, `SameSite=Strict`, scoped to the page's path) and
+ *   redirects to the page, `/approve/<id>`. The page and the decision need that cookie; the
+ *   page's address alone shows nothing and hands out no cookie. The link is what the OS opener
+ *   gets as an argument, where other local users can read it (`ps`): whoever presents the ticket
+ *   second gets nothing, and the second presentation cancels the request (see {@link Launch});
+ * - the decision is a POST from the page itself (same origin), with a CSRF token from the page
+ *   and the cookie, both bound to the approval (HMAC with a per-channel random key) and compared
+ *   in constant time;
  * - the page is static HTML with every value escaped, under a strict CSP (no scripts, no
  *   framing, forms only to itself) with the headers of `htmlResponse`.
  *
- * Limit (documented in SECURITY.md): anything that can read the server log or drive the user's
- * browser, including an agent with such tools, can still open the page and press Approve.
+ * Limits (documented in SECURITY.md): anything that can read the server log or drive the user's
+ * browser, including an agent with such tools, can still open the page and press Approve. And
+ * another local user who reads the link from the process list and opens it before the user's own
+ * browser does holds the page until that browser arrives: a decision made in that time stands,
+ * because the store cannot take back a decision (the user's browser then says so).
  */
 import { createHmac, randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -36,7 +45,7 @@ import type {
   ApprovalView,
 } from "./approval-types.js";
 import type { OpenUrl } from "./open-url.js";
-import { htmlResponse, readCookie, safeEqual, styleNonce } from "./web.js";
+import { htmlResponse, randomId, readCookie, safeEqual, styleNonce } from "./web.js";
 
 export interface LocalApprovalChannelOptions {
   /** Opens each new approval page; without it, pages are only logged (`SEVDESK_CONFIRM_OPEN=0`). */
@@ -51,10 +60,33 @@ const HOST = "127.0.0.1";
 const MAX_BODY_BYTES = 4_096;
 const REQUEST_TIMEOUT_MS = 10_000;
 const COOKIE_NAME = "sevdesk_approval";
+const LAUNCH_COOKIE_NAME = "sevdesk_approval_link";
 /** `/approve/<id>` with a 256-bit base64url id (43 characters). */
 const APPROVAL_PATH = /^\/approve\/([A-Za-z0-9_-]{43})$/;
+/** `/open/<ticket>`: the launch link, with a 256-bit base64url ticket. */
+const LAUNCH_PATH = /^\/open\/([A-Za-z0-9_-]{43})$/;
 
-type DecisionStore = Pick<ApprovalStore, "get" | "decide">;
+type DecisionStore = Pick<ApprovalStore, "get" | "decide" | "withdraw">;
+
+/**
+ * The launch link of one approval (review 2026-11, round 3). The page's address used to be the
+ * capability and went to the OS opener as an argument, which other local users can read; anyone
+ * who presented it got the cookie and the form token and could approve.
+ *
+ * Now the opener (and the log) get a ticket that is good for one GET. A second GET of the same
+ * ticket means two parties hold the link, and the server cannot tell which one is the user's
+ * browser, so it fails closed: the request is withdrawn, also when the first presenter approved
+ * it already (`ApprovalStore.withdraw`), every later page request for it says that the link was
+ * used twice, and the model has to ask again. Only an approval the tool has taken and run before
+ * the second GET cannot be undone (`cancelled` is false then).
+ */
+interface Launch {
+  readonly approvalId: string;
+  /** The first GET was answered (cookie and redirect). */
+  used: boolean;
+  /** Set by a second GET: whether the request could still be withdrawn. */
+  voided?: { readonly cancelled: boolean };
+}
 
 export function createLocalApprovalChannel(
   options: LocalApprovalChannelOptions = {},
@@ -69,10 +101,47 @@ export function createLocalApprovalChannel(
   let store: DecisionStore | undefined;
   let listening: Promise<{ server: Server; port: number }> | undefined;
   let port: number | undefined;
+  /** Launch links by ticket, and the same records by approval id for the page's own routes. */
+  const launches = new Map<string, Launch>();
+  const launchOf = new Map<string, Launch>();
 
-  /** The per-approval secret for `purpose`: 43 base64url characters, like a random id. */
-  function secretFor(purpose: "csrf" | "cookie", id: string): string {
+  /**
+   * The secret for `purpose` and an approval id (or, for `launch`, a ticket): 43 base64url
+   * characters, like a random id.
+   */
+  function secretFor(purpose: "csrf" | "cookie" | "launch", id: string): string {
     return createHmac("sha256", key).update(`${purpose}\0${id}`, "utf8").digest("base64url");
+  }
+
+  /** Whether the request carries the cookie the launch link set for this approval's page. */
+  function hasPageCookie(request: IncomingMessage, approvalId: string): boolean {
+    return safeEqual(
+      readCookie(request.headers.cookie, COOKIE_NAME) ?? "",
+      secretFor("cookie", approvalId),
+    );
+  }
+
+  /** `Set-Cookie` values of a first (or repeated, same browser) GET of a launch link. */
+  function launchCookies(ticket: string, approval: ApprovalView): string[] {
+    const lifetimeSeconds = Math.ceil(
+      (Date.parse(approval.expiresAt) - Date.parse(approval.createdAt)) / 1000,
+    );
+    const attributes = `HttpOnly; SameSite=Strict; Max-Age=${String(lifetimeSeconds)}`;
+    return [
+      `${COOKIE_NAME}=${secretFor("cookie", approval.id)}; Path=/approve/${approval.id}; ${attributes}`,
+      // Marks the browser that used the ticket, so opening the link again there is no "second
+      // party" (the opener firing twice, the same link clicked in the log).
+      `${LAUNCH_COOKIE_NAME}=${secretFor("launch", ticket)}; Path=/open/${ticket}; ${attributes}`,
+    ];
+  }
+
+  /** Forgets the launch links of approvals the store no longer holds. */
+  function pruneLaunches(): void {
+    for (const [ticket, launch] of launches) {
+      if (store?.get(launch.approvalId) !== undefined) continue;
+      launches.delete(ticket);
+      launchOf.delete(launch.approvalId);
+    }
   }
 
   function start(): Promise<{ server: Server; port: number }> {
@@ -109,6 +178,11 @@ export function createLocalApprovalChannel(
       serveAsset(request, response, page, path);
       return;
     }
+    const ticket = LAUNCH_PATH.exec(path)?.[1];
+    if (ticket !== undefined) {
+      openLaunch(request, response, page, ticket);
+      return;
+    }
     const match = APPROVAL_PATH.exec(path);
     if (match === null) {
       reply(response, page, 404, t.noPage);
@@ -122,6 +196,17 @@ export function createLocalApprovalChannel(
     const approval = attached?.get(match[1] ?? "");
     if (attached === undefined || approval === undefined) {
       reply(response, page, 404, t.notFound);
+      return;
+    }
+    const voided = launchOf.get(approval.id)?.voided;
+    if (voided !== undefined) {
+      replyVoided(response, page, voided);
+      return;
+    }
+    // The address is not enough: only the browser that used the launch link has the cookie. No
+    // cookie is handed out here, and nothing about the request is shown.
+    if (!hasPageCookie(request, approval.id)) {
+      reply(response, page, 403, t.needLink);
       return;
     }
     if (request.method === "GET") {
@@ -140,6 +225,70 @@ export function createLocalApprovalChannel(
         reply(response, page, 400, t.badForm);
       },
     );
+  }
+
+  /**
+   * `GET /open/<ticket>`: the launch link. Its first use sets the cookies and redirects to the
+   * approval page; a second use by another party cancels the request (see {@link Launch}).
+   */
+  function openLaunch(
+    request: IncomingMessage,
+    response: ServerResponse,
+    page: PageContext,
+    ticket: string,
+  ): void {
+    const t = page.t.local;
+    const launch = launches.get(ticket);
+    const attached = store;
+    const approval = launch === undefined ? undefined : attached?.get(launch.approvalId);
+    if (launch === undefined || attached === undefined) {
+      reply(response, page, 404, t.notFound);
+      return;
+    }
+    if (approval === undefined) {
+      // Expired, or the tool took the decision and ran. When someone else used the link before
+      // this request, say that: a decision made there can no longer be withdrawn.
+      const firstUser = safeEqual(
+        readCookie(request.headers.cookie, LAUNCH_COOKIE_NAME) ?? "",
+        secretFor("launch", ticket),
+      );
+      if (launch.used && !firstUser) replyVoided(response, page, { cancelled: false });
+      else reply(response, page, 404, t.notFound);
+      return;
+    }
+    if (request.method !== "GET") {
+      reply(response, page, 405, t.method, { Allow: "GET" });
+      return;
+    }
+    if (isSpeculativeLoad(request)) {
+      // A browser preparing a page it may never show (address-bar prerender, prefetch) must not
+      // use up the ticket: the real navigation follows.
+      response.writeHead(503, { "Cache-Control": "no-store", "Retry-After": "1" });
+      response.end();
+      return;
+    }
+    const sameBrowser = safeEqual(
+      readCookie(request.headers.cookie, LAUNCH_COOKIE_NAME) ?? "",
+      secretFor("launch", ticket),
+    );
+    if (launch.used && !sameBrowser) {
+      launch.voided ??= {
+        cancelled: attached.withdraw(approval.id),
+      };
+    }
+    if (launch.voided !== undefined) {
+      replyVoided(response, page, launch.voided);
+      return;
+    }
+    launch.used = true;
+    response.writeHead(303, {
+      Location: `/approve/${approval.id}`,
+      "Set-Cookie": launchCookies(ticket, approval),
+      "Cache-Control": "no-store",
+      "Referrer-Policy": "same-origin",
+      "Content-Length": "0",
+    });
+    response.end();
   }
 
   function showApproval(response: ServerResponse, page: PageContext, approval: ApprovalView): void {
@@ -165,14 +314,7 @@ export function createLocalApprovalChannel(
       },
       { ...page, nonce },
     );
-    const lifetimeSeconds = Math.ceil(
-      (Date.parse(approval.expiresAt) - Date.parse(approval.createdAt)) / 1000,
-    );
-    send(response, page, 200, html, nonce, {
-      "Set-Cookie":
-        `${COOKIE_NAME}=${secretFor("cookie", approval.id)}; Path=/approve/${approval.id}; ` +
-        `HttpOnly; SameSite=Strict; Max-Age=${String(lifetimeSeconds)}`,
-    });
+    send(response, page, 200, html, nonce);
   }
 
   function decide(
@@ -184,11 +326,7 @@ export function createLocalApprovalChannel(
     form: URLSearchParams,
   ): void {
     const csrfOk = safeEqual(form.get("csrf") ?? "", secretFor("csrf", approval.id));
-    const cookieOk = safeEqual(
-      readCookie(request.headers.cookie, COOKIE_NAME) ?? "",
-      secretFor("cookie", approval.id),
-    );
-    if (!csrfOk || !cookieOk) {
+    if (!csrfOk || !hasPageCookie(request, approval.id)) {
       reply(response, page, 403, page.t.local.csrf);
       return;
     }
@@ -196,6 +334,12 @@ export function createLocalApprovalChannel(
     const current = attached.get(approval.id);
     if (current === undefined) {
       replyExpired(response, page);
+      return;
+    }
+    // Or its link was opened by a second party meanwhile.
+    const voided = launchOf.get(approval.id)?.voided;
+    if (voided !== undefined) {
+      replyVoided(response, page, voided);
       return;
     }
     if (current.status !== "pending") {
@@ -237,7 +381,14 @@ export function createLocalApprovalChannel(
     },
     async present(view) {
       const started = await start();
-      const url = `http://${HOST}:${String(started.port)}/approve/${view.id}`;
+      pruneLaunches();
+      // The link names a ticket, not the approval: what the opener gets as an argument (and the
+      // log holds) is good for one GET.
+      const ticket = randomId();
+      const launch: Launch = { approvalId: view.id, used: false };
+      launches.set(ticket, launch);
+      launchOf.set(view.id, launch);
+      const url = `http://${HOST}:${String(started.port)}/open/${ticket}`;
       log(
         `${view.binding.toolName}: approval ${view.reference} waiting at ${url} ` +
           `(until ${view.expiresAt})`,
@@ -250,6 +401,8 @@ export function createLocalApprovalChannel(
       return { opened };
     },
     async close() {
+      launches.clear();
+      launchOf.clear();
       const started = listening;
       listening = undefined;
       if (started === undefined) return;
@@ -287,6 +440,28 @@ function serveAsset(
 
 function replyExpired(response: ServerResponse, page: PageContext): void {
   reply(response, page, 410, page.t.local.expired);
+}
+
+/** The page for a launch link that a second party opened: cancelled, or decided before that. */
+function replyVoided(
+  response: ServerResponse,
+  page: PageContext,
+  voided: NonNullable<Launch["voided"]>,
+): void {
+  const t = page.t.local;
+  reply(response, page, 410, voided.cancelled ? t.linkUsed : t.linkUsedDecided);
+}
+
+/**
+ * Whether a browser asks for the page ahead of time (`Sec-Purpose: prefetch;prerender`, the older
+ * `Purpose` and `X-Moz` headers), without a human having navigated there yet.
+ */
+function isSpeculativeLoad(request: IncomingMessage): boolean {
+  // A header may arrive once (a string) or repeated (a list).
+  const purpose = ["sec-purpose", "purpose", "x-purpose", "x-moz"]
+    .flatMap((name) => request.headers[name] ?? [])
+    .join(" ");
+  return /prefetch|prerender|preview/i.test(purpose);
 }
 
 /** The page after a decision: what was decided, with its reference code. */

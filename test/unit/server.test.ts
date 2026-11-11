@@ -129,7 +129,7 @@ describe("createServer", () => {
     await factory.close();
 
     expect(safety.approvals.current(owner, "sevdesk_dummy_finalize", "a")).toBeUndefined();
-    const page = /http:\/\/127\.0\.0\.1:\d+\/approve\/[A-Za-z0-9_-]{43}/.exec(lines[0] ?? "");
+    const page = /http:\/\/127\.0\.0\.1:\d+\/open\/[A-Za-z0-9_-]{43}/.exec(lines[0] ?? "");
     expect(page).not.toBeNull();
     await expect(fetch(page?.[0] ?? "")).rejects.toThrow();
     await expect(
