@@ -457,6 +457,88 @@ describe("suggestVoucherFields", () => {
     );
   });
 
+  describe("an IBAN match alone (review 2026-11, round 3)", () => {
+    const IBAN = "DE89370400440532013000";
+    const index = (row: { vatId?: string }): ContactIndex => ({
+      rows: [{ contact: contact(900, "Factor GmbH"), iban: IBAN, ...row }],
+      scanned: 1,
+      complete: true,
+    });
+    const withPayee = (name: string | undefined): ParsedEInvoice =>
+      variant((invoice) => {
+        invoice.payment.payee = name === undefined ? {} : { name };
+      });
+
+    it("is not taken when the invoice names a payee of its own (factoring)", () => {
+      // The account in the invoice is the factor's; contact 900 is the factor, not the supplier.
+      for (const payee of ["Factor GmbH", "Some Other Payee", undefined]) {
+        const suggestion = suggest(withPayee(payee), { contacts: index({}) });
+        expect(suggestion.supplierId).toBeUndefined();
+        expect(suggestion.supplierCandidates).toEqual([
+          expect.objectContaining({ contactId: 900, matchedBy: "iban" }),
+        ]);
+        expect(suggestion.warnings).toContain(
+          "Contact 900 has the invoice's payee IBAN ****3000, but the invoice names a payee of " +
+            "its own (BG-10, e.g. a factoring company), so the account is the payee's and does " +
+            "not tell who the supplier is. The contact is not chosen automatically: pass the " +
+            "supplier's contact, not the payee's.",
+        );
+        expect(suggestion.warnings.join(" ")).not.toContain("matched by name only");
+        expect(suggestion.blocking).toEqual([]);
+        expect(JSON.stringify(suggestion.warnings)).not.toContain(IBAN);
+      }
+    });
+
+    it("is not taken when that contact carries another VAT id than the seller", () => {
+      const suggestion = suggest(base, { contacts: index({ vatId: "DE999999999" }) });
+      expect(suggestion.supplierId).toBeUndefined();
+      expect(suggestion.warnings).toContain(
+        "Contact 900 has the invoice's payee IBAN ****3000, but its VAT id differs from the " +
+          "seller's VAT id on the invoice, so the account may belong to someone else (e.g. a " +
+          "factoring company) or the contact is outdated. The contact is not chosen " +
+          "automatically: check the bank details before booking and paying.",
+      );
+      expect(JSON.stringify(suggestion.warnings)).not.toContain("DE999999999");
+    });
+
+    it("is still taken without a separate payee and without a contradicting VAT id", () => {
+      // No VAT id stored on the contact.
+      expect(suggest(base, { contacts: index({}) }).supplierId).toBe(900);
+      // The seller gives no VAT id: nothing to contradict.
+      const noSellerVat = variant((invoice) => {
+        delete invoice.seller.vatId;
+      });
+      expect(suggest(noSellerVat, { contacts: index({ vatId: "DE999999999" }) }).supplierId).toBe(
+        900,
+      );
+      // A payee group that only repeats the seller is not a separate payee.
+      for (const sellerName of ["Musterlieferant GmbH", "MUSTERLIEFERANT  GmbH."]) {
+        expect(suggest(withPayee(sellerName), { contacts: index({}) }).supplierId).toBe(900);
+      }
+    });
+
+    it("leaves a VAT id match alone, also with a separate payee", () => {
+      const rows = [
+        { contact: contact(7, "Musterlieferant GmbH"), vatId: "DE000000001" },
+        { contact: contact(900, "Factor GmbH"), iban: IBAN, vatId: "DE999999999" },
+      ];
+      const suggestion = suggest(withPayee("Factor GmbH"), {
+        contacts: { rows, scanned: 2, complete: true },
+      });
+      expect(suggestion.supplierId).toBe(7);
+    });
+  });
+
+  it("passes the line amount warning on without blocking", () => {
+    const suggestion = suggest(
+      variant((invoice) => {
+        invoice.findings = [{ code: "SD-LINE-NET", severity: "warning", message: "…" }];
+      }),
+    );
+    expect(suggestion.blocking).toEqual([]);
+    expect(suggestion.warnings.join(" ")).toContain("finding SD-LINE-NET");
+  });
+
   it("normalizes names for comparison", () => {
     expect(normalizeName("  Muster-Firma   GmbH & Co. KG ")).toBe("muster firma gmbh co kg");
     expect(normalizeName(" -- ")).toBeUndefined();

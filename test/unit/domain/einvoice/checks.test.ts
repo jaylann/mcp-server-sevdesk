@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { checkEInvoice, sortFindings } from "../../../../src/domain/einvoice/checks.js";
-import type { EInvoiceFacts } from "../../../../src/domain/einvoice/extracted.js";
+import type { EInvoiceFacts, LinePricing } from "../../../../src/domain/einvoice/extracted.js";
 import type { ParsedEInvoice } from "../../../../src/domain/einvoice/model.js";
 import { parseEInvoice } from "../../../../src/domain/einvoice/parse.js";
 import { einvoiceFixture } from "./helpers.js";
@@ -262,6 +262,85 @@ describe("checkEInvoice", () => {
       return checkEInvoice(invoice, FACTS);
     })();
     expect(findings).toEqual([expect.objectContaining({ code: "SD-TYPE", severity: "warning" })]);
+  });
+});
+
+describe("line net amounts (SD-LINE-NET, review 2026-11, round 3)", () => {
+  // The synthetic invoice: line 1 is 2 × 100.00 = 200.00, line 2 is 1 × 30.00 = 30.00.
+  const priced = (
+    first: Partial<LinePricing> | undefined,
+    second: Partial<LinePricing> = {},
+  ): Pick<EInvoiceFacts, "linePricing"> => ({
+    linePricing: [
+      first === undefined
+        ? undefined
+        : { quantity: "2", price: "100.00", baseQuantity: "1", adjustment: "0", ...first },
+      { quantity: "1", price: "30.00", baseQuantity: "1", adjustment: "0", ...second },
+    ],
+  });
+
+  it("is a warning and names the line by its position", () => {
+    const invoice = structuredClone(base);
+    const findings = checkEInvoice(invoice, { ...FACTS, ...priced({ price: "10.00" }) });
+    expect(findings).toEqual([
+      {
+        code: "SD-LINE-NET",
+        severity: "warning",
+        message: expect.stringContaining("On 1 line(s)") as string,
+      },
+    ]);
+    expect(findings[0]?.message).toContain("line position 1.");
+  });
+
+  it.each<[string, Partial<LinePricing>, boolean]>([
+    ["the stated amount", {}, false],
+    ["two cents off", { price: "100.01" }, false],
+    ["three cents off", { price: "100.015" }, true],
+    ["a price per 100 units", { price: "10000", baseQuantity: "100" }, false],
+    ["a price per 3 units that does not divide evenly", { quantity: "1", price: "600" }, true],
+    ["a price per 3 units", { quantity: "1", price: "600", baseQuantity: "3" }, false],
+    ["a line allowance", { price: "110", adjustment: "-20" }, false],
+    ["a line charge that is not in the amount", { adjustment: "5" }, true],
+    ["a zero quantity with an amount", { quantity: "0" }, true],
+  ])("with %s", (_label, pricing, warns) => {
+    expect(codesFor(() => undefined, priced(pricing))).toEqual(warns ? ["SD-LINE-NET"] : []);
+  });
+
+  it("checks credited (negative) amounts the same way", () => {
+    const negative = (invoice: Mutable<ParsedEInvoice>): void => {
+      const line = invoice.lines[0];
+      if (line !== undefined) line.netAmount = "-200.00";
+    };
+    const codes = (pricing: Partial<LinePricing>): string[] =>
+      codesFor(negative, priced(pricing)).filter((code) => code === "SD-LINE-NET");
+    expect(codes({ quantity: "-2" })).toEqual([]);
+    expect(codes({ quantity: "2" })).toEqual(["SD-LINE-NET"]);
+  });
+
+  it("skips lines without pricing and invoices without the list", () => {
+    expect(codesFor(() => undefined)).toEqual([]);
+    expect(codesFor(() => undefined, priced(undefined, { price: "30.00" }))).toEqual([]);
+    expect(codesFor(() => undefined, priced(undefined, { price: "3.00" }))).toEqual([
+      "SD-LINE-NET",
+    ]);
+  });
+
+  it("names at most five lines and counts the rest", () => {
+    const invoice = structuredClone(base) as Mutable<ParsedEInvoice>;
+    const line = invoice.lines[1];
+    if (line === undefined) throw new Error("the fixture has two lines");
+    invoice.lines = Array.from({ length: 8 }, () => ({ ...line }));
+    const linePricing = invoice.lines.map(() => ({
+      quantity: "1",
+      price: "3.00",
+      baseQuantity: "1",
+      adjustment: "0",
+    }));
+    const message = checkEInvoice(invoice, { ...FACTS, linePricing }).find(
+      (finding) => finding.code === "SD-LINE-NET",
+    )?.message;
+    expect(message).toContain("On 8 line(s)");
+    expect(message).toContain("line position 1, 2, 3, 4, 5 and 3 more.");
   });
 });
 

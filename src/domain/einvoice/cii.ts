@@ -7,6 +7,10 @@
  * Paths follow the EN 16931-3-3 syntax binding (BT id → CII element). Only the business terms of
  * the model are read; extensions (EXTENDED profile sub-lines, logistics data) are ignored. ZUGFeRD
  * 1.0 (`CrossIndustryDocument`) is a different, older format and is refused in `parse.ts`.
+ *
+ * Elements are matched by namespace and local name, whatever prefix the file uses: the reader
+ * works on the tree without the elements that are not in the namespace CII defines for their
+ * name ({@link isCiiElement}).
  */
 import { CREDIT_TRANSFER_MEANS, documentKindOf, profileOf } from "./codes.js";
 import { pricePerUnit } from "./decimal.js";
@@ -14,6 +18,9 @@ import {
   completeTotals,
   type EInvoiceContent,
   type ExtractedEInvoice,
+  type LineAdjustment,
+  type LinePricing,
+  linePricing,
   type RawTotals,
 } from "./extracted.js";
 import {
@@ -21,6 +28,7 @@ import {
   MAX_LINES,
   MAX_NOTES,
   MAX_ROWS,
+  normalizeDecimal,
   normalizeIban,
   normalizeVatId,
   partyOf,
@@ -31,13 +39,43 @@ import {
   withoutUndefined,
 } from "./fields.js";
 import type { EInvoiceLine, EInvoiceParty } from "./model.js";
-import { at, attribute, child, childrenNamed, textAt, type XmlElement } from "./xml.js";
+import { at, attribute, child, childrenNamed, elementsOf, textAt, type XmlElement } from "./xml.js";
 
-/** Namespace URI of the CII root element (EN 16931-3-3, D16B). */
+/** Namespace URI of the CII root element (EN 16931-3-3, D16B), usual prefix `rsm`. */
 export const CII_NAMESPACE = "urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100";
+/** Namespace of the aggregates and their fields, usual prefix `ram`. */
+const CII_AGGREGATE_NAMESPACE =
+  "urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100";
+/** Namespace of the unqualified data types, usual prefix `udt`. */
+const CII_DATA_TYPE_NAMESPACE = "urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100";
+
+/** The children of the root, the only elements in the root's namespace (D16B schema). */
+const CII_ROOT_ELEMENTS: ReadonlySet<string> = new Set([
+  "ExchangedDocumentContext",
+  "ExchangedDocument",
+  "SupplyChainTradeTransaction",
+]);
+/**
+ * The data type elements this reader looks at: the value of a date (`udt:DateTimeString`) and of
+ * an indicator (`udt:Indicator`).
+ */
+const CII_DATA_TYPE_ELEMENTS: ReadonlySet<string> = new Set(["DateTimeString", "Indicator"]);
+
+/**
+ * Whether an element is the CII element of that name: in the namespace the D16B schemas define
+ * for it. Everything this reader reads besides the three children of the root and the two data
+ * type values is in the aggregate namespace (`ram`). Review 2026-11, round 3: lookups went by
+ * local name alone, so an element of another namespace could stand in for a field.
+ */
+function isCiiElement(name: string, namespace: string | undefined): boolean {
+  if (CII_ROOT_ELEMENTS.has(name)) return namespace === CII_NAMESPACE;
+  if (CII_DATA_TYPE_ELEMENTS.has(name)) return namespace === CII_DATA_TYPE_NAMESPACE;
+  return namespace === CII_AGGREGATE_NAMESPACE;
+}
 
 /** Reads a `CrossIndustryInvoice` root element. */
-export function readCii(root: XmlElement): ExtractedEInvoice {
+export function readCii(rootElement: XmlElement): ExtractedEInvoice {
+  const root = elementsOf(rootElement, isCiiElement);
   const fields = new FieldReader();
   const context = at(root, "ExchangedDocumentContext");
   const document = at(root, "ExchangedDocument");
@@ -78,10 +116,13 @@ export function readCii(root: XmlElement): ExtractedEInvoice {
   if (lineItems.length > MAX_LINES) {
     throw unreadable(`The e-invoice has more than ${MAX_LINES} lines`);
   }
-  const lines = lineItems.map((item, index) => readLine(fields, item, index));
+  const readLines = lineItems.map((item, index) => readLine(fields, item, index));
+  const lines = readLines.map((entry) => entry.line);
 
   const seller = readParty(fields, at(agreement, "SellerTradeParty"), "seller");
   const buyer = readParty(fields, at(agreement, "BuyerTradeParty"), "buyer");
+  // BG-10: a payee that is not the seller (factoring); its account is the one in BG-17.
+  const payee = at(settlement, "PayeeTradeParty");
 
   const means = childrenNamed(settlement, "SpecifiedTradeSettlementPaymentMeans");
   const firstMeans = means[0];
@@ -128,7 +169,9 @@ export function readCii(root: XmlElement): ExtractedEInvoice {
     taxTotals.find(
       (element) => (attribute(element, "currencyID") ?? currency).toUpperCase() === code,
     );
-  const documentTax = taxInCurrency(currency) ?? taxTotals[0];
+  // Only a total in the invoice currency is BT-110. A total in another currency is not taken in
+  // its place (review 2026-11, round 3): BT-110 then counts as missing and is reported.
+  const documentTax = taxInCurrency(currency);
   const accountingTax =
     taxCurrency !== undefined && taxCurrency !== currency ? taxInCurrency(taxCurrency) : undefined;
   const raw: RawTotals = {
@@ -199,6 +242,10 @@ export function readCii(root: XmlElement): ExtractedEInvoice {
       accountName: fields.text(textAt(account, "AccountName"), TEXT_CAPS.name),
       remittance: fields.text(textAt(settlement, "PaymentReference"), TEXT_CAPS.reason),
       terms: termsText,
+      payee:
+        payee === undefined
+          ? undefined
+          : withoutUndefined({ name: fields.text(textAt(payee, "Name"), TEXT_CAPS.name) }),
     }),
     notes: notes.slice(0, MAX_NOTES),
     lines,
@@ -215,6 +262,7 @@ export function readCii(root: XmlElement): ExtractedEInvoice {
       missingTotals,
       paymentInstructions: means.some((entry) => textAt(entry, "TypeCode") !== undefined),
       taxCurrencyTotal: accountingTax !== undefined,
+      linePricing: readLines.map((entry) => entry.pricing),
     },
     findings: fields.findings(),
   };
@@ -274,7 +322,11 @@ function readParty(
   };
 }
 
-function readLine(fields: FieldReader, item: XmlElement, index: number): EInvoiceLine {
+function readLine(
+  fields: FieldReader,
+  item: XmlElement,
+  index: number,
+): { line: EInvoiceLine; pricing: LinePricing | undefined } {
   const where = `Line ${index + 1}`;
   const lineDocument = at(item, "AssociatedDocumentLineDocument");
   const product = at(item, "SpecifiedTradeProduct");
@@ -292,12 +344,25 @@ function readLine(fields: FieldReader, item: XmlElement, index: number): EInvoic
     `The ${where.toLowerCase()} price base quantity (BT-149)`,
   );
   const vatCategory = requireVatCategory(textAt(tax, "CategoryCode"), `${where} (BT-151)`);
-  return withoutUndefined({
+  const quantity = fields.amount(
+    quantityElement?.text,
+    `The ${where.toLowerCase()} quantity (BT-129)`,
+  );
+  // Line allowances (BG-27) and charges (BG-28): only their sum is needed, for the line check.
+  // Read without a finding: a part that cannot be read only switches that line's check off.
+  const adjustments = childrenNamed(settlement, "SpecifiedTradeAllowanceCharge").map(
+    (row): LineAdjustment => {
+      const indicator = textAt(row, "ChargeIndicator", "Indicator")?.toLowerCase();
+      const kind =
+        indicator === "true" ? "charge" : indicator === "false" ? "allowance" : undefined;
+      return { kind, amount: normalizeDecimal(textAt(row, "ActualAmount") ?? "") };
+    },
+  );
+  const line: EInvoiceLine = withoutUndefined({
     id: fields.text(textAt(lineDocument, "LineID"), TEXT_CAPS.identifier) ?? String(index + 1),
     name: fields.text(textAt(product, "Name"), TEXT_CAPS.name) ?? "",
     description: fields.text(textAt(product, "Description"), TEXT_CAPS.description),
-    quantity:
-      fields.amount(quantityElement?.text, `The ${where.toLowerCase()} quantity (BT-129)`) ?? "0",
+    quantity: quantity ?? "0",
     unitCode: fields.code(attribute(quantityElement, "unitCode")),
     netPrice: pricePerUnit(netPrice, baseQuantity),
     netAmount:
@@ -311,6 +376,10 @@ function readLine(fields: FieldReader, item: XmlElement, index: number): EInvoic
       `The ${where.toLowerCase()} VAT rate (BT-152)`,
     ),
   });
+  return {
+    line,
+    pricing: linePricing({ quantity, price: netPrice, baseQuantity, adjustments }),
+  };
 }
 
 function readAllowanceCharge(fields: FieldReader, row: XmlElement, index: number) {

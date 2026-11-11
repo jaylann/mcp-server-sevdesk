@@ -7,6 +7,10 @@
  * type code element (`InvoiceTypeCode` / `CreditNoteTypeCode`), the line element and its quantity
  * (`InvoiceLine/InvoicedQuantity` / `CreditNoteLine/CreditedQuantity`) and the due date (BT-9:
  * `cbc:DueDate` on an invoice, `cac:PaymentMeans/cbc:PaymentDueDate` on a credit note).
+ *
+ * Elements are matched by namespace and local name, whatever prefix the file uses: the reader
+ * works on the tree without the elements that are not in the namespace UBL defines for their
+ * name ({@link isUblElement}).
  */
 import { CREDIT_TRANSFER_MEANS, documentKindOf, profileOf } from "./codes.js";
 import { pricePerUnit } from "./decimal.js";
@@ -14,6 +18,9 @@ import {
   completeTotals,
   type EInvoiceContent,
   type ExtractedEInvoice,
+  type LineAdjustment,
+  type LinePricing,
+  linePricing,
   type RawTotals,
 } from "./extracted.js";
 import {
@@ -21,6 +28,7 @@ import {
   MAX_LINES,
   MAX_NOTES,
   MAX_ROWS,
+  normalizeDecimal,
   normalizeIban,
   normalizeVatId,
   partyOf,
@@ -30,8 +38,8 @@ import {
   unreadable,
   withoutUndefined,
 } from "./fields.js";
-import type { EInvoiceLine, EInvoiceParty } from "./model.js";
-import { at, attribute, childrenNamed, textAt, type XmlElement } from "./xml.js";
+import type { EInvoiceDocumentKind, EInvoiceLine, EInvoiceParty } from "./model.js";
+import { at, attribute, childrenNamed, elementsOf, textAt, type XmlElement } from "./xml.js";
 
 /** Namespace URIs of the two UBL roots EN 16931 uses. */
 export const UBL_NAMESPACES = {
@@ -41,8 +49,91 @@ export const UBL_NAMESPACES = {
 
 export type UblRoot = keyof typeof UBL_NAMESPACES;
 
+/** Namespace of the aggregates (elements that hold other elements), usual prefix `cac`. */
+const UBL_AGGREGATE_NAMESPACE =
+  "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2";
+/** Namespace of the basic components (elements that hold a value), usual prefix `cbc`. */
+const UBL_BASIC_NAMESPACE = "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2";
+
+/**
+ * The aggregates this reader walks through (`cac:…` in UBL 2.1). Every other element it reads
+ * holds a value and is a basic component (`cbc:…`). An aggregate that is missing here is not
+ * found by the reader at all, so a path added to the reader needs its aggregates added here.
+ */
+const UBL_AGGREGATES: ReadonlySet<string> = new Set([
+  "AccountingCustomerParty",
+  "AccountingSupplierParty",
+  "AllowanceCharge",
+  "BillingReference",
+  "ClassifiedTaxCategory",
+  "Contact",
+  "Country",
+  "CreditNoteLine",
+  "Delivery",
+  "FinancialInstitutionBranch",
+  "InvoiceDocumentReference",
+  "InvoiceLine",
+  "InvoicePeriod",
+  "Item",
+  "LegalMonetaryTotal",
+  "OrderReference",
+  "Party",
+  "PartyIdentification",
+  "PartyLegalEntity",
+  "PartyName",
+  "PartyTaxScheme",
+  "PayeeFinancialAccount",
+  "PayeeParty",
+  "PaymentMeans",
+  "PaymentTerms",
+  "PostalAddress",
+  "Price",
+  "TaxCategory",
+  "TaxScheme",
+  "TaxSubtotal",
+  "TaxTotal",
+]);
+
+/**
+ * Whether an element is the UBL element of that name: an aggregate in the aggregate namespace, a
+ * value in the basic namespace. Review 2026-11, round 3: lookups went by local name alone, so an
+ * element of another namespace could stand in for a field.
+ */
+function isUblElement(name: string, namespace: string | undefined): boolean {
+  return namespace === (UBL_AGGREGATES.has(name) ? UBL_AGGREGATE_NAMESPACE : UBL_BASIC_NAMESPACE);
+}
+
+/**
+ * The document kind of a UBL document. The root element decides: `Invoice` carries
+ * `InvoiceTypeCode` from the invoice subset of UNTDID 1001, `CreditNote` carries
+ * `CreditNoteTypeCode` from the credit note subset. EN 16931-3-2 binds BT-3 to the two elements
+ * that way, and rule BR-CL-01 of the CEN validation artefacts for UBL checks each element
+ * against its own subset (the subsets are in `codes.ts`). A code of the other subset contradicts
+ * the root; such a file is refused, because either reading of it would be a guess: a `CreditNote`
+ * with code 380 used to count as an invoice and would have been imported as a positive expense
+ * (review 2026-11, round 3). A code of neither subset stays `other`, which is reported and not
+ * imported.
+ */
+function ublDocumentKind(root: UblRoot, typeCode: string): EInvoiceDocumentKind {
+  const kind = documentKindOf(typeCode);
+  if (root === "CreditNote" && kind === "invoice") {
+    throw unreadable(
+      "The e-invoice is a UBL credit note (root element CreditNote) but carries an invoice type " +
+        "code (BT-3). The two contradict each other; ask the sender for a corrected file",
+    );
+  }
+  if (root === "Invoice" && kind === "credit_note") {
+    throw unreadable(
+      "The e-invoice is a UBL invoice (root element Invoice) but carries a credit note type " +
+        "code (BT-3). The two contradict each other; ask the sender for a corrected file",
+    );
+  }
+  return kind;
+}
+
 /** Reads an `Invoice` or `CreditNote` root element. */
-export function readUbl(root: XmlElement, kind: UblRoot): ExtractedEInvoice {
+export function readUbl(rootElement: XmlElement, kind: UblRoot): ExtractedEInvoice {
+  const root = elementsOf(rootElement, isUblElement);
   const fields = new FieldReader();
   const isCreditNote = kind === "CreditNote";
 
@@ -55,6 +146,7 @@ export function readUbl(root: XmlElement, kind: UblRoot): ExtractedEInvoice {
   if (typeCode === undefined) {
     throw unreadable("The e-invoice has no valid invoice type code (BT-3, BR-04)");
   }
+  const documentKind = ublDocumentKind(kind, typeCode);
   const issueDate = fields.date(textAt(root, "IssueDate"), "The issue date (BT-2)");
   if (issueDate === undefined) {
     throw unreadable("The e-invoice has no readable issue date (BT-2, BR-03)");
@@ -78,12 +170,15 @@ export function readUbl(root: XmlElement, kind: UblRoot): ExtractedEInvoice {
   if (lineElements.length > MAX_LINES) {
     throw unreadable(`The e-invoice has more than ${MAX_LINES} lines`);
   }
-  const lines = lineElements.map((line, index) =>
+  const readLines = lineElements.map((line, index) =>
     readLine(fields, line, index, isCreditNote ? "CreditedQuantity" : "InvoicedQuantity"),
   );
+  const lines = readLines.map((entry) => entry.line);
 
   const seller = readParty(fields, at(root, "AccountingSupplierParty", "Party"), "seller");
   const buyer = readParty(fields, at(root, "AccountingCustomerParty", "Party"), "buyer");
+  // BG-10: a payee that is not the seller (factoring); its account is the one in BG-17.
+  const payee = at(root, "PayeeParty");
 
   const means = childrenNamed(root, "PaymentMeans");
   const transferMeans =
@@ -175,7 +270,7 @@ export function readUbl(root: XmlElement, kind: UblRoot): ExtractedEInvoice {
     specificationId,
     profile: profileOf(specificationId),
     typeCode,
-    documentKind: documentKindOf(typeCode),
+    documentKind,
     number,
     issueDate,
     dueDate: fields.date(dueDateText, "The due date (BT-9)"),
@@ -205,6 +300,12 @@ export function readUbl(root: XmlElement, kind: UblRoot): ExtractedEInvoice {
       accountName: fields.text(textAt(account, "Name"), TEXT_CAPS.name),
       remittance: fields.text(textAt(transferMeans, "PaymentID"), TEXT_CAPS.reason),
       terms: fields.joined(terms, TEXT_CAPS.description),
+      payee:
+        payee === undefined
+          ? undefined
+          : withoutUndefined({
+              name: fields.text(textAt(payee, "PartyName", "Name"), TEXT_CAPS.name),
+            }),
     }),
     notes: notes.slice(0, MAX_NOTES),
     lines,
@@ -221,6 +322,7 @@ export function readUbl(root: XmlElement, kind: UblRoot): ExtractedEInvoice {
       missingTotals,
       paymentInstructions: means.some((entry) => textAt(entry, "PaymentMeansCode") !== undefined),
       taxCurrencyTotal: accountingTax !== undefined,
+      linePricing: readLines.map((entry) => entry.pricing),
     },
     findings: fields.findings(),
   };
@@ -269,27 +371,42 @@ function readLine(
   line: XmlElement,
   index: number,
   quantityName: "InvoicedQuantity" | "CreditedQuantity",
-): EInvoiceLine {
+): { line: EInvoiceLine; pricing: LinePricing | undefined } {
   const where = `line ${index + 1}`;
   const item = at(line, "Item");
   const category = at(item, "ClassifiedTaxCategory");
-  const quantity = at(line, quantityName);
+  const quantityElement = at(line, quantityName);
   const price = at(line, "Price");
-  return withoutUndefined({
+  const quantity = fields.amount(quantityElement?.text, `The ${where} quantity (BT-129)`);
+  const netPrice = fields.amount(textAt(price, "PriceAmount"), `The ${where} net price (BT-146)`);
+  const baseQuantity = fields.amount(
+    textAt(price, "BaseQuantity"),
+    `The ${where} price base quantity (BT-149)`,
+  );
+  // Line allowances (BG-27) and charges (BG-28), the direct children of the line (the one inside
+  // `cac:Price` is the price discount, BT-147): only their sum is needed, for the line check.
+  // Read without a finding: a part that cannot be read only switches that line's check off.
+  const adjustments = childrenNamed(line, "AllowanceCharge").map((row): LineAdjustment => {
+    const indicator = textAt(row, "ChargeIndicator")?.toLowerCase();
+    const kind = indicator === "true" ? "charge" : indicator === "false" ? "allowance" : undefined;
+    return { kind, amount: normalizeDecimal(textAt(row, "Amount") ?? "") };
+  });
+  const read: EInvoiceLine = withoutUndefined({
     id: fields.text(textAt(line, "ID"), TEXT_CAPS.identifier) ?? String(index + 1),
     name: fields.text(textAt(item, "Name"), TEXT_CAPS.name) ?? "",
     description: fields.text(textAt(item, "Description"), TEXT_CAPS.description),
-    quantity: fields.amount(quantity?.text, `The ${where} quantity (BT-129)`) ?? "0",
-    unitCode: fields.code(attribute(quantity, "unitCode")),
-    netPrice: pricePerUnit(
-      fields.amount(textAt(price, "PriceAmount"), `The ${where} net price (BT-146)`),
-      fields.amount(textAt(price, "BaseQuantity"), `The ${where} price base quantity (BT-149)`),
-    ),
+    quantity: quantity ?? "0",
+    unitCode: fields.code(attribute(quantityElement, "unitCode")),
+    netPrice: pricePerUnit(netPrice, baseQuantity),
     netAmount:
       fields.amount(textAt(line, "LineExtensionAmount"), `The ${where} net amount (BT-131)`) ?? "0",
     vatCategory: requireVatCategory(textAt(category, "ID"), `Line ${index + 1} (BT-151)`),
     vatRate: fields.amount(textAt(category, "Percent"), `The ${where} VAT rate (BT-152)`),
   });
+  return {
+    line: read,
+    pricing: linePricing({ quantity, price: netPrice, baseQuantity, adjustments }),
+  };
 }
 
 function readAllowanceCharge(fields: FieldReader, row: XmlElement, index: number) {

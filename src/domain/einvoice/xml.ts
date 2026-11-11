@@ -14,10 +14,15 @@
  *   declaration naming another encoding, and bytes that are not valid UTF-8 are refused.
  * - **Well-formedness.** fast-xml-parser's own parser is lenient, so the document is checked with
  *   its validator first; anything that is not well-formed XML is refused.
- * - **Namespaces.** Prefixes are removed from element and attribute names (CII and UBL use
- *   several prefixes, and producers choose their own); the root element's namespace URI is kept
- *   so the syntax can be told apart (`urn:…:CrossIndustryInvoice:100` versus ZUGFeRD 1.0's
- *   `CrossIndustryDocument`, UBL's `Invoice-2`/`CreditNote-2`).
+ * - **Namespaces.** Prefixes are removed from element names (CII and UBL use several prefixes,
+ *   and producers choose their own), and every element carries the namespace URI its prefix (or
+ *   the default namespace) resolves to. The root's URI tells the syntax apart
+ *   (`urn:…:CrossIndustryInvoice:100` versus ZUGFeRD 1.0's `CrossIndustryDocument`, UBL's
+ *   `Invoice-2`/`CreditNote-2`); the readers then work on {@link elementsOf}, the tree without
+ *   the elements that are not in the namespace their syntax defines for that name. So
+ *   `<x:InvoiceCurrencyCode xmlns:x="urn:other">` is never read as the invoice currency, whatever
+ *   its position (review 2026-11, round 3). Attributes with a prefix (`xsi:…`, `xml:…`, or one
+ *   made up to shadow `currencyID`) are dropped: the attributes of CII and UBL have none.
  * - Comments, processing instructions and the XML declaration are dropped; CDATA content is kept
  *   verbatim as text.
  *
@@ -39,8 +44,13 @@ export interface XmlElement {
   /** The prefix the document used, e.g. `rsm`; `undefined` for an unprefixed name. */
   readonly prefix: string | undefined;
   /**
-   * Attributes by local name with decoded values; namespace declarations (`xmlns`, `xmlns:*`)
-   * are not included.
+   * The namespace URI the prefix (or, without one, the default namespace) resolves to at this
+   * element; `undefined` without a declaration in scope.
+   */
+  readonly namespace: string | undefined;
+  /**
+   * Attributes without a prefix, with decoded values; namespace declarations (`xmlns`,
+   * `xmlns:*`) and prefixed attributes are not included.
    */
   readonly attributes: Readonly<Record<string, string>>;
   readonly children: readonly XmlElement[];
@@ -124,9 +134,29 @@ export function parseXmlDocument(bytes: Uint8Array, what = "The file"): XmlDocum
       `${what} nests elements deeper than ${String(MAX_XML_DEPTH)} levels or cannot be read as XML`,
     );
   }
-  const root = toElements(nodes)[0];
+  const root = toElements(nodes, undefined)[0];
   if (root === undefined) throw xmlRefusal(`${what} has no root element`);
-  return { root: root.element, namespace: namespaceOf(root.element.prefix, root.declarations) };
+  return { root, namespace: root.namespace };
+}
+
+/**
+ * A copy of the tree with only the elements `belongs` accepts for their local name and namespace
+ * URI; an element it does not accept is left out with everything below it. The root is kept as
+ * it is (the caller has checked its name and namespace). A syntax reader runs on this copy, so
+ * its lookups by local name are lookups by expanded name: an element with the right local name
+ * in another namespace cannot stand in for a field.
+ */
+export function elementsOf(
+  root: XmlElement,
+  belongs: (name: string, namespace: string | undefined) => boolean,
+): XmlElement {
+  const keep = (element: XmlElement): XmlElement => ({
+    ...element,
+    children: element.children
+      .filter((candidate) => belongs(candidate.name, candidate.namespace))
+      .map(keep),
+  });
+  return keep(root);
 }
 
 /** The first child element with this local name. */
@@ -163,7 +193,7 @@ export function textAt(
   return text === undefined || text === "" ? undefined : text;
 }
 
-/** An attribute by local name; `undefined` when missing or empty. */
+/** An attribute (one without a prefix) by name; `undefined` when missing or empty. */
 export function attribute(element: XmlElement | undefined, name: string): string | undefined {
   const value = element?.attributes[name]?.trim();
   return value === undefined || value === "" ? undefined : value;
@@ -173,10 +203,15 @@ export function attribute(element: XmlElement | undefined, name: string): string
 // Internals
 // ---------------------------------------------------------------------------------------------
 
-interface ConvertedElement {
-  readonly element: XmlElement;
-  /** `xmlns` declarations of this element: prefix ("" for the default namespace) → URI. */
-  readonly declarations: ReadonlyMap<string, string>;
+/**
+ * Namespace declarations in scope, as a chain from the innermost declaring element outwards
+ * (at most {@link MAX_XML_DEPTH} links). A chain, not a merged map per element: copying the
+ * outer declarations for every element that declares one would be quadratic in a hostile file.
+ */
+interface Namespaces {
+  /** Declarations of one element: prefix ("" for the default namespace) → URI. */
+  readonly declared: ReadonlyMap<string, string>;
+  readonly outer: Namespaces | undefined;
 }
 
 /** Whether the bytes start with a UTF-16 (BE/LE) or UTF-32 BE byte order mark. */
@@ -205,34 +240,46 @@ function decodeUtf8(bytes: Uint8Array, what: string): string {
 
 /**
  * Converts fast-xml-parser's ordered output (`[{tag: [children], ":@": {attrs}}, {"#text": …}]`)
- * into elements. Recursion depth is bounded by {@link MAX_XML_DEPTH} (enforced by the parser).
+ * into elements. `scope` holds the namespace declarations of the ancestors. Recursion depth is
+ * bounded by {@link MAX_XML_DEPTH} (enforced by the parser).
  */
-function toElements(nodes: unknown): ConvertedElement[] {
+function toElements(nodes: unknown, scope: Namespaces | undefined): XmlElement[] {
   if (!Array.isArray(nodes)) return [];
-  const elements: ConvertedElement[] = [];
+  const elements: XmlElement[] = [];
   for (const node of nodes as unknown[]) {
     if (typeof node !== "object" || node === null) continue;
     const entry = node as Record<string, unknown>;
     const tag = Object.keys(entry).find((key) => key !== ATTRIBUTES_KEY);
     if (tag === undefined || tag === TEXT_KEY || tag === CDATA_KEY) continue;
-    elements.push(toElement(tag, entry[tag], entry[ATTRIBUTES_KEY]));
+    elements.push(toElement(tag, entry[tag], entry[ATTRIBUTES_KEY], scope));
   }
   return elements;
 }
 
-function toElement(tag: string, content: unknown, rawAttributes: unknown): ConvertedElement {
+function toElement(
+  tag: string,
+  content: unknown,
+  rawAttributes: unknown,
+  outer: Namespaces | undefined,
+): XmlElement {
   const { prefix, local } = splitName(tag);
   const attributes: Record<string, string> = {};
-  const declarations = new Map<string, string>();
+  let declared: Map<string, string> | undefined;
   if (typeof rawAttributes === "object" && rawAttributes !== null) {
     for (const [key, value] of Object.entries(rawAttributes as Record<string, unknown>)) {
       if (typeof value !== "string") continue;
       const decoded = decodeEntities(value);
-      if (key === "xmlns") declarations.set("", decoded);
-      else if (key.startsWith("xmlns:")) declarations.set(key.slice("xmlns:".length), decoded);
-      else attributes[splitName(key).local] = decoded;
+      if (key === "xmlns" || key.startsWith("xmlns:")) {
+        declared ??= new Map();
+        declared.set(key === "xmlns" ? "" : key.slice("xmlns:".length), decoded.trim());
+      } else if (!key.includes(":")) {
+        attributes[key] = decoded;
+      }
     }
   }
+  // An element's own declarations apply to itself and to everything below it.
+  const scope = declared === undefined ? outer : { declared, outer };
+  const namespace = resolveNamespace(scope, prefix ?? "");
   const texts: string[] = [];
   const children: XmlElement[] = [];
   if (Array.isArray(content)) {
@@ -248,13 +295,10 @@ function toElement(tag: string, content: unknown, rawAttributes: unknown): Conve
         texts.push(cdataText(entry[CDATA_KEY]));
         continue;
       }
-      children.push(...toElements([entry]).map((converted) => converted.element));
+      children.push(...toElements([entry], scope));
     }
   }
-  return {
-    element: { name: local, prefix, attributes, children, text: texts.join("").trim() },
-    declarations,
-  };
+  return { name: local, prefix, namespace, attributes, children, text: texts.join("").trim() };
 }
 
 /** CDATA content as fast-xml-parser delivers it: `[{"#text": "…"}]`; kept verbatim. */
@@ -276,12 +320,14 @@ function splitName(name: string): { prefix: string | undefined; local: string } 
     : { prefix: name.slice(0, colon), local: name.slice(colon + 1) };
 }
 
-function namespaceOf(
-  prefix: string | undefined,
-  declarations: ReadonlyMap<string, string>,
-): string | undefined {
-  const uri = declarations.get(prefix ?? "")?.trim();
-  return uri === undefined || uri === "" ? undefined : uri;
+/** The URI a prefix ("" for the default namespace) is bound to; the innermost declaration wins. */
+function resolveNamespace(scope: Namespaces | undefined, prefix: string): string | undefined {
+  for (let current = scope; current !== undefined; current = current.outer) {
+    const uri = current.declared.get(prefix);
+    // `xmlns=""` takes the default namespace away again.
+    if (uri !== undefined) return uri === "" ? undefined : uri;
+  }
+  return undefined;
 }
 
 const PREDEFINED_ENTITIES: Readonly<Record<string, string>> = {
