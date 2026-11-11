@@ -32,6 +32,7 @@ const ORIGIN = `http://${HOST}:${String(PORT)}`;
 
 const SCHEMES = { light: LIGHT_SCHEME, dark: DARK_SCHEME } as const;
 type Scheme = keyof typeof SCHEMES;
+const SCHEME_NAMES = Object.keys(SCHEMES) as Scheme[];
 
 function context(locale: Locale): RenderContext {
   return { ...pageContext(locale, ORIGIN), nonce: styleNonce() };
@@ -74,7 +75,7 @@ const INDEX_CSS = `
 function index(ctx: RenderContext): string {
   const rows = GALLERY.map((page) => {
     const links = LOCALES.flatMap((locale) =>
-      (Object.keys(SCHEMES) as Scheme[]).map((scheme) => {
+      SCHEME_NAMES.map((scheme) => {
         const href = `/${locale}/${scheme}/${page.name}`;
         return markup`<a href="${href}">${locale.toUpperCase()} ${scheme}</a>`;
       }),
@@ -131,19 +132,18 @@ const server = createServer((request, response) => {
     send(response, 200, texts(ctx), ctx);
     return;
   }
-  const [, locale, scheme, name] = path.split("/");
-  const page = GALLERY.find((candidate) => candidate.name === name);
-  if (
-    page === undefined ||
-    !(LOCALES as readonly string[]).includes(locale ?? "") ||
-    !Object.hasOwn(SCHEMES, scheme ?? "")
-  ) {
+  // Nothing from the URL goes into a page: its parts only pick one of the known values.
+  const parts = path.split("/");
+  const locale = LOCALES.find((candidate) => candidate === parts[1]);
+  const scheme = SCHEME_NAMES.find((candidate) => candidate === parts[2]);
+  const page = GALLERY.find((candidate) => candidate.name === parts[3]);
+  if (page === undefined || locale === undefined || scheme === undefined) {
     const missing = { title: "No such preview", message: "Pick a page from the index." };
     send(response, 404, renderMessagePage(missing, ctx, { tone: "info" }), ctx);
     return;
   }
-  const pageCtx = context(locale as Locale);
-  const rendered = forceScheme(page.render(pageCtx), scheme as Scheme);
+  const pageCtx = context(locale);
+  const rendered = forceScheme(page.render(pageCtx), scheme);
   send(response, 200, query === "phone" ? forcePhone(rendered) : rendered, pageCtx);
 });
 

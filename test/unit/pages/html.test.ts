@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { escapeHtml, Html, markup, trusted } from "../../../src/pages/html.js";
+import { escapeHtml, Html, type HtmlValue, markup, trusted } from "../../../src/pages/html.js";
 
 describe("escapeHtml", () => {
   it("escapes the five HTML-significant characters", () => {
@@ -36,7 +36,9 @@ describe("markup", () => {
     const rows = ["a<", "b"].map((cell) => markup`<li>${cell}</li>`);
     expect(markup`<ul>${rows}</ul>`.toString()).toBe("<ul><li>a&lt;</li><li>b</li></ul>");
     expect(markup`${["<", markup`<b>`, 2]}`.toString()).toBe("&lt;<b>2");
-    expect(markup`[${undefined}${null}${false}${0}${""}]`.toString()).toBe("[0]");
+    const shown = (value: HtmlValue): string => markup`[${value}]`.toString();
+    const values: HtmlValue[] = [undefined, null, false, 0, ""];
+    expect(values.map(shown)).toEqual(["[]", "[]", "[]", "[0]", "[]"]);
     expect(markup`${1.5}`.toString()).toBe("1.5");
     expect(markup``.toString()).toBe("");
   });
