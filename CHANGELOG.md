@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.0](https://github.com/jaylann/mcp-server-sevdesk/compare/v1.2.0...v1.3.0) (2026-11-11)
+
+
+### Bug Fixes
+
+* close the findings of the 2026-11 security and code review ([#31](https://github.com/jaylann/mcp-server-sevdesk/issues/31)) ([64d9120](https://github.com/jaylann/mcp-server-sevdesk/commit/64d91207725365cef1bcf93390502435320070e0))
+* **security:** close the findings of the 2026-11 security review ([#29](https://github.com/jaylann/mcp-server-sevdesk/issues/29)) ([63a4080](https://github.com/jaylann/mcp-server-sevdesk/commit/63a4080842446c1f6db116e06d5895151c9819aa))
+
+
+### Miscellaneous
+
+* release 1.3.0 ([#32](https://github.com/jaylann/mcp-server-sevdesk/issues/32)) ([a5d3443](https://github.com/jaylann/mcp-server-sevdesk/commit/a5d34430ef0187d219baccb733e6973d7de9e788))
+
 ## [1.2.0](https://github.com/jaylann/mcp-server-sevdesk/compare/v1.1.0...v1.2.0) (2026-11-11)
 
 

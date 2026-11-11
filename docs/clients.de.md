@@ -314,7 +314,7 @@ das voreingestellte `--http` des Images:
         "--read-only",
         "-e",
         "SEVDESK_API_TOKEN",
-        "ghcr.io/jaylann/mcp-server-sevdesk:1.2.0",
+        "ghcr.io/jaylann/mcp-server-sevdesk:1.3.0",
         "--stdio"
       ],
       "env": {
