@@ -3,8 +3,10 @@
  *
  * 0. arguments with characters a human would not see (`findHiddenCharacters`; line feeds allowed)
  *    are refused, so what reaches sevDesk is what the human sees;
- * 1. `prepare` with a read-only client: reads, preconditions, the preview (checked against
- *    `previewSchema`, then sanitized for display);
+ * 1. `prepare` with a read-only client: reads, preconditions, the preview in English and, for
+ *    tools a human confirms, in German (both checked against `previewPairSchema`, then sanitized
+ *    for display). The model, dry runs, the audit log and the elicitation show the English one;
+ *    the approval pages show the German one to a German reader. The preview hash covers both;
  * 2. dry run (`dryRun: true` or `SEVDESK_DRY_RUN=1`): return the preview, stop. Never asks;
  * 3. `commit`/`external` with `SEVDESK_CONFIRM`:
  *    - `elicit`: ask with an MCP elicitation through the SDK's multi-round-trip flow
@@ -47,7 +49,12 @@ import { ApprovalLimitError, type ApprovalTicket } from "../safety/approval-type
 import { type AuditApproval, type AuditEvent, auditPrincipal } from "../safety/audit.js";
 import { findHiddenCharacters } from "../safety/fence.js";
 import { argumentsHash, previewHash } from "../safety/hashing.js";
-import { displayPreview, previewSchema, previewText } from "../safety/preview.js";
+import {
+  displayPreview,
+  previewPairSchema,
+  previewSchema,
+  previewText,
+} from "../safety/preview.js";
 import { confirmStateSchema } from "../safety/runtime.js";
 import { requiresConfirmation, type WriteTier } from "../safety/tiers.js";
 import { SevdeskError } from "../sevdesk/errors.js";
@@ -175,7 +182,10 @@ export async function runWriteTool(
     ...context,
     client: readOnlyClient(context.client, dryRun ? "running a dry run" : "preparing a write"),
   });
-  const checked = previewSchema.safeParse(plan.preview);
+  const checked = previewPairSchema.safeParse({
+    preview: plan.preview,
+    previewDe: plan.previewDe,
+  });
   if (!checked.success) {
     return outputValidationFailedResult(call.errorContext, checked.error);
   }
@@ -186,8 +196,9 @@ export async function runWriteTool(
     args,
     plan,
     argsHash,
-    previewHash: previewHash(plan.preview),
+    previewHash: previewHash(plan.preview, plan.previewDe),
     preview: displayPreview(plan.preview),
+    previewDe: plan.previewDe === undefined ? undefined : displayPreview(plan.previewDe),
   };
 
   if (dryRun) {
@@ -228,6 +239,8 @@ interface Action {
   readonly previewHash: string;
   /** Sanitized for display. */
   readonly preview: ConfirmationPreview;
+  /** The German preview, sanitized for display: for the approval pages only. */
+  readonly previewDe: ConfirmationPreview | undefined;
 }
 
 type Decision =
@@ -386,34 +399,35 @@ async function confirmByBrowser(action: Action): Promise<Decision> {
   const { approvals } = call.deps.safety;
   const existing = approvals.current(action.owner, tool.name, action.argsHash);
   if (existing === undefined) {
-    return stop(await requestBrowserApproval(action, randomUUID(), undefined));
+    return stop(await requestBrowserApproval(action, randomUUID(), false));
   }
   if (existing.status === "pending") {
     if (existing.previewHash === action.previewHash) {
       return stop(pendingResult(action, existing, false));
     }
-    return stop(await requestBrowserApproval(action, existing.callId, RECORD_CHANGED_NOTICE));
+    return stop(await requestBrowserApproval(action, existing.callId, true));
   }
   // Decided: take it now (single use), with no await since `current`, so no other call can. If
   // it expired in between, it is gone: ask again rather than act on the stale snapshot.
   const taken = approvals.take(action.owner, existing.id);
   if (taken === undefined) {
-    return stop(await requestBrowserApproval(action, existing.callId, undefined));
+    return stop(await requestBrowserApproval(action, existing.callId, false));
   }
   if (taken.status === "rejected") {
     await audit(action, { event: "declined", callId: taken.callId });
     return stop(declinedResult(action));
   }
   if (taken.previewHash !== action.previewHash) {
-    return stop(await requestBrowserApproval(action, taken.callId, RECORD_CHANGED_NOTICE));
+    return stop(await requestBrowserApproval(action, taken.callId, true));
   }
   return { approved: true, callId: taken.callId };
 }
 
+/** `recordChanged`: the preview differs from the one the human was asked about before. */
 async function requestBrowserApproval(
   action: Action,
   callId: string,
-  notice: string | undefined,
+  recordChanged: boolean,
 ): Promise<CallToolResult> {
   const { tool, call } = action;
   const { deployment } = call.deps.config;
@@ -423,12 +437,12 @@ async function requestBrowserApproval(
       toolName: tool.name,
       toolTitle: tool.title,
       tier: tool.tier,
-      tierText: HUMAN_TIER_TEXT[tool.tier],
       argsHash: action.argsHash,
       previewHash: action.previewHash,
       preview: action.preview,
+      ...(action.previewDe === undefined ? {} : { previewDe: action.previewDe }),
       callId,
-      ...(notice === undefined ? {} : { notice }),
+      ...(recordChanged ? { recordChanged } : {}),
     });
   } catch (error) {
     if (error instanceof ApprovalLimitError) {
@@ -465,7 +479,7 @@ async function requestBrowserApproval(
     previewHash: action.previewHash,
     reference: ticket.reference,
   });
-  return pendingResult(action, ticket, notice !== undefined);
+  return pendingResult(action, ticket, recordChanged);
 }
 
 /**

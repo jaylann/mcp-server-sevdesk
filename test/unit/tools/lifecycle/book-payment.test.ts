@@ -149,6 +149,14 @@ describe("sevdesk_invoice_book_payment (spec bookInvoice; community record shape
       "This is a partial payment: 77.33 EUR stays open and the invoice becomes partially paid " +
         "(750).",
     );
+    expect(plan.previewDe.facts).toContainEqual({
+      label: "Offen nach der Buchung",
+      value: "77,33 EUR",
+    });
+    expect(plan.previewDe.warnings).toContain(
+      "Das ist eine Teilzahlung: 77,33 EUR bleiben offen, und die Rechnung gilt danach als " +
+        "teilweise bezahlt (750).",
+    );
     expect(output.data["invoice"]).toMatchObject({ status: { code: 750 } });
   });
 
@@ -308,6 +316,11 @@ describe("sevdesk_invoice_book_payment (spec bookInvoice; community record shape
       "The document is marked as fully paid; the missing 3.55 EUR is written off as cash " +
         "discount (Skonto).",
     ]);
+    expect(plan.previewDe.warnings).toEqual([
+      "Das Dokument gilt danach als vollständig bezahlt; die fehlenden 3,55 EUR werden als Skonto " +
+        "ausgebucht.",
+    ]);
+    expect(plan.previewDe.action).toContain("(Zahlung abzüglich Skonto (CB))");
   });
 
   it("refuses over-booking unless the extra is declared, then books reminder charges (OF)", async () => {
@@ -355,6 +368,7 @@ describe("sevdesk_invoice_book_payment (spec bookInvoice; community record shape
       client,
     );
     expect(plan.preview.facts).toContainEqual({ label: "Booking date", value: "2026-11-07" });
+    expect(plan.previewDe.facts).toContainEqual({ label: "Buchungsdatum", value: "07.11.2026" });
 
     const future = await prepareWrite(
       tool,
@@ -362,6 +376,9 @@ describe("sevdesk_invoice_book_payment (spec bookInvoice; community record shape
       invoiceClient({ account: accountRow(4003) }),
     );
     expect(future.preview.warnings).toContain("The booking date 2026-12-01 lies in the future.");
+    expect(future.previewDe.warnings).toContain(
+      "Das Buchungsdatum 01.12.2026 liegt in der Zukunft.",
+    );
   });
 
   it.each([

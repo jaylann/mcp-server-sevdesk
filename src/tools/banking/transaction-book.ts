@@ -18,8 +18,20 @@ import {
   type PaymentPlan,
   paymentTypeOf,
 } from "../../domain/lifecycle/payments.js";
-import { documentTitle, type Fact, formatMoney } from "../../domain/lifecycle/preview.js";
+import {
+  documentTitle,
+  type Fact,
+  formatMoney,
+  statusText,
+} from "../../domain/lifecycle/preview.js";
 import { compare, type Money, money } from "../../domain/money.js";
+import {
+  bothPreviews,
+  dateText,
+  type Phrase,
+  phrase,
+  type PreviewLanguage,
+} from "../../domain/preview-text.js";
 import {
   type AllocationPlan,
   documentBookingType,
@@ -48,14 +60,64 @@ import {
   transactionIdInput,
 } from "./reconcile-shared.js";
 
-const BOOKING_TYPE_TEXT: Readonly<Record<BookingType, string>> = {
-  FULL_PAYMENT: "full payment",
-  N: "partial payment",
-  CB: "payment less Skonto",
-  MTC: "payment less bank fees",
-  O: "payment with a difference for other reasons",
-  OF: "payment plus reminder charges",
+const BOOKING_TYPE_TEXT: Readonly<Record<BookingType, Phrase>> = {
+  FULL_PAYMENT: phrase("full payment", "vollständige Zahlung"),
+  N: phrase("partial payment", "Teilzahlung"),
+  CB: phrase("payment less Skonto", "Zahlung abzüglich Skonto"),
+  MTC: phrase("payment less bank fees", "Zahlung abzüglich Kosten des Geldverkehrs"),
+  O: phrase(
+    "payment with a difference for other reasons",
+    "Zahlung mit Differenz aus sonstigen Gründen",
+  ),
+  OF: phrase("payment plus reminder charges", "Zahlung zuzüglich Mahngebühren"),
 };
+
+/** How to undo the booking: the consequence every allocation shares. */
+const UNDO_WARNING = phrase(
+  "Each document's status changes (shown per allocation). To undo, use " +
+    "sevdesk_transaction_reset, which resets these documents to open and so removes all their " +
+    "payments.",
+  "Der Status jedes Dokuments ändert sich (siehe die einzelnen Zuordnungen). Rückgängig machen " +
+    "lässt sich das mit sevdesk_transaction_reset: Das setzt diese Dokumente auf offen zurück " +
+    "und entfernt damit alle ihre Zahlungen.",
+);
+
+/** The fact labels and fixed wording of a booking, per language. */
+const BOOK_TEXT = {
+  en: {
+    before: "Unassigned before",
+    date: "Booking date",
+    allocation: "Allocation",
+    sentAs: (type: string) => `, sent as type ${type} as it uses part of the transaction`,
+    defaulted: ", amount defaulted",
+    open: "open",
+    status: "status",
+    contact: "contact",
+    after: "Unassigned after",
+    booked: "transaction fully booked, status 400",
+    partly: "status 200, partly linked",
+    paid: "paid",
+    partlyPaid: "partially paid",
+    staysOpen: "stays open",
+  },
+  de: {
+    before: "Vorher nicht zugeordnet",
+    date: "Buchungsdatum",
+    allocation: "Zuordnung",
+    sentAs: (type: string) =>
+      `, gesendet als Typ ${type}, da nur ein Teil des Umsatzes genutzt wird`,
+    defaulted: ", Betrag automatisch gewählt",
+    open: "offen",
+    status: "Status",
+    contact: "Kontakt",
+    after: "Danach nicht zugeordnet",
+    booked: "Umsatz vollständig gebucht, Status 400",
+    partly: "Status 200, teilweise verknüpft",
+    paid: "bezahlt",
+    partlyPaid: "teilweise bezahlt",
+    staysOpen: "bleiben offen",
+  },
+} as const;
 
 const bookingSchema = z.object({
   document: documentSummarySchema.describe("The document as read back after the booking."),
@@ -167,18 +229,14 @@ export const transactionBookTool = defineWriteTool({
       })),
       remainingAfter: plan.remainingAfter,
     };
+    const warnings = [...plan.warnings, UNDO_WARNING];
     return {
-      preview: {
-        action: actionText(plan),
-        facts: bookFacts(plan),
-        warnings: [
-          ...plan.warnings,
-          "Each document's status changes (shown per allocation). To undo, use " +
-            "sevdesk_transaction_reset, which resets these documents to open and so removes all " +
-            "their payments.",
-        ],
+      ...bothPreviews((lang) => ({
+        action: actionText(plan, lang),
+        facts: bookFacts(plan, lang),
+        warnings: warnings.map((warning) => warning[lang]),
         irreversible: false,
-      },
+      })),
       state,
     };
   },
@@ -245,32 +303,39 @@ async function remainingAfterBooking(
   }
 }
 
-function actionText(plan: AllocationPlan): string {
+function actionText(plan: AllocationPlan, lang: PreviewLanguage): string {
   const { transaction } = plan;
-  const docs = plan.allocations.map(({ doc }) => documentTitle(doc));
+  const docs = plan.allocations.map(({ doc }) => documentTitle(doc, lang));
+  const and = lang === "de" ? "und" : "and";
   const list =
-    docs.length === 1 ? docs[0] : `${docs.slice(0, -1).join(", ")} and ${docs.at(-1) ?? ""}`;
-  return (
-    `Book bank transaction ${String(transaction.id)} (${formatMoney(transaction.amount)}) to ` +
-    `${String(list)}: ${formatMoney(money(plan.allocated, transaction.amount.currency))} in total.`
-  );
+    docs.length === 1 ? docs[0] : `${docs.slice(0, -1).join(", ")} ${and} ${docs.at(-1) ?? ""}`;
+  const total = formatMoney(money(plan.allocated, transaction.amount.currency), lang);
+  return lang === "de"
+    ? `Kontoumsatz ${String(transaction.id)} (${formatMoney(transaction.amount, lang)}) ` +
+        `zuordnen zu ${String(list)}: insgesamt ${total}.`
+    : `Book bank transaction ${String(transaction.id)} (${formatMoney(transaction.amount)}) to ` +
+        `${String(list)}: ${total} in total.`;
 }
 
 /** From the document side: N with the whole open amount also settles the document (measured). */
-function statusAfter(allocation: PlannedAllocation): string {
+function statusAfter(allocation: PlannedAllocation, lang: PreviewLanguage): string {
   const { doc, plan } = allocation;
+  const t = BOOK_TEXT[lang];
   const codes = KINDS[doc.kind].status;
-  if (documentBookingType(plan) !== "N") return `paid (${String(codes.paid)})`;
+  if (documentBookingType(plan) !== "N") return `${t.paid} (${String(codes.paid)})`;
   const open = plan.remaining ?? money(0, doc.currency);
-  return `partially paid (${String(codes.partiallyPaid)}), ${formatMoney(open)} stays open`;
+  return (
+    `${t.partlyPaid} (${String(codes.partiallyPaid)}), ${formatMoney(open, lang)} ` + t.staysOpen
+  );
 }
 
-function bookFacts(plan: AllocationPlan): Fact[] {
+function bookFacts(plan: AllocationPlan, lang: PreviewLanguage): Fact[] {
+  const t = BOOK_TEXT[lang];
   const currency = plan.transaction.amount.currency;
   const facts: Fact[] = [
-    ...transactionFacts(plan.transaction),
-    { label: "Unassigned before", value: formatMoney(money(plan.remainingBefore, currency)) },
-    { label: "Booking date", value: plan.bookingDate },
+    ...transactionFacts(plan.transaction, lang),
+    { label: t.before, value: formatMoney(money(plan.remainingBefore, currency), lang) },
+    { label: t.date, value: dateText(plan.bookingDate, lang) },
   ];
   plan.allocations.forEach((allocation, index) => {
     const { doc, plan: payment } = allocation;
@@ -278,27 +343,23 @@ function bookFacts(plan: AllocationPlan): Fact[] {
     const party =
       doc.contact?.name ??
       doc.partyName ??
-      (doc.contact === undefined ? undefined : `contact ${String(doc.contact.id)}`);
+      (doc.contact === undefined ? undefined : `${t.contact} ${String(doc.contact.id)}`);
     facts.push({
-      label: `Allocation ${String(index + 1)}: ${documentTitle(doc)}`,
+      label: `${t.allocation} ${String(index + 1)}: ${documentTitle(doc, lang)}`,
       value:
-        `${formatMoney(payment.amount)} (${BOOKING_TYPE_TEXT[documentType]}` +
-        (documentType === payment.bookingType
-          ? ""
-          : `, sent as type ${payment.bookingType} as it uses part of the transaction`) +
-        `${allocation.amountDefaulted ? ", amount defaulted" : ""}); open ` +
-        `${formatMoney(money(payment.open.open, doc.currency))}; status ${doc.statusLabel} ` +
-        `(${String(doc.status)}) → ${statusAfter(allocation)}` +
+        `${formatMoney(payment.amount, lang)} (${BOOKING_TYPE_TEXT[documentType][lang]}` +
+        (documentType === payment.bookingType ? "" : t.sentAs(payment.bookingType)) +
+        `${allocation.amountDefaulted ? t.defaulted : ""}); ${t.open} ` +
+        `${formatMoney(money(payment.open.open, doc.currency), lang)}; ${t.status} ` +
+        `${statusText(doc, lang)} → ${statusAfter(allocation, lang)}` +
         (party === undefined ? "" : `; ${party}`),
     });
   });
   facts.push({
-    label: "Unassigned after",
+    label: t.after,
     value:
-      formatMoney(money(plan.remainingAfter, currency)) +
-      (compare(plan.remainingAfter, 0) === 0
-        ? " (transaction fully booked, status 400)"
-        : " (status 200, partly linked)"),
+      `${formatMoney(money(plan.remainingAfter, currency), lang)} ` +
+      `(${compare(plan.remainingAfter, 0) === 0 ? t.booked : t.partly})`,
   });
   return facts;
 }

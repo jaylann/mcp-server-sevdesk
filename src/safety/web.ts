@@ -4,10 +4,14 @@
  * reading and HTML responses under a strict Content-Security-Policy.
  *
  * Pages built with these have no scripts, one inline style block allowed by a per-response nonce,
- * no framing, and forms only to themselves (plus, for the consent page, the one validated redirect
- * origin, because browsers apply `form-action` to the redirect after a form POST).
+ * fonts and images only from the server's own `/assets/` path (`src/pages/assets.ts`), no framing,
+ * and forms only to themselves (plus, for the consent page, the one validated redirect origin,
+ * because browsers apply `form-action` to the redirect after a form POST).
  */
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+
+import { assetSource } from "../pages/assets.js";
+import type { PageContext } from "../pages/context.js";
 
 /**
  * Compares two strings in constant time (by their SHA-256 digests, so the length of the expected
@@ -121,6 +125,11 @@ export interface HtmlResponseOptions {
   /** The nonce of the page's inline style block (from {@link styleNonce}). */
   readonly nonce: string;
   /**
+   * The request's page context: the language the page was rendered in, and the server's origin,
+   * whose `/assets/` path is the only place the page may load fonts and images from.
+   */
+  readonly page: PageContext;
+  /**
    * Origins forms may submit to besides the page itself: the consent page adds the validated
    * redirect origin, because `form-action` also covers the redirect after the POST.
    */
@@ -136,11 +145,14 @@ export interface HtmlResponseOptions {
 /** An HTML response with the page security headers. */
 export function htmlResponse(html: string, options: HtmlResponseOptions): Response {
   const formAction = ["'self'", ...(options.formActions ?? [])].join(" ");
+  // Not `'self'`: other paths of the origin (a download link counts its uses) are no business of
+  // an image or font request.
+  const assets = assetSource(options.page.origin);
   const headers = new Headers({
     "Content-Type": "text/html; charset=utf-8",
     "Content-Security-Policy":
-      `default-src 'none'; style-src 'nonce-${options.nonce}'; form-action ${formAction}; ` +
-      "frame-ancestors 'none'; base-uri 'none'",
+      `default-src 'none'; style-src 'nonce-${options.nonce}'; font-src ${assets}; ` +
+      `img-src ${assets}; form-action ${formAction}; frame-ancestors 'none'; base-uri 'none'`,
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     // Not `no-referrer`: under it browsers send `Origin: null` with form POSTs, which
@@ -150,6 +162,8 @@ export function htmlResponse(html: string, options: HtmlResponseOptions): Respon
     // addresses in HTML with a script-based link unless told not to).
     "Cache-Control": "no-store, no-transform",
     "Cross-Origin-Resource-Policy": "same-origin",
+    "Content-Language": options.page.locale,
+    Vary: "Accept-Language",
   });
   if (options.isolateOpener ?? true) headers.set("Cross-Origin-Opener-Policy", "same-origin");
   for (const [name, value] of Object.entries(options.headers ?? {})) headers.set(name, value);

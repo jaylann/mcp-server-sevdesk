@@ -108,6 +108,25 @@ describe("sevdesk_voucher_finalize", () => {
     expect(plan.preview.warnings).toContain(
       "The voucher has no receipt file attached; GoBD expects the receipt with the voucher.",
     );
+    expect(plan.previewDe.action).toBe(
+      "Belegentwurf 2101 fertigstellen (Ausgabe, brutto 119 EUR): Entwurf → offen, verbucht.",
+    );
+    expect(plan.previewDe.facts).toContainEqual({
+      label: "Position 1",
+      value: "6815 Bürobedarf (Konto 4266): 119 EUR brutto, 19 % USt.; Druckerpapier und Toner",
+    });
+    expect(plan.previewDe.facts).toContainEqual({
+      label: "Status",
+      value: "Entwurf 50 → offen 100",
+    });
+    expect(plan.previewDe.facts).toContainEqual({
+      label: "Art",
+      value: "Ausgabe: Die Zahlung geht vom Bankkonto ab",
+    });
+    expect(plan.previewDe.warnings).toContain(
+      "An diesem Beleg hängt keine Belegdatei; nach den GoBD gehört der Originalbeleg dazu.",
+    );
+    expect(plan.previewDe.warnings).toHaveLength(plan.preview.warnings.length);
     expect(output.data.voucher.status).toEqual({ code: 100, label: "Unpaid / due" });
     expect(output.data.notes).toBeUndefined();
     expect(output.summary).toBe("Finalized voucher 2101 (1 position, gross 119.00 EUR).");
@@ -350,6 +369,18 @@ describe("sevdesk_voucher_delete_draft", () => {
       { label: "Status", value: "Draft (50)" },
       { label: "Kind", value: "expense (Ausgabe)" },
     ]);
+    expect(plan.previewDe.action).toBe("Beleg 2101 (Entwurf) aus sevDesk löschen.");
+    expect(plan.previewDe.irreversible).toBe(true);
+    expect(plan.previewDe.facts.slice(0, 4)).toEqual([
+      { label: "Beleg", value: "ER-2026-0815 (ID 2101)" },
+      { label: "Typ", value: "Beleg (VOU)" },
+      { label: "Status", value: "Entwurf (50)" },
+      { label: "Art", value: "Ausgabe" },
+    ]);
+    expect(plan.previewDe.warnings).toEqual([
+      "Der Entwurf und alle seine Positionen werden aus sevDesk gelöscht; das lässt sich nicht " +
+        "rückgängig machen.",
+    ]);
     expect(output.data).toMatchObject({ deleted: true, voucher: { id: 2101 } });
     expect(output.summary).toBe("Deleted draft voucher 2101.");
     expect(output.affected).toEqual([{ objectName: "Voucher", id: "2101" }]);
@@ -428,8 +459,12 @@ describe("sevdesk_voucher_delete_draft", () => {
     const fake = new FakeSevdeskClient([
       voucherRoute(draftRow({ document: { id: "7001", objectName: "Document" } })),
     ]);
-    const { preview } = await prepareWrite(tool, { id: 2101 }, fake);
+    const { preview, previewDe } = await prepareWrite(tool, { id: 2101 }, fake);
     expect(preview.warnings[1]).toContain("attached receipt file");
+    expect(previewDe.warnings[1]).toBe(
+      "Am Beleg hängt eine Belegdatei; ob sevDesk sie mitlöscht oder unter den Dokumenten " +
+        "behält, ist nicht dokumentiert.",
+    );
   });
 
   it.each([

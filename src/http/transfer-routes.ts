@@ -29,14 +29,16 @@
  * names; the router logs the route template only.
  */
 import { safeFilename } from "../domain/document-files.js";
+import type { PageMessage, Texts } from "../pages/text/index.js";
 import { type LocalFileKind, sniffKind } from "../safety/local-files.js";
 import {
   type FileTransferStore,
   MAX_UPLOAD_BYTES,
+  megabytes,
   type UploadTicketState,
 } from "../safety/transfer-store.js";
 import { sameOriginPost } from "../safety/web.js";
-import { pageResponse } from "./approval-pages.js";
+import { pageOf, pageResponse } from "./approval-pages.js";
 import type { BrowserSession } from "./browser-session.js";
 import { rateLimitKey } from "./client-ip.js";
 import {
@@ -44,8 +46,6 @@ import {
   FILES_PREFIX,
   renderUploadPage,
   renderUploadReceipt,
-  tooLargeText,
-  TRANSFER_TEXT,
   transferMessage,
   UPLOADS_PREFIX,
 } from "./transfer-pages.js";
@@ -118,6 +118,17 @@ type RefusalReason =
 export function createTransferRoutes(options: TransferRoutesOptions): readonly HttpRoute[] {
   const { store, session, origin } = options;
 
+  /** A message page in the language of `request`. */
+  function say(
+    request: Request,
+    status: number,
+    pick: (texts: Texts["transfer"]) => PageMessage,
+    headers?: Readonly<Record<string, string>>,
+  ): Response {
+    const page = pageOf(request, origin);
+    return transferMessage(page, status, pick(page.t.transfer), headers);
+  }
+
   function refused(
     ctx: HttpRequestContext,
     reason: RefusalReason,
@@ -139,7 +150,9 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
   /** The sign-in page, returning to this page afterwards when its path is well formed. */
   function signInPage(request: Request, prefix: string): Response {
     const id = idOf(request, prefix);
-    return session.loginPage(200, { next: id === undefined ? undefined : `${prefix}${id}` });
+    return session.loginPage(pageOf(request, origin), 200, {
+      next: id === undefined ? undefined : `${prefix}${id}`,
+    });
   }
 
   function isMultipart(request: Request): boolean {
@@ -157,30 +170,53 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
     ctx: HttpRequestContext,
   ): Promise<Response | { record: SessionRecord; ticket: UploadTicketState; id: string }> {
     if (!sameOriginPost(request, origin)) {
-      return refused(ctx, "foreign_origin", transferMessage(403, TRANSFER_TEXT.foreignPost));
+      return refused(
+        ctx,
+        "foreign_origin",
+        say(request, 403, (t) => t.foreignPost),
+      );
     }
     const record = await session.sessionOf(request, ctx);
     if (record === undefined) {
-      return refused(ctx, "signed_out", transferMessage(403, TRANSFER_TEXT.signedOut));
+      return refused(
+        ctx,
+        "signed_out",
+        say(request, 403, (t) => t.signedOut),
+      );
     }
     const id = idOf(request, UPLOADS_PREFIX);
     const ticket = id === undefined ? undefined : store.ticketFor(id, record.accountId);
     if (id === undefined || ticket === undefined) {
-      return refused(ctx, "unknown", transferMessage(404, TRANSFER_TEXT.uploadNotFound), record);
+      return refused(
+        ctx,
+        "unknown",
+        say(request, 404, (t) => t.uploadNotFound),
+        record,
+      );
     }
     if (ticket === "expired") {
-      return refused(ctx, "expired", transferMessage(410, TRANSFER_TEXT.uploadExpired), record);
+      return refused(
+        ctx,
+        "expired",
+        say(request, 410, (t) => t.uploadExpired),
+        record,
+      );
     }
     if (ticket.status !== "pending") {
       return refused(
         ctx,
         "already_received",
-        transferMessage(409, TRANSFER_TEXT.alreadyUploaded),
+        say(request, 409, (t) => t.alreadyUploaded),
         record,
       );
     }
     if (!isMultipart(request)) {
-      return refused(ctx, "unsupported_type", transferMessage(415, TRANSFER_TEXT.badForm), record);
+      return refused(
+        ctx,
+        "unsupported_type",
+        say(request, 415, (t) => t.badForm),
+        record,
+      );
     }
     return { record, ticket, id };
   }
@@ -199,7 +235,7 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
       return refused(
         ctx,
         "rate_limited",
-        transferMessage(429, TRANSFER_TEXT.limited, { "Retry-After": "60" }),
+        say(head, 429, (t) => t.limited, { "Retry-After": "60" }),
       );
     }
     const admitted = await admit(head, ctx);
@@ -209,7 +245,7 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
       return refused(
         ctx,
         "length_required",
-        transferMessage(411, TRANSFER_TEXT.lengthRequired),
+        say(head, 411, (t) => t.lengthRequired),
         admitted.record,
       );
     }
@@ -217,7 +253,7 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
       return refused(
         ctx,
         "too_large",
-        transferMessage(413, tooLargeText(admitted.ticket.maxBytes)),
+        say(head, 413, (t) => t.tooLarge(megabytes(admitted.ticket.maxBytes))),
         admitted.record,
       );
     }
@@ -230,12 +266,12 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
     const id = idOf(request, UPLOADS_PREFIX);
     const ticket = id === undefined ? undefined : store.ticketFor(id, record.accountId);
     if (id === undefined || ticket === undefined) {
-      return transferMessage(404, TRANSFER_TEXT.uploadNotFound);
+      return say(request, 404, (t) => t.uploadNotFound);
     }
-    if (ticket === "expired") return transferMessage(410, TRANSFER_TEXT.uploadExpired);
-    if (ticket.status === "receiving") return transferMessage(200, TRANSFER_TEXT.receiving);
-    if (ticket.file !== undefined) return receiptPage(ticket);
-    return pageResponse(200, (nonce) =>
+    if (ticket === "expired") return say(request, 410, (t) => t.uploadExpired);
+    if (ticket.status === "receiving") return say(request, 200, (t) => t.receiving);
+    if (ticket.file !== undefined) return receiptPage(request, ticket);
+    return pageResponse(pageOf(request, origin), 200, (render) =>
       renderUploadPage(
         {
           accountId: record.accountId,
@@ -247,15 +283,15 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
           formAction: `${UPLOADS_PREFIX}${id}`,
           csrf: session.csrfTag(record),
         },
-        nonce,
+        render,
       ),
     );
   }
 
-  function receiptPage(ticket: UploadTicketState): Response {
+  function receiptPage(request: Request, ticket: UploadTicketState): Response {
     const file = ticket.file;
-    if (file === undefined) return transferMessage(200, TRANSFER_TEXT.receiving);
-    return pageResponse(200, (nonce) =>
+    if (file === undefined) return say(request, 200, (t) => t.receiving);
+    return pageResponse(pageOf(request, origin), 200, (render) =>
       renderUploadReceipt(
         {
           name: file.name,
@@ -264,7 +300,7 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
           reference: ticket.reference,
           expiresAt: ticket.expiresAt,
         },
-        nonce,
+        render,
       ),
     );
   }
@@ -284,28 +320,50 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
       // eslint-disable-next-line @typescript-eslint/no-deprecated
       form = await request.formData();
     } catch {
-      return refuse("bad_form", transferMessage(400, TRANSFER_TEXT.badForm));
+      return refuse(
+        "bad_form",
+        say(request, 400, (t) => t.badForm),
+      );
     }
     const names = [...form.keys()].sort();
     if (names.length !== 2 || names[0] !== "csrf" || names[1] !== "file") {
-      return refuse("bad_form", transferMessage(400, TRANSFER_TEXT.badForm));
+      return refuse(
+        "bad_form",
+        say(request, 400, (t) => t.badForm),
+      );
     }
     const csrf = form.get("csrf");
     if (typeof csrf !== "string" || !session.csrfValid(record, csrf)) {
-      return refuse("csrf", transferMessage(403, TRANSFER_TEXT.csrf));
+      return refuse(
+        "csrf",
+        say(request, 403, (t) => t.csrf),
+      );
     }
     const file = form.get("file");
     if (!(file instanceof File)) {
-      return refuse("bad_form", transferMessage(400, TRANSFER_TEXT.badForm));
+      return refuse(
+        "bad_form",
+        say(request, 400, (t) => t.badForm),
+      );
     }
-    if (file.size === 0) return refuse("empty", transferMessage(400, TRANSFER_TEXT.empty));
+    if (file.size === 0)
+      return refuse(
+        "empty",
+        say(request, 400, (t) => t.empty),
+      );
     if (file.size > ticket.maxBytes) {
-      return refuse("too_large", transferMessage(413, tooLargeText(ticket.maxBytes)));
+      return refuse(
+        "too_large",
+        say(request, 413, (t) => t.tooLarge(megabytes(ticket.maxBytes))),
+      );
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
     const kind = sniffKind(bytes);
     if (kind === undefined || !ticket.kinds.includes(kind)) {
-      return refuse("wrong_kind", transferMessage(415, TRANSFER_TEXT.wrongKind));
+      return refuse(
+        "wrong_kind",
+        say(request, 415, (t) => t.wrongKind),
+      );
     }
     let outcome;
     try {
@@ -315,7 +373,10 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
         bytes,
       });
     } catch {
-      return refuse("failed", transferMessage(500, TRANSFER_TEXT.failed));
+      return refuse(
+        "failed",
+        say(request, 500, (t) => t.failed),
+      );
     }
     switch (outcome.status) {
       case "received":
@@ -325,19 +386,37 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
           kind,
           bytes: bytes.byteLength,
         });
-        return receiptPage(outcome.ticket);
+        return receiptPage(request, outcome.ticket);
       case "unknown":
-        return refuse("unknown", transferMessage(404, TRANSFER_TEXT.uploadNotFound));
+        return refuse(
+          "unknown",
+          say(request, 404, (t) => t.uploadNotFound),
+        );
       case "expired":
-        return refuse("expired", transferMessage(410, TRANSFER_TEXT.uploadExpired));
+        return refuse(
+          "expired",
+          say(request, 410, (t) => t.uploadExpired),
+        );
       case "already_received":
-        return refuse("already_received", transferMessage(409, TRANSFER_TEXT.alreadyUploaded));
+        return refuse(
+          "already_received",
+          say(request, 409, (t) => t.alreadyUploaded),
+        );
       case "wrong_kind":
-        return refuse("wrong_kind", transferMessage(415, TRANSFER_TEXT.wrongKind));
+        return refuse(
+          "wrong_kind",
+          say(request, 415, (t) => t.wrongKind),
+        );
       case "too_large":
-        return refuse("too_large", transferMessage(413, tooLargeText(ticket.maxBytes)));
+        return refuse(
+          "too_large",
+          say(request, 413, (t) => t.tooLarge(megabytes(ticket.maxBytes))),
+        );
       case "storage_full":
-        return refuse("storage_full", transferMessage(507, TRANSFER_TEXT.storageFull));
+        return refuse(
+          "storage_full",
+          say(request, 507, (t) => t.storageFull),
+        );
     }
   }
 
@@ -352,7 +431,11 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
     };
     if (record === undefined) return deny("signed_out", signInPage(request, FILES_PREFIX));
     const id = idOf(request, FILES_PREFIX);
-    if (id === undefined) return deny("unknown", transferMessage(404, TRANSFER_TEXT.fileNotFound));
+    if (id === undefined)
+      return deny(
+        "unknown",
+        say(request, 404, (t) => t.fileNotFound),
+      );
     const outcome = await store.takeDownload(id, record.accountId);
     switch (outcome.status) {
       case "served":
@@ -364,11 +447,20 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
         });
         return downloadResponse(outcome.file);
       case "unknown":
-        return deny("unknown", transferMessage(404, TRANSFER_TEXT.fileNotFound));
+        return deny(
+          "unknown",
+          say(request, 404, (t) => t.fileNotFound),
+        );
       case "expired":
-        return deny("expired", transferMessage(410, TRANSFER_TEXT.fileExpired));
+        return deny(
+          "expired",
+          say(request, 410, (t) => t.fileExpired),
+        );
       case "exhausted":
-        return deny("exhausted", transferMessage(410, TRANSFER_TEXT.fileExhausted));
+        return deny(
+          "exhausted",
+          say(request, 410, (t) => t.fileExhausted),
+        );
     }
   }
 
@@ -386,8 +478,8 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
       bodySlots: {
         max: MAX_CONCURRENT_UPLOADS,
         perKey: MAX_CONCURRENT_UPLOADS_PER_ACCOUNT,
-        busy: (scope) =>
-          transferMessage(503, scope === "key" ? TRANSFER_TEXT.busyAccount : TRANSFER_TEXT.busy, {
+        busy: (scope, request) =>
+          say(request, 503, (t) => (scope === "key" ? t.busyAccount : t.busy), {
             "Retry-After": "10",
           }),
       },

@@ -46,6 +46,7 @@ import { getDefaultEnvironment, StdioClientTransport } from "@modelcontextprotoc
 import { build } from "tsdown";
 
 import { ALL_TOOLS } from "../src/tools/index.js";
+import type { EmbeddedFont } from "./lib/mcpb.js";
 import {
   bundleOutputProblems,
   licenseProblems,
@@ -65,6 +66,23 @@ const TIMEOUT_MS = 180_000;
 const DUMMY_TOKEN = "0".repeat(32);
 // Port 9 (discard) on loopback: connection refused immediately, nothing leaves the machine.
 const UNREACHABLE_BASE_URL = "https://127.0.0.1:9/api/v1";
+
+/** The fonts of the server's pages (`assets/fonts/`), with their license texts. */
+function embeddedFonts(): EmbeddedFont[] {
+  return [
+    { name: "Archivo", source: "https://github.com/Omnibus-Type/Archivo", file: "Archivo-OFL.txt" },
+    {
+      name: "Martian Mono",
+      source: "https://github.com/evilmartians/mono",
+      file: "MartianMono-OFL.txt",
+    },
+  ].map(({ name, source, file }) => ({
+    name,
+    license: "OFL-1.1",
+    source,
+    text: readFileSync(join(ROOT, "licenses", "fonts", file), "utf8"),
+  }));
+}
 
 function fail(message: string): never {
   throw new Error(message);
@@ -101,7 +119,10 @@ async function bundleServer(version: string): Promise<number> {
   const packages = packageRoots(moduleIds).map((root) => readBundledPackage(root));
   const licenses = licenseProblems(packages);
   if (licenses.length > 0) fail(licenses.join("\n"));
-  writeFileSync(join(BUNDLE, "THIRD_PARTY_LICENSES.txt"), thirdPartyNotices(packages, version));
+  writeFileSync(
+    join(BUNDLE, "THIRD_PARTY_LICENSES.txt"),
+    thirdPartyNotices(packages, version, embeddedFonts()),
+  );
   copyFileSync(join(ROOT, "LICENSE"), join(BUNDLE, "LICENSE"));
   return packages.length;
 }

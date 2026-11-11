@@ -4,6 +4,7 @@ import {
   displayPreview,
   hiddenMarker,
   MAX_SHOWN_VALUE_LENGTH,
+  previewPairSchema,
   previewSchema,
   previewText,
   shownValue,
@@ -139,5 +140,59 @@ describe("previewSchema", () => {
       false,
     );
     expect(previewSchema.safeParse({ ...good, irreversible: "no" }).success).toBe(false);
+  });
+});
+
+describe("previewPairSchema", () => {
+  const preview = {
+    action: "Finalize invoice RE-1.",
+    facts: [{ label: "Total", value: "119.00 EUR" }],
+    warnings: ["Binding."],
+    irreversible: true,
+  };
+  const previewDe = {
+    action: "Rechnung RE-1 fertigstellen.",
+    facts: [{ label: "Summe", value: "119,00 EUR" }],
+    warnings: ["Bindend."],
+    irreversible: true,
+  };
+  const problems = (pair: unknown): string[] => {
+    const result = previewPairSchema.safeParse(pair);
+    return result.success ? [] : result.error.issues.map((issue) => issue.path.join("."));
+  };
+
+  it("accepts an English preview alone and a pair of the same shape", () => {
+    expect(problems({ preview })).toEqual([]);
+    expect(problems({ preview, previewDe: undefined })).toEqual([]);
+    expect(problems({ preview, previewDe })).toEqual([]);
+  });
+
+  it("refuses a German preview that leaves something out or disagrees", () => {
+    // A German reader must never approve a text without a consequence the English one names.
+    expect(problems({ preview, previewDe: { ...previewDe, warnings: [] } })).toEqual([
+      "previewDe.warnings",
+    ]);
+    expect(problems({ preview, previewDe: { ...previewDe, facts: [] } })).toEqual([
+      "previewDe.facts",
+    ]);
+    expect(problems({ preview, previewDe: { ...previewDe, irreversible: false } })).toEqual([
+      "previewDe.irreversible",
+    ]);
+    expect(
+      problems({
+        preview,
+        previewDe: { ...previewDe, irreversible: false, facts: [], warnings: ["a", "b"] },
+      }),
+    ).toEqual(["previewDe.irreversible", "previewDe.facts", "previewDe.warnings"]);
+  });
+
+  it("refuses a malformed preview in either language", () => {
+    expect(problems({ preview: { ...preview, action: "" }, previewDe })).toEqual([
+      "preview.action",
+    ]);
+    expect(problems({ preview, previewDe: { ...previewDe, action: "" } })).toEqual([
+      "previewDe.action",
+    ]);
+    expect(problems({ previewDe })).toEqual(["preview"]);
   });
 });

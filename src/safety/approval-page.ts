@@ -1,38 +1,60 @@
 /**
- * HTML for the approval pages of `SEVDESK_CONFIRM=browser`: the approval page itself (shared by
- * the local 127.0.0.1 page and the HTTP server's inbox), and the inbox's list and sign-in pages.
- * Every dynamic value is HTML-escaped; the pages have no script and only one inline style block,
- * allowed by a per-response CSP nonce.
+ * HTML for the approval pages of `SEVDESK_CONFIRM=browser`: the approval page itself and the page
+ * after a decision (shared by the local 127.0.0.1 page and the HTTP server's inbox), and the
+ * inbox's list and sign-in pages.
  *
- * The local page's output must stay byte-identical: the remote additions are optional fields and
- * separate renderers.
+ * Every page is built with the `markup` tag of `src/pages/html.ts`, which escapes every value it
+ * interpolates, and set into the shared frame (`src/pages/frame.ts`): no script, one inline style
+ * block allowed by a per-response CSP nonce. The texts come from `src/pages/text` in the
+ * request's language.
+ *
+ * What the preview says (the action, its warnings and facts) comes from the tool that asked and
+ * may contain sevDesk text; it is sanitized before it gets here (`displayPreview`) and shown
+ * inside the sheet, apart from the page's own words. The page never cuts or scrolls a value, and
+ * shows the warnings before the facts: the reader passes everything before reaching the buttons.
  */
+import { badge, callout, facts, pageTime, reference, stamp } from "../pages/components.js";
+import type { RenderContext } from "../pages/context.js";
+import { renderFrame } from "../pages/frame.js";
+import { type Html, markup } from "../pages/html.js";
+import { icon } from "../pages/icons.js";
+import type { Locale } from "../pages/locale.js";
 import type { ConfirmationPreview } from "../tools/types.js";
-import type { ApprovalStatus } from "./approval-types.js";
-import { IRREVERSIBLE_LINE, shownValue } from "./preview.js";
+import type { ApprovalBinding, ApprovalStatus } from "./approval-types.js";
+import { shownValue } from "./preview.js";
+import type { WriteTier } from "./tiers.js";
 
 /** What the approval page shows. */
 export interface ApprovalPageModel {
   readonly toolName: string;
   readonly toolTitle: string;
-  readonly tierText: string;
+  readonly tier: WriteTier;
   /** Already sanitized with `displayPreview`. */
   readonly preview: ConfirmationPreview;
-  /** Trusted note above the preview, e.g. that the record changed. */
-  readonly notice: string | undefined;
+  /** The record changed after the human was first asked: the page says so above the preview. */
+  readonly recordChanged: boolean;
   /** The non-secret reference code the assistant was given, so the user can match them. */
   readonly reference: string;
+  /** ISO 8601 (UTC). */
+  readonly createdAt: string;
+  /** ISO 8601 (UTC). */
   readonly expiresAt: string;
+  /** The time the page is rendered at (epoch milliseconds), for the time left. */
+  readonly now: number;
   readonly formAction: string;
   readonly csrf: string;
   /** Inbox only: a link back to the list (the local page has none). */
   readonly inboxHref?: string;
 }
 
-/** A trusted link below a message (e.g. back to the inbox). */
-export interface PageLink {
-  readonly href: string;
-  readonly label: string;
+/** What the page after a decision shows. */
+export interface DecisionPageModel {
+  readonly decision: Exclude<ApprovalStatus, "pending">;
+  readonly reference: string;
+  /** The preview's action sentence (already sanitized with `displayPreview`). */
+  readonly action: string;
+  /** Inbox only: a link back to the list. */
+  readonly inboxHref?: string;
 }
 
 /** One approval in the inbox list. */
@@ -78,232 +100,195 @@ export interface LoginPageModel {
   readonly purpose?: "approvals" | "files" | undefined;
 }
 
-/** Escapes `&`, `<`, `>`, `"` and `'` for HTML text and attribute values. */
-export function escapeHtml(text: string): string {
-  return text.replace(/[&<>"']/g, (char) => HTML_ESCAPES[char] ?? char);
+/** The badge colour of each tier, as on the website: commit is stamp ink, external is storno. */
+const TIER_TONE = { write: "info", commit: "approve", external: "danger" } as const;
+
+/**
+ * The time left, as CSS for this response: the seconds until the request expires (`--ttl`,
+ * `--secs`) and how much of its lifetime that is (`--part`). The stylesheet drains a bar over
+ * that time and, when it is up, hides the buttons and shows that the request has expired, all
+ * without script. Built from numbers only.
+ */
+function expiryCss(model: ApprovalPageModel): string {
+  const expires = Date.parse(model.expiresAt);
+  const lifetime = Math.max(1, expires - Date.parse(model.createdAt));
+  const left = Math.min(lifetime, Math.max(0, expires - model.now));
+  const seconds = Math.ceil(left / 1000);
+  const part = (left / lifetime).toFixed(4);
+  return `:root{--ttl:${String(seconds)}s;--secs:${String(seconds)};--part:${part}}`;
 }
 
-const HTML_ESCAPES: Readonly<Record<string, string>> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-};
+/**
+ * The preview a reader of `locale` gets: the German one for German when the tool wrote it
+ * (every tool a human confirms does), else the English one. The approval is bound to both.
+ */
+export function previewFor(
+  binding: Pick<ApprovalBinding, "preview" | "previewDe">,
+  locale: Locale,
+): ConfirmationPreview {
+  return locale === "de" ? (binding.previewDe ?? binding.preview) : binding.preview;
+}
 
 /** The page with the preview and the Approve / Reject form. */
-export function renderApprovalPage(model: ApprovalPageModel, styleNonce: string): string {
+export function renderApprovalPage(model: ApprovalPageModel, ctx: RenderContext): string {
+  const t = ctx.t.approval;
   const { preview } = model;
-  const facts =
-    preview.facts.length === 0
-      ? ""
-      : `<dl>${preview.facts
-          .map(
-            (fact) =>
-              `<dt>${escapeHtml(fact.label)}</dt><dd>${escapeHtml(shownValue(fact.value))}</dd>`,
-          )
-          .join("")}</dl>`;
-  const warnings = preview.warnings.map((warning) => escapeHtml(warning));
+  const warnings: Html[] = preview.warnings.map(
+    (warning) => markup`<li>${callout(warning, { icon: "alert" })}</li>`,
+  );
   if (preview.irreversible) {
-    warnings.push(`<strong>${escapeHtml(IRREVERSIBLE_LINE)}</strong>`);
+    const line = markup`<strong>${t.irreversible}</strong>`;
+    warnings.push(markup`<li>${callout(line, { tone: "danger", icon: "alert" })}</li>`);
   }
-  const warningList =
-    warnings.length === 0
-      ? ""
-      : `<ul class="warnings">${warnings.map((warning) => `<li>${warning}</li>`).join("")}</ul>`;
-  const notice =
-    model.notice === undefined ? "" : `<p class="notice">${escapeHtml(model.notice)}</p>`;
-  const body = `<h1>Approve a sevDesk action?</h1>
-${notice}<p class="lead">Your AI assistant wants to run <code>${escapeHtml(model.toolName)}</code>
-(${escapeHtml(model.toolTitle)}; ${escapeHtml(model.tierText)}). Nothing happens unless you approve.</p>
-<section class="preview">
-<h2>${escapeHtml(preview.action)}</h2>
-${warningList}${facts}</section>
-<form method="post" action="${escapeHtml(model.formAction)}">
-<input type="hidden" name="csrf" value="${escapeHtml(model.csrf)}">
-<button type="submit" name="decision" value="approve" class="approve">Approve</button>
-<button type="submit" name="decision" value="reject" class="reject">Reject</button>
-</form>
-<p class="reference">Reference: <strong>${escapeHtml(model.reference)}</strong> (your assistant names the same code)</p>
-<p class="small">This request expires at ${escapeHtml(formatTime(model.expiresAt))} and can be decided once.
-After approving, return to your assistant: it runs the action when it calls the tool again.</p>${
+  const consequences = warnings.length === 0 ? "" : markup`<ul class="callouts">${warnings}</ul>\n`;
+  const rows = preview.facts.map((fact) => ({ label: fact.label, value: shownValue(fact.value) }));
+  const changed = model.recordChanged
+    ? markup`<div class="notice">${callout(t.changed, { icon: "refresh" })}</div>\n`
+    : "";
+  const tier = badge(markup`${icon("lock")}${t.tier[model.tier]}`, TIER_TONE[model.tier]);
+  const code = markup`<span class="fine">${t.reference}</span> ${reference(model.reference)}`;
+  const back =
     model.inboxHref === undefined
       ? ""
-      : `\n${renderLink({ href: model.inboxHref, label: "Back to the inbox" })}`
-  }`;
-  return page("Approve sevDesk action", body, styleNonce);
+      : markup`\n<p class="small after"><a href="${model.inboxHref}">${ctx.t.inbox.back}</a></p>`;
+  const body = markup`<p class="eyebrow">${icon("stamp")}${t.eyebrow}</p>
+<h1>${t.heading}</h1>
+<p class="lead">${t.lead}</p>
+${changed}<section class="sheet">
+<div class="sheet-head">${tier}<span class="ref-line">${code}</span></div>
+<h2>${preview.action}</h2>
+<p class="meta">${t.tool(markup`<code>${model.toolName}</code>`, model.toolTitle)}</p>
+${consequences}${facts(rows)}
+<form method="post" action="${model.formAction}" class="strip">
+<input type="hidden" name="csrf" value="${model.csrf}">
+<p class="live">${t.unless}</p>
+<p class="late">${t.expired}</p>
+<div class="actions live">
+<button type="submit" name="decision" value="reject" class="btn btn-outline">${t.reject}</button>
+<button type="submit" name="decision" value="approve" class="btn btn-approve">${icon("stamp")}${t.approve}</button>
+</div>
+</form>
+</section>
+<div class="expiry">
+<div class="meter"><i></i></div>
+<p class="fine"><span class="clock-line">${t.expiresIn} <span class="clock"></span>. </span>${t.validUntil(pageTime(model.expiresAt))} ${t.once} ${t.sameCode}</p>
+</div>
+<p class="small next">${t.next}</p>${back}`;
+  return renderFrame({ title: t.title, body, css: expiryCss(model) }, ctx);
 }
 
-/** A page with a title and one paragraph of trusted text (results, errors), optionally a link. */
-export function renderMessagePage(
-  title: string,
-  message: string,
-  styleNonce: string,
-  link?: PageLink,
-): string {
-  const after = link === undefined ? "" : `\n${renderLink(link)}`;
-  return page(
-    title,
-    `<h1>${escapeHtml(title)}</h1>\n<p>${escapeHtml(message)}</p>${after}`,
-    styleNonce,
-  );
+/**
+ * The page after a decision: the stamp, what was decided (the reference code and the action) and
+ * what to do next.
+ */
+export function renderDecisionPage(model: DecisionPageModel, ctx: RenderContext): string {
+  const approved = model.decision === "approved";
+  const text = approved ? ctx.t.inbox.approved : ctx.t.inbox.rejected;
+  const back =
+    model.inboxHref === undefined
+      ? ""
+      : markup`\n<p class="after"><a href="${model.inboxHref}">${ctx.t.inbox.back}</a></p>`;
+  const decided = facts([
+    { label: ctx.t.approval.reference, value: reference(model.reference) },
+    { label: ctx.t.approval.decided.action, value: model.action, long: false },
+  ]);
+  const body = markup`<section class="sheet struck">
+${stamp(text.title, approved ? "approve" : "plain")}
+<h1>${text.title}</h1>
+<p class="message">${text.message}</p>
+${decided}${back}
+</section>`;
+  return renderFrame({ title: text.title, body }, ctx);
+}
+
+const STATUS_TONE = { pending: "approve", approved: "ok", rejected: "plain" } as const;
+
+function renderInboxItem(item: InboxItem, ctx: RenderContext): Html {
+  const t = ctx.t.inboxPage;
+  const time = pageTime(item.expiresAt);
+  const when =
+    item.status === "pending"
+      ? t.expires(time)
+      : item.status === "approved"
+        ? t.runnableUntil(time)
+        : undefined;
+  const until = when === undefined ? "" : markup` <span class="fine">${when}</span>`;
+  const review =
+    item.status === "pending"
+      ? markup`\n<span class="btn btn-outline btn-sm" aria-hidden="true">${t.review}</span>`
+      : "";
+  return markup`<li class="row row-${item.status}">
+<div class="row-main">
+<p class="row-title"><a href="${item.href}">${item.action}</a></p>
+<p class="row-meta">${t.tool(markup`<code>${item.toolName}</code>`, item.toolTitle)} ${reference(item.reference)}</p>
+<p class="row-status">${badge(t.status[item.status], STATUS_TONE[item.status])}${until}</p>
+</div>${review}
+</li>`;
 }
 
 /** The inbox: the account's approvals (newest first) with links to their pages, and sign-out. */
-export function renderInboxPage(model: InboxPageModel, styleNonce: string): string {
+export function renderInboxPage(model: InboxPageModel, ctx: RenderContext): string {
+  const t = ctx.t.inboxPage;
+  const waiting = model.items.filter((item) => item.status === "pending").length;
+  const refresh = markup`<a class="btn btn-outline btn-sm" href="${model.inboxHref}">${icon("refresh")}${t.refresh}</a>`;
+  const count = badge(t.waiting(waiting), waiting === 0 ? "plain" : "approve");
   const list =
     model.items.length === 0
-      ? `<p class="empty">No approval requests right now. When your assistant asks for one, reload this page.</p>`
-      : `<ul class="inbox">\n${model.items.map(renderInboxItem).join("\n")}\n</ul>`;
-  const body = `<h1>sevDesk approvals</h1>
-<p class="lead">Signed in for sevDesk account <strong>${escapeHtml(model.accountId)}</strong>.
-Open a request to see exactly what it does, then approve or reject it.</p>
-${list}
-<p><a href="${escapeHtml(model.inboxHref)}">Reload</a></p>
-<form method="post" action="${escapeHtml(model.logoutAction)}">
-<input type="hidden" name="csrf" value="${escapeHtml(model.csrf)}">
-<button type="submit">Sign out</button>
+      ? markup`<div class="empty">${icon("envelope", 1.25)}
+<h2>${t.emptyTitle}</h2>
+<p>${t.empty}</p>
+${refresh}
+</div>`
+      : markup`<div class="sheet-head">${count}${refresh}</div>
+<ul class="rows">
+${model.items.map((item) => markup`${renderInboxItem(item, ctx)}\n`)}</ul>`;
+  const body = markup`<div class="title-row">
+<h1>${t.heading}</h1>
+<form method="post" action="${model.logoutAction}">
+<input type="hidden" name="csrf" value="${model.csrf}">
+<button type="submit" class="btn btn-ghost btn-sm">${t.signOut}</button>
 </form>
-<p class="small">Requests expire after a few minutes and can be decided once. After approving, return
-to your assistant: it runs the action when it calls the tool again.</p>`;
-  return page("sevDesk approvals", body, styleNonce, INBOX_STYLE);
+</div>
+<p class="lead">${t.lead(markup`<strong>${model.accountId}</strong>`)}</p>
+<section class="sheet">
+${list}
+</section>
+<p class="fine after">${t.fine}</p>`;
+  return renderFrame({ title: t.title, body, wide: true }, ctx);
 }
 
 /**
  * The inbox sign-in form: the sevDesk API token proves the account. Shows no approval data, and
  * warns to enter the token only on this server's host (lookalike pages could phish it).
  */
-export function renderLoginPage(model: LoginPageModel, styleNonce: string): string {
-  const message =
-    model.message === undefined ? "" : `<p class="notice">${escapeHtml(model.message)}</p>\n`;
-  const files = model.purpose === "files";
-  const heading = files ? "Sign in to transfer files" : "Sign in to approve sevDesk actions";
-  const lead = files
-    ? "To upload or download files for your AI assistant, sign in with"
-    : "To see and decide approval requests from your AI assistant, sign in with";
+export function renderLoginPage(model: LoginPageModel, ctx: RenderContext): string {
+  const t = ctx.t.signIn;
+  const words = model.purpose === "files" ? t.files : t.approvals;
+  const note =
+    model.message === undefined
+      ? ""
+      : markup`${callout(model.message, { tone: "danger", icon: "alert", alert: true })}\n`;
   const next =
     model.next === undefined
       ? ""
-      : `<input type="hidden" name="next" value="${escapeHtml(model.next)}">\n`;
-  const body = `<h1>${heading}</h1>
-${message}<p class="lead">${lead}
-the API token of the sevDesk account (in sevDesk: Settings → Users → API token).</p>
-<p class="warning">Only enter your token on <strong>${escapeHtml(model.host)}</strong>. Check the
-address bar first: anywhere else, a page asking for it is phishing.</p>
-<form method="post" action="${escapeHtml(model.formAction)}" class="login">
-${next}<label for="token">sevDesk API token</label>
+      : markup`<input type="hidden" name="next" value="${model.next}">\n`;
+  const body = markup`<h1>${words.heading}</h1>
+<p class="lead">${words.lead}</p>
+<section class="sheet">
+${note}<div class="address">${icon("lock")}<span>${model.host}</span></div>
+<p class="small">${t.onlyOn(markup`<strong>${model.host}</strong>`)}</p>
+<form method="post" action="${model.formAction}" class="login">
+<label for="token">${t.tokenLabel}</label>
 <input type="password" id="token" name="token" autocomplete="off" spellcheck="false" maxlength="256" required>
-<button type="submit" class="approve">Sign in</button>
+<p class="hint">${t.where}</p>
+${next}<button type="submit" class="btn btn-ink">${t.submit}</button>
 </form>
-<p class="small">The token is checked once and not stored. The sign-in lasts
-${escapeHtml(String(model.sessionHours))} hours in this browser, or until you sign out.</p>`;
-  return page(
-    files ? "Sign in: sevDesk files" : "Sign in: sevDesk approvals",
-    body,
-    styleNonce,
-    INBOX_STYLE,
-  );
-}
-
-const STATUS_TEXT: Readonly<Record<ApprovalStatus, string>> = {
-  pending: "Waiting for your decision",
-  approved: "Approved",
-  rejected: "Rejected",
-};
-
-function renderInboxItem(item: InboxItem): string {
-  return `<li><a href="${escapeHtml(item.href)}"><strong class="ref">${escapeHtml(item.reference)}</strong>
-${escapeHtml(item.toolTitle)} (<code>${escapeHtml(item.toolName)}</code>)</a>
-<span class="action">${escapeHtml(item.action)}</span>
-<span class="small status-${item.status}">${STATUS_TEXT[item.status]}; expires ${escapeHtml(formatTime(item.expiresAt))}</span></li>`;
-}
-
-function renderLink(link: PageLink): string {
-  return `<p class="small"><a href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a></p>`;
-}
-
-/**
- * The shared page frame (head, the one nonce-allowed style block, `<main>`) for other pages of the
- * server, such as the upload and download pages. `body` is inserted as HTML: every dynamic value
- * in it must already be escaped with {@link escapeHtml}; `extraStyle` is trusted CSS.
- */
-export function renderPage(
-  title: string,
-  body: string,
-  styleNonce: string,
-  extraStyle = "",
-): string {
-  return page(title, body, styleNonce, `${INBOX_STYLE}${extraStyle}`);
+</section>
+<p class="fine after">${t.fine(model.sessionHours)}</p>`;
+  return renderFrame({ title: words.title, body }, ctx);
 }
 
 /** An ISO 8601 time as the pages show it: `2026-11-09 12:15 UTC`. */
 export function formatPageTime(iso: string): string {
-  return formatTime(iso);
-}
-
-function page(title: string, body: string, styleNonce: string, extraStyle = ""): string {
-  return `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="referrer" content="same-origin">
-<title>${escapeHtml(title)}</title>
-<style nonce="${escapeHtml(styleNonce)}">${STYLE}${extraStyle}</style>
-</head>
-<body>
-<main>
-${body}
-</main>
-</body>
-</html>
-`;
-}
-
-function formatTime(iso: string): string {
   return `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
 }
-
-const STYLE = `
-:root { color-scheme: light dark; --fg: #1d1d1f; --bg: #fafafa; --card: #fff; --line: #d8d8dc;
-  --warn: #8a4b00; --ok: #0a6b2d; --no: #a1121b; }
-@media (prefers-color-scheme: dark) { :root { --fg: #f2f2f4; --bg: #121214; --card: #1c1c1f;
-  --line: #3a3a3f; --warn: #ffb15c; --ok: #4fd17f; --no: #ff6b73; } }
-body { margin: 0; background: var(--bg); color: var(--fg);
-  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-main { max-width: 40rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
-h1 { font-size: 1.4rem; margin: 0 0 1rem; }
-h2 { font-size: 1.1rem; margin: 0 0 0.75rem; }
-.preview { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
-  padding: 1rem 1.25rem; margin: 1rem 0 1.5rem; }
-dl { display: grid; grid-template-columns: minmax(8rem, max-content) 1fr; gap: 0.25rem 1rem;
-  margin: 0; }
-dt { font-weight: 600; } dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
-.warnings { color: var(--warn); margin: 0 0 1rem; padding-left: 1.25rem; }
-.notice { border-left: 4px solid var(--warn); padding-left: 0.75rem; }
-form { display: flex; gap: 0.75rem; flex-wrap: wrap; }
-button { font: inherit; padding: 0.6rem 1.4rem; border-radius: 8px; border: 1px solid var(--line);
-  cursor: pointer; background: var(--card); color: var(--fg); }
-button.approve { border-color: var(--ok); color: var(--ok); font-weight: 600; }
-button.reject { border-color: var(--no); color: var(--no); }
-code { font-size: 0.95em; }
-.small { font-size: 0.9rem; opacity: 0.8; }
-.reference strong { font-family: ui-monospace, monospace; letter-spacing: 0.1em; }
-`;
-
-/** Added to {@link STYLE} on the inbox pages only (the local page stays unchanged). */
-const INBOX_STYLE = `.inbox { list-style: none; padding: 0; margin: 1rem 0 1.5rem; }
-.inbox li { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
-  padding: 0.75rem 1rem; margin: 0 0 0.75rem; }
-.inbox li > span { display: block; }
-.inbox a { color: inherit; }
-.ref { font-family: ui-monospace, monospace; letter-spacing: 0.1em; margin-right: 0.5rem; }
-.status-pending { color: var(--warn); opacity: 1; } .status-approved { color: var(--ok); opacity: 1; }
-.status-rejected { color: var(--no); opacity: 1; }
-.warning { border-left: 4px solid var(--warn); padding-left: 0.75rem; }
-form.login { display: block; margin: 0 0 1.5rem; }
-label { display: block; font-weight: 600; margin: 0 0 0.35rem; }
-input[type="password"] { font: inherit; width: 100%; box-sizing: border-box; padding: 0.6rem 0.75rem;
-  border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg);
-  margin: 0 0 0.75rem; }
-`;

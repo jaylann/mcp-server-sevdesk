@@ -1,6 +1,7 @@
 # ADR 0008: File transfer over HTTP
 
-- **Status:** Accepted
+- **Status:** Accepted; the pages' look, language and policy amended by
+  [ADR 0010](0010-server-pages-in-two-languages.md)
 - **Date:** 2026-11-09
 - **Amends:** [ADR 0007](0007-approval-inbox-over-http.md) (its browser session now also opens
   the upload and download pages)

@@ -7,6 +7,7 @@
  */
 import { cleanText } from "../common.js";
 import { decimal, format } from "../money.js";
+import { numberText, type PreviewLanguage } from "../preview-text.js";
 import { type Amounts, type DraftPosition, positionAmounts, type PriceMode } from "./positions.js";
 import { addressPreview, type DocumentAddress } from "./recipient.js";
 
@@ -31,9 +32,9 @@ export function fact(label: string, value: string): PreviewFact {
   return { label, value: cleanText(value, VALUE_MAX) ?? "" };
 }
 
-/** `"65.45 EUR"`. */
-export function moneyText(amount: string, currency: string): string {
-  return `${amount} ${currency}`;
+/** `"65.45 EUR"`, in German `"65,45 EUR"`. */
+export function moneyText(amount: string, currency: string, lang: PreviewLanguage = "en"): string {
+  return `${numberText(amount, lang)} ${currency}`;
 }
 
 /** `"net 55.00 EUR, tax 10.45 EUR, gross 65.45 EUR"`. */

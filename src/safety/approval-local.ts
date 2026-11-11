@@ -24,7 +24,11 @@ import { createHmac, randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import { renderApprovalPage, renderMessagePage } from "./approval-page.js";
+import { assetHeaders, ASSETS_PREFIX, pageAsset } from "../pages/assets.js";
+import { type PageContext, pageContext } from "../pages/context.js";
+import { renderMessagePage, toneForStatus } from "../pages/message.js";
+import type { PageMessage } from "../pages/text/index.js";
+import { previewFor, renderApprovalPage, renderDecisionPage } from "./approval-page.js";
 import type {
   ApprovalChannel,
   ApprovalStatus,
@@ -39,6 +43,8 @@ export interface LocalApprovalChannelOptions {
   readonly openUrl?: OpenUrl;
   /** Receives one trusted line per new approval: tool, reference and URL (default: stderr). */
   readonly log?: (line: string) => void;
+  /** Epoch milliseconds, for the time a page says is left (default `Date.now`). */
+  readonly now?: () => number;
 }
 
 const HOST = "127.0.0.1";
@@ -58,6 +64,7 @@ export function createLocalApprovalChannel(
     ((line: string) => {
       console.error(`mcp-server-sevdesk: ${line}`);
     });
+  const now = options.now ?? Date.now;
   const key = randomBytes(32);
   let store: DecisionStore | undefined;
   let listening: Promise<{ server: Server; port: number }> | undefined;
@@ -91,54 +98,53 @@ export function createLocalApprovalChannel(
 
   function handle(request: IncomingMessage, response: ServerResponse): void {
     const origin = `http://${HOST}:${String(port)}`;
+    const page = pageContext(request.headers["accept-language"], origin);
+    const t = page.t.local;
     if (request.headers.host !== `${HOST}:${String(port)}`) {
-      reply(response, 421, "Wrong address", "Open the approval link exactly as it was given.");
+      reply(response, page, 421, t.wrongAddress);
       return;
     }
-    const match = APPROVAL_PATH.exec((request.url ?? "").split("?")[0] ?? "");
+    const path = (request.url ?? "").split("?")[0] ?? "";
+    if (path.startsWith(ASSETS_PREFIX)) {
+      serveAsset(request, response, page, path);
+      return;
+    }
+    const match = APPROVAL_PATH.exec(path);
     if (match === null) {
-      reply(response, 404, "Not found", "There is no page at this address.");
+      reply(response, page, 404, t.noPage);
       return;
     }
     if (request.method !== "GET" && request.method !== "POST") {
-      reply(response, 405, "Method not allowed", "Use the buttons on the approval page.", {
-        Allow: "GET, POST",
-      });
+      reply(response, page, 405, t.method, { Allow: "GET, POST" });
       return;
     }
     const attached = store;
     const approval = attached?.get(match[1] ?? "");
     if (attached === undefined || approval === undefined) {
-      reply(
-        response,
-        404,
-        "Approval not found",
-        "This approval request is unknown, has expired or was already used. Ask your assistant " +
-          "to try again if you still want the action.",
-      );
+      reply(response, page, 404, t.notFound);
       return;
     }
     if (request.method === "GET") {
-      showApproval(response, approval);
+      showApproval(response, page, approval);
       return;
     }
     if (!sameOriginPost(request, origin)) {
-      reply(response, 403, "Request refused", "The decision did not come from the approval page.");
+      reply(response, page, 403, t.foreignPost);
       return;
     }
     void readForm(request).then(
       (form) => {
-        decide(request, response, attached, approval, form);
+        decide(request, response, page, attached, approval, form);
       },
       () => {
-        reply(response, 400, "Bad request", "The form could not be read.");
+        reply(response, page, 400, t.badForm);
       },
     );
   }
 
-  function showApproval(response: ServerResponse, approval: ApprovalView): void {
+  function showApproval(response: ServerResponse, page: PageContext, approval: ApprovalView): void {
     if (approval.status !== "pending") {
-      replyDecided(response, 200, approval.status);
+      replyDecided(response, page, 200, approval, approval.status);
       return;
     }
     const { binding } = approval;
@@ -147,20 +153,22 @@ export function createLocalApprovalChannel(
       {
         toolName: binding.toolName,
         toolTitle: binding.toolTitle,
-        tierText: binding.tierText,
-        preview: binding.preview,
-        notice: binding.notice,
+        tier: binding.tier,
+        preview: previewFor(binding, page.locale),
+        recordChanged: binding.recordChanged === true,
         reference: approval.reference,
+        createdAt: approval.createdAt,
         expiresAt: approval.expiresAt,
+        now: now(),
         formAction: `/approve/${approval.id}`,
         csrf: secretFor("csrf", approval.id),
       },
-      nonce,
+      { ...page, nonce },
     );
     const lifetimeSeconds = Math.ceil(
       (Date.parse(approval.expiresAt) - Date.parse(approval.createdAt)) / 1000,
     );
-    send(response, 200, html, nonce, {
+    send(response, page, 200, html, nonce, {
       "Set-Cookie":
         `${COOKIE_NAME}=${secretFor("cookie", approval.id)}; Path=/approve/${approval.id}; ` +
         `HttpOnly; SameSite=Strict; Max-Age=${String(lifetimeSeconds)}`,
@@ -170,6 +178,7 @@ export function createLocalApprovalChannel(
   function decide(
     request: IncomingMessage,
     response: ServerResponse,
+    page: PageContext,
     attached: DecisionStore,
     approval: ApprovalView,
     form: URLSearchParams,
@@ -180,46 +189,43 @@ export function createLocalApprovalChannel(
       secretFor("cookie", approval.id),
     );
     if (!csrfOk || !cookieOk) {
-      reply(
-        response,
-        403,
-        "Request refused",
-        "The decision could not be verified. Reload the approval page and try again.",
-      );
+      reply(response, page, 403, page.t.local.csrf);
       return;
     }
     // The approval may have expired or been taken while the body was read.
     const current = attached.get(approval.id);
     if (current === undefined) {
-      replyExpired(response);
+      replyExpired(response, page);
       return;
     }
     if (current.status !== "pending") {
-      replyDecided(response, 409, current.status);
+      replyDecided(response, page, 409, current, current.status);
       return;
     }
     const decision = form.get("decision");
     if (decision !== "approve" && decision !== "reject") {
-      reply(response, 400, "Bad request", "Choose Approve or Reject.");
+      reply(response, page, 400, page.t.local.noDecision);
       return;
     }
     const status = decision === "approve" ? "approved" : "rejected";
     switch (attached.decide(approval.id, status)) {
       case "decided":
-        replyDecided(response, 200, status);
+        replyDecided(response, page, 200, approval, status);
         return;
       case "already_decided": {
         // Not reachable today (nothing awaits between the check above and here); kept honest.
         const decided = attached.get(approval.id)?.status;
         replyDecided(
           response,
+          page,
           409,
+          approval,
           decided === "pending" || decided === undefined ? status : decided,
         );
         return;
       }
       default:
-        replyExpired(response);
+        replyExpired(response, page);
     }
   }
 
@@ -259,31 +265,48 @@ export function createLocalApprovalChannel(
   };
 }
 
-function replyExpired(response: ServerResponse): void {
-  reply(response, 410, "Approval expired", "This approval request is no longer valid.");
+/** `GET /assets/<name>`: a font or the icon of the page; 404 for other names. */
+function serveAsset(
+  request: IncomingMessage,
+  response: ServerResponse,
+  page: PageContext,
+  path: string,
+): void {
+  if (request.method !== "GET") {
+    reply(response, page, 405, page.t.local.method, { Allow: "GET" });
+    return;
+  }
+  const asset = pageAsset(path);
+  if (asset === undefined) {
+    reply(response, page, 404, page.t.local.noPage);
+    return;
+  }
+  response.writeHead(200, assetHeaders(asset));
+  response.end(asset.bytes);
 }
 
+function replyExpired(response: ServerResponse, page: PageContext): void {
+  reply(response, page, 410, page.t.local.expired);
+}
+
+/** The page after a decision: what was decided, with its reference code. */
 function replyDecided(
   response: ServerResponse,
+  page: PageContext,
   status: number,
-  decided: Exclude<ApprovalStatus, "pending">,
+  approval: ApprovalView,
+  decision: Exclude<ApprovalStatus, "pending">,
 ): void {
-  if (decided === "approved") {
-    reply(
-      response,
-      status,
-      "Approved",
-      "You approved this action. Go back to your assistant: it runs the action when it calls " +
-        "the tool again with the same arguments, before the request expires.",
-    );
-  } else {
-    reply(
-      response,
-      status,
-      "Rejected",
-      "You rejected this action. Nothing was changed in sevDesk.",
-    );
-  }
+  const nonce = styleNonce();
+  const html = renderDecisionPage(
+    {
+      decision,
+      reference: approval.reference,
+      action: previewFor(approval.binding, page.locale).action,
+    },
+    { ...page, nonce },
+  );
+  send(response, page, status, html, nonce);
 }
 
 /**
@@ -325,27 +348,30 @@ function readForm(request: IncomingMessage): Promise<URLSearchParams> {
   });
 }
 
+/** A message page in the request's language. */
 function reply(
   response: ServerResponse,
+  page: PageContext,
   status: number,
-  title: string,
-  message: string,
+  text: PageMessage,
   headers: Readonly<Record<string, string>> = {},
 ): void {
   const nonce = styleNonce();
-  send(response, status, renderMessagePage(title, message, nonce), nonce, headers);
+  const html = renderMessagePage(text, { ...page, nonce }, { tone: toneForStatus(status) });
+  send(response, page, status, html, nonce, headers);
 }
 
 /** Writes `html` with the page security headers of `htmlResponse` (plus `headers`). */
 function send(
   response: ServerResponse,
+  page: PageContext,
   status: number,
   html: string,
   nonce: string,
   headers: Readonly<Record<string, string>> = {},
 ): void {
   if (response.headersSent) return;
-  const page = htmlResponse(html, { status, nonce, headers });
-  response.writeHead(status, Object.fromEntries(page.headers));
+  const built = htmlResponse(html, { status, nonce, page, headers });
+  response.writeHead(status, Object.fromEntries(built.headers));
   response.end(html);
 }

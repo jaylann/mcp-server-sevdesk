@@ -20,6 +20,14 @@ import { sevdeskPath } from "../../sevdesk/paths.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { type LifecycleDocument, readLifecycleDocument, statusOf } from "../lifecycle/documents.js";
 import { documentFacts, documentTitle } from "../lifecycle/preview.js";
+import {
+  bothPreviews,
+  dateText,
+  inLanguage,
+  type Phrase,
+  phrase,
+  type PreviewLanguage,
+} from "../preview-text.js";
 import type { TaxRule } from "../reference-data.js";
 import type { VoucherDetailDto } from "../vouchers.js";
 import { todayInBerlin } from "./fields.js";
@@ -64,6 +72,34 @@ function refuse(message: string): never {
 // Finalize
 // ---------------------------------------------------------------------------------------------
 
+/** The fact labels and fixed values of the finalize preview, per language. */
+const FINALIZE_TEXT = {
+  en: {
+    voucher: "Voucher (Beleg)",
+    draft: "draft",
+    open: "open",
+    kind: "Kind",
+    noNumber: "(none)",
+    date: "Voucher date (Belegdatum)",
+    noDate: "(none)",
+    rule: "Tax rule (Steuerregel)",
+    account: "account",
+    total: "Total",
+  },
+  de: {
+    voucher: "Beleg",
+    draft: "Entwurf",
+    open: "offen",
+    kind: "Art",
+    noNumber: "(keine)",
+    date: "Belegdatum",
+    noDate: "(keins)",
+    rule: "Steuerregel",
+    account: "Konto",
+    total: "Summe",
+  },
+} as const;
+
 /**
  * Prepares the finalize of a draft voucher (50 → open 100): the stored voucher must be a complete
  * Update 2.0 draft whose tax rule fits the account's regime and whose every position passes the
@@ -73,7 +109,7 @@ export async function prepareVoucherFinalize(
   client: SevdeskClient,
   voucherId: number,
   options: VoucherCallOptions,
-): Promise<VoucherSavePlan> {
+): Promise<VoucherSavePlan & { readonly previewDe: DraftPreview }> {
   const { signal } = options;
   const stored = await loadStoredVoucher(client, voucherId, signal);
   const id = stored.record.id;
@@ -122,50 +158,81 @@ export async function prepareVoucherFinalize(
 
   const body = finalizeBody(stored, rule);
   const mode = storedAmountMode(stored.positions);
-  const facts: PreviewFact[] = [
-    fact("Voucher (Beleg)", `${String(id)}, draft`),
-    fact("Kind", kindText(kind)),
-    fact(
-      partyLabel(kind),
-      supplierText(nonBlank(stored.record.supplierName), stored.record.supplier?.id),
-    ),
-    fact("Belegnummer", stored.record.description ?? "(none)"),
-    fact("Voucher date (Belegdatum)", stored.dates.voucherDate ?? "(none)"),
-    fact("Tax rule (Steuerregel)", taxRuleLabel(rule)),
-    ...stored.positions.map((row, index) =>
+  const facts = (lang: PreviewLanguage): PreviewFact[] => {
+    const t = FINALIZE_TEXT[lang];
+    return [
+      fact(t.voucher, `${String(id)}, ${t.draft}`),
+      fact(t.kind, kindText(kind, lang)),
       fact(
-        `Position ${String(index + 1)}`,
-        `${accounts.labels.get(row.accountDatev?.id ?? 0) ?? "account"}: ` +
-          storedPositionText(row, mode),
+        partyLabel(kind, lang),
+        supplierText(nonBlank(stored.record.supplierName), stored.record.supplier?.id, lang),
       ),
+      fact("Belegnummer", stored.record.description ?? t.noNumber),
+      fact(
+        t.date,
+        stored.dates.voucherDate === undefined
+          ? t.noDate
+          : dateText(stored.dates.voucherDate, lang),
+      ),
+      fact(t.rule, taxRuleLabel(rule)),
+      ...stored.positions.map((row, index) =>
+        fact(
+          `Position ${String(index + 1)}`,
+          `${(lang === "de" ? accounts.labelsDe : accounts.labels).get(row.accountDatev?.id ?? 0) ?? t.account}: ` +
+            storedPositionText(row, mode, lang),
+        ),
+      ),
+      fact(t.total, storedTotal(stored, lang)),
+      fact(
+        "Status",
+        `${t.draft} ${String(VOUCHER_DRAFT_STATUS)} → ${t.open} ${String(VOUCHER_OPEN_STATUS)}`,
+      ),
+    ];
+  };
+  const warnings: Phrase[] = [
+    phrase(
+      "Finalizing books the voucher (open 100): it counts in the books (EÜR, UStVA) from now " +
+        "on and its payment can be booked (sevdesk_voucher_book_payment). While it is not " +
+        "enshrined it can be reset to draft with sevdesk_voucher_reset.",
+      "Das Fertigstellen verbucht den Beleg (offen 100): Er zählt ab jetzt in der Buchhaltung " +
+        "(EÜR, UStVA), und seine Zahlung kann gebucht werden (sevdesk_voucher_book_payment). " +
+        "Solange er nicht festgeschrieben ist, lässt er sich mit sevdesk_voucher_reset auf " +
+        "Entwurf zurücksetzen.",
     ),
-    fact("Total", storedTotal(stored)),
-    fact("Status", `draft ${String(VOUCHER_DRAFT_STATUS)} → open ${String(VOUCHER_OPEN_STATUS)}`),
-  ];
-  const warnings = [
-    "Finalizing books the voucher (open 100): it counts in the books (EÜR, UStVA) from now on " +
-      "and its payment can be booked (sevdesk_voucher_book_payment). While it is not enshrined " +
-      "it can be reset to draft with sevdesk_voucher_reset.",
     ...(stored.hasDocument === false
-      ? ["The voucher has no receipt file attached; GoBD expects the receipt with the voucher."]
+      ? [
+          phrase(
+            "The voucher has no receipt file attached; GoBD expects the receipt with the " +
+              "voucher.",
+            "An diesem Beleg hängt keine Belegdatei; nach den GoBD gehört der Originalbeleg dazu.",
+          ),
+        ]
       : []),
     ...(regime === undefined
       ? [
-          "The VAT regulation of this sevDesk account could not be read, so the tax rule was not " +
-            "checked against it; sevDesk refuses to book a rule that does not fit.",
+          phrase(
+            "The VAT regulation of this sevDesk account could not be read, so the tax rule " +
+              "was not checked against it; sevDesk refuses to book a rule that does not fit.",
+            "Die Umsatzsteuerregelung dieses sevDesk-Kontos konnte nicht gelesen werden, daher " +
+              "wurde die Steuerregel nicht dagegen geprüft; eine unpassende Regel lehnt sevDesk " +
+              "beim Buchen ab.",
+          ),
         ]
       : []),
     ...accounts.warnings,
   ];
   return {
-    preview: {
+    ...bothPreviews((lang) => ({
       action:
-        `Finalize draft voucher ${String(id)} (${kind}, gross ${storedTotal(stored)}): ` +
-        `draft → open, booked.`,
-      facts,
-      warnings,
+        lang === "de"
+          ? `Belegentwurf ${String(id)} fertigstellen (${kind === "expense" ? "Ausgabe" : "Einnahme"}, ` +
+            `brutto ${storedTotal(stored, lang)}): Entwurf → offen, verbucht.`
+          : `Finalize draft voucher ${String(id)} (${kind}, gross ${storedTotal(stored)}): ` +
+            `draft → open, booked.`,
+      facts: facts(lang),
+      warnings: inLanguage(warnings, lang),
       irreversible: false,
-    },
+    })),
     state: {
       body,
       voucherId: id,
@@ -209,6 +276,8 @@ function finalizeBody(stored: StoredVoucher, rule: TaxRule): SaveVoucherBody {
 
 export interface VoucherDeletePlan {
   readonly preview: DraftPreview;
+  /** The German preview, for the approval page (see `preview-text.ts`). */
+  readonly previewDe: DraftPreview;
   readonly state: { readonly voucher: VoucherDetailDto };
 }
 
@@ -241,21 +310,32 @@ export async function prepareVoucherDelete(
     );
   }
   const warnings = [
-    "The draft and all its positions are deleted from sevDesk; this cannot be undone.",
+    phrase(
+      "The draft and all its positions are deleted from sevDesk; this cannot be undone.",
+      "Der Entwurf und alle seine Positionen werden aus sevDesk gelöscht; das lässt sich nicht " +
+        "rückgängig machen.",
+    ),
   ];
   if (doc.dto.hasDocument === true) {
     warnings.push(
-      "The voucher has an attached receipt file; whether sevDesk deletes it too or keeps it " +
-        "among the documents is not documented.",
+      phrase(
+        "The voucher has an attached receipt file; whether sevDesk deletes it too or keeps it " +
+          "among the documents is not documented.",
+        "Am Beleg hängt eine Belegdatei; ob sevDesk sie mitlöscht oder unter den Dokumenten " +
+          "behält, ist nicht dokumentiert.",
+      ),
     );
   }
   return {
-    preview: {
-      action: `Delete ${documentTitle(doc)} (draft) from sevDesk.`,
-      facts: documentFacts(doc),
-      warnings,
+    ...bothPreviews((lang) => ({
+      action:
+        lang === "de"
+          ? `${documentTitle(doc, lang)} (Entwurf) aus sevDesk löschen.`
+          : `Delete ${documentTitle(doc)} (draft) from sevDesk.`,
+      facts: documentFacts(doc, lang),
+      warnings: inLanguage(warnings, lang),
       irreversible: true,
-    },
+    })),
     state: { voucher: doc.dto },
   };
 }

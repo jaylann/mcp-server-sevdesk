@@ -33,6 +33,15 @@ Decisions: [docs/adr/](docs/adr/).
   the per-endpoint serializers.
 - **Untrusted text** from sevDesk is fenced in output and never interpolated into error messages
   or instructions.
+- **Pages** (approval, inbox, sign-in, consent, upload) are built on `src/pages/`: markup only
+  through the `markup` template tag (it escapes every value), texts in both catalogs
+  (`src/pages/text/en.ts` and `de.ts`), no script, no `style=""`, nothing loaded from outside
+  `/assets/`. Look at a change with `pnpm pages:preview`
+  ([ADR 0010](docs/adr/0010-server-pages-in-two-languages.md)).
+- **Previews of `commit` and `external` tools** exist in English and German: build both with
+  `bothPreviews` from the same data (`src/domain/preview-text.ts`), same facts and warnings in
+  the same order. After a change, review the German wording in the snapshot of
+  `test/integration/write-previews-de.test.ts`.
 - **Secrets:** never log or echo the sevDesk token, the HTTP bearer token, the server secret
   (`SEVDESK_HTTP_SECRET`), sealed tokens (`sdmcp_…`), authorization codes or cookies; use the
   redaction helpers (`redactSecrets`, `redactSealed`, the HTTP logger).

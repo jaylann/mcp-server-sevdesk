@@ -21,7 +21,7 @@ import {
   SESSION_TTL_SECONDS,
 } from "../../../src/http/session.js";
 import type { HttpRequestContext, HttpRoute, RateRule } from "../../../src/http/types.js";
-import { escapeHtml } from "../../../src/safety/approval-page.js";
+import { escapeHtml } from "../../../src/pages/html.js";
 import { createApprovalStore } from "../../../src/safety/approval-store.js";
 import type { ApprovalDecision, ApprovalStore } from "../../../src/safety/approval-types.js";
 import {
@@ -71,7 +71,7 @@ function setup(options: SetupOptions = {}) {
       ((token) => {
         const accountId = ACCOUNTS[token];
         return Promise.resolve(
-          accountId === undefined ? { error: "The token was not accepted." } : { accountId },
+          accountId === undefined ? { error: "refused" as const } : { accountId },
         );
       }),
   );
@@ -201,8 +201,12 @@ describe("approval inbox routes", () => {
       expect(page.body).not.toContain("sevdesk_invoice_finalize");
       expect(page.body).not.toContain('name="csrf"');
       expect(page.body).not.toContain("<script");
-      expect(page.headers.get("content-security-policy")).toMatch(
-        /^default-src 'none'; style-src 'nonce-[A-Za-z0-9_-]+'; form-action 'self'; frame-ancestors 'none'/,
+      expect(
+        page.headers.get("content-security-policy")?.replace(/'nonce-[A-Za-z0-9_-]+'/, "'nonce-N'"),
+      ).toBe(
+        "default-src 'none'; style-src 'nonce-N'; font-src https://mcp.example.com/assets/; " +
+          "img-src https://mcp.example.com/assets/; form-action 'self'; frame-ancestors 'none'; " +
+          "base-uri 'none'",
       );
       expect(page.headers.get("cross-origin-opener-policy")).toBe("same-origin");
       expect(page.headers.get("x-frame-options")).toBe("DENY");
@@ -239,7 +243,11 @@ describe("approval inbox routes", () => {
     expect(inbox.body).toContain(a1.reference);
     expect(inbox.body).toContain("Book voucher (<code>sevdesk_voucher_book</code>)");
     expect(inbox.body).toContain("Finalize invoice RE-1042.");
-    expect(inbox.body).toContain("Waiting for your decision; expires 2026-11-09 12:10 UTC");
+    expect(inbox.body).toContain("Waiting for your decision</span>");
+    expect(inbox.body).toContain(
+      'expires <time class="nb" datetime="2026-11-09T12:10:00.000Z">2026-11-09 12:10 UTC</time>',
+    );
+    expect(inbox.body).toContain("2 waiting");
     expect(inbox.body).not.toContain(b.id);
     expect(inbox.body).not.toContain(b.reference);
     expect(inbox.body).toContain('action="/approvals/logout"');
@@ -293,17 +301,43 @@ describe("approval inbox routes", () => {
     expect(env.log.lines).toEqual(["warn approval_login_refused {}"]);
   });
 
-  it("redacts the token from a login error and falls back to a generic text", async () => {
-    const echoing = setup({
-      login: (token) => Promise.resolve({ error: `Token ${token} belongs to <another> account.` }),
-    });
-    const page = await echoing.browser().signIn(TOKEN_A);
-    expect(page.status).toBe(401);
-    expect(page.body).not.toContain(TOKEN_A);
-    expect(page.body).toContain("Token [REDACTED] belongs to &lt;another&gt; account.");
+  it("says why a token was refused, in fixed words that never echo it", async () => {
+    const refusals = [
+      ["refused", "The token was not accepted."],
+      ["wrong_token", "This is not the sevDesk API token this server is configured with."],
+      ["rejected", "sevDesk did not accept this API token."],
+      ["not_allowed", "This server is not set up for the sevDesk account of this token."],
+    ] as const;
+    for (const [error, text] of refusals) {
+      const env = setup({ login: () => Promise.resolve({ error }) });
+      const page = await env.browser().signIn(TOKEN_A);
+      expect(page.status).toBe(401);
+      expect(page.body).toContain(text);
+      expect(page.body).not.toContain(TOKEN_A);
+    }
+  });
 
-    const silent = setup({ login: () => Promise.resolve({ error: "  " }) });
-    expect((await silent.browser().signIn(TOKEN_A)).body).toContain("The token was not accepted.");
+  it("answers a German browser in German", async () => {
+    const env = setup();
+    const browser = env.browser();
+    browser.language = "de-DE,de;q=0.9,en;q=0.8";
+
+    const refused = await browser.signIn(WRONG_TOKEN);
+    expect(refused.status).toBe(401);
+    expect(refused.headers.get("content-language")).toBe("de");
+    expect(refused.body).toContain("Das Token wurde nicht akzeptiert.");
+
+    expect((await browser.signIn(TOKEN_A)).status).toBe(303);
+    const missing = await browser.get(`/approvals/${"x".repeat(43)}`);
+    expect(missing.status).toBe(404);
+    expect(missing.body).toContain('<html lang="de">');
+    expect(missing.body).toContain("<h1>Freigabe nicht gefunden</h1>");
+    expect(missing.body).toContain('<a href="/approvals">Zurück zum Freigabe-Postfach</a>');
+
+    browser.language = "fr-FR,fr;q=0.9";
+    const french = await browser.get(`/approvals/${"x".repeat(43)}`);
+    expect(french.headers.get("content-language")).toBe("en");
+    expect(french.body).toContain("<h1>Approval not found</h1>");
   });
 
   it("refuses empty, oversized or spaced tokens without checking them", async () => {
@@ -426,7 +460,7 @@ describe("approval inbox routes", () => {
         warnings: ["<b>bold</b>"],
         irreversible: true,
       },
-      notice: "The record <changed>.",
+      recordChanged: true,
     });
     const browser = await signedIn(env);
     const inbox = await browser.get("/approvals");
@@ -438,7 +472,9 @@ describe("approval inbox routes", () => {
     expect(page.body).not.toContain("<script>");
     expect(page.body).not.toContain("<img");
     expect(page.body).toContain("&lt;img src=x onerror=alert(1)&gt; &amp; &#39;Co&#39;");
-    expect(page.body).toContain("The record &lt;changed&gt;.");
+    expect(page.body).toContain(
+      "The record changed after you were asked, so this is a new request.",
+    );
     expect(page.body).toContain("This cannot be undone.");
     expect(page.body).toContain(`action="/approvals/${view.id}"`);
     expect(page.body).toContain('<a href="/approvals">Back to the inbox</a>');
@@ -473,7 +509,55 @@ describe("approval inbox routes", () => {
     const shown = await browser.get(`/approvals/${view.id}`);
     expect(shown.status).toBe(200);
     expect(shown.body).toContain("You approved this action.");
-    expect((await browser.get("/approvals")).body).toContain("Approved; expires");
+    const decided = (await browser.get("/approvals")).body;
+    expect(decided).toContain("Approved</span>");
+    expect(decided).toContain("your assistant can run it until");
+    expect(decided).toContain("Nothing waiting");
+  });
+
+  it("shows a German browser the German preview in the inbox, the request and the result", async () => {
+    const env = setup();
+    const german = {
+      action: "Rechnung RE-1042 <fertigstellen>.",
+      facts: [{ label: "Kunde", value: "Muster GmbH" }],
+      warnings: ["Die Rechnung wird rechtlich bindend."],
+      irreversible: false,
+    };
+    const view = env.approvals.add(A1, { previewDe: german });
+    const plain = env.approvals.add(A1, { argsHash: "b".repeat(64) });
+    const browser = await signedIn(env);
+    browser.language = "de";
+
+    const inbox = (await browser.get("/approvals")).body;
+    expect(inbox).toContain(
+      `<a href="/approvals/${view.id}">Rechnung RE-1042 &lt;fertigstellen&gt;.</a>`,
+    );
+    // A request without a German preview (none ships, but the type allows it) stays English.
+    expect(inbox).toContain(`<a href="/approvals/${plain.id}">Finalize invoice RE-1042.</a>`);
+
+    const page = await browser.get(`/approvals/${view.id}`);
+    expect(page.body).toContain("<h2>Rechnung RE-1042 &lt;fertigstellen&gt;.</h2>");
+    expect(page.body).toContain("<dt>Kunde</dt><dd>Muster GmbH</dd>");
+    expect(page.body).toContain("<div>Die Rechnung wird rechtlich bindend.</div>");
+    expect(page.body).not.toContain("Finalize invoice RE-1042.");
+    expect(page.body).not.toContain("The invoice becomes legally binding.");
+
+    const approved = await browser.post(`/approvals/${view.id}`, {
+      csrf: csrfOf(page.body) ?? "",
+      decision: "approve",
+    });
+    expect(approved.body).toContain("<h1>Freigegeben</h1>");
+    expect(approved.body).toContain(
+      "<dt>Aktion</dt><dd>Rechnung RE-1042 &lt;fertigstellen&gt;.</dd>",
+    );
+    // The decision is recorded for the binding as it is: both texts, nothing language-specific.
+    expect(env.approvals.decisions[0]?.binding.preview.action).toBe("Finalize invoice RE-1042.");
+    expect(env.approvals.decisions[0]?.binding.previewDe).toEqual(german);
+
+    browser.language = "en";
+    const english = (await browser.get(`/approvals/${view.id}`)).body;
+    expect(english).toContain("<dt>Action</dt><dd>Finalize invoice RE-1042.</dd>");
+    expect((await browser.get("/approvals")).body).not.toContain("fertigstellen");
   });
 
   it("rejects, and refuses anything but approve or reject", async () => {
@@ -853,7 +937,7 @@ describe("approval inbox routes", () => {
       keys,
       origin: ORIGIN,
       login: (token) =>
-        Promise.resolve(token === TOKEN_A ? { accountId: "1001" } : { error: "No." }),
+        Promise.resolve(token === TOKEN_A ? { accountId: "1001" } : { error: "refused" }),
       now: clock.now,
     });
     const decisions: ApprovalDecision[] = [];

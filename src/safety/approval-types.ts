@@ -20,16 +20,22 @@ export interface ApprovalBinding {
   readonly toolName: string;
   readonly toolTitle: string;
   readonly tier: WriteTier;
-  /** Plain words for the tier, shown on the page. */
-  readonly tierText: string;
   readonly argsHash: string;
   readonly previewHash: string;
   /** Already sanitized with `displayPreview`. */
   readonly preview: ConfirmationPreview;
+  /**
+   * The preview in German (sanitized as well), shown instead of `preview` to a reader whose
+   * browser asks for German. `previewHash` covers it.
+   */
+  readonly previewDe?: ConfirmationPreview;
   /** The call that asked; carried into the audit lines of the decision and the execution. */
   readonly callId: string;
-  /** Trusted note shown above the preview (e.g. "the record changed"). */
-  readonly notice?: string;
+  /**
+   * The record changed after the human was first asked, so this is a new request: the page says
+   * so above the preview.
+   */
+  readonly recordChanged?: boolean;
 }
 
 /** A pending or decided approval, as the write flow sees it. */

@@ -23,7 +23,6 @@ function binding(overrides: Partial<ApprovalBinding> = {}): ApprovalBinding {
     toolName: TOOL,
     toolTitle: "Finalize invoice",
     tier: "commit",
-    tierText: "legally binding bookkeeping",
     argsHash: ARGS,
     previewHash: "p".repeat(64),
     preview: { action: "Finalize invoice RE-1042.", facts: [], warnings: [], irreversible: false },

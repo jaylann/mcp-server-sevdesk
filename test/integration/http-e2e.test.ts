@@ -25,6 +25,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createHttpLog } from "../../src/http/log.js";
 import { type RunningHttp, startHttpMode } from "../../src/http/run.js";
+import { assetPath } from "../../src/pages/assets.js";
 import { loadFixture } from "../helpers/fake-client.js";
 import {
   ACCOUNT,
@@ -393,6 +394,11 @@ describe("HTTP mode end to end (OAuth, approvals inbox)", () => {
     const noInbox = await oauth.fetch(`${ORIGIN}/approvals`);
     await noInbox.text();
     expect(noInbox.status).toBe(404);
+    // The consent page is still there, and with it the pages' assets.
+    const icon = await oauth.fetch(`${ORIGIN}${assetPath("icon")}`);
+    expect(icon.status).toBe(200);
+    expect(icon.headers.get("content-type")).toBe("image/svg+xml");
+    expect(await icon.text()).toContain("<svg");
 
     const bearer = await start({
       SEVDESK_HTTP_AUTH: "bearer",
@@ -401,9 +407,14 @@ describe("HTTP mode end to end (OAuth, approvals inbox)", () => {
       SEVDESK_OAUTH_ACCOUNTS: "",
       SEVDESK_HTTP_SECRET: "",
       SEVDESK_CONFIRM: "elicit",
+      SEVDESK_HTTP_FILES: "off",
     });
     const health = await bearer.fetch(`${ORIGIN}/healthz`);
     expect(await health.json()).toEqual({ status: "ok" });
+    // Neither inbox nor file transfer: the server shows no pages, so it serves no assets either.
+    const noAssets = await bearer.fetch(`${ORIGIN}${assetPath("icon")}`);
+    await noAssets.text();
+    expect(noAssets.status).toBe(404);
   });
 
   it("closes what it opened when the port is taken", async () => {

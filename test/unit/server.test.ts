@@ -119,7 +119,6 @@ describe("createServer", () => {
       toolName: "sevdesk_dummy_finalize",
       toolTitle: "Finalize",
       tier: "commit",
-      tierText: "legally binding bookkeeping",
       argsHash: "a",
       previewHash: "p",
       preview: { action: "A.", facts: [], warnings: [], irreversible: false },

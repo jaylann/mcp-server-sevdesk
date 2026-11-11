@@ -21,18 +21,17 @@
  * too (the router's `form` policy is the first line), so the routes are safe even when mounted
  * without it.
  */
+import type { PageContext } from "../pages/context.js";
+import type { PageMessage, Texts } from "../pages/text/index.js";
 import { renderLoginPage } from "../safety/approval-page.js";
-import { redactSecrets } from "../safety/redact.js";
 import { FormError, readForm, safeEqual, sameOriginPost } from "../safety/web.js";
 import {
   LOGIN_PATH,
-  LOGIN_TEXT,
   LOGOUT_PATH,
   messageResponse,
+  pageOf,
   pageResponse,
-  type PageText,
   redirectResponse,
-  TEXT,
 } from "./approval-pages.js";
 import { rateLimitKey } from "./client-ip.js";
 import { keyedTag, type ServerKeys } from "./keys.js";
@@ -51,10 +50,29 @@ import type {
 } from "./types.js";
 
 /**
- * Result of checking a sign-in token: the account it proves, or a refusal. `error` is trusted,
- * user-facing text shown (escaped) above the form; keep it generic and never include the token.
+ * Why a sign-in token was refused; the page says it in the browser's language:
+ * - `refused`: not accepted, without saying more;
+ * - `wrong_token`: not the token this server is configured with (bearer mode);
+ * - `rejected`: sevDesk did not accept the token;
+ * - `not_allowed`: the token's account may not use this server.
  */
-type LoginResult = { readonly accountId: string } | { readonly error: string };
+type LoginRefusal = "refused" | "wrong_token" | "rejected" | "not_allowed";
+
+/** Result of checking a sign-in token: the account it proves, or a refusal. */
+type LoginResult = { readonly accountId: string } | { readonly error: LoginRefusal };
+
+function refusalText(t: Texts, refusal: LoginRefusal): string {
+  switch (refusal) {
+    case "refused":
+      return t.login.refused;
+    case "wrong_token":
+      return t.login.wrongToken;
+    case "rejected":
+      return t.login.rejected;
+    case "not_allowed":
+      return t.login.notAllowed;
+  }
+}
 
 /**
  * Checks a pasted sevDesk token. Resolves the account the session then belongs to (it must equal
@@ -90,17 +108,6 @@ export const SMALL_FORM_BYTES = 4_096;
 const MAX_TOKEN_LENGTH = 256;
 /** How long a token check may take before the page says to try again. */
 const LOGIN_TIMEOUT_MS = 8_000;
-
-/** Pages of the session routes when the approval inbox is off (no link back to it). */
-const SESSION_TEXT = {
-  signedIn: {
-    title: "Signed in",
-    message:
-      "You are signed in to this server in this browser. Open the link your assistant gave you " +
-      "again.",
-  },
-  signedOut: { title: "Signed out", message: "You are signed out of this server in this browser." },
-} as const satisfies Readonly<Record<string, PageText>>;
 
 export interface BrowserSessionOptions {
   readonly sessions: SessionStore;
@@ -145,11 +152,16 @@ export interface BrowserSession {
   /** The form's tag against the current key and, during a rotation, the previous one. */
   csrfValid(session: SessionRecord, received: string | null): boolean;
   /** The sign-in page (no record data), posting to `/approvals/login`. */
-  loginPage(status: number, options?: LoginPageOptions): Response;
+  loginPage(page: PageContext, status: number, options?: LoginPageOptions): Response;
   /** A trusted message page, linking to the home path when there is one. */
-  message(status: number, text: PageText, headers?: Readonly<Record<string, string>>): Response;
+  message(
+    page: PageContext,
+    status: number,
+    text: PageMessage,
+    headers?: Readonly<Record<string, string>>,
+  ): Response;
   /** Reads a small url-encoded form; a 400 or 413 page when it cannot. */
-  formOf(request: Request): Promise<URLSearchParams | Response>;
+  formOf(request: Request, page: PageContext): Promise<URLSearchParams | Response>;
   signIn(request: Request, ctx: HttpRequestContext): Promise<Response>;
   signOut(request: Request, ctx: HttpRequestContext): Promise<Response>;
   /** `POST /approvals/login` and `POST /approvals/logout`. */
@@ -191,60 +203,70 @@ export function createBrowserSession(options: BrowserSessionOptions): BrowserSes
     return current || previous;
   }
 
-  function loginPage(status: number, page: LoginPageOptions = {}): Response {
-    const next = page.next !== undefined && SIGN_IN_TARGET.test(page.next) ? page.next : undefined;
+  function loginPage(page: PageContext, status: number, form: LoginPageOptions = {}): Response {
+    const next = form.next !== undefined && SIGN_IN_TARGET.test(form.next) ? form.next : undefined;
     const files = next !== undefined && !next.startsWith("/approvals/");
     return pageResponse(
+      page,
       status,
-      (nonce) =>
+      (ctx) =>
         renderLoginPage(
           {
             formAction: LOGIN_PATH,
             host,
             sessionHours: Math.round(sessionTtlSeconds / 3600),
-            message: page.message,
+            message: form.message,
             ...(next === undefined ? {} : { next }),
             ...(files ? { purpose: "files" as const } : {}),
           },
-          nonce,
+          ctx,
         ),
-      page.headers,
+      form.headers,
     );
   }
 
   function message(
+    page: PageContext,
     status: number,
-    text: PageText,
+    text: PageMessage,
     headers?: Readonly<Record<string, string>>,
   ): Response {
-    return messageResponse(status, text, { link, ...(headers === undefined ? {} : { headers }) });
+    return messageResponse(page, status, text, {
+      link,
+      ...(headers === undefined ? {} : { headers }),
+    });
   }
 
-  async function formOf(request: Request): Promise<URLSearchParams | Response> {
+  async function formOf(request: Request, page: PageContext): Promise<URLSearchParams | Response> {
     try {
       return await readForm(request, SMALL_FORM_BYTES);
     } catch (error) {
       if (error instanceof FormError && error.reason === "too_large") {
-        return message(413, TEXT.tooLarge);
+        return message(page, 413, page.t.inbox.tooLarge);
       }
-      return message(400, TEXT.badForm);
+      return message(page, 400, page.t.inbox.badForm);
     }
   }
 
   async function signIn(request: Request, ctx: HttpRequestContext): Promise<Response> {
-    if (!sameOriginPost(request, origin)) return message(403, TEXT.foreignPost);
+    const page = pageOf(request, origin);
+    const { t } = page;
+    if (!sameOriginPost(request, origin)) return message(page, 403, t.inbox.foreignPost);
     const client = rateLimitKey(ctx.clientIp);
     if (!ctx.limit(LOGIN_RATE_MINUTE, client) || !ctx.limit(LOGIN_RATE_HOUR, client)) {
       ctx.log.warn("approval_login_limited");
-      return loginPage(429, { message: LOGIN_TEXT.limited, headers: { "Retry-After": "60" } });
+      return loginPage(page, 429, {
+        message: t.login.limited,
+        headers: { "Retry-After": "60" },
+      });
     }
-    const form = await formOf(request);
+    const form = await formOf(request, page);
     if (form instanceof Response) return form;
     const requested = form.get("next") ?? "";
     const next = SIGN_IN_TARGET.test(requested) ? requested : undefined;
     const token = (form.get("token") ?? "").trim();
     if (token.length === 0 || token.length > MAX_TOKEN_LENGTH || /\s/.test(token)) {
-      return loginPage(400, { message: LOGIN_TEXT.empty, next });
+      return loginPage(page, 400, { message: t.login.empty, next });
     }
     let result: LoginResult;
     try {
@@ -254,19 +276,15 @@ export function createBrowserSession(options: BrowserSessionOptions): BrowserSes
       );
     } catch {
       ctx.log.warn("approval_login_unavailable");
-      return loginPage(503, { message: LOGIN_TEXT.unavailable, next });
+      return loginPage(page, 503, { message: t.login.unavailable, next });
     }
     if ("error" in result) {
       ctx.log.warn("approval_login_refused");
-      const refusal = redactSecrets(result.error, [token]).trim();
-      return loginPage(401, {
-        message: refusal.length === 0 ? LOGIN_TEXT.refused : refusal,
-        next,
-      });
+      return loginPage(page, 401, { message: refusalText(t, result.error), next });
     }
     if (!allowed(result.accountId)) {
       ctx.log.warn("approval_login_refused", { account: result.accountId });
-      return loginPage(401, { message: LOGIN_TEXT.notAllowed, next });
+      return loginPage(page, 401, { message: t.login.notAllowed, next });
     }
     const previous = await sessionOf(request, ctx);
     const cookie = await createSessionCookie({
@@ -281,21 +299,25 @@ export function createBrowserSession(options: BrowserSessionOptions): BrowserSes
     if (previous !== undefined) await sessions.revokeSession(previous.sid);
     ctx.log.info("approval_login", { account: result.accountId });
     const target = next ?? homePath;
-    if (target === undefined) return message(200, SESSION_TEXT.signedIn, { "Set-Cookie": cookie });
+    if (target === undefined) {
+      return message(page, 200, t.session.signedIn, { "Set-Cookie": cookie });
+    }
     return redirectResponse(`${origin}${target}`, cookie);
   }
 
   async function signOut(request: Request, ctx: HttpRequestContext): Promise<Response> {
-    if (!sameOriginPost(request, origin)) return message(403, TEXT.foreignPost);
+    const page = pageOf(request, origin);
+    const { t } = page;
+    if (!sameOriginPost(request, origin)) return message(page, 403, t.inbox.foreignPost);
     const session = await sessionOf(request, ctx);
     if (session !== undefined) {
-      const form = await formOf(request);
+      const form = await formOf(request, page);
       if (form instanceof Response) return form;
-      if (!csrfValid(session, form.get("csrf"))) return message(403, TEXT.csrf);
+      if (!csrfValid(session, form.get("csrf"))) return message(page, 403, t.inbox.csrf);
       await sessions.revokeSession(session.sid);
       ctx.log.info("approval_logout");
     }
-    return message(200, link ? TEXT.signedOut : SESSION_TEXT.signedOut, {
+    return message(page, 200, link ? t.inbox.signedOut : t.session.signedOut, {
       "Set-Cookie": clearSessionCookie(origin),
     });
   }

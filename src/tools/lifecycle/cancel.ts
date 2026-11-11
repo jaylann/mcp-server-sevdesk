@@ -14,6 +14,7 @@ import { readLifecycleDocument } from "../../domain/lifecycle/documents.js";
 import { documentFacts, documentTitle, formatMoney } from "../../domain/lifecycle/preview.js";
 import { assertCancellable } from "../../domain/lifecycle/transitions.js";
 import { money, negate } from "../../domain/money.js";
+import { bothPreviews, type Phrase, phrase } from "../../domain/preview-text.js";
 import { expectSingle } from "../../sevdesk/envelope.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import { sevdeskPath } from "../../sevdesk/paths.js";
@@ -23,6 +24,26 @@ import { dryRunInputShape } from "../write-input.js";
 import { COMMIT_ANNOTATIONS, documentObject, idInput, readBack } from "./shared.js";
 
 const createdSchema = z.object({ id: zId });
+
+const CANCEL_WARNINGS: readonly Phrase[] = [
+  phrase(
+    "sevDesk creates a new cancellation invoice with the negated amounts, already marked as " +
+      "paid. Both invoices stay in the books; the cancellation cannot be undone.",
+    "sevDesk erstellt eine neue Stornorechnung mit denselben Beträgen mit umgekehrtem " +
+      "Vorzeichen, die bereits als bezahlt markiert ist. Beide Rechnungen bleiben in der " +
+      "Buchhaltung; das Storno lässt sich nicht rückgängig machen.",
+  ),
+  phrase(
+    "The original invoice then shows status paid (1000) with nothing paid: sevDesk has no " +
+      '"cancelled" status.',
+    "Die ursprüngliche Rechnung zeigt danach den Status „Bezahlt“ (1000), obwohl nichts " +
+      "bezahlt wurde: sevDesk kennt keinen Status „Storniert“.",
+  ),
+  phrase(
+    "If the customer already received the invoice, send them the cancellation invoice too.",
+    "Hat der Kunde die Rechnung bereits erhalten, senden Sie ihm auch die Stornorechnung.",
+  ),
+];
 
 /** The id of the cancellation invoice in sevDesk's answer, or `undefined` when it has none. */
 function cancellationId(payload: unknown): number | undefined {
@@ -62,25 +83,21 @@ export const invoiceCancelTool = defineWriteTool({
     const doc = await readLifecycleDocument(ctx.client, "invoice", args.id, ctx.signal);
     assertCancellable(doc);
     const gross = doc.totals.gross;
-    const offset =
-      gross === undefined
-        ? ""
-        : ` over ${formatMoney(money(negate(gross.amount), gross.currency))}`;
+    const offset = gross === undefined ? undefined : money(negate(gross.amount), gross.currency);
     return {
-      preview: {
+      ...bothPreviews((lang) => ({
         action:
-          `Cancel ${documentTitle(doc)} (Storno): sevDesk creates a cancellation invoice ` +
-          `(Stornorechnung, SR)${offset} that offsets it.`,
-        facts: documentFacts(doc),
-        warnings: [
-          "sevDesk creates a new cancellation invoice with the negated amounts, already marked " +
-            "as paid. Both invoices stay in the books; the cancellation cannot be undone.",
-          "The original invoice then shows status paid (1000) with nothing paid: sevDesk has no " +
-            '"cancelled" status.',
-          "If the customer already received the invoice, send them the cancellation invoice too.",
-        ],
+          lang === "de"
+            ? `${documentTitle(doc, lang)} stornieren: sevDesk erstellt eine Stornorechnung (SR)` +
+              `${offset === undefined ? "" : ` über ${formatMoney(offset, lang)}`}, die sie ` +
+              "ausgleicht."
+            : `Cancel ${documentTitle(doc)} (Storno): sevDesk creates a cancellation invoice ` +
+              `(Stornorechnung, SR)${offset === undefined ? "" : ` over ${formatMoney(offset)}`} ` +
+              "that offsets it.",
+        facts: documentFacts(doc, lang),
+        warnings: CANCEL_WARNINGS.map((warning) => warning[lang]),
         irreversible: true,
-      },
+      })),
       state: {},
     };
   },

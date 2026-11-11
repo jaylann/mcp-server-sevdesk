@@ -4,6 +4,7 @@
  */
 import { z } from "zod";
 
+import { bothPreviews, germanNumber } from "../../src/domain/preview-text.js";
 import { SevdeskError, type SevdeskErrorKind } from "../../src/sevdesk/errors.js";
 import type { SevdeskClient } from "../../src/sevdesk/types.js";
 import { defineTool, defineWriteTool } from "../../src/tools/define-tool.js";
@@ -239,15 +240,27 @@ export function createDummyTools(): DummyTools {
     prepare: async ({ id }, ctx) => {
       const invoice = await readDummyInvoice(ctx, id);
       return {
-        preview: {
-          action: `Finalize invoice ${invoice.invoiceNumber} and mark it as sent.`,
-          facts: [
-            { label: "Customer", value: invoice.contactName },
-            { label: "Total (gross)", value: `${invoice.sumGross} EUR` },
-          ],
-          warnings: ["The invoice becomes legally binding."],
-          irreversible: false,
-        },
+        ...bothPreviews((lang) =>
+          lang === "de"
+            ? {
+                action: `Rechnung ${invoice.invoiceNumber} fertigstellen und als versendet markieren.`,
+                facts: [
+                  { label: "Kunde", value: invoice.contactName },
+                  { label: "Summe (brutto)", value: `${germanNumber(invoice.sumGross)} EUR` },
+                ],
+                warnings: ["Die Rechnung wird rechtlich bindend."],
+                irreversible: false,
+              }
+            : {
+                action: `Finalize invoice ${invoice.invoiceNumber} and mark it as sent.`,
+                facts: [
+                  { label: "Customer", value: invoice.contactName },
+                  { label: "Total (gross)", value: `${invoice.sumGross} EUR` },
+                ],
+                warnings: ["The invoice becomes legally binding."],
+                irreversible: false,
+              },
+        ),
         state: invoice,
       };
     },
@@ -274,12 +287,15 @@ export function createDummyTools(): DummyTools {
     prepare: async ({ id }, ctx) => {
       const invoice = await readDummyInvoice(ctx, id);
       return {
-        preview: {
-          action: `Email invoice ${invoice.invoiceNumber} to the customer.`,
-          facts: [{ label: "Customer", value: invoice.contactName }],
+        ...bothPreviews((lang) => ({
+          action:
+            lang === "de"
+              ? `Rechnung ${invoice.invoiceNumber} per E-Mail an den Kunden senden.`
+              : `Email invoice ${invoice.invoiceNumber} to the customer.`,
+          facts: [{ label: lang === "de" ? "Kunde" : "Customer", value: invoice.contactName }],
           warnings: [],
           irreversible: true,
-        },
+        })),
         state: invoice,
       };
     },

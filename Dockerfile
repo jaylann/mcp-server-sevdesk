@@ -52,6 +52,8 @@ WORKDIR /app
 # package.json marks dist/index.js as an ES module ("type": "module"). COPY keeps the checkout's
 # file modes, and a checkout with umask 077 has 0600 files the non-root user could not read.
 COPY --chmod=0644 package.json LICENSE ./
+# The licenses of the fonts embedded in the bundle for the server's own pages (SIL OFL).
+COPY --chmod=0644 licenses/fonts/Archivo-OFL.txt licenses/fonts/MartianMono-OFL.txt ./licenses/fonts/
 COPY --from=build /app/dist ./dist
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build --chown=65532:65532 /rootfs/ /

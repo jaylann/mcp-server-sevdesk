@@ -8,11 +8,12 @@ import { Server } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RequestPrincipal } from "../../../src/accounts/types.js";
+import { assetPath } from "../../../src/pages/assets.js";
+import { escapeHtml } from "../../../src/pages/html.js";
 import {
   createLocalApprovalChannel,
   type LocalApprovalChannelOptions,
 } from "../../../src/safety/approval-local.js";
-import { escapeHtml } from "../../../src/safety/approval-page.js";
 import { createApprovalStore } from "../../../src/safety/approval-store.js";
 import type {
   ApprovalBinding,
@@ -84,7 +85,6 @@ function binding(overrides: Partial<ApprovalBinding> = {}): ApprovalBinding {
     toolName: TOOL,
     toolTitle: "Finalize invoice",
     tier: "commit",
-    tierText: "legally binding bookkeeping",
     argsHash: ARGS,
     previewHash: "p".repeat(64),
     preview: {
@@ -144,7 +144,7 @@ describe("local approval page", () => {
           warnings: ["<b>bold</b>"],
           irreversible: true,
         },
-        notice: "The record <changed>.",
+        recordChanged: true,
       }),
     );
 
@@ -156,14 +156,18 @@ describe("local approval page", () => {
     expect(page.body).not.toContain("<b>bold");
     expect(page.body).toContain(escapeHtml('Finalize <script>alert("x")</script> RE-1'));
     expect(page.body).toContain("&lt;img src=x onerror=alert(1)&gt; &amp; &#39;Co&#39;");
-    expect(page.body).toContain("The record &lt;changed&gt;.");
+    expect(page.body).toContain(
+      "The record changed after you were asked, so this is a new request.",
+    );
     expect(page.body).toContain("This cannot be undone.");
     expect(page.body).toContain(TOOL);
     const csp = String(page.headers["content-security-policy"]);
-    expect(csp).toMatch(
-      /^default-src 'none'; style-src 'nonce-[A-Za-z0-9_-]+'; form-action 'self'/,
+    // Fonts and images only from the page server's own /assets/ path; nothing else may load.
+    const assets = `${new URL(url(ticket)).origin}/assets/`;
+    expect(csp.replace(/'nonce-[A-Za-z0-9_-]+'/, "'nonce-N'")).toBe(
+      `default-src 'none'; style-src 'nonce-N'; font-src ${assets}; img-src ${assets}; ` +
+        "form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
     );
-    expect(csp).toContain("frame-ancestors 'none'");
     expect(page.body).toContain(`<style nonce="${/'nonce-([^']+)'/.exec(csp)?.[1] ?? ""}">`);
     expect(page.headers["x-frame-options"]).toBe("DENY");
     expect(page.headers["x-content-type-options"]).toBe("nosniff");
@@ -432,6 +436,57 @@ describe("local approval page", () => {
     const put = await send(url(ticket), { method: "PUT" });
     expect(put.status).toBe(405);
     expect(put.headers["allow"]).toBe("GET, POST");
+  });
+
+  it("serves the page's fonts and icon from /assets/, and nothing else there", async () => {
+    const { approvals, url } = harness();
+    const origin = new URL(url(await approvals.create(STDIO, binding()))).origin;
+
+    const font = await send(`${origin}${assetPath("archivoLatin")}`);
+    expect(font.status).toBe(200);
+    expect(font.headers["content-type"]).toBe("font/woff2");
+    expect(font.headers["cache-control"]).toBe("public, max-age=31536000, immutable");
+    expect(font.headers["cross-origin-resource-policy"]).toBe("same-origin");
+    expect(font.headers["x-content-type-options"]).toBe("nosniff");
+    expect(font.headers["set-cookie"]).toBeUndefined();
+    const icon = await send(`${origin}${assetPath("icon")}`);
+    expect(icon.headers["content-type"]).toBe("image/svg+xml");
+    expect(icon.body).toContain("<svg");
+
+    expect((await send(`${origin}/assets/icon.svg`)).status).toBe(404);
+    expect((await send(`${origin}/assets/`)).status).toBe(404);
+    const post = await send(`${origin}${assetPath("icon")}`, { method: "POST" });
+    expect(post.status).toBe(405);
+    expect(post.headers["allow"]).toBe("GET");
+    // The Host check comes first, as for the page itself.
+    const rebound = await send(`${origin}${assetPath("icon")}`, {
+      headers: { Host: "evil.example" },
+    });
+    expect(rebound.status).toBe(421);
+  });
+
+  it("answers a German browser in German", async () => {
+    const { approvals, url } = harness();
+    const ticket = await approvals.create(STDIO, binding());
+    const german = { "Accept-Language": "de-DE,de;q=0.9,en;q=0.8" };
+
+    const missing = await send(`${new URL(url(ticket)).origin}/`, { headers: german });
+    expect(missing.status).toBe(404);
+    expect(missing.headers["content-language"]).toBe("de");
+    expect(missing.headers["vary"]).toBe("Accept-Language");
+    expect(missing.body).toContain('<html lang="de">');
+    expect(missing.body).toContain("<h1>Nicht gefunden</h1>");
+
+    const rejected = await submitDecision(url(ticket), "reject", await openApproval(url(ticket)), {
+      ...german,
+    });
+    expect(rejected.status).toBe(200);
+    expect(rejected.body).toContain("<h1>Abgelehnt</h1>");
+    expect(rejected.body).toContain("In sevDesk wurde nichts geändert.");
+    // Without the header the same page is English.
+    const english = await send(url(ticket));
+    expect(english.headers["content-language"]).toBe("en");
+    expect(english.body).toContain("<h1>Rejected</h1>");
   });
 
   it("expires approvals after their lifetime (10 minutes by default)", async () => {

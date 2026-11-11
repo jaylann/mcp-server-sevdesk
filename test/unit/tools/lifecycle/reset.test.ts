@@ -56,6 +56,16 @@ describe("sevdesk_invoice_reset (spec resetToOpen/resetToDraft; behaviour per se
       "Reset invoice RE-1001 to open (Paid → open 200) and unlink all its payments.",
     );
     expect(plan.preview.facts).toContainEqual({ label: "Paid so far", value: "177.33 EUR" });
+    expect(plan.previewDe.action).toBe(
+      "Rechnung RE-1001 auf offen zurücksetzen (Bezahlt → offen 200) und alle Zahlungen davon lösen.",
+    );
+    expect(plan.previewDe.facts).toContainEqual({ label: "Bisher bezahlt", value: "177,33 EUR" });
+    expect(plan.previewDe.warnings[0]).toContain(
+      "Jede auf dieser Rechnung gebuchte Zahlung wird zurückgenommen",
+    );
+    expect(plan.previewDe.warnings[1]).toBe(
+      "sevDesk lehnt das Zurücksetzen ab, wenn einer der Zahlungsumsätze festgeschrieben ist.",
+    );
     expect(plan.preview.warnings[0]).toContain(
       "linked bank transactions are unlinked from it and return to unbooked (status 100), or to " +
         "partly linked (status 200) while they still pay other documents",
@@ -79,6 +89,9 @@ describe("sevdesk_invoice_reset (spec resetToOpen/resetToDraft; behaviour per se
       client(enshrinedPaid, "resetToOpen", invoiceRow()),
     );
     expect(plan.preview.warnings.at(-1)).toContain("The invoice is enshrined");
+    expect(plan.previewDe.warnings.at(-1)).toContain(
+      "Die Rechnung ist festgeschrieben: sevDesk hat dieses Zurücksetzen bisher zugelassen",
+    );
   });
 
   it("resets an open invoice to draft with a GoBD warning", async () => {
@@ -89,6 +102,13 @@ describe("sevdesk_invoice_reset (spec resetToOpen/resetToDraft; behaviour per se
     expect(staged.writes()[0]?.path).toBe("/Invoice/1001/resetToDraft");
     expect(plan.preview.action).toBe("Reset invoice RE-1001 to draft (open 200 → draft 100).");
     expect(plan.preview.warnings[1]).toContain("cancel it (sevdesk_invoice_cancel)");
+    expect(plan.previewDe.action).toBe(
+      "Rechnung RE-1001 auf Entwurf zurücksetzen (offen 200 → Entwurf 100).",
+    );
+    expect(plan.previewDe.warnings[0]).toContain("Die Rechnung ist dann nicht mehr bindend");
+    expect(plan.previewDe.warnings[1]).toContain(
+      "stornieren Sie sie stattdessen (sevdesk_invoice_cancel)",
+    );
     expect(output.data["invoice"]).toMatchObject({ status: { code: 100 } });
   });
 
@@ -119,6 +139,7 @@ describe("sevdesk_credit_note_reset", () => {
     const { plan, output } = await executeWrite(creditNoteTool, { id: 2001, to: "open" }, toOpen);
     expect(toOpen.writes()[0]?.path).toBe("/CreditNote/2001/resetToOpen");
     expect(plan.preview.warnings[0]).toContain("Every payment booked on this credit note");
+    expect(plan.previewDe.warnings[0]).toContain("Jede auf dieser Gutschrift gebuchte Zahlung");
     expect(output.data["creditNote"]).toMatchObject({ status: { code: 200 } });
 
     const toDraft = new StagedClient(
@@ -131,5 +152,8 @@ describe("sevdesk_credit_note_reset", () => {
     const draft = await executeWrite(creditNoteTool, { id: 2001, to: "draft" }, toDraft);
     expect(toDraft.writes()[0]?.path).toBe("/CreditNote/2001/resetToDraft");
     expect(draft.plan.preview.warnings[1]).toContain("issue a new document instead");
+    expect(draft.plan.previewDe.warnings[1]).toContain(
+      "stellen Sie stattdessen ein neues Dokument aus",
+    );
   });
 });

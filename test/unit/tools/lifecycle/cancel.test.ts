@@ -92,6 +92,13 @@ describe("sevdesk_invoice_cancel (community: sevdesk-rs recorded cancelInvoice, 
     );
     expect(plan.preview.warnings[0]).toContain("the cancellation cannot be undone");
     expect(plan.preview.warnings[1]).toContain('sevDesk has no "cancelled" status');
+    expect(plan.previewDe.action).toBe(
+      "Rechnung RE-1001 stornieren: sevDesk erstellt eine Stornorechnung (SR) über -177,33 EUR, " +
+        "die sie ausgleicht.",
+    );
+    expect(plan.previewDe.warnings).toHaveLength(3);
+    expect(plan.previewDe.warnings[1]).toContain("sevDesk kennt keinen Status „Storniert“");
+    expect(plan.previewDe.irreversible).toBe(true);
   });
 
   it.each([

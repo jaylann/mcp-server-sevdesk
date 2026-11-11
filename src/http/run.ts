@@ -33,6 +33,7 @@ import { createServerFactory, type ServerFactory } from "../server.js";
 import { createSevdeskClient } from "../sevdesk/client.js";
 import { identifyAccount } from "../startup.js";
 import { createApprovalRoutes } from "./approval-routes.js";
+import { assetRoute } from "./asset-route.js";
 import { createBearerAuthenticator } from "./bearer.js";
 import { type BrowserSession, createBrowserSession, type InboxLogin } from "./browser-session.js";
 import { httpDeployment, type LoadedHttpConfig, loadHttpConfig, loopbackOrigin } from "./config.js";
@@ -146,7 +147,8 @@ export async function startHttpMode(deps: RunHttpDeps): Promise<RunningHttp> {
   try {
     server = await startHttpServer({
       http,
-      routes: [mcp.route, ...parts.routes],
+      // The asset route comes with the pages: without page routes nothing would load from it.
+      routes: [mcp.route, ...parts.routes, ...(parts.routes.length > 0 ? [assetRoute()] : [])],
       log,
       // Multi-tenant OAuth: many claude.ai users can share one egress address.
       ...(http.oauth?.accounts === "any" ? { maxPerClient: MULTI_TENANT_MAX_PER_CLIENT } : {}),
@@ -336,7 +338,7 @@ async function bearerParts(loaded: LoadedHttpConfig, input: PartsInput): Promise
     Promise.resolve(
       safeEqual(token, config.token)
         ? { accountId: accountScope }
-        : { error: "This is not the sevDesk API token this server is configured with." },
+        : { error: "wrong_token" as const },
     );
   let browser: BrowserParts;
   try {
@@ -460,12 +462,12 @@ function oauthLogin(identity: IdentityLookup, accounts: readonly string[] | "any
     try {
       const found = await identity(token, signal);
       if (accounts !== "any" && !accounts.includes(found.accountId)) {
-        return { error: "This server is not set up for the sevDesk account of this token." };
+        return { error: "not_allowed" };
       }
       return { accountId: found.accountId };
     } catch (error) {
       if (error instanceof IdentityError && error.kind === "unauthorized") {
-        return { error: "sevDesk did not accept this API token." };
+        return { error: "rejected" };
       }
       throw error;
     }

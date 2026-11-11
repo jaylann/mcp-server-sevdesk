@@ -28,6 +28,7 @@ import type { SevdeskClient } from "../../sevdesk/types.js";
 import type { TaxRegime } from "../account-settings.js";
 import { cleanText } from "../common.js";
 import { listChildRows } from "../paging.js";
+import { numberText, type PreviewLanguage } from "../preview-text.js";
 import { type TaxRule, taxRuleById } from "../reference-data.js";
 import { type VoucherKind, voucherKindFromCreditDebit } from "../vouchers.js";
 import { berlinDay } from "./current.js";
@@ -297,19 +298,32 @@ export function storedAmountMode(positions: readonly StoredVoucherPosition[]): A
   return positions[0]?.net === true ? "net" : "gross";
 }
 
-export function storedPositionText(row: StoredVoucherPosition, mode: AmountMode): string {
+export function storedPositionText(
+  row: StoredVoucherPosition,
+  mode: AmountMode,
+  lang: PreviewLanguage = "en",
+): string {
   const amount = mode === "net" ? row.sumNet : row.sumGross;
   const rate = row.taxRate ?? "?";
   const comment = cleanText(row.comment, 200);
+  const german = lang === "de";
+  const shown =
+    amount === undefined
+      ? german
+        ? "(kein Betrag)"
+        : "(no amount)"
+      : moneyText(amount, "EUR", lang);
+  const basis = german ? (mode === "net" ? "netto" : "brutto") : mode;
   return (
-    `${amount === undefined ? "(no amount)" : moneyText(amount, "EUR")} ${mode}, ${rate} % VAT` +
+    `${shown} ${basis}, ${numberText(rate, lang)} % ${german ? "USt." : "VAT"}` +
     (comment === undefined ? "" : `; ${comment}`)
   );
 }
 
-export function storedTotal(stored: StoredVoucher): string {
+export function storedTotal(stored: StoredVoucher, lang: PreviewLanguage = "en"): string {
   const gross = stored.record.sumGross;
-  return gross === undefined ? "as stored" : moneyText(gross, "EUR");
+  if (gross === undefined) return lang === "de" ? "wie gespeichert" : "as stored";
+  return moneyText(gross, "EUR", lang);
 }
 
 export function nonBlank(text: string | undefined): string | undefined {

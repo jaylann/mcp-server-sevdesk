@@ -129,7 +129,6 @@ describe("browser approvals over HTTP", () => {
           toolName: "sevdesk_dummy_finalize",
           toolTitle: "Finalize",
           tier: "commit",
-          tierText: "legally binding bookkeeping",
           argsHash,
           previewHash: "p",
           preview: { action: "A.", facts: [], warnings: [], irreversible: false },

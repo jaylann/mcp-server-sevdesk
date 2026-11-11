@@ -98,6 +98,9 @@ export class StateDirError extends Error {
 
 /** The grant cap is reached; the consent page shows the message. Trusted text. */
 export class GrantLimitError extends Error {
+  /** How many connections the server holds at most. */
+  readonly limit = MAX_GRANTS;
+
   constructor() {
     super(
       `This server already holds ${String(MAX_GRANTS)} connections. Its operator can revoke ` +

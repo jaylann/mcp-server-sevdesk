@@ -57,13 +57,36 @@ OpenAPI spec is incomplete and wrong in places. Every known deviation is listed 
    Beleg), input/output zod schemas, and **all four annotations** (`readOnlyHint`,
    `destructiveHint`, `idempotentHint`, `openWorldHint`). The metadata lint test fails otherwise.
 3. Implement the handler through the domain layer. Return compact DTOs, never raw sevDesk payloads.
+   A `commit` or `external` tool writes its confirmation preview in English and in German,
+   because a human reads it on the approval page: build both from the same data with
+   `bothPreviews` (`src/domain/preview-text.ts`; the tool does not compile without the German
+   one). Keep the same facts and warnings in the same order, and use sevDesk's own German terms
+   (Rechnung, Beleg, festschreiben).
 4. Add fixtures and tests: happy path, error paths, and tier gating. Update the `tools/list`
-   snapshot (`pnpm test -u`) and review the diff.
+   snapshot (`pnpm test -u`) and review the diff. For a tool with a German preview, add a case
+   to `test/write-cases/` and read its German text in the snapshot of
+   `test/integration/write-previews-de.test.ts`.
 5. Regenerate the tool reference with `pnpm docs:tools` and commit `docs/tools.md` (a test fails
    when it is stale).
 
 New tools appear in the Claude Desktop extension's manifest by themselves; the build generates its
 tool list.
+
+## Changing a page
+
+The pages a human sees (approval, inbox, sign-in, consent, upload) share `src/pages/`: the
+`markup` template tag escapes every value, the texts live in `src/pages/text/en.ts` and `de.ts`,
+and one stylesheet (`theme.ts`) styles them all. There is no script, no `style=""` attribute and
+nothing loaded from outside `/assets/`; a test renders every page in every state and both
+languages and fails on any of these.
+
+```bash
+pnpm pages:preview    # http://127.0.0.1:4173: every page state, en/de, light/dark, real headers
+pnpm pages:assets     # after changing a file in assets/: regenerate the embedded copy
+```
+
+Add a new state to `test/helpers/page-gallery.ts`, so the preview and the tests cover it. The
+preview's `/texts` page lists every text in both languages side by side.
 
 ## Adding a prompt
 

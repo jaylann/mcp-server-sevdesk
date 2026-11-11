@@ -53,9 +53,16 @@ export function argumentsHash(toolName: string, args: Readonly<Record<string, un
   return sha256Hex(canonicalJson({ tool: toolName, arguments: rest }));
 }
 
-/** SHA-256 of the canonical JSON of a confirmation preview. */
-export function previewHash(preview: ConfirmationPreview): string {
-  return sha256Hex(canonicalJson(preview));
+/**
+ * SHA-256 of the canonical JSON of a confirmation preview. With a German preview (`previewDe`,
+ * the text a German reader approves on the approval page) the hash covers both texts, so an
+ * approval is bound to everything either reader saw; without one it is the hash of `preview`
+ * alone.
+ */
+export function previewHash(preview: ConfirmationPreview, previewDe?: ConfirmationPreview): string {
+  return sha256Hex(
+    canonicalJson(previewDe === undefined ? preview : { en: preview, de: previewDe }),
+  );
 }
 
 function isPlainObject(value: object): value is Record<string, unknown> {

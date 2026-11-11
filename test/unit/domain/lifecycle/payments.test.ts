@@ -12,8 +12,12 @@ import {
   paymentTypeOf,
   planPayment,
 } from "../../../../src/domain/lifecycle/payments.js";
+import { inLanguage, type Phrase } from "../../../../src/domain/preview-text.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { creditNoteDoc, invoiceDoc } from "./docs.js";
+
+/** The English wording of preview sentences. */
+const english = (phrases: readonly Phrase[]): string[] => inLanguage(phrases, "en");
 
 function refusal(check: () => unknown): string | undefined {
   try {
@@ -120,7 +124,7 @@ describe("planPayment", () => {
     });
     expect(plan.remaining).toBeUndefined();
     expect(plan.difference).toBeUndefined();
-    expect(plan.warnings).toEqual([]);
+    expect(english(plan.warnings)).toEqual([]);
   });
 
   it("books less than the open amount as a partial payment (N) and says what stays open", () => {
@@ -130,7 +134,7 @@ describe("planPayment", () => {
     expect(plan.payload.amount).toBe(100);
     expect(plan.payload).not.toHaveProperty("checkAccountTransaction");
     expect(plan.remaining).toEqual({ amount: "77.33", currency: "EUR" });
-    expect(plan.warnings).toEqual([
+    expect(english(plan.warnings)).toEqual([
       "This is a partial payment: 77.33 EUR stays open and the invoice becomes partially paid " +
         "(750).",
     ]);
@@ -163,14 +167,14 @@ describe("planPayment", () => {
     );
     expect(skonto.bookingType).toBe("CB");
     expect(skonto.difference).toEqual({ amount: "-3.55", currency: "EUR" });
-    expect(skonto.warnings).toEqual([
+    expect(english(skonto.warnings)).toEqual([
       "The document is marked as fully paid; the missing 3.55 EUR is written off as cash " +
         "discount (Skonto).",
     ]);
 
     const fees = planPayment(invoiceDoc(), request({ amount: "175", paymentType: "bank_fees" }));
     expect(fees.bookingType).toBe("MTC");
-    expect(fees.warnings[0]).toContain("as bank fees (Geldverkehrskosten)");
+    expect(fees.warnings[0]?.en).toContain("as bank fees (Geldverkehrskosten)");
   });
 
   it("refuses cash discount or bank fees without a difference or above the open amount", () => {
@@ -191,7 +195,7 @@ describe("planPayment", () => {
     );
     expect(plan.bookingType).toBe("OF");
     expect(plan.difference).toEqual({ amount: "5.00", currency: "EUR" });
-    expect(plan.warnings[0]).toBe(
+    expect(plan.warnings[0]?.en).toBe(
       "The document is marked as fully paid; the extra 5.00 EUR is booked as reminder charges " +
         "(Mahngebühren).",
     );
@@ -212,7 +216,7 @@ describe("planPayment", () => {
     ).toBe("O");
     expect(
       planPayment(invoiceDoc(), request({ amount: "170", paymentType: "other_difference" }))
-        .warnings[0],
+        .warnings[0]?.en,
     ).toContain("the missing 7.33 EUR is written off as a difference for other reasons");
     expect(
       refusal(() => planPayment(invoiceDoc(), request({ paymentType: "other_difference" }))),
@@ -229,7 +233,7 @@ describe("planPayment", () => {
   it("says partial payouts leave the credit note partially paid", () => {
     const plan = planPayment(creditNoteDoc(), request({ amount: "10", checkAccountId: 4001 }));
     expect(plan.payload.amount).toBe(-10);
-    expect(plan.warnings[0]).toContain("the credit note becomes partially paid (750)");
+    expect(plan.warnings[0]?.en).toContain("the credit note becomes partially paid (750)");
   });
 });
 
@@ -292,14 +296,19 @@ describe("checkPaymentAccount", () => {
       account({ id: 4001, type: "clearing" }),
       false,
     );
-    expect(warnings).toEqual([
+    expect(english(warnings)).toEqual([
       "sevDesk creates a new bank transaction for this payment on account 4001. If the payment " +
         "is already in sevDesk as an imported transaction, pass its transactionId instead, or it " +
         "is counted twice.",
     ]);
-    expect(checkPaymentAccount(invoiceDoc(), account({ type: "unknown" }), false)[0]).toContain(
-      "it may refuse an account of another type",
+    expect(warnings[0]?.de).toBe(
+      "sevDesk legt für diese Zahlung einen neuen Kontoumsatz auf dem Konto 4001 an. Ist die " +
+        "Zahlung bereits als importierter Umsatz in sevDesk vorhanden, muss stattdessen dieser " +
+        "Umsatz verknüpft werden (transactionId), sonst wird sie doppelt gezählt.",
     );
+    const unknown = checkPaymentAccount(invoiceDoc(), account({ type: "unknown" }), false)[0];
+    expect(unknown?.en).toContain("it may refuse an account of another type");
+    expect(unknown?.de).toContain("bei einem Konto anderen Typs kann sevDesk ablehnen");
   });
 
   it("refuses archived accounts and other currencies", () => {
@@ -332,9 +341,16 @@ describe("checkPaymentTransaction", () => {
 
   it("warns when the transaction is larger than the payment", () => {
     expect(checkPaymentTransaction(invoiceDoc(), 4002, transaction(), "100")).toEqual([
-      "Bank transaction 5101 is 177.33 EUR; the payment uses part of it, so it is sent as a " +
-        "partial booking (N), and 77.33 EUR of the transaction stays assignable to other " +
-        "documents (sevDesk marks it partly assigned, status 200).",
+      {
+        en:
+          "Bank transaction 5101 is 177.33 EUR; the payment uses part of it, so it is sent as " +
+          "a partial booking (N), and 77.33 EUR of the transaction stays assignable to other " +
+          "documents (sevDesk marks it partly assigned, status 200).",
+        de:
+          "Kontoumsatz 5101 beträgt 177,33 EUR; die Zahlung nutzt nur einen Teil davon und wird " +
+          "deshalb als Teilbuchung (N) gesendet. 77,33 EUR des Umsatzes bleiben für andere " +
+          "Dokumente zuordenbar (sevDesk markiert ihn als teilweise zugeordnet, Status 200).",
+      },
     ]);
   });
 
@@ -395,10 +411,18 @@ describe("checkPaymentTransaction with shares already in the log", () => {
         "50",
       ),
     ).toEqual([
-      "Bank transaction 5101 is marked unbooked (status 100), but its booking log already " +
-        "assigns 50.00 EUR of its 200.00 EUR to other documents; only 150.00 EUR is treated as " +
-        "free. The payment is sent as a partial booking (N), and 50.00 EUR of the transaction " +
-        "stays assignable to other documents.",
+      {
+        en:
+          "Bank transaction 5101 is marked unbooked (status 100), but its booking log already " +
+          "assigns 50.00 EUR of its 200.00 EUR to other documents; only 150.00 EUR is treated " +
+          "as free. The payment is sent as a partial booking (N), and 50.00 EUR of the " +
+          "transaction stays assignable to other documents.",
+        de:
+          "Kontoumsatz 5101 gilt als ungebucht (Status 100), sein Buchungsprotokoll ordnet aber " +
+          "bereits 50,00 EUR von 200,00 EUR anderen Dokumenten zu; nur 150,00 EUR gelten als " +
+          "frei. Die Zahlung wird als Teilbuchung (N) gesendet, und 50,00 EUR des Umsatzes " +
+          "bleiben für andere Dokumente zuordenbar.",
+      },
     ]);
   });
 
@@ -416,7 +440,7 @@ describe("planPayment with a linked transaction larger than the payment", () => 
     expect(plan.bookingType).toBe("N");
     expect(plan.payload.type).toBe("N");
     expect(plan.remaining).toBeUndefined();
-    expect(plan.warnings).toEqual([]);
+    expect(english(plan.warnings)).toEqual([]);
   });
 
   it("keeps FULL_PAYMENT when the payment takes the whole transaction", () => {
@@ -433,7 +457,7 @@ describe("planPayment with a linked transaction larger than the payment", () => 
       request({ amount: "100", transactionId: 5101, transactionAmount: "150" }),
     );
     expect(plan.bookingType).toBe("N");
-    expect(plan.warnings[0]).toContain("This is a partial payment: 77.33 EUR stays open");
+    expect(plan.warnings[0]?.en).toContain("This is a partial payment: 77.33 EUR stays open");
   });
 
   it("refuses a difference type on part of a transaction", () => {

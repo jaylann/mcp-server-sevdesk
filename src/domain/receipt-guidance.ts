@@ -27,6 +27,7 @@ import { SevdeskError } from "../sevdesk/errors.js";
 import { parseUpstream, zId, zText } from "../sevdesk/schema.js";
 import type { QueryValue, SevdeskClient } from "../sevdesk/types.js";
 import { cleanText, compact } from "./common.js";
+import { type Phrase, phrase, type PreviewLanguage } from "./preview-text.js";
 import { taxRuleById } from "./reference-data.js";
 
 const NAME_MAX = 200;
@@ -316,8 +317,11 @@ export interface AccountTaxRuleCheck {
   /** True when no problem was found. */
   readonly ok: boolean;
   readonly problems: readonly AccountTaxRuleProblem[];
-  /** Trusted notes about what could not be checked (e.g. a rate word this server does not know). */
-  readonly warnings: readonly string[];
+  /**
+   * Trusted notes about what could not be checked (e.g. a rate word this server does not know),
+   * in both preview languages.
+   */
+  readonly warnings: readonly Phrase[];
 }
 
 const LOOKUP_HINT = "sevdesk_reference_lookup kind=receipt_guidance";
@@ -348,7 +352,7 @@ export function checkAccountTaxRule(
 
   const account = accountLabel(guide);
   const problems: AccountTaxRuleProblem[] = [];
-  const warnings: string[] = [];
+  const warnings: Phrase[] = [];
 
   if (!guide.receiptTypes.includes(input.direction)) {
     const allowed = guide.receiptTypes.length === 0 ? "none" : guide.receiptTypes.join(", ");
@@ -373,8 +377,13 @@ export function checkAccountTaxRule(
   } else if (!rule.taxRates.includes(input.taxRate)) {
     if (rule.unknownTaxRates.length > 0) {
       warnings.push(
-        `The tax rates sevDesk allows for tax rule ${ruleLabel(rule.id)} with ${account} ` +
-          "include values this server does not know, so the tax rate could not be checked.",
+        phrase(
+          `The tax rates sevDesk allows for tax rule ${ruleLabel(rule.id)} with ${account} ` +
+            "include values this server does not know, so the tax rate could not be checked.",
+          `Die Steuersätze, die sevDesk für die Steuerregel ${ruleLabel(rule.id)} mit ` +
+            `${accountLabel(guide, "de")} zulässt, enthalten Werte, die dieser Server nicht ` +
+            "kennt; der Steuersatz konnte daher nicht geprüft werden.",
+        ),
       );
     } else {
       const allowed = rule.taxRates.map((rate) => `${rate}%`).join(", ");
@@ -407,8 +416,13 @@ export async function validateAccountTaxRule(
     return result(
       [],
       [
-        `sevDesk's receipt guidance has more accounts than could be read, and account ` +
-          `${input.accountDatevId} is not among those read, so it could not be checked.`,
+        phrase(
+          `sevDesk's receipt guidance has more accounts than could be read, and account ` +
+            `${input.accountDatevId} is not among those read, so it could not be checked.`,
+          `Die Buchungshilfe von sevDesk (ReceiptGuidance) enthält mehr Konten, als gelesen ` +
+            `werden konnten, und das Konto ${input.accountDatevId} ist nicht darunter; es ` +
+            `konnte daher nicht geprüft werden.`,
+        ),
       ],
     );
   }
@@ -417,17 +431,18 @@ export async function validateAccountTaxRule(
 
 function result(
   problems: readonly AccountTaxRuleProblem[],
-  warnings: readonly string[],
+  warnings: readonly Phrase[],
 ): AccountTaxRuleCheck {
   return { ok: problems.length === 0, problems, warnings };
 }
 
 /** "account 4285 (no. 4970)": the number only when it is plain digits (it is sevDesk data). */
-function accountLabel(guide: ReceiptGuide): string {
+function accountLabel(guide: ReceiptGuide, lang: PreviewLanguage = "en"): string {
   const number = guide.accountNumber;
+  const [word, no] = lang === "de" ? ["Konto", "Nr."] : ["account", "no."];
   return number !== undefined && /^\d{1,12}$/.test(number)
-    ? `account ${guide.accountDatevId} (no. ${number})`
-    : `account ${guide.accountDatevId}`;
+    ? `${word} ${guide.accountDatevId} (${no} ${number})`
+    : `${word} ${guide.accountDatevId}`;
 }
 
 /** "9 (VORST_ABZUGSF_AUFW)" with this server's reference code, or the bare id if unknown. */

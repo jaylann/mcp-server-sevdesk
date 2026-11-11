@@ -114,6 +114,27 @@ describe("sevdesk_invoice_send_email (spec request body; community record shapes
       { label: "Subject", value: "Ihre Rechnung" },
       { label: "Text", value: "Guten Tag,\nanbei Ihre Rechnung." },
     ]);
+    expect(plan.previewDe.action).toBe(
+      "Rechnung 1001 (noch ohne Nummer) über sevDesk per E-Mail senden an kunde@example.com und 2 " +
+        "weitere Empfänger (Cc/Bcc).",
+    );
+    expect(plan.previewDe.facts.slice(-7)).toEqual([
+      { label: "An", value: "kunde@example.com" },
+      { label: "Cc", value: "a@example.com" },
+      { label: "Bcc", value: "b@example.com" },
+      { label: "Kopie an Sie", value: "ja, an die eigene Adresse des sevDesk-Benutzers" },
+      { label: "Anhang", value: "Rechnung als PDF" },
+      { label: "Betreff", value: "Ihre Rechnung" },
+      { label: "Text", value: "Guten Tag,\nanbei Ihre Rechnung." },
+    ]);
+    expect(plan.previewDe.warnings).toEqual([
+      "Die E-Mail geht sofort aus sevDesk an alle aufgeführten Empfänger und lässt sich nicht " +
+        "zurückholen.",
+      "Die Rechnung ist ein Entwurf: Der Versand stellt sie fertig (Entwurf → offen), sevDesk " +
+        "vergibt ihre endgültige Nummer, und sie wird rechtlich bindend. Schreibt das Konto " +
+        "Dokumente beim Abschließen automatisch fest, wird sie dabei auch festgeschrieben.",
+    ]);
+    expect(plan.previewDe.irreversible).toBe(true);
     expect(plan.preview.warnings).toEqual([
       "The email goes out from sevDesk immediately to every recipient listed and cannot be " +
         "recalled.",
@@ -129,6 +150,9 @@ describe("sevdesk_invoice_send_email (spec request body; community record shapes
     const { plan, output } = await executeWrite(tool, { id: 1001, ...message }, client);
 
     expect(plan.preview.action).toBe("Email invoice RE-1001 through sevDesk to kunde@example.com.");
+    expect(plan.previewDe.action).toBe(
+      "Rechnung RE-1001 über sevDesk per E-Mail senden an kunde@example.com.",
+    );
     expect(plan.preview.warnings).toHaveLength(1);
     expect(client.writes()[0]?.body).toEqual({
       toEmail: "kunde@example.com",
@@ -154,6 +178,13 @@ describe("sevdesk_invoice_send_email (spec request body; community record shapes
       value: "the e-invoice XML instead of the PDF",
     });
     expect(plan.preview.warnings.at(-1)).toContain("sevDesk can only attach XML to e-invoices");
+    expect(plan.previewDe.facts).toContainEqual({
+      label: "Anhang",
+      value: "die XML der E-Rechnung statt des PDF",
+    });
+    expect(plan.previewDe.warnings.at(-1)).toContain(
+      "ist sie keine, lehnt sevDesk ab oder sendet keine XML",
+    );
   });
 
   it("refuses an XML attachment for an invoice sevDesk marks as no e-invoice", async () => {
@@ -252,6 +283,9 @@ describe("sevdesk_credit_note_send_email and sevdesk_order_send_email", () => {
       tier: "external",
     });
     expect(plan.preview.warnings[1]).toContain("The credit note is a draft: sending finalizes it");
+    expect(plan.previewDe.warnings[1]).toContain(
+      "Die Gutschrift ist ein Entwurf: Der Versand stellt sie fertig",
+    );
     expect(output.data["creditNote"]).toMatchObject({ id: 2001, status: { code: 200 } });
     expect(output.affected).toEqual([{ objectName: "CreditNote", id: "2001" }]);
   });
@@ -290,6 +324,11 @@ describe("sevdesk_credit_note_send_email and sevdesk_order_send_email", () => {
         "final number.",
     );
     expect(plan.preview.facts).toContainEqual({ label: "Attachment", value: "the order PDF" });
+    expect(plan.previewDe.warnings[1]).toBe(
+      "Der Auftrag ist ein Entwurf: Mit dem Versand wird er als versendet markiert (Status 200), " +
+        "und sevDesk vergibt seine endgültige Nummer.",
+    );
+    expect(plan.previewDe.facts).toContainEqual({ label: "Anhang", value: "Auftrag als PDF" });
     expect(output.data["order"]).toMatchObject({ id: 3002, status: { code: 200 } });
   });
 

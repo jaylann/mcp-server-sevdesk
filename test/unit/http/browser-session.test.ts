@@ -8,6 +8,7 @@ import {
   SIGN_IN_TARGET,
 } from "../../../src/http/browser-session.js";
 import { createServerKeys } from "../../../src/http/keys.js";
+import { pageContext } from "../../../src/pages/context.js";
 import { renderLoginPage } from "../../../src/safety/approval-page.js";
 import {
   captureLog,
@@ -20,6 +21,7 @@ import {
 } from "../../helpers/remote-approvals.js";
 
 const TOKEN = "a1c3".repeat(8);
+const PAGE = pageContext(undefined, ORIGIN);
 const UPLOAD_PATH = `/uploads/${"u".repeat(43)}`;
 const FILE_PATH = `/files/${"f".repeat(43)}`;
 const APPROVAL_PATH = `/approvals/${"a".repeat(43)}`;
@@ -29,9 +31,7 @@ function setup(homePath?: string) {
   const log = captureLog();
   const sessions = createMemorySessionStore(clock.now);
   const login: InboxLogin = (token) =>
-    Promise.resolve(
-      token === TOKEN ? { accountId: "1001" } : { error: `The token ${token} was not accepted.` },
-    );
+    Promise.resolve(token === TOKEN ? { accountId: "1001" } : { error: "refused" });
   const session = createBrowserSession({
     sessions,
     keys: createServerKeys(new Uint8Array(randomBytes(32))),
@@ -118,28 +118,51 @@ describe("browser session: sign-in target", () => {
 describe("browser session: sign-in page", () => {
   it("carries a valid target and the files wording; drops anything else", async () => {
     const { session } = setup("/approvals");
-    const files = await session.loginPage(200, { next: FILE_PATH }).text();
+    const files = await session.loginPage(PAGE, 200, { next: FILE_PATH }).text();
     expect(files).toContain(`<input type="hidden" name="next" value="${FILE_PATH}">`);
     expect(files).toContain("<title>Sign in: sevDesk files</title>");
     expect(files).toContain("To upload or download files for your AI assistant");
-    const approval = await session.loginPage(200, { next: APPROVAL_PATH }).text();
+    const approval = await session.loginPage(PAGE, 200, { next: APPROVAL_PATH }).text();
     expect(approval).toContain("Sign in to approve sevDesk actions");
-    const evil = await session.loginPage(200, { next: "https://evil.example" }).text();
+    const evil = await session.loginPage(PAGE, 200, { next: "https://evil.example" }).text();
     expect(evil).not.toContain('name="next"');
     expect(evil).toContain("Sign in to approve sevDesk actions");
   });
 
-  it("renders exactly the old page when neither target nor purpose is given", () => {
+  it("is the approvals sign-in when neither target nor purpose is given", () => {
     const html = renderLoginPage(
       { formAction: "/approvals/login", host: "mcp.example.com", sessionHours: 12, message: "x" },
-      "nonce",
+      { ...PAGE, nonce: "nonce" },
     );
     expect(html).toContain(
       '<form method="post" action="/approvals/login" class="login">\n<label for="token">',
     );
     expect(html).toContain(
-      '<p class="lead">To see and decide approval requests from your AI assistant, sign in with\nthe API token',
+      '<p class="lead">To see and decide approval requests from your AI assistant, sign in with the API token',
     );
     expect(html).toContain("<title>Sign in: sevDesk approvals</title>");
+    expect(html).not.toContain('name="next"');
+    // The note above the form is announced, and the form asks for the token only.
+    expect(html).toContain('role="alert"');
+    expect(html.match(/<input\b/g)).toHaveLength(1);
+  });
+
+  it("is German for a German browser, with the host to check", () => {
+    const german = { ...pageContext("de", ORIGIN), nonce: "nonce" };
+    const html = renderLoginPage(
+      {
+        formAction: "/approvals/login",
+        host: "mcp.example.com",
+        sessionHours: 12,
+        message: undefined,
+        purpose: "files",
+      },
+      german,
+    );
+    expect(html).toContain('<html lang="de">');
+    expect(html).toContain("<title>Anmelden: sevDesk-Dateien</title>");
+    expect(html).toContain("Geben Sie Ihr Token nur auf <strong>mcp.example.com</strong> ein.");
+    expect(html).toContain("Die Anmeldung gilt 12 Stunden in diesem Browser");
+    expect(html).not.toContain('role="alert"');
   });
 });

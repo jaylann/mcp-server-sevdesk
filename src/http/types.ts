@@ -151,12 +151,12 @@ export interface HttpRoute {
    * - `max`: on the whole route; beyond it the router answers `busy("route")`;
    * - `perKey`: per {@link PreflightPass.bodySlotKey} (e.g. the session's account); beyond it the
    *   router answers `busy("key")`. Requests whose preflight names no key share one key;
-   * - `busy`: the refusal (default: a JSON 503).
+   * - `busy`: the refusal for the request with these headers (default: a JSON 503).
    */
   readonly bodySlots?: {
     readonly max: number;
     readonly perKey?: number;
-    readonly busy?: (scope: "route" | "key") => Response;
+    readonly busy?: (scope: "route" | "key", head: Request) => Response;
   };
   readonly handle: RouteHandler;
 }

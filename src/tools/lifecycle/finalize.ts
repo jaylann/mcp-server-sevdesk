@@ -12,6 +12,7 @@ import { SEND_TYPE_CODES, SENT_VIA, type SentVia } from "../../domain/document-p
 import { KINDS, readLifecycleDocument, type SalesKind } from "../../domain/lifecycle/documents.js";
 import { documentFacts, documentTitle } from "../../domain/lifecycle/preview.js";
 import { assertFinalizable } from "../../domain/lifecycle/transitions.js";
+import { bothPreviews, type Phrase, phrase } from "../../domain/preview-text.js";
 import { sevdeskPath } from "../../sevdesk/paths.js";
 import { defineWriteTool } from "../define-tool.js";
 import { dryRunInputShape } from "../write-input.js";
@@ -26,11 +27,12 @@ import {
   readBack,
 } from "./shared.js";
 
-const SENT_VIA_TEXT: Readonly<Record<SentVia, string>> = {
-  pdf_download: "as a downloaded PDF (VPDF)",
-  post: "by post (VP)",
-  print: "as printed (VPR)",
-  email: "by email outside sevDesk (VM)",
+/** How the document was sent, as the preview words it. */
+const SENT_VIA_TEXT: Readonly<Record<SentVia, Phrase>> = {
+  pdf_download: phrase("as a downloaded PDF (VPDF)", "PDF-Download (VPDF)"),
+  post: phrase("by post (VP)", "Post (VP)"),
+  print: phrase("as printed (VPR)", "Ausdruck (VPR)"),
+  email: phrase("by email outside sevDesk (VM)", "E-Mail außerhalb von sevDesk (VM)"),
 };
 
 const sendByPayloadSchema = z.strictObject({
@@ -66,31 +68,54 @@ const DESCRIPTIONS: Readonly<Record<SalesKind, string>> = {
     "Next: sevdesk_order_pdf, sevdesk_invoice_create_from_order.",
 };
 
-/** What sevDesk does to an invoice or credit note it finalizes. */
-const BOOKS = {
-  invoice: "assigns its final number and books it",
-  creditNote: "books it under the number the draft carries",
-} as const;
+/** That the document becomes binding, and how it can be corrected afterwards. */
+const BINDING: Readonly<Record<SalesKind, Phrase>> = {
+  invoice: phrase(
+    "The invoice becomes legally binding: sevDesk assigns its final number and books it. " +
+      "Afterwards it can only be corrected by a reset to draft (while not enshrined), a " +
+      "cancellation (Storno) or a credit note.",
+    "Die Rechnung wird rechtlich bindend: sevDesk vergibt ihre endgültige Nummer und bucht " +
+      "sie. Danach lässt sie sich nur noch durch Zurücksetzen auf Entwurf (solange sie nicht " +
+      "festgeschrieben ist), ein Storno oder eine Gutschrift korrigieren.",
+  ),
+  creditNote: phrase(
+    "The credit note becomes legally binding: sevDesk books it under the number the draft " +
+      "carries. Afterwards it can only be corrected by a reset to draft (while not enshrined), " +
+      "or a new document.",
+    "Die Gutschrift wird rechtlich bindend: sevDesk bucht sie unter der Nummer, die der " +
+      "Entwurf trägt. Danach lässt sie sich nur noch durch Zurücksetzen auf Entwurf (solange " +
+      "sie nicht festgeschrieben ist) oder ein neues Dokument korrigieren.",
+  ),
+  order: phrase(
+    "The order is marked as sent (status 200) and sevDesk assigns its final number.",
+    "Der Auftrag wird als versendet markiert (Status 200), und sevDesk vergibt seine " +
+      "endgültige Nummer.",
+  ),
+};
 
 /** Consequences of finalizing, per kind. */
-function finalizeWarnings(kind: SalesKind): string[] {
+function finalizeWarnings(kind: SalesKind): Phrase[] {
   const { toolPrefix } = KINDS[kind];
-  const binding =
-    kind === "order"
-      ? "The order is marked as sent (status 200) and sevDesk assigns its final number."
-      : `The ${KINDS[kind].noun} becomes legally binding: sevDesk ${BOOKS[kind]}. Afterwards ` +
-        `it can only be corrected by a reset to draft (while not enshrined), ` +
-        `${kind === "invoice" ? "a cancellation (Storno) or a credit note" : "or a new document"}.`;
   const warnings = [
-    binding,
-    `sevDesk sends nothing to the customer: this only records how the document was sent. To ` +
-      `email it through sevDesk, use ${toolPrefix}_send_email instead.`,
+    BINDING[kind],
+    phrase(
+      `sevDesk sends nothing to the customer: this only records how the document was sent. To ` +
+        `email it through sevDesk, use ${toolPrefix}_send_email instead.`,
+      `sevDesk sendet nichts an den Kunden: Es wird nur vermerkt, wie das Dokument versendet ` +
+        `wurde. Für den Versand per E-Mail über sevDesk gibt es stattdessen ` +
+        `${toolPrefix}_send_email.`,
+    ),
   ];
   if (kind !== "order") {
     warnings.push(
-      'If the sevDesk account enshrines documents on completion (setting "Automatische ' +
-        'Festschreibung"), it is also enshrined (festgeschrieben) and can never be changed or ' +
-        "reset again.",
+      phrase(
+        'If the sevDesk account enshrines documents on completion (setting "Automatische ' +
+          'Festschreibung"), it is also enshrined (festgeschrieben) and can never be changed or ' +
+          "reset again.",
+        "Schreibt das sevDesk-Konto Dokumente beim Abschließen automatisch fest (Einstellung " +
+          "„Automatische Festschreibung“), wird das Dokument dabei auch festgeschrieben und " +
+          "kann nie wieder geändert oder zurückgesetzt werden.",
+      ),
     );
   }
   return warnings;
@@ -131,19 +156,34 @@ export function finalizeTool(kind: SalesKind) {
       const warnings = finalizeWarnings(kind);
       if (doc.number?.includes("%") === true) {
         warnings.push(
-          "The document number still contains placeholders (%…%); check the number range in " +
-            "sevDesk and the number after finalizing.",
+          phrase(
+            "The document number still contains placeholders (%…%); check the number range in " +
+              "sevDesk and the number after finalizing.",
+            "Die Dokumentnummer enthält noch Platzhalter (%…%); prüfen Sie den Nummernkreis in " +
+              "sevDesk und die Nummer nach dem Fertigstellen.",
+          ),
         );
       }
+      const sent = SENT_VIA_TEXT[via];
       return {
-        preview: {
+        ...bothPreviews((lang) => ({
           action:
-            `Finalize ${documentTitle(doc)}: draft → ${kind === "order" ? "sent" : "open"}, ` +
-            `marked as sent ${SENT_VIA_TEXT[via]}.`,
-          facts: [...documentFacts(doc), { label: "Marked as sent", value: SENT_VIA_TEXT[via] }],
-          warnings,
+            lang === "de"
+              ? `${documentTitle(doc, lang)} fertigstellen: Entwurf → ` +
+                `${kind === "order" ? "versendet" : "offen"}, als Versandart wird ` +
+                `„${sent.de}“ vermerkt.`
+              : `Finalize ${documentTitle(doc)}: draft → ${kind === "order" ? "sent" : "open"}, ` +
+                `marked as sent ${sent.en}.`,
+          facts: [
+            ...documentFacts(doc, lang),
+            {
+              label: lang === "de" ? "Vermerkte Versandart" : "Marked as sent",
+              value: sent[lang],
+            },
+          ],
+          warnings: warnings.map((warning) => warning[lang]),
           irreversible: false,
-        },
+        })),
         state: { payload },
       };
     },

@@ -43,6 +43,7 @@ import {
 import { formatMoney } from "../lifecycle/preview.js";
 import { assertBookable, refuse } from "../lifecycle/transitions.js";
 import { add, compare, money, subtract, toDecimalString } from "../money.js";
+import { type Phrase, phrase, type PreviewLanguage } from "../preview-text.js";
 import { readTransactionLog, remainingAmount, TRANSACTION_STATUS } from "./transaction-log.js";
 
 /** Most documents one booking call may allocate a transaction to. */
@@ -97,7 +98,8 @@ export interface AllocationPlan {
   readonly allocated: string;
   readonly remainingAfter: string;
   readonly allocations: readonly PlannedAllocation[];
-  readonly warnings: readonly string[];
+  /** Consequences for the preview, in both languages. */
+  readonly warnings: readonly Phrase[];
 }
 
 /** Reads a record; an unknown id becomes a trusted validation error. */
@@ -208,9 +210,10 @@ export async function planAllocation(
   }
 
   const ref = `bank transaction ${String(transaction.id)}`;
-  const show = (value: string): string => formatMoney(money(value, currency));
+  const show = (value: string, lang: PreviewLanguage = "en"): string =>
+    formatMoney(money(value, currency), lang);
   const allocations: PlannedAllocation[] = [];
-  const warnings: string[] = [];
+  const warnings: Phrase[] = [];
   const signed = transaction.amount.amount;
   const transactionTotal = toDecimalString(compare(signed, 0) < 0 ? subtract(0, signed) : signed);
   let allocated = "0";
@@ -267,14 +270,24 @@ export async function planAllocation(
     });
     allocated = total;
     allocations.push({ doc, plan, amountDefaulted: request.amount === undefined });
-    warnings.push(...plan.warnings.map((warning) => `${docRef}: ${warning}`));
+    const docRefDe = documentRef(doc, true, "de");
+    warnings.push(
+      ...plan.warnings.map((warning) =>
+        phrase(`${docRef}: ${warning.en}`, `${docRefDe}: ${warning.de}`),
+      ),
+    );
   }
 
   const remainingAfter = toDecimalString(subtract(remainingBefore, allocated));
   if (compare(remainingAfter, 0) > 0) {
     warnings.push(
-      `${show(remainingAfter)} of ${ref} stays unassigned: it becomes partly linked (status 200) ` +
-        "and can be booked further with sevdesk_transaction_book.",
+      phrase(
+        `${show(remainingAfter)} of ${ref} stays unassigned: it becomes partly linked (status ` +
+          "200) and can be booked further with sevdesk_transaction_book.",
+        `${show(remainingAfter, "de")} von Kontoumsatz ${String(transaction.id)} bleiben ohne ` +
+          "Zuordnung: Der Umsatz gilt dann als teilweise verknüpft (Status 200) und kann mit " +
+          "sevdesk_transaction_book weiter gebucht werden.",
+      ),
     );
   }
   return {

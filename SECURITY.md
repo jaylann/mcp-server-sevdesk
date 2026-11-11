@@ -101,7 +101,11 @@ whether the page was opened. Each approval binds tool, argument hash and preview
 256-bit id, expires after 10 minutes and is used once; when the model calls the tool again with the
 same arguments after the human approved, the server prepares again and runs the action only if the
 preview is unchanged. The page is static HTML with every value escaped, under a strict Content
-Security Policy (no scripts, no framing, forms only to itself). Approve and Reject are POST forms
+Security Policy (no scripts, no framing, forms only to itself; the only things it loads are its
+own fonts and icon from the server's `/assets/` path, nothing from anyone else). It is in German
+for a browser that asks for German, including the preview: tools that need a confirmation write
+it in both languages, the server refuses a pair that does not have the same facts and warnings,
+and the approval is bound to both texts. Approve and Reject are POST forms
 that must carry a per-approval CSRF token from the page, a per-approval `SameSite=Strict` cookie
 set when the page was loaded, `Host: 127.0.0.1:<port>` (every request is checked for the Host,
 against DNS rebinding) and come from the page itself: `Origin: http://127.0.0.1:<port>`, or, from

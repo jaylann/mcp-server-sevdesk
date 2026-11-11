@@ -58,6 +58,13 @@ describe("sevdesk_invoice_enshrine (spec invoiceEnshrine; community answer {obje
       "Irreversible (GoBD): the invoice can never be changed, deleted or reset to draft again; " +
         "corrections are then only possible with a cancellation (Storno) or a credit note.",
     );
+    expect(plan.previewDe.action).toBe("Rechnung RE-1001 festschreiben (GoBD): dauerhaft sperren.");
+    expect(plan.previewDe.warnings[0]).toBe(
+      "Nicht umkehrbar (GoBD): Die Rechnung kann nie wieder geändert, gelöscht oder auf Entwurf " +
+        "zurückgesetzt werden; Korrekturen sind dann nur noch mit einem Storno oder einer " +
+        "Gutschrift möglich.",
+    );
+    expect(plan.previewDe.irreversible).toBe(true);
   });
 
   it.each([
@@ -86,6 +93,7 @@ describe("sevdesk_credit_note_enshrine", () => {
     const { plan, output } = await executeWrite(tool, { id: 2001 }, client);
 
     expect(plan.preview.warnings[0]).toContain("only possible with a new document");
+    expect(plan.previewDe.warnings[0]).toContain("nur noch mit einem neuen Dokument möglich");
     expect(client.writes()[0]).toMatchObject({ path: "/CreditNote/2001/enshrine" });
     expect(output.data["creditNote"]).toMatchObject({ enshrined: true });
     expect(output.affected).toEqual([{ objectName: "CreditNote", id: "2001" }]);

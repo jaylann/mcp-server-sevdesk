@@ -13,8 +13,14 @@ import {
   type PaymentKind,
   readLifecycleDocument,
 } from "../../domain/lifecycle/documents.js";
-import { documentTitle, type Fact, formatMoney } from "../../domain/lifecycle/preview.js";
+import {
+  documentTitle,
+  type Fact,
+  formatMoney,
+  statusText,
+} from "../../domain/lifecycle/preview.js";
 import { money } from "../../domain/money.js";
+import { bothPreviews, type PreviewLanguage } from "../../domain/preview-text.js";
 import { documentObject, transactionObject } from "../../domain/reconciliation/allocate.js";
 import {
   planTransactionReset,
@@ -92,12 +98,12 @@ export const transactionResetTool = defineWriteTool({
             })),
           };
     return {
-      preview: {
-        action: actionText(plan),
-        facts: resetFacts(plan),
-        warnings: plan.warnings,
+      ...bothPreviews((lang) => ({
+        action: actionText(plan, lang),
+        facts: resetFacts(plan, lang),
+        warnings: plan.warnings.map((warning) => warning[lang]),
         irreversible: false,
-      },
+      })),
       state,
     };
   },
@@ -179,22 +185,62 @@ export const transactionResetTool = defineWriteTool({
   },
 });
 
-function actionText(plan: ResetPlan): string {
+function actionText(plan: ResetPlan, lang: PreviewLanguage): string {
   const id = String(plan.transaction.id);
+  const german = lang === "de";
   if (plan.mode === "private") {
-    return `Set bank transaction ${id} back from private to unbooked (status 300 → 100).`;
+    return german
+      ? `Kontoumsatz ${id} von privat auf ungebucht zurücksetzen (Status 300 → 100).`
+      : `Set bank transaction ${id} back from private to unbooked (status 300 → 100).`;
   }
-  const titles = plan.documents.map(({ doc }) => documentTitle(doc));
-  return (
-    `Undo the bookings of bank transaction ${id}: reset ${String(titles.length)} ` +
-    `${titles.length === 1 ? "document" : "documents"} to open (${titles.join(", ")}), removing ` +
-    "all their payments."
-  );
+  const titles = plan.documents.map(({ doc }) => documentTitle(doc, lang));
+  const count = String(titles.length);
+  return german
+    ? `Buchungen des Kontoumsatzes ${id} rückgängig machen: ${count} ` +
+        `${titles.length === 1 ? "Dokument" : "Dokumente"} auf offen zurücksetzen ` +
+        `(${titles.join(", ")}) und dabei alle ihre Zahlungen entfernen.`
+    : `Undo the bookings of bank transaction ${id}: reset ${count} ` +
+        `${titles.length === 1 ? "document" : "documents"} to open (${titles.join(", ")}), ` +
+        "removing all their payments.";
 }
 
-function resetFacts(plan: ResetPlan): Fact[] {
-  const facts = transactionFacts(plan.transaction);
+/** The fact labels and fixed wording of a reset, per language. */
+const RESET_TEXT = {
+  en: {
+    document: "Document",
+    status: "status",
+    open: "open",
+    paid: (share: string) => `this transaction paid ${share}`,
+    others: "other payments removed too",
+    seeLog: "see the booking log",
+    unlinks: (list: string) => `; also unlinks bank transactions ${list}`,
+    after: "This transaction after the reset",
+    afterValue: "unbooked (status 100), or deleted if sevDesk created it for a booking",
+    changed: "Other bank transactions changed",
+    partly: "partly linked 200",
+    unbooked: "unbooked 100",
+  },
+  de: {
+    document: "Dokument",
+    status: "Status",
+    open: "offen",
+    paid: (share: string) => `dieser Umsatz hat ${share} bezahlt`,
+    others: "weitere entfernte Zahlungen",
+    seeLog: "siehe Buchungsprotokoll",
+    unlinks: (list: string) => `; löst auch die Kontoumsätze ${list}`,
+    after: "Dieser Umsatz nach dem Zurücksetzen",
+    afterValue:
+      "ungebucht (Status 100) oder gelöscht, falls sevDesk ihn für eine Buchung angelegt hat",
+    changed: "Weitere geänderte Kontoumsätze",
+    partly: "teilweise verknüpft 200",
+    unbooked: "ungebucht 100",
+  },
+} as const;
+
+function resetFacts(plan: ResetPlan, lang: PreviewLanguage): Fact[] {
+  const facts = transactionFacts(plan.transaction, lang);
   if (plan.mode === "private") return facts;
+  const t = RESET_TEXT[lang];
   const currency = plan.transaction.amount.currency;
   plan.documents.forEach(({ doc, share, otherPayments, otherTransactions }, index) => {
     const open = KINDS[doc.kind].status.open;
@@ -202,37 +248,31 @@ function resetFacts(plan: ResetPlan): Fact[] {
       .map(({ id, amount }) =>
         amount === undefined
           ? String(id)
-          : `${String(id)} (${formatMoney(money(amount, doc.currency))})`,
+          : `${String(id)} (${formatMoney(money(amount, doc.currency), lang)})`,
       )
       .join(", ");
     facts.push({
-      label: `Document ${String(index + 1)}: ${documentTitle(doc)}`,
+      label: `${t.document} ${String(index + 1)}: ${documentTitle(doc, lang)}`,
       value:
-        `status ${doc.statusLabel} (${String(doc.status)}) → open (${String(open)}); this ` +
-        `transaction paid ${formatMoney(money(share, currency))}; other payments removed too: ` +
+        `${t.status} ${statusText(doc, lang)} → ${t.open} (${String(open)}); ` +
+        `${t.paid(formatMoney(money(share, currency), lang))}; ${t.others}: ` +
         (otherPayments === undefined
-          ? "see the booking log"
-          : formatMoney(money(otherPayments, doc.currency))) +
-        (unlinks === "" ? "" : `; also unlinks bank transactions ${unlinks}`),
+          ? t.seeLog
+          : formatMoney(money(otherPayments, doc.currency), lang)) +
+        (unlinks === "" ? "" : t.unlinks(unlinks)),
     });
   });
-  facts.push({
-    label: "This transaction after the reset",
-    value: "unbooked (status 100), or deleted if sevDesk created it for a booking",
-  });
+  facts.push({ label: t.after, value: t.afterValue });
   const others = new Map<number, 100 | 200>();
   for (const { otherTransactions } of plan.documents) {
     for (const { id, statusAfter } of otherTransactions) others.set(id, statusAfter);
   }
   if (others.size > 0) {
     facts.push({
-      label: "Other bank transactions changed",
+      label: t.changed,
       value: [...others.entries()]
         .sort(([a], [b]) => a - b)
-        .map(
-          ([id, after]) =>
-            `${String(id)} (→ ${after === 200 ? "partly linked 200" : "unbooked 100"})`,
-        )
+        .map(([id, after]) => `${String(id)} (→ ${after === 200 ? t.partly : t.unbooked})`)
         .join(", "),
     });
   }

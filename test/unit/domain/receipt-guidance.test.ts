@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { inLanguage, type Phrase } from "../../../src/domain/preview-text.js";
 import {
   checkAccountTaxRule,
   clearReceiptGuidanceCache,
@@ -12,6 +13,9 @@ import {
 import { SevdeskError } from "../../../src/sevdesk/errors.js";
 import type { SevdeskClient } from "../../../src/sevdesk/types.js";
 import { type FakeRoute, FakeSevdeskClient } from "../../helpers/fake-client.js";
+
+/** The English wording of preview sentences. */
+const english = (phrases: readonly Phrase[]): string[] => inLanguage(phrases, "en");
 
 const ALL = "/ReceiptGuidance/forAllAccounts";
 const allRoute: FakeRoute = {
@@ -403,7 +407,7 @@ describe("validateAccountTaxRule", () => {
       { cacheOwner: {} },
     );
     expect(check.ok).toBe(true);
-    expect(check.warnings).toEqual([
+    expect(english(check.warnings)).toEqual([
       "sevDesk's receipt guidance has more accounts than could be read, and account 77 is not " +
         "among those read, so it could not be checked.",
     ]);

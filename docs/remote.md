@@ -484,8 +484,9 @@ How a confirmation runs:
 1. The model calls, say, the tool that finalizes an invoice. The server prepares it and answers
    `approval_pending` with a short reference code, the expiry (10 minutes) and the inbox URL.
 2. You open the inbox, find the request with that reference code and read the preview: the
-   action, warnings, amounts, recipients, texts.
-3. You press Approve or Reject.
+   action, warnings, amounts, recipients, texts. With a German browser the inbox and the preview
+   are in German ([Permissions](permissions.md#browser)).
+3. You press Approve or Reject (Freigeben or Ablehnen).
 4. You ask the model to try again. It calls the tool with the same arguments; the server prepares
    the action once more and runs it only if you approved and the preview is unchanged. Each
    approval is used once.
@@ -697,6 +698,11 @@ named after the inbox): `approval_login`, `approval_login_refused`, `approval_lo
 Their request lines show the routes as `/uploads/*` and `/files/*`. Upload and download ids and
 file names are never logged; the reference code connects a log line with the page, the tool result
 and the audit log.
+
+Every page loads its fonts and its icon from the server itself: request lines with the route
+`/assets/*`, answered without a session and cached by the browser for good (the file names carry
+a content hash). The pages load nothing from any other server, so a proxy needs no rule beyond
+passing these paths on like the rest.
 
 ### Health and shutdown
 

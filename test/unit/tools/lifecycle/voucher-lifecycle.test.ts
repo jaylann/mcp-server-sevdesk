@@ -99,6 +99,7 @@ describe("sevdesk_voucher_book_payment", () => {
         "check account Geschäftskonto Musterbank, linked to bank transaction 5101.",
     );
     expect(plan.preview.facts).toContainEqual({ label: "Kind", value: "expense (Ausgabe)" });
+    expect(plan.previewDe.facts).toContainEqual({ label: "Art", value: "Ausgabe" });
     expect(plan.preview.facts).toContainEqual({
       label: "Supplier (Lieferant)",
       value: "Beispiel Lieferant AG (contact 1003)",
@@ -230,6 +231,14 @@ describe("sevdesk_voucher_reset", () => {
     );
     const { plan } = await executeWrite(reset, { id: 2001, to: "draft" }, fake);
     expect(plan.preview.action).toBe("Reset voucher 2001 to draft (open 100 → draft 50).");
+    expect(plan.previewDe.action).toBe(
+      "Beleg 2001 auf Entwurf zurücksetzen (offen 100 → Entwurf 50).",
+    );
+    expect(plan.previewDe.warnings).toEqual([
+      "Der Beleg ist dann nicht mehr gebucht und kann wieder geändert werden " +
+        "(sevdesk_voucher_update_draft); danach muss er erneut fertiggestellt werden " +
+        "(sevdesk_voucher_finalize).",
+    ]);
     expect(plan.preview.warnings).toEqual([
       "The voucher stops being booked and can be changed again (sevdesk_voucher_update_draft); " +
         "it has to be finalized again afterwards (sevdesk_voucher_finalize).",

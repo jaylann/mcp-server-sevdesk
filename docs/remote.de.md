@@ -513,8 +513,10 @@ So läuft eine Bestätigung ab:
    Aufruf vor und antwortet mit `approval_pending`, einem kurzen Referenzcode, dem Ablauf
    (10 Minuten) und der URL des Postfachs.
 2. Sie öffnen das Postfach, suchen die Anfrage mit diesem Referenzcode und lesen die Vorschau: die
-   Aktion, Warnungen, Beträge, Empfänger, Texte.
-3. Sie drücken Approve oder Reject.
+   Aktion, Warnungen, Beträge, Empfänger, Texte. In einem deutschen Browser sind das Postfach
+   und die Vorschau deutsch ([Berechtigungen](permissions.de.md#browser)).
+3. Sie drücken „Freigeben“ oder „Ablehnen“ (in einem englischen Browser „Approve“ oder
+   „Reject“).
 4. Sie bitten das Modell, es erneut zu versuchen. Es ruft das Werkzeug mit denselben Argumenten
    auf; der Server bereitet die Aktion noch einmal vor und führt sie nur aus, wenn Sie freigegeben
    haben und die Vorschau unverändert ist. Jede Freigabe wird einmal verwendet.
@@ -748,6 +750,11 @@ ist). Dateiübertragung:
 Ihre Anfragezeilen zeigen die Routen als `/uploads/*` und `/files/*`. Upload- und Download-IDs und
 Dateinamen werden nie protokolliert; der Referenzcode verbindet eine Logzeile mit der Seite, dem
 Ergebnis des Werkzeugs und dem Audit-Log.
+
+Jede Seite lädt ihre Schriften und ihr Symbol vom Server selbst: Anfragezeilen mit der Route
+`/assets/*`, ohne Sitzung beantwortet und vom Browser dauerhaft zwischengespeichert (die
+Dateinamen tragen einen Inhalts-Hash). Von anderen Servern laden die Seiten nichts; ein Proxy
+braucht also keine eigene Regel, er reicht diese Pfade wie alle anderen durch.
 
 ### Zustandsprüfung und Herunterfahren
 

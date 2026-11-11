@@ -321,7 +321,7 @@ export function createRouter(options: RouterOptions): Router {
         if (slots !== undefined) {
           const busy = (scope: "route" | "key"): Served =>
             answered(
-              slots.busy?.(scope) ??
+              slots.busy?.(scope, head) ??
                 serviceUnavailable("Too many uploads are in progress; retry shortly.", 5),
             );
           const perKey = keyedBodies.get(route);
