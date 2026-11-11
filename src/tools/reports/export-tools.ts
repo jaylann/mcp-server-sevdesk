@@ -24,6 +24,7 @@ import {
   DATEV_SCOPE_KEYS,
   datevFilename,
   type DatevJobParams,
+  downloadDatevExport,
   exportFilename,
   fiscalYearStartWithin,
   looksLikeZip,
@@ -36,11 +37,10 @@ import {
 import { shiftDays } from "../../domain/reports/shared.js";
 import { resolvePeriod } from "../../domain/reports/vat.js";
 import { canDeliverFiles } from "../../safety/file-access.js";
+import { refused } from "../../safety/output-files.js";
 import { SevdeskError, withCompletedWrites } from "../../sevdesk/errors.js";
-import { downloadPresignedExport } from "../../sevdesk/export-download.js";
 import { defineTool, defineWriteTool } from "../define-tool.js";
 import { deliveryData, deliveryOutputShape, downloadText } from "../documents/delivery.js";
-import { refused } from "../documents/save-file.js";
 import type { AnyToolDefinition, ExecuteContext, SevdeskObjectRef } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 import { periodInputShape } from "./period-input.js";
@@ -200,7 +200,7 @@ export const datevExportTool = defineWriteTool({
         signal: ctx.signal,
         onProgress: (done, total, message) => ctx.progress(done, total, message),
       });
-      const download = await downloadPresignedExport(info.link, { signal: ctx.signal });
+      const download = await downloadDatevExport(info, ctx.signal);
       if (!looksLikeZip(download.bytes)) {
         throw new SevdeskError({
           kind: "unexpected_response",

@@ -10,21 +10,17 @@
 import { z } from "zod";
 
 import { invoiceDetailSchema } from "../../domain/invoices.js";
+import { cancelInvoice } from "../../domain/lifecycle/actions.js";
 import { readLifecycleDocument } from "../../domain/lifecycle/documents.js";
 import { documentFacts, documentTitle, formatMoney } from "../../domain/lifecycle/preview.js";
 import { assertCancellable } from "../../domain/lifecycle/transitions.js";
 import { money, negate } from "../../domain/money.js";
 import { bothPreviews, type Phrase, phrase } from "../../domain/preview-text.js";
-import { expectSingle } from "../../sevdesk/envelope.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
-import { sevdeskPath } from "../../sevdesk/paths.js";
-import { parseUpstream, zId } from "../../sevdesk/schema.js";
 import { defineWriteTool } from "../define-tool.js";
 import { ACCOUNT_BOOKINGS } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 import { COMMIT_ANNOTATIONS, documentObject, idInput, readBack } from "./shared.js";
-
-const createdSchema = z.object({ id: zId });
 
 const CANCEL_WARNINGS: readonly Phrase[] = [
   phrase(
@@ -45,20 +41,6 @@ const CANCEL_WARNINGS: readonly Phrase[] = [
     "Hat der Kunde die Rechnung bereits erhalten, senden Sie ihm auch die Stornorechnung.",
   ),
 ];
-
-/** The id of the cancellation invoice in sevDesk's answer, or `undefined` when it has none. */
-function cancellationId(payload: unknown): number | undefined {
-  try {
-    return parseUpstream(
-      createdSchema,
-      expectSingle(payload, "cancellation invoice"),
-      "a cancellation invoice",
-    ).id;
-  } catch (error) {
-    if (error instanceof SevdeskError) return undefined;
-    throw error;
-  }
-}
 
 export const invoiceCancelTool = defineWriteTool({
   name: "sevdesk_invoice_cancel",
@@ -105,13 +87,8 @@ export const invoiceCancelTool = defineWriteTool({
     };
   },
   execute: async (args, _plan, ctx) => {
-    const payload = await ctx.client.request({
-      method: "POST",
-      path: sevdeskPath("Invoice", args.id, "cancelInvoice"),
-      signal: ctx.signal,
-    });
+    const createdId = await cancelInvoice(ctx.client, args.id, ctx.signal);
     const original = documentObject("invoice", args.id);
-    const createdId = cancellationId(payload);
     if (createdId === undefined) {
       throw new SevdeskError({
         kind: "unexpected_response",

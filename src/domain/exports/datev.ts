@@ -29,6 +29,7 @@ import { z } from "zod";
 
 import { toBerlinDate, toUnixSeconds } from "../../sevdesk/dates.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
+import { downloadPresignedExport, type PresignedDownload } from "../../sevdesk/export-download.js";
 import { realSleep, type Sleep } from "../../sevdesk/pacing.js";
 import { parseUpstream, zText } from "../../sevdesk/schema.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
@@ -419,6 +420,19 @@ function notReady(jobId: string, maxWait: number): SevdeskError {
       "seconds. It keeps running in sevDesk: download it there (Export → DATEV) instead of " +
       "starting another one.",
   });
+}
+
+/**
+ * Downloads the ZIP of a finished job from its presigned link (the rules: one https host, no
+ * credentials, no redirects, a capped body; `src/sevdesk/export-download.ts`). The link is a
+ * secret and appears in no error. The tool layer calls this instead of the client layer's
+ * download (review 2026-11, round 3).
+ */
+export function downloadDatevExport(
+  info: Pick<DatevDownloadInfo, "link">,
+  signal?: AbortSignal,
+): Promise<PresignedDownload> {
+  return downloadPresignedExport(info.link, { signal });
 }
 
 /** Whether `bytes` start like a ZIP archive (local file header or an empty archive). */

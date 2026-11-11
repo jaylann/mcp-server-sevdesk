@@ -295,7 +295,8 @@ describe("remoteFileAccess: deliveries", () => {
     expect(delivery).toEqual({
       download: {
         url: expect.stringMatching(
-          new RegExp(`^${FILES_ORIGIN}/files/[A-Za-z0-9_-]{43}$`),
+          // The origin is matched literally: its dots must not stand for any character.
+          new RegExp(`^${FILES_ORIGIN.replaceAll(".", String.raw`\.`)}/files/[A-Za-z0-9_-]{43}$`),
         ) as unknown,
         reference: expect.stringMatching(/^[A-HJ-NP-Z2-9]{6}$/) as unknown,
         expiresAt: "2026-11-09T12:30:00.000Z",

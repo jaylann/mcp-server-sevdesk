@@ -2,9 +2,9 @@ import { z } from "zod";
 
 import type { Config } from "../../config.js";
 import { loadAccountSettings, taxRegimeOf } from "../../domain/account-settings.js";
+import { loadSystemVersion, type SystemVersion } from "../../domain/bookkeeping-system.js";
 import { listUsers, userDtoSchema } from "../../domain/users.js";
 import { type Tier, TIERS } from "../../safety/tiers.js";
-import { getBookkeepingSystemVersion, type SystemVersion } from "../../sevdesk/system-version.js";
 import { defineTool } from "../define-tool.js";
 import { TOOLSETS } from "../toolsets.js";
 
@@ -60,7 +60,8 @@ export const accountInfoTool = defineTool({
   output,
   handler: async (_args, ctx) => {
     const [version, users, settings] = await Promise.all([
-      getBookkeepingSystemVersion(ctx.client, ctx.signal),
+      // The same cache entry the write tools' preparations use (review 2026-11, round 3).
+      loadSystemVersion(ctx.client, ctx.signal, ctx.config),
       listUsers(ctx.client, ctx.signal),
       loadAccountSettings(ctx.client, {
         cacheOwner: ctx.config,

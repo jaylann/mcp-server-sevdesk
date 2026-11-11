@@ -14,7 +14,7 @@ import {
   statusPayload,
   type TransactionStatusPayload,
 } from "../../domain/reconciliation/transaction-status.js";
-import { sevdeskPath } from "../../sevdesk/paths.js";
+import { updateTransactionStatus } from "../../domain/reconciliation/transaction-writes.js";
 import { defineWriteTool } from "../define-tool.js";
 import { ACCOUNT_BOOKINGS } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
@@ -106,12 +106,7 @@ export const transactionMarkPrivateTool = defineWriteTool({
     };
   },
   execute: async (args, plan, ctx) => {
-    await ctx.client.request({
-      method: "PUT",
-      path: sevdeskPath("CheckAccountTransaction", args.id),
-      body: plan.state.payload,
-      signal: ctx.signal,
-    });
+    await updateTransactionStatus(ctx.client, args.id, plan.state.payload, ctx.signal);
     const changed = [transactionObject(args.id)];
     const transaction = await readBackTransaction(ctx, args.id, changed);
     return {

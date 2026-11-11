@@ -1,7 +1,9 @@
 /**
- * Saving document files into `SEVDESK_OUTPUT_DIR`, the only local directory any tool writes to
- * (`sevdesk_document_save`). Writing there changes nothing in sevDesk, which is why that tool
- * stays in the read tier, declared with `localEffects: "writes-files"` and `readOnlyHint: false`.
+ * Writing files into `SEVDESK_OUTPUT_DIR`, the only local directory the server writes tool
+ * output to (the local side of `FileAccess.deliver`, `./file-sources.ts`; reading is
+ * `./local-files.ts`). Writing there changes nothing in sevDesk, which is why
+ * `sevdesk_document_save` stays in the read tier, declared with `localEffects: "writes-files"`
+ * and `readOnlyHint: false`.
  *
  * Confinement rules:
  * - the directory must be configured, exist and be a writable directory; its real path (symlinks
@@ -14,13 +16,16 @@
  *   suffix (`RE-1001-1.pdf`, `RE-1001-2.pdf`, …, at most `-99`), which also bounds how many
  *   copies a looping model can pile up per document;
  * - new files get mode 0600: invoices carry personal and business data.
+ *
+ * This module was `src/tools/documents/save-file.ts`; it moved here so that the tool layer holds
+ * no file-system code and `src/safety/` does not depend on `src/tools/` (review 2026-11, round 3).
  */
 import { constants } from "node:fs";
 import { access, type FileHandle, open, realpath, stat, unlink } from "node:fs/promises";
 import { basename, dirname, extname, join } from "node:path";
 
-import { openedInside } from "../../safety/local-files.js";
-import { SevdeskError } from "../../sevdesk/errors.js";
+import { SevdeskError } from "../sevdesk/errors.js";
+import { openedInside } from "./local-files.js";
 
 /** Suffixes tried after the plain name before giving up. */
 const MAX_SUFFIX = 99;

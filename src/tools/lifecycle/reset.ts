@@ -12,6 +12,7 @@
  */
 import { z } from "zod";
 
+import { resetDocument } from "../../domain/lifecycle/actions.js";
 import {
   KINDS,
   type LifecycleDocument,
@@ -31,7 +32,6 @@ import {
   type ResetTarget,
 } from "../../domain/lifecycle/transitions.js";
 import { bothPreviews, type Phrase, phrase } from "../../domain/preview-text.js";
-import { sevdeskPath } from "../../sevdesk/paths.js";
 import { defineWriteTool } from "../define-tool.js";
 import { ACCOUNT_BOOKINGS } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
@@ -72,11 +72,6 @@ const DESCRIPTIONS: Readonly<Record<PaymentKind, string>> = {
     "or deleted with sevdesk_voucher_delete_draft; not for enshrined (festgeschrieben) " +
     "vouchers. For a paid voucher reset to open first, then to draft. Commit tier: asks a human " +
     "to confirm the preview; dryRun only previews.",
-};
-
-const ENDPOINT: Readonly<Record<ResetTarget, string>> = {
-  open: "resetToOpen",
-  draft: "resetToDraft",
 };
 
 function resetWarnings(doc: LifecycleDocument<PaymentKind>, to: ResetTarget): Phrase[] {
@@ -211,11 +206,7 @@ export function resetTool(kind: PaymentKind) {
       };
     },
     execute: async (args, _plan, ctx) => {
-      await ctx.client.request({
-        method: "PUT",
-        path: sevdeskPath(info.objectName, args.id, ENDPOINT[args.to]),
-        signal: ctx.signal,
-      });
+      await resetDocument(ctx.client, kind, args.id, args.to, ctx.signal);
       const changed = documentObject(kind, args.id);
       const after = await readBack(ctx, kind, args.id, [changed]);
       return {

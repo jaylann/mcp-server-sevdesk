@@ -37,16 +37,30 @@ tools  →  domain  →  sevdesk client  →  sevDesk REST API
 Each layer only calls the one to its right.
 
 - **`src/tools/`** defines the MCP tools. A tool declares its schema, tier and annotations and
-  calls domain functions. Tools never call `fetch` or the HTTP client directly.
+  calls domain functions. Tools never call `fetch` or the HTTP client directly: a tool passes the
+  client of its context to a domain function, also for the binding requests (finalize, send,
+  enshrine, cancel, reset, book a payment), which it sends from `execute` with the client scoped
+  to its tier. From `src/sevdesk/` a tool imports only the errors, the date helpers and the client
+  types, and it has no file-system code.
 - **`src/domain/`** holds the business logic: normalized DTOs, the decimal money type, reference
   data, lifecycle rules (which status may go where), validation against sevDesk's
-  ReceiptGuidance, the e-invoice parser, the reconciliation matcher and the tax reports.
+  ReceiptGuidance, the e-invoice parser, the reconciliation matcher and the tax reports. It also
+  builds every request (path and body) and sends it through the client it is given; the binding
+  ones are in `src/domain/lifecycle/actions.ts` and
+  `src/domain/reconciliation/transaction-writes.ts`. It does not import from `src/tools/`.
 - **`src/sevdesk/`** is the HTTP client. It knows sevDesk's wire format: auth, the response
-  envelope, string scalars, date formats, error bodies, pacing. It knows nothing about MCP. It could
-  later become its own SDK package.
+  envelope, string scalars, date formats, error bodies, pacing. It knows nothing about MCP, the
+  tools or the domain layer. It could later become its own SDK package.
 - **`src/safety/`** is used by all layers: tiers, redaction of the API token, fencing of untrusted
   text, confirmations, dry-run, the audit log, the OS keychain, and the file access tools read
-  and deliver files through (local folders, or uploads and download links over HTTP).
+  and deliver files through (local folders, or uploads and download links over HTTP). It imports
+  from neither `src/tools/` nor `src/domain/`; the types those share with it (the confirmation
+  preview, the reference to a changed record) are in `src/safety/write-types.ts`.
+
+ESLint enforces these rules (`eslint.config.js`, the `layering/…` blocks): in `src/tools/` a call
+of a client method, `fetch`, `node:fs` and any other import from `src/sevdesk/` fail the lint (the
+write flow, which wraps the client per call, may also import `scoped-client.ts`), and so do the
+imports named above for the other three directories, type-only imports included.
 
 Two smaller parts sit beside the tools: **`src/prompts/`** renders the MCP prompts from the
 registered tools ([Prompts](#prompts)), and **`src/resources/`** serves document files and
@@ -267,6 +281,18 @@ account × tax rule × rate against it, because sevDesk itself accepts any combi
 Bank bookings plan every allocation against the document's open amount and the transaction's
 remaining amount (from the transaction log) before anything is sent.
 
+**Record locks.** A check followed by a write is void when two calls run at once: both read the
+state before either wrote. So a write tool declares `locks`: the records its checks depend on (the
+document, the bank transaction, the contact, the part, the order or invoice a document is derived
+from) or an account-wide key (all bookings; the credit note number range, whose counter sevDesk
+does not advance on `createFromInvoice`; customer numbers; part numbers; new voucher drafts, for
+their duplicate refusal). Calls of one account
+that share a key run one after the other, from `prepare` to the end of `execute`
+(`src/safety/record-locks.ts`). The locks live in one server process; several replicas would need
+a shared lock. The metadata lint fails for a write tool without `locks` unless it is on a short
+list with its reason: new invoice and order drafts (their duplicate check only warns) and the
+DATEV export.
+
 **Untrusted text.** Contact names, descriptions, bank transfer purposes (Verwendungszweck) and
 e-invoice fields can be written by third parties and may carry prompt injection. They are stripped
 of invisible and bidi characters, fenced in output, and never interpolated into error messages or
@@ -274,7 +300,9 @@ instructions.
 
 **Files.** Tools never touch the file system or the transfer store directly; every byte they read
 or hand out passes the `FileAccess` of their context ([Files](#files)). Every tool that reads or
-writes files declares `localEffects` and is on a reviewed list in the metadata lint. E-invoice XML
+writes files or opens an upload page declares `localEffects` and is on a reviewed list in the
+metadata lint; a `read` tool that hands out files or opens an upload page (a ticket on this
+server) sets `readOnlyHint: false`, because it changes state outside sevDesk. E-invoice XML
 is parsed without entity expansion or DOCTYPEs, with size and depth limits.
 
 **Generic read.** `sevdesk_api_get` (toolset `advanced`, off by default) lets the model choose a
@@ -307,8 +335,8 @@ two implementations (`src/safety/file-sources.ts`):
 
 - **Local** (stdio, and HTTP with file transfer off): reads only inside `SEVDESK_FILE_DIRS`
   (`src/safety/local-files.ts`: real paths, no symlink escapes, `O_NOFOLLOW` plus an inode check,
-  content sniffing, size caps); deliveries are new files in `SEVDESK_OUTPUT_DIR` (exclusive
-  creation, mode 0600, never overwriting).
+  content sniffing, size caps); deliveries are new files in `SEVDESK_OUTPUT_DIR`
+  (`src/safety/output-files.ts`: exclusive creation, mode 0600, never overwriting).
 - **Remote** (HTTP with `SEVDESK_HTTP_FILES`, on by default): a file argument may be an
   `upload:<id>` reference from `sevdesk_upload_request`, for which the human uploads the file on
   a page of the server; deliveries become short-lived download links. Both pages need a browser
@@ -404,13 +432,15 @@ flowchart LR
    `Request`/`Response`, refuses bodies over the route's cap with 413 before reading more (1 MiB
    on `/mcp`, 8 KiB on `/authorize`, 4 KiB on `/token` and `/revoke`), aborts the request's signal
    when the client disconnects, answers 408 when a body does not arrive in time, and streams
-   responses without buffering. Server timeouts: 15 s for headers, 30 s to receive a whole
-   request, 65 s keep-alive, at most 256 connections.
+   responses without buffering, a large chunk in slices of 64 KiB (a client that takes no slice
+   for a minute is dropped). Server timeouts: 15 s for headers, 65 s keep-alive, and for a whole
+   request the longest body window of any route plus 30 s (45 s; 120 s with the upload page, whose
+   body may take 90 s); at most 256 connections.
 3. **Hardening** (`router.ts`, `hardening.ts`, `rate-limit.ts`): the `Host` allowlist (the SDK's
    validator; `/healthz` is exempt for platform health checks), the route match (404, or 405 with
    `Allow` for other methods), token-bucket rate limits per client address (IPv6 per /64; 429 with
-   `Retry-After`), a cap on requests in flight that one client cannot use up for everyone, a 120 s
-   deadline, the route's `Origin` policy (`/mcp`: the SDK's validator, which compares host names
+   `Retry-After`), caps on requests in flight (64 in all, 8 per client address, 8 per sevDesk
+   account on `/mcp`, and 8 of the 64 kept for the routes other than `/mcp`), a 120 s deadline, the route's `Origin` policy (`/mcp`: the SDK's validator, which compares host names
    against the allowed origins; there is no CORS, so web pages on other origins cannot call `/mcp`;
    HTML forms: same-origin POSTs only, never `Origin: null`), and security headers on every response
    (`nosniff`, `no-store, no-transform`, a referrer policy, HSTS on https). One JSON log line per request,

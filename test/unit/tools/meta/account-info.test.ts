@@ -91,6 +91,19 @@ describe("sevdesk_account_info (spec + community fixtures)", () => {
     expect(result.summary).toContain("Kleinunternehmer (§19 UStG)");
   });
 
+  it("shares the cached version per configuration, not per client (as the write tools do)", async () => {
+    // A write tool prepares with a new client wrapper on every call; the configuration is what
+    // identifies the account (review 2026-11, round 3).
+    const first = client();
+    const second = client("meta/bookkeeping-system-version-1.json");
+    const ctx = testContext(first);
+    await tool.handler({}, ctx);
+    const result = await tool.handler({}, { ...ctx, client: second });
+    expect(first.callsTo("/Tools/bookkeepingSystemVersion")).toHaveLength(1);
+    expect(second.callsTo("/Tools/bookkeepingSystemVersion")).toHaveLength(0);
+    expect(result.data.bookkeepingSystemVersion).toBe("2.0");
+  });
+
   it("says when the VAT regulation cannot be read and keeps the other fields", async () => {
     const result = await tool.handler(
       {},
