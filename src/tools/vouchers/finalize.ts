@@ -28,6 +28,8 @@ export const voucherFinalizeTool = defineWriteTool({
   annotations: COMMIT_ANNOTATIONS,
   input: z.strictObject({ id: idInput("voucher"), ...dryRunInputShape }),
   output: voucherDraftOutput,
+  // Serialized with other calls on the same record (see WriteToolDefinition.locks).
+  locks: (args) => [{ objectName: "Voucher", id: String(args.id) }],
   prepare: (args, ctx) =>
     prepareVoucherFinalize(ctx.client, args.id, {
       signal: ctx.signal,

@@ -20,6 +20,7 @@ import { SevdeskError } from "../../sevdesk/errors.js";
 import { sevdeskPath } from "../../sevdesk/paths.js";
 import { parseUpstream, zId } from "../../sevdesk/schema.js";
 import { defineWriteTool } from "../define-tool.js";
+import { ACCOUNT_BOOKINGS } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 import { COMMIT_ANNOTATIONS, documentObject, idInput, readBack } from "./shared.js";
 
@@ -79,6 +80,8 @@ export const invoiceCancelTool = defineWriteTool({
     cancellationInvoice: invoiceDetailSchema.describe("The new cancellation invoice (SR)."),
     cancellationInvoiceId: z.number().int().describe("Id of the cancellation invoice."),
   }),
+  // Serialized with other calls on the same record (see WriteToolDefinition.locks).
+  locks: (args) => [ACCOUNT_BOOKINGS, documentObject("invoice", args.id)],
   prepare: async (args, ctx) => {
     const doc = await readLifecycleDocument(ctx.client, "invoice", args.id, ctx.signal);
     assertCancellable(doc);

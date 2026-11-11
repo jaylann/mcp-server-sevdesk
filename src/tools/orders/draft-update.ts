@@ -33,6 +33,8 @@ export const orderUpdateDraftTool = defineWriteTool({
   },
   input: z.strictObject({ ...orderUpdateInputShape, ...dryRunInputShape }),
   output: orderDraftOutput,
+  // Serialized with other calls on the same record (see WriteToolDefinition.locks).
+  locks: (args) => [{ objectName: "Order", id: String(args.id) }],
   prepare: (args, ctx) =>
     prepareOrderUpdate(ctx.client, args, { signal: ctx.signal, cacheOwner: ctx.config }),
   execute: async (_args, plan, ctx) =>

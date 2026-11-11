@@ -33,6 +33,7 @@ import {
 import { bothPreviews, type Phrase, phrase } from "../../domain/preview-text.js";
 import { sevdeskPath } from "../../sevdesk/paths.js";
 import { defineWriteTool } from "../define-tool.js";
+import { ACCOUNT_BOOKINGS } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 import {
   capitalize,
@@ -178,6 +179,8 @@ export function resetTool(kind: PaymentKind) {
       ...dryRunInputShape,
     }),
     output: documentOutputSchema(kind),
+    // Serialized with other calls on the same record (see WriteToolDefinition.locks).
+    locks: (args) => [ACCOUNT_BOOKINGS, documentObject(kind, args.id)],
     prepare: async (args, ctx) => {
       const doc = await readLifecycleDocument(ctx.client, kind, args.id, ctx.signal);
       assertResettable(doc, args.to);

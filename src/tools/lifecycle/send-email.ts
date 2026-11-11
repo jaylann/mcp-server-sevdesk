@@ -41,6 +41,7 @@ import { defineWriteTool } from "../define-tool.js";
 import { dryRunInputShape } from "../write-input.js";
 import {
   capitalize,
+  documentBinding,
   documentObject,
   documentOutput,
   documentOutputSchema,
@@ -219,6 +220,8 @@ export function sendEmailTool(kind: SalesKind) {
     annotations: EXTERNAL_ANNOTATIONS,
     input,
     output: documentOutputSchema(kind, { email: emailOutputSchema }),
+    // Serialized with other calls on the same record (see WriteToolDefinition.locks).
+    locks: (args) => [documentObject(kind, args.id)],
     prepare: async (args, ctx) => {
       // Only the invoice input has attachXml; the schema already checked it is a boolean.
       const attachXml = (args as { readonly attachXml?: boolean }).attachXml === true;
@@ -272,6 +275,7 @@ export function sendEmailTool(kind: SalesKind) {
           warnings: warnings.map((warning) => warning[lang]),
           irreversible: true,
         })),
+        binding: await documentBinding(ctx, doc),
         state,
       };
     },

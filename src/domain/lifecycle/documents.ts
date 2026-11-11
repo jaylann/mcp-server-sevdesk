@@ -199,6 +199,12 @@ export interface LifecycleDocument<K extends LifecycleKind = LifecycleKind> {
    */
   readonly direction: PaymentDirection | undefined;
   readonly dto: DetailByKind[K];
+  /**
+   * The record exactly as sevDesk sent it (untrusted, never shown), for the approval binding of
+   * actions that make the stored document binding: the DTO cuts long texts and keeps only the
+   * date of `update`, so it cannot tell every change apart. Set by {@link readLifecycleDocument}.
+   */
+  readonly raw?: unknown;
 }
 
 const MAPPERS: { readonly [K in LifecycleKind]: (raw: unknown, today: string) => DetailByKind[K] } =
@@ -241,7 +247,7 @@ export async function readLifecycleDocument<K extends LifecycleKind>(
   const raw = expectSingle(payload, `${info.noun} ${String(id)}`);
   const dto = MAPPERS[kind](raw, today);
   const { paidAmount } = parseUpstream(paidAmountSchema, raw, `a ${info.noun}`);
-  return toLifecycleDocument(kind, dto, paidAmount);
+  return { ...toLifecycleDocument(kind, dto, paidAmount), raw };
 }
 
 /** Builds the snapshot from a detail DTO and the raw paid amount. */

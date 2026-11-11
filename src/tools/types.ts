@@ -68,6 +68,14 @@ export interface SevdeskObjectRef {
 }
 
 /**
+ * A lock key (see `WriteToolDefinition.locks`) for all of an account's bookings: tools that book
+ * or undo payments take it besides their own records, so they run one at a time per account. A
+ * transaction reset only learns which documents it unbooks by reading, so per-record keys alone
+ * let a payment on one of them interleave with it and be erased (security review 2026-11, wave 2).
+ */
+export const ACCOUNT_BOOKINGS: SevdeskObjectRef = { objectName: "Bookings", id: "account" };
+
+/**
  * A handler's successful result. `data` must match the tool's output schema; `summary` is one
  * short, trusted sentence (no upstream text) shown before the JSON.
  */
@@ -138,6 +146,13 @@ export interface WritePlan<S> {
    * differs, and an approval covers both texts.
    */
   readonly previewDe?: ConfirmationPreview;
+  /**
+   * A digest of content the action depends on but the preview does not show in full (e.g. a
+   * document's printed texts, address and positions, see `documentBinding`). The approval covers
+   * it together with the previews: when it changes between the confirmation and the approved
+   * retry, the human is asked again instead of the action running on content nobody approved.
+   */
+  readonly binding?: string;
   /**
    * Whatever `execute` needs from the reads `prepare` made (e.g. the current invoice, the
    * resolved contact person), so `execute` does not read it again. Not shown to anyone.
@@ -253,6 +268,14 @@ export interface WriteToolDefinition<
    * must return `previewDe` as well: it does not compile without it.
    */
   readonly prepare: (args: z.output<I>, ctx: PrepareContext) => Promise<WritePlanOf<S, T>>;
+  /**
+   * The records whose state `prepare` checks and `execute` changes in a way that must not
+   * interleave with another call (e.g. a payment's document and bank transaction: the open
+   * amount is checked, then booked). Calls of the same account that share a record run one at a
+   * time, from `prepare` to the end of `execute` (`RecordLocks`), so the second one reads what the
+   * first one booked. Omit for tools whose checks do not depend on such state.
+   */
+  readonly locks?: (args: z.output<I>) => readonly SevdeskObjectRef[];
   /**
    * Performs exactly the writes the preview describes, then reads the result back and returns
    * it, with every created or changed record in `affected`. Runs only after `prepare` succeeded

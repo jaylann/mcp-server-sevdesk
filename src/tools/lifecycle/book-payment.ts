@@ -56,7 +56,7 @@ import { SevdeskError } from "../../sevdesk/errors.js";
 import { sevdeskPath } from "../../sevdesk/paths.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { defineWriteTool } from "../define-tool.js";
-import type { SevdeskObjectRef } from "../types.js";
+import { ACCOUNT_BOOKINGS, type SevdeskObjectRef } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 import {
   capitalize,
@@ -346,6 +346,14 @@ export function bookPaymentTool(kind: PaymentKind) {
       ...dryRunInputShape,
     }),
     output: documentOutputSchema(kind, { payment: paymentOutputSchema }),
+    // The document's open amount (and a linked transaction's state) is checked, then booked.
+    locks: (args) => [
+      ACCOUNT_BOOKINGS,
+      documentObject(kind, args.id),
+      ...(args.transactionId === undefined
+        ? []
+        : [{ objectName: "CheckAccountTransaction", id: String(args.transactionId) }]),
+    ],
     prepare: async (args, ctx) => {
       const doc = await readLifecycleDocument(ctx.client, kind, args.id, ctx.signal);
       assertBookable(doc);

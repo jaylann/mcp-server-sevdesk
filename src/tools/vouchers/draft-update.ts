@@ -30,6 +30,8 @@ export const voucherUpdateDraftTool = defineWriteTool({
   localEffects: "reads-files",
   input: z.strictObject({ ...voucherUpdateInputShape, ...dryRunInputShape }),
   output: voucherDraftOutput,
+  // Serialized with other calls on the same record (see WriteToolDefinition.locks).
+  locks: (args) => [{ objectName: "Voucher", id: String(args.id) }],
   prepare: (args, ctx) =>
     prepareVoucherUpdate(ctx.client, args, {
       signal: ctx.signal,

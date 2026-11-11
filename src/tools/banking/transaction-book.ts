@@ -46,7 +46,7 @@ import {
 } from "../../domain/reconciliation/transaction-log.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import { defineWriteTool } from "../define-tool.js";
-import type { ToolContext } from "../types.js";
+import { ACCOUNT_BOOKINGS, type ToolContext } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 import {
   COMMIT_ANNOTATIONS,
@@ -207,6 +207,15 @@ export const transactionBookTool = defineWriteTool({
     ...dryRunInputShape,
   }),
   output,
+  // The transaction's unassigned amount and each document's open amount are checked, then booked.
+  locks: (args) => [
+    ACCOUNT_BOOKINGS,
+    { objectName: "CheckAccountTransaction", id: String(args.id) },
+    ...args.allocations.map((allocation) => ({
+      objectName: KINDS[kindOfArg(allocation.kind)].objectName,
+      id: String(allocation.id),
+    })),
+  ],
   prepare: async (args, ctx) => {
     const plan = await planAllocation(
       ctx.client,

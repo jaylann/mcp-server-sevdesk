@@ -16,6 +16,7 @@ import {
 } from "../../domain/reconciliation/transaction-status.js";
 import { sevdeskPath } from "../../sevdesk/paths.js";
 import { defineWriteTool } from "../define-tool.js";
+import { ACCOUNT_BOOKINGS } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 import {
   COMMIT_ANNOTATIONS,
@@ -71,6 +72,11 @@ export const transactionMarkPrivateTool = defineWriteTool({
   annotations: COMMIT_ANNOTATIONS,
   input: z.strictObject({ id: transactionIdInput, ...dryRunInputShape }),
   output: z.object({ transaction: transactionDtoSchema }),
+  // Serialized with other calls on the same record (see WriteToolDefinition.locks).
+  locks: (args) => [
+    ACCOUNT_BOOKINGS,
+    { objectName: "CheckAccountTransaction", id: String(args.id) },
+  ],
   prepare: async (args, ctx) => {
     const transaction = await lookup(
       () => getTransaction(ctx.client, args.id, ctx.signal),

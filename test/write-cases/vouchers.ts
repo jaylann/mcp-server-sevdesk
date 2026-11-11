@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { type AnyWriteToolDefinition, isWriteTool } from "../../src/tools/types.js";
 import { VOUCHER_WRITE_TOOLS } from "../../src/tools/vouchers/write-tools.js";
 import type { WriteToolCase } from "../helpers/write-cases.js";
-import { accountRoute, accountRow } from "../unit/tools/lifecycle/helpers.js";
+import { accountRoute, accountRow, positionRoutes } from "../unit/tools/lifecycle/helpers.js";
 import {
   CREATE_READ_ROUTES,
   draftRow,
@@ -149,6 +149,7 @@ export const VOUCHERS_CASES: readonly WriteToolCase[] = [
     args: { id: 2001 },
     routes: [
       voucherRoute(openVoucher),
+      ...positionRoutes(),
       writeRoute("PUT", "/Voucher/2001/enshrine", "voucher-delete.json"),
     ],
     writes: [{ method: "PUT", path: "/Voucher/2001/enshrine" }],

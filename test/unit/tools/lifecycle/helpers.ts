@@ -101,6 +101,17 @@ export function documentRoute(kind: keyof typeof OBJECT_PATHS, row: Row): FakeRo
   };
 }
 
+/**
+ * Empty position lists of every kind: what the approval binding of finalize, send and enshrine
+ * reads (`documentBinding`). `rows` for one path replace its empty list.
+ */
+export function positionRoutes(rows: Readonly<Record<string, readonly Row[]>> = {}): FakeRoute[] {
+  return ["/InvoicePos", "/CreditNotePos", "/OrderPos", "/VoucherPos"].map((path) => ({
+    path,
+    response: { body: { objects: rows[path] ?? [] } },
+  }));
+}
+
 /** `GET /CheckAccount/{id}`. */
 export function accountRoute(row: Row): FakeRoute {
   return { path: `/CheckAccount/${String(row["id"])}`, response: { body: { objects: [row] } } };
@@ -140,7 +151,8 @@ export class StagedClient implements SevdeskClient {
   private written = false;
 
   constructor(before: readonly FakeRoute[], after: readonly FakeRoute[]) {
-    this.before = new FakeSevdeskClient(before);
+    // Empty position lists after the given routes: the approval binding reads them.
+    this.before = new FakeSevdeskClient([...before, ...positionRoutes()]);
     this.after = new FakeSevdeskClient(after);
   }
 

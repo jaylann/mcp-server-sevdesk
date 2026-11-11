@@ -34,6 +34,8 @@ export const invoiceUpdateDraftTool = defineWriteTool({
   },
   input: z.strictObject({ ...invoiceUpdateInputShape, ...dryRunInputShape }),
   output: invoiceDraftOutput,
+  // Serialized with other calls on the same record (see WriteToolDefinition.locks).
+  locks: (args) => [{ objectName: "Invoice", id: String(args.id) }],
   prepare: (args, ctx) =>
     prepareInvoiceUpdate(ctx.client, args, { signal: ctx.signal, cacheOwner: ctx.config }),
   execute: async (_args, plan, ctx) =>

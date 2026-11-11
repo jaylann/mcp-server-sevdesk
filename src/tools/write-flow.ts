@@ -162,8 +162,26 @@ export function writeOutputSchema(output: z.ZodObject): z.ZodObject {
   return schema;
 }
 
-/** Runs one call of a write tool. Throws like a handler; the registry maps errors. */
+/**
+ * Runs one call of a write tool. Throws like a handler; the registry maps errors. A tool that
+ * declares `locks` runs while holding its records for this account, from `prepare` to the end of
+ * `execute`, so a concurrent call on the same records prepares only after this one booked.
+ */
 export async function runWriteTool(
+  tool: ErasedWriteTool,
+  args: unknown,
+  call: WriteCall,
+): Promise<WriteCallResult> {
+  const records = tool.locks?.(args) ?? [];
+  if (records.length === 0) return runUnlocked(tool, args, call);
+  const { accountScope } = requestPrincipal(call.request.http?.authInfo, call.deps.config);
+  const keys = records.map((record) =>
+    JSON.stringify([accountScope, record.objectName, record.id]),
+  );
+  return call.deps.safety.locks.run(keys, () => runUnlocked(tool, args, call));
+}
+
+async function runUnlocked(
   tool: ErasedWriteTool,
   args: unknown,
   call: WriteCall,
@@ -196,7 +214,7 @@ export async function runWriteTool(
     args,
     plan,
     argsHash,
-    previewHash: previewHash(plan.preview, plan.previewDe),
+    previewHash: previewHash(plan.preview, plan.previewDe, plan.binding),
     preview: displayPreview(plan.preview),
     previewDe: plan.previewDe === undefined ? undefined : displayPreview(plan.previewDe),
   };

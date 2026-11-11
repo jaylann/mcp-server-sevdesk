@@ -22,6 +22,7 @@ import { dryRunInputShape } from "../write-input.js";
 import {
   capitalize,
   COMMIT_ANNOTATIONS,
+  documentBinding,
   documentObject,
   documentOutput,
   documentOutputSchema,
@@ -94,6 +95,8 @@ export function enshrineTool(kind: PaymentKind) {
     annotations: COMMIT_ANNOTATIONS,
     input: z.strictObject({ id: idInput(kind), ...dryRunInputShape }),
     output: documentOutputSchema(kind),
+    // Serialized with other calls on the same record (see WriteToolDefinition.locks).
+    locks: (args) => [documentObject(kind, args.id)],
     prepare: async (args, ctx) => {
       const doc = await readLifecycleDocument(ctx.client, kind, args.id, ctx.signal);
       assertEnshrinable(doc);
@@ -108,6 +111,7 @@ export function enshrineTool(kind: PaymentKind) {
           warnings: warnings.map((warning) => warning[lang]),
           irreversible: true,
         })),
+        binding: await documentBinding(ctx, doc),
         state: {},
       };
     },

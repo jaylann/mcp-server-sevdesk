@@ -14,7 +14,9 @@ import {
   readLifecycleDocument,
 } from "../../domain/lifecycle/documents.js";
 import { orderDetailSchema } from "../../domain/orders.js";
+import { listChildRows } from "../../domain/paging.js";
 import { voucherDetailDtoSchema } from "../../domain/vouchers.js";
+import { canonicalJson, sha256Hex } from "../../safety/hashing.js";
 import { SevdeskError, withCompletedWrites } from "../../sevdesk/errors.js";
 import type { ToolsetName } from "../toolsets.js";
 import type { SevdeskObjectRef, ToolAnnotationSet, ToolContext } from "../types.js";
@@ -106,6 +108,53 @@ export function idInput(kind: LifecycleKind) {
 /** `{ objectName, id }` of a document, for `affected` and completed-write lists. */
 export function documentObject(kind: LifecycleKind, id: number): SevdeskObjectRef {
   return { objectName: KINDS[kind].objectName, id: String(id) };
+}
+
+/** Where the positions of each kind live and how they point back to their document. */
+const POSITIONS: Readonly<
+  Record<LifecycleKind, { readonly path: string; readonly parentKey: string }>
+> = {
+  invoice: { path: "/InvoicePos", parentKey: "invoice" },
+  creditNote: { path: "/CreditNotePos", parentKey: "creditNote" },
+  order: { path: "/OrderPos", parentKey: "order" },
+  voucher: { path: "/VoucherPos", parentKey: "voucher" },
+};
+
+/** The parent id a raw position row names (`<parentKey>.id`), as a string. */
+function parentIdOf(row: unknown, parentKey: string): string | undefined {
+  if (typeof row !== "object" || row === null) return undefined;
+  const parent = (row as Record<string, unknown>)[parentKey];
+  if (typeof parent !== "object" || parent === null) return undefined;
+  const id = (parent as Record<string, unknown>)["id"];
+  return typeof id === "string" || typeof id === "number" ? String(id) : undefined;
+}
+
+/**
+ * The approval binding of a lifecycle action (see `WritePlan.binding`): a SHA-256 of the record
+ * as sevDesk sent it (full texts, exact `update` time) and of all its positions as stored. The
+ * preview shows only identifying facts and totals; this covers the rest, so a document edited
+ * after the human was asked (new bank details in the foot text, a changed position text with the
+ * same total) is asked about again instead of finalized, sent or enshrined. The first version
+ * hashed the display DTO, which cuts long texts and keeps only the date of `update`, and read no
+ * positions (security review 2026-11, wave 2). One more read per confirmed call.
+ */
+export async function documentBinding(ctx: ToolContext, doc: LifecycleDocument): Promise<string> {
+  if (doc.raw === undefined) {
+    throw new Error("documentBinding needs a document from readLifecycleDocument.");
+  }
+  const { path, parentKey } = POSITIONS[doc.kind];
+  const id = String(doc.id);
+  // The rows as sevDesk sent them (full texts), checked against their parent like every
+  // position read; `complete` is hashed too, so a list cut at the cap is not mistaken for a
+  // complete one.
+  const positions = await listChildRows(
+    ctx.client,
+    path,
+    { [`${parentKey}[id]`]: id, [`${parentKey}[objectName]`]: KINDS[doc.kind].objectName },
+    { parse: (row) => row, belongs: (row) => parentIdOf(row, parentKey) === id },
+    ctx.signal,
+  );
+  return sha256Hex(canonicalJson({ kind: doc.kind, record: doc.raw, positions }));
 }
 
 /**
