@@ -84,7 +84,8 @@ runs:
         done
         [ "$health" = healthy ] || fail "The container did not become healthy within 90 s (status '$health')."
 
-        pnpm exec tsx scripts/smoke-http.ts --url "http://127.0.0.1:$HOST_PORT" --bearer "$SEVDESK_HTTP_BEARER_TOKEN"
+        # The token comes from the exported SEVDESK_HTTP_BEARER_TOKEN, never from an argument.
+        pnpm exec tsx scripts/smoke-http.ts --url "http://127.0.0.1:$HOST_PORT"
 
         if docker logs "$CONTAINER" 2>&1 | grep -F -q -e "$SEVDESK_HTTP_BEARER_TOKEN" -e "$SEVDESK_API_TOKEN"; then
           fail "The container log contains a token."
