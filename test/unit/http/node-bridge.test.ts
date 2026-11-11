@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -353,5 +354,55 @@ describe("fromWebRequest", () => {
     const empty = fromWebRequest(new Request("http://localhost/x", { method: "POST" }));
     expect(await empty.readBody(3)).toEqual(new Uint8Array());
     expect(empty.bodyPending).toBe(false);
+  });
+});
+
+describe("writeNodeResponse: a client that stops reading (security review 2026-11, finding 5)", () => {
+  /** A response whose socket never drains, as when the client stops reading. */
+  function stalledResponse() {
+    const events = new EventEmitter();
+    const res = Object.assign(events, {
+      destroyed: false,
+      writeHead: () => res,
+      flushHeaders: () => undefined,
+      write: () => false,
+      end: () => undefined,
+      destroy: () => {
+        res.destroyed = true;
+        events.emit("close");
+        return res;
+      },
+    });
+    return res;
+  }
+
+  it("drops the connection once a write waited stallMs, ending the response", async () => {
+    vi.useFakeTimers();
+    try {
+      const res = stalledResponse();
+      let cancelled = false;
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          controller.enqueue(new Uint8Array(1024));
+        },
+        cancel() {
+          cancelled = true;
+        },
+      });
+      const writing = writeNodeResponse(res as unknown as ServerResponse, new Response(body), {
+        head: false,
+        closeConnection: false,
+        stallMs: 5_000,
+      });
+
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(res.destroyed).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      await writing;
+      expect(res.destroyed).toBe(true);
+      expect(cancelled).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -598,6 +598,10 @@ function trackBody(
   let ended = false;
   const onAbort = (): void => {
     void reader.cancel(signal?.reason).catch(() => undefined);
+    // Release the slot now: a consumer stuck writing to a client that stopped reading would
+    // otherwise never pull again, and the slot stayed taken past the deadline (security review
+    // 2026-11, finding 5).
+    end();
   };
   const end = (): void => {
     if (ended) return;

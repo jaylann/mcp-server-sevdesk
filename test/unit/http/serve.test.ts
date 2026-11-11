@@ -12,6 +12,7 @@ import { createMcpRoute, MCP_PATH } from "../../../src/http/mcp-route.js";
 import {
   exitOnSignals,
   type HttpServerHandle,
+  limitConnectionsPerClient,
   SERVER_LIMITS,
   startHttpServer,
   type StartHttpServerOptions,
@@ -156,6 +157,7 @@ describe("startHttpServer", () => {
       requestTimeoutMs: 30_000,
       keepAliveTimeoutMs: 65_000,
       maxConnections: 256,
+      maxConnectionsPerClient: 64,
     });
   });
 });
@@ -512,5 +514,45 @@ describe("slow and unauthenticated clients over a real socket (review #2)", () =
     expect(await upload.status).toBe(408);
     await closed;
     expect(handle.router.inFlight).toBe(0);
+  });
+});
+
+describe("connections per client (security review 2026-11, wave 2)", () => {
+  it("drops a client's connection beyond its share, keeping the others", async () => {
+    const server = createServer((_req, res) => res.end("ok"));
+    limitConnectionsPerClient(server, 2);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as AddressInfo;
+    const sockets: Socket[] = [];
+    const opened = (): Promise<Socket> =>
+      new Promise((resolve) => {
+        const socket = connect(port, "127.0.0.1", () => {
+          resolve(socket);
+        });
+        sockets.push(socket);
+      });
+    const closed = (socket: Socket): Promise<boolean> =>
+      new Promise((resolve) => {
+        socket.once("close", () => {
+          resolve(true);
+        });
+        setTimeout(() => {
+          resolve(false);
+        }, 300);
+      });
+    try {
+      const [a, b] = [await opened(), await opened()];
+      const third = await opened();
+      expect(await closed(third)).toBe(true);
+      expect(a.destroyed || b.destroyed).toBe(false);
+      // A closed connection frees its share again.
+      a.destroy();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const fourth = await opened();
+      expect(await closed(fourth)).toBe(false);
+    } finally {
+      for (const socket of sockets) socket.destroy();
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 });

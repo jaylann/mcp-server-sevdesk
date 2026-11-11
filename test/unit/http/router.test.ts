@@ -391,6 +391,19 @@ describe("router: limits", () => {
     expect(router.inFlight).toBe(0);
   });
 
+  it("frees the slot at the deadline even when nothing reads the body (security review 2026-11, finding 5)", async () => {
+    vi.useFakeTimers();
+    const { router, call } = setup(
+      [route({ handle: () => Promise.resolve(new Response(new ReadableStream<Uint8Array>())) })],
+      { deadlineMs: 1_000 },
+    );
+    // The consumer (a writer stuck on a client that stopped reading) never pulls the body.
+    await call("/echo");
+    expect(router.inFlight).toBe(1);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(router.inFlight).toBe(0);
+  });
+
   it("refuses new requests while draining", async () => {
     const { router, call } = setup([route()]);
     router.drain();
