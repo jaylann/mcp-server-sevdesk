@@ -152,18 +152,17 @@ async function revoke(
     io.out(`Revoked grant ${target.grantId}. Its client is signed out on its next request.\n`);
     return 0;
   }
-  const accounts =
-    "accountId" in target
-      ? [target.accountId]
-      : [...new Set(store.list().map((grant) => grant.accountId))];
-  let count = 0;
-  for (const account of accounts) count += await store.revokeAccount(account, "operator");
-  const scope = "accountId" in target ? ` of account ${target.accountId}` : "";
+  const all = !("accountId" in target);
+  const count = all
+    ? await store.revokeAll("operator")
+    : await store.revokeAccount(target.accountId, "operator");
+  const scope = all ? "" : ` of account ${target.accountId}`;
   io.out(
-    count === 0
-      ? `No active grants${scope}.\n`
+    (count === 0
+      ? `No active grants${scope}.`
       : `Revoked ${String(count)} active grant${count === 1 ? "" : "s"}${scope}. Their clients are ` +
-          "signed out on their next request.\n",
+        "signed out on their next request.") +
+      (all ? " Every browser session was signed out as well.\n" : "\n"),
   );
   return 0;
 }

@@ -232,6 +232,11 @@ export interface SessionStore {
   /** The session when it exists, is unexpired and not revoked, and its grant (if any) is not revoked. */
   getSession(sid: string): SessionRecord | undefined;
   revokeSession(sid: string): Promise<void>;
+  /**
+   * Applies events another process appended (`grants revoke`; at most once per second unless
+   * forced). Awaited before a session is trusted, since `getSession` answers from memory.
+   */
+  sync(force?: boolean): Promise<void>;
 }
 
 /** Result of {@link GrantStore.rotate}. */
@@ -270,10 +275,13 @@ export interface GrantStore extends SessionStore {
   revoke(gid: string, reason: string): Promise<boolean>;
   /** Revokes every grant of an account and their sessions; returns how many were active. */
   revokeAccount(accountId: string, reason: string): Promise<number>;
+  /**
+   * Revokes every grant and every browser session, those without a grant included; returns how
+   * many grants were active.
+   */
+  revokeAll(reason: string): Promise<number>;
   /** All known grants, newest first. */
   list(): readonly GrantRecord[];
-  /** Applies events another process appended (at most once per second unless forced). */
-  sync(force?: boolean): Promise<void>;
   /** Flushes, releases the lock. */
   close(): Promise<void>;
 }

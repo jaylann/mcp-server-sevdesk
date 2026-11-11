@@ -89,6 +89,9 @@ export function createMemorySessionStore(now: () => number): MemorySessionStore 
       records.delete(sid);
       return Promise.resolve();
     },
+    sync() {
+      return Promise.resolve();
+    },
     revokeGrant(gid) {
       revokedGrants.add(gid);
     },

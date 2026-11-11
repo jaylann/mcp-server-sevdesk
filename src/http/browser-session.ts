@@ -184,6 +184,10 @@ export function createBrowserSession(options: BrowserSessionOptions): BrowserSes
     request: Request,
     ctx: HttpRequestContext,
   ): Promise<SessionRecord | undefined> {
+    // `readSession` answers from memory: first pick up a `grants revoke` another process
+    // appended, so a revoked session cannot decide an approval on the next request (security
+    // review 2026-11, finding 4).
+    await sessions.sync();
     const session = readSession(request, { keys, store: sessions, origin, now });
     if (session === undefined || allowed(session.accountId)) return session;
     await sessions.revokeSession(session.sid);
