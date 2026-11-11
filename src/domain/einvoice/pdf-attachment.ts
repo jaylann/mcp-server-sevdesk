@@ -5,7 +5,9 @@
  *
  * - Loading is bounded: pdf-lib decodes object and cross-reference streams while it loads, so
  *   the load runs under `withPdfLoadBudget` (`pdf-load-guard.ts`), which refuses those streams
- *   when they decompress beyond 64 MiB in total or use a filter other than FlateDecode.
+ *   when they decompress beyond 64 MiB in total or use a filter other than FlateDecode, and
+ *   stops a load that builds more than a million values, takes more parser steps than its size
+ *   explains, or holds an overlong name, number or string.
  * - Embedded files are collected from the catalog's associated files array (`/AF`, PDF/A-3) and
  *   from the `/Names /EmbeddedFiles` name tree (`/Names` pairs and `/Kids`, depth-limited, cycles
  *   ignored), deduplicated.
@@ -67,7 +69,7 @@ export const PLAIN_RECEIPT_HINT =
  */
 export async function extractEInvoiceXml(
   bytes: Uint8Array,
-  options: { readonly maxLoadInflatedBytes?: number } = {},
+  options: { readonly maxLoadInflatedBytes?: number; readonly maxLoadValues?: number } = {},
 ): Promise<PdfAttachment> {
   let document: PDFDocument;
   try {
@@ -79,6 +81,7 @@ export async function extractEInvoiceXml(
           throwOnInvalidObject: false,
         }),
       options.maxLoadInflatedBytes,
+      options.maxLoadValues,
     );
   } catch (error) {
     if (error instanceof SevdeskError) throw error;
