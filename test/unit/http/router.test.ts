@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { GRANT_EXTRA_KEY, VerifiedGrant } from "../../../src/accounts/types.js";
 import { jsonResponse } from "../../../src/http/hardening.js";
 import { createHttpLog } from "../../../src/http/log.js";
 import type { IncomingRequest } from "../../../src/http/node-bridge.js";
@@ -643,6 +644,172 @@ describe("router: slow and unauthenticated clients (review #2)", () => {
     await vi.advanceTimersByTimeAsync(5_000);
     for (const response of await Promise.all(uploads)) expect(response.status).toBe(408);
     expect(router.inFlight).toBe(0);
+  });
+});
+
+describe("router: one account cannot take every slot (review 2026-11, round 3)", () => {
+  /** `Authorization: Bearer <account>/<grant>` is that grant; `Bearer shared` has no grant. */
+  const authenticator: HttpAuthenticator = {
+    authenticate: (request) => {
+      const presented = request.headers.get("authorization")?.slice("Bearer ".length) ?? "";
+      if (presented === "") return Promise.resolve(jsonResponse(401, { error: "invalid_token" }));
+      if (presented === "shared") {
+        return Promise.resolve({ token: "bearer", clientId: "bearer", scopes: ["read"] });
+      }
+      const [accountId = "", grantId = ""] = presented.split("/");
+      const grant = new VerifiedGrant(
+        { grantId, accountId, clientId: "https://client.example/id", tiers: new Set(["read"]) },
+        "sevdesk-token-of-the-account",
+      );
+      return Promise.resolve({
+        token: "sealed",
+        clientId: grant.clientId,
+        scopes: ["read"],
+        extra: { [GRANT_EXTRA_KEY]: grant },
+      });
+    },
+  };
+  function accountSetup(options: Partial<RouterOptions>) {
+    const gate = deferred();
+    let started = 0;
+    const mcp: AuthenticatedRoute = {
+      ...route({
+        path: "/mcp",
+        methods: ["GET", "POST"],
+        handle: async () => {
+          started += 1;
+          await gate.promise;
+          return new Response("done");
+        },
+      }),
+      authenticator,
+    };
+    const { router } = setup([mcp, route()], { maxPerClient: 100, ...options });
+    const mcpFrom = (credential: string, ip: string) =>
+      router.fetch(
+        new Request("https://mcp.example.com/mcp", {
+          headers: { Authorization: `Bearer ${credential}` },
+        }),
+        ip,
+      );
+    const echoFrom = (ip: string) => router.fetch(new Request("https://mcp.example.com/echo"), ip);
+    return { router, gate, mcpFrom, echoFrom, started: () => started };
+  }
+
+  it("caps the requests of one account across addresses and grants, before the body is read", async () => {
+    const { router, gate, mcpFrom, started } = accountSetup({ maxPerAccount: 2 });
+    // One account, two grants, two addresses: the per-client cap sees two clients with one each.
+    const held = [mcpFrom("4711/grant-a", "10.0.0.1"), mcpFrom("4711/grant-b", "10.0.0.2")];
+    await vi.waitFor(() => {
+      expect(started()).toBe(2);
+    });
+    const readBody = vi.fn(() => Promise.resolve(new Uint8Array()));
+    const refused = await router.serve(
+      incoming({
+        method: "POST",
+        target: "/mcp",
+        headers: new Headers({ host: "mcp.example.com", authorization: "Bearer 4711/grant-c" }),
+        remoteAddress: "10.0.0.3",
+        readBody,
+        bodyPending: true,
+      }),
+    );
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get("retry-after")).toBe("1");
+    expect(await refused.json()).toEqual({
+      jsonrpc: "2.0",
+      error: { code: -32_000, message: expect.stringContaining("sevDesk account") as string },
+      id: null,
+    });
+    expect(readBody).not.toHaveBeenCalled();
+    expect(started()).toBe(2);
+    expect(router.inFlight).toBe(2);
+
+    // Another account is not affected, and neither are requests without a grant.
+    const other = mcpFrom("4712/grant-d", "10.0.0.3");
+    const shared = mcpFrom("shared", "10.0.0.3");
+    await vi.waitFor(() => {
+      expect(started()).toBe(4);
+    });
+    gate.resolve();
+    for (const response of await Promise.all([...held, other, shared])) {
+      expect(await response.text()).toBe("done");
+    }
+    expect(router.inFlight).toBe(0);
+    // The refusal did not leak a slot: the account can use both again.
+    const again = await Promise.all([
+      mcpFrom("4711/grant-c", "10.0.0.3"),
+      mcpFrom("4711/grant-a", "10.0.0.1"),
+    ]);
+    expect(again.map((response) => response.status)).toEqual([200, 200]);
+    for (const response of again) await response.text();
+    expect(router.inFlight).toBe(0);
+  });
+
+  it("counts requests without a grant (bearer mode) under one key, 8 by default", async () => {
+    const { router, gate, mcpFrom, started } = accountSetup({});
+    const held = Array.from({ length: 8 }, (_, index) =>
+      mcpFrom("shared", `10.0.1.${String(index)}`),
+    );
+    await vi.waitFor(() => {
+      expect(started()).toBe(8);
+    });
+    expect((await mcpFrom("shared", "10.0.1.99")).status).toBe(429);
+    gate.resolve();
+    for (const response of await Promise.all(held)) await response.text();
+    expect(router.inFlight).toBe(0);
+  });
+
+  it("keeps handler slots that the authenticated route cannot use", async () => {
+    // 8 slots, an eighth reserved: /mcp may use 7, however many accounts ask.
+    const { router, gate, mcpFrom, echoFrom, started } = accountSetup({ maxInFlight: 8 });
+    const held = Array.from({ length: 7 }, (_, index) =>
+      mcpFrom(`${String(100 + index)}/grant`, `10.0.2.${String(index)}`),
+    );
+    await vi.waitFor(() => {
+      expect(started()).toBe(7);
+    });
+    const busy = await mcpFrom("999/grant", "10.0.2.99");
+    expect(busy.status).toBe(503);
+    expect(started()).toBe(7);
+    // Token refresh, sign-in and the pages still get through.
+    const page = await echoFrom("10.0.2.99");
+    expect(page.status).toBe(200);
+    expect(await page.text()).toBe("ok");
+    gate.resolve();
+    for (const response of await Promise.all(held)) await response.text();
+    expect(router.inFlight).toBe(0);
+  });
+
+  it("takes the number of reserved slots as an option, and none for a tiny cap", async () => {
+    const reserved = accountSetup({ maxInFlight: 4, reservedInFlight: 2 });
+    const held = [reserved.mcpFrom("1/grant", "10.0.3.1"), reserved.mcpFrom("2/grant", "10.0.3.2")];
+    await vi.waitFor(() => {
+      expect(reserved.started()).toBe(2);
+    });
+    expect((await reserved.mcpFrom("3/grant", "10.0.3.3")).status).toBe(503);
+    expect((await reserved.echoFrom("10.0.3.3")).status).toBe(200);
+    reserved.gate.resolve();
+    for (const response of await Promise.all(held)) await response.text();
+
+    // Below 8 slots the default reserves none: the authenticated route may use them all.
+    const tiny = accountSetup({ maxInFlight: 1 });
+    const only = tiny.mcpFrom("1/grant", "10.0.3.1");
+    await vi.waitFor(() => {
+      expect(tiny.started()).toBe(1);
+    });
+    expect((await tiny.echoFrom("10.0.3.2")).status).toBe(503);
+    tiny.gate.resolve();
+    expect(await (await only).text()).toBe("done");
+  });
+
+  it("refuses invalid caps", () => {
+    const build = (options: Partial<RouterOptions>) => () => setup([route()], options);
+    expect(build({ maxPerAccount: 0 })).toThrow(/maxPerAccount/);
+    expect(build({ maxPerAccount: 1.5 })).toThrow(/maxPerAccount/);
+    expect(build({ reservedInFlight: -1 })).toThrow(/reservedInFlight/);
+    expect(build({ maxInFlight: 4, reservedInFlight: 4 })).toThrow(/reservedInFlight/);
+    expect(build({ maxInFlight: 4, reservedInFlight: 3 })).not.toThrow();
   });
 });
 

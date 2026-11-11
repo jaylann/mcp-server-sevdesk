@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
+import { type AddressInfo, connect } from "node:net";
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -9,6 +9,7 @@ import {
   fromNodeRequest,
   fromWebRequest,
   type IncomingRequest,
+  WRITE_SLICE_BYTES,
   writeNodeResponse,
 } from "../../../src/http/node-bridge.js";
 import { openRequest, rawRequest } from "../../helpers/http-raw.js";
@@ -137,10 +138,23 @@ describe("fromNodeRequest", () => {
   });
 
   it("drops the connection once a streamed body exceeds the discard budget", async () => {
-    void serveWith(async (incoming) => {
+    // Whether the server closed the socket while the request was still incomplete.
+    const cut = deferred<{ incomplete: boolean; discarded: number }>();
+    handler = async (req, res) => {
+      let discarded = 0;
+      req.on("data", (chunk: Buffer) => {
+        discarded += chunk.byteLength;
+      });
+      req.socket.once("close", () => {
+        cut.resolve({ incomplete: !req.complete, discarded });
+      });
+      const incoming = fromNodeRequest(req, res);
       await incoming.readBody(10);
-      return new Response(null, { status: 413 });
-    });
+      await writeNodeResponse(res, new Response(null, { status: 413 }), {
+        head: false,
+        closeConnection: true,
+      });
+    };
     const exchange = openRequest(port, {
       method: "POST",
       headers: { "Transfer-Encoding": "chunked" },
@@ -149,16 +163,27 @@ describe("fromNodeRequest", () => {
     exchange.request.on("error", () => undefined);
     const chunk = Buffer.alloc(1024 * 1024, 120);
     for (let index = 0; index < 10; index += 1) exchange.request.write(chunk);
-    exchange.request.end();
+    // The request is never ended: only the server can close this connection. A server without
+    // the budget would keep reading, and the test would time out.
+    const { incomplete, discarded } = await cut.promise;
+    expect(incomplete).toBe(true);
+    expect(discarded).toBeGreaterThan(DISCARD_LIMIT_BYTES);
+    expect(discarded).toBeLessThanOrEqual(10 * 1024 * 1024);
     await closed;
+    expect(exchange.request.writableEnded).toBe(false);
     expect(exchange.request.destroyed).toBe(true);
   });
 
   it("rejects the body read when the client goes away mid-body, and aborts the signal", async () => {
     const outcome = deferred<{ error: unknown; signal: AbortSignal }>();
+    // Resolved on the server once the partial body has arrived there: only then does the
+    // disconnect happen mid-body for certain (a client-side check races with the server).
+    const arrived = deferred();
     void serveWith(async (incoming) => {
       try {
-        await incoming.readBody(1_000);
+        await incoming.readBody(1_000, (bytes) => {
+          if (bytes > 0) arrived.resolve();
+        });
       } catch (error) {
         outcome.resolve({ error, signal: incoming.signal });
       }
@@ -169,9 +194,7 @@ describe("fromNodeRequest", () => {
       headers: { "Content-Length": "100" },
       body: "partial",
     });
-    await vi.waitFor(() => {
-      expect(exchange.request.writableLength).toBe(0);
-    });
+    await arrived.promise;
     exchange.request.destroy();
     const { error, signal } = await outcome.promise;
     expect(error).toBeInstanceOf(Error);
@@ -182,20 +205,22 @@ describe("fromNodeRequest", () => {
 
   it("aborts the signal when the client disconnects while the handler runs", async () => {
     const aborted = deferred();
+    // Resolved on the server once the handler listens for the abort.
+    const listening = deferred();
     void serveWith(async (incoming) => {
+      expect(incoming.signal.aborted).toBe(false);
       await new Promise<void>((resolve) => {
         incoming.signal.addEventListener("abort", () => {
           resolve();
         });
+        listening.resolve();
       });
       aborted.resolve();
       return new Response("late");
     });
     const exchange = openRequest(port, { path: "/slow" });
     exchange.request.end();
-    await vi.waitFor(() => {
-      expect(exchange.request.writableFinished).toBe(true);
-    });
+    await listening.promise;
     exchange.request.destroy();
     await aborted.promise;
   });
@@ -269,11 +294,15 @@ describe("writeNodeResponse", () => {
 
   it("cancels the body when the client is already gone", async () => {
     const cancelled = deferred();
+    // Resolved on the server once the handler waits for the disconnect.
+    const listening = deferred();
     void serveWith(async (incoming) => {
+      expect(incoming.signal.aborted).toBe(false);
       await new Promise<void>((resolve) => {
         incoming.signal.addEventListener("abort", () => {
           resolve();
         });
+        listening.resolve();
       });
       return new Response(
         new ReadableStream<Uint8Array>({
@@ -285,9 +314,7 @@ describe("writeNodeResponse", () => {
     });
     const exchange = openRequest(port);
     exchange.request.end();
-    await vi.waitFor(() => {
-      expect(exchange.request.writableFinished).toBe(true);
-    });
+    await listening.promise;
     exchange.request.destroy();
     await cancelled.promise;
   });
@@ -405,4 +432,114 @@ describe("writeNodeResponse: a client that stops reading (security review 2026-1
       vi.useRealTimers();
     }
   });
+});
+
+describe("writeNodeResponse: a slow but steady reader (review 2026-11, round 3)", () => {
+  const MIB = 1024 * 1024;
+
+  it("writes a large chunk in slices, so the stall timer does not measure the whole body", async () => {
+    vi.useFakeTimers();
+    try {
+      // A client that takes 64 KiB every 4 s: each write drains after its size at that speed.
+      const events = new EventEmitter();
+      const written: number[] = [];
+      let ended = false;
+      const res = Object.assign(events, {
+        destroyed: false,
+        writeHead: () => res,
+        flushHeaders: () => undefined,
+        write: (chunk: Uint8Array) => {
+          written.push(chunk.byteLength);
+          setTimeout(() => events.emit("drain"), (chunk.byteLength / WRITE_SLICE_BYTES) * 4_000);
+          return false;
+        },
+        end: () => {
+          ended = true;
+        },
+        destroy: () => {
+          res.destroyed = true;
+          events.emit("close");
+          return res;
+        },
+      });
+      // One chunk, as a download is: 1 MiB takes 64 s at this speed, far past the 5 s stall time.
+      const writing = writeNodeResponse(
+        res as unknown as ServerResponse,
+        new Response(new Uint8Array(MIB + 10)),
+        { head: false, closeConnection: false, stallMs: 5_000 },
+      );
+      await vi.advanceTimersByTimeAsync(70_000);
+      await writing;
+      expect(res.destroyed).toBe(false);
+      expect(ended).toBe(true);
+      expect(written).toEqual([...Array.from({ length: 16 }, () => WRITE_SLICE_BYTES), 10]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  /** Serves one response of `size` bytes in one chunk; resolves when the write is over. */
+  function serveDownload(size: number, stallMs: number) {
+    const done = deferred<{ ms: number; destroyed: boolean }>();
+    handler = async (_req, res) => {
+      const started = Date.now();
+      await writeNodeResponse(
+        res,
+        new Response(new Uint8Array(size), { headers: { "Content-Length": String(size) } }),
+        { head: false, closeConnection: true, stallMs },
+      );
+      done.resolve({ ms: Date.now() - started, destroyed: res.destroyed });
+    };
+    return done.promise;
+  }
+
+  /** A client on a real socket that takes one read, then nothing for `pauseMs` (never: Infinity). */
+  function throttledClient(pauseMs: number) {
+    const socket = connect(port, "127.0.0.1");
+    let received = 0;
+    const closed = new Promise<number>((resolve) => {
+      socket.on("close", () => {
+        resolve(received);
+      });
+    });
+    socket.on("error", () => undefined);
+    socket.on("data", (chunk: Buffer) => {
+      received += chunk.byteLength;
+      socket.pause();
+      if (Number.isFinite(pauseMs)) setTimeout(() => socket.resume(), pauseMs);
+    });
+    socket.write("GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+    return { socket, closed };
+  }
+
+  it("sends the whole body to a client that keeps reading slowly, past stallMs", async () => {
+    const size = 16 * MIB;
+    const stallMs = 400;
+    const served = serveDownload(size, stallMs);
+    // At most two reads' worth (128 KiB) every 15 ms: 16 MiB take far longer than stallMs, even
+    // with several MiB waiting in the socket buffers.
+    const client = throttledClient(15);
+    const received = await client.closed;
+    const { ms, destroyed } = await served;
+    expect(received).toBeGreaterThanOrEqual(size);
+    expect(destroyed).toBe(false);
+    // The server was writing for longer than the stall time: one write of the whole body would
+    // have been cut.
+    expect(ms).toBeGreaterThan(stallMs);
+  }, 30_000);
+
+  it("still cuts a client that stops reading", async () => {
+    const size = 16 * MIB;
+    const stallMs = 300;
+    const served = serveDownload(size, stallMs);
+    const client = throttledClient(Number.POSITIVE_INFINITY);
+    const { ms, destroyed } = await served;
+    expect(destroyed).toBe(true);
+    expect(ms).toBeGreaterThanOrEqual(stallMs - 20);
+    expect(ms).toBeLessThan(5_000);
+    // What the client finds when it reads on: a body that ends early.
+    client.socket.on("data", () => client.socket.resume());
+    client.socket.resume();
+    expect(await client.closed).toBeLessThan(size);
+  }, 30_000);
 });
