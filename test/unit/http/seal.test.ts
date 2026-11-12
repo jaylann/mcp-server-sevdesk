@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -24,6 +25,33 @@ import {
 const ISSUER = "https://mcp.example.com";
 const secretA = new Uint8Array(randomBytes(32));
 const secretB = new Uint8Array(randomBytes(32));
+
+describe("redactSealed properties", () => {
+  it("removes generated tokens of every purpose at every position and on repeated calls", () => {
+    const bodies = fc.array(fc.uint8Array({ minLength: 34, maxLength: 256 }), {
+      minLength: 1,
+      maxLength: 8,
+    });
+    fc.assert(
+      fc.property(bodies, (values) => {
+        for (const type of ["ac", "at", "rt", "ss", "cs"] as const) {
+          const tokens = values.map(
+            (bytes) => `sdmcp_${type}_${Buffer.from(bytes).toString("base64url")}`,
+          );
+          const text = tokens.join("\n") + ` code=${tokens[0] ?? ""}&state=ok`;
+          const result = redactSealed(text);
+          expect(tokens.every((token) => !result.includes(token))).toBe(true);
+          expect(result).toBe(
+            values.map(() => "[redacted token]").join("\n") + " code=[redacted token]&state=ok",
+          );
+          expect(redactSealed(text)).toBe(result);
+          expect(redactSealed(result)).toBe(result);
+        }
+      }),
+      { numRuns: 100, seed: 20261112 },
+    );
+  });
+});
 
 describe("decodeSecret", () => {
   it("accepts hex, base64 and base64url of at least 32 bytes", () => {
