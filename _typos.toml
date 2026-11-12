@@ -80,5 +80,6 @@ Adresse = "Adresse"
 legt = "legt"
 Offener = "Offener"
 Typs = "Typs"
+passt = "passt"
 # Informal address the German page texts must not use (asserted by a test).
 deine = "deine"
