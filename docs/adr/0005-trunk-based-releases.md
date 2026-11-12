@@ -28,13 +28,18 @@ promoted to `main` for releases. This project is open source and expects externa
   - the MCP Registry entry through `mcp-publisher` with GitHub OIDC;
   - the `.mcpb` bundle as a release asset;
   - the multi-arch GHCR image with a build-provenance attestation and an SBOM.
+- **The release PR is opened by a GitHub App** (`lanfermann-release-bot`, added 2026-11-12), not
+  by `GITHUB_TOKEN`. GitHub runs no workflows on PRs opened with `GITHUB_TOKEN`, so the required
+  checks would never start on the release PR. The app's token can open PRs, push branches and
+  create tags and releases; publishing still runs only on OIDC.
 - **0.x releases from the first milestone on**, so people can try the server early; 1.0.0 at launch.
 
 ## Consequences
 
 - Good: contributors only need to know "branch off `main`, open a PR".
 - Good: every merge to `main` is releasable; versions and changelog are automatic.
-- Good: no publish secrets in the repository; releases carry provenance.
+- Good: no publish secrets in the repository; releases carry provenance. The one release secret,
+  the app's private key, cannot publish anything.
 - Bad: no staging branch where changes collect before a release. The release PR is the batching
   point, and the CI gate (lint, types, tests with coverage, package smoke on three OSes) has to be
   strong enough to keep `main` releasable.

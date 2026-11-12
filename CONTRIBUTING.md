@@ -30,6 +30,18 @@ spec-derived fixtures. If you have one, see [Live tests](#live-tests).
   commit.
 - Keep PRs focused. Add or update tests for every behavior change.
 
+## Releases
+
+Releases are automatic ([ADR 0005](docs/adr/0005-trunk-based-releases.md)). After every merge to
+`main`, release-please opens or updates a release PR with the next version and the changelog,
+derived from the Conventional Commit titles. Merging that PR tags the release and publishes npm,
+the container image, the MCP Registry entry and the Claude Desktop extension.
+
+The release PR is opened by the `lanfermann-release-bot` GitHub App, so CI runs on it like on any
+other PR. Maintainers set this up once per repository: install the app on the repository, store
+its private key as the Actions secret `RP_APP_KEY` and its App ID as the Actions variable
+`RP_APP_ID`. Without them the release workflow fails when it mints the bot's token.
+
 ## Architecture in one minute
 
 Read [docs/architecture.md](docs/architecture.md) first. The short version:
