@@ -1,3 +1,4 @@
+import { renameSync, writeFileSync } from "node:fs";
 import {
   appendFile,
   chmod,
@@ -862,6 +863,31 @@ describe.skipIf(process.getuid === undefined)("state directory ownership", () =>
     const second = await server({ stateDir: dir, getuid: () => process.getuid?.() ?? 0 });
 
     expect(second.get(grant.gid)?.status).toBe("pending");
+  });
+
+  it("checks permissions and reads the same grants file if its path is replaced", async () => {
+    const first = await server({ stateDir: dir });
+    const grant = await pending(first);
+    await first.close();
+    const path = join(dir, GRANTS_FILE);
+    const moved = join(dir, "original.jsonl");
+    await chmod(path, 0o644);
+    let checks = 0;
+    const getuid = (): number => {
+      checks += 1;
+      // The second ownership check is for the grants file, after its metadata was read.
+      if (checks === 2) {
+        renameSync(path, moved);
+        writeFileSync(path, "replacement is not grant data\n", { mode: 0o644 });
+      }
+      return process.getuid?.() ?? 0;
+    };
+
+    const second = await server({ stateDir: dir, getuid });
+
+    expect(checks).toBe(2);
+    expect(second.get(grant.gid)?.status).toBe("pending");
+    expect((await stat(moved)).mode & 0o777).toBe(0o600);
   });
 });
 
