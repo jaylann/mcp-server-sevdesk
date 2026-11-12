@@ -100,6 +100,13 @@ The VAT summary is clearly marked as an estimate (accrual or cash basis). Every 
 `dryRun: true` and then only returns exactly what it would do. The full generated reference is
 [docs/tools.md](docs/tools.md).
 
+A foreign-currency voucher draft can be changed to EUR with `sevdesk_voucher_update_draft`:
+pass `currency: "EUR"` and **all positions with your EUR amounts**, optionally `amountMode`.
+No exchange rate is calculated. Preview with `dryRun: true`, then check the stored currency and
+amounts with `sevdesk_voucher_get` before finalizing. The currency change has fixture coverage;
+its actual stored behavior still needs a [live probe](spec/deviations.md#d-081-converting-a-voucher-draft-to-eur-is-unverified).
+Direct imports of non-EUR e-invoices remain unsupported.
+
 ## Prompts
 
 Ready-made workflows as MCP prompts. Clients list them next to the tools; in Claude Code they are

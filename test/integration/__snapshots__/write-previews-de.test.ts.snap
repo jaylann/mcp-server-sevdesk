@@ -97,6 +97,22 @@ Brutto: 177,33 EUR
 Bisher bezahlt: 0,00 EUR"
 `;
 
+exports[`German previews > convert a USD draft voucher to EUR: says the same in German 1`] = `
+"Belegentwurf 2101 aktualisieren: Währung, Belegnummer, Betragseingabe, Positionen.
+! Die Währung wird mit den angegebenen Positionsbeträgen auf EUR umgestellt. Es wird kein Wechselkurs berechnet; die alten Beträge werden nicht übernommen.
+! Alte Fremdwährungssummen: netto 100,00 USD, USt. 19,00 USD, brutto 119,00 USD (sum…ForeignCurrency).
+! Das gespeicherte Ergebnis einer Währungsumstellung wurde noch nicht am Live-System geprüft. Prüfen Sie nach dem Speichern die Währung und EUR-Beträge vor dem Fertigstellen.
+(umkehrbar)
+Beleg: 2101, Entwurf
+Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
+Währung: USD → EUR
+Belegnummer: ER-2026-0815 → ER-EUR-0815
+Betragseingabe: brutto → netto
+Positionen: 1 Position durch 1 Position ersetzen
+Position 1: 6815 Bürobedarf (Konto 4266): 50,01 EUR netto, 19 % USt. → netto 50,01, USt. 9,50, brutto 59,51
+Summe (erwartet): netto 50,01 EUR, USt. 9,50 EUR, brutto 59,51 EUR"
+`;
+
 exports[`German previews > delete a draft voucher: says the same in German 1`] = `
 "Beleg 2101 (Entwurf) aus sevDesk löschen.
 ! Der Entwurf und alle seine Positionen werden aus sevDesk gelöscht; das lässt sich nicht rückgängig machen.
@@ -459,4 +475,13 @@ Auftraggeber/Empfänger: Musterfirma GmbH
 Verwendungszweck: RE-1001
 Dokument 1: Rechnung 1001: Nummer RE-1001; Status Bezahlt (1000) → offen (200); dieser Umsatz hat 177,33 EUR bezahlt; weitere entfernte Zahlungen: 0,00 EUR
 Dieser Umsatz nach dem Zurücksetzen: ungebucht (Status 100) oder gelöscht, falls sevDesk ihn für eine Buchung angelegt hat"
+`;
+
+exports[`German previews > update a draft voucher: says the same in German 1`] = `
+"Belegentwurf 2101 aktualisieren: Belegnummer.
+(umkehrbar)
+Beleg: 2101, Entwurf
+Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
+Belegnummer: ER-2026-0815 → ER-2026-0816
+Summe (unverändert): 119 EUR"
 `;

@@ -106,6 +106,31 @@ export const VOUCHERS_CASES: readonly WriteToolCase[] = [
     writes: [{ method: "POST", path: "/Voucher/Factory/saveVoucher" }],
   },
   {
+    label: "convert a USD draft voucher to EUR",
+    tool: tool("sevdesk_voucher_update_draft"),
+    args: {
+      id: 2101,
+      currency: "EUR",
+      amountMode: "net",
+      number: "ER-EUR-0815",
+      positions: [{ accountDatevId: 4266, amount: "50.01", taxRate: 19 }],
+    },
+    routes: [
+      voucherRoute(
+        draftRow({
+          currency: "USD",
+          sumNetForeignCurrency: "100.00",
+          sumTaxForeignCurrency: "19.00",
+          sumGrossForeignCurrency: "119.00",
+        }),
+      ),
+      positionsRoute(2101, [positionRow()]),
+      ...CREATE_READ_ROUTES,
+      saveRoute(),
+    ],
+    writes: [{ method: "POST", path: "/Voucher/Factory/saveVoucher" }],
+  },
+  {
     label: "delete a draft voucher",
     tool: tool("sevdesk_voucher_delete_draft"),
     args: { id: 2101 },

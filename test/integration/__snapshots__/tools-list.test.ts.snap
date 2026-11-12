@@ -4077,6 +4077,11 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           ],
           "type": "string",
         },
+        "currency": {
+          "const": "EUR",
+          "description": "Pass "EUR" explicitly to convert a foreign-currency draft. Requires ALL positions with caller-supplied EUR amounts; no exchange rate is calculated. Review with dryRun first.",
+          "type": "string",
+        },
         "date": {
           "description": "Belegdatum, YYYY-MM-DD; default today (Berlin).",
           "type": "string",
@@ -4116,7 +4121,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "string",
         },
         "positions": {
-          "description": "When given, replaces ALL positions; leave out to keep them.",
+          "description": "When given, replaces ALL positions; leave out to keep them. Required with EUR amounts when converting currency.",
           "items": {
             "additionalProperties": false,
             "properties": {
@@ -7304,6 +7309,11 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           ],
           "type": "string",
         },
+        "currency": {
+          "const": "EUR",
+          "description": "Pass "EUR" explicitly to convert a foreign-currency draft. Requires ALL positions with caller-supplied EUR amounts; no exchange rate is calculated. Review with dryRun first.",
+          "type": "string",
+        },
         "date": {
           "description": "Belegdatum, YYYY-MM-DD; default today (Berlin).",
           "type": "string",
@@ -7343,7 +7353,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "string",
         },
         "positions": {
-          "description": "When given, replaces ALL positions; leave out to keep them.",
+          "description": "When given, replaces ALL positions; leave out to keep them. Required with EUR amounts when converting currency.",
           "items": {
             "additionalProperties": false,
             "properties": {

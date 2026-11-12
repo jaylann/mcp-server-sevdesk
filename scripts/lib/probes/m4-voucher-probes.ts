@@ -44,6 +44,7 @@ import {
   transactionsOf,
   uploadTempFile,
   voucherFailure,
+  voucherHeader,
   voucherPosition,
   voucherPositions,
   voucherState,
@@ -301,6 +302,73 @@ export const M4_VOUCHER_PROBES: readonly ProbeDefinition[] = [
         verdict: replacedBoth ? "confirmed" : "observed",
         finding: `Voucher ${id}: ${lines.join(". ")}. Header changes after both updates: ${changedFields(before, after) || "none"}.`,
         deviations: { "D-054": "informs" },
+      };
+    },
+  },
+  {
+    id: "write-voucher-convert-to-eur",
+    title: "Converting a USD voucher draft to EUR with replacement amounts",
+    mode: "write",
+    question:
+      "After explicitly setting a tagged draft to USD with propertyExchangeRate 0.8, does a full saveVoucher header with currency EUR and all-new EUR positions replace the currency and amounts? What remains in sum…ForeignCurrency and the exchange-rate properties?",
+    deviations: ["D-043", "D-081"],
+    async run(ctx) {
+      const accounts = await bookingAccounts(ctx);
+      if (accounts.expense === undefined) return inconclusive(accounts.note);
+      const options = { label: "currency conversion", status: 50 } as const;
+      const created = await createVoucher(ctx, options);
+      if (created.id === undefined) return inconclusive(voucherFailure(created));
+      const id = created.id;
+      const seeded = await saveVoucherStatus(ctx, id, options, {
+        currency: "USD",
+        propertyExchangeRate: 0.8,
+      });
+      const before = await ctx.read.byId("Voucher", id);
+      if (!seeded.ok || str(before, "currency") !== "USD") {
+        return inconclusive(
+          `Could not seed a USD draft: ${outcomeOf(seeded)}; currency ${str(before, "currency")}.`,
+        );
+      }
+      const oldPositions = await voucherPositions(ctx, id);
+      const saved = await ctx.http.write("POST", "/Voucher/Factory/saveVoucher", {
+        tier: "write",
+        body: {
+          voucher: { ...voucherHeader(ctx, options), id, currency: "EUR" },
+          voucherPosSave: [
+            voucherPosition(data(ctx).tag, accounts.expense, {
+              net: false,
+              amount: 119.5,
+              label: "EUR replacement",
+            }),
+          ],
+          voucherPosDelete: oldPositions.map((row) => ({
+            id: Number(row["id"]),
+            objectName: "VoucherPos",
+          })),
+        },
+      });
+      const after = await ctx.read.byId("Voucher", id);
+      const positions = await voucherPositions(ctx, id);
+      const fields = [
+        "currency",
+        "status",
+        "sumNet",
+        "sumTax",
+        "sumGross",
+        "sumNetForeignCurrency",
+        "sumTaxForeignCurrency",
+        "sumGrossForeignCurrency",
+        "propertyExchangeRate",
+        "propertyForeignCurrencyDeadline",
+      ];
+      const values = (row: Row | undefined): string =>
+        fields
+          .map((key) => `${key}=${row?.[key] === undefined ? "absent" : JSON.stringify(row[key])}`)
+          .join(", ");
+      return {
+        verdict: "observed",
+        finding: `Voucher ${id}; EUR save ${outcomeOf(saved)}. Before: ${values(before)}. After: ${values(after)}. Positions: ${describePositions(positions)}. Requested one new gross EUR position of 119.50 and deletion of every old position.`,
+        deviations: { "D-043": "informs", "D-081": "informs" },
       };
     },
   },

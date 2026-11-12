@@ -38,7 +38,14 @@ export function moneyText(amount: string, currency: string, lang: PreviewLanguag
 }
 
 /** `"net 55.00 EUR, tax 10.45 EUR, gross 65.45 EUR"`. */
-export function totalsText(totals: Amounts, currency: string): string {
+export function totalsText(
+  totals: Amounts,
+  currency: string,
+  lang: PreviewLanguage = "en",
+): string {
+  if (lang === "de") {
+    return `netto ${moneyText(totals.net, currency, lang)}, USt. ${moneyText(totals.tax, currency, lang)}, brutto ${moneyText(totals.gross, currency, lang)}`;
+  }
   return (
     `net ${moneyText(totals.net, currency)}, tax ${moneyText(totals.tax, currency)}, ` +
     `gross ${moneyText(totals.gross, currency)}`

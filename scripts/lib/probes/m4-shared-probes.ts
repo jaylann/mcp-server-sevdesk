@@ -373,7 +373,7 @@ export function voucherPosition(
  * The `voucher` header the probes send (without a file token): dates of today, no supplier
  * contact, the tagged supplier name and Belegnummer, status, tax rule, direction.
  */
-function voucherHeader(
+export function voucherHeader(
   ctx: ProbeContext,
   options: Omit<VoucherOptions, "file">,
 ): Record<string, unknown> {
