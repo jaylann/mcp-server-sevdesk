@@ -135,6 +135,32 @@ a public contract ([docs/compatibility.md](docs/compatibility.md)).
 - Descriptions, result texts, error messages and logs are not part of the contract; improve them
   freely, but re-record the evals when you change what models read (below).
 
+The **Tool surface** PR workflow compares `tools/list` (including input/output schemas),
+`prompts/list` and server instructions at the event's exact base and head commits. It covers the
+default read configuration, `SEVDESK_ALLOW=write`, all tiers/toolsets, and all tiers/toolsets over
+HTTP with OAuth and remote files. Changes appear in one sticky PR comment; an unchanged surface
+creates no comment, or replaces a previous diff with “no change”. Names and schema changes still
+need human compatibility review; this report does not decide the required version bump.
+
+To capture or compare locally, without a sevDesk token or network access:
+
+```bash
+node --import tsx scripts/tool-surface.ts dump /tmp/head-surface.json
+node --import tsx scripts/tool-surface.ts diff /tmp/base-surface.json /tmp/head-surface.json
+```
+
+The script header documents the versioned JSON format and CLI for other reports to reuse. CI
+copies the same harness into the base checkout, so the base does not need to contain the script.
+Both revisions install their own frozen dependencies. The complete JSON dumps and diff remain
+in the `tool-surface` run artifact for seven days; long comments link there and say when truncated.
+
+Fork code runs only in the read-only `pull_request` workflow, without secrets or dependency
+caches. The separate `workflow_run` publisher has only artifact-read and PR-comment permissions:
+it checks out no code, installs nothing, verifies the report's PR and commits against GitHub,
+and treats the artifact as literal text. Stale reports are skipped. The publisher must first
+land on the default branch before GitHub can trigger it, so its first PR has artifacts but no
+automatic comment ([GitHub's workflow separation pattern](https://securitylab.github.com/resources/github-actions-preventing-pwn-requests/)).
+
 ## HTTP mode
 
 The remote mode (`--http`) is documented for operators in [docs/remote.md](docs/remote.md). To run
