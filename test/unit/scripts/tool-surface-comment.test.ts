@@ -4,6 +4,8 @@ import { runInNewContext } from "node:vm";
 
 import { describe, expect, it, vi } from "vitest";
 
+import { surfaceReport, type ToolSurface } from "../../../scripts/tool-surface.js";
+
 const workflow = readFileSync(
   new URL("../../../.github/workflows/tool-surface-comment.yml", import.meta.url),
   "utf8",
@@ -102,6 +104,17 @@ function botComment(body = marker): Comment {
   return { id: 99, user: { login: "github-actions[bot]", type: "Bot" }, body };
 }
 
+function contextCost() {
+  const sizes = () => ({ tools: 0, instructions: 0, prompts: 0 });
+  const configuration = () => ({
+    read: sizes(),
+    write: sizes(),
+    all: sizes(),
+    "http-files": sizes(),
+  });
+  return { base: configuration(), head: configuration() };
+}
+
 describe("tool surface comment workflow", () => {
   it("posts for a verified fork even without workflow_run.pull_requests", async () => {
     const f = fixture();
@@ -130,7 +143,7 @@ describe("tool surface comment workflow", () => {
     expect(f.createComment).not.toHaveBeenCalled();
   });
 
-  it("does not post for an unchanged surface or update an identical comment", async () => {
+  it("does not post for an unchanged legacy report or update an identical comment", async () => {
     const f = fixture();
     await f.execute();
     const body = f.createComment.mock.calls[0]?.[0].body;
@@ -225,12 +238,95 @@ describe("tool surface comment workflow", () => {
   it("fences hostile artifact text and caps the final comment below GitHub's limit", async () => {
     const f = fixture();
     f.report.diff = "```\n<script>throw Error('attack')</script>\n@someone\n" + "`".repeat(40_000);
+    const cost = contextCost();
+    for (const revision of Object.values(cost)) {
+      for (const config of Object.values(revision)) {
+        config.tools = 1_000_000_000;
+        config.instructions = 1_000_000_000;
+        config.prompts = 1_000_000_000;
+      }
+    }
+    f.readFile.mockResolvedValue(JSON.stringify({ ...f.report, contextCost: cost }));
     await f.execute();
     const body = f.createComment.mock.calls[0]?.[0].body ?? "";
     expect(body.match(/```/g)).toHaveLength(2);
     expect(body).not.toContain("@someone");
     expect(body).toContain("Diff truncated");
+    expect(body).toContain("3,000,000,000 / 750,000,000");
     expect(body.length).toBeLessThan(65_536);
+  });
+
+  it("formats component and total sizes, fractional token estimates and signed deltas", async () => {
+    const f = fixture();
+    const cost = contextCost();
+    cost.base.read = { tools: 1_000, instructions: 0, prompts: 40 };
+    cost.head.read = { tools: 1_201, instructions: 8, prompts: 20 };
+    cost.base.all.instructions = 9;
+    cost.head.all.instructions = 7;
+    f.readFile.mockResolvedValue(JSON.stringify({ ...f.report, contextCost: cost }));
+    await f.execute();
+    const body = f.createComment.mock.calls[0]?.[0].body ?? "";
+    expect(body).toContain("Estimated tokens = characters / 4");
+    expect(body).toContain(
+      "Prompt bodies (prompts/get), JSON-RPC envelopes and client formatting are excluded",
+    );
+    expect(body).toContain(
+      "| read | tools/list | 1,000 / 250 | 1,201 / 300.25 | +201 / +50.25 | +20.1% |",
+    );
+    expect(body).toContain("| read | Instructions | 0 / 0 | 8 / 2 | +8 / +2 | n/a (base 0) |");
+    expect(body).toContain("| read | prompts/list | 40 / 10 | 20 / 5 | -20 / -5 | -50% |");
+    expect(body).toContain(
+      "| read | Total | 1,040 / 260 | 1,229 / 307.25 | +189 / +47.25 | +18.17% |",
+    );
+    expect(body).toContain("| all | Instructions | 9 / 2.25 | 7 / 1.75 | -2 / -0.5 | -22.22% |");
+    expect(body).toContain("| write | Total | 0 / 0 | 0 / 0 | 0 / 0 | 0% |");
+    expect(body).toContain("| http-files | Total | 0 / 0 | 0 / 0 | 0 / 0 | 0% |");
+    expect(body).toContain(f.report.diff);
+  });
+
+  it("posts real unchanged reports with costs and reuses the same sticky comment", async () => {
+    const f = fixture();
+    const config = () => ({ tools: [], prompts: [], instructions: "" });
+    const surface: ToolSurface = {
+      version: 1,
+      configurations: { read: config(), write: config(), all: config(), "http-files": config() },
+    };
+    const event = { number: f.pr.number, pull_request: f.pr };
+    const report = surfaceReport(surface, surface, event);
+    f.readFile.mockResolvedValue(JSON.stringify(report));
+    await f.execute();
+    expect(f.createComment).toHaveBeenCalledOnce();
+    const body = f.createComment.mock.calls[0]?.[0].body ?? "";
+    expect(body).toContain("No change in tools/list");
+    expect(body).toContain("| read | Total | 26 / 6.5 | 26 / 6.5 | 0 / 0 | 0% |");
+    f.comments.push(botComment());
+    await f.execute();
+    expect(f.updateComment).toHaveBeenCalledWith(expect.objectContaining({ comment_id: 99, body }));
+    f.comments.splice(0, 1, botComment(body));
+    f.updateComment.mockClear();
+    await f.execute();
+    expect(f.updateComment).not.toHaveBeenCalled();
+    expect(f.createComment).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    null,
+    {},
+    [],
+    { base: {}, head: {} },
+    { ...contextCost(), extra: "```@attacker" },
+    { ...contextCost(), head: { ...contextCost().head, read: [] } },
+    { ...contextCost(), head: { ...contextCost().head, read: { tools: 1, prompts: 1 } } },
+    ...[-1, 0.5, 1_000_000_001, "```@attacker", null, {}, Number.MAX_SAFE_INTEGER].map((tools) => ({
+      ...contextCost(),
+      head: { ...contextCost().head, read: { tools, instructions: 0, prompts: 0 } },
+    })),
+  ])("rejects malformed context costs before looking up the PR (%j)", async (cost) => {
+    const f = fixture();
+    f.readFile.mockResolvedValue(JSON.stringify({ ...f.report, contextCost: cost }));
+    await expect(f.execute()).rejects.toThrow("Invalid context cost");
+    expect(f.get).not.toHaveBeenCalled();
+    expect(f.createComment).not.toHaveBeenCalled();
   });
 
   it("keeps the writer free of checkout, shell execution, dependencies and caches", () => {

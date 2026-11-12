@@ -16,6 +16,11 @@
  * diff emits JSON-pointer paths (tools/prompts keyed by name), with -/+ JSON values. Empty
  * output means no change; changes still exit 0. report adds PR provenance from the GitHub event
  * and bounds the text for a comment; the workflow also retains the complete diff artifact.
+ * Reports add contextCost.base/head: character counts per configuration for tools, prompts
+ * and instructions. Lists are compact JSON result objects ({tools:[…]}, {prompts:[…]});
+ * instructions are raw text. Characters are Unicode code points, not bytes or UTF-16 units.
+ * The publisher derives totals, estimated tokens (characters / 4) and base-to-head deltas.
+ * Prompt bodies from prompts/get, JSON-RPC envelopes and client-specific formatting are excluded.
  * Invalid arguments or input fail nonzero. Never load configuration from the caller's env.
  *
  * CI copies this single file into the base checkout: both revisions use the same harness,
@@ -57,6 +62,28 @@ const surfaceSchema = z.strictObject({
 });
 
 export type ToolSurface = z.infer<typeof surfaceSchema>;
+
+type SurfaceSizes = Record<
+  keyof ToolSurface["configurations"],
+  { tools: number; prompts: number; instructions: number }
+>;
+
+/** Measures the captured catalog without dump indentation, metadata or JSON-escaped instructions. */
+export function measureToolSurface(value: unknown): SurfaceSizes {
+  const surface = surfaceSchema.parse(value);
+  const characters = (text: string): number => Array.from(text).length;
+  const measure = (item: z.infer<typeof configuration>): SurfaceSizes["read"] => ({
+    tools: characters(JSON.stringify({ tools: item.tools })),
+    prompts: characters(JSON.stringify({ prompts: item.prompts })),
+    instructions: characters(item.instructions),
+  });
+  return {
+    read: measure(surface.configurations.read),
+    write: measure(surface.configurations.write),
+    all: measure(surface.configurations.all),
+    "http-files": measure(surface.configurations["http-files"]),
+  };
+}
 
 /** Recursively sorts object keys without changing array semantics. */
 function sorted(value: Json): Json {
@@ -190,6 +217,7 @@ export function surfaceReport(
   changed: boolean;
   diff: string;
   truncated: boolean;
+  contextCost: { base: SurfaceSizes; head: SurfaceSizes };
 } {
   const { number, pull_request } = eventSchema.parse(event);
   const diff = diffToolSurface(base, head);
@@ -202,6 +230,7 @@ export function surfaceReport(
     changed: diff.length > 0,
     diff: diff.slice(0, limit),
     truncated: diff.length > limit,
+    contextCost: { base: measureToolSurface(base), head: measureToolSurface(head) },
   };
 }
 
