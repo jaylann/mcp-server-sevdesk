@@ -8,7 +8,11 @@
  */
 import { bothPreviews, phrase } from "../../src/domain/preview-text.js";
 import { renderConfirmStep, renderTokenStep } from "../../src/http/oauth/consent-page.js";
-import { renderUploadPage, renderUploadReceipt } from "../../src/http/transfer-pages.js";
+import {
+  renderUploadBatch,
+  renderUploadPage,
+  renderUploadReceipt,
+} from "../../src/http/transfer-pages.js";
 import type { RenderContext } from "../../src/pages/context.js";
 import { renderMessagePage } from "../../src/pages/message.js";
 import {
@@ -400,6 +404,57 @@ export const GALLERY: readonly GalleryPage[] = [
         tone: "danger",
       }),
   },
+  ...(["pending", "partial", "received", "expired", "failed", "receiving"] as const).map(
+    (state) => ({
+      name: `upload-batch-${state}`,
+      title: `Upload batch: ${state}`,
+      render: (ctx: RenderContext) =>
+        renderUploadBatch(
+          {
+            accountId: "1001",
+            csrf: "csrf-tag",
+            maxTotalBytes: 20 * 1024 * 1024,
+            ...(state === "failed" ? { error: ctx.t.transfer.storageFull } : {}),
+            batch: {
+              id: ID,
+              reference: "U4MKP7",
+              purpose: "receipt",
+              kinds: ["pdf", "png", "jpeg"],
+              maxBytes: 20 * 1024 * 1024,
+              expiresAt: EXPIRES,
+              count: 3,
+              slots: [0, 1, 2].map((index) => ({
+                id: `${ID}${String(index)}`,
+                expiresAt: EXPIRES,
+                status:
+                  state === "pending"
+                    ? "pending"
+                    : state === "receiving"
+                      ? "receiving"
+                      : index === 0 || state === "received"
+                        ? "uploaded"
+                        : state === "expired"
+                          ? "expired"
+                          : "pending",
+                ...(state !== "pending" &&
+                state !== "receiving" &&
+                (index === 0 || state === "received")
+                  ? {
+                      file: {
+                        name: `Beleg_Maerz_${String(index + 1)}.pdf`,
+                        kind: "pdf",
+                        size: 482_113,
+                        sha256: "a".repeat(64),
+                      },
+                    }
+                  : {}),
+              })),
+            },
+          },
+          ctx,
+        ),
+    }),
+  ),
   {
     name: "upload",
     title: "Upload: a receipt",

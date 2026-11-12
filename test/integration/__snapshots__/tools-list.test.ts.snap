@@ -9120,6 +9120,12 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
+        "count": {
+          "description": "Files to upload on one page (default 1). Every file uses one account slot.",
+          "maximum": 10,
+          "minimum": 1,
+          "type": "integer",
+        },
         "purpose": {
           "description": "receipt (PDF, PNG, JPEG) for a voucher draft, einvoice (XML, PDF) for sevdesk_einvoice_parse and sevdesk_voucher_import_einvoice.",
           "enum": [
@@ -9136,6 +9142,32 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
     },
     "name": "sevdesk_upload_request",
     "title": "Request a file upload",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List files in an upload batch",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "batchId": {
+          "description": "batchId from sevdesk_upload_request.",
+          "pattern": "^[A-Za-z0-9_-]{43}$",
+          "type": "string",
+        },
+      },
+      "required": [
+        "batchId",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_uploads_list",
+    "title": "List files in an upload batch",
   },
   {
     "annotations": {

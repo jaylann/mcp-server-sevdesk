@@ -66,6 +66,12 @@ export function localFileAccess(config: LocalFileConfig): FileAccess {
           "pass its path",
       );
     },
+    requestUploadBatch() {
+      throw refusal("Batch uploads need a remote server with file transfer (SEVDESK_HTTP_FILES)");
+    },
+    listUploads() {
+      throw refusal("Batch uploads need a remote server with file transfer (SEVDESK_HTTP_FILES)");
+    },
     async read(ref, options) {
       if (ref.startsWith(UPLOAD_REF_PREFIX)) {
         throw refusal(
@@ -126,6 +132,31 @@ export function remoteFileAccess(
         accepts: ticket.kinds,
         maxBytes: ticket.maxBytes,
       };
+    },
+    requestUploadBatch(purpose, count) {
+      try {
+        const batch = store.createBatch(principal, purpose, count);
+        return {
+          batchId: batch.id,
+          url: uploadPageUrl(publicOrigin, batch.id),
+          reference: batch.reference,
+          expiresAt: batch.expiresAt,
+          accepts: batch.kinds,
+          maxBytes: batch.maxBytes,
+          count: batch.count,
+        };
+      } catch (error) {
+        throw limitRefusal(error);
+      }
+    },
+    listUploads(batchId) {
+      const batch = store.readBatch(principal, batchId);
+      if (batch === undefined) {
+        throw refusal(
+          "There is no active upload batch for this connection: it is unknown, expired, or all files were already used. Request a new upload if needed",
+        );
+      }
+      return batch;
     },
     async read(ref, options) {
       if (!ref.startsWith(UPLOAD_REF_PREFIX)) {

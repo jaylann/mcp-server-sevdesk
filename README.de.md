@@ -92,7 +92,7 @@ betreiben.
 
 ## Was er kann
 
-74 Werkzeuge in 10 Werkzeuggruppen. Die 37 Lesewerkzeuge füllen die erste Spalte; mit den
+75 Werkzeuge in 10 Werkzeuggruppen. Die 38 Lesewerkzeuge füllen die erste Spalte; mit den
 Schreibstufen kommen 37 weitere Werkzeuge hinzu, die Daten anlegen und ändern.
 
 | Bereich                                | Lesen                                                                                                                                                                                                                                        | Schreiben (`write`, `commit`, `external`)                                                                                                                                                                                                                    |
@@ -182,7 +182,10 @@ Authentifizierung (`SEVDESK_HTTP_AUTH`) startet er nicht:
 claude.ai kann (zum Zeitpunkt des Schreibens) keine Bestätigungen im Chat erfragen, daher geben
 Sie bindende Schritte im Freigabe-Postfach des Servers frei (`SEVDESK_CONFIRM=browser`). Belege
 und E-Rechnungen laden Sie über Seiten auf Ihrem Server hoch, PDFs und Exporte laden Sie dort
-herunter; der Assistent verlinkt diese Seiten. Claude Code verbinden Sie so:
+herunter; der Assistent verlinkt diese Seiten. Für mehrere Belege öffnet `sevdesk_upload_request`
+mit `count: 2` bis `10` eine gemeinsame Seite. Danach ordnet `sevdesk_uploads_list` die bereinigten
+Dateinamen den `uploadId`s für die Entwurfswerkzeuge zu. Größenlimit, Speicherplatz und Ablauf
+werden weiterhin für jede Datei einzeln geprüft. Claude Code verbinden Sie so:
 
 ```bash
 claude mcp add --transport http sevdesk https://<host>/mcp                     # OAuth: danach mit /mcp anmelden

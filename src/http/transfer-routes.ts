@@ -11,7 +11,7 @@
  * Routes (`form` origin policy; together 60 requests a minute per client IP or IPv6 /64):
  * - `GET /uploads/<id>`: the upload form (trusted text only), the receipt once uploaded, 410 when
  *   expired;
- * - `POST /uploads/<id>`: `multipart/form-data` with exactly the fields `csrf` and `file`. Before
+ * - `POST /uploads/<id>`: `multipart/form-data` with one `csrf` and one or more `file` parts. Before
  *   the body is read (router `preflight`): 10 uploads a minute and 60 an hour per client, a
  *   same-origin POST, a session, a pending ticket of the session's account, a declared
  *   `Content-Length` (411) within the ticket's limit (413), and at most 2 upload bodies at once on
@@ -37,6 +37,7 @@ import {
   megabytes,
   type UploadTicketState,
 } from "../safety/transfer-store.js";
+import type { UploadBatchState } from "../safety/transfer-types.js";
 import { sameOriginPost } from "../safety/web.js";
 import { pageOf, pageResponse } from "./approval-pages.js";
 import type { BrowserSession } from "./browser-session.js";
@@ -44,6 +45,7 @@ import { rateLimitKey } from "./client-ip.js";
 import {
   downloadResponse,
   FILES_PREFIX,
+  renderUploadBatch,
   renderUploadPage,
   renderUploadReceipt,
   transferMessage,
@@ -67,10 +69,9 @@ export const UPLOAD_RATE_HOUR: RateRule = { name: "uploads-hour", perMinute: 1, 
 
 /** Room for the multipart framing and the CSRF field around the file. */
 const MULTIPART_OVERHEAD_BYTES = 64 * 1024;
-/** The route's body limit: the largest upload plus framing. */
-export const MAX_UPLOAD_BODY_BYTES = MAX_UPLOAD_BYTES + MULTIPART_OVERHEAD_BYTES;
-/** Boundary delimiters of the upload form: one before `csrf`, one before `file`, the closing one. */
-const UPLOAD_FORM_DELIMITERS = 3;
+/** Absolute route cap: ten largest files plus framing; preflight tightens it per request. */
+export const MAX_UPLOAD_BODY_BYTES = 10 * MAX_UPLOAD_BYTES + MULTIPART_OVERHEAD_BYTES;
+
 /** Time an upload body may take (below the router's 120 s request deadline). */
 const UPLOAD_BODY_TIMEOUT_MS = 90_000;
 /**
@@ -170,7 +171,10 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
   async function admit(
     request: Request,
     ctx: HttpRequestContext,
-  ): Promise<Response | { record: SessionRecord; ticket: UploadTicketState; id: string }> {
+  ): Promise<
+    | Response
+    | { record: SessionRecord; ticket: UploadTicketState; id: string; batch?: UploadBatchState }
+  > {
     if (!sameOriginPost(request, origin)) {
       return refused(
         ctx,
@@ -187,7 +191,17 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
       );
     }
     const id = idOf(request, UPLOADS_PREFIX);
-    const ticket = id === undefined ? undefined : store.ticketFor(id, record.accountId);
+    const batch = id === undefined ? undefined : store.batchFor(id, record.accountId);
+    const pending = batch?.slots.find((slot) => slot.status === "pending");
+    if (batch !== undefined && pending === undefined) {
+      return batchPage(request, record, batch, 409);
+    }
+    const ticket: UploadTicketState | "expired" | undefined =
+      batch === undefined
+        ? id === undefined
+          ? undefined
+          : store.ticketFor(id, record.accountId)
+        : { ...batch, accountId: record.accountId, status: "pending" };
     if (id === undefined || ticket === undefined) {
       return refused(
         ctx,
@@ -220,7 +234,7 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
         record,
       );
     }
-    return { record, ticket, id };
+    return { record, ticket, id, ...(batch === undefined ? {} : { batch }) };
   }
 
   /**
@@ -251,21 +265,34 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
         admitted.record,
       );
     }
-    if (Number(declared) > admitted.ticket.maxBytes + MULTIPART_OVERHEAD_BYTES) {
+    const limit = submissionLimit(admitted.ticket, admitted.batch);
+    if (Number(declared) > limit) {
       return refused(
         ctx,
         "too_large",
-        say(head, 413, (t) => t.tooLarge(megabytes(admitted.ticket.maxBytes))),
+        admitted.batch === undefined
+          ? say(head, 413, (t) => t.tooLarge(megabytes(admitted.ticket.maxBytes)))
+          : batchPage(
+              head,
+              admitted.record,
+              admitted.batch,
+              413,
+              pageOf(head, origin).t.upload.batch.tooLarge(
+                megabytes(limit - MULTIPART_OVERHEAD_BYTES),
+              ),
+            ),
         admitted.record,
       );
     }
-    return { bodySlotKey: admitted.record.accountId };
+    return { bodySlotKey: admitted.record.accountId, maxBodyBytes: limit };
   }
 
   async function showUpload(request: Request, ctx: HttpRequestContext): Promise<Response> {
     const record = await session.sessionOf(request, ctx);
     if (record === undefined) return signInPage(request, UPLOADS_PREFIX);
     const id = idOf(request, UPLOADS_PREFIX);
+    const batch = id === undefined ? undefined : store.batchFor(id, record.accountId);
+    if (batch !== undefined) return batchPage(request, record, batch);
     const ticket = id === undefined ? undefined : store.ticketFor(id, record.accountId);
     if (id === undefined || ticket === undefined) {
       return say(request, 404, (t) => t.uploadNotFound);
@@ -284,6 +311,39 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
           expiresAt: ticket.expiresAt,
           formAction: `${UPLOADS_PREFIX}${id}`,
           csrf: session.csrfTag(record),
+        },
+        render,
+      ),
+    );
+  }
+
+  function submissionLimit(ticket: UploadTicketState, batch?: UploadBatchState): number {
+    const count = batch?.slots.filter((slot) => slot.status === "pending").length ?? 1;
+    const bytes =
+      batch === undefined
+        ? ticket.maxBytes
+        : Math.min(ticket.maxBytes * count, store.uploadRoom(ticket.accountId));
+    return bytes + MULTIPART_OVERHEAD_BYTES;
+  }
+
+  function batchPage(
+    request: Request,
+    record: SessionRecord,
+    batch: UploadBatchState,
+    status = 200,
+    error?: PageMessage,
+  ): Response {
+    return pageResponse(pageOf(request, origin), status, (render) =>
+      renderUploadBatch(
+        {
+          batch,
+          accountId: record.accountId,
+          csrf: session.csrfTag(record),
+          maxTotalBytes: Math.min(
+            batch.maxBytes * batch.slots.filter((slot) => slot.status === "pending").length,
+            store.uploadRoom(record.accountId),
+          ),
+          ...(error === undefined ? {} : { error }),
         },
         render,
       ),
@@ -310,22 +370,52 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
   async function upload(request: Request, ctx: HttpRequestContext): Promise<Response> {
     const admitted = await admit(request, ctx);
     if (admitted instanceof Response) return admitted;
-    const { record, ticket, id } = admitted;
+    const { record, ticket, id, batch } = admitted;
+    const slots = batch?.slots.filter((slot) => slot.status === "pending");
+    // Preserve completed files on a later failure, and show exactly what still needs uploading.
+    const failure = (status: number, pick: (texts: Texts["transfer"]) => PageMessage): Response => {
+      const current = batch === undefined ? undefined : store.batchFor(id, record.accountId);
+      return current === undefined
+        ? say(request, status, pick)
+        : batchPage(request, record, current, status, pick(pageOf(request, origin).t.transfer));
+    };
+    const badForm = (): Response => {
+      const current = batch === undefined ? undefined : store.batchFor(id, record.accountId);
+      return current === undefined
+        ? say(request, 400, (t) => t.badForm)
+        : batchPage(request, record, current, 400, pageOf(request, origin).t.upload.batch.badForm);
+    };
     const refuse = (reason: RefusalReason, response: Response): Response =>
       refused(ctx, reason, response, record);
 
     let form: FormData;
     try {
       // undici marks `formData()` as not recommended for servers: it buffers the whole body. Here
-      // the router already holds the whole body, capped at 20 MiB + 64 KiB, with at most 2
+      // the router already holds the whole body, capped by the remaining account allowance, with at most 2
       // uploads at once and only after the session and ticket checks; no extra dependency. It
       // also builds an object for every part before anything can be checked, and 20 MiB of empty
       // parts made several hundred MiB of them (security review 2026-11, finding 2): so the parts
       // are counted on the raw bytes first, and a form with more than `csrf` and `file` is
       // refused before it is parsed.
       const body = new Uint8Array(await request.arrayBuffer());
+      if (body.byteLength > submissionLimit(ticket, batch)) {
+        return refuse(
+          "too_large",
+          batch === undefined
+            ? failure(413, (t) => t.tooLarge(megabytes(ticket.maxBytes)))
+            : batchPage(
+                request,
+                record,
+                batch,
+                413,
+                pageOf(request, origin).t.upload.batch.tooLarge(
+                  megabytes(submissionLimit(ticket, batch) - MULTIPART_OVERHEAD_BYTES),
+                ),
+              ),
+        );
+      }
       const boundary = multipartBoundary(request.headers.get("content-type") ?? "");
-      if (boundary === undefined || !atMostDelimiters(body, boundary, UPLOAD_FORM_DELIMITERS)) {
+      if (boundary === undefined || !atMostDelimiters(body, boundary, (slots?.length ?? 1) + 2)) {
         throw new Error("not the upload form");
       }
       form = await new Response(body, {
@@ -333,104 +423,107 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
         // eslint-disable-next-line @typescript-eslint/no-deprecated
       }).formData();
     } catch {
-      return refuse(
-        "bad_form",
-        say(request, 400, (t) => t.badForm),
-      );
+      return refuse("bad_form", badForm());
     }
-    const names = [...form.keys()].sort();
-    if (names.length !== 2 || names[0] !== "csrf" || names[1] !== "file") {
-      return refuse(
-        "bad_form",
-        say(request, 400, (t) => t.badForm),
-      );
+    const names = [...form.keys()];
+    const files = form.getAll("file");
+    if (
+      form.getAll("csrf").length !== 1 ||
+      files.length < 1 ||
+      files.length > (slots?.length ?? 1) ||
+      names.some((name) => name !== "csrf" && name !== "file")
+    ) {
+      return refuse("bad_form", badForm());
     }
     const csrf = form.get("csrf");
     if (typeof csrf !== "string" || !session.csrfValid(record, csrf)) {
       return refuse(
         "csrf",
-        say(request, 403, (t) => t.csrf),
+        failure(403, (t) => t.csrf),
       );
     }
-    const file = form.get("file");
-    if (!(file instanceof File)) {
-      return refuse(
-        "bad_form",
-        say(request, 400, (t) => t.badForm),
-      );
-    }
-    if (file.size === 0)
-      return refuse(
-        "empty",
-        say(request, 400, (t) => t.empty),
-      );
-    if (file.size > ticket.maxBytes) {
-      return refuse(
-        "too_large",
-        say(request, 413, (t) => t.tooLarge(megabytes(ticket.maxBytes))),
-      );
-    }
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const kind = sniffKind(bytes);
-    if (kind === undefined || !ticket.kinds.includes(kind)) {
-      return refuse(
-        "wrong_kind",
-        say(request, 415, (t) => t.wrongKind),
-      );
-    }
-    let outcome;
-    try {
-      outcome = await store.receive(id, record.accountId, {
-        name: uploadName(file.name, kind),
-        kind,
-        bytes,
-      });
-    } catch {
-      return refuse(
-        "failed",
-        say(request, 500, (t) => t.failed),
-      );
-    }
-    switch (outcome.status) {
-      case "received":
-        ctx.log.info("upload_received", {
-          account: record.accountId,
-          reference: outcome.ticket.reference,
-          kind,
-          bytes: bytes.byteLength,
-        });
-        return receiptPage(request, outcome.ticket);
-      case "unknown":
+    for (const [index, file] of files.entries()) {
+      if (!(file instanceof File)) {
+        return refuse("bad_form", badForm());
+      }
+      if (file.size === 0)
         return refuse(
-          "unknown",
-          say(request, 404, (t) => t.uploadNotFound),
+          "empty",
+          failure(400, (t) => t.empty),
         );
-      case "expired":
-        return refuse(
-          "expired",
-          say(request, 410, (t) => t.uploadExpired),
-        );
-      case "already_received":
-        return refuse(
-          "already_received",
-          say(request, 409, (t) => t.alreadyUploaded),
-        );
-      case "wrong_kind":
-        return refuse(
-          "wrong_kind",
-          say(request, 415, (t) => t.wrongKind),
-        );
-      case "too_large":
+      if (file.size > ticket.maxBytes) {
         return refuse(
           "too_large",
-          say(request, 413, (t) => t.tooLarge(megabytes(ticket.maxBytes))),
+          failure(413, (t) => t.tooLarge(megabytes(ticket.maxBytes))),
         );
-      case "storage_full":
+      }
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const kind = sniffKind(bytes);
+      if (kind === undefined || !ticket.kinds.includes(kind)) {
         return refuse(
-          "storage_full",
-          say(request, 507, (t) => t.storageFull),
+          "wrong_kind",
+          failure(415, (t) => t.wrongKind),
         );
+      }
+      let outcome;
+      try {
+        outcome = await store.receive(slots?.[index]?.id ?? id, record.accountId, {
+          name: uploadName(file.name, kind),
+          kind,
+          bytes,
+        });
+      } catch {
+        return refuse(
+          "failed",
+          failure(500, (t) => t.failed),
+        );
+      }
+      switch (outcome.status) {
+        case "received":
+          ctx.log.info("upload_received", {
+            account: record.accountId,
+            reference: outcome.ticket.reference,
+            kind,
+            bytes: bytes.byteLength,
+          });
+          if (batch === undefined) return receiptPage(request, outcome.ticket);
+          break;
+        case "unknown":
+          return refuse(
+            "unknown",
+            failure(404, (t) => t.uploadNotFound),
+          );
+        case "expired":
+          return refuse(
+            "expired",
+            failure(410, (t) => t.uploadExpired),
+          );
+        case "already_received":
+          return refuse(
+            "already_received",
+            failure(409, (t) => t.alreadyUploaded),
+          );
+        case "wrong_kind":
+          return refuse(
+            "wrong_kind",
+            failure(415, (t) => t.wrongKind),
+          );
+        case "too_large":
+          return refuse(
+            "too_large",
+            failure(413, (t) => t.tooLarge(megabytes(ticket.maxBytes))),
+          );
+        case "storage_full":
+          return refuse(
+            "storage_full",
+            failure(507, (t) => t.storageFull),
+          );
+      }
     }
+    const current = store.batchFor(id, record.accountId);
+    return current === undefined
+      ? say(request, 410, (t) => t.uploadExpired)
+      : batchPage(request, record, current);
   }
 
   async function download(request: Request, ctx: HttpRequestContext): Promise<Response> {

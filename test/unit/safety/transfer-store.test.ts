@@ -569,3 +569,115 @@ describe("transfer store: lifecycle", () => {
     expect(megabytes(1.5 * MB)).toBe("1.5 MB");
   });
 });
+
+describe("transfer store: batches", () => {
+  it("reserves every slot atomically, counts downloads, and reports only this account's next expiry", async () => {
+    const { store } = await setup({ maxRecordsPerAccount: 4 });
+    await store.createDownload(A1, { filename: "export.pdf", kind: "pdf", bytes: PDF });
+    const batch = store.createBatch(A1, "receipt", 2);
+    expect(store.usage().records).toBe(3);
+    expect(() => store.createBatch(A1, "receipt", 2)).toThrow(/only 1 of 4 remaining/);
+    expect(() => store.createBatch(A1, "receipt", 2)).toThrow(/2026-11-09T12:15:00.000Z/);
+    expect(store.usage().records).toBe(3);
+    expect(store.readBatch(A2, batch.id)).toBeUndefined();
+    expect(store.readBatch(B, batch.id)).toBeUndefined();
+    expect(store.batchFor(batch.id, B.accountScope)).toBeUndefined();
+    expect(store.batchFor(batch.id, A1.accountScope)?.slots).toHaveLength(2);
+  });
+
+  it("counts an in-flight download reservation before allocating a batch", async () => {
+    const { store } = await setup({ maxRecordsPerAccount: 2 });
+    const download = store.createDownload(A1, { filename: "export.pdf", kind: "pdf", bytes: PDF });
+    expect(() => store.createBatch(A1, "receipt", 2)).toThrow(/only 1 of 2 remaining/);
+    expect(() => store.createBatch(A1, "receipt", 2)).toThrow(/No expiry is available/);
+    await download;
+    expect(store.usage().records).toBe(1);
+  });
+
+  it("keeps a batch slot retryable after storage fails without consuming earlier files", async () => {
+    const { store, blobs } = await setup();
+    const batch = store.createBatch(A1, "receipt", 2);
+    const [first, second] = store.readBatch(A1, batch.id)?.slots ?? [];
+    if (first === undefined || second === undefined) throw new Error("missing slots");
+    await store.receive(first.id, A1.accountScope, file());
+    vi.spyOn(blobs, "put").mockRejectedValueOnce(new Error("disk full"));
+    await expect(store.receive(second.id, A1.accountScope, file())).rejects.toThrow("disk full");
+    const read = vi.spyOn(blobs, "get");
+    expect(store.readBatch(A1, batch.id)?.slots.map((slot) => slot.status)).toEqual([
+      "uploaded",
+      "pending",
+    ]);
+    expect(read).not.toHaveBeenCalled();
+    expect(store.usage()).toEqual({ records: 2, bytes: PDF.byteLength });
+    expect((await store.receive(second.id, A1.accountScope, file())).status).toBe("received");
+  });
+
+  it("counts one pending page per batch and still enforces the five-page limit", async () => {
+    const { store } = await setup({ maxRecordsPerAccount: 60 });
+    for (let n = 0; n < 5; n += 1) store.createBatch(A1, "receipt", 10);
+    expect(store.usage().records).toBe(50);
+    expect(() => store.createBatch(A1, "receipt", 2)).toThrow(/5 upload requests/);
+    expect(() => store.createTicket(A1, "receipt")).toThrow(/5 upload requests/);
+  });
+
+  it("rejects a batch crossing the global count, without reserving part of it", async () => {
+    const { store } = await setup({ maxRecords: 3 });
+    store.createTicket(B, "receipt");
+    expect(() => store.createBatch(A1, "receipt", 3)).toThrow(/too many uploads/);
+    expect(store.usage().records).toBe(1);
+    store.createBatch(A1, "receipt", 2);
+    expect(store.usage().records).toBe(3);
+  });
+
+  it("expires missing slots independently and keeps uploaded files until used or expired", async () => {
+    const { store, clock } = await setup();
+    const batch = store.createBatch(A1, "receipt", 3);
+    const slots = store.readBatch(A1, batch.id)?.slots ?? [];
+    const first = slots[0];
+    const second = slots[1];
+    if (first === undefined || second === undefined) throw new Error("missing slots");
+    await store.receive(first.id, A1.accountScope, file());
+    clock.advance(15 * 60_000);
+    expect(await store.receive(second.id, A1.accountScope, file())).toEqual({ status: "expired" });
+    expect(store.readBatch(A1, batch.id)?.slots.map((slot) => slot.status)).toEqual([
+      "uploaded",
+      "expired",
+      "expired",
+    ]);
+    expect(await store.readUpload(A1, first.id)).toMatchObject({ name: "Beleg_4711.pdf" });
+    expect(store.usage().records).toBe(1);
+    store.releaseUpload(A2, first.id);
+    expect(store.usage().records).toBe(1);
+    store.releaseUpload(A1, first.id);
+    expect(store.usage()).toEqual({ records: 0, bytes: 0 });
+    expect(store.readBatch(A1, batch.id)).toBeUndefined();
+  });
+
+  it("enforces byte quotas for each file in a batch and allows retry after space is released", async () => {
+    const { store } = await setup({ maxBytes: 100, maxUploadBytes: 30 });
+    const batch = store.createBatch(A1, "receipt", 2);
+    const [first, second] = store.readBatch(A1, batch.id)?.slots ?? [];
+    if (first === undefined || second === undefined) throw new Error("missing slots");
+    expect((await store.receive(first.id, A1.accountScope, file(new Uint8Array(20)))).status).toBe(
+      "received",
+    );
+    expect(await store.receive(second.id, A1.accountScope, file(new Uint8Array(11)))).toEqual({
+      status: "storage_full",
+    });
+    expect(store.uploadRoom(A1.accountScope)).toBe(10);
+    store.releaseUpload(A1, first.id);
+    expect(store.readBatch(A1, batch.id)?.slots[0]?.status).toBe("used");
+    expect((await store.receive(second.id, A1.accountScope, file(new Uint8Array(11)))).status).toBe(
+      "received",
+    );
+  });
+
+  it.each([0, 1, 11, 2.5, NaN])(
+    "refuses invalid batch count %s at the store boundary",
+    async (count) => {
+      const { store } = await setup();
+      expect(() => store.createBatch(A1, "receipt", count)).toThrow(RangeError);
+      expect(store.usage().records).toBe(0);
+    },
+  );
+});

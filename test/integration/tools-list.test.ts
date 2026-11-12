@@ -102,6 +102,7 @@ describe("tools/list", () => {
       "sevdesk_document_save",
       "sevdesk_einvoice_parse",
       "sevdesk_upload_request",
+      "sevdesk_uploads_list",
       "sevdesk_voucher_import_einvoice",
       "sevdesk_voucher_receipt_save",
     ];

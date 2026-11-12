@@ -65,6 +65,7 @@ const FILE_TOOLS = [
   "sevdesk_document_save",
   "sevdesk_einvoice_parse",
   "sevdesk_upload_request",
+  "sevdesk_uploads_list",
   "sevdesk_voucher_import_einvoice",
 ];
 const DRAFT_ARGS = {

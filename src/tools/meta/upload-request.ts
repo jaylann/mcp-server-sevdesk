@@ -22,7 +22,15 @@ const PURPOSES = ["receipt", "einvoice"] as const satisfies readonly UploadPurpo
 const output = z.object({
   uploadId: z
     .string()
-    .describe("Pass this as file to the tool that needs the file, once the user has uploaded it."),
+    .optional()
+    .describe(
+      "For count 1: pass this as file to the tool that needs the file, once the user has uploaded it.",
+    ),
+  batchId: z
+    .string()
+    .optional()
+    .describe("For count > 1: resolve with sevdesk_uploads_list after the upload."),
+  count: z.number().int().optional().describe("Number of reserved file slots for a batch."),
   url: z
     .string()
     .describe(
@@ -49,8 +57,10 @@ export const uploadRequestTool = defineTool({
     "einvoice (E-Rechnung: XRechnung XML or ZUGFeRD/Factur-X PDF). Returns a link: give it to " +
     "the user, who opens it in the browser they connected this server with and uploads the " +
     "file there. Wait until the user says the upload is done, then pass uploadId as file. Each " +
-    "request takes one file and expires (expiresAt); the uploaded file stays usable for a while, " +
-    "also for a retry. Nothing is sent to sevDesk.",
+    "request expires (expiresAt). Optional count (1–10, default 1) reserves several files on one " +
+    "page: for count > 1, call sevdesk_uploads_list with batchId after the upload to match cleaned " +
+    "names to uploadIds. Uploaded files stay usable until expiry or successful attachment. " +
+    "Nothing is sent to sevDesk.",
   toolset: "meta",
   tier: "read",
   annotations: {
@@ -62,6 +72,13 @@ export const uploadRequestTool = defineTool({
   localEffects: "opens-upload",
   available: remoteFilesEnabled,
   input: z.strictObject({
+    count: z
+      .number()
+      .int()
+      .min(1)
+      .max(10)
+      .optional()
+      .describe("Files to upload on one page (default 1). Every file uses one account slot."),
     purpose: z
       .enum(PURPOSES)
       .describe(
@@ -72,6 +89,18 @@ export const uploadRequestTool = defineTool({
   output,
   // eslint-disable-next-line @typescript-eslint/require-await -- the contract is async; this is not.
   handler: async (args, ctx) => {
+    if ((args.count ?? 1) > 1) {
+      const batch = ctx.files.requestUploadBatch(args.purpose, args.count ?? 1);
+      return {
+        data: { ...batch, accepts: [...batch.accepts] },
+        summary:
+          `Upload request ${batch.reference} (${args.purpose}): give the user the link in url ` +
+          `to upload up to ${String(batch.count)} files before ${batch.expiresAt}, each at most ` +
+          `${megabytes(batch.maxBytes)}. When they say it is done, call sevdesk_uploads_list with ` +
+          "batchId to match cleaned file names to uploadIds, then pass each uploaded file's " +
+          "uploadId as file. Nothing was sent to sevDesk.",
+      };
+    }
     const upload = ctx.files.requestUpload(args.purpose);
     return {
       data: {

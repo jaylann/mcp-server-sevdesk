@@ -183,6 +183,35 @@ export const de: Texts = {
   },
 
   upload: {
+    batch: {
+      title: "Dateien hochladen",
+      lead: (count: number, account: Html) =>
+        markup`Ihr KI-Assistent hat ${String(count)} Dateien für das sevDesk-Konto ${account} angefordert. Nur die Verbindung, die danach gefragt hat, kann sie verwenden. Hier wird nichts an sevDesk gesendet.`,
+      remaining: (count: number) =>
+        count === 1 ? "1 freier Platz für eine Datei" : `${String(count)} freie Plätze für Dateien`,
+      total: "Verfügbarer Speicher für diesen Upload",
+      tooLarge: (limit: string) =>
+        message(
+          "Auswahl zu groß",
+          `Die ausgewählten Dateien überschreiten zusammen den verfügbaren Speicher für diesen Upload (${limit}). Wählen Sie weniger Dateien aus. Bereits hochgeladene Dateien bleiben verfügbar.`,
+        ),
+      files: "Dateien",
+      hint: "Wählen Sie mehrere Dateien aus oder ziehen Sie sie auf das Feld. Laden Sie nur Dateien hoch, die in der Liste unten noch fehlen.",
+      progress: "Dateien dieser Anfrage",
+      slot: (number: number) => `Datei ${String(number)}`,
+      pending: "Wartet auf eine Datei",
+      receiving: "Wird empfangen",
+      uploaded: "Hochgeladen",
+      expired: "Abgelaufen",
+      used: "Bereits angehängt",
+      fine: "Sagen Sie Ihrem Assistenten Bescheid, wenn Sie fertig sind. Er kann die hochgeladenen Dateien anhand ihrer Namen zuordnen. Nur Dateien mit dem Status „Hochgeladen“ sind verfügbar. Wählen Sie nach einem fehlgeschlagenen Upload die fehlenden Dateien erneut aus. Bei gleichen Namen kann eine Rückfrage nötig sein.",
+      closed:
+        "Auf dieser Seite sind keine Plätze mehr frei. Dateien mit dem Status „Hochgeladen“ bleiben bis zu ihrem jeweiligen Ablauf verfügbar.",
+      badForm: message(
+        "Ungültige Auswahl",
+        "Wählen Sie über dieses Formular mindestens eine Datei und höchstens so viele wie freie Plätze aus.",
+      ),
+    },
     receipt: { title: "Beleg hochladen", noun: "einen Beleg" },
     einvoice: {
       title: "E-Rechnung hochladen",

@@ -2,7 +2,8 @@
 
 - **Status:** Accepted; the pages' look, language and policy amended by
   [ADR 0010](0010-server-pages-in-two-languages.md); upload release and configurable count amended
-  2026-11-12 ([#35](https://github.com/jaylann/mcp-server-sevdesk/issues/35))
+  2026-11-12 ([#35](https://github.com/jaylann/mcp-server-sevdesk/issues/35)); batch uploads amended
+  2026-11-12 ([#34](https://github.com/jaylann/mcp-server-sevdesk/issues/34))
 - **Date:** 2026-11-09
 - **Amends:** [ADR 0007](0007-approval-inbox-over-http.md) (its browser session now also opens
   the upload and download pages)
@@ -77,7 +78,7 @@ builds per call (`src/safety/file-sources.ts`). The schemas stay static, so `too
 per configuration. Bearer mode keeps its folders: a plain path still reads `SEVDESK_FILE_DIRS`, and
 `SEVDESK_OUTPUT_DIR` wins over links.
 
-**Bounded.** An upload page lives 15 minutes and takes one file of at most 20 MiB; uploads and links
+**Bounded.** An upload page lives 15 minutes and takes 1–10 files, each at most 20 MiB; uploads and links
 live `SEVDESK_HTTP_FILES_TTL` (30 minutes); a link serves 5 downloads. Per account 5 open pages, 10
 live records by default (`SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT`, whole numbers 1–1000) and a quarter
 of `SEVDESK_HTTP_FILES_MAX_MB` (at least one 20 MiB upload, at most half); room for one upload stays free for accounts that hold nothing yet. Nothing is evicted, new
@@ -117,6 +118,41 @@ older files expire or transfers finish. Global refusals never disclose another a
 time, not a reservation: using an upload or exhausting a link may release a slot sooner, while
 another request may claim it first.
 
+**Batch uploads (2026-11-12, #34).** `sevdesk_upload_request` accepts optional integer `count`
+(1–10). Absent or `1` preserves the exact single-file response. For `count > 1` it returns
+`batchId`, `count` and one URL, replacing the singular `uploadId`. The read-tier,
+read-only `sevdesk_uploads_list(batchId)` resolves that connection's batch into file slots with
+`uploadId`, status, and (once uploaded) cleaned name, kind, size, SHA-256 and individual expiry.
+No bytes travel through the model. Names remain untrusted data, never trusted instructions or
+log fields. Duplicate cleaned names are kept as separate slots; the model must clarify an
+ambiguous match rather than guess. This adds one read tool: preallocated per-slot IDs alone
+cannot tell the model which cleaned name the human selected for which slot without a manual
+mapping step or adding polling parameters to the allocating tool. Reads and allocation remain
+separate.
+
+Creation reserves all N records synchronously, or none, against both the account record limit
+(including download reservations) and the global record limit. A refusal reports remaining
+account room and reuses the account-only earliest-expiry information above. Pending pages are
+counted by batch, so a ten-file batch uses one of the five pages and ten record slots. Every file
+still passes content sniffing, per-file size, byte quotas, session and CSRF checks, encrypted
+storage and grant/account ownership. Successful attachment releases only that file's slot.
+
+The native `multiple` input submits repeated `file` parts beside exactly one `csrf` part, without
+script. The raw multipart delimiter cap becomes remaining slots + 2 before parsing; excess parts
+are refused. Before body reading, the declared and actual body are capped to the smaller of the
+remaining slots times the per-file size limit and the account's remaining byte share, plus 64 KiB
+of framing, never above 200 MiB plus framing. The same two global / one per-account body slots,
+90-second deadline and pace limits apply per submission. Parsed bodies can take about three
+times that allowance in memory, so operators must size memory and proxy limits for batches.
+
+Files are stored sequentially, with quotas and expiry checked for each. Earlier successful files
+survive a later validation, storage or expiry failure; the page shows exactly those successes
+and which slots remain. The same link accepts further submissions for pending slots until the
+original deadline. A file claimed for storage before its ticket expires finishes under the
+existing receiving-ticket rule; later files may expire while it is written. Each successful
+file gets its own file TTL. Batch metadata exists only while at least one slot has a live ticket
+or file, bounding metadata by the record cap; completed or fully expired batches become unknown.
+
 ## Consequences
 
 - Good: claude.ai and the Claude apps can attach receipts, import e-invoices and get PDFs and
@@ -140,7 +176,7 @@ another request may claim it first.
   link's 5. A client that reads just fast enough can keep a connection, and the file in memory,
   for a long time (a 20 MiB file for hours); the request's slot is freed at the 120 s deadline
   all the same, and connections are capped per client address.
-- Bad: reverse proxies must pass bodies over 20 MiB and `Content-Length` (nginx needs
+- Bad: reverse proxies must pass batch bodies up to 200 MiB plus framing and `Content-Length` (nginx needs
   `client_max_body_size`).
 - Bad: as with the inbox, an agent that drives a signed-in browser could upload or download on its
   own.

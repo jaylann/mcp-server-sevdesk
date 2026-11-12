@@ -165,6 +165,8 @@ export interface HttpRoute {
 
 /** What a preflight that lets the request go on may tell the router. */
 export interface PreflightPass {
+  /** A request-specific body cap; can only tighten the route's absolute cap. */
+  readonly maxBodyBytes?: number;
   /** The key the route's `bodySlots.perKey` counts this request under. Never logged. */
   readonly bodySlotKey?: string;
 }

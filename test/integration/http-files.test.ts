@@ -561,6 +561,76 @@ describe("remote file transfer end to end (OAuth)", () => {
     expectNone(audit, secrets);
   });
 
+  it("uses one batch page to attach named files through create and update draft tools", async () => {
+    const setup = await start(await workspace());
+    const { client, jar } = await connect(setup);
+    const request = await call(client, "sevdesk_upload_request", { purpose: "receipt", count: 2 });
+    expect(request.isError).toBeFalsy();
+    const data = resultData(request);
+    const url = String(data["url"]);
+    const page = await open(setup, url, jar);
+    const receiptFile = await receipt();
+    const form = new FormData();
+    form.append("csrf", csrfOf(page.body) ?? "");
+    form.append(
+      "file",
+      new File([receiptFile.bytes], "Erster Beleg.pdf", { type: "application/pdf" }),
+    );
+    form.append(
+      "file",
+      new File([receiptFile.bytes], "Zweiter Beleg.pdf", { type: "application/pdf" }),
+    );
+    const encoded = new Request("http://encoder.invalid/", { method: "POST", body: form });
+    const body = new Uint8Array(await encoded.arrayBuffer());
+    const response = await setup.fetch(url, {
+      method: "POST",
+      headers: {
+        Cookie: jar.header(),
+        Origin: ORIGIN,
+        "Content-Type": encoded.headers.get("content-type") ?? "",
+        "Content-Length": String(body.byteLength),
+      },
+      body,
+    });
+    expect(response.status).toBe(200);
+    const receiptPage = await response.text();
+    expect(receiptPage).toContain("Erster_Beleg.pdf");
+    expect(receiptPage).toContain("Zweiter_Beleg.pdf");
+    const listed = await call(client, "sevdesk_uploads_list", { batchId: data["batchId"] });
+    expect(listed.isError).toBeFalsy();
+    const files = resultData(listed)["files"];
+    if (!Array.isArray(files)) throw new Error("missing files");
+    const entries: readonly unknown[] = files;
+    for (const [index, value] of entries.entries()) {
+      if (
+        typeof value !== "object" ||
+        value === null ||
+        !("uploadId" in value) ||
+        typeof value.uploadId !== "string"
+      )
+        throw new Error("invalid file reference");
+      const toolName =
+        index === 0 ? "sevdesk_voucher_create_draft" : "sevdesk_voucher_update_draft";
+      const args =
+        index === 0 ? { ...DRAFT, file: value.uploadId } : { id: 2101, file: value.uploadId };
+      const saved = await call(client, toolName, args);
+      expect(saved.isError, resultText(saved)).toBeFalsy();
+      expect(resultData(saved)["status"]).toBe("done");
+    }
+    expect(setup.sevdesk.files.map((file) => file.name)).toEqual([
+      "Erster_Beleg.pdf",
+      "Zweiter_Beleg.pdf",
+    ]);
+    for (const file of setup.sevdesk.files)
+      expect(new Uint8Array(await file.arrayBuffer())).toEqual(receiptFile.bytes);
+    await vi.waitFor(async () => {
+      expect(await readdir(setup.filesDir)).toEqual([]);
+    });
+    const gone = await call(client, "sevdesk_uploads_list", { batchId: data["batchId"] });
+    expect(gone.isError).toBe(true);
+    expectNone(setup.lines.join("\n"), [String(data["batchId"]), "Erster_Beleg", "Zweiter_Beleg"]);
+  });
+
   it("refuses an upload to another account and to another grant of the same account, as if unknown", async () => {
     const setup = await start(await workspace(), {
       SEVDESK_OAUTH_ACCOUNTS: `${ACCOUNT},${OTHER_ACCOUNT}`,

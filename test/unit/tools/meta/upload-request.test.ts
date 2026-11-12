@@ -12,6 +12,7 @@ import {
   filesConfig,
   filesDeployment,
   filesOffDeployment,
+  OWNER,
   type TransferFixture,
   useTransfer,
 } from "../../../helpers/transfer.js";
@@ -52,7 +53,7 @@ describe("sevdesk_upload_request: metadata", () => {
       idempotentHint: false,
       openWorldHint: false,
     });
-    expect(Object.keys(tool.input.shape)).toEqual(["purpose"]);
+    expect(Object.keys(tool.input.shape)).toEqual(["count", "purpose"]);
     expect(tool.description).toContain("uploadId");
     expect(tool.description.length).toBeLessThanOrEqual(1_000);
   });
@@ -131,5 +132,98 @@ describe("sevdesk_upload_request: calls", () => {
     const client = await connectInProcess({ config: allEnabledConfig(), tools: META_TOOLS });
     clients.push(client);
     expect((await client.listTools()).tools.map((entry) => entry.name)).not.toContain(tool.name);
+  });
+});
+
+describe("upload batches through MCP", () => {
+  it("reserves ten slots on one page and lists names without reading or consuming bytes", async () => {
+    const transfer = await openTransfer();
+    const { client, fake } = await connect(transfer);
+    const result = await client.callTool({
+      name: tool.name,
+      arguments: { purpose: "receipt", count: 10 },
+    });
+    expect(result.isError).toBeFalsy();
+    const data = resultData(result);
+    expect(data["uploadId"]).toBeUndefined();
+    expect(data["count"]).toBe(10);
+    expect(data["url"]).toBe(`${FILES_ORIGIN}/uploads/${String(data["batchId"])}`);
+    const batch = transfer.store.readBatch(OWNER, String(data["batchId"]));
+    const slot = batch?.slots[0];
+    expect(slot).toBeDefined();
+    if (slot === undefined) throw new Error("missing slot");
+    await transfer.store.receive(slot.id, OWNER.accountScope, {
+      name: "Beleg_Maerz.pdf",
+      kind: "pdf",
+      bytes: Buffer.from("%PDF-1.7"),
+    });
+    const before = transfer.store.usage();
+    const lookup = await client.callTool({
+      name: "sevdesk_uploads_list",
+      arguments: { batchId: data["batchId"] },
+    });
+    expect(lookup.isError).toBeFalsy();
+    expect(resultData(lookup)["files"]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          uploadId: `upload:${slot.id}`,
+          name: "Beleg_Maerz.pdf",
+          status: "uploaded",
+        }),
+        expect.objectContaining({ status: "pending" }),
+      ]),
+    );
+    expect(resultSummary(lookup)).not.toContain("Beleg_Maerz.pdf");
+    expect(transfer.store.usage()).toEqual(before);
+    expect(fake.calls).toEqual([]);
+  });
+
+  it.each([0, 11, 1.5, -1, "2", null])(
+    "rejects count %s without reserving slots",
+    async (count) => {
+      const transfer = await openTransfer();
+      const { client } = await connect(transfer);
+      const result = await client.callTool({
+        name: tool.name,
+        arguments: { purpose: "receipt", count },
+      });
+      expect(result.isError).toBe(true);
+      expect(transfer.store.usage().records).toBe(0);
+    },
+  );
+
+  it("keeps count 1 on the single-file shape and refuses an over-capacity batch atomically", async () => {
+    const transfer = await openTransfer();
+    const { client } = await connect(transfer);
+    const single = resultData(
+      await client.callTool({ name: tool.name, arguments: { purpose: "receipt", count: 1 } }),
+    );
+    expect(single["uploadId"]).toBeDefined();
+    expect(single["batchId"]).toBeUndefined();
+    const result = await client.callTool({
+      name: tool.name,
+      arguments: { purpose: "receipt", count: 10 },
+    });
+    expect(result.isError).toBe(true);
+    expect(resultText(result)).toContain("only 9 of 10 remaining");
+    expect(resultText(result)).toContain("2026-11-09T12:15:00.000Z");
+    expect(transfer.store.usage().records).toBe(1);
+  });
+
+  it("refuses unknown and foreign batch lookups with the same trusted message", async () => {
+    const transfer = await openTransfer();
+    const { client } = await connect(transfer);
+    const foreign = transfer.store.createBatch({ ...OWNER, grantKey: "other" }, "receipt", 2);
+    const unknown = await client.callTool({
+      name: "sevdesk_uploads_list",
+      arguments: { batchId: "x".repeat(43) },
+    });
+    const denied = await client.callTool({
+      name: "sevdesk_uploads_list",
+      arguments: { batchId: foreign.id },
+    });
+    expect(denied.isError).toBe(true);
+    expect(resultText(denied)).toBe(resultText(unknown));
+    expect(resultText(denied)).not.toContain(foreign.id);
   });
 });

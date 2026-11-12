@@ -180,7 +180,7 @@ describe("transfer routes: declaration", () => {
         match: "prefix",
         methods: ["GET", "POST"],
         origin: "form",
-        maxBodyBytes: 20 * 1024 * 1024 + 64 * 1024,
+        maxBodyBytes: 10 * 20 * 1024 * 1024 + 64 * 1024,
         rateLimit: FILES_RATE,
         bodyTimeoutMs: 90_000,
         bodyPace: { idleMs: 10_000, graceMs: 10_000, minBytesPerSecond: 16 * 1024 },
@@ -200,7 +200,7 @@ describe("transfer routes: declaration", () => {
         slotsPerAccount: undefined,
       },
     ]);
-    expect(MAX_UPLOAD_BODY_BYTES).toBe(20 * 1024 * 1024 + 64 * 1024);
+    expect(MAX_UPLOAD_BODY_BYTES).toBe(10 * 20 * 1024 * 1024 + 64 * 1024);
     expect(FILES_RATE).toEqual({ name: "files", perMinute: 60 });
     expect(UPLOAD_RATE_MINUTE).toEqual({ name: "uploads", perMinute: 10 });
     expect(UPLOAD_RATE_HOUR).toEqual({ name: "uploads-hour", perMinute: 1, burst: 60 });
@@ -911,5 +911,166 @@ describe("transfer routes: many-part forms (security review 2026-11, finding 2)"
     // A delimiter inside a line (not after CRLF) is part of the content, not a new part.
     const inline = new TextEncoder().encode(`${part("a")}x--b y\r\n--b--\r\n`);
     expect(atMostDelimiters(inline, "b", 2)).toBe(true);
+  });
+});
+
+describe("transfer routes: batch uploads", () => {
+  it("uploads multiple files, cleans names, preserves duplicate names, and shows progress", async () => {
+    const env = await setup();
+    const browser = await signedIn(env);
+    const batch = env.store.createBatch(A1, "receipt", 3);
+    const path = `/uploads/${batch.id}`;
+    const page = await browser.get(path);
+    expect(page.body).toContain("multiple required");
+    const result = await upload(env, browser, path, [
+      ["csrf", csrfOf(page.body) ?? ""],
+      ["file", { name: "Beleg März.pdf", bytes: PDF }],
+      ["file", { name: "Beleg März.pdf", bytes: PNG }],
+    ]);
+    expect(result.status).toBe(200);
+    expect(result.body).toContain("1 file slot remaining");
+    expect(result.body).toContain("Beleg_Maerz.pdf");
+    expect(result.body).toContain("Beleg_Maerz.png");
+    const final = await uploadFile(env, browser, path, { name: "Beleg März.pdf", bytes: PDF });
+    expect(final.status).toBe(200);
+    expect(final.body).not.toContain('<input type="file"');
+    const slots = env.store.readBatch(A1, batch.id)?.slots ?? [];
+    expect(slots.map((slot) => slot.file?.name)).toEqual([
+      "Beleg_Maerz.pdf",
+      "Beleg_Maerz.png",
+      "Beleg_Maerz.pdf",
+    ]);
+    expect(new Set(slots.map((slot) => slot.id)).size).toBe(3);
+    for (const slot of slots) {
+      expect(await env.store.readUpload(A1, slot.id)).toBeDefined();
+      expect(await env.store.readUpload({ ...A1, grantKey: "foreign" }, slot.id)).toBeUndefined();
+    }
+    expect((await uploadFile(env, browser, path, { name: "extra.pdf", bytes: PDF })).status).toBe(
+      409,
+    );
+    expect(JSON.stringify(env.log.lines)).not.toContain("Beleg_Maerz");
+  });
+
+  it("keeps earlier successful files after a wrong-kind failure and retries only missing files", async () => {
+    const env = await setup();
+    const browser = await signedIn(env);
+    const batch = env.store.createBatch(A1, "receipt", 3);
+    const path = `/uploads/${batch.id}`;
+    const page = await browser.get(path);
+    const result = await upload(env, browser, path, [
+      ["csrf", csrfOf(page.body) ?? ""],
+      ["file", { name: "first.pdf", bytes: PDF }],
+      ["file", { name: "bad.pdf", bytes: XML }],
+      ["file", { name: "third.pdf", bytes: PDF }],
+    ]);
+    expect(result.status).toBe(415);
+    expect(result.body).toContain("first.pdf");
+    expect(result.body).toContain("2 file slots remaining");
+    expect(env.store.readBatch(A1, batch.id)?.slots.map((slot) => slot.status)).toEqual([
+      "uploaded",
+      "pending",
+      "pending",
+    ]);
+    expect((await uploadFile(env, browser, path, { name: "second.pdf", bytes: PDF })).status).toBe(
+      200,
+    );
+  });
+
+  it("expires the unused slots partway through a submission while keeping the first file", async () => {
+    const env = await setup();
+    const browser = await signedIn(env);
+    const batch = env.store.createBatch(A1, "receipt", 2);
+    const path = `/uploads/${batch.id}`;
+    const page = await browser.get(path);
+    const receive = env.store.receive.bind(env.store);
+    vi.spyOn(env.store, "receive").mockImplementation(async (...args) => {
+      const outcome = await receive(...args);
+      if (outcome.status === "received") env.clock.advance(15 * 60_000);
+      return outcome;
+    });
+    const result = await upload(env, browser, path, [
+      ["csrf", csrfOf(page.body) ?? ""],
+      ["file", { name: "first.pdf", bytes: PDF }],
+      ["file", { name: "second.pdf", bytes: PDF }],
+    ]);
+    expect(result.status).toBe(410);
+    expect(result.body).toContain("first.pdf");
+    expect(result.body).toContain("Expired");
+    expect(result.body).not.toContain('<input type="file"');
+    expect(env.store.readBatch(A1, batch.id)?.slots.map((slot) => slot.status)).toEqual([
+      "uploaded",
+      "expired",
+    ]);
+  });
+
+  it("checks the session, account, origin and CSRF before storing any batch file", async () => {
+    const env = await setup();
+    const browser = await signedIn(env);
+    const other = await signedIn(env, TOKEN_B);
+    const batch = env.store.createBatch(A1, "receipt", 2);
+    const path = `/uploads/${batch.id}`;
+    expect((await env.browser().get(path)).body).toContain("Sign in");
+    expect((await other.get(path)).status).toBe(404);
+    const fields: readonly (readonly [string, string | Part])[] = [
+      ["csrf", "invalid"],
+      ["file", { name: "a.pdf", bytes: PDF }],
+    ];
+    expect((await upload(env, browser, path, fields)).status).toBe(403);
+    expect((await upload(env, other, path, fields)).status).toBe(404);
+    expect(
+      (await upload(env, browser, path, fields, { Origin: "https://evil.example" })).status,
+    ).toBe(403);
+    expect(env.store.usage().bytes).toBe(0);
+  });
+
+  it("rejects excess multipart files before parsing or storing them", async () => {
+    const env = await setup();
+    const browser = await signedIn(env);
+    const batch = env.store.createBatch(A1, "receipt", 2);
+    const path = `/uploads/${batch.id}`;
+    const page = await browser.get(path);
+    const parser = vi.spyOn(Response.prototype, "formData");
+    const result = await upload(env, browser, path, [
+      ["csrf", csrfOf(page.body) ?? ""],
+      ["file", { name: "a.pdf", bytes: PDF }],
+      ["file", { name: "b.pdf", bytes: PDF }],
+      ["file", { name: "c.pdf", bytes: PDF }],
+    ]);
+    expect(result.status).toBe(400);
+    expect(parser).not.toHaveBeenCalled();
+    expect(env.store.usage().bytes).toBe(0);
+  });
+
+  it("caps the whole body by account room even with a dishonest Content-Length", async () => {
+    const env = await setup({ maxUploadBytes: 100, maxBytes: 400 });
+    const browser = await signedIn(env);
+    const batch = env.store.createBatch(A1, "receipt", 2);
+    const path = `/uploads/${batch.id}`;
+    const page = await browser.get(path);
+    const fields: readonly (readonly [string, string | Part])[] = [
+      ["csrf", csrfOf(page.body) ?? ""],
+      ["file", { name: "large.pdf", bytes: new Uint8Array(70_000) }],
+    ];
+    expect((await upload(env, browser, path, fields)).status).toBe(413);
+    expect((await upload(env, browser, path, fields, { "Content-Length": "1" })).status).toBe(413);
+    expect(env.store.usage().bytes).toBe(0);
+  });
+
+  it("checks per-file sizes, not just the batch allowance", async () => {
+    const env = await setup({ maxUploadBytes: 100, maxBytes: 4000 });
+    const browser = await signedIn(env);
+    const batch = env.store.createBatch(A1, "receipt", 2);
+    const path = `/uploads/${batch.id}`;
+    const page = await browser.get(path);
+    const result = await upload(env, browser, path, [
+      ["csrf", csrfOf(page.body) ?? ""],
+      ["file", { name: "a.pdf", bytes: PDF }],
+      ["file", { name: "large.pdf", bytes: Buffer.concat([PDF, new Uint8Array(100)]) }],
+    ]);
+    expect(result.status).toBe(413);
+    expect(env.store.readBatch(A1, batch.id)?.slots.map((slot) => slot.status)).toEqual([
+      "uploaded",
+      "pending",
+    ]);
   });
 });
