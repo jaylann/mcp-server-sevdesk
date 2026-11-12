@@ -13,6 +13,11 @@ name: Release
 #                     without privileges
 #   publish-mcpb      attests that bundle and attaches it to the release, no dependency install
 #
+# The release PR is opened and updated by the lanfermann-release-bot GitHub App (repository
+# variable RP_APP_ID, secret RP_APP_KEY), not by GITHUB_TOKEN: GitHub runs no workflows on PRs and
+# pushes made with GITHUB_TOKEN, and the ruleset on main requires CI to pass on the release PR. The
+# app token can open PRs, push branches and create tags and releases; it cannot publish anything.
+#
 # Dependency code (pnpm install, the build tools, the mcpb CLI) runs only in jobs without an OIDC
 # token, a write permission or the release environment. The jobs that hold those take files built
 # earlier in the same run and run only plain Node, npm and gh.
@@ -36,10 +41,8 @@ jobs:
     name: Release PR
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    permissions:
-      contents: write # release commits, tags and GitHub releases
-      issues: write # create and apply the "autorelease: *" labels
-      pull-requests: write # open and update the release PR
+    # Every write in this job goes through the release bot's token; GITHUB_TOKEN needs nothing.
+    permissions: {}
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
@@ -47,14 +50,22 @@ jobs:
       prs_created: ${{ steps.release.outputs.prs_created }}
       pr: ${{ steps.release.outputs.pr }}
     steps:
+      - name: Mint a token for the release bot
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.RP_APP_ID }}
+          private-key: ${{ secrets.RP_APP_KEY }}
+          # release commits, branches, tags and GitHub releases; the release PR and its labels
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Run release-please
         id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
-          # PRs opened with the default GITHUB_TOKEN do not trigger workflows, so CI would not run on
-          # the release PR. An optional fine-grained token (contents + pull requests: write on this
-          # repo only) fixes that; without it, close and reopen the release PR to run CI.
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          # The app's token, so CI runs on the release PR (see the comment at the top).
+          token: ${{ steps.app-token.outputs.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
@@ -70,10 +81,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      contents: write # push the pin commit to the release PR branch
+      contents: read # check out the release PR branch; the push uses the release bot's token
     env:
       BRANCH: ${{ fromJSON(needs.release-please.outputs.pr).headBranchName }}
     steps:
+      # A token of its own: a token minted in another job cannot be handed over (outputs that hold a
+      # secret arrive empty).
+      - name: Mint a token for the release bot
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.RP_APP_ID }}
+          private-key: ${{ secrets.RP_APP_KEY }}
+          permission-contents: write # push the pin commit to the release PR branch
+
       - name: Check out the release PR branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -91,8 +112,8 @@ jobs:
 
       - name: Commit and push the pin
         env:
-          # The release-please token, so CI runs on the pushed commit when that token is set.
-          TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          # The release bot's token, so CI runs again on the pushed commit.
+          TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           if git diff --quiet -- plugin/.mcp.json server.json; then
             echo "plugin/.mcp.json and server.json already pin the release version."
@@ -103,8 +124,9 @@ jobs:
             *) echo "::error::Refusing to push to $BRANCH (not a release-please branch)."; exit 1 ;;
           esac
           version="$(node -p 'require("./package.json").version')"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # The bot's user id (not the app id), so GitHub attributes the commit to the bot.
+          git config user.name "lanfermann-release-bot[bot]"
+          git config user.email "291497190+lanfermann-release-bot[bot]@users.noreply.github.com"
           git commit --quiet -m "chore: pin the plugin and the image to $version" -- plugin/.mcp.json server.json
           git push --quiet "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
 
