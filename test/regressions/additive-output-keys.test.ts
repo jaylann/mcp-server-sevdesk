@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import { statusDto } from "../../src/domain/common.js";
+import { withDocumentCountry } from "../../src/domain/country-codes.js";
 import { mapCreditNoteDetail } from "../../src/domain/credit-notes.js";
 import { creditNoteCreateInputShape } from "../../src/domain/drafts/credit-note.js";
+import {
+  addressInputShape,
+  loadCountries,
+  resolveAddress,
+} from "../../src/domain/drafts/recipient.js";
 import {
   BOOKING_CATEGORY_NAMES,
   INVOICE_TYPE_FILTERS,
@@ -18,6 +24,7 @@ import { creditNotesListTool } from "../../src/tools/credit-notes/list.js";
 import { invoicesListTool } from "../../src/tools/invoices/list.js";
 import { ordersListTool } from "../../src/tools/orders/list.js";
 import { vouchersListTool } from "../../src/tools/vouchers/list.js";
+import { FakeSevdeskClient } from "../helpers/fake-client.js";
 
 const TODAY = "2026-11-12";
 
@@ -98,4 +105,38 @@ describe("additive output keys use the input/filter vocabulary", () => {
       mapCreditNoteDetail({ id: 1, status: 100, bookingCategory: "NEW" }).bookingCategory,
     ).toEqual({ code: "NEW", label: "unknown" });
   });
+
+  it.each([" at ", " AT ", "\tAt\n"])(
+    "round-trips the output country through draft address resolution for %j",
+    async (code) => {
+      const client = new FakeSevdeskClient([
+        {
+          path: "/StaticCountry",
+          response: { body: { objects: [{ id: 42, code, name: "Austria" }] } },
+        },
+      ]);
+      const invoice = await withDocumentCountry(
+        mapInvoiceDetail(
+          { id: 1, status: 100, addressCountry: { id: 42, objectName: "StaticCountry" } },
+          TODAY,
+        ),
+        client,
+      );
+      expect(invoice.address?.country).toBe("AT");
+      const addressCountry = addressInputShape.addressCountry.parse(invoice.address?.country);
+      const address = resolveAddress(
+        {
+          contact: { id: 1, kind: "organisation", displayName: "Example" },
+          addresses: [{ id: 2, city: "Vienna", countryId: 42 }],
+          addressesComplete: true,
+          communicationWays: [],
+          communicationWaysComplete: true,
+        },
+        { addressCountry },
+        await loadCountries(client),
+      );
+      expect(address).toMatchObject({ countryId: 42, countryName: "Austria" });
+      expect(client.writes()).toEqual([]);
+    },
+  );
 });
