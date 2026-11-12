@@ -13,7 +13,7 @@ Before you start:
 
 The examples put the token itself into the configuration as `SEVDESK_API_TOKEN`. To keep it out of
 the file, replace that line with `"SEVDESK_API_TOKEN_KEYCHAIN": "<label>"` after storing the token
-with `npx -y mcp-server-sevdesk token set <label>` (macOS and Linux), or with
+with `npx -y mcp-server-sevdesk token set <label>` (macOS, Linux and Windows), or with
 `"SEVDESK_API_TOKEN_FILE": "/absolute/path/to/token"`
 ([Configuration](configuration.md#keep-the-token-in-the-os-keychain)). Every other setting goes
 into the same `env` block; without any, the server is read-only.

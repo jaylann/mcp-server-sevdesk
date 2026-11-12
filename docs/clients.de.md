@@ -1,4 +1,4 @@
-<!-- translated-from: docs/clients.md sha256:2cb01a4bfa63 -->
+<!-- translated-from: docs/clients.md sha256:44ac123e6fb3 -->
 
 # Clients
 
@@ -17,8 +17,8 @@ Bevor Sie beginnen:
 
 Die Beispiele schreiben das Token selbst als `SEVDESK_API_TOKEN` in die Konfiguration. Um es aus
 der Datei herauszuhalten, ersetzen Sie diese Zeile durch `"SEVDESK_API_TOKEN_KEYCHAIN": "<label>"`,
-nachdem Sie das Token mit `npx -y mcp-server-sevdesk token set <label>` abgelegt haben (macOS und
-Linux), oder durch `"SEVDESK_API_TOKEN_FILE": "/absolute/path/to/token"`
+nachdem Sie das Token mit `npx -y mcp-server-sevdesk token set <label>` abgelegt haben (macOS,
+Linux und Windows), oder durch `"SEVDESK_API_TOKEN_FILE": "/absolute/path/to/token"`
 ([Konfiguration](configuration.de.md#das-token-im-schlüsselbund-ablegen)). Jede weitere
 Einstellung kommt in denselben `env`-Block; ohne weitere Einstellungen liest der Server nur.
 

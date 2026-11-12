@@ -319,7 +319,8 @@ read from the environment, a `*_FILE` or, optionally, the OS keychain, and check
 from a local JSON file onto the same variables before they are validated
 (`src/accounts/local-config.ts`, [ADR 0009](adr/0009-local-profiles-and-os-keychain.md)); the
 keychain is read through the operating system's helpers (`/usr/bin/security` on macOS,
-`secret-tool` on Linux) under the fixed service `mcp-server-sevdesk`, so configuration names only
+`secret-tool` on Linux, Windows PowerShell with WinRT `PasswordVault` on Windows) under the fixed
+service `mcp-server-sevdesk`, so configuration names only
 a label. In bearer mode it comes from the environment or a `*_FILE`,
 and the server looks up its account (`GET /SevClient`) at startup; a failed lookup is logged as a
 warning and does not stop the server (approvals and audit lines then use the account scope

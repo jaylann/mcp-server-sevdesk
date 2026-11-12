@@ -1,4 +1,4 @@
-<!-- translated-from: README.md sha256:13141cf1d2a1 -->
+<!-- translated-from: README.md sha256:44b007f1d80d -->
 
 <img src="https://raw.githubusercontent.com/jaylann/mcp-server-sevdesk/main/assets/icon.svg" alt="" width="96" height="96" align="right">
 
@@ -58,7 +58,7 @@ bewahrt das Token im sicheren Speicher Ihres Systems auf.
 ### Claude Code
 
 ```bash
-npx -y mcp-server-sevdesk token set work   # legt das Token im Schlüsselbund des Betriebssystems ab (macOS, Linux)
+npx -y mcp-server-sevdesk token set work   # legt das Token im Schlüsselbund des Betriebssystems ab (macOS, Linux, Windows)
 claude mcp add --env SEVDESK_API_TOKEN_KEYCHAIN=work --scope user sevdesk -- npx -y mcp-server-sevdesk
 ```
 
@@ -229,8 +229,8 @@ Token-Variable; ohne `SEVDESK_ALLOW` bleibt es nur lesend).
 | [Architektur](docs/architecture.md)                        | Wie der Server gebaut ist, und die [Architekturentscheidungen](docs/adr/README.md) |
 | [Sicherheit](SECURITY.de.md), [Datenschutz](PRIVACY.de.md) | Bedrohungsmodell, Schwachstellen melden, was wo gespeichert wird                   |
 
-**Als Nächstes** in 1.x: Briefe per Post versenden, sevDesk-Konten in Österreich und die
-Windows-Anmeldeinformationsverwaltung. Das [Changelog](CHANGELOG.md) listet jedes Release.
+**Als Nächstes** in 1.x: Briefe per Post versenden und sevDesk-Konten in Österreich.
+Das [Changelog](CHANGELOG.md) listet jedes Release.
 
 ## Mitwirken
 

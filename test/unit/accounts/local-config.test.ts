@@ -91,14 +91,14 @@ describe("SEVDESK_API_TOKEN_KEYCHAIN", () => {
     ).toEqual(["SEVDESK_API_TOKEN_KEYCHAIN: the OS keychain could not be read."]);
   });
 
-  it("refuses Windows through the real keychain without running anything", async () => {
-    const problems = await problemsOf(
+  it("accepts a keychain token on Windows", async () => {
+    const { keychain, labels } = fakeKeychain();
+    const { config } = await loadLocalConfig(
       { SEVDESK_API_TOKEN_KEYCHAIN: "work" },
-      { platform: "win32" },
+      { platform: "win32", keychain },
     );
-    expect(problems).toEqual([
-      expect.stringMatching(/not supported on Windows.*SEVDESK_API_TOKEN_FILE/),
-    ]);
+    expect(config.token).toBe(TOKEN);
+    expect(labels).toEqual(["work"]);
   });
 
   it("does not look anything up when the sources conflict or the label is bad", async () => {

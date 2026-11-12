@@ -51,7 +51,7 @@ your token. The extension needs no Node.js and keeps the token in your system's 
 ### Claude Code
 
 ```bash
-npx -y mcp-server-sevdesk token set work   # stores the token in the OS keychain (macOS, Linux)
+npx -y mcp-server-sevdesk token set work   # stores the token in the OS keychain (macOS, Linux, Windows)
 claude mcp add --env SEVDESK_API_TOKEN_KEYCHAIN=work --scope user sevdesk -- npx -y mcp-server-sevdesk
 ```
 
@@ -216,8 +216,8 @@ it stays read-only unless you set `SEVDESK_ALLOW`).
 | [Architecture](docs/architecture.md)           | How the server is built, and the [decision records](docs/adr/README.md)    |
 | [Security](SECURITY.md), [Privacy](PRIVACY.md) | Threat model, reporting vulnerabilities, what is stored where              |
 
-**What's next** in 1.x: sending letters by post, sevDesk accounts in Austria, and the Windows
-credential store. The [changelog](CHANGELOG.md) lists every release.
+**What's next** in 1.x: sending letters by post and sevDesk accounts in Austria.
+The [changelog](CHANGELOG.md) lists every release.
 
 ## Contributing
 

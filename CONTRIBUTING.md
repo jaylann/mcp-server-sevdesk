@@ -200,9 +200,29 @@ them. To try a build, open `build/mcp-server-sevdesk-<version>.mcpb` in Claude D
 ## Keychain and profiles
 
 The keychain code (`src/safety/keychain.ts`) takes an injected `spawn`, so tests never run
-`security` or `secret-tool`; the profile code takes an injected platform, user id and home folder. A
-real round trip is a manual check: `token set`, `token check` and `token delete` with a throwaway
-label, then start the server with `SEVDESK_API_TOKEN_KEYCHAIN` set to it.
+`security`, `secret-tool` or Windows PowerShell; the profile code takes an injected platform,
+user id and home folder. A real round trip is a manual check: `token set`, `token check`, a
+server start with `SEVDESK_API_TOKEN_KEYCHAIN` set to a throwaway label, then `token delete`.
+
+On Windows, from a clean PowerShell session in the repository (use a new throwaway label and
+paste the token only at the hidden prompt):
+
+```powershell
+pnpm build
+node dist/index.js token set windows-check-11
+node dist/index.js token check windows-check-11
+$env:SEVDESK_API_TOKEN_KEYCHAIN = 'windows-check-11'
+node dist/index.js --stdio
+# After the startup message, stop the server with Ctrl+C, then:
+Remove-Item Env:SEVDESK_API_TOKEN_KEYCHAIN
+node dist/index.js token delete windows-check-11
+node dist/index.js token check windows-check-11 # must report no stored token
+```
+
+Repeat `token set` before deletion to check replacement, and confirm no token appears in the
+output or PowerShell process arguments. `PasswordVault` requires Windows PowerShell's
+`FullLanguage` mode; Constrained Language Mode must give a safe refusal, never bypass the policy
+([ADR 0009](docs/adr/0009-local-profiles-and-os-keychain.md)).
 
 ## Fixtures
 

@@ -7,7 +7,7 @@
  * | --------------- | ------------------------------------------- | ---------------------------------- |
  * | macOS           | `/usr/bin/security find-generic-password -w` | `security -i`, command on stdin   |
  * | Linux and other | `secret-tool lookup` (libsecret)             | `secret-tool store`, token on stdin |
- * | Windows         | refused with a pointer to `SEVDESK_API_TOKEN_FILE` or the .mcpb bundle (1.x) |
+ * | Windows         | Windows PowerShell / WinRT PasswordVault    | token on stdin                     |
  *
  * Rules:
  * - Every item lives under the fixed service {@link KEYCHAIN_SERVICE}; configuration names only
@@ -28,6 +28,9 @@
  * created it, so reading it shows no dialog).
  */
 import { type ChildProcess, spawn as spawnProcess, type SpawnOptions } from "node:child_process";
+import { win32 } from "node:path";
+
+import { z } from "zod";
 
 import { localNameProblem, sevdeskTokenProblem } from "../config.js";
 
@@ -45,6 +48,69 @@ const STORABLE_TOKEN = /^[A-Za-z0-9_-]{1,512}$/;
 
 const SECURITY = "/usr/bin/security";
 const SECRET_TOOL = "secret-tool";
+
+const WINDOWS_ROOT = z
+  .string()
+  .regex(/^[A-Za-z]:\\[^<>:"|?*/\p{Cc}]+$/u)
+  .refine((value) =>
+    value
+      .split("\\")
+      .slice(1)
+      .every((part) => part !== "" && !/[. ]$/.test(part)),
+  );
+
+/** Private exit protocol of WINDOWS_SCRIPT, never PowerShell's error text. */
+const WINDOWS_EXIT = { notFound: 2, denied: 3, unavailable: 4, invalid: 5 } as const;
+
+/**
+ * Constant code: operation, label and token are three ASCII lines on stdin, never script text.
+ * FullLanguage is required: avoiding Add-Type does not make WinRT types available under CLM.
+ * No execution-policy override, profile, dynamic code, or enumeration of unrelated credentials.
+ */
+const WINDOWS_SCRIPT = String.raw`
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') { exit 4 }
+try {
+  $operation = [Console]::ReadLine()
+  $label = [Console]::ReadLine()
+  $token = [Console]::ReadLine()
+  if ($operation -cnotmatch '\A(read|store|delete)\z' -or
+      $label -cnotmatch '\A[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\z' -or
+      $label -match '\A[0-9a-f]{32}\z' -or
+      [Console]::In.ReadToEnd() -ne '') { exit 5 }
+  if ($operation -eq 'store') {
+    if ($token -cnotmatch '\A[A-Za-z0-9_-]{1,512}\z') { exit 5 }
+  } elseif ($token -ne '') { exit 5 }
+  $vault = [Windows.Security.Credentials.PasswordVault,Windows.Security.Credentials,ContentType=WindowsRuntime]::new()
+  switch ($operation) {
+    'read' {
+      $credential = $vault.Retrieve('mcp-server-sevdesk', $label)
+      $credential.RetrievePassword()
+      [Console]::WriteLine('TOKEN:' + $credential.Password)
+    }
+    'store' {
+      $credential = [Windows.Security.Credentials.PasswordCredential,Windows.Security.Credentials,ContentType=WindowsRuntime]::new('mcp-server-sevdesk', $label, $token)
+      $vault.Add($credential)
+      [Console]::WriteLine('OK')
+    }
+    'delete' {
+      $credential = $vault.Retrieve('mcp-server-sevdesk', $label)
+      $vault.Remove($credential)
+      [Console]::WriteLine('OK')
+    }
+  }
+  exit 0
+} catch {
+  $exception = $_.Exception
+  while ($null -ne $exception) {
+    if ($exception.HResult -eq -2147023728) { exit 2 }
+    if ($exception.HResult -eq -2147024891) { exit 3 }
+    $exception = $exception.InnerException
+  }
+  exit 1
+}
+`;
 
 /** `security` exits with the low byte of the OSStatus. */
 const MAC_EXIT = {
@@ -99,6 +165,8 @@ export interface KeychainDeps {
   readonly spawn?: KeychainSpawn;
   /** Per helper run (default {@link DEFAULT_KEYCHAIN_TIMEOUT_MS}). */
   readonly timeoutMs?: number;
+  /** Windows installation directory; defaults to the inherited SystemRoot, never PATH or cwd. */
+  readonly systemRoot?: string;
 }
 
 /** One helper run: the program, its arguments, and what to write to its stdin. */
@@ -110,26 +178,44 @@ interface KeychainCommand {
 }
 
 interface Commands {
-  readonly platform: "macos" | "secret-service";
+  readonly platform: "macos" | "secret-service" | "windows";
   lookup(label: string): KeychainCommand;
   store(label: string, token: string): KeychainCommand;
   /** macOS deletes directly; libsecret's `clear` does not report whether anything matched. */
   remove(label: string): KeychainCommand;
 }
 
-const UNSUPPORTED_WINDOWS =
-  "The OS keychain is not supported on Windows yet. Put the token in a file only your user can " +
-  "read and set SEVDESK_API_TOKEN_FILE to its path, or install the .mcpb bundle in Claude " +
-  "Desktop, which keeps the token for you.";
-
-/** `undefined` when the keychain works on `platform`, else why not (trusted text). */
-export function keychainUnsupported(platform: NodeJS.Platform): string | undefined {
-  return platform === "win32" ? UNSUPPORTED_WINDOWS : undefined;
-}
-
 /** The helper commands for `platform`; exported for tests and documentation. */
-export function keychainCommands(platform: NodeJS.Platform): Commands {
-  if (platform === "win32") throw new KeychainError("unsupported", UNSUPPORTED_WINDOWS);
+export function keychainCommands(
+  platform: NodeJS.Platform,
+  systemRoot: string | undefined = process.env["SystemRoot"],
+): Commands {
+  if (platform === "win32") {
+    // Require a local, drive-absolute installation directory. No relative/UNC/device paths,
+    // traversal or fallback to a bare executable name. SystemRoot is trusted OS configuration.
+    const root = WINDOWS_ROOT.safeParse(systemRoot);
+    if (!root.success) {
+      throw new KeychainError(
+        "unavailable",
+        "Windows Credential Manager needs SystemRoot to name the absolute Windows installation " +
+          "directory. Restore that environment variable, or use SEVDESK_API_TOKEN_FILE.",
+      );
+    }
+    const command = win32.join(
+      root.data,
+      "System32",
+      "WindowsPowerShell",
+      "v1.0",
+      "powershell.exe",
+    );
+    const args = ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", WINDOWS_SCRIPT];
+    return {
+      platform: "windows",
+      lookup: (label) => ({ command, args, input: `read\n${label}\n\n` }),
+      store: (label, token) => ({ command, args, input: `store\n${label}\n${token}\n` }),
+      remove: (label) => ({ command, args, input: `delete\n${label}\n\n` }),
+    };
+  }
   if (platform === "darwin") {
     return {
       platform: "macos",
@@ -179,14 +265,16 @@ export function createKeychain(deps: KeychainDeps = {}): Keychain {
   const platform = deps.platform ?? process.platform;
   const spawn = deps.spawn ?? spawnProcess;
   const timeoutMs = deps.timeoutMs ?? DEFAULT_KEYCHAIN_TIMEOUT_MS;
+  const systemRoot = deps.systemRoot ?? process.env["SystemRoot"];
   const exec = (command: KeychainCommand): Promise<RunResult> => run(spawn, command, timeoutMs);
 
   async function read(label: string): Promise<string> {
-    const commands = prepare(platform, label);
+    const commands = prepare(platform, label, systemRoot);
     const result = await exec(commands.lookup(label));
     if (result.kind !== "exit") throw runFailure(result, commands, label);
     if (result.code !== 0) throw exitFailure("read", result.code, commands, label);
-    const token = result.stdout.trim();
+    const token =
+      commands.platform === "windows" ? windowsToken(result.stdout) : result.stdout.trim();
     if (token === "") throw notFound(commands, label);
     const problem = sevdeskTokenProblem(token, `The token stored under keychain label "${label}"`);
     if (problem !== undefined) {
@@ -199,7 +287,7 @@ export function createKeychain(deps: KeychainDeps = {}): Keychain {
   }
 
   async function store(label: string, token: string): Promise<void> {
-    const commands = prepare(platform, label);
+    const commands = prepare(platform, label, systemRoot);
     if (!STORABLE_TOKEN.test(token)) {
       throw new KeychainError(
         "invalid",
@@ -210,6 +298,7 @@ export function createKeychain(deps: KeychainDeps = {}): Keychain {
     const result = await exec(commands.store(label, token));
     if (result.kind !== "exit") throw runFailure(result, commands, label);
     if (result.code !== 0) throw exitFailure("store", result.code, commands, label);
+    if (commands.platform === "windows") windowsAck(result.stdout);
     let stored: string;
     try {
       stored = await read(label);
@@ -226,7 +315,7 @@ export function createKeychain(deps: KeychainDeps = {}): Keychain {
   }
 
   async function remove(label: string): Promise<boolean> {
-    const commands = prepare(platform, label);
+    const commands = prepare(platform, label, systemRoot);
     if (commands.platform === "secret-service") {
       // `secret-tool clear` succeeds whether or not an item matched: look first.
       const found = await exec(commands.lookup(label));
@@ -235,8 +324,12 @@ export function createKeychain(deps: KeychainDeps = {}): Keychain {
     }
     const result = await exec(commands.remove(label));
     if (result.kind !== "exit") throw runFailure(result, commands, label);
-    if (result.code === 0) return true;
+    if (result.code === 0) {
+      if (commands.platform === "windows") windowsAck(result.stdout);
+      return true;
+    }
     if (commands.platform === "macos" && result.code === MAC_EXIT.notFound) return false;
+    if (commands.platform === "windows" && result.code === WINDOWS_EXIT.notFound) return false;
     throw exitFailure("delete", result.code, commands, label);
   }
 
@@ -244,16 +337,35 @@ export function createKeychain(deps: KeychainDeps = {}): Keychain {
 }
 
 /** Validates the label (a programming error in callers, which validate first) and the platform. */
-function prepare(platform: NodeJS.Platform, label: string): Commands {
+function prepare(
+  platform: NodeJS.Platform,
+  label: string,
+  systemRoot: string | undefined,
+): Commands {
   const problem = localNameProblem(label, "The keychain label");
   if (problem !== undefined) throw new KeychainError("invalid", problem);
-  return keychainCommands(platform);
+  return keychainCommands(platform, systemRoot);
+}
+
+/** A successful helper must return exactly one protocol line, with no diagnostics or extra data. */
+function windowsToken(output: string): string {
+  const token = /^TOKEN:([A-Za-z0-9_-]{1,512})\r?\n$/.exec(output)?.[1];
+  if (token === undefined) throw malformedWindowsOutput();
+  return token;
+}
+
+function windowsAck(output: string): void {
+  if (output !== "OK\r\n" && output !== "OK\n") throw malformedWindowsOutput();
+}
+
+function malformedWindowsOutput(): KeychainError {
+  return new KeychainError("invalid", "Windows Credential Manager returned an invalid response.");
 }
 
 function notFound(commands: Commands, label: string): KeychainError {
   return new KeychainError(
     "not_found",
-    commands.platform === "macos"
+    commands.platform !== "secret-service"
       ? `No token is stored under keychain label "${label}". Store one with ` +
           `\`mcp-server-sevdesk token set ${label}\`.`
       : `No token is stored under keychain label "${label}", or the Secret Service (GNOME ` +
@@ -268,6 +380,33 @@ function exitFailure(
   commands: Commands,
   label: string,
 ): KeychainError {
+  if (commands.platform === "windows") {
+    switch (code) {
+      case WINDOWS_EXIT.notFound:
+        return notFound(commands, label);
+      case WINDOWS_EXIT.denied:
+        return new KeychainError(
+          "denied",
+          "Windows Credential Manager refused access. Check your Windows account and credential " +
+            "access policy, or use SEVDESK_API_TOKEN_FILE.",
+        );
+      case WINDOWS_EXIT.unavailable:
+        return new KeychainError(
+          "unavailable",
+          "Windows Credential Manager requires Windows PowerShell in FullLanguage mode; " +
+            "Constrained Language Mode cannot use PasswordVault. Use SEVDESK_API_TOKEN_FILE " +
+            "or the Claude Desktop .mcpb bundle instead.",
+        );
+      case WINDOWS_EXIT.invalid:
+        return new KeychainError("invalid", "The Windows keychain helper refused its input.");
+    }
+    return new KeychainError(
+      "failed",
+      `Windows Credential Manager could not ${operation} the token (PowerShell exited with ${code}). ` +
+        "Check that Windows PowerShell and PasswordVault are available for your Windows account, " +
+        "or use SEVDESK_API_TOKEN_FILE.",
+    );
+  }
   if (commands.platform === "macos") {
     switch (code) {
       case MAC_EXIT.notFound:
@@ -306,6 +445,14 @@ function runFailure(
 ): KeychainError {
   switch (result.kind) {
     case "missing":
+      if (commands.platform === "windows") {
+        return new KeychainError(
+          "unavailable",
+          "Windows PowerShell was not found in SystemRoot\\System32\\WindowsPowerShell\\v1.0. " +
+            "Windows Credential Manager requires Windows PowerShell; use SEVDESK_API_TOKEN_FILE " +
+            "or the Claude Desktop .mcpb bundle instead.",
+        );
+      }
       return new KeychainError(
         "unavailable",
         commands.platform === "macos"

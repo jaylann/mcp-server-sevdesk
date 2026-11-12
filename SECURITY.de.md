@@ -1,4 +1,4 @@
-<!-- translated-from: SECURITY.md sha256:8d88d5ca78f4 -->
+<!-- translated-from: SECURITY.md sha256:cbce7c246e05 -->
 
 # Sicherheitsrichtlinie
 
@@ -269,15 +269,22 @@ Schlüsselbund des Betriebssystems (`SEVDESK_API_TOKEN_KEYCHAIN`).
   Konfiguration nennt nur die Bezeichnung, sodass eine feindliche Konfiguration den Server nicht
   dazu bringen kann, einen anderen Schlüsselbund-Eintrag (ein Passwort, ein anderes Token) zu
   lesen und an eine eigene `SEVDESK_BASE_URL` zu senden. Der Server führt das Hilfsprogramm des
-  Betriebssystems (`/usr/bin/security` unter macOS, `secret-tool` unter Linux) mit einem
+  Betriebssystems (`/usr/bin/security` unter macOS, `secret-tool` unter Linux, Windows PowerShell
+  mit WinRT `PasswordVault` unter Windows) mit einem
   Argument-Array aus, nie über eine Shell. Beim Ablegen reist das Token über stdin des
   Hilfsprogramms, nie in seinen Argumenten, die andere lokale Benutzer in der Prozessliste sehen
   könnten. Die Ausgabe des Hilfsprogramms ist begrenzt, wird nie protokolliert oder ausgegeben,
   und Fehler sind feste Texte. Der Schlüsselbund schützt das Token im Ruhezustand, in
   Konfigurationsdateien, Backups und Screenshots; er schützt nicht vor Code, der bereits als
   derselbe Benutzer läuft. Unter macOS vertraut der Eintrag `/usr/bin/security`, das ihn angelegt
-  hat; jeder Prozess des Benutzers kann ihn also auf diesem Weg ohne Dialog lesen. Windows wird
-  noch nicht unterstützt und mit einem Hinweis auf `SEVDESK_API_TOKEN_FILE` abgelehnt.
+  hat; jeder Prozess des Benutzers kann ihn also auf diesem Weg ohne Dialog lesen. Unter Windows
+  ist das Skript konstant; Operation, Bezeichnung und Token reisen nur über stdin. Das Programm
+  wird ausschließlich unter dem validierten, vertrauenswürdigen `SystemRoot` aufgelöst, nie über
+  `PATH` oder das aktuelle Verzeichnis. Windows PowerShell muss im `FullLanguage`-Modus laufen;
+  der Constrained Language Mode wird ohne Änderung der Richtlinie mit einem Hinweis auf
+  `SEVDESK_API_TOKEN_FILE` oder das `.mcpb`-Bundle abgelehnt. Einträge im Credential Locker
+  können über das Microsoft-Konto synchronisiert werden; eine geschützte Token-Datei ist die
+  Alternative, wenn das Token auf diesem Gerät bleiben muss.
 - **Die Kommandozeile.** `token set` liest das Token von stdin (in einem Terminal verdeckt), nie
   aus einem Argument, wo es in der Shell-Historie bliebe. Es prüft das Token bei sevDesk und legt
   nichts ab, was sevDesk ablehnt. Bezeichnungen, Profilnamen und unbekannte Argumente, die wie ein

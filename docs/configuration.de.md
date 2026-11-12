@@ -1,4 +1,4 @@
-<!-- translated-from: docs/configuration.md sha256:4e0faaf061dd -->
+<!-- translated-from: docs/configuration.md sha256:3cbbec919733 -->
 
 # Konfiguration
 
@@ -45,11 +45,11 @@ Formate der Werte:
 Setzen Sie genau eine dieser drei, es sei denn, das [Profil](#profile), das Sie verwenden, gibt an,
 wo das Token liegt.
 
-| Variable                     | Standard | Bedeutung                                                                                                                                                                                                                                                                                                                                       |
-| ---------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SEVDESK_API_TOKEN`          |          | Ihr sevDesk-API-Token (sevDesk: Einstellungen → Benutzer → API-Token), am besten eines eigenen Benutzers. Das reine Token, ohne vorangestelltes `Bearer `. Pflicht über stdio und im Bearer-Modus; im OAuth-Modus nicht verwendet, dort fügt jeder Benutzer sein eigenes auf der Zustimmungsseite ein.                                          |
-| `SEVDESK_API_TOKEN_FILE`     |          | Das Token stattdessen aus dieser Datei lesen (ohne umgebende Leerzeichen). Für Docker- und Kubernetes-Secrets oder eine Datei, die nur Sie lesen können (`chmod 600`).                                                                                                                                                                          |
-| `SEVDESK_API_TOKEN_KEYCHAIN` |          | Über stdio: das Token aus dem Schlüsselbund des Betriebssystems lesen, abgelegt unter dieser Bezeichnung mit [`token set`](#das-token-im-schlüsselbund-ablegen). macOS und Linux; unter Windows noch nicht verfügbar. Eine Bezeichnung hat bis zu 64 Buchstaben, Ziffern, `.`, `_` oder `-` und beginnt mit einem Buchstaben oder einer Ziffer. |
+| Variable                     | Standard | Bedeutung                                                                                                                                                                                                                                                                                                                                                       |
+| ---------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SEVDESK_API_TOKEN`          |          | Ihr sevDesk-API-Token (sevDesk: Einstellungen → Benutzer → API-Token), am besten eines eigenen Benutzers. Das reine Token, ohne vorangestelltes `Bearer `. Pflicht über stdio und im Bearer-Modus; im OAuth-Modus nicht verwendet, dort fügt jeder Benutzer sein eigenes auf der Zustimmungsseite ein.                                                          |
+| `SEVDESK_API_TOKEN_FILE`     |          | Das Token stattdessen aus dieser Datei lesen (ohne umgebende Leerzeichen). Für Docker- und Kubernetes-Secrets oder eine Datei, die nur Sie lesen können (`chmod 600`).                                                                                                                                                                                          |
+| `SEVDESK_API_TOKEN_KEYCHAIN` |          | Über stdio: das Token aus dem Schlüsselbund des Betriebssystems lesen, abgelegt unter dieser Bezeichnung mit [`token set`](#das-token-im-schlüsselbund-ablegen). macOS, Linux und Windows (Windows PowerShell im FullLanguage-Modus). Eine Bezeichnung hat bis zu 64 Buchstaben, Ziffern, `.`, `_` oder `-` und beginnt mit einem Buchstaben oder einer Ziffer. |
 
 Eine Variable mit `…_FILE` (diese und die des [Fernzugriffs](remote.de.md)) nimmt den Pfad einer
 Datei, die den Wert enthält, nie den Wert selbst; verwenden Sie einen absoluten Pfad. Kann die
@@ -199,13 +199,22 @@ mit `"SEVDESK_API_TOKEN_KEYCHAIN": "work"` statt `SEVDESK_API_TOKEN`.
 - Das Token wird nie von der Kommandozeile übernommen, wo es in Ihrer Shell-Historie bliebe. Um es
   aus einer Datei abzulegen, leiten Sie es per Pipe ein:
   `npx -y mcp-server-sevdesk token set work < token.txt`, und löschen Sie die Datei danach.
+  Diese Umleitung funktioniert in POSIX-Shells und `cmd.exe`; in PowerShell verwenden Sie
+  `Get-Content -Raw token.txt | npx -y mcp-server-sevdesk token set work`.
 - **macOS:** der Anmeldeschlüsselbund, Objekt `mcp-server-sevdesk`, Account = Ihre Bezeichnung.
 - **Linux:** der Secret Service über `secret-tool` (Paket `libsecret-tools` unter Debian und
   Ubuntu, `libsecret` unter Fedora), mit laufendem und entsperrtem GNOME Keyring oder KWallet. Auf
   einem Server ohne grafische Oberfläche verwenden Sie `SEVDESK_API_TOKEN_FILE`.
-- **Windows:** noch nicht unterstützt. Verwenden Sie `SEVDESK_API_TOKEN_FILE` oder die
-  [Claude-Desktop-Erweiterung](clients.de.md#claude-desktop), die das Token in der
-  Anmeldeinformationsverwaltung von Windows aufbewahrt.
+- **Windows:** der Credential Locker über WinRT `PasswordVault`, Ressource
+  `mcp-server-sevdesk`, Benutzername = Ihre Bezeichnung. Verwendet Windows PowerShell unter
+  `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`, ohne Profile oder Suche im
+  `PATH`. Lassen Sie `SystemRoot` auf das Windows-Installationsverzeichnis zeigen. PowerShell 7
+  (`pwsh`) wird nicht verwendet. Der Constrained Language Mode kann auch ohne `Add-Type` nicht
+  auf diese API zugreifen; verwenden Sie `SEVDESK_API_TOKEN_FILE` oder die
+  [Claude-Desktop-Erweiterung](clients.de.md#claude-desktop), wenn Windows PowerShell fehlt
+  oder eingeschränkt ist. Einträge im Credential Locker können über Ihr Microsoft-Konto
+  synchronisiert werden; verwenden Sie eine geschützte Token-Datei, wenn das Token auf diesem
+  Gerät bleiben muss.
 
 Der Schlüsselbund hält das Token aus Konfigurationsdateien, Backups und Screenshots heraus. Er
 schützt nicht vor Programmen, die bereits unter Ihrem Benutzerkonto laufen (siehe

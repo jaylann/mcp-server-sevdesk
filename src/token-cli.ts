@@ -12,12 +12,7 @@ import { createIdentityLookup } from "./accounts/identity.js";
 import { IdentityError, type IdentityLookup } from "./accounts/types.js";
 import type { Command } from "./cli.js";
 import { ConfigError, type Env, readSettings, sevdeskTokenProblem } from "./config.js";
-import {
-  createKeychain,
-  type Keychain,
-  KeychainError,
-  keychainUnsupported,
-} from "./safety/keychain.js";
+import { createKeychain, type Keychain, KeychainError } from "./safety/keychain.js";
 
 export type TokenCommand = Extract<Command, { kind: "token" }>;
 
@@ -68,11 +63,6 @@ export async function runTokenCommand(
   deps: TokenCommandDeps = {},
 ): Promise<number> {
   const platform = deps.platform ?? process.platform;
-  const unsupported = keychainUnsupported(platform);
-  if (unsupported !== undefined) {
-    io.err(`token: ${unsupported}\n`);
-    return 1;
-  }
   const keychain =
     deps.keychain ?? createKeychain({ platform, timeoutMs: CLI_KEYCHAIN_TIMEOUT_MS });
   try {
