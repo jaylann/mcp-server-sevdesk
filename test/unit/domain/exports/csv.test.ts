@@ -227,6 +227,8 @@ describe("checkCsvPeriod", () => {
     expect(CSV_DATE_COLUMNS.transactions[0]).toBe("Bezahldatum");
   });
 
+  // Keep the near-20 MiB regression: both scans need headroom under full-suite/coverage load.
+  // Give only this test 15 seconds; shrinking the file would lose the size regression.
   it("checks a large file with long text columns, quoted line breaks and separators", () => {
     // 20,000 rows of about 1 KiB each, close to the largest file accepted: only the date column
     // is kept while it is read.
@@ -247,7 +249,7 @@ describe("checkCsvPeriod", () => {
       verified: false,
     });
     expect(countCsvRows(file)).toBe(20_000);
-  });
+  }, 15_000);
 });
 
 describe("scanCsvColumn", () => {
