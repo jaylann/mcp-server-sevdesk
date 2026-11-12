@@ -164,6 +164,7 @@ describe("settings as Claude Desktop passes them", () => {
       SEVDESK_TOOLSETS: "",
       SEVDESK_FILE_DIRS: "",
       SEVDESK_OUTPUT_DIR: "",
+      SEVDESK_AUDIT_LOG: "",
     });
     const loaded = loadConfig(config?.env ?? {});
     expect(loaded).toMatchObject({
@@ -172,6 +173,7 @@ describe("settings as Claude Desktop passes them", () => {
       confirm: "browser",
       fileDirs: [],
       outputDir: undefined,
+      auditLogPath: undefined,
     });
     expect([...loaded.allowedTiers]).toEqual(["read"]);
     expect([...loaded.toolsets].sort()).toEqual([...DEFAULT_TOOLSETS].sort());
@@ -187,6 +189,7 @@ describe("settings as Claude Desktop passes them", () => {
       toolsets: "invoices,vouchers",
       file_dir: "/home/user/Belege",
       output_dir: "/home/user/Exports",
+      audit_log: "/home/user/Audit logs/sevdesk.jsonl",
     });
     const loaded = loadConfig(config?.env ?? {});
     expect(loaded).toMatchObject({
@@ -195,6 +198,7 @@ describe("settings as Claude Desktop passes them", () => {
       confirm: "browser",
       fileDirs: ["/home/user/Belege"],
       outputDir: "/home/user/Exports",
+      auditLogPath: "/home/user/Audit logs/sevdesk.jsonl",
     });
     expect([...loaded.allowedTiers].sort()).toEqual(["commit", "read", "write"]);
     expect([...loaded.toolsets].sort()).toEqual(["invoices", "meta", "vouchers"]);
@@ -218,6 +222,23 @@ describe("settings as Claude Desktop passes them", () => {
   it("does not start the server without a token", async () => {
     expect(await asDesktop({})).toBeUndefined();
     expect(await asDesktop({ api_token: "" })).toBeUndefined();
+  });
+
+  it("keeps the audit log optional and rejects a missing default", async () => {
+    expect(manifest).toMatchObject({
+      user_config: { audit_log: { type: "file", required: false, default: "" } },
+    });
+    const empty = await asDesktop({ api_token: TOKEN, audit_log: "" });
+    expect(loadConfig(empty?.env ?? {}).auditLogPath).toBeUndefined();
+
+    const noDefault = withSetting("audit_log", (setting) => {
+      delete setting["default"];
+    });
+    const unresolved = await asDesktop({ api_token: TOKEN }, noDefault);
+    expect(unresolved?.env?.["SEVDESK_AUDIT_LOG"]).toBe("${user_config.audit_log}");
+    expect(manifestProblems(noDefault)).toEqual([
+      "user_config.audit_log is optional but has no default: left empty, it would reach the server as the literal text ${user_config.audit_log}.",
+    ]);
   });
 
   it("would pass a literal placeholder for an optional setting without a default", async () => {
@@ -275,6 +296,7 @@ describe("manifestProblems", () => {
       "user_config.confirm is never passed to the server.",
       "user_config.file_dir is never passed to the server.",
       "user_config.output_dir is never passed to the server.",
+      "user_config.audit_log is never passed to the server.",
     ]);
   });
 });
