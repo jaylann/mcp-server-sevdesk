@@ -89,6 +89,7 @@ describe("D-002: numeric scalars in recorded responses", () => {
     const id = Number(recorded("invoices/invoice-by-id.json").objects[0]?.["id"]);
     const client = new FakeSevdeskClient([
       { path: `/Invoice/${id}`, response: { fixture: `${DIR}/invoices/invoice-by-id.json` } },
+      { path: "/StaticCountry", response: { fixture: `${DIR}/meta/static-countries.json` } },
     ]);
     const doc = await readLifecycleDocument(client, "invoice", id, undefined, "2026-11-08");
     expect(doc.paidAmount).toBe("0");
@@ -99,7 +100,12 @@ describe("D-002: numeric scalars in recorded responses", () => {
     const positions = recorded("credit-notes/credit-note-positions.json");
     const units = recorded("meta/units.json");
     const id = Number(creditNote.objects[0]?.["id"]);
-    const { client } = realClient(creditNote, positions, units);
+    const { client } = realClient(
+      creditNote,
+      positions,
+      units,
+      recorded("meta/static-countries.json"),
+    );
     const details = await getCreditNote(client, id);
     expect(details.creditNote.sent).toEqual({ date: "2026-11-07", via: "print" });
     expect(details.creditNote.totals.gross?.currency).toBe("EUR");

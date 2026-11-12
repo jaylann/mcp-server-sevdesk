@@ -16,6 +16,7 @@ import {
 } from "../../../../src/domain/lifecycle/documents.js";
 import { displayPreview } from "../../../../src/safety/preview.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
+import { withCountryRoute } from "../../../helpers/country-route.js";
 import { type FakeRoute, FakeSevdeskClient } from "../../../helpers/fake-client.js";
 import {
   creditNoteRow,
@@ -43,10 +44,12 @@ async function contentOf(
   positionsBody?: unknown,
 ): Promise<DocumentContent> {
   const route: FakeRoute = kind === "voucher" ? voucherRoute(row) : documentRoute(kind, row);
-  const client = new FakeSevdeskClient([
-    route,
-    { path: PATHS[kind].path, response: { body: positionsBody ?? { objects: positions } } },
-  ]);
+  const client = new FakeSevdeskClient(
+    withCountryRoute([
+      route,
+      { path: PATHS[kind].path, response: { body: positionsBody ?? { objects: positions } } },
+    ]),
+  );
   const doc = await readLifecycleDocument(client, kind, Number(row["id"]), undefined, TODAY);
   const content = await readDocumentContent(client, doc);
   // One read of the positions serves the facts and the binding.
@@ -315,10 +318,12 @@ describe("the content facts of an invoice", () => {
       positionNumber: String(index),
       name: `Posten ${String(index + 1)}`,
     }));
-    const client = new FakeSevdeskClient([
-      documentRoute("invoice", invoiceRow()),
-      { path: "/InvoicePos", response: { body: { objects: rows } } },
-    ]);
+    const client = new FakeSevdeskClient(
+      withCountryRoute([
+        documentRoute("invoice", invoiceRow()),
+        { path: "/InvoicePos", response: { body: { objects: rows } } },
+      ]),
+    );
     const doc = await readLifecycleDocument(client, "invoice", 1001, undefined, TODAY);
     const content = await readDocumentContent(client, doc);
 

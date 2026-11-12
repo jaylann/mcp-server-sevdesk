@@ -74,7 +74,7 @@ describe("sevdesk_credit_notes_list (community: recorded CreditNote shape, fake 
     expect(result.data.items[0]).toEqual({
       id: 2001,
       number: "GU-1001",
-      status: { code: 200, label: "Open / delivered" },
+      status: { code: 200, label: "Open / delivered", key: "open" },
       contact: { id: 1001, name: "Musterfirma GmbH" },
       date: "2026-10-22",
       currency: "EUR",
@@ -85,6 +85,7 @@ describe("sevdesk_credit_notes_list (community: recorded CreditNote shape, fake 
       },
       bookingCategory: {
         code: "UNDERACHIEVEMENT",
+        key: "underachievement",
         label: "Underachievement of an invoice or voucher (Minderleistung)",
       },
       sourceInvoiceId: 1004,
@@ -95,9 +96,9 @@ describe("sevdesk_credit_notes_list (community: recorded CreditNote shape, fake 
     const [, draft, paid] = result.data.items;
     expect(draft).toMatchObject({
       id: 2002,
-      status: { code: 100, label: "Draft" },
+      status: { code: 100, label: "Draft", key: "draft" },
       contact: { id: 1001 },
-      bookingCategory: { code: "PROVISION", label: "Provision" },
+      bookingCategory: { code: "PROVISION", label: "Provision", key: "provision" },
       link: "https://my.sevdesk.de/cn/edit/type/CN/id/2002",
     });
     expect(draft?.number).toBeUndefined();

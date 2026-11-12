@@ -36,6 +36,7 @@ import {
   type Row,
   transactionRow,
 } from "../unit/tools/lifecycle/helpers.js";
+import { fixtureReply } from "../unit/tools/vouchers/wire.js";
 
 const invoiceTool = bookPaymentTool("invoice");
 const creditNoteTool = bookPaymentTool("creditNote");
@@ -68,12 +69,13 @@ function setup(replies: FakeReply[]) {
 }
 
 /**
- * The reads `prepare` makes with a transaction: document, account, transaction, its account, and
+ * The reads `prepare` makes with a transaction: document, country table, account, transaction, its account, and
  * the transaction's booking log (empty here).
  */
 function readsWithTransaction(document: Row, transaction: Row, account: Row): FakeReply[] {
   return [
     envelope([document]),
+    fixtureReply("meta/static-countries.json"),
     envelope([account]),
     envelope([transaction]),
     envelope([account]),
@@ -91,6 +93,7 @@ describe("B7: payments are linked to their bank transaction", () => {
       ...readsWithTransaction(invoiceRow(), transactionRow(), accountRow(4002)),
       envelope(fixtureRow("invoice-book-amount.json")),
       envelope([invoiceRow({ status: "1000", paidAmount: 177.33 })]),
+      fixtureReply("meta/static-countries.json"),
     ]);
 
     const { output } = await executeWrite(
@@ -122,6 +125,7 @@ describe("B7: payments are linked to their bank transaction", () => {
       ...readsWithTransaction(creditNoteRow(), outgoing, accountRow(4002)),
       envelope(fixtureRow("credit-note-book-amount.json")),
       envelope([creditNoteRow({ status: "1000" })]),
+      fixtureReply("meta/static-countries.json"),
     ]);
 
     await executeWrite(
@@ -138,7 +142,11 @@ describe("B7: payments are linked to their bank transaction", () => {
   });
 
   it("refuses an online account without a transaction before anything is sent", async () => {
-    const { client, fake } = setup([envelope([invoiceRow()]), envelope([accountRow(4002)])]);
+    const { client, fake } = setup([
+      envelope([invoiceRow()]),
+      fixtureReply("meta/static-countries.json"),
+      envelope([accountRow(4002)]),
+    ]);
 
     const error = await prepareWrite(
       invoiceTool,
@@ -150,12 +158,17 @@ describe("B7: payments are linked to their bank transaction", () => {
     expect((error as SevdeskError).message).toContain("pass transactionId");
     expect(requestLines(fake)).toEqual([
       "GET /api/v1/Invoice/1001",
+      "GET /api/v1/StaticCountry",
       "GET /api/v1/CheckAccount/4002",
     ]);
   });
 
   it("warns that sevDesk creates a second transaction when an offline booking has none", async () => {
-    const { client } = setup([envelope([invoiceRow()]), envelope([accountRow(4001)])]);
+    const { client } = setup([
+      envelope([invoiceRow()]),
+      fixtureReply("meta/static-countries.json"),
+      envelope([accountRow(4001)]),
+    ]);
 
     const plan = await prepareWrite(
       invoiceTool,
@@ -187,6 +200,7 @@ describe("B7: payments are linked to their bank transaction", () => {
     const owner = (transaction["checkAccount"] as { id: string }).id;
     const { client, fake } = setup([
       envelope([invoiceRow()]),
+      fixtureReply("meta/static-countries.json"),
       envelope([accountRow(4002)]),
       envelope([transaction]),
       envelope([accountRow(Number(owner))]),

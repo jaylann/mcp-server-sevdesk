@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { documentRef, readLifecycleDocument } from "../../../../src/domain/lifecycle/documents.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
+import { withCountryRoute } from "../../../helpers/country-route.js";
 import { FakeSevdeskClient } from "../../../helpers/fake-client.js";
 import {
   creditNoteRow,
@@ -11,13 +12,16 @@ import {
 } from "../../tools/lifecycle/helpers.js";
 
 describe("readLifecycleDocument (community record shapes, fake values)", () => {
-  it("reads an invoice with one GET (contact embedded) and maps the lifecycle facts", async () => {
-    const client = new FakeSevdeskClient([documentRoute("invoice", invoiceRow())]);
+  it("reads an invoice and its country (contact embedded) and maps the lifecycle facts", async () => {
+    const client = new FakeSevdeskClient(
+      withCountryRoute([documentRoute("invoice", invoiceRow())]),
+    );
 
     const doc = await readLifecycleDocument(client, "invoice", 1001, undefined, "2026-11-07");
 
     expect(client.calls.map(({ method, path, query }) => ({ method, path, query }))).toEqual([
       { method: "GET", path: "/Invoice/1001", query: { embed: "contact" } },
+      { method: "GET", path: "/StaticCountry", query: { limit: 1000, offset: 0, countAll: true } },
     ]);
     expect(doc).toMatchObject({
       kind: "invoice",
@@ -40,6 +44,7 @@ describe("readLifecycleDocument (community record shapes, fake values)", () => {
       enshrined: false,
     });
     expect(doc.dto.id).toBe(1001);
+    expect(doc.dto.address).toMatchObject({ countryId: 1, country: "DE" });
   });
 
   it("keeps the raw paid amount and the enshrined flag", async () => {
@@ -48,7 +53,7 @@ describe("readLifecycleDocument (community record shapes, fake values)", () => {
       paidAmount: "50.5",
       enshrined: "2026-10-02T10:00:00+02:00",
     });
-    const client = new FakeSevdeskClient([documentRoute("invoice", row)]);
+    const client = new FakeSevdeskClient(withCountryRoute([documentRoute("invoice", row)]));
 
     const doc = await readLifecycleDocument(client, "invoice", 1001);
 
@@ -58,7 +63,9 @@ describe("readLifecycleDocument (community record shapes, fake values)", () => {
   });
 
   it("reports no paid amount for a credit note (sevDesk sends none)", async () => {
-    const client = new FakeSevdeskClient([documentRoute("creditNote", creditNoteRow())]);
+    const client = new FakeSevdeskClient(
+      withCountryRoute([documentRoute("creditNote", creditNoteRow())]),
+    );
 
     const doc = await readLifecycleDocument(client, "creditNote", 2001);
 
@@ -76,7 +83,7 @@ describe("readLifecycleDocument (community record shapes, fake values)", () => {
   });
 
   it("reads an order with its type", async () => {
-    const client = new FakeSevdeskClient([documentRoute("order", orderRow())]);
+    const client = new FakeSevdeskClient(withCountryRoute([documentRoute("order", orderRow())]));
 
     const doc = await readLifecycleDocument(client, "order", 3002);
 
@@ -91,9 +98,11 @@ describe("readLifecycleDocument (community record shapes, fake values)", () => {
   });
 
   it("passes sevDesk's not-found error on for an unknown id", async () => {
-    const client = new FakeSevdeskClient([
-      { path: "/Invoice/9999", query: { embed: "contact" }, response: { body: { objects: [] } } },
-    ]);
+    const client = new FakeSevdeskClient(
+      withCountryRoute([
+        { path: "/Invoice/9999", query: { embed: "contact" }, response: { body: { objects: [] } } },
+      ]),
+    );
 
     const error = await readLifecycleDocument(client, "invoice", 9999).catch((e: unknown) => e);
 
@@ -102,9 +111,9 @@ describe("readLifecycleDocument (community record shapes, fake values)", () => {
   });
 
   it("refuses a paid amount that is not a decimal", async () => {
-    const client = new FakeSevdeskClient([
-      documentRoute("invoice", invoiceRow({ paidAmount: "a lot" })),
-    ]);
+    const client = new FakeSevdeskClient(
+      withCountryRoute([documentRoute("invoice", invoiceRow({ paidAmount: "a lot" }))]),
+    );
 
     await expect(readLifecycleDocument(client, "invoice", 1001)).rejects.toMatchObject({
       kind: "unexpected_response",

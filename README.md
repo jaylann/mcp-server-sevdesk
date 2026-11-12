@@ -34,7 +34,10 @@ server is built around that fact:
 - **Correct for sevDesk Update 2.0.** Tax rules and booking accounts are validated before anything
   is sent.
 - **Compact, typed output.** Aggregations run on the server, so the model doesn't page through
-  hundreds of records.
+  hundreds of records. Status, type and booking-category objects include an accepted input/filter
+  `key` when available. Addresses include an ISO `country` beside `countryId` when the country
+  table resolves it. Reference lookups report `hasMore` and the effective `limit` (`null` for
+  unpaged kinds); `truncated` separately reports missing upstream entries.
 
 ## Quick start
 

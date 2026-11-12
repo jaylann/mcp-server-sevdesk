@@ -71,6 +71,23 @@ describe("sevdesk_reference_lookup", () => {
     ]);
   });
 
+  it.each([
+    "tax_rules",
+    "contact_categories",
+    "status_codes",
+    "document_types",
+    "users",
+    "countries",
+    "units",
+    "payment_methods",
+  ])("marks %s as unpaged, including empty results", async (kind) => {
+    for (const query of [undefined, "nonexistent"]) {
+      const { result } = await lookup({ kind, query });
+      expect(result.data).toMatchObject({ hasMore: false, limit: null });
+      expect(result.data.nextOffset).toBeUndefined();
+    }
+  });
+
   it("returns status codes and document types", async () => {
     const status = await lookup({ kind: "status_codes", query: "creditNote" });
     expect(status.result.data.statusCodes?.map((entry) => entry.code)).toEqual([
@@ -172,6 +189,8 @@ describe("sevdesk_reference_lookup kind=receipt_guidance", () => {
       returned: 2,
       offset: 0,
       nextOffset: 2,
+      hasMore: true,
+      limit: 2,
       truncated: false,
     });
     expect(result.data.receiptGuidance?.[1]).toEqual({
@@ -224,6 +243,34 @@ describe("sevdesk_reference_lookup kind=receipt_guidance", () => {
     expect(byCode.result.data.matched).toBe(1);
   });
 
+  it.each([
+    { limit: undefined, offset: 0, returned: 4, effectiveLimit: 25, hasMore: false },
+    { limit: 1, offset: 0, returned: 1, effectiveLimit: 1, hasMore: true },
+    { limit: 2, offset: 2, returned: 2, effectiveLimit: 2, hasMore: false },
+    { limit: 2, offset: 4, returned: 0, effectiveLimit: 2, hasMore: false },
+    { limit: 100, offset: 20, returned: 0, effectiveLimit: 100, hasMore: false },
+  ])(
+    "reports paging at the bounds: $limit/$offset",
+    async ({ limit, offset, returned, effectiveLimit, hasMore }) => {
+      const { result } = await lookup({ kind: "receipt_guidance", limit, offset }, guidanceRoutes);
+      expect(result.data).toMatchObject({ returned, offset, limit: effectiveLimit, hasMore });
+      expect(result.data.nextOffset).toBe(hasMore ? offset + returned : undefined);
+    },
+  );
+
+  it("returns no more pages for an empty filter result", async () => {
+    const { result } = await lookup(
+      { kind: "receipt_guidance", query: "nonexistent", limit: 1 },
+      guidanceRoutes,
+    );
+    expect(result.data).toMatchObject({ matched: 0, returned: 0, limit: 1, hasMore: false });
+    expect(result.data.nextOffset).toBeUndefined();
+  });
+
+  it.each([0, 101])("rejects an invalid paging limit %s", (limit) => {
+    expect(tool.input.safeParse({ kind: "receipt_guidance", limit }).success).toBe(false);
+  });
+
   it("caches the guidance per server configuration", async () => {
     const client = new FakeSevdeskClient(guidanceRoutes);
     const ctx = testContext(client);
@@ -255,6 +302,8 @@ describe("sevdesk_reference_lookup kind=receipt_guidance", () => {
       { id: 1, code: "USTPFL_UMS_EINN", taxRates: [], unknownTaxRates: ["TWELVE"] },
     ]);
     expect(result.data.truncated).toBe(true);
+    expect(result.data.hasMore).toBe(false);
+    expect(result.data.limit).toBe(25);
     expect(result.summary).toBe(
       "1 of 1 matching receipt guidance accounts (1 in total). sevDesk has more accounts than " +
         "could be fetched.",

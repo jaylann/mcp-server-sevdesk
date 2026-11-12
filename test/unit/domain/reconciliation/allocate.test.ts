@@ -10,6 +10,7 @@ import {
   planAllocation,
 } from "../../../../src/domain/reconciliation/allocate.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
+import { withCountryRoute } from "../../../helpers/country-route.js";
 import { type FakeRoute, FakeSevdeskClient } from "../../../helpers/fake-client.js";
 import {
   accountRoute,
@@ -54,13 +55,15 @@ interface Setup {
 function client(setup: Setup = {}): FakeSevdeskClient {
   const transaction = setup.transaction ?? transactionRow();
   const accountId = Number((transaction["checkAccount"] as { id?: string } | null)?.id ?? 4002);
-  return new FakeSevdeskClient([
-    transactionRoute(transaction),
-    accountRoute(accountRow(accountId)),
-    logRoute(Number(transaction["id"]), setup.log ?? []),
-    ...(setup.documents ?? [invoiceRoute(invoiceRow())]),
-    ...(setup.extra ?? []),
-  ]);
+  return new FakeSevdeskClient(
+    withCountryRoute([
+      transactionRoute(transaction),
+      accountRoute(accountRow(accountId)),
+      logRoute(Number(transaction["id"]), setup.log ?? []),
+      ...(setup.documents ?? [invoiceRoute(invoiceRow())]),
+      ...(setup.extra ?? []),
+    ]),
+  );
 }
 
 async function refusal(fake: FakeSevdeskClient, requests: readonly AllocationRequest[], id = 5101) {

@@ -1,5 +1,681 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`advertises additive output keys, countries and lookup paging 1`] = `
+{
+  "sevdesk_api_get": {
+    "/properties/hasMore": {
+      "description": "More rows may follow: call again with offset = nextOffset. False for single records and for endpoints that ignore limit.",
+      "type": "boolean",
+    },
+  },
+  "sevdesk_bank_accounts_list": {
+    "/properties/items/items/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_cash_position": {
+    "/properties/accounts/items/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_changed_since": {
+    "/properties/subjects/items/properties/items/items/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_contact_create": {
+    "/properties/result/properties/addresses/items/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+  },
+  "sevdesk_contact_get": {
+    "/properties/addresses/items/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+  },
+  "sevdesk_contact_update": {
+    "/properties/result/properties/addresses/items/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+  },
+  "sevdesk_contacts_search": {
+    "/properties/hasMore": {
+      "description": "More rows may follow: call again with offset = nextOffset. An empty page ends.",
+      "type": "boolean",
+    },
+    "/properties/limit": {
+      "maximum": 9007199254740991,
+      "minimum": -9007199254740991,
+      "type": "integer",
+    },
+  },
+  "sevdesk_credit_note_book_payment": {
+    "/properties/result/properties/creditNote/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/creditNote/properties/bookingCategory/properties/key": {
+      "description": "Accepted bookingCategory input key; absent for unsupported categories.",
+      "type": "string",
+    },
+    "/properties/result/properties/creditNote/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_credit_note_create_draft": {
+    "/properties/result/properties/creditNote/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/creditNote/properties/bookingCategory/properties/key": {
+      "description": "Accepted bookingCategory input key; absent for unsupported categories.",
+      "type": "string",
+    },
+    "/properties/result/properties/creditNote/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_credit_note_create_from_invoice": {
+    "/properties/result/properties/creditNote/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/creditNote/properties/bookingCategory/properties/key": {
+      "description": "Accepted bookingCategory input key; absent for unsupported categories.",
+      "type": "string",
+    },
+    "/properties/result/properties/creditNote/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_credit_note_enshrine": {
+    "/properties/result/properties/creditNote/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/creditNote/properties/bookingCategory/properties/key": {
+      "description": "Accepted bookingCategory input key; absent for unsupported categories.",
+      "type": "string",
+    },
+    "/properties/result/properties/creditNote/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_credit_note_finalize": {
+    "/properties/result/properties/creditNote/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/creditNote/properties/bookingCategory/properties/key": {
+      "description": "Accepted bookingCategory input key; absent for unsupported categories.",
+      "type": "string",
+    },
+    "/properties/result/properties/creditNote/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_credit_note_get": {
+    "/properties/creditNote/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/creditNote/properties/bookingCategory/properties/key": {
+      "description": "Accepted bookingCategory input key; absent for unsupported categories.",
+      "type": "string",
+    },
+    "/properties/creditNote/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_credit_note_reset": {
+    "/properties/result/properties/creditNote/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/creditNote/properties/bookingCategory/properties/key": {
+      "description": "Accepted bookingCategory input key; absent for unsupported categories.",
+      "type": "string",
+    },
+    "/properties/result/properties/creditNote/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_credit_note_send_email": {
+    "/properties/result/properties/creditNote/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/creditNote/properties/bookingCategory/properties/key": {
+      "description": "Accepted bookingCategory input key; absent for unsupported categories.",
+      "type": "string",
+    },
+    "/properties/result/properties/creditNote/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_credit_notes_list": {
+    "/properties/hasMore": {
+      "description": "More rows may follow: call again with offset = nextOffset. An empty page ends.",
+      "type": "boolean",
+    },
+    "/properties/items/items/properties/bookingCategory/properties/key": {
+      "description": "Accepted bookingCategory input key; absent for unsupported categories.",
+      "type": "string",
+    },
+    "/properties/items/items/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/limit": {
+      "maximum": 9007199254740991,
+      "minimum": -9007199254740991,
+      "type": "integer",
+    },
+  },
+  "sevdesk_invoice_book_payment": {
+    "/properties/result/properties/invoice/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/invoice/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/result/properties/invoice/properties/type/properties/key": {
+      "description": "Accepted type input/filter key; absent for unknown codes.",
+      "type": "string",
+    },
+  },
+  "sevdesk_invoice_cancel": {
+    "/properties/result/properties/cancellationInvoice/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/cancellationInvoice/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/result/properties/cancellationInvoice/properties/type/properties/key": {
+      "description": "Accepted type input/filter key; absent for unknown codes.",
+      "type": "string",
+    },
+    "/properties/result/properties/invoice/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/invoice/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/result/properties/invoice/properties/type/properties/key": {
+      "description": "Accepted type input/filter key; absent for unknown codes.",
+      "type": "string",
+    },
+  },
+  "sevdesk_invoice_create_draft": {
+    "/properties/result/properties/invoice/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/invoice/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/result/properties/invoice/properties/type/properties/key": {
+      "description": "Accepted type input/filter key; absent for unknown codes.",
+      "type": "string",
+    },
+  },
+  "sevdesk_invoice_create_from_order": {
+    "/properties/result/properties/invoice/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/invoice/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/result/properties/invoice/properties/type/properties/key": {
+      "description": "Accepted type input/filter key; absent for unknown codes.",
+      "type": "string",
+    },
+  },
+  "sevdesk_invoice_create_reminder": {
+    "/properties/result/properties/reminder/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/reminder/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/result/properties/reminder/properties/type/properties/key": {
+      "description": "Accepted type input/filter key; absent for unknown codes.",
+      "type": "string",
+    },
+  },
+  "sevdesk_invoice_einvoice_preflight": {
+    "/properties/invoice/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_invoice_enshrine": {
+    "/properties/result/properties/invoice/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/invoice/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/result/properties/invoice/properties/type/properties/key": {
+      "description": "Accepted type input/filter key; absent for unknown codes.",
+      "type": "string",
+    },
+  },
+  "sevdesk_invoice_finalize": {
+    "/properties/result/properties/invoice/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/invoice/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/result/properties/invoice/properties/type/properties/key": {
+      "description": "Accepted type input/filter key; absent for unknown codes.",
+      "type": "string",
+    },
+  },
+  "sevdesk_invoice_get": {
+    "/properties/invoice/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/invoice/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/invoice/properties/type/properties/key": {
+      "description": "Accepted type input/filter key; absent for unknown codes.",
+      "type": "string",
+    },
+  },
+  "sevdesk_invoice_reset": {
+    "/properties/result/properties/invoice/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/invoice/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/result/properties/invoice/properties/type/properties/key": {
+      "description": "Accepted type input/filter key; absent for unknown codes.",
+      "type": "string",
+    },
+  },
+  "sevdesk_invoice_send_email": {
+    "/properties/result/properties/invoice/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/invoice/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/result/properties/invoice/properties/type/properties/key": {
+      "description": "Accepted type input/filter key; absent for unknown codes.",
+      "type": "string",
+    },
+  },
+  "sevdesk_invoice_update_draft": {
+    "/properties/result/properties/invoice/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/invoice/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/result/properties/invoice/properties/type/properties/key": {
+      "description": "Accepted type input/filter key; absent for unknown codes.",
+      "type": "string",
+    },
+  },
+  "sevdesk_invoices_list": {
+    "/properties/hasMore": {
+      "description": "More rows may follow: call again with offset = nextOffset. An empty page ends.",
+      "type": "boolean",
+    },
+    "/properties/items/items/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/items/items/properties/type/properties/key": {
+      "description": "Accepted type input/filter key; absent for unknown codes.",
+      "type": "string",
+    },
+    "/properties/limit": {
+      "maximum": 9007199254740991,
+      "minimum": -9007199254740991,
+      "type": "integer",
+    },
+  },
+  "sevdesk_order_create_draft": {
+    "/properties/result/properties/order/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/order/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/result/properties/order/properties/type/properties/key": {
+      "description": "Accepted type input/filter key; absent for unknown codes.",
+      "type": "string",
+    },
+  },
+  "sevdesk_order_finalize": {
+    "/properties/result/properties/order/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/order/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/result/properties/order/properties/type/properties/key": {
+      "description": "Accepted type input/filter key; absent for unknown codes.",
+      "type": "string",
+    },
+  },
+  "sevdesk_order_get": {
+    "/properties/order/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/order/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/order/properties/type/properties/key": {
+      "description": "Accepted type input/filter key; absent for unknown codes.",
+      "type": "string",
+    },
+    "/properties/related/items/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_order_send_email": {
+    "/properties/result/properties/order/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/order/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/result/properties/order/properties/type/properties/key": {
+      "description": "Accepted type input/filter key; absent for unknown codes.",
+      "type": "string",
+    },
+  },
+  "sevdesk_order_update_draft": {
+    "/properties/result/properties/order/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/order/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/result/properties/order/properties/type/properties/key": {
+      "description": "Accepted type input/filter key; absent for unknown codes.",
+      "type": "string",
+    },
+  },
+  "sevdesk_orders_list": {
+    "/properties/hasMore": {
+      "description": "More rows may follow: call again with offset = nextOffset. An empty page ends.",
+      "type": "boolean",
+    },
+    "/properties/items/items/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/items/items/properties/type/properties/key": {
+      "description": "Accepted type input/filter key; absent for unknown codes.",
+      "type": "string",
+    },
+    "/properties/limit": {
+      "maximum": 9007199254740991,
+      "minimum": -9007199254740991,
+      "type": "integer",
+    },
+  },
+  "sevdesk_parts_list": {
+    "/properties/hasMore": {
+      "description": "More rows may follow: call again with offset = nextOffset. An empty page ends.",
+      "type": "boolean",
+    },
+    "/properties/limit": {
+      "maximum": 9007199254740991,
+      "minimum": -9007199254740991,
+      "type": "integer",
+    },
+  },
+  "sevdesk_reconcile_suggest": {
+    "/properties/hasMore": {
+      "description": "More transactions may follow: call again with nextOffset.",
+      "type": "boolean",
+    },
+    "/properties/limit": {
+      "maximum": 9007199254740991,
+      "minimum": -9007199254740991,
+      "type": "integer",
+    },
+    "/properties/suggestions/items/properties/transaction/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_records_summarize": {
+    "/properties/groups/items/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_reference_lookup": {
+    "/properties/hasMore": {
+      "description": "Another local page is available at nextOffset; separate from upstream truncation.",
+      "type": "boolean",
+    },
+    "/properties/limit": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "type": "integer",
+        },
+        {
+          "type": "null",
+        },
+      ],
+      "description": "Effective receipt_guidance page size; null for unpaged kinds.",
+    },
+  },
+  "sevdesk_transaction_book": {
+    "/properties/result/properties/bookings/items/properties/document/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/result/properties/transaction/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_transaction_get": {
+    "/properties/assignments/items/properties/document/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/transaction/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_transaction_mark_private": {
+    "/properties/result/properties/transaction/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_transaction_reset": {
+    "/properties/result/properties/documents/items/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/result/properties/transaction/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_transactions_list": {
+    "/properties/hasMore": {
+      "description": "More rows may follow: call again with offset = nextOffset. An empty page ends.",
+      "type": "boolean",
+    },
+    "/properties/items/items/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/limit": {
+      "maximum": 9007199254740991,
+      "minimum": -9007199254740991,
+      "type": "integer",
+    },
+  },
+  "sevdesk_vat_summary": {
+    "/properties/oss/items/properties/country": {
+      "description": "ISO country code of the document address, or 'unknown'.",
+      "type": "string",
+    },
+    "/properties/zm/properties/entries/items/properties/country": {
+      "description": "Country prefix of the VAT id (EL = Greece).",
+      "type": "string",
+    },
+  },
+  "sevdesk_voucher_book_payment": {
+    "/properties/result/properties/voucher/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_voucher_create_draft": {
+    "/properties/result/properties/voucher/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_voucher_delete_draft": {
+    "/properties/result/properties/voucher/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_voucher_enshrine": {
+    "/properties/result/properties/voucher/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_voucher_finalize": {
+    "/properties/result/properties/voucher/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_voucher_get": {
+    "/properties/voucher/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_voucher_reset": {
+    "/properties/result/properties/voucher/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_voucher_update_draft": {
+    "/properties/result/properties/voucher/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_vouchers_list": {
+    "/properties/hasMore": {
+      "description": "More rows may follow: call again with offset = nextOffset. An empty page ends.",
+      "type": "boolean",
+    },
+    "/properties/items/items/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/limit": {
+      "maximum": 9007199254740991,
+      "minimum": -9007199254740991,
+      "type": "integer",
+    },
+  },
+}
+`;
+
 exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
 [
   {

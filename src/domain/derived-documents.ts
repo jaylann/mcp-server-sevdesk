@@ -56,6 +56,7 @@ import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
 import { parseUpstream, zId, zIntish, zOptionalRef, zText } from "../sevdesk/schema.js";
 import type { QueryValue, SevdeskClient } from "../sevdesk/types.js";
 import { cleanText } from "./common.js";
+import { withDocumentCountry } from "./country-codes.js";
 import { type CreditNoteDetails, getCreditNote } from "./credit-notes.js";
 import type { DocumentTotals } from "./document-positions.js";
 import {
@@ -366,7 +367,11 @@ async function readOrder(
     query: { embed: "contact" },
     ...(signal === undefined ? {} : { signal }),
   });
-  return mapOrderDetail(expectSingle(payload, `order ${orderId}`));
+  return withDocumentCountry(
+    mapOrderDetail(expectSingle(payload, `order ${orderId}`)),
+    client,
+    signal,
+  );
 }
 
 function checkOrderAmount(
@@ -994,7 +999,7 @@ async function readInvoiceSnapshot(
     ...(signal === undefined ? {} : { signal }),
   });
   const raw = expectSingle(payload, `invoice ${invoiceId}`);
-  const detail = mapInvoiceDetail(raw, today);
+  const detail = await withDocumentCountry(mapInvoiceDetail(raw, today), client, signal);
   const { update } = parseUpstream(z.object({ update: z.unknown().optional() }), raw, "an invoice");
   return {
     detail,

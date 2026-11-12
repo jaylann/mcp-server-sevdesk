@@ -382,6 +382,7 @@ describe("recorded invoices", () => {
       route(`/Invoice/${INVOICE_ID}`, "invoices/invoice-by-id.json"),
       route("/InvoicePos", "invoices/invoice-positions.json"),
       unitsRoute,
+      route("/StaticCountry", "meta/static-countries.json"),
     ]);
     const details = await getInvoice(client, INVOICE_ID, undefined, TODAY);
     expectValid(invoiceDetailSchema, details.invoice);
@@ -428,6 +429,7 @@ describe("recorded credit notes", () => {
       route(`/CreditNote/${CREDIT_NOTE_ID}`, "credit-notes/credit-note-by-id.json"),
       route("/CreditNotePos", "credit-notes/credit-note-positions.json"),
       unitsRoute,
+      route("/StaticCountry", "meta/static-countries.json"),
     ]);
     const details = await getCreditNote(client, CREDIT_NOTE_ID);
     expectValid(creditNoteDetailSchema, details.creditNote);
@@ -452,6 +454,7 @@ describe("recorded orders", () => {
       route("/OrderPos", "orders/order-positions.json"),
       route(`/Order/${ORDER_ID}/getRelatedObjects`, "orders/order-related.json"),
       unitsRoute,
+      route("/StaticCountry", "meta/static-countries.json"),
     ]);
     const details = await getOrder(client, ORDER_ID);
     expectValid(orderDetailSchema, details.order);

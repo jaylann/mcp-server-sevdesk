@@ -82,7 +82,7 @@ describe("sevdesk_changed_since (community row shapes, fake data)", () => {
     expect(transactions?.items[0]).toEqual({
       id: 5001,
       name: "Beispiel Lieferant AG",
-      status: { code: 100, label: "Created" },
+      status: { code: 100, label: "Created", key: "created" },
       date: "2026-01-05",
       updatedAt: "2026-02-19T14:14:21+01:00",
     });
@@ -114,7 +114,7 @@ describe("sevdesk_changed_since (community row shapes, fake data)", () => {
           id: 5,
           type: "RE",
           number: "RE-1001",
-          status: { code: 200, label: "Open / due" },
+          status: { code: 200, label: "Open / due", key: "open" },
           date: "2026-10-01",
           updatedAt: "2026-11-05T12:00:00+01:00",
           link: "https://my.sevdesk.de/fi/detail/type/RE/id/5",
@@ -199,7 +199,7 @@ describe("sevdesk_changed_since (community row shapes, fake data)", () => {
       type: "expense",
       number: "RE-2026-0042",
       name: "Beispiel Lieferant AG",
-      status: { code: 100, label: "Unpaid / due" },
+      status: { code: 100, label: "Unpaid / due", key: "open" },
       date: "2026-01-12",
       updatedAt: "2026-11-03T10:00:00+01:00",
       link: "https://my.sevdesk.de/ex/detail/id/10",
@@ -247,7 +247,7 @@ describe("sevdesk_changed_since (community row shapes, fake data)", () => {
     expect(result?.items[0]).toMatchObject({
       type: "AB",
       number: "AB-1002",
-      status: { code: 500, label: "Accepted" },
+      status: { code: 500, label: "Accepted", key: "accepted" },
       link: "https://my.sevdesk.de/om/detail/type/AB/id/2",
     });
   });
@@ -279,7 +279,7 @@ describe("sevdesk_changed_since (community row shapes, fake data)", () => {
       {
         id: 8,
         number: "GU-1001",
-        status: { code: 200, label: "Open / delivered" },
+        status: { code: 200, label: "Open / delivered", key: "open" },
         date: "2026-10-22",
         updatedAt: "2026-11-02T09:00:00+01:00",
         link: "https://my.sevdesk.de/cn/detail/type/CN/id/8",

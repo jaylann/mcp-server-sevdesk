@@ -16,6 +16,7 @@ import { describe, expect, it } from "vitest";
 
 import { SevdeskError } from "../../src/sevdesk/errors.js";
 import { transactionBookTool as tool } from "../../src/tools/banking/transaction-book.js";
+import { withCountryRoute } from "../helpers/country-route.js";
 import { type FakeRoute, FakeSevdeskClient } from "../helpers/fake-client.js";
 import { executeWrite } from "../helpers/write-tools.js";
 import {
@@ -47,16 +48,18 @@ function invoice(id: number, gross: string): Row {
 /** Routes for every read, plus `bookAmount` routes that would answer if a write slipped through. */
 function client(transaction: Row, documents: readonly FakeRoute[], log: readonly Row[] = []) {
   const accountId = Number((transaction["checkAccount"] as { id: string }).id);
-  return new FakeSevdeskClient([
-    transactionRoute(transaction),
-    accountRoute(accountRow(accountId)),
-    logRoute(Number(transaction["id"]), log),
-    ...documents,
-    { method: "PUT", path: "/Invoice/1001/bookAmount", response: { body: { objects: {} } } },
-    { method: "PUT", path: "/Invoice/1002/bookAmount", response: { body: { objects: {} } } },
-    { method: "PUT", path: "/CreditNote/2001/bookAmount", response: { body: { objects: {} } } },
-    { method: "PUT", path: "/Voucher/2001/bookAmount", response: { body: { objects: {} } } },
-  ]);
+  return new FakeSevdeskClient(
+    withCountryRoute([
+      transactionRoute(transaction),
+      accountRoute(accountRow(accountId)),
+      logRoute(Number(transaction["id"]), log),
+      ...documents,
+      { method: "PUT", path: "/Invoice/1001/bookAmount", response: { body: { objects: {} } } },
+      { method: "PUT", path: "/Invoice/1002/bookAmount", response: { body: { objects: {} } } },
+      { method: "PUT", path: "/CreditNote/2001/bookAmount", response: { body: { objects: {} } } },
+      { method: "PUT", path: "/Voucher/2001/bookAmount", response: { body: { objects: {} } } },
+    ]),
+  );
 }
 
 async function refused(fake: FakeSevdeskClient, args: Record<string, unknown>): Promise<string> {

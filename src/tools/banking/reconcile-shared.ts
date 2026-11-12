@@ -6,7 +6,7 @@
 import { z } from "zod";
 
 import { getTransaction, type TransactionDto } from "../../domain/banking.js";
-import { moneySchema, statusDtoSchema } from "../../domain/common.js";
+import { moneySchema, statusDto, statusDtoSchema } from "../../domain/common.js";
 import { type LifecycleDocument, type PaymentKind } from "../../domain/lifecycle/documents.js";
 import {
   type Fact,
@@ -102,7 +102,7 @@ export function documentSummary(doc: LifecycleDocument<PaymentKind>): DocumentSu
     kind: argOfKind(doc.kind),
     id: doc.id,
     ...(doc.number === undefined ? {} : { number: doc.number }),
-    status: { code: doc.status, label: doc.statusLabel },
+    status: statusDto(doc.kind, doc.status),
     ...(contact === undefined ? {} : { contact }),
     ...(doc.totals.gross === undefined ? {} : { gross: doc.totals.gross }),
     ...(doc.paidAmount === undefined || doc.currency !== DEFAULT_CURRENCY

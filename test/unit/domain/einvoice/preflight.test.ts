@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { isValidLeitwegId, preflightInvoice } from "../../../../src/domain/einvoice/preflight.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
+import { withCountryRoute } from "../../../helpers/country-route.js";
 import { type FakeRoute, FakeSevdeskClient, loadFixture } from "../../../helpers/fake-client.js";
 import { einvoiceText } from "./helpers.js";
 
@@ -59,7 +60,7 @@ function routes(setup: Setup = {}): FakeRoute[] {
   setup.positions?.(positions);
   const contact = rows("contacts/contact-1001.json")[0]!;
   contact["buyerReference"] = "04011000-12345-03";
-  return [
+  return withCountryRoute([
     {
       path: "/Invoice/1001",
       query: { embed: "contact" },
@@ -91,7 +92,7 @@ function routes(setup: Setup = {}): FakeRoute[] {
         body: { objects: einvoiceText("kosit/01.01a-INVOICE_uncefact.xml") },
       },
     },
-  ];
+  ]);
 }
 
 async function run(setup: Setup = {}) {
@@ -107,7 +108,7 @@ describe("preflightInvoice", () => {
     expect(result).toEqual({
       invoice: {
         id: 1001,
-        status: { code: 100, label: "Draft" },
+        status: { code: 100, label: "Draft", key: "draft" },
         type: "RE",
         contactId: 1001,
       },

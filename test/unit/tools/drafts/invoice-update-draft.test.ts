@@ -104,9 +104,9 @@ describe("sevdesk_invoice_update_draft (community shapes, fake data)", () => {
       { label: "Title", value: "Rechnung → Rechnung Projekt X" },
       { label: "Total (unchanged)", value: "gross 116.60 EUR" },
     ]);
-    // No users, countries or units are read when nothing needs them.
+    // Only the country lookup is needed to enrich the returned address.
     expect(client.callsTo("/SevUser")).toEqual([]);
-    expect(client.callsTo("/StaticCountry")).toEqual([]);
+    expect(client.callsTo("/StaticCountry")).toHaveLength(1);
   });
 
   it("replaces all positions in one request (deletes the stored ones)", async () => {

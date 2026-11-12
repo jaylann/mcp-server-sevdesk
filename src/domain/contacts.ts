@@ -21,6 +21,7 @@ import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
 import { parseUpstream, zBool01, zId, zOptionalRef, zText } from "../sevdesk/schema.js";
 import type { QueryValue, SevdeskClient } from "../sevdesk/types.js";
 import { cleanText, compact, trimmedText } from "./common.js";
+import { countryCodeSchema, loadCountryCodes } from "./country-codes.js";
 import { contactLink } from "./links.js";
 import { type ChildRows, listChildRows, readPage } from "./paging.js";
 import {
@@ -137,6 +138,7 @@ export const addressDtoSchema = z.object({
     .int()
     .optional()
     .describe("StaticCountry id; names via sevdesk_reference_lookup kind=countries."),
+  country: countryCodeSchema,
   category: keyRefSchema.optional().describe("Address type, e.g. Rechnungsanschrift."),
 });
 
@@ -200,7 +202,10 @@ export function toContactDto(record: ContactRecord): ContactDto {
   });
 }
 
-function toAddressDto(record: z.output<typeof addressRecordSchema>): AddressDto {
+function toAddressDto(
+  record: z.output<typeof addressRecordSchema>,
+  countries: ReadonlyMap<number, string>,
+): AddressDto {
   const recipient = joinPresent([record.name, record.name2, record.name3, record.name4], "\n");
   return compact({
     id: record.id,
@@ -209,6 +214,7 @@ function toAddressDto(record: z.output<typeof addressRecordSchema>): AddressDto 
     zip: cleanText(record.zip, FIELD_MAX),
     city: cleanText(record.city, FIELD_MAX),
     countryId: record.country?.id,
+    country: record.country === undefined ? undefined : countries.get(record.country.id),
     category:
       record.category === undefined ? undefined : namedRef(record.category.id, addressCategoryById),
   });
@@ -344,9 +350,12 @@ export async function getContactDetails(
     ),
   ]);
 
+  const countries = addresses.rows.some((row) => row.country !== undefined)
+    ? await loadCountryCodes(client, signal)
+    : new Map<number, string>();
   return {
     contact,
-    addresses: addresses.rows.map(toAddressDto),
+    addresses: addresses.rows.map((row) => toAddressDto(row, countries)),
     addressesComplete: addresses.complete,
     communicationWays: communicationWays.rows.map(toCommunicationWayDto),
     communicationWaysComplete: communicationWays.complete,

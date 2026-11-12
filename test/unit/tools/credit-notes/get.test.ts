@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { creditNoteGetTool as tool } from "../../../../src/tools/credit-notes/get.js";
+import { withCountryRoute } from "../../../helpers/country-route.js";
 import { type FakeRoute, FakeSevdeskClient, testContext } from "../../../helpers/fake-client.js";
 
 const routes: readonly FakeRoute[] = [
@@ -26,7 +27,7 @@ describe("sevdesk_credit_note_get (community: recorded CreditNote shapes, fake d
   });
 
   it("returns the credit note with positions, tax rule and source invoice", async () => {
-    const client = new FakeSevdeskClient(routes);
+    const client = new FakeSevdeskClient(withCountryRoute(routes));
     const result = await tool.handler(tool.input.parse({ id: 2001 }), testContext(client));
     expect(client.methods().every((method) => method === "GET")).toBe(true);
     expect(tool.output.parse(result.data)).toEqual(result.data);
@@ -37,7 +38,11 @@ describe("sevdesk_credit_note_get (community: recorded CreditNote shapes, fake d
       deliveryDate: "2026-10-22",
       priceMode: "net",
       tax: { generation: "2.0", rule: { id: 1 } },
-      address: { text: "Musterfirma GmbH\nMusterstraße 1\n12345 Musterstadt", countryId: 1 },
+      address: {
+        text: "Musterfirma GmbH\nMusterstraße 1\n12345 Musterstadt",
+        countryId: 1,
+        country: "DE",
+      },
       contactPersonId: 7001,
       internalNote: "Reklamation vom 20.10.",
     });
