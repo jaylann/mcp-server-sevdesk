@@ -23,6 +23,7 @@ import { ALL_TOOLS } from "../../../src/tools/index.js";
 import { selectTools } from "../../../src/tools/registry.js";
 import { csvExportTool, datevExportTool } from "../../../src/tools/reports/export-tools.js";
 import { voucherCreateDraftTool } from "../../../src/tools/vouchers/draft-create.js";
+import { voucherUpdateDraftTool } from "../../../src/tools/vouchers/draft-update.js";
 import { einvoiceParseTool } from "../../../src/tools/vouchers/einvoice-parse.js";
 import { voucherImportEInvoiceTool } from "../../../src/tools/vouchers/import-einvoice.js";
 import { allEnabledConfig, TEST_TOKEN } from "../../helpers/config.js";
@@ -40,6 +41,7 @@ import { executeWrite, prepareWrite } from "../../helpers/write-tools.js";
 import { DATEV_ROUTES, DATEV_ZIP, zipFetch } from "../../write-cases/reports.js";
 import {
   CREATE_READ_ROUTES,
+  draftRow,
   PDF_BYTES,
   readBackRoutes,
   saveRoute,
@@ -82,13 +84,45 @@ function names(config: Parameters<typeof selectTools>[1]): string[] {
   return selectTools(ALL_TOOLS, config).map((tool) => tool.name);
 }
 
-function voucherClient(): FakeSevdeskClient {
+function voucherClient(
+  document: unknown = { id: "9001", objectName: "Document" },
+): FakeSevdeskClient {
+  const row = draftRow({ document });
+  if (document === "unknown") delete row["document"];
   return new FakeSevdeskClient([
     ...CREATE_READ_ROUTES,
     uploadRoute,
     saveRoute(),
-    ...readBackRoutes(),
+    ...readBackRoutes(row),
   ]);
+}
+
+function planner(parsed: ParsedEInvoice): Promise<VoucherSuggestion> {
+  return Promise.resolve({
+    kind: "expense",
+    counterparty: { name: parsed.seller.name },
+    supplierCandidates: [],
+    taxRuleId: 9,
+    taxRuleReason: "VAT category S: input VAT deductible (rule 9).",
+    positions: parsed.vatBreakdown.map((row) => ({
+      vatCategory: row.category,
+      taxRate: row.rate ?? "0",
+      net: money(row.taxableAmount),
+      tax: money(row.taxAmount),
+      gross: money(parsed.totals.gross),
+    })),
+    voucherDate: parsed.issueDate,
+    number: parsed.number,
+    currency: parsed.currency,
+    totals: {
+      net: money(parsed.totals.net),
+      tax: money(parsed.totals.tax),
+      gross: money(parsed.totals.gross),
+      due: money(parsed.totals.due),
+    },
+    blocking: [],
+    warnings: [],
+  });
 }
 
 /** The id at the end of a download link. */
@@ -108,6 +142,109 @@ describe("file tools with remote file transfer: registration", () => {
 });
 
 describe("receipts and e-invoices from uploads", () => {
+  const attachmentTools = [
+    { tool: voucherCreateDraftTool, args: DRAFT_ARGS, xml: false },
+    { tool: voucherUpdateDraftTool, args: { id: 2101 }, xml: false },
+    { tool: voucherImportEInvoiceTool(planner), args: { accountDatevId: 4266 }, xml: true },
+  ];
+
+  describe.each(attachmentTools)("upload lifecycle: $tool.name", ({ tool, args, xml }) => {
+    it.each([
+      "success",
+      "dryRun",
+      "uploadFailure",
+      "saveFailure",
+      "readBackFailure",
+      "noDocument",
+      "unknownDocument",
+    ])("%s releases only a confirmed attachment and retains retryable uploads", async (stage) => {
+      const transfer = await openTransfer();
+      const ref = await transfer.upload(
+        xml ? await readFile(XRECHNUNG) : PDF_BYTES,
+        xml
+          ? {
+              name: "xrechnung.xml",
+              kind: "xml",
+              purpose: "einvoice",
+            }
+          : {},
+      );
+      const fake = voucherClient(
+        stage === "noDocument"
+          ? null
+          : stage === "unknownDocument"
+            ? "unknown"
+            : { id: "9001", objectName: "Document" },
+      );
+      const request = fake.request.bind(fake);
+      let fail = true;
+      vi.spyOn(fake, "request").mockImplementation((req) => {
+        const shouldFail =
+          (stage === "uploadFailure" && req.path === "/Voucher/Factory/uploadTempFile") ||
+          (stage === "saveFailure" && req.path === "/Voucher/Factory/saveVoucher") ||
+          (stage === "readBackFailure" &&
+            req.path === "/Voucher/2101" &&
+            fake.callsTo("/Voucher/Factory/saveVoucher").length > 0);
+        return fail && shouldFail
+          ? Promise.reject(new SevdeskError({ kind: "server", message: "Fixture failure." }))
+          : request(req);
+      });
+      const client = await connectInProcess(
+        { config: filesConfig(), client: fake, tools: [tool], transfer: transfer.store },
+        { authInfo: grantAuthInfo({ accountId: "4711", token: TEST_TOKEN, grantId: "grant-1" }) },
+      );
+      clients.push(client);
+      const result = await client.callTool({
+        name: tool.name,
+        arguments: {
+          ...args,
+          file: ref,
+          ...(stage === "dryRun" ? { dryRun: true } : {}),
+        },
+      });
+      if (stage.endsWith("Failure")) {
+        expect(result.isError, resultText(result)).toBe(true);
+      } else {
+        expect(result.isError, resultText(result)).toBeFalsy();
+        expect(resultData(result)["status"]).toBe(stage === "dryRun" ? "dry_run" : "done");
+      }
+      if (stage === "success") {
+        expect(transfer.store.usage()).toEqual({ records: 0, bytes: 0 });
+        expect(await transfer.store.readUpload(OWNER, ref.slice("upload:".length))).toBeUndefined();
+      } else {
+        expect(await transfer.store.readUpload(OWNER, ref.slice("upload:".length))).toBeDefined();
+        expect(transfer.store.usage().records).toBe(1);
+      }
+      if (stage === "dryRun") expect(fake.writes()).toEqual([]);
+      if (stage === "saveFailure") {
+        fail = false;
+        const retry = await client.callTool({ name: tool.name, arguments: { ...args, file: ref } });
+        expect(retry.isError, resultText(retry)).toBeFalsy();
+        expect(transfer.store.usage()).toEqual({ records: 0, bytes: 0 });
+      }
+    });
+  });
+
+  it("accepts an eleventh receipt immediately after attaching ten", async () => {
+    const transfer = await openTransfer();
+    const refs: string[] = [];
+    for (let index = 0; index < 10; index += 1) refs.push(await transfer.upload(PDF_BYTES));
+    expect(transfer.store.usage().records).toBe(10);
+    expect(() => transfer.access().requestUpload("receipt")).toThrow(/already has 10 uploads/);
+    for (const file of refs) {
+      await executeWrite(
+        voucherCreateDraftTool,
+        { ...DRAFT_ARGS, file },
+        voucherClient(),
+        filesConfig(),
+        transfer.access(),
+      );
+    }
+    expect(transfer.store.usage()).toEqual({ records: 0, bytes: 0 });
+    expect(transfer.access().requestUpload("receipt").uploadId).toMatch(/^upload:/);
+    expect(transfer.clock.now()).toBe(Date.parse("2026-11-09T12:00:00.000Z"));
+  });
+
   it("attaches an uploaded receipt: sevDesk gets its bytes under the cleaned name", async () => {
     const transfer = await openTransfer();
     const ref = await transfer.upload(PDF_BYTES, { name: "Rechnung-0815.pdf" });
@@ -170,32 +307,6 @@ describe("receipts and e-invoices from uploads", () => {
       kind: "xml",
       purpose: "einvoice",
     });
-    const planner = (parsed: ParsedEInvoice): Promise<VoucherSuggestion> =>
-      Promise.resolve({
-        kind: "expense",
-        counterparty: { name: parsed.seller.name },
-        supplierCandidates: [],
-        taxRuleId: 9,
-        taxRuleReason: "VAT category S: input VAT deductible (rule 9).",
-        positions: parsed.vatBreakdown.map((row) => ({
-          vatCategory: row.category,
-          taxRate: row.rate ?? "0",
-          net: money(row.taxableAmount),
-          tax: money(row.taxAmount),
-          gross: money(parsed.totals.gross),
-        })),
-        voucherDate: parsed.issueDate,
-        number: parsed.number,
-        currency: parsed.currency,
-        totals: {
-          net: money(parsed.totals.net),
-          tax: money(parsed.totals.tax),
-          gross: money(parsed.totals.gross),
-          due: money(parsed.totals.due),
-        },
-        blocking: [],
-        warnings: [],
-      });
     const fake = voucherClient();
 
     const { output } = await executeWrite(
@@ -237,6 +348,7 @@ describe("receipts and e-invoices from uploads", () => {
     expect(result.data.file).toEqual({ name: "RE-2026-0001.xml", kind: "xml" });
     expect(result.data.invoice.number).toBe("RE-2026-0001");
     expect(client.writes()).toEqual([]);
+    expect(transfer.store.usage().records).toBe(1);
   });
 
   it("keeps upload ids out of error results and the server log", async () => {

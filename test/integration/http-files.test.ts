@@ -143,7 +143,7 @@ function fakeSevdesk(): FakeSevdesk {
         return json(copy, saved.status);
       }
       case "GET /Voucher/2101":
-        return json({ objects: [draftRow()] });
+        return json({ objects: [draftRow({ document: { id: "9001", objectName: "Document" } })] });
       case "GET /VoucherPos":
         return json({ objects: [positionRow()], total: 1 });
       case "GET /Invoice/1001/getPdf":
@@ -410,6 +410,21 @@ function events(lines: readonly string[]): Record<string, unknown>[] {
 }
 
 describe("remote file transfer end to end (OAuth)", () => {
+  it.each([1, 12])("wires the configured limit %i into the running store", async (limit) => {
+    const setup = await start(await workspace(), {
+      SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT: String(limit),
+      // The fake API is local; filling slots should not spend seconds in production pacing.
+      SEVDESK_RATE_LIMIT: "50",
+    });
+    const { client } = await connect(setup);
+    const links: Awaited<ReturnType<typeof saveInvoicePdf>>[] = [];
+    for (let index = 0; index < limit; index += 1) links.push(await saveInvoicePdf(client));
+    const refused = await call(client, "sevdesk_upload_request", { purpose: "receipt" });
+    expect(refused.isError).toBe(true);
+    expect(resultText(refused)).toContain(`already has ${String(limit)} uploads`);
+    expect(resultText(refused)).toContain(links[0]?.expiresAt);
+  });
+
   it("uploads a receipt for a voucher draft and hands out an invoice PDF as a download link", async () => {
     const setup = await start(await workspace());
     const { client, jar, access } = await connect(setup);
@@ -462,6 +477,10 @@ describe("remote file transfer end to end (OAuth)", () => {
     expect(new Uint8Array((await sent?.arrayBuffer()) ?? new ArrayBuffer(0))).toEqual(file.bytes);
     expect(setup.sevdesk.saves[0]?.["filename"]).toBe(TEMP_FILENAME);
     expect(JSON.stringify(draft)).not.toContain(upload.id);
+    await vi.waitFor(async () => {
+      expect(await readdir(setup.filesDir)).toEqual([]);
+    });
+    expect((await open(setup, upload.url, jar)).status).toBe(404);
 
     // 5. The invoice PDF becomes a download link (fetched now, as a preview: preventSendBy).
     const link = await saveInvoicePdf(client);

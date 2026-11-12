@@ -70,6 +70,13 @@ export interface TransferStore {
    * it expires.
    */
   readUpload(owner: RequestPrincipal, id: string): Promise<InputFile | undefined>;
+  /**
+   * Releases a successfully attached upload of `owner` (same grant and account): removes its
+   * record immediately and schedules blob deletion, as for expiry. Idempotent; unknown,
+   * foreign, pending and receiving tickets and download links are untouched. Call only after
+   * sevDesk confirms the attachment, never after a read, preview or failed write.
+   */
+  releaseUpload(owner: RequestPrincipal, id: string): void;
   /** Stores `file` and returns a link for `owner`'s account. Throws {@link TransferLimitError}. */
   createDownload(owner: RequestPrincipal, file: OutputFile): Promise<DownloadLinkView>;
 }

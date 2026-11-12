@@ -76,6 +76,9 @@ export function localFileAccess(config: LocalFileConfig): FileAccess {
       }
       return readLocal(fileDirs, ref, options);
     },
+    release() {
+      // Local files belong to the user and outlive tool calls.
+    },
     deliver: async (file) => ({ savedTo: await saveLocal(outputDir, file) }),
     async checkDelivery() {
       await outputDirectory(outputDir);
@@ -145,12 +148,17 @@ export function remoteFileAccess(
       if (file === undefined) {
         throw refusal(
           "There is no uploaded file for this uploadId: the user has not finished the upload " +
-            "yet, it expired, or it was requested by another connection. Ask the user to finish " +
+            "yet, it expired, it was already attached successfully, or it was requested by another " +
+            "connection. Ask the user to finish " +
             "the upload on the page from sevdesk_upload_request and to say when it is done, then " +
-            "call again; if it expired, request a new upload",
+            "call again; if it expired or was already used, request a new upload",
         );
       }
       return checkUpload(file, options);
+    },
+    release(ref) {
+      const id = parseUploadRef(ref);
+      if (id !== undefined) store.releaseUpload(principal, id);
     },
     async deliver(file) {
       if (localOutput) return local.deliver(file);
