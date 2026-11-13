@@ -16,20 +16,15 @@
  * diff emits JSON-pointer paths (tools/prompts keyed by name), with -/+ JSON values. Empty
  * output means no change; changes still exit 0. report adds PR provenance from the GitHub event
  * and bounds the text for a comment; the workflow also retains the complete diff artifact.
- * Reports add contextCost.base/head: character counts per configuration for tool definitions,
- * tools, prompts and instructions. Lists are compact JSON result objects ({tools:[…]},
- * {prompts:[…]}); definitions are the same tools reduced to name, description and inputSchema,
- * the fields function-calling APIs pass to the model (output schemas and annotations stay with
- * the client); instructions are raw text. Characters are Unicode code points, not bytes or
- * UTF-16 units.
- * The publisher derives the model context (definitions + instructions), full totals, estimated
- * tokens (characters / 4) and base-to-head deltas.
- * Prompt bodies from prompts/get, JSON-RPC envelopes and client-specific formatting are excluded.
- * Invalid arguments or input fail nonzero. Never load configuration from the caller's env.
+ * contextCost retains Unicode character sizes for the full protocol catalog. New dumps also
+ * capture modelContext (legacy name/description/input_schema + system) and recorded response
+ * text. Reports add tokenCost.base/head using messages.countTokens with ANTHROPIC_API_KEY,
+ * otherwise estimates at characters / 2.3. Missing legacy captures are null, never zero.
+ * Prompt bodies, JSON-RPC and tool-result envelopes are excluded. Invalid input fails nonzero.
+ * Server configuration never comes from the caller's environment.
  *
- * CI copies this single file into the base checkout: both revisions use the same harness,
- * even before this script exists on the base branch. Its relative imports must remain confined
- * to the existing server and test helpers (no Vitest runtime imports).
+ * CI copies tool-surface*.ts into the base checkout: both revisions use the same harness and
+ * the head's recorded corpus, with each revision's real server and frozen dependencies.
  */
 import { readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
@@ -41,6 +36,13 @@ import { createServerFactory } from "../src/server.js";
 import { allEnabledConfig, testConfig, tiers } from "../test/helpers/config.js";
 import { connectFactory } from "../test/helpers/connect.js";
 import { stubClient } from "../test/helpers/dummy-tools.js";
+import { captureResponses, RESPONSE_CALLS } from "./tool-surface-responses.js";
+import {
+  createTokenCounter,
+  modelContextSchema,
+  TOKEN_MODEL,
+  type TokenCounter,
+} from "./tool-surface-tokens.js";
 
 type Json = z.infer<ReturnType<typeof z.json>>;
 
@@ -54,9 +56,21 @@ const configuration = z.strictObject({
   tools: entries,
   prompts: entries,
   instructions: z.string(),
+  modelContext: modelContextSchema.optional(),
 });
 const surfaceSchema = z.strictObject({
   version: z.literal(1),
+  responses: z
+    .record(
+      z.enum(
+        Object.keys(RESPONSE_CALLS) as [
+          keyof typeof RESPONSE_CALLS,
+          ...(keyof typeof RESPONSE_CALLS)[],
+        ],
+      ),
+      z.string(),
+    )
+    .optional(),
   configurations: z.strictObject({
     read: configuration,
     write: configuration,
@@ -98,6 +112,28 @@ export function measureToolSurface(value: unknown): SurfaceSizes {
   };
 }
 
+type TokenSizes = {
+  configurations: Record<keyof ToolSurface["configurations"], number | null>;
+  responses: Record<keyof typeof RESPONSE_CALLS, number | null>;
+};
+
+/** Measure captured legacy input, never project the modern tools/list output schemas. */
+export async function measureTokens(value: unknown, counter: TokenCounter): Promise<TokenSizes> {
+  const surface = surfaceSchema.parse(value);
+  const configurations = {} as TokenSizes["configurations"];
+  for (const name of Object.keys(surface.configurations) as (keyof typeof configurations)[]) {
+    const view = surface.configurations[name].modelContext;
+    configurations[name] =
+      view === undefined ? null : await counter.count({ kind: "context", view });
+  }
+  const responses = {} as TokenSizes["responses"];
+  for (const id of Object.keys(RESPONSE_CALLS) as (keyof typeof responses)[]) {
+    const text = surface.responses?.[id];
+    responses[id] = text === undefined ? null : await counter.count({ kind: "response", text });
+  }
+  return { configurations, responses };
+}
+
 /** Recursively sorts object keys without changing array semantics. */
 function sorted(value: Json): Json {
   if (Array.isArray(value)) return value.map(sorted);
@@ -120,7 +156,7 @@ export function surfaceJson(value: ToolSurface): string {
     item.tools.sort(byName);
     item.prompts.sort(byName);
   }
-  return `${JSON.stringify(sorted(parsed), null, 2)}\n`;
+  return `${JSON.stringify(sorted(z.json().parse(parsed)), null, 2)}\n`;
 }
 
 async function capture(config: Config): Promise<z.infer<typeof configuration>> {
@@ -134,7 +170,28 @@ async function capture(config: Config): Promise<z.infer<typeof configuration>> {
       if (toolsCursor !== undefined || promptsCursor !== undefined) {
         throw new Error("Surface listing is paginated; update the capture harness.");
       }
-      return configuration.parse({ tools, prompts, instructions: client.getInstructions() ?? "" });
+      const legacy = await connectFactory(factory, { era: "legacy" });
+      try {
+        const listed = await legacy.listTools();
+        if (listed.nextCursor !== undefined) throw new Error("Legacy listing is paginated.");
+        // Same Messages API shape as test/evals/tools.ts, retaining server list/schema order.
+        const modelContext = {
+          system: legacy.getInstructions() ?? "",
+          tools: listed.tools.map((tool) => ({
+            name: tool.name,
+            description: tool.description ?? "",
+            input_schema: tool.inputSchema,
+          })),
+        };
+        return configuration.parse({
+          tools,
+          prompts,
+          instructions: client.getInstructions() ?? "",
+          modelContext,
+        });
+      } finally {
+        await legacy.close();
+      }
     } finally {
       await client.close();
     }
@@ -147,6 +204,7 @@ async function capture(config: Config): Promise<z.infer<typeof configuration>> {
 export async function dumpToolSurface(): Promise<ToolSurface> {
   return surfaceSchema.parse({
     version: 1,
+    responses: await captureResponses(),
     configurations: {
       read: await capture(testConfig()),
       write: await capture(testConfig({ allowedTiers: tiers("read", "write") })),
@@ -218,11 +276,12 @@ const eventSchema = z.object({
 });
 
 /** Report is untrusted data in the publishing job; provenance is checked again against GitHub. */
-export function surfaceReport(
+export async function surfaceReport(
   base: unknown,
   head: unknown,
   event: unknown,
-): {
+  counter: TokenCounter = createTokenCounter(),
+): Promise<{
   version: 1;
   pr: number;
   base: string;
@@ -231,7 +290,13 @@ export function surfaceReport(
   diff: string;
   truncated: boolean;
   contextCost: { base: SurfaceSizes; head: SurfaceSizes };
-} {
+  tokenCost: {
+    method: TokenCounter["method"];
+    model: typeof TOKEN_MODEL;
+    base: TokenSizes;
+    head: TokenSizes;
+  };
+}> {
   const { number, pull_request } = eventSchema.parse(event);
   const diff = diffToolSurface(base, head);
   const limit = 45_000;
@@ -244,6 +309,12 @@ export function surfaceReport(
     diff: diff.slice(0, limit),
     truncated: diff.length > limit,
     contextCost: { base: measureToolSurface(base), head: measureToolSurface(head) },
+    tokenCost: {
+      method: counter.method,
+      model: TOKEN_MODEL,
+      base: await measureTokens(base, counter),
+      head: await measureTokens(head, counter),
+    },
   };
 }
 
@@ -275,10 +346,11 @@ export async function runToolSurface(args: readonly string[]): Promise<void> {
     fourth !== undefined &&
     args.length === 5
   ) {
-    const report = surfaceReport(
+    const report = await surfaceReport(
       await readJson(first),
       await readJson(second),
       await readJson(third),
+      createTokenCounter(process.env.ANTHROPIC_API_KEY),
     );
     await writeFile(fourth, `${JSON.stringify(report)}\n`);
   } else {

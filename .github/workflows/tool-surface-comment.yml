@@ -4,7 +4,7 @@ name: Tool surface comment
 # restore caches, or execute artifact contents in this job: it holds the comment write token.
 on:
   workflow_run: # zizmor: ignore[dangerous-triggers] -- No checkout or execution of PR code; only validated, fenced comment data.
-    workflows: [Tool surface]
+    workflows: [Tool surface, Tool surface exact]
     types: [completed]
 
 permissions: {}
@@ -42,7 +42,8 @@ jobs:
             const repo = context.repo;
             const fullName = `${repo.owner}/${repo.repo}`;
             if (run.event !== 'pull_request' || run.conclusion !== 'success' ||
-                run.repository.full_name !== fullName || run.path !== '.github/workflows/tool-surface.yml') {
+                run.repository.full_name !== fullName ||
+                !['.github/workflows/tool-surface.yml', '.github/workflows/tool-surface-exact.yml'].includes(run.path)) {
               throw new Error('Unexpected source workflow.');
             }
             const stat = await fs.lstat(process.env.REPORT_PATH);
@@ -79,6 +80,24 @@ jobs:
                     }))))) {
               throw new Error('Invalid context cost.');
             }
+            const tokens = report.tokenCost;
+            const responseLabels = {
+              invoice_get: 'invoice_get', records_summarize: 'records_summarize (invoices by month)',
+              contacts_search: 'contacts_search (default limit)', transactions_list: 'transactions_list (default limit)',
+              vouchers_list: 'vouchers_list (default limit)', invoices_list: 'invoices_list (default limit)',
+              invoices_list_max: 'invoices_list (limit: 5, fixture maximum)',
+            };
+            const validCounts = (value, keys) => hasKeys(value, keys) && keys.every(key =>
+              value[key] === null || (Number.isSafeInteger(value[key]) && value[key] >= 0 && value[key] <= 1_000_000_000));
+            if (tokens !== undefined && (!hasKeys(tokens, ['method', 'model', 'base', 'head']) ||
+                !['exact', 'estimated'].includes(tokens.method) || tokens.model !== 'claude-opus-5-5' ||
+                !['base', 'head'].every(revision => hasKeys(tokens[revision], ['configurations', 'responses']) &&
+                  validCounts(tokens[revision].configurations, configurations) &&
+                  validCounts(tokens[revision].responses, Object.keys(responseLabels))) ||
+                (tokens.method === 'exact' && (run.path !== '.github/workflows/tool-surface-exact.yml' ||
+                  run.head_repository.full_name !== fullName)))) {
+              throw new Error('Invalid token cost.');
+            }
             // Artifact PR numbers are only hints. Verify the current PR against the trusted run,
             // including fork identity, even when workflow_run.pull_requests is empty for forks.
             const { data: pr } = await github.rest.pulls.get({ ...repo, pull_number: report.pr });
@@ -95,9 +114,14 @@ jobs:
             });
             const previous = comments.find(comment => comment.user?.login === 'github-actions[bot]' &&
               comment.user?.type === 'Bot' && comment.body?.startsWith(marker));
-            if (!report.changed && !previous && cost === undefined) return;
+            if (!report.changed && !previous && cost === undefined && tokens === undefined) return;
+            const exactStamp = `<!-- sevdesk-tool-surface-tokens:${report.base}:${report.head}:exact -->`;
+            // Completion order is arbitrary. An estimate must never replace exact counts for
+            // the same comparison, including on reruns; a new base/head still gets fresh data.
+            if (tokens?.method !== 'exact' && previous?.body?.startsWith(`${marker}\n${exactStamp}\n`)) return;
+            const stamp = tokens?.method === 'exact' ? `${exactStamp}\n` : '';
             let contextCost = '';
-            if (cost !== undefined) {
+            if (cost !== undefined && tokens === undefined) {
               const labels = {
                 definitions: 'Tool definitions', model: '**Model context**', tools: 'tools/list',
                 instructions: 'Instructions', prompts: 'prompts/list', total: 'Total',
@@ -146,6 +170,33 @@ jobs:
                 '| Configuration | Surface | Base chars / est. tokens | Head chars / est. tokens | Δ chars / est. tokens | Δ % |\n' +
                 '| --- | --- | ---: | ---: | ---: | ---: |\n' + rows.join('\n') + '\n\n';
             }
+            if (tokens !== undefined) {
+              const format = value => value.toLocaleString('en-US');
+              const signed = value => (value > 0 ? '+' : '') + format(value);
+              const row = (label, base, head) => `| ${label} | ${base === null ? 'n/a' : format(base)} | ` +
+                `${head === null ? 'n/a' : format(head)} | ${base === null || head === null ? 'n/a' : signed(head - base)} |`;
+              const table = (title, keys, labels, section) => `### ${title}\n\n` +
+                '| Configuration / call | Base tokens | Head tokens | Δ tokens |\n' +
+                '| --- | ---: | ---: | ---: |\n' + keys.map(key =>
+                  row(labels[key] ?? key, tokens.base[section][key], tokens.head[section][key])).join('\n') + '\n\n';
+              contextCost = (tokens.method === 'exact'
+                ? '**Exact** tokens via messages.countTokens (claude-opus-5-5), less a shared one-character message baseline. '
+                : '**Estimated** tokens = characters ÷ 2.3 (Unicode code points, rounded). ') +
+                'Model context uses legacy Claude tool definitions (name, description, input_schema) plus instructions as the system prompt. ' +
+                'Response counts include the actual text blocks, including summaries and fences; client message envelopes are excluded. ' +
+                'Missing captures are n/a.\n\n' +
+                table('Model context', configurations, {}, 'configurations') +
+                table('Response cost', Object.keys(responseLabels), responseLabels, 'responses') +
+                'Recorded fixtures only: five available rows per list; default-limit calls return those five, not a full 25-row page. ' +
+                'The explicit limit is 5 (the fixture maximum), not an extrapolated 100-row cost. Clock fixed to 2026-11-13.\n\n';
+              if (cost !== undefined) {
+                contextCost += '<details>\n<summary>Full tools/list — not in model context for Claude clients</summary>\n\n' +
+                  'Modern protocol including output schemas; Unicode characters, not model tokens.\n\n' +
+                  '| Configuration | Base chars | Head chars | Δ chars |\n| --- | ---: | ---: | ---: |\n' +
+                  configurations.map(config => row(config, cost.base[config].tools, cost.head[config].tools)).join('\n') +
+                  '\n\n</details>\n\n';
+              }
+            }
             // Keep artifact text inside a literal block, even if tool text contains backticks,
             // HTML or mentions. No value from the artifact is evaluated as code or Markdown.
             const literal = report.diff.replaceAll('`', '\\u0060').replaceAll('@', '\\u0040');
@@ -155,7 +206,7 @@ jobs:
                 (report.truncated || clipped ? '\nDiff truncated; download the full diff from the run artifacts.\n' : '')
               : 'No change in tools/list, prompts/list or instructions for any of the four configurations.\n';
             const runUrl = `${context.serverUrl}/${fullName}/actions/runs/${run.id}`;
-            const body = `${marker}\n## MCP tool surface\n\n` +
+            const body = `${marker}\n${stamp}## MCP tool surface\n\n` +
               `Base \`${report.base}\` → head \`${report.head}\`. [Full JSON and diff](${runUrl}).\n\n` +
               'Configurations: read, write, all toolsets/tiers, HTTP with files. ' +
               'Review names and schemas for compatibility; text changes alone are not breaking changes.\n\n' +

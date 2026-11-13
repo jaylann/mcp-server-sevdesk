@@ -41,7 +41,7 @@ function fixture() {
     conclusion: "success",
     repository: { full_name: "owner/repo" },
     path: ".github/workflows/tool-surface.yml",
-    head_repository: { id: 456 },
+    head_repository: { id: 456, full_name: "fork/repo" },
     head_branch: "feature",
     head_sha: head,
     pull_requests: pullRequests,
@@ -125,6 +125,22 @@ function definitionCost() {
     "http-files": sizes(),
   });
   return { base: configuration(), head: configuration() };
+}
+
+function tokenCost(method: "estimated" | "exact" = "estimated") {
+  const sizes = () => ({
+    configurations: { read: 100, write: 200, all: 300, "http-files": 400 },
+    responses: {
+      invoice_get: 15,
+      records_summarize: 20,
+      contacts_search: 25,
+      transactions_list: 30,
+      vouchers_list: 35,
+      invoices_list: 40,
+      invoices_list_max: 40,
+    },
+  });
+  return { method, model: "claude-opus-5-5", base: sizes(), head: sizes() };
 }
 
 describe("tool surface comment workflow", () => {
@@ -353,14 +369,14 @@ describe("tool surface comment workflow", () => {
       configurations: { read: config(), write: config(), all: config(), "http-files": config() },
     };
     const event = { number: f.pr.number, pull_request: f.pr };
-    const report = surfaceReport(surface, surface, event);
+    const report = await surfaceReport(surface, surface, event);
     f.readFile.mockResolvedValue(JSON.stringify(report));
     await f.execute();
     expect(f.createComment).toHaveBeenCalledOnce();
     const body = f.createComment.mock.calls[0]?.[0].body ?? "";
     expect(body).toContain("No change in tools/list");
-    expect(body).toContain("| read | Total | 26 / 6.5 | 26 / 6.5 | 0 / 0 | 0% |");
-    expect(body).toContain("| read | **Model context** | 12 / 3 | 12 / 3 | 0 / 0 | 0% |");
+    expect(body).toContain("| read | 12 | 12 | 0 |");
+    expect(body).toContain("| read | n/a | n/a | n/a |");
     f.comments.push(botComment());
     await f.execute();
     expect(f.updateComment).toHaveBeenCalledWith(expect.objectContaining({ comment_id: 99, body }));
@@ -398,6 +414,128 @@ describe("tool surface comment workflow", () => {
     await expect(f.execute()).rejects.toThrow("Invalid context cost");
     expect(f.get).not.toHaveBeenCalled();
     expect(f.createComment).not.toHaveBeenCalled();
+  });
+
+  it.each(["estimated", "exact"] as const)(
+    "leads with %s model and response tokens and signed deltas",
+    async (method) => {
+      const f = fixture();
+      if (method === "exact") {
+        f.run.path = ".github/workflows/tool-surface-exact.yml";
+        f.run.head_repository.full_name = "owner/repo";
+      }
+      const tokens = tokenCost(method);
+      tokens.head.configurations.read = 120;
+      tokens.head.responses.invoice_get = 10;
+      f.readFile.mockResolvedValue(
+        JSON.stringify({ ...f.report, tokenCost: tokens, contextCost: definitionCost() }),
+      );
+      await f.execute();
+      const body = f.createComment.mock.calls[0]?.[0].body ?? "";
+      expect(body).toContain(
+        method === "exact"
+          ? "**Exact** tokens via messages.countTokens (claude-opus-5-5)"
+          : "**Estimated** tokens = characters ÷ 2.3",
+      );
+      expect(body).toContain("| read | 100 | 120 | +20 |");
+      expect(body).toContain("| invoice_get | 15 | 10 | -5 |");
+      expect(body).toContain("| invoices_list (limit: 5, fixture maximum) | 40 | 40 | 0 |");
+      expect(body).toContain("Full tools/list — not in model context for Claude clients");
+      expect(body.indexOf("### Model context")).toBeLessThan(body.indexOf("### Response cost"));
+      expect(body.indexOf("### Response cost")).toBeLessThan(body.indexOf("Full tools/list"));
+      expect(body).not.toContain("characters / 4");
+    },
+  );
+
+  it("renders absent base captures as n/a without inventing a delta", async () => {
+    const f = fixture();
+    const tokens = tokenCost();
+    f.readFile.mockResolvedValue(
+      JSON.stringify({
+        ...f.report,
+        tokenCost: {
+          ...tokens,
+          base: {
+            configurations: { ...tokens.base.configurations, read: null },
+            responses: { ...tokens.base.responses, invoice_get: null },
+          },
+        },
+      }),
+    );
+    await f.execute();
+    const body = f.createComment.mock.calls[0]?.[0].body ?? "";
+    expect(body).toContain("| read | n/a | 100 | n/a |");
+    expect(body).toContain("| invoice_get | n/a | 15 | n/a |");
+  });
+
+  it("upgrades estimates to exact and never lets a late estimate overwrite that comparison", async () => {
+    const f = fixture();
+    f.readFile.mockResolvedValue(JSON.stringify({ ...f.report, tokenCost: tokenCost() }));
+    await f.execute();
+    f.comments.push(botComment(f.createComment.mock.calls[0]![0].body));
+    f.run.path = ".github/workflows/tool-surface-exact.yml";
+    f.run.head_repository.full_name = "owner/repo";
+    f.readFile.mockResolvedValue(JSON.stringify({ ...f.report, tokenCost: tokenCost("exact") }));
+    await f.execute();
+    expect(f.updateComment).toHaveBeenCalledOnce();
+    f.comments[0]!.body = f.updateComment.mock.calls[0]![0].body;
+    f.updateComment.mockClear();
+    f.run.path = ".github/workflows/tool-surface.yml";
+    f.readFile.mockResolvedValue(JSON.stringify({ ...f.report, tokenCost: tokenCost() }));
+    await f.execute();
+    expect(f.updateComment).not.toHaveBeenCalled();
+    // An updated base must not retain the old exact counts.
+    f.pr.base.sha = f.report.base = "c".repeat(40);
+    f.readFile.mockResolvedValue(JSON.stringify({ ...f.report, tokenCost: tokenCost() }));
+    await f.execute();
+    expect(f.updateComment).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    null,
+    {},
+    { ...tokenCost(), method: "```@attacker" },
+    { ...tokenCost(), model: "@attacker" },
+    { ...tokenCost(), extra: "unexpected" },
+    ...[-1, 1.5, 1_000_000_001, "```@attacker", {}, undefined].map((read) => ({
+      ...tokenCost(),
+      head: { ...tokenCost().head, configurations: { ...tokenCost().head.configurations, read } },
+    })),
+    { ...tokenCost(), base: { ...tokenCost().base, responses: {} } },
+    {
+      ...tokenCost(),
+      head: { ...tokenCost().head, responses: { ...tokenCost().head.responses, unexpected: 1 } },
+    },
+    tokenCost("exact"),
+  ])("rejects hostile or unverified token data (%j)", async (tokens) => {
+    const f = fixture();
+    f.readFile.mockResolvedValue(JSON.stringify({ ...f.report, tokenCost: tokens }));
+    await expect(f.execute()).rejects.toThrow("Invalid token cost");
+    expect(f.get).not.toHaveBeenCalled();
+  });
+
+  it("refuses exact claims from a fork even in the optional workflow", async () => {
+    const f = fixture();
+    f.run.path = ".github/workflows/tool-surface-exact.yml";
+    f.readFile.mockResolvedValue(JSON.stringify({ ...f.report, tokenCost: tokenCost("exact") }));
+    await expect(f.execute()).rejects.toThrow("Invalid token cost");
+  });
+
+  it("keeps environment approval out of the normal workflow", () => {
+    const readWorkflow = (name: string) =>
+      readFileSync(new URL(`../../../.github/workflows/${name}.yml`, import.meta.url), "utf8");
+    const normal = readWorkflow("tool-surface");
+    const exact = readWorkflow("tool-surface-exact");
+    expect(normal).not.toMatch(/environment:|secrets\.|needs:/);
+    expect(exact).toContain("github.event.pull_request.head.repo.full_name == github.repository");
+    expect(exact).toContain("name: evals");
+    expect(exact).toContain("ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}");
+    expect(workflow).toContain("workflows: [Tool surface, Tool surface exact]");
+    for (const capture of [normal, exact]) {
+      expect(capture).toContain("cp scripts/tool-surface*.ts");
+      expect(capture).toContain("cp -R test/fixtures/recorded/.");
+      expect(capture).toContain("package-manager-cache: false");
+    }
   });
 
   it("keeps the writer free of checkout, shell execution, dependencies and caches", () => {

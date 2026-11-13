@@ -13,6 +13,7 @@ import {
   surfaceReport,
   type ToolSurface,
 } from "../../../scripts/tool-surface.js";
+import { clientView } from "../../evals/tools.js";
 
 function empty(): ToolSurface {
   const config = () => ({ tools: [], prompts: [], instructions: "" });
@@ -72,6 +73,27 @@ describe("tool surface", () => {
         ),
       ).toBe(true);
     }
+    expect(read.modelContext).toEqual(await clientView({}));
+    expect(read.modelContext?.tools.every((tool) => !Object.hasOwn(tool, "outputSchema"))).toBe(
+      true,
+    );
+    expect(dump.responses?.invoice_get).toContain("with 1 position");
+    expect(dump.responses?.records_summarize).toContain("5 counted");
+    for (const id of [
+      "contacts_search",
+      "transactions_list",
+      "vouchers_list",
+      "invoices_list",
+      "invoices_list_max",
+    ] as const) {
+      const text = dump.responses?.[id] ?? "";
+      const data = JSON.parse(text.slice(text.indexOf("\n\n") + 2)) as {
+        items: unknown[];
+        limit: number;
+      };
+      expect(data.items, id).toHaveLength(5);
+      expect(data.limit, id).toBe(id === "invoices_list_max" ? 5 : 25);
+    }
     const sizes = measureToolSurface(dump);
     expect(sizes.read.tools).toBeGreaterThan(0);
     expect(sizes.write.tools).toBeGreaterThan(sizes.read.tools);
@@ -83,7 +105,10 @@ describe("tool surface", () => {
     }
     expect(http.instructions).toContain("uploadId");
     expect(fetch).not.toHaveBeenCalled();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2030-01-01T00:00:00Z"));
     expect(surfaceJson(await dumpToolSurface())).toBe(surfaceJson(dump));
+    expect(Date.now()).toBe(Date.parse("2030-01-01T00:00:00Z"));
+    clock.mockRestore();
   }, 30_000);
 
   it("sorts keys and named lists, preserves schema array order and does not mutate inputs", () => {
@@ -171,8 +196,8 @@ describe("tool surface", () => {
     expect(() => surfaceJson(duplicate)).toThrow("Duplicate surface entry names");
   });
 
-  it("bounds reports, records provenance and distinguishes no changes", () => {
-    expect(surfaceReport(empty(), empty(), event)).toEqual({
+  it("bounds reports, records provenance and distinguishes no changes", async () => {
+    expect(await surfaceReport(empty(), empty(), event)).toMatchObject({
       version: 1,
       pr: 12,
       base: "a".repeat(40),
@@ -184,12 +209,12 @@ describe("tool surface", () => {
     });
     const head = empty();
     head.configurations.read.instructions = "x".repeat(50_000);
-    const report = surfaceReport(empty(), head, event);
+    const report = await surfaceReport(empty(), head, event);
     expect(report.changed).toBe(true);
     expect(report.truncated).toBe(true);
     expect(report.diff).toHaveLength(45_000);
     expect(report.contextCost.head.read.instructions).toBe(50_000);
-    expect(() => surfaceReport(empty(), head, { number: "12" })).toThrow();
+    await expect(surfaceReport(empty(), head, { number: "12" })).rejects.toThrow();
   });
 
   it("runs the diff/report CLI and rejects bad arguments and malformed JSON", async () => {
