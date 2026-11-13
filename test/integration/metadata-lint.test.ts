@@ -14,7 +14,6 @@ import { ALL_TOOLS } from "../../src/tools/index.js";
 import { JSON_SCHEMA_OPTIONS } from "../../src/tools/json-schema.js";
 import { type AnyToolDefinition, isWriteTool } from "../../src/tools/types.js";
 import { allEnabledConfig } from "../helpers/config.js";
-import { inlineLocalRefs } from "../helpers/json-schema.js";
 import { filesDeployment, filesOffDeployment } from "../helpers/transfer.js";
 
 const ANNOTATION_KEYS = ["destructiveHint", "idempotentHint", "openWorldHint", "readOnlyHint"];
@@ -211,7 +210,7 @@ describe("tool metadata", () => {
         io: "output",
       });
 
-      expect(inlineLocalRefs(json)).toMatchObject({ type: "object" });
+      expect(json.type).toBe("object");
     });
   });
 });

@@ -53,6 +53,7 @@ describe.each(configurations)("%s output schemas", (_name, config) => {
       for (const tool of tools) {
         const schema = tool.outputSchema;
         expect(schema, tool.name).toBeDefined();
+        expect(schema?.["type"], tool.name).toBe("object");
         expect(() => ajv.compile(schema as AnySchemaObject), tool.name).not.toThrow();
         const definition = ALL_TOOLS.find(({ name }) => name === tool.name)!;
         const declaredOutput = definition.output as z.ZodObject;
