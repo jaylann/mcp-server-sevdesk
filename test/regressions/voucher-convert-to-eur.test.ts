@@ -1,4 +1,4 @@
-/** D-081: outgoing EUR conversion contract; upstream storage remains a live-probe question. */
+/** D-081: outgoing EUR conversion contract; storage evidence is in spec/deviations.md. */
 import { describe, expect, it } from "vitest";
 
 import { executeVoucherSave } from "../../src/domain/drafts/voucher.js";

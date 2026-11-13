@@ -117,8 +117,9 @@ Ein Belegentwurf in Fremdwährung lässt sich mit `sevdesk_voucher_update_draft`
 Übergeben Sie `currency: "EUR"` und **alle Positionen mit Ihren EUR-Beträgen**, bei Bedarf auch
 `amountMode`. Es wird kein Wechselkurs berechnet. Prüfen Sie zuerst die Vorschau mit `dryRun: true`
 und nach dem Speichern die Währung und Beträge mit `sevdesk_voucher_get`, bevor Sie den Beleg
-fertigstellen. Die Umstellung ist mit Testdaten geprüft; das tatsächlich gespeicherte Ergebnis
-muss noch [am Live-System geprüft werden](spec/deviations.md#d-081-converting-a-voucher-draft-to-eur-is-unverified).
+fertigstellen. Ein [Test im Testkonto](spec/deviations.md#d-081-converting-a-voucher-draft-to-eur-clears-foreign-sums)
+bestätigt die EUR-Beträge und die auf null gesetzten Fremdwährungssummen. Das Auslesen des
+gespeicherten Wechselkurses bleibt ungeklärt.
 Der direkte Import von E-Rechnungen in Fremdwährung bleibt ausgeschlossen.
 
 ## Prompts

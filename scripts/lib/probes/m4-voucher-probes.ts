@@ -65,6 +65,53 @@ function documentState(row: Row | undefined): "absent" | "null" | "set" {
   return row["document"] === null ? "null" : "set";
 }
 
+/** Preserve absent/null and JSON scalar types when reporting the currency contract. */
+function currencyValues(ctx: ProbeContext, row: Row | undefined): string {
+  const fields = [
+    "currency",
+    "status",
+    "sumNet",
+    "sumTax",
+    "sumGross",
+    "sumNetForeignCurrency",
+    "sumTaxForeignCurrency",
+    "sumGrossForeignCurrency",
+    "propertyExchangeRate",
+    "propertyForeignCurrencyDeadline",
+  ];
+  const safe = ctx.scrubber.scrub(row ?? {}) as Row;
+  return fields
+    .map((key) => `${key}=${safe[key] === undefined ? "absent" : JSON.stringify(safe[key])}`)
+    .join(", ");
+}
+
+/** Only creates tagged status-50 vouchers; every returned id goes into the cleanup list. */
+async function createUsdDraft(
+  ctx: ProbeContext,
+  property: { propertyExchangeRate: string } | { propertyForeignCurrencyDeadline: string },
+) {
+  const accounts = await bookingAccounts(ctx);
+  if (accounts.expense === undefined) return { why: accounts.note };
+  const position = voucherPosition(data(ctx).tag, accounts.expense, {
+    net: true,
+    amount: 100,
+    label: "USD 100 net at 19 percent",
+  });
+  const header = {
+    ...voucherHeader(ctx, { label: "USD exchange rate", status: 50 }),
+    currency: "USD",
+    ...property,
+  };
+  const result = await ctx.http.write("POST", "/Voucher/Factory/saveVoucher", {
+    tier: "write",
+    body: { voucher: header, voucherPosSave: [position], voucherPosDelete: null },
+  });
+  const id = createdId(result.objects, "voucher");
+  if (id !== undefined) data(ctx).register("Voucher", id, "draft voucher (deletable)");
+  if (!result.ok || id === undefined) return { why: `USD create: ${outcomeOf(result)}` };
+  return { id, header, position };
+}
+
 /** New transactions of `accountId` compared with the ids in `before`. */
 async function newTransactions(
   ctx: ProbeContext,
@@ -306,6 +353,100 @@ export const M4_VOUCHER_PROBES: readonly ProbeDefinition[] = [
     },
   },
   {
+    id: "write-voucher-usd-rate",
+    title: "Creating a USD draft with an explicit decimal exchange rate",
+    mode: "write",
+    question:
+      "With a USD 100 net position at 19 percent and propertyExchangeRate string 0.9, which sums and position amounts are stored? Is the rate EUR per USD or USD per EUR, and what are the GET property types?",
+    deviations: ["D-043", "D-082"],
+    async run(ctx) {
+      const created = await createUsdDraft(ctx, { propertyExchangeRate: "0.9" });
+      if (created.id === undefined) return inconclusive(created.why);
+      const row = await ctx.read.byId("Voucher", created.id);
+      const positions = await voucherPositions(ctx, created.id);
+      return {
+        verdict:
+          str(row, "status") === "50" && str(row, "currency") === "USD" && positions.length === 1
+            ? "observed"
+            : "inconclusive",
+        finding: `Voucher ${created.id}; sent USD net 100, tax 19 percent, propertyExchangeRate string 0.9. GET: ${currencyValues(ctx, row)}. Positions: ${describePositions(positions)}. EUR-per-USD would give EUR net 90, tax 17.10, gross 107.10; USD-per-EUR would give EUR net 111.11 and gross 132.22 after rounding to cents. Compare the recorded fields before choosing a direction.`,
+      };
+    },
+  },
+  {
+    id: "write-voucher-usd-deadline",
+    title: "Creating a USD draft with an exchange-rate date only",
+    mode: "write",
+    question:
+      "Does propertyForeignCurrencyDeadline as dd.mm.yyyy select a stored rate without propertyExchangeRate? What types and formats do the rate and date have on GET?",
+    deviations: ["D-043", "D-082"],
+    async run(ctx) {
+      const deadline = germanDate(addDays(ctx.today, -1));
+      const created = await createUsdDraft(ctx, { propertyForeignCurrencyDeadline: deadline });
+      if (created.id === undefined) return inconclusive(created.why);
+      const row = await ctx.read.byId("Voucher", created.id);
+      const positions = await voucherPositions(ctx, created.id);
+      return {
+        verdict:
+          str(row, "status") === "50" && str(row, "currency") === "USD" && positions.length === 1
+            ? "observed"
+            : "inconclusive",
+        finding: `Voucher ${created.id}; sent USD net 100, tax 19 percent, propertyForeignCurrencyDeadline ${deadline}, no propertyExchangeRate. GET: ${currencyValues(ctx, row)}. Positions: ${describePositions(positions)}.`,
+      };
+    },
+  },
+  {
+    id: "write-voucher-usd-rate-update",
+    title: "Changing a USD draft exchange rate with and without replacement positions",
+    mode: "write",
+    question:
+      "Does changing propertyExchangeRate from string 0.9 to 0.8 recalculate a USD draft when positions are untouched? Does resending the same USD amounts change the result?",
+    deviations: ["D-043", "D-082"],
+    async run(ctx) {
+      const created = await createUsdDraft(ctx, { propertyExchangeRate: "0.9" });
+      if (created.id === undefined) return inconclusive(created.why);
+      const before = await ctx.read.byId("Voucher", created.id);
+      if (str(before, "status") !== "50" || str(before, "currency") !== "USD") {
+        return inconclusive(`USD draft setup was not stored: ${currencyValues(ctx, before)}.`);
+      }
+      const initialPositions = await voucherPositions(ctx, created.id);
+      if (initialPositions.length !== 1)
+        return inconclusive("USD setup needs one stored position.");
+      const lines = [
+        `Before: ${currencyValues(ctx, before)}. Positions: ${describePositions(initialPositions)}`,
+      ];
+      for (const replace of [false, true]) {
+        // A successful create is insufficient: verify draft status before every further write.
+        const current = await ctx.read.byId("Voucher", created.id);
+        if (str(current, "status") !== "50") {
+          return inconclusive(`${lines.join(". ")}. Further update refused: not a verified draft.`);
+        }
+        const saved = await ctx.http.write("POST", "/Voucher/Factory/saveVoucher", {
+          tier: "write",
+          body: {
+            voucher: { ...created.header, id: created.id, propertyExchangeRate: "0.8" },
+            voucherPosSave: replace ? [created.position] : null,
+            voucherPosDelete: replace
+              ? initialPositions.map((row) => ({ id: Number(row["id"]), objectName: "VoucherPos" }))
+              : null,
+          },
+        });
+        const after = await ctx.read.byId("Voucher", created.id);
+        const positions = await voucherPositions(ctx, created.id);
+        lines.push(
+          `${replace ? "Replacement positions" : "Positions untouched"}: ${outcomeOf(saved)}; ${currencyValues(ctx, after)}. Positions: ${describePositions(positions)}`,
+        );
+        if (!saved.ok || str(after, "status") !== "50" || positions.length !== 1) {
+          return inconclusive(lines.join(". "));
+        }
+      }
+      return {
+        verdict: "observed",
+        finding: `Voucher ${created.id}; sent rate 0.9 then 0.8 with USD net 100 at 19 percent. ${lines.join(". ")}.`,
+      };
+    },
+  },
+  {
     id: "write-voucher-convert-to-eur",
     title: "Converting a USD voucher draft to EUR with replacement amounts",
     mode: "write",
@@ -319,12 +460,14 @@ export const M4_VOUCHER_PROBES: readonly ProbeDefinition[] = [
       const created = await createVoucher(ctx, options);
       if (created.id === undefined) return inconclusive(voucherFailure(created));
       const id = created.id;
+      const draft = await ctx.read.byId("Voucher", id);
+      if (str(draft, "status") !== "50") return inconclusive("Setup is not a verified draft.");
       const seeded = await saveVoucherStatus(ctx, id, options, {
         currency: "USD",
         propertyExchangeRate: 0.8,
       });
       const before = await ctx.read.byId("Voucher", id);
-      if (!seeded.ok || str(before, "currency") !== "USD") {
+      if (!seeded.ok || str(before, "currency") !== "USD" || str(before, "status") !== "50") {
         return inconclusive(
           `Could not seed a USD draft: ${outcomeOf(seeded)}; currency ${str(before, "currency")}.`,
         );
@@ -349,25 +492,12 @@ export const M4_VOUCHER_PROBES: readonly ProbeDefinition[] = [
       });
       const after = await ctx.read.byId("Voucher", id);
       const positions = await voucherPositions(ctx, id);
-      const fields = [
-        "currency",
-        "status",
-        "sumNet",
-        "sumTax",
-        "sumGross",
-        "sumNetForeignCurrency",
-        "sumTaxForeignCurrency",
-        "sumGrossForeignCurrency",
-        "propertyExchangeRate",
-        "propertyForeignCurrencyDeadline",
-      ];
-      const values = (row: Row | undefined): string =>
-        fields
-          .map((key) => `${key}=${row?.[key] === undefined ? "absent" : JSON.stringify(row[key])}`)
-          .join(", ");
       return {
-        verdict: "observed",
-        finding: `Voucher ${id}; EUR save ${outcomeOf(saved)}. Before: ${values(before)}. After: ${values(after)}. Positions: ${describePositions(positions)}. Requested one new gross EUR position of 119.50 and deletion of every old position.`,
+        verdict:
+          saved.ok && str(after, "status") === "50" && positions.length === 1
+            ? "observed"
+            : "inconclusive",
+        finding: `Voucher ${id}; EUR save ${outcomeOf(saved)}. Before: ${currencyValues(ctx, before)}. After: ${currencyValues(ctx, after)}. Positions: ${describePositions(positions)}. Requested one new gross EUR position of 119.50 and deletion of every old position.`,
         deviations: { "D-043": "informs", "D-081": "informs" },
       };
     },

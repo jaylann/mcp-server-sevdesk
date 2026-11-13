@@ -126,7 +126,8 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 | [D-078](#d-078-receiptguidance-allows-only-0--for-intra-eu-acquisitions-and-reverse-charge)        | ReceiptGuidance allows only 0 % for intra-EU acquisitions and reverse charge           | Open                  |
 | [D-079](#d-079-get-accountdatev-ignores-its-filters-and-lists-fewer-accounts-than-receiptguidance) | `GET /AccountDatev` ignores its filters and lists fewer accounts than ReceiptGuidance  | Open                  |
 | [D-080](#d-080-a-voucher-is-booked-only-with-a-belegnummer)                                        | A voucher is booked only with a Belegnummer                                            | Open                  |
-| [D-081](#d-081-converting-a-voucher-draft-to-eur-is-unverified)                                    | Converting a voucher draft to EUR is unverified                                        | Open                  |
+| [D-081](#d-081-converting-a-voucher-draft-to-eur-clears-foreign-sums)                              | Converting a voucher draft to EUR clears foreign sums                                  | Open                  |
+| [D-082](#d-082-voucher-exchange-rates-are-not-returned-and-updates-reconvert-positions)            | Voucher exchange rates are not returned and updates reconvert positions                | Open                  |
 
 ## Entries
 
@@ -1455,12 +1456,18 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072).
   `sumGrossForeignCurrency` 119 (USD). After booking 10 on it, `paidAmount` is 10 and the status
   750: `paidAmount` holds the booked amount as sent, unconverted. Whether sevDesk counts booked
   amounts in USD or EUR toward "paid" (a full payment of 119 or of 106.77) is not measured.
+  The 2026-11-13 voucher probes independently confirmed the split on both the voucher and its
+  positions: sending USD net 100 at 19 % with rate `"0.9"` stores EUR sums `"90"`, `"17.1"`,
+  `"107.1"` and foreign sums `"100"`, `"19"`, `"119"`. Position amounts returned in plain
+  `sum…` fields are therefore EUR, even though the amounts sent to `saveVoucher` are USD (D-082).
 - **Sources:** [numtide/freelancer-toolbox](https://github.com/numtide/freelancer-toolbox)
   (`sevdesk-cli`, vouchers);
   [firsttris/haben `docs/sevdesk.md`](https://github.com/firsttris/haben/blob/main/docs/sevdesk.md)
   (orders); EUR rows recorded by [emuuu/sevDesk.NET](https://github.com/emuuu/sevDesk.NET) and
   [jernoxit/sevdesk-rs](https://github.com/jernoxit/sevdesk-rs); recorded 2026-11-07, trial
   account, Update 2.0 (probes `write-paid-amount-foreign-currency`, `read-paid-amount-currency`).
+  Recorded 2026-11-13, trial account, Update 2.0 (probes `write-voucher-usd-rate`,
+  `write-voucher-usd-deadline`, `write-voucher-usd-rate-update`, `write-voucher-convert-to-eur`).
 - **Impact:** For EUR documents the tools use the plain sums and never the `…ForeignCurrency`
   fields. For another currency with non-zero `…ForeignCurrency` sums, amounts are shown in the
   document's currency and the EUR base separately (`base` on vouchers, `totalsEur` on invoices,
@@ -2888,36 +2895,80 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   `test/unit/tools/vouchers/create-draft.test.ts` ("warns that a draft without a Belegnummer
   cannot be finalized yet (D-080)").
 
-### D-081: Converting a voucher draft to EUR is unverified
+### D-081: Converting a voucher draft to EUR clears foreign sums
 
-- **Status:** Open. **Evidence:** spec + existing fixtures; no live currency-change recording.
+- **Status:** Open (the spec remains silent; the draft conversion was verified).
+  **Evidence:** spec + recorded.
 - **Spec says:** `Model_Voucher` and `Model_VoucherUpdate` accept `currency`. A currency that
   differs from the account default needs `propertyExchangeRate` or
   `propertyForeignCurrencyDeadline` (the deadline takes precedence). `saveVoucher` can update
   draft vouchers. The spec does not say what is stored when the currency changes back to EUR,
   or whether old foreign sums and exchange-rate properties are cleared.
-- **Known behavior:** D-054 records replacing voucher positions in a draft save with an array
-  of `{id, objectName}` deletions. D-043 documents the separate foreign-currency sums; existing
-  EUR voucher fixtures, including `test/fixtures/vouchers/voucher-2002.json`, have zero
-  `sumNetForeignCurrency`, `sumTaxForeignCurrency` and `sumGrossForeignCurrency`. Neither those
-  fixtures nor the synthetic USD conversion regression prove currency-change behavior.
-- **Actual stored behavior:** Open question for `pnpm probe`: does saving an existing USD draft
-  with the full known header, `currency: "EUR"`, and replacement EUR positions store EUR with
-  the supplied amounts? Are the old foreign sums and exchange-rate properties cleared, retained,
-  or used to alter those amounts? No live sevDesk account was available for this change.
+- **Actual behavior:** A tagged status-50 VOU draft was changed to USD with
+  `propertyExchangeRate: 0.8`. Its GET returned EUR net/tax/gross `"80"`, `"15.2"`, `"95.2"`
+  and foreign sums `"100"`, `"19"`, `"119"`. Resaving the full header with `currency: "EUR"`,
+  all old positions deleted and one new gross EUR position of 119.50 stored `currency: "EUR"`,
+  `status: "50"`, net `"100.42"`, tax `"19.08"`, gross `"119.5"`, and all three foreign
+  sums `"0"`. The replacement position had those same EUR sums and zero foreign sums.
+  `propertyExchangeRate` and `propertyForeignCurrencyDeadline` were absent from GET both before
+  and after conversion: this verifies the resulting amounts, not whether hidden properties
+  were cleared. No finalization, booking or export was performed.
 - **Sources:** vendored spec (`Model_Voucher`, `Model_VoucherUpdate`, `voucherFactorySaveVoucher`),
-  D-043, D-054 and the existing voucher fixtures above. No new live measurement is claimed.
+  D-043, D-054; recorded 2026-11-13, trial account, Update 2.0
+  (probe `write-voucher-convert-to-eur`).
 - **Impact:** `sevdesk_voucher_update_draft` requires explicit `currency: "EUR"` and all positions
   with caller-supplied EUR amounts to convert a foreign-currency draft. It computes no exchange
   rate and never reuses stored amounts. The save carries the known writable header fields,
   replaces every position and omits the old foreign sums and exchange-rate properties. Both
   previews show the currency change, warn with the old foreign sums (zero and absent differ),
-  and flag the unverified stored behavior. Read-back warns if the currency is still foreign.
+  and retain the conservative storage warning pending the issue #33 implementation follow-up.
+  Read-back warns if the currency is still foreign.
   Without the explicit target the refusal remains; direct non-EUR e-invoice import remains
   refused. Real foreign-currency writes (issue #33 step 2) remain open.
 - **Test:** `test/regressions/voucher-convert-to-eur.test.ts` pins the outgoing payload, guards,
   bilingual warnings, decimal-safe totals and synthetic read-back/finalize path;
-  `test/integration/write-previews-de.test.ts` snapshots the German text. Pending live:
-  `pnpm probe --allow-writes --only write-voucher-convert-to-eur` (with the usual trial-account
-  write opt-in). The probe creates and registers its own tagged draft for cleanup; it was not run
-  against sevDesk.
+  `test/integration/write-previews-de.test.ts` snapshots the German text.
+  `test/unit/scripts/m4-probes.test.ts` checks the probe's replacement payload, draft guards and
+  reporting of retained foreign fields. Live probe `write-voucher-convert-to-eur` ran on
+  2026-11-13; its tagged draft is in the scrubbed report's cleanup list.
+
+### D-082: Voucher exchange rates are not returned and updates reconvert positions
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `Model_Voucher` and `Model_VoucherUpdate` accept a foreign `currency` with
+  `propertyExchangeRate` or `propertyForeignCurrencyDeadline` (timestamp or `dd.mm.yyyy`, taking
+  precedence over a rate). The rate direction, position amount currency and behavior when a
+  save retains existing positions are not documented. The response model mentions the
+  properties, but GET did not return either one.
+- **Actual behavior:** The trial accepted a decimal string rate `"0.9"` for a new USD VOU
+  draft with `creditDebit: "C"`, status 50 and one net-100 position at 19 %. Voucher and
+  position GETs returned EUR sums net `"90"`, tax `"17.1"`, gross `"107.1"`, and foreign
+  sums `"100"`, `"19"`, `"119"`. The rate therefore means **EUR per one USD**; input position
+  amounts are USD, but plain stored position sums are EUR.
+  Creating the same draft with only `propertyForeignCurrencyDeadline: "12.11.2026"` returned
+  EUR sums `"90.18"`, `"17.13"`, `"107.31"` with the same USD foreign sums. A rate was applied,
+  but its exact stored value is unknown: GET returned `currency` as the string `"USD"` and
+  omitted both property fields in every case. Ratios of rounded totals do not establish the
+  exact rate or a general rounding rule.
+  Updating a rate-0.9 draft to string `"0.8"` with `voucherPosSave: null` and
+  `voucherPosDelete: null` converted the existing EUR amounts again: EUR sums became `"72"`,
+  `"13.68"`, `"85.68"`, and USD sums became `"90"`, `"17.1"`, `"107.1"`. A subsequent save
+  with rate `"0.8"`, deletion of the original position and a replacement net-100 USD position
+  stored the intended EUR `"80"`, `"15.2"`, `"95.2"` and USD `"100"`, `"19"`, `"119"`.
+  Every observed voucher remained status 50.
+- **Sources:** vendored spec (`Model_Voucher`, `Model_VoucherUpdate`, `Model_VoucherResponse`);
+  recorded 2026-11-13, trial account, Update 2.0 (probes `write-voucher-usd-rate`,
+  `write-voucher-usd-deadline`, `write-voucher-usd-rate-update`). The scrubbed report stays
+  outside the repository; all four drafts from this run are listed there for cleanup.
+- **Impact:** Issue #33 stops after Phase A. Real foreign-currency create/update/import remains
+  disabled. Future rate changes must resend all positions in the voucher currency; retaining
+  stored EUR position amounts is unsafe. The required stored-rate comparison and a deadline
+  preview with an exact EUR equivalent cannot yet be implemented from the measured GET contract.
+  Establish a supported rate read-back before Phase B; do not infer an exact rate from rounded
+  totals. The four probes reported `observed`, with no request errors, but these rate-read-back
+  questions remain inconclusive. The status-50 guard and cleanup registration also apply to
+  failed setup/read-back paths; the probes never finalize, book, enshrine, e-mail or export.
+- **Test:** `test/unit/scripts/m4-probes.test.ts` (D-082 cases) pins decimal string rate payloads,
+  deadline-only payloads, updates with and without replacement positions, GET field reporting,
+  cleanup registration and refusal to update after failed or non-draft setup. These synthetic
+  tests check probe safety and reporting; the storage observations above come from the live run.
