@@ -240,6 +240,8 @@ type Candidate = EInvoiceVoucherSuggestion["supplierCandidates"][number];
 export interface EInvoiceSuggestionContext {
   /** Internal import preview: reuse the same loaded inputs for German wording, without I/O. */
   readonly includeGermanPreview?: boolean | undefined;
+  /** Import supplied a rate or deadline; omit the reminder that parse-only callers still need. */
+  readonly exchangeRateSelected?: boolean | undefined;
   readonly client: SevdeskClient;
   /** Cache owner of the account settings: tools pass `ctx.config`. */
   readonly cacheOwner: object;
@@ -264,6 +266,7 @@ export interface ContactIndex {
 
 /** Inputs of the pure {@link suggestVoucherFields}. */
 export interface SuggestionInputs {
+  readonly exchangeRateSelected?: boolean | undefined;
   readonly regime: TaxRegime | undefined;
   readonly company: AccountCompany | undefined;
   readonly contacts: ContactIndex;
@@ -301,6 +304,7 @@ export async function planVoucherFromEInvoice(
       ? await findOwnInvoice(ctx.client, parsed.number, ctx.signal)
       : undefined;
   const inputs = {
+    exchangeRateSelected: ctx.exchangeRateSelected,
     regime: taxRegimeOf(settings),
     company,
     contacts,
@@ -392,7 +396,7 @@ export function suggestVoucherFields(
         "automatically.",
     );
   }
-  if (parsed.currency !== "EUR") {
+  if (parsed.currency !== "EUR" && inputs.exchangeRateSelected !== true) {
     warnings.push(
       de
         ? `Die Rechnung ist in ${parsed.currency}. Der Import benötigt exchangeRate oder foreignCurrencyDeadline; die Positionsbeträge bleiben in der Rechnungswährung.`

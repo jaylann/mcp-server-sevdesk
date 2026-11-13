@@ -89,6 +89,18 @@ export const VOUCHERS_CASES: readonly WriteToolCase[] = [
     writes: [{ method: "POST", path: "/Voucher/Factory/saveVoucher" }],
   },
   {
+    label: "change a USD draft exchange-rate date with replacement positions",
+    tool: tool("sevdesk_voucher_update_draft"),
+    args: { id: 2101, foreignCurrencyDeadline: "2026-11-12", positions: createArgs.positions },
+    routes: [
+      voucherRoute(draftRow(usd)),
+      positionsRoute(2101, [positionRow()]),
+      ...CREATE_READ_ROUTES,
+      saveRoute(),
+    ],
+    writes: [{ method: "POST", path: "/Voucher/Factory/saveVoucher" }],
+  },
+  {
     label: "import a USD XRechnung with an exact rate",
     tool: tool("sevdesk_voucher_import_einvoice"),
     args: { file: "usd.xml", accountDatevId: 4266, exchangeRate: "0.9" },

@@ -345,6 +345,7 @@ export type VoucherSuggestionPlanner = (
     readonly cacheOwner: object;
     readonly signal?: AbortSignal | undefined;
     readonly includeGermanPreview?: boolean | undefined;
+    readonly exchangeRateSelected?: boolean | undefined;
   },
 ) => Promise<VoucherSuggestion>;
 
@@ -367,6 +368,8 @@ export async function prepareVoucherImport(
     cacheOwner: options.cacheOwner,
     signal: options.signal,
     includeGermanPreview: true,
+    exchangeRateSelected:
+      args.exchangeRate !== undefined || args.foreignCurrencyDeadline !== undefined,
   });
   assertImportable(suggestion, args);
   const regime = await voucherRegime(client, options);

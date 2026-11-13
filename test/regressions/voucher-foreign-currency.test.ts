@@ -10,9 +10,10 @@ import { resolveVoucherCurrency } from "../../src/domain/drafts/voucher-currency
 import { planVoucherFromEInvoice } from "../../src/domain/einvoice/voucher-suggestion.js";
 import { voucherCreateDraftTool as create } from "../../src/tools/vouchers/draft-create.js";
 import { voucherUpdateDraftTool as update } from "../../src/tools/vouchers/draft-update.js";
+import { einvoiceParseTool } from "../../src/tools/vouchers/einvoice-parse.js";
 import { voucherFinalizeTool as finalize } from "../../src/tools/vouchers/finalize.js";
 import { voucherImportEInvoiceTool } from "../../src/tools/vouchers/import-einvoice.js";
-import { FakeSevdeskClient } from "../helpers/fake-client.js";
+import { FakeSevdeskClient, testContext } from "../helpers/fake-client.js";
 import { executeWrite, prepareWrite } from "../helpers/write-tools.js";
 import {
   CREATE_READ_ROUTES,
@@ -46,6 +47,18 @@ const usd = {
   sumNetForeignCurrency: "100",
   sumTaxForeignCurrency: "19",
   sumGrossForeignCurrency: "119",
+};
+const roundedArgs = {
+  ...args,
+  amountMode: "gross",
+  positions: [{ ...positions[0], amount: "119.99" }],
+};
+const roundedUsd = {
+  sumNetForeignCurrency: "100.83",
+  sumTaxForeignCurrency: "19.16",
+  sumGrossForeignCurrency: "119.99",
+  sumNet: "90.75",
+  sumTax: "17.24",
 };
 function client(overrides: Row = {}) {
   return new FakeSevdeskClient([
@@ -86,6 +99,33 @@ describe("foreign-currency voucher drafts (D-082)", () => {
     expect(plan.preview.facts.find((fact) => fact.label.startsWith("EUR equivalent"))?.value).toBe(
       "net 12.35 EUR, tax 2.35 EUR, gross 14.69 EUR",
     );
+  });
+
+  it.each(["107.99", "108.00"])(
+    "stays quiet for USD 119.99 gross at 0.9 when EUR %s is within tolerance",
+    async (sumGross) => {
+      const { output } = await executeWrite(
+        create,
+        roundedArgs,
+        client({ ...roundedUsd, sumGross }),
+      );
+      expect(output.data.notes).toBeUndefined();
+      expect(output.data.notesDe).toBeUndefined();
+      expect(output.summary).not.toContain("See notes");
+    },
+  );
+
+  it("still warns and reports an implied rate when the rounded gross exceeds tolerance", async () => {
+    const { output } = await executeWrite(
+      create,
+      roundedArgs,
+      client({ ...roundedUsd, sumGross: "108.01" }),
+    );
+    expect(output.data.notes?.join(" ")).toContain("by more than 0.01 EUR");
+    expect(output.data.notes?.join(" ")).toContain("Implied rate from rounded gross totals");
+    expect(output.data.notesDe?.join(" ")).toContain("um mehr als 0,01 EUR");
+    expect(output.data.notesDe?.join(" ")).toContain("abgeleiteter Kurs");
+    expect(output.summary).toContain("See notes");
   });
 
   it("serializes a deadline and reports the EUR totals and approximate implied rate after saving", async () => {
@@ -165,12 +205,50 @@ describe("foreign-currency voucher drafts (D-082)", () => {
     expect(plan.previewDe?.facts.find((fact) => fact.label === "Wechselkurs")?.value).toBe(
       "1 USD = 0,8 EUR",
     );
+    expect(plan.preview.action).toContain("exchange rate");
+    expect(plan.previewDe?.action).toContain("Wechselkurs");
     const after = client({ sumNet: "80", sumTax: "15.2", sumGross: "95.2" });
     const saved = await executeVoucherSave(after, plan.state, undefined);
     expect(after.writes()).toHaveLength(1);
     expect(saved.notes).toEqual([]);
     expect(saved.notesDe).toEqual([]);
   });
+
+  it("names a supplied exchange-rate date in both update actions", async () => {
+    const plan = await prepareWrite(
+      update,
+      {
+        id: 2101,
+        foreignCurrencyDeadline: "2026-11-12",
+        positions,
+      },
+      client(),
+    );
+    expect(plan.preview.action).toContain("exchange-rate date");
+    expect(plan.previewDe?.action).toContain("Wechselkursdatum");
+    expect(plan.preview.facts).toContainEqual({ label: "Exchange-rate date", value: "2026-11-12" });
+    expect(plan.previewDe?.facts).toContainEqual({
+      label: "Wechselkursdatum",
+      value: "12.11.2026",
+    });
+  });
+
+  it.each(["create", "update"])(
+    "omits unchanged EUR currency facts from %s previews",
+    async (action) => {
+      const fake = new FakeSevdeskClient([
+        voucherRoute(draftRow()),
+        positionsRoute(2101, [positionRow()]),
+        ...CREATE_READ_ROUTES,
+      ]);
+      const plan =
+        action === "create"
+          ? await prepareWrite(create, { ...args, currency: "EUR", exchangeRate: undefined }, fake)
+          : await prepareWrite(update, { id: 2101, number: "new", currency: "EUR" }, fake);
+      expect(plan.preview.facts.some((fact) => fact.label === "Currency")).toBe(false);
+      expect(plan.previewDe?.facts.some((fact) => fact.label === "Währung")).toBe(false);
+    },
+  );
 
   it("allows EUR to USD with all target-currency positions", async () => {
     const fake = new FakeSevdeskClient([
@@ -219,7 +297,8 @@ describe("foreign-currency voucher drafts (D-082)", () => {
         .concat([{ accountDatevId: 4266, amount: "50", taxRate: "19" }]),
     };
     const { output: within } = await executeWrite(create, two, client({ sumGross: "107.12" }));
-    expect(within.data.notes?.join(" ") ?? "").not.toContain("by more than");
+    expect(within.data.notes).toBeUndefined();
+    expect(within.data.notesDe).toBeUndefined();
     const { output: outside } = await executeWrite(create, two, client({ sumGross: "107.13" }));
     expect(outside.data.notes?.join(" ")).toContain("by more than 0.02 EUR");
   });
@@ -274,6 +353,13 @@ describe("foreign-currency voucher drafts (D-082)", () => {
         ...CREATE_READ_ROUTES,
         { path: "/Contact", response: { fixture: "contacts/contacts-list.json" } },
       ]);
+      const parsed = await einvoiceParseTool.handler(
+        einvoiceParseTool.input.parse({ file: "usd.xml" }),
+        testContext(refused, { SEVDESK_FILE_DIRS: dir }),
+      );
+      expect(parsed.data.suggestedVoucher.warnings.join(" ")).toContain(
+        "Import requires exchangeRate or foreignCurrencyDeadline",
+      );
       await expect(
         prepareWrite(tool, { file: "usd.xml", accountDatevId: 4266 }, refused, { fileDirs: [dir] }),
       ).rejects.toThrow("exchangeRate or foreignCurrencyDeadline");
@@ -305,6 +391,8 @@ describe("foreign-currency voucher drafts (D-082)", () => {
         expect(plan.state.body.voucher).toMatchObject({ currency: "USD", status: 50 });
         expect(plan.state.body.voucherPosSave).toMatchObject([{ sumNet: 314.86, taxRate: 7 }]);
         expect(plan.previewDe?.facts).toContainEqual({ label: "Währung", value: "USD" });
+        expect(plan.preview.warnings.join(" ")).not.toContain("Import requires exchangeRate");
+        expect(plan.previewDe?.warnings.join(" ")).not.toContain("Import benötigt exchangeRate");
         expect(fake.writes().map((call) => call.path)).toEqual([
           "/Voucher/Factory/uploadTempFile",
           "/Voucher/Factory/saveVoucher",

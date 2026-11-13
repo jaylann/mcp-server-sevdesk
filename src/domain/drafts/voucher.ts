@@ -609,10 +609,19 @@ export async function prepareVoucherUpdate(
         ),
       );
     }
+    // GET omits the previous rate/date; name the supplied choice without claiming its old value.
+    const changed = [
+      ...log.changed,
+      ...(currency.exchangeRate !== undefined
+        ? [text("exchange rate", "Wechselkurs")]
+        : currency.foreignCurrencyDeadline !== undefined
+          ? [text("exchange-rate date", "Wechselkursdatum")]
+          : []),
+    ];
     return draftPreview(
       text(
-        `Update draft voucher ${String(record.id)}: change ${log.changed.join(", ") || "nothing visible"}.`,
-        `Belegentwurf ${String(record.id)} aktualisieren: ${log.changed.join(", ") || "keine sichtbare Änderung"}.`,
+        `Update draft voucher ${String(record.id)}: change ${changed.join(", ") || "nothing visible"}.`,
+        `Belegentwurf ${String(record.id)} aktualisieren: ${changed.join(", ") || "keine sichtbare Änderung"}.`,
       ),
       [
         fact(text("Voucher (Beleg)", "Beleg"), `${String(record.id)}, ${text("draft", "Entwurf")}`),

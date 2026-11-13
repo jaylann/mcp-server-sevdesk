@@ -102,6 +102,7 @@ export function currencyFacts(
   totals: Amounts | undefined,
   lang: PreviewLanguage,
 ): PreviewFact[] {
+  if (value.currency === "EUR") return [];
   const de = lang === "de";
   const facts = [fact(de ? "Währung" : "Currency", value.currency)];
   if (value.exchangeRate !== undefined) {
@@ -210,11 +211,8 @@ export function foreignReadBackNotes(
     foreignGross === undefined || eurGross === undefined || compare(foreignGross, 0) <= 0
       ? undefined
       : format(divideRounded(decimal(eurGross), decimal(foreignGross), 6), 6);
-  if (
-    value.exchangeRate === undefined ||
-    mismatch ||
-    (implied !== undefined && compare(implied, value.exchangeRate) !== 0)
-  ) {
+  // Cent rounding alone changes the implied quotient; explicit rates use the sum tolerance.
+  if (value.exchangeRate === undefined || mismatch) {
     const amounts = fields
       .map(
         (key) =>

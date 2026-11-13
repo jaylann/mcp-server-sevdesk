@@ -98,7 +98,7 @@ Bisher bezahlt: 0,00 EUR"
 `;
 
 exports[`German previews > change a USD draft exchange rate with replacement positions: says the same in German 1`] = `
-"Belegentwurf 2101 aktualisieren: Positionen.
+"Belegentwurf 2101 aktualisieren: Positionen, Wechselkurs.
 ! Der Server berechnet den EUR-Gegenwert aus den Gesamtsummen und rundet auf Cent; sevDesk kann je Position runden. Fremdwährungsbelege können hier nicht fertiggestellt werden.
 (umkehrbar)
 Beleg: 2101, Entwurf
@@ -107,6 +107,19 @@ Positionen: 1 Position durch 1 Position ersetzen
 Währung: USD
 Wechselkurs: 1 USD = 0,8 EUR
 EUR-Gegenwert (vom Server berechnet): netto 80,00 EUR, USt. 15,20 EUR, brutto 95,20 EUR
+Position 1: 6815 Bürobedarf (Konto 4266): 119,00 USD brutto, 19 % USt. → netto 100,00, USt. 19,00, brutto 119,00
+Summe (erwartet): netto 100,00 USD, USt. 19,00 USD, brutto 119,00 USD"
+`;
+
+exports[`German previews > change a USD draft exchange-rate date with replacement positions: says the same in German 1`] = `
+"Belegentwurf 2101 aktualisieren: Positionen, Wechselkursdatum.
+! sevDesk verwendet seinen Wechselkurs für den 12.11.2026; die EUR-Beträge stehen erst nach dem Speichern fest. Fremdwährungsbelege können hier nicht fertiggestellt werden.
+(umkehrbar)
+Beleg: 2101, Entwurf
+Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
+Positionen: 1 Position durch 1 Position ersetzen
+Währung: USD
+Wechselkursdatum: 12.11.2026
 Position 1: 6815 Bürobedarf (Konto 4266): 119,00 USD brutto, 19 % USt. → netto 100,00, USt. 19,00, brutto 119,00
 Summe (erwartet): netto 100,00 USD, USt. 19,00 USD, brutto 119,00 USD"
 `;
@@ -175,7 +188,6 @@ Belegdatum: 02.11.2026
 Leistungsdatum: 02.11.2026
 Steuerregel: 9 Vorsteuerabziehbare Aufwendungen
 Betragseingabe: brutto
-Währung: EUR
 Position 1: 6815 Bürobedarf (Konto 4266): 119,00 EUR brutto, 19 % USt. → netto 100,00, USt. 19,00, brutto 119,00
 Summe (erwartet): netto 100,00 EUR, USt. 19,00 EUR, brutto 119,00 EUR
 Belegdatei: Rechnung-0815.pdf (PDF, 77 Bytes, SHA-256 56c2ac043c28d354…)
@@ -193,7 +205,6 @@ Belegdatum: 02.11.2026
 Leistungsdatum: 02.11.2026
 Steuerregel: 9 Vorsteuerabziehbare Aufwendungen
 Betragseingabe: brutto
-Währung: EUR
 Position 1: 6815 Bürobedarf (Konto 4266): 119,00 EUR brutto, 19 % USt. → netto 100,00, USt. 19,00, brutto 119,00
 Summe (erwartet): netto 100,00 EUR, USt. 19,00 EUR, brutto 119,00 EUR
 Status nach dem Speichern: Entwurf (50), noch nicht gebucht"
@@ -491,7 +502,6 @@ exports[`German previews > import a USD XRechnung with an exact rate: says the s
 "Belegentwurf (Ausgabe) vom 04.04.2016 aus einer E-Rechnung erstellen: 1 Position, brutto 336,90 USD; Belegdatei anhängen.
 ! Der Server berechnet den EUR-Gegenwert aus den Gesamtsummen und rundet auf Cent; sevDesk kann je Position runden. Fremdwährungsbelege können hier nicht fertiggestellt werden.
 ! Keine Partei stimmt mit dem Unternehmen dieses Kontos überein (USt-IdNr., Steuernummer oder Name in sevDesk). Die Rechnung wird als Eingangsrechnung behandelt; prüfen Sie die Zuordnung.
-! Die Rechnung ist in USD. Der Import benötigt exchangeRate oder foreignCurrencyDeadline; die Positionsbeträge bleiben in der Rechnungswährung.
 ! Kein sevDesk-Kontakt passt zum Lieferanten (USt-IdNr., IBAN oder exakter Name). Legen Sie ihn mit sevdesk_contact_create an oder speichern Sie den Beleg nur mit dem Namen.
 ! Kein sevDesk-Kontakt passt zum Aussteller. Der Beleg wird nur mit dessen Namen gespeichert; mit supplierId können Sie einen Kontakt zuordnen.
 (umkehrbar)
@@ -528,7 +538,6 @@ Belegdatum: 04.04.2016
 Leistungsdatum: 04.04.2016
 Steuerregel: 9 Vorsteuerabziehbare Aufwendungen
 Betragseingabe: netto
-Währung: EUR
 Position 1: 6815 Bürobedarf (Konto 4266): 314,86 EUR netto, 7 % USt. → netto 314,86, USt. 22,04, brutto 336,90; E-Rechnung, USt 7 % (S)
 Summe (erwartet): netto 314,86 EUR, USt. 22,04 EUR, brutto 336,90 EUR
 Belegdatei: xrechnung.xml (XML, 9622 Bytes, SHA-256 727b51982a84c9b4…)
@@ -620,7 +629,6 @@ exports[`German previews > update a draft voucher: says the same in German 1`] =
 Beleg: 2101, Entwurf
 Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
 Belegnummer: ER-2026-0815 → ER-2026-0816
-Währung: EUR
 Summe (unverändert): 119 EUR"
 `;
 
@@ -630,6 +638,5 @@ exports[`German previews > update a voucher supplier named like a preview placeh
 Beleg: 2101, Entwurf
 Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
 Lieferant: (ohne Namen) (kein Kontakt) → (unnamed) (kein Kontakt)
-Währung: EUR
 Summe (unverändert): 119 EUR"
 `;
