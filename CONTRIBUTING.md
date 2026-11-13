@@ -142,14 +142,22 @@ covers the default read configuration, `SEVDESK_ALLOW=write`, all tiers/toolsets
 HTTP with OAuth and remote files. One sticky PR comment combines the diff with context costs,
 including when the surface is unchanged. Each configuration shows base and head characters,
 estimated tokens (**characters / 4**, calculated locally without an API key), and signed absolute
-and percentage changes for `tools/list`, instructions, `prompts/list` and their total. Characters
-are Unicode code points in compact JSON result objects (`{"tools":[…]}`, `{"prompts":[…]}`),
-including schemas, and raw instruction text. Dump indentation, JSON-RPC envelopes, rendered
-`prompts/get` bodies and client-specific formatting are excluded; this measures the catalog,
-not an exact model bill. Percentages apply to both characters and estimated tokens; a zero base
-with a nonzero head is marked `n/a (base 0)`, and zero to zero is `0%`.
-Names and schema changes still
-need human compatibility review; this report does not decide the required version bump.
+and percentage changes for:
+
+- **Model context**: what clients usually put in front of the model, namely the tool definitions
+  (name, description and `inputSchema`, the fields function-calling APIs take) plus the
+  instructions. Watch this row when you add tools or grow descriptions and input schemas.
+- `tools/list`: the full protocol response. Output schemas make up most of it, but clients use
+  them to check results and normally do not send them to the model.
+- `prompts/list` (shown to the user, not the model) and the total of the full lists.
+
+Characters are Unicode code points in compact JSON result objects (`{"tools":[…]}`,
+`{"prompts":[…]}`) and raw instruction text. Dump indentation, JSON-RPC envelopes, rendered
+`prompts/get` bodies and client-specific formatting are excluded; this measures the catalog, not
+an exact model bill. Percentages apply to both characters and estimated tokens; a zero base with a
+nonzero head is marked `n/a (base 0)`, zero to zero is `0%`, and a nonzero change that rounds to
+zero is `+<0.01%` or `-<0.01%`. Names and schema changes still need human compatibility review;
+this report does not decide the required version bump.
 
 To capture or compare locally, without a sevDesk token or network access:
 
@@ -162,7 +170,8 @@ node --import tsx scripts/tool-surface.ts report /tmp/base-surface.json /tmp/hea
 The report command takes a GitHub PR event JSON (`number`, `pull_request.base.sha`,
 `pull_request.head.sha`) and includes the component character counts in `contextCost.base/head`.
 The publisher derives tokens, totals and deltas from those counts. It still accepts older v1
-reports without costs; those create no comment for an unchanged surface.
+reports without tool definitions (no model-context rows) or without costs; the latter create no
+comment for an unchanged surface.
 
 The script header documents the versioned JSON format and CLI for other reports to reuse. CI
 copies the same harness into the base checkout, so the base does not need to contain the script.

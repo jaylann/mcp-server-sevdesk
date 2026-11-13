@@ -104,8 +104,20 @@ function botComment(body = marker): Comment {
   return { id: 99, user: { login: "github-actions[bot]", type: "Bot" }, body };
 }
 
+/** Legacy v1 cost shape (no tool definitions); reports from older harnesses still use it. */
 function contextCost() {
   const sizes = () => ({ tools: 0, instructions: 0, prompts: 0 });
+  const configuration = () => ({
+    read: sizes(),
+    write: sizes(),
+    all: sizes(),
+    "http-files": sizes(),
+  });
+  return { base: configuration(), head: configuration() };
+}
+
+function definitionCost() {
+  const sizes = () => ({ definitions: 0, tools: 0, instructions: 0, prompts: 0 });
   const configuration = () => ({
     read: sizes(),
     write: sizes(),
@@ -238,9 +250,10 @@ describe("tool surface comment workflow", () => {
   it("fences hostile artifact text and caps the final comment below GitHub's limit", async () => {
     const f = fixture();
     f.report.diff = "```\n<script>throw Error('attack')</script>\n@someone\n" + "`".repeat(40_000);
-    const cost = contextCost();
+    const cost = definitionCost();
     for (const revision of Object.values(cost)) {
       for (const config of Object.values(revision)) {
+        config.definitions = 1_000_000_000;
         config.tools = 1_000_000_000;
         config.instructions = 1_000_000_000;
         config.prompts = 1_000_000_000;
@@ -284,6 +297,54 @@ describe("tool surface comment workflow", () => {
     expect(body).toContain(f.report.diff);
   });
 
+  it("separates the model context from the full lists when definitions are reported", async () => {
+    const f = fixture();
+    const cost = definitionCost();
+    cost.base.read = { definitions: 400, tools: 2_000, instructions: 100, prompts: 40 };
+    cost.head.read = { definitions: 420, tools: 2_100, instructions: 100, prompts: 40 };
+    f.readFile.mockResolvedValue(JSON.stringify({ ...f.report, contextCost: cost }));
+    await f.execute();
+    const body = f.createComment.mock.calls[0]?.[0].body ?? "";
+    expect(body).toContain("**Model context** is what clients usually put in front of the model");
+    expect(body).toContain("| read | Tool definitions | 400 / 100 | 420 / 105 | +20 / +5 | +5% |");
+    expect(body).toContain("| read | **Model context** | 500 / 125 | 520 / 130 | +20 / +5 | +4% |");
+    expect(body).toContain("| read | tools/list | 2,000 / 500 | 2,100 / 525 | +100 / +25 | +5% |");
+    expect(body).toContain("| read | Total | 2,140 / 535 | 2,240 / 560 | +100 / +25 | +4.67% |");
+    const rows = body.split("\n").filter((line) => line.startsWith("| read |"));
+    expect(rows.map((row) => row.split(" | ")[1])).toEqual([
+      "Tool definitions",
+      "Instructions",
+      "**Model context**",
+      "tools/list",
+      "prompts/list",
+      "Total",
+    ]);
+  });
+
+  it("marks nonzero changes below two decimals instead of printing a signed zero", async () => {
+    const f = fixture();
+    const cost = definitionCost();
+    cost.base.read.tools = 200_000;
+    cost.head.read.tools = 199_999;
+    cost.base.write.tools = 200_000;
+    cost.head.write.tools = 200_001;
+    cost.base.all.tools = 200_000;
+    cost.head.all.tools = 200_000;
+    f.readFile.mockResolvedValue(JSON.stringify({ ...f.report, contextCost: cost }));
+    await f.execute();
+    const body = f.createComment.mock.calls[0]?.[0].body ?? "";
+    expect(body).toContain(
+      "| read | tools/list | 200,000 / 50,000 | 199,999 / 49,999.75 | -1 / -0.25 | -<0.01% |",
+    );
+    expect(body).toContain(
+      "| write | tools/list | 200,000 / 50,000 | 200,001 / 50,000.25 | +1 / +0.25 | +<0.01% |",
+    );
+    expect(body).toContain(
+      "| all | tools/list | 200,000 / 50,000 | 200,000 / 50,000 | 0 / 0 | 0% |",
+    );
+    expect(body).not.toMatch(/[+-]0%/);
+  });
+
   it("posts real unchanged reports with costs and reuses the same sticky comment", async () => {
     const f = fixture();
     const config = () => ({ tools: [], prompts: [], instructions: "" });
@@ -299,6 +360,7 @@ describe("tool surface comment workflow", () => {
     const body = f.createComment.mock.calls[0]?.[0].body ?? "";
     expect(body).toContain("No change in tools/list");
     expect(body).toContain("| read | Total | 26 / 6.5 | 26 / 6.5 | 0 / 0 | 0% |");
+    expect(body).toContain("| read | **Model context** | 12 / 3 | 12 / 3 | 0 / 0 | 0% |");
     f.comments.push(botComment());
     await f.execute();
     expect(f.updateComment).toHaveBeenCalledWith(expect.objectContaining({ comment_id: 99, body }));
@@ -317,6 +379,15 @@ describe("tool surface comment workflow", () => {
     { ...contextCost(), extra: "```@attacker" },
     { ...contextCost(), head: { ...contextCost().head, read: [] } },
     { ...contextCost(), head: { ...contextCost().head, read: { tools: 1, prompts: 1 } } },
+    { base: definitionCost().base, head: contextCost().head },
+    { base: contextCost().base, head: definitionCost().head },
+    {
+      ...definitionCost(),
+      head: {
+        ...definitionCost().head,
+        read: { definitions: -1, tools: 0, instructions: 0, prompts: 0 },
+      },
+    },
     ...[-1, 0.5, 1_000_000_001, "```@attacker", null, {}, Number.MAX_SAFE_INTEGER].map((tools) => ({
       ...contextCost(),
       head: { ...contextCost().head, read: { tools, instructions: 0, prompts: 0 } },
