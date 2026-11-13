@@ -565,8 +565,43 @@ docker buildx imagetools inspect ghcr.io/jaylann/mcp-server-sevdesk:<version> --
 ```
 
 Auch die Claude-Desktop-Erweiterung (`mcp-server-sevdesk-<version>.mcpb`) baut der Release-Workflow
-und hängt sie mit einer Build-Provenance-Attestierung an das GitHub-Release:
+und hängt sie an jedes neue GitHub-Release. Zusätzlich versucht er, zwei Dateien aus ihrer
+Build-Provenance-Attestierung anzuhängen:
+
+- `<asset>.sigstore.json`: das vollständige Sigstore-Bundle mit Signatur, Zertifikat und
+  Prüfmaterial aus dem Transparenzprotokoll.
+- `<asset>.intoto.jsonl`: die signierte DSSE-Hülle als eine JSON-Zeile mit der
+  in-toto-Provenance-Aussage. Das ist kein vollständiges Sigstore-Bundle; verwenden Sie mit `gh`
+  die Datei `.sigstore.json`.
+
+Der Upload der Begleitdateien wird bei einem Fehler einmal wiederholt. Scheitert der Schritt
+weiterhin, gibt der Workflow eine Warnung aus und lässt die Veröffentlichung in der MCP Registry
+weiterlaufen. Jede der beiden Begleitdateien kann fehlen, bis ein Maintainer sie nachträglich
+anhängt; die Attestierung im GitHub-Speicher bleibt verfügbar.
+
+Prüfen Sie die heruntergeladene Erweiterung gegen den Attestierungsspeicher von GitHub:
 
 ```bash
 gh attestation verify mcp-server-sevdesk-<version>.mcpb --owner jaylann
 ```
+
+Oder laden Sie die passende Release-Datei `.sigstore.json` herunter und prüfen Sie mit diesem Bundle:
+
+```bash
+gh attestation verify mcp-server-sevdesk-<version>.mcpb \
+  --bundle mcp-server-sevdesk-<version>.mcpb.sigstore.json --owner jaylann
+```
+
+Beide Befehle prüfen den Digest des Artefakts, die Signatur und die Identität des Signierenden.
+Die Variante mit `--bundle` verwendet die lokale Attestierung; `gh` kann trotzdem Vertrauensanker
+von Sigstore abrufen. Informationen zu Prüfregeln und Offline-Vertrauensankern finden Sie in der
+[Prüfreferenz der GitHub CLI](https://cli.github.com/manual/gh_attestation_verify).
+
+Maintainer verwenden `node scripts/attach-release-attestation.ts [--dry-run] <tag> <asset> [bundle]`
+im Release-Job und zum nachträglichen Anhängen. Das Skript verlangt eine SLSA-Provenance-Aussage
+und prüft den SHA-256 des Subjekts, bevor es eine der Dateien schreibt oder hochlädt. Ein angegebenes
+Bundle bleibt unverändert; andernfalls fragt es nach Digest ab, filtert nach SLSA-v1-Provenance
+und verlangt genau eine Attestierung über alle API-Seiten hinweg. `--dry-run` schreibt beide Dateien
+neben das Artefakt und zeigt den geplanten Upload an, ohne das Release zu ändern. Das Skript prüft
+die Übereinstimmung des Digests; verwenden Sie vor dem nachträglichen Anhängen
+`gh attestation verify` für die kryptografische Prüfung.

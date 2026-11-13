@@ -86,6 +86,50 @@ describe("release attestation files", () => {
     expect(existsSync(`${asset}.sigstore.json`)).toBe(true);
   });
 
+  it("preserves original bundle bytes even when UTF-8 decoding replaces an invalid byte", () => {
+    const original = Buffer.concat([
+      Buffer.from('{"fixtureNote":"'),
+      Buffer.from([0xff]),
+      Buffer.from(`",${JSON.stringify(fixture()).slice(1)}\n`),
+    ]);
+    writeFileSync(bundlePath, original);
+    main(["--dry-run", tag, asset, bundlePath]);
+    expect(readFileSync(`${asset}.sigstore.json`)).toEqual(original);
+    expect(readFileSync(`${asset}.intoto.jsonl`, "utf8")).toBe(
+      `${JSON.stringify(fixture().dsseEnvelope)}\n`,
+    );
+  });
+
+  it.each([
+    undefined,
+    null,
+    42,
+    "https://spdx.dev/Document",
+    "https://slsa.dev/provenance-evil/v1",
+    "https://slsa.dev/provenance",
+  ])("refuses a supplied bundle with non-provenance predicate type %j", (predicateType) => {
+    writeFileSync(bundlePath, JSON.stringify(fixture({ ...statement, predicateType })));
+    expect(() => {
+      main([tag, asset, bundlePath]);
+    }).toThrow("SLSA provenance predicate type");
+    expectNoOutputFiles();
+    expect(childProcess.execFileSync).not.toHaveBeenCalled();
+  });
+
+  it("accepts supplied provenance versions under the SLSA provenance prefix", () => {
+    writeFileSync(
+      bundlePath,
+      JSON.stringify(
+        fixture({
+          ...statement,
+          predicateType: "https://slsa.dev/provenance/v2",
+        }),
+      ),
+    );
+    main(["--dry-run", tag, asset, bundlePath]);
+    expect(readFileSync(`${asset}.sigstore.json`)).toEqual(readFileSync(bundlePath));
+  });
+
   it("refuses a bundle for different asset bytes before writing or uploading", () => {
     writeFileSync(asset, "changed bytes");
     expect(() => {
@@ -159,6 +203,40 @@ describe("release attestation files", () => {
     );
     expect(readFileSync(`${asset}.sigstore.json`)).toEqual(readFileSync(bundlePath));
   });
+
+  it("retries a failed upload once with both files and clobber to repair partial uploads", () => {
+    vi.mocked(childProcess.execFileSync).mockImplementationOnce(() => {
+      throw new Error("Transient failure after the first companion file was uploaded");
+    });
+    main([tag, asset, bundlePath]);
+    const calls = vi.mocked(childProcess.execFileSync).mock.calls;
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).toEqual(calls[0]);
+    expect(calls[1]?.[1]).toEqual([
+      "release",
+      "upload",
+      tag,
+      `${asset}.sigstore.json`,
+      `${asset}.intoto.jsonl`,
+      "--clobber",
+      "--repo",
+      "jaylann/mcp-server-sevdesk",
+    ]);
+    expect(console.log).toHaveBeenCalledWith(
+      "Attached the Sigstore bundle and DSSE envelope to the release.",
+    );
+  });
+
+  it("fails after two unsuccessful upload attempts without reporting success", () => {
+    vi.mocked(childProcess.execFileSync).mockImplementation(() => {
+      throw new Error("Upload unavailable");
+    });
+    expect(() => {
+      main([tag, asset, bundlePath]);
+    }).toThrow("Could not upload attestation files");
+    expect(childProcess.execFileSync).toHaveBeenCalledTimes(2);
+    expect(console.log).not.toHaveBeenCalled();
+  });
 });
 
 describe("attestation API lookup", () => {
@@ -179,7 +257,7 @@ describe("attestation API lookup", () => {
         "Accept: application/vnd.github+json",
         "--header",
         "X-GitHub-Api-Version: 2022-11-28",
-        `repos/jaylann/mcp-server-sevdesk/attestations/sha256:${digest}?per_page=100`,
+        `repos/jaylann/mcp-server-sevdesk/attestations/sha256:${digest}?per_page=100&predicate_type=https%3A%2F%2Fslsa.dev%2Fprovenance%2Fv1`,
       ],
       expect.any(Object),
     );
@@ -220,6 +298,23 @@ describe("attestation API lookup", () => {
     expect(() => {
       main([tag, asset]);
     }).toThrow("SHA-256 does not match");
+    expectNoOutputFiles();
+    expect(childProcess.execFileSync).toHaveBeenCalledOnce();
+  });
+
+  it("refuses an SBOM returned by the API despite the provenance query filter", () => {
+    vi.mocked(childProcess.execFileSync).mockReturnValue(
+      JSON.stringify([
+        {
+          attestations: [
+            { bundle: fixture({ ...statement, predicateType: "https://spdx.dev/Document" }) },
+          ],
+        },
+      ]),
+    );
+    expect(() => {
+      main([tag, asset]);
+    }).toThrow("SLSA provenance predicate type");
     expectNoOutputFiles();
     expect(childProcess.execFileSync).toHaveBeenCalledOnce();
   });
@@ -277,6 +372,7 @@ describe("CLI diagnostics", () => {
       }
       expect(message).toContain(operation === "fetch" ? "Could not fetch" : "Could not upload");
       expect(message).not.toContain(marker);
+      expect(childProcess.execFileSync).toHaveBeenCalledTimes(operation === "fetch" ? 1 : 2);
       expect(console.log).not.toHaveBeenCalled();
       expect(failureMessage(new Error(marker))).toBe(
         "Could not attach release attestation. Unexpected failure.",

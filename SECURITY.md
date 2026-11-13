@@ -499,13 +499,17 @@ docker buildx imagetools inspect ghcr.io/jaylann/mcp-server-sevdesk:<version> --
 ```
 
 The Claude Desktop extension (`mcp-server-sevdesk-<version>.mcpb`) is built by the release workflow
-too. Each new GitHub release attaches the extension and two files from its build-provenance
-attestation:
+too. Each new GitHub release attaches the extension and attempts to attach two files from its
+build-provenance attestation:
 
 - `<asset>.sigstore.json`: the complete Sigstore bundle, including the signature, certificate and
   transparency-log verification material.
 - `<asset>.intoto.jsonl`: the signed DSSE envelope as one JSON line, containing the in-toto
   provenance statement. This is not a complete Sigstore bundle; use `.sigstore.json` with `gh`.
+
+The companion-file upload retries once. If the attachment step still fails, the workflow emits a
+warning and allows MCP Registry publication to continue. Either companion file may be missing
+until a maintainer backfills it; the attestation in GitHub's store remains available.
 
 Verify the downloaded extension against GitHub's attestation store:
 
@@ -526,8 +530,9 @@ uses the local attestation; `gh` may still fetch Sigstore trust roots. See the
 verification policies and offline trust roots.
 
 Maintainers use `node scripts/attach-release-attestation.ts [--dry-run] <tag> <asset> [bundle]`
-for the release job and backfills. It checks the subject SHA-256 before writing or uploading
-either file. A supplied bundle is preserved unchanged; otherwise it fetches by digest and
-requires exactly one attestation across all API pages. `--dry-run` writes both files beside the
-asset and prints the intended upload without changing the release. The script checks digest
-consistency; use `gh attestation verify` for cryptographic verification before a backfill.
+for the release job and backfills. It requires a SLSA provenance statement and checks the subject
+SHA-256 before writing or uploading either file. A supplied bundle is preserved unchanged;
+otherwise it fetches by digest, filters for SLSA v1 provenance and requires exactly one attestation
+across all API pages. `--dry-run` writes both files beside the asset and prints the intended upload
+without changing the release. The script checks digest consistency; use `gh attestation verify`
+for cryptographic verification before a backfill.

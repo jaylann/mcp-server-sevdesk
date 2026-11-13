@@ -4,7 +4,7 @@
  *
  * Usage: node scripts/attach-release-attestation.ts [--dry-run] <tag> <asset> [bundle]
  * GITHUB_REPOSITORY selects owner/repo (defaults to jaylann/mcp-server-sevdesk).
- * Without a bundle file, fetch every API page and require exactly one attestation.
+ * Without a bundle file, fetch every API page and require exactly one SLSA v1 attestation.
  * This checks the subject digest, not cryptographic trust: consumers use gh attestation verify.
  */
 import { execFileSync } from "node:child_process";
@@ -12,6 +12,8 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+
+const PROVENANCE_PREFIX = "https://slsa.dev/provenance/";
 
 /** Only fixed, script-owned messages may be printed, never parser or gh diagnostics. */
 class AttestationError extends Error {}
@@ -53,6 +55,10 @@ function gh(args: readonly string[], message: string): string {
 }
 
 function fetchBundle(repository: string, digest: string): string {
+  const query = new URLSearchParams({
+    per_page: "100",
+    predicate_type: `${PROVENANCE_PREFIX}v1`,
+  });
   const pages = json(
     gh(
       [
@@ -66,7 +72,7 @@ function fetchBundle(repository: string, digest: string): string {
         // This version embeds the bundle; newer API versions only return bundle_url.
         "--header",
         "X-GitHub-Api-Version: 2022-11-28",
-        `repos/${repository}/attestations/sha256:${digest}?per_page=100`,
+        `repos/${repository}/attestations/sha256:${digest}?${query.toString()}`,
       ],
       "Could not fetch attestations. Check gh authentication and repository access.",
     ),
@@ -113,6 +119,10 @@ function envelopeForAsset(bundleText: string, digest: string): Record<string, un
   if (statement["_type"] !== "https://in-toto.io/Statement/v1" || !Array.isArray(subjects)) {
     throw new AttestationError("Expected an in-toto statement with subjects.");
   }
+  const predicateType = statement["predicateType"];
+  if (typeof predicateType !== "string" || !predicateType.startsWith(PROVENANCE_PREFIX)) {
+    throw new AttestationError("Expected a SLSA provenance predicate type.");
+  }
   if (
     !subjects.some((subject: unknown) => record(record(subject)["digest"])["sha256"] === digest)
   ) {
@@ -146,16 +156,16 @@ export function main(argv: readonly string[]): void {
   const assetPath = resolve(asset);
   const bytes = step("The asset file is not readable.", () => readFileSync(assetPath));
   const digest = createHash("sha256").update(bytes).digest("hex");
-  const bundleText =
+  const bundleBytes =
     bundlePath === undefined
-      ? fetchBundle(repository, digest)
-      : step("The bundle file is not readable.", () => readFileSync(bundlePath, "utf8"));
-  const envelope = envelopeForAsset(bundleText, digest);
+      ? Buffer.from(fetchBundle(repository, digest))
+      : step("The bundle file is not readable.", () => readFileSync(bundlePath));
+  const envelope = envelopeForAsset(bundleBytes.toString("utf8"), digest);
   const sigstorePath = `${assetPath}.sigstore.json`;
   const intotoPath = `${assetPath}.intoto.jsonl`;
   step("Could not write the attestation files.", () => {
     // A supplied bundle is copied byte-for-byte; JSONL contains the envelope, not its payload.
-    writeFileSync(sigstorePath, bundleText);
+    writeFileSync(sigstorePath, bundleBytes);
     writeFileSync(intotoPath, `${JSON.stringify(envelope)}\n`);
   });
   if (dryRun) {
@@ -164,10 +174,17 @@ export function main(argv: readonly string[]): void {
     );
     return;
   }
-  gh(
-    ["release", "upload", tag, sigstorePath, intotoPath, "--clobber", "--repo", repository],
-    "Could not upload attestation files. Check gh authentication and release write access.",
-  );
+  const upload = () =>
+    gh(
+      ["release", "upload", tag, sigstorePath, intotoPath, "--clobber", "--repo", repository],
+      "Could not upload attestation files. Check gh authentication and release write access.",
+    );
+  try {
+    upload();
+  } catch {
+    // --clobber repairs partial uploads too. Only upload retries; validation still fails closed.
+    upload();
+  }
   console.log("Attached the Sigstore bundle and DSSE envelope to the release.");
 }
 
