@@ -2921,12 +2921,13 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   rate and never reuses stored amounts. The save carries the known writable header fields,
   replaces every position and omits the old foreign sums and exchange-rate properties. Both
   previews show the currency change, warn with the old foreign sums (zero and absent differ),
-  and retain the conservative storage warning pending the issue #33 implementation follow-up.
-  Read-back warns if the currency is still foreign.
-  Without the explicit target the refusal remains; direct non-EUR e-invoice import remains
-  refused. Real foreign-currency writes (issue #33 step 2) remain open.
+  and ask to check the saved EUR amounts. Read-back warns if the currency is still foreign.
+  Non-EUR create, update and e-invoice import use the explicit rate/deadline and replacement
+  position rules in D-082. Finalizing a foreign-currency voucher remains refused.
 - **Test:** `test/regressions/voucher-convert-to-eur.test.ts` pins the outgoing payload, guards,
   bilingual warnings, decimal-safe totals and synthetic read-back/finalize path;
+  `test/regressions/voucher-foreign-currency.test.ts` covers EUR-to-USD changes, the replacement
+  requirement and the finalization refusal, including a currency change after preview;
   `test/integration/write-previews-de.test.ts` snapshots the German text.
   `test/unit/scripts/m4-probes.test.ts` checks the probe's replacement payload, draft guards and
   reporting of retained foreign fields. Live probe `write-voucher-convert-to-eur` ran on
@@ -2960,15 +2961,27 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   recorded 2026-11-13, trial account, Update 2.0 (probes `write-voucher-usd-rate`,
   `write-voucher-usd-deadline`, `write-voucher-usd-rate-update`). The scrubbed report stays
   outside the repository; all four drafts from this run are listed there for cleanup.
-- **Impact:** Issue #33 stops after Phase A. Real foreign-currency create/update/import remains
-  disabled. Future rate changes must resend all positions in the voucher currency; retaining
-  stored EUR position amounts is unsafe. The required stored-rate comparison and a deadline
-  preview with an exact EUR equivalent cannot yet be implemented from the measured GET contract.
-  Establish a supported rate read-back before Phase B; do not infer an exact rate from rounded
-  totals. The four probes reported `observed`, with no request errors, but these rate-read-back
-  questions remain inconclusive. The status-50 guard and cleanup registration also apply to
-  failed setup/read-back paths; the probes never finalize, book, enshrine, e-mail or export.
+- **Impact:** Create, update and e-invoice import accept foreign currencies with exactly one
+  positive decimal-string rate (EUR per unit of the voucher currency) or exchange-rate date
+  (serialized as `dd.mm.yyyy`). Explicit-rate previews show foreign totals and a decimal-safe,
+  cent-rounded EUR equivalent labelled as computed by this server. Deadline-only previews say
+  sevDesk chooses the rate and EUR amounts are known after saving. Both languages give the same
+  facts and warnings. Read-back checks all three foreign sums exactly and each EUR sum against
+  foreign × rate within one cent per sent position. This conservative tolerance covers possible
+  per-position versus aggregate rounding: the probe returned cent-rounded values but did not
+  establish a rounding order. Deadline saves and mismatches report the stored EUR totals and an
+  approximate rate derived from rounded gross sums; this never claims to recover the exact rate.
+  Every foreign-currency update requires a fresh rate or deadline and all positions in the target
+  currency: GET omits the rate, and retaining positions on a save without a rate was not verified.
+  Currency changes also require all positions. Finalizing foreign-currency vouchers remains
+  refused. The probes never finalize, book, enshrine, e-mail or export; status-50 guards and cleanup
+  registration apply to failed setup/read-back paths too.
 - **Test:** `test/unit/scripts/m4-probes.test.ts` (D-082 cases) pins decimal string rate payloads,
   deadline-only payloads, updates with and without replacement positions, GET field reporting,
   cleanup registration and refusal to update after failed or non-draft setup. These synthetic
   tests check probe safety and reporting; the storage observations above come from the live run.
+  `test/regressions/voucher-foreign-currency.test.ts` pins those recorded sums, exact string rates,
+  deadline serialization, input validation, safe replacement updates, EUR rounding tolerance,
+  bilingual mismatch notes and real-parser USD e-invoice imports. `test/write-cases/vouchers.ts`
+  exercises USD creation, a rate change with all positions and USD import through the write flow;
+  `test/integration/write-previews-de.test.ts` snapshots their German previews.

@@ -12,18 +12,7 @@ export const voucherCreateDraftTool = defineWriteTool({
   name: "sevdesk_voucher_create_draft",
   title: "Create a draft voucher",
   description:
-    "Create a draft voucher (Beleg, Belegentwurf) for a receipt or supplier invoice " +
-    "(Lieferantenrechnung): kind expense (default) or revenue, supplier (Lieferant: contact or " +
-    "name), Belegnummer, Belegdatum and positions (Belegpositionen) of booking account " +
-    "(Buchungskonto, accountDatevId), amount and tax rate. Optionally attaches the receipt " +
-    "file (PDF/PNG/JPEG from SEVDESK_FILE_DIRS, or on a remote server an upload from " +
-    "sevdesk_upload_request; refused with a hint when neither is available). " +
-    "Tier write: only a draft, nothing is booked. Every account × Steuerregel × rate is checked " +
-    "against sevDesk's ReceiptGuidance first; the tax rule defaults to 9 (or 10 for " +
-    "Kleinunternehmer) for expenses, 1 (or 11) for revenue. Needs sevDesk Update 2.0, EUR. A " +
-    "possible duplicate (same supplier, Belegnummer, date, gross) is refused unless " +
-    "allowDuplicate. dryRun previews. Before: sevdesk_reference_lookup kind=receipt_guidance. " +
-    "After: sevdesk_voucher_finalize.",
+    "Create a draft voucher (Beleg) for a receipt or supplier invoice: expense or revenue, supplier, dates and booking-account positions. EUR by default; non-EUR requires exchangeRate (EUR per currency unit) or foreignCurrencyDeadline. Amounts are in the voucher currency. Update 2.0 only; accounts and tax rules are checked against ReceiptGuidance. Optionally attach a PDF/PNG/JPEG from SEVDESK_FILE_DIRS or an upload. Possible duplicates need allowDuplicate. Tier write: nothing is booked; dryRun previews. Foreign-currency drafts cannot be finalized here.",
   toolset: "vouchers",
   tier: "write",
   annotations: {

@@ -37,6 +37,7 @@ import { expectSingle } from "../../sevdesk/envelope.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import { parseUpstream, zBool01, zNumberish, zText } from "../../sevdesk/schema.js";
 import { compare } from "../money.js";
+import { exchangeRateInput, voucherCurrencyInput } from "./voucher-currency.js";
 
 const id = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 
@@ -54,24 +55,35 @@ export const VOUCHER_OPEN_STATUS = 100;
 /** sevDesk's temp-file token: letters, digits, dot, dash, underscore (hash plus extension). */
 const FILENAME_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;
 
-const voucherSchema = z.strictObject({
-  id: id.optional(),
-  objectName: z.literal("Voucher"),
-  mapAll: z.literal(true),
-  voucherDate: germanDate,
-  supplier: ref("Contact").nullable(),
-  supplierName: z.string().min(1).optional(),
-  description: z.string().min(1).optional(),
-  paymentDeadline: germanDate.optional(),
-  deliveryDate: germanDate,
-  deliveryDateUntil: germanDate.optional(),
-  status: z.union([z.literal(VOUCHER_DRAFT_STATUS), z.literal(VOUCHER_OPEN_STATUS)]),
-  taxRule: ref("TaxRule"),
-  creditDebit: z.enum(["C", "D"]),
-  voucherType: z.literal("VOU"),
-  currency: z.literal("EUR"),
-  costCentre: ref("CostCentre").optional(),
-});
+const voucherSchema = z
+  .strictObject({
+    id: id.optional(),
+    objectName: z.literal("Voucher"),
+    mapAll: z.literal(true),
+    voucherDate: germanDate,
+    supplier: ref("Contact").nullable(),
+    supplierName: z.string().min(1).optional(),
+    description: z.string().min(1).optional(),
+    paymentDeadline: germanDate.optional(),
+    deliveryDate: germanDate,
+    deliveryDateUntil: germanDate.optional(),
+    status: z.union([z.literal(VOUCHER_DRAFT_STATUS), z.literal(VOUCHER_OPEN_STATUS)]),
+    taxRule: ref("TaxRule"),
+    creditDebit: z.enum(["C", "D"]),
+    voucherType: z.literal("VOU"),
+    currency: voucherCurrencyInput,
+    propertyExchangeRate: exchangeRateInput.optional(),
+    propertyForeignCurrencyDeadline: germanDate.optional(),
+    costCentre: ref("CostCentre").optional(),
+  })
+  .refine((voucher) => {
+    const count =
+      Number(voucher.propertyExchangeRate !== undefined) +
+      Number(voucher.propertyForeignCurrencyDeadline !== undefined);
+    return voucher.currency === "EUR"
+      ? count === 0
+      : count === 1 && voucher.status === VOUCHER_DRAFT_STATUS;
+  }, "Non-EUR drafts require exactly one exchange-rate property; EUR takes neither.");
 
 const positionSchema = z
   .strictObject({

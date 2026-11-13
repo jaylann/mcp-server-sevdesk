@@ -250,7 +250,7 @@ describe("sevdesk_voucher_update_draft", () => {
     ["is not a draft", { status: "100" }, "only drafts can be changed. Reset it to draft first"],
     ["is enshrined", { enshrined: "2026-11-03T10:00:00+01:00" }, "is enshrined (festgeschrieben)"],
     ["is recurring", { voucherType: "RV" }, "is not a normal voucher (type RV, recurring)"],
-    ["is in USD", { currency: "USD" }, "foreign-currency voucher"],
+    ["is in USD without a rate", { currency: "USD" }, "exchangeRate or foreignCurrencyDeadline"],
     [
       "has no creditDebit",
       { creditDebit: "X" },

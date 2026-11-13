@@ -287,7 +287,7 @@ describe("suggestVoucherFields", () => {
     ]);
   });
 
-  it("blocks credit notes, other documents, foreign currencies and amount errors", () => {
+  it("blocks credit notes, other documents and amount errors; currency requires a rate at import", () => {
     const blockingOf = (change: (invoice: Mutable<ParsedEInvoice>) => void): string =>
       suggest(variant(change)).blocking.join(" ");
     expect(
@@ -305,7 +305,9 @@ describe("suggestVoucherFields", () => {
     expect(blockingOf((invoice) => void (invoice.documentKind = "other"))).toContain(
       "does not mark an invoice",
     );
-    expect(blockingOf((invoice) => void (invoice.currency = "USD"))).toContain("in USD");
+    const foreign = suggest(variant((invoice) => void (invoice.currency = "USD")));
+    expect(foreign.blocking).toEqual([]);
+    expect(foreign.warnings.join(" ")).toContain("exchangeRate or foreignCurrencyDeadline");
     expect(
       blockingOf((invoice) => {
         invoice.findings = [{ code: "BR-CO-10", severity: "error", message: "m" }];

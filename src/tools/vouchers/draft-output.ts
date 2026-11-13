@@ -24,6 +24,7 @@ export const voucherDraftOutput = z.object({
     .array(z.string())
     .optional()
     .describe("Things to check, e.g. a total that differs from the preview."),
+  notesDe: z.array(z.string()).optional().describe("The same save/read-back notes in German."),
 });
 
 type VoucherDraftOutput = z.output<typeof voucherDraftOutput>;
@@ -45,6 +46,9 @@ export function voucherDraftToolOutput(
       positionsComplete,
       ...(result.receipt === undefined ? {} : { receipt: result.receipt }),
       ...(result.notes.length === 0 ? {} : { notes: [...result.notes] }),
+      ...(result.notesDe === undefined || result.notesDe.length === 0
+        ? {}
+        : { notesDe: [...result.notesDe] }),
     },
     summary:
       `${verb} voucher ${String(result.id)} (${count}${total}${file}).` +

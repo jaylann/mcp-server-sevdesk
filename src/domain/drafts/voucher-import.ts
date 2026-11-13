@@ -8,7 +8,7 @@
  *
  * Rules:
  * - a suggestion with blocking findings (totals or VAT breakdown unreliable, not an invoice, …) is
- *   refused with the module's trusted texts; EUR only;
+ *   refused with the module's trusted texts; foreign currency needs a rate or deadline;
  * - every VAT rate needs a booking account: `accounts` per rate, else the one `accountDatevId`;
  * - positions come from the parsed BG-23 rows with their original rates, one per row, never from
  *   the suggestion's positions (which the e-invoice module may already have folded for its
@@ -30,6 +30,7 @@ import { cleanText } from "../common.js";
 import type { ParsedEInvoice } from "../einvoice/model.js";
 import { parseEInvoice } from "../einvoice/parse.js";
 import { add, compare, decimal, isZero, type Money, toDecimalString } from "../money.js";
+import { bothPreviews, numberText, type PreviewLanguage } from "../preview-text.js";
 import type { TaxRule } from "../reference-data.js";
 import type { VoucherKind } from "../vouchers.js";
 import type { Amounts } from "./positions.js";
@@ -49,6 +50,7 @@ import {
   type VoucherPositionInput,
   voucherRegime,
 } from "./voucher-checks.js";
+import { type ExchangeArgs, resolveVoucherCurrency } from "./voucher-currency.js";
 import type { VoucherImportArgs } from "./voucher-inputs.js";
 
 /**
@@ -56,6 +58,8 @@ import type { VoucherImportArgs } from "./voucher-inputs.js";
  * the module's type is assignable to it).
  */
 export interface VoucherSuggestion {
+  readonly previewDe?:
+    Pick<VoucherSuggestion, "warnings" | "taxRuleReason" | "foldVatReason"> | undefined;
   readonly kind: VoucherKind;
   readonly counterparty: {
     readonly name: string;
@@ -96,7 +100,7 @@ export interface VoucherSuggestion {
 }
 
 /** The caller's choices for the import. */
-export interface VoucherImportChoices {
+export interface VoucherImportChoices extends ExchangeArgs {
   /** One booking account for every VAT rate. */
   readonly accountDatevId?: number | undefined;
   /** A booking account per VAT rate (wins over `accountDatevId` for its rate). */
@@ -120,7 +124,7 @@ function refuse(message: string): never {
  * Refuses a suggestion that cannot become a voucher here (blocking findings, foreign currency)
  * before anything else is read.
  */
-export function assertImportable(suggestion: VoucherSuggestion): void {
+export function assertImportable(suggestion: VoucherSuggestion, choices: ExchangeArgs = {}): void {
   if (suggestion.blocking.length > 0) {
     refuse(
       `This e-invoice cannot be imported as a voucher: ${suggestion.blocking.join(" ")} ` +
@@ -128,12 +132,7 @@ export function assertImportable(suggestion: VoucherSuggestion): void {
         "from the checked invoice and attach the file there.",
     );
   }
-  if (suggestion.currency !== "EUR") {
-    refuse(
-      "The e-invoice is not in EUR; this server writes EUR vouchers only. Create the voucher " +
-        "in the sevDesk web app.",
-    );
-  }
+  resolveVoucherCurrency(suggestion.currency, choices);
 }
 
 /** The tax rule id the import uses: the caller's, else the suggestion's (else the default). */
@@ -192,6 +191,9 @@ export function importedVoucher(
   const supplierId = choices.supplierId ?? suggestion.supplierId;
   const spec: VoucherCreateSpec = {
     kind: suggestion.kind,
+    currency: suggestion.currency,
+    exchangeRate: choices.exchangeRate,
+    foreignCurrencyDeadline: choices.foreignCurrencyDeadline,
     ...(supplierId === undefined
       ? { supplierName: cleanText(suggestion.counterparty.name, 200) ?? "(unnamed)" }
       : { supplierId }),
@@ -206,60 +208,84 @@ export function importedVoucher(
     allowDuplicate: choices.allowDuplicate === true,
   };
 
-  const facts: PreviewFact[] = [
-    fact(
-      "Issuer (from the e-invoice)",
-      suggestion.counterparty.vatId === undefined
-        ? suggestion.counterparty.name
-        : `${suggestion.counterparty.name}, VAT id ${suggestion.counterparty.vatId}`,
-    ),
-    fact(
-      "E-invoice totals",
-      `net ${suggestion.totals.net.amount} EUR, VAT ${suggestion.totals.tax.amount} EUR, gross ` +
-        `${suggestion.totals.gross.amount} EUR`,
-    ),
-    ...(suggestion.taxRuleReason === undefined || choices.taxRuleId !== undefined
-      ? []
-      : [fact("Tax rule basis", suggestion.taxRuleReason)]),
-  ];
-  const warnings: string[] = [...suggestion.warnings];
-  if (supplierId === undefined) {
-    const candidates = suggestion.supplierCandidates.map((candidate) => candidate.contactId);
-    warnings.push(
-      candidates.length === 0
-        ? "No sevDesk contact matches the issuer; the voucher is saved with the issuer's name " +
-            "only. Pass supplierId to link a contact."
-        : candidates.length === 1
-          ? `Contact ${String(candidates[0])} matches the issuer but was not linked ` +
-            "automatically (see the bank-details warning); the voucher is saved with the " +
-            "issuer's name only. Pass supplierId to link it once the bank details are checked."
-          : `The issuer matches several contacts (${candidates.join(", ")}); the voucher is ` +
-            "saved with the issuer's name only. Pass supplierId to link one.",
-    );
-  }
-  if (folded.length > 0) {
-    warnings.push(
-      choices.taxRuleId === undefined && suggestion.foldVatReason !== undefined
-        ? suggestion.foldVatReason
-        : `Tax rule ${String(rule.id)} allows no input-VAT deduction, so the VAT of ` +
-            `${[...new Set(folded)].join(", ")} % is booked as part of the gross amount at 0 %` +
-            (regime === "small_business" ? " (Kleinunternehmer, §19 UStG)." : "."),
-    );
-  }
-  if (compare(suggestion.totals.due.amount, suggestion.totals.gross.amount) !== 0) {
-    warnings.push(
-      `The amount due (${suggestion.totals.due.amount} EUR) differs from the invoice total ` +
-        `(${suggestion.totals.gross.amount} EUR), e.g. after a prepayment; book the payment ` +
-        "accordingly.",
-    );
-  }
+  const extras = bothPreviews((lang: PreviewLanguage) => {
+    const de = lang === "de";
+    const text = (en: string, german: string): string => (de ? german : en);
+    const localized = de ? (suggestion.previewDe ?? suggestion) : suggestion;
+    const { currency } = suggestion;
+    const facts: PreviewFact[] = [
+      fact(
+        text("Issuer (from the e-invoice)", "Aussteller (aus der E-Rechnung)"),
+        suggestion.counterparty.vatId === undefined
+          ? suggestion.counterparty.name
+          : `${suggestion.counterparty.name}, ${text("VAT id", "USt-IdNr.")} ${suggestion.counterparty.vatId}`,
+      ),
+      fact(
+        text("E-invoice totals", "Summen der E-Rechnung"),
+        `${text("net", "netto")} ${numberText(suggestion.totals.net.amount, lang)} ${currency}, ${text("VAT", "USt.")} ${numberText(suggestion.totals.tax.amount, lang)} ${currency}, ${text("gross", "brutto")} ` +
+          `${numberText(suggestion.totals.gross.amount, lang)} ${currency}`,
+      ),
+      ...(suggestion.taxRuleReason === undefined || choices.taxRuleId !== undefined
+        ? []
+        : [
+            fact(
+              text("Tax rule basis", "Grundlage der Steuerregel"),
+              localized.taxRuleReason ?? suggestion.taxRuleReason,
+            ),
+          ]),
+    ];
+    const warnings: string[] = [...localized.warnings];
+    if (supplierId === undefined) {
+      const candidates = suggestion.supplierCandidates.map((candidate) => candidate.contactId);
+      warnings.push(
+        de
+          ? candidates.length === 0
+            ? "Kein sevDesk-Kontakt passt zum Aussteller. Der Beleg wird nur mit dessen Namen gespeichert; mit supplierId können Sie einen Kontakt zuordnen."
+            : candidates.length === 1
+              ? `Kontakt ${String(candidates[0])} passt zum Aussteller, wurde aber wegen der Bankdaten nicht automatisch zugeordnet. Der Beleg wird nur mit dem Namen gespeichert. Prüfen Sie die Bankdaten und ordnen Sie den Kontakt mit supplierId zu.`
+              : `Mehrere Kontakte passen zum Aussteller (${candidates.join(", ")}). Der Beleg wird nur mit dem Namen gespeichert; wählen Sie einen Kontakt mit supplierId.`
+          : candidates.length === 0
+            ? "No sevDesk contact matches the issuer; the voucher is saved with the issuer's name " +
+              "only. Pass supplierId to link a contact."
+            : candidates.length === 1
+              ? `Contact ${String(candidates[0])} matches the issuer but was not linked ` +
+                "automatically (see the bank-details warning); the voucher is saved with the " +
+                "issuer's name only. Pass supplierId to link it once the bank details are checked."
+              : `The issuer matches several contacts (${candidates.join(", ")}); the voucher is ` +
+                "saved with the issuer's name only. Pass supplierId to link one.",
+      );
+    }
+    if (folded.length > 0) {
+      warnings.push(
+        choices.taxRuleId === undefined && suggestion.foldVatReason !== undefined
+          ? (localized.foldVatReason ?? suggestion.foldVatReason)
+          : de
+            ? `Steuerregel ${String(rule.id)} erlaubt keinen Vorsteuerabzug. Die Umsatzsteuer von ${[...new Set(folded)].map((rate) => numberText(rate, lang)).join(", ")} % wird daher mit dem Bruttobetrag zu 0 % gebucht${regime === "small_business" ? " (Kleinunternehmer, §19 UStG)" : ""}.`
+            : `Tax rule ${String(rule.id)} allows no input-VAT deduction, so the VAT of ` +
+              `${[...new Set(folded)].join(", ")} % is booked as part of the gross amount at 0 %` +
+              (regime === "small_business" ? " (Kleinunternehmer, §19 UStG)." : "."),
+      );
+    }
+    if (compare(suggestion.totals.due.amount, suggestion.totals.gross.amount) !== 0) {
+      warnings.push(
+        de
+          ? `Der fällige Betrag (${numberText(suggestion.totals.due.amount, lang)} ${currency}) weicht von der Rechnungssumme (${numberText(suggestion.totals.gross.amount, lang)} ${currency}) ab, etwa nach einer Vorauszahlung. Berücksichtigen Sie dies bei der Zahlungsbuchung.`
+          : `The amount due (${suggestion.totals.due.amount} ${currency}) differs from the invoice total ` +
+              `(${suggestion.totals.gross.amount} ${currency}), e.g. after a prepayment; book the payment ` +
+              "accordingly.",
+      );
+    }
+    return { facts, warnings };
+  });
 
   return {
     spec,
     extras: {
       source: " from an e-invoice",
-      facts,
-      warnings,
+      sourceDe: " aus einer E-Rechnung",
+      ...extras.preview,
+      factsDe: extras.previewDe.facts,
+      warningsDe: extras.previewDe.warnings,
       checkTotals: (totals) => {
         checkTotals(totals, suggestion.totals, folded.length > 0);
       },
@@ -298,9 +324,9 @@ function checkTotals(
   if (grossDiffers || splitDiffers) {
     refuse(
       `The voucher built from the e-invoice's VAT breakdown (net ${computed.net}, VAT ` +
-        `${computed.tax}, gross ${computed.gross} EUR) does not match the e-invoice totals ` +
+        `${computed.tax}, gross ${computed.gross} ${invoice.gross.currency}) does not match the e-invoice totals ` +
         `(net ${toDecimalString(invoice.net.amount)}, VAT ${toDecimalString(invoice.tax.amount)}, ` +
-        `gross ${toDecimalString(invoice.gross.amount)} EUR), so its sums are unreliable. ` +
+        `gross ${toDecimalString(invoice.gross.amount)} ${invoice.gross.currency}), so its sums are unreliable. ` +
         "Nothing was sent to sevDesk. Create the voucher with sevdesk_voucher_create_draft " +
         "from the checked invoice.",
     );
@@ -318,6 +344,7 @@ export type VoucherSuggestionPlanner = (
     readonly client: SevdeskClient;
     readonly cacheOwner: object;
     readonly signal?: AbortSignal | undefined;
+    readonly includeGermanPreview?: boolean | undefined;
   },
 ) => Promise<VoucherSuggestion>;
 
@@ -339,8 +366,9 @@ export async function prepareVoucherImport(
     client,
     cacheOwner: options.cacheOwner,
     signal: options.signal,
+    includeGermanPreview: true,
   });
-  assertImportable(suggestion);
+  assertImportable(suggestion, args);
   const regime = await voucherRegime(client, options);
   const { rule } = resolveVoucherRule(suggestion.kind, importRuleId(suggestion, args), regime);
   const { spec, extras } = importedVoucher(suggestion, parsed.vatBreakdown, args, rule, regime);
@@ -356,6 +384,14 @@ export async function prepareVoucherImport(
               "without attachment. Attach its PDF (or a print) to the voucher in sevDesk (GoBD).",
           ]),
     ],
+    warningsDe: [
+      ...(extras.warningsDe ?? []),
+      ...(attach
+        ? []
+        : [
+            "sevDesk nimmt keine reine XML-Datei als Belegdatei an. Die E-Rechnung wird ohne Anhang gespeichert; hängen Sie die PDF-Datei oder einen Ausdruck in sevDesk an (GoBD).",
+          ]),
+    ],
   });
-  return { preview: plan.preview, state: { ...plan.state, fromEInvoice: true } };
+  return { ...plan, state: { ...plan.state, fromEInvoice: true } };
 }

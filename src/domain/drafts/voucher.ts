@@ -17,7 +17,7 @@ import { z } from "zod";
 import { expectSingle } from "../../sevdesk/envelope.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import { sevdeskPath } from "../../sevdesk/paths.js";
-import { parseUpstream, zIntish, zRef } from "../../sevdesk/schema.js";
+import { parseUpstream, zIntish, zRef, zText } from "../../sevdesk/schema.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import type { TaxRegime } from "../account-settings.js";
 import { cleanText, currencyCode } from "../common.js";
@@ -66,6 +66,14 @@ import {
   voucherRegime,
   voucherRuleScope,
 } from "./voucher-checks.js";
+import {
+  currencyFacts,
+  currencyPayload,
+  currencyWarnings,
+  type ExchangeArgs,
+  foreignReadBackNotes,
+  resolveVoucherCurrency,
+} from "./voucher-currency.js";
 import {
   carriedVoucher,
   checkDraft,
@@ -132,13 +140,17 @@ export interface CreateExtras {
   readonly source?: string | undefined;
   readonly facts?: readonly PreviewFact[] | undefined;
   readonly warnings?: readonly string[] | undefined;
+  readonly sourceDe?: string | undefined;
+  readonly factsDe?: readonly PreviewFact[] | undefined;
+  readonly warningsDe?: readonly string[] | undefined;
   /** Called with the computed totals before anything is read; throws to refuse. */
   readonly checkTotals?:
     ((totals: Amounts, positions: readonly VoucherPosition[], rule: TaxRule) => void) | undefined;
 }
 
 /** A create call with defaults applied and the file already read. */
-export interface VoucherCreateSpec {
+export interface VoucherCreateSpec extends ExchangeArgs {
+  readonly currency?: string | undefined;
   readonly kind: VoucherKind;
   readonly supplierId?: number | undefined;
   readonly supplierName?: string | undefined;
@@ -168,12 +180,16 @@ export async function prepareVoucherCreate(
   options: VoucherCallOptions,
 ): Promise<VoucherSavePlan> {
   checkSupplierArgs(args.supplierId, args.supplierName, true);
+  resolveVoucherCurrency(args.currency ?? "EUR", args);
   const file =
     args.file === undefined ? undefined : await readReceiptFile(options.files, args.file);
   return prepareVoucherCreateSpec(
     client,
     {
       kind: args.kind ?? "expense",
+      currency: args.currency,
+      exchangeRate: args.exchangeRate,
+      foreignCurrencyDeadline: args.foreignCurrencyDeadline,
       supplierId: args.supplierId,
       supplierName: args.supplierName,
       number: args.number,
@@ -203,6 +219,7 @@ export async function prepareVoucherCreateSpec(
   extras: CreateExtras = {},
 ): Promise<VoucherSavePlan> {
   const { signal } = options;
+  const currency = resolveVoucherCurrency(spec.currency ?? "EUR", spec);
   checkSupplierArgs(spec.supplierId, spec.supplierName, true);
   const delivery = resolveDeliveryPeriod(
     spec.date,
@@ -235,12 +252,10 @@ export async function prepareVoucherCreateSpec(
     number: spec.number,
     date: spec.date,
     gross: expected.gross,
+    currency: currency.currency,
   };
-  const duplicate = duplicateCheck(
-    await findVoucherDuplicates(client, duplicateQuery, signal),
-    duplicateQuery,
-    spec.allowDuplicate,
-  );
+  const duplicateIds = await findVoucherDuplicates(client, duplicateQuery, signal);
+  duplicateCheck(duplicateIds, duplicateQuery, spec.allowDuplicate);
 
   const body = strictBody(
     saveVoucherBodySchema,
@@ -261,7 +276,7 @@ export async function prepareVoucherCreateSpec(
         taxRule: voucherRef(rule.id, "TaxRule"),
         creditDebit: creditDebitForKind(spec.kind),
         voucherType: "VOU",
-        currency: "EUR",
+        ...currencyPayload(currency),
       },
       voucherPosSave: positions.map((position) => positionPayload(position, spec.amountMode)),
       voucherPosDelete: null,
@@ -269,47 +284,97 @@ export async function prepareVoucherCreateSpec(
     "voucher",
   );
 
-  const supplier = supplierText(supplierName, spec.supplierId);
-  const facts: PreviewFact[] = [
-    fact("Kind", kindText(spec.kind)),
-    fact(partyLabel(spec.kind), supplier),
-    fact("Belegnummer", spec.number ?? "(none)"),
-    fact("Voucher date (Belegdatum)", spec.date),
-    fact("Delivery date (Leistungsdatum)", formatPeriod(delivery)),
-    ...(spec.paymentDeadline === undefined
-      ? []
-      : [fact("Payment deadline (Fälligkeit)", spec.paymentDeadline)]),
-    fact("Tax rule (Steuerregel)", taxRuleLabel(rule)),
-    fact("Amounts entered as", spec.amountMode),
-    ...positionFacts(positions, spec.amountMode, accounts.labels),
-    fact("Total (expected)", totalsText(expected, "EUR")),
-    ...(file === undefined ? [] : [fact("Receipt file (Belegbild)", receiptText(file))]),
-    ...(extras.facts ?? []),
-    fact("Status after saving", `draft (${String(VOUCHER_DRAFT_STATUS)}), not booked yet`),
-  ];
-  // The action holds only our wording, dates and amounts; supplier, Belegnummer and file name are
-  // third-party or local text and appear as fact values only.
-  const preview = draftPreview(
-    `Create a draft ${spec.kind} voucher (Beleg) dated ${spec.date}${extras.source ?? ""}, ` +
-      `with ${positionCount(positions.length)}, gross ${moneyText(expected.gross, "EUR")}` +
-      `${file === undefined ? "" : ", and attach the receipt file"}.`,
-    facts,
-    [
-      duplicate,
-      ...ruleWarnings,
-      ...inLanguage(accounts.warnings, "en"),
-      ...deadlineWarnings(spec.date, spec.paymentDeadline),
-      ...(extras.warnings ?? []),
-      ...(spec.number === undefined
-        ? [
-            "No Belegnummer: sevDesk saves the draft but books it only with one (D-080); add " +
-              "it with sevdesk_voucher_update_draft (number) before finalizing.",
-          ]
-        : []),
-      `The voucher is saved as a draft: it is not booked until ${FINALIZE_TOOL} finalizes it.`,
-    ],
-  );
-  return { preview, state: { body, file, expected, expectStatus: VOUCHER_DRAFT_STATUS } };
+  const previews = bothPreviews((lang) => {
+    const de = lang === "de";
+    const text = (en: string, german: string): string => (de ? german : en);
+    const supplier = supplierText(supplierName, spec.supplierId, lang);
+    const facts: PreviewFact[] = [
+      fact(text("Kind", "Art"), kindText(spec.kind, lang)),
+      fact(partyLabel(spec.kind, lang), supplier),
+      fact("Belegnummer", spec.number ?? text("(none)", "(keine Angabe)")),
+      fact(text("Voucher date (Belegdatum)", "Belegdatum"), dateText(spec.date, lang)),
+      fact(
+        text("Delivery date (Leistungsdatum)", "Leistungsdatum"),
+        de
+          ? dateText(delivery.from, lang) +
+              (delivery.until === undefined ? "" : ` – ${dateText(delivery.until, lang)}`)
+          : formatPeriod(delivery),
+      ),
+      ...(spec.paymentDeadline === undefined
+        ? []
+        : [
+            fact(
+              text("Payment deadline (Fälligkeit)", "Fälligkeit"),
+              dateText(spec.paymentDeadline, lang),
+            ),
+          ]),
+      fact(text("Tax rule (Steuerregel)", "Steuerregel"), taxRuleLabel(rule)),
+      fact(
+        text("Amounts entered as", "Betragseingabe"),
+        de ? (spec.amountMode === "net" ? "netto" : "brutto") : spec.amountMode,
+      ),
+      ...currencyFacts(currency, expected, lang),
+      ...positionFacts(
+        positions,
+        spec.amountMode,
+        de ? accounts.labelsDe : accounts.labels,
+        lang,
+        currency.currency,
+      ),
+      fact(
+        text("Total (expected)", "Summe (erwartet)"),
+        totalsText(expected, currency.currency, lang),
+      ),
+      ...(file === undefined
+        ? []
+        : [fact(text("Receipt file (Belegbild)", "Belegdatei"), receiptText(file, lang))]),
+      ...((de ? extras.factsDe : extras.facts) ?? extras.facts ?? []),
+      fact(
+        text("Status after saving", "Status nach dem Speichern"),
+        text(
+          `draft (${String(VOUCHER_DRAFT_STATUS)}), not booked yet`,
+          `Entwurf (${String(VOUCHER_DRAFT_STATUS)}), noch nicht gebucht`,
+        ),
+      ),
+    ];
+    // The action holds only our wording, dates and amounts; supplier, Belegnummer and file name are
+    // third-party or local text and appear as fact values only.
+    return draftPreview(
+      text(
+        `Create a draft ${spec.kind} voucher (Beleg) dated ${spec.date}${extras.source ?? ""}, ` +
+          `with ${positionCount(positions.length)}, gross ${moneyText(expected.gross, currency.currency)}` +
+          `${file === undefined ? "" : ", and attach the receipt file"}.`,
+        `Belegentwurf (${spec.kind === "expense" ? "Ausgabe" : "Einnahme"}) vom ${dateText(spec.date, lang)}${extras.sourceDe ?? ""} erstellen: ${positionCount(positions.length, lang)}, brutto ${moneyText(expected.gross, currency.currency, lang)}${file === undefined ? "" : "; Belegdatei anhängen"}.`,
+      ),
+      facts,
+      [
+        duplicateCheck(duplicateIds, duplicateQuery, spec.allowDuplicate, lang),
+        ...(de
+          ? resolveVoucherRule(spec.kind, spec.taxRuleId, regime, lang).warnings
+          : ruleWarnings),
+        ...inLanguage(accounts.warnings, lang),
+        ...deadlineWarnings(spec.date, spec.paymentDeadline, lang),
+        ...currencyWarnings(currency, lang),
+        ...((de ? extras.warningsDe : extras.warnings) ?? extras.warnings ?? []),
+        ...(spec.number === undefined
+          ? [
+              text(
+                "No Belegnummer: sevDesk saves the draft but books it only with one (D-080); add " +
+                  "it with sevdesk_voucher_update_draft (number) before finalizing.",
+                "Ohne Belegnummer speichert sevDesk den Entwurf, bucht ihn aber erst mit Belegnummer (D-080). Ergänzen Sie sie vor dem Fertigstellen mit sevdesk_voucher_update_draft (number).",
+              ),
+            ]
+          : []),
+        currency.currency === "EUR"
+          ? text(
+              `The voucher is saved as a draft: it is not booked until ${FINALIZE_TOOL} finalizes it.`,
+              `Der Beleg wird als Entwurf gespeichert und erst durch ${FINALIZE_TOOL} gebucht.`,
+            )
+          : undefined,
+      ],
+    );
+  });
+  return { ...previews, state: { body, file, expected, expectStatus: VOUCHER_DRAFT_STATUS } };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -328,13 +393,15 @@ export async function prepareVoucherUpdate(
   const file =
     args.file === undefined ? undefined : await readReceiptFile(options.files, args.file);
   const stored = await loadStoredVoucher(client, args.id, signal);
-  const kind = checkDraft(stored, "changed", args.currency);
+  const kind = checkDraft(stored, "changed");
   const oldCurrency = currencyCode(stored.record.currency);
-  const convertsCurrency = oldCurrency !== "EUR";
-  if (convertsCurrency && args.positions === undefined) {
+  const currency = resolveVoucherCurrency(args.currency ?? oldCurrency, args);
+  const convertsCurrency = oldCurrency !== currency.currency;
+  // D-082: GET omits the rate; only an explicit rate/deadline with fresh positions is verified.
+  if ((convertsCurrency || currency.currency !== "EUR") && args.positions === undefined) {
     refuse(
-      "Converting a draft to EUR requires all positions with EUR amounts. Pass positions " +
-        'and currency: "EUR"; no exchange rate is calculated or stored amount reused.',
+      "Changing currency or saving a foreign-currency draft requires all positions in the target currency. " +
+        "Pass positions and, for non-EUR, exchangeRate or foreignCurrencyDeadline: sevDesk can convert stored EUR amounts again, so stored amounts and rates are not reused.",
     );
   }
   await assertUpdate2(client, signal, options.cacheOwner);
@@ -395,18 +462,21 @@ export async function prepareVoucherUpdate(
   const body = strictBody(
     saveVoucherBodySchema,
     {
-      voucher: carriedVoucher(stored, {
-        status: VOUCHER_DRAFT_STATUS,
-        voucherDate: date,
-        supplierId,
-        // A new contact gets no stale typed-in name; an unchanged supplier keeps the stored one.
-        supplierName,
-        description: args.number ?? nonBlank(record.description),
-        paymentDeadline,
-        deliveryDate: delivery.from,
-        deliveryDateUntil: delivery.until,
-        taxRuleId: rule.id,
-      }),
+      voucher: {
+        ...carriedVoucher(stored, {
+          status: VOUCHER_DRAFT_STATUS,
+          voucherDate: date,
+          supplierId,
+          // A new contact gets no stale typed-in name; an unchanged supplier keeps the stored one.
+          supplierName,
+          description: args.number ?? nonBlank(record.description),
+          paymentDeadline,
+          deliveryDate: delivery.from,
+          deliveryDateUntil: delivery.until,
+          taxRuleId: rule.id,
+        }),
+        ...currencyPayload(currency),
+      },
       voucherPosSave:
         positions === undefined
           ? null
@@ -430,7 +500,12 @@ export async function prepareVoucherUpdate(
       german ? (value === "net" ? "netto" : "brutto") : value;
     const log = new ChangeLog(text("(none)", "(keine Angabe)"));
     if (convertsCurrency)
-      log.value(text("currency", "Währung"), text("Currency", "Währung"), oldCurrency, "EUR");
+      log.value(
+        text("currency", "Währung"),
+        text("Currency", "Währung"),
+        oldCurrency,
+        currency.currency,
+      );
     if (supplierChanged) {
       log.note(
         text("supplier", "Lieferant/Kunde"),
@@ -501,7 +576,7 @@ export async function prepareVoucherUpdate(
         ? keptRuleWarnings(rule, kind, regime, lang)
         : [...resolveVoucherRule(kind, args.taxRuleId, regime, lang).warnings];
     warnings.push(...inLanguage(accountWarnings, lang));
-    if (convertsCurrency) {
+    if (convertsCurrency && currency.currency === "EUR") {
       // D-043: only these fields are the old document-currency sums. Missing and zero differ.
       const oldSum = (value: string | undefined): string =>
         value === undefined
@@ -521,8 +596,8 @@ export async function prepareVoucherUpdate(
       );
       warnings.push(
         text(
-          "The stored result of a currency change has not been verified live. Check the currency and EUR amounts after saving, before finalizing.",
-          "Das gespeicherte Ergebnis einer Währungsumstellung wurde noch nicht am Live-System geprüft. Prüfen Sie nach dem Speichern die Währung und EUR-Beträge vor dem Fertigstellen.",
+          "Check the currency and EUR amounts after saving, before finalizing.",
+          "Prüfen Sie nach dem Speichern die Währung und EUR-Beträge vor dem Fertigstellen.",
         ),
       );
     }
@@ -543,14 +618,22 @@ export async function prepareVoucherUpdate(
         fact(text("Voucher (Beleg)", "Beleg"), `${String(record.id)}, ${text("draft", "Entwurf")}`),
         fact(text("Kind", "Art"), kindText(kind, lang)),
         ...log.facts,
+        ...currencyFacts(currency, expected, lang).slice(convertsCurrency ? 1 : 0),
         ...(positions === undefined
           ? []
-          : positionFacts(positions, mode, german ? labelsDe : labels, lang)),
+          : positionFacts(positions, mode, german ? labelsDe : labels, lang, currency.currency)),
         expected === undefined
           ? fact(text("Total (unchanged)", "Summe (unverändert)"), storedTotal(stored, lang))
-          : fact(text("Total (expected)", "Summe (erwartet)"), totalsText(expected, "EUR", lang)),
+          : fact(
+              text("Total (expected)", "Summe (erwartet)"),
+              totalsText(expected, currency.currency, lang),
+            ),
       ],
-      [...warnings, ...deadlineWarnings(date, paymentDeadline, lang)],
+      [
+        ...warnings,
+        ...currencyWarnings(currency, lang),
+        ...deadlineWarnings(date, paymentDeadline, lang),
+      ],
     );
   });
   return {
@@ -576,6 +659,7 @@ export interface VoucherSaveResult {
   readonly id: number;
   readonly details: VoucherDetails;
   readonly notes: readonly string[];
+  readonly notesDe?: readonly string[] | undefined;
   /**
    * Attachment identity from the recheck immediately before an update: `null` means no
    * attachment, `undefined` means unknown (or no recheck). A different read-back document id
@@ -605,7 +689,13 @@ export async function executeVoucherSave(
   const withSignal = signal === undefined ? {} : { signal };
   const previousDocumentId =
     state.recheckDraft === true && state.voucherId !== undefined
-      ? await assertStillDraft(client, state.voucherId, signal)
+      ? await assertStillDraft(
+          client,
+          state.voucherId,
+          signal,
+          state.expectStatus !== VOUCHER_DRAFT_STATUS,
+          state.body.voucherPosSave === null ? state.body.voucher.currency : undefined,
+        )
       : undefined;
   let uploaded: UploadedReceipt | undefined;
   if (state.file !== undefined) {
@@ -663,13 +753,17 @@ export async function executeVoucherSave(
           ...(uploaded?.pages === undefined ? {} : { pages: uploaded.pages }),
         };
   const notes = readBackNotes(details, state);
+  const notesDe = readBackNotes(details, state, "de");
   if (uploaded?.isEInvoice === true && state.fromEInvoice !== true) {
     notes.push(
       "sevDesk recognized the attached file as an e-invoice. Its data was not used: " +
         "sevdesk_voucher_import_einvoice can check it and prefill a voucher from it.",
     );
+    notesDe.push(
+      "sevDesk hat die angehängte Datei als E-Rechnung erkannt. Ihre Daten wurden nicht übernommen; sevdesk_voucher_import_einvoice kann sie prüfen und daraus einen Belegentwurf erstellen.",
+    );
   }
-  return { id, details, notes, receipt, previousDocumentId };
+  return { id, details, notes, notesDe, receipt, previousDocumentId };
 }
 
 /**
@@ -682,6 +776,8 @@ async function assertStillDraft(
   client: SevdeskClient,
   voucherId: number,
   signal: AbortSignal | undefined,
+  finalizing: boolean,
+  retainedCurrency: string | undefined,
 ): Promise<number | null | undefined> {
   const payload = await client.request({
     method: "GET",
@@ -689,10 +785,25 @@ async function assertStillDraft(
     ...(signal === undefined ? {} : { signal }),
   });
   const record = parseUpstream(
-    z.object({ status: zIntish, enshrined: z.unknown().optional(), document: zRef().nullish() }),
+    z.object({
+      status: zIntish,
+      enshrined: z.unknown().optional(),
+      document: zRef().nullish(),
+      currency: zText,
+    }),
     expectSingle(payload, `voucher ${String(voucherId)}`),
     "a voucher",
   );
+  if (finalizing && currencyCode(record.currency) !== "EUR") {
+    refuse(
+      "The voucher is now in a foreign currency; finalizing it is not supported here. Nothing was sent to sevDesk.",
+    );
+  }
+  if (retainedCurrency !== undefined && currencyCode(record.currency) !== retainedCurrency) {
+    refuse(
+      "The voucher's currency changed after the preview. Retaining its positions could convert the amounts again. Nothing was sent to sevDesk; prepare the update again with all positions in the target currency.",
+    );
+  }
   const enshrined =
     record.enshrined !== undefined && record.enshrined !== null && record.enshrined !== "";
   if (record.status !== VOUCHER_DRAFT_STATUS || enshrined) {
@@ -781,56 +892,102 @@ function afterUpload(error: SevdeskError): SevdeskError {
 }
 
 /** Trusted notes about what the read-back shows (empty when everything matches). */
-function readBackNotes(details: VoucherDetails, state: VoucherSaveState): string[] {
+function readBackNotes(
+  details: VoucherDetails,
+  state: VoucherSaveState,
+  lang: PreviewLanguage = "en",
+): string[] {
   const notes: string[] = [];
+  const de = lang === "de";
+  const text = (en: string, german: string): string => (de ? german : en);
   const { voucher } = details;
   const gross = voucher.totals.gross?.amount;
-  if (voucher.currency !== "EUR") {
+  const currency = state.body.voucher.currency;
+  if (voucher.currency !== currency) {
     notes.push(
-      "sevDesk did not return EUR after saving an EUR voucher. Check the currency and " +
-        "amounts with sevdesk_voucher_get before finalizing; do not repeat the conversion blindly.",
+      text(
+        `sevDesk did not return ${currency} after saving ${currency === "EUR" ? "an" : "a"} ${currency} voucher. Check the currency and ` +
+          "amounts with sevdesk_voucher_get before finalizing; do not repeat the conversion blindly.",
+        `sevDesk hat nach dem Speichern eines ${currency}-Belegs nicht ${currency} zurückgegeben. Prüfen Sie Währung und Beträge mit sevdesk_voucher_get vor dem Fertigstellen; wiederholen Sie die Umstellung nicht ungeprüft.`,
+      ),
     );
   }
   if (
+    currency === "EUR" &&
     voucher.currency === "EUR" &&
     state.expected !== undefined &&
     gross !== undefined &&
     compare(gross, state.expected.gross) !== 0
   ) {
     notes.push(
-      `sevDesk computed a gross total of ${gross} EUR; the preview expected ` +
-        `${state.expected.gross} EUR. Check the positions and amountMode (gross/net) before ` +
-        `finalizing.`,
+      text(
+        `sevDesk computed a gross total of ${gross} EUR; the preview expected ` +
+          `${state.expected.gross} EUR. Check the positions and amountMode (gross/net) before ` +
+          `finalizing.`,
+        `sevDesk hat eine Bruttosumme von ${numberText(gross, lang)} EUR berechnet; erwartet waren ${numberText(state.expected.gross, lang)} EUR. Prüfen Sie Positionen und amountMode vor dem Fertigstellen.`,
+      ),
+    );
+  }
+  if (currency !== "EUR" && state.expected !== undefined) {
+    notes.push(
+      ...foreignReadBackNotes(
+        details,
+        state.expected,
+        {
+          currency,
+          exchangeRate: state.body.voucher.propertyExchangeRate,
+          foreignCurrencyDeadline: state.body.voucher.propertyForeignCurrencyDeadline,
+        },
+        state.body.voucherPosSave?.length ?? 0,
+        lang,
+      ),
     );
   }
   if (voucher.status !== undefined && voucher.status.code !== state.expectStatus) {
     notes.push(
-      `The voucher reads back with status ${String(voucher.status.code)} ` +
-        `(${voucher.status.label}), not ${String(state.expectStatus)}. Check it in sevDesk.`,
+      text(
+        `The voucher reads back with status ${String(voucher.status.code)} ` +
+          `(${voucher.status.label}), not ${String(state.expectStatus)}. Check it in sevDesk.`,
+        `Der Beleg hat nach dem Speichern Status ${String(voucher.status.code)} statt ${String(state.expectStatus)}. Prüfen Sie ihn in sevDesk.`,
+      ),
     );
   }
   if (state.keepsDocument === true && voucher.hasDocument !== true) {
     notes.push(
-      "The voucher had a receipt file attached before this call, and sevDesk's answer after the " +
-        "save does not show it anymore. Check the voucher in sevDesk and attach the receipt " +
-        "again if it is missing.",
+      text(
+        "The voucher had a receipt file attached before this call, and sevDesk's answer after the " +
+          "save does not show it anymore. Check the voucher in sevDesk and attach the receipt " +
+          "again if it is missing.",
+        "Vor diesem Aufruf war eine Belegdatei angehängt; nach dem Speichern zeigt sevDesk sie nicht mehr an. Prüfen Sie den Beleg und hängen Sie die fehlende Datei erneut an.",
+      ),
     );
   }
   if (state.file !== undefined) {
     if (voucher.hasDocument === false) {
       notes.push(
-        "sevDesk reports no attached file although the receipt was uploaded and sent as the " +
-          "voucher's filename. Check the voucher in sevDesk and attach the receipt there.",
+        text(
+          "sevDesk reports no attached file although the receipt was uploaded and sent as the " +
+            "voucher's filename. Check the voucher in sevDesk and attach the receipt there.",
+          "sevDesk meldet keine angehängte Datei, obwohl die Belegdatei hochgeladen und übergeben wurde. Prüfen Sie den Beleg und hängen Sie die Datei dort an.",
+        ),
       );
     } else if (voucher.hasDocument === undefined) {
       notes.push(
-        "sevDesk's answer does not say whether the receipt file is attached (spec/deviations.md " +
-          "D-044); check the voucher in sevDesk once.",
+        text(
+          "sevDesk's answer does not say whether the receipt file is attached (spec/deviations.md " +
+            "D-044); check the voucher in sevDesk once.",
+          "sevDesk meldet nicht, ob eine Belegdatei angehängt ist (D-044). Prüfen Sie den Beleg in sevDesk.",
+        ),
       );
     }
   }
   if (!details.positionsComplete) {
-    notes.push("sevDesk has more positions than could be read back; positions is partial.");
+    notes.push(
+      text(
+        "sevDesk has more positions than could be read back; positions is partial.",
+        "sevDesk hat mehr Positionen, als ausgelesen werden konnten; positions ist unvollständig.",
+      ),
+    );
   }
   return notes;
 }
@@ -892,6 +1049,7 @@ function positionFacts(
   mode: AmountMode,
   labels: ReadonlyMap<number, string>,
   lang: PreviewLanguage = "en",
+  currency = "EUR",
 ): PreviewFact[] {
   return positions.map((position, index) => {
     const amounts = voucherPositionAmounts(position, mode);
@@ -900,7 +1058,7 @@ function positionFacts(
     return fact(
       `Position ${String(index + 1)}`,
       `${labels.get(position.accountDatevId) ?? `${lang === "de" ? "Konto" : "account"} ${String(position.accountDatevId)}`}: ` +
-        `${moneyText(format(position.amount, 2), "EUR", lang)} ${lang === "de" ? (mode === "net" ? "netto" : "brutto") : mode}, ${numberText(position.taxRate, lang)} % ${lang === "de" ? "USt." : "VAT"} → ` +
+        `${moneyText(format(position.amount, 2), currency, lang)} ${lang === "de" ? (mode === "net" ? "netto" : "brutto") : mode}, ${numberText(position.taxRate, lang)} % ${lang === "de" ? "USt." : "VAT"} → ` +
         `${lang === "de" ? "netto" : "net"} ${numberText(amounts.net, lang)}, ${lang === "de" ? "USt." : "tax"} ${numberText(amounts.tax, lang)}, ${lang === "de" ? "brutto" : "gross"} ${numberText(amounts.gross, lang)}${asset}${comment}`,
     );
   });

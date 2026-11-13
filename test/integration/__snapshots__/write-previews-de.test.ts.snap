@@ -97,11 +97,25 @@ Brutto: 177,33 EUR
 Bisher bezahlt: 0,00 EUR"
 `;
 
+exports[`German previews > change a USD draft exchange rate with replacement positions: says the same in German 1`] = `
+"Belegentwurf 2101 aktualisieren: Positionen.
+! Der Server berechnet den EUR-Gegenwert aus den Gesamtsummen und rundet auf Cent; sevDesk kann je Position runden. Fremdwährungsbelege können hier nicht fertiggestellt werden.
+(umkehrbar)
+Beleg: 2101, Entwurf
+Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
+Positionen: 1 Position durch 1 Position ersetzen
+Währung: USD
+Wechselkurs: 1 USD = 0,8 EUR
+EUR-Gegenwert (vom Server berechnet): netto 80,00 EUR, USt. 15,20 EUR, brutto 95,20 EUR
+Position 1: 6815 Bürobedarf (Konto 4266): 119,00 USD brutto, 19 % USt. → netto 100,00, USt. 19,00, brutto 119,00
+Summe (erwartet): netto 100,00 USD, USt. 19,00 USD, brutto 119,00 USD"
+`;
+
 exports[`German previews > convert a USD draft voucher to EUR: says the same in German 1`] = `
 "Belegentwurf 2101 aktualisieren: Währung, Belegnummer, Betragseingabe, Positionen.
 ! Die Währung wird mit den angegebenen Positionsbeträgen auf EUR umgestellt. Es wird kein Wechselkurs berechnet; die alten Beträge werden nicht übernommen.
 ! Alte Fremdwährungssummen: netto 100,00 USD, USt. 19,00 USD, brutto 119,00 USD (sum…ForeignCurrency).
-! Das gespeicherte Ergebnis einer Währungsumstellung wurde noch nicht am Live-System geprüft. Prüfen Sie nach dem Speichern die Währung und EUR-Beträge vor dem Fertigstellen.
+! Prüfen Sie nach dem Speichern die Währung und EUR-Beträge vor dem Fertigstellen.
 (umkehrbar)
 Beleg: 2101, Entwurf
 Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
@@ -111,6 +125,78 @@ Betragseingabe: brutto → netto
 Positionen: 1 Position durch 1 Position ersetzen
 Position 1: 6815 Bürobedarf (Konto 4266): 50,01 EUR netto, 19 % USt. → netto 50,01, USt. 9,50, brutto 59,51
 Summe (erwartet): netto 50,01 EUR, USt. 9,50 EUR, brutto 59,51 EUR"
+`;
+
+exports[`German previews > create a USD draft voucher with an exact rate: says the same in German 1`] = `
+"Belegentwurf (Ausgabe) vom 02.11.2026 erstellen: 1 Position, brutto 119,00 USD.
+! Der Server berechnet den EUR-Gegenwert aus den Gesamtsummen und rundet auf Cent; sevDesk kann je Position runden. Fremdwährungsbelege können hier nicht fertiggestellt werden.
+(umkehrbar)
+Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
+Lieferant: Musterfirma GmbH (Kontakt 1001)
+Belegnummer: ER-2026-0815
+Belegdatum: 02.11.2026
+Leistungsdatum: 02.11.2026
+Steuerregel: 9 Vorsteuerabziehbare Aufwendungen
+Betragseingabe: brutto
+Währung: USD
+Wechselkurs: 1 USD = 0,9 EUR
+EUR-Gegenwert (vom Server berechnet): netto 90,00 EUR, USt. 17,10 EUR, brutto 107,10 EUR
+Position 1: 6815 Bürobedarf (Konto 4266): 119,00 USD brutto, 19 % USt. → netto 100,00, USt. 19,00, brutto 119,00
+Summe (erwartet): netto 100,00 USD, USt. 19,00 USD, brutto 119,00 USD
+Status nach dem Speichern: Entwurf (50), noch nicht gebucht"
+`;
+
+exports[`German previews > create a USD draft voucher with an exchange-rate date: says the same in German 1`] = `
+"Belegentwurf (Ausgabe) vom 02.11.2026 erstellen: 1 Position, brutto 119,00 USD.
+! sevDesk verwendet seinen Wechselkurs für den 02.11.2026; die EUR-Beträge stehen erst nach dem Speichern fest. Fremdwährungsbelege können hier nicht fertiggestellt werden.
+(umkehrbar)
+Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
+Lieferant: Musterfirma GmbH (Kontakt 1001)
+Belegnummer: ER-2026-0815
+Belegdatum: 02.11.2026
+Leistungsdatum: 02.11.2026
+Steuerregel: 9 Vorsteuerabziehbare Aufwendungen
+Betragseingabe: brutto
+Währung: USD
+Wechselkursdatum: 02.11.2026
+Position 1: 6815 Bürobedarf (Konto 4266): 119,00 USD brutto, 19 % USt. → netto 100,00, USt. 19,00, brutto 119,00
+Summe (erwartet): netto 100,00 USD, USt. 19,00 USD, brutto 119,00 USD
+Status nach dem Speichern: Entwurf (50), noch nicht gebucht"
+`;
+
+exports[`German previews > create a draft voucher with its receipt file: says the same in German 1`] = `
+"Belegentwurf (Ausgabe) vom 02.11.2026 erstellen: 1 Position, brutto 119,00 EUR; Belegdatei anhängen.
+! Der Beleg wird als Entwurf gespeichert und erst durch sevdesk_voucher_finalize gebucht.
+(umkehrbar)
+Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
+Lieferant: Musterfirma GmbH (Kontakt 1001)
+Belegnummer: ER-2026-0815
+Belegdatum: 02.11.2026
+Leistungsdatum: 02.11.2026
+Steuerregel: 9 Vorsteuerabziehbare Aufwendungen
+Betragseingabe: brutto
+Währung: EUR
+Position 1: 6815 Bürobedarf (Konto 4266): 119,00 EUR brutto, 19 % USt. → netto 100,00, USt. 19,00, brutto 119,00
+Summe (erwartet): netto 100,00 EUR, USt. 19,00 EUR, brutto 119,00 EUR
+Belegdatei: Rechnung-0815.pdf (PDF, 77 Bytes, SHA-256 56c2ac043c28d354…)
+Status nach dem Speichern: Entwurf (50), noch nicht gebucht"
+`;
+
+exports[`German previews > create a draft voucher: says the same in German 1`] = `
+"Belegentwurf (Ausgabe) vom 02.11.2026 erstellen: 1 Position, brutto 119,00 EUR.
+! Der Beleg wird als Entwurf gespeichert und erst durch sevdesk_voucher_finalize gebucht.
+(umkehrbar)
+Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
+Lieferant: Musterfirma GmbH (Kontakt 1001)
+Belegnummer: ER-2026-0815
+Belegdatum: 02.11.2026
+Leistungsdatum: 02.11.2026
+Steuerregel: 9 Vorsteuerabziehbare Aufwendungen
+Betragseingabe: brutto
+Währung: EUR
+Position 1: 6815 Bürobedarf (Konto 4266): 119,00 EUR brutto, 19 % USt. → netto 100,00, USt. 19,00, brutto 119,00
+Summe (erwartet): netto 100,00 EUR, USt. 19,00 EUR, brutto 119,00 EUR
+Status nach dem Speichern: Entwurf (50), noch nicht gebucht"
 `;
 
 exports[`German previews > delete a draft voucher: says the same in German 1`] = `
@@ -401,6 +487,57 @@ Belegdatei: keine angehängt
 Status: Entwurf 50 → offen 100"
 `;
 
+exports[`German previews > import a USD XRechnung with an exact rate: says the same in German 1`] = `
+"Belegentwurf (Ausgabe) vom 04.04.2016 aus einer E-Rechnung erstellen: 1 Position, brutto 336,90 USD; Belegdatei anhängen.
+! Der Server berechnet den EUR-Gegenwert aus den Gesamtsummen und rundet auf Cent; sevDesk kann je Position runden. Fremdwährungsbelege können hier nicht fertiggestellt werden.
+! Keine Partei stimmt mit dem Unternehmen dieses Kontos überein (USt-IdNr., Steuernummer oder Name in sevDesk). Die Rechnung wird als Eingangsrechnung behandelt; prüfen Sie die Zuordnung.
+! Die Rechnung ist in USD. Der Import benötigt exchangeRate oder foreignCurrencyDeadline; die Positionsbeträge bleiben in der Rechnungswährung.
+! Kein sevDesk-Kontakt passt zum Lieferanten (USt-IdNr., IBAN oder exakter Name). Legen Sie ihn mit sevdesk_contact_create an oder speichern Sie den Beleg nur mit dem Namen.
+! Kein sevDesk-Kontakt passt zum Aussteller. Der Beleg wird nur mit dessen Namen gespeichert; mit supplierId können Sie einen Kontakt zuordnen.
+(umkehrbar)
+Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
+Lieferant: [Seller name] (kein Kontakt)
+Belegnummer: 123456XX
+Belegdatum: 04.04.2016
+Leistungsdatum: 04.04.2016
+Steuerregel: 9 Vorsteuerabziehbare Aufwendungen
+Betragseingabe: netto
+Währung: USD
+Wechselkurs: 1 USD = 0,9 EUR
+EUR-Gegenwert (vom Server berechnet): netto 283,37 EUR, USt. 19,84 EUR, brutto 303,21 EUR
+Position 1: 6815 Bürobedarf (Konto 4266): 314,86 USD netto, 7 % USt. → netto 314,86, USt. 22,04, brutto 336,90; E-Rechnung, USt 7 % (S)
+Summe (erwartet): netto 314,86 USD, USt. 22,04 USD, brutto 336,90 USD
+Belegdatei: usd.xml (XML, 9622 Bytes, SHA-256 37f2bafa4fadc060…)
+Aussteller (aus der E-Rechnung): [Seller name], USt-IdNr. DE123456789
+Summen der E-Rechnung: netto 314,86 USD, USt. 22,04 USD, brutto 336,90 USD
+Grundlage der Steuerregel: Inlandsrechnung mit Umsatzsteuer: Vorsteuerabzug möglich (Regel 9, §15 UStG).
+Status nach dem Speichern: Entwurf (50), noch nicht gebucht"
+`;
+
+exports[`German previews > import an XRechnung as a draft voucher: says the same in German 1`] = `
+"Belegentwurf (Ausgabe) vom 04.04.2016 aus einer E-Rechnung erstellen: 1 Position, brutto 336,90 EUR; Belegdatei anhängen.
+! Keine Partei stimmt mit dem Unternehmen dieses Kontos überein (USt-IdNr., Steuernummer oder Name in sevDesk). Die Rechnung wird als Eingangsrechnung behandelt; prüfen Sie die Zuordnung.
+! Kein sevDesk-Kontakt passt zum Lieferanten (USt-IdNr., IBAN oder exakter Name). Legen Sie ihn mit sevdesk_contact_create an oder speichern Sie den Beleg nur mit dem Namen.
+! Kein sevDesk-Kontakt passt zum Aussteller. Der Beleg wird nur mit dessen Namen gespeichert; mit supplierId können Sie einen Kontakt zuordnen.
+! Der Beleg wird als Entwurf gespeichert und erst durch sevdesk_voucher_finalize gebucht.
+(umkehrbar)
+Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
+Lieferant: [Seller name] (kein Kontakt)
+Belegnummer: 123456XX
+Belegdatum: 04.04.2016
+Leistungsdatum: 04.04.2016
+Steuerregel: 9 Vorsteuerabziehbare Aufwendungen
+Betragseingabe: netto
+Währung: EUR
+Position 1: 6815 Bürobedarf (Konto 4266): 314,86 EUR netto, 7 % USt. → netto 314,86, USt. 22,04, brutto 336,90; E-Rechnung, USt 7 % (S)
+Summe (erwartet): netto 314,86 EUR, USt. 22,04 EUR, brutto 336,90 EUR
+Belegdatei: xrechnung.xml (XML, 9622 Bytes, SHA-256 727b51982a84c9b4…)
+Aussteller (aus der E-Rechnung): [Seller name], USt-IdNr. DE123456789
+Summen der E-Rechnung: netto 314,86 EUR, USt. 22,04 EUR, brutto 336,90 EUR
+Grundlage der Steuerregel: Inlandsrechnung mit Umsatzsteuer: Vorsteuerabzug möglich (Regel 9, §15 UStG).
+Status nach dem Speichern: Entwurf (50), noch nicht gebucht"
+`;
+
 exports[`German previews > mark a bank transaction as private: says the same in German 1`] = `
 "Kontoumsatz 5101 als privat markieren (Privatentnahme, Status 100 → 300).
 ! Der Umsatz steht dann nicht mehr für die Zuordnung zu Rechnungen oder Belegen zur Verfügung und zählt nicht mehr zu den betrieblichen Einnahmen und Ausgaben. Rückgängig machen lässt sich das mit sevdesk_transaction_reset.
@@ -483,6 +620,7 @@ exports[`German previews > update a draft voucher: says the same in German 1`] =
 Beleg: 2101, Entwurf
 Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
 Belegnummer: ER-2026-0815 → ER-2026-0816
+Währung: EUR
 Summe (unverändert): 119 EUR"
 `;
 
@@ -492,5 +630,6 @@ exports[`German previews > update a voucher supplier named like a preview placeh
 Beleg: 2101, Entwurf
 Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
 Lieferant: (ohne Namen) (kein Kontakt) → (unnamed) (kein Kontakt)
+Währung: EUR
 Summe (unverändert): 119 EUR"
 `;

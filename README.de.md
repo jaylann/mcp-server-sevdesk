@@ -113,14 +113,21 @@ Die Umsatzsteuer-Auswertung ist deutlich als Schätzung gekennzeichnet (Soll- od
 Istversteuerung). Jedes Schreibwerkzeug akzeptiert `dryRun: true` und gibt dann nur genau das
 zurück, was es tun würde. Die vollständige, generierte Referenz ist [docs/tools.md](docs/tools.md).
 
-Ein Belegentwurf in Fremdwährung lässt sich mit `sevdesk_voucher_update_draft` auf EUR umstellen:
-Übergeben Sie `currency: "EUR"` und **alle Positionen mit Ihren EUR-Beträgen**, bei Bedarf auch
-`amountMode`. Es wird kein Wechselkurs berechnet. Prüfen Sie zuerst die Vorschau mit `dryRun: true`
-und nach dem Speichern die Währung und Beträge mit `sevdesk_voucher_get`, bevor Sie den Beleg
-fertigstellen. Ein [Test im Testkonto](spec/deviations.md#d-081-converting-a-voucher-draft-to-eur-clears-foreign-sums)
-bestätigt die EUR-Beträge und die auf null gesetzten Fremdwährungssummen. Das Auslesen des
-gespeicherten Wechselkurses bleibt ungeklärt.
-Der direkte Import von E-Rechnungen in Fremdwährung bleibt ausgeschlossen.
+Belegentwürfe lassen sich in Fremdwährung (`currency`) erstellen und ändern, auch durch den
+Import von E-Rechnungen. Übergeben Sie genau eines von `exchangeRate` (eine positive Dezimalzahl
+als Zeichenkette: `"0.9"` bedeutet **1 USD = 0,9 EUR**) oder `foreignCurrencyDeadline`
+(`YYYY-MM-DD`). Positionsbeträge bleiben in der Belegwährung. Bei einem expliziten Kurs zeigt
+die Vorschau den vom Server berechneten EUR-Gegenwert. Bei einem Wechselkursdatum wählt sevDesk
+den Kurs; die EUR-Beträge stehen erst nach dem Speichern fest. Danach prüft der Server die
+Fremdwährungs- und EUR-Summen und meldet Abweichungen sowie ungefähr abgeleitete Kurse.
+
+**Jede Änderung eines Fremdwährungsbelegs benötigt erneut einen Kurs oder ein Wechselkursdatum
+und alle Positionen.** [Tests im Testkonto](spec/deviations.md#d-082-voucher-exchange-rates-are-not-returned-and-updates-reconvert-positions)
+zeigten, dass Kursänderungen gespeicherte EUR-Positionen erneut umrechnen können; GET liefert den
+Kurs nicht zurück. Für die Umstellung auf EUR übergeben Sie `currency: "EUR"` und alle Positionen
+mit Ihren EUR-Beträgen, ohne Kurs. Prüfen Sie zuerst die Vorschau mit `dryRun: true` und danach die
+gespeicherten Beträge mit `sevdesk_voucher_get`. Fremdwährungsbelege können hier weiterhin nicht
+fertiggestellt werden.
 
 ## Prompts
 

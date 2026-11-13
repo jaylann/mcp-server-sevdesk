@@ -13,6 +13,7 @@ import {
   MAX_VOUCHER_POSITIONS,
   type VoucherPositionInput,
 } from "./voucher-checks.js";
+import { type ExchangeArgs, exchangeInputs, voucherCurrencyInput } from "./voucher-currency.js";
 
 const positiveId = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 
@@ -22,7 +23,7 @@ const voucherPositionInput = z.strictObject({
       "kind=receipt_guidance (it lists the tax rules and rates each account allows).",
   ),
   amount: amountInput({ allowZero: false }).describe(
-    'Betrag of this position in EUR, gross or net as amountMode says, e.g. "119.00".',
+    'Betrag in the voucher currency, gross or net as amountMode says, e.g. "119.00".',
   ),
   taxRate: amountInput({ places: 2 })
     .optional()
@@ -108,6 +109,12 @@ const dateInputs = {
 
 /** Input fields of `sevdesk_voucher_create_draft` (without `dryRun`). */
 export const voucherCreateInputShape = {
+  currency: voucherCurrencyInput
+    .optional()
+    .describe(
+      "ISO 4217 currency, e.g. USD; default EUR. Non-EUR requires exchangeRate or foreignCurrencyDeadline.",
+    ),
+  ...exchangeInputs,
   kind: z
     .enum(VOUCHER_KINDS)
     .optional()
@@ -134,13 +141,12 @@ export const voucherCreateInputShape = {
 /** Input fields of `sevdesk_voucher_update_draft` (without `dryRun`). */
 export const voucherUpdateInputShape = {
   id: positiveId.describe("Id of the draft voucher, e.g. from sevdesk_vouchers_list."),
-  currency: z
-    .literal("EUR")
+  currency: voucherCurrencyInput
     .optional()
     .describe(
-      'Pass "EUR" explicitly to convert a foreign-currency draft. Requires ALL positions with ' +
-        "caller-supplied EUR amounts; no exchange rate is calculated. Review with dryRun first.",
+      'Target currency; default the stored currency. A currency change needs ALL positions in that currency. Pass "EUR" to convert back without a rate.',
     ),
+  ...exchangeInputs,
   supplierId: supplierIdInput,
   supplierName: supplierNameInput,
   number: numberInput,
@@ -155,7 +161,7 @@ export const voucherUpdateInputShape = {
   positions: positionsInput
     .optional()
     .describe(
-      "When given, replaces ALL positions; leave out to keep them. Required with EUR amounts when converting currency.",
+      "Replaces ALL positions, in the target currency. Required for any currency change and every non-EUR update, together with a fresh rate or deadline.",
     ),
   file: fileInput
     .optional()
@@ -165,7 +171,8 @@ export const voucherUpdateInputShape = {
     ),
 };
 
-export interface VoucherCreateArgs {
+export interface VoucherCreateArgs extends ExchangeArgs {
+  readonly currency?: string | undefined;
   readonly kind?: VoucherKind | undefined;
   readonly supplierId?: number | undefined;
   readonly supplierName?: string | undefined;
@@ -181,9 +188,9 @@ export interface VoucherCreateArgs {
   readonly allowDuplicate?: boolean | undefined;
 }
 
-export interface VoucherUpdateArgs {
+export interface VoucherUpdateArgs extends ExchangeArgs {
   readonly id: number;
-  readonly currency?: "EUR" | undefined;
+  readonly currency?: string | undefined;
   readonly supplierId?: number | undefined;
   readonly supplierName?: string | undefined;
   readonly number?: string | undefined;
@@ -199,6 +206,7 @@ export interface VoucherUpdateArgs {
 
 /** Input fields of `sevdesk_voucher_import_einvoice` (without `dryRun`). */
 export const voucherImportInputShape = {
+  ...exchangeInputs,
   file: z
     .string()
     .min(1)
@@ -245,7 +253,7 @@ export const voucherImportInputShape = {
     ),
 };
 
-export interface VoucherImportArgs {
+export interface VoucherImportArgs extends ExchangeArgs {
   readonly file: string;
   readonly accountDatevId?: number | undefined;
   readonly accounts?:

@@ -56,8 +56,8 @@ describe("foreign-currency draft conversion (D-081)", () => {
       const fake = client();
       await expect(prepareWrite(tool, input, fake)).rejects.toThrow(
         input.currency === undefined
-          ? 'currency: "EUR"'
-          : "requires all positions with EUR amounts",
+          ? "exchangeRate or foreignCurrencyDeadline"
+          : "requires all positions in the target currency",
       );
       expect(fake.writes()).toEqual([]);
     }
@@ -66,7 +66,7 @@ describe("foreign-currency draft conversion (D-081)", () => {
     expect(fake.writes()).toEqual([]);
   });
 
-  it.each(["USD", "eur", "", null])(
+  it.each(["ZZZ", "eur", "", null])(
     "rejects target currency %s before reading",
     async (currency) => {
       const fake = client();
@@ -186,7 +186,7 @@ describe("foreign-currency draft conversion (D-081)", () => {
     expect(plan.preview.warnings).toEqual([
       "Currency changes to EUR using the supplied position amounts. No exchange rate is calculated; the old amounts are not reused.",
       "Old foreign-currency sums: net 100.00 USD, tax 19.00 USD, gross 119.00 USD (sum…ForeignCurrency).",
-      "The stored result of a currency change has not been verified live. Check the currency and EUR amounts after saving, before finalizing.",
+      "Check the currency and EUR amounts after saving, before finalizing.",
     ]);
     expect(plan.previewDe?.warnings[1]).toContain(
       "netto 100,00 USD, USt. 19,00 USD, brutto 119,00 USD",
