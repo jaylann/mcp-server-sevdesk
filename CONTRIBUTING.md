@@ -145,9 +145,11 @@ comment leads with **model-context tokens** and **response tokens**, base → he
   write, all toolsets/tiers (including advanced), and all over HTTP with OAuth and remote files.
 - Response cost runs an invoice get, an invoice summary by month, and default-limit contact,
   transaction, voucher and invoice lists through the real server on **recorded fixtures**.
+  `transactions_list`, `vouchers_list` and `invoices_list` each also run with `detail: "summary"`;
+  `invoices_list` runs with both detail levels at `limit: 100` too.
   Each recorded list is expanded deterministically to 100 items by repeating its scrubbed row
   shapes with distinct ids, discarding the original upstream total. Default-limit calls currently
-  return 25 rows; an additional invoice call requests `limit: 100`. Tests assert those counts and
+  return 25 rows. Tests assert those counts and
   compare full and `detail: "summary"` responses for transactions, vouchers and both invoice
   page sizes, with each summary row immediately after its full counterpart. They also
   verify that reducing the default to 10 changes the measured cost. Both revisions use the same
