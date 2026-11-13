@@ -1,5 +1,14 @@
 import { execFile } from "node:child_process";
-import { copyFile, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  mkdtemp,
+  open,
+  readFile,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -13,6 +22,12 @@ import {
   createTokenCounter,
   TOKEN_MODEL,
 } from "../../../scripts/tool-surface-tokens.js";
+
+// Intercept only the next open to exercise races/errors on a real file descriptor.
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual, open: vi.fn(actual.open) };
+});
 
 const view = {
   system: "Instructions ä😀",
@@ -134,3 +149,65 @@ it("runs the isolated Node-only counter on JSON, without dependencies or head im
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+it("reads the validated inode even when its path is replaced before the read", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "sevdesk-count-race-"));
+  const base = join(directory, "base.json");
+  const head = join(directory, "head.json");
+  const report = join(directory, "report.json");
+  try {
+    await writeFile(base, JSON.stringify(surface()));
+    await writeFile(head, JSON.stringify(surface()));
+    await writeFile(report, JSON.stringify({ version: 1 }));
+    const handle = await open(base, "r");
+    const stat = handle.stat.bind(handle);
+    const read = vi.spyOn(handle, "readFile");
+    const close = vi.spyOn(handle, "close");
+    vi.spyOn(handle, "stat").mockImplementationOnce(async () => {
+      const checked = await stat();
+      await rename(base, join(directory, "original.json"));
+      await writeFile(base, "replacement is not JSON");
+      return checked;
+    });
+    vi.mocked(open).mockResolvedValueOnce(handle);
+    await countCapturedReport([base, head, report]);
+    const result = JSON.parse(await readFile(report, "utf8")) as {
+      tokenCost: { base: unknown; head: unknown };
+    };
+    expect(result.tokenCost.base).toEqual(result.tokenCost.head);
+    expect(read).toHaveBeenCalledExactlyOnceWith("utf8");
+    expect(close).toHaveBeenCalledOnce();
+    expect(await readFile(base, "utf8")).toBe("replacement is not JSON");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it.each(["oversized", "nonregular", "stat", "read", "parse"])(
+  "closes the counting input handle after %s failure",
+  async (failure) => {
+    const directory = await mkdtemp(join(tmpdir(), "sevdesk-count-close-"));
+    const base = join(directory, "base.json");
+    try {
+      await writeFile(base, failure === "parse" ? "not JSON" : JSON.stringify(surface()));
+      const handle = await open(base, "r");
+      const close = vi.spyOn(handle, "close");
+      const read = vi.spyOn(handle, "readFile");
+      if (failure === "oversized" || failure === "nonregular") {
+        const checked = await handle.stat();
+        if (failure === "oversized") checked.size = 20_000_001;
+        if (failure === "nonregular") vi.spyOn(checked, "isFile").mockReturnValue(false);
+        vi.spyOn(handle, "stat").mockResolvedValue(checked);
+      }
+      if (failure === "stat") vi.spyOn(handle, "stat").mockRejectedValue(new Error("stat failed"));
+      if (failure === "read") read.mockRejectedValue(new Error("read failed"));
+      vi.mocked(open).mockResolvedValueOnce(handle);
+      await expect(countCapturedReport([base, "unused-head", "unused-report"])).rejects.toThrow();
+      expect(close).toHaveBeenCalledOnce();
+      if (["oversized", "nonregular", "stat"].includes(failure))
+        expect(read).not.toHaveBeenCalled();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+);

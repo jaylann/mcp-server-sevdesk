@@ -39,7 +39,6 @@ jobs:
           REPORT_PATH: ${{ runner.temp }}/tool-surface-report/report.json
           BASE_PATH: ${{ runner.temp }}/tool-surface-report/base.json
           HEAD_PATH: ${{ runner.temp }}/tool-surface-report/head.json
-          ANTHROPIC_IDENTITY_TOKEN_FILE: ${{ runner.temp }}/anthropic-identity.jwt
           ANTHROPIC_FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
           ANTHROPIC_ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
           ANTHROPIC_SERVICE_ACCOUNT_ID: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
@@ -47,6 +46,19 @@ jobs:
         with:
           script: |
             const fs = require('node:fs/promises');
+            const { constants } = require('node:fs');
+            const readJson = async (path, maxBytes, label) => {
+              // Validate/read one descriptor so replacing the pathname cannot swap checked data.
+              const handle = await fs.open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
+                .catch(() => { throw new Error(`Invalid ${label} file.`); });
+              try {
+                const stat = await handle.stat();
+                if (!stat.isFile() || stat.size > maxBytes) throw new Error(`Invalid ${label} file.`);
+                return JSON.parse(await handle.readFile('utf8'));
+              } finally {
+                await handle.close();
+              }
+            };
             const run = context.payload.workflow_run;
             const repo = context.repo;
             const fullName = `${repo.owner}/${repo.repo}`;
@@ -55,9 +67,7 @@ jobs:
                 run.path !== '.github/workflows/tool-surface.yml') {
               throw new Error('Unexpected source workflow.');
             }
-            const stat = await fs.lstat(process.env.REPORT_PATH);
-            if (!stat.isFile() || stat.size > 300_000) throw new Error('Invalid report file.');
-            const report = JSON.parse(await fs.readFile(process.env.REPORT_PATH, 'utf8'));
+            const report = await readJson(process.env.REPORT_PATH, 300_000, 'report');
             const sha = /^[a-f0-9]{40}$/;
             if (!report || report.version !== 1 || !Number.isSafeInteger(report.pr) || report.pr < 1 ||
                 typeof report.base !== 'string' || !sha.test(report.base) ||
@@ -128,15 +138,12 @@ jobs:
               const fields = ['FEDERATION_RULE_ID', 'ORGANIZATION_ID', 'SERVICE_ACCOUNT_ID', 'WORKSPACE_ID'];
               const configured = fields.every(field => process.env[`ANTHROPIC_${field}`]?.trim());
               if (configured) {
-                let identityWritten = false;
                 try {
                   const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
                   const captures = {};
                   for (const revision of ['base', 'head']) {
                     const path = process.env[`${revision.toUpperCase()}_PATH`];
-                    const stat = await fs.lstat(path);
-                    if (!stat.isFile() || stat.size > 20_000_000) throw new Error('Invalid capture file.');
-                    const capture = JSON.parse(await fs.readFile(path, 'utf8'));
+                    const capture = await readJson(path, 20_000_000, 'capture');
                     if (!isObject(capture) || capture.version !== 1 ||
                         !hasKeys(capture.configurations, configurations) ||
                         (capture.responses !== undefined && (!isObject(capture.responses) ||
@@ -172,14 +179,12 @@ jobs:
                   const signal = AbortSignal.timeout(90_000);
                   const identity = await core.getIDToken('https://api.anthropic.com');
                   core.setSecret(identity);
-                  await fs.writeFile(process.env.ANTHROPIC_IDENTITY_TOKEN_FILE, identity, { mode: 0o600, flag: 'wx' });
-                  identityWritten = true;
                   const exchange = await fetch('https://api.anthropic.com/v1/oauth/token', {
                     method: 'POST', redirect: 'error', signal,
                     headers: { 'content-type': 'application/json' },
                     body: JSON.stringify({
                       grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-                      assertion: await fs.readFile(process.env.ANTHROPIC_IDENTITY_TOKEN_FILE, 'utf8'),
+                      assertion: identity,
                       ...Object.fromEntries(fields.map(field => [field.toLowerCase(), process.env[`ANTHROPIC_${field}`]])),
                     }),
                   });
@@ -229,11 +234,6 @@ jobs:
                 } catch {
                   // Do not log provider errors, response bodies, request data, or tokens.
                   core.info('Exact token counting unavailable; publishing estimates.');
-                } finally {
-                  if (identityWritten) {
-                    try { await fs.unlink(process.env.ANTHROPIC_IDENTITY_TOKEN_FILE); }
-                    catch { core.info('Temporary identity cleanup unavailable.'); }
-                  }
                 }
               } else {
                 core.info('Federation variables missing; publishing estimates.');

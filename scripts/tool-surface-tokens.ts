@@ -3,7 +3,8 @@
  * Local/PR estimates only. Federated exact counting lives in the trusted comment workflow.
  * node scripts/tool-surface-tokens.ts base.json head.json report.json
  */
-import { lstat, readFile, realpath, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { open, realpath, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 export const TOKEN_MODEL = "claude-opus-5-5";
@@ -97,9 +98,20 @@ export async function measureCapturedTokens(value: unknown, counter: TokenCounte
 }
 
 async function readJson(path: string, maxBytes: number): Promise<unknown> {
-  const stat = await lstat(path);
-  if (!stat.isFile() || stat.size > maxBytes) throw new Error("Invalid counting input file.");
-  return JSON.parse(await readFile(path, "utf8"));
+  // Reject symlinks/special files without blocking, then validate and read the same descriptor.
+  const handle = await open(
+    path,
+    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+  ).catch(() => {
+    throw new Error("Invalid counting input file.");
+  });
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.size > maxBytes) throw new Error("Invalid counting input file.");
+    return JSON.parse(await handle.readFile("utf8"));
+  } finally {
+    await handle.close();
+  }
 }
 
 /** Recounts an existing report; JSON is data, never imported or evaluated. */

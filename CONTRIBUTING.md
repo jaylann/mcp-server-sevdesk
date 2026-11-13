@@ -196,16 +196,18 @@ uses the `token-count` environment and job-level `id-token: write`, artifact-rea
 permissions. It checks out no code, installs nothing and executes no artifact contents. It
 verifies provenance/current PR commits, rejects artifact claims of exact counts, bounds the report
 at 300 KB and each capture at 20 MB, validates tool/system and response shapes and limits each
-counted context/response to 2 million characters. Invalid or missing captures leave estimates.
+counted context/response to 2 million characters. Both readers open without following symlinks,
+validate the open handle, read through that same handle and close it in `finally`. Invalid or
+missing captures leave estimates.
 Only the validated tool definitions, system strings and response text go to the counting endpoint.
 
 The inline script obtains a fresh GitHub OIDC token for `https://api.anthropic.com`, masks it and
-writes a private temporary file identified by `ANTHROPIC_IDENTITY_TOKEN_FILE`. It exchanges that
-single-use assertion once at `/v1/oauth/token` for a short-lived bearer token, masks that token,
+passes that single-use assertion directly in memory to one `/v1/oauth/token` exchange for a
+short-lived bearer token. It masks that token
 and calls `/v1/messages/count_tokens` with the same counter/calibration for base and head. Native
 `fetch` uses fixed origins, refuses redirects and bounds the exchange/count sequence to 90 seconds;
-no SDK installation or PR package code runs in the privileged job. The identity file is removed
-in `finally`; credentials and provider errors are never logged or uploaded.
+no SDK installation or PR package code runs in the privileged job. No identity-token file is
+created; credentials and provider errors are never logged or uploaded.
 
 Missing repository variables or any exchange/count failure publish the **entire estimated**
 comparison. Exact counts replace estimates only after every available capture succeeds; a late
@@ -218,29 +220,34 @@ run after landing on the default branch; inspect this PR's artifacts before then
 No API key secret is needed. [Token counting is free and rate-limited](https://platform.claude.com/docs/en/build-with-claude/token-counting#pricing-and-rate-limits).
 Follow the [Anthropic GitHub Actions WIF setup](https://platform.claude.com/docs/en/manage-claude/wif-providers/github-actions):
 
-1. In Claude Console → **Workload identity → Connect workload → GitHub Actions**, set:
+1. **Before merging**, create the GitHub environment **`token-count`**, restrict deployment
+   branches to **`main`**, and set **no required reviewers**. Do not let the first run
+   auto-create an unrestricted environment.
+2. In Claude Console → **Workload identity → Connect workload → GitHub Actions**, set:
    - Issuer: `https://token.actions.githubusercontent.com`, using discovery.
-   - Subject: `repo:jaylann/mcp-server-sevdesk:environment:token-count` (exact, no wildcard).
+   - Exact subject: `repo:jaylann@61842101/mcp-server-sevdesk@1449574146:environment:token-count`,
+     with **no trailing `*`**.
    - Audience: `https://api.anthropic.com`.
-   - Exact claims: `repository_owner: jaylann`, `repository: jaylann/mcp-server-sevdesk`,
+   - Exact claims: `repository_owner: jaylann`, `repository_owner_id: 61842101`,
+     `repository: jaylann/mcp-server-sevdesk`, `repository_id: 1449574146`,
      `event_name: workflow_run`, and
      `workflow_ref: jaylann/mcp-server-sevdesk/.github/workflows/tool-surface-comment.yml@refs/heads/main`.
-     Use `workflow_ref`: [GitHub documents `job_workflow_ref` for reusable workflows](https://docs.github.com/en/actions/reference/security/oidc#custom-claims-provided-by-github),
-     whereas this is a top-level workflow.
-   - Target: a **new service account** with only the dedicated workspace added explicitly, using
-     that workspace's lowest available spend limit. Bind the rule and exchanged token to this
-     workspace only. Anthropic documents an implicit Default Workspace membership for every
-     service account; do not treat membership alone as workspace isolation.
+     Use `workflow_ref` for this top-level workflow, not the reusable-workflow claim `job_workflow_ref`.
+   - Target: a **new service account**, with only the dedicated workspace added explicitly and
+     its lowest available spend limit. Bind the rule and exchanged token to that workspace only;
+     Anthropic's implicit Default Workspace membership means membership alone is not isolation.
    - Scope: the narrowest offered (wizard default `workspace:developer`); lifetime **600 seconds**.
-2. In GitHub, create environment **`token-count`**, limit deployment branches to **`main`**,
-   and set **no required reviewers**, so estimates are not held behind manual approval.
-3. Set these four **repository variables**, using the IDs from the Console:
+3. Set these four **repository variables** using the Console IDs:
    `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID`,
-   `ANTHROPIC_SERVICE_ACCOUNT_ID`, `ANTHROPIC_WORKSPACE_ID`.
+   `ANTHROPIC_SERVICE_ACCOUNT_ID`, `ANTHROPIC_WORKSPACE_ID`. No API key secret is needed.
+4. **After merge and the first relevant PR run**, confirm the actual subject, audience and all
+   claim strings above in the **Console authentication history**. Verify a successful exchange
+   and an **Exact** comment; an **Estimated** comment verifies fallback only. Independently
+   confirm that `x` is one payload token for `claude-opus-5-5`, as assumed by `baseline - 1`.
 
-The federation is not configured by this PR, and its trusted publisher only runs from `main`.
-The first relevant PR run after merge and setup must verify the live exchange and an **Exact**
-comment. A successful workflow with an **Estimated** comment verifies fallback only.
+This repository uses GitHub's [immutable subject claims](https://docs.github.com/en/actions/reference/security/oidc#immutable-subject-claims).
+The federation is not configured by this PR; live exchange, claim matching and the one-token
+calibration assumption remain open until the first configured run from `main`.
 
 ## HTTP mode
 
