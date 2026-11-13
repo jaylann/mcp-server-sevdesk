@@ -93,7 +93,7 @@ describe("sevdesk_invoice_pdf", () => {
         text:
           `Invoice 12: PDF file with ${PDF_BYTES.byteLength} bytes, available as resource ` +
           `sevdesk://invoices/12/pdf (fetched as a preview: not marked as sent).\n\n` +
-          JSON.stringify(data, null, 2),
+          JSON.stringify(data),
       },
       {
         type: "resource_link",

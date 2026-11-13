@@ -291,6 +291,8 @@ describe("resources/read: reference data", () => {
     });
     const text = entry !== undefined && "text" in entry ? entry.text : "";
     expect(JSON.parse(text)).toEqual(JSON.parse(JSON.stringify({ taxRules: TAX_RULES })));
+    expect(text).not.toMatch(/[\r\n\t]/);
+    expect(text).toBe(JSON.stringify({ taxRules: TAX_RULES }));
   });
 
   it("serves the status codes as JSON", async () => {
@@ -301,6 +303,8 @@ describe("resources/read: reference data", () => {
     const [entry] = result.contents;
     const text = entry !== undefined && "text" in entry ? entry.text : "";
     expect(JSON.parse(text)).toEqual(JSON.parse(JSON.stringify({ statusCodes: STATUS_CODES })));
+    expect(text).not.toMatch(/[\r\n\t]/);
+    expect(text).toBe(JSON.stringify({ statusCodes: STATUS_CODES }));
   });
 
   it("are not exposed without the meta toolset", async () => {

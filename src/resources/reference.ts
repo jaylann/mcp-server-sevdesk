@@ -57,7 +57,7 @@ export function registerReferenceResources(server: McpServer): void {
           {
             uri: uri.href,
             mimeType: JSON_MIME_TYPE,
-            text: JSON.stringify(resource.content(), null, 2),
+            text: JSON.stringify(resource.content()),
           },
         ],
       }),

@@ -155,8 +155,11 @@ flowchart LR
    the response. GETs may be retried; POST and PUT never are. Error bodies become typed errors with
    the token redacted.
 6. **Result.** The domain returns a compact DTO: money as exact decimals with currency, ISO dates,
-   deep links into the sevDesk web app, and untrusted text fenced. The tool always returns the DTO
-   as a JSON text block. It adds `outputSchema` and `structuredContent` only on protocol version
+   deep links into the sevDesk web app, and untrusted text sanitized. The tool always returns the DTO
+   as minified JSON after a trusted summary and a blank line in one text block. JSON escaping
+   keeps untrusted DTO strings inside their values without relying on indentation; untrusted
+   text beside prose uses Markdown fences. Static JSON reference resources are also minified.
+   The tool adds `outputSchema` and `structuredContent` only on protocol version
    2026-07-28 or later, or when `SEVDESK_STRUCTURED_OUTPUT=on`, because some clients mishandle
    structured output. Truncated lists say how many items were left out. Files (PDF, XML, exports)
    are returned as resources, written to `SEVDESK_OUTPUT_DIR` or, over HTTP, handed out as
