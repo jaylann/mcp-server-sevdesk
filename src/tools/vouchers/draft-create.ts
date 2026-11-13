@@ -44,9 +44,15 @@ export const voucherCreateDraftTool = defineWriteTool({
       cacheOwner: ctx.config,
       files: ctx.files,
     }),
-  execute: async (_args, plan, ctx) =>
-    voucherDraftToolOutput(
-      await executeVoucherSave(ctx.client, plan.state, ctx.signal),
-      "Created draft",
-    ),
+  execute: async (args, plan, ctx) => {
+    const result = await executeVoucherSave(ctx.client, plan.state, ctx.signal);
+    if (
+      args.file !== undefined &&
+      plan.state.file !== undefined &&
+      result.details.voucher.hasDocument === true
+    ) {
+      ctx.files.release(args.file);
+    }
+    return voucherDraftToolOutput(result, "Created draft");
+  },
 });

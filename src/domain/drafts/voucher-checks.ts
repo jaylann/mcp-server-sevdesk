@@ -57,6 +57,7 @@ import {
   taxRuleFor,
   taxRuleWarnings,
   UNKNOWN_REGIME_WARNING,
+  UNKNOWN_REGIME_WARNING_DE,
 } from "./tax.js";
 import type { ReceiptFile } from "./voucher-payload.js";
 
@@ -170,6 +171,7 @@ export function resolveVoucherRule(
   kind: VoucherKind,
   taxRuleId: number | undefined,
   regime: TaxRegime | undefined,
+  lang: PreviewLanguage = "en",
 ): VoucherRule {
   const scope = voucherRuleScope(kind);
   const ruleId = taxRuleId ?? DEFAULT_VOUCHER_RULES[kind][regime ?? "regular"];
@@ -180,8 +182,10 @@ export function resolveVoucherRule(
   return {
     rule,
     warnings: [
-      ...(regime === undefined ? [UNKNOWN_REGIME_WARNING] : []),
-      ...taxRuleWarnings(rule, regime),
+      ...(regime === undefined
+        ? [lang === "de" ? UNKNOWN_REGIME_WARNING_DE : UNKNOWN_REGIME_WARNING]
+        : []),
+      ...taxRuleWarnings(rule, regime, lang),
     ],
   };
 }
@@ -560,10 +564,10 @@ export async function readReceiptFile(
 }
 
 /** "Rechnung-4711.pdf (PDF, 48211 bytes, SHA-256 3f2a…)": local text, cleaned by the fact. */
-export function receiptText(file: ReceiptFile): string {
+export function receiptText(file: ReceiptFile, lang: PreviewLanguage = "en"): string {
   const hash = createHash("sha256").update(file.bytes).digest("hex").slice(0, 16);
   return (
-    `${file.name} (${file.kind.toUpperCase()}, ${String(file.bytes.length)} bytes, SHA-256 ` +
+    `${file.name} (${file.kind.toUpperCase()}, ${String(file.bytes.length)} ${lang === "de" ? "Bytes" : "bytes"}, SHA-256 ` +
     `${hash}…)`
   );
 }

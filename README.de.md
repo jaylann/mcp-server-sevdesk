@@ -1,4 +1,4 @@
-<!-- translated-from: README.md sha256:13141cf1d2a1 -->
+<!-- translated-from: README.md sha256:44b007f1d80d -->
 
 <img src="https://raw.githubusercontent.com/jaylann/mcp-server-sevdesk/main/assets/icon.svg" alt="" width="96" height="96" align="right">
 
@@ -39,7 +39,11 @@ Testumgebung. Dieser Server ist um diese Tatsache herum gebaut:
 - **Korrekt für sevDesk-Update 2.0.** Steuerregeln und Buchungskonten werden geprüft, bevor
   etwas gesendet wird.
 - **Kompakte, typisierte Ausgabe.** Zusammenfassungen rechnet der Server, damit das Modell nicht
-  durch Hunderte Datensätze blättert.
+  durch Hunderte Datensätze blättert. Status-, Typ- und Buchungskategorie-Objekte enthalten nach
+  Möglichkeit einen `key`, den die passende Eingabe oder der Filter akzeptiert. Adressen enthalten
+  neben `countryId` den ISO-Code `country`, sofern die Ländertabelle ihn auflösen kann.
+  Referenzabfragen liefern `hasMore` und das wirksame `limit` (`null` für Listen ohne Seiten);
+  `truncated` zeigt getrennt davon fehlende Einträge aus sevDesk an.
 
 ## Schnellstart
 
@@ -58,7 +62,7 @@ bewahrt das Token im sicheren Speicher Ihres Systems auf.
 ### Claude Code
 
 ```bash
-npx -y mcp-server-sevdesk token set work   # legt das Token im Schlüsselbund des Betriebssystems ab (macOS, Linux)
+npx -y mcp-server-sevdesk token set work   # legt das Token im Schlüsselbund des Betriebssystems ab (macOS, Linux, Windows)
 claude mcp add --env SEVDESK_API_TOKEN_KEYCHAIN=work --scope user sevdesk -- npx -y mcp-server-sevdesk
 ```
 
@@ -109,18 +113,26 @@ Die Umsatzsteuer-Auswertung ist deutlich als Schätzung gekennzeichnet (Soll- od
 Istversteuerung). Jedes Schreibwerkzeug akzeptiert `dryRun: true` und gibt dann nur genau das
 zurück, was es tun würde. Die vollständige, generierte Referenz ist [docs/tools.md](docs/tools.md).
 
+Ein Belegentwurf in Fremdwährung lässt sich mit `sevdesk_voucher_update_draft` auf EUR umstellen:
+Übergeben Sie `currency: "EUR"` und **alle Positionen mit Ihren EUR-Beträgen**, bei Bedarf auch
+`amountMode`. Es wird kein Wechselkurs berechnet. Prüfen Sie zuerst die Vorschau mit `dryRun: true`
+und nach dem Speichern die Währung und Beträge mit `sevdesk_voucher_get`, bevor Sie den Beleg
+fertigstellen. Die Umstellung ist mit Testdaten geprüft; das tatsächlich gespeicherte Ergebnis
+muss noch [am Live-System geprüft werden](spec/deviations.md#d-081-converting-a-voucher-draft-to-eur-is-unverified).
+Der direkte Import von E-Rechnungen in Fremdwährung bleibt ausgeschlossen.
+
 ## Prompts
 
 Fertige Arbeitsabläufe als MCP-Prompts. Clients zeigen sie neben den Werkzeugen an; in Claude Code
 sind es Slash-Befehle wie `/mcp__sevdesk__month_end_close`.
 
-| Prompt                | Was er tut                                                                                                                                                                  | Argumente                                 |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| `month_end_close`     | Monatsabschluss: Änderungen, nicht zugeordnete Kontoumsätze, Entwürfe, offene Forderungen und Verbindlichkeiten, Umsatzsteuer-Vorprüfung, Gewinn, Übergabe per DATEV-Export | `month` (YYYY-MM, Standard: der Vormonat) |
-| `receipt_intake`      | Beleg erfassen, E-Rechnung importieren: Dublettenprüfung, Buchungskonto und Steuerregel, Belegentwurf, fertigstellen, Zahlung                                               | `file` (optional)                         |
-| `dunning_run`         | Mahnlauf: überfällige Rechnungen, nicht zugeordnete Zahlungseingänge, Mahnungsentwürfe                                                                                      | keine                                     |
-| `vat_precheck`        | UStVA-Vorprüfung: nicht zugeordnete Kontoumsätze und Entwürfe, Umsatzsteuer-Auswertung (Kennzahlen), ZM                                                                     | `period` (YYYY-MM oder YYYY-Qn)           |
-| `bank_reconciliation` | Kontoabgleich: Vorschläge, Zuordnungen, private Umsätze, Korrekturen                                                                                                        | keine                                     |
+| Prompt                | Was er tut                                                                                                                                                                  | Argumente                                                           |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `month_end_close`     | Monatsabschluss: Änderungen, nicht zugeordnete Kontoumsätze, Entwürfe, offene Forderungen und Verbindlichkeiten, Umsatzsteuer-Vorprüfung, Gewinn, Übergabe per DATEV-Export | `month` (YYYY-MM, Standard: der Vormonat)                           |
+| `receipt_intake`      | Beleg erfassen, E-Rechnung importieren: Dublettenprüfung, Buchungskonto und Steuerregel, Belegentwurf, fertigstellen, Zahlung                                               | `file` (optional)                                                   |
+| `dunning_run`         | Mahnlauf: überfällige Rechnungen, nicht zugeordnete Zahlungseingänge, Mahnungsentwürfe                                                                                      | `contact` (Name/ID), `minDaysOverdue` (0–3650 Tage); beide optional |
+| `vat_precheck`        | UStVA-Vorprüfung: nicht zugeordnete Kontoumsätze und Entwürfe, Umsatzsteuer-Auswertung (Kennzahlen), ZM                                                                     | `period` (YYYY-MM oder YYYY-Qn)                                     |
+| `bank_reconciliation` | Kontoabgleich: Vorschläge, Zuordnungen, private Umsätze, Korrekturen                                                                                                        | `checkAccount` (Name/ID), `month` (YYYY-MM); beide optional         |
 
 Ein Prompt erscheint nur, wenn die Werkzeuge, die er braucht, aktiviert sind; Schritte, die eine
 deaktivierte Stufe, Werkzeuggruppe oder einen fehlenden Ordner brauchen, werden mit der
@@ -229,8 +241,8 @@ Token-Variable; ohne `SEVDESK_ALLOW` bleibt es nur lesend).
 | [Architektur](docs/architecture.md)                        | Wie der Server gebaut ist, und die [Architekturentscheidungen](docs/adr/README.md) |
 | [Sicherheit](SECURITY.de.md), [Datenschutz](PRIVACY.de.md) | Bedrohungsmodell, Schwachstellen melden, was wo gespeichert wird                   |
 
-**Als Nächstes** in 1.x: Briefe per Post versenden, sevDesk-Konten in Österreich und die
-Windows-Anmeldeinformationsverwaltung. Das [Changelog](CHANGELOG.md) listet jedes Release.
+**Als Nächstes** in 1.x: Briefe per Post versenden und sevDesk-Konten in Österreich.
+Das [Changelog](CHANGELOG.md) listet jedes Release.
 
 ## Mitwirken
 

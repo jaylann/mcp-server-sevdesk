@@ -1,7 +1,8 @@
 # ADR 0008: File transfer over HTTP
 
 - **Status:** Accepted; the pages' look, language and policy amended by
-  [ADR 0010](0010-server-pages-in-two-languages.md)
+  [ADR 0010](0010-server-pages-in-two-languages.md); upload release and configurable count amended
+  2026-11-12 ([#35](https://github.com/jaylann/mcp-server-sevdesk/issues/35))
 - **Date:** 2026-11-09
 - **Amends:** [ADR 0007](0007-approval-inbox-over-http.md) (its browser session now also opens
   the upload and download pages)
@@ -78,8 +79,8 @@ per configuration. Bearer mode keeps its folders: a plain path still reads `SEVD
 
 **Bounded.** An upload page lives 15 minutes and takes one file of at most 20 MiB; uploads and links
 live `SEVDESK_HTTP_FILES_TTL` (30 minutes); a link serves 5 downloads. Per account 5 open pages, 10
-live records and a quarter of `SEVDESK_HTTP_FILES_MAX_MB` (at least one 20 MiB upload, at most
-half); room for one upload stays free for accounts that hold nothing yet. Nothing is evicted, new
+live records by default (`SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT`, whole numbers 1–1000) and a quarter
+of `SEVDESK_HTTP_FILES_MAX_MB` (at least one 20 MiB upload, at most half); room for one upload stays free for accounts that hold nothing yet. Nothing is evicted, new
 records are refused. Upload bodies: 2 at once on the server and 1 per account, each within 90 s,
 without a 10 s pause and at 16 KB/s on average after 10 s, so a trickled body cannot hold a slot.
 Node's own request timeout is set above the longest body window of any route (the 90 s plus 30 s
@@ -89,6 +90,32 @@ is dropped when the client takes no slice for a minute: that timer measures a cl
 reading, not the size of the file. (Written as one piece, every download that took longer than a
 minute was cut, however steadily the client read; review 2026-11, round 3.)
 Logs and audit lines carry the reference, kind, size and SHA-256, never ids or file names.
+
+**Release after successful attachment (2026-11-12, #35).** Keeping used receipts for the full
+30-minute lifetime limited an ordinary bookkeeping session to ten receipts. Create/update draft
+and e-invoice import now release an upload immediately after the save and read-back succeed and
+the read-back confirms an attached document. For updates, the document id must differ from the
+attachment rechecked immediately before the save (or follow an explicitly absent attachment).
+An unchanged id or unknown previous attachment state is ambiguous, so the upload is retained;
+the preview's earlier attachment identity may already be stale. This also conservatively retains
+a receipt if sevDesk replaces its contents under the same document id (review follow-up, 2026-11-13).
+`FileAccess.release(ref)` delegates to the
+owner-scoped, idempotent `TransferStore.releaseUpload(owner, id)`: it removes only an uploaded
+ticket of the same grant and account and schedules its blob for deletion through the existing
+expiry cleanup. Pending/receiving tickets, download links and local files are untouched. Reads,
+e-invoice parsing, dry runs, failed writes and failed or uncertain attachment read-backs keep the
+upload until expiry. No grace period: retries of failed calls keep their file; a new use after a
+successful attachment needs a new upload. Blob deletion follows the existing best-effort expiry
+contract, so a storage cleanup failure cannot turn a completed sevDesk write into a failed call.
+
+The count setting changes only live records per account (tickets, uploads and links together).
+The five pending pages, 1,000 global records, byte shares, global byte budget and reserve for empty
+accounts remain unchanged. Count refusals name the earliest known expiry of the requesting
+account only, including pending tickets and links. Receiving tickets and download reservations
+have no fixed expiry yet and are excluded; with no known expiry the message says to retry once
+older files expire or transfers finish. Global refusals never disclose another account's expiries. An expiry is a retry
+time, not a reservation: using an upload or exhausting a link may release a slot sooner, while
+another request may claim it first.
 
 ## Consequences
 

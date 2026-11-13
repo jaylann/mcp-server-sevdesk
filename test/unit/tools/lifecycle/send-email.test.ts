@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Tier } from "../../../../src/safety/tiers.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { sendEmailTool } from "../../../../src/tools/lifecycle/send-email.js";
+import { withCountryRoute } from "../../../helpers/country-route.js";
 import { FakeSevdeskClient } from "../../../helpers/fake-client.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import {
@@ -77,7 +78,14 @@ describe("sevdesk_invoice_send_email (spec request body; community record shapes
         },
       }),
     ]);
-    expect(client.calls.map(({ method }) => method)).toEqual(["GET", "GET", "POST", "GET"]);
+    expect(client.calls.map(({ method }) => method)).toEqual([
+      "GET",
+      "GET",
+      "GET",
+      "POST",
+      "GET",
+      "GET",
+    ]);
     expect(output.data["invoice"]).toMatchObject({ status: { code: 200 }, sent: { via: "email" } });
     expect(output.data["email"]).toEqual({
       to: "kunde@example.com",
@@ -351,9 +359,11 @@ describe("sevdesk_credit_note_send_email and sevdesk_order_send_email", () => {
   });
 
   it("do not write when the document does not exist", async () => {
-    const client = new FakeSevdeskClient([
-      { path: "/Order/9", query: { embed: "contact" }, response: { body: { objects: [] } } },
-    ]);
+    const client = new FakeSevdeskClient(
+      withCountryRoute([
+        { path: "/Order/9", query: { embed: "contact" }, response: { body: { objects: [] } } },
+      ]),
+    );
     await expect(
       prepareWrite(sendEmailTool("order"), { id: 9, ...message }, client),
     ).rejects.toMatchObject({ kind: "not_found" });

@@ -22,6 +22,7 @@ import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
 import { parseUpstream, zId } from "../sevdesk/schema.js";
 import type { QueryValue, SevdeskClient } from "../sevdesk/types.js";
 import { documentDateFilter } from "./common.js";
+import { countryCodeSchema, withDocumentCountry } from "./country-codes.js";
 import {
   addressDto,
   allOf,
@@ -55,26 +56,16 @@ import {
   zOptionalRef,
   zText,
 } from "./document-positions.js";
+import { keyForCode, ORDER_STATUS_FILTERS, ORDER_TYPE_FILTERS } from "./filter-keys.js";
 import { creditNoteLink, invoiceLink, orderLink } from "./links.js";
 import { documentTypeByCode } from "./reference-data.js";
 
+export { ORDER_STATUS_FILTERS, ORDER_TYPE_FILTERS } from "./filter-keys.js";
+
 /** Order statuses (spec tag `Order` → "Types and status of orders"). */
-export const ORDER_STATUS_FILTERS = {
-  draft: 100,
-  sent: 200,
-  rejected: 300,
-  accepted: 500,
-  partially_invoiced: 750,
-  invoiced: 1000,
-} as const;
 export type OrderStatusFilter = keyof typeof ORDER_STATUS_FILTERS;
 
 /** Order types by readable name → sevDesk's `orderType`. */
-export const ORDER_TYPE_FILTERS = {
-  offer: "AN",
-  order_confirmation: "AB",
-  delivery_note: "LI",
-} as const;
 export type OrderTypeFilter = keyof typeof ORDER_TYPE_FILTERS;
 
 // ---------------------------------------------------------------------------------------------
@@ -157,6 +148,7 @@ export const orderDetailSchema = orderRowSchema.extend({
     .object({
       text: z.string().optional().describe("Recipient address as printed."),
       countryId: z.number().int().optional().describe("StaticCountry id."),
+      country: countryCodeSchema,
     })
     .optional(),
   contactPersonId: z.number().int().optional(),
@@ -182,7 +174,12 @@ function toOrderRow(record: OrderRecord): OrderRow {
     type:
       type === undefined
         ? { code: typeCode, label: "unknown" }
-        : { code: type.code, label: type.label, labelDe: type.labelDe },
+        : compact({
+            code: type.code,
+            label: type.label,
+            labelDe: type.labelDe,
+            key: keyForCode(ORDER_TYPE_FILTERS, type.code),
+          }),
     status: statusDto("order", record.status),
     contact: contactRef(record.contact),
     date: berlinDate(record.orderDate),
@@ -357,7 +354,7 @@ export async function getOrder(
     loadRelatedDocuments(client, id, signal),
   ]);
   const record = parseOrderRecord(expectSingle(payload, `order ${id}`));
-  const order = toOrderDetail(record);
+  const order = await withDocumentCountry(toOrderDetail(record), client, signal);
   const context = { currency: order.currency, showNet: record.showNet, unitNames };
   return {
     order,

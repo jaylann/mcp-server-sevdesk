@@ -8,6 +8,7 @@ import { z } from "zod";
 import { sanitizeUntrusted } from "../safety/fence.js";
 import { isIsoDate, toUnixSeconds } from "../sevdesk/dates.js";
 import { SevdeskError } from "../sevdesk/errors.js";
+import { keyForCode, STATUS_FILTERS } from "./filter-keys.js";
 import {
   compare,
   decimal,
@@ -128,15 +129,23 @@ function toAmounts(
 
 /** A status: the code sevDesk sends and its meaning from reference data. */
 export const statusDtoSchema = z.object({
+  key: z
+    .string()
+    .optional()
+    .describe("Accepted status filter key; absent when no filter accepts this code."),
   code: z.number().int(),
   label: z.string().describe("Meaning from sevDesk's docs; 'unknown' for undocumented codes."),
 });
 
 export type StatusDto = z.output<typeof statusDtoSchema>;
 
-/** `{code, label}`; an undocumented code is kept with the label "unknown", never dropped. */
+/** Keeps every code and its label; adds a key only when a status filter accepts it. */
 export function statusDto(objectType: StatusObjectType, code: number): StatusDto {
-  return { code, label: statusByCode(objectType, code)?.label ?? "unknown" };
+  return compact({
+    code,
+    label: statusByCode(objectType, code)?.label ?? "unknown",
+    key: keyForCode(STATUS_FILTERS[objectType], code),
+  });
 }
 
 /** Drops `undefined` members, so absent fields are left out of the JSON instead of set to null. */

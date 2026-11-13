@@ -75,6 +75,9 @@ const MEBIBYTE = 1024 * 1024;
 /** `SEVDESK_HTTP_FILES_MAX_MB`: bounds, and the defaults with and without a state directory. */
 const FILES_MAX_MB = { min: 32, max: 4096, withStateDir: 256, inMemory: 64 } as const;
 
+/** Live records per account; never above the store's overall record cap. */
+const FILES_MAX_PER_ACCOUNT = { min: 1, max: 1000, fallback: 10 };
+
 const GENERATE_HINT = "generate one with `mcp-server-sevdesk generate-secret`";
 
 /** Hostnames a public URL may use with plain http. */
@@ -323,7 +326,8 @@ interface FilesContext {
 /**
  * `SEVDESK_HTTP_FILES` (on/off, 1/0, true/false or yes/no, default on), `SEVDESK_HTTP_FILES_MAX_MB` (32 to 4096;
  * default 256 with a state directory, 64 in memory) and `SEVDESK_HTTP_FILES_TTL` (5m to 24h,
- * default 30m). Warns about plain http (the session cookie reaches every local server on the host),
+ * default 30m). `SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT` caps live records per account (1–1000,
+ * default 10). Warns about plain http (the session cookie reaches every local server on the host),
  * files held in memory, and a server open to any account.
  */
 function readFiles(
@@ -333,9 +337,11 @@ function readFiles(
   context: FilesContext,
 ): HttpFilesConfig | undefined {
   const on = readFlag(env, "SEVDESK_HTTP_FILES", problems, true);
-  const tuned = ["SEVDESK_HTTP_FILES_MAX_MB", "SEVDESK_HTTP_FILES_TTL"].filter(
-    (name) => nonEmpty(env[name]) !== undefined,
-  );
+  const tuned = [
+    "SEVDESK_HTTP_FILES_MAX_MB",
+    "SEVDESK_HTTP_FILES_TTL",
+    "SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT",
+  ].filter((name) => nonEmpty(env[name]) !== undefined);
   if (!on) {
     if (tuned.length > 0 && nonEmpty(env["SEVDESK_HTTP_FILES"]) !== undefined) {
       warnings.push(`${tuned.join(" and ")} have no effect with SEVDESK_HTTP_FILES=off.`);
@@ -344,6 +350,7 @@ function readFiles(
   }
   const maxMb = readFilesMaxMb(env, problems, context.stateDir !== undefined);
   const ttlSeconds = readTtl(env, "SEVDESK_HTTP_FILES_TTL", problems);
+  const maxPerAccount = readFilesMaxPerAccount(env, problems);
   if (context.plainHttp) {
     warnings.push(
       "SEVDESK_HTTP_FILES=on over plain http: browsers send the sign-in cookie of the upload and " +
@@ -371,7 +378,20 @@ function readFiles(
         "SEVDESK_HTTP_FILES=off if that is not wanted.",
     );
   }
-  return { maxBytes: maxMb * MEBIBYTE, ttlSeconds };
+  return { maxBytes: maxMb * MEBIBYTE, ttlSeconds, maxPerAccount };
+}
+
+function readFilesMaxPerAccount(env: Env, problems: string[]): number {
+  const name = "SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT";
+  const { min, max, fallback } = FILES_MAX_PER_ACCOUNT;
+  const raw = nonEmpty(env[name]);
+  if (raw === undefined) return fallback;
+  const value = /^\d{1,4}$/.test(raw) ? Number(raw) : Number.NaN;
+  if (!(value >= min && value <= max)) {
+    problems.push(`${name}: expected a whole number between ${String(min)} and ${String(max)}.`);
+    return fallback;
+  }
+  return value;
 }
 
 function readFilesMaxMb(env: Env, problems: string[], withStateDir: boolean): number {

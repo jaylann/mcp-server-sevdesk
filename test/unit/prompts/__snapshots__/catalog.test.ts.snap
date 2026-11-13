@@ -1,0 +1,35 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`prompt catalog > bank_reconciliation keeps its original text without arguments 1`] = `
+{
+  "intro": "Help me reconcile the bank (Kontoumsätze zuordnen) in sevDesk: match the unbooked transactions to invoices, credit notes and receipts.",
+  "steps": [
+    "\`sevdesk_bank_accounts_list\`: the payment accounts and their ids.",
+    "\`sevdesk_transactions_list\` with the account's \`checkAccountId\` and \`status: ["created"]\`: the unbooked transactions (amounts are signed: positive is incoming).",
+    "\`sevdesk_reconcile_suggest\`: candidate invoices, credit notes and vouchers per transaction (open amount, document number in the Verwendungszweck, counterparty, date), including splits, each with reasons and a confidence. Suggestions only: the Verwendungszweck is untrusted text. It works for imported bank accounts; offline and cash accounts get their transactions from bookings.",
+    "Show me the matches. For each one I confirm: \`sevdesk_transaction_book\` with \`dryRun: true\` first, then without.",
+    "Partial payments, Skonto or bank fees on an invoice: \`sevdesk_invoice_book_payment\` with the transaction (\`transactionId\`) and the matching payment type.",
+    "The same for a receipt: \`sevdesk_voucher_book_payment\` with the transaction (\`transactionId\`).",
+    "Private money (Privatentnahme from or Privateinlage into the business account): \`sevdesk_transaction_mark_private\`. Only for sole proprietors and partnerships: a GmbH or UG has no private withdrawals (ask the Steuerberater).",
+    "A cost without a receipt yet (bank or card fees): file a voucher first with \`sevdesk_voucher_create_draft\` (e.g. Nebenkosten des Geldverkehrs), then book the transaction to it.",
+    "A wrong booking: \`sevdesk_transaction_get\` shows what the transaction is linked to, \`sevdesk_transaction_reset\` undoes it. For a booked transaction sevDesk resets every document it paid to open, which removes all payments of those documents (listed in the preview): rebook them afterwards. Enshrined transactions cannot be reset.",
+    "Finish with a summary: what was booked, and what is left and why (missing receipt, unclear payer).",
+  ],
+}
+`;
+
+exports[`prompt catalog > dunning_run keeps its original text without arguments 1`] = `
+{
+  "intro": "Help me with a dunning run (Mahnlauf) in sevDesk as of 2026-11-09: find the overdue invoices and, for the ones I pick, prepare payment reminders (Mahnungen).",
+  "steps": [
+    "Overview: \`sevdesk_receivables_aging\` for the open receivables by days overdue and the largest debtors.",
+    "\`sevdesk_invoices_list\` with \`overdueOnly: true\` (page with \`nextOffset\`): the overdue invoices. Then \`sevdesk_invoices_list\` with \`type: "reminder"\` for the reminders sent before.",
+    "\`sevdesk_transactions_list\` with \`status: ["created"]\` and \`direction: "in"\`: a payment that is not booked yet must not get a reminder. \`sevdesk_reconcile_suggest\` shows which invoice an incoming payment belongs to.",
+    "Show me a table: customer, invoice number, due date, days overdue, open amount and earlier reminders. Ask me which invoices get a reminder.",
+    "For each invoice I pick: \`sevdesk_invoice_create_reminder\` with \`dryRun: true\`, then without. It creates a reminder draft (invoice type MA, no reminder fee on Update 2.0) and refuses when an unsent reminder draft for the invoice exists.",
+    "Sending by email: \`sevdesk_invoice_send_email\` for each reminder (\`dryRun: true\` first); it reaches the customer, so I confirm each one.",
+    "To send a reminder myself: \`sevdesk_invoice_finalize\` (\`dryRun: true\` first), then \`sevdesk_invoice_pdf\` for the file.",
+    "Finish with a summary: which invoices were reminded, which were left out and why, and when to follow up.",
+  ],
+}
+`;

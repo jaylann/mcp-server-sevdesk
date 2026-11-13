@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { invoiceGetTool as tool } from "../../../../src/tools/invoices/get.js";
+import { withCountryRoute } from "../../../helpers/country-route.js";
 import { type FakeRoute, FakeSevdeskClient, testContext } from "../../../helpers/fake-client.js";
 
 const invoiceRoute: FakeRoute = {
@@ -18,7 +19,7 @@ const unitsRoute: FakeRoute = { path: "/Unity", response: { fixture: "meta/units
 const routes = [invoiceRoute, positionsRoute, unitsRoute];
 
 async function get(id: number, withRoutes: readonly FakeRoute[] = routes) {
-  const client = new FakeSevdeskClient(withRoutes);
+  const client = new FakeSevdeskClient(withCountryRoute(withRoutes));
   const result = await tool.handler(tool.input.parse({ id }), testContext(client));
   return { client, result };
 }
@@ -62,7 +63,7 @@ describe("sevdesk_invoice_get (community: recorded Invoice/InvoicePos shapes, fa
     expect(invoice).toMatchObject({
       id: 1001,
       number: "RE-1001",
-      status: { code: 200, label: "Open / due" },
+      status: { code: 200, label: "Open / due", key: "open" },
       contact: { id: 1001, name: "Musterfirma GmbH" },
       date: "2026-10-01",
       dueDate: "2026-10-15",
@@ -80,7 +81,11 @@ describe("sevdesk_invoice_get (community: recorded Invoice/InvoicePos shapes, fa
         cashDiscountDays: 7,
         paymentMethodId: 21919,
       },
-      address: { text: "Musterfirma GmbH\nMusterstraße 1\n12345 Musterstadt", countryId: 1 },
+      address: {
+        text: "Musterfirma GmbH\nMusterstraße 1\n12345 Musterstadt",
+        countryId: 1,
+        country: "DE",
+      },
       origin: { objectName: "Order", id: 3001 },
       contactPersonId: 7001,
       internalNote: "Bestellnummer 4711",
@@ -149,15 +154,17 @@ describe("sevdesk_invoice_get (community: recorded Invoice/InvoicePos shapes, fa
   });
 
   it("maps an empty GET-by-id array to not_found", async () => {
-    const client = new FakeSevdeskClient([
-      { ...invoiceRoute, path: "/Invoice/42", response: { body: { objects: [] } } },
-      {
-        ...positionsRoute,
-        query: { "invoice[id]": 42 },
-        response: { body: { objects: [] } },
-      },
-      unitsRoute,
-    ]);
+    const client = new FakeSevdeskClient(
+      withCountryRoute([
+        { ...invoiceRoute, path: "/Invoice/42", response: { body: { objects: [] } } },
+        {
+          ...positionsRoute,
+          query: { "invoice[id]": 42 },
+          response: { body: { objects: [] } },
+        },
+        unitsRoute,
+      ]),
+    );
     await expect(
       tool.handler(tool.input.parse({ id: 42 }), testContext(client)),
     ).rejects.toMatchObject({ kind: "not_found", message: "sevDesk found no invoice 42." });

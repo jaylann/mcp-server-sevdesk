@@ -9,6 +9,7 @@ import {
   statusPayload,
 } from "../../../../src/domain/reconciliation/transaction-status.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
+import { withCountryRoute } from "../../../helpers/country-route.js";
 import { type FakeRoute, FakeSevdeskClient } from "../../../helpers/fake-client.js";
 import {
   accountRoute,
@@ -77,16 +78,18 @@ function client(options: {
   const transaction =
     options.transaction ?? transactionRow({ id: "5201", amount: "238", status: "400" });
   const accountId = Number((transaction["checkAccount"] as { id?: string } | null)?.id ?? 4002);
-  return new FakeSevdeskClient([
-    transactionRoute(transaction),
-    accountRoute(accountRow(accountId)),
-    logRoute(Number(transaction["id"]), options.log ?? SPLIT_LOG),
-    ...(options.documents ?? [
-      invoiceRoute(paidInvoice(1001, "119")),
-      invoiceRoute(paidInvoice(1002, "119")),
+  return new FakeSevdeskClient(
+    withCountryRoute([
+      transactionRoute(transaction),
+      accountRoute(accountRow(accountId)),
+      logRoute(Number(transaction["id"]), options.log ?? SPLIT_LOG),
+      ...(options.documents ?? [
+        invoiceRoute(paidInvoice(1001, "119")),
+        invoiceRoute(paidInvoice(1002, "119")),
+      ]),
+      listRoute("/CheckAccountTransactionLog", options.wholeLog ?? []),
     ]),
-    listRoute("/CheckAccountTransactionLog", options.wholeLog ?? []),
-  ]);
+  );
 }
 
 async function refusal(fake: FakeSevdeskClient, id = 5201): Promise<string> {

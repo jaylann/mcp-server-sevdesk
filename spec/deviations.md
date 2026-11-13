@@ -126,6 +126,7 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 | [D-078](#d-078-receiptguidance-allows-only-0--for-intra-eu-acquisitions-and-reverse-charge)        | ReceiptGuidance allows only 0 % for intra-EU acquisitions and reverse charge           | Open                  |
 | [D-079](#d-079-get-accountdatev-ignores-its-filters-and-lists-fewer-accounts-than-receiptguidance) | `GET /AccountDatev` ignores its filters and lists fewer accounts than ReceiptGuidance  | Open                  |
 | [D-080](#d-080-a-voucher-is-booked-only-with-a-belegnummer)                                        | A voucher is booked only with a Belegnummer                                            | Open                  |
+| [D-081](#d-081-converting-a-voucher-draft-to-eur-is-unverified)                                    | Converting a voucher draft to EUR is unverified                                        | Open                  |
 
 ## Entries
 
@@ -2886,3 +2887,37 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   Belegnummer before anything is confirmed (D-080)"),
   `test/unit/tools/vouchers/create-draft.test.ts` ("warns that a draft without a Belegnummer
   cannot be finalized yet (D-080)").
+
+### D-081: Converting a voucher draft to EUR is unverified
+
+- **Status:** Open. **Evidence:** spec + existing fixtures; no live currency-change recording.
+- **Spec says:** `Model_Voucher` and `Model_VoucherUpdate` accept `currency`. A currency that
+  differs from the account default needs `propertyExchangeRate` or
+  `propertyForeignCurrencyDeadline` (the deadline takes precedence). `saveVoucher` can update
+  draft vouchers. The spec does not say what is stored when the currency changes back to EUR,
+  or whether old foreign sums and exchange-rate properties are cleared.
+- **Known behavior:** D-054 records replacing voucher positions in a draft save with an array
+  of `{id, objectName}` deletions. D-043 documents the separate foreign-currency sums; existing
+  EUR voucher fixtures, including `test/fixtures/vouchers/voucher-2002.json`, have zero
+  `sumNetForeignCurrency`, `sumTaxForeignCurrency` and `sumGrossForeignCurrency`. Neither those
+  fixtures nor the synthetic USD conversion regression prove currency-change behavior.
+- **Actual stored behavior:** Open question for `pnpm probe`: does saving an existing USD draft
+  with the full known header, `currency: "EUR"`, and replacement EUR positions store EUR with
+  the supplied amounts? Are the old foreign sums and exchange-rate properties cleared, retained,
+  or used to alter those amounts? No live sevDesk account was available for this change.
+- **Sources:** vendored spec (`Model_Voucher`, `Model_VoucherUpdate`, `voucherFactorySaveVoucher`),
+  D-043, D-054 and the existing voucher fixtures above. No new live measurement is claimed.
+- **Impact:** `sevdesk_voucher_update_draft` requires explicit `currency: "EUR"` and all positions
+  with caller-supplied EUR amounts to convert a foreign-currency draft. It computes no exchange
+  rate and never reuses stored amounts. The save carries the known writable header fields,
+  replaces every position and omits the old foreign sums and exchange-rate properties. Both
+  previews show the currency change, warn with the old foreign sums (zero and absent differ),
+  and flag the unverified stored behavior. Read-back warns if the currency is still foreign.
+  Without the explicit target the refusal remains; direct non-EUR e-invoice import remains
+  refused. Real foreign-currency writes (issue #33 step 2) remain open.
+- **Test:** `test/regressions/voucher-convert-to-eur.test.ts` pins the outgoing payload, guards,
+  bilingual warnings, decimal-safe totals and synthetic read-back/finalize path;
+  `test/integration/write-previews-de.test.ts` snapshots the German text. Pending live:
+  `pnpm probe --allow-writes --only write-voucher-convert-to-eur` (with the usual trial-account
+  write opt-in). The probe creates and registers its own tagged draft for cleanup; it was not run
+  against sevDesk.

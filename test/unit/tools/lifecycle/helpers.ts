@@ -15,6 +15,7 @@ import type {
   SevdeskClient,
   SevdeskRequest,
 } from "../../../../src/sevdesk/types.js";
+import { withCountryRoute } from "../../../helpers/country-route.js";
 import {
   type FakeRoute,
   FakeSevdeskClient,
@@ -152,8 +153,8 @@ export class StagedClient implements SevdeskClient {
 
   constructor(before: readonly FakeRoute[], after: readonly FakeRoute[]) {
     // Empty position lists after the given routes: the approval binding reads them.
-    this.before = new FakeSevdeskClient([...before, ...positionRoutes()]);
-    this.after = new FakeSevdeskClient(after);
+    this.before = new FakeSevdeskClient(withCountryRoute([...before, ...positionRoutes()]));
+    this.after = new FakeSevdeskClient(withCountryRoute(after));
   }
 
   /** Every call, in order. */

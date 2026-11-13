@@ -16,7 +16,8 @@ export const voucherUpdateDraftTool = defineWriteTool({
     "receipt file (PDF/PNG/JPEG from SEVDESK_FILE_DIRS or an upload). Fields left out keep " +
     "their stored values. A new tax rule must fit every position; accounts × rule × rate are " +
     "checked against sevDesk's ReceiptGuidance before anything is sent. Only drafts that are not " +
-    "enshrined (EUR, Update 2.0); a booked voucher must be reset to draft first " +
+    'enshrined (Update 2.0). To convert a foreign-currency draft, pass currency: "EUR" and ' +
+    "ALL positions with EUR amounts; no exchange rate is calculated. A booked voucher must be reset to draft first " +
     "(sevdesk_voucher_reset). Tier write; dryRun previews. Before: sevdesk_voucher_get. After: " +
     "sevdesk_voucher_finalize.",
   toolset: "vouchers",
@@ -38,9 +39,17 @@ export const voucherUpdateDraftTool = defineWriteTool({
       cacheOwner: ctx.config,
       files: ctx.files,
     }),
-  execute: async (_args, plan, ctx) =>
-    voucherDraftToolOutput(
-      await executeVoucherSave(ctx.client, plan.state, ctx.signal),
-      "Updated draft",
-    ),
+  execute: async (args, plan, ctx) => {
+    const result = await executeVoucherSave(ctx.client, plan.state, ctx.signal);
+    if (
+      args.file !== undefined &&
+      plan.state.file !== undefined &&
+      result.previousDocumentId !== undefined &&
+      result.details.documentId !== undefined &&
+      result.details.documentId !== result.previousDocumentId
+    ) {
+      ctx.files.release(args.file);
+    }
+    return voucherDraftToolOutput(result, "Updated draft");
+  },
 });

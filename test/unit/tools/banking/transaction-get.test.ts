@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { transactionGetTool as tool } from "../../../../src/tools/banking/transaction-get.js";
+import { withCountryRoute } from "../../../helpers/country-route.js";
 import { type FakeRoute, FakeSevdeskClient, testContext } from "../../../helpers/fake-client.js";
 import {
   accountRoute,
@@ -17,7 +18,7 @@ import {
 } from "../../domain/reconciliation/helpers.js";
 
 async function run(routes: readonly FakeRoute[], id = 5201) {
-  const client = new FakeSevdeskClient(routes);
+  const client = new FakeSevdeskClient(withCountryRoute(routes));
   const result = await tool.handler(tool.input.parse({ id }), testContext(client));
   tool.output.parse(result.data);
   return { client, result };
@@ -61,7 +62,7 @@ describe("sevdesk_transaction_get", () => {
           kind: "invoice",
           id: 1001,
           number: "RE-1001",
-          status: { code: 1000, label: expect.any(String) as unknown },
+          status: { code: 1000, key: "paid", label: expect.any(String) as unknown },
           contact: { id: 1001, name: "Musterfirma GmbH" },
           gross: { amount: "177.33", currency: "EUR" },
           paid: { amount: "119.00", currency: "EUR" },
@@ -138,16 +139,18 @@ describe("sevdesk_transaction_get", () => {
     ]);
     expect(result.data.assignments.filter((a) => a.document?.unreadable === true)).toHaveLength(2);
 
-    const failing = new FakeSevdeskClient([
-      transactionRoute(SPLIT),
-      accountRoute(accountRow(4002)),
-      logRoute(5201, [logEntry(1, 5201, "Invoice", 1001, 238)]),
-      {
-        path: "/Invoice/1001",
-        query: { embed: "contact" },
-        response: { error: new SevdeskError({ kind: "auth", message: "no" }) },
-      },
-    ]);
+    const failing = new FakeSevdeskClient(
+      withCountryRoute([
+        transactionRoute(SPLIT),
+        accountRoute(accountRow(4002)),
+        logRoute(5201, [logEntry(1, 5201, "Invoice", 1001, 238)]),
+        {
+          path: "/Invoice/1001",
+          query: { embed: "contact" },
+          response: { error: new SevdeskError({ kind: "auth", message: "no" }) },
+        },
+      ]),
+    );
     await expect(tool.handler({ id: 5201 }, testContext(failing))).rejects.toMatchObject({
       kind: "auth",
     });

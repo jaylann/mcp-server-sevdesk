@@ -13,7 +13,7 @@ Before you start:
 
 The examples put the token itself into the configuration as `SEVDESK_API_TOKEN`. To keep it out of
 the file, replace that line with `"SEVDESK_API_TOKEN_KEYCHAIN": "<label>"` after storing the token
-with `npx -y mcp-server-sevdesk token set <label>` (macOS and Linux), or with
+with `npx -y mcp-server-sevdesk token set <label>` (macOS, Linux and Windows), or with
 `"SEVDESK_API_TOKEN_FILE": "/absolute/path/to/token"`
 ([Configuration](configuration.md#keep-the-token-in-the-os-keychain)). Every other setting goes
 into the same `env` block; without any, the server is read-only.
@@ -67,6 +67,7 @@ Credential Manager on Windows). Change the settings later under **Settings → E
 | Toolsets          | `SEVDESK_TOOLSETS`   | Empty loads all except `advanced`.                                                                                                                                     |
 | Receipt folder    | `SEVDESK_FILE_DIRS`  | A folder receipts and e-invoices may be read from.                                                                                                                     |
 | Output folder     | `SEVDESK_OUTPUT_DIR` | A folder where PDFs and exports may be saved.                                                                                                                          |
+| Audit log         | `SEVDESK_AUDIT_LOG`  | Path of a local, append-only JSON Lines log of write calls, with secrets redacted. Empty: no audit log. If the file cannot be written, writes are refused.             |
 
 To verify a download before you install it:
 `gh attestation verify mcp-server-sevdesk-<version>.mcpb --owner jaylann`. A newer release is

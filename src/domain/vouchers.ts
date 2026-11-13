@@ -51,10 +51,13 @@ import {
   statusDtoSchema,
 } from "./common.js";
 import { documentTotalsSchema, listDocuments, taxDtoSchema } from "./document-positions.js";
+import { VOUCHER_STATUS_CODES, VOUCHER_TYPE_CODES } from "./filter-keys.js";
 import { voucherLink } from "./links.js";
 import { compare, DEFAULT_CURRENCY } from "./money.js";
 import { type ChildRows, listChildRows, type PageState, type PageWindow } from "./paging.js";
 import { taxRuleById } from "./reference-data.js";
+
+export { VOUCHER_STATUS_CODES, VOUCHER_TYPE_CODES } from "./filter-keys.js";
 
 const NAME_MAX = 300;
 const FIELD_MAX = 200;
@@ -82,23 +85,8 @@ export const VOUCHER_STATUS_KEYS = [
 ] as const;
 type VoucherStatusKey = (typeof VOUCHER_STATUS_KEYS)[number];
 
-/** Spec tag `Voucher` → "Types and status of vouchers" (see also spec/deviations.md D-007). */
-export const VOUCHER_STATUS_CODES: Readonly<Record<VoucherStatusKey, number>> = {
-  draft: 50,
-  open: 100,
-  transferred: 150,
-  partially_paid: 750,
-  paid: 1000,
-};
-
 export const VOUCHER_TYPE_KEYS = ["normal", "recurring"] as const;
 type VoucherTypeKey = (typeof VOUCHER_TYPE_KEYS)[number];
-
-/** Spec tag `Voucher`: VOU = normal voucher, RV = recurring voucher. */
-export const VOUCHER_TYPE_CODES: Readonly<Record<VoucherTypeKey, string>> = {
-  normal: "VOU",
-  recurring: "RV",
-};
 
 /** `creditDebit` value for a kind: expense → `C`, revenue → `D`. */
 export function creditDebitForKind(kind: VoucherKind): "C" | "D" {
@@ -511,6 +499,8 @@ export async function listVouchers(
 
 export interface VoucherDetails {
   readonly voucher: VoucherDetailDto;
+  /** Internal attachment identity for write verification; not part of the tool's DTO. */
+  readonly documentId?: number | undefined;
   readonly positions: readonly VoucherPositionDto[];
   /** False when sevDesk had more position rows than could be read; `positions` is then partial. */
   readonly positionsComplete: boolean;
@@ -540,6 +530,7 @@ export async function getVoucherDetails(
   const positions = await listPositions(client, id, withSignal.signal);
   return {
     voucher,
+    documentId: record.document?.id,
     positions: positions.rows.map((row) => toPositionDto(row, voucher.currency)),
     positionsComplete: positions.complete,
   };

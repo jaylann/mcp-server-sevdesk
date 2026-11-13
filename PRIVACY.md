@@ -23,10 +23,14 @@ collects **no telemetry**.
 - **Local storage.** Nothing is stored unless you enable it: the optional audit log
   (`SEVDESK_AUDIT_LOG`) and output directory (`SEVDESK_OUTPUT_DIR`) are files on your machine.
 - **Your token.** If you use `token set`, the token is stored in your operating system's keychain
-  (macOS Keychain or the Linux Secret Service) under the service `mcp-server-sevdesk`, and nowhere
-  else. A profiles file holds settings and where each token is kept (a keychain label, a file
-  path or a variable name), never a token. The Claude Desktop extension's settings, including the
-  token, are stored by Claude Desktop, the token in the operating system's secure storage.
+  (macOS Keychain, the Linux Secret Service or Windows Credential Locker through `PasswordVault`)
+  under the service `mcp-server-sevdesk`. On Windows, credentials can
+  [synchronize between devices through your Microsoft account](https://learn.microsoft.com/en-us/windows/apps/develop/security/credential-locker).
+  If the token must stay on this device, use `SEVDESK_API_TOKEN_FILE` with a file only your user
+  can read, outside synchronized folders. A profiles file holds settings and where each token is
+  kept (a keychain label, a file path or a variable name), never a token. The Claude Desktop
+  extension's settings, including the token, are stored by Claude Desktop, the token in the
+  operating system's secure storage.
 - **Accounting data is personal data.** Invoices and contacts contain personal data of your
   customers. Review your model provider's data-processing terms before connecting a live account.
 

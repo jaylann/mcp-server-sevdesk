@@ -1,3 +1,4 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -20,6 +21,81 @@ function errorOf(run: () => unknown): SevdeskError {
 }
 
 const utcSeconds = (iso: string): number => Date.parse(iso) / 1000;
+
+const propertyOptions = { numRuns: 100, seed: 20261112 };
+const calendarDate = fc
+  .date({
+    min: new Date("1000-01-01T00:00:00Z"),
+    max: new Date("9999-12-31T00:00:00Z"),
+    noInvalidDate: true,
+  })
+  .map((date) => date.toISOString().slice(0, 10));
+
+describe("date serializer properties", () => {
+  it("round-trips document dates and both Berlin day edges", () => {
+    fc.assert(
+      fc.property(calendarDate, (date) => {
+        expect(isIsoDate(date)).toBe(true);
+        expect(toBerlinDate(toSevdeskDate(date))).toBe(date);
+        for (const edge of ["start", "end"] as const) {
+          const seconds = toUnixSeconds(date, edge);
+          expect(Number.isInteger(seconds)).toBe(true);
+          expect(toBerlinDate(seconds)).toBe(date);
+          const iso = new Date(seconds * 1000).toISOString();
+          // Midnight on 1000-01-01 in Berlin is still year 0999 in UTC, outside the
+          // accepted ISO input range. The numeric and document forms cover that boundary.
+          if (isIsoDate(iso.slice(0, 10))) expect(toBerlinDate(iso)).toBe(date);
+          // The response's digit-string form represents nonnegative Unix seconds only.
+          if (seconds >= 0) expect(toBerlinDate(String(seconds))).toBe(date);
+        }
+      }),
+      {
+        ...propertyOptions,
+        examples: [["1000-01-01"], ["9999-12-31"], ["2024-02-29"], ["2026-03-29"], ["2026-10-25"]],
+      },
+    );
+  });
+
+  it("rejects calendar overflow instead of normalizing it into another day", () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1000, max: 9999 }),
+        fc.integer({ min: 1, max: 12 }),
+        (year, month) => {
+          const overflow = new Date(Date.UTC(year, month, 0)).getUTCDate() + 1;
+          const mm = String(month).padStart(2, "0");
+          for (const day of [0, overflow]) {
+            const dd = String(day).padStart(2, "0");
+            const invalid = `${String(year)}-${mm}-${dd}`;
+            expect(isIsoDate(invalid)).toBe(false);
+            expect(errorOf(() => toSevdeskDate(invalid)).kind).toBe("validation");
+            for (const edge of ["start", "end"] as const) {
+              expect(errorOf(() => toUnixSeconds(invalid, edge)).kind).toBe("validation");
+            }
+            for (const value of [invalid, `${dd}.${mm}.${String(year)}`, `${invalid}T12:00:00Z`]) {
+              expect(errorOf(() => toBerlinDate(value)).kind).toBe("unexpected_response");
+            }
+          }
+        },
+      ),
+      propertyOptions,
+    );
+  });
+
+  it("rejects arbitrary text outside the canonical request-date format", () => {
+    fc.assert(
+      fc.property(
+        fc.string({ maxLength: 80 }).filter((text) => !/^\d{4}-\d{2}-\d{2}$/.test(text)),
+        (text) => {
+          expect(isIsoDate(text)).toBe(false);
+          expect(errorOf(() => toSevdeskDate(text)).kind).toBe("validation");
+          expect(errorOf(() => toUnixSeconds(text)).kind).toBe("validation");
+        },
+      ),
+      propertyOptions,
+    );
+  });
+});
 
 describe("isIsoDate", () => {
   it.each(["2026-11-07", "2024-02-29", "2000-02-29", "1999-12-31"])("accepts %s", (date) => {

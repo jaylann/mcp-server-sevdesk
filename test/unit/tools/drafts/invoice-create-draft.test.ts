@@ -161,7 +161,7 @@ describe("sevdesk_invoice_create_draft (community: sevdesk-rs request shape + re
     expect(output.affected).toEqual([{ objectName: "Invoice", id: "2101" }]);
     expect(output.data.invoice).toMatchObject({
       id: 2101,
-      status: { code: 100, label: "Draft" },
+      status: { code: 100, label: "Draft", key: "draft" },
       contact: { id: 1001, name: "Musterfirma GmbH" },
       date: "2026-11-07",
       totals: {

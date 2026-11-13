@@ -17,6 +17,7 @@ import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
 import { parseUpstream } from "../sevdesk/schema.js";
 import type { QueryValue, SevdeskClient } from "../sevdesk/types.js";
 import { documentDateFilter, moneyFromUpstream, moneySchema } from "./common.js";
+import { countryCodeSchema, withDocumentCountry } from "./country-codes.js";
 import {
   addDays,
   addressDto,
@@ -53,9 +54,12 @@ import {
   zOptionalRef,
   zText,
 } from "./document-positions.js";
+import { INVOICE_STATUS_FILTERS, INVOICE_TYPE_FILTERS, keyForCode } from "./filter-keys.js";
 import { invoiceLink } from "./links.js";
 import { DEFAULT_CURRENCY } from "./money.js";
 import { documentTypeByCode } from "./reference-data.js";
+
+export { INVOICE_STATUS_FILTERS, INVOICE_TYPE_FILTERS } from "./filter-keys.js";
 
 // ---------------------------------------------------------------------------------------------
 // Filter vocabularies (readable names → sevDesk codes from reference data)
@@ -66,24 +70,9 @@ import { documentTypeByCode } from "./reference-data.js";
  * invoices". Cancelled (storniert) invoices have no documented status code, so they cannot be
  * selected by status.
  */
-export const INVOICE_STATUS_FILTERS = {
-  draft: 100,
-  open: 200,
-  partially_paid: 750,
-  paid: 1000,
-} as const;
 export type InvoiceStatusFilter = keyof typeof INVOICE_STATUS_FILTERS;
 
 /** Invoice types (Rechnungsarten) by readable name → sevDesk's `invoiceType`. */
-export const INVOICE_TYPE_FILTERS = {
-  invoice: "RE",
-  advance: "AR",
-  partial: "TR",
-  final: "ER",
-  cancellation: "SR",
-  reminder: "MA",
-  recurring: "WKR",
-} as const;
 export type InvoiceTypeFilter = keyof typeof INVOICE_TYPE_FILTERS;
 
 /** Statuses that still expect money: open (200) and partially paid (750). */
@@ -196,6 +185,7 @@ export const invoiceDetailSchema = invoiceRowSchema.extend({
     .object({
       text: z.string().optional().describe("Recipient address as printed, one line per part."),
       countryId: z.number().int().optional().describe("StaticCountry id."),
+      country: countryCodeSchema,
     })
     .optional(),
   origin: z
@@ -250,7 +240,12 @@ function toInvoiceRow(record: InvoiceRecord, today: string): InvoiceRow {
     type:
       type === undefined
         ? { code: typeCode, label: "unknown" }
-        : { code: type.code, label: type.label, labelDe: type.labelDe },
+        : compact({
+            code: type.code,
+            label: type.label,
+            labelDe: type.labelDe,
+            key: keyForCode(INVOICE_TYPE_FILTERS, type.code),
+          }),
     status: statusDto("invoice", record.status),
     contact: contactRef(record.contact),
     date,
@@ -441,7 +436,7 @@ export async function getInvoice(
     loadUnitNames(client, signal),
   ]);
   const record = parseInvoiceRecord(expectSingle(payload, `invoice ${id}`));
-  const invoice = toInvoiceDetail(record, today);
+  const invoice = await withDocumentCountry(toInvoiceDetail(record, today), client, signal);
   const context = { currency: invoice.currency, showNet: record.showNet, unitNames };
   return {
     invoice,

@@ -34,7 +34,8 @@
         "SEVDESK_CONFIRM": "${user_config.confirm}",
         "SEVDESK_TOOLSETS": "${user_config.toolsets}",
         "SEVDESK_FILE_DIRS": "${user_config.file_dir}",
-        "SEVDESK_OUTPUT_DIR": "${user_config.output_dir}"
+        "SEVDESK_OUTPUT_DIR": "${user_config.output_dir}",
+        "SEVDESK_AUDIT_LOG": "${user_config.audit_log}"
       }
     }
   },
@@ -120,6 +121,13 @@
       "type": "directory",
       "title": "Output folder",
       "description": "A folder where PDFs, e-invoice XML, CSV and DATEV exports may be saved. Empty: the file-saving tools are not offered.",
+      "required": false,
+      "default": ""
+    },
+    "audit_log": {
+      "type": "file",
+      "title": "Audit log",
+      "description": "Path of a local, append-only JSON Lines log of write calls (previews, confirmations, executions and failures), with secrets redacted. Empty: no audit log. If the file cannot be written, writes are refused.",
       "required": false,
       "default": ""
     }

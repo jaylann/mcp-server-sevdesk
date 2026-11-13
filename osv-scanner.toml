@@ -1,0 +1,4 @@
+[[IgnoredVulns]]
+id = "GHSA-mrhx-c7xc-m3w5"
+effectiveUntil = 2027-05-12
+reason = "zod 3.25.76 is used only at build time by @anthropic-ai/mcpb 2.1.2 to validate our own manifest, never untrusted requests. The server uses zod 4.6.7. No newer mcpb release is available; overriding its zod to 4.6.7 passes the bundle smoke test but breaks its Zod 3 type declarations and typed lint. Revisit when mcpb supports a fixed version."

@@ -28,6 +28,12 @@ promoted to `main` for releases. This project is open source and expects externa
   - the MCP Registry entry through `mcp-publisher` with GitHub OIDC;
   - the `.mcpb` bundle as a release asset;
   - the multi-arch GHCR image with a build-provenance attestation and an SBOM.
+- **The MCPB registry entry is generated at publication time** (added 2026-11-12).
+  `publish-registry` waits for the bundle upload, downloads the public asset and adds its URL and
+  SHA-256 to the npm/OCI `server.json` template with `scripts/prepare-registry.ts`. Its embedded
+  manifest must match the release identity and version. A future bundle's checksum is not known
+  when release-please updates versions, so the source template never carries a placeholder or a
+  stale hash. Tests validate the generated document against the pinned official Registry schema.
 - **The release PR is opened by a GitHub App** (`lanfermann-release-bot`, added 2026-11-12), not
   by `GITHUB_TOKEN`. GitHub runs no workflows on PRs opened with `GITHUB_TOKEN`, so the required
   checks would never start on the release PR. The app's token can open PRs, push branches and

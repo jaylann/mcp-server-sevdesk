@@ -1,8 +1,10 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
 import {
   add,
   compare,
+  type Decimal,
   decimal,
   DEFAULT_CURRENCY,
   format,
@@ -18,6 +20,79 @@ import {
   sumMoney,
   toDecimalString,
 } from "../../../src/domain/money.js";
+
+// Fixed seeds keep CI deterministic; fast-check reports the seed and shrink path on failure.
+const propertyOptions = { numRuns: 100, seed: 20261112 };
+const units = fc.bigInt({ min: -(10n ** 24n), max: 10n ** 24n });
+const exactDecimal = fc.record({ units, scale: fc.integer({ min: 0, max: 12 }) });
+
+/** Compare rational values by cross multiplication, independently of the decimal helpers. */
+function expectExact(actual: Decimal, expectedUnits: bigint, expectedScale: number): void {
+  expect(actual.units * 10n ** BigInt(expectedScale)).toBe(
+    expectedUnits * 10n ** BigInt(actual.scale),
+  );
+}
+
+describe("money properties", () => {
+  it("round-trips decimal strings, fixed formatting and Money without rounding", () => {
+    fc.assert(
+      fc.property(exactDecimal, (value) => {
+        const parsed = decimal(toDecimalString(value));
+        expectExact(parsed, value.units, value.scale);
+        expect(decimal(format(value, value.scale))).toEqual(parsed);
+        expect(decimal(money(value).amount)).toEqual(parsed);
+        expect(decimal(`${value.units}e-${String(value.scale)}`)).toEqual(parsed);
+      }),
+      propertyOptions,
+    );
+  });
+
+  it("adds, subtracts and multiplies signed decimals exactly", () => {
+    fc.assert(
+      fc.property(exactDecimal, exactDecimal, (a, b) => {
+        // A rational oracle keeps every digit, including amounts beyond Number's safe range.
+        const aUnits = a.units * 10n ** BigInt(b.scale);
+        const bUnits = b.units * 10n ** BigInt(a.scale);
+        expectExact(add(a, b), aUnits + bUnits, a.scale + b.scale);
+        expectExact(subtract(a, b), aUnits - bUnits, a.scale + b.scale);
+        expectExact(multiply(a, b), a.units * b.units, a.scale + b.scale);
+        expect(subtract(add(a, b), b)).toEqual(decimal(a));
+      }),
+      propertyOptions,
+    );
+  });
+
+  it("sums fractional amounts without float drift", () => {
+    fc.assert(
+      fc.property(fc.array(units, { maxLength: 40 }), (cents) => {
+        const total = sumMoney(cents.map((value) => money(`${value}e-2`)));
+        expectExact(
+          decimal(total.amount),
+          cents.reduce((sum, value) => sum + value, 0n),
+          2,
+        );
+        expect(total.currency).toBe("EUR");
+      }),
+      propertyOptions,
+    );
+  });
+
+  it("rounds within half a unit, symmetrically and idempotently", () => {
+    fc.assert(
+      fc.property(exactDecimal, fc.integer({ min: 0, max: 12 }), (value, places) => {
+        const rounded = round(value, places);
+        const error = subtract(value, rounded);
+        const magnitude = error.units < 0n ? -error.units : error.units;
+        expect(2n * magnitude * 10n ** BigInt(places)).toBeLessThanOrEqual(
+          10n ** BigInt(error.scale),
+        );
+        expect(round(rounded, places)).toEqual(rounded);
+        expect(round(negate(value), places)).toEqual(negate(rounded));
+      }),
+      propertyOptions,
+    );
+  });
+});
 
 describe("decimal parsing", () => {
   it.each([

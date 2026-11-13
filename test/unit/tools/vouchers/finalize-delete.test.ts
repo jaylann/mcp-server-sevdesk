@@ -127,7 +127,7 @@ describe("sevdesk_voucher_finalize", () => {
       "An diesem Beleg hängt keine Belegdatei; nach den GoBD gehört der Originalbeleg dazu.",
     );
     expect(plan.previewDe.warnings).toHaveLength(plan.preview.warnings.length);
-    expect(output.data.voucher.status).toEqual({ code: 100, label: "Unpaid / due" });
+    expect(output.data.voucher.status).toEqual({ code: 100, label: "Unpaid / due", key: "open" });
     expect(output.data.notes).toBeUndefined();
     expect(output.summary).toBe("Finalized voucher 2101 (1 position, gross 119.00 EUR).");
   });

@@ -119,3 +119,34 @@ describe("tools/list", () => {
     expect(names).toEqual([...names].sort());
   });
 });
+
+/** The additive output fields across read and write tools, including nested report rows. */
+function outputFields(value: unknown, path = ""): Record<string, unknown> {
+  if (value === null || typeof value !== "object") return {};
+  const fields: Record<string, unknown> = {};
+  for (const [name, child] of Object.entries(value)) {
+    const current = `${path}/${name}`;
+    if (
+      /\/properties\/(?:status|type|bookingCategory)\/properties\/key$/.test(current) ||
+      (name === "country" && path.endsWith("/properties")) ||
+      /^\/properties\/(?:hasMore|limit)$/.test(current)
+    ) {
+      fields[current] = child;
+    } else {
+      Object.assign(fields, outputFields(child, current));
+    }
+  }
+  return fields;
+}
+
+it("advertises additive output keys, countries and lookup paging", async () => {
+  const client = await connectInProcess({ config: allEnabledConfig() });
+  clients.push(client);
+  const { tools } = await client.listTools();
+  const outputs: Record<string, Record<string, unknown>> = {};
+  for (const tool of tools) {
+    const fields = outputFields(tool.outputSchema);
+    if (Object.keys(fields).length > 0) outputs[tool.name] = fields;
+  }
+  expect(outputs).toMatchSnapshot();
+});

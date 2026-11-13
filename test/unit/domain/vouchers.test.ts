@@ -65,7 +65,7 @@ describe("voucher DTO mapping", () => {
       supplier: { name: "Bürobedarf Muster KG" },
       date: "2023-05-02",
       payDate: "2023-05-02",
-      status: { code: 1000, label: "Paid" },
+      status: { code: 1000, label: "Paid", key: "paid" },
       kind: "expense",
       type: "normal",
       currency: "EUR",
@@ -117,7 +117,7 @@ describe("voucher DTO mapping", () => {
 
   it("warns when paidAmount is negative: a payment booked with the wrong sign", async () => {
     const voucher = await row(2005);
-    expect(voucher.status).toEqual({ code: 750, label: "Partially paid" });
+    expect(voucher.status).toEqual({ code: 750, label: "Partially paid", key: "partially_paid" });
     expect(voucher.paid).toEqual({ amount: "-119.00", currency: "EUR" });
     expect(voucher.warnings).toEqual([expect.stringContaining("wrong sign")]);
     expect((await row(2001)).warnings).toBeUndefined();

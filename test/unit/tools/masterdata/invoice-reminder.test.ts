@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { invoiceReminderTool as tool } from "../../../../src/tools/invoices/reminder.js";
+import { withCountryRoute } from "../../../helpers/country-route.js";
 import { type FakeRoute, FakeSevdeskClient } from "../../../helpers/fake-client.js";
 import {
   closeWriteHarnessesAfterEach,
@@ -53,14 +54,14 @@ const table: (readonly [string, FakeRoute])[] = [
 ];
 
 function routes(overrides: Partial<Record<string, FakeRoute["response"]>> = {}): FakeRoute[] {
-  return [
+  return withCountryRoute([
     ...routeTable(table, overrides),
     ...invoiceReadRoutes(
       1102,
       overrides["readBack"] ?? { fixture: "masterdata/invoice-1102.json" },
       { fixture: "masterdata/invoice-positions-1102.json" },
     ),
-  ];
+  ]);
 }
 
 function invoice(patch: Record<string, unknown>): FakeRoute["response"] {

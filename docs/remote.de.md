@@ -84,7 +84,7 @@ Im Bearer-Modus sind die Stufen `SEVDESK_ALLOW`, wie über stdio.
 | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `grants.jsonl` in `SEVDESK_HTTP_STATE_DIR` (oder Speicher) | Je Zugang (OAuth): eine zufällige ID, die sevDesk-Konto-ID, die `client_id`-URL des Clients und ihr Host, die Stufen, Zeitstempel (angelegt, Ablauf, letzte Rotation, widerrufen), der Status, die Generation des Refresh-Tokens und der Grund eines Widerrufs. Je Browser-Sitzung (die Anmeldung des Freigabe-Postfachs und der Seiten zum Hoch- und Herunterladen): eine zufällige ID, die Konto-ID, der Zugang, aus dem sie stammt, und wie sie geöffnet wurde. Nur angehängt, Modus 0600, beim Start und von Zeit zu Zeit im laufenden Betrieb verdichtet. Auch der Bearer-Modus hält seine Browser-Sitzungen hier, sobald das Postfach oder die Dateiübertragung aktiv ist. |
 | `grants.lock` im Zustandsverzeichnis                       | Kennzeichnet die laufende Instanz (ein Lebenszeichen alle 10 Sekunden).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `files/` im Zustandsverzeichnis (oder Speicher)            | Hochgeladene Dateien und die Dateien hinter Download-Links, solange sie gültig sind ([Dateien](#dateien-hochladen-und-herunterladen)): verschlüsselt mit AES-256-GCM unter einem Schlüssel, der beim Start des Prozesses zufällig erzeugt und nirgends gespeichert wird, unter zufälligen Namen (Ordner 0700, Dateien 0600). Gelöscht, wenn sie ablaufen, und beim Herunterfahren; der Ordner wird bei jedem Start geleert, sodass nichts den Prozess überdauert.                                                                                                                                                                                                                |
+| `files/` im Zustandsverzeichnis (oder Speicher)            | Hochgeladene Dateien und die Dateien hinter Download-Links, solange sie gültig sind ([Dateien](#dateien-hochladen-und-herunterladen)): verschlüsselt mit AES-256-GCM unter einem Schlüssel, der beim Start des Prozesses zufällig erzeugt und nirgends gespeichert wird, unter zufälligen Namen (Ordner 0700, Dateien 0600). Gelöscht nach bestätigtem Anhängen, beim Ablauf und beim Herunterfahren; der Ordner wird bei jedem Start geleert, sodass nichts den Prozess überdauert.                                                                                                                                                                                             |
 | `SEVDESK_AUDIT_LOG`, falls gesetzt                         | Jeder schreibende Aufruf jedes Kontos, mit Konto und Zugang, sowie jeder empfangene Upload, jeder angelegte Download-Link und jeder Download (Referenz, Art, Größe und SHA-256, kein Name und kein Inhalt). Siehe [SECURITY.de.md](../SECURITY.de.md#audit-log).                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | Nur im Speicher (beim Neustart verloren)                   | Ausstehende Freigaben, ausstehende Bestätigungen (ihre Einmal-Nonces), Upload-Seiten und Download-Links (Eigentümer, Referenz, Zweck, der bereinigte Dateiname, Größe, SHA-256, Ablauf, verbleibende Downloads), zwischengespeicherte Metadaten-Dokumente von Clients, Caches je Konto und Zähler der Ratenbegrenzung.                                                                                                                                                                                                                                                                                                                                                           |
 
@@ -100,15 +100,15 @@ Größe und dem Anfang ihres SHA-256. Im Bearer-Modus mit `SEVDESK_FILE_DIRS` wi
 
 ### Tokens und Laufzeiten
 
-| Was                               | Laufzeit                                             | Hinweise                                                                                                    |
-| --------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Autorisierungscode                | 60 Sekunden                                          | Einmal verwendbar. Ein zweiter Austausch widerruft den Zugang.                                              |
-| Access-Token                      | `SEVDESK_OAUTH_ACCESS_TTL` (1 Stunde)                | Nur gültig für `<public URL>/mcp`. Jede Anfrage wird gegen den Zugangsspeicher geprüft.                     |
-| Refresh-Token                     | `SEVDESK_OAUTH_REFRESH_IDLE_TTL` (14 Tage ungenutzt) | Bei jeder Nutzung ersetzt; nie länger gültig als der Zugang.                                                |
-| Zugang                            | `SEVDESK_OAUTH_GRANT_TTL` (90 Tage ab Zustimmung)    | Danach stimmt der Benutzer erneut zu.                                                                       |
-| Cookie der Browser-Sitzung        | 12 Stunden                                           | Freigabe-Postfach, Seiten zum Hoch- und Herunterladen. Enthält kein sevDesk-Token. Endet mit seinem Zugang. |
-| Upload-Seite                      | 15 Minuten                                           | Nimmt eine Datei an.                                                                                        |
-| Hochgeladene Datei, Download-Link | `SEVDESK_HTTP_FILES_TTL` (30 Minuten)                | Ein Link liefert höchstens 5 Downloads. Ein Neustart macht beide ungültig.                                  |
+| Was                               | Laufzeit                                             | Hinweise                                                                                                                         |
+| --------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Autorisierungscode                | 60 Sekunden                                          | Einmal verwendbar. Ein zweiter Austausch widerruft den Zugang.                                                                   |
+| Access-Token                      | `SEVDESK_OAUTH_ACCESS_TTL` (1 Stunde)                | Nur gültig für `<public URL>/mcp`. Jede Anfrage wird gegen den Zugangsspeicher geprüft.                                          |
+| Refresh-Token                     | `SEVDESK_OAUTH_REFRESH_IDLE_TTL` (14 Tage ungenutzt) | Bei jeder Nutzung ersetzt; nie länger gültig als der Zugang.                                                                     |
+| Zugang                            | `SEVDESK_OAUTH_GRANT_TTL` (90 Tage ab Zustimmung)    | Danach stimmt der Benutzer erneut zu.                                                                                            |
+| Cookie der Browser-Sitzung        | 12 Stunden                                           | Freigabe-Postfach, Seiten zum Hoch- und Herunterladen. Enthält kein sevDesk-Token. Endet mit seinem Zugang.                      |
+| Upload-Seite                      | 15 Minuten                                           | Nimmt eine Datei an.                                                                                                             |
+| Hochgeladene Datei, Download-Link | `SEVDESK_HTTP_FILES_TTL` (30 Minuten)                | Uploads werden nach bestätigtem Anhängen freigegeben. Ein Link liefert höchstens 5 Downloads. Ein Neustart macht beide ungültig. |
 
 Jedes Token ist mit Schlüsseln verschlüsselt, die aus `SEVDESK_HTTP_SECRET` abgeleitet sind. Jede
 Erneuerung liefert ein neues Refresh-Token. Das vorige funktioniert noch 30 Sekunden, weil Clients
@@ -342,7 +342,8 @@ Datei (Docker- und Kubernetes-Secrets); setzen Sie die eine oder die andere.
 | `SEVDESK_HTTP_STATE_DIR`                 | Speicher (Image: `/data`)             | Absolutes Verzeichnis für den Zugangsspeicher und die verschlüsselten Dateien der Dateiübertragung (`files/`); angelegt mit Modus 0700 (ein bestehendes wird auf 0700 verschärft) und beim Start auf Schreibrechte geprüft. Ohne die Variable enden Zugänge und Browser-Sitzungen mit dem Prozess (der OAuth-Start warnt), und Dateien werden im Speicher gehalten.                                                                                                                                                          |
 | `SEVDESK_HTTP_FILES`                     | `on`                                  | [Dateiübertragung](#dateien-hochladen-und-herunterladen): Upload-Seiten für Belege und E-Rechnungen und Download-Links für die Dateien, die Werkzeuge erzeugen. `on`/`off`, `1`/`0`, `true`/`false` oder `yes`/`no`. Aus: keine Seiten und kein `sevdesk_upload_request`; im OAuth-Modus außerdem kein Werkzeug, das eine Datei zum Lesen oder einen Ort zum Speichern braucht. Die PDF- und XML-Werkzeuge und die `sevdesk://`-Ressourcen bleiben: Ein Client liest Dokumentdateien weiterhin über MCP.                     |
 | `SEVDESK_HTTP_FILES_MAX_MB`              | 256 mit Zustandsverzeichnis, sonst 64 | Mebibyte (MiB), die die hochgeladenen Dateien und Download-Links aller Konten zusammen belegen dürfen, 32 bis 4096. Ein Konto darf ein Viertel davon nutzen (mindestens 20 MiB, höchstens die Hälfte); Platz für einen Upload bleibt für Konten frei, die noch keine Dateien halten. Mit Zustandsverzeichnis liegen die Dateien auf der Festplatte, sonst im Speicher.                                                                                                                                                       |
-| `SEVDESK_HTTP_FILES_TTL`                 | `30m`                                 | Wie lange eine hochgeladene Datei und ein Download-Link gültig bleiben, 5 Minuten bis 24 Stunden.                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT`     | `10`                                  | Gültige Upload-Seiten, hochgeladene Dateien und Download-Links zusammen je sevDesk-Konto, eine ganze Zahl von 1 bis 1000. Die separaten Grenzen von 5 wartenden Seiten und insgesamt 1.000 Einträgen gelten weiterhin; die Byte-Grenzen bleiben unverändert.                                                                                                                                                                                                                                                                 |
+| `SEVDESK_HTTP_FILES_TTL`                 | `30m`                                 | Maximale Gültigkeit einer hochgeladenen Datei und eines Download-Links, 5 Minuten bis 24 Stunden. Erfolgreich angehängte Uploads werden früher freigegeben.                                                                                                                                                                                                                                                                                                                                                                  |
 | `SEVDESK_OAUTH_ACCOUNTS`                 |                                       | OAuth, Pflicht: die sevDesk-Konto-IDs, die sich verbinden dürfen, durch Kommas getrennt, oder `any` (der Start warnt).                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `SEVDESK_OAUTH_CLIENTS`                  | `claude.ai`                           | Hosts, die das Metadaten-Dokument eines Clients (seine `client_id`-URL) liefern dürfen, durch Kommas getrennt, oder `any` (der Start warnt).                                                                                                                                                                                                                                                                                                                                                                                 |
 | `SEVDESK_OAUTH_ACCESS_TTL`               | `1h`                                  | Laufzeit des Access-Tokens, 5 Minuten bis 24 Stunden. Unter 10 Minuten warnt der Start: Claude erneuert 5 Minuten vor Ablauf und würde dann bei fast jeder Anfrage erneuern.                                                                                                                                                                                                                                                                                                                                                 |
@@ -401,7 +402,8 @@ Der Start verweigert sich unter anderem bei:
   Upload-Seiten und Download-Links);
 - `SEVDESK_API_TOKEN_KEYCHAIN`, `SEVDESK_PROFILE` oder `SEVDESK_PROFILES_PATH` (nur stdio);
 - `SEVDESK_HTTP_FILES` mit einem Wert, der kein Schalterwert ist (siehe Tabelle),
-  `SEVDESK_HTTP_FILES_MAX_MB` außerhalb von 32–4096 oder `SEVDESK_HTTP_FILES_TTL` außerhalb von
+  `SEVDESK_HTTP_FILES_MAX_MB` außerhalb von 32–4096, `SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT`,
+  das keine ganze Zahl von 1 bis 1000 ist, oder `SEVDESK_HTTP_FILES_TTL` außerhalb von
   5 Minuten bis 24 Stunden;
 - `SEVDESK_CONFIRM_OPEN=1` bei einem Lauschen außerhalb von Loopback;
 - einem Zustandsverzeichnis, das nicht beschreibbar ist, einer beschädigten `grants.jsonl`, einem
@@ -423,7 +425,8 @@ der den Port erreicht, kann den Server nutzen; siehe den
 [Docker-Schnellstart](#schnellstart-bearer-modus-mit-docker)), Dateiübertragung über einfaches
 http (das Cookie der Browser-Sitzung erreicht jeden Server unter diesem Hostnamen),
 Dateiübertragung ohne Zustandsverzeichnis (Dateien werden im Speicher gehalten, bis zu
-`SEVDESK_HTTP_FILES_MAX_MB`) sowie `SEVDESK_HTTP_FILES_MAX_MB` oder `SEVDESK_HTTP_FILES_TTL`
+`SEVDESK_HTTP_FILES_MAX_MB`) sowie `SEVDESK_HTTP_FILES_MAX_MB`,
+`SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT` oder `SEVDESK_HTTP_FILES_TTL`
 zusammen mit `SEVDESK_HTTP_FILES=off` (sie haben dann keine Wirkung).
 
 ## Clients verbinden
@@ -584,9 +587,17 @@ nehmen einen anderen Weg: Sie gehen per MCP an den Client.)
    ausgeschrieben; höchstens 100 Zeichen; die Endung aus dem Inhalt).
 4. Sie sagen dem Modell, dass der Upload erledigt ist. Es übergibt die erhaltene `uploadId`
    (`upload:<id>`) als `file` an `sevdesk_voucher_create_draft`, `sevdesk_voucher_update_draft`,
-   `sevdesk_einvoice_parse` oder `sevdesk_voucher_import_einvoice`. Der Upload bleibt bis zu seinem
-   Ablauf nutzbar, auch für einen erneuten Versuch nach einem Fehler, aber nur für die Verbindung,
-   die ihn angefordert hat.
+   `sevdesk_einvoice_parse` oder `sevdesk_voucher_import_einvoice`. Nur die Verbindung, die den
+   Upload angefordert hat, kann ihn nutzen. Sobald das Erstellen, Ändern oder Importieren gelingt
+   und das Zurücklesen aus sevDesk einen Anhang bestätigt, gibt der Server den Upload frei und
+   löscht seine gespeicherte Datei; der Platz ist sofort wieder verfügbar. Das Auslesen einer
+   E-Rechnung, Probeläufe und fehlgeschlagene Aufrufe behalten den Upload bis zum Ablauf für
+   einen weiteren Versuch. Auch bei fehlendem oder unklarem Anhang im zurückgelesenen Beleg
+   bleibt er erhalten. Beim Ändern muss sich die Anhang-ID gegenüber dem unmittelbar vor dem
+   Speichern geprüften Stand ändern (oder erstmals ein Anhang vorliegen, wenn vorher ausdrücklich
+   keiner vorhanden war). Bei gleicher ID oder unbekanntem vorherigem Anhang bleibt der Upload
+   bis zum Ablauf verfügbar. Um eine erfolgreich angehängte Datei nach der Freigabe ihres
+   Uploads erneut zu verwenden, fordern Sie einen neuen Upload an.
 
 **Herunterladen.** `sevdesk_document_save`, `sevdesk_voucher_receipt_save`, `sevdesk_csv_export`
 und `sevdesk_datev_export` geben statt eines Dateipfads einen Download-Link zurück, `<public URL>/files/<id>`. Der Server hat die
@@ -617,22 +628,27 @@ Sie zugestimmt haben.
 
 **Grenzen und Laufzeiten:**
 
-| Was                      | Grenze                                                                                                                                                                             |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Upload-Seite             | 15 Minuten gültig, nimmt eine Datei an.                                                                                                                                            |
-| Angenommene Dateien      | Belege: PDF, PNG oder JPEG. E-Rechnungen: XML (XRechnung) oder PDF (ZUGFeRD, Factur-X). Am Inhalt geprüft.                                                                         |
-| Ein Upload               | 20 MiB, oder die Hälfte von `SEVDESK_HTTP_FILES_MAX_MB`, falls das weniger ist.                                                                                                    |
-| Hochgeladene Datei, Link | Gültig für `SEVDESK_HTTP_FILES_TTL` (30 Minuten). Ein Link liefert höchstens 5 Downloads.                                                                                          |
-| Je Konto                 | 5 Upload-Seiten, die auf eine Datei warten, 10 Uploads und Links zusammen, ein Viertel von `SEVDESK_HTTP_FILES_MAX_MB` (mindestens 20 MiB, höchstens die Hälfte).                  |
-| Alle Konten              | `SEVDESK_HTTP_FILES_MAX_MB` (256 MiB mit Zustandsverzeichnis, 64 MiB ohne), 1.000 Uploads und Links. Platz für einen Upload bleibt für Konten frei, die noch keine Dateien halten. |
-| Anfragen je Client       | 60 pro Minute an die Upload- und Download-Seiten zusammen; 10 Uploads pro Minute und 60 pro Stunde (IPv6 je /64-Netz).                                                             |
-| Gleichzeitige Uploads    | 2 für den ganzen Server, 1 je Konto; ein weiterer bekommt „Server busy“ oder „Upload in progress“ (503): Versuchen Sie es gleich noch einmal.                                      |
-| Upload-Tempo             | Die Datei muss innerhalb von 90 Sekunden eintreffen, ohne 10 Sekunden Pause und nach den ersten 10 Sekunden mit durchschnittlich mindestens 16 KB/s; sonst 408.                    |
-| Download-Tempo           | Der Browser muss die Datei laufend abnehmen: Ein Download, von dem er in einer Minute weniger als 64 KiB abnimmt, wird abgebrochen und zählt trotzdem als einer der 5 des Links.   |
-| Ein Neustart             | Macht jede Upload-Seite, jeden Upload und jeden Link ungültig. Das Modell fordert einen neuen an.                                                                                  |
+| Was                      | Grenze                                                                                                                                                                                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Upload-Seite             | 15 Minuten gültig, nimmt eine Datei an.                                                                                                                                                                                                           |
+| Angenommene Dateien      | Belege: PDF, PNG oder JPEG. E-Rechnungen: XML (XRechnung) oder PDF (ZUGFeRD, Factur-X). Am Inhalt geprüft.                                                                                                                                        |
+| Ein Upload               | 20 MiB, oder die Hälfte von `SEVDESK_HTTP_FILES_MAX_MB`, falls das weniger ist.                                                                                                                                                                   |
+| Hochgeladene Datei, Link | Höchstens `SEVDESK_HTTP_FILES_TTL` (30 Minuten) gültig; Uploads werden nach bestätigtem Anhängen freigegeben. Ein Link liefert höchstens 5 Downloads.                                                                                             |
+| Je Konto                 | 5 Upload-Seiten, die auf eine Datei warten; `SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT` gültige Seiten, Uploads und Links zusammen (Standard 10, Bereich 1–1000); ein Viertel von `SEVDESK_HTTP_FILES_MAX_MB` (mindestens 20 MiB, höchstens die Hälfte). |
+| Alle Konten              | `SEVDESK_HTTP_FILES_MAX_MB` (256 MiB mit Zustandsverzeichnis, 64 MiB ohne), 1.000 Uploads und Links. Platz für einen Upload bleibt für Konten frei, die noch keine Dateien halten.                                                                |
+| Anfragen je Client       | 60 pro Minute an die Upload- und Download-Seiten zusammen; 10 Uploads pro Minute und 60 pro Stunde (IPv6 je /64-Netz).                                                                                                                            |
+| Gleichzeitige Uploads    | 2 für den ganzen Server, 1 je Konto; ein weiterer bekommt „Server busy“ oder „Upload in progress“ (503): Versuchen Sie es gleich noch einmal.                                                                                                     |
+| Upload-Tempo             | Die Datei muss innerhalb von 90 Sekunden eintreffen, ohne 10 Sekunden Pause und nach den ersten 10 Sekunden mit durchschnittlich mindestens 16 KB/s; sonst 408.                                                                                   |
+| Download-Tempo           | Der Browser muss die Datei laufend abnehmen: Ein Download, von dem er in einer Minute weniger als 64 KiB abnimmt, wird abgebrochen und zählt trotzdem als einer der 5 des Links.                                                                  |
+| Ein Neustart             | Macht jede Upload-Seite, jeden Upload und jeden Link ungültig. Das Modell fordert einen neuen an.                                                                                                                                                 |
 
 Nichts wird verdrängt, um Platz zu schaffen: Ist eine Grenze erreicht, werden neue Uploads und
-Links abgelehnt, bis ältere ablaufen. Download-Links zählen gegen denselben Platz wie Uploads; ein
+Links abgelehnt, bis ältere ablaufen oder freigegeben werden. Bei einer erreichten Anzahlgrenze
+nennt die Meldung den frühesten bekannten Ablaufzeitpunkt des anfragenden Kontos, niemals Zeiten
+anderer Konten. Noch laufende Speichervorgänge haben keinen festen Ablaufzeitpunkt; wenn keiner
+bekannt ist, sagt die Meldung das. Für mehr gleichzeitige Einträge erhöhen Sie
+`SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT`; die Byte-Grenzen ändern sich dadurch nicht.
+Download-Links zählen gegen denselben Platz wie Uploads; ein
 großer DATEV-Export passt daher unter Umständen nicht (mit 64 MiB im Speicher hat ein Konto 20 MiB).
 Das Werkzeug sagt dann, dass sevDesk den Export gestartet hat, und Sie laden ihn stattdessen in
 sevDesk herunter; oder Sie erhöhen `SEVDESK_HTTP_FILES_MAX_MB`, am besten mit einem
@@ -845,14 +861,17 @@ einem anderen Konto angemeldet. Melden Sie sich in diesem Formular mit dem sevDe
 Kontos an; es bringt Sie zur Seite zurück.
 
 **„Upload page not found“ oder „File not found“.** Der Link ist unbekannt, gehört zu einem anderen
-sevDesk-Konto, oder der Server wurde inzwischen neu gestartet (ein Neustart macht jeden Upload und
-jeden Link ungültig). „Expired“ und „used up“ bedeuten, was sie sagen. Bitten Sie das Modell um
+sevDesk-Konto, wurde bereits erfolgreich angehängt, oder der Server wurde inzwischen neu gestartet
+(ein Neustart macht jeden Upload und jeden Link ungültig). „Expired“ und „used up“ bedeuten, was sie sagen. Bitten Sie das Modell um
 einen neuen Upload-Link oder darum, die Datei erneut zu erzeugen.
 
 **„No space for the file“ (507), oder das Modell meldet, dass die Grenze erreicht ist.** Die
 Uploads und Links des Kontos füllen sein Viertel von `SEVDESK_HTTP_FILES_MAX_MB`, die Konten
-zusammen füllen den Platz, oder 10 davon sind gültig. Warten Sie, bis ältere ablaufen
-(`SEVDESK_HTTP_FILES_TTL`), oder erhöhen Sie die Grenze. „Server busy“ (503) heißt, dass gerade
+zusammen füllen den Platz, oder das Konto hat `SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT` erreicht
+(Standard 10). Erfolgreiches Anhängen gibt Uploads sofort frei. Bei einer erreichten Anzahlgrenze
+warten Sie bis zum in der Meldung genannten Ablaufzeitpunkt des Kontos oder erhöhen diese
+Einstellung; bei Platzmangel warten Sie auf den Ablauf von Dateien oder erhöhen
+`SEVDESK_HTTP_FILES_MAX_MB`. „Server busy“ (503) heißt, dass gerade
 zwei andere Uploads eintreffen, „Upload in progress“ (503), dass ein anderer Upload desselben
 Kontos eintrifft; versuchen Sie es gleich noch einmal.
 

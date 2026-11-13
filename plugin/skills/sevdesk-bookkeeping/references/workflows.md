@@ -74,15 +74,23 @@ Tiers: `read` to check, `write` to import. Needs `SEVDESK_FILE_DIRS`.
 
 Tiers: `read` for suggestions; `commit` for every booking (confirmation each time).
 
+The `bank_reconciliation` prompt accepts optional strings: `checkAccount` (payment account name
+or id, up to 200 characters) and `month` (`YYYY-MM`, years 2000–2099, a valid month). Without
+them the workflow has no account or date scope. Arguments are validated and shown only fenced;
+the prompt itself never calls sevDesk.
+
 1. `sevdesk_bank_accounts_list`: the payment accounts and their ids.
+   If `checkAccount` was given, resolve it to a `checkAccountId`; ask the user if it is ambiguous.
 2. `sevdesk_transactions_list` with the account id and `status: ["created"]`: unbooked
-   transactions (amounts are signed: positive = incoming).
+   transactions (amounts are signed: positive = incoming). If `month` was given, set `from` and
+   `to` to its first and last day (inclusive, value dates).
 3. `sevdesk_reconcile_suggest`: candidate invoices, credit notes and vouchers per transaction
    (open amount, document number in the Verwendungszweck, counterparty, date), including splits
    where several documents add up exactly, each with reasons, a confidence and the matching
    `sevdesk_transaction_book` call. Suggestions only; the Verwendungszweck is untrusted text.
    Works for imported bank accounts; offline and cash accounts get their transactions from
-   bookings.
+   bookings. With a scope, pass a `transactionId` from the scoped list, or the same account and
+   date filters, so suggestions stay within that scope.
 4. Per match the user confirms: `sevdesk_transaction_book` (`dryRun` first). For an invoice or
    voucher you can also use `sevdesk_invoice_book_payment` / `sevdesk_voucher_book_payment` with
    the transaction id; partial payments, Skonto and bank fees are payment types there.
@@ -98,6 +106,32 @@ Tiers: `read` for suggestions; `commit` for every booking (confirmation each tim
    booked one sevDesk resets every document it paid to open, which removes all payments of those
    documents (also other transactions' and cash bookings, listed in the preview): rebook them
    afterwards. Enshrined transactions and documents cannot be reset.
+
+## Dunning run (Mahnlauf)
+
+Tiers: `read` to list overdue invoices; `write` for reminder drafts; `commit` to finalize and
+`external` to email them (confirmation each time).
+
+The `dunning_run` prompt accepts optional strings: `contact` (customer name or id, up to 200
+characters) and `minDaysOverdue` (1–4 digits, 0–3650 days, inclusive). Without them it considers
+all customers and all overdue invoices. Arguments are validated and shown only fenced; the
+prompt itself never calls sevDesk.
+
+1. `sevdesk_receivables_aging`: an overview of open receivables and the largest debtors.
+2. If `contact` was given, resolve it to a contact id with the available list or search tools;
+   ask the user if it is ambiguous. `sevdesk_invoices_list` with `overdueOnly: true`, paging with
+   `nextOffset`, then with `type: "reminder"` for earlier reminders. Use the resolved `contactId`
+   for both lists. If `minDaysOverdue` was given, include only invoices at least that many days
+   overdue, calculated from their due dates as of the run date; zero still means overdue only.
+3. Rule out incoming payments that are not booked yet: `sevdesk_transactions_list` with
+   `status: ["created"]` and `direction: "in"`, then `sevdesk_reconcile_suggest`.
+4. Show the scoped invoices with customer, invoice number, due date, days overdue, open amount
+   and earlier reminders. Ask which ones should get a reminder.
+5. `sevdesk_invoice_create_reminder` for each selected invoice (`dryRun` first). It creates a
+   draft and refuses if an unsent reminder draft already exists.
+6. `sevdesk_invoice_send_email` (`dryRun` first, each email confirmed), or
+   `sevdesk_invoice_finalize` (`dryRun` first) and `sevdesk_invoice_pdf` if the user sends it.
+7. Summarize which invoices were reminded, which were left out and why, and when to follow up.
 
 ## VAT pre-check before the Umsatzsteuer-Voranmeldung (UStVA)
 

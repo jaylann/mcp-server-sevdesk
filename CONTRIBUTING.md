@@ -136,8 +136,9 @@ a public contract ([docs/compatibility.md](docs/compatibility.md)).
   freely, but re-record the evals when you change what models read (below).
 
 The **Tool surface** PR workflow compares `tools/list` (including input/output schemas),
-`prompts/list` and server instructions at the event's exact base and head commits. It covers the
-default read configuration, `SEVDESK_ALLOW=write`, all tiers/toolsets, and all tiers/toolsets over
+`prompts/list` and server instructions at the event's base commit and at the PR merged into that
+base (GitHub's test merge commit), so a branch that is behind `main` shows only its own changes. It
+covers the default read configuration, `SEVDESK_ALLOW=write`, all tiers/toolsets, and all tiers/toolsets over
 HTTP with OAuth and remote files. One sticky PR comment combines the diff with context costs,
 including when the surface is unchanged. Each configuration shows base and head characters,
 estimated tokens (**characters / 4**, calculated locally without an API key), and signed absolute
@@ -230,6 +231,20 @@ library, and then starts the unpacked server the way Claude Desktop does. The CI
 it on every pull request and uploads the bundle as an artifact; the release job `publish-mcpb`
 attaches it to the GitHub release with a provenance attestation.
 
+The checked-in `server.json` is the npm/OCI template. `publish-registry` waits for `publish-mcpb`,
+downloads the public release bundle, and runs `scripts/prepare-registry.ts` with plain Node to add
+its MCPB URL and SHA-256 to the `server.json` it publishes. It checks the bundle's name and manifest
+version before writing; no dependency install runs in that privileged job. The MCPB entry is
+generated at publication time because release-please cannot know the hash of a future asset.
+The generator's tests validate against the official schema pinned by `server.json` (snapshot and
+provenance in `spec/mcp-registry/`). To dry-run the same preparation after `pnpm mcpb`:
+
+```bash
+version="$(node -p 'require("./package.json").version')"
+node scripts/prepare-registry.ts "$version" "v$version" \
+  "build/mcp-server-sevdesk-$version.mcpb" build/registry/server.json
+```
+
 Change the extension's settings only in `mcpb/manifest.json`. Keep its `JSON.stringify` layout
 (release-please rewrites the file when it bumps the version, so Prettier ignores it), and give
 every optional setting a default: Claude Desktop passes an empty setting without one as the
@@ -240,9 +255,29 @@ them. To try a build, open `build/mcp-server-sevdesk-<version>.mcpb` in Claude D
 ## Keychain and profiles
 
 The keychain code (`src/safety/keychain.ts`) takes an injected `spawn`, so tests never run
-`security` or `secret-tool`; the profile code takes an injected platform, user id and home folder. A
-real round trip is a manual check: `token set`, `token check` and `token delete` with a throwaway
-label, then start the server with `SEVDESK_API_TOKEN_KEYCHAIN` set to it.
+`security`, `secret-tool` or Windows PowerShell; the profile code takes an injected platform,
+user id and home folder. A real round trip is a manual check: `token set`, `token check`, a
+server start with `SEVDESK_API_TOKEN_KEYCHAIN` set to a throwaway label, then `token delete`.
+
+On Windows, from a clean PowerShell session in the repository (use a new throwaway label and
+paste the token only at the hidden prompt):
+
+```powershell
+pnpm build
+node dist/index.js token set windows-check-11
+node dist/index.js token check windows-check-11
+$env:SEVDESK_API_TOKEN_KEYCHAIN = 'windows-check-11'
+node dist/index.js --stdio
+# After the startup message, stop the server with Ctrl+C, then:
+Remove-Item Env:SEVDESK_API_TOKEN_KEYCHAIN
+node dist/index.js token delete windows-check-11
+node dist/index.js token check windows-check-11 # must report no stored token
+```
+
+Repeat `token set` before deletion to check replacement, and confirm no token appears in the
+output or PowerShell process arguments. `PasswordVault` requires Windows PowerShell's
+`FullLanguage` mode; Constrained Language Mode must give a safe refusal, never bypass the policy
+([ADR 0009](docs/adr/0009-local-profiles-and-os-keychain.md)).
 
 ## Fixtures
 

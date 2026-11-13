@@ -131,6 +131,15 @@ const output = z.object({
     .describe("reference: built-in, verified list; sevdesk: fetched from the account."),
   total: z.number().int().describe("Entries before the query filter."),
   returned: z.number().int(),
+  hasMore: z
+    .boolean()
+    .describe("Another local page is available at nextOffset; separate from upstream truncation."),
+  limit: z
+    .number()
+    .int()
+    .positive()
+    .nullable()
+    .describe("Effective receipt_guidance page size; null for unpaged kinds."),
   truncated: z.boolean().describe("True when sevDesk reported more entries than were fetched."),
   taxRules: z.array(taxRuleItem).optional(),
   contactCategories: z.array(contactCategoryItem).optional(),
@@ -286,6 +295,8 @@ async function lookupReceiptGuidance(args: LookupArgs, ctx: ToolContext): Promis
     truncated: list.truncated,
     matched: matches.length,
     offset,
+    limit,
+    hasMore: end < matches.length,
     ...(end < matches.length ? { nextOffset: end } : {}),
     receiptGuidance: page.map((guide) =>
       compact({
@@ -410,7 +421,7 @@ function counts(
   total: number,
   returned: number,
 ) {
-  return { kind, source, total, returned, truncated: false };
+  return { kind, source, total, returned, truncated: false, hasMore: false, limit: null };
 }
 
 function upstreamCounts(
@@ -424,6 +435,8 @@ function upstreamCounts(
     total: list.total,
     returned,
     truncated: list.total > list.items.length,
+    hasMore: false,
+    limit: null,
   };
 }
 

@@ -39,6 +39,7 @@ import {
   statusDtoSchema,
   toUnixRange,
 } from "./common.js";
+import { TRANSACTION_STATUS_CODES } from "./filter-keys.js";
 import { compare, DEFAULT_CURRENCY } from "./money.js";
 import { pageState } from "./paging.js";
 
@@ -81,15 +82,6 @@ export const TRANSACTION_STATUS_KEYS = [
   "booked",
 ] as const;
 type TransactionStatusKey = (typeof TRANSACTION_STATUS_KEYS)[number];
-
-/** Spec `Model_CheckAccountTransactionResponse.status` (350 only there, see D-031). */
-const TRANSACTION_STATUS_CODES: Readonly<Record<TransactionStatusKey, number>> = {
-  created: 100,
-  linked: 200,
-  private: 300,
-  auto_booked: 350,
-  booked: 400,
-};
 
 export const DIRECTIONS = ["in", "out"] as const;
 type Direction = (typeof DIRECTIONS)[number] | "none";
@@ -630,7 +622,7 @@ function transactionMatcher(
   const statusCodes =
     params.statuses === undefined || params.statuses.length === 0
       ? undefined
-      : new Set(params.statuses.map((key) => TRANSACTION_STATUS_CODES[key]));
+      : new Set<number>(params.statuses.map((key) => TRANSACTION_STATUS_CODES[key]));
   const { from, to, direction } = params;
   return (record) => {
     if (accountId !== undefined && record.checkAccount?.id !== accountId) return false;

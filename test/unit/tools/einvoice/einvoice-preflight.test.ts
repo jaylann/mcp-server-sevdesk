@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { invoiceEInvoicePreflightTool as tool } from "../../../../src/tools/invoices/einvoice-preflight.js";
 import { INVOICE_EINVOICE_TOOLS } from "../../../../src/tools/invoices/einvoice-tools.js";
+import { withCountryRoute } from "../../../helpers/country-route.js";
 import { type FakeRoute, FakeSevdeskClient, testContext } from "../../../helpers/fake-client.js";
 
 const contactFilter = { "contact[id]": 1001, "contact[objectName]": "Contact" };
@@ -14,7 +15,7 @@ const XML = readFileSync(
 
 /** Invoice 1001 (open, community shape) with its contact, positions and units. */
 function routes(xml: FakeRoute["response"]): FakeRoute[] {
-  return [
+  return withCountryRoute([
     {
       path: "/Invoice/1001",
       query: { embed: "contact" },
@@ -35,7 +36,7 @@ function routes(xml: FakeRoute["response"]): FakeRoute[] {
       response: { fixture: "contacts/communication-ways-1001.json" },
     },
     { path: "/Invoice/1001/getXml", response: xml },
-  ];
+  ]);
 }
 
 describe("sevdesk_invoice_einvoice_preflight", () => {

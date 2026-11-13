@@ -16,6 +16,7 @@ import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
 import { parseUpstream, zId } from "../sevdesk/schema.js";
 import type { QueryValue, SevdeskClient } from "../sevdesk/types.js";
 import { documentDateFilter } from "./common.js";
+import { countryCodeSchema, withDocumentCountry } from "./country-codes.js";
 import {
   addressDto,
   berlinDate,
@@ -46,15 +47,12 @@ import {
   zOptionalRef,
   zText,
 } from "./document-positions.js";
+import { BOOKING_CATEGORY_NAMES, CREDIT_NOTE_STATUS_FILTERS, keyForCode } from "./filter-keys.js";
 import { creditNoteLink } from "./links.js";
 
+export { CREDIT_NOTE_STATUS_FILTERS } from "./filter-keys.js";
+
 /** Credit note statuses (spec tag `CreditNote` → "Status of credit notes"). */
-export const CREDIT_NOTE_STATUS_FILTERS = {
-  draft: 100,
-  open: 200,
-  partially_paid: 750,
-  paid: 1000,
-} as const;
 export type CreditNoteStatusFilter = keyof typeof CREDIT_NOTE_STATUS_FILTERS;
 
 /** Booking categories (spec tag `CreditNote` → "Credit note booking categories"). */
@@ -108,6 +106,10 @@ function parseCreditNoteRecord(raw: unknown): CreditNoteRecord {
 // ---------------------------------------------------------------------------------------------
 
 const bookingCategorySchema = z.object({
+  key: z
+    .string()
+    .optional()
+    .describe("Accepted bookingCategory input key; absent for unsupported categories."),
   code: z.string().describe("PROVISION, ROYALTY_ASSIGNED, ROYALTY_UNASSIGNED, UNDERACHIEVEMENT…"),
   label: z.string(),
 });
@@ -145,6 +147,7 @@ export const creditNoteDetailSchema = creditNoteRowSchema.extend({
     .object({
       text: z.string().optional().describe("Recipient address as printed."),
       countryId: z.number().int().optional().describe("StaticCountry id."),
+      country: countryCodeSchema,
     })
     .optional(),
   contactPersonId: z.number().int().optional(),
@@ -174,7 +177,11 @@ function toCreditNoteRow(record: CreditNoteRecord): CreditNoteRow {
     bookingCategory:
       category === undefined
         ? undefined
-        : { code: category, label: BOOKING_CATEGORIES[category] ?? "unknown" },
+        : compact({
+            code: category,
+            label: BOOKING_CATEGORIES[category] ?? "unknown",
+            key: keyForCode(BOOKING_CATEGORY_NAMES, category),
+          }),
     sourceInvoiceId: record.refSrcInvoice ?? originInvoice,
     sourceVoucherId: record.refSrcVoucher,
     header: cleanText(record.header, TEXT_MAX.short),
@@ -297,7 +304,7 @@ export async function getCreditNote(
     loadUnitNames(client, signal),
   ]);
   const record = parseCreditNoteRecord(expectSingle(payload, `credit note ${id}`));
-  const creditNote = toCreditNoteDetail(record);
+  const creditNote = await withDocumentCountry(toCreditNoteDetail(record), client, signal);
   const context = { currency: creditNote.currency, showNet: record.showNet, unitNames };
   return {
     creditNote,

@@ -26,11 +26,11 @@ has no keychain. This decision is about local installs only.
 reads the token stored under that label (`src/safety/keychain.ts`). Exactly one of
 `SEVDESK_API_TOKEN`, `SEVDESK_API_TOKEN_FILE` and `SEVDESK_API_TOKEN_KEYCHAIN` may be set.
 
-| Platform        | Read                                         | Store                                                       |
-| --------------- | -------------------------------------------- | ----------------------------------------------------------- |
-| macOS           | `/usr/bin/security find-generic-password -w` | `security -i`, the command on stdin                         |
-| Linux and other | `secret-tool lookup` (libsecret)             | `secret-tool store`, the token on stdin                     |
-| Windows         | not supported in 1.0                         | (pointer to `SEVDESK_API_TOKEN_FILE` or the `.mcpb` bundle) |
+| Platform        | Read                                         | Store                                   |
+| --------------- | -------------------------------------------- | --------------------------------------- |
+| macOS           | `/usr/bin/security find-generic-password -w` | `security -i`, the command on stdin     |
+| Linux and other | `secret-tool lookup` (libsecret)             | `secret-tool store`, the token on stdin |
+| Windows         | Windows PowerShell / WinRT `PasswordVault`   | `PasswordVault.Add`, the token on stdin |
 
 - **Fixed service, label only.** Every item lives under the service `mcp-server-sevdesk`; the
   configuration names only the label (the item's account), which must start with a letter or
@@ -41,6 +41,29 @@ reads the token stored under that label (`src/safety/keychain.ts`). Exactly one 
   the helper's stdin, never in its arguments, which other local users can see in the process list.
   `security -i` parses that stdin line itself, so only tokens of `[A-Za-z0-9_-]` are stored
   (sevDesk tokens are 32 hex characters) and nothing needs quoting.
+- **Windows helper resolution.** Use only the absolute
+  `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`, with `-NoLogo`, `-NoProfile`,
+  `-NonInteractive` and `-Command`. `SystemRoot` is inherited trusted OS configuration: it must be a
+  local drive-absolute directory, with no traversal, device/UNC paths or control characters.
+  Missing or invalid values fail closed; there is no fallback to the current directory, `PATH`,
+  `pwsh` or an execution-policy override. Windows' normal System32 redirection applies to 32-bit
+  Node. This prevents cwd/PATH executable substitution, not a compromised process environment
+  or Windows installation.
+- **Windows protocol.** One constant script uses WinRT `Windows.Security.Credentials.PasswordVault`
+  without `Add-Type`; the resource is always `mcp-server-sevdesk`, the username is the validated
+  label. Operation, label and token travel as three ASCII lines on stdin, never interpolated
+  into the script. `Add` stores/replaces, `Retrieve` reads, and `Remove` deletes only that pair.
+  Success returns exactly `TOKEN:<token>` or `OK` plus a newline. Unexpected output is refused.
+  Caught exceptions are reduced to private exit codes: 2 for HRESULT `0x80070490` (not found),
+  3 for `0x80070005` (denied), 4 for an unsupported language mode, 5 for invalid input, 1 for
+  other failures. Neither exception messages nor helper output are surfaced.
+- **Constrained Language Mode correction.** Avoiding `Add-Type` does **not** make `PasswordVault`
+  usable in CLM: Windows PowerShell only permits construction and method invocation for its
+  [allowed types](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_language_modes?view=powershell-5.1#constrainedlanguage-mode).
+  The helper requires `FullLanguage`, refuses other modes before reading stdin, and points to
+  `SEVDESK_API_TOKEN_FILE` or the `.mcpb` bundle. It never disables the policy. CLM support from
+  the original proposal remains open; a real Windows set/check/delete and server-start check
+  is also required (the implementation was tested with injected spawn on macOS).
 - **Output is never echoed.** stdout is capped at 4 KiB, stderr is discarded, the helper is killed
   after 15 s at startup (120 s for the CLI commands, where a person may have to answer a dialog),
   and errors are fixed texts chosen by exit code (`security` exits with the low byte of the
@@ -99,8 +122,10 @@ a server keeps one source of configuration, its environment.
   keychain).
 - Bad: Linux needs `secret-tool` and a running, unlocked Secret Service (GNOME Keyring, KWallet);
   headless machines should keep using `SEVDESK_API_TOKEN_FILE`.
-- Bad: no keychain on Windows in 1.0 (planned for 1.x with the Credential Manager), and the
-  profiles file is not permission-checked there.
+- Bad: Windows needs Windows PowerShell in `FullLanguage` mode; the profiles file is not
+  permission-checked there. `PasswordVault` uses the Credential Locker, not Win32 `CredWrite`
+  generic credentials. Its entries can [roam with the Microsoft account](https://learn.microsoft.com/en-us/windows/apps/develop/security/credential-locker);
+  users who require local-only storage should use a protected token file instead.
 - Bad: every stdio start with a keychain label spawns a helper, and a locked keychain can hold the
   start for up to 15 s.
 - Bad: a client that always sets a variable (for example a plugin that defaults `SEVDESK_ALLOW`)
