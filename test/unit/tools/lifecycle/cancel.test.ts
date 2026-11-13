@@ -58,9 +58,7 @@ describe("sevdesk_invoice_cancel (community: sevdesk-rs recorded cancelInvoice, 
       "GET /StaticCountry",
       "POST /Invoice/1001/cancelInvoice",
       "GET /Invoice/1001",
-      "GET /StaticCountry",
       "GET /Invoice/1102",
-      "GET /StaticCountry",
     ]);
     expect(output.data).toMatchObject({
       invoice: { id: 1001, status: { code: 1000 } },

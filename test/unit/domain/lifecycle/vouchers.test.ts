@@ -55,7 +55,7 @@ function refusal(check: () => unknown): string | undefined {
 describe("voucher snapshots", () => {
   it("reads GET /Voucher/{id} without an embed and maps the voucher", async () => {
     const fake = new FakeSevdeskClient([voucherRoute(openVoucherRow())]);
-    const doc = await readLifecycleDocument(fake, "voucher", 2001);
+    const doc = await readLifecycleDocument(fake, "voucher", 2001, { cacheOwner: fake });
     expect(fake.calls[0]).toMatchObject({ path: "/Voucher/2001", query: {} });
     expect(doc).toMatchObject({
       kind: "voucher",

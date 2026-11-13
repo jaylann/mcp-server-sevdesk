@@ -16,7 +16,11 @@ import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
 import { parseUpstream, zId } from "../sevdesk/schema.js";
 import type { QueryValue, SevdeskClient } from "../sevdesk/types.js";
 import { documentDateFilter } from "./common.js";
-import { countryCodeSchema, withDocumentCountry } from "./country-codes.js";
+import {
+  countryCodeSchema,
+  type CountryReadOptions,
+  withDocumentCountry,
+} from "./country-codes.js";
 import {
   addressDto,
   berlinDate,
@@ -279,8 +283,9 @@ export interface CreditNoteDetails {
 export async function getCreditNote(
   client: SevdeskClient,
   creditNoteId: number,
-  signal?: AbortSignal,
+  options: CountryReadOptions,
 ): Promise<CreditNoteDetails> {
+  const { signal, cacheOwner } = options;
   const id = toSevdeskId(creditNoteId);
   const withSignal = signal === undefined ? {} : { signal };
   const [payload, positions, unitNames] = await Promise.all([
@@ -304,7 +309,10 @@ export async function getCreditNote(
     loadUnitNames(client, signal),
   ]);
   const record = parseCreditNoteRecord(expectSingle(payload, `credit note ${id}`));
-  const creditNote = await withDocumentCountry(toCreditNoteDetail(record), client, signal);
+  const creditNote = await withDocumentCountry(toCreditNoteDetail(record), client, {
+    signal,
+    cacheOwner,
+  });
   const context = { currency: creditNote.currency, showNet: record.showNet, unitNames };
   return {
     creditNote,

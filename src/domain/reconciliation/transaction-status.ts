@@ -21,6 +21,7 @@ import { z } from "zod";
 
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { getBankAccount, getTransaction, type TransactionDto } from "../banking.js";
+import type { CountryReadOptions } from "../country-codes.js";
 import {
   documentRef,
   KINDS,
@@ -157,8 +158,9 @@ export const MAX_RESET_DOCUMENTS = 10;
 export async function planTransactionReset(
   client: SevdeskClient,
   transactionId: number,
-  signal?: AbortSignal,
+  options: CountryReadOptions,
 ): Promise<ResetPlan> {
+  const { signal, cacheOwner } = options;
   const transaction = await lookup(
     () => getTransaction(client, transactionId, signal),
     `Bank transaction ${String(transactionId)} does not exist; find it with ` +
@@ -231,7 +233,7 @@ export async function planTransactionReset(
   const resettable: Omit<ResetDocument, "otherTransactions">[] = [];
   for (const { kind, id, share } of shares.values()) {
     const doc = await lookup(
-      () => readLifecycleDocument(client, kind, id, signal),
+      () => readLifecycleDocument(client, kind, id, { signal, cacheOwner }),
       `${documentRef({ kind, id }, true)}, which ${ref.toLowerCase()} is linked to, no longer ` +
         "exists; undo the booking in the sevDesk web app.",
     );

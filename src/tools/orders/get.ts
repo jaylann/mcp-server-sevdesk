@@ -50,7 +50,10 @@ export const orderGetTool = defineTool({
   }),
   output,
   handler: async (args, ctx) => {
-    const details = await getOrder(ctx.client, args.id, ctx.signal);
+    const details = await getOrder(ctx.client, args.id, {
+      signal: ctx.signal,
+      cacheOwner: ctx.config,
+    });
     const { order, positions, related } = details;
     const count = `${positions.length} position${positions.length === 1 ? "" : "s"}`;
     const partial = details.positionsComplete

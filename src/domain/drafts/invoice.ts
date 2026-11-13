@@ -22,6 +22,7 @@ import { z } from "zod";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { statusDto } from "../common.js";
+import type { CountryReadOptions } from "../country-codes.js";
 import { getInvoice, type InvoiceDetails } from "../invoices.js";
 import { documentTypeByCode } from "../reference-data.js";
 import { berlinDay, type CurrentInvoice, loadCurrentInvoice } from "./current.js";
@@ -467,8 +468,9 @@ export interface InvoiceDraftResult {
 export async function executeInvoiceDraft(
   client: SevdeskClient,
   state: InvoiceDraftState,
-  signal?: AbortSignal,
+  options: CountryReadOptions,
 ): Promise<InvoiceDraftResult> {
+  const { signal, cacheOwner } = options;
   const response = await client.request({
     method: "POST",
     path: "/Invoice/Factory/saveInvoice",
@@ -486,7 +488,7 @@ export async function executeInvoiceDraft(
       completedWrites: [saved],
     });
   }
-  const details = await readBack(saved, () => getInvoice(client, id, signal));
+  const details = await readBack(saved, () => getInvoice(client, id, { signal, cacheOwner }));
   const notes = readBackNotes(
     {
       number: details.invoice.number,

@@ -146,7 +146,10 @@ export function finalizeTool(kind: SalesKind) {
     // Serialized with other calls on the same record (see WriteToolDefinition.locks).
     locks: (args) => [documentObject(kind, args.id)],
     prepare: async (args, ctx) => {
-      const doc = await readLifecycleDocument(ctx.client, kind, args.id, ctx.signal);
+      const doc = await readLifecycleDocument(ctx.client, kind, args.id, {
+        signal: ctx.signal,
+        cacheOwner: ctx.config,
+      });
       assertFinalizable(doc);
       const via: SentVia = args.sentVia ?? "pdf_download";
       const payload: SendByPayload = sendByPayload(via);

@@ -42,7 +42,10 @@ export const creditNoteGetTool = defineTool({
   }),
   output,
   handler: async (args, ctx) => {
-    const details = await getCreditNote(ctx.client, args.id, ctx.signal);
+    const details = await getCreditNote(ctx.client, args.id, {
+      signal: ctx.signal,
+      cacheOwner: ctx.config,
+    });
     const { creditNote, positions } = details;
     const count = `${positions.length} position${positions.length === 1 ? "" : "s"}`;
     const partial = details.positionsComplete

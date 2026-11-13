@@ -26,7 +26,7 @@ import { sevdeskPath, toSevdeskId } from "../../sevdesk/paths.js";
 import { parseUpstream, zOptionalDecimal } from "../../sevdesk/schema.js";
 import type { QueryValue, SevdeskClient } from "../../sevdesk/types.js";
 import type { Amounts } from "../common.js";
-import { withDocumentCountry } from "../country-codes.js";
+import { type CountryReadOptions, withDocumentCountry } from "../country-codes.js";
 import { type CreditNoteDetail, mapCreditNoteDetail } from "../credit-notes.js";
 import type { ContactRef } from "../document-positions.js";
 import { type InvoiceDetail, mapInvoiceDetail } from "../invoices.js";
@@ -211,16 +211,15 @@ export interface LifecycleDocument<K extends LifecycleKind = LifecycleKind> {
 const MAPPERS: {
   readonly [K in LifecycleKind]: (
     raw: unknown,
-    today: string,
     client: SevdeskClient,
-    signal: AbortSignal | undefined,
+    options: CountryReadOptions & { readonly today: string },
   ) => Promise<DetailByKind[K]>;
 } = {
-  invoice: (raw, today, client, signal) =>
-    withDocumentCountry(mapInvoiceDetail(raw, today), client, signal),
-  creditNote: (raw, _today, client, signal) =>
-    withDocumentCountry(mapCreditNoteDetail(raw), client, signal),
-  order: (raw, _today, client, signal) => withDocumentCountry(mapOrderDetail(raw), client, signal),
+  invoice: (raw, client, options) =>
+    withDocumentCountry(mapInvoiceDetail(raw, options.today), client, options),
+  creditNote: (raw, client, options) =>
+    withDocumentCountry(mapCreditNoteDetail(raw), client, options),
+  order: (raw, client, options) => withDocumentCountry(mapOrderDetail(raw), client, options),
   voucher: (raw) => Promise.resolve(mapVoucherDetail(raw)),
 };
 
@@ -236,15 +235,17 @@ const paidAmountSchema = z.object({ paidAmount: zOptionalDecimal });
 /**
  * Reads one document (`GET /{objectName}/{id}` with the kind's query) and maps it. An unknown id
  * is sevDesk's `not_found` error; a record that does not fit is `unexpected_response`. `today`
- * (Berlin `YYYY-MM-DD`) only feeds the invoice DTO's `overdue` flag.
+ * (Berlin `YYYY-MM-DD`) only feeds the invoice DTO's `overdue` flag. Tools pass `ctx.config`
+ * as `cacheOwner` to reuse the country table across preparation and read-backs.
  */
 export async function readLifecycleDocument<K extends LifecycleKind>(
   client: SevdeskClient,
   kind: K,
   documentId: number,
-  signal?: AbortSignal,
-  today: string = berlinDateOf(Date.now()),
+  options: CountryReadOptions & { readonly today?: string | undefined },
 ): Promise<LifecycleDocument<K>> {
+  const { signal } = options;
+  const today = options.today ?? berlinDateOf(Date.now());
   const info = KINDS[kind];
   const id = toSevdeskId(documentId);
   const payload = await client.request({
@@ -254,7 +255,7 @@ export async function readLifecycleDocument<K extends LifecycleKind>(
     ...(signal === undefined ? {} : { signal }),
   });
   const raw = expectSingle(payload, `${info.noun} ${String(id)}`);
-  const dto = await MAPPERS[kind](raw, today, client, signal);
+  const dto = await MAPPERS[kind](raw, client, { ...options, today });
   const { paidAmount } = parseUpstream(paidAmountSchema, raw, `a ${info.noun}`);
   return { ...toLifecycleDocument(kind, dto, paidAmount), raw };
 }

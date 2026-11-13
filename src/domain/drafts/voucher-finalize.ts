@@ -19,6 +19,7 @@ import { canonicalJson, sha256Hex } from "../../safety/hashing.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import { sevdeskPath } from "../../sevdesk/paths.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
+import type { CountryReadOptions } from "../country-codes.js";
 import { type LifecycleDocument, readLifecycleDocument, statusOf } from "../lifecycle/documents.js";
 import { documentFacts, documentTitle } from "../lifecycle/preview.js";
 import {
@@ -353,11 +354,12 @@ export interface VoucherDeletePlan {
 export async function prepareVoucherDelete(
   client: SevdeskClient,
   voucherId: number,
-  signal: AbortSignal | undefined,
+  options: CountryReadOptions,
 ): Promise<VoucherDeletePlan> {
+  const { signal, cacheOwner } = options;
   let doc: LifecycleDocument<"voucher">;
   try {
-    doc = await readLifecycleDocument(client, "voucher", voucherId, signal);
+    doc = await readLifecycleDocument(client, "voucher", voucherId, { signal, cacheOwner });
   } catch (error) {
     if (error instanceof SevdeskError && error.kind === "not_found") {
       refuse(`Voucher ${String(voucherId)} does not exist in sevDesk (or was deleted already).`);

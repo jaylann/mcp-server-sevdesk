@@ -67,12 +67,13 @@ export const creditNoteFromInvoiceTool = defineWriteTool({
     ACCOUNT_CREDIT_NOTE_NUMBERS,
     { objectName: "Invoice", id: String(args.invoiceId) },
   ],
-  prepare: (args, ctx) => planCreditNoteFromInvoice(ctx.client, args, ctx.signal),
+  prepare: (args, ctx) =>
+    planCreditNoteFromInvoice(ctx.client, args, { signal: ctx.signal, cacheOwner: ctx.config }),
   execute: async (_args, plan, ctx) => {
     const { details, affected, notes } = await executeCreditNoteFromInvoice(
       ctx.client,
       plan.state,
-      ctx.signal,
+      { signal: ctx.signal, cacheOwner: ctx.config },
     );
     return {
       data: {

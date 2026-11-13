@@ -40,7 +40,10 @@ export const invoiceUpdateDraftTool = defineWriteTool({
     prepareInvoiceUpdate(ctx.client, args, { signal: ctx.signal, cacheOwner: ctx.config }),
   execute: async (_args, plan, ctx) =>
     invoiceDraftToolOutput(
-      await executeInvoiceDraft(ctx.client, plan.state, ctx.signal),
+      await executeInvoiceDraft(ctx.client, plan.state, {
+        signal: ctx.signal,
+        cacheOwner: ctx.config,
+      }),
       "Updated",
     ),
 });

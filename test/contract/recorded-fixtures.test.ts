@@ -334,7 +334,7 @@ describe("recorded contacts", () => {
       route("/ContactAddress", "contacts/contact-addresses.json"),
       route("/CommunicationWay", "contacts/communication-ways.json"),
     ]);
-    const details = await getContactDetails(client, CONTACT_ID);
+    const details = await getContactDetails(client, CONTACT_ID, { cacheOwner: client });
     expectValid(contactDtoSchema, details.contact);
     expect(details.contact.id).toBe(CONTACT_ID);
     expect(details.addresses).toEqual([]);
@@ -349,7 +349,7 @@ describe("recorded contacts", () => {
       route("/ContactAddress", "contacts/contact-addresses-unfiltered.json"),
       route("/CommunicationWay", "contacts/communication-ways.json"),
     ]);
-    const details = await getContactDetails(client, CONTACT_ID);
+    const details = await getContactDetails(client, CONTACT_ID, { cacheOwner: client });
     expect(details.addresses).toEqual([]);
   });
 
@@ -384,7 +384,7 @@ describe("recorded invoices", () => {
       unitsRoute,
       route("/StaticCountry", "meta/static-countries.json"),
     ]);
-    const details = await getInvoice(client, INVOICE_ID, undefined, TODAY);
+    const details = await getInvoice(client, INVOICE_ID, { today: TODAY, cacheOwner: client });
     expectValid(invoiceDetailSchema, details.invoice);
     expect(details.invoice.id).toBe(INVOICE_ID);
     expect(details.positions).toHaveLength(1);
@@ -431,7 +431,7 @@ describe("recorded credit notes", () => {
       unitsRoute,
       route("/StaticCountry", "meta/static-countries.json"),
     ]);
-    const details = await getCreditNote(client, CREDIT_NOTE_ID);
+    const details = await getCreditNote(client, CREDIT_NOTE_ID, { cacheOwner: client });
     expectValid(creditNoteDetailSchema, details.creditNote);
     expect(details.creditNote.id).toBe(CREDIT_NOTE_ID);
     expect(details.positions).toHaveLength(1);
@@ -456,7 +456,7 @@ describe("recorded orders", () => {
       unitsRoute,
       route("/StaticCountry", "meta/static-countries.json"),
     ]);
-    const details = await getOrder(client, ORDER_ID);
+    const details = await getOrder(client, ORDER_ID, { cacheOwner: client });
     expectValid(orderDetailSchema, details.order);
     expect(details.order.id).toBe(ORDER_ID);
     expect(details.positions).toHaveLength(1);

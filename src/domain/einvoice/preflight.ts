@@ -40,6 +40,7 @@ import {
 } from "../account-settings.js";
 import { statusDtoSchema } from "../common.js";
 import { type ContactDetails, getContactDetails } from "../contacts.js";
+import type { CountryReadOptions } from "../country-codes.js";
 import { fetchDocumentFile } from "../document-files.js";
 import {
   listDocumentPositions,
@@ -161,7 +162,9 @@ export async function preflightInvoice(
       signal,
     ),
     readUnitCodes(client, signal),
-    detail.contact === undefined ? undefined : readContact(client, detail.contact.id, signal),
+    detail.contact === undefined
+      ? undefined
+      : readContact(client, detail.contact.id, { signal, cacheOwner: options.cacheOwner }),
   ]);
 
   const problems: PreflightIssue[] = [];
@@ -607,10 +610,11 @@ async function readUnitCodes(
 async function readContact(
   client: SevdeskClient,
   contactId: number,
-  signal: AbortSignal | undefined,
+  options: CountryReadOptions,
 ): Promise<ContactDetails | SevdeskError> {
+  const { signal, cacheOwner } = options;
   try {
-    return await getContactDetails(client, contactId, signal);
+    return await getContactDetails(client, contactId, { signal, cacheOwner });
   } catch (error) {
     if (
       error instanceof SevdeskError &&

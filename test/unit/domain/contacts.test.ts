@@ -167,6 +167,7 @@ describe("getContactDetails sparse rows (fake data)", () => {
         ],
       ),
       1001,
+      { cacheOwner: {} },
     );
     // Category 45 has an empty name in sevDesk's reference data: id only.
     expect(details.addresses).toEqual([{ id: 1 }, { id: 2, category: { id: 45 } }]);
@@ -179,7 +180,9 @@ describe("getContactDetails sparse rows (fake data)", () => {
   it("passes the abort signal on", async () => {
     const controller = new AbortController();
     controller.abort();
-    await expect(getContactDetails(client([], []), 1001, controller.signal)).rejects.toMatchObject({
+    await expect(
+      getContactDetails(client([], []), 1001, { signal: controller.signal, cacheOwner: {} }),
+    ).rejects.toMatchObject({
       kind: "aborted",
     });
   });

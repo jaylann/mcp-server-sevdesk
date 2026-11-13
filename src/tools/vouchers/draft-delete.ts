@@ -40,7 +40,8 @@ export const voucherDeleteDraftTool = defineWriteTool({
   }),
   // Serialized with other calls on the same record (see WriteToolDefinition.locks).
   locks: (args) => [{ objectName: "Voucher", id: String(args.id) }],
-  prepare: (args, ctx) => prepareVoucherDelete(ctx.client, args.id, ctx.signal),
+  prepare: (args, ctx) =>
+    prepareVoucherDelete(ctx.client, args.id, { signal: ctx.signal, cacheOwner: ctx.config }),
   execute: async (args, plan, ctx) => {
     const result = await executeVoucherDelete(ctx.client, args.id, ctx.signal);
     return {

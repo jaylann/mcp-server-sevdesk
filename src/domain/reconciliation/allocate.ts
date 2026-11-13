@@ -24,6 +24,7 @@ import {
   getTransaction,
   type TransactionDto,
 } from "../banking.js";
+import type { CountryReadOptions } from "../country-codes.js";
 import {
   documentRef,
   KINDS,
@@ -175,8 +176,9 @@ export async function planAllocation(
   client: SevdeskClient,
   transactionId: number,
   requests: readonly AllocationRequest[],
-  signal?: AbortSignal,
+  options: CountryReadOptions,
 ): Promise<AllocationPlan> {
+  const { signal, cacheOwner } = options;
   if (requests.length === 0) refuse("Name at least one document to book the transaction to.");
   if (requests.length > MAX_ALLOCATIONS) {
     refuse(`At most ${MAX_ALLOCATIONS} documents can be booked in one call.`);
@@ -219,7 +221,7 @@ export async function planAllocation(
   let allocated = "0";
   for (const request of requests) {
     const doc = await lookup(
-      () => readLifecycleDocument(client, request.kind, request.id, signal),
+      () => readLifecycleDocument(client, request.kind, request.id, { signal, cacheOwner }),
       `${documentRef(request, true)} does not exist; look it up with ` +
         `${KINDS[request.kind].toolPrefix}s_list.`,
     );

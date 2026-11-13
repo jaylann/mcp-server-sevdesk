@@ -52,9 +52,13 @@ export const invoiceReminderTool = defineWriteTool({
   // the reminder is created. Two calls at once both passed; the key is the one the invoice's
   // lifecycle and draft-update tools take (review 2026-11, round 3).
   locks: (args) => [{ objectName: "Invoice", id: String(args.invoiceId) }],
-  prepare: (args, ctx) => planInvoiceReminder(ctx.client, args, ctx.signal),
+  prepare: (args, ctx) =>
+    planInvoiceReminder(ctx.client, args, { signal: ctx.signal, cacheOwner: ctx.config }),
   execute: async (_args, plan, ctx) => {
-    const { details, affected } = await executeInvoiceReminder(ctx.client, plan.state, ctx.signal);
+    const { details, affected } = await executeInvoiceReminder(ctx.client, plan.state, {
+      signal: ctx.signal,
+      cacheOwner: ctx.config,
+    });
     return {
       data: {
         reminder: details.invoice,

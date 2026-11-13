@@ -83,7 +83,10 @@ export const transactionResetTool = defineWriteTool({
     { objectName: "CheckAccountTransaction", id: String(args.id) },
   ],
   prepare: async (args, ctx) => {
-    const plan = await planTransactionReset(ctx.client, args.id, ctx.signal);
+    const plan = await planTransactionReset(ctx.client, args.id, {
+      signal: ctx.signal,
+      cacheOwner: ctx.config,
+    });
     const state: State =
       plan.mode === "private"
         ? { mode: "private" }
@@ -134,7 +137,11 @@ export const transactionResetTool = defineWriteTool({
     const documents = [];
     for (const { kind, id } of state.documents) {
       const doc = await readBackOrReport(
-        () => readLifecycleDocument(ctx.client, kind, id, ctx.signal),
+        () =>
+          readLifecycleDocument(ctx.client, kind, id, {
+            signal: ctx.signal,
+            cacheOwner: ctx.config,
+          }),
         changed,
       );
       documents.push(documentSummary(doc));

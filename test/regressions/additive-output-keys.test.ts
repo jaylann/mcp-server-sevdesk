@@ -121,6 +121,7 @@ describe("additive output keys use the input/filter vocabulary", () => {
           TODAY,
         ),
         client,
+        { cacheOwner: client },
       );
       expect(invoice.address?.country).toBe("AT");
       const addressCountry = addressInputShape.addressCountry.parse(invoice.address?.country);

@@ -93,7 +93,7 @@ function client(options: {
 }
 
 async function refusal(fake: FakeSevdeskClient, id = 5201): Promise<string> {
-  const error = await planTransactionReset(fake, id).catch((e: unknown) => e);
+  const error = await planTransactionReset(fake, id, { cacheOwner: fake }).catch((e: unknown) => e);
   expect(error).toBeInstanceOf(SevdeskError);
   expect((error as SevdeskError).kind).toBe("validation");
   expect(fake.writes()).toEqual([]);
@@ -129,7 +129,7 @@ describe("assertMarkablePrivate", () => {
 describe("planTransactionReset", () => {
   it("sets a private transaction back without reading its log", async () => {
     const fake = client({ transaction: transactionRow({ id: "5201", status: "300" }) });
-    const plan = await planTransactionReset(fake, 5201);
+    const plan = await planTransactionReset(fake, 5201, { cacheOwner: fake });
     expect(plan.mode).toBe("private");
     expect(english(plan.warnings)).toEqual([
       "The transaction is no longer private: it counts as unbooked again and can be booked to " +
@@ -139,7 +139,7 @@ describe("planTransactionReset", () => {
   });
 
   it("lists every document of a split with its share and no collateral", async () => {
-    const plan = await planTransactionReset(client({}), 5201);
+    const plan = await planTransactionReset(client({}), 5201, { cacheOwner: {} });
     if (plan.mode !== "linked") throw new Error("expected linked");
     expect(plan.documents.map((d) => [d.doc.id, d.share, d.otherPayments])).toEqual([
       [1001, "119", "0"],
@@ -164,7 +164,7 @@ describe("planTransactionReset", () => {
         logEntry(8, 5305, "Voucher", 2001, 5),
       ],
     });
-    const plan = await planTransactionReset(fake, 5201);
+    const plan = await planTransactionReset(fake, 5201, { cacheOwner: fake });
     if (plan.mode !== "linked") throw new Error("expected linked");
     expect(plan.documents).toHaveLength(1);
     expect(plan.documents[0]?.share).toBe("119");
@@ -191,7 +191,7 @@ describe("planTransactionReset", () => {
       documents: [invoiceRoute(paidInvoice(1001, "177.33", { sumGross: "177.33" }))],
       wholeLog: [logEntry(1, 5201, "Invoice", 1001, 119), logEntry(2, 5302, "Invoice", 1001, null)],
     });
-    const plan = await planTransactionReset(fake, 5201);
+    const plan = await planTransactionReset(fake, 5201, { cacheOwner: fake });
     if (plan.mode !== "linked") throw new Error("expected linked");
     expect(plan.documents[0]?.otherTransactions).toEqual([
       { id: 5302, amount: undefined, statusAfter: 100 },
@@ -213,7 +213,7 @@ describe("planTransactionReset", () => {
       documents: [creditNoteRoute(creditNoteRow({ status: "1000" }))],
       wholeLog: [logEntry(1, 5201, "CreditNote", 2001, -23.8)],
     });
-    const plan = await planTransactionReset(fake, 5201);
+    const plan = await planTransactionReset(fake, 5201, { cacheOwner: fake });
     if (plan.mode !== "linked") throw new Error("expected linked");
     expect(plan.documents[0]?.otherPayments).toBeUndefined();
     expect(plan.documents[0]?.otherTransactions).toEqual([]);
@@ -222,7 +222,7 @@ describe("planTransactionReset", () => {
 
   it("does not scan the whole log when the paid amounts show no other payments", async () => {
     const fake = client({});
-    await planTransactionReset(fake, 5201);
+    await planTransactionReset(fake, 5201, { cacheOwner: fake });
     const logCalls = fake.callsTo("/CheckAccountTransactionLog");
     expect(logCalls).toHaveLength(1);
     expect(logCalls[0]?.query["checkAccountTransaction[id]"]).toBe(5201);
@@ -259,7 +259,7 @@ describe("planTransactionReset", () => {
         checkAccount: { id: "4001", objectName: "CheckAccount" },
       }),
     });
-    const plan = await planTransactionReset(fake, 5201);
+    const plan = await planTransactionReset(fake, 5201, { cacheOwner: fake });
     expect(plan.warnings.at(-1)?.en).toContain("such a transaction is deleted by the reset");
   });
 

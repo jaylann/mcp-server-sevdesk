@@ -50,7 +50,10 @@ async function contentOf(
       { path: PATHS[kind].path, response: { body: positionsBody ?? { objects: positions } } },
     ]),
   );
-  const doc = await readLifecycleDocument(client, kind, Number(row["id"]), undefined, TODAY);
+  const doc = await readLifecycleDocument(client, kind, Number(row["id"]), {
+    today: TODAY,
+    cacheOwner: client,
+  });
   const content = await readDocumentContent(client, doc);
   // One read of the positions serves the facts and the binding.
   expect(client.callsTo(PATHS[kind].path)).toHaveLength(1);
@@ -324,7 +327,10 @@ describe("the content facts of an invoice", () => {
         { path: "/InvoicePos", response: { body: { objects: rows } } },
       ]),
     );
-    const doc = await readLifecycleDocument(client, "invoice", 1001, undefined, TODAY);
+    const doc = await readLifecycleDocument(client, "invoice", 1001, {
+      today: TODAY,
+      cacheOwner: client,
+    });
     const content = await readDocumentContent(client, doc);
 
     expect(valueOf(content.printed("en"), "More positions")).toBe(

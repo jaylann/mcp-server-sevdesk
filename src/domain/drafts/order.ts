@@ -26,6 +26,7 @@ import { z } from "zod";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { statusDto } from "../common.js";
+import type { CountryReadOptions } from "../country-codes.js";
 import {
   getOrder,
   ORDER_TYPE_FILTERS,
@@ -470,8 +471,9 @@ export interface OrderDraftResult {
 export async function executeOrderDraft(
   client: SevdeskClient,
   state: OrderDraftState,
-  signal?: AbortSignal,
+  options: CountryReadOptions,
 ): Promise<OrderDraftResult> {
+  const { signal, cacheOwner } = options;
   const numbering = state.numbering;
   const reserved =
     numbering === undefined ? undefined : await reserveNextNumber(client, numbering.range, signal);
@@ -508,7 +510,7 @@ export async function executeOrderDraft(
       completedWrites: [saved],
     });
   }
-  const details = await readBack(saved, () => getOrder(client, id, signal));
+  const details = await readBack(saved, () => getOrder(client, id, { signal, cacheOwner }));
   const changed =
     numbering === undefined || reserved === undefined
       ? undefined

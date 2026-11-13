@@ -1,8 +1,8 @@
 /**
  * Two sevDesk accounts served by one server factory, as in OAuth mode (one process, one safety
  * runtime, an account resolver): they never share the domain caches (account settings, receipt
- * guidance, booking accounts, system version), browser approvals or elicitation state, and one
- * account's token never shows up in the other's results or in the audit log.
+ * guidance, booking accounts, system version, country codes), browser approvals or elicitation
+ * state, and one account's token never shows up in the other's results or in the audit log.
  */
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -17,6 +17,7 @@ import { createAccountResolver } from "../../src/accounts/resolver.js";
 import type { Settings } from "../../src/config.js";
 import { loadAccountSettings } from "../../src/domain/account-settings.js";
 import { loadAccountsDatev } from "../../src/domain/accounts-datev.js";
+import { loadCountryCodes } from "../../src/domain/country-codes.js";
 import { loadReceiptGuidance } from "../../src/domain/receipt-guidance.js";
 import type {
   ApprovalChannel,
@@ -25,6 +26,7 @@ import type {
 } from "../../src/safety/approval-types.js";
 import { createSafetyRuntime, type SafetyRuntime } from "../../src/safety/runtime.js";
 import { createServerFactory, type ServerFactory } from "../../src/server.js";
+import { readOnlyClient } from "../../src/sevdesk/scoped-client.js";
 import { getBookkeepingSystemVersion } from "../../src/sevdesk/system-version.js";
 import { defineTool } from "../../src/tools/define-tool.js";
 import type { AnyToolDefinition } from "../../src/tools/types.js";
@@ -57,6 +59,7 @@ interface AccountData {
   readonly guideAccount: string;
   readonly datevNumber: string;
   readonly version: string;
+  readonly countryCode: string;
 }
 
 const DATA: Readonly<Record<string, AccountData>> = {
@@ -66,6 +69,7 @@ const DATA: Readonly<Record<string, AccountData>> = {
     guideAccount: "8400",
     datevNumber: "4400",
     version: "2.0",
+    countryCode: "DE",
   },
   "2002": {
     smallSettlement: "1",
@@ -73,6 +77,7 @@ const DATA: Readonly<Record<string, AccountData>> = {
     guideAccount: "4300",
     datevNumber: "6815",
     version: "1.0",
+    countryCode: "AT",
   },
 };
 
@@ -112,6 +117,10 @@ function routesOf(data: AccountData): FakeRoute[] {
       path: "/Tools/bookkeepingSystemVersion",
       response: { body: { objects: { version: data.version } } },
     },
+    {
+      path: "/StaticCountry",
+      response: { body: { objects: [{ id: "1", code: data.countryCode }] } },
+    },
     { path: "/Invoice/7", response: { body: dummyInvoiceBody() } },
     { method: "PUT", path: "/Invoice/7/sendBy", response: { body: { objects: { id: "7" } } } },
     { method: "POST", path: "/Contact", response: { body: { objects: { id: "1" } } } },
@@ -133,6 +142,7 @@ const probeTool = defineTool({
     guideAccount: z.string().optional(),
     datevNumber: z.string().optional(),
     version: z.string(),
+    countryCode: z.string().optional(),
   }),
   handler: async (_args, ctx) => {
     const owner = { cacheOwner: ctx.config, signal: ctx.signal };
@@ -140,6 +150,11 @@ const probeTool = defineTool({
     const guidance = await loadReceiptGuidance(ctx.client, { kind: "all" }, owner);
     const datev = await loadAccountsDatev(ctx.client, owner);
     const version = await getBookkeepingSystemVersion(ctx.client, ctx.signal);
+    // Fresh wrappers per call catch accidental client-keyed caching as well as cross-account leaks.
+    const countries = await loadCountryCodes(
+      readOnlyClient(ctx.client, "probing country cache"),
+      owner,
+    );
     return {
       data: {
         smallBusiness: settings?.smallBusiness,
@@ -147,6 +162,7 @@ const probeTool = defineTool({
         guideAccount: guidance.guides[0]?.accountNumber,
         datevNumber: datev.accounts[0]?.number,
         version,
+        countryCode: countries.get(1),
       },
       summary: "Probed.",
     };
@@ -259,6 +275,7 @@ describe("two accounts through one factory", () => {
       guideAccount: "8400",
       datevNumber: "4400",
       version: "2.0",
+      countryCode: "DE",
     });
     expect(firstB).toEqual({
       smallBusiness: true,
@@ -266,6 +283,7 @@ describe("two accounts through one factory", () => {
       guideAccount: "4300",
       datevNumber: "6815",
       version: "1.0",
+      countryCode: "AT",
     });
     expect(againA).toEqual(firstA);
     expect(againB).toEqual(firstB);
@@ -274,6 +292,7 @@ describe("two accounts through one factory", () => {
       expect(fake.callsTo("/SevClient")).toHaveLength(1);
       expect(fake.callsTo("/ReceiptGuidance/forAllAccounts")).toHaveLength(1);
       expect(fake.callsTo("/Tools/bookkeepingSystemVersion")).toHaveLength(1);
+      expect(fake.callsTo("/StaticCountry")).toHaveLength(1);
     }
   });
 

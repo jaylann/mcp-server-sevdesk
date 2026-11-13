@@ -17,7 +17,11 @@ import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
 import { parseUpstream } from "../sevdesk/schema.js";
 import type { QueryValue, SevdeskClient } from "../sevdesk/types.js";
 import { documentDateFilter, moneyFromUpstream, moneySchema } from "./common.js";
-import { countryCodeSchema, withDocumentCountry } from "./country-codes.js";
+import {
+  countryCodeSchema,
+  type CountryReadOptions,
+  withDocumentCountry,
+} from "./country-codes.js";
 import {
   addDays,
   addressDto,
@@ -410,9 +414,10 @@ export interface InvoiceDetails {
 export async function getInvoice(
   client: SevdeskClient,
   invoiceId: number,
-  signal?: AbortSignal,
-  today: string = berlinDateOf(Date.now()),
+  options: CountryReadOptions & { readonly today?: string | undefined },
 ): Promise<InvoiceDetails> {
+  const { signal, cacheOwner } = options;
+  const today = options.today ?? berlinDateOf(Date.now());
   const id = toSevdeskId(invoiceId);
   const withSignal = signal === undefined ? {} : { signal };
   const [payload, positions, unitNames] = await Promise.all([
@@ -436,7 +441,10 @@ export async function getInvoice(
     loadUnitNames(client, signal),
   ]);
   const record = parseInvoiceRecord(expectSingle(payload, `invoice ${id}`));
-  const invoice = await withDocumentCountry(toInvoiceDetail(record, today), client, signal);
+  const invoice = await withDocumentCountry(toInvoiceDetail(record, today), client, {
+    signal,
+    cacheOwner,
+  });
   const context = { currency: invoice.currency, showNet: record.showNet, unitNames };
   return {
     invoice,

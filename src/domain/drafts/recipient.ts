@@ -20,6 +20,7 @@ import { z } from "zod";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { type ContactDetails, getContactDetails } from "../contacts.js";
+import type { CountryReadOptions } from "../country-codes.js";
 import { type Country, listCountries } from "../reference-data.js";
 import { listUsers } from "../users.js";
 
@@ -93,10 +94,11 @@ export function hasAddressInput(input: AddressInput): boolean {
 export async function loadContact(
   client: SevdeskClient,
   contactId: number,
-  signal?: AbortSignal,
+  options: CountryReadOptions,
 ): Promise<ContactDetails> {
+  const { signal, cacheOwner } = options;
   try {
-    return await getContactDetails(client, contactId, signal);
+    return await getContactDetails(client, contactId, { signal, cacheOwner });
   } catch (error) {
     if (error instanceof SevdeskError && error.kind === "not_found") {
       throw new SevdeskError({

@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import { bookingTimestamp } from "../../../../src/domain/lifecycle/payments.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { transactionBookTool as tool } from "../../../../src/tools/banking/transaction-book.js";
-import type { FakeRoute } from "../../../helpers/fake-client.js";
+import { withCountryRoute } from "../../../helpers/country-route.js";
+import { type FakeRoute, FakeSevdeskClient } from "../../../helpers/fake-client.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import {
   accountRoute,
@@ -67,6 +68,35 @@ function staged(options: {
 }
 
 describe("sevdesk_transaction_book", () => {
+  it("loads the country table once when preparing multiple documents with country addresses", async () => {
+    const address = { addressCountry: { id: "1", objectName: "StaticCountry" } };
+    const client = new FakeSevdeskClient(
+      withCountryRoute([
+        transactionRoute(transactionRow({ amount: "238" })),
+        accountRoute(accountRow(4002)),
+        logRoute(5101, []),
+        invoiceRoute(invoice(1001, "119", address)),
+        invoiceRoute(invoice(1002, "119", address)),
+      ]),
+    );
+    const plan = await prepareWrite(
+      tool,
+      {
+        id: 5101,
+        allocations: [
+          { kind: "invoice", id: 1001 },
+          { kind: "invoice", id: 1002 },
+        ],
+      },
+      client,
+    );
+    expect(plan.state.allocations).toHaveLength(2);
+    expect(client.callsTo("/Invoice/1001")).toHaveLength(1);
+    expect(client.callsTo("/Invoice/1002")).toHaveLength(1);
+    expect(client.callsTo("/StaticCountry")).toHaveLength(1);
+    expect(client.writes()).toEqual([]);
+  });
+
   it("is a commit tool with commit annotations", () => {
     expect(tool.tier).toBe("commit");
     expect(tool.annotations).toEqual({
@@ -229,6 +259,8 @@ describe("sevdesk_transaction_book", () => {
         "genutzt wird)",
     );
     expect(output.data.bookings.map((b) => b.paymentType)).toEqual(["payment", "payment"]);
+    expect(client.before.callsTo("/StaticCountry")).toHaveLength(1);
+    expect(client.after.callsTo("/StaticCountry")).toHaveLength(0);
   });
 
   it("keeps the stored document number out of the fact labels (review 2026-11, round 3)", async () => {
