@@ -1,3 +1,4 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
 import { ConfigError } from "../../../src/config.js";
@@ -14,6 +15,46 @@ import {
 const TOKEN = "0123456789abcdef0123456789abcdef";
 
 describe("redactSecrets", () => {
+  it("removes every generated token and its URL-encoded forms", () => {
+    // Synthetic tokens only; binary strings include Unicode but exclude unpaired surrogates,
+    // which encodeURIComponent cannot encode. The prefix prevents overlap with the marker.
+    const token = fc
+      .string({ unit: "binary", maxLength: 40 })
+      .map((text) => `test-token:${text}` + ".*+?^${}()|[]\\ /&%=ü");
+    fc.assert(
+      fc.property(token, (secret) => {
+        const encoded = encodeURIComponent(secret);
+        const variants = [
+          secret,
+          encoded,
+          encoded.toLowerCase(),
+          encoded.replaceAll("%20", "+"),
+          encodeURI(secret),
+        ];
+        for (const variant of variants) {
+          const result = redactSecrets(`${variant}\n${variant}`, [secret, "", undefined]);
+          expect(result === `${REDACTED}\n${REDACTED}`).toBe(true);
+          expect(result.includes(secret)).toBe(false);
+        }
+      }),
+      { numRuns: 100, seed: 20261112 },
+    );
+  });
+
+  it("redacts overlapping generated credentials longest first", () => {
+    fc.assert(
+      fc.property(fc.uint8Array({ minLength: 16, maxLength: 64 }), (bytes) => {
+        const secret = `test-token:${Buffer.from(bytes).toString("hex")}`;
+        const prefix = secret.slice(0, 20);
+        expect(redactSecrets(`${secret}\n${prefix}\n${secret}`, [prefix, secret])).toBe(
+          `${REDACTED}\n${REDACTED}\n${REDACTED}`,
+        );
+        expect(redactSecrets(secret.toUpperCase(), [secret])).toBe(REDACTED);
+      }),
+      { numRuns: 100, seed: 20261112 },
+    );
+  });
+
   it("replaces every occurrence", () => {
     expect(redactSecrets(`a ${TOKEN} b ${TOKEN}`, [TOKEN])).toBe(`a ${REDACTED} b ${REDACTED}`);
   });

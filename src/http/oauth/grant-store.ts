@@ -37,14 +37,11 @@
  */
 import { randomBytes } from "node:crypto";
 import {
-  chmod,
   constants,
   type FileHandle,
   link,
-  lstat,
   mkdir,
   open,
-  readFile,
   rename,
   stat,
   unlink,
@@ -382,16 +379,21 @@ class Store implements GrantStore {
   /** Streams the file in, then swaps in a compacted copy. */
   async #compactAtStart(dir: string): Promise<void> {
     const path = join(dir, GRANTS_FILE);
-    await checkRegularFile(path, this.#getuid);
     let previous: FileHandle | undefined;
     try {
-      previous = await open(path, constants.O_RDONLY | NO_FOLLOW);
+      previous = await open(path, constants.O_RDONLY | NO_FOLLOW | constants.O_NONBLOCK);
     } catch (error) {
+      if (errorCode(error) === "ELOOP" || errorCode(error) === "EISDIR") {
+        throw new StateDirError(
+          `${path} is not a regular file (a symlink or directory is refused).`,
+        );
+      }
       if (errorCode(error) !== "ENOENT") {
         throw new StateDirError(`SEVDESK_HTTP_STATE_DIR: cannot read ${path}.`);
       }
     }
     try {
+      if (previous !== undefined) await checkRegularFile(previous, path, this.#getuid);
       const end = previous === undefined ? 0 : await this.#loadFile(previous, true);
       await this.#swap(dir, previous, end);
     } finally {
@@ -1095,6 +1097,8 @@ function snapshotSession(session: SessionState): SessionRecord {
  * directory would let other local users replace `grants.jsonl` between restarts. A directory
  * that belongs to another user is refused whatever its mode: its owner can replace the files in
  * it, and on macOS an ACL can open it without any mode bit showing (review 2026-11, round 3).
+ * Ownership and chmod use one handle. Before startup proceeds to pathname-based lock/grant
+ * operations, the path must still name that directory, even when no chmod was needed.
  */
 async function prepareDirectory(
   dir: string,
@@ -1106,39 +1110,60 @@ async function prepareDirectory(
   } catch {
     throw new StateDirError(`SEVDESK_HTTP_STATE_DIR: cannot create ${dir}.`);
   }
-  const info = await stat(dir).catch(() => undefined);
-  if (info === undefined || !info.isDirectory()) {
-    throw new StateDirError(`SEVDESK_HTTP_STATE_DIR: ${dir} is not a directory.`);
-  }
-  if (ownedByOtherUser(info, getuid)) {
-    throw new StateDirError(
-      `SEVDESK_HTTP_STATE_DIR: ${dir} belongs to another user, who could replace the files in ` +
-        "it. Point the variable to a directory owned by the user the server runs as.",
-    );
-  }
-  if ((info.mode & 0o077) === 0) return;
+  let handle: FileHandle;
   try {
-    await chmod(dir, 0o700);
+    handle = await open(dir, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NONBLOCK);
   } catch {
-    throw new StateDirError(
-      `SEVDESK_HTTP_STATE_DIR: other users can access ${dir}, and its mode could not be ` +
-        `changed. Run \`chmod 700 ${dir}\` as its owner, or point the variable to a directory ` +
-        "owned by the user the server runs as.",
-    );
+    throw new StateDirError(`SEVDESK_HTTP_STATE_DIR: cannot open ${dir} as a directory.`);
   }
-  log?.warn("state_dir_mode_tightened", {});
+  try {
+    const info = await handle.stat().catch(() => undefined);
+    if (info === undefined || !info.isDirectory()) {
+      throw new StateDirError(`SEVDESK_HTTP_STATE_DIR: ${dir} is not a directory.`);
+    }
+    if (ownedByOtherUser(info, getuid)) {
+      throw new StateDirError(
+        `SEVDESK_HTTP_STATE_DIR: ${dir} belongs to another user, who could replace the files in ` +
+          "it. Point the variable to a directory owned by the user the server runs as.",
+      );
+    }
+    if ((info.mode & 0o077) !== 0) {
+      try {
+        await handle.chmod(0o700);
+      } catch {
+        throw new StateDirError(
+          `SEVDESK_HTTP_STATE_DIR: other users can access ${dir}, and its mode could not be ` +
+            `changed. Run \`chmod 700 ${dir}\` as its owner, or point the variable to a directory ` +
+            "owned by the user the server runs as.",
+        );
+      }
+      log?.warn("state_dir_mode_tightened", {});
+    }
+    const current = await stat(dir).catch(() => undefined);
+    if (current?.dev !== info.dev || current.ino !== info.ino) {
+      throw new StateDirError(
+        `SEVDESK_HTTP_STATE_DIR: the state directory changed during startup (${dir}). ` +
+          "No grant store was opened; restore the directory and restart the server.",
+      );
+    }
+  } finally {
+    await handle.close();
+  }
 }
 
 /**
- * Refuses a grants file that is a symlink, not a regular file, or owned by another user (who
- * could rewrite it, whatever its mode says); tightens its mode to 0600.
+ * Checks and tightens the same file descriptor startup will read. Opening with O_NOFOLLOW
+ * refuses symlinks; a path replacement must not redirect the ownership check or chmod.
  */
-async function checkRegularFile(path: string, getuid: GetUid | undefined): Promise<void> {
+async function checkRegularFile(
+  handle: FileHandle,
+  path: string,
+  getuid: GetUid | undefined,
+): Promise<void> {
   let info;
   try {
-    info = await lstat(path);
-  } catch (error) {
-    if (errorCode(error) === "ENOENT") return;
+    info = await handle.stat();
+  } catch {
     throw new StateDirError(`SEVDESK_HTTP_STATE_DIR: cannot read ${path}.`);
   }
   if (!info.isFile()) {
@@ -1152,7 +1177,7 @@ async function checkRegularFile(path: string, getuid: GetUid | undefined): Promi
   }
   if ((info.mode & 0o077) === 0) return;
   try {
-    await chmod(path, 0o600);
+    await handle.chmod(0o600);
   } catch {
     throw new StateDirError(
       `Other users can read ${path}, and its mode could not be changed. Run ` +
@@ -1228,8 +1253,15 @@ interface SeenLock {
 
 async function inspectLock(path: string): Promise<SeenLock | undefined> {
   try {
-    const [raw, info] = await Promise.all([readFile(path, "utf8"), stat(path)]);
-    return { raw, mtimeMs: info.mtimeMs };
+    const handle = await open(path, constants.O_RDONLY | NO_FOLLOW | constants.O_NONBLOCK);
+    try {
+      const info = await handle.stat();
+      if (!info.isFile()) return undefined;
+      const raw = await handle.readFile("utf8");
+      return { raw, mtimeMs: info.mtimeMs };
+    } finally {
+      await handle.close();
+    }
   } catch {
     return undefined;
   }

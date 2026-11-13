@@ -1,8 +1,11 @@
 import { randomBytes } from "node:crypto";
 import {
+  closeSync,
+  fstatSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readdirSync,
   readFileSync,
   renameSync,
@@ -66,10 +69,15 @@ describe("disk blob store", () => {
     const names = readdirSync(dir);
     expect(names).toEqual([`${id}.bin`]);
     const path = join(dir, `${id}.bin`);
-    expect(statSync(path).mode & 0o777).toBe(0o600);
-    const raw = readFileSync(path);
-    expect(raw.includes(Buffer.from("Rechnung"))).toBe(false);
-    expect(raw.includes(Buffer.from("%PDF"))).toBe(false);
+    const fd = openSync(path, "r");
+    try {
+      expect(fstatSync(fd).mode & 0o777).toBe(0o600);
+      const raw = readFileSync(fd);
+      expect(raw.includes(Buffer.from("Rechnung"))).toBe(false);
+      expect(raw.includes(Buffer.from("%PDF"))).toBe(false);
+    } finally {
+      closeSync(fd);
+    }
     expect(await store.get(id, A)).toEqual(PDF);
     await store.close();
   });
