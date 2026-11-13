@@ -137,31 +137,33 @@ export const relatedDocumentSchema = z.object({
 
 type RelatedDocument = z.output<typeof relatedDocumentSchema>;
 
-export const orderDetailSchema = orderRowSchema.extend({
-  priceMode: z.enum(["net", "gross"]).optional(),
-  tax: taxDtoSchema,
-  version: z.number().int().optional().describe("Draft version, starting at 0."),
-  origin: z
-    .object({ objectName: z.string(), id: z.number().int() })
-    .optional()
-    .describe("Object this order was created from, e.g. the offer (Order) of a confirmation."),
-  paymentTerms: z.string().optional().describe("Zahlungsbedingungen as sevDesk stores them."),
-  deliveryTerms: z.string().optional().describe("Lieferbedingungen."),
-  deliveryDate: z.string().optional(),
-  address: z
-    .object({
-      text: z.string().optional().describe("Recipient address as printed."),
-      countryId: z.number().int().optional().describe("StaticCountry id."),
-      country: countryCodeSchema,
-    })
-    .optional(),
-  contactPersonId: z.number().int().optional(),
-  internalNote: z.string().optional(),
-  headText: z.string().optional(),
-  footText: z.string().optional(),
-  createdAt: z.string().optional(),
-  updatedAt: z.string().optional(),
-});
+export const orderDetailSchema = orderRowSchema
+  .extend({
+    priceMode: z.enum(["net", "gross"]).optional(),
+    tax: taxDtoSchema,
+    version: z.number().int().optional().describe("Draft version, starting at 0."),
+    origin: z
+      .object({ objectName: z.string(), id: z.number().int() })
+      .optional()
+      .describe("Object this order was created from, e.g. the offer (Order) of a confirmation."),
+    paymentTerms: z.string().optional().describe("Zahlungsbedingungen as sevDesk stores them."),
+    deliveryTerms: z.string().optional().describe("Lieferbedingungen."),
+    deliveryDate: z.string().optional(),
+    address: z
+      .object({
+        text: z.string().optional().describe("Recipient address as printed."),
+        countryId: z.number().int().optional().describe("StaticCountry id."),
+        country: countryCodeSchema,
+      })
+      .optional(),
+    contactPersonId: z.number().int().optional(),
+    internalNote: z.string().optional(),
+    headText: z.string().optional(),
+    footText: z.string().optional(),
+    createdAt: z.string().optional(),
+    updatedAt: z.string().optional(),
+  })
+  .meta({ id: "Order" });
 
 export type OrderDetail = z.output<typeof orderDetailSchema>;
 

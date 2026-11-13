@@ -35,12 +35,12 @@ const UNCAPPED = Number.MAX_SAFE_INTEGER;
  * never shown to a human as if it were complete. Also the `preview` member of write-tool output.
  */
 export const previewSchema = z.object({
-  action: z.string().min(1).describe("What the call does, in one sentence."),
+  action: z.string().min(1).describe("Action in one sentence."),
   facts: z
     .array(z.object({ label: z.string().min(1), value: z.string() }))
-    .describe("Key facts: record, customer, amounts, dates, recipients, texts."),
-  warnings: z.array(z.string()).describe("Consequences to read first."),
-  irreversible: z.boolean().describe("True when the action cannot be undone."),
+    .describe("Record, customer, amounts, dates, recipients and texts."),
+  warnings: z.array(z.string()).describe("Read these consequences first."),
+  irreversible: z.boolean().describe("Cannot be undone."),
 });
 
 /**

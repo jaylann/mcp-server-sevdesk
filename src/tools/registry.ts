@@ -20,6 +20,7 @@ import type { SafetyRuntime } from "../safety/runtime.js";
 import type { Tier, WriteTier } from "../safety/tiers.js";
 import type { TransferStore } from "../safety/transfer-types.js";
 import type { SevdeskClient } from "../sevdesk/types.js";
+import { JSON_SCHEMA_OPTIONS } from "./json-schema.js";
 import { successResult } from "./result.js";
 import {
   cancelledResult,
@@ -188,8 +189,8 @@ function advertiseOnly(schema: z.ZodObject): StandardSchemaWithJSON {
       vendor: "mcp-server-sevdesk",
       validate: (value) => ({ value }),
       jsonSchema: {
-        input: (options) => jsonSchema.input(options),
-        output: (options) => jsonSchema.output(options),
+        input: (options) => jsonSchema.input({ ...options, libraryOptions: JSON_SCHEMA_OPTIONS }),
+        output: (options) => jsonSchema.output({ ...options, libraryOptions: JSON_SCHEMA_OPTIONS }),
       },
     },
   };

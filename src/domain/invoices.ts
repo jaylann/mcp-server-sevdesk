@@ -168,58 +168,60 @@ export const invoiceRowSchema = z.object({
 export type InvoiceRow = z.output<typeof invoiceRowSchema>;
 
 /** One invoice with everything the detail tool shows. */
-export const invoiceDetailSchema = invoiceRowSchema.extend({
-  deliveryDate: z.string().optional().describe("Lieferdatum / Leistungsdatum, YYYY-MM-DD."),
-  deliveryDateUntil: z.string().optional().describe("End of the delivery period, YYYY-MM-DD."),
-  payDate: z.string().optional().describe("Date the invoice was paid, YYYY-MM-DD."),
-  priceMode: z
-    .enum(["net", "gross"])
-    .optional()
-    .describe("Whether position prices were entered net or gross (showNet)."),
-  tax: taxDtoSchema,
-  paymentTerms: z
-    .object({
-      daysToPay: z.number().int().optional().describe("Zahlungsziel in days."),
-      cashDiscountPercent: z.string().optional().describe("Skonto in percent."),
-      cashDiscountDays: z.number().int().optional().describe("Days the Skonto applies."),
-      paymentMethodId: z.number().int().optional(),
-    })
-    .optional(),
-  address: z
-    .object({
-      text: z.string().optional().describe("Recipient address as printed, one line per part."),
-      countryId: z.number().int().optional().describe("StaticCountry id."),
-      country: countryCodeSchema,
-    })
-    .optional(),
-  origin: z
-    .object({ objectName: z.string(), id: z.number().int() })
-    .optional()
-    .describe("Object the invoice was created from, e.g. an Order (Angebot/Auftrag)."),
-  reminder: z
-    .object({
-      dunningLevel: z.number().int().optional().describe("Mahnstufe."),
-      deadline: z.string().optional(),
-      total: moneySchema.optional(),
-      charge: moneySchema.optional().describe("Mahngebühr."),
-    })
-    .optional()
-    .describe("Dunning data (Mahnung), when set."),
-  recurring: z
-    .object({
-      interval: z.string().optional().describe("ISO-8601 duration as sevDesk sent it."),
-      nextInvoice: z.string().optional(),
-    })
-    .optional()
-    .describe("Recurring invoice (Abo-Rechnung) schedule, when set."),
-  contactPersonId: z.number().int().optional().describe("SevUser responsible for the invoice."),
-  costCentreId: z.number().int().optional().describe("Kostenstelle."),
-  internalNote: z.string().optional().describe("Internal note (not printed)."),
-  headText: z.string().optional().describe("Intro text (may contain HTML)."),
-  footText: z.string().optional().describe("Closing text (may contain HTML)."),
-  createdAt: z.string().optional(),
-  updatedAt: z.string().optional(),
-});
+export const invoiceDetailSchema = invoiceRowSchema
+  .extend({
+    deliveryDate: z.string().optional().describe("Lieferdatum / Leistungsdatum, YYYY-MM-DD."),
+    deliveryDateUntil: z.string().optional().describe("End of the delivery period, YYYY-MM-DD."),
+    payDate: z.string().optional().describe("Date the invoice was paid, YYYY-MM-DD."),
+    priceMode: z
+      .enum(["net", "gross"])
+      .optional()
+      .describe("Whether position prices were entered net or gross (showNet)."),
+    tax: taxDtoSchema,
+    paymentTerms: z
+      .object({
+        daysToPay: z.number().int().optional().describe("Zahlungsziel in days."),
+        cashDiscountPercent: z.string().optional().describe("Skonto in percent."),
+        cashDiscountDays: z.number().int().optional().describe("Days the Skonto applies."),
+        paymentMethodId: z.number().int().optional(),
+      })
+      .optional(),
+    address: z
+      .object({
+        text: z.string().optional().describe("Recipient address as printed, one line per part."),
+        countryId: z.number().int().optional().describe("StaticCountry id."),
+        country: countryCodeSchema,
+      })
+      .optional(),
+    origin: z
+      .object({ objectName: z.string(), id: z.number().int() })
+      .optional()
+      .describe("Object the invoice was created from, e.g. an Order (Angebot/Auftrag)."),
+    reminder: z
+      .object({
+        dunningLevel: z.number().int().optional().describe("Mahnstufe."),
+        deadline: z.string().optional(),
+        total: moneySchema.optional(),
+        charge: moneySchema.optional().describe("Mahngebühr."),
+      })
+      .optional()
+      .describe("Dunning data (Mahnung), when set."),
+    recurring: z
+      .object({
+        interval: z.string().optional().describe("ISO-8601 duration as sevDesk sent it."),
+        nextInvoice: z.string().optional(),
+      })
+      .optional()
+      .describe("Recurring invoice (Abo-Rechnung) schedule, when set."),
+    contactPersonId: z.number().int().optional().describe("SevUser responsible for the invoice."),
+    costCentreId: z.number().int().optional().describe("Kostenstelle."),
+    internalNote: z.string().optional().describe("Internal note (not printed)."),
+    headText: z.string().optional().describe("Intro text (may contain HTML)."),
+    footText: z.string().optional().describe("Closing text (may contain HTML)."),
+    createdAt: z.string().optional(),
+    updatedAt: z.string().optional(),
+  })
+  .meta({ id: "Invoice" });
 
 export type InvoiceDetail = z.output<typeof invoiceDetailSchema>;
 

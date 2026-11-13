@@ -25,9 +25,9 @@ import { statusByCode, type StatusObjectType } from "./reference-data.js";
  * Every amount in tool output: an exact decimal string (never a float) plus its ISO-4217 currency.
  * Totals keep sevDesk's precision; nothing is rounded silently.
  */
-export const moneySchema = z.object({
-  amount: z.string().describe("Exact decimal amount, e.g. '119.00'."),
-  currency: z.string().length(3).describe("ISO 4217 currency code, e.g. 'EUR'."),
+export const moneySchema = z.object({ amount: z.string(), currency: z.string().length(3) }).meta({
+  id: "Money",
+  description: "Exact decimal amount as a string and ISO 4217 currency code.",
 });
 
 /**

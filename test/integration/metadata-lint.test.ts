@@ -7,11 +7,11 @@ import { z } from "zod";
 
 import {
   isStrictObject,
-  JSON_SCHEMA_TARGET,
   MAX_DESCRIPTION_LENGTH,
   validateToolDefinition,
 } from "../../src/tools/define-tool.js";
 import { ALL_TOOLS } from "../../src/tools/index.js";
+import { JSON_SCHEMA_OPTIONS } from "../../src/tools/json-schema.js";
 import { type AnyToolDefinition, isWriteTool } from "../../src/tools/types.js";
 import { allEnabledConfig } from "../helpers/config.js";
 import { filesDeployment, filesOffDeployment } from "../helpers/transfer.js";
@@ -192,7 +192,7 @@ describe("tool metadata", () => {
       const input: unknown = tool.input;
       expect(input).toBeInstanceOf(z.ZodObject);
       const schema = input as z.ZodObject;
-      const json = z.toJSONSchema(schema, { io: "input", target: JSON_SCHEMA_TARGET });
+      const json = z.toJSONSchema(schema, { ...JSON_SCHEMA_OPTIONS, io: "input" });
 
       expect(json.type).toBe("object");
       expect(json).not.toHaveProperty("anyOf");
@@ -206,8 +206,8 @@ describe("tool metadata", () => {
       const output: unknown = tool.output;
       expect(output).toBeInstanceOf(z.ZodObject);
       const json = z.toJSONSchema(output as z.ZodObject, {
+        ...JSON_SCHEMA_OPTIONS,
         io: "output",
-        target: JSON_SCHEMA_TARGET,
       });
 
       expect(json.type).toBe("object");

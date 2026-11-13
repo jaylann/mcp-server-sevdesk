@@ -127,20 +127,22 @@ const keyRefSchema = z.object({
 });
 
 /** Compact contact address. */
-export const addressDtoSchema = z.object({
-  id: z.number().int(),
-  recipient: z.string().optional().describe("Name lines of the address, one per line."),
-  street: z.string().optional(),
-  zip: z.string().optional(),
-  city: z.string().optional(),
-  countryId: z
-    .number()
-    .int()
-    .optional()
-    .describe("StaticCountry id; names via sevdesk_reference_lookup kind=countries."),
-  country: countryCodeSchema,
-  category: keyRefSchema.optional().describe("Address type, e.g. Rechnungsanschrift."),
-});
+export const addressDtoSchema = z
+  .object({
+    id: z.number().int(),
+    recipient: z.string().optional().describe("Name lines of the address, one per line."),
+    street: z.string().optional(),
+    zip: z.string().optional(),
+    city: z.string().optional(),
+    countryId: z
+      .number()
+      .int()
+      .optional()
+      .describe("StaticCountry id; names via sevdesk_reference_lookup kind=countries."),
+    country: countryCodeSchema,
+    category: keyRefSchema.optional().describe("Address type, e.g. Rechnungsanschrift."),
+  })
+  .meta({ id: "ContactAddress" });
 
 type AddressDto = z.output<typeof addressDtoSchema>;
 

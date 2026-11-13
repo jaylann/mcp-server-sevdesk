@@ -141,26 +141,28 @@ export const creditNoteRowSchema = z.object({
 
 export type CreditNoteRow = z.output<typeof creditNoteRowSchema>;
 
-export const creditNoteDetailSchema = creditNoteRowSchema.extend({
-  deliveryDate: z.string().optional().describe("Lieferdatum, YYYY-MM-DD."),
-  deliveryDateUntil: z.string().optional(),
-  payDate: z.string().optional(),
-  priceMode: z.enum(["net", "gross"]).optional(),
-  tax: taxDtoSchema,
-  address: z
-    .object({
-      text: z.string().optional().describe("Recipient address as printed."),
-      countryId: z.number().int().optional().describe("StaticCountry id."),
-      country: countryCodeSchema,
-    })
-    .optional(),
-  contactPersonId: z.number().int().optional(),
-  internalNote: z.string().optional(),
-  headText: z.string().optional(),
-  footText: z.string().optional(),
-  createdAt: z.string().optional(),
-  updatedAt: z.string().optional(),
-});
+export const creditNoteDetailSchema = creditNoteRowSchema
+  .extend({
+    deliveryDate: z.string().optional().describe("Lieferdatum, YYYY-MM-DD."),
+    deliveryDateUntil: z.string().optional(),
+    payDate: z.string().optional(),
+    priceMode: z.enum(["net", "gross"]).optional(),
+    tax: taxDtoSchema,
+    address: z
+      .object({
+        text: z.string().optional().describe("Recipient address as printed."),
+        countryId: z.number().int().optional().describe("StaticCountry id."),
+        country: countryCodeSchema,
+      })
+      .optional(),
+    contactPersonId: z.number().int().optional(),
+    internalNote: z.string().optional(),
+    headText: z.string().optional(),
+    footText: z.string().optional(),
+    createdAt: z.string().optional(),
+    updatedAt: z.string().optional(),
+  })
+  .meta({ id: "CreditNote" });
 
 export type CreditNoteDetail = z.output<typeof creditNoteDetailSchema>;
 

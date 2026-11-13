@@ -124,15 +124,11 @@ const RECORD_CHANGED_NOTICE =
   "The record changed after you were asked, so this is a new request. Check the details again.";
 
 const approvalSchema = z.object({
-  reference: z
-    .string()
-    .describe("Short code shown on the approval page, so the user can tell which request it is."),
-  expiresAt: z.string().describe("When the approval request expires (ISO 8601, UTC)."),
+  reference: z.string().describe("Request code on the approval page."),
+  expiresAt: z.string().describe("Approval expiry, ISO 8601 UTC."),
   opened: z
     .boolean()
-    .describe(
-      "Whether the page was opened in the user's browser; otherwise its link is in the server log.",
-    ),
+    .describe("Page opened in the browser; otherwise find its link in the server log."),
 });
 
 const wrappedSchemas = new WeakMap<z.ZodObject, z.ZodObject>();
@@ -149,13 +145,12 @@ export function writeOutputSchema(output: z.ZodObject): z.ZodObject {
       status: z
         .enum(WRITE_STATUSES)
         .describe(
-          "done: the change was made (see result). dry_run: nothing was sent (see preview). " +
-            "approval_pending: the user must approve on the approval page (see approval), then " +
-            "call the tool again with the same arguments. declined: the user did not approve; " +
-            "nothing was changed.",
+          "done: changed, see result. dry_run: nothing sent, see preview. approval_pending: " +
+            "user must approve on the page (see approval), then repeat the same call. " +
+            "declined: user did not approve, nothing changed.",
         ),
-      result: output.optional().describe("The changed record; only when status is done."),
-      preview: previewSchema.optional().describe("What the call does or would do."),
+      result: output.optional().describe("Changed record; only when done."),
+      preview: previewSchema.optional().describe("Proposed action."),
       approval: approvalSchema.optional(),
     });
     wrappedSchemas.set(output, schema);
