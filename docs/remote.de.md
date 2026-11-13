@@ -599,6 +599,12 @@ nehmen einen anderen Weg: Sie gehen per MCP an den Client.)
    bis zum Ablauf verfügbar. Um eine erfolgreich angehängte Datei nach der Freigabe ihres
    Uploads erneut zu verwenden, fordern Sie einen neuen Upload an.
 
+Bei Upload-Anfragen für mehrere Dateien ist jedes Formular an die darin angezeigten freien
+Plätze gebunden. Das erneute Absenden eines veralteten Formulars belegt keine weiteren Plätze:
+Die Seite zeigt den aktuellen Stand und fordert Sie auf, nur die noch fehlenden Dateien erneut
+auszuwählen. Nach einem erfolgreichen Upload führt eine Weiterleitung zur Fortschrittsseite;
+deren Aktualisierung sendet keine Dateien erneut.
+
 **Herunterladen.** `sevdesk_document_save`, `sevdesk_voucher_receipt_save`, `sevdesk_csv_export`
 und `sevdesk_datev_export` geben statt eines Dateipfads einen Download-Link zurück, `<public URL>/files/<id>`. Der Server hat die
 Datei während des Werkzeugaufrufs von sevDesk geholt; das Öffnen des Links sendet nichts an
@@ -767,13 +773,13 @@ die Dateiseiten und nach dem Postfach benannt): `approval_login`, `approval_logi
 `approval_logout` und `approval_session_refused` (eine Sitzung eines Kontos, das nicht mehr erlaubt
 ist). Dateiübertragung:
 
-| Ereignis           | Stufe | Felder                                                                                                                                                                                                                                                     |
-| ------------------ | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `upload_received`  | info  | `account`, `reference`, `kind`, `bytes`                                                                                                                                                                                                                    |
-| `upload_refused`   | warn  | `reason` (`rate_limited`, `foreign_origin`, `signed_out`, `unknown`, `expired`, `already_received`, `unsupported_type`, `length_required`, `too_large`, `bad_form`, `csrf`, `empty`, `wrong_kind`, `storage_full`, `failed`), `account` nach der Anmeldung |
-| `download_served`  | info  | `account`, `reference`, `kind`, `bytes`                                                                                                                                                                                                                    |
-| `download_refused` | warn  | `reason` (`signed_out`, `unknown`, `expired`, `exhausted`), `account` nach der Anmeldung                                                                                                                                                                   |
-| `audit_failed`     | warn  | `event`: ein Dateiereignis konnte nicht in `SEVDESK_AUDIT_LOG` geschrieben werden                                                                                                                                                                          |
+| Ereignis           | Stufe | Felder                                                                                                                                                                                                                                                                   |
+| ------------------ | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `upload_received`  | info  | `account`, `reference`, `kind`, `bytes`                                                                                                                                                                                                                                  |
+| `upload_refused`   | warn  | `reason` (`rate_limited`, `foreign_origin`, `signed_out`, `unknown`, `expired`, `already_received`, `unsupported_type`, `length_required`, `too_large`, `bad_form`, `stale_form`, `csrf`, `empty`, `wrong_kind`, `storage_full`, `failed`), `account` nach der Anmeldung |
+| `download_served`  | info  | `account`, `reference`, `kind`, `bytes`                                                                                                                                                                                                                                  |
+| `download_refused` | warn  | `reason` (`signed_out`, `unknown`, `expired`, `exhausted`), `account` nach der Anmeldung                                                                                                                                                                                 |
+| `audit_failed`     | warn  | `event`: ein Dateiereignis konnte nicht in `SEVDESK_AUDIT_LOG` geschrieben werden                                                                                                                                                                                        |
 
 Ihre Anfragezeilen zeigen die Routen als `/uploads/*` und `/files/*`. Upload- und Download-IDs und
 Dateinamen werden nie protokolliert; der Referenzcode verbindet eine Logzeile mit der Seite, dem

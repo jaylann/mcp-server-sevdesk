@@ -404,7 +404,7 @@ export const GALLERY: readonly GalleryPage[] = [
         tone: "danger",
       }),
   },
-  ...(["pending", "partial", "received", "expired", "failed", "receiving"] as const).map(
+  ...(["pending", "partial", "received", "expired", "failed", "receiving", "stale"] as const).map(
     (state) => ({
       name: `upload-batch-${state}`,
       title: `Upload batch: ${state}`,
@@ -415,6 +415,7 @@ export const GALLERY: readonly GalleryPage[] = [
             csrf: "csrf-tag",
             maxTotalBytes: 20 * 1024 * 1024,
             ...(state === "failed" ? { error: ctx.t.transfer.storageFull } : {}),
+            ...(state === "stale" ? { error: ctx.t.upload.batch.staleForm } : {}),
             batch: {
               id: ID,
               reference: "U4MKP7",

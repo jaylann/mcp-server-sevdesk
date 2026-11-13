@@ -126,7 +126,8 @@ export function renderUploadBatch(
   const { batch } = model;
   const t = ctx.t.upload;
   const b = t.batch;
-  const remaining = batch.slots.filter((slot) => slot.status === "pending").length;
+  const pending = batch.slots.filter((slot) => slot.status === "pending");
+  const remaining = pending.length;
   const accept = batch.kinds.map((kind) => KIND_ACCEPT[kind]).join(",");
   const limits = facts(
     [
@@ -151,6 +152,7 @@ ${slot.file === undefined ? markup`` : markup`<p class="row-meta">${KIND_LABELS[
 ${limits}
 <form method="post" action="${UPLOADS_PREFIX}${batch.id}" enctype="multipart/form-data" class="upload">
 <input type="hidden" name="csrf" value="${model.csrf}">
+<input type="hidden" name="slots" value="${pending.map((slot) => slot.id).join(",")}">
 <label for="file" class="field">${b.files}</label>
 <input type="file" id="file" name="file" accept="${accept}" multiple required>
 <p class="hint">${b.hint}</p>
@@ -159,7 +161,7 @@ ${limits}
   const error =
     model.error === undefined
       ? markup``
-      : markup`<div class="callout" role="alert"><h2>${model.error.title}</h2><p>${model.error.message}</p></div>`;
+      : markup`<div class="callout" role="alert"><div><h2>${model.error.title}</h2><p>${model.error.message}</p></div></div>`;
   const body = markup`<h1>${b.title}</h1>
 <p class="lead">${b.lead(batch.count, markup`<strong>${model.accountId}</strong>`)}</p>
 <section class="sheet">${error}${form}<section class="next"><h2>${b.progress}</h2><ul>${progress}</ul></section></section>

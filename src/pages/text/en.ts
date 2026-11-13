@@ -222,6 +222,10 @@ export const en = {
         "Invalid selection",
         "Choose at least one file and no more than the remaining slots, using this form.",
       ),
+      staleForm: message(
+        "Upload list changed",
+        "This form is out of date. No files from this submission were stored. Check the list below and choose only the missing files using this form.",
+      ),
     },
     receipt: { title: "Upload a receipt", noun: "a receipt" },
     einvoice: { title: "Upload an e-invoice", noun: "an e-invoice (XRechnung or ZUGFeRD)" },

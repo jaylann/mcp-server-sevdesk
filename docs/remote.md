@@ -574,7 +574,10 @@ or global record allowance, no slots are created; the refusal names the next kno
 that account. A batch counts as one of the five pending pages. You may upload fewer files and
 return to the same page for the rest before its original 15-minute deadline. If a later file
 fails, earlier successful uploads stay available and the page lists what remains; select only
-missing files on retry. Expiry of unused slots does not expire already uploaded files. Once every
+missing files on retry. Replaying an older form cannot fill the remaining slots: the page shows
+the current list and asks you to choose the missing files again. Successful batch uploads redirect
+to the progress page, so refreshing it does not resend files. Expiry of unused slots does not
+expire already uploaded files. Once every
 slot is used or expired, the batch lookup and page are removed. With `count` absent or `1`, the
 single-file result and workflow are unchanged.
 
@@ -737,13 +740,13 @@ named after the inbox): `approval_login`, `approval_login_refused`, `approval_lo
 `approval_login_unavailable` (sevDesk could not be asked), `approval_logout` and
 `approval_session_refused` (a session of an account no longer allowed). File transfer:
 
-| Event              | Level | Fields                                                                                                                                                                                                                                                 |
-| ------------------ | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `upload_received`  | info  | `account`, `reference`, `kind`, `bytes`                                                                                                                                                                                                                |
-| `upload_refused`   | warn  | `reason` (`rate_limited`, `foreign_origin`, `signed_out`, `unknown`, `expired`, `already_received`, `unsupported_type`, `length_required`, `too_large`, `bad_form`, `csrf`, `empty`, `wrong_kind`, `storage_full`, `failed`), `account` once signed in |
-| `download_served`  | info  | `account`, `reference`, `kind`, `bytes`                                                                                                                                                                                                                |
-| `download_refused` | warn  | `reason` (`signed_out`, `unknown`, `expired`, `exhausted`), `account` once signed in                                                                                                                                                                   |
-| `audit_failed`     | warn  | `event`: a file event could not be written to `SEVDESK_AUDIT_LOG`                                                                                                                                                                                      |
+| Event              | Level | Fields                                                                                                                                                                                                                                                               |
+| ------------------ | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `upload_received`  | info  | `account`, `reference`, `kind`, `bytes`                                                                                                                                                                                                                              |
+| `upload_refused`   | warn  | `reason` (`rate_limited`, `foreign_origin`, `signed_out`, `unknown`, `expired`, `already_received`, `unsupported_type`, `length_required`, `too_large`, `bad_form`, `stale_form`, `csrf`, `empty`, `wrong_kind`, `storage_full`, `failed`), `account` once signed in |
+| `download_served`  | info  | `account`, `reference`, `kind`, `bytes`                                                                                                                                                                                                                              |
+| `download_refused` | warn  | `reason` (`signed_out`, `unknown`, `expired`, `exhausted`), `account` once signed in                                                                                                                                                                                 |
+| `audit_failed`     | warn  | `event`: a file event could not be written to `SEVDESK_AUDIT_LOG`                                                                                                                                                                                                    |
 
 Their request lines show the routes as `/uploads/*` and `/files/*`. Upload and download ids and
 file names are never logged; the reference code connects a log line with the page, the tool result

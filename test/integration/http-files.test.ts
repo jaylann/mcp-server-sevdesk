@@ -143,7 +143,12 @@ function fakeSevdesk(): FakeSevdesk {
         return json(copy, saved.status);
       }
       case "GET /Voucher/2101":
-        return json({ objects: [draftRow({ document: { id: "9001", objectName: "Document" } })] });
+        // A saved replacement has a new attachment identity, as required before releasing it.
+        return json({
+          objects: [
+            draftRow({ document: { id: String(9000 + saves.length), objectName: "Document" } }),
+          ],
+        });
       case "GET /VoucherPos":
         return json({ objects: [positionRow()], total: 1 });
       case "GET /Invoice/1001/getPdf":
@@ -572,6 +577,7 @@ describe("remote file transfer end to end (OAuth)", () => {
     const receiptFile = await receipt();
     const form = new FormData();
     form.append("csrf", csrfOf(page.body) ?? "");
+    form.append("slots", /name="slots" value="([^"]*)"/.exec(page.body)?.[1] ?? "");
     form.append(
       "file",
       new File([receiptFile.bytes], "Erster Beleg.pdf", { type: "application/pdf" }),
@@ -592,8 +598,9 @@ describe("remote file transfer end to end (OAuth)", () => {
       },
       body,
     });
-    expect(response.status).toBe(200);
-    const receiptPage = await response.text();
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(new URL(url).pathname);
+    const receiptPage = (await open(setup, url, jar)).body;
     expect(receiptPage).toContain("Erster_Beleg.pdf");
     expect(receiptPage).toContain("Zweiter_Beleg.pdf");
     const listed = await call(client, "sevdesk_uploads_list", { batchId: data["batchId"] });

@@ -137,9 +137,13 @@ counted by batch, so a ten-file batch uses one of the five pages and ten record 
 still passes content sniffing, per-file size, byte quotas, session and CSRF checks, encrypted
 storage and grant/account ownership. Successful attachment releases only that file's slot.
 
-The native `multiple` input submits repeated `file` parts beside exactly one `csrf` part, without
-script. The raw multipart delimiter cap becomes remaining slots + 2 before parsing; excess parts
-are refused. Before body reading, the declared and actual body are capped to the smaller of the
+The native `multiple` input submits repeated `file` parts beside exactly one `csrf` part and one
+`slots` part, without script. The latter binds the form to the ordered pending slot IDs shown
+when it was rendered. A stale binding is refused with 409 before any files are stored, so replaying
+a successful or partially successful submission cannot fill new slots with duplicate files.
+Successful batch POSTs redirect with 303 to the GET progress page, making refresh safe. The raw
+multipart delimiter cap becomes remaining slots + 3 before parsing; excess parts are refused.
+Before body reading, the declared and actual body are capped to the smaller of the
 remaining slots times the per-file size limit and the account's remaining byte share, plus 64 KiB
 of framing, never above 200 MiB plus framing. The same two global / one per-account body slots,
 90-second deadline and pace limits apply per submission. Parsed bodies can take about three

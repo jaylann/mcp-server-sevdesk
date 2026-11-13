@@ -211,6 +211,10 @@ export const de: Texts = {
         "Ungültige Auswahl",
         "Wählen Sie über dieses Formular mindestens eine Datei und höchstens so viele wie freie Plätze aus.",
       ),
+      staleForm: message(
+        "Dateiliste geändert",
+        "Dieses Formular ist veraltet. Aus diesem Upload wurden keine Dateien gespeichert. Prüfen Sie die Liste unten und wählen Sie über dieses Formular nur die noch fehlenden Dateien aus.",
+      ),
     },
     receipt: { title: "Beleg hochladen", noun: "einen Beleg" },
     einvoice: {

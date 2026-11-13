@@ -11,7 +11,8 @@
  * Routes (`form` origin policy; together 60 requests a minute per client IP or IPv6 /64):
  * - `GET /uploads/<id>`: the upload form (trusted text only), the receipt once uploaded, 410 when
  *   expired;
- * - `POST /uploads/<id>`: `multipart/form-data` with one `csrf` and one or more `file` parts. Before
+ * - `POST /uploads/<id>`: `multipart/form-data` with one `csrf`, one or more `file` parts, and a
+ *   batch's `slots` binding. Successful batch submissions redirect to GET. Before
  *   the body is read (router `preflight`): 10 uploads a minute and 60 an hour per client, a
  *   same-origin POST, a session, a pending ticket of the session's account, a declared
  *   `Content-Length` (411) within the ticket's limit (413), and at most 2 upload bodies at once on
@@ -111,6 +112,7 @@ type RefusalReason =
   | "length_required"
   | "too_large"
   | "bad_form"
+  | "stale_form"
   | "csrf"
   | "empty"
   | "wrong_kind"
@@ -395,8 +397,8 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
       // uploads at once and only after the session and ticket checks; no extra dependency. It
       // also builds an object for every part before anything can be checked, and 20 MiB of empty
       // parts made several hundred MiB of them (security review 2026-11, finding 2): so the parts
-      // are counted on the raw bytes first, and a form with more than `csrf` and `file` is
-      // refused before it is parsed.
+      // are counted on the raw bytes first: only `csrf`, the batch's `slots` binding, and the
+      // remaining number of files are allowed before parsing.
       const body = new Uint8Array(await request.arrayBuffer());
       if (body.byteLength > submissionLimit(ticket, batch)) {
         return refuse(
@@ -415,7 +417,8 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
         );
       }
       const boundary = multipartBoundary(request.headers.get("content-type") ?? "");
-      if (boundary === undefined || !atMostDelimiters(body, boundary, (slots?.length ?? 1) + 2)) {
+      const maxDelimiters = slots === undefined ? 3 : slots.length + 3;
+      if (boundary === undefined || !atMostDelimiters(body, boundary, maxDelimiters)) {
         throw new Error("not the upload form");
       }
       form = await new Response(body, {
@@ -429,9 +432,12 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
     const files = form.getAll("file");
     if (
       form.getAll("csrf").length !== 1 ||
+      (slots !== undefined && form.getAll("slots").length !== 1) ||
       files.length < 1 ||
       files.length > (slots?.length ?? 1) ||
-      names.some((name) => name !== "csrf" && name !== "file")
+      names.some(
+        (name) => name !== "csrf" && name !== "file" && !(slots !== undefined && name === "slots"),
+      )
     ) {
       return refuse("bad_form", badForm());
     }
@@ -440,6 +446,14 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
       return refuse(
         "csrf",
         failure(403, (t) => t.csrf),
+      );
+    }
+    // Bind this submission to the slots shown by its form. Replays must not move the same
+    // files into the next free slots after a successful or partially successful submission.
+    if (batch !== undefined && form.get("slots") !== slots?.map((slot) => slot.id).join(",")) {
+      return refuse(
+        "stale_form",
+        batchPage(request, record, batch, 409, pageOf(request, origin).t.upload.batch.staleForm),
       );
     }
     for (const [index, file] of files.entries()) {
@@ -520,10 +534,11 @@ export function createTransferRoutes(options: TransferRoutesOptions): readonly H
           );
       }
     }
-    const current = store.batchFor(id, record.accountId);
-    return current === undefined
-      ? say(request, 410, (t) => t.uploadExpired)
-      : batchPage(request, record, current);
+    // The progress page is a GET, so refreshing it never resubmits the uploaded files.
+    return new Response(null, {
+      status: 303,
+      headers: { Location: `${UPLOADS_PREFIX}${id}`, "Cache-Control": "no-store, no-transform" },
+    });
   }
 
   async function download(request: Request, ctx: HttpRequestContext): Promise<Response> {
