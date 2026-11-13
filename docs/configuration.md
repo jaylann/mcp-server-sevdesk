@@ -39,11 +39,11 @@ Value formats:
 Set exactly one of these three, unless the [profile](#profiles) you use says where the token is
 kept.
 
-| Variable                     | Default | Meaning                                                                                                                                                                                                                                                                                 |
-| ---------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SEVDESK_API_TOKEN`          |         | Your sevDesk API token (sevDesk: Settings → Users → API token), ideally of a dedicated user. The raw token, without a `Bearer ` prefix. Required over stdio and in bearer mode; not used in OAuth mode, where every user pastes their own on the consent page.                          |
-| `SEVDESK_API_TOKEN_FILE`     |         | Read the token from this file instead (trimmed). For Docker and Kubernetes secrets, or a file only you can read (`chmod 600`).                                                                                                                                                          |
-| `SEVDESK_API_TOKEN_KEYCHAIN` |         | Over stdio: read the token from the operating system's keychain, stored under this label with [`token set`](#keep-the-token-in-the-os-keychain). macOS and Linux; not available on Windows yet. A label is up to 64 letters, digits, `.`, `_` or `-` and starts with a letter or digit. |
+| Variable                     | Default | Meaning                                                                                                                                                                                                                                                                                                      |
+| ---------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `SEVDESK_API_TOKEN`          |         | Your sevDesk API token (sevDesk: Settings → Users → API token), ideally of a dedicated user. The raw token, without a `Bearer ` prefix. Required over stdio and in bearer mode; not used in OAuth mode, where every user pastes their own on the consent page.                                               |
+| `SEVDESK_API_TOKEN_FILE`     |         | Read the token from this file instead (trimmed). For Docker and Kubernetes secrets, or a file only you can read (`chmod 600`).                                                                                                                                                                               |
+| `SEVDESK_API_TOKEN_KEYCHAIN` |         | Over stdio: read the token from the operating system's keychain, stored under this label with [`token set`](#keep-the-token-in-the-os-keychain). macOS, Linux and Windows (Windows PowerShell in FullLanguage mode). A label is up to 64 letters, digits, `.`, `_` or `-` and starts with a letter or digit. |
 
 A `…_FILE` variable (this one and those of the [remote mode](remote.md)) takes the path of a file
 that holds the value, never the value itself; use an absolute path. When the file cannot be read,
@@ -192,14 +192,20 @@ sevDesk cannot be reached, it is stored with a warning. Then configure the serve
 - `token check work` checks the stored token with sevDesk; `token delete work` removes it.
 - The token is never taken from the command line, where it would stay in your shell history. To
   store it from a file, pipe it in: `npx -y mcp-server-sevdesk token set work < token.txt`, then
-  delete the file.
+  delete the file. That redirection works in POSIX shells and `cmd.exe`; in PowerShell, use
+  `Get-Content -Raw token.txt | npx -y mcp-server-sevdesk token set work`.
 - **macOS:** the login keychain, item `mcp-server-sevdesk`, account = your label.
 - **Linux:** the Secret Service through `secret-tool` (package `libsecret-tools` on Debian and
   Ubuntu, `libsecret` on Fedora), with GNOME Keyring or KWallet running and unlocked. On a
   headless server, use `SEVDESK_API_TOKEN_FILE`.
-- **Windows:** not supported yet. Use `SEVDESK_API_TOKEN_FILE`, or the
-  [Claude Desktop extension](clients.md#claude-desktop), which keeps the token in Windows'
-  credential storage.
+- **Windows:** the Credential Locker through WinRT `PasswordVault`, resource
+  `mcp-server-sevdesk`, username = your label. Uses Windows PowerShell at
+  `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`, without profiles or a PATH
+  lookup. Keep `SystemRoot` set to the Windows installation directory. PowerShell 7 (`pwsh`)
+  is not used. Constrained Language Mode cannot access this API, even without `Add-Type`;
+  use `SEVDESK_API_TOKEN_FILE` or the [Claude Desktop extension](clients.md#claude-desktop)
+  if Windows PowerShell is missing or restricted. Credential Locker entries can roam with your
+  Microsoft account; use a protected token file if the token must stay on this device.
 
 The keychain keeps the token out of configuration files, backups and screenshots. It does not
 protect against programs that already run under your user account (see

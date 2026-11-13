@@ -98,7 +98,7 @@ before you enable them, and read [Permissions](permissions.md).
 The token in a configuration file ends up in backups, screenshots and sometimes repositories.
 Better options:
 
-- **The OS keychain** (macOS, Linux). Store the token once, then name only its label:
+- **The OS keychain** (macOS, Linux, Windows). Store the token once, then name only its label:
 
   ```bash
   npx -y mcp-server-sevdesk token set work

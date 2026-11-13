@@ -2,18 +2,22 @@ import type { ChildProcess, SpawnOptions } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { inspect } from "node:util";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { loadLocalConfig } from "../../../src/accounts/local-config.js";
 import {
   createKeychain,
   KEYCHAIN_SERVICE,
   keychainCommands,
   KeychainError,
   type KeychainSpawn,
-  keychainUnsupported,
 } from "../../../src/safety/keychain.js";
+import { runTokenCommand } from "../../../src/token-cli.js";
 
 const TOKEN = "0123456789abcdef0123456789abcdef";
+const SYSTEM_ROOT = String.raw`C:\Windows`;
+
+afterEach(() => vi.unstubAllEnvs());
 
 /** What a fake helper does once spawned: print, exit, fail or hang. */
 type Script =
@@ -132,11 +136,41 @@ describe("keychainCommands", () => {
     expect(keychainCommands("freebsd").platform).toBe("secret-service");
   });
 
-  it("refuses Windows with a pointer to the token file and the .mcpb bundle", () => {
-    expect(() => keychainCommands("win32")).toThrow(/SEVDESK_API_TOKEN_FILE.*\.mcpb/s);
-    expect(keychainUnsupported("win32")).toMatch(/not supported on Windows/);
-    expect(keychainUnsupported("darwin")).toBeUndefined();
-    expect(keychainUnsupported("linux")).toBeUndefined();
+  it("uses one constant Windows script, with all data on stdin and no PATH lookup", () => {
+    vi.stubEnv("PATH", String.raw`C:\attacker`);
+    vi.stubEnv("SystemRoot", SYSTEM_ROOT);
+    const windows = keychainCommands("win32");
+    const commands = [
+      windows.lookup("work"),
+      windows.store("client-a", TOKEN),
+      windows.remove("old"),
+    ];
+    for (const command of commands) {
+      expect(command.command).toBe(
+        String.raw`C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`,
+      );
+      expect(command.args).toEqual(commands[0]?.args);
+      expect(command.args.slice(0, 4)).toEqual([
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+      ]);
+      expect(command.args.join(" ")).not.toContain(TOKEN);
+    }
+    const script = commands[0]?.args[4];
+    expect(script).toContain("Windows.Security.Credentials.PasswordVault");
+    expect(script).toContain(`'${KEYCHAIN_SERVICE}'`);
+    expect(script).not.toMatch(/Add-Type|Invoke-Expression|ExecutionPolicy|RetrieveAll|FindAll/);
+    expect(script).not.toContain("client-a");
+    expect(commands.map((command) => command.input)).toEqual([
+      "read\nwork\n\n",
+      `store\nclient-a\n${TOKEN}\n`,
+      "delete\nold\n\n",
+    ]);
+    expect(keychainCommands("win32", String.raw`D:\Windows Install`).lookup("work").command).toBe(
+      String.raw`D:\Windows Install\System32\WindowsPowerShell\v1.0\powershell.exe`,
+    );
   });
 });
 
@@ -232,17 +266,20 @@ describe("read", () => {
     ).toBe("failed");
   });
 
-  it("kills a helper that does not answer in time", async () => {
-    const { spawn, spawned } = fakeSpawn({ hang: true });
+  it.each(["darwin", "win32"] as const)(
+    "kills a %s helper that does not answer in time",
+    async (platform) => {
+      const { spawn, spawned } = fakeSpawn({ hang: true });
 
-    const error = await failure(
-      createKeychain({ platform: "darwin", spawn, timeoutMs: 5 }).read("work"),
-    );
+      const error = await failure(
+        createKeychain({ platform, systemRoot: SYSTEM_ROOT, spawn, timeoutMs: 5 }).read("work"),
+      );
 
-    expect(error.kind).toBe("timeout");
-    expect(error.message).toMatch(/did not answer in time/);
-    expect(spawned[0]?.child.killedWith).toBe("SIGKILL");
-  });
+      expect(error.kind).toBe("timeout");
+      expect(error.message).toMatch(/did not answer in time/);
+      expect(spawned[0]?.child.killedWith).toBe("SIGKILL");
+    },
+  );
 
   it("stops a helper that prints more than 4 KiB", async () => {
     const { spawn, spawned } = fakeSpawn({ stdout: ["a".repeat(3000), "b".repeat(3000)], code: 0 });
@@ -276,14 +313,219 @@ describe("read", () => {
     }
     expect(spawned).toHaveLength(0);
   });
+});
 
-  it("refuses Windows without running anything", async () => {
+describe("Windows PasswordVault", () => {
+  it.each(["0", "x".repeat(512)])(
+    "preserves accepted token bounds and a 64-character label",
+    async (token) => {
+      const label = `0${"x".repeat(60)}._-`;
+      const { spawn, spawned } = fakeSpawn(
+        { code: 0, stdout: "OK\n" },
+        { code: 0, stdout: `TOKEN:${token}\n` },
+      );
+      await createKeychain({ platform: "win32", systemRoot: SYSTEM_ROOT, spawn }).store(
+        label,
+        token,
+      );
+      expect(spawned[0]?.child.stdin.written).toBe(`store\n${label}\n${token}\n`);
+    },
+  );
+
+  it("reads through the real configuration path with an injected helper", async () => {
+    const { spawn, spawned } = fakeSpawn({ stdout: ["TOKEN:", TOKEN, "\r\n"], code: 0 });
+    const keychain = createKeychain({ platform: "win32", systemRoot: SYSTEM_ROOT, spawn });
+    const { config } = await loadLocalConfig(
+      { SEVDESK_API_TOKEN_KEYCHAIN: "work" },
+      { platform: "win32", keychain },
+    );
+    expect(config.token).toBe(TOKEN);
+    expect(spawned[0]?.options).toEqual({
+      shell: false,
+      windowsHide: true,
+      stdio: ["pipe", "pipe", "ignore"],
+    });
+    expect(spawned[0]?.child.stdin.written).toBe("read\nwork\n\n");
+  });
+
+  it("stores via stdin and verifies the value, then deletes without exposing a password", async () => {
+    const { spawn, spawned } = fakeSpawn(
+      { stdout: "OK\r\n", code: 0 },
+      { stdout: `TOKEN:${TOKEN}\r\n`, code: 0 },
+      { stdout: "OK\r\n", code: 0 },
+      { code: 2 },
+    );
+    const keychain = createKeychain({ platform: "win32", systemRoot: SYSTEM_ROOT, spawn });
+    await keychain.store("work", TOKEN);
+    expect(await keychain.remove("work")).toBe(true);
+    expect(await keychain.remove("work")).toBe(false);
+    expect(spawned.map((call) => call.child.stdin.written)).toEqual([
+      `store\nwork\n${TOKEN}\n`,
+      "read\nwork\n\n",
+      "delete\nwork\n\n",
+      "delete\nwork\n\n",
+    ]);
+    for (const { command, args, options } of spawned) {
+      expect(inspect({ command, args, options })).not.toContain(TOKEN);
+    }
+  });
+
+  it.each([
+    [2, "not_found", /No token is stored/],
+    [3, "denied", /refused access/],
+    [4, "unavailable", /Constrained Language Mode.*SEVDESK_API_TOKEN_FILE/],
+    [5, "invalid", /refused its input/],
+    [1, "failed", /PowerShell exited with 1/],
+    [99, "failed", /PowerShell exited with 99/],
+  ] as const)(
+    "maps exit %i to %s for reads and writes without echoing diagnostics",
+    async (code, kind, message) => {
+      const { spawn } = fakeSpawn({ code, stdout: TOKEN });
+      const keychain = createKeychain({ platform: "win32", systemRoot: SYSTEM_ROOT, spawn });
+      const operations: (() => Promise<unknown>)[] = [
+        () => keychain.read("work"),
+        () => keychain.store("work", TOKEN),
+      ];
+      if (code !== 2) operations.push(() => keychain.remove("work"));
+      for (const operation of operations) {
+        const error = await failure(operation());
+        expect(error.kind).toBe(kind);
+        expect(error.message).toMatch(message);
+        expect(inspect(error)).not.toContain(TOKEN);
+      }
+    },
+  );
+
+  it("reports missing PowerShell with a usable fallback", async () => {
+    const { spawn } = fakeSpawn({ error: "ENOENT" });
+    const error = await failure(
+      createKeychain({ platform: "win32", systemRoot: SYSTEM_ROOT, spawn }).read("work"),
+    );
+    expect(error.kind).toBe("unavailable");
+    expect(error.message).toMatch(
+      /Windows PowerShell was not found.*SEVDESK_API_TOKEN_FILE.*\.mcpb/s,
+    );
+  });
+
+  it.each([
+    undefined,
+    "",
+    "Windows",
+    String.raw`C:Windows`,
+    String.raw`\Windows`,
+    String.raw`\\host\share`,
+    String.raw`\\?\C:\Windows`,
+    String.raw`C:\Windows\..\evil`,
+    "C:/Windows",
+    "C:\\Windows\n",
+    String.raw`C:\Windows.`,
+    String.raw`C:\Windows\\`,
+  ])("refuses an unsafe installation directory before spawning (%s)", async (systemRoot) => {
+    vi.stubEnv("SystemRoot", systemRoot);
     const { spawn, spawned } = fakeSpawn({ code: 0 });
-
     const error = await failure(createKeychain({ platform: "win32", spawn }).read("work"));
-
-    expect(error.kind).toBe("unsupported");
+    expect(error.kind).toBe("unavailable");
+    expect(error.message).toMatch(/needs SystemRoot/);
     expect(spawned).toHaveLength(0);
+  });
+
+  it("refuses hostile labels and tokens before PowerShell receives them", async () => {
+    const { spawn, spawned } = fakeSpawn({ code: 0 });
+    const keychain = createKeychain({ platform: "win32", systemRoot: SYSTEM_ROOT, spawn });
+    for (const label of [
+      "",
+      "x".repeat(65),
+      "läbel",
+      "-x",
+      "work\n",
+      "a b",
+      "x';exit 0;#",
+      "$(whoami)",
+      TOKEN,
+    ]) {
+      for (const operation of [
+        () => keychain.read(label),
+        () => keychain.store(label, TOKEN),
+        () => keychain.remove(label),
+      ]) {
+        expect((await failure(operation())).kind).toBe("invalid");
+      }
+    }
+    for (const token of ["", "x\n", "a".repeat(513), "abc def", "$(whoami)", 'abc"']) {
+      expect((await failure(keychain.store("work", token))).kind).toBe("invalid");
+    }
+    expect(spawned).toHaveLength(0);
+  });
+
+  it.each([
+    "",
+    "OK\r\n",
+    TOKEN,
+    `TOKEN:Bearer ${TOKEN}\r\n`,
+    `TOKEN:${TOKEN}\nextra`,
+    "TOKEN:\r\n",
+    `TOKEN:${"x".repeat(513)}\n`,
+  ])("rejects malformed successful reads without echoing output", async (stdout) => {
+    const { spawn } = fakeSpawn({ code: 0, stdout });
+    const error = await failure(
+      createKeychain({ platform: "win32", systemRoot: SYSTEM_ROOT, spawn }).read("work"),
+    );
+    expect(error.kind).toBe("invalid");
+    expect(inspect(error)).not.toContain(TOKEN);
+  });
+
+  it("requires an exact acknowledgement for store and delete", async () => {
+    for (const stdout of ["", `OK\r\n${TOKEN}`, `TOKEN:${TOKEN}\r\n`]) {
+      const { spawn, spawned } = fakeSpawn({ code: 0, stdout });
+      const keychain = createKeychain({ platform: "win32", systemRoot: SYSTEM_ROOT, spawn });
+      expect((await failure(keychain.store("work", TOKEN))).kind).toBe("invalid");
+      expect((await failure(keychain.remove("work"))).kind).toBe("invalid");
+      expect(spawned).toHaveLength(2);
+    }
+  });
+
+  it("fails when a stored token is lost or replaced before verification", async () => {
+    for (const script of [{ code: 2 }, { code: 0, stdout: "TOKEN:different\r\n" }]) {
+      const { spawn } = fakeSpawn({ code: 0, stdout: "OK\n" }, script);
+      const error = await failure(
+        createKeychain({ platform: "win32", systemRoot: SYSTEM_ROOT, spawn }).store("work", TOKEN),
+      );
+      expect(error.kind).toBe("failed");
+      expect(error.message).toMatch(/reading it back failed/);
+      expect(inspect(error)).not.toContain(TOKEN);
+    }
+  });
+
+  it("keeps secrets out of captured CLI output on success and helper failures", async () => {
+    const scenarios: Script[][] = [
+      [{ code: 2 }, { code: 0, stdout: "OK\r\n" }, { code: 0, stdout: `TOKEN:${TOKEN}\r\n` }],
+      [{ code: 3, stdout: TOKEN }],
+      [{ code: 0, stdout: TOKEN }],
+      [{ error: TOKEN }],
+    ];
+    for (const scripts of scenarios) {
+      const { spawn, spawned } = fakeSpawn(...scripts);
+      const keychain = createKeychain({ platform: "win32", systemRoot: SYSTEM_ROOT, spawn });
+      const output: string[] = [];
+      const code = await runTokenCommand(
+        { kind: "token", action: "set", label: "work" },
+        {},
+        {
+          out: (text) => output.push(text),
+          err: (text) => output.push(text),
+          readToken: (prompt) => {
+            output.push(prompt);
+            return Promise.resolve(TOKEN);
+          },
+        },
+        { platform: "win32", keychain, identify: () => Promise.resolve({ accountId: "123" }) },
+      );
+      expect(code).toBe(scripts.length === 3 ? 0 : 1);
+      expect(output.join("")).not.toContain(TOKEN);
+      expect(
+        inspect(spawned.map(({ command, args, options }) => ({ command, args, options }))),
+      ).not.toContain(TOKEN);
+    }
   });
 });
 
@@ -435,10 +677,12 @@ describe("secrets", () => {
       { stdout: `${TOKEN}\n`, code: null },
       { stdout: [`${TOKEN}\n`, "x".repeat(5000)], code: 0 },
     ];
-    for (const platform of ["darwin", "linux"] as const) {
+    for (const platform of ["darwin", "linux", "win32"] as const) {
       for (const script of scripts) {
         const { spawn } = fakeSpawn(script);
-        const error = await failure(createKeychain({ platform, spawn }).read("work"));
+        const error = await failure(
+          createKeychain({ platform, spawn, systemRoot: SYSTEM_ROOT }).read("work"),
+        );
         expect(error.message).not.toContain(TOKEN);
         expect(error.stack ?? "").not.toContain(TOKEN);
         expect(inspect(error)).not.toContain(TOKEN);

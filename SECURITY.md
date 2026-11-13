@@ -237,14 +237,20 @@ keychain (`SEVDESK_API_TOKEN_KEYCHAIN`).
 - **Keychain.** Items live under the fixed service `mcp-server-sevdesk`; configuration names only
   the label, so a hostile configuration cannot make the server read another keychain item (a
   password, another token) and send it to a custom `SEVDESK_BASE_URL`. The server runs the
-  operating system's helper (`/usr/bin/security` on macOS, `secret-tool` on Linux) with an
+  operating system's helper (`/usr/bin/security` on macOS, `secret-tool` on Linux, Windows
+  PowerShell with WinRT `PasswordVault` on Windows) with an
   argument array, never through a shell. When storing, the token travels on the helper's stdin,
   never in its arguments, which other local users could see in the process list. The helper's
   output is capped, never logged or echoed, and errors are fixed texts. The keychain protects the
   token at rest, in configuration files, backups and screenshots; it does not protect against code
   that already runs as the same user. On macOS the item trusts `/usr/bin/security`, which created
-  it, so any process of the user can read it that way without a dialog. Windows is not supported
-  yet and is refused with a pointer to `SEVDESK_API_TOKEN_FILE`.
+  it, so any process of the user can read it that way without a dialog. On Windows the script is
+  constant; operation, label and token travel only on stdin. The executable is resolved only
+  beneath a validated, trusted `SystemRoot`, never through `PATH` or the current directory.
+  Windows PowerShell must run in `FullLanguage` mode; Constrained Language Mode is refused
+  without changing policy, with a pointer to `SEVDESK_API_TOKEN_FILE` or the `.mcpb` bundle.
+  Credential Locker entries can roam with the Microsoft account; a protected token file is
+  the alternative when the token must stay on this device.
 - **The command line.** `token set` reads the token from stdin (hidden on a terminal), never from
   an argument, where it would stay in the shell history. It checks the token with sevDesk and
   stores nothing sevDesk rejects. Labels, profile names and unknown arguments that look like a
