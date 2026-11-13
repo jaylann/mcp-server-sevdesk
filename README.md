@@ -86,7 +86,7 @@ the token safe. claude.ai and the Claude mobile apps connect to a server you hos
 
 ## What it can do
 
-74 tools across 10 toolsets. The 37 read tools fill the first column; with the write tiers
+75 tools across 10 toolsets. The 38 read tools fill the first column; with the write tiers
 enabled, 37 more tools create and change data.
 
 | Area                               | Read                                                                                                                                                                              | Write (`write`, `commit`, `external`)                                                                                                                                                                                                                             |
@@ -181,7 +181,10 @@ on another machine, or a small team. It refuses to start without authentication
 claude.ai cannot ask for confirmations in the chat (at the time of writing), so binding steps are
 approved in the server's approval inbox (`SEVDESK_CONFIRM=browser`). Receipts and e-invoices are
 uploaded, and PDFs and exports downloaded, through pages on your server that the assistant links
-to. Connect Claude Code with:
+to. For several receipts, `sevdesk_upload_request` with `count: 2` through `10` opens one page
+for all files. After uploading, `sevdesk_uploads_list` matches cleaned names to the `uploadId`s
+used by the draft tools; each file keeps its own size limit, quota slot and expiry.
+Connect Claude Code with:
 
 ```bash
 claude mcp add --transport http sevdesk https://<host>/mcp                     # OAuth: then /mcp to sign in

@@ -22,7 +22,7 @@
  *
  * Limits (nothing is ever evicted; new records are refused with {@link TransferLimitError}
  * instead):
- * - 5 tickets waiting for a file per account, configurable live records per account (default
+ * - 5 pages waiting for files per account (a batch is one page), configurable file records (default
  *   10, `SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT`), 1,000 overall;
  * - bytes (`maxBytes`, `SEVDESK_HTTP_FILES_MAX_MB`): one account holds at most its share, a
  *   quarter of `maxBytes` but at least one largest upload (20 MiB), never more than half; one
@@ -50,6 +50,8 @@ import {
   TransferLimitError,
   type TransferStore,
   UPLOAD_KINDS,
+  type UploadBatchState,
+  type UploadBatchView,
   type UploadPurpose,
   type UploadTicketView,
 } from "./transfer-types.js";
@@ -113,6 +115,10 @@ export interface FileTransferStore extends TransferStore {
    * expired recently; `undefined` otherwise (unknown and foreign look the same).
    */
   ticketFor(id: string, accountId: string): UploadTicketState | "expired" | undefined;
+  /** Batch metadata for the browser account, including partial uploads and expired slots. */
+  batchFor(id: string, accountId: string): UploadBatchState | undefined;
+  /** Maximum file bytes in one submission, bounded by the account's remaining byte share. */
+  uploadRoom(accountId: string): number;
   /**
    * Stores the file of ticket `id` for the session's `accountId`. The ticket is marked
    * `receiving` before the first `await`, so a concurrent second upload gets
@@ -143,7 +149,7 @@ export interface TransferStoreOptions {
   readonly ticketTtlMs?: number;
   /** Largest upload (default 20 MiB; never more than an account's share of `maxBytes`). */
   readonly maxUploadBytes?: number;
-  /** Tickets waiting for a file per account (default 5). */
+  /** Pages waiting for files per account (default 5); a batch counts once. */
   readonly maxPendingPerAccount?: number;
   /** Live tickets and links per account (default 10). */
   readonly maxRecordsPerAccount?: number;
@@ -193,8 +199,16 @@ interface StoredFile {
   readonly blobId: string;
 }
 
+interface BatchRecord {
+  readonly view: UploadBatchView;
+  readonly owner: RequestPrincipal;
+  readonly ids: readonly string[];
+  readonly ended: Map<string, "used" | "expired">;
+}
+
 interface TicketRecord {
   readonly type: "ticket";
+  readonly batchId?: string;
   readonly id: string;
   readonly owner: RequestPrincipal;
   readonly reference: string;
@@ -255,6 +269,7 @@ export function createTransferStore(options: TransferStoreOptions): FileTransfer
   const maxDownloads = options.maxDownloads ?? DEFAULT_MAX_DOWNLOADS;
   const records = new Map<string, TransferRecord>();
   const markers = new Map<string, Marker>();
+  const batches = new Map<string, BatchRecord>();
   const reservations = new Set<Reservation>();
   let closed = false;
 
@@ -279,6 +294,11 @@ export function createTransferStore(options: TransferStoreOptions): FileTransfer
   function remove(record: TransferRecord, reason: Marker["reason"]): void {
     if (records.get(record.id) !== record) return;
     records.delete(record.id);
+    if (record.type === "ticket" && record.batchId !== undefined) {
+      batches
+        .get(record.batchId)
+        ?.ended.set(record.id, reason === "exhausted" ? "used" : "expired");
+    }
     dropBlob(blobOf(record));
     markers.set(record.id, {
       accountScope: record.owner.accountScope,
@@ -298,6 +318,11 @@ export function createTransferStore(options: TransferStoreOptions): FileTransfer
       // A ticket whose file is being written was used in time; its new lifetime starts after.
       if (record.type === "ticket" && record.status === "receiving") continue;
       if (record.expiresAtMs <= at) remove(record, "expired");
+    }
+    // Batch metadata lives only while at least one reserved ticket/file remains. This bounds
+    // metadata by the record cap even when successful attachments rapidly release slots.
+    for (const [id, batch] of batches) {
+      if (!batch.ids.some((ticketId) => records.has(ticketId))) batches.delete(id);
     }
     for (const [id, marker] of markers) {
       if (marker.untilMs <= at) markers.delete(id);
@@ -341,15 +366,22 @@ export function createTransferStore(options: TransferStoreOptions): FileTransfer
   }
 
   /** Throws when `accountScope` may not create one more record. */
-  function checkRecordLimits(accountScope: string): void {
+  function checkRecordLimits(accountScope: string, count = 1): void {
     const own = accountRecords(accountScope);
-    if (own.length + reservedCount(accountScope) >= maxPerAccount) {
+    const remaining = maxPerAccount - own.length - reservedCount(accountScope);
+    if (count > 1 && count > remaining) {
+      throw new TransferLimitError(
+        `This batch needs ${String(count)} file slots, but this sevDesk account has only ` +
+          `${String(Math.max(0, remaining))} of ${String(maxPerAccount)} remaining. ${nextExpiry(own)}`,
+      );
+    }
+    if (count > remaining) {
       throw new TransferLimitError(
         `This sevDesk account already has ${String(maxPerAccount)} uploads and download links ` +
           `on the server. ${nextExpiry(own)}`,
       );
     }
-    if (records.size + reservations.size >= maxRecords) {
+    if (records.size + reservations.size + count > maxRecords) {
       throw new TransferLimitError(
         "The server holds too many uploads and download links right now. " + nextExpiry(own),
       );
@@ -367,7 +399,10 @@ export function createTransferStore(options: TransferStoreOptions): FileTransfer
   }
 
   function uniqueReference(): string {
-    const used = new Set([...records.values()].map((record) => record.reference));
+    const used = new Set([
+      ...[...records.values()].map((record) => record.reference),
+      ...[...batches.values()].map((batch) => batch.view.reference),
+    ]);
     for (;;) {
       const reference = referenceCode();
       if (!used.has(reference)) return reference;
@@ -422,43 +457,115 @@ export function createTransferStore(options: TransferStoreOptions): FileTransfer
     if (closed) throw new Error("The transfer store is closed.");
   }
 
+  function checkPending(scope: string): void {
+    const waiting = accountRecords(scope).filter(
+      (record): record is TicketRecord => record.type === "ticket" && record.status !== "uploaded",
+    );
+    const pages = new Set(waiting.map((record) => record.batchId ?? record.id));
+    if (pages.size >= maxPending) {
+      throw new TransferLimitError(
+        `${String(maxPending)} upload requests of this sevDesk account are still waiting for a ` +
+          `file. Ask the user to use one of them. ${nextExpiry(waiting)}`,
+      );
+    }
+  }
+
+  function newTicket(
+    owner: RequestPrincipal,
+    purpose: UploadPurpose,
+    batchId?: string,
+    expiresAtMs = now() + ticketTtlMs,
+  ): UploadTicketView {
+    const record: TicketRecord = {
+      type: "ticket",
+      ...(batchId === undefined ? {} : { batchId }),
+      id: randomId(),
+      owner: { ...owner },
+      reference: uniqueReference(),
+      purpose,
+      kinds: UPLOAD_KINDS[purpose],
+      maxBytes: uploadBytes,
+      expiresAtMs,
+      status: "pending",
+      size: 0,
+      file: undefined,
+    };
+    records.set(record.id, record);
+    return {
+      id: record.id,
+      reference: record.reference,
+      purpose,
+      kinds: record.kinds,
+      maxBytes: record.maxBytes,
+      expiresAt: new Date(record.expiresAtMs).toISOString(),
+    };
+  }
+
+  function batchState(batch: BatchRecord): UploadBatchState {
+    return {
+      ...batch.view,
+      slots: batch.ids.map((id) => {
+        const record = owned(id, batch.owner.accountScope, "ticket");
+        if (record !== undefined) return ticketState(record);
+        return {
+          id,
+          status: batch.ended.get(id) ?? "expired",
+          expiresAt: batch.view.expiresAt,
+        };
+      }),
+    };
+  }
+
   return {
     createTicket(owner, purpose) {
       assertOpen();
       prune();
-      const scope = owner.accountScope;
-      const waiting = accountRecords(scope).filter(
-        (record) => record.type === "ticket" && record.status !== "uploaded",
-      );
-      if (waiting.length >= maxPending) {
-        throw new TransferLimitError(
-          `${String(maxPending)} upload requests of this sevDesk account are still waiting for a ` +
-            `file. Ask the user to use one of them. ${nextExpiry(waiting)}`,
-        );
+      checkPending(owner.accountScope);
+      checkRecordLimits(owner.accountScope);
+      return newTicket(owner, purpose);
+    },
+
+    createBatch(owner, purpose, count) {
+      assertOpen();
+      if (!Number.isInteger(count) || count < 2 || count > 10) {
+        throw new RangeError("An upload batch needs between 2 and 10 files.");
       }
-      checkRecordLimits(scope);
-      const record: TicketRecord = {
-        type: "ticket",
-        id: randomId(),
-        owner: { grantKey: owner.grantKey, accountScope: scope },
+      prune();
+      checkRecordLimits(owner.accountScope, count);
+      checkPending(owner.accountScope);
+      const id = randomId();
+      const view: UploadBatchView = {
+        id,
         reference: uniqueReference(),
         purpose,
         kinds: UPLOAD_KINDS[purpose],
         maxBytes: uploadBytes,
-        expiresAtMs: now() + ticketTtlMs,
-        status: "pending",
-        size: 0,
-        file: undefined,
+        expiresAt: new Date(now() + ticketTtlMs).toISOString(),
+        count,
       };
-      records.set(record.id, record);
-      return {
-        id: record.id,
-        reference: record.reference,
-        purpose,
-        kinds: record.kinds,
-        maxBytes: record.maxBytes,
-        expiresAt: new Date(record.expiresAtMs).toISOString(),
-      } satisfies UploadTicketView;
+      const ids = Array.from(
+        { length: count },
+        () => newTicket(owner, purpose, id, Date.parse(view.expiresAt)).id,
+      );
+      batches.set(id, { view, owner: { ...owner }, ids, ended: new Map() });
+      return view;
+    },
+
+    readBatch(owner, id) {
+      prune();
+      const batch = batches.get(id);
+      return batch !== undefined && sameOwner(batch.owner, owner) ? batchState(batch) : undefined;
+    },
+
+    batchFor(id, accountId) {
+      prune();
+      const batch = batches.get(id);
+      return batch?.owner.accountScope === accountId ? batchState(batch) : undefined;
+    },
+
+    uploadRoom(accountId) {
+      prune();
+      return Math.max(0, accountBytes - bytesHeld(accountId));
     },
 
     async readUpload(owner, id): Promise<InputFile | undefined> {
@@ -652,6 +759,7 @@ export function createTransferStore(options: TransferStoreOptions): FileTransfer
       if (timer !== undefined) clearInterval(timer);
       records.clear();
       markers.clear();
+      batches.clear();
       await blobs.close();
     },
   };

@@ -166,6 +166,8 @@ export const READ_CASES: readonly LiveCase[] = [
   { tool: "sevdesk_api_get", args: () => ({ path: "/TextTemplate", limit: 5 }) },
   // M6: listed only over HTTP with file transfer, so the stdio run skips it.
   { tool: "sevdesk_upload_request", args: () => ({ purpose: "receipt" }) },
+  // HTTP-only too: this placeholder checks the schema offline; http-files tests use a real batch.
+  { tool: "sevdesk_uploads_list", args: () => ({ batchId: "x".repeat(43) }) },
 ];
 
 /** Placeholder ids and files for the offline schema check of {@link READ_CASES}. */

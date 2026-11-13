@@ -19,7 +19,7 @@ import { formatPageTime } from "../safety/approval-page.js";
 import type { OutputFileKind } from "../safety/file-access.js";
 import type { LocalFileKind } from "../safety/local-files.js";
 import { megabytes, MIME_TYPES, type ServedDownload } from "../safety/transfer-store.js";
-import type { UploadPurpose } from "../safety/transfer-types.js";
+import type { UploadBatchState, UploadPurpose } from "../safety/transfer-types.js";
 import { pageResponse } from "./approval-pages.js";
 
 /** Prefix of the upload pages, `/uploads/<id>`. */
@@ -110,6 +110,63 @@ ${limits}
 </section>
 <p class="fine after"><span class="ref-line">${ctx.t.approval.reference} ${code}</span> ${ctx.t.approval.sameCode} ${t.fine}</p>`;
   return renderFrame({ title: purpose.title, body }, ctx);
+}
+
+/** A batch's progress and native multi-file form. Every file name is escaped by `markup`. */
+export function renderUploadBatch(
+  model: {
+    readonly batch: UploadBatchState;
+    readonly accountId: string;
+    readonly csrf: string;
+    readonly maxTotalBytes: number;
+    readonly error?: PageMessage;
+  },
+  ctx: RenderContext,
+): string {
+  const { batch } = model;
+  const t = ctx.t.upload;
+  const b = t.batch;
+  const pending = batch.slots.filter((slot) => slot.status === "pending");
+  const remaining = pending.length;
+  const accept = batch.kinds.map((kind) => KIND_ACCEPT[kind]).join(",");
+  const limits = facts(
+    [
+      { label: t.accepted, value: t.byContent(kindList(batch.kinds, t.or)) },
+      { label: t.largest, value: megabytes(batch.maxBytes) },
+      { label: b.total, value: megabytes(model.maxTotalBytes) },
+      { label: t.useBefore, value: formatPageTime(batch.expiresAt) },
+    ],
+    { plain: true },
+  );
+  const progress = batch.slots.map(
+    (slot, index) => markup`<li class="row"><div class="row-main">
+<p class="row-title"><strong>${slot.file?.name ?? b.slot(index + 1)}</strong> — ${b[slot.status]}</p>
+${slot.file === undefined ? markup`` : markup`<p class="row-meta">${KIND_LABELS[slot.file.kind]}, ${megabytes(slot.file.size)} · ${t.useBefore} ${pageTime(slot.expiresAt)}</p>`}
+</div></li>`,
+  );
+  const form =
+    remaining === 0
+      ? markup`<p>${b.closed}</p>`
+      : markup`
+<h2>${b.remaining(remaining)}</h2>
+${limits}
+<form method="post" action="${UPLOADS_PREFIX}${batch.id}" enctype="multipart/form-data" class="upload">
+<input type="hidden" name="csrf" value="${model.csrf}">
+<input type="hidden" name="slots" value="${pending.map((slot) => slot.id).join(",")}">
+<label for="file" class="field">${b.files}</label>
+<input type="file" id="file" name="file" accept="${accept}" multiple required>
+<p class="hint">${b.hint}</p>
+<button type="submit" class="btn btn-ink">${icon("upload")}${t.submit}</button>
+</form>`;
+  const error =
+    model.error === undefined
+      ? markup``
+      : markup`<div class="callout" role="alert"><div><h2>${model.error.title}</h2><p>${model.error.message}</p></div></div>`;
+  const body = markup`<h1>${b.title}</h1>
+<p class="lead">${b.lead(batch.count, markup`<strong>${model.accountId}</strong>`)}</p>
+<section class="sheet">${error}${form}<section class="next"><h2>${b.progress}</h2><ul>${progress}</ul></section></section>
+<p class="fine after"><span class="ref-line">${ctx.t.approval.reference} ${reference(batch.reference)}</span> ${b.fine}</p>`;
+  return renderFrame({ title: b.title, body }, ctx);
 }
 
 /** What the receipt shows after an upload. */

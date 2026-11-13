@@ -376,10 +376,12 @@ export function createRouter(options: RouterOptions): Router {
       }
 
       let slotKey = "";
+      let requestBodyLimit = route.maxBodyBytes;
       if (route.preflight !== undefined) {
         const outcome = await route.preflight(head, ctx);
         if (outcome instanceof Response) return answered(outcome);
         slotKey = outcome?.bodySlotKey ?? "";
+        requestBodyLimit = Math.min(requestBodyLimit, outcome?.maxBodyBytes ?? requestBodyLimit);
       }
 
       let body: Uint8Array | null = null;
@@ -408,12 +410,12 @@ export function createRouter(options: RouterOptions): Router {
         const timeoutMs = route.bodyTimeoutMs ?? bodyTimeoutMs;
         let read: Uint8Array | "too_large" | "timeout" | BodyPace;
         try {
-          read = await readBodyWithin(incoming, route.maxBodyBytes, timeoutMs, route.bodyPace);
+          read = await readBodyWithin(incoming, requestBodyLimit, timeoutMs, route.bodyPace);
         } catch {
           return answered(badRequest("The request body could not be read."));
         }
         if (read === "timeout") return answered(requestTimeout(timeoutMs));
-        if (read === "too_large") return answered(payloadTooLarge(route.maxBodyBytes));
+        if (read === "too_large") return answered(payloadTooLarge(requestBodyLimit));
         if (!(read instanceof Uint8Array)) return answered(bodyTooSlow(read));
         body = read.byteLength > 0 ? read : null;
       }

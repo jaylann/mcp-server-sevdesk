@@ -16,7 +16,7 @@
  */
 import type { Config } from "../config.js";
 import type { LocalFileKind } from "./local-files.js";
-import type { UploadPurpose } from "./transfer-types.js";
+import type { UploadBatchState, UploadPurpose } from "./transfer-types.js";
 
 /** A file a tool read, from a local folder or from an upload. */
 export interface InputFile {
@@ -65,6 +65,12 @@ export interface UploadRequest {
   readonly maxBytes: number;
 }
 
+/** One page for several files; resolve names and upload references after the human uploads. */
+interface UploadBatchRequest extends Omit<UploadRequest, "uploadId"> {
+  readonly batchId: string;
+  readonly count: number;
+}
+
 /** Where a delivered file went. */
 export type Delivery =
   | {
@@ -97,6 +103,10 @@ export interface FileAccess {
    * available or a limit of the transfer store is reached.
    */
   requestUpload(purpose: UploadPurpose): UploadRequest;
+  /** Opens one batch page, atomically reserving `count` file slots. */
+  requestUploadBatch(purpose: UploadPurpose, count: number): UploadBatchRequest;
+  /** Reads this connection's batch metadata without reading bytes or creating records. */
+  listUploads(batchId: string): UploadBatchState;
   /**
    * Reads the file `ref` names: a path (inside `SEVDESK_FILE_DIRS`) or an `upload:<id>`
    * reference. Throws a local `validation` `SevdeskError` with a trusted message when the

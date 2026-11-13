@@ -37,6 +37,26 @@ export interface UploadTicketView {
   readonly expiresAt: string;
 }
 
+/** A batch page reserves one ticket per file, but counts as one pending page. */
+export interface UploadBatchView extends UploadTicketView {
+  readonly count: number;
+}
+
+/** Metadata only: a lookup never reads bytes or consumes an upload. */
+export interface UploadBatchState extends UploadBatchView {
+  readonly slots: readonly {
+    readonly id: string;
+    readonly status: "pending" | "receiving" | "uploaded" | "expired" | "used";
+    readonly expiresAt: string;
+    readonly file?: {
+      readonly name: string;
+      readonly kind: LocalFileKind;
+      readonly size: number;
+      readonly sha256: string;
+    };
+  }[];
+}
+
 /** A new download link, as the tool reports it. */
 export interface DownloadLinkView {
   readonly id: string;
@@ -63,6 +83,10 @@ export class TransferLimitError extends Error {
 export interface TransferStore {
   /** Opens a single-use upload ticket for `owner`. Throws {@link TransferLimitError}. */
   createTicket(owner: RequestPrincipal, purpose: UploadPurpose): UploadTicketView;
+  /** Atomically reserves 2–10 file slots; throws without creating any if the batch cannot fit. */
+  createBatch(owner: RequestPrincipal, purpose: UploadPurpose, count: number): UploadBatchView;
+  /** Metadata of this connection's batch; foreign, unknown and fully released batches are absent. */
+  readBatch(owner: RequestPrincipal, id: string): UploadBatchState | undefined;
   /**
    * The uploaded file of ticket `id` when it belongs to `owner` (same grant and account) and was
    * uploaded and has not expired; `undefined` otherwise (unknown, foreign, pending and expired

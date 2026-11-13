@@ -195,6 +195,38 @@ export const en = {
 
   /** The upload page and its receipt (`/uploads/<id>`). */
   upload: {
+    batch: {
+      title: "Upload files",
+      lead: (count: number, account: Html) =>
+        markup`Your AI assistant requested ${String(count)} files for sevDesk account ${account}. Only the connection that asked can use them. Nothing is sent to sevDesk here.`,
+      remaining: (count: number) => `${String(count)} file slot${count === 1 ? "" : "s"} remaining`,
+      total: "Available space for this submission",
+      tooLarge: (limit: string) =>
+        message(
+          "Selection too large",
+          `The selected files together exceed the space available for this submission (${limit}). Choose fewer files. Already uploaded files remain available.`,
+        ),
+      files: "Files",
+      hint: "Choose several files, or drop them onto the field. Upload only files that are still missing from the list below.",
+      progress: "Files in this request",
+      slot: (number: number) => `File ${String(number)}`,
+      pending: "Waiting for a file",
+      receiving: "Being received",
+      uploaded: "Uploaded",
+      expired: "Expired",
+      used: "Already attached",
+      fine: "Tell your assistant when you are done. It can look up the uploaded files by name. Only files marked Uploaded are available; if a submission fails, choose the missing files again. Duplicate names may need clarification.",
+      closed:
+        "No slots remain open on this page. Files marked Uploaded remain available until their individual expiry.",
+      badForm: message(
+        "Invalid selection",
+        "Choose at least one file and no more than the remaining slots, using this form.",
+      ),
+      staleForm: message(
+        "Upload list changed",
+        "This form is out of date. No files from this submission were stored. Check the list below and choose only the missing files using this form.",
+      ),
+    },
     receipt: { title: "Upload a receipt", noun: "a receipt" },
     einvoice: { title: "Upload an e-invoice", noun: "an e-invoice (XRechnung or ZUGFeRD)" },
     /** `noun` is one of the nouns above, `account` the account id, marked up. */
