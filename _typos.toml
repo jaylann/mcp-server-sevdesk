@@ -31,6 +31,8 @@ extend-ignore-re = [
 ]
 
 [default.extend-words]
+# Standard in-toto provenance filename suffix (.intoto.jsonl).
+intoto = "intoto"
 # sevDesk API field names (spelled this way upstream).
 surename = "surename"
 ammount = "ammount"

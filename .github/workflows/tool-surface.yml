@@ -3,6 +3,16 @@ name: Tool surface
 # PR code and dependency scripts run only here, with a read-only token and no secrets/cache.
 on:
   pull_request:
+    paths:
+      - "src/**"
+      - "test/helpers/**"
+      - "test/fixtures/recorded/**"
+      - "test/evals/tools.ts"
+      - "scripts/tool-surface*.ts"
+      - ".github/workflows/tool-surface*.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".nvmrc"
 
 permissions: {}
 
@@ -16,6 +26,8 @@ defaults:
 
 jobs:
   compare:
+    if: >-
+      github.actor != 'dependabot[bot]' && github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -49,7 +61,8 @@ jobs:
       - name: Capture base with the same harness
         run: |
           mkdir -p "$RUNNER_TEMP/tool-surface"
-          cp scripts/tool-surface.ts .cache/tool-surface-base/scripts/tool-surface.ts
+          cp scripts/tool-surface*.ts .cache/tool-surface-base/scripts/
+          cp -R test/fixtures/recorded/. .cache/tool-surface-base/test/fixtures/recorded/
           cd .cache/tool-surface-base
           node --import tsx scripts/tool-surface.ts dump "$RUNNER_TEMP/tool-surface/base.json"
       - name: Capture head and compare
@@ -71,6 +84,9 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tool-surface-report
-          path: ${{ runner.temp }}/tool-surface/report.json
+          path: |
+            ${{ runner.temp }}/tool-surface/report.json
+            ${{ runner.temp }}/tool-surface/base.json
+            ${{ runner.temp }}/tool-surface/head.json
           retention-days: 7
           if-no-files-found: error

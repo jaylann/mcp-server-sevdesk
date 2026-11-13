@@ -12,7 +12,9 @@ name: Release
 #                     bundle are live; fills the MCPB URL and hash from the public release asset
 #   build-mcpb        builds, validates and smoke-tests the Claude Desktop extension (.mcpb)
 #                     without privileges
-#   publish-mcpb      attests that bundle and attaches it to the release, no dependency install
+#   publish-mcpb      attests and attaches the .mcpb; a plain-Node script in this privileged job
+#                     adds .sigstore.json and .intoto.jsonl, no dependency install; companion-file
+#                     failures warn without blocking MCP Registry publication
 #
 # The release PR is opened and updated by the lanfermann-release-bot GitHub App (repository
 # variable RP_APP_ID, secret RP_APP_KEY), not by GITHUB_TOKEN: GitHub runs no workflows on PRs and
@@ -530,8 +532,9 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  # Attests the build provenance of the bundle build-mcpb made and attaches it to the GitHub
-  # release; nothing is installed. Verifiable with
+  # Attests and attaches the bundle build-mcpb made, then runs attach-release-attestation.ts with
+  # plain Node in this privileged job to add .sigstore.json and .intoto.jsonl. Nothing is installed.
+  # Companion-file uploads retry once; failures warn without blocking publish-registry. Verifiable with
   # `gh attestation verify mcp-server-sevdesk-<version>.mcpb --owner jaylann`.
   publish-mcpb:
     name: Attach the .mcpb to the release
@@ -584,6 +587,7 @@ jobs:
           fi
 
       - name: Attest the build provenance
+        id: attest
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: build/mcp-server-sevdesk-${{ env.VERSION }}.mcpb
@@ -594,3 +598,18 @@ jobs:
         run: |
           gh release upload "$TAG" "build/mcp-server-sevdesk-$VERSION.mcpb" \
             --clobber --repo "$GITHUB_REPOSITORY"
+
+      - name: Attach the signature and provenance to the GitHub release
+        id: attach-attestation
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ATTESTATION_BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          node scripts/attach-release-attestation.ts "$TAG" \
+            "build/mcp-server-sevdesk-$VERSION.mcpb" "$ATTESTATION_BUNDLE"
+
+      - name: Warn if the companion files could not be attached
+        if: ${{ steps.attach-attestation.outcome == 'failure' }}
+        run: |
+          echo "::warning::Could not attach the release signature and provenance. MCP Registry publication can continue; backfill the companion files with scripts/attach-release-attestation.ts."

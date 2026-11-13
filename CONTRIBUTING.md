@@ -135,55 +135,119 @@ a public contract ([docs/compatibility.md](docs/compatibility.md)).
 - Descriptions, result texts, error messages and logs are not part of the contract; improve them
   freely, but re-record the evals when you change what models read (below).
 
-The **Tool surface** PR workflow compares `tools/list` (including input/output schemas),
-`prompts/list` and server instructions at the event's base commit and at the PR merged into that
-base (GitHub's test merge commit), so a branch that is behind `main` shows only its own changes. It
-covers the default read configuration, `SEVDESK_ALLOW=write`, all tiers/toolsets, and all tiers/toolsets over
-HTTP with OAuth and remote files. One sticky PR comment combines the diff with context costs,
-including when the surface is unchanged. Each configuration shows base and head characters,
-estimated tokens (**characters / 4**, calculated locally without an API key), and signed absolute
-and percentage changes for:
+The **Tool surface** PR workflow compares the event's base commit with the PR merged into that
+base (GitHub's test merge commit), so a branch behind `main` shows only its own changes. One sticky
+comment leads with **model-context tokens** and **response tokens**, base → head with signed Δ:
 
-- **Model context**: what clients usually put in front of the model, namely the tool definitions
-  (name, description and `inputSchema`, the fields function-calling APIs take) plus the
-  instructions. Watch this row when you add tools or grow descriptions and input schemas.
-- `tools/list`: the full protocol response. Output schemas make up most of it, but clients use
-  them to check results and normally do not send them to the model.
-- `prompts/list` (shown to the user, not the model) and the total of the full lists.
+- Model context is the legacy (2025-era) Claude view: tool `name`, `description`, `input_schema`
+  and the server instructions as the system prompt, as in `test/evals/tools.ts`. Watch this when
+  adding tools or growing descriptions and input schemas. The four configurations remain read,
+  write, all toolsets/tiers (including advanced), and all over HTTP with OAuth and remote files.
+- Response cost runs an invoice get, an invoice summary by month, and default-limit contact,
+  transaction, voucher and invoice lists through the real server on **recorded fixtures**.
+  Each recorded list is expanded deterministically to 100 items by repeating its scrubbed row
+  shapes with distinct ids, discarding the original upstream total. Default-limit calls currently
+  return 25 rows; an additional invoice call requests `limit: 100`. Tests assert those counts and
+  verify that reducing the default to 10 changes the measured cost. Both revisions use the same
+  generated corpus. This measures page-size and formatting changes, not a representative sample
+  of 100 different real documents. The clock is fixed to 2026-11-13 so overdue flags cannot drift.
+  A missing/erroring tool or fixture route leaves only that response absent (`n/a`); even a corpus
+  setup failure preserves the tools, prompts, instructions and compatibility diff.
+- The full modern `tools/list`, including output schemas, is secondary and labelled **not in
+  model context for Claude clients**. It is shown in Unicode characters, not model tokens.
+  The compatibility diff still covers full tools, prompts and instructions; review names and
+  schemas yourself, since the report does not decide the required version bump.
 
-Characters are Unicode code points in compact JSON result objects (`{"tools":[…]}`,
-`{"prompts":[…]}`) and raw instruction text. Dump indentation, JSON-RPC envelopes, rendered
-`prompts/get` bodies and client-specific formatting are excluded; this measures the catalog, not
-an exact model bill. Percentages apply to both characters and estimated tokens; a zero base with a
-nonzero head is marked `n/a (base 0)`, zero to zero is `0%`, and a nonzero change that rounds to
-zero is `+<0.01%` or `-<0.01%`. Names and schema changes still need human compatibility review;
-this report does not decide the required version bump.
+Local and PR counts are labelled **estimated**: Unicode characters ÷ 2.3, rounded to whole
+tokens (the ratio measured in [#61](https://github.com/jaylann/mcp-server-sevdesk/issues/61)).
+The trusted publisher can upgrade the complete comparison to **exact** `messages.countTokens`
+counts for `claude-opus-5-5` using Workload Identity Federation (WIF). Model-context counts subtract
+the whole calibration message; response counts subtract only its framing, retaining the payload
+(the calibration text `x` is one token). Model context counts the Messages API tool shape plus
+system text; responses include the actual legacy text blocks, summaries and fences. Client message
+envelopes, rendered prompt bodies and deferred-tool loading policies are outside this comparison.
+Missing captures in older dumps display `n/a`, including their delta, rather than zero.
 
-To capture or compare locally, without a sevDesk token or network access:
+Capture, compare or recount locally without credentials or network access:
 
 ```bash
 node --import tsx scripts/tool-surface.ts dump /tmp/head-surface.json
 node --import tsx scripts/tool-surface.ts diff /tmp/base-surface.json /tmp/head-surface.json
 node --import tsx scripts/tool-surface.ts report /tmp/base-surface.json /tmp/head-surface.json /tmp/pr-event.json /tmp/report.json
+node scripts/tool-surface-tokens.ts /tmp/base-surface.json /tmp/head-surface.json /tmp/report.json
 ```
 
-The report command takes a GitHub PR event JSON (`number`, `pull_request.base.sha`,
-`pull_request.head.sha`) and includes the component character counts in `contextCost.base/head`.
-The publisher derives tokens, totals and deltas from those counts. It still accepts older v1
-reports without tool definitions (no model-context rows) or without costs; the latter create no
-comment for an unchanged surface.
+The report takes a GitHub PR event JSON (`number`, `pull_request.base.sha`,
+`pull_request.head.sha`). Version 1 dumps optionally carry `modelContext` per configuration and
+`responses`; reports add `tokenCost` with the method, fixed model, and nullable base/head counts.
+`contextCost` retains protocol character counts for older consumers. Model-context serialization
+preserves the client's tool/schema key order; only the protocol catalog is canonicalized.
+CI copies `scripts/tool-surface*.ts` and the recorded corpus into the base checkout, and both
+revisions install their own frozen dependencies. Full dumps and diffs remain in run artifacts for
+seven days; long comments link there and say when truncated.
 
-The script header documents the versioned JSON format and CLI for other reports to reuse. CI
-copies the same harness into the base checkout, so the base does not need to contain the script.
-Both revisions install their own frozen dependencies. The complete JSON dumps and diff remain
-in the `tool-surface` run artifact for seven days; long comments link there and say when truncated.
+The **Tool surface** PR workflow is path-filtered to relevant code/fixtures/workflows and skips
+Dependabot. It runs PR code without secrets or identity permissions, including for forks. It
+uploads `report.json` plus both plain JSON captures (`base.json`, `head.json`) in the
+`tool-surface-report` artifact. There is no separate exact workflow or counting use of `evals`.
 
-Fork code runs only in the read-only `pull_request` workflow, without secrets or dependency
-caches. The separate `workflow_run` publisher has only artifact-read and PR-comment permissions:
-it checks out no code, installs nothing, verifies the report's PR and commits against GitHub,
-and treats the artifact as literal text. Stale reports are skipped. The publisher must first
-land on the default branch before GitHub can trigger it, so its first PR has artifacts but no
-automatic comment ([GitHub's workflow separation pattern](https://securitylab.github.com/resources/github-actions-preventing-pwn-requests/)).
+Only the default branch's **Tool surface comment** `workflow_run` job can acquire credentials. It
+uses the `token-count` environment and job-level `id-token: write`, artifact-read and PR-comment
+permissions. It checks out no code, installs nothing and executes no artifact contents. It
+verifies provenance/current PR commits, rejects artifact claims of exact counts, bounds the report
+at 300 KB and each capture at 20 MB, validates tool/system and response shapes and limits each
+counted context/response to 2 million characters. Both readers open without following symlinks,
+validate the open handle, read through that same handle and close it in `finally`. Invalid or
+missing captures leave estimates.
+Only the validated tool definitions, system strings and response text go to the counting endpoint.
+
+The inline script obtains a fresh GitHub OIDC token for `https://api.anthropic.com`, masks it and
+passes that single-use assertion directly in memory to one `/v1/oauth/token` exchange for a
+short-lived bearer token. It masks that token
+and calls `/v1/messages/count_tokens` with the same counter/calibration for base and head. Native
+`fetch` uses fixed origins, refuses redirects and bounds the exchange/count sequence to 90 seconds;
+no SDK installation or PR package code runs in the privileged job. No identity-token file is
+created; credentials and provider errors are never logged or uploaded.
+
+Missing repository variables or any exchange/count failure publish the **entire estimated**
+comparison. Exact counts replace estimates only after every available capture succeeds; a late
+estimate never replaces an exact comment for the same base/head. Stale reports are skipped and
+diff text is fenced. No live sevDesk account or dependency cache is used. Publisher changes only
+run after landing on the default branch; inspect this PR's artifacts before then.
+
+### Maintainer setup for exact counts
+
+No API key secret is needed. [Token counting is free and rate-limited](https://platform.claude.com/docs/en/build-with-claude/token-counting#pricing-and-rate-limits).
+Follow the [Anthropic GitHub Actions WIF setup](https://platform.claude.com/docs/en/manage-claude/wif-providers/github-actions):
+
+1. **Before merging**, create the GitHub environment **`token-count`**, restrict deployment
+   branches to **`main`**, and set **no required reviewers**. Do not let the first run
+   auto-create an unrestricted environment.
+2. In Claude Console → **Workload identity → Connect workload → GitHub Actions**, set:
+   - Issuer: `https://token.actions.githubusercontent.com`, using discovery.
+   - Exact subject: `repo:jaylann@61842101/mcp-server-sevdesk@1449574146:environment:token-count`,
+     with **no trailing `*`**.
+   - Audience: `https://api.anthropic.com`.
+   - Exact claims: `repository_owner: jaylann`, `repository_owner_id: 61842101`,
+     `repository: jaylann/mcp-server-sevdesk`, `repository_id: 1449574146`,
+     `event_name: workflow_run`, and
+     `workflow_ref: jaylann/mcp-server-sevdesk/.github/workflows/tool-surface-comment.yml@refs/heads/main`.
+     Use `workflow_ref` for this top-level workflow, not the reusable-workflow claim `job_workflow_ref`.
+   - Target: a **new service account**, with only the dedicated workspace added explicitly and
+     its lowest available spend limit. Bind the rule and exchanged token to that workspace only;
+     Anthropic's implicit Default Workspace membership means membership alone is not isolation.
+   - Scope: the narrowest offered (wizard default `workspace:developer`); lifetime **600 seconds**.
+3. Set these four **repository variables** using the Console IDs:
+   `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID`,
+   `ANTHROPIC_SERVICE_ACCOUNT_ID`, `ANTHROPIC_WORKSPACE_ID`. No API key secret is needed.
+4. **After merge and the first relevant PR run**, confirm the actual subject, audience and all
+   claim strings above in the **Console authentication history**. Verify a successful exchange
+   and an **Exact** comment; an **Estimated** comment verifies fallback only. Independently
+   confirm that `x` is one payload token for `claude-opus-5-5`, as assumed by `baseline - 1`.
+
+This repository uses GitHub's [immutable subject claims](https://docs.github.com/en/actions/reference/security/oidc#immutable-subject-claims).
+The federation is not configured by this PR; live exchange, claim matching and the one-token
+calibration assumption remain open until the first configured run from `main`.
 
 ## HTTP mode
 
@@ -330,8 +394,9 @@ skipped as "stale cassette". A cassette is keyed on the whole request, which con
 of its configuration: changing any tool's name, description or schema, or the server
 instructions, stales every case of that configuration. Re-record with
 `ANTHROPIC_API_KEY=… pnpm evals:record` (about $1–2 per full run) and commit the cassettes; when
-you rename a tool, also update the expected tool names in `test/evals/cases.ts`. On pull requests that touch tools, `.github/workflows/evals.yml` replays them and, for
-branches of this repository with the `evals` environment configured, records fresh answers. The
+you rename a tool, also update the expected tool names in `test/evals/cases.ts`. On pull requests
+that touch tools, `.github/workflows/evals.yml` only replays them, without secrets or cost.
+Recording is a local step, run before a release or after description changes, never in CI. The
 evals are informative, not a required check. Details: [test/evals/README.md](test/evals/README.md).
 
 ## Reporting bugs and security issues

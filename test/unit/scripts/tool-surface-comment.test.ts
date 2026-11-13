@@ -1,5 +1,5 @@
 /** Execute the exact inline publisher with fake GitHub/FS APIs; never post a real comment. */
-import { readFileSync } from "node:fs";
+import { constants, existsSync, readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 
 import { describe, expect, it, vi } from "vitest";
@@ -41,7 +41,7 @@ function fixture() {
     conclusion: "success",
     repository: { full_name: "owner/repo" },
     path: ".github/workflows/tool-surface.yml",
-    head_repository: { id: 456 },
+    head_repository: { id: 456, full_name: "fork/repo" },
     head_branch: "feature",
     head_sha: head,
     pull_requests: pullRequests,
@@ -59,38 +59,140 @@ function fixture() {
   const updateComment = vi
     .fn<(args: { comment_id: number; body: string }) => Promise<void>>()
     .mockResolvedValue();
-  const readFile = vi.fn().mockImplementation(() => Promise.resolve(JSON.stringify(report)));
-  const lstat = vi.fn().mockResolvedValue({ size: 100, isFile: () => true });
+  const files = new Map<string, string>();
+  const readFile = vi
+    .fn<(path: string, encoding: string) => Promise<string | undefined>>()
+    .mockImplementation((path: string) =>
+      Promise.resolve(path === "/report.json" ? JSON.stringify(report) : files.get(path)),
+    );
+  const env: Record<string, string> = {
+    REPORT_PATH: "/report.json",
+    BASE_PATH: "/base.json",
+    HEAD_PATH: "/head.json",
+  };
+  const core = {
+    info: vi.fn(),
+    setSecret: vi.fn(),
+    getIDToken: vi.fn().mockResolvedValue("identity-secret"),
+  };
+  const fetch = vi
+    .fn<(url: string, init: Omit<RequestInit, "body"> & { body: string }) => Promise<Response>>()
+    .mockImplementation((url, init) => {
+      if (url.endsWith("/oauth/token")) {
+        return Promise.resolve(
+          Response.json({ access_token: "access-secret", token_type: "Bearer", expires_in: 600 }),
+        );
+      }
+      const request = JSON.parse(init.body) as {
+        system?: string;
+        messages: { content: string }[];
+      };
+      const input = request.system ?? request.messages[0]!.content;
+      const count = input === "x" ? 10 : Number(input.split(" ")[1]) + (request.system ? 10 : 9);
+      return Promise.resolve(Response.json({ input_tokens: count }));
+    });
+  function enableWif(tokens = tokenCost()) {
+    for (const field of [
+      "FEDERATION_RULE_ID",
+      "ORGANIZATION_ID",
+      "SERVICE_ACCOUNT_ID",
+      "WORKSPACE_ID",
+    ]) {
+      env[`ANTHROPIC_${field}`] = field.toLowerCase();
+    }
+    for (const revision of ["base", "head"] as const) {
+      files.set(
+        `/${revision}.json`,
+        JSON.stringify({
+          version: 1,
+          configurations: Object.fromEntries(
+            Object.entries(tokens[revision].configurations).map(([key, count]) => [
+              key,
+              {
+                modelContext:
+                  count === null
+                    ? undefined
+                    : {
+                        system: `context ${count}`,
+                        tools: [
+                          {
+                            name: "example",
+                            description: "Example",
+                            input_schema: {
+                              type: "object",
+                              properties: { z: {}, a: {} },
+                              required: ["z"],
+                            },
+                          },
+                        ],
+                      },
+              },
+            ]),
+          ),
+          responses: Object.fromEntries(
+            Object.entries(tokens[revision].responses)
+              .filter(([, count]) => count !== null)
+              .map(([key, count]) => [key, `response ${count}`]),
+          ),
+        }),
+      );
+    }
+    Object.assign(report, { tokenCost: { ...tokens, method: "estimated" } });
+  }
+  const stat = vi
+    .fn<() => Promise<{ size: number; isFile: () => boolean }>>()
+    .mockResolvedValue({ size: 100, isFile: () => true });
+  const makeHandle = (path: string) => ({
+    stat: vi.fn(() => stat()),
+    readFile: vi.fn((encoding: string) => readFile(path, encoding)),
+    close: vi.fn().mockResolvedValue(undefined),
+  });
+  const handles: ReturnType<typeof makeHandle>[] = [];
+  const open = vi.fn().mockImplementation((path: string) => {
+    const handle = makeHandle(path);
+    handles.push(handle);
+    return Promise.resolve(handle);
+  });
   const get = vi.fn().mockImplementation(() => Promise.resolve({ data: pr }));
   const paginate = vi.fn().mockImplementation(() => Promise.resolve(comments));
   async function execute(): Promise<void> {
     if (!script) throw new Error("Publisher script missing");
     const result: unknown = runInNewContext(`(async () => {${script}\n})()`, {
       require: (name: string) => {
-        if (name !== "node:fs/promises") throw new Error("Unexpected module");
-        return { readFile, lstat };
+        if (name === "node:fs") return { constants };
+        if (name === "node:fs/promises") return { open };
+        throw new Error("Unexpected module");
       },
       context: {
         repo: { owner: "owner", repo: "repo" },
         payload: { workflow_run: run },
         serverUrl: "https://github.com",
       },
-      process: { env: { REPORT_PATH: "/report.json" } },
+      process: { env },
+      fetch,
+      AbortSignal,
       github: {
         paginate,
         rest: { pulls: { get }, issues: { listComments: vi.fn(), createComment, updateComment } },
       },
-      core: { info: vi.fn() },
+      core,
     });
     await result;
   }
   return {
+    files,
+    env,
+    core,
+    fetch,
+    open,
+    handles,
+    enableWif,
     report,
     run,
     pr,
     comments,
     readFile,
-    lstat,
+    stat,
     get,
     paginate,
     createComment,
@@ -125,6 +227,25 @@ function definitionCost() {
     "http-files": sizes(),
   });
   return { base: configuration(), head: configuration() };
+}
+
+function tokenCost(method: "estimated" | "exact" = "estimated") {
+  const sizes = (): {
+    configurations: Record<keyof ToolSurface["configurations"], number | null>;
+    responses: Record<keyof NonNullable<ToolSurface["responses"]>, number | null>;
+  } => ({
+    configurations: { read: 100, write: 200, all: 300, "http-files": 400 },
+    responses: {
+      invoice_get: 15,
+      records_summarize: 20,
+      contacts_search: 25,
+      transactions_list: 30,
+      vouchers_list: 35,
+      invoices_list: 40,
+      invoices_list_max: 40,
+    },
+  });
+  return { method, model: "claude-opus-5-5", base: sizes(), head: sizes() };
 }
 
 describe("tool surface comment workflow", () => {
@@ -234,13 +355,15 @@ describe("tool surface comment workflow", () => {
     expect(f.get).not.toHaveBeenCalled();
   });
 
-  it("refuses symlinks and oversized files before reading, and propagates API errors", async () => {
+  it("closes rejected oversized/nonregular files before reading and propagates API errors", async () => {
     const f = fixture();
-    f.lstat.mockResolvedValue({ size: 300_001, isFile: () => true });
+    f.stat.mockResolvedValue({ size: 300_001, isFile: () => true });
     await expect(f.execute()).rejects.toThrow("Invalid report file");
-    f.lstat.mockResolvedValue({ size: 100, isFile: () => false });
+    f.stat.mockResolvedValue({ size: 100, isFile: () => false });
     await expect(f.execute()).rejects.toThrow("Invalid report file");
     expect(f.readFile).not.toHaveBeenCalled();
+    expect(f.handles).toHaveLength(2);
+    for (const handle of f.handles) expect(handle.close).toHaveBeenCalledOnce();
     const api = fixture();
     api.get.mockRejectedValue(new Error("API unavailable"));
     await expect(api.execute()).rejects.toThrow("API unavailable");
@@ -353,14 +476,14 @@ describe("tool surface comment workflow", () => {
       configurations: { read: config(), write: config(), all: config(), "http-files": config() },
     };
     const event = { number: f.pr.number, pull_request: f.pr };
-    const report = surfaceReport(surface, surface, event);
+    const report = await surfaceReport(surface, surface, event);
     f.readFile.mockResolvedValue(JSON.stringify(report));
     await f.execute();
     expect(f.createComment).toHaveBeenCalledOnce();
     const body = f.createComment.mock.calls[0]?.[0].body ?? "";
     expect(body).toContain("No change in tools/list");
-    expect(body).toContain("| read | Total | 26 / 6.5 | 26 / 6.5 | 0 / 0 | 0% |");
-    expect(body).toContain("| read | **Model context** | 12 / 3 | 12 / 3 | 0 / 0 | 0% |");
+    expect(body).toContain("| read | 12 | 12 | 0 |");
+    expect(body).toContain("| read | n/a | n/a | n/a |");
     f.comments.push(botComment());
     await f.execute();
     expect(f.updateComment).toHaveBeenCalledWith(expect.objectContaining({ comment_id: 99, body }));
@@ -400,10 +523,365 @@ describe("tool surface comment workflow", () => {
     expect(f.createComment).not.toHaveBeenCalled();
   });
 
+  it.each(["estimated", "exact"] as const)(
+    "leads with %s model and response tokens and signed deltas",
+    async (method) => {
+      const f = fixture();
+      const tokens = tokenCost();
+      tokens.head.configurations.read = 120;
+      tokens.head.responses.invoice_get = 10;
+      Object.assign(f.report, { tokenCost: tokens, contextCost: definitionCost() });
+      if (method === "exact") f.enableWif(tokens);
+      await f.execute();
+      const body = f.createComment.mock.calls[0]?.[0].body ?? "";
+      expect(body).toContain(
+        method === "exact"
+          ? "**Exact** tokens via messages.countTokens (claude-opus-5-5)"
+          : "**Estimated** tokens = characters ÷ 2.3",
+      );
+      expect(body).toContain("| read | 100 | 120 | +20 |");
+      expect(body).toContain("| invoice_get | 15 | 10 | -5 |");
+      expect(body).toContain("| invoices_list (limit: 100) | 40 | 40 | 0 |");
+      expect(body).toContain("Full tools/list — not in model context for Claude clients");
+      expect(body.indexOf("### Model context")).toBeLessThan(body.indexOf("### Response cost"));
+      expect(body.indexOf("### Response cost")).toBeLessThan(body.indexOf("Full tools/list"));
+      expect(body).not.toContain("characters / 4");
+    },
+  );
+
+  it("renders absent base captures as n/a without inventing a delta", async () => {
+    const f = fixture();
+    const tokens = tokenCost();
+    f.readFile.mockResolvedValue(
+      JSON.stringify({
+        ...f.report,
+        tokenCost: {
+          ...tokens,
+          base: {
+            configurations: { ...tokens.base.configurations, read: null },
+            responses: { ...tokens.base.responses, invoice_get: null },
+          },
+        },
+      }),
+    );
+    await f.execute();
+    const body = f.createComment.mock.calls[0]?.[0].body ?? "";
+    expect(body).toContain("| read | n/a | 100 | n/a |");
+    expect(body).toContain("| invoice_get | n/a | 15 | n/a |");
+  });
+
+  it("upgrades estimates to exact and never lets a late estimate overwrite that comparison", async () => {
+    const f = fixture();
+    Object.assign(f.report, { tokenCost: tokenCost() });
+    await f.execute();
+    f.comments.push(botComment(f.createComment.mock.calls[0]![0].body));
+    f.enableWif();
+    await f.execute();
+    expect(f.updateComment).toHaveBeenCalledOnce();
+    f.comments[0]!.body = f.updateComment.mock.calls[0]![0].body;
+    f.updateComment.mockClear();
+    delete f.env.ANTHROPIC_FEDERATION_RULE_ID;
+    await f.execute();
+    expect(f.updateComment).not.toHaveBeenCalled();
+    // An updated base must not retain the old exact counts.
+    f.pr.base.sha = f.report.base = "c".repeat(40);
+    f.readFile.mockResolvedValue(JSON.stringify({ ...f.report, tokenCost: tokenCost() }));
+    await f.execute();
+    expect(f.updateComment).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    null,
+    {},
+    { ...tokenCost(), method: "```@attacker" },
+    { ...tokenCost(), model: "@attacker" },
+    { ...tokenCost(), extra: "unexpected" },
+    ...[-1, 1.5, 1_000_000_001, "```@attacker", {}, undefined].map((read) => ({
+      ...tokenCost(),
+      head: { ...tokenCost().head, configurations: { ...tokenCost().head.configurations, read } },
+    })),
+    { ...tokenCost(), base: { ...tokenCost().base, responses: {} } },
+    {
+      ...tokenCost(),
+      head: { ...tokenCost().head, responses: { ...tokenCost().head.responses, unexpected: 1 } },
+    },
+    tokenCost("exact"),
+  ])("rejects hostile or unverified token data (%j)", async (tokens) => {
+    const f = fixture();
+    f.readFile.mockResolvedValue(JSON.stringify({ ...f.report, tokenCost: tokens }));
+    await expect(f.execute()).rejects.toThrow("Invalid token cost");
+    expect(f.get).not.toHaveBeenCalled();
+  });
+
+  it("reserves identity permission for the trusted publisher, with no key-based counting path", () => {
+    const normal = readFileSync(
+      new URL("../../../.github/workflows/tool-surface.yml", import.meta.url),
+      "utf8",
+    );
+    expect(
+      existsSync(new URL("../../../.github/workflows/tool-surface-exact.yml", import.meta.url)),
+    ).toBe(false);
+    expect(normal).not.toMatch(/environment:|secrets\.|id-token:|needs:/);
+    expect(normal).toContain("paths:");
+    expect(normal).toContain('"src/**"');
+    expect(normal).toContain("github.actor != 'dependabot[bot]'");
+    expect(normal).toContain("github.event.pull_request.user.login != 'dependabot[bot]'");
+    expect(normal).toContain("cp scripts/tool-surface*.ts");
+    expect(normal).toContain("cp -R test/fixtures/recorded/.");
+    expect(normal).toContain("package-manager-cache: false");
+    const artifact = normal.split("name: tool-surface-report")[1]!;
+    for (const name of ["base", "head", "report"])
+      expect(artifact).toContain(`/tool-surface/${name}.json`);
+    expect(workflow).toContain("workflows: [Tool surface]");
+    expect(workflow).toContain("    environment: token-count");
+    expect(workflow).toContain("    permissions:\n      id-token: write");
+    expect(workflow.match(/id-token: write/g)).toHaveLength(1);
+    for (const field of [
+      "FEDERATION_RULE_ID",
+      "ORGANIZATION_ID",
+      "SERVICE_ACCOUNT_ID",
+      "WORKSPACE_ID",
+    ]) {
+      expect(workflow).toContain(`ANTHROPIC_${field}: \${{ vars.ANTHROPIC_${field} }}`);
+    }
+    for (const content of [
+      normal,
+      workflow,
+      ...["tool-surface", "tool-surface-tokens"].map((name) =>
+        readFileSync(new URL(`../../../scripts/${name}.ts`, import.meta.url), "utf8"),
+      ),
+    ]) {
+      expect(content).not.toContain("ANTHROPIC_API_KEY");
+    }
+  });
+
+  it("publishes estimates without requesting an identity when any federation variable is missing", async () => {
+    for (const field of [
+      "FEDERATION_RULE_ID",
+      "ORGANIZATION_ID",
+      "SERVICE_ACCOUNT_ID",
+      "WORKSPACE_ID",
+    ]) {
+      const f = fixture();
+      f.enableWif();
+      f.env[`ANTHROPIC_${field}`] = "";
+      await f.execute();
+      expect(f.createComment.mock.calls[0]![0].body).toContain("**Estimated**");
+      expect(f.core.getIDToken).not.toHaveBeenCalled();
+      expect(f.fetch).not.toHaveBeenCalled();
+      expect(f.open).toHaveBeenCalledOnce();
+    }
+  });
+
+  it("exchanges a fresh token in memory once and never writes or leaks credentials", async () => {
+    const f = fixture();
+    f.enableWif();
+    const artifacts = new Map(f.files);
+    await f.execute();
+    expect(f.core.getIDToken).toHaveBeenCalledExactlyOnceWith("https://api.anthropic.com");
+    expect(f.open.mock.calls).toEqual(
+      ["/report.json", "/base.json", "/head.json"].map((path) => [
+        path,
+        constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+      ]),
+    );
+    for (const handle of f.handles) {
+      expect(handle.stat).toHaveBeenCalledOnce();
+      expect(handle.readFile).toHaveBeenCalledExactlyOnceWith("utf8");
+      expect(handle.close).toHaveBeenCalledOnce();
+    }
+    expect(f.files).toEqual(artifacts);
+    expect(f.core.setSecret.mock.calls).toEqual([["identity-secret"], ["access-secret"]]);
+    const [url, init] = f.fetch.mock.calls[0]!;
+    expect(url).toBe("https://api.anthropic.com/v1/oauth/token");
+    expect(init).toMatchObject({
+      method: "POST",
+      redirect: "error",
+      headers: { "content-type": "application/json" },
+    });
+    expect(JSON.parse(init.body)).toEqual({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion: "identity-secret",
+      federation_rule_id: "federation_rule_id",
+      organization_id: "organization_id",
+      service_account_id: "service_account_id",
+      workspace_id: "workspace_id",
+    });
+    expect(f.fetch).toHaveBeenCalledTimes(24); // Exchange, calibration, 11 captures per revision.
+    const requests = f.fetch.mock.calls.slice(1).map(([endpoint, request]) => {
+      expect(endpoint).toBe("https://api.anthropic.com/v1/messages/count_tokens");
+      expect(request).toMatchObject({
+        method: "POST",
+        redirect: "error",
+        signal: init.signal,
+        headers: {
+          Authorization: "Bearer access-secret",
+          "anthropic-version": "2026-10-21",
+          "content-type": "application/json",
+        },
+      });
+      return JSON.parse(request.body) as Record<string, unknown>;
+    });
+    expect(requests[0]).toEqual({
+      model: "claude-opus-5-5",
+      messages: [{ role: "user", content: "x" }],
+    });
+    const capture = JSON.parse(artifacts.get("/base.json")!) as {
+      configurations: { read: { modelContext: { tools: unknown } } };
+    };
+    expect(JSON.stringify(requests[1]!.tools)).toBe(
+      JSON.stringify(capture.configurations.read.modelContext.tools),
+    );
+    expect(requests.slice(1, 12)).toEqual(requests.slice(12));
+    const published = JSON.stringify([
+      f.createComment.mock.calls,
+      f.core.info.mock.calls,
+      [...f.files],
+    ]);
+    expect(published).not.toContain("identity-secret");
+    expect(published).not.toContain("access-secret");
+  });
+
+  it("subtracts only framing for a one-token response and preserves absent captures", async () => {
+    const f = fixture();
+    const tokens = tokenCost();
+    Object.assign(tokens.base.configurations, { read: null });
+    Object.assign(tokens.base.responses, { invoice_get: null });
+    f.enableWif(tokens);
+    const capture = JSON.parse(f.files.get("/head.json")!) as {
+      responses: { invoice_get: string };
+    };
+    capture.responses.invoice_get = "x";
+    f.files.set("/head.json", JSON.stringify(capture));
+    await f.execute();
+    const body = f.createComment.mock.calls[0]![0].body;
+    expect(body).toContain("**Exact**");
+    expect(body).toContain("| read | n/a | 100 | n/a |");
+    expect(body).toContain("| invoice_get | n/a | 1 | n/a |");
+  });
+
+  it.each([
+    "missing",
+    "invalid json",
+    "oversized",
+    "nonregular",
+    "symlink",
+    "schema",
+    "availability",
+  ])("keeps estimates for %s capture data before acquiring credentials", async (failure) => {
+    const f = fixture();
+    f.enableWif();
+    if (failure === "missing") f.files.delete("/head.json");
+    if (failure === "invalid json") f.files.set("/head.json", "not json");
+    if (failure === "oversized")
+      f.stat
+        .mockResolvedValueOnce({ size: 100, isFile: () => true })
+        .mockResolvedValue({ size: 20_000_001, isFile: () => true });
+    if (failure === "nonregular")
+      f.stat
+        .mockResolvedValueOnce({ size: 100, isFile: () => true })
+        .mockResolvedValue({ size: 100, isFile: () => false });
+    if (failure === "symlink")
+      f.open
+        .mockImplementationOnce(() =>
+          Promise.resolve({
+            stat: f.stat,
+            readFile: () => Promise.resolve(JSON.stringify(f.report)),
+            close: vi.fn().mockResolvedValue(undefined),
+          }),
+        )
+        .mockRejectedValue(new Error("ELOOP"));
+    if (failure === "schema")
+      f.files.set("/head.json", JSON.stringify({ version: 1, configurations: {} }));
+    if (failure === "availability") {
+      const capture = JSON.parse(f.files.get("/head.json")!) as { responses?: unknown };
+      delete capture.responses;
+      f.files.set("/head.json", JSON.stringify(capture));
+    }
+    await f.execute();
+    expect(f.createComment.mock.calls[0]![0].body).toContain("**Estimated**");
+    expect(f.core.getIDToken).not.toHaveBeenCalled();
+    expect(f.fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "oidc",
+    "exchange",
+    "credential",
+    "count",
+    "calibration",
+    "negative",
+    "fraction",
+    "late count",
+  ])(
+    "publishes the entire estimate after %s failure with no token or provider error in logs",
+    async (failure) => {
+      const f = fixture();
+      f.enableWif();
+      const provider = f.fetch.getMockImplementation()!;
+      const sensitive = "identity-secret access-secret provider-private-error";
+      if (failure === "oidc") f.core.getIDToken.mockRejectedValue(new Error(sensitive));
+      f.fetch.mockImplementation((url, init) => {
+        const call = f.fetch.mock.calls.length;
+        if (failure === "exchange" || (failure === "count" && call === 2))
+          return Promise.resolve(new Response(sensitive, { status: 401 }));
+        if (failure === "credential")
+          return Promise.resolve(
+            Response.json({ access_token: "access-secret", token_type: "wrong" }),
+          );
+        if (failure === "calibration" && call === 2)
+          return Promise.resolve(Response.json({ input_tokens: 0 }));
+        if (failure === "negative" && call === 3)
+          return Promise.resolve(Response.json({ input_tokens: 1 }));
+        if (failure === "fraction" && call === 3)
+          return Promise.resolve(Response.json({ input_tokens: 100.5 }));
+        if (failure === "late count" && call === 24) return Promise.reject(new Error(sensitive));
+        return provider(url, init);
+      });
+      await f.execute();
+      const body = f.createComment.mock.calls[0]![0].body;
+      expect(body).toContain("**Estimated**");
+      expect(body).toContain("| read | 100 | 100 | 0 |");
+      expect(body).toContain("| invoices_list (limit: 100) | 40 | 40 | 0 |");
+      expect(body).not.toContain(":exact -->");
+      expect(JSON.stringify([body, f.core.info.mock.calls, [...f.files]])).not.toMatch(
+        /identity-secret|access-secret|provider-private-error/,
+      );
+      for (const handle of f.handles) expect(handle.close).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each(["stat", "read", "parse"])(
+    "closes the report handle after %s failure",
+    async (failure) => {
+      const f = fixture();
+      if (failure === "stat") f.stat.mockRejectedValue(new Error("stat failed"));
+      if (failure === "read") f.readFile.mockRejectedValue(new Error("read failed"));
+      if (failure === "parse") f.readFile.mockResolvedValue("not JSON");
+      await expect(f.execute()).rejects.toThrow();
+      expect(f.handles).toHaveLength(1);
+      expect(f.handles[0]!.close).toHaveBeenCalledOnce();
+      expect(f.core.getIDToken).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not acquire credentials for a stale report", async () => {
+    const f = fixture();
+    f.enableWif();
+    f.pr.head.sha = "c".repeat(40);
+    await f.execute();
+    expect(f.fetch).not.toHaveBeenCalled();
+    expect(f.core.getIDToken).not.toHaveBeenCalled();
+    expect(f.createComment).not.toHaveBeenCalled();
+  });
+
   it("keeps the writer free of checkout, shell execution, dependencies and caches", () => {
     expect(workflow).toContain("permissions: {}");
     expect(workflow).not.toMatch(/uses:.*(?:checkout|setup-node|cache)|\n\s+run:/);
     expect(workflow).not.toContain("pull_request_target");
+    expect(workflow).not.toMatch(
+      /ANTHROPIC_IDENTITY_TOKEN_FILE|fs\.(?:writeFile|unlink|lstat|readFile)/,
+    );
     for (const line of workflow.split("\n").filter((line) => line.includes("uses:"))) {
       expect(line).toMatch(/@[a-f0-9]{40} # v/);
     }
