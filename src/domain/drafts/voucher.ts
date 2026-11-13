@@ -383,7 +383,9 @@ export async function prepareVoucherUpdate(
   const supplierName =
     args.supplierName ??
     (args.supplierId === undefined ? nonBlank(record.supplierName) : undefined);
-  const supplierChanged = args.supplierId !== undefined || args.supplierName !== undefined;
+  // Decide once from the stored values: a real name can equal a translated missing-name label.
+  const supplierChanged =
+    supplierId !== record.supplier?.id || supplierName !== nonBlank(record.supplierName);
   const shownName =
     args.supplierId === undefined
       ? supplierName
@@ -430,11 +432,11 @@ export async function prepareVoucherUpdate(
     if (convertsCurrency)
       log.value(text("currency", "Währung"), text("Currency", "Währung"), oldCurrency, "EUR");
     if (supplierChanged) {
-      log.value(
+      log.note(
         text("supplier", "Lieferant/Kunde"),
         partyLabel(kind, lang),
-        supplierText(nonBlank(record.supplierName), record.supplier?.id, lang),
-        supplierText(shownName, supplierId, lang),
+        `${supplierText(nonBlank(record.supplierName), record.supplier?.id, lang)} → ` +
+          supplierText(shownName, supplierId, lang),
       );
     }
     if (args.number !== undefined) {

@@ -485,3 +485,12 @@ Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
 Belegnummer: ER-2026-0815 → ER-2026-0816
 Summe (unverändert): 119 EUR"
 `;
+
+exports[`German previews > update a voucher supplier named like a preview placeholder: says the same in German 1`] = `
+"Belegentwurf 2101 aktualisieren: Lieferant/Kunde.
+(umkehrbar)
+Beleg: 2101, Entwurf
+Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
+Lieferant: (ohne Namen) (kein Kontakt) → (unnamed) (kein Kontakt)
+Summe (unverändert): 119 EUR"
+`;

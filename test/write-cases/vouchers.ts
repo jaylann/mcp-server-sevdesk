@@ -106,6 +106,18 @@ export const VOUCHERS_CASES: readonly WriteToolCase[] = [
     writes: [{ method: "POST", path: "/Voucher/Factory/saveVoucher" }],
   },
   {
+    label: "update a voucher supplier named like a preview placeholder",
+    tool: tool("sevdesk_voucher_update_draft"),
+    args: { id: 2101, supplierName: "(unnamed)" },
+    routes: [
+      voucherRoute(draftRow({ supplier: null, supplierName: null })),
+      positionsRoute(2101, [positionRow()]),
+      ...CREATE_READ_ROUTES,
+      saveRoute(),
+    ],
+    writes: [{ method: "POST", path: "/Voucher/Factory/saveVoucher" }],
+  },
+  {
     label: "convert a USD draft voucher to EUR",
     tool: tool("sevdesk_voucher_update_draft"),
     args: {
