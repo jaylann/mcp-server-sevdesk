@@ -58,6 +58,23 @@ jobs:
                 (!report.changed && report.truncated)) {
               throw new Error('Invalid surface report.');
             }
+            const configurations = ['read', 'write', 'all', 'http-files'];
+            const components = ['tools', 'instructions', 'prompts'];
+            const hasKeys = (value, keys) => value !== null && typeof value === 'object' &&
+              !Array.isArray(value) && Object.keys(value).length === keys.length &&
+              keys.every(key => Object.hasOwn(value, key));
+            // Older v1 reports remain usable. New data carries only bounded integer counts:
+            // all Markdown labels and formatting come from this trusted workflow.
+            const cost = report.contextCost;
+            if (cost !== undefined && (!hasKeys(cost, ['base', 'head']) ||
+                !['base', 'head'].every(revision => hasKeys(cost[revision], configurations) &&
+                  configurations.every(config => hasKeys(cost[revision][config], components) &&
+                    components.every(component => {
+                      const count = cost[revision][config][component];
+                      return Number.isSafeInteger(count) && count >= 0 && count <= 1_000_000_000;
+                    }))))) {
+              throw new Error('Invalid context cost.');
+            }
             // Artifact PR numbers are only hints. Verify the current PR against the trusted run,
             // including fork identity, even when workflow_run.pull_requests is empty for forks.
             const { data: pr } = await github.rest.pulls.get({ ...repo, pull_number: report.pr });
@@ -74,7 +91,39 @@ jobs:
             });
             const previous = comments.find(comment => comment.user?.login === 'github-actions[bot]' &&
               comment.user?.type === 'Bot' && comment.body?.startsWith(marker));
-            if (!report.changed && !previous) return;
+            if (!report.changed && !previous && cost === undefined) return;
+            let contextCost = '';
+            if (cost !== undefined) {
+              const labels = { tools: 'tools/list', instructions: 'Instructions', prompts: 'prompts/list', total: 'Total' };
+              const format = value => value.toLocaleString('en-US', { maximumFractionDigits: 2 });
+              const signed = value => (value > 0 ? '+' : '') + format(value);
+              const pair = (value, delta = false) => {
+                const number = delta ? signed : format;
+                return `${number(value)} / ${number(value / 4)}`;
+              };
+              const rows = [];
+              for (const config of configurations) {
+                for (const component of [...components, 'total']) {
+                  const count = revision => component === 'total'
+                    ? components.reduce((sum, key) => sum + cost[revision][config][key], 0)
+                    : cost[revision][config][component];
+                  const base = count('base');
+                  const head = count('head');
+                  const delta = head - base;
+                  const percent = base === 0 ? (head === 0 ? '0%' : 'n/a (base 0)')
+                    : `${signed(delta / base * 100)}%`;
+                  rows.push(`| ${config} | ${labels[component]} | ${pair(base)} | ${pair(head)} | ${pair(delta, true)} | ${percent} |`);
+                }
+              }
+              contextCost = '### Context cost\n\n' +
+                'Estimated tokens = characters / 4, calculated locally without an API key. ' +
+                'Characters are Unicode code points in compact tools/list and prompts/list JSON result objects ' +
+                '(including schemas) and raw instructions. Prompt bodies (prompts/get), JSON-RPC envelopes ' +
+                'and client formatting are excluded; actual model context use varies by client. ' +
+                'Totals sum the three components; percentage changes apply to both characters and estimated tokens.\n\n' +
+                '| Configuration | Surface | Base chars / est. tokens | Head chars / est. tokens | Δ chars / est. tokens | Δ % |\n' +
+                '| --- | --- | ---: | ---: | ---: | ---: |\n' + rows.join('\n') + '\n\n';
+            }
             // Keep artifact text inside a literal block, even if tool text contains backticks,
             // HTML or mentions. No value from the artifact is evaluated as code or Markdown.
             const literal = report.diff.replaceAll('`', '\\u0060').replaceAll('@', '\\u0040');
@@ -87,7 +136,8 @@ jobs:
             const body = `${marker}\n## MCP tool surface\n\n` +
               `Base \`${report.base}\` → head \`${report.head}\`. [Full JSON and diff](${runUrl}).\n\n` +
               'Configurations: read, write, all toolsets/tiers, HTTP with files. ' +
-              'Review names and schemas for compatibility; text changes alone are not breaking changes.\n\n' + detail;
+              'Review names and schemas for compatibility; text changes alone are not breaking changes.\n\n' +
+              contextCost + detail;
             if (previous) {
               if (previous.body !== body) await github.rest.issues.updateComment({ ...repo, comment_id: previous.id, body });
             } else {

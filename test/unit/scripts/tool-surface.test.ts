@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   diffToolSurface,
   dumpToolSurface,
+  measureToolSurface,
   runToolSurface,
   surfaceJson,
   surfaceReport,
@@ -71,6 +72,11 @@ describe("tool surface", () => {
         ),
       ).toBe(true);
     }
+    const sizes = measureToolSurface(dump);
+    expect(sizes.read.tools).toBeGreaterThan(0);
+    expect(sizes.write.tools).toBeGreaterThan(sizes.read.tools);
+    expect(sizes.all.tools).toBeGreaterThan(sizes.write.tools);
+    expect(sizes["http-files"].tools).toBeGreaterThan(sizes.all.tools);
     expect(http.instructions).toContain("uploadId");
     expect(fetch).not.toHaveBeenCalled();
     expect(surfaceJson(await dumpToolSurface())).toBe(surfaceJson(dump));
@@ -170,6 +176,7 @@ describe("tool surface", () => {
       changed: false,
       diff: "",
       truncated: false,
+      contextCost: { base: measureToolSurface(empty()), head: measureToolSurface(empty()) },
     });
     const head = empty();
     head.configurations.read.instructions = "x".repeat(50_000);
@@ -177,6 +184,7 @@ describe("tool surface", () => {
     expect(report.changed).toBe(true);
     expect(report.truncated).toBe(true);
     expect(report.diff).toHaveLength(45_000);
+    expect(report.contextCost.head.read.instructions).toBe(50_000);
     expect(() => surfaceReport(empty(), head, { number: "12" })).toThrow();
   });
 
@@ -192,7 +200,11 @@ describe("tool surface", () => {
     expect(await readFile(diff, "utf8")).toBe("");
     await writeFile(eventFile, JSON.stringify(event));
     await runToolSurface(["report", dump, dump, eventFile, report]);
-    expect(JSON.parse(await readFile(report, "utf8"))).toMatchObject({ changed: false, pr: 12 });
+    expect(JSON.parse(await readFile(report, "utf8"))).toMatchObject({
+      changed: false,
+      pr: 12,
+      contextCost: { base: measureToolSurface(empty()), head: measureToolSurface(empty()) },
+    });
     for (const args of [
       [],
       ["bad"],
@@ -204,5 +216,57 @@ describe("tool surface", () => {
     }
     await writeFile(dump, "broken JSON");
     await expect(runToolSurface(["diff", dump, dump])).rejects.toThrow();
+  });
+});
+
+describe("tool surface context size", () => {
+  it("counts empty list result wrappers and empty instructions in every configuration", () => {
+    expect(measureToolSurface(empty())).toEqual({
+      read: { tools: 12, prompts: 14, instructions: 0 },
+      write: { tools: 12, prompts: 14, instructions: 0 },
+      all: { tools: 12, prompts: 14, instructions: 0 },
+      "http-files": { tools: 12, prompts: 14, instructions: 0 },
+    });
+  });
+
+  it("counts Unicode code points in compact list JSON and raw instruction text", () => {
+    const surface = empty();
+    surface.configurations.read = {
+      tools: [{ name: "x", description: "ä😀" }],
+      prompts: [{ name: "p", description: '\n"' }],
+      instructions: 'ä😀\n"',
+    };
+    expect(measureToolSurface(surface).read).toEqual({
+      tools: 43,
+      prompts: 47,
+      instructions: 4,
+    });
+  });
+
+  it("includes complete schemas and prompt arguments, independent of dump layout and key order", () => {
+    const surface = empty();
+    surface.configurations.all.tools = [
+      { name: "x", inputSchema: { type: "object" }, outputSchema: { type: "string" } },
+    ];
+    surface.configurations.all.prompts = [{ name: "p", arguments: [{ name: "month" }] }];
+    const size = measureToolSurface(surface);
+    expect(size.all.tools).toBe(
+      '{"tools":[{"name":"x","inputSchema":{"type":"object"},"outputSchema":{"type":"string"}}]}'
+        .length,
+    );
+    expect(size.all.prompts).toBe(
+      '{"prompts":[{"name":"p","arguments":[{"name":"month"}]}]}'.length,
+    );
+    expect(measureToolSurface(JSON.parse(surfaceJson(surface)))).toEqual(size);
+    expect(size.read).toEqual({ tools: 12, prompts: 14, instructions: 0 });
+    expect(size.write).toEqual(size.read);
+    expect(size["http-files"]).toEqual(size.read);
+  });
+
+  it("rejects malformed surfaces before measuring", () => {
+    expect(() => measureToolSurface({})).toThrow();
+    const surface = empty();
+    surface.configurations.read.prompts = [{ name: "p" }, { name: "p" }];
+    expect(() => measureToolSurface(surface)).toThrow("Duplicate surface entry names");
   });
 });

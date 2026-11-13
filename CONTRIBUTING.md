@@ -138,10 +138,17 @@ a public contract ([docs/compatibility.md](docs/compatibility.md)).
 The **Tool surface** PR workflow compares `tools/list` (including input/output schemas),
 `prompts/list` and server instructions at the event's base commit and at the PR merged into that
 base (GitHub's test merge commit), so a branch that is behind `main` shows only its own changes. It
-covers the
-default read configuration, `SEVDESK_ALLOW=write`, all tiers/toolsets, and all tiers/toolsets over
-HTTP with OAuth and remote files. Changes appear in one sticky PR comment; an unchanged surface
-creates no comment, or replaces a previous diff with “no change”. Names and schema changes still
+covers the default read configuration, `SEVDESK_ALLOW=write`, all tiers/toolsets, and all tiers/toolsets over
+HTTP with OAuth and remote files. One sticky PR comment combines the diff with context costs,
+including when the surface is unchanged. Each configuration shows base and head characters,
+estimated tokens (**characters / 4**, calculated locally without an API key), and signed absolute
+and percentage changes for `tools/list`, instructions, `prompts/list` and their total. Characters
+are Unicode code points in compact JSON result objects (`{"tools":[…]}`, `{"prompts":[…]}`),
+including schemas, and raw instruction text. Dump indentation, JSON-RPC envelopes, rendered
+`prompts/get` bodies and client-specific formatting are excluded; this measures the catalog,
+not an exact model bill. Percentages apply to both characters and estimated tokens; a zero base
+with a nonzero head is marked `n/a (base 0)`, and zero to zero is `0%`.
+Names and schema changes still
 need human compatibility review; this report does not decide the required version bump.
 
 To capture or compare locally, without a sevDesk token or network access:
@@ -149,7 +156,13 @@ To capture or compare locally, without a sevDesk token or network access:
 ```bash
 node --import tsx scripts/tool-surface.ts dump /tmp/head-surface.json
 node --import tsx scripts/tool-surface.ts diff /tmp/base-surface.json /tmp/head-surface.json
+node --import tsx scripts/tool-surface.ts report /tmp/base-surface.json /tmp/head-surface.json /tmp/pr-event.json /tmp/report.json
 ```
+
+The report command takes a GitHub PR event JSON (`number`, `pull_request.base.sha`,
+`pull_request.head.sha`) and includes the component character counts in `contextCost.base/head`.
+The publisher derives tokens, totals and deltas from those counts. It still accepts older v1
+reports without costs; those create no comment for an unchanged surface.
 
 The script header documents the versioned JSON format and CLI for other reports to reuse. CI
 copies the same harness into the base checkout, so the base does not need to contain the script.
