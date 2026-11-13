@@ -1,4 +1,4 @@
-<!-- translated-from: PRIVACY.md sha256:e0d789e4b31f -->
+<!-- translated-from: PRIVACY.md sha256:723c362e9f98 -->
 
 # Datenschutz
 
@@ -26,11 +26,15 @@ erhebt **keine Telemetrie**.
   Audit-Log (`SEVDESK_AUDIT_LOG`) und der Ausgabeordner (`SEVDESK_OUTPUT_DIR`) sind Dateien
   auf Ihrem Rechner.
 - **Ihr Token.** Nutzen Sie `token set`, wird das Token im Schlüsselbund Ihres Betriebssystems
-  (macOS-Schlüsselbund oder Linux Secret Service) unter dem Dienst `mcp-server-sevdesk` abgelegt
-  und nirgends sonst. Eine Profildatei enthält Einstellungen und den Ort jedes Tokens (eine
-  Bezeichnung im Schlüsselbund, einen Dateipfad oder einen Variablennamen), nie ein Token. Die
-  Einstellungen der Claude-Desktop-Erweiterung, einschließlich des Tokens, speichert Claude
-  Desktop, das Token im sicheren Speicher des Betriebssystems.
+  (macOS-Schlüsselbund, Linux Secret Service oder Windows Credential Locker über `PasswordVault`)
+  unter dem Dienst `mcp-server-sevdesk` abgelegt. Unter Windows können Anmeldeinformationen
+  [über Ihr Microsoft-Konto zwischen Geräten synchronisiert werden](https://learn.microsoft.com/en-us/windows/apps/develop/security/credential-locker).
+  Soll das Token auf diesem Gerät bleiben, verwenden Sie `SEVDESK_API_TOKEN_FILE` mit einer Datei,
+  die nur Ihr Benutzer lesen kann und die außerhalb synchronisierter Ordner liegt. Eine
+  Profildatei enthält Einstellungen und den Ort jedes Tokens (eine Bezeichnung im Schlüsselbund,
+  einen Dateipfad oder einen Variablennamen), nie ein Token. Die Einstellungen der
+  Claude-Desktop-Erweiterung, einschließlich des Tokens, speichert Claude Desktop, das Token im
+  sicheren Speicher des Betriebssystems.
 - **Buchhaltungsdaten sind personenbezogene Daten.** Rechnungen und Kontakte enthalten
   personenbezogene Daten Ihrer Kunden. Prüfen Sie die Bedingungen Ihres Modellanbieters zur
   Auftragsverarbeitung, bevor Sie ein echtes Konto verbinden.
