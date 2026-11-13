@@ -204,6 +204,20 @@ describe("prompt lint", () => {
 
 describe("prompts/get", () => {
   describe.each(ERAS)("%s era scoped workflows", (era) => {
+    it.each([
+      { name: "dunning_run", key: "contact" },
+      { name: "bank_reconciliation", key: "checkAccount" },
+    ])("refuses invisible-only $name $key references", async ({ name, key }) => {
+      const { client, fake } = await connect(testConfig(), era);
+      for (const reference of ["\u200b", " \u202e \ufe0f "]) {
+        const error = await getPromptError(client, name, { [key]: reference });
+        expect(error.code).toBe(ProtocolErrorCode.InvalidParams);
+        expect(error.message).toContain("Reference must not be blank.");
+        expect(error.message).not.toContain(reference);
+      }
+      expect(fake.calls).toEqual([]);
+    });
+
     it("renders customer and overdue scopes without calling sevDesk", async () => {
       const { client, fake } = await connect(testConfig(), era);
       const text = await promptText(client, "dunning_run", {

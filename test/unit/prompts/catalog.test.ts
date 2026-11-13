@@ -148,6 +148,20 @@ describe("prompt catalog", () => {
         }
       });
 
+      it("refuses invisible-only references even when padded with spaces", () => {
+        for (const reference of [
+          "\u200b",
+          "\u202e",
+          "\u00ad",
+          "\u034f",
+          "\ufe0f",
+          "\u{e0061}",
+          " \u200b \u202e \ufe0f ",
+        ]) {
+          expect(prompt?.args.safeParse({ [key]: reference }).success).toBe(false);
+        }
+      });
+
       it("refuses empty, blank, overlong, multiline and control-bearing references", () => {
         for (const reference of [
           "",

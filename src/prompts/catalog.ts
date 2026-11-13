@@ -8,7 +8,7 @@
  */
 import { z } from "zod";
 
-import { fenceInline } from "../safety/fence.js";
+import { fenceInline, sanitizeUntrusted } from "../safety/fence.js";
 import {
   MONTH_PATTERN,
   parsePeriod,
@@ -33,7 +33,9 @@ const referenceArgument = z
   .regex(/^[^\p{Cc}\p{Zl}\p{Zp}]+$/u, {
     error: "Reference must be one line without control characters.",
   })
-  .regex(/\S/u, { error: "Reference must not be blank." })
+  .refine((value) => sanitizeUntrusted(value).trim().length > 0, {
+    error: "Reference must not be blank.",
+  })
   .optional();
 
 /** `year: 2026, month: 10` or `year: 2026, quarter: 3`, for the period inputs of the reports. */
