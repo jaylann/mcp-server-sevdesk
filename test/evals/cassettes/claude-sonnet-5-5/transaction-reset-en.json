@@ -1,28 +1,25 @@
 {
   "caseId": "transaction-reset-en",
   "model": "claude-sonnet-5-5",
-  "key": "88d314729ed95e7fef18f901c68435c63d41a7b96acc109258b92dd05f00470d",
-  "recordedAt": "2026-11-08T17:38:46.256Z",
+  "key": "56cb3a8933fa78e219f8fdf0cddfb050d565237e7f891650f73b3c95a23957ff",
+  "recordedAt": "2026-11-13T14:12:50.747Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
     "content": [
-      {
-        "type": "text",
-        "text": "Let me first look at the transaction to see what the reset would affect."
-      },
+      { "type": "text", "text": "Let me check what's linked to this transaction first." },
       { "type": "tool_use", "name": "sevdesk_transaction_get", "input": { "id": 557 } },
       {
         "type": "tool_use",
         "name": "sevdesk_transaction_reset",
-        "input": { "transactionId": 557, "dryRun": true }
+        "input": { "id": 557, "dryRun": true }
       }
     ],
     "usage": {
       "inputTokens": 104,
-      "outputTokens": 156,
+      "outputTokens": 148,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 56314
+      "cacheReadInputTokens": 57128
     }
   }
 }

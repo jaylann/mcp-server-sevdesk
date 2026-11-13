@@ -1,12 +1,16 @@
 {
   "caseId": "datev-export-de",
   "model": "claude-sonnet-5-5",
-  "key": "c0b5ed2e2dc4f58c943b43398a15fd9da26a7050240493eb34305e7fe6da5195",
-  "recordedAt": "2026-11-08T17:38:52.294Z",
+  "key": "d5d8608056fa9187212a6ee55b327c5959aecc53d79b75efbea1bf7cb00be471",
+  "recordedAt": "2026-11-13T14:13:11.276Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
     "content": [
+      {
+        "type": "text",
+        "text": "Ich starte den Export zuerst als Vorschau, um die Einstellungen zu prüfen."
+      },
       {
         "type": "tool_use",
         "name": "sevdesk_datev_export",
@@ -15,9 +19,9 @@
     ],
     "usage": {
       "inputTokens": 116,
-      "outputTokens": 100,
+      "outputTokens": 135,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 56314
+      "cacheReadInputTokens": 57128
     }
   }
 }

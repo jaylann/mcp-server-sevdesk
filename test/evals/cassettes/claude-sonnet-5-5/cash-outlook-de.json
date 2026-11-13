@@ -1,8 +1,8 @@
 {
   "caseId": "cash-outlook-de",
   "model": "claude-sonnet-5-5",
-  "key": "88f521dfa67e95c4c00ab30a5b5cc955e65974997a467422de21e95bdbeb5dfa",
-  "recordedAt": "2026-11-08T17:06:23.086Z",
+  "key": "5fcef50a81eed80fab44037620dbbb3a421e0f2e1eedb12a2caf6c988cdaa3d3",
+  "recordedAt": "2026-11-13T14:13:00.249Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -13,7 +13,7 @@
       "inputTokens": 122,
       "outputTokens": 58,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17167
+      "cacheReadInputTokens": 17202
     }
   }
 }

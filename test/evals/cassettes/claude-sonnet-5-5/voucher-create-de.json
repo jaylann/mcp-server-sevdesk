@@ -1,13 +1,12 @@
 {
   "caseId": "voucher-create-de",
   "model": "claude-sonnet-5-5",
-  "key": "384dac534ed73cf57ee5d18b732d8f6243d390c1a469f852f7b4a281753532a7",
-  "recordedAt": "2026-11-08T17:38:21.063Z",
+  "key": "da0aeb397392cfa83f823adf7a66949dd6f5a8e6809d2fa18427a129f5cb8272",
+  "recordedAt": "2026-11-13T14:12:11.624Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
     "content": [
-      { "type": "tool_use", "name": "sevdesk_account_info", "input": {} },
       {
         "type": "tool_use",
         "name": "sevdesk_contacts_search",
@@ -16,14 +15,15 @@
       {
         "type": "tool_use",
         "name": "sevdesk_reference_lookup",
-        "input": { "kind": "receipt_guidance", "receiptType": "expense", "query": "Büro" }
-      }
+        "input": { "kind": "receipt_guidance", "receiptType": "expense", "query": "Bürobedarf" }
+      },
+      { "type": "tool_use", "name": "sevdesk_account_info", "input": {} }
     ],
     "usage": {
       "inputTokens": 170,
-      "outputTokens": 270,
+      "outputTokens": 329,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 56314
+      "cacheReadInputTokens": 57128
     }
   }
 }

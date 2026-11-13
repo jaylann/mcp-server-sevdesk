@@ -1,8 +1,8 @@
 {
   "caseId": "invoice-create-de",
   "model": "claude-sonnet-5-5",
-  "key": "cae5e55088cc43c3d611eda8a0c03e815aa56016959d5aaa411e499ed3d66b7d",
-  "recordedAt": "2026-11-08T17:37:57.480Z",
+  "key": "9de67b97a929d90b5441c0eace8bf053148fad1c8899ed7245fbcce344ae6da2",
+  "recordedAt": "2026-11-13T14:11:31.654Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -19,9 +19,9 @@
     ],
     "usage": {
       "inputTokens": 147,
-      "outputTokens": 257,
+      "outputTokens": 225,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 56314
+      "cacheReadInputTokens": 57128
     }
   }
 }
