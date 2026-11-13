@@ -3,19 +3,20 @@
  * re-read upstream fields, so date serialization, currency selection and text cleaning stay
  * identical. List output unions put the full schema first to retain its field order even when
  * a sparse full row also fits the summary shape. Summary schemas reject extra fields so a
- * malformed full row cannot silently fall back to a stripped summary. Unknown status/type keys are omitted, not replaced with invented filter values.
+ * malformed full row cannot silently fall back to a stripped summary. Contact summaries already
+ * satisfy the full contact schema. Unknown status/type keys are omitted, not invented.
  */
 import { z } from "zod";
 
 import { transactionDtoSchema } from "./banking.js";
-import { compact, moneySchema, statusDtoSchema } from "./common.js";
-import { contactDtoSchema } from "./contacts.js";
+import { compact, moneySchema } from "./common.js";
+import type { ContactDto } from "./contacts.js";
 import { creditNoteRowSchema } from "./credit-notes.js";
-import { invoiceRowSchema } from "./invoices.js";
+import { invoiceRowSchema, UNPAID_STATUSES } from "./invoices.js";
 import { money, subtract } from "./money.js";
 import { orderRowSchema } from "./orders.js";
 import { partDtoSchema } from "./parts.js";
-import { voucherDtoSchema } from "./vouchers.js";
+import { VOUCHER_KINDS, VOUCHER_TYPE_KEYS, voucherDtoSchema } from "./vouchers.js";
 
 export const listDetailInputShape = {
   detail: z
@@ -24,31 +25,32 @@ export const listDetailInputShape = {
     .describe("Use summary to browse/find; full (default) or the matching get tool for details."),
 };
 
-const status = statusDtoSchema.shape.key;
+// Summary fields keep the full DTO constraints without repeating its descriptive metadata.
+const optionalText = z.string().optional();
+const optionalId = z.number().int().optional();
+const contact = z.strictObject({ id: z.number().int(), name: optionalText }).optional();
+const currency = moneySchema.shape.currency;
+const status = optionalText;
 const gross = moneySchema.shape.amount.optional().describe("Gross total in currency.");
 
-export const invoiceSummarySchema = invoiceRowSchema
-  .pick({
-    id: true,
-    number: true,
-    contact: true,
-    date: true,
-    dueDate: true,
-    overdue: true,
-    currency: true,
-    cancelsInvoiceId: true,
-  })
-  .extend({
-    type: invoiceRowSchema.shape.type.shape.key,
-    status,
-    gross,
-    openAmount: moneySchema.shape.amount
-      .optional()
-      .describe(
-        "Gross minus paid, in currency; absent when either amount or its currency is unknown.",
-      ),
-  })
-  .strict();
+export const invoiceSummarySchema = z.strictObject({
+  id: z.number().int(),
+  number: optionalText,
+  contact,
+  date: optionalText,
+  dueDate: optionalText,
+  overdue: z.boolean().optional(),
+  currency,
+  cancelsInvoiceId: optionalId,
+  type: optionalText,
+  status,
+  gross,
+  openAmount: moneySchema.shape.amount
+    .optional()
+    .describe(
+      "Open/partially paid invoices only: gross minus paid in currency; absent if amounts or currency are unknown.",
+    ),
+});
 
 export function invoiceSummary(
   row: z.output<typeof invoiceRowSchema>,
@@ -68,25 +70,27 @@ export function invoiceSummary(
     currency: row.currency,
     // In particular, do not assume that an absent foreign-currency payment means zero paid.
     openAmount:
-      total !== undefined && paid !== undefined && total.currency === paid.currency
+      UNPAID_STATUSES.has(row.status.code) &&
+      total !== undefined &&
+      paid !== undefined &&
+      total.currency === paid.currency
         ? money(subtract(total.amount, paid.amount), total.currency).amount
         : undefined,
     cancelsInvoiceId: row.cancelsInvoiceId,
   });
 }
 
-export const creditNoteSummarySchema = creditNoteRowSchema
-  .pick({
-    id: true,
-    number: true,
-    contact: true,
-    date: true,
-    currency: true,
-    sourceInvoiceId: true,
-    sourceVoucherId: true,
-  })
-  .extend({ status, gross })
-  .strict();
+export const creditNoteSummarySchema = z.strictObject({
+  id: z.number().int(),
+  number: optionalText,
+  contact,
+  date: optionalText,
+  currency,
+  sourceInvoiceId: optionalId,
+  sourceVoucherId: optionalId,
+  status,
+  gross,
+});
 
 export function creditNoteSummary(
   row: z.output<typeof creditNoteRowSchema>,
@@ -104,16 +108,16 @@ export function creditNoteSummary(
   });
 }
 
-export const orderSummarySchema = orderRowSchema
-  .pick({
-    id: true,
-    number: true,
-    contact: true,
-    date: true,
-    currency: true,
-  })
-  .extend({ type: orderRowSchema.shape.type.shape.key, status, gross })
-  .strict();
+export const orderSummarySchema = z.strictObject({
+  id: z.number().int(),
+  number: optionalText,
+  contact,
+  date: optionalText,
+  currency,
+  type: optionalText,
+  status,
+  gross,
+});
 
 export function orderSummary(
   row: z.output<typeof orderRowSchema>,
@@ -130,20 +134,19 @@ export function orderSummary(
   });
 }
 
-export const voucherSummarySchema = voucherDtoSchema
-  .pick({
-    id: true,
-    number: true,
-    supplier: true,
-    date: true,
-    paymentDeadline: true,
-    kind: true,
-    type: true,
-    currency: true,
-    warnings: true,
-  })
-  .extend({ status, gross })
-  .strict();
+export const voucherSummarySchema = z.strictObject({
+  id: z.number().int(),
+  number: optionalText,
+  supplier: z.strictObject({ id: optionalId, name: optionalText }).optional(),
+  date: optionalText,
+  paymentDeadline: optionalText,
+  kind: z.enum(VOUCHER_KINDS).optional(),
+  type: z.enum(VOUCHER_TYPE_KEYS).optional(),
+  currency,
+  warnings: z.array(z.string()).optional(),
+  status,
+  gross,
+});
 
 export function voucherSummary(
   row: z.output<typeof voucherDtoSchema>,
@@ -163,17 +166,17 @@ export function voucherSummary(
   });
 }
 
-export const transactionSummarySchema = transactionDtoSchema
-  .pick({
-    id: true,
-    account: true,
-    valueDate: true,
-    entryDate: true,
-    counterparty: true,
-    purpose: true,
-  })
-  .extend({ status, amount: moneySchema.shape.amount, currency: moneySchema.shape.currency })
-  .strict();
+export const transactionSummarySchema = z.strictObject({
+  id: z.number().int(),
+  account: contact,
+  valueDate: optionalText,
+  entryDate: optionalText,
+  counterparty: optionalText,
+  purpose: optionalText,
+  status,
+  amount: moneySchema.shape.amount,
+  currency,
+});
 
 export function transactionSummary(
   row: z.output<typeof transactionDtoSchema>,
@@ -191,26 +194,12 @@ export function transactionSummary(
   });
 }
 
-export const contactSummarySchema = contactDtoSchema
-  .pick({
-    id: true,
-    kind: true,
-    displayName: true,
-    customerNumber: true,
-    parentOrganisationId: true,
-  })
-  .extend({
-    category: contactDtoSchema.shape.category
-      .unwrap()
-      .pick({ id: true, key: true })
-      .strict()
-      .optional(),
-  })
-  .strict();
-
 export function contactSummary(
-  row: z.output<typeof contactDtoSchema>,
-): z.output<typeof contactSummarySchema> {
+  row: ContactDto,
+): Pick<
+  ContactDto,
+  "id" | "kind" | "displayName" | "customerNumber" | "category" | "parentOrganisationId"
+> {
   return compact({
     id: row.id,
     kind: row.kind,
@@ -224,21 +213,17 @@ export function contactSummary(
   });
 }
 
-export const partSummarySchema = partDtoSchema
-  .pick({
-    id: true,
-    partNumber: true,
-    name: true,
-    unitId: true,
-    active: true,
-    stock: true,
-    stockEnabled: true,
-  })
-  .extend({
-    priceGross: moneySchema.shape.amount.optional().describe("Gross sales price in currency."),
-    currency: moneySchema.shape.currency.optional(),
-  })
-  .strict();
+export const partSummarySchema = z.strictObject({
+  id: z.number().int(),
+  partNumber: optionalText,
+  name: z.string(),
+  unitId: optionalId,
+  active: z.boolean().optional(),
+  stock: optionalText,
+  stockEnabled: z.boolean(),
+  priceGross: moneySchema.shape.amount.optional().describe("Gross sales price in currency."),
+  currency: currency.optional(),
+});
 
 export function partSummary(
   row: z.output<typeof partDtoSchema>,

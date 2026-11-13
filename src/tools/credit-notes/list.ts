@@ -40,7 +40,7 @@ export const creditNotesListTool = defineTool({
     "net/tax/gross, booking category (e.g. UNDERACHIEVEMENT = Minderleistung, PROVISION) and " +
     "the invoice they refer to (sourceInvoiceId). Filter by status (draft = Entwurf, open, " +
     "partially_paid, paid), contactId, exact credit note number (Gutschriftsnummer) and date " +
-    "range. Page with offset = nextOffset while hasMore. Use detail=summary to browse/find; sevdesk_credit_note_get or detail=full for details. " +
+    "range. Page with offset = nextOffset while hasMore. Use detail=summary to browse/find. Use sevdesk_credit_note_get for details and positions. " +
     "The source invoice: sevdesk_invoice_get.",
   toolset: "credit-notes",
   tier: "read",

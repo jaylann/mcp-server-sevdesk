@@ -38,7 +38,7 @@ export const vouchersListTool = defineTool({
     "contact id or supplier name, Belegnummer/description, voucher date range and type " +
     "(normal or recurring). Filters run in sevDesk; the type is also re-checked here (then " +
     "rows are scanned, total is left out and filteredLocally is set). Exact amounts. " +
-    "Paged: pass nextOffset as offset while hasMore is true. Use detail=summary to browse/find; sevdesk_voucher_get or detail=full for details. " +
+    "Paged: pass nextOffset as offset while hasMore is true. Use detail=summary to browse/find. Use sevdesk_voucher_get for positions, tax rule and booking accounts. " +
     "Find supplier ids with sevdesk_contacts_search.",
   toolset: "vouchers",
   tier: "read",

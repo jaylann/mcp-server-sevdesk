@@ -2,7 +2,7 @@
  * Offline response-cost comparison: node --import tsx scripts/measure-list-detail.ts
  * Cycle the scrubbed community fixtures to 25 rows, then format validated tool results exactly
  * as the MCP registry does. Counts are Unicode code points of text blocks, including the trusted
- * summary and JSON whitespace. Tokens are estimates at the measured #61 ratio, not API counts.
+ * summary and the current JSON serialization (minified since #64). Tokens are estimates at the measured #61 ratio, not API counts.
  */
 import assert from "node:assert/strict";
 

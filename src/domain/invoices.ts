@@ -80,7 +80,7 @@ export type InvoiceStatusFilter = keyof typeof INVOICE_STATUS_FILTERS;
 export type InvoiceTypeFilter = keyof typeof INVOICE_TYPE_FILTERS;
 
 /** Statuses that still expect money: open (200) and partially paid (750). */
-const UNPAID_STATUSES: ReadonlySet<number> = new Set([200, 750]);
+export const UNPAID_STATUSES: ReadonlySet<number> = new Set([200, 750]);
 
 // ---------------------------------------------------------------------------------------------
 // Upstream schema (lenient)

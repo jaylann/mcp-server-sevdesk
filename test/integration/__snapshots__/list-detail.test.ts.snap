@@ -67,7 +67,6 @@ exports[`sevdesk_invoices_list detail > returns schema-valid slim rows with the 
     "gross": "99.98",
     "id": 10001,
     "number": "RE-1002",
-    "openAmount": "99.98",
     "status": "draft",
     "type": "invoice",
   },

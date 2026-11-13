@@ -5,6 +5,7 @@ import { z } from "zod";
 import { invoiceRowSchema } from "../../src/domain/invoices.js";
 import { invoiceSummary } from "../../src/domain/list-summary.js";
 import { partDtoSchema } from "../../src/domain/parts.js";
+import { invoicesListTool } from "../../src/tools/invoices/list.js";
 import { JSON_SCHEMA_OPTIONS } from "../../src/tools/json-schema.js";
 import { partsListTool } from "../../src/tools/parts/list.js";
 import { successResult } from "../../src/tools/result.js";
@@ -198,7 +199,7 @@ describe.each(LIST_CASES)("$tool.name detail", (testCase) => {
         gross: "0.00",
         currency: "EUR",
         ...(testCase.path === "/Order" ? { type: "offer" } : {}),
-        ...(testCase.path === "/Invoice" ? { type: "invoice", openAmount: "0.00" } : {}),
+        ...(testCase.path === "/Invoice" ? { type: "invoice" } : {}),
       });
     }
   });
@@ -264,6 +265,42 @@ it("computes invoice open amounts exactly and never subtracts unknown or mixed c
       currency: "USD",
     }),
   ).not.toHaveProperty("openAmount");
+});
+
+it.each([
+  { code: 100, key: "draft" },
+  { code: 1000, key: "paid" },
+])("omits openAmount for $key invoices even with a zero paidAmount", async ({ code, key }) => {
+  const upstream = new FakeSevdeskClient([
+    {
+      path: "/Invoice",
+      response: {
+        body: { objects: [{ id: "1", status: String(code), sumGross: "119", paidAmount: "0" }] },
+      },
+    },
+  ]);
+  const result = await invoicesListTool.handler(
+    invoicesListTool.input.parse({ detail: "summary" }),
+    testContext(upstream),
+  );
+  expect(result.data.items[0]).toMatchObject({ status: key, gross: "119.00" });
+  expect(result.data.items[0]).not.toHaveProperty("openAmount");
+});
+
+it.each([200, 750])("keeps an exact zero openAmount for unpaid status %i", async (code) => {
+  const upstream = new FakeSevdeskClient([
+    {
+      path: "/Invoice",
+      response: {
+        body: { objects: [{ id: "1", status: String(code), sumGross: "0", paidAmount: "0" }] },
+      },
+    },
+  ]);
+  const result = await invoicesListTool.handler(
+    invoicesListTool.input.parse({ detail: "summary" }),
+    testContext(upstream),
+  );
+  expect(result.data.items[0]).toMatchObject({ gross: "0.00", openAmount: "0.00" });
 });
 
 it("preserves full-result bytes when a sparse part also matches the summary schema", async () => {

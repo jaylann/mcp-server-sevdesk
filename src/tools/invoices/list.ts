@@ -47,7 +47,7 @@ export const invoicesListTool = defineTool({
     "past the due date, überfällig). overdueOnly, type and number are checked here too (up to " +
     "1,000 rows scanned per call; total left out, filteredLocally set). A cancelled " +
     "invoice keeps status paid; its SR invoice has cancelsInvoiceId. Page with offset = " +
-    "nextOffset while hasMore. Use detail=summary to browse/find; sevdesk_invoice_get or detail=full for details.",
+    "nextOffset while hasMore. Use detail=summary to browse/find. Use sevdesk_invoice_get for positions, tax and payment terms.",
   toolset: "invoices",
   tier: "read",
   annotations: {

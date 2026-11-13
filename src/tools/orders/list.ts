@@ -46,7 +46,7 @@ export const ordersListTool = defineTool({
     "partially_invoiced, invoiced = berechnet), contactId, exact order number and date range. " +
     "Type and number are also checked here (up to 1,000 rows scanned per call; total left " +
     "out, filteredLocally set). Page with offset = nextOffset while hasMore. " +
-    "Use detail=summary to browse/find; sevdesk_order_get or detail=full for details.",
+    "Use detail=summary to browse/find. Use sevdesk_order_get for details and positions.",
   toolset: "orders",
   tier: "read",
   annotations: {

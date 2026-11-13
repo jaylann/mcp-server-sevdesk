@@ -58,7 +58,7 @@ export const transactionsListTool = defineTool({
     `ranges are checked here while reading up to ${MAX_SCAN_ROWS} rows per call; ` +
     "dateField=entry lets sevDesk filter by entry date instead (faster). offset/nextOffset " +
     "count sevDesk rows, not matches: pass nextOffset while hasMore is true. Account ids: " +
-    "sevdesk_bank_accounts_list. Use detail=summary to browse/find; sevdesk_transaction_get or detail=full for details.",
+    "sevdesk_bank_accounts_list. Use detail=summary to browse/find. Use sevdesk_transaction_get for assignments and the amount still unassigned.",
   toolset: "banking",
   tier: "read",
   annotations: {

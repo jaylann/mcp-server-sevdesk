@@ -66,8 +66,7 @@ export const EVAL_CASES: readonly EvalCase[] = [
     toolset: "invoices",
     kind: "positive",
     env: ENVS.read,
-    prompt:
-      "Find invoice RE-1003. First browse with a compact list, then inspect the matching invoice's line items and payment terms.",
+    prompt: "Find invoice RE-1003 and show me its line items and payment terms.",
     expected: ["sevdesk_invoices_list"],
     expectedInput: { detail: "summary", number: "RE-1003" },
     notes:

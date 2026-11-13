@@ -19,7 +19,7 @@ export const partsListTool = defineTool({
     "unit, net and gross sales price, purchase price, tax rate, stock (Bestand) and active flag. " +
     "Filter by part number (Artikelnummer) or name; both filters run in sevDesk, which may " +
     "match them exactly, so try the full value if a part is missing. Paged: pass nextOffset as " +
-    "offset while hasMore is true. Use detail=summary to browse/find; sevdesk_part_get or detail=full for details.",
+    "offset while hasMore is true. Use detail=summary to browse/find. Use sevdesk_part_get for the description and current stock.",
   toolset: "parts",
   tier: "read",
   annotations: {
