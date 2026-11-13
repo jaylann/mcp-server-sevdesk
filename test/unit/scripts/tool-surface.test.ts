@@ -85,17 +85,39 @@ describe("tool surface", () => {
     for (const id of [
       "contacts_search",
       "transactions_list",
+      "transactions_list_summary",
       "vouchers_list",
+      "vouchers_list_summary",
       "invoices_list",
+      "invoices_list_summary",
       "invoices_list_max",
+      "invoices_list_summary_max",
     ] as const) {
       const text = dump.responses?.[id] ?? "";
       const data = JSON.parse(text.slice(text.indexOf("\n\n") + 2)) as {
         items: unknown[];
         limit: number;
       };
-      expect(data.items, id).toHaveLength(id === "invoices_list_max" ? 100 : 25);
-      expect(data.limit, id).toBe(id === "invoices_list_max" ? 100 : 25);
+      expect(data.items, id).toHaveLength(id.endsWith("_max") ? 100 : 25);
+      expect(data.limit, id).toBe(id.endsWith("_max") ? 100 : 25);
+    }
+    for (const [full, summary] of [
+      ["transactions_list", "transactions_list_summary"],
+      ["vouchers_list", "vouchers_list_summary"],
+      ["invoices_list", "invoices_list_summary"],
+      ["invoices_list_max", "invoices_list_summary_max"],
+    ] as const) {
+      const parse = (id: typeof full | typeof summary) => {
+        const text = dump.responses![id]!;
+        return JSON.parse(text.slice(text.indexOf("\n\n") + 2)) as {
+          items: { id: number }[];
+        };
+      };
+      const { items: fullItems, ...fullPage } = parse(full);
+      const { items: summaryItems, ...summaryPage } = parse(summary);
+      expect(summaryPage).toEqual(fullPage);
+      expect(summaryItems.map((item) => item.id)).toEqual(fullItems.map((item) => item.id));
+      expect(dump.responses![summary]!.length).toBeLessThan(dump.responses![full]!.length);
     }
     const sizes = measureToolSurface(dump);
     expect(sizes.read.tools).toBeGreaterThan(0);

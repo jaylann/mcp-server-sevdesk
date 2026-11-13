@@ -16,9 +16,19 @@ export const RESPONSE_CALLS = {
   },
   contacts_search: { name: "sevdesk_contacts_search", arguments: {} },
   transactions_list: { name: "sevdesk_transactions_list", arguments: {} },
+  transactions_list_summary: {
+    name: "sevdesk_transactions_list",
+    arguments: { detail: "summary" },
+  },
   vouchers_list: { name: "sevdesk_vouchers_list", arguments: {} },
+  vouchers_list_summary: { name: "sevdesk_vouchers_list", arguments: { detail: "summary" } },
   invoices_list: { name: "sevdesk_invoices_list", arguments: {} },
+  invoices_list_summary: { name: "sevdesk_invoices_list", arguments: { detail: "summary" } },
   invoices_list_max: { name: "sevdesk_invoices_list", arguments: { limit: 100 } },
+  invoices_list_summary_max: {
+    name: "sevdesk_invoices_list",
+    arguments: { detail: "summary", limit: 100 },
+  },
 } as const;
 
 const collection = z.object({ objects: z.array(z.json()) });

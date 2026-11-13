@@ -79,8 +79,8 @@ jobs:
               throw new Error('Invalid surface report.');
             }
             const configurations = ['read', 'write', 'all', 'http-files'];
-            const hasKeys = (value, keys) => value !== null && typeof value === 'object' &&
-              !Array.isArray(value) && Object.keys(value).length === keys.length &&
+            const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+            const hasKeys = (value, keys) => isObject(value) && Object.keys(value).length === keys.length &&
               keys.every(key => Object.hasOwn(value, key));
             // Older v1 reports remain usable, with or without costs and with or without tool
             // definitions. New data carries only bounded integer counts: all Markdown labels
@@ -103,17 +103,32 @@ jobs:
             const responseLabels = {
               invoice_get: 'invoice_get', records_summarize: 'records_summarize (invoices by month)',
               contacts_search: 'contacts_search (default limit)', transactions_list: 'transactions_list (default limit)',
-              vouchers_list: 'vouchers_list (default limit)', invoices_list: 'invoices_list (default limit)',
+              transactions_list_summary: 'transactions_list (default limit, summary)',
+              vouchers_list: 'vouchers_list (default limit)',
+              vouchers_list_summary: 'vouchers_list (default limit, summary)',
+              invoices_list: 'invoices_list (default limit)',
+              invoices_list_summary: 'invoices_list (default limit, summary)',
               invoices_list_max: 'invoices_list (limit: 100)',
+              invoices_list_summary_max: 'invoices_list (limit: 100, summary)',
             };
-            const validCounts = (value, keys) => hasKeys(value, keys) && keys.every(key =>
-              value[key] === null || (Number.isSafeInteger(value[key]) && value[key] >= 0 && value[key] <= 1_000_000_000));
+            const validCount = value => value === null ||
+              (Number.isSafeInteger(value) && value >= 0 && value <= 1_000_000_000);
+            const validCounts = (value, keys) => hasKeys(value, keys) && keys.every(key => validCount(value[key]));
             if (tokens !== undefined && (!hasKeys(tokens, ['method', 'model', 'base', 'head']) ||
                 tokens.method !== 'estimated' || tokens.model !== 'claude-opus-5-5' ||
                 !['base', 'head'].every(revision => hasKeys(tokens[revision], ['configurations', 'responses']) &&
                   validCounts(tokens[revision].configurations, configurations) &&
-                  validCounts(tokens[revision].responses, Object.keys(responseLabels))))) {
+                  isObject(tokens[revision].responses) && Object.values(tokens[revision].responses).every(validCount)))) {
               throw new Error('Invalid token cost.');
+            }
+            // Harness and publisher revisions can differ. Only trusted ids become rows or count
+            // requests: discard unknown ids, fill missing known ids with null, and retain bounds
+            // checks even on discarded values. Never use artifact keys as Markdown labels.
+            if (tokens !== undefined) {
+              for (const revision of ['base', 'head']) {
+                tokens[revision].responses = Object.fromEntries(Object.keys(responseLabels).map(id =>
+                  [id, tokens[revision].responses[id] ?? null]));
+              }
             }
             // Artifact PR numbers are only hints. Verify the current PR against the trusted run,
             // including fork identity, even when workflow_run.pull_requests is empty for forks.
@@ -139,7 +154,6 @@ jobs:
               const configured = fields.every(field => process.env[`ANTHROPIC_${field}`]?.trim());
               if (configured) {
                 try {
-                  const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
                   const captures = {};
                   for (const revision of ['base', 'head']) {
                     const path = process.env[`${revision.toUpperCase()}_PATH`];
@@ -147,7 +161,7 @@ jobs:
                     if (!isObject(capture) || capture.version !== 1 ||
                         !hasKeys(capture.configurations, configurations) ||
                         (capture.responses !== undefined && (!isObject(capture.responses) ||
-                          !Object.keys(capture.responses).every(id => Object.hasOwn(responseLabels, id))))) {
+                          !Object.values(capture.responses).every(text => typeof text === 'string' && text.length <= 2_000_000)))) {
                       throw new Error('Invalid capture.');
                     }
                     for (const config of configurations) {
@@ -165,9 +179,6 @@ jobs:
                     }
                     for (const id of Object.keys(responseLabels)) {
                       const text = capture.responses?.[id];
-                      if (text !== undefined && (typeof text !== 'string' || text.length > 2_000_000)) {
-                        throw new Error('Invalid response text.');
-                      }
                       if ((text === undefined) !== (tokens[revision].responses[id] === null)) {
                         throw new Error('Capture availability mismatch.');
                       }
@@ -312,7 +323,7 @@ jobs:
                 table('Model context', configurations, {}, 'configurations') +
                 table('Response cost', Object.keys(responseLabels), responseLabels, 'responses') +
                 'Deterministic corpus: recorded row shapes expanded to 100 items per list with distinct ids. ' +
-                'Default-limit calls and invoices_list limit: 100 run through the server; missing or failed captures are n/a. Clock fixed to 2026-11-13.\n\n';
+                'Default-limit lists and invoices_list limit: 100 run through the server, with full and summary detail where labelled; missing or failed captures are n/a. Clock fixed to 2026-11-13.\n\n';
               if (cost !== undefined) {
                 contextCost += '<details>\n<summary>Full tools/list — not in model context for Claude clients</summary>\n\n' +
                   'Modern protocol including output schemas; Unicode characters, not model tokens.\n\n' +

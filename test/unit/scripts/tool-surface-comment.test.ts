@@ -155,9 +155,9 @@ function fixture() {
   });
   const get = vi.fn().mockImplementation(() => Promise.resolve({ data: pr }));
   const paginate = vi.fn().mockImplementation(() => Promise.resolve(comments));
-  async function execute(): Promise<void> {
-    if (!script) throw new Error("Publisher script missing");
-    const result: unknown = runInNewContext(`(async () => {${script}\n})()`, {
+  async function execute(publisherScript = script): Promise<void> {
+    if (!publisherScript) throw new Error("Publisher script missing");
+    const result: unknown = runInNewContext(`(async () => {${publisherScript}\n})()`, {
       require: (name: string) => {
         if (name === "node:fs") return { constants };
         if (name === "node:fs/promises") return { open };
@@ -232,7 +232,7 @@ function definitionCost() {
 function tokenCost(method: "estimated" | "exact" = "estimated") {
   const sizes = (): {
     configurations: Record<keyof ToolSurface["configurations"], number | null>;
-    responses: Record<keyof NonNullable<ToolSurface["responses"]>, number | null>;
+    responses: Partial<Record<keyof NonNullable<ToolSurface["responses"]>, number | null>>;
   } => ({
     configurations: { read: 100, write: 200, all: 300, "http-files": 400 },
     responses: {
@@ -240,9 +240,13 @@ function tokenCost(method: "estimated" | "exact" = "estimated") {
       records_summarize: 20,
       contacts_search: 25,
       transactions_list: 30,
+      transactions_list_summary: 20,
       vouchers_list: 35,
+      vouchers_list_summary: 25,
       invoices_list: 40,
+      invoices_list_summary: 30,
       invoices_list_max: 40,
+      invoices_list_summary_max: 30,
     },
   });
   return { method, model: "claude-opus-5-5", base: sizes(), head: sizes() };
@@ -542,6 +546,28 @@ describe("tool surface comment workflow", () => {
       expect(body).toContain("| read | 100 | 120 | +20 |");
       expect(body).toContain("| invoice_get | 15 | 10 | -5 |");
       expect(body).toContain("| invoices_list (limit: 100) | 40 | 40 | 0 |");
+      expect(
+        body
+          .split("### Response cost\n\n")[1]!
+          .split("\n\n")[0]!
+          .split("\n")
+          .slice(2)
+          .map((row) => row.split(" | ")[0]!.slice(2)),
+      ).toEqual([
+        "invoice_get",
+        "records_summarize (invoices by month)",
+        "contacts_search (default limit)",
+        "transactions_list (default limit)",
+        "transactions_list (default limit, summary)",
+        "vouchers_list (default limit)",
+        "vouchers_list (default limit, summary)",
+        "invoices_list (default limit)",
+        "invoices_list (default limit, summary)",
+        "invoices_list (limit: 100)",
+        "invoices_list (limit: 100, summary)",
+      ]);
+      expect(body).toContain("| invoices_list (default limit, summary) | 30 | 30 | 0 |");
+      expect(body).toContain("| invoices_list (limit: 100, summary) | 30 | 30 | 0 |");
       expect(body).toContain("Full tools/list — not in model context for Claude clients");
       expect(body.indexOf("### Model context")).toBeLessThan(body.indexOf("### Response cost"));
       expect(body.indexOf("### Response cost")).toBeLessThan(body.indexOf("Full tools/list"));
@@ -568,6 +594,74 @@ describe("tool surface comment workflow", () => {
     const body = f.createComment.mock.calls[0]?.[0].body ?? "";
     expect(body).toContain("| read | n/a | 100 | n/a |");
     expect(body).toContain("| invoice_get | n/a | 15 | n/a |");
+  });
+
+  it.each(["estimated", "exact"] as const)(
+    "renders missing summary ids from older reports as n/a with %s counts",
+    async (method) => {
+      const f = fixture();
+      const tokens = tokenCost();
+      delete tokens.base.responses.invoices_list_summary;
+      delete tokens.base.responses.invoices_list_summary_max;
+      for (const revision of ["base", "head"] as const) {
+        delete tokens[revision].responses.transactions_list_summary;
+        delete tokens[revision].responses.vouchers_list_summary;
+      }
+      Object.assign(f.report, { tokenCost: tokens });
+      if (method === "exact") f.enableWif(tokens);
+      await f.execute();
+      const body = f.createComment.mock.calls[0]![0].body;
+      expect(body).toContain(method === "exact" ? "**Exact**" : "**Estimated**");
+      expect(body).toContain("| invoices_list (default limit, summary) | n/a | 30 | n/a |");
+      expect(body).toContain("| invoices_list (limit: 100, summary) | n/a | 30 | n/a |");
+      expect(body).toContain("| transactions_list (default limit, summary) | n/a | n/a | n/a |");
+      expect(body).toContain("| vouchers_list (default limit, summary) | n/a | n/a | n/a |");
+    },
+  );
+
+  it("renders a report with no response ids as n/a", async () => {
+    const f = fixture();
+    const tokens = tokenCost();
+    tokens.base.responses = {};
+    tokens.head.responses = {};
+    f.enableWif(tokens);
+    await f.execute();
+    const body = f.createComment.mock.calls[0]![0].body;
+    expect(body).toContain("**Exact**");
+    expect(body).toContain("| invoices_list (default limit, summary) | n/a | n/a | n/a |");
+    expect(f.fetch).toHaveBeenCalledTimes(10); // Exchange, calibration, four contexts per revision.
+  });
+
+  it.each(["estimated", "exact"] as const)(
+    "rejects unknown ids from %s rows and count requests without losing known rows",
+    async (method) => {
+      const f = fixture();
+      const tokens = tokenCost();
+      Object.assign(tokens.head.responses, { "```@attacker": 999 });
+      Object.assign(f.report, { tokenCost: tokens });
+      if (method === "exact") f.enableWif(tokens);
+      await f.execute();
+      const body = f.createComment.mock.calls[0]![0].body;
+      expect(body).toContain(method === "exact" ? "**Exact**" : "**Estimated**");
+      expect(body).toContain("| invoices_list (limit: 100, summary) | 30 | 30 | 0 |");
+      expect(body).not.toContain("attacker");
+      expect(body).not.toContain("999");
+      expect(JSON.stringify(f.fetch.mock.calls)).not.toContain("response 999");
+      if (method === "exact") expect(f.fetch).toHaveBeenCalledTimes(32);
+    },
+  );
+
+  it("handles newer captures when the publisher vocabulary lacks the summary ids", async () => {
+    const f = fixture();
+    f.enableWif();
+    const olderVocabulary = script!.replace(/^\s+\w+_summary(?:_max)?:[^\n]+\n/gm, "");
+    expect(olderVocabulary).not.toContain("invoices_list_summary:");
+    await f.execute(olderVocabulary);
+    const body = f.createComment.mock.calls[0]![0].body;
+    expect(body).toContain("**Exact**");
+    expect(body).toContain("| invoices_list (limit: 100) | 40 | 40 | 0 |");
+    expect(body).not.toContain("(limit: 100, summary)");
+    expect(f.fetch).toHaveBeenCalledTimes(24); // Only the older publisher's known ids are sent.
   });
 
   it("upgrades estimates to exact and never lets a late estimate overwrite that comparison", async () => {
@@ -600,11 +694,16 @@ describe("tool surface comment workflow", () => {
       ...tokenCost(),
       head: { ...tokenCost().head, configurations: { ...tokenCost().head.configurations, read } },
     })),
-    { ...tokenCost(), base: { ...tokenCost().base, responses: {} } },
-    {
+    ...[null, [], "invalid"].map((responses) => ({
       ...tokenCost(),
-      head: { ...tokenCost().head, responses: { ...tokenCost().head.responses, unexpected: 1 } },
-    },
+      head: { ...tokenCost().head, responses },
+    })),
+    ...["invoices_list_summary", "unexpected"].flatMap((id) =>
+      [-1, 1.5, 1_000_000_001, "```@attacker", {}].map((count) => ({
+        ...tokenCost(),
+        head: { ...tokenCost().head, responses: { ...tokenCost().head.responses, [id]: count } },
+      })),
+    ),
     tokenCost("exact"),
   ])("rejects hostile or unverified token data (%j)", async (tokens) => {
     const f = fixture();
@@ -707,7 +806,7 @@ describe("tool surface comment workflow", () => {
       service_account_id: "service_account_id",
       workspace_id: "workspace_id",
     });
-    expect(f.fetch).toHaveBeenCalledTimes(24); // Exchange, calibration, 11 captures per revision.
+    expect(f.fetch).toHaveBeenCalledTimes(32); // Exchange, calibration, 15 captures per revision.
     const requests = f.fetch.mock.calls.slice(1).map(([endpoint, request]) => {
       expect(endpoint).toBe("https://api.anthropic.com/v1/messages/count_tokens");
       expect(request).toMatchObject({
@@ -732,7 +831,7 @@ describe("tool surface comment workflow", () => {
     expect(JSON.stringify(requests[1]!.tools)).toBe(
       JSON.stringify(capture.configurations.read.modelContext.tools),
     );
-    expect(requests.slice(1, 12)).toEqual(requests.slice(12));
+    expect(requests.slice(1, 16)).toEqual(requests.slice(16));
     const published = JSON.stringify([
       f.createComment.mock.calls,
       f.core.info.mock.calls,
@@ -768,6 +867,10 @@ describe("tool surface comment workflow", () => {
     "symlink",
     "schema",
     "availability",
+    "summary type",
+    "summary size",
+    "unknown type",
+    "unknown size",
   ])("keeps estimates for %s capture data before acquiring credentials", async (failure) => {
     const f = fixture();
     f.enableWif();
@@ -796,6 +899,14 @@ describe("tool surface comment workflow", () => {
     if (failure === "availability") {
       const capture = JSON.parse(f.files.get("/head.json")!) as { responses?: unknown };
       delete capture.responses;
+      f.files.set("/head.json", JSON.stringify(capture));
+    }
+    if (failure.startsWith("summary ") || failure.startsWith("unknown ")) {
+      const capture = JSON.parse(f.files.get("/head.json")!) as {
+        responses: Record<string, unknown>;
+      };
+      const id = failure.startsWith("summary ") ? "invoices_list_summary" : "unexpected";
+      capture.responses[id] = failure.endsWith("type") ? {} : "x".repeat(2_000_001);
       f.files.set("/head.json", JSON.stringify(capture));
     }
     await f.execute();
