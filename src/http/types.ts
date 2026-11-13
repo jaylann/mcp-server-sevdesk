@@ -31,6 +31,8 @@ export interface OAuthSettings {
 export interface HttpFilesConfig {
   /** `SEVDESK_HTTP_FILES_MAX_MB` in bytes: what all uploads and links hold together. */
   readonly maxBytes: number;
+  /** `SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT`: live tickets, uploads and links per account (1–1000). */
+  readonly maxPerAccount: number;
   /** `SEVDESK_HTTP_FILES_TTL`: lifetime of an uploaded file and of a download link. */
   readonly ttlSeconds: number;
 }

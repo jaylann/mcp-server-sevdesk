@@ -103,6 +103,11 @@ the HTTP server refuses to start with them.
 some of the variables above. Both are described in the
 [remote mode configuration reference](remote.md#configuration-reference).
 
+Remote file transfer uses `SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT` (default `10`, whole numbers
+1–1000) for the combined count of live upload pages, uploaded files and download links per
+account. Successful attachments release uploads immediately; byte quotas remain governed by
+`SEVDESK_HTTP_FILES_MAX_MB`. See the remote reference above for all file limits.
+
 ## Toolsets
 
 A toolset is a group of tools for one area. `SEVDESK_TOOLSETS` picks the toolsets, and

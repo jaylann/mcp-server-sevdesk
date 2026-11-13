@@ -17,7 +17,7 @@ import { z } from "zod";
 import { expectSingle } from "../../sevdesk/envelope.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import { sevdeskPath } from "../../sevdesk/paths.js";
-import { parseUpstream, zIntish } from "../../sevdesk/schema.js";
+import { parseUpstream, zIntish, zRef } from "../../sevdesk/schema.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import type { TaxRegime } from "../account-settings.js";
 import { cleanText } from "../common.js";
@@ -494,6 +494,12 @@ export interface VoucherSaveResult {
   readonly id: number;
   readonly details: VoucherDetails;
   readonly notes: readonly string[];
+  /**
+   * Attachment identity from the recheck immediately before an update: `null` means no
+   * attachment, `undefined` means unknown (or no recheck). A different read-back document id
+   * confirms a new attachment; mere document presence cannot confirm replacement of a receipt.
+   */
+  readonly previousDocumentId?: number | null | undefined;
   /** The uploaded receipt (name, kind, size, pages), when a file was attached. */
   readonly receipt?:
     | {
@@ -515,9 +521,10 @@ export async function executeVoucherSave(
   signal: AbortSignal | undefined,
 ): Promise<VoucherSaveResult> {
   const withSignal = signal === undefined ? {} : { signal };
-  if (state.recheckDraft === true && state.voucherId !== undefined) {
-    await assertStillDraft(client, state.voucherId, signal);
-  }
+  const previousDocumentId =
+    state.recheckDraft === true && state.voucherId !== undefined
+      ? await assertStillDraft(client, state.voucherId, signal)
+      : undefined;
   let uploaded: UploadedReceipt | undefined;
   if (state.file !== undefined) {
     uploaded = readUploadAnswer(
@@ -580,25 +587,27 @@ export async function executeVoucherSave(
         "sevdesk_voucher_import_einvoice can check it and prefill a voucher from it.",
     );
   }
-  return { id, details, notes, receipt };
+  return { id, details, notes, receipt, previousDocumentId };
 }
 
 /**
  * Refuses (validation, nothing sent) when the voucher is no longer an unlocked draft right before
  * an update or finalize saves it: it was finalized or enshrined after the preview.
+ * Returns the current attachment id, `null` for explicitly absent, `undefined` for unknown.
+ * The snapshot from `prepare` may be stale; compare this id with the save's read-back instead.
  */
 async function assertStillDraft(
   client: SevdeskClient,
   voucherId: number,
   signal: AbortSignal | undefined,
-): Promise<void> {
+): Promise<number | null | undefined> {
   const payload = await client.request({
     method: "GET",
     path: sevdeskPath("Voucher", voucherId),
     ...(signal === undefined ? {} : { signal }),
   });
   const record = parseUpstream(
-    z.object({ status: zIntish, enshrined: z.unknown().optional() }),
+    z.object({ status: zIntish, enshrined: z.unknown().optional(), document: zRef().nullish() }),
     expectSingle(payload, `voucher ${String(voucherId)}`),
     "a voucher",
   );
@@ -614,6 +623,7 @@ async function assertStillDraft(
         "the call again.",
     });
   }
+  return record.document === null ? null : record.document?.id;
 }
 
 /**

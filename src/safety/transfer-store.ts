@@ -15,13 +15,15 @@
  *   unknown id.
  *
  * Lifetimes: a ticket can be used for 15 minutes; an uploaded file and a download link live for
- * `fileTtlMs` (`SEVDESK_HTTP_FILES_TTL`); a link serves at most 5 downloads. Expired records are
- * pruned on every call and once a minute, their blobs deleted; a short-lived marker (one hour)
+ * `fileTtlMs` (`SEVDESK_HTTP_FILES_TTL`). Uploads are released after a confirmed attachment; a
+ * link serves at most 5 downloads. Expired records are pruned on every call and once a minute,
+ * their blobs deleted; a short-lived marker (one hour)
  * lets the pages say "expired" instead of "not found".
  *
  * Limits (nothing is ever evicted; new records are refused with {@link TransferLimitError}
  * instead):
- * - 5 tickets waiting for a file per account, 10 live records per account, 1,000 overall;
+ * - 5 tickets waiting for a file per account, configurable live records per account (default
+ *   10, `SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT`), 1,000 overall;
  * - bytes (`maxBytes`, `SEVDESK_HTTP_FILES_MAX_MB`): one account holds at most its share, a
  *   quarter of `maxBytes` but at least one largest upload (20 MiB), never more than half; one
  *   upload is at most 20 MiB (or the share). Room for one largest upload is kept for accounts
@@ -327,18 +329,29 @@ export function createTransferStore(options: TransferStoreOptions): FileTransfer
     ).length;
   }
 
+  /** Only this account's known expiries; in-flight storage has no fixed expiry yet. */
+  function nextExpiry(own: readonly TransferRecord[]): string {
+    const expiries = own
+      .filter((record) => record.type !== "ticket" || record.status !== "receiving")
+      .map((record) => record.expiresAtMs);
+    return expiries.length === 0
+      ? "No expiry is available for this account yet; try again once older files expire or transfers in progress finish."
+      : `The next expiry for this account is ${new Date(Math.min(...expiries)).toISOString()}. ` +
+          "A slot may free sooner when an upload is attached or a download link is used up.";
+  }
+
   /** Throws when `accountScope` may not create one more record. */
   function checkRecordLimits(accountScope: string): void {
-    if (records.size + reservations.size >= maxRecords) {
-      throw new TransferLimitError(
-        "The server holds too many uploads and download links right now. Try again in a few " +
-          "minutes, once older ones have expired.",
-      );
-    }
-    if (accountRecords(accountScope).length + reservedCount(accountScope) >= maxPerAccount) {
+    const own = accountRecords(accountScope);
+    if (own.length + reservedCount(accountScope) >= maxPerAccount) {
       throw new TransferLimitError(
         `This sevDesk account already has ${String(maxPerAccount)} uploads and download links ` +
-          `on the server. Older ones expire after ${duration(fileTtlMs)}; try again then.`,
+          `on the server. ${nextExpiry(own)}`,
+      );
+    }
+    if (records.size + reservations.size >= maxRecords) {
+      throw new TransferLimitError(
+        "The server holds too many uploads and download links right now. " + nextExpiry(own),
       );
     }
   }
@@ -416,11 +429,11 @@ export function createTransferStore(options: TransferStoreOptions): FileTransfer
       const scope = owner.accountScope;
       const waiting = accountRecords(scope).filter(
         (record) => record.type === "ticket" && record.status !== "uploaded",
-      ).length;
-      if (waiting >= maxPending) {
+      );
+      if (waiting.length >= maxPending) {
         throw new TransferLimitError(
           `${String(maxPending)} upload requests of this sevDesk account are still waiting for a ` +
-            `file. Ask the user to use one of them; unused ones expire after ${duration(ticketTtlMs)}.`,
+            `file. Ask the user to use one of them. ${nextExpiry(waiting)}`,
         );
       }
       checkRecordLimits(scope);
@@ -466,6 +479,17 @@ export function createTransferStore(options: TransferStoreOptions): FileTransfer
       });
       if (bytes === undefined) return undefined;
       return { name: file.name, kind: file.kind, bytes, source: "upload" };
+    },
+
+    releaseUpload(owner, id) {
+      const record = records.get(id);
+      if (
+        record?.type === "ticket" &&
+        record.status === "uploaded" &&
+        sameOwner(record.owner, owner)
+      ) {
+        remove(record, "exhausted");
+      }
     },
 
     async createDownload(owner, file: OutputFile): Promise<DownloadLinkView> {

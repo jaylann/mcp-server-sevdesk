@@ -103,6 +103,12 @@ export interface FileAccess {
    * reference is not allowed, unknown, expired, too large or of the wrong kind.
    */
   read(ref: string, options: ReadFileOptions): Promise<InputFile>;
+  /**
+   * Releases a remote upload after sevDesk confirms it was attached successfully. Local files
+   * are never deleted. Unknown, foreign or already released references are harmless no-ops;
+   * reads, previews and failed writes must not call this.
+   */
+  release(ref: string): void;
   /** Hands `file` out: a new file in `SEVDESK_OUTPUT_DIR`, or a download link over HTTP. */
   deliver(file: OutputFile): Promise<Delivery>;
   /**

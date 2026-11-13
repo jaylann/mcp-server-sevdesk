@@ -511,6 +511,8 @@ export async function listVouchers(
 
 export interface VoucherDetails {
   readonly voucher: VoucherDetailDto;
+  /** Internal attachment identity for write verification; not part of the tool's DTO. */
+  readonly documentId?: number | undefined;
   readonly positions: readonly VoucherPositionDto[];
   /** False when sevDesk had more position rows than could be read; `positions` is then partial. */
   readonly positionsComplete: boolean;
@@ -540,6 +542,7 @@ export async function getVoucherDetails(
   const positions = await listPositions(client, id, withSignal.signal);
   return {
     voucher,
+    documentId: record.document?.id,
     positions: positions.rows.map((row) => toPositionDto(row, voucher.currency)),
     positionsComplete: positions.complete,
   };

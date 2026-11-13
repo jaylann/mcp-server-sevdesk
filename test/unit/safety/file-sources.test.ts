@@ -269,9 +269,14 @@ describe("remoteFileAccess: uploads", () => {
       filesConfig({ deployment: filesDeployment("bearer"), fileDirs: [dir] }),
     );
 
+    files.release("Beleg.pdf");
+    files.release("upload:invalid");
+    localFileAccess({ fileDirs: [dir], outputDir: undefined }).release("Beleg.pdf");
     expect(await files.read("Beleg.pdf", RECEIPT)).toMatchObject({ source: "local" });
     const ref = await transfer.upload(PDF);
     expect(await files.read(ref, RECEIPT)).toMatchObject({ source: "upload" });
+    files.release(ref);
+    await expect(files.read(ref, RECEIPT)).rejects.toThrow(/already attached successfully/);
   });
 
   it("turns the store's limits into trusted refusals", async () => {

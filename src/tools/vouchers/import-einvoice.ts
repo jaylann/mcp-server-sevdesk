@@ -53,10 +53,12 @@ export function voucherImportEInvoiceTool(planner: VoucherSuggestionPlanner) {
         { signal: ctx.signal, cacheOwner: ctx.config, files: ctx.files },
         planner,
       ),
-    execute: async (_args, plan, ctx) =>
-      voucherDraftToolOutput(
-        await executeVoucherSave(ctx.client, plan.state, ctx.signal),
-        "Imported e-invoice as draft",
-      ),
+    execute: async (args, plan, ctx) => {
+      const result = await executeVoucherSave(ctx.client, plan.state, ctx.signal);
+      if (plan.state.file !== undefined && result.details.voucher.hasDocument === true) {
+        ctx.files.release(args.file);
+      }
+      return voucherDraftToolOutput(result, "Imported e-invoice as draft");
+    },
   });
 }

@@ -109,6 +109,12 @@ stdio; der HTTP-Server startet mit ihnen nicht.
 einiger der oben genannten Variablen. Beides beschreibt die
 [Konfigurationsreferenz des Fernzugriffs](remote.de.md#konfigurationsreferenz).
 
+Für die Dateiübertragung begrenzt `SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT` (Standard `10`, ganze
+Zahlen von 1 bis 1000) die gemeinsame Anzahl gültiger Upload-Seiten, hochgeladener Dateien und
+Download-Links je Konto. Erfolgreiches Anhängen gibt Uploads sofort frei; die Byte-Grenzen werden
+weiterhin durch `SEVDESK_HTTP_FILES_MAX_MB` bestimmt. Alle Dateigrenzen stehen in der oben
+verlinkten Referenz des Fernzugriffs.
+
 ## Werkzeuggruppen
 
 Eine Werkzeuggruppe fasst die Werkzeuge für einen Bereich zusammen. `SEVDESK_TOOLSETS` wählt die

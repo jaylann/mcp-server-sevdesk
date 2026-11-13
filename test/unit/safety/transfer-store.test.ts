@@ -118,6 +118,122 @@ describe("transfer store: uploads", () => {
     ]);
   });
 
+  it("releases only an uploaded file of the same grant and account, including its blob", async () => {
+    const { store, blobs } = await setup({ maxRecordsPerAccount: 3 });
+    const put = vi.spyOn(blobs, "put");
+    const deleted = vi.spyOn(blobs, "delete");
+    const ticket = store.createTicket(A1, "receipt");
+    const pending = store.createTicket(A1, "receipt");
+    const link = await store.createDownload(A1, { filename: "a.pdf", kind: "pdf", bytes: PDF });
+    await store.receive(ticket.id, "1001", file());
+    const blobId: unknown = await put.mock.results[1]?.value;
+    expect(blobId).toBeDefined();
+    for (const owner of [A2, B, { ...A1, accountScope: B.accountScope }]) {
+      store.releaseUpload(owner, ticket.id);
+    }
+    for (const id of [pending.id, link.id, "unknown"]) store.releaseUpload(A1, id);
+    expect(deleted).not.toHaveBeenCalled();
+    expect(store.usage()).toEqual({ records: 3, bytes: 2 * PDF.byteLength });
+    expect(() => store.createTicket(A1, "receipt")).toThrow(TransferLimitError);
+
+    store.releaseUpload(A1, ticket.id);
+    store.releaseUpload(A1, ticket.id); // Idempotent, including concurrent successful consumers.
+    expect(deleted).toHaveBeenCalledExactlyOnceWith(blobId);
+    if (typeof blobId !== "string") throw new Error("missing test blob");
+    expect(await blobs.get(blobId, { accountScope: "1001", kind: "pdf" })).toBeUndefined();
+    expect(await store.readUpload(A1, ticket.id)).toBeUndefined();
+    expect(store.ticketFor(ticket.id, "1001")).toBeUndefined();
+    expect(await store.receive(ticket.id, "1001", file())).toEqual({ status: "unknown" });
+    expect(store.usage()).toEqual({ records: 2, bytes: PDF.byteLength });
+    expect(store.createTicket(A1, "receipt").id).toBeDefined();
+  });
+
+  it("does not release a receiving ticket", async () => {
+    const real = await openBlobStore();
+    const blobs: BlobStore = {
+      ...real,
+      put(binding, bytes) {
+        store.releaseUpload(A1, ticket.id);
+        expect(() => store.createTicket(A1, "receipt")).toThrow(
+          "No expiry is available for this account yet",
+        );
+        expect(store.ticketFor(ticket.id, "1001")).toMatchObject({ status: "receiving" });
+        return real.put(binding, bytes);
+      },
+    };
+    const { store } = await setup({ blobs, maxRecordsPerAccount: 1 });
+    const ticket = store.createTicket(A1, "receipt");
+    expect(await store.receive(ticket.id, "1001", file())).toMatchObject({ status: "received" });
+  });
+
+  it("reports the earliest account expiry, including tickets and links but never other accounts", async () => {
+    const { store, clock } = await setup({ maxRecordsPerAccount: 3 });
+    const foreign = store.createTicket(B, "receipt"); // 12:15, must not be disclosed.
+    clock.advance(60_000);
+    const uploaded = store.createTicket(A1, "receipt");
+    await store.receive(uploaded.id, "1001", file()); // 12:31
+    const link = await store.createDownload(A2, { filename: "a.pdf", kind: "pdf", bytes: PDF });
+    clock.advance(60_000);
+    const pending = store.createTicket(A1, "receipt"); // 12:17, earliest of this account.
+    const expected = `The next expiry for this account is ${pending.expiresAt}.`;
+    expect(() => store.createTicket(A1, "receipt")).toThrow(expected);
+    await expect(
+      store.createDownload(A1, { filename: "a.pdf", kind: "pdf", bytes: PDF }),
+    ).rejects.toThrow(expected);
+    try {
+      store.createTicket(A1, "receipt");
+    } catch (error) {
+      expect(error).toBeInstanceOf(TransferLimitError);
+      if (!(error instanceof Error)) throw error;
+      expect(error.message).not.toContain(foreign.expiresAt);
+    }
+    clock.advance(15 * 60_000);
+    expect(store.createTicket(A1, "receipt").id).toBeDefined();
+    expect(() => store.createTicket(A1, "receipt")).toThrow(link.expiresAt);
+  });
+
+  it("reports the earliest pending expiry and prunes it at the boundary", async () => {
+    const { store, clock } = await setup({ maxPendingPerAccount: 2 });
+    const first = store.createTicket(A1, "receipt");
+    clock.advance(60_000);
+    store.createTicket(A1, "receipt");
+    expect(() => store.createTicket(A1, "receipt")).toThrow(first.expiresAt);
+    clock.advance(14 * 60_000);
+    expect(store.createTicket(A1, "receipt").id).toBeDefined();
+  });
+
+  it("does not disclose foreign expiries at the global cap", async () => {
+    const { store } = await setup({ maxRecords: 1 });
+    const foreign = store.createTicket(B, "receipt");
+    expect(() => store.createTicket(A1, "receipt")).toThrow(
+      "No expiry is available for this account yet",
+    );
+    try {
+      store.createTicket(A1, "receipt");
+    } catch (error) {
+      expect(error).toBeInstanceOf(TransferLimitError);
+      if (!(error instanceof Error)) throw error;
+      expect(error.message).not.toContain(foreign.expiresAt);
+    }
+    expect(() => store.createTicket(B, "receipt")).toThrow(foreign.expiresAt);
+  });
+
+  it("counts in-flight downloads without inventing an expiry", async () => {
+    const real = await openBlobStore();
+    const blobs: BlobStore = {
+      ...real,
+      put(binding, bytes) {
+        expect(() => store.createTicket(A1, "receipt")).toThrow(
+          "No expiry is available for this account yet",
+        );
+        return real.put(binding, bytes);
+      },
+    };
+    const { store } = await setup({ blobs, maxRecordsPerAccount: 1 });
+    const link = await store.createDownload(A1, { filename: "a.pdf", kind: "pdf", bytes: PDF });
+    expect(() => store.createTicket(A1, "receipt")).toThrow(link.expiresAt);
+  });
+
   it("shows and accepts a ticket only for its account; foreign looks unknown", async () => {
     const { store } = await setup();
     const ticket = store.createTicket(A1, "einvoice");

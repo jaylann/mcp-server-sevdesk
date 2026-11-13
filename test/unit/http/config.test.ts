@@ -75,7 +75,7 @@ describe("loadHttpConfig: bearer mode", () => {
       secret: undefined,
       previousSecret: undefined,
       oauth: undefined,
-      files: { maxBytes: 64 * MIB, ttlSeconds: 1800 },
+      files: { maxBytes: 64 * MIB, ttlSeconds: 1800, maxPerAccount: 10 },
     });
     expect(loaded.warnings).toEqual([
       expect.stringContaining(PLAIN_HTTP_WARNING),
@@ -584,7 +584,11 @@ describe("helpers", () => {
       Object.keys(httpDeployment("oauth", "https://a.example", "elicit")).includes("files"),
     ).toBe(false);
     expect(
-      httpDeployment("bearer", "https://a.example", "browser", { maxBytes: 1, ttlSeconds: 600 }),
+      httpDeployment("bearer", "https://a.example", "browser", {
+        maxBytes: 1,
+        ttlSeconds: 600,
+        maxPerAccount: 10,
+      }),
     ).toEqual({
       kind: "http",
       auth: "bearer",
@@ -697,7 +701,7 @@ describe("looksHumanChosen", () => {
 describe("loadHttpConfig: remote file transfer", () => {
   it("is on by default: 256 MB with a state directory, 30 minutes", () => {
     const loaded = load(OAUTH_ENV);
-    expect(loaded.http.files).toEqual({ maxBytes: 256 * MIB, ttlSeconds: 1800 });
+    expect(loaded.http.files).toEqual({ maxBytes: 256 * MIB, ttlSeconds: 1800, maxPerAccount: 10 });
     expect(loaded.warnings).toEqual([]);
   });
 
@@ -706,14 +710,34 @@ describe("loadHttpConfig: remote file transfer", () => {
       ...OAUTH_ENV,
       SEVDESK_HTTP_FILES: "ON",
       SEVDESK_HTTP_FILES_MAX_MB: "4096",
+      SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT: "1000",
       SEVDESK_HTTP_FILES_TTL: "24h",
     });
-    expect(loaded.http.files).toEqual({ maxBytes: 4096 * MIB, ttlSeconds: 86_400 });
+    expect(loaded.http.files).toEqual({
+      maxBytes: 4096 * MIB,
+      ttlSeconds: 86_400,
+      maxPerAccount: 1000,
+    });
     expect(load({ ...OAUTH_ENV, SEVDESK_HTTP_FILES_MAX_MB: "32" }).http.files?.maxBytes).toBe(
       32 * MIB,
     );
     expect(load({ ...OAUTH_ENV, SEVDESK_HTTP_FILES_TTL: "300" }).http.files?.ttlSeconds).toBe(300);
   });
+
+  it.each(["1", "50", "1000"])("reads the per-account limit %s", (value) => {
+    expect(
+      load({ ...OAUTH_ENV, SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT: value }).http.files?.maxPerAccount,
+    ).toBe(Number(value));
+  });
+
+  it.each(["0", "-1", "1001", "1.5", "1e2", "Infinity", "abc", "999999999999999999999"])(
+    "refuses the per-account limit %s",
+    (value) => {
+      expect(problemsOf({ ...OAUTH_ENV, SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT: value })).toEqual([
+        "SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT: expected a whole number between 1 and 1000.",
+      ]);
+    },
+  );
 
   it.each([
     ["SEVDESK_HTTP_FILES", "maybe", 'SEVDESK_HTTP_FILES: expected 1/0 or true/false, got "maybe".'],
@@ -750,10 +774,11 @@ describe("loadHttpConfig: remote file transfer", () => {
       ...BEARER_ENV,
       SEVDESK_HTTP_FILES: "off",
       SEVDESK_HTTP_FILES_MAX_MB: "abc",
+      SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT: "abc",
       SEVDESK_HTTP_FILES_TTL: "1h",
     });
     expect(tuned.warnings).toEqual([
-      "SEVDESK_HTTP_FILES_MAX_MB and SEVDESK_HTTP_FILES_TTL have no effect with SEVDESK_HTTP_FILES=off.",
+      "SEVDESK_HTTP_FILES_MAX_MB and SEVDESK_HTTP_FILES_TTL and SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT have no effect with SEVDESK_HTTP_FILES=off.",
     ]);
   });
 

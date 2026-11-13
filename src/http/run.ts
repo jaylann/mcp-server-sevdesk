@@ -298,6 +298,7 @@ async function openTransferStore(
   return createTransferStore({
     blobs,
     maxBytes: files.maxBytes,
+    maxRecordsPerAccount: files.maxPerAccount,
     fileTtlMs: files.ttlSeconds * 1000,
     audit,
     onAuditError: (event) => {
