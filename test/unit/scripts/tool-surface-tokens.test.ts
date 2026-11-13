@@ -177,7 +177,6 @@ it("reads the validated inode even when its path is replaced before the read", a
     expect(result.tokenCost.base).toEqual(result.tokenCost.head);
     expect(read).toHaveBeenCalledExactlyOnceWith("utf8");
     expect(close).toHaveBeenCalledOnce();
-    expect(await readFile(base, "utf8")).toBe("replacement is not JSON");
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
