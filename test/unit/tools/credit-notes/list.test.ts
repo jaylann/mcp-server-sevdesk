@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { creditNoteRowSchema } from "../../../../src/domain/credit-notes.js";
 import { creditNotesListTool as tool } from "../../../../src/tools/credit-notes/list.js";
 import { type FakeRoute, FakeSevdeskClient, testContext } from "../../../helpers/fake-client.js";
 
@@ -12,7 +13,17 @@ const listRoute: FakeRoute = {
 async function list(args: Record<string, unknown>, routes: readonly FakeRoute[] = [listRoute]) {
   const client = new FakeSevdeskClient(routes);
   const result = await tool.handler(tool.input.parse(args), testContext(client));
-  return { client, result };
+  // These existing assertions exercise the unchanged full/default contract.
+  return {
+    client,
+    result: {
+      ...result,
+      data: {
+        ...result.data,
+        items: result.data.items.map((row) => creditNoteRowSchema.parse(row)),
+      },
+    },
+  };
 }
 
 describe("sevdesk_credit_notes_list (community: recorded CreditNote shape, fake data)", () => {

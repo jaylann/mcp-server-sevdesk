@@ -100,6 +100,7 @@ const harness = createHarness<EvalCase, SelectionOutput>({
       output: {
         firstTool: toolUses[0]?.name ?? NO_TOOL,
         tools: toolUses.map((block) => block.name),
+        calls: toolUses.map((block) => ({ name: block.name, input: block.input })),
         stopReason: response.stopReason,
         source,
       },

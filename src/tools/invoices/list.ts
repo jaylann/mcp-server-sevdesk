@@ -14,6 +14,11 @@ import {
   type InvoiceTypeFilter,
   listInvoices,
 } from "../../domain/invoices.js";
+import {
+  invoiceSummary,
+  invoiceSummarySchema,
+  listDetailInputShape,
+} from "../../domain/list-summary.js";
 import { pageOutputShape, pagingInputShape } from "../../domain/paging.js";
 import { defineTool } from "../define-tool.js";
 
@@ -24,7 +29,7 @@ const STATUS_KEYS = Object.keys(INVOICE_STATUS_FILTERS) as [
 const TYPE_KEYS = Object.keys(INVOICE_TYPE_FILTERS) as [InvoiceTypeFilter, ...InvoiceTypeFilter[]];
 
 const output = z.object({
-  items: z.array(invoiceRowSchema),
+  items: z.array(z.union([invoiceRowSchema, invoiceSummarySchema])),
   ...pageOutputShape,
   ...localFilterOutputShape,
 });
@@ -42,7 +47,7 @@ export const invoicesListTool = defineTool({
     "past the due date, überfällig). overdueOnly, type and number are checked here too (up to " +
     "1,000 rows scanned per call; total left out, filteredLocally set). A cancelled " +
     "invoice keeps status paid; its SR invoice has cancelsInvoiceId. Page with offset = " +
-    "nextOffset while hasMore. Details: sevdesk_invoice_get.",
+    "nextOffset while hasMore. Use detail=summary to browse/find. Use sevdesk_invoice_get for positions, tax and payment terms.",
   toolset: "invoices",
   tier: "read",
   annotations: {
@@ -52,6 +57,7 @@ export const invoicesListTool = defineTool({
     openWorldHint: false,
   },
   input: z.strictObject({
+    ...listDetailInputShape,
     status: z
       .enum(STATUS_KEYS)
       .optional()
@@ -85,7 +91,10 @@ export const invoicesListTool = defineTool({
   handler: async (args, ctx) => {
     const result = await listInvoices(ctx.client, args, ctx.signal);
     return {
-      data: documentListData(result, args),
+      data: {
+        ...documentListData(result, args),
+        items: args.detail === "summary" ? result.items.map(invoiceSummary) : [...result.items],
+      },
       summary: documentListSummary(
         "Invoices",
         args.overdueOnly ? "overdue invoices" : "matching invoices",

@@ -92,6 +92,12 @@ cassette.
 
 ## CI
 
+The paired `invoices-summary-browse-en` / `invoice-get-after-summary-en` cases check browsing
+with `detail: "summary"` and fetching the selected id. `expectedInput` scores the argument
+subset as well as the tool name. The second case supplies a fixed summary in the prompt;
+these are two first-answer checks, not a live multi-turn workflow. New recordings are needed
+after changing the list schemas or descriptions; CI's record job can produce them.
+
 `.github/workflows/evals.yml` runs on pull requests that touch `src/tools/**`,
 `src/instructions.ts` or the evals. It only **replays**: it scores the committed cassettes,
 without secrets and at no cost, and its summary lists the stale cases. It is informational

@@ -7,6 +7,11 @@ import {
   localFilterOutputShape,
 } from "../../domain/document-positions.js";
 import {
+  listDetailInputShape,
+  orderSummary,
+  orderSummarySchema,
+} from "../../domain/list-summary.js";
+import {
   listOrders,
   ORDER_STATUS_FILTERS,
   ORDER_TYPE_FILTERS,
@@ -24,7 +29,7 @@ const STATUS_KEYS = Object.keys(ORDER_STATUS_FILTERS) as [
 const TYPE_KEYS = Object.keys(ORDER_TYPE_FILTERS) as [OrderTypeFilter, ...OrderTypeFilter[]];
 
 const output = z.object({
-  items: z.array(orderRowSchema),
+  items: z.array(z.union([orderRowSchema, orderSummarySchema])),
   ...pageOutputShape,
   ...localFilterOutputShape,
 });
@@ -40,8 +45,8 @@ export const ordersListTool = defineTool({
     "Entwurf, sent = versendet, rejected = abgelehnt, accepted = angenommen, " +
     "partially_invoiced, invoiced = berechnet), contactId, exact order number and date range. " +
     "Type and number are also checked here (up to 1,000 rows scanned per call; total left " +
-    "out, filteredLocally set). Page with offset = nextOffset while hasMore. Details and " +
-    "positions: sevdesk_order_get.",
+    "out, filteredLocally set). Page with offset = nextOffset while hasMore. " +
+    "Use detail=summary to browse/find. Use sevdesk_order_get for details and positions.",
   toolset: "orders",
   tier: "read",
   annotations: {
@@ -51,6 +56,7 @@ export const ordersListTool = defineTool({
     openWorldHint: false,
   },
   input: z.strictObject({
+    ...listDetailInputShape,
     type: z
       .enum(TYPE_KEYS)
       .optional()
@@ -82,7 +88,10 @@ export const ordersListTool = defineTool({
   handler: async (args, ctx) => {
     const result = await listOrders(ctx.client, args, ctx.signal);
     return {
-      data: documentListData(result, args),
+      data: {
+        ...documentListData(result, args),
+        items: args.detail === "summary" ? result.items.map(orderSummary) : [...result.items],
+      },
       summary: documentListSummary("Orders", "matching orders", result, args),
     };
   },

@@ -151,15 +151,16 @@ No arguments.
 
 **Search sevDesk contacts** · tier `read` · read-only, idempotent
 
-Search contacts (Kontakte) in sevDesk: organisations and persons, such as customers (Kunden), suppliers (Lieferanten), partners and prospects (Interessenten). Filter by name, exact customer number (Kundennummer) and category. sevDesk does the name matching against organisation names and persons' first and last names; if nothing is found, try a shorter or different part of the name. Results are compact and paged (limit/offset, total, hasMore). Use an id with sevdesk_contact_get for addresses, emails and phone numbers.
+Search contacts (Kontakte) in sevDesk: organisations and persons, such as customers (Kunden), suppliers (Lieferanten), partners and prospects (Interessenten). Filter by name, exact customer number (Kundennummer) and category. sevDesk does the name matching against organisation names and persons' first and last names; if nothing is found, try a shorter or different part of the name. Results are compact and paged (limit/offset, total, hasMore). Use detail=summary to browse/find. Use sevdesk_contact_get for addresses, emails and phone numbers.
 
-| Argument         | Type                                                | Required | Description                                                                    |
-| ---------------- | --------------------------------------------------- | -------- | ------------------------------------------------------------------------------ |
-| `query`          | string                                              | no       | Name or part of a name, e.g. 'Musterfirma' or 'Mustermann'.                    |
-| `customerNumber` | string                                              | no       | Exact customer number (Kundennummer), e.g. 'K-1001'.                           |
-| `category`       | `supplier` \| `customer` \| `partner` \| `prospect` | no       | customer (Kunde), supplier (Lieferant), partner or prospect (Interessent).     |
-| `limit`          | integer                                             | no       | Page size, 1–100. Default: `25`.                                               |
-| `offset`         | integer                                             | no       | Rows to skip, for paging: pass the previous result's nextOffset. Default: `0`. |
+| Argument         | Type                                                | Required | Description                                                                                         |
+| ---------------- | --------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------- |
+| `detail`         | `summary` \| `full`                                 | no       | Use summary to browse/find; full (default) or the matching get tool for details. Default: `"full"`. |
+| `query`          | string                                              | no       | Name or part of a name, e.g. 'Musterfirma' or 'Mustermann'.                                         |
+| `customerNumber` | string                                              | no       | Exact customer number (Kundennummer), e.g. 'K-1001'.                                                |
+| `category`       | `supplier` \| `customer` \| `partner` \| `prospect` | no       | customer (Kunde), supplier (Lieferant), partner or prospect (Interessent).                          |
+| `limit`          | integer                                             | no       | Page size, 1–100. Default: `25`.                                                                    |
+| `offset`         | integer                                             | no       | Rows to skip, for paging: pass the previous result's nextOffset. Default: `0`.                      |
 
 ## Toolset `invoices`
 
@@ -373,19 +374,20 @@ Get the XML of an e-invoice (E-Rechnung: XRechnung, the same XML a ZUGFeRD PDF e
 
 **List sevDesk invoices** · tier `read` · read-only, idempotent
 
-List invoices (Rechnungen): number, type, status, customer, date, due date, net/tax/gross, paid, sent/locked state, web link. Filters: status (draft = Entwurf, open = offen, partially_paid, paid = bezahlt), type (invoice RE, advance AR Abschlagsrechnung, partial TR, final ER, cancellation SR Stornorechnung, reminder MA Mahnung, recurring WKR), contactId, exact number (Rechnungsnummer), date range, overdueOnly (open/partially paid past the due date, überfällig). overdueOnly, type and number are checked here too (up to 1,000 rows scanned per call; total left out, filteredLocally set). A cancelled invoice keeps status paid; its SR invoice has cancelsInvoiceId. Page with offset = nextOffset while hasMore. Details: sevdesk_invoice_get.
+List invoices (Rechnungen): number, type, status, customer, date, due date, net/tax/gross, paid, sent/locked state, web link. Filters: status (draft = Entwurf, open = offen, partially_paid, paid = bezahlt), type (invoice RE, advance AR Abschlagsrechnung, partial TR, final ER, cancellation SR Stornorechnung, reminder MA Mahnung, recurring WKR), contactId, exact number (Rechnungsnummer), date range, overdueOnly (open/partially paid past the due date, überfällig). overdueOnly, type and number are checked here too (up to 1,000 rows scanned per call; total left out, filteredLocally set). A cancelled invoice keeps status paid; its SR invoice has cancelsInvoiceId. Page with offset = nextOffset while hasMore. Use detail=summary to browse/find. Use sevdesk_invoice_get for positions, tax and payment terms.
 
-| Argument      | Type                                                                                          | Required | Description                                                                            |
-| ------------- | --------------------------------------------------------------------------------------------- | -------- | -------------------------------------------------------------------------------------- |
-| `status`      | `draft` \| `open` \| `partially_paid` \| `paid`                                               | no       | draft (100), open (200), partially_paid (750) or paid (1000).                          |
-| `type`        | `invoice` \| `advance` \| `partial` \| `final` \| `cancellation` \| `reminder` \| `recurring` | no       | Invoice type: invoice (RE), advance, partial, final, cancellation, reminder…           |
-| `contactId`   | integer                                                                                       | no       | Only invoices of this contact (id from sevdesk_contacts_search).                       |
-| `number`      | string                                                                                        | no       | Exact invoice number, e.g. 'RE-1000'.                                                  |
-| `from`        | string                                                                                        | no       | First day to include, YYYY-MM-DD (Berlin time).                                        |
-| `to`          | string                                                                                        | no       | Last day to include, YYYY-MM-DD (Berlin time).                                         |
-| `overdueOnly` | boolean                                                                                       | no       | Only open/partially paid invoices past their due date (Berlin time). Default: `false`. |
-| `limit`       | integer                                                                                       | no       | Page size, 1–100. Default: `25`.                                                       |
-| `offset`      | integer                                                                                       | no       | Rows to skip, for paging: pass the previous result's nextOffset. Default: `0`.         |
+| Argument      | Type                                                                                          | Required | Description                                                                                         |
+| ------------- | --------------------------------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------- |
+| `detail`      | `summary` \| `full`                                                                           | no       | Use summary to browse/find; full (default) or the matching get tool for details. Default: `"full"`. |
+| `status`      | `draft` \| `open` \| `partially_paid` \| `paid`                                               | no       | draft (100), open (200), partially_paid (750) or paid (1000).                                       |
+| `type`        | `invoice` \| `advance` \| `partial` \| `final` \| `cancellation` \| `reminder` \| `recurring` | no       | Invoice type: invoice (RE), advance, partial, final, cancellation, reminder…                        |
+| `contactId`   | integer                                                                                       | no       | Only invoices of this contact (id from sevdesk_contacts_search).                                    |
+| `number`      | string                                                                                        | no       | Exact invoice number, e.g. 'RE-1000'.                                                               |
+| `from`        | string                                                                                        | no       | First day to include, YYYY-MM-DD (Berlin time).                                                     |
+| `to`          | string                                                                                        | no       | Last day to include, YYYY-MM-DD (Berlin time).                                                      |
+| `overdueOnly` | boolean                                                                                       | no       | Only open/partially paid invoices past their due date (Berlin time). Default: `false`.              |
+| `limit`       | integer                                                                                       | no       | Page size, 1–100. Default: `25`.                                                                    |
+| `offset`      | integer                                                                                       | no       | Rows to skip, for paging: pass the previous result's nextOffset. Default: `0`.                      |
 
 ## Toolset `credit-notes`
 
@@ -524,17 +526,18 @@ Email a credit note (Gutschrift per E-Mail versenden) through sevDesk: sevDesk s
 
 **List sevDesk credit notes** · tier `read` · read-only, idempotent
 
-List credit notes (Gutschriften) with compact rows: number, status, contact, date, net/tax/gross, booking category (e.g. UNDERACHIEVEMENT = Minderleistung, PROVISION) and the invoice they refer to (sourceInvoiceId). Filter by status (draft = Entwurf, open, partially_paid, paid), contactId, exact credit note number (Gutschriftsnummer) and date range. Page with offset = nextOffset while hasMore. Details and positions: sevdesk_credit_note_get; the source invoice: sevdesk_invoice_get.
+List credit notes (Gutschriften) with compact rows: number, status, contact, date, net/tax/gross, booking category (e.g. UNDERACHIEVEMENT = Minderleistung, PROVISION) and the invoice they refer to (sourceInvoiceId). Filter by status (draft = Entwurf, open, partially_paid, paid), contactId, exact credit note number (Gutschriftsnummer) and date range. Page with offset = nextOffset while hasMore. Use detail=summary to browse/find. Use sevdesk_credit_note_get for details and positions. The source invoice: sevdesk_invoice_get.
 
-| Argument    | Type                                            | Required | Description                                                                    |
-| ----------- | ----------------------------------------------- | -------- | ------------------------------------------------------------------------------ |
-| `status`    | `draft` \| `open` \| `partially_paid` \| `paid` | no       | draft (100), open (200), partially_paid (750) or paid (1000).                  |
-| `contactId` | integer                                         | no       | Only credit notes of this contact.                                             |
-| `number`    | string                                          | no       | Exact credit note number, e.g. 'GU-1000'.                                      |
-| `from`      | string                                          | no       | First day to include, YYYY-MM-DD (Berlin time).                                |
-| `to`        | string                                          | no       | Last day to include, YYYY-MM-DD (Berlin time).                                 |
-| `limit`     | integer                                         | no       | Page size, 1–100. Default: `25`.                                               |
-| `offset`    | integer                                         | no       | Rows to skip, for paging: pass the previous result's nextOffset. Default: `0`. |
+| Argument    | Type                                            | Required | Description                                                                                         |
+| ----------- | ----------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------- |
+| `detail`    | `summary` \| `full`                             | no       | Use summary to browse/find; full (default) or the matching get tool for details. Default: `"full"`. |
+| `status`    | `draft` \| `open` \| `partially_paid` \| `paid` | no       | draft (100), open (200), partially_paid (750) or paid (1000).                                       |
+| `contactId` | integer                                         | no       | Only credit notes of this contact.                                                                  |
+| `number`    | string                                          | no       | Exact credit note number, e.g. 'GU-1000'.                                                           |
+| `from`      | string                                          | no       | First day to include, YYYY-MM-DD (Berlin time).                                                     |
+| `to`        | string                                          | no       | Last day to include, YYYY-MM-DD (Berlin time).                                                      |
+| `limit`     | integer                                         | no       | Page size, 1–100. Default: `25`.                                                                    |
+| `offset`    | integer                                         | no       | Rows to skip, for paging: pass the previous result's nextOffset. Default: `0`.                      |
 
 ## Toolset `orders`
 
@@ -649,18 +652,19 @@ Change a draft offer (Angebot), order confirmation (Auftragsbestätigung) or del
 
 **List sevDesk orders** · tier `read` · read-only, idempotent
 
-List orders in sevDesk: offers (Angebote, AN), order confirmations (Auftragsbestätigungen, AB) and delivery notes (Lieferscheine, LI), with compact rows: number, type, status, contact, date, net/tax/gross. Filter by type, status (draft = Entwurf, sent = versendet, rejected = abgelehnt, accepted = angenommen, partially_invoiced, invoiced = berechnet), contactId, exact order number and date range. Type and number are also checked here (up to 1,000 rows scanned per call; total left out, filteredLocally set). Page with offset = nextOffset while hasMore. Details and positions: sevdesk_order_get.
+List orders in sevDesk: offers (Angebote, AN), order confirmations (Auftragsbestätigungen, AB) and delivery notes (Lieferscheine, LI), with compact rows: number, type, status, contact, date, net/tax/gross. Filter by type, status (draft = Entwurf, sent = versendet, rejected = abgelehnt, accepted = angenommen, partially_invoiced, invoiced = berechnet), contactId, exact order number and date range. Type and number are also checked here (up to 1,000 rows scanned per call; total left out, filteredLocally set). Page with offset = nextOffset while hasMore. Use detail=summary to browse/find. Use sevdesk_order_get for details and positions.
 
-| Argument    | Type                                                                                | Required | Description                                                                             |
-| ----------- | ----------------------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------- |
-| `type`      | `offer` \| `order_confirmation` \| `delivery_note`                                  | no       | offer (AN), order_confirmation (AB) or delivery_note (LI).                              |
-| `status`    | `draft` \| `sent` \| `rejected` \| `accepted` \| `partially_invoiced` \| `invoiced` | no       | draft 100, sent 200, rejected 300, accepted 500, partially_invoiced 750, invoiced 1000. |
-| `contactId` | integer                                                                             | no       | Only orders of this contact.                                                            |
-| `number`    | string                                                                              | no       | Exact order number, e.g. 'AN-1000'.                                                     |
-| `from`      | string                                                                              | no       | First day to include, YYYY-MM-DD (Berlin time).                                         |
-| `to`        | string                                                                              | no       | Last day to include, YYYY-MM-DD (Berlin time).                                          |
-| `limit`     | integer                                                                             | no       | Page size, 1–100. Default: `25`.                                                        |
-| `offset`    | integer                                                                             | no       | Rows to skip, for paging: pass the previous result's nextOffset. Default: `0`.          |
+| Argument    | Type                                                                                | Required | Description                                                                                         |
+| ----------- | ----------------------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------- |
+| `detail`    | `summary` \| `full`                                                                 | no       | Use summary to browse/find; full (default) or the matching get tool for details. Default: `"full"`. |
+| `type`      | `offer` \| `order_confirmation` \| `delivery_note`                                  | no       | offer (AN), order_confirmation (AB) or delivery_note (LI).                                          |
+| `status`    | `draft` \| `sent` \| `rejected` \| `accepted` \| `partially_invoiced` \| `invoiced` | no       | draft 100, sent 200, rejected 300, accepted 500, partially_invoiced 750, invoiced 1000.             |
+| `contactId` | integer                                                                             | no       | Only orders of this contact.                                                                        |
+| `number`    | string                                                                              | no       | Exact order number, e.g. 'AN-1000'.                                                                 |
+| `from`      | string                                                                              | no       | First day to include, YYYY-MM-DD (Berlin time).                                                     |
+| `to`        | string                                                                              | no       | Last day to include, YYYY-MM-DD (Berlin time).                                                      |
+| `limit`     | integer                                                                             | no       | Page size, 1–100. Default: `25`.                                                                    |
+| `offset`    | integer                                                                             | no       | Rows to skip, for paging: pass the previous result's nextOffset. Default: `0`.                      |
 
 ## Toolset `vouchers`
 
@@ -828,20 +832,21 @@ Update an unlocked draft voucher (Beleg, status 50): supplier, dates, tax rule, 
 
 **List sevDesk vouchers** · tier `read` · read-only, idempotent
 
-List vouchers (Belege): receipts and supplier invoices (Ausgaben, kind=expense) and other income documents (Einnahmen, kind=revenue). Filter by status (draft = Entwurf, open = offen/fällig, transferred = überwiesen, partially_paid, paid = bezahlt), kind, supplier contact id or supplier name, Belegnummer/description, voucher date range and type (normal or recurring). Filters run in sevDesk; the type is also re-checked here (then rows are scanned, total is left out and filteredLocally is set). Exact amounts. Paged: pass nextOffset as offset while hasMore is true. Use sevdesk_voucher_get for positions, tax rule and booking accounts; find supplier ids with sevdesk_contacts_search.
+List vouchers (Belege): receipts and supplier invoices (Ausgaben, kind=expense) and other income documents (Einnahmen, kind=revenue). Filter by status (draft = Entwurf, open = offen/fällig, transferred = überwiesen, partially_paid, paid = bezahlt), kind, supplier contact id or supplier name, Belegnummer/description, voucher date range and type (normal or recurring). Filters run in sevDesk; the type is also re-checked here (then rows are scanned, total is left out and filteredLocally is set). Exact amounts. Paged: pass nextOffset as offset while hasMore is true. Use detail=summary to browse/find. Use sevdesk_voucher_get for positions, tax rule and booking accounts. Find supplier ids with sevdesk_contacts_search.
 
-| Argument       | Type                                                             | Required | Description                                                                    |
-| -------------- | ---------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------ |
-| `status`       | `draft` \| `open` \| `transferred` \| `partially_paid` \| `paid` | no       | Voucher status by name.                                                        |
-| `kind`         | `expense` \| `revenue`                                           | no       | expense (Ausgabe, creditDebit C) or revenue (Einnahme, creditDebit D).         |
-| `supplierId`   | integer                                                          | no       | Contact id of the supplier (Lieferant) or customer.                            |
-| `supplierName` | string                                                           | no       | Part of the supplier name, for vouchers without a contact too.                 |
-| `description`  | string                                                           | no       | Part of the Belegnummer or description, e.g. an invoice number.                |
-| `from`         | string                                                           | no       | First day to include, YYYY-MM-DD (Berlin time).                                |
-| `to`           | string                                                           | no       | Last day to include, YYYY-MM-DD (Berlin time).                                 |
-| `type`         | `normal` \| `recurring`                                          | no       | normal (VOU) or recurring (RV).                                                |
-| `limit`        | integer                                                          | no       | Page size, 1–100. Default: `25`.                                               |
-| `offset`       | integer                                                          | no       | Rows to skip, for paging: pass the previous result's nextOffset. Default: `0`. |
+| Argument       | Type                                                             | Required | Description                                                                                         |
+| -------------- | ---------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------- |
+| `detail`       | `summary` \| `full`                                              | no       | Use summary to browse/find; full (default) or the matching get tool for details. Default: `"full"`. |
+| `status`       | `draft` \| `open` \| `transferred` \| `partially_paid` \| `paid` | no       | Voucher status by name.                                                                             |
+| `kind`         | `expense` \| `revenue`                                           | no       | expense (Ausgabe, creditDebit C) or revenue (Einnahme, creditDebit D).                              |
+| `supplierId`   | integer                                                          | no       | Contact id of the supplier (Lieferant) or customer.                                                 |
+| `supplierName` | string                                                           | no       | Part of the supplier name, for vouchers without a contact too.                                      |
+| `description`  | string                                                           | no       | Part of the Belegnummer or description, e.g. an invoice number.                                     |
+| `from`         | string                                                           | no       | First day to include, YYYY-MM-DD (Berlin time).                                                     |
+| `to`           | string                                                           | no       | Last day to include, YYYY-MM-DD (Berlin time).                                                      |
+| `type`         | `normal` \| `recurring`                                          | no       | normal (VOU) or recurring (RV).                                                                     |
+| `limit`        | integer                                                          | no       | Page size, 1–100. Default: `25`.                                                                    |
+| `offset`       | integer                                                          | no       | Rows to skip, for paging: pass the previous result's nextOffset. Default: `0`.                      |
 
 ## Toolset `banking`
 
@@ -920,10 +925,11 @@ Undo a bank transaction's bookings (Zuordnung aufheben). A private transaction (
 
 **List sevDesk bank transactions** · tier `read` · read-only, idempotent
 
-List bank transactions (Umsätze) of the payment accounts. Amounts are signed: positive = incoming, negative = outgoing (direction in/out). Filter by account id, date range, direction and status: created (offen, not yet booked), linked (verknüpft), private, auto_booked, booked (gebucht). Unbooked = status created. Status, direction and value-date ranges are checked here while reading up to 5000 rows per call; dateField=entry lets sevDesk filter by entry date instead (faster). offset/nextOffset count sevDesk rows, not matches: pass nextOffset while hasMore is true. Account ids: sevdesk_bank_accounts_list.
+List bank transactions (Umsätze) of the payment accounts. Amounts are signed: positive = incoming, negative = outgoing (direction in/out). Filter by account id, date range, direction and status: created (offen, not yet booked), linked (verknüpft), private, auto_booked, booked (gebucht). Unbooked = status created. Status, direction and value-date ranges are checked here while reading up to 5000 rows per call; dateField=entry lets sevDesk filter by entry date instead (faster). offset/nextOffset count sevDesk rows, not matches: pass nextOffset while hasMore is true. Account ids: sevdesk_bank_accounts_list. Use detail=summary to browse/find. Use sevdesk_transaction_get for assignments and the amount still unassigned.
 
 | Argument         | Type                                                              | Required | Description                                                                                                                                                        |
 | ---------------- | ----------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `detail`         | `summary` \| `full`                                               | no       | Use summary to browse/find; full (default) or the matching get tool for details. Default: `"full"`.                                                                |
 | `checkAccountId` | integer                                                           | no       | Payment account (Zahlungskonto) id.                                                                                                                                |
 | `from`           | string                                                            | no       | First day to include, YYYY-MM-DD (Berlin time).                                                                                                                    |
 | `to`             | string                                                            | no       | Last day to include, YYYY-MM-DD (Berlin time).                                                                                                                     |
@@ -993,14 +999,15 @@ Change a part (Artikel ändern): only the fields you give change, nothing is cle
 
 **List sevDesk parts** · tier `read` · read-only, idempotent
 
-List parts (Artikel): the products and services of the account with Artikelnummer, name, unit, net and gross sales price, purchase price, tax rate, stock (Bestand) and active flag. Filter by part number (Artikelnummer) or name; both filters run in sevDesk, which may match them exactly, so try the full value if a part is missing. Paged: pass nextOffset as offset while hasMore is true. Use sevdesk_part_get for the description and current stock.
+List parts (Artikel): the products and services of the account with Artikelnummer, name, unit, net and gross sales price, purchase price, tax rate, stock (Bestand) and active flag. Filter by part number (Artikelnummer) or name; both filters run in sevDesk, which may match them exactly, so try the full value if a part is missing. Paged: pass nextOffset as offset while hasMore is true. Use detail=summary to browse/find. Use sevdesk_part_get for the description and current stock.
 
-| Argument     | Type    | Required | Description                                                                    |
-| ------------ | ------- | -------- | ------------------------------------------------------------------------------ |
-| `partNumber` | string  | no       | Part number (Artikelnummer), e.g. 'ART-001'.                                   |
-| `name`       | string  | no       | Part name.                                                                     |
-| `limit`      | integer | no       | Page size, 1–100. Default: `25`.                                               |
-| `offset`     | integer | no       | Rows to skip, for paging: pass the previous result's nextOffset. Default: `0`. |
+| Argument     | Type                | Required | Description                                                                                         |
+| ------------ | ------------------- | -------- | --------------------------------------------------------------------------------------------------- |
+| `detail`     | `summary` \| `full` | no       | Use summary to browse/find; full (default) or the matching get tool for details. Default: `"full"`. |
+| `partNumber` | string              | no       | Part number (Artikelnummer), e.g. 'ART-001'.                                                        |
+| `name`       | string              | no       | Part name.                                                                                          |
+| `limit`      | integer             | no       | Page size, 1–100. Default: `25`.                                                                    |
+| `offset`     | integer             | no       | Rows to skip, for paging: pass the previous result's nextOffset. Default: `0`.                      |
 
 ## Toolset `reports`
 

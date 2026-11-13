@@ -101,6 +101,31 @@ A name that is going away is deprecated first:
 Pull requests that change the public surface follow the same rules
 ([CONTRIBUTING.md](../CONTRIBUTING.md#compatibility)).
 
+## Planned changes
+
+The document and record list/search tools accept `detail: "summary"` for browsing. In 1.x,
+`detail` defaults to `"full"` and keeps the existing output. Summaries omit detail fields and
+also change these shapes:
+
+| Field                                               | Full                                         | Summary                                             |
+| --------------------------------------------------- | -------------------------------------------- | --------------------------------------------------- |
+| Document/transaction `status`; invoice/order `type` | Objects with codes, labels and optional keys | Key strings; absent when the key is unknown         |
+| Document gross total                                | `totals.gross: {amount, currency}`           | `gross` decimal string and one top-level `currency` |
+| Transaction `amount`; part `priceGross`             | `{amount, currency}`                         | Decimal string and top-level `currency`             |
+| Contact `category`                                  | Id, key and name when known                  | Id and key only                                     |
+
+Summary invoices add `openAmount` only for open/partially paid invoices when gross and paid
+amounts are known in the same currency. Summaries omit other amounts, labels, metadata and
+full-record fields; use the matching `*_get` tool for a selected record or `detail: "full"`
+for the existing list shape. Paging and default limits are unchanged.
+
+The next major version may switch the default to `"summary"`. Because this removes fields
+and changes their types, it is a breaking change and must follow the
+[deprecation policy](#deprecation-policy): announce it in release notes and the changelog,
+allow at least three months before the major-version switch, and list it under that release's
+breaking changes. Explicit `detail: "full"` remains the migration path for callers that need
+the existing shape. This note does not change or deprecate the 1.x default.
+
 ## Changes from 0.x
 
 Before 1.0, a review renamed these so the frozen names are consistent. Configurations and scripts

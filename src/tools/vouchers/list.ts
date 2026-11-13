@@ -6,6 +6,11 @@ import {
   documentListSummary,
   localFilterOutputShape,
 } from "../../domain/document-positions.js";
+import {
+  listDetailInputShape,
+  voucherSummary,
+  voucherSummarySchema,
+} from "../../domain/list-summary.js";
 import { pageOutputShape, pagingInputShape } from "../../domain/paging.js";
 import {
   listVouchers,
@@ -17,7 +22,7 @@ import {
 import { defineTool } from "../define-tool.js";
 
 const output = z.object({
-  items: z.array(voucherDtoSchema),
+  items: z.array(z.union([voucherDtoSchema, voucherSummarySchema])),
   ...pageOutputShape,
   ...localFilterOutputShape,
 });
@@ -33,8 +38,8 @@ export const vouchersListTool = defineTool({
     "contact id or supplier name, Belegnummer/description, voucher date range and type " +
     "(normal or recurring). Filters run in sevDesk; the type is also re-checked here (then " +
     "rows are scanned, total is left out and filteredLocally is set). Exact amounts. " +
-    "Paged: pass nextOffset as offset while hasMore is true. Use sevdesk_voucher_get for " +
-    "positions, tax rule and booking accounts; find supplier ids with sevdesk_contacts_search.",
+    "Paged: pass nextOffset as offset while hasMore is true. Use detail=summary to browse/find. Use sevdesk_voucher_get for positions, tax rule and booking accounts. " +
+    "Find supplier ids with sevdesk_contacts_search.",
   toolset: "vouchers",
   tier: "read",
   annotations: {
@@ -44,6 +49,7 @@ export const vouchersListTool = defineTool({
     openWorldHint: false,
   },
   input: z.strictObject({
+    ...listDetailInputShape,
     status: z.enum(VOUCHER_STATUS_KEYS).optional().describe("Voucher status by name."),
     kind: z
       .enum(VOUCHER_KINDS)
@@ -89,7 +95,10 @@ export const vouchersListTool = defineTool({
       filteredLocally: filteredLocally === true,
     };
     return {
-      data: documentListData(page, args),
+      data: {
+        ...documentListData(page, args),
+        items: args.detail === "summary" ? items.map(voucherSummary) : [...items],
+      },
       summary: documentListSummary("Vouchers", "matching vouchers", page, args),
     };
   },

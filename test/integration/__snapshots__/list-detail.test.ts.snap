@@ -1,0 +1,211 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`sevdesk_contacts_search detail > returns schema-valid slim rows with the same paging and upstream calls 1`] = `
+[
+  {
+    "category": {
+      "id": 3,
+      "key": "customer",
+    },
+    "customerNumber": "K-1002",
+    "displayName": "Dr. Max Mustermann",
+    "id": 10001,
+    "kind": "person",
+    "parentOrganisationId": 1001,
+  },
+  {
+    "category": {
+      "id": 2,
+      "key": "supplier",
+    },
+    "customerNumber": "L-2001",
+    "displayName": "Beispiel Lieferant AG",
+    "id": 10002,
+    "kind": "organisation",
+  },
+]
+`;
+
+exports[`sevdesk_credit_notes_list detail > returns schema-valid slim rows with the same paging and upstream calls 1`] = `
+[
+  {
+    "contact": {
+      "id": 1001,
+    },
+    "currency": "EUR",
+    "date": "2026-11-03",
+    "gross": "59.50",
+    "id": 10001,
+    "status": "draft",
+  },
+  {
+    "contact": {
+      "id": 1001,
+      "name": "Musterfirma GmbH",
+    },
+    "currency": "EUR",
+    "date": "2026-10-22",
+    "gross": "23.80",
+    "id": 10002,
+    "number": "GU-1003",
+    "sourceInvoiceId": 1003,
+    "status": "paid",
+  },
+]
+`;
+
+exports[`sevdesk_invoices_list detail > returns schema-valid slim rows with the same paging and upstream calls 1`] = `
+[
+  {
+    "contact": {
+      "id": 1002,
+      "name": "Max Mustermann",
+    },
+    "currency": "EUR",
+    "date": "2026-11-02",
+    "dueDate": "2026-11-16",
+    "gross": "99.98",
+    "id": 10001,
+    "number": "RE-1002",
+    "status": "draft",
+    "type": "invoice",
+  },
+  {
+    "contact": {
+      "id": 1001,
+      "name": "Musterfirma GmbH",
+    },
+    "currency": "EUR",
+    "date": "2026-09-01",
+    "dueDate": "2026-10-01",
+    "gross": "238.00",
+    "id": 10002,
+    "number": "RE-1003",
+    "openAmount": "188.00",
+    "overdue": true,
+    "status": "partially_paid",
+    "type": "invoice",
+  },
+]
+`;
+
+exports[`sevdesk_orders_list detail > returns schema-valid slim rows with the same paging and upstream calls 1`] = `
+[
+  {
+    "contact": {
+      "id": 1001,
+      "name": "Musterfirma GmbH",
+    },
+    "currency": "EUR",
+    "date": "2026-09-20",
+    "gross": "171.38",
+    "id": 10001,
+    "number": "AB-1002",
+    "status": "accepted",
+    "type": "order_confirmation",
+  },
+  {
+    "contact": {
+      "id": 1001,
+    },
+    "currency": "EUR",
+    "date": "2026-10-01",
+    "gross": "0.00",
+    "id": 10002,
+    "number": "LI-1003",
+    "status": "draft",
+    "type": "delivery_note",
+  },
+]
+`;
+
+exports[`sevdesk_parts_list detail > returns schema-valid slim rows with the same paging and upstream calls 1`] = `
+[
+  {
+    "active": false,
+    "currency": "EUR",
+    "id": 10001,
+    "name": "Beratungsstunde",
+    "partNumber": "DL-010",
+    "priceGross": "95.20",
+    "stock": "7.5",
+    "stockEnabled": true,
+    "unitId": 9,
+  },
+  {
+    "active": true,
+    "currency": "EUR",
+    "id": 10002,
+    "name": "Testartikel",
+    "partNumber": "ART-001",
+    "priceGross": "49.99",
+    "stock": "100",
+    "stockEnabled": false,
+    "unitId": 1,
+  },
+]
+`;
+
+exports[`sevdesk_transactions_list detail > returns schema-valid slim rows with the same paging and upstream calls 1`] = `
+[
+  {
+    "account": {
+      "id": 4002,
+      "name": "Geschäftskonto Musterbank",
+    },
+    "amount": "1190.00",
+    "counterparty": "Musterfirma GmbH",
+    "currency": "EUR",
+    "entryDate": "2026-01-08",
+    "id": 10001,
+    "purpose": "Rechnung RE-1001",
+    "status": "booked",
+    "valueDate": "2026-01-07",
+  },
+  {
+    "account": {
+      "id": 4002,
+      "name": "Geschäftskonto Musterbank",
+    },
+    "amount": "-45.99",
+    "counterparty": "Max Mustermann",
+    "currency": "EUR",
+    "id": 10002,
+    "purpose": "Privatentnahme",
+    "status": "private",
+    "valueDate": "2026-01-15",
+  },
+]
+`;
+
+exports[`sevdesk_vouchers_list detail > returns schema-valid slim rows with the same paging and upstream calls 1`] = `
+[
+  {
+    "currency": "EUR",
+    "date": "2026-02-19",
+    "gross": "119.00",
+    "id": 10001,
+    "kind": "revenue",
+    "number": "Testbeleg Büromaterial",
+    "status": "draft",
+    "supplier": {
+      "id": 1002,
+      "name": "Max Mustermann",
+    },
+    "type": "normal",
+  },
+  {
+    "currency": "EUR",
+    "date": "2023-05-02",
+    "gross": "59.50",
+    "id": 10002,
+    "kind": "expense",
+    "number": "Kassenbon 0815",
+    "status": "paid",
+    "supplier": {
+      "name": "Bürobedarf Muster KG",
+    },
+    "type": "normal",
+  },
+]
+`;

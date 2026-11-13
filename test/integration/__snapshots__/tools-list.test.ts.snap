@@ -181,11 +181,11 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
       "description": "More rows may follow: call again with offset = nextOffset. An empty page ends.",
       "type": "boolean",
     },
-    "/properties/items/items/properties/bookingCategory/properties/key": {
+    "/properties/items/items/anyOf/0/properties/bookingCategory/properties/key": {
       "description": "Accepted bookingCategory input key; absent for unsupported categories.",
       "type": "string",
     },
-    "/properties/items/items/properties/status/properties/key": {
+    "/properties/items/items/anyOf/0/properties/status/properties/key": {
       "description": "Accepted status filter key; absent when no filter accepts this code.",
       "type": "string",
     },
@@ -382,11 +382,11 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
       "description": "More rows may follow: call again with offset = nextOffset. An empty page ends.",
       "type": "boolean",
     },
-    "/properties/items/items/properties/status/properties/key": {
+    "/properties/items/items/anyOf/0/properties/status/properties/key": {
       "description": "Accepted status filter key; absent when no filter accepts this code.",
       "type": "string",
     },
-    "/properties/items/items/properties/type/properties/key": {
+    "/properties/items/items/anyOf/0/properties/type/properties/key": {
       "description": "Accepted type input/filter key; absent for unknown codes.",
       "type": "string",
     },
@@ -478,11 +478,11 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
       "description": "More rows may follow: call again with offset = nextOffset. An empty page ends.",
       "type": "boolean",
     },
-    "/properties/items/items/properties/status/properties/key": {
+    "/properties/items/items/anyOf/0/properties/status/properties/key": {
       "description": "Accepted status filter key; absent when no filter accepts this code.",
       "type": "string",
     },
-    "/properties/items/items/properties/type/properties/key": {
+    "/properties/items/items/anyOf/0/properties/type/properties/key": {
       "description": "Accepted type input/filter key; absent for unknown codes.",
       "type": "string",
     },
@@ -577,7 +577,7 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
       "description": "More rows may follow: call again with offset = nextOffset. An empty page ends.",
       "type": "boolean",
     },
-    "/properties/items/items/properties/status/properties/key": {
+    "/properties/items/items/anyOf/0/properties/status/properties/key": {
       "description": "Accepted status filter key; absent when no filter accepts this code.",
       "type": "string",
     },
@@ -648,7 +648,7 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
       "description": "More rows may follow: call again with offset = nextOffset. An empty page ends.",
       "type": "boolean",
     },
-    "/properties/items/items/properties/status/properties/key": {
+    "/properties/items/items/anyOf/0/properties/status/properties/key": {
       "description": "Accepted status filter key; absent when no filter accepts this code.",
       "type": "string",
     },
@@ -1179,6 +1179,15 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "description": "Exact customer number (Kundennummer), e.g. 'K-1001'.",
           "maxLength": 100,
           "minLength": 1,
+          "type": "string",
+        },
+        "detail": {
+          "default": "full",
+          "description": "Use summary to browse/find; full (default) or the matching get tool for details.",
+          "enum": [
+            "summary",
+            "full",
+          ],
           "type": "string",
         },
         "limit": {
@@ -1753,6 +1762,15 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "description": "Only credit notes of this contact.",
           "exclusiveMinimum": 0,
           "type": "integer",
+        },
+        "detail": {
+          "default": "full",
+          "description": "Use summary to browse/find; full (default) or the matching get tool for details.",
+          "enum": [
+            "summary",
+            "full",
+          ],
+          "type": "string",
         },
         "from": {
           "description": "First day to include, YYYY-MM-DD (Berlin time).",
@@ -2673,6 +2691,15 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "exclusiveMinimum": 0,
           "type": "integer",
         },
+        "detail": {
+          "default": "full",
+          "description": "Use summary to browse/find; full (default) or the matching get tool for details.",
+          "enum": [
+            "summary",
+            "full",
+          ],
+          "type": "string",
+        },
         "from": {
           "description": "First day to include, YYYY-MM-DD (Berlin time).",
           "type": "string",
@@ -3304,6 +3331,15 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "exclusiveMinimum": 0,
           "type": "integer",
         },
+        "detail": {
+          "default": "full",
+          "description": "Use summary to browse/find; full (default) or the matching get tool for details.",
+          "enum": [
+            "summary",
+            "full",
+          ],
+          "type": "string",
+        },
         "from": {
           "description": "First day to include, YYYY-MM-DD (Berlin time).",
           "type": "string",
@@ -3598,6 +3634,15 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
+        "detail": {
+          "default": "full",
+          "description": "Use summary to browse/find; full (default) or the matching get tool for details.",
+          "enum": [
+            "summary",
+            "full",
+          ],
+          "type": "string",
+        },
         "limit": {
           "default": 25,
           "description": "Page size, 1–100.",
@@ -4161,6 +4206,15 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "enum": [
             "value",
             "entry",
+          ],
+          "type": "string",
+        },
+        "detail": {
+          "default": "full",
+          "description": "Use summary to browse/find; full (default) or the matching get tool for details.",
+          "enum": [
+            "summary",
+            "full",
           ],
           "type": "string",
         },
@@ -4792,6 +4846,15 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "minLength": 1,
           "type": "string",
         },
+        "detail": {
+          "default": "full",
+          "description": "Use summary to browse/find; full (default) or the matching get tool for details.",
+          "enum": [
+            "summary",
+            "full",
+          ],
+          "type": "string",
+        },
         "from": {
           "description": "First day to include, YYYY-MM-DD (Berlin time).",
           "type": "string",
@@ -5319,6 +5382,15 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "minLength": 1,
           "type": "string",
         },
+        "detail": {
+          "default": "full",
+          "description": "Use summary to browse/find; full (default) or the matching get tool for details.",
+          "enum": [
+            "summary",
+            "full",
+          ],
+          "type": "string",
+        },
         "limit": {
           "default": 25,
           "description": "Page size, 1–100.",
@@ -5650,6 +5722,15 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "description": "Only credit notes of this contact.",
           "exclusiveMinimum": 0,
           "type": "integer",
+        },
+        "detail": {
+          "default": "full",
+          "description": "Use summary to browse/find; full (default) or the matching get tool for details.",
+          "enum": [
+            "summary",
+            "full",
+          ],
+          "type": "string",
         },
         "from": {
           "description": "First day to include, YYYY-MM-DD (Berlin time).",
@@ -6294,6 +6375,15 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "exclusiveMinimum": 0,
           "type": "integer",
         },
+        "detail": {
+          "default": "full",
+          "description": "Use summary to browse/find; full (default) or the matching get tool for details.",
+          "enum": [
+            "summary",
+            "full",
+          ],
+          "type": "string",
+        },
         "from": {
           "description": "First day to include, YYYY-MM-DD (Berlin time).",
           "type": "string",
@@ -6816,6 +6906,15 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "exclusiveMinimum": 0,
           "type": "integer",
         },
+        "detail": {
+          "default": "full",
+          "description": "Use summary to browse/find; full (default) or the matching get tool for details.",
+          "enum": [
+            "summary",
+            "full",
+          ],
+          "type": "string",
+        },
         "from": {
           "description": "First day to include, YYYY-MM-DD (Berlin time).",
           "type": "string",
@@ -7110,6 +7209,15 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
+        "detail": {
+          "default": "full",
+          "description": "Use summary to browse/find; full (default) or the matching get tool for details.",
+          "enum": [
+            "summary",
+            "full",
+          ],
+          "type": "string",
+        },
         "limit": {
           "default": 25,
           "description": "Page size, 1–100.",
@@ -7534,6 +7642,15 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "enum": [
             "value",
             "entry",
+          ],
+          "type": "string",
+        },
+        "detail": {
+          "default": "full",
+          "description": "Use summary to browse/find; full (default) or the matching get tool for details.",
+          "enum": [
+            "summary",
+            "full",
           ],
           "type": "string",
         },
@@ -7973,6 +8090,15 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "minLength": 1,
           "type": "string",
         },
+        "detail": {
+          "default": "full",
+          "description": "Use summary to browse/find; full (default) or the matching get tool for details.",
+          "enum": [
+            "summary",
+            "full",
+          ],
+          "type": "string",
+        },
         "from": {
           "description": "First day to include, YYYY-MM-DD (Berlin time).",
           "type": "string",
@@ -8298,6 +8424,15 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           "minLength": 1,
           "type": "string",
         },
+        "detail": {
+          "default": "full",
+          "description": "Use summary to browse/find; full (default) or the matching get tool for details.",
+          "enum": [
+            "summary",
+            "full",
+          ],
+          "type": "string",
+        },
         "limit": {
           "default": 25,
           "description": "Page size, 1–100.",
@@ -8391,6 +8526,15 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           "description": "Only credit notes of this contact.",
           "exclusiveMinimum": 0,
           "type": "integer",
+        },
+        "detail": {
+          "default": "full",
+          "description": "Use summary to browse/find; full (default) or the matching get tool for details.",
+          "enum": [
+            "summary",
+            "full",
+          ],
+          "type": "string",
         },
         "from": {
           "description": "First day to include, YYYY-MM-DD (Berlin time).",
@@ -8556,6 +8700,15 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           "exclusiveMinimum": 0,
           "type": "integer",
         },
+        "detail": {
+          "default": "full",
+          "description": "Use summary to browse/find; full (default) or the matching get tool for details.",
+          "enum": [
+            "summary",
+            "full",
+          ],
+          "type": "string",
+        },
         "from": {
           "description": "First day to include, YYYY-MM-DD (Berlin time).",
           "type": "string",
@@ -8686,6 +8839,15 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           "exclusiveMinimum": 0,
           "type": "integer",
         },
+        "detail": {
+          "default": "full",
+          "description": "Use summary to browse/find; full (default) or the matching get tool for details.",
+          "enum": [
+            "summary",
+            "full",
+          ],
+          "type": "string",
+        },
         "from": {
           "description": "First day to include, YYYY-MM-DD (Berlin time).",
           "type": "string",
@@ -8778,6 +8940,15 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
+        "detail": {
+          "default": "full",
+          "description": "Use summary to browse/find; full (default) or the matching get tool for details.",
+          "enum": [
+            "summary",
+            "full",
+          ],
+          "type": "string",
+        },
         "limit": {
           "default": 25,
           "description": "Page size, 1–100.",
@@ -9205,6 +9376,15 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           ],
           "type": "string",
         },
+        "detail": {
+          "default": "full",
+          "description": "Use summary to browse/find; full (default) or the matching get tool for details.",
+          "enum": [
+            "summary",
+            "full",
+          ],
+          "type": "string",
+        },
         "direction": {
           "description": "in = incoming (positive), out = outgoing (negative).",
           "enum": [
@@ -9350,6 +9530,15 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           "description": "Part of the Belegnummer or description, e.g. an invoice number.",
           "maxLength": 100,
           "minLength": 1,
+          "type": "string",
+        },
+        "detail": {
+          "default": "full",
+          "description": "Use summary to browse/find; full (default) or the matching get tool for details.",
+          "enum": [
+            "summary",
+            "full",
+          ],
           "type": "string",
         },
         "from": {

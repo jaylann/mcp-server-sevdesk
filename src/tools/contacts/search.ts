@@ -5,6 +5,7 @@ import {
   type ContactSearchResult,
   searchContacts,
 } from "../../domain/contacts.js";
+import { contactSummary, listDetailInputShape } from "../../domain/list-summary.js";
 import {
   pageOutput,
   pageOutputShape,
@@ -30,7 +31,7 @@ export const contactsSearchTool = defineTool({
     "exact customer number (Kundennummer) and category. sevDesk does the name matching against " +
     "organisation names and persons' first and last names; if nothing is found, try a shorter " +
     "or different part of the name. Results are compact and paged (limit/offset, total, " +
-    "hasMore). Use an id with sevdesk_contact_get for addresses, emails and phone numbers.",
+    "hasMore). Use detail=summary to browse/find. Use sevdesk_contact_get for addresses, emails and phone numbers.",
   toolset: "contacts",
   tier: "read",
   annotations: {
@@ -40,6 +41,7 @@ export const contactsSearchTool = defineTool({
     openWorldHint: false,
   },
   input: z.strictObject({
+    ...listDetailInputShape,
     query: z
       .string()
       .trim()
@@ -79,7 +81,10 @@ export const contactsSearchTool = defineTool({
       total: result.total,
     };
     return {
-      data: { items: [...result.items], ...pageOutput(window, result, args.limit) },
+      data: {
+        items: args.detail === "summary" ? result.items.map(contactSummary) : [...result.items],
+        ...pageOutput(window, result, args.limit),
+      },
       summary: summarize(window, result),
     };
   },
