@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "mcp-server-sevdesk",
   "display_name": "sevDesk",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Safety-first sevDesk accounting: invoices, receipts, banking and reports. Read-only by default; binding steps need your confirmation. Unofficial.",
   "long_description": "Connects Claude to your sevDesk account: contacts, invoices, credit notes, orders, receipts (Belege), bank transactions, parts and reports such as a VAT summary (Umsatzsteuer-Voranmeldung) and an EÜR-style profit and loss. It parses received e-invoices (XRechnung, ZUGFeRD), checks outgoing invoices for e-invoice readiness and suggests bank reconciliation matches.\n\n**Safety first.** A sevDesk API token has full access to the account, so the extension is read-only by default. Tools that change data appear only after you enable their tier: write (drafts, contacts, parts), commit (finalize, book, cancel) and external (send e-mails). Commit and external actions ask you to confirm each one; dry run previews writes without sending them.\n\nYou need a sevDesk API token (sevDesk: Settings, Users, API token), ideally for a dedicated user. This is an unofficial community project, not affiliated with sevdesk GmbH.",
   "author": {
