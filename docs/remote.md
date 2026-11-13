@@ -554,8 +554,11 @@ client over MCP.)
    for the upload can use it. Once a create, update or import succeeds and sevDesk's read-back
    confirms an attachment, the server releases the upload and deletes its stored file, freeing
    the slot immediately. Parsing, dry runs and failed calls keep the upload until expiry for
-   another attempt. A missing or uncertain attachment in the read-back also keeps it. To use a
-   successfully attached file again, request a new upload.
+   another attempt. A missing or uncertain attachment in the read-back also keeps it. On an
+   update, the attachment ID must change from the state checked immediately before saving (or
+   follow an explicitly absent attachment). If the ID stays the same or the previous attachment
+   state is unknown, the upload remains available until expiry. To use a successfully attached
+   file again after its upload was released, request a new upload.
 
 **Downloading.** `sevdesk_document_save`, `sevdesk_voucher_receipt_save`, `sevdesk_csv_export` and
 `sevdesk_datev_export` return a download link, `<public URL>/files/<id>`, instead of a file path. The server fetched the file from

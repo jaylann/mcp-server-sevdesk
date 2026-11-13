@@ -43,7 +43,9 @@ export const voucherUpdateDraftTool = defineWriteTool({
     if (
       args.file !== undefined &&
       plan.state.file !== undefined &&
-      result.details.voucher.hasDocument === true
+      result.previousDocumentId !== undefined &&
+      result.details.documentId !== undefined &&
+      result.details.documentId !== result.previousDocumentId
     ) {
       ctx.files.release(args.file);
     }

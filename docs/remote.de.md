@@ -593,8 +593,11 @@ nehmen einen anderen Weg: Sie gehen per MCP an den Client.)
    löscht seine gespeicherte Datei; der Platz ist sofort wieder verfügbar. Das Auslesen einer
    E-Rechnung, Probeläufe und fehlgeschlagene Aufrufe behalten den Upload bis zum Ablauf für
    einen weiteren Versuch. Auch bei fehlendem oder unklarem Anhang im zurückgelesenen Beleg
-   bleibt er erhalten. Um eine erfolgreich angehängte Datei erneut zu verwenden, fordern Sie
-   einen neuen Upload an.
+   bleibt er erhalten. Beim Ändern muss sich die Anhang-ID gegenüber dem unmittelbar vor dem
+   Speichern geprüften Stand ändern (oder erstmals ein Anhang vorliegen, wenn vorher ausdrücklich
+   keiner vorhanden war). Bei gleicher ID oder unbekanntem vorherigem Anhang bleibt der Upload
+   bis zum Ablauf verfügbar. Um eine erfolgreich angehängte Datei nach der Freigabe ihres
+   Uploads erneut zu verwenden, fordern Sie einen neuen Upload an.
 
 **Herunterladen.** `sevdesk_document_save`, `sevdesk_voucher_receipt_save`, `sevdesk_csv_export`
 und `sevdesk_datev_export` geben statt eines Dateipfads einen Download-Link zurück, `<public URL>/files/<id>`. Der Server hat die

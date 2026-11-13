@@ -86,15 +86,26 @@ function names(config: Parameters<typeof selectTools>[1]): string[] {
 
 function voucherClient(
   document: unknown = { id: "9001", objectName: "Document" },
+  previousDocument: unknown = null,
 ): FakeSevdeskClient {
-  const row = draftRow({ document });
-  if (document === "unknown") delete row["document"];
-  return new FakeSevdeskClient([
+  const row = draftRow({ document: previousDocument });
+  if (previousDocument === "unknown") delete row["document"];
+  const fake = new FakeSevdeskClient([
     ...CREATE_READ_ROUTES,
     uploadRoute,
     saveRoute(),
     ...readBackRoutes(row),
   ]);
+  const request = fake.request.bind(fake);
+  fake.request = async (req) => {
+    const result = await request(req);
+    if (req.method === "POST" && req.path === "/Voucher/Factory/saveVoucher") {
+      row["document"] = document;
+      if (document === "unknown") delete row["document"];
+    }
+    return result;
+  };
+  return fake;
 }
 
 function planner(parsed: ParsedEInvoice): Promise<VoucherSuggestion> {
@@ -223,6 +234,66 @@ describe("receipts and e-invoices from uploads", () => {
         expect(transfer.store.usage()).toEqual({ records: 0, bytes: 0 });
       }
     });
+  });
+
+  it.each([
+    { before: "9001", after: "9001", released: false },
+    { before: "9001", after: "9002", released: true },
+    { before: null, after: "9002", released: true },
+    { before: "unknown", after: "9002", released: false },
+  ])(
+    "checks the updated attachment identity: $before → $after",
+    async ({ before, after, released }) => {
+      const transfer = await openTransfer();
+      const ref = await transfer.upload(PDF_BYTES);
+      const previous =
+        before === null || before === "unknown" ? before : { id: before, objectName: "Document" };
+      const fake = voucherClient({ id: after, objectName: "Document" }, previous);
+      const { output } = await executeWrite(
+        voucherUpdateDraftTool,
+        { id: 2101, file: ref },
+        fake,
+        filesConfig(),
+        transfer.access(),
+      );
+      expect(output.data.voucher.hasDocument).toBe(true);
+      expect(fake.callsTo("/Voucher/Factory/saveVoucher")).toHaveLength(1);
+      const uploaded = await transfer.store.readUpload(OWNER, ref.slice("upload:".length));
+      if (released) {
+        expect(uploaded).toBeUndefined();
+        expect(transfer.store.usage()).toEqual({ records: 0, bytes: 0 });
+      } else {
+        expect(uploaded?.bytes).toEqual(Buffer.from(PDF_BYTES));
+        expect(transfer.store.usage()).toEqual({ records: 1, bytes: PDF_BYTES.byteLength });
+      }
+    },
+  );
+
+  it("uses the attachment identity rechecked just before the update, not the preview's", async () => {
+    const transfer = await openTransfer();
+    const ref = await transfer.upload(PDF_BYTES);
+    const fake = voucherClient(
+      { id: "9002", objectName: "Document" },
+      { id: "9002", objectName: "Document" },
+    );
+    const request = fake.request.bind(fake);
+    let firstRead = true;
+    vi.spyOn(fake, "request").mockImplementation((req) => {
+      if (firstRead && req.method === "GET" && req.path === "/Voucher/2101") {
+        firstRead = false;
+        return Promise.resolve([draftRow({ document: { id: "9001", objectName: "Document" } })]);
+      }
+      return request(req);
+    });
+    await executeWrite(
+      voucherUpdateDraftTool,
+      { id: 2101, file: ref },
+      fake,
+      filesConfig(),
+      transfer.access(),
+    );
+    expect(await transfer.store.readUpload(OWNER, ref.slice("upload:".length))).toBeDefined();
+    expect(transfer.store.usage()).toEqual({ records: 1, bytes: PDF_BYTES.byteLength });
   });
 
   it("accepts an eleventh receipt immediately after attaching ten", async () => {

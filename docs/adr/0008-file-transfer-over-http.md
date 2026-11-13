@@ -94,7 +94,12 @@ Logs and audit lines carry the reference, kind, size and SHA-256, never ids or f
 **Release after successful attachment (2026-11-12, #35).** Keeping used receipts for the full
 30-minute lifetime limited an ordinary bookkeeping session to ten receipts. Create/update draft
 and e-invoice import now release an upload immediately after the save and read-back succeed and
-the read-back confirms an attached document. `FileAccess.release(ref)` delegates to the
+the read-back confirms an attached document. For updates, the document id must differ from the
+attachment rechecked immediately before the save (or follow an explicitly absent attachment).
+An unchanged id or unknown previous attachment state is ambiguous, so the upload is retained;
+the preview's earlier attachment identity may already be stale. This also conservatively retains
+a receipt if sevDesk replaces its contents under the same document id (review follow-up, 2026-11-13).
+`FileAccess.release(ref)` delegates to the
 owner-scoped, idempotent `TransferStore.releaseUpload(owner, id)`: it removes only an uploaded
 ticket of the same grant and account and schedules its blob for deletion through the existing
 expiry cleanup. Pending/receiving tickets, download links and local files are untouched. Reads,
