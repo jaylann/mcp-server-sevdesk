@@ -86,16 +86,22 @@ describe("registry failure messages", () => {
     },
   );
 
-  it("prints the diagnostic to stderr and exits with status 1 through the plain-Node entry point", () => {
-    const script = fileURLToPath(new URL("../../../scripts/prepare-registry.ts", import.meta.url));
-    const result = childProcess.spawnSync(process.execPath, [script], { encoding: "utf8" });
-    expect(result.error).toBeUndefined();
-    expect(result.status).toBe(1);
-    expect(result.stdout).toBe("");
-    expect(result.stderr).toBe(
-      `${failurePrefix} usage: prepare-registry.ts <version> <tag> <bundle> <output>\n`,
-    );
-  });
+  // Older supported Node versions cannot run .ts files without enabling type stripping.
+  it.skipIf(!process.features.typescript)(
+    "prints the diagnostic to stderr and exits with status 1 through the plain-Node entry point",
+    () => {
+      const script = fileURLToPath(
+        new URL("../../../scripts/prepare-registry.ts", import.meta.url),
+      );
+      const result = childProcess.spawnSync(process.execPath, [script], { encoding: "utf8" });
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(1);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toBe(
+        `${failurePrefix} usage: prepare-registry.ts <version> <tag> <bundle> <output>\n`,
+      );
+    },
+  );
 });
 
 describe("registry preparation steps", () => {
