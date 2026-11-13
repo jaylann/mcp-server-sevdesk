@@ -88,6 +88,17 @@ describe("mcpb/manifest.json", () => {
     expect(manifest).not.toHaveProperty("prompts");
   });
 
+  it("documents every public setting key in the compatibility contract", () => {
+    const contract = read("docs/compatibility.md")
+      .split("\n")
+      .find((line) => /^\|\s*Claude Desktop extension\s*\|/.test(line));
+    expect(contract).toBeDefined();
+    const settings = z.record(z.string(), z.unknown()).parse(manifest["user_config"]);
+    for (const key of Object.keys(settings)) {
+      expect(contract, `compatibility contract covers ${key}`).toContain(`\`${key}\``);
+    }
+  });
+
   // release-please bumps the version with JSON.stringify(…, null, 2) (extra-files), which would
   // reformat any other layout; .prettierignore keeps Prettier from collapsing short arrays.
   it("is laid out exactly as release-please writes it, and release-please bumps it", () => {
