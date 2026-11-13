@@ -115,7 +115,9 @@ export const transactionGetTool = defineTool({
           summary =
             summaries.size >= MAX_DOCUMENT_LOOKUPS
               ? "unreadable"
-              : await readSummary(() => readLifecycleDocument(ctx.client, kind, id, ctx.signal));
+              : await readSummary(() =>
+                  readLifecycleDocument(ctx.client, kind, id, ctx.signal, undefined, ctx.config),
+                );
           summaries.set(key, summary);
         }
         documentOut =

@@ -471,6 +471,7 @@ export async function executeOrderDraft(
   client: SevdeskClient,
   state: OrderDraftState,
   signal?: AbortSignal,
+  cacheOwner: object = client,
 ): Promise<OrderDraftResult> {
   const numbering = state.numbering;
   const reserved =
@@ -508,7 +509,7 @@ export async function executeOrderDraft(
       completedWrites: [saved],
     });
   }
-  const details = await readBack(saved, () => getOrder(client, id, signal));
+  const details = await readBack(saved, () => getOrder(client, id, signal, cacheOwner));
   const changed =
     numbering === undefined || reserved === undefined
       ? undefined

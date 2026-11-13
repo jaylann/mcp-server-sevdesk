@@ -161,7 +161,9 @@ export async function preflightInvoice(
       signal,
     ),
     readUnitCodes(client, signal),
-    detail.contact === undefined ? undefined : readContact(client, detail.contact.id, signal),
+    detail.contact === undefined
+      ? undefined
+      : readContact(client, detail.contact.id, signal, options.cacheOwner),
   ]);
 
   const problems: PreflightIssue[] = [];
@@ -608,9 +610,10 @@ async function readContact(
   client: SevdeskClient,
   contactId: number,
   signal: AbortSignal | undefined,
+  cacheOwner: object = client,
 ): Promise<ContactDetails | SevdeskError> {
   try {
-    return await getContactDetails(client, contactId, signal);
+    return await getContactDetails(client, contactId, signal, cacheOwner);
   } catch (error) {
     if (
       error instanceof SevdeskError &&

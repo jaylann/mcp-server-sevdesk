@@ -372,6 +372,7 @@ export async function executeContactCreate(
   client: SevdeskClient,
   state: ContactCreateState,
   signal?: AbortSignal,
+  cacheOwner: object = client,
 ): Promise<{ details: ContactDetails; affected: SevdeskObjectRef[] }> {
   const withSignal = signal === undefined ? {} : { signal };
   const created = await client.request({
@@ -410,7 +411,7 @@ export async function executeContactCreate(
         id: String(createdId(answer, "communication way")),
       });
     }
-    const details = await getContactDetails(client, contactId, signal);
+    const details = await getContactDetails(client, contactId, signal, cacheOwner);
     return { details, affected: completed.map((entry) => ({ ...entry })) };
   } catch (error) {
     throw afterPartialWrite(error, completed);
@@ -448,6 +449,7 @@ export async function planContactUpdate(
   client: SevdeskClient,
   input: ContactUpdateInput,
   signal?: AbortSignal,
+  cacheOwner: object = client,
 ): Promise<{ preview: ConfirmationPreview; state: ContactUpdateState }> {
   const id = toSevdeskId(input.id);
   const hasAddress = [input.street, input.zip, input.city, input.country].some(
@@ -455,7 +457,7 @@ export async function planContactUpdate(
   );
   const [record, details, numberOwner, country] = await Promise.all([
     readContactRecord(client, id, signal),
-    getContactDetails(client, id, signal),
+    getContactDetails(client, id, signal, cacheOwner),
     input.customerNumber === undefined
       ? Promise.resolve(undefined)
       : findContactByCustomerNumber(client, input.customerNumber, signal),
@@ -588,6 +590,7 @@ export async function executeContactUpdate(
   client: SevdeskClient,
   state: ContactUpdateState,
   signal?: AbortSignal,
+  cacheOwner: object = client,
 ): Promise<{ details: ContactDetails; affected: SevdeskObjectRef[] }> {
   const withSignal = signal === undefined ? {} : { signal };
   const completed: CompletedWrite[] = [];
@@ -646,7 +649,7 @@ export async function executeContactUpdate(
         });
       }
     }
-    const details = await getContactDetails(client, state.contactId, signal);
+    const details = await getContactDetails(client, state.contactId, signal, cacheOwner);
     return { details, affected: completed.map((entry) => ({ ...entry })) };
   } catch (error) {
     throw completed.length === 0 ? error : afterPartialWrite(error, completed);

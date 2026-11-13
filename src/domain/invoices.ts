@@ -412,6 +412,7 @@ export async function getInvoice(
   invoiceId: number,
   signal?: AbortSignal,
   today: string = berlinDateOf(Date.now()),
+  cacheOwner: object = client,
 ): Promise<InvoiceDetails> {
   const id = toSevdeskId(invoiceId);
   const withSignal = signal === undefined ? {} : { signal };
@@ -436,7 +437,12 @@ export async function getInvoice(
     loadUnitNames(client, signal),
   ]);
   const record = parseInvoiceRecord(expectSingle(payload, `invoice ${id}`));
-  const invoice = await withDocumentCountry(toInvoiceDetail(record, today), client, signal);
+  const invoice = await withDocumentCountry(
+    toInvoiceDetail(record, today),
+    client,
+    signal,
+    cacheOwner,
+  );
   const context = { currency: invoice.currency, showNet: record.showNet, unitNames };
   return {
     invoice,

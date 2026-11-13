@@ -94,9 +94,10 @@ export async function loadContact(
   client: SevdeskClient,
   contactId: number,
   signal?: AbortSignal,
+  cacheOwner: object = client,
 ): Promise<ContactDetails> {
   try {
-    return await getContactDetails(client, contactId, signal);
+    return await getContactDetails(client, contactId, signal, cacheOwner);
   } catch (error) {
     if (error instanceof SevdeskError && error.kind === "not_found") {
       throw new SevdeskError({

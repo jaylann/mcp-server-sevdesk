@@ -90,7 +90,6 @@ describe.each(cases)("$name (community record shapes, fake values)", (kind) => {
       `GET /${kind.path.split("/")[1] ?? ""}Pos`,
       `PUT ${kind.path}/sendBy`,
       `GET ${kind.path}`,
-      "GET /StaticCountry",
     ]);
     expect(client.writes()).toEqual([
       expect.objectContaining({

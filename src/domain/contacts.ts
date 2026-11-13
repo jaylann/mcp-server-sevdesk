@@ -324,6 +324,7 @@ export async function getContactDetails(
   client: SevdeskClient,
   contactId: number,
   signal?: AbortSignal,
+  cacheOwner: object = client,
 ): Promise<ContactDetails> {
   const id = toSevdeskId(contactId);
   const payload = await client.request({
@@ -351,7 +352,7 @@ export async function getContactDetails(
   ]);
 
   const countries = addresses.rows.some((row) => row.country !== undefined)
-    ? await loadCountryCodes(client, signal)
+    ? await loadCountryCodes(client, signal, { cacheOwner })
     : new Map<number, string>();
   return {
     contact,

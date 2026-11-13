@@ -214,13 +214,15 @@ const MAPPERS: {
     today: string,
     client: SevdeskClient,
     signal: AbortSignal | undefined,
+    cacheOwner: object,
   ) => Promise<DetailByKind[K]>;
 } = {
-  invoice: (raw, today, client, signal) =>
-    withDocumentCountry(mapInvoiceDetail(raw, today), client, signal),
-  creditNote: (raw, _today, client, signal) =>
-    withDocumentCountry(mapCreditNoteDetail(raw), client, signal),
-  order: (raw, _today, client, signal) => withDocumentCountry(mapOrderDetail(raw), client, signal),
+  invoice: (raw, today, client, signal, cacheOwner) =>
+    withDocumentCountry(mapInvoiceDetail(raw, today), client, signal, cacheOwner),
+  creditNote: (raw, _today, client, signal, cacheOwner) =>
+    withDocumentCountry(mapCreditNoteDetail(raw), client, signal, cacheOwner),
+  order: (raw, _today, client, signal, cacheOwner) =>
+    withDocumentCountry(mapOrderDetail(raw), client, signal, cacheOwner),
   voucher: (raw) => Promise.resolve(mapVoucherDetail(raw)),
 };
 
@@ -236,7 +238,8 @@ const paidAmountSchema = z.object({ paidAmount: zOptionalDecimal });
 /**
  * Reads one document (`GET /{objectName}/{id}` with the kind's query) and maps it. An unknown id
  * is sevDesk's `not_found` error; a record that does not fit is `unexpected_response`. `today`
- * (Berlin `YYYY-MM-DD`) only feeds the invoice DTO's `overdue` flag.
+ * (Berlin `YYYY-MM-DD`) only feeds the invoice DTO's `overdue` flag. Tools pass `ctx.config`
+ * as `cacheOwner` to reuse the country table across preparation and read-backs.
  */
 export async function readLifecycleDocument<K extends LifecycleKind>(
   client: SevdeskClient,
@@ -244,6 +247,7 @@ export async function readLifecycleDocument<K extends LifecycleKind>(
   documentId: number,
   signal?: AbortSignal,
   today: string = berlinDateOf(Date.now()),
+  cacheOwner: object = client,
 ): Promise<LifecycleDocument<K>> {
   const info = KINDS[kind];
   const id = toSevdeskId(documentId);
@@ -254,7 +258,7 @@ export async function readLifecycleDocument<K extends LifecycleKind>(
     ...(signal === undefined ? {} : { signal }),
   });
   const raw = expectSingle(payload, `${info.noun} ${String(id)}`);
-  const dto = await MAPPERS[kind](raw, today, client, signal);
+  const dto = await MAPPERS[kind](raw, today, client, signal, cacheOwner);
   const { paidAmount } = parseUpstream(paidAmountSchema, raw, `a ${info.noun}`);
   return { ...toLifecycleDocument(kind, dto, paidAmount), raw };
 }

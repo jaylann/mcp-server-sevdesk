@@ -82,13 +82,17 @@ export async function executeWrite<
   config: Partial<Config> = {},
   files?: FileAccess,
 ): Promise<WriteRun<WritePlanOf<S, T>, z.output<O>>> {
-  const plan = await prepareWrite(tool, args, client, config, files);
   const parsed = tool.input.parse(args);
-  const output = await tool.execute(
-    parsed,
-    plan,
-    context(tierScopedClient(client, tool.tier), config, files),
-  );
+  // Production shares the account config across phases, while wrapping the client separately.
+  const ctx = context(client, config, files);
+  const plan = await tool.prepare(parsed, {
+    ...ctx,
+    client: readOnlyClient(client, "preparing a write"),
+  });
+  const output = await tool.execute(parsed, plan, {
+    ...ctx,
+    client: tierScopedClient(client, tool.tier),
+  });
   tool.output.parse(output.data);
   return { plan, output };
 }

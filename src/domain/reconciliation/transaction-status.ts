@@ -158,6 +158,7 @@ export async function planTransactionReset(
   client: SevdeskClient,
   transactionId: number,
   signal?: AbortSignal,
+  cacheOwner: object = client,
 ): Promise<ResetPlan> {
   const transaction = await lookup(
     () => getTransaction(client, transactionId, signal),
@@ -231,7 +232,7 @@ export async function planTransactionReset(
   const resettable: Omit<ResetDocument, "otherTransactions">[] = [];
   for (const { kind, id, share } of shares.values()) {
     const doc = await lookup(
-      () => readLifecycleDocument(client, kind, id, signal),
+      () => readLifecycleDocument(client, kind, id, signal, undefined, cacheOwner),
       `${documentRef({ kind, id }, true)}, which ${ref.toLowerCase()} is linked to, no longer ` +
         "exists; undo the booking in the sevDesk web app.",
     );

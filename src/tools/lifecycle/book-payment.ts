@@ -355,7 +355,14 @@ export function bookPaymentTool(kind: PaymentKind) {
         : [{ objectName: "CheckAccountTransaction", id: String(args.transactionId) }]),
     ],
     prepare: async (args, ctx) => {
-      const doc = await readLifecycleDocument(ctx.client, kind, args.id, ctx.signal);
+      const doc = await readLifecycleDocument(
+        ctx.client,
+        kind,
+        args.id,
+        ctx.signal,
+        undefined,
+        ctx.config,
+      );
       assertBookable(doc);
       const today = berlinDateOf(Date.now());
       const date = args.date ?? today;

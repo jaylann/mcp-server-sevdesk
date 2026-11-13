@@ -102,7 +102,14 @@ export function enshrineTool(kind: PaymentKind) {
     // lock alone an enshrine could run between that check and the reset (review 2026-11, round 3).
     locks: (args) => [ACCOUNT_BOOKINGS, documentObject(kind, args.id)],
     prepare: async (args, ctx) => {
-      const doc = await readLifecycleDocument(ctx.client, kind, args.id, ctx.signal);
+      const doc = await readLifecycleDocument(
+        ctx.client,
+        kind,
+        args.id,
+        ctx.signal,
+        undefined,
+        ctx.config,
+      );
       assertEnshrinable(doc);
       // What is locked for good: the stored texts, address and positions as facts, and the
       // binding over the same read (review 2026-11, round 3).

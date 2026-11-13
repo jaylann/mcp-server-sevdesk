@@ -228,6 +228,7 @@ export const transactionBookTool = defineWriteTool({
         paymentType: allocation.paymentType,
       })),
       ctx.signal,
+      ctx.config,
     );
     const state: BookState = {
       allocations: plan.allocations.map(({ doc, plan: payment }) => ({
@@ -257,7 +258,15 @@ export const transactionBookTool = defineWriteTool({
     const bookings = [];
     for (const allocation of state.allocations) {
       const doc = await readBackOrReport(
-        () => readLifecycleDocument(ctx.client, allocation.kind, allocation.id, ctx.signal),
+        () =>
+          readLifecycleDocument(
+            ctx.client,
+            allocation.kind,
+            allocation.id,
+            ctx.signal,
+            undefined,
+            ctx.config,
+          ),
         changed,
       );
       bookings.push({

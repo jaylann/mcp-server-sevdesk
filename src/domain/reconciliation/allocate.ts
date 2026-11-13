@@ -176,6 +176,7 @@ export async function planAllocation(
   transactionId: number,
   requests: readonly AllocationRequest[],
   signal?: AbortSignal,
+  cacheOwner: object = client,
 ): Promise<AllocationPlan> {
   if (requests.length === 0) refuse("Name at least one document to book the transaction to.");
   if (requests.length > MAX_ALLOCATIONS) {
@@ -219,7 +220,7 @@ export async function planAllocation(
   let allocated = "0";
   for (const request of requests) {
     const doc = await lookup(
-      () => readLifecycleDocument(client, request.kind, request.id, signal),
+      () => readLifecycleDocument(client, request.kind, request.id, signal, undefined, cacheOwner),
       `${documentRef(request, true)} does not exist; look it up with ` +
         `${KINDS[request.kind].toolPrefix}s_list.`,
     );

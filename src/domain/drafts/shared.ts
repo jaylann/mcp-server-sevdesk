@@ -175,7 +175,7 @@ export async function resolveCreateBasics(
 
   const [version, contact, contactPerson, countries] = await Promise.all([
     getBookkeepingSystemVersion(client, signal, { cacheOwner: options.cacheOwner }),
-    loadContact(client, args.contactId, signal),
+    loadContact(client, args.contactId, signal, options.cacheOwner),
     resolveContactPerson(client, args.contactPersonId, signal),
     loadCountries(client, signal),
     checkUnits(client, args.positions, signal),
@@ -380,7 +380,7 @@ export async function resolveUpdateBasics(
 
   const [version, contact, contactPerson, countries] = await Promise.all([
     getBookkeepingSystemVersion(client, signal, { cacheOwner: options.cacheOwner }),
-    loadContact(client, contactId, signal),
+    loadContact(client, contactId, signal, options.cacheOwner),
     args.contactPersonId !== undefined || stored.contactPerson === undefined
       ? resolveContactPerson(client, args.contactPersonId, signal)
       : Promise.resolve({ id: stored.contactPerson.id }),

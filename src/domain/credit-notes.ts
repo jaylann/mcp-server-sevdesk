@@ -280,6 +280,7 @@ export async function getCreditNote(
   client: SevdeskClient,
   creditNoteId: number,
   signal?: AbortSignal,
+  cacheOwner: object = client,
 ): Promise<CreditNoteDetails> {
   const id = toSevdeskId(creditNoteId);
   const withSignal = signal === undefined ? {} : { signal };
@@ -304,7 +305,12 @@ export async function getCreditNote(
     loadUnitNames(client, signal),
   ]);
   const record = parseCreditNoteRecord(expectSingle(payload, `credit note ${id}`));
-  const creditNote = await withDocumentCountry(toCreditNoteDetail(record), client, signal);
+  const creditNote = await withDocumentCountry(
+    toCreditNoteDetail(record),
+    client,
+    signal,
+    cacheOwner,
+  );
   const context = { currency: creditNote.currency, showNet: record.showNet, unitNames };
   return {
     creditNote,

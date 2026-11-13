@@ -50,7 +50,7 @@ export const contactGetTool = defineTool({
   }),
   output,
   handler: async (args, ctx) => {
-    const details = await getContactDetails(ctx.client, args.id, ctx.signal);
+    const details = await getContactDetails(ctx.client, args.id, ctx.signal, ctx.config);
     const { contact, addresses, communicationWays } = details;
     const addressCount = count(addresses.length, "address", "addresses");
     const wayCount = count(communicationWays.length, "communication way", "communication ways");

@@ -334,6 +334,7 @@ export async function getOrder(
   client: SevdeskClient,
   orderId: number,
   signal?: AbortSignal,
+  cacheOwner: object = client,
 ): Promise<OrderDetails> {
   const id = toSevdeskId(orderId);
   const withSignal = signal === undefined ? {} : { signal };
@@ -354,7 +355,7 @@ export async function getOrder(
     loadRelatedDocuments(client, id, signal),
   ]);
   const record = parseOrderRecord(expectSingle(payload, `order ${id}`));
-  const order = await withDocumentCountry(toOrderDetail(record), client, signal);
+  const order = await withDocumentCountry(toOrderDetail(record), client, signal, cacheOwner);
   const context = { currency: order.currency, showNet: record.showNet, unitNames };
   return {
     order,

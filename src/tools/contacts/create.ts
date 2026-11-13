@@ -52,7 +52,12 @@ export const contactCreateTool = defineWriteTool({
   locks: () => [ACCOUNT_CONTACT_NUMBERS],
   prepare: (args, ctx) => planContactCreate(ctx.client, args, ctx.signal),
   execute: async (_args, plan, ctx) => {
-    const { details, affected } = await executeContactCreate(ctx.client, plan.state, ctx.signal);
+    const { details, affected } = await executeContactCreate(
+      ctx.client,
+      plan.state,
+      ctx.signal,
+      ctx.config,
+    );
     const addresses = details.addresses.length;
     const ways = details.communicationWays.length;
     return {

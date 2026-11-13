@@ -148,9 +148,10 @@ export async function planOrderToInvoice(
   client: SevdeskClient,
   input: OrderToInvoiceInput,
   signal?: AbortSignal,
+  cacheOwner: object = client,
 ): Promise<{ preview: ConfirmationPreview; state: OrderToInvoiceState }> {
   const orderId = toSevdeskId(input.orderId);
-  const details = await getOrder(client, orderId, signal);
+  const details = await getOrder(client, orderId, signal, cacheOwner);
   const { order } = details;
   const label = documentLabel("Order", order.id, order.number);
   const ref = `Order ${String(order.id)}`;
@@ -315,6 +316,7 @@ export async function executeOrderToInvoice(
   client: SevdeskClient,
   state: OrderToInvoiceState,
   signal?: AbortSignal,
+  cacheOwner: object = client,
 ): Promise<{
   details: InvoiceDetails;
   affected: SevdeskObjectRef[];
@@ -328,8 +330,11 @@ export async function executeOrderToInvoice(
   });
   const invoiceId = createdDocumentId(answer, "invoice", "the created invoice");
   const created = [{ objectName: "Invoice", id: String(invoiceId) }];
-  const details = await readBack(() => getInvoice(client, invoiceId, signal), created);
-  const order = await readQuietly(() => readOrder(client, state.orderId, signal));
+  const details = await readBack(
+    () => getInvoice(client, invoiceId, signal, undefined, cacheOwner),
+    created,
+  );
+  const order = await readQuietly(() => readOrder(client, state.orderId, signal, cacheOwner));
   const affected = [
     ...created,
     ...(order === undefined || orderFingerprint(order) !== state.orderFingerprint
@@ -360,6 +365,7 @@ async function readOrder(
   client: SevdeskClient,
   orderId: number,
   signal: AbortSignal | undefined,
+  cacheOwner: object = client,
 ): Promise<OrderDetail> {
   const payload = await client.request({
     method: "GET",
@@ -371,6 +377,7 @@ async function readOrder(
     mapOrderDetail(expectSingle(payload, `order ${orderId}`)),
     client,
     signal,
+    cacheOwner,
   );
 }
 
@@ -425,9 +432,16 @@ export async function planCreditNoteFromInvoice(
   client: SevdeskClient,
   input: CreditNoteFromInvoiceInput,
   signal?: AbortSignal,
+  cacheOwner: object = client,
 ): Promise<{ preview: ConfirmationPreview; state: CreditNoteFromInvoiceState }> {
   const invoiceId = toSevdeskId(input.invoiceId);
-  const snapshot = await readInvoiceSnapshot(client, invoiceId, berlinDateOf(Date.now()), signal);
+  const snapshot = await readInvoiceSnapshot(
+    client,
+    invoiceId,
+    berlinDateOf(Date.now()),
+    signal,
+    cacheOwner,
+  );
   const invoice = snapshot.detail;
   const label = documentLabel("Invoice", invoice.id, invoice.number);
   const ref = `Invoice ${String(invoice.id)}`;
@@ -501,6 +515,7 @@ export async function executeCreditNoteFromInvoice(
   client: SevdeskClient,
   state: CreditNoteFromInvoiceState,
   signal?: AbortSignal,
+  cacheOwner: object = client,
 ): Promise<{ details: CreditNoteDetails; affected: SevdeskObjectRef[]; notes: string[] }> {
   const answer = await client.request({
     method: "POST",
@@ -510,10 +525,19 @@ export async function executeCreditNoteFromInvoice(
   });
   const creditNoteId = createdDocumentId(answer, "creditNote", "the created credit note");
   const created = [{ objectName: "CreditNote", id: String(creditNoteId) }];
-  const details = await readBack(() => getCreditNote(client, creditNoteId, signal), created);
+  const details = await readBack(
+    () => getCreditNote(client, creditNoteId, signal, cacheOwner),
+    created,
+  );
   const affected = [
     ...created,
-    ...(await sourceInvoiceChanges(client, state.invoiceId, state.invoiceFingerprint, signal)),
+    ...(await sourceInvoiceChanges(
+      client,
+      state.invoiceId,
+      state.invoiceFingerprint,
+      signal,
+      cacheOwner,
+    )),
   ];
   // The credit note DTO has no type field; its link to the invoice is checked instead.
   verifyDraft(
@@ -790,10 +814,11 @@ export async function planInvoiceReminder(
   client: SevdeskClient,
   input: InvoiceReminderInput,
   signal?: AbortSignal,
+  cacheOwner: object = client,
 ): Promise<{ preview: ConfirmationPreview; state: InvoiceReminderState }> {
   const invoiceId = toSevdeskId(input.invoiceId);
   const today = input.today ?? berlinDateOf(Date.now());
-  const snapshot = await readInvoiceSnapshot(client, invoiceId, today, signal);
+  const snapshot = await readInvoiceSnapshot(client, invoiceId, today, signal, cacheOwner);
   const invoice = snapshot.detail;
   const label = documentLabel("Invoice", invoice.id, invoice.number);
   // Refusals name the invoice by its id, never by its stored number (see documentLabel).
@@ -899,6 +924,7 @@ export async function executeInvoiceReminder(
   client: SevdeskClient,
   state: InvoiceReminderState,
   signal?: AbortSignal,
+  cacheOwner: object = client,
 ): Promise<{ details: InvoiceDetails; affected: SevdeskObjectRef[] }> {
   const answer = await client.request({
     method: "POST",
@@ -909,10 +935,19 @@ export async function executeInvoiceReminder(
   });
   const reminderId = createdDocumentId(answer, "invoice", "the created reminder");
   const created = [{ objectName: "Invoice", id: String(reminderId) }];
-  const details = await readBack(() => getInvoice(client, reminderId, signal), created);
+  const details = await readBack(
+    () => getInvoice(client, reminderId, signal, undefined, cacheOwner),
+    created,
+  );
   const affected = [
     ...created,
-    ...(await sourceInvoiceChanges(client, state.invoiceId, state.invoiceFingerprint, signal)),
+    ...(await sourceInvoiceChanges(
+      client,
+      state.invoiceId,
+      state.invoiceFingerprint,
+      signal,
+      cacheOwner,
+    )),
   ];
   verifyDraft(
     { what: "reminder", id: reminderId, tool: "sevdesk_invoice_get" },
@@ -991,6 +1026,7 @@ async function readInvoiceSnapshot(
   invoiceId: number,
   today: string,
   signal: AbortSignal | undefined,
+  cacheOwner: object = client,
 ): Promise<InvoiceSnapshot> {
   const payload = await client.request({
     method: "GET",
@@ -999,7 +1035,12 @@ async function readInvoiceSnapshot(
     ...(signal === undefined ? {} : { signal }),
   });
   const raw = expectSingle(payload, `invoice ${invoiceId}`);
-  const detail = await withDocumentCountry(mapInvoiceDetail(raw, today), client, signal);
+  const detail = await withDocumentCountry(
+    mapInvoiceDetail(raw, today),
+    client,
+    signal,
+    cacheOwner,
+  );
   const { update } = parseUpstream(z.object({ update: z.unknown().optional() }), raw, "an invoice");
   return {
     detail,
@@ -1021,9 +1062,10 @@ async function sourceInvoiceChanges(
   invoiceId: number,
   before: string,
   signal: AbortSignal | undefined,
+  cacheOwner: object = client,
 ): Promise<SevdeskObjectRef[]> {
   const after = await readQuietly(() =>
-    readInvoiceSnapshot(client, invoiceId, berlinDateOf(Date.now()), signal),
+    readInvoiceSnapshot(client, invoiceId, berlinDateOf(Date.now()), signal, cacheOwner),
   );
   return after?.fingerprint === before ? [] : [{ objectName: "Invoice", id: String(invoiceId) }];
 }

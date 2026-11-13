@@ -468,6 +468,7 @@ export async function executeInvoiceDraft(
   client: SevdeskClient,
   state: InvoiceDraftState,
   signal?: AbortSignal,
+  cacheOwner: object = client,
 ): Promise<InvoiceDraftResult> {
   const response = await client.request({
     method: "POST",
@@ -486,7 +487,9 @@ export async function executeInvoiceDraft(
       completedWrites: [saved],
     });
   }
-  const details = await readBack(saved, () => getInvoice(client, id, signal));
+  const details = await readBack(saved, () =>
+    getInvoice(client, id, signal, undefined, cacheOwner),
+  );
   const notes = readBackNotes(
     {
       number: details.invoice.number,
