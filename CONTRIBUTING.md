@@ -136,7 +136,9 @@ a public contract ([docs/compatibility.md](docs/compatibility.md)).
   freely, but re-record the evals when you change what models read (below).
 
 The **Tool surface** PR workflow compares `tools/list` (including input/output schemas),
-`prompts/list` and server instructions at the event's exact base and head commits. It covers the
+`prompts/list` and server instructions at the event's base commit and at the PR merged into that
+base (GitHub's test merge commit), so a branch that is behind `main` shows only its own changes. It
+covers the
 default read configuration, `SEVDESK_ALLOW=write`, all tiers/toolsets, and all tiers/toolsets over
 HTTP with OAuth and remote files. Changes appear in one sticky PR comment; an unchanged surface
 creates no comment, or replaces a previous diff with “no change”. Names and schema changes still
