@@ -1,20 +1,20 @@
 {
   "caseId": "meta-tax-rule-de",
   "model": "claude-sonnet-5-5",
-  "key": "79a03c0f47079bc02e156eebd3a7bfe29d35caee67c12f8cbcd4e6f4b1f462dd",
-  "recordedAt": "2026-11-13T14:11:07.870Z",
+  "key": "7f1db8b8ce8e55c3813205ddbb797f73f4a63bbb1150f64c83991a5b9bb6e280",
+  "recordedAt": "2026-11-13T18:16:47.996Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
     "content": [
-      { "type": "tool_use", "name": "sevdesk_account_info", "input": {} },
-      { "type": "tool_use", "name": "sevdesk_reference_lookup", "input": { "kind": "tax_rules" } }
+      { "type": "tool_use", "name": "sevdesk_reference_lookup", "input": { "kind": "tax_rules" } },
+      { "type": "tool_use", "name": "sevdesk_account_info", "input": {} }
     ],
     "usage": {
       "inputTokens": 135,
-      "outputTokens": 183,
+      "outputTokens": 171,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17202
+      "cacheReadInputTokens": 17341
     }
   }
 }

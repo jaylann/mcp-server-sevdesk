@@ -1,30 +1,20 @@
 {
   "caseId": "invoice-email-de",
   "model": "claude-sonnet-5-5",
-  "key": "e15758963a949082f963d70061a9c6ccf23cc530ade3c7cfbfeb38add26d03a8",
-  "recordedAt": "2026-11-13T14:11:44.783Z",
+  "key": "21b4d75266b2bc3af650ec89b24e856ffc80018cf5ba07c8ee02bedc261ca777",
+  "recordedAt": "2026-11-13T18:17:20.495Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
     "content": [
-      { "type": "tool_use", "name": "sevdesk_invoice_get", "input": { "id": 4711 } },
-      {
-        "type": "tool_use",
-        "name": "sevdesk_invoice_send_email",
-        "input": {
-          "id": 4711,
-          "to": "buchhaltung@beispiel.de",
-          "subject": "Ihre Rechnung",
-          "text": "Guten Tag,<br><br>anbei erhalten Sie Ihre Rechnung. Bei Rückfragen melden Sie sich gerne jederzeit bei uns.<br><br>Vielen Dank und freundliche Grüße",
-          "dryRun": true
-        }
-      }
+      { "type": "text", "text": "Ich prüfe zuerst kurz die Rechnung, bevor ich sie verschicke." },
+      { "type": "tool_use", "name": "sevdesk_invoice_get", "input": { "id": 4711 } }
     ],
     "usage": {
       "inputTokens": 147,
-      "outputTokens": 418,
+      "outputTokens": 340,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 57128
+      "cacheReadInputTokens": 56615
     }
   }
 }

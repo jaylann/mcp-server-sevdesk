@@ -1,21 +1,23 @@
 {
   "caseId": "transaction-book-en",
   "model": "claude-sonnet-5-5",
-  "key": "c3490c647b88f0a3b294d5a670cfb1337695242affd9fa57a7d11ba7e09ef9f9",
-  "recordedAt": "2026-11-13T14:12:46.552Z",
+  "key": "c6b7e47da6cc4e3e7cbd51133a9cda36f777f08bc49deed6d435abd2bf78d0e0",
+  "recordedAt": "2026-11-13T18:18:16.975Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
     "content": [
-      { "type": "text", "text": "I'll check the transaction and the invoice first." },
-      { "type": "tool_use", "name": "sevdesk_transaction_get", "input": { "id": 555 } },
-      { "type": "tool_use", "name": "sevdesk_invoice_get", "input": { "id": 4711 } }
+      {
+        "type": "tool_use",
+        "name": "sevdesk_transaction_book",
+        "input": { "id": 555, "allocations": [{ "kind": "invoice", "id": 4711 }] }
+      }
     ],
     "usage": {
       "inputTokens": 102,
-      "outputTokens": 168,
+      "outputTokens": 209,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 57128
+      "cacheReadInputTokens": 56615
     }
   }
 }

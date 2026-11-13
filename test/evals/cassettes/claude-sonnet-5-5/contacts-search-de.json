@@ -1,18 +1,22 @@
 {
   "caseId": "contacts-search-de",
   "model": "claude-sonnet-5-5",
-  "key": "d52af489ec60a2913989a06fb2e5b1af9ba49c776f37f7450d5ff8b70a77a0bb",
-  "recordedAt": "2026-11-13T14:11:13.906Z",
+  "key": "7dfce5a7e8b361421ce4ccf18ba016c122785063511ca8983878f8cea98779c7",
+  "recordedAt": "2026-11-13T18:16:53.706Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
     "content": [
-      { "type": "tool_use", "name": "sevdesk_contacts_search", "input": { "query": "Hetzner" } }
+      {
+        "type": "tool_use",
+        "name": "sevdesk_contacts_search",
+        "input": { "query": "Hetzner", "detail": "summary" }
+      }
     ],
     "usage": {
       "inputTokens": 110,
-      "outputTokens": 59,
-      "cacheCreationInputTokens": 57128,
+      "outputTokens": 82,
+      "cacheCreationInputTokens": 56615,
       "cacheReadInputTokens": 0
     }
   }

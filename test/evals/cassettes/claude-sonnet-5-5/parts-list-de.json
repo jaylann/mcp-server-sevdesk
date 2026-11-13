@@ -1,8 +1,8 @@
 {
   "caseId": "parts-list-de",
   "model": "claude-sonnet-5-5",
-  "key": "340ad8e6941abfb9268fb58e8576f23b1ba52edff378252dfcd0941d86d7a810",
-  "recordedAt": "2026-11-13T14:12:52.279Z",
+  "key": "2587f8f37a040628fcc97f78c962d9d02f8b48f22d24e5dda0a786a13bf0d82a",
+  "recordedAt": "2026-11-13T18:18:22.055Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -11,7 +11,7 @@
       "inputTokens": 107,
       "outputTokens": 55,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17202
+      "cacheReadInputTokens": 17341
     }
   }
 }

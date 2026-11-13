@@ -1,8 +1,8 @@
 {
   "caseId": "invoice-preflight-en",
   "model": "claude-sonnet-5-5",
-  "key": "28845fd2d1c4b17cd7d01e9c3b377b48f580c8ba1fece1ff124840b628710ff6",
-  "recordedAt": "2026-11-13T14:11:50.852Z",
+  "key": "d7679c4cf27a0d7275b91509d96143a6b9a81606de566035296bf10672cc313c",
+  "recordedAt": "2026-11-13T18:17:26.595Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -14,7 +14,7 @@
       "inputTokens": 114,
       "outputTokens": 116,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17202
+      "cacheReadInputTokens": 17341
     }
   }
 }

@@ -1,8 +1,8 @@
 {
   "caseId": "voucher-finalize-en",
   "model": "claude-sonnet-5-5",
-  "key": "a1fc91528e6d77f1c3d044b9f7e144f84b094a4c4a29cdc2de46345b1bba37f8",
-  "recordedAt": "2026-11-13T14:12:26.394Z",
+  "key": "e2c24a3f0bec2a3bb4e71f8bdc6947b8d0fafca70f4efa579d5590156ea09395",
+  "recordedAt": "2026-11-13T18:18:00.471Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -13,7 +13,7 @@
       "inputTokens": 105,
       "outputTokens": 58,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 57128
+      "cacheReadInputTokens": 56615
     }
   }
 }

@@ -1,8 +1,8 @@
 {
   "caseId": "voucher-book-payment-de",
   "model": "claude-sonnet-5-5",
-  "key": "abdeedcd6e48207fa8a1195c306a3e5206f30231b4a8b447a6adba786219145e",
-  "recordedAt": "2026-11-13T14:12:29.658Z",
+  "key": "a3eac1ac0a7c7f6b8b0750f10df2fab70feb6303c03b33096d26016d203b5eea",
+  "recordedAt": "2026-11-13T18:18:03.375Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -15,16 +15,15 @@
           "checkAccountId": 12,
           "from": "2026-11-01",
           "to": "2026-11-10",
-          "status": ["created"],
-          "direction": "out"
+          "status": ["created"]
         }
       }
     ],
     "usage": {
       "inputTokens": 162,
-      "outputTokens": 295,
+      "outputTokens": 298,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 57128
+      "cacheReadInputTokens": 56615
     }
   }
 }

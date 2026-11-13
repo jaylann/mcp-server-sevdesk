@@ -1,8 +1,8 @@
 {
   "caseId": "payables-en",
   "model": "claude-sonnet-5-5",
-  "key": "456d69fe13f5a331958f6e8844ab44f9d74d5a2ac531d441396d503936bc46ff",
-  "recordedAt": "2026-11-13T14:12:58.690Z",
+  "key": "4d2c9830d3bd91d7ffd928df21b738e4c27470c300029182d5044a54b62fa292",
+  "recordedAt": "2026-11-13T18:18:28.267Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -11,19 +11,24 @@
       {
         "type": "tool_use",
         "name": "sevdesk_vouchers_list",
-        "input": { "kind": "expense", "status": "open", "limit": 100 }
+        "input": { "kind": "expense", "status": "open", "detail": "summary", "limit": 100 }
       },
       {
         "type": "tool_use",
         "name": "sevdesk_vouchers_list",
-        "input": { "kind": "expense", "status": "partially_paid", "limit": 100 }
+        "input": {
+          "kind": "expense",
+          "status": "partially_paid",
+          "detail": "summary",
+          "limit": 100
+        }
       }
     ],
     "usage": {
       "inputTokens": 101,
-      "outputTokens": 234,
+      "outputTokens": 280,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17202
+      "cacheReadInputTokens": 17341
     }
   }
 }

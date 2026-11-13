@@ -1,8 +1,8 @@
 {
   "caseId": "invoices-drafts-de",
   "model": "claude-sonnet-5-5",
-  "key": "b2e9c22411b533107862d77984833804885abc34d86557bb9959cdcf9b7aac90",
-  "recordedAt": "2026-11-13T14:11:22.306Z",
+  "key": "785124c81054724786c142ca335298e5138dcad72cf135a71da7c29ec7769f62",
+  "recordedAt": "2026-11-13T18:17:00.691Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -17,7 +17,7 @@
       "inputTokens": 109,
       "outputTokens": 78,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17202
+      "cacheReadInputTokens": 17341
     }
   }
 }

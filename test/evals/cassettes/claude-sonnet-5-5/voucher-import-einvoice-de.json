@@ -1,8 +1,8 @@
 {
   "caseId": "voucher-import-einvoice-de",
   "model": "claude-sonnet-5-5",
-  "key": "d09c2f5cc189b25cfad26c339a0a7828ea24d74d25527499661c126cf2278965",
-  "recordedAt": "2026-11-13T14:12:16.334Z",
+  "key": "4bab5a3f0ed1ea087f320c9b9713a3c7217cac4bf285ee3168dd6762c7664eb6",
+  "recordedAt": "2026-11-13T18:17:51.407Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -18,7 +18,7 @@
       "inputTokens": 124,
       "outputTokens": 109,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 57128
+      "cacheReadInputTokens": 56615
     }
   }
 }

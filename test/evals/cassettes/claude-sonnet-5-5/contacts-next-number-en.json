@@ -1,8 +1,8 @@
 {
   "caseId": "contacts-next-number-en",
   "model": "claude-sonnet-5-5",
-  "key": "dad6add11bf52020d99f72b565ea55b8939216a0e615859762955b4edcf9bbf7",
-  "recordedAt": "2026-11-13T14:11:18.560Z",
+  "key": "fd45ee10875093256713cf98ca0d159b009ec8a308fbdeefa8c5c234da613f5c",
+  "recordedAt": "2026-11-13T18:16:56.624Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -13,7 +13,7 @@
       "inputTokens": 89,
       "outputTokens": 39,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17202
+      "cacheReadInputTokens": 17341
     }
   }
 }

@@ -1,8 +1,8 @@
 {
   "caseId": "contacts-search-en",
   "model": "claude-sonnet-5-5",
-  "key": "24ab2f6b516a646fa250e065740f44464f94d34ac065bc29a8beb19ceec70ea5",
-  "recordedAt": "2026-11-13T14:11:12.183Z",
+  "key": "d789728c428aacf43c57153f095f40c15a29834792eba186cc509b2879351af5",
+  "recordedAt": "2026-11-13T18:16:52.308Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -10,14 +10,14 @@
       {
         "type": "tool_use",
         "name": "sevdesk_contacts_search",
-        "input": { "query": "Müller GmbH", "category": "customer" }
+        "input": { "query": "Müller GmbH", "category": "customer", "detail": "summary" }
       }
     ],
     "usage": {
       "inputTokens": 94,
-      "outputTokens": 83,
+      "outputTokens": 106,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17202
+      "cacheReadInputTokens": 17341
     }
   }
 }
