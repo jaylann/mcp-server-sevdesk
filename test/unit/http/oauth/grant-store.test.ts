@@ -1,4 +1,4 @@
-import { renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
 import {
   appendFile,
   chmod,
@@ -819,12 +819,70 @@ describe("state directory permissions", () => {
       StateDirError,
     );
   });
+
+  it("keeps working with a stable configured symlink to the state directory", async () => {
+    const target = join(dir, "target");
+    const link = join(dir, "state");
+    await mkdir(target, { mode: 0o755 });
+    await symlink(target, link, "junction");
+
+    const store = await server({ stateDir: link });
+    await pending(store);
+    await store.close();
+
+    expect((await stat(target)).mode & 0o777).toBe(0o700);
+    expect(await readdir(target)).toEqual([GRANTS_FILE]);
+    expect((await lstat(link)).isSymbolicLink()).toBe(true);
+  });
 });
 
 // Review 2026-11, round 3: the mode says nothing about the owner (or about a macOS ACL).
 describe.skipIf(process.getuid === undefined)("state directory ownership", () => {
   /** As if the process ran as another user than the one who owns the test directory. */
   const otherUser = (): number => (process.getuid?.() ?? 0) + 1;
+
+  it.each([
+    { mode: 0o755, replacement: "symlink" },
+    { mode: 0o700, replacement: "symlink" },
+    { mode: 0o755, replacement: "directory" },
+    { mode: 0o700, replacement: "directory" },
+    { mode: 0o755, replacement: "missing" },
+    { mode: 0o700, replacement: "missing" },
+  ])(
+    "refuses a changed state-directory path ($replacement, mode $mode)",
+    async ({ mode, replacement }) => {
+      const state = join(dir, "state");
+      const moved = join(dir, "original");
+      const target = join(dir, "target");
+      await mkdir(state, { mode });
+      await mkdir(target, { mode: 0o755 });
+      await writeFile(join(target, "keep.txt"), "untouched");
+      let checks = 0;
+      const getuid = (): number => {
+        checks += 1;
+        // Swap immediately after the directory metadata was read, before chmod or lock creation.
+        if (checks === 1) {
+          renameSync(state, moved);
+          if (replacement === "symlink") symlinkSync(target, state);
+          if (replacement === "directory") mkdirSync(state, { mode: 0o755 });
+        }
+        return process.getuid?.() ?? 0;
+      };
+
+      await expect(server({ stateDir: state, getuid })).rejects.toThrow(
+        /state directory changed during startup/,
+      );
+
+      expect(checks).toBe(1);
+      expect((await stat(target)).mode & 0o777).toBe(0o755);
+      expect(await readdir(target)).toEqual(["keep.txt"]);
+      expect(await readFile(join(target, "keep.txt"), "utf8")).toBe("untouched");
+      // Only the verified inode may be tightened; neither location receives lock/grant files.
+      expect((await stat(moved)).mode & 0o777).toBe(0o700);
+      expect(await readdir(moved)).toEqual([]);
+      if (replacement === "directory") expect(await readdir(state)).toEqual([]);
+    },
+  );
 
   it("refuses a state directory that belongs to another user, whatever its mode", async () => {
     await chmod(dir, 0o700);

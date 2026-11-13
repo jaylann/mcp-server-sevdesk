@@ -37,7 +37,6 @@
  */
 import { randomBytes } from "node:crypto";
 import {
-  chmod,
   constants,
   type FileHandle,
   link,
@@ -1098,6 +1097,8 @@ function snapshotSession(session: SessionState): SessionRecord {
  * directory would let other local users replace `grants.jsonl` between restarts. A directory
  * that belongs to another user is refused whatever its mode: its owner can replace the files in
  * it, and on macOS an ACL can open it without any mode bit showing (review 2026-11, round 3).
+ * Ownership and chmod use one handle. Before startup proceeds to pathname-based lock/grant
+ * operations, the path must still name that directory, even when no chmod was needed.
  */
 async function prepareDirectory(
   dir: string,
@@ -1109,27 +1110,45 @@ async function prepareDirectory(
   } catch {
     throw new StateDirError(`SEVDESK_HTTP_STATE_DIR: cannot create ${dir}.`);
   }
-  const info = await stat(dir).catch(() => undefined);
-  if (info === undefined || !info.isDirectory()) {
-    throw new StateDirError(`SEVDESK_HTTP_STATE_DIR: ${dir} is not a directory.`);
-  }
-  if (ownedByOtherUser(info, getuid)) {
-    throw new StateDirError(
-      `SEVDESK_HTTP_STATE_DIR: ${dir} belongs to another user, who could replace the files in ` +
-        "it. Point the variable to a directory owned by the user the server runs as.",
-    );
-  }
-  if ((info.mode & 0o077) === 0) return;
+  let handle: FileHandle;
   try {
-    await chmod(dir, 0o700);
+    handle = await open(dir, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NONBLOCK);
   } catch {
-    throw new StateDirError(
-      `SEVDESK_HTTP_STATE_DIR: other users can access ${dir}, and its mode could not be ` +
-        `changed. Run \`chmod 700 ${dir}\` as its owner, or point the variable to a directory ` +
-        "owned by the user the server runs as.",
-    );
+    throw new StateDirError(`SEVDESK_HTTP_STATE_DIR: cannot open ${dir} as a directory.`);
   }
-  log?.warn("state_dir_mode_tightened", {});
+  try {
+    const info = await handle.stat().catch(() => undefined);
+    if (info === undefined || !info.isDirectory()) {
+      throw new StateDirError(`SEVDESK_HTTP_STATE_DIR: ${dir} is not a directory.`);
+    }
+    if (ownedByOtherUser(info, getuid)) {
+      throw new StateDirError(
+        `SEVDESK_HTTP_STATE_DIR: ${dir} belongs to another user, who could replace the files in ` +
+          "it. Point the variable to a directory owned by the user the server runs as.",
+      );
+    }
+    if ((info.mode & 0o077) !== 0) {
+      try {
+        await handle.chmod(0o700);
+      } catch {
+        throw new StateDirError(
+          `SEVDESK_HTTP_STATE_DIR: other users can access ${dir}, and its mode could not be ` +
+            `changed. Run \`chmod 700 ${dir}\` as its owner, or point the variable to a directory ` +
+            "owned by the user the server runs as.",
+        );
+      }
+      log?.warn("state_dir_mode_tightened", {});
+    }
+    const current = await stat(dir).catch(() => undefined);
+    if (current?.dev !== info.dev || current.ino !== info.ino) {
+      throw new StateDirError(
+        `SEVDESK_HTTP_STATE_DIR: the state directory changed during startup (${dir}). ` +
+          "No grant store was opened; restore the directory and restart the server.",
+      );
+    }
+  } finally {
+    await handle.close();
+  }
 }
 
 /**
