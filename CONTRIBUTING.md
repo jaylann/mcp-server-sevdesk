@@ -145,9 +145,13 @@ comment leads with **model-context tokens** and **response tokens**, base → he
   write, all toolsets/tiers (including advanced), and all over HTTP with OAuth and remote files.
 - Response cost runs an invoice get, an invoice summary by month, and default-limit contact,
   transaction, voucher and invoice lists through the real server on **recorded fixtures**.
+  `transactions_list`, `vouchers_list` and `invoices_list` each also run with `detail: "summary"`;
+  `invoices_list` runs with both detail levels at `limit: 100` too.
   Each recorded list is expanded deterministically to 100 items by repeating its scrubbed row
   shapes with distinct ids, discarding the original upstream total. Default-limit calls currently
-  return 25 rows; an additional invoice call requests `limit: 100`. Tests assert those counts and
+  return 25 rows. Tests assert those counts and
+  compare full and `detail: "summary"` responses for transactions, vouchers and both invoice
+  page sizes, with each summary row immediately after its full counterpart. They also
   verify that reducing the default to 10 changes the measured cost. Both revisions use the same
   generated corpus. This measures page-size and formatting changes, not a representative sample
   of 100 different real documents. The clock is fixed to 2026-11-13 so overdue flags cannot drift.
@@ -167,6 +171,11 @@ the whole calibration message; response counts subtract only its framing, retain
 system text; responses include the actual legacy text blocks, summaries and fences. Client message
 envelopes, rendered prompt bodies and deferred-tool loading policies are outside this comparison.
 Missing captures in older dumps display `n/a`, including their delta, rather than zero.
+The publisher accepts missing response ids and excludes unknown ids from both rows and exact
+count requests, so different harness and publisher vocabularies do not break the report. All
+provided counts and response texts still undergo type and size checks; labels come only from
+the publisher. CI copies the current harness to the base, so a base that already supports
+`detail: "summary"` can capture these calls too; older tools that reject `detail` leave them `n/a`.
 
 Capture, compare or recount locally without credentials or network access:
 

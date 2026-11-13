@@ -14,9 +14,13 @@ export const RESPONSE_IDS = [
   "records_summarize",
   "contacts_search",
   "transactions_list",
+  "transactions_list_summary",
   "vouchers_list",
+  "vouchers_list_summary",
   "invoices_list",
+  "invoices_list_summary",
   "invoices_list_max",
+  "invoices_list_summary_max",
 ] as const;
 
 export interface ModelContext {
