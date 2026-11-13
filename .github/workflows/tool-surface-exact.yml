@@ -1,10 +1,19 @@
 name: Tool surface exact
 
-# Independent of Tool surface: an evals approval must never delay estimated fork comments.
-# Same-repository PRs follow the evals trust boundary. Only the counting step receives the key;
-# no sevDesk account, dependency cache or write token is used. This workflow is not a required gate.
+# Separate workflow: evals approval cannot delay the secret-free estimate or its comment.
+# Capture executes PR code with no secrets. A fresh counting job uses ONLY the base counter.
 on:
   pull_request:
+    paths:
+      - "src/**"
+      - "test/helpers/**"
+      - "test/fixtures/recorded/**"
+      - "test/evals/tools.ts"
+      - "scripts/tool-surface*.ts"
+      - ".github/workflows/tool-surface*.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".nvmrc"
 
 permissions: {}
 
@@ -18,9 +27,11 @@ defaults:
 
 jobs:
   compare:
-    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
-    environment:
-      name: evals
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]' && github.event.pull_request.user.login != 'dependabot[bot]'
+    outputs:
+      counter-available: ${{ steps.counter.outputs.available }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -39,6 +50,15 @@ jobs:
           ref: ${{ github.event.pull_request.base.sha }}
           path: .cache/tool-surface-base
           persist-credentials: false
+      - name: Check for a base-revision counter
+        id: counter
+        run: |
+          if [ -f .cache/tool-surface-base/scripts/tool-surface-tokens.ts ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "Exact counting skipped: the base revision has no standalone counter yet; estimates remain available." >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Set up pnpm
         uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       - name: Set up Node.js
@@ -59,8 +79,6 @@ jobs:
           cd .cache/tool-surface-base
           node --import tsx scripts/tool-surface.ts dump "$RUNNER_TEMP/tool-surface/base.json"
       - name: Capture head and compare
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           node --import tsx scripts/tool-surface.ts dump "$RUNNER_TEMP/tool-surface/head.json"
           node --import tsx scripts/tool-surface.ts diff "$RUNNER_TEMP/tool-surface/base.json" "$RUNNER_TEMP/tool-surface/head.json" "$RUNNER_TEMP/tool-surface/diff.txt"
@@ -73,6 +91,7 @@ jobs:
             ${{ runner.temp }}/tool-surface/base.json
             ${{ runner.temp }}/tool-surface/head.json
             ${{ runner.temp }}/tool-surface/diff.txt
+            ${{ runner.temp }}/tool-surface/report.json
           retention-days: 7
           if-no-files-found: error
       - name: Upload comment data
@@ -80,5 +99,46 @@ jobs:
         with:
           name: tool-surface-report
           path: ${{ runner.temp }}/tool-surface/report.json
+          retention-days: 7
+          if-no-files-found: error
+
+  count:
+    needs: compare
+    if: ${{ needs.compare.outputs.counter-available == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: evals
+    permissions:
+      contents: read
+    steps:
+      # Fresh runner: no head checkout, dependency install, loader or PR-created executable.
+      - name: Check out only the base counter
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+          sparse-checkout: scripts/tool-surface-tokens.ts
+          sparse-checkout-cone-mode: false
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Download captured JSON
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: tool-surface
+          path: ${{ runner.temp }}/tool-surface
+      - name: Count JSON with the base counter
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: node scripts/tool-surface-tokens.ts "$RUNNER_TEMP/tool-surface/base.json" "$RUNNER_TEMP/tool-surface/head.json" "$RUNNER_TEMP/tool-surface/report.json"
+      - name: Replace estimated comment data with counted data
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tool-surface-report
+          path: ${{ runner.temp }}/tool-surface/report.json
+          overwrite: true
           retention-days: 7
           if-no-files-found: error

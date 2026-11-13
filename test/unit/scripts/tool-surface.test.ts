@@ -73,12 +73,15 @@ describe("tool surface", () => {
         ),
       ).toBe(true);
     }
-    expect(read.modelContext).toEqual(await clientView({}));
+    const clientPayload = JSON.stringify(await clientView({}));
+    expect(JSON.stringify(read.modelContext)).toBe(clientPayload);
+    const roundTrip = JSON.parse(surfaceJson(dump)) as ToolSurface;
+    expect(JSON.stringify(roundTrip.configurations.read.modelContext)).toBe(clientPayload);
     expect(read.modelContext?.tools.every((tool) => !Object.hasOwn(tool, "outputSchema"))).toBe(
       true,
     );
     expect(dump.responses?.invoice_get).toContain("with 1 position");
-    expect(dump.responses?.records_summarize).toContain("5 counted");
+    expect(dump.responses?.records_summarize).toContain("100 counted");
     for (const id of [
       "contacts_search",
       "transactions_list",
@@ -91,8 +94,8 @@ describe("tool surface", () => {
         items: unknown[];
         limit: number;
       };
-      expect(data.items, id).toHaveLength(5);
-      expect(data.limit, id).toBe(id === "invoices_list_max" ? 5 : 25);
+      expect(data.items, id).toHaveLength(id === "invoices_list_max" ? 100 : 25);
+      expect(data.limit, id).toBe(id === "invoices_list_max" ? 100 : 25);
     }
     const sizes = measureToolSurface(dump);
     expect(sizes.read.tools).toBeGreaterThan(0);
@@ -110,6 +113,45 @@ describe("tool surface", () => {
     expect(Date.now()).toBe(Date.parse("2030-01-01T00:00:00Z"));
     clock.mockRestore();
   }, 30_000);
+
+  it("still dumps and reports the full catalog when response setup fails", async () => {
+    const dump = await dumpToolSurface(() => Promise.reject(new Error("Fixture setup failed")));
+    expect(dump.responses).toEqual({});
+    expect(dump.configurations.read.tools.length).toBeGreaterThan(0);
+    const head = structuredClone(dump);
+    head.configurations.read.tools = head.configurations.read.tools.filter(
+      (tool) => tool.name !== "sevdesk_invoices_list",
+    );
+    const report = await surfaceReport(dump, head, event);
+    expect(report.diff).toContain("- /read/tools/sevdesk_invoices_list:");
+    expect(report.tokenCost.head.responses.invoices_list).toBeNull();
+    expect(report.tokenCost.head.configurations.read).toBeGreaterThan(0);
+  });
+
+  it("preserves unsorted nested schema keys through dump serialization and measurement", async () => {
+    const dump = empty();
+    const view = {
+      system: "Instructions",
+      tools: [
+        {
+          name: "x",
+          description: "X",
+          input_schema: {
+            properties: { z: { description: "last", type: "string" }, a: { type: "number" } },
+            type: "object" as const,
+            required: ["z"],
+          },
+        },
+      ],
+    };
+    dump.configurations.read.modelContext = view;
+    const roundTrip: unknown = JSON.parse(surfaceJson(dump));
+    const counter = { method: "exact" as const, count: vi.fn().mockResolvedValue(10) };
+    await surfaceReport(roundTrip, roundTrip, event, counter);
+    expect(JSON.stringify(counter.count.mock.calls[0]?.[0])).toBe(
+      JSON.stringify({ kind: "context", view }),
+    );
+  });
 
   it("sorts keys and named lists, preserves schema array order and does not mutate inputs", () => {
     const base = empty();

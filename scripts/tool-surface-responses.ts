@@ -1,7 +1,8 @@
-/** A small, finite recorded corpus; no live account, repeated rows or synthetic list padding. */
+/** Deterministic recorded-row expansion for full default and 100-item pages; no live account. */
 import { z } from "zod";
 
 import { createServerFactory } from "../src/server.js";
+import type { AnyToolDefinition } from "../src/tools/types.js";
 import { testConfig } from "../test/helpers/config.js";
 import { connectFactory } from "../test/helpers/connect.js";
 import { type FakeRoute, FakeSevdeskClient, loadFixture } from "../test/helpers/fake-client.js";
@@ -17,49 +18,81 @@ export const RESPONSE_CALLS = {
   transactions_list: { name: "sevdesk_transactions_list", arguments: {} },
   vouchers_list: { name: "sevdesk_vouchers_list", arguments: {} },
   invoices_list: { name: "sevdesk_invoices_list", arguments: {} },
-  invoices_list_max: { name: "sevdesk_invoices_list", arguments: { limit: 5 } },
+  invoices_list_max: { name: "sevdesk_invoices_list", arguments: { limit: 100 } },
 } as const;
 
 const collection = z.object({ objects: z.array(z.json()) });
-const recorded = (path: string, file: string): FakeRoute => ({
-  path,
-  // Captures are single pages with upstream totals larger than the recorded data. Discard
-  // those totals so FakeSevdeskClient pages exactly the available rows and reports terminate.
-  response: { body: collection.parse(loadFixture(`recorded/${file}.json`).body) },
-});
+const row = z.object({ id: z.string().regex(/^\d+$/) }).catchall(z.json());
+
+/** Repeat recorded shapes, preserving the first page and assigning distinct fixed-width ids. */
+export function expandRecordedRows(rows: readonly unknown[], size: number): unknown[] {
+  if (rows.length === 0 || !Number.isSafeInteger(size) || size < rows.length || size > 100) {
+    throw new Error("Invalid recorded corpus size.");
+  }
+  const parsed = rows.map((value) => row.parse(value));
+  const maximum = Math.max(...parsed.map((value) => Number(value.id)));
+  return Array.from({ length: size }, (_, index) => {
+    const original = structuredClone(parsed[index % parsed.length]!);
+    return { ...original, id: index < parsed.length ? original.id : String(maximum + index + 1) };
+  });
+}
+
+const recorded = (path: string, file: string, size?: number): FakeRoute => {
+  const body = collection.parse(loadFixture(`recorded/${file}.json`).body);
+  return {
+    path,
+    // Captures are single pages with upstream totals larger than the recorded data. Discard
+    // those totals so FakeSevdeskClient pages exactly the available rows and reports terminate.
+    response: {
+      body: { objects: size === undefined ? body.objects : expandRecordedRows(body.objects, size) },
+    },
+  };
+};
 
 /** Uses the actual legacy SDK text blocks, including summaries and untrusted-data fences. */
-export async function captureResponses(): Promise<Record<keyof typeof RESPONSE_CALLS, string>> {
+export async function captureResponses(
+  tools?: readonly AnyToolDefinition[],
+): Promise<Partial<Record<keyof typeof RESPONSE_CALLS, string>>> {
   const fake = new FakeSevdeskClient([
     recorded("/Invoice/138793718", "2026-11-07/invoices/invoice-by-id"),
     recorded("/InvoicePos", "2026-11-07/invoices/invoice-positions"),
     recorded("/Unity", "2026-11-07/meta/units"),
     recorded("/StaticCountry", "2026-11-07/meta/static-countries"),
-    recorded("/Invoice", "2026-11-07/invoices/invoices-list"),
-    recorded("/Contact", "2026-11-07/contacts/contacts-list"),
-    recorded("/Voucher", "2026-11-08/vouchers/vouchers-list"),
-    recorded("/CheckAccountTransaction", "2026-11-07/banking/transactions-list"),
+    recorded("/Invoice", "2026-11-07/invoices/invoices-list", 100),
+    recorded("/Contact", "2026-11-07/contacts/contacts-list", 100),
+    recorded("/Voucher", "2026-11-08/vouchers/vouchers-list", 100),
+    recorded("/CheckAccountTransaction", "2026-11-07/banking/transactions-list", 100),
     recorded("/CheckAccount", "2026-11-07/banking/check-accounts"),
   ]);
-  const factory = createServerFactory({ config: testConfig(), client: fake });
+  const factory = createServerFactory({
+    config: testConfig(),
+    client: fake,
+    ...(tools === undefined ? {} : { tools }),
+  });
   const now = Date.now;
   // The harness runs serially; restore the clock even on errors. Due/overdue fields must
-  // describe the recording day, not whichever day a PR happens to run.
+  // describe the fixed reference day, not whichever day a PR happens to run.
   Date.now = () => Date.parse("2026-11-13T12:00:00Z");
   try {
     const client = await connectFactory(factory, { era: "legacy" });
     try {
-      const responses = {} as Record<keyof typeof RESPONSE_CALLS, string>;
+      const responses: Partial<Record<keyof typeof RESPONSE_CALLS, string>> = {};
       for (const id of Object.keys(RESPONSE_CALLS) as (keyof typeof RESPONSE_CALLS)[]) {
-        const result = await client.callTool(RESPONSE_CALLS[id]);
-        if (result.isError || result.content.some((block) => block.type !== "text")) {
-          throw new Error(`Response capture failed: ${id}`);
-        }
-        responses[id] = result.content
-          .map((block) => (block.type === "text" ? block.text : ""))
-          .join("\n");
-        if (!responses[id] || result.structuredContent !== undefined) {
-          throw new Error(`Expected legacy text response: ${id}`);
+        try {
+          const result = await client.callTool(RESPONSE_CALLS[id]);
+          if (
+            result.isError ||
+            result.structuredContent !== undefined ||
+            result.content.some((block) => block.type !== "text")
+          )
+            continue;
+          const text = result.content
+            .map((block) => (block.type === "text" ? block.text : ""))
+            .join("\n");
+          if (text) responses[id] = text;
+        } catch {
+          // Removed tools, changed inputs and missing fixture routes are expected during PR
+          // comparisons. Keep other calls and the compatibility diff; never count error text.
         }
       }
       if (fake.writes().length > 0) throw new Error("Response capture attempted a write.");

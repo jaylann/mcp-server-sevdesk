@@ -145,11 +145,14 @@ comment leads with **model-context tokens** and **response tokens**, base → he
   write, all toolsets/tiers (including advanced), and all over HTTP with OAuth and remote files.
 - Response cost runs an invoice get, an invoice summary by month, and default-limit contact,
   transaction, voucher and invoice lists through the real server on **recorded fixtures**.
-  Each recorded list contains only five rows; the harness treats those rows as the complete
-  collection, discarding the original upstream total. An additional invoice call uses `limit: 5`,
-  the largest recorded collection, rather than padding to 100. Default-limit calls also return
-  only five rows: these costs are a reproducible regression sample, not full-page production
-  estimates. The clock is fixed to 2026-11-13 so overdue flags cannot drift between runs.
+  Each recorded list is expanded deterministically to 100 items by repeating its scrubbed row
+  shapes with distinct ids, discarding the original upstream total. Default-limit calls currently
+  return 25 rows; an additional invoice call requests `limit: 100`. Tests assert those counts and
+  verify that reducing the default to 10 changes the measured cost. Both revisions use the same
+  generated corpus. This measures page-size and formatting changes, not a representative sample
+  of 100 different real documents. The clock is fixed to 2026-11-13 so overdue flags cannot drift.
+  A missing/erroring tool or fixture route leaves only that response absent (`n/a`); even a corpus
+  setup failure preserves the tools, prompts, instructions and compatibility diff.
 - The full modern `tools/list`, including output schemas, is secondary and labelled **not in
   model context for Claude clients**. It is shown in Unicode characters, not model tokens.
   The compatibility diff still covers full tools, prompts and instructions; review names and
@@ -158,37 +161,49 @@ comment leads with **model-context tokens** and **response tokens**, base → he
 Without `ANTHROPIC_API_KEY`, counts are clearly labelled **estimated**: Unicode characters ÷ 2.3,
 rounded to whole tokens (the ratio measured in [#61](https://github.com/jaylann/mcp-server-sevdesk/issues/61)).
 With the key, the report uses **exact** `messages.countTokens` counts for the fixed model
-`claude-opus-5-5`, subtracting a shared one-character user-message baseline. Model context counts
-the Messages API tool shape plus system text; response counts include the actual legacy text
+`claude-opus-5-5`. Model-context counts subtract the whole calibration message; response counts
+subtract only its framing, retaining the response payload (the calibration text `x` is one token).
+Model context counts the Messages API tool shape plus system text; response counts include the actual legacy text
 blocks, summaries and fences. Client message envelopes, rendered prompt bodies and deferred-tool
 loading policies are outside this comparison. Missing captures in older dumps display `n/a`,
 including their delta, rather than zero.
 
-To capture or compare locally, without a sevDesk token or network access (leave the Anthropic key
-unset for estimated reports):
+Capture or compare locally without a sevDesk token or network access (leave the Anthropic key
+unset for estimated reports). The standalone counter can recount those JSON files with the key,
+without importing server code or installing dependencies:
 
 ```bash
 node --import tsx scripts/tool-surface.ts dump /tmp/head-surface.json
 node --import tsx scripts/tool-surface.ts diff /tmp/base-surface.json /tmp/head-surface.json
 node --import tsx scripts/tool-surface.ts report /tmp/base-surface.json /tmp/head-surface.json /tmp/pr-event.json /tmp/report.json
+node scripts/tool-surface-tokens.ts /tmp/base-surface.json /tmp/head-surface.json /tmp/report.json
 ```
 
 The report takes a GitHub PR event JSON (`number`, `pull_request.base.sha`,
 `pull_request.head.sha`). Version 1 dumps optionally carry `modelContext` per configuration and
 `responses`; reports add `tokenCost` with the method, fixed model, and nullable base/head counts.
-`contextCost` retains protocol character counts for older consumers. The script header documents
-the format. CI copies `scripts/tool-surface*.ts` and the same recorded corpus into the base
+`contextCost` retains protocol character counts for older consumers. Model-context serialization
+preserves the client's tool/schema key order; only the protocol catalog is canonicalized.
+The script header documents the format. CI copies `scripts/tool-surface*.ts` and the same recorded corpus into the base
 checkout, and both revisions install their own frozen dependencies. Full dumps and diffs remain
 in run artifacts for seven days; long comments link there and say when truncated.
 
-The normal **Tool surface** workflow is secret-free, including for forks. An independent,
-optional **Tool surface exact** workflow runs only for same-repository PRs and gets
-`ANTHROPIC_API_KEY` from the `evals` environment, matching the evals trust boundary. Environment
-reviewers can approve that run without delaying the normal check or estimated comment. If the
-key is missing, it produces estimates; if the API fails, the independent estimated result remains
-available. The publisher upgrades the sticky comment when an exact report arrives and prevents a
-late estimate from replacing exact counts for the same base/head. Neither capture uses a live
-sevDesk account or a dependency cache.
+The normal **Tool surface** workflow is secret-free, including for forks. The independent,
+optional **Tool surface exact** workflow is path-filtered to relevant code/fixtures/workflows,
+runs only for same-repository PRs, and skips Dependabot. Its capture job runs the head and base
+servers **without secrets**. A fresh counting job checks out only the **base revision's**
+standalone `scripts/tool-surface-tokens.ts`, downloads the already-captured JSON, and counts it
+using Node built-ins. There is no head checkout, dependency install, `tsx` loader or server import
+in that job. Only that base-script invocation receives `ANTHROPIC_API_KEY` from `evals`.
+If the base has no standalone counter yet (including this feature's first PR), exact counting is
+skipped; it never falls back to a head script. If the key is absent, the counter produces estimates.
+
+Environment reviewers can approve the separate counting job without delaying the normal check
+or estimated comment. API failures leave the independent estimate available. The publisher
+upgrades the sticky comment when an exact report arrives and prevents a late estimate from
+replacing exact counts for the same base/head. Neither capture uses a live sevDesk account or a
+dependency cache. Exact counts have not been verified live merely because the workflow succeeds:
+a run without the environment key exercises only the estimate path.
 
 The separate `workflow_run` publisher has only artifact-read and PR-comment permissions: it checks
 out no code, installs nothing, verifies the report's PR and commits against GitHub, validates

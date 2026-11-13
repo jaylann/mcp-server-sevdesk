@@ -8,7 +8,8 @@
  * dump writes stable JSON to stdout unless a path is supplied. Format version 1:
  * { version: 1, configurations: { read, write, all, "http-files" } }, where each value has
  * full tools/list entries, full prompts/list entries and the handshake's instructions.
- * Object keys and tool/prompt lists are sorted; schema arrays retain their order. The modern
+ * Protocol catalogs are canonicalized and named lists sorted; model-context keys and schema
+ * arrays retain client order. The modern
  * protocol is pinned by connectFactory, as in test/integration/tools-list.test.ts, so output
  * schemas are included. read/write use default toolsets; all/http-files enable every toolset
  * and tier; http-files uses OAuth and remote files, with no local folders.
@@ -39,7 +40,9 @@ import { stubClient } from "../test/helpers/dummy-tools.js";
 import { captureResponses, RESPONSE_CALLS } from "./tool-surface-responses.js";
 import {
   createTokenCounter,
-  modelContextSchema,
+  isModelContext,
+  measureCapturedTokens,
+  type ModelContext,
   TOKEN_MODEL,
   type TokenCounter,
 } from "./tool-surface-tokens.js";
@@ -56,12 +59,12 @@ const configuration = z.strictObject({
   tools: entries,
   prompts: entries,
   instructions: z.string(),
-  modelContext: modelContextSchema.optional(),
+  modelContext: z.custom<ModelContext>(isModelContext).optional(),
 });
 const surfaceSchema = z.strictObject({
   version: z.literal(1),
   responses: z
-    .record(
+    .partialRecord(
       z.enum(
         Object.keys(RESPONSE_CALLS) as [
           keyof typeof RESPONSE_CALLS,
@@ -112,26 +115,11 @@ export function measureToolSurface(value: unknown): SurfaceSizes {
   };
 }
 
-type TokenSizes = {
-  configurations: Record<keyof ToolSurface["configurations"], number | null>;
-  responses: Record<keyof typeof RESPONSE_CALLS, number | null>;
-};
+type TokenSizes = Awaited<ReturnType<typeof measureCapturedTokens>>;
 
-/** Measure captured legacy input, never project the modern tools/list output schemas. */
+/** Validate the full dump before counting the legacy input captured within it. */
 export async function measureTokens(value: unknown, counter: TokenCounter): Promise<TokenSizes> {
-  const surface = surfaceSchema.parse(value);
-  const configurations = {} as TokenSizes["configurations"];
-  for (const name of Object.keys(surface.configurations) as (keyof typeof configurations)[]) {
-    const view = surface.configurations[name].modelContext;
-    configurations[name] =
-      view === undefined ? null : await counter.count({ kind: "context", view });
-  }
-  const responses = {} as TokenSizes["responses"];
-  for (const id of Object.keys(RESPONSE_CALLS) as (keyof typeof responses)[]) {
-    const text = surface.responses?.[id];
-    responses[id] = text === undefined ? null : await counter.count({ kind: "response", text });
-  }
-  return { configurations, responses };
+  return measureCapturedTokens(surfaceSchema.parse(value), counter);
 }
 
 /** Recursively sorts object keys without changing array semantics. */
@@ -156,7 +144,14 @@ export function surfaceJson(value: ToolSurface): string {
     item.tools.sort(byName);
     item.prompts.sort(byName);
   }
-  return `${JSON.stringify(sorted(z.json().parse(parsed)), null, 2)}\n`;
+  // Canonicalize only the protocol catalog; the Messages API payload keeps the exact key
+  // and schema order returned to clients. A round trip must not change tokenization input.
+  const canonical = surfaceSchema.parse(sorted(z.json().parse(parsed)));
+  for (const name of Object.keys(parsed.configurations) as (keyof typeof parsed.configurations)[]) {
+    const view = parsed.configurations[name].modelContext;
+    if (view !== undefined) canonical.configurations[name].modelContext = view;
+  }
+  return `${JSON.stringify(canonical, null, 2)}\n`;
 }
 
 async function capture(config: Config): Promise<z.infer<typeof configuration>> {
@@ -177,11 +172,14 @@ async function capture(config: Config): Promise<z.infer<typeof configuration>> {
         // Same Messages API shape as test/evals/tools.ts, retaining server list/schema order.
         const modelContext = {
           system: legacy.getInstructions() ?? "",
-          tools: listed.tools.map((tool) => ({
-            name: tool.name,
-            description: tool.description ?? "",
-            input_schema: tool.inputSchema,
-          })),
+          tools: listed.tools.map((tool) => {
+            const { required, ...schema } = tool.inputSchema;
+            return {
+              name: tool.name,
+              description: tool.description ?? "",
+              input_schema: { ...schema, ...(required === undefined ? {} : { required }) },
+            };
+          }),
         };
         return configuration.parse({
           tools,
@@ -201,10 +199,13 @@ async function capture(config: Config): Promise<z.infer<typeof configuration>> {
 }
 
 /** Captures exactly the four review configurations with the real MCP SDK and a refusing client. */
-export async function dumpToolSurface(): Promise<ToolSurface> {
+export async function dumpToolSurface(responseCapture = captureResponses): Promise<ToolSurface> {
+  // Fixture/session failures must not hide the catalog change that caused them. Individual
+  // tool failures are isolated by captureResponses; this also covers setup/cleanup failures.
+  const responses = await responseCapture().catch(() => ({}));
   return surfaceSchema.parse({
     version: 1,
-    responses: await captureResponses(),
+    responses,
     configurations: {
       read: await capture(testConfig()),
       write: await capture(testConfig({ allowedTiers: tiers("read", "write") })),

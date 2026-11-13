@@ -439,7 +439,7 @@ describe("tool surface comment workflow", () => {
       );
       expect(body).toContain("| read | 100 | 120 | +20 |");
       expect(body).toContain("| invoice_get | 15 | 10 | -5 |");
-      expect(body).toContain("| invoices_list (limit: 5, fixture maximum) | 40 | 40 | 0 |");
+      expect(body).toContain("| invoices_list (limit: 100) | 40 | 40 | 0 |");
       expect(body).toContain("Full tools/list — not in model context for Claude clients");
       expect(body.indexOf("### Model context")).toBeLessThan(body.indexOf("### Response cost"));
       expect(body.indexOf("### Response cost")).toBeLessThan(body.indexOf("Full tools/list"));
@@ -536,6 +536,30 @@ describe("tool surface comment workflow", () => {
       expect(capture).toContain("cp -R test/fixtures/recorded/.");
       expect(capture).toContain("package-manager-cache: false");
     }
+  });
+
+  it("isolates the secret in a fresh base-only counting job and skips bots/unrelated paths", () => {
+    const exact = readFileSync(
+      new URL("../../../.github/workflows/tool-surface-exact.yml", import.meta.url),
+      "utf8",
+    );
+    const [capture, count] = exact.split("\n  count:\n");
+    expect(capture).not.toMatch(/\$\{\{\s*secrets\.|^\s+environment:/m);
+    expect(capture).toContain("paths:");
+    expect(capture).toContain('"src/**"');
+    expect(capture).toContain("github.actor != 'dependabot[bot]'");
+    expect(capture).toContain("github.event.pull_request.user.login != 'dependabot[bot]'");
+    expect(count).toContain("needs.compare.outputs.counter-available == 'true'");
+    expect(count).toContain("ref: ${{ github.event.pull_request.base.sha }}");
+    expect(count).toContain("sparse-checkout: scripts/tool-surface-tokens.ts");
+    expect(count).not.toMatch(/pnpm|--import|github.sha|head.sha|npm install|npm ci/);
+    const secretStep = count!
+      .split("      - name: Count JSON with the base counter\n")[1]!
+      .split("      - name:")[0]!;
+    expect(secretStep).toContain("ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}");
+    expect(secretStep.match(/run:/g)).toHaveLength(1);
+    expect(secretStep).toContain("run: node scripts/tool-surface-tokens.ts");
+    expect(count).toContain("overwrite: true");
   });
 
   it("keeps the writer free of checkout, shell execution, dependencies and caches", () => {

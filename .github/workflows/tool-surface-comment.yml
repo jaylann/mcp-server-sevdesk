@@ -85,7 +85,7 @@ jobs:
               invoice_get: 'invoice_get', records_summarize: 'records_summarize (invoices by month)',
               contacts_search: 'contacts_search (default limit)', transactions_list: 'transactions_list (default limit)',
               vouchers_list: 'vouchers_list (default limit)', invoices_list: 'invoices_list (default limit)',
-              invoices_list_max: 'invoices_list (limit: 5, fixture maximum)',
+              invoices_list_max: 'invoices_list (limit: 100)',
             };
             const validCounts = (value, keys) => hasKeys(value, keys) && keys.every(key =>
               value[key] === null || (Number.isSafeInteger(value[key]) && value[key] >= 0 && value[key] <= 1_000_000_000));
@@ -180,15 +180,15 @@ jobs:
                 '| --- | ---: | ---: | ---: |\n' + keys.map(key =>
                   row(labels[key] ?? key, tokens.base[section][key], tokens.head[section][key])).join('\n') + '\n\n';
               contextCost = (tokens.method === 'exact'
-                ? '**Exact** tokens via messages.countTokens (claude-opus-5-5), less a shared one-character message baseline. '
+                ? '**Exact** tokens via messages.countTokens (claude-opus-5-5), context less its calibration message; responses less framing only. '
                 : '**Estimated** tokens = characters ÷ 2.3 (Unicode code points, rounded). ') +
                 'Model context uses legacy Claude tool definitions (name, description, input_schema) plus instructions as the system prompt. ' +
                 'Response counts include the actual text blocks, including summaries and fences; client message envelopes are excluded. ' +
                 'Missing captures are n/a.\n\n' +
                 table('Model context', configurations, {}, 'configurations') +
                 table('Response cost', Object.keys(responseLabels), responseLabels, 'responses') +
-                'Recorded fixtures only: five available rows per list; default-limit calls return those five, not a full 25-row page. ' +
-                'The explicit limit is 5 (the fixture maximum), not an extrapolated 100-row cost. Clock fixed to 2026-11-13.\n\n';
+                'Deterministic corpus: recorded row shapes expanded to 100 items per list with distinct ids. ' +
+                'Default-limit calls and invoices_list limit: 100 run through the server; missing or failed captures are n/a. Clock fixed to 2026-11-13.\n\n';
               if (cost !== undefined) {
                 contextCost += '<details>\n<summary>Full tools/list — not in model context for Claude clients</summary>\n\n' +
                   'Modern protocol including output schemas; Unicode characters, not model tokens.\n\n' +
