@@ -1,0 +1,76 @@
+name: Tool surface
+
+# PR code and dependency scripts run only here, with a read-only token and no secrets/cache.
+on:
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read # check out the two revisions
+    steps:
+      # The event's test merge commit (PR head merged into base.sha), not the bare head: a PR that is
+      # behind main would otherwise show every tool main gained since it branched as "removed".
+      - name: Check out PR merged into base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Check out base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: .cache/tool-surface-base
+          persist-credentials: false
+      - name: Set up pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Install head dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install base dependencies
+        working-directory: .cache/tool-surface-base
+        run: pnpm install --frozen-lockfile
+      - name: Capture base with the same harness
+        run: |
+          mkdir -p "$RUNNER_TEMP/tool-surface"
+          cp scripts/tool-surface.ts .cache/tool-surface-base/scripts/tool-surface.ts
+          cd .cache/tool-surface-base
+          node --import tsx scripts/tool-surface.ts dump "$RUNNER_TEMP/tool-surface/base.json"
+      - name: Capture head and compare
+        run: |
+          node --import tsx scripts/tool-surface.ts dump "$RUNNER_TEMP/tool-surface/head.json"
+          node --import tsx scripts/tool-surface.ts diff "$RUNNER_TEMP/tool-surface/base.json" "$RUNNER_TEMP/tool-surface/head.json" "$RUNNER_TEMP/tool-surface/diff.txt"
+          node --import tsx scripts/tool-surface.ts report "$RUNNER_TEMP/tool-surface/base.json" "$RUNNER_TEMP/tool-surface/head.json" "$GITHUB_EVENT_PATH" "$RUNNER_TEMP/tool-surface/report.json"
+      - name: Upload full surfaces and diff
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tool-surface
+          path: |
+            ${{ runner.temp }}/tool-surface/base.json
+            ${{ runner.temp }}/tool-surface/head.json
+            ${{ runner.temp }}/tool-surface/diff.txt
+          retention-days: 7
+          if-no-files-found: error
+      - name: Upload comment data
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tool-surface-report
+          path: ${{ runner.temp }}/tool-surface/report.json
+          retention-days: 7
+          if-no-files-found: error
