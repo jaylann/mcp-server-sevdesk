@@ -177,14 +177,10 @@ export function resetTool(kind: PaymentKind) {
     // Serialized with other calls on the same record (see WriteToolDefinition.locks).
     locks: (args) => [ACCOUNT_BOOKINGS, documentObject(kind, args.id)],
     prepare: async (args, ctx) => {
-      const doc = await readLifecycleDocument(
-        ctx.client,
-        kind,
-        args.id,
-        ctx.signal,
-        undefined,
-        ctx.config,
-      );
+      const doc = await readLifecycleDocument(ctx.client, kind, args.id, {
+        signal: ctx.signal,
+        cacheOwner: ctx.config,
+      });
       assertResettable(doc, args.to);
       const codes = statusOf(doc);
       const warnings = resetWarnings(doc, args.to);

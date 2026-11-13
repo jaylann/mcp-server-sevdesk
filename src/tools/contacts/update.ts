@@ -52,14 +52,13 @@ export const contactUpdateTool = defineWriteTool({
     { objectName: "Contact", id: String(args.id) },
     ...(args.customerNumber === undefined ? [] : [ACCOUNT_CONTACT_NUMBERS]),
   ],
-  prepare: (args, ctx) => planContactUpdate(ctx.client, args, ctx.signal, ctx.config),
+  prepare: (args, ctx) =>
+    planContactUpdate(ctx.client, args, { signal: ctx.signal, cacheOwner: ctx.config }),
   execute: async (_args, plan, ctx) => {
-    const { details, affected } = await executeContactUpdate(
-      ctx.client,
-      plan.state,
-      ctx.signal,
-      ctx.config,
-    );
+    const { details, affected } = await executeContactUpdate(ctx.client, plan.state, {
+      signal: ctx.signal,
+      cacheOwner: ctx.config,
+    });
     return {
       data: contactWriteData(details),
       summary:

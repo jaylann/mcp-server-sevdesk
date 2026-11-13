@@ -44,7 +44,10 @@ export const invoiceGetTool = defineTool({
   }),
   output,
   handler: async (args, ctx) => {
-    const details = await getInvoice(ctx.client, args.id, ctx.signal, undefined, ctx.config);
+    const details = await getInvoice(ctx.client, args.id, {
+      signal: ctx.signal,
+      cacheOwner: ctx.config,
+    });
     const { invoice, positions } = details;
     const count = `${positions.length} position${positions.length === 1 ? "" : "s"}`;
     const partial = details.positionsComplete

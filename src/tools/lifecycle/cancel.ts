@@ -65,14 +65,10 @@ export const invoiceCancelTool = defineWriteTool({
   // Serialized with other calls on the same record (see WriteToolDefinition.locks).
   locks: (args) => [ACCOUNT_BOOKINGS, documentObject("invoice", args.id)],
   prepare: async (args, ctx) => {
-    const doc = await readLifecycleDocument(
-      ctx.client,
-      "invoice",
-      args.id,
-      ctx.signal,
-      undefined,
-      ctx.config,
-    );
+    const doc = await readLifecycleDocument(ctx.client, "invoice", args.id, {
+      signal: ctx.signal,
+      cacheOwner: ctx.config,
+    });
     assertCancellable(doc);
     const gross = doc.totals.gross;
     const offset = gross === undefined ? undefined : money(negate(gross.amount), gross.currency);

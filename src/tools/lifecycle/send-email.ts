@@ -221,14 +221,10 @@ export function sendEmailTool(kind: SalesKind) {
     prepare: async (args, ctx) => {
       // Only the invoice input has attachXml; the schema already checked it is a boolean.
       const attachXml = (args as { readonly attachXml?: boolean }).attachXml === true;
-      const doc = await readLifecycleDocument(
-        ctx.client,
-        kind,
-        args.id,
-        ctx.signal,
-        undefined,
-        ctx.config,
-      );
+      const doc = await readLifecycleDocument(ctx.client, kind, args.id, {
+        signal: ctx.signal,
+        cacheOwner: ctx.config,
+      });
       // Sending finalizes a draft (a commit-level step): only when commit is enabled too.
       assertEmailable(doc, ctx.config.allowedTiers.has("commit"));
       if (attachXml && doc.eInvoice === false) {

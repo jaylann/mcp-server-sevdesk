@@ -135,7 +135,10 @@ export async function readBack<K extends LifecycleKind>(
   completed: readonly SevdeskObjectRef[],
 ): Promise<LifecycleDocument<K>> {
   try {
-    return await readLifecycleDocument(ctx.client, kind, id, ctx.signal, undefined, ctx.config);
+    return await readLifecycleDocument(ctx.client, kind, id, {
+      signal: ctx.signal,
+      cacheOwner: ctx.config,
+    });
   } catch (error) {
     if (error instanceof SevdeskError) throw withCompletedWrites(error, completed);
     throw error;

@@ -21,7 +21,7 @@ import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
 import { parseUpstream, zBool01, zId, zOptionalRef, zText } from "../sevdesk/schema.js";
 import type { QueryValue, SevdeskClient } from "../sevdesk/types.js";
 import { cleanText, compact, trimmedText } from "./common.js";
-import { countryCodeSchema, loadCountryCodes } from "./country-codes.js";
+import { countryCodeSchema, type CountryReadOptions, loadCountryCodes } from "./country-codes.js";
 import { contactLink } from "./links.js";
 import { type ChildRows, listChildRows, readPage } from "./paging.js";
 import {
@@ -323,9 +323,9 @@ export interface ContactDetails {
 export async function getContactDetails(
   client: SevdeskClient,
   contactId: number,
-  signal?: AbortSignal,
-  cacheOwner: object = client,
+  options: CountryReadOptions,
 ): Promise<ContactDetails> {
+  const { signal, cacheOwner } = options;
   const id = toSevdeskId(contactId);
   const payload = await client.request({
     method: "GET",
@@ -352,7 +352,7 @@ export async function getContactDetails(
   ]);
 
   const countries = addresses.rows.some((row) => row.country !== undefined)
-    ? await loadCountryCodes(client, signal, { cacheOwner })
+    ? await loadCountryCodes(client, { cacheOwner, signal })
     : new Map<number, string>();
   return {
     contact,

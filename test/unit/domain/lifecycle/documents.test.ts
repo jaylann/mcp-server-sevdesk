@@ -17,7 +17,10 @@ describe("readLifecycleDocument (community record shapes, fake values)", () => {
       withCountryRoute([documentRoute("invoice", invoiceRow())]),
     );
 
-    const doc = await readLifecycleDocument(client, "invoice", 1001, undefined, "2026-11-07");
+    const doc = await readLifecycleDocument(client, "invoice", 1001, {
+      today: "2026-11-07",
+      cacheOwner: client,
+    });
 
     expect(client.calls.map(({ method, path, query }) => ({ method, path, query }))).toEqual([
       { method: "GET", path: "/Invoice/1001", query: { embed: "contact" } },
@@ -55,7 +58,7 @@ describe("readLifecycleDocument (community record shapes, fake values)", () => {
     });
     const client = new FakeSevdeskClient(withCountryRoute([documentRoute("invoice", row)]));
 
-    const doc = await readLifecycleDocument(client, "invoice", 1001);
+    const doc = await readLifecycleDocument(client, "invoice", 1001, { cacheOwner: client });
 
     expect(doc.paidAmount).toBe("50.5");
     expect(doc.enshrined).toBe(true);
@@ -67,7 +70,7 @@ describe("readLifecycleDocument (community record shapes, fake values)", () => {
       withCountryRoute([documentRoute("creditNote", creditNoteRow())]),
     );
 
-    const doc = await readLifecycleDocument(client, "creditNote", 2001);
+    const doc = await readLifecycleDocument(client, "creditNote", 2001, { cacheOwner: client });
 
     expect(doc).toMatchObject({
       kind: "creditNote",
@@ -85,7 +88,7 @@ describe("readLifecycleDocument (community record shapes, fake values)", () => {
   it("reads an order with its type", async () => {
     const client = new FakeSevdeskClient(withCountryRoute([documentRoute("order", orderRow())]));
 
-    const doc = await readLifecycleDocument(client, "order", 3002);
+    const doc = await readLifecycleDocument(client, "order", 3002, { cacheOwner: client });
 
     expect(doc).toMatchObject({
       kind: "order",
@@ -104,7 +107,9 @@ describe("readLifecycleDocument (community record shapes, fake values)", () => {
       ]),
     );
 
-    const error = await readLifecycleDocument(client, "invoice", 9999).catch((e: unknown) => e);
+    const error = await readLifecycleDocument(client, "invoice", 9999, {
+      cacheOwner: client,
+    }).catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(SevdeskError);
     expect((error as SevdeskError).kind).toBe("not_found");
@@ -115,7 +120,9 @@ describe("readLifecycleDocument (community record shapes, fake values)", () => {
       withCountryRoute([documentRoute("invoice", invoiceRow({ paidAmount: "a lot" }))]),
     );
 
-    await expect(readLifecycleDocument(client, "invoice", 1001)).rejects.toMatchObject({
+    await expect(
+      readLifecycleDocument(client, "invoice", 1001, { cacheOwner: client }),
+    ).rejects.toMatchObject({
       kind: "unexpected_response",
     });
   });

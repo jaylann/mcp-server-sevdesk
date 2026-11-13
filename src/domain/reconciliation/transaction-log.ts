@@ -511,7 +511,11 @@ async function voucherDirections(
     }
     throwIfAborted(options.signal);
     try {
-      const voucher = await readLifecycleDocument(client, "voucher", document.id, options.signal);
+      // Vouchers do not enrich country addresses, so this read does not use the country cache.
+      const voucher = await readLifecycleDocument(client, "voucher", document.id, {
+        signal: options.signal,
+        cacheOwner: client,
+      });
       directions.set(document.id, voucher.direction);
     } catch (error) {
       if (

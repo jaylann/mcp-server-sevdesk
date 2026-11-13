@@ -40,7 +40,10 @@ export const orderCreateDraftTool = defineWriteTool({
     prepareOrderCreate(ctx.client, args, { signal: ctx.signal, cacheOwner: ctx.config }),
   execute: async (_args, plan, ctx) =>
     orderDraftToolOutput(
-      await executeOrderDraft(ctx.client, plan.state, ctx.signal, ctx.config),
+      await executeOrderDraft(ctx.client, plan.state, {
+        signal: ctx.signal,
+        cacheOwner: ctx.config,
+      }),
       "Created",
     ),
 });

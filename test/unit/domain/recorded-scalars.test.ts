@@ -91,7 +91,10 @@ describe("D-002: numeric scalars in recorded responses", () => {
       { path: `/Invoice/${id}`, response: { fixture: `${DIR}/invoices/invoice-by-id.json` } },
       { path: "/StaticCountry", response: { fixture: `${DIR}/meta/static-countries.json` } },
     ]);
-    const doc = await readLifecycleDocument(client, "invoice", id, undefined, "2026-11-08");
+    const doc = await readLifecycleDocument(client, "invoice", id, {
+      today: "2026-11-08",
+      cacheOwner: client,
+    });
     expect(doc.paidAmount).toBe("0");
   });
 
@@ -106,7 +109,7 @@ describe("D-002: numeric scalars in recorded responses", () => {
       units,
       recorded("meta/static-countries.json"),
     );
-    const details = await getCreditNote(client, id);
+    const details = await getCreditNote(client, id, { cacheOwner: client });
     expect(details.creditNote.sent).toEqual({ date: "2026-11-07", via: "print" });
     expect(details.creditNote.totals.gross?.currency).toBe("EUR");
   });

@@ -163,7 +163,9 @@ describe("sevdesk_contact_get (community: recorded shapes, fake data)", () => {
     }
     expect(tool.input.safeParse({ id: "1001" }).success).toBe(false);
     const client = new FakeSevdeskClient(withCountryRoute(routes()));
-    await expect(getContactDetails(client, 0)).rejects.toMatchObject({ kind: "validation" });
+    await expect(getContactDetails(client, 0, { cacheOwner: client })).rejects.toMatchObject({
+      kind: "validation",
+    });
     expect(client.calls).toHaveLength(0);
   });
 });

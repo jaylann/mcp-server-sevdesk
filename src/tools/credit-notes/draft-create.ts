@@ -63,7 +63,10 @@ export const creditNoteCreateDraftTool = defineWriteTool({
   prepare: (args, ctx) =>
     prepareCreditNoteCreate(ctx.client, args, { signal: ctx.signal, cacheOwner: ctx.config }),
   execute: async (_args, plan, ctx) => {
-    const result = await executeCreditNoteDraft(ctx.client, plan.state, ctx.signal, ctx.config);
+    const result = await executeCreditNoteDraft(ctx.client, plan.state, {
+      signal: ctx.signal,
+      cacheOwner: ctx.config,
+    });
     const { creditNote, positions, positionsComplete } = result.details;
     const gross = creditNote.totals.gross;
     const total = gross === undefined ? "" : `, gross ${gross.amount} ${gross.currency}`;

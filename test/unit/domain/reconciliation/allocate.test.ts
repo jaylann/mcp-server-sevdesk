@@ -67,7 +67,9 @@ function client(setup: Setup = {}): FakeSevdeskClient {
 }
 
 async function refusal(fake: FakeSevdeskClient, requests: readonly AllocationRequest[], id = 5101) {
-  const error = await planAllocation(fake, id, requests).catch((e: unknown) => e);
+  const error = await planAllocation(fake, id, requests, { cacheOwner: fake }).catch(
+    (e: unknown) => e,
+  );
   expect(error).toBeInstanceOf(SevdeskError);
   expect((error as SevdeskError).kind).toBe("validation");
   expect(fake.writes()).toEqual([]);
@@ -77,7 +79,9 @@ async function refusal(fake: FakeSevdeskClient, requests: readonly AllocationReq
 describe("planAllocation", () => {
   it("books a transaction 1:1 as a full payment linked to it, amount defaulted", async () => {
     const fake = client();
-    const plan = await planAllocation(fake, 5101, [{ kind: "invoice", id: 1001 }]);
+    const plan = await planAllocation(fake, 5101, [{ kind: "invoice", id: 1001 }], {
+      cacheOwner: fake,
+    });
     expect(plan.remainingBefore).toBe("177.33");
     expect(plan.allocated).toBe("177.33");
     expect(plan.remainingAfter).toBe("0");
@@ -100,10 +104,15 @@ describe("planAllocation", () => {
       transaction: transactionRow({ amount: "238" }),
       documents: [invoiceRoute(invoice(1001, "119")), invoiceRoute(invoice(1002, "119"))],
     });
-    const plan = await planAllocation(fake, 5101, [
-      { kind: "invoice", id: 1001 },
-      { kind: "invoice", id: 1002 },
-    ]);
+    const plan = await planAllocation(
+      fake,
+      5101,
+      [
+        { kind: "invoice", id: 1001 },
+        { kind: "invoice", id: 1002 },
+      ],
+      { cacheOwner: fake },
+    );
     expect(plan.allocations.map((a) => a.plan.payload.type)).toEqual(["N", "N"]);
     expect(plan.allocations.map((a) => a.plan.amount.amount)).toEqual(["119.00", "119.00"]);
     expect(plan.allocations.map((a) => documentBookingType(a.plan))).toEqual([
@@ -118,7 +127,9 @@ describe("planAllocation", () => {
       transaction: transactionRow({ amount: "238" }),
       documents: [invoiceRoute(invoice(1001, "119"))],
     });
-    const plan = await planAllocation(fake, 5101, [{ kind: "invoice", id: 1001 }]);
+    const plan = await planAllocation(fake, 5101, [{ kind: "invoice", id: 1001 }], {
+      cacheOwner: fake,
+    });
     expect(plan.allocations[0]?.plan.payload.type).toBe("N");
     expect(plan.remainingAfter).toBe("119");
     expect(english(plan.warnings)).toEqual([
@@ -133,7 +144,9 @@ describe("planAllocation", () => {
       log: [logEntry(7001, 5101, "Invoice", 1001, 119)],
       documents: [invoiceRoute(invoice(1002, "200"))],
     });
-    const plan = await planAllocation(fake, 5101, [{ kind: "invoice", id: 1002 }]);
+    const plan = await planAllocation(fake, 5101, [{ kind: "invoice", id: 1002 }], {
+      cacheOwner: fake,
+    });
     expect(plan.remainingBefore).toBe("119");
     expect(plan.allocations[0]?.plan.amount.amount).toBe("119.00");
     expect(plan.allocations[0]?.plan.payload.type).toBe("N");
@@ -143,7 +156,9 @@ describe("planAllocation", () => {
 
   it("books a transaction smaller than the invoice as a partial payment", async () => {
     const fake = client({ transaction: transactionRow({ amount: "100" }) });
-    const plan = await planAllocation(fake, 5101, [{ kind: "invoice", id: 1001 }]);
+    const plan = await planAllocation(fake, 5101, [{ kind: "invoice", id: 1001 }], {
+      cacheOwner: fake,
+    });
     const [allocation] = plan.allocations;
     expect(allocation?.plan.payload.type).toBe("N");
     expect(allocation?.plan.remaining?.amount).toBe("77.33");
@@ -155,9 +170,12 @@ describe("planAllocation", () => {
 
   it("allows Skonto when one invoice takes the whole transaction", async () => {
     const fake = client({ transaction: transactionRow({ amount: "172.01" }) });
-    const plan = await planAllocation(fake, 5101, [
-      { kind: "invoice", id: 1001, paymentType: "cash_discount" },
-    ]);
+    const plan = await planAllocation(
+      fake,
+      5101,
+      [{ kind: "invoice", id: 1001, paymentType: "cash_discount" }],
+      { cacheOwner: fake },
+    );
     expect(plan.allocations[0]?.plan.payload.type).toBe("CB");
     expect(plan.allocations[0]?.plan.payload.amount).toBe(172.01);
   });
@@ -167,7 +185,9 @@ describe("planAllocation", () => {
       transaction: transactionRow({ amount: "-23.8" }),
       documents: [creditNoteRoute(creditNoteRow())],
     });
-    const plan = await planAllocation(fake, 5101, [{ kind: "creditNote", id: 2001 }]);
+    const plan = await planAllocation(fake, 5101, [{ kind: "creditNote", id: 2001 }], {
+      cacheOwner: fake,
+    });
     expect(plan.allocations[0]?.plan.payload).toMatchObject({
       amount: -23.8,
       type: "FULL_PAYMENT",
@@ -179,9 +199,12 @@ describe("planAllocation", () => {
       transaction: transactionRow({ amount: "-298.1" }),
       documents: [voucherRoute(voucherRow())],
     });
-    const plan = await planAllocation(fake, 5101, [
-      { kind: "voucher", id: 2001, amount: "298.10" },
-    ]);
+    const plan = await planAllocation(
+      fake,
+      5101,
+      [{ kind: "voucher", id: 2001, amount: "298.10" }],
+      { cacheOwner: fake },
+    );
     expect(plan.allocations[0]?.plan.payload).toMatchObject({
       amount: -298.1,
       type: "FULL_PAYMENT",
@@ -192,7 +215,9 @@ describe("planAllocation", () => {
 
   it("books on the entry date when the value date is missing", async () => {
     const fake = client({ transaction: transactionRow({ valueDate: null }) });
-    const plan = await planAllocation(fake, 5101, [{ kind: "invoice", id: 1001 }]);
+    const plan = await planAllocation(fake, 5101, [{ kind: "invoice", id: 1001 }], {
+      cacheOwner: fake,
+    });
     expect(plan.bookingDate).toBe("2026-01-05");
   });
 });
@@ -246,7 +271,7 @@ describe("planAllocation refusals (nothing is sent)", () => {
       },
     ]);
     await expect(
-      planAllocation(failing, 5101, [{ kind: "invoice", id: 1001 }]),
+      planAllocation(failing, 5101, [{ kind: "invoice", id: 1001 }], { cacheOwner: failing }),
     ).rejects.toMatchObject({ kind: "server" });
   });
 

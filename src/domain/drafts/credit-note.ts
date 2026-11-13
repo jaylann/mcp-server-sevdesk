@@ -27,6 +27,7 @@ import { z } from "zod";
 
 import { SevdeskError } from "../../sevdesk/errors.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
+import type { CountryReadOptions } from "../country-codes.js";
 import { type CreditNoteDetails, getCreditNote } from "../credit-notes.js";
 import { checkInvoiceCreditable, findCreditNotesForInvoice } from "../derived-documents.js";
 import { BOOKING_CATEGORY_NAMES } from "../filter-keys.js";
@@ -230,7 +231,7 @@ export async function prepareCreditNoteCreate(
   }
   const sourceCheck =
     category === "UNDERACHIEVEMENT"
-      ? await checkSourceInvoice(client, args, signal, options.cacheOwner)
+      ? await checkSourceInvoice(client, args, { signal, cacheOwner: options.cacheOwner })
       : undefined;
   const source = sourceCheck?.source;
 
@@ -345,9 +346,9 @@ export interface CreditNoteDraftResult {
 export async function executeCreditNoteDraft(
   client: SevdeskClient,
   state: CreditNoteDraftState,
-  signal?: AbortSignal,
-  cacheOwner: object = client,
+  options: CountryReadOptions,
 ): Promise<CreditNoteDraftResult> {
+  const { signal, cacheOwner } = options;
   const reserved = await reserveFreeCreditNoteNumber(client, signal);
   const body = strictBody(
     saveCreditNoteBodySchema,
@@ -370,7 +371,7 @@ export async function executeCreditNoteDraft(
   }
   const id = savedDocumentId(response, "creditNote", "credit note");
   const details = await readBack({ objectName: "CreditNote", id: String(id) }, () =>
-    getCreditNote(client, id, signal, cacheOwner),
+    getCreditNote(client, id, { signal, cacheOwner }),
   );
   const stored = storedNumberNote("credit note", reserved.number, details.creditNote.number);
   const notes = [
@@ -446,9 +447,9 @@ interface SourceCheck {
 async function checkSourceInvoice(
   client: SevdeskClient,
   args: CreditNoteCreateArgs,
-  signal: AbortSignal | undefined,
-  cacheOwner: object = client,
+  options: CountryReadOptions,
 ): Promise<SourceCheck> {
+  const { signal, cacheOwner } = options;
   if (args.sourceInvoiceId === undefined) {
     throw new SevdeskError({
       kind: "validation",
@@ -459,7 +460,7 @@ async function checkSourceInvoice(
   }
   let source: InvoiceDetails;
   try {
-    source = await getInvoice(client, args.sourceInvoiceId, signal, undefined, cacheOwner);
+    source = await getInvoice(client, args.sourceInvoiceId, { signal, cacheOwner });
   } catch (error) {
     if (error instanceof SevdeskError && error.kind === "not_found") {
       throw new SevdeskError({

@@ -44,6 +44,7 @@ import {
   getNextCustomerNumber,
   parseContactRecord,
 } from "./contacts.js";
+import type { CountryReadOptions } from "./country-codes.js";
 import {
   CONTACT_CATEGORIES,
   contactCategoryById,
@@ -371,9 +372,9 @@ export async function planContactCreate(
 export async function executeContactCreate(
   client: SevdeskClient,
   state: ContactCreateState,
-  signal?: AbortSignal,
-  cacheOwner: object = client,
+  options: CountryReadOptions,
 ): Promise<{ details: ContactDetails; affected: SevdeskObjectRef[] }> {
+  const { signal, cacheOwner } = options;
   const withSignal = signal === undefined ? {} : { signal };
   const created = await client.request({
     method: "POST",
@@ -411,7 +412,7 @@ export async function executeContactCreate(
         id: String(createdId(answer, "communication way")),
       });
     }
-    const details = await getContactDetails(client, contactId, signal, cacheOwner);
+    const details = await getContactDetails(client, contactId, { signal, cacheOwner });
     return { details, affected: completed.map((entry) => ({ ...entry })) };
   } catch (error) {
     throw afterPartialWrite(error, completed);
@@ -448,16 +449,16 @@ export interface ContactUpdateState {
 export async function planContactUpdate(
   client: SevdeskClient,
   input: ContactUpdateInput,
-  signal?: AbortSignal,
-  cacheOwner: object = client,
+  options: CountryReadOptions,
 ): Promise<{ preview: ConfirmationPreview; state: ContactUpdateState }> {
+  const { signal, cacheOwner } = options;
   const id = toSevdeskId(input.id);
   const hasAddress = [input.street, input.zip, input.city, input.country].some(
     (value) => value !== undefined,
   );
   const [record, details, numberOwner, country] = await Promise.all([
     readContactRecord(client, id, signal),
-    getContactDetails(client, id, signal, cacheOwner),
+    getContactDetails(client, id, { signal, cacheOwner }),
     input.customerNumber === undefined
       ? Promise.resolve(undefined)
       : findContactByCustomerNumber(client, input.customerNumber, signal),
@@ -589,9 +590,9 @@ export async function planContactUpdate(
 export async function executeContactUpdate(
   client: SevdeskClient,
   state: ContactUpdateState,
-  signal?: AbortSignal,
-  cacheOwner: object = client,
+  options: CountryReadOptions,
 ): Promise<{ details: ContactDetails; affected: SevdeskObjectRef[] }> {
+  const { signal, cacheOwner } = options;
   const withSignal = signal === undefined ? {} : { signal };
   const completed: CompletedWrite[] = [];
   const contactRef = ref("Contact", state.contactId);
@@ -649,7 +650,7 @@ export async function executeContactUpdate(
         });
       }
     }
-    const details = await getContactDetails(client, state.contactId, signal, cacheOwner);
+    const details = await getContactDetails(client, state.contactId, { signal, cacheOwner });
     return { details, affected: completed.map((entry) => ({ ...entry })) };
   } catch (error) {
     throw completed.length === 0 ? error : afterPartialWrite(error, completed);

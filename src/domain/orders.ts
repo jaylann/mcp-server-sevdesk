@@ -22,7 +22,11 @@ import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
 import { parseUpstream, zId } from "../sevdesk/schema.js";
 import type { QueryValue, SevdeskClient } from "../sevdesk/types.js";
 import { documentDateFilter } from "./common.js";
-import { countryCodeSchema, withDocumentCountry } from "./country-codes.js";
+import {
+  countryCodeSchema,
+  type CountryReadOptions,
+  withDocumentCountry,
+} from "./country-codes.js";
 import {
   addressDto,
   allOf,
@@ -333,9 +337,9 @@ export interface OrderDetails {
 export async function getOrder(
   client: SevdeskClient,
   orderId: number,
-  signal?: AbortSignal,
-  cacheOwner: object = client,
+  options: CountryReadOptions,
 ): Promise<OrderDetails> {
+  const { signal, cacheOwner } = options;
   const id = toSevdeskId(orderId);
   const withSignal = signal === undefined ? {} : { signal };
   const [payload, positions, unitNames, related] = await Promise.all([
@@ -355,7 +359,7 @@ export async function getOrder(
     loadRelatedDocuments(client, id, signal),
   ]);
   const record = parseOrderRecord(expectSingle(payload, `order ${id}`));
-  const order = await withDocumentCountry(toOrderDetail(record), client, signal, cacheOwner);
+  const order = await withDocumentCountry(toOrderDetail(record), client, { signal, cacheOwner });
   const context = { currency: order.currency, showNet: record.showNet, unitNames };
   return {
     order,

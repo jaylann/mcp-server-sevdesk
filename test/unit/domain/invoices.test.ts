@@ -37,12 +37,10 @@ describe("invoice details (spec Model_InvoiceResponse fields, fake data)", () =>
         },
       }),
     );
-    const { invoice, positions, positionsComplete } = await getInvoice(
-      client,
-      77,
-      undefined,
-      TODAY,
-    );
+    const { invoice, positions, positionsComplete } = await getInvoice(client, 77, {
+      today: TODAY,
+      cacheOwner: client,
+    });
     expect(invoice).toMatchObject({
       type: { code: "MA", labelDe: "Mahnung" },
       dueDate: "2026-11-08",
@@ -76,7 +74,7 @@ describe("invoice details (spec Model_InvoiceResponse fields, fake data)", () =>
         smallSettlement: "1",
       }),
     );
-    const { invoice } = await getInvoice(client, 77, undefined, TODAY);
+    const { invoice } = await getInvoice(client, 77, { today: TODAY, cacheOwner: client });
     expect(invoice).toMatchObject({
       status: { code: 50, label: "Deactivated recurring invoice" },
       recurring: { interval: "P0Y1M0W", nextInvoice: "2027-01-01" },
@@ -91,14 +89,18 @@ describe("invoice details (spec Model_InvoiceResponse fields, fake data)", () =>
     const client = new FakeSevdeskClient(
       detailRoutes({ status: "100", invoiceDate: "next tuesday" }),
     );
-    await expect(getInvoice(client, 77, undefined, TODAY)).rejects.toMatchObject({
+    await expect(
+      getInvoice(client, 77, { today: TODAY, cacheOwner: client }),
+    ).rejects.toMatchObject({
       kind: "unexpected_response",
     });
   });
 
   it("rejects an invalid id before calling sevDesk", async () => {
     const client = new FakeSevdeskClient([]);
-    await expect(getInvoice(client, 0)).rejects.toMatchObject({ kind: "validation" });
+    await expect(getInvoice(client, 0, { cacheOwner: client })).rejects.toMatchObject({
+      kind: "validation",
+    });
     expect(client.calls).toHaveLength(0);
   });
 });

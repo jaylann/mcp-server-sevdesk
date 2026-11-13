@@ -260,8 +260,8 @@ that holds state is keyed by the request's principal (grant and account, from
 - a retry takes only an approval its own grant created; the inbox lists and decides per account,
   and one account's approvals cannot push another account's out of the store;
 - every account gets its own frozen `Config` and sevDesk client, and the domain caches (account
-  settings, ReceiptGuidance, booking accounts, the bookkeeping system version) are keyed by that
-  config object, so accounts never share cached data;
+  settings, ReceiptGuidance, booking accounts, the bookkeeping system version, country codes) are
+  keyed by that config object, so accounts never share cached data;
 - the audit log records the account and the grant of every line.
 
 A `confirm: true` argument is never a gate, because the model can set it itself. `enshrine` always

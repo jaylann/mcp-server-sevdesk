@@ -149,7 +149,9 @@ describe("draft recipient: contact and contact person (B3)", () => {
         response: { error: new SevdeskError({ kind: "server", message: "sevDesk failed." }) },
       },
     ]);
-    await expect(loadContact(failing, 1001)).rejects.toMatchObject({ kind: "server" });
+    await expect(loadContact(failing, 1001, { cacheOwner: failing })).rejects.toMatchObject({
+      kind: "server",
+    });
   });
 
   it("explains an account without users", async () => {
