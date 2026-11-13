@@ -162,9 +162,10 @@ gut kennen kann wie ein kuratiertes Werkzeug; siehe
 
 ## Strukturierte Ausgabe
 
-Jedes Werkzeug gibt sein Ergebnis als JSON-Textblock zurück. Mit strukturierter Ausgabe gibt es
-außerdem ein `outputSchema` in `tools/list` an und liefert dieselben Daten als typisierten
-`structuredContent`, den Clients prüfen und anzeigen können.
+Jeder erfolgreiche Werkzeugaufruf gibt eine vertrauenswürdige Zusammenfassung, eine Leerzeile und
+minifiziertes JSON in einem Textblock zurück. Mit strukturierter Ausgabe gibt er außerdem ein
+`outputSchema` in `tools/list` an und liefert dieselben Daten als typisierten `structuredContent`,
+den Clients prüfen und anzeigen können.
 
 | Wert   | Verhalten                                                                                                                               |
 | ------ | --------------------------------------------------------------------------------------------------------------------------------------- |
