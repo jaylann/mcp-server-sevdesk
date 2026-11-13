@@ -93,8 +93,8 @@ describe("sevdesk_invoices_list (community: recorded Invoice shape, fake data)",
     expect(result.data.items[0]).toEqual({
       id: 1001,
       number: "RE-1001",
-      type: { code: "RE", label: "Normal invoice", labelDe: "Rechnung" },
-      status: { code: 200, label: "Open / due" },
+      type: { key: "invoice", code: "RE", label: "Normal invoice", labelDe: "Rechnung" },
+      status: { code: 200, label: "Open / due", key: "open" },
       contact: { id: 1001, name: "Musterfirma GmbH" },
       date: "2026-10-01",
       dueDate: "2026-10-15",
@@ -117,7 +117,7 @@ describe("sevdesk_invoices_list (community: recorded Invoice shape, fake data)",
     const byId = new Map(result.data.items.map((item) => [item.id, item]));
 
     const draft = byId.get(1002);
-    expect(draft).toMatchObject({ status: { code: 100, label: "Draft" } });
+    expect(draft).toMatchObject({ status: { code: 100, label: "Draft", key: "draft" } });
     expect(draft).not.toHaveProperty("overdue");
     expect(draft?.contact).toEqual({ id: 1002, name: "Max Mustermann" });
     expect(draft?.sent).toBeUndefined(); // sendType "0" means not sent (D-009)
@@ -178,7 +178,7 @@ describe("sevdesk_invoices_list (community: recorded Invoice shape, fake data)",
     const byId = new Map(result.data.items.map((item) => [item.id, item]));
     // The cancelled original keeps status 1000 with nothing paid (recorded by sevdesk-rs).
     expect(byId.get(1008)).toMatchObject({
-      status: { code: 1000, label: "Paid" },
+      status: { code: 1000, label: "Paid", key: "paid" },
       paid: { amount: "0.00", currency: "EUR" },
     });
     expect(byId.get(1008)?.cancelsInvoiceId).toBeUndefined();

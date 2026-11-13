@@ -246,13 +246,15 @@ describe("token delete", () => {
 });
 
 describe("on Windows", () => {
-  it("refuses every action with a pointer, before asking for anything", async () => {
+  it("runs the same set, check and delete commands", async () => {
+    const { keychain, calls } = fakeKeychain();
+    const { identify } = identifyAs({ accountId: "123" });
     for (const action of ["set", "check", "delete"] as const) {
-      const result = await run(command(action), { platform: "win32" });
-      expect(result.code).toBe(1);
-      expect(result.err).toMatch(/^token: The OS keychain is not supported on Windows yet/);
-      expect(result.prompts).toEqual([]);
+      const result = await run(command(action), { platform: "win32", keychain, identify });
+      expect(result.code).toBe(0);
+      expect(result.err).toBe("");
     }
+    expect(calls).toEqual(["read work", "store work", "read work", "remove work"]);
   });
 });
 

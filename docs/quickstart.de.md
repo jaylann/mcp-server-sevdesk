@@ -1,4 +1,4 @@
-<!-- translated-from: docs/quickstart.md sha256:d3168926564b -->
+<!-- translated-from: docs/quickstart.md sha256:cbf57934d030 -->
 
 # Schnellstart
 
@@ -112,7 +112,7 @@ und lesen Sie [Berechtigungen](permissions.de.md).
 Ein Token in einer Konfigurationsdatei landet in Backups, auf Screenshots und manchmal in
 Repositorys. Besser sind:
 
-- **Der Schlüsselbund des Betriebssystems** (macOS, Linux). Legen Sie das Token einmal ab und
+- **Der Schlüsselbund des Betriebssystems** (macOS, Linux, Windows). Legen Sie das Token einmal ab und
   nennen Sie danach nur noch seine Bezeichnung:
 
   ```bash

@@ -119,6 +119,7 @@ export type SalesDocumentRecord = z.output<z.ZodObject<typeof salesDocumentField
 
 /** Document type (Belegart) such as RE or AN. */
 export const typeDtoSchema = z.object({
+  key: z.string().optional().describe("Accepted type input/filter key; absent for unknown codes."),
   code: z.string(),
   label: z.string().describe("English meaning; German term in labelDe."),
   labelDe: z.string().optional(),

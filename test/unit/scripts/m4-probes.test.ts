@@ -169,6 +169,8 @@ const PERSONAL =
 function m4Account(
   settings: {
     foreignInvoices?: number;
+    /** Synthetic refusal to store the currency-change setup. */
+    ignoreCurrencyChange?: boolean;
     exportConfigured?: boolean;
     /** fileImportAccount refused: the split probe falls back to D-071 transactions. */
     importRefused?: boolean;
@@ -404,6 +406,18 @@ function m4Account(
           refused(422, "Status change not allowed");
         }
         stored["status"] = String(Number(voucher["status"]));
+        if (settings.ignoreCurrencyChange !== true && voucher["currency"] !== undefined) {
+          stored["currency"] = voucher["currency"];
+          if (voucher["propertyExchangeRate"] !== undefined) {
+            stored["propertyExchangeRate"] = voucher["propertyExchangeRate"];
+          }
+          // Synthetic old sums deliberately survive the conversion: the probe must report them.
+          if (voucher["currency"] === "USD") {
+            stored["sumNetForeignCurrency"] = "100.00";
+            stored["sumTaxForeignCurrency"] = "19.00";
+            stored["sumGrossForeignCurrency"] = "119.00";
+          }
+        }
       }
       const own = positions.get(voucherId) ?? [];
       const deletes = body["voucherPosDelete"];
@@ -923,6 +937,42 @@ describe("M4 probes on a simulated trial account", () => {
         expect(transaction["paymtPurpose"]).toMatch(/^MCP-E2E /);
       }
     }
+  });
+
+  it("probes EUR conversion with replacement amounts and reports retained foreign fields", async () => {
+    const account = m4Account();
+    const report = await runProbes(
+      options(account.client, { only: ["write-voucher-convert-to-eur"] }),
+    );
+    const result = byId(report, "write-voucher-convert-to-eur");
+    expect(result.status).toBe("observed");
+    expect(result.finding).toContain('Before: currency="USD"');
+    expect(result.finding).toContain('After: currency="EUR"');
+    expect(result.finding).toContain('sumGross="119.50"');
+    expect(result.finding).toContain('sumGrossForeignCurrency="119.00"');
+    const saves = account.client.writes().filter((call) => call.path.endsWith("saveVoucher"));
+    expect(saves).toHaveLength(3);
+    expect(saves[2]).toMatchObject({
+      tier: "write",
+      body: {
+        voucher: { currency: "EUR", status: 50 },
+        voucherPosSave: [{ net: false, sumGross: 119.5 }],
+        voucherPosDelete: [{ objectName: "VoucherPos" }],
+      },
+    });
+    expect(JSON.stringify(saves[2]?.body)).not.toMatch(/propertyExchangeRate|ForeignCurrency/);
+    expect(report.created.filter((record) => record.objectName === "Voucher")).toHaveLength(1);
+  });
+
+  it("leaves EUR conversion inconclusive when USD setup is not stored", async () => {
+    const account = m4Account({ ignoreCurrencyChange: true });
+    const report = await runProbes(
+      options(account.client, { only: ["write-voucher-convert-to-eur"] }),
+    );
+    expect(byId(report, "write-voucher-convert-to-eur").status).toBe("inconclusive");
+    expect(
+      account.client.writes().filter((call) => call.path.endsWith("saveVoucher")),
+    ).toHaveLength(2);
   });
 
   it("uploads PDF, PNG and text as part `file` and describes the answer without values", async () => {

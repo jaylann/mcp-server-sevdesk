@@ -224,6 +224,7 @@ async function smoke(mcpbPath: string, manifest: Manifest): Promise<void> {
         toolsets: "all",
         file_dir: folder,
         output_dir: folder,
+        audit_log: join(folder, "sevdesk.jsonl"),
       });
       if (JSON.stringify(widest.tools) !== JSON.stringify(declared)) {
         const missing = declared.filter((tool) => !widest.tools.includes(tool));

@@ -134,6 +134,13 @@ export const voucherCreateInputShape = {
 /** Input fields of `sevdesk_voucher_update_draft` (without `dryRun`). */
 export const voucherUpdateInputShape = {
   id: positiveId.describe("Id of the draft voucher, e.g. from sevdesk_vouchers_list."),
+  currency: z
+    .literal("EUR")
+    .optional()
+    .describe(
+      'Pass "EUR" explicitly to convert a foreign-currency draft. Requires ALL positions with ' +
+        "caller-supplied EUR amounts; no exchange rate is calculated. Review with dryRun first.",
+    ),
   supplierId: supplierIdInput,
   supplierName: supplierNameInput,
   number: numberInput,
@@ -147,7 +154,9 @@ export const voucherUpdateInputShape = {
   ),
   positions: positionsInput
     .optional()
-    .describe("When given, replaces ALL positions; leave out to keep them."),
+    .describe(
+      "When given, replaces ALL positions; leave out to keep them. Required with EUR amounts when converting currency.",
+    ),
   file: fileInput
     .optional()
     .describe(
@@ -174,6 +183,7 @@ export interface VoucherCreateArgs {
 
 export interface VoucherUpdateArgs {
   readonly id: number;
+  readonly currency?: "EUR" | undefined;
   readonly supplierId?: number | undefined;
   readonly supplierName?: string | undefined;
   readonly number?: string | undefined;

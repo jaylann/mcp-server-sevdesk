@@ -269,7 +269,7 @@ function countryLabel(address: DocumentAddress): string {
 
 function countryByCode(countries: readonly Country[], code: string): Country {
   const wanted = code.toLowerCase();
-  const country = countries.find((entry) => entry.code?.toLowerCase() === wanted);
+  const country = countries.find((entry) => entry.code?.trim().toLowerCase() === wanted);
   if (country === undefined) {
     throw new SevdeskError({
       kind: "validation",

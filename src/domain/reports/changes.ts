@@ -23,10 +23,10 @@ import { isIsoDate, toUnixSeconds } from "../../sevdesk/dates.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import { parseUpstream, zBerlinDate, zId, zOptionalInt, zText } from "../../sevdesk/schema.js";
 import type { QueryValue, SevdeskClient } from "../../sevdesk/types.js";
-import { cleanText, compact } from "../common.js";
+import { cleanText, compact, statusDto, statusDtoSchema } from "../common.js";
 import { parseContactRecord, toContactDto } from "../contacts.js";
 import { contactLink, creditNoteLink, invoiceLink, orderLink, voucherLink } from "../links.js";
-import { statusByCode, type StatusObjectType } from "../reference-data.js";
+import type { StatusObjectType } from "../reference-data.js";
 import { voucherKindFromCreditDebit } from "../vouchers.js";
 import {
   invalidReportRequest,
@@ -193,7 +193,7 @@ const changeRowSchema = z.object({
     .optional()
     .describe("Document number, voucher number (description) or customer number."),
   name: z.string().optional().describe("Contact name, supplier or counterparty."),
-  status: z.object({ code: z.number().int(), label: z.string() }).optional(),
+  status: statusDtoSchema.optional(),
   date: z.string().optional().describe("Document date or value date, YYYY-MM-DD."),
   updatedAt: z
     .string()
@@ -359,13 +359,7 @@ const SUBJECT_SPECS: Readonly<Record<ChangeSubject, SubjectSpec>> = {
 
 function parseRow(spec: SubjectSpec, raw: unknown): ParsedRow {
   const base = parseUpstream(timestampsSchema, raw, spec.what);
-  const status =
-    base.status === undefined
-      ? undefined
-      : {
-          code: base.status,
-          label: statusByCode(spec.statusType, base.status)?.label ?? "unknown",
-        };
+  const status = base.status === undefined ? undefined : statusDto(spec.statusType, base.status);
   const details = spec.details(raw, base.id, base.status);
   const changedMs = instantOf(base.update) ?? instantOf(base.create);
   return { row: compact({ id: base.id, ...details, status }), changedMs };

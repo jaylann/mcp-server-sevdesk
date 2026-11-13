@@ -1,3 +1,4 @@
+import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
 import { escapeHtml, Html, type HtmlValue, markup, trusted } from "../../../src/pages/html.js";
@@ -12,6 +13,31 @@ describe("escapeHtml", () => {
 });
 
 describe("markup", () => {
+  it("escapes generated values in attributes, text and nested lists without losing content", () => {
+    const text = fc.string({ unit: "binary", maxLength: 100 });
+    fc.assert(
+      fc.property(text, text, fc.double(), (before, after, number) => {
+        const value = `${before}<>&"'${after}`;
+        const escaped = markup`${value}`.toString();
+        expect(escaped).not.toMatch(/[<>"']|&(?!amp;|lt;|gt;|quot;|#39;)/);
+        // Decode once: escaped entity-looking input must survive as literal text too.
+        const decoded = escaped
+          .replaceAll("&lt;", "<")
+          .replaceAll("&gt;", ">")
+          .replaceAll("&quot;", '"')
+          .replaceAll("&#39;", "'")
+          .replaceAll("&amp;", "&");
+        expect(decoded).toBe(value);
+        expect(markup`<p title="${value}">${value}</p>`.toString()).toBe(
+          `<p title="${escaped}">${escaped}</p>`,
+        );
+        const nested: HtmlValue = [value, [null, false, undefined, number, [value]]];
+        expect(markup`${nested}`.toString()).toBe(`${escaped}${String(number)}${escaped}`);
+      }),
+      { numRuns: 100, seed: 20261112 },
+    );
+  });
+
   it("escapes every interpolated string, in text and in attributes", () => {
     const hostile = `"><script>alert('x')</script>`;
     const page = markup`<a href="${hostile}">${hostile}</a>`.toString();

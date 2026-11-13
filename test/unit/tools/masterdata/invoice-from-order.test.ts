@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { invoiceFromOrderTool as tool } from "../../../../src/tools/invoices/from-order.js";
+import { withCountryRoute } from "../../../helpers/country-route.js";
 import { type FakeRoute, FakeSevdeskClient, loadFixture } from "../../../helpers/fake-client.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import {
@@ -46,14 +47,14 @@ const table: (readonly [string, FakeRoute])[] = [
 ];
 
 function routes(overrides: Partial<Record<string, FakeRoute["response"]>> = {}): FakeRoute[] {
-  return [
+  return withCountryRoute([
     ...routeTable(table, overrides),
     ...invoiceReadRoutes(
       1101,
       overrides["readBack"] ?? { fixture: "masterdata/invoice-1101.json" },
       { fixture: "masterdata/invoice-positions-1101.json" },
     ),
-  ];
+  ]);
 }
 
 const createdInvoice = (patch: Record<string, unknown>) =>
@@ -121,7 +122,7 @@ describe("sevdesk_invoice_create_from_order", () => {
     });
     expect(output.data.positions).toHaveLength(3);
     expect(output.data.orderId).toBe(3002);
-    expect(output.data.orderStatus).toEqual({ code: 500, label: "Accepted" });
+    expect(output.data.orderStatus).toEqual({ code: 500, label: "Accepted", key: "accepted" });
     // The order read back unchanged, so only the invoice is affected.
     expect(output.affected).toEqual([{ objectName: "Invoice", id: "1101" }]);
     expect(output.summary).toBe(
@@ -298,7 +299,9 @@ describe("sevdesk_invoice_create_from_order", () => {
 
   it("reads the id of a nested answer and reports the invoice when the read-back fails", async () => {
     const nested = new FakeSevdeskClient(
-      routes({ create: { body: { objects: { invoice: { id: "1101", objectName: "Invoice" } } } } }),
+      routes({
+        create: { body: { objects: { invoice: { id: "1101", objectName: "Invoice" } } } },
+      }),
     );
     const { output } = await executeWrite(tool, { orderId: 3002 }, nested);
     expect(output.data.invoice.id).toBe(1101);

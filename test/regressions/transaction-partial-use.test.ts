@@ -38,13 +38,16 @@ afterEach(() => {
 });
 
 /**
- * The reads `prepare` makes with a transaction: document, account, transaction, its account, its
+ * The reads `prepare` makes with a transaction: document, country table (sales documents), account, transaction, its account, its
  * booking log (empty).
  */
 function reads(document: Row, transaction: Row): FakeReply[] {
   const account = accountRow(4002);
   return [
     envelope([document]),
+    ...(document["addressCountry"] === undefined || document["addressCountry"] === null
+      ? []
+      : [fixtureReply("meta/static-countries.json")]),
     envelope([account]),
     envelope([transaction]),
     envelope([account]),
@@ -58,6 +61,7 @@ describe("payments on part of a bank transaction", () => {
       ...reads(invoiceRow(), transactionRow({ amount: "200" })),
       envelope(fixtureRow("invoice-book-amount.json")),
       envelope([invoiceRow({ status: "1000", paidAmount: 177.33 })]),
+      fixtureReply("meta/static-countries.json"),
     ]);
 
     await executeWrite(

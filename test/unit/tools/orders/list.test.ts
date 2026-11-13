@@ -93,8 +93,8 @@ describe("sevdesk_orders_list (community: recorded Order shape, fake data)", () 
     expect(result.data.items[0]).toEqual({
       id: 3001,
       number: "AN-1001",
-      type: { code: "AN", label: "Estimate / proposal", labelDe: "Angebot" },
-      status: { code: 1000, label: "Calculated (invoiced)" },
+      type: { key: "offer", code: "AN", label: "Estimate / proposal", labelDe: "Angebot" },
+      status: { code: 1000, label: "Calculated (invoiced)", key: "invoiced" },
       contact: { id: 1001, name: "Musterfirma GmbH" },
       date: "2026-09-10",
       currency: "EUR",
@@ -109,11 +109,11 @@ describe("sevdesk_orders_list (community: recorded Order shape, fake data)", () 
     });
     expect(result.data.items[1]).toMatchObject({
       type: { code: "AB", labelDe: "Auftragsbestätigung" },
-      status: { code: 500, label: "Accepted" },
+      status: { code: 500, label: "Accepted", key: "accepted" },
     });
     expect(result.data.items[2]).toMatchObject({
       type: { code: "LI", labelDe: "Lieferschein" },
-      status: { code: 100, label: "Draft" },
+      status: { code: 100, label: "Draft", key: "draft" },
       contact: { id: 1001 },
       totals: { gross: { amount: "0.00", currency: "EUR" } },
       link: "https://my.sevdesk.de/om/edit/type/LI/id/3003",

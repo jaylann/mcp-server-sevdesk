@@ -4,6 +4,10 @@
 
 75 tools. Which ones a client sees depends on `SEVDESK_TOOLSETS` and `SEVDESK_ALLOW` (see docs/configuration.md); tools above the enabled tiers are never listed.
 
+Output objects keep sevDesk codes and labels and add a `key` accepted by the matching status/type filter or bookingCategory input when one exists. Unsupported or unknown codes have no key. Addresses add the uppercase ISO 3166-1 `country` beside `countryId` using the same country table as inputs; unresolved countries keep their id without a code.
+
+`sevdesk_reference_lookup` returns `hasMore` and `limit`: for receipt_guidance, these describe the next local page and effective page size; for unpaged kinds they are false and null. `hasMore` agrees with the presence of `nextOffset`. `truncated` separately indicates entries sevDesk reported but the server could not fetch.
+
 Tiers:
 
 - `read`: reads only; changes nothing in sevDesk.
@@ -101,7 +105,7 @@ Create a contact (Kontakt anlegen): an organisation (organisationName) or a pers
 
 **Get a sevDesk contact** · tier `read` · read-only, idempotent
 
-Get one contact (Kontakt) by its sevDesk id, with its postal addresses (Adressen, e.g. Rechnungsanschrift) and communication ways (email, phone, website). Use it after sevdesk_contacts_search to check a customer's (Kunde) or supplier's (Lieferant) details, e.g. the billing address or invoice email, before working with their documents. Country ids can be resolved with sevdesk_reference_lookup kind=countries.
+Get one contact (Kontakt) by its sevDesk id, with its postal addresses (Adressen, e.g. Rechnungsanschrift) and communication ways (email, phone, website). Use it after sevdesk_contacts_search to check a customer's (Kunde) or supplier's (Lieferant) details, e.g. the billing address or invoice email, before working with their documents. ISO country codes are included when the country table resolves the ids.
 
 | Argument | Type    | Required | Description                                    |
 | -------- | ------- | -------- | ---------------------------------------------- |
@@ -792,23 +796,24 @@ Reset a voucher (Beleg) one step back. to "open" (resetToOpen): a paid or partia
 
 **Update a draft voucher** · tier `write` · changes state, destructive, supports `dryRun`
 
-Change a draft voucher (Beleg, status draft 50): supplier (Lieferant), Belegnummer, dates, Steuerregel, or replace ALL positions (Belegpositionen) at once, and/or attach a receipt file (PDF/PNG/JPEG from SEVDESK_FILE_DIRS or an upload). Fields left out keep their stored values. A new tax rule must fit every position; accounts × rule × rate are checked against sevDesk's ReceiptGuidance before anything is sent. Only drafts that are not enshrined (EUR, Update 2.0); a booked voucher must be reset to draft first (sevdesk_voucher_reset). Tier write; dryRun previews. Before: sevdesk_voucher_get. After: sevdesk_voucher_finalize.
+Change a draft voucher (Beleg, status draft 50): supplier (Lieferant), Belegnummer, dates, Steuerregel, or replace ALL positions (Belegpositionen) at once, and/or attach a receipt file (PDF/PNG/JPEG from SEVDESK_FILE_DIRS or an upload). Fields left out keep their stored values. A new tax rule must fit every position; accounts × rule × rate are checked against sevDesk's ReceiptGuidance before anything is sent. Only drafts that are not enshrined (Update 2.0). To convert a foreign-currency draft, pass currency: "EUR" and ALL positions with EUR amounts; no exchange rate is calculated. A booked voucher must be reset to draft first (sevdesk_voucher_reset). Tier write; dryRun previews. Before: sevdesk_voucher_get. After: sevdesk_voucher_finalize.
 
-| Argument            | Type             | Required | Description                                                                                                                                              |
-| ------------------- | ---------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`                | integer          | yes      | Id of the draft voucher, e.g. from sevdesk_vouchers_list.                                                                                                |
-| `supplierId`        | integer          | no       | Lieferant (supplier; the customer of a revenue voucher) as a contact id from sevdesk_contacts_search. Pass supplierId or supplierName.                   |
-| `supplierName`      | string           | no       | Supplier name as text, when there is no contact (e.g. a petrol station).                                                                                 |
-| `number`            | string           | no       | Belegnummer: the receipt's or supplier invoice's own number.                                                                                             |
-| `date`              | string           | no       | Belegdatum, YYYY-MM-DD; default today (Berlin).                                                                                                          |
-| `deliveryDate`      | string           | no       | Leistungsdatum, YYYY-MM-DD; default the voucher date.                                                                                                    |
-| `deliveryDateUntil` | string           | no       | End of the service period (Leistungszeitraum bis), YYYY-MM-DD.                                                                                           |
-| `paymentDeadline`   | string           | no       | Fälligkeit (payment deadline), YYYY-MM-DD.                                                                                                               |
-| `taxRuleId`         | integer          | no       | New Steuerregel id; every position (stored or new) must allow it. See sevdesk_reference_lookup kind=tax_rules.                                           |
-| `amountMode`        | `gross` \| `net` | no       | gross or net position amounts; changing it requires positions too.                                                                                       |
-| `positions`         | object[]         | no       | When given, replaces ALL positions; leave out to keep them.                                                                                              |
-| `file`              | string           | no       | Receipt file to attach (PDF, PNG or JPEG inside SEVDESK_FILE_DIRS, or on a remote server the uploadId from sevdesk_upload_request).                      |
-| `dryRun`            | boolean          | no       | Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false. |
+| Argument            | Type             | Required | Description                                                                                                                                                                   |
+| ------------------- | ---------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                | integer          | yes      | Id of the draft voucher, e.g. from sevdesk_vouchers_list.                                                                                                                     |
+| `currency`          | string           | no       | Pass "EUR" explicitly to convert a foreign-currency draft. Requires ALL positions with caller-supplied EUR amounts; no exchange rate is calculated. Review with dryRun first. |
+| `supplierId`        | integer          | no       | Lieferant (supplier; the customer of a revenue voucher) as a contact id from sevdesk_contacts_search. Pass supplierId or supplierName.                                        |
+| `supplierName`      | string           | no       | Supplier name as text, when there is no contact (e.g. a petrol station).                                                                                                      |
+| `number`            | string           | no       | Belegnummer: the receipt's or supplier invoice's own number.                                                                                                                  |
+| `date`              | string           | no       | Belegdatum, YYYY-MM-DD; default today (Berlin).                                                                                                                               |
+| `deliveryDate`      | string           | no       | Leistungsdatum, YYYY-MM-DD; default the voucher date.                                                                                                                         |
+| `deliveryDateUntil` | string           | no       | End of the service period (Leistungszeitraum bis), YYYY-MM-DD.                                                                                                                |
+| `paymentDeadline`   | string           | no       | Fälligkeit (payment deadline), YYYY-MM-DD.                                                                                                                                    |
+| `taxRuleId`         | integer          | no       | New Steuerregel id; every position (stored or new) must allow it. See sevdesk_reference_lookup kind=tax_rules.                                                                |
+| `amountMode`        | `gross` \| `net` | no       | gross or net position amounts; changing it requires positions too.                                                                                                            |
+| `positions`         | object[]         | no       | When given, replaces ALL positions; leave out to keep them. Required with EUR amounts when converting currency.                                                               |
+| `file`              | string           | no       | Receipt file to attach (PDF, PNG or JPEG inside SEVDESK_FILE_DIRS, or on a remote server the uploadId from sevdesk_upload_request).                                           |
+| `dryRun`            | boolean          | no       | Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.                      |
 
 ### `sevdesk_vouchers_list`
 
@@ -1142,7 +1147,10 @@ Ready-made bookkeeping workflows (MCP prompts). Clients offer them by name, e.g.
 
 Match unbooked bank transactions in sevDesk to invoices, credit notes and receipts: suggestions with reasons, then each booking the user confirms with a dry run first; private withdrawals and deposits, costs without a receipt and wrong bookings. Not tax advice.
 
-No arguments.
+| Argument       | Required | Description                                                                              |
+| -------------- | -------- | ---------------------------------------------------------------------------------------- |
+| `checkAccount` | no       | Payment account reference (name or id, up to 200 characters). Default: no account scope. |
+| `month`        | no       | Month to reconcile, YYYY-MM (2000–2099). Default: no date scope.                         |
 
 ### `dunning_run`
 
@@ -1150,7 +1158,10 @@ No arguments.
 
 Find overdue invoices in sevDesk, rule out payments that are not booked yet, and prepare payment reminders (Mahnungen) for the ones the user picks, with a dry run first. Without the write tier it only lists the overdue invoices. Not tax advice.
 
-No arguments.
+| Argument         | Required | Description                                                                             |
+| ---------------- | -------- | --------------------------------------------------------------------------------------- |
+| `contact`        | no       | Customer reference (name or id, up to 200 characters). Default: all customers.          |
+| `minDaysOverdue` | no       | Minimum days overdue (inclusive, 0–3650, as 1–4 digits). Default: all overdue invoices. |
 
 ### `month_end_close`
 

@@ -19,9 +19,13 @@ import { prepareWrite } from "../helpers/write-tools.js";
 import { WRITE_TOOL_CASES } from "../write-cases/index.js";
 
 const CONFIRMED = WRITE_TOOL_CASES.filter((testCase) => requiresConfirmation(testCase.tool.tier));
-const UNCONFIRMED = WRITE_TOOL_CASES.filter(
-  (testCase) => !requiresConfirmation(testCase.tool.tier),
+// Voucher updates also carry bilingual previews, including the currency conversion warning.
+const BILINGUAL = WRITE_TOOL_CASES.filter(
+  (testCase) =>
+    requiresConfirmation(testCase.tool.tier) ||
+    testCase.tool.name === "sevdesk_voucher_update_draft",
 );
+const UNCONFIRMED = WRITE_TOOL_CASES.filter((testCase) => !BILINGUAL.includes(testCase));
 
 /**
  * Words that only English sentences have, in any case, and English bookkeeping words that the
@@ -72,7 +76,7 @@ describe("German previews", () => {
     );
   });
 
-  it.each(CONFIRMED.map((testCase) => [testCase.label, testCase] as const))(
+  it.each(BILINGUAL.map((testCase) => [testCase.label, testCase] as const))(
     "%s: says the same in German",
     async (_label, testCase) => {
       const client = new FakeSevdeskClient(testCase.routes);

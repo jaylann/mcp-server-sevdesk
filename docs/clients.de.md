@@ -1,4 +1,4 @@
-<!-- translated-from: docs/clients.md sha256:2cb01a4bfa63 -->
+<!-- translated-from: docs/clients.md sha256:44ac123e6fb3 -->
 
 # Clients
 
@@ -17,8 +17,8 @@ Bevor Sie beginnen:
 
 Die Beispiele schreiben das Token selbst als `SEVDESK_API_TOKEN` in die Konfiguration. Um es aus
 der Datei herauszuhalten, ersetzen Sie diese Zeile durch `"SEVDESK_API_TOKEN_KEYCHAIN": "<label>"`,
-nachdem Sie das Token mit `npx -y mcp-server-sevdesk token set <label>` abgelegt haben (macOS und
-Linux), oder durch `"SEVDESK_API_TOKEN_FILE": "/absolute/path/to/token"`
+nachdem Sie das Token mit `npx -y mcp-server-sevdesk token set <label>` abgelegt haben (macOS,
+Linux und Windows), oder durch `"SEVDESK_API_TOKEN_FILE": "/absolute/path/to/token"`
 ([Konfiguration](configuration.de.md#das-token-im-schlüsselbund-ablegen)). Jede weitere
 Einstellung kommt in denselben `env`-Block; ohne weitere Einstellungen liest der Server nur.
 
@@ -65,16 +65,17 @@ Claude Desktop bewahrt das Token im sicheren Speicher Ihres Betriebssystems auf 
 unter macOS, Anmeldeinformationsverwaltung unter Windows). Die Einstellungen ändern Sie später
 unter **Settings → Extensions → sevDesk**:
 
-| Einstellung       | Variable             | Bedeutung                                                                                                                                                                                       |
-| ----------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| sevDesk API token | `SEVDESK_API_TOKEN`  | Pflicht.                                                                                                                                                                                        |
-| Permission tiers  | `SEVDESK_ALLOW`      | `read` (Standard), `write`, `commit`, `external` oder `all`, durch Kommas getrennt.                                                                                                             |
-| Read only         | `SEVDESK_READ_ONLY`  | Nur Lesewerkzeuge, unabhängig von den Stufen.                                                                                                                                                   |
-| Dry run           | `SEVDESK_DRY_RUN`    | Schreibwerkzeuge geben nur eine Vorschau zurück.                                                                                                                                                |
-| Confirmation      | `SEVDESK_CONFIRM`    | `browser` (Standard: Eine Freigabeseite öffnet sich in Ihrem Browser) oder `elicit` (Claude Desktop zeigt dafür keinen Dialog). In der Erweiterung lässt sich die Bestätigung nicht abschalten. |
-| Toolsets          | `SEVDESK_TOOLSETS`   | Leer lädt alle außer `advanced`.                                                                                                                                                                |
-| Receipt folder    | `SEVDESK_FILE_DIRS`  | Ein Ordner, aus dem Belege und E-Rechnungen gelesen werden dürfen.                                                                                                                              |
-| Output folder     | `SEVDESK_OUTPUT_DIR` | Ein Ordner, in dem PDFs und Exporte gespeichert werden dürfen.                                                                                                                                  |
+| Einstellung       | Variable             | Bedeutung                                                                                                                                                                                                           |
+| ----------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| sevDesk API token | `SEVDESK_API_TOKEN`  | Pflicht.                                                                                                                                                                                                            |
+| Permission tiers  | `SEVDESK_ALLOW`      | `read` (Standard), `write`, `commit`, `external` oder `all`, durch Kommas getrennt.                                                                                                                                 |
+| Read only         | `SEVDESK_READ_ONLY`  | Nur Lesewerkzeuge, unabhängig von den Stufen.                                                                                                                                                                       |
+| Dry run           | `SEVDESK_DRY_RUN`    | Schreibwerkzeuge geben nur eine Vorschau zurück.                                                                                                                                                                    |
+| Confirmation      | `SEVDESK_CONFIRM`    | `browser` (Standard: Eine Freigabeseite öffnet sich in Ihrem Browser) oder `elicit` (Claude Desktop zeigt dafür keinen Dialog). In der Erweiterung lässt sich die Bestätigung nicht abschalten.                     |
+| Toolsets          | `SEVDESK_TOOLSETS`   | Leer lädt alle außer `advanced`.                                                                                                                                                                                    |
+| Receipt folder    | `SEVDESK_FILE_DIRS`  | Ein Ordner, aus dem Belege und E-Rechnungen gelesen werden dürfen.                                                                                                                                                  |
+| Output folder     | `SEVDESK_OUTPUT_DIR` | Ein Ordner, in dem PDFs und Exporte gespeichert werden dürfen.                                                                                                                                                      |
+| Audit log         | `SEVDESK_AUDIT_LOG`  | Pfad eines lokalen Protokolls schreibender Aufrufe im Format JSON Lines; Einträge werden angehängt, Geheimnisse entfernt. Leer: kein Audit-Log. Ist die Datei nicht beschreibbar, werden Schreibvorgänge abgelehnt. |
 
 So prüfen Sie einen Download vor der Installation:
 `gh attestation verify mcp-server-sevdesk-<version>.mcpb --owner jaylann`. Ein neueres Release

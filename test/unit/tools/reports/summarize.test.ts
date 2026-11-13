@@ -175,8 +175,8 @@ describe("sevdesk_records_summarize (community fixtures, fake data)", () => {
       [invoicesRoute],
     );
     expect(report.groups.map((group) => [group.key, group.status, group.count])).toEqual([
-      ["100", { code: 100, label: "Draft" }, 1],
-      ["200", { code: 200, label: "Open / due" }, 4],
+      ["100", { code: 100, label: "Draft", key: "draft" }, 1],
+      ["200", { code: 200, label: "Open / due", key: "open" }, 4],
     ]);
     expect(report.groupsOmitted).toBe(2);
     expect(report.totals.count).toBe(9);

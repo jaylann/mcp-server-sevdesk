@@ -23,6 +23,7 @@ import {
   type ConfirmHarness,
   connectConfirming,
 } from "./confirm-client.js";
+import { withCountryRoute } from "./country-route.js";
 import { type FakeRoute, FakeSevdeskClient } from "./fake-client.js";
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -65,7 +66,7 @@ const APPROVAL_URL = /http:\/\/127\.0\.0\.1:\d+\/open\/[A-Za-z0-9_-]{43}/;
 
 /** A connected client against a server with exactly `tools`, every tier and toolset enabled. */
 export async function writeHarness(options: WriteHarnessOptions): Promise<WriteHarness> {
-  const fake = new FakeSevdeskClient(options.routes);
+  const fake = new FakeSevdeskClient(withCountryRoute(options.routes));
   const config = allEnabledConfig({
     ...(options.opener === undefined ? {} : { confirmOpen: true }),
     ...options.config,

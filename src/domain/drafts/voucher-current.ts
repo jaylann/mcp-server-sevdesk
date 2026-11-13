@@ -26,7 +26,7 @@ import {
 } from "../../sevdesk/schema.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import type { TaxRegime } from "../account-settings.js";
-import { cleanText } from "../common.js";
+import { cleanText, currencyCode } from "../common.js";
 import { listChildRows } from "../paging.js";
 import { numberText, type PreviewLanguage } from "../preview-text.js";
 import { type TaxRule, taxRuleById } from "../reference-data.js";
@@ -62,6 +62,9 @@ const storedVoucherSchema = z.object({
   sumNet: zOptionalDecimal,
   sumTax: zOptionalDecimal,
   sumGross: zOptionalDecimal,
+  sumNetForeignCurrency: zOptionalDecimal,
+  sumTaxForeignCurrency: zOptionalDecimal,
+  sumGrossForeignCurrency: zOptionalDecimal,
 });
 
 const storedPositionSchema = z.object({
@@ -215,9 +218,14 @@ export function carriedVoucher(
 
 /**
  * Checks that a stored voucher can be changed or finalized here: a normal (VOU), EUR, Update 2.0
- * draft that is not enshrined and says whether it is an expense or revenue. Returns its kind.
+ * draft that is not enshrined and says whether it is an expense or revenue. An update may
+ * explicitly convert to EUR (the caller must also replace all positions). Returns its kind.
  */
-export function checkDraft(stored: StoredVoucher, action: "changed" | "finalized"): VoucherKind {
+export function checkDraft(
+  stored: StoredVoucher,
+  action: "changed" | "finalized",
+  currency?: "EUR",
+): VoucherKind {
   const { record } = stored;
   const id = String(record.id);
   if (stored.enshrined) {
@@ -236,11 +244,11 @@ export function checkDraft(stored: StoredVoucher, action: "changed" | "finalized
         "edit it in the sevDesk web app.",
     );
   }
-  const currency = record.currency?.trim().toUpperCase() ?? "EUR";
-  if (currency !== "EUR") {
+  if (currencyCode(record.currency) !== "EUR" && !(action === "changed" && currency === "EUR")) {
     refuse(
-      `Voucher ${id} is a foreign-currency voucher; this server writes EUR vouchers only. Edit ` +
-        "it in the sevDesk web app.",
+      `Voucher ${id} is a foreign-currency voucher; this server writes EUR vouchers only. ` +
+        'Use sevdesk_voucher_update_draft with currency: "EUR" and all positions with EUR ' +
+        "amounts to convert the draft first; no exchange rate is calculated.",
     );
   }
   if (stored.kind === undefined) {

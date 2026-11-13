@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { finalizeTool } from "../../../../src/tools/lifecycle/finalize.js";
+import { withCountryRoute } from "../../../helpers/country-route.js";
 import { FakeSevdeskClient } from "../../../helpers/fake-client.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import {
@@ -83,11 +84,13 @@ describe.each(cases)("$name (community record shapes, fake values)", (kind) => {
 
     expect(client.calls.map(({ method, path }) => `${method} ${path}`)).toEqual([
       `GET ${kind.path}`,
+      "GET /StaticCountry",
       // One read of the positions, for the preview facts and the approval binding
       // (readDocumentContent).
       `GET /${kind.path.split("/")[1] ?? ""}Pos`,
       `PUT ${kind.path}/sendBy`,
       `GET ${kind.path}`,
+      "GET /StaticCountry",
     ]);
     expect(client.writes()).toEqual([
       expect.objectContaining({
@@ -127,7 +130,7 @@ describe.each(cases)("$name (community record shapes, fake values)", (kind) => {
   });
 
   it("refuses a document that is not a draft", async () => {
-    const client = new FakeSevdeskClient([documentRoute(kind.kind, kind.done)]);
+    const client = new FakeSevdeskClient(withCountryRoute([documentRoute(kind.kind, kind.done)]));
 
     const error = await prepareWrite(tool, { id: kind.id }, client).catch((e: unknown) => e);
 
@@ -193,45 +196,47 @@ describe("sevdesk_invoice_finalize details", () => {
       headText: "Sehr geehrte Damen und Herren,",
       footText: "Bitte überweisen Sie an IBAN DE00 1234 5678 9012 3456 78.",
     });
-    const client = new FakeSevdeskClient([
-      documentRoute("invoice", draft),
-      {
-        path: "/InvoicePos",
-        response: {
-          body: {
-            objects: [
-              {
-                id: "7002",
-                objectName: "InvoicePos",
-                invoice: { id: "1001", objectName: "Invoice" },
-                positionNumber: "1",
-                name: "Wartung",
-                text: null,
-                quantity: "2",
-                price: "24.51",
-                taxRate: "19",
-                sumNet: "49.02",
-                sumGross: "58.33",
-              },
-              {
-                id: "7001",
-                objectName: "InvoicePos",
-                invoice: { id: "1001", objectName: "Invoice" },
-                positionNumber: "0",
-                name: "Beratung",
-                text: "Beratung im November",
-                quantity: "1",
-                price: "100",
-                taxRate: "19",
-                discount: "0",
-                sumNet: "100",
-                sumGross: "119",
-              },
-            ],
+    const client = new FakeSevdeskClient(
+      withCountryRoute([
+        documentRoute("invoice", draft),
+        {
+          path: "/InvoicePos",
+          response: {
+            body: {
+              objects: [
+                {
+                  id: "7002",
+                  objectName: "InvoicePos",
+                  invoice: { id: "1001", objectName: "Invoice" },
+                  positionNumber: "1",
+                  name: "Wartung",
+                  text: null,
+                  quantity: "2",
+                  price: "24.51",
+                  taxRate: "19",
+                  sumNet: "49.02",
+                  sumGross: "58.33",
+                },
+                {
+                  id: "7001",
+                  objectName: "InvoicePos",
+                  invoice: { id: "1001", objectName: "Invoice" },
+                  positionNumber: "0",
+                  name: "Beratung",
+                  text: "Beratung im November",
+                  quantity: "1",
+                  price: "100",
+                  taxRate: "19",
+                  discount: "0",
+                  sumNet: "100",
+                  sumGross: "119",
+                },
+              ],
+            },
           },
         },
-      },
-    ]);
+      ]),
+    );
 
     const plan = await prepareWrite(tool, { id: 1001 }, client);
 
@@ -352,7 +357,7 @@ describe("sevdesk_invoice_finalize details", () => {
       kind: "validation",
       completedWrites: [],
     });
-    expect(client.calls.map(({ method }) => method)).toEqual(["GET", "GET", "PUT"]);
+    expect(client.calls.map(({ method }) => method)).toEqual(["GET", "GET", "GET", "PUT"]);
   });
 
   it("accepts dryRun and rejects unknown arguments", () => {

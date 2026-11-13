@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { creditNoteFromInvoiceTool as tool } from "../../../../src/tools/credit-notes/from-invoice.js";
+import { withCountryRoute } from "../../../helpers/country-route.js";
 import { type FakeRoute, FakeSevdeskClient } from "../../../helpers/fake-client.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import {
@@ -69,7 +70,7 @@ function routes(
   overrides: Partial<Record<string, FakeRoute["response"]>> = {},
   extra: FakeRoute[] = [],
 ): FakeRoute[] {
-  return routeTable(table, overrides, extra);
+  return withCountryRoute(routeTable(table, overrides, extra));
 }
 
 function invoice(patch: Record<string, unknown>): FakeRoute["response"] {

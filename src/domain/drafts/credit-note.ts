@@ -29,6 +29,7 @@ import { SevdeskError } from "../../sevdesk/errors.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { type CreditNoteDetails, getCreditNote } from "../credit-notes.js";
 import { checkInvoiceCreditable, findCreditNotesForInvoice } from "../derived-documents.js";
+import { BOOKING_CATEGORY_NAMES } from "../filter-keys.js";
 import { getInvoice, type InvoiceDetails } from "../invoices.js";
 import { compare, toDecimalString } from "../money.js";
 import { taxRuleById } from "../reference-data.js";
@@ -104,12 +105,6 @@ import {
 } from "./tax.js";
 
 /** Readable booking categories → sevDesk's `bookingCategory`. */
-const BOOKING_CATEGORY_NAMES = {
-  underachievement: "UNDERACHIEVEMENT",
-  provision: "PROVISION",
-  royalty_assigned: "ROYALTY_ASSIGNED",
-  royalty_unassigned: "ROYALTY_UNASSIGNED",
-} as const satisfies Record<string, (typeof CREDIT_NOTE_BOOKING_CATEGORIES)[number]>;
 export type BookingCategoryName = keyof typeof BOOKING_CATEGORY_NAMES;
 
 /** Tax rule of provision credit notes (Vorsteuerabziehbare Aufwendungen; measured, see above). */

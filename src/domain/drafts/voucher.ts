@@ -20,9 +20,16 @@ import { sevdeskPath } from "../../sevdesk/paths.js";
 import { parseUpstream, zIntish, zRef } from "../../sevdesk/schema.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import type { TaxRegime } from "../account-settings.js";
-import { cleanText } from "../common.js";
+import { cleanText, currencyCode } from "../common.js";
 import { compare, format } from "../money.js";
-import { inLanguage } from "../preview-text.js";
+import {
+  bothPreviews,
+  dateText,
+  inLanguage,
+  numberText,
+  type Phrase,
+  type PreviewLanguage,
+} from "../preview-text.js";
 import type { TaxRule } from "../reference-data.js";
 import {
   creditDebitForKind,
@@ -114,7 +121,7 @@ export interface VoucherSaveState {
 
 export interface VoucherSavePlan {
   readonly preview: DraftPreview;
-  /** The German preview: set by the finalize, which a human confirms (see `preview-text.ts`). */
+  /** The German preview: set by updates and the finalize (see `preview-text.ts`). */
   readonly previewDe?: DraftPreview;
   readonly state: VoucherSaveState;
 }
@@ -321,7 +328,15 @@ export async function prepareVoucherUpdate(
   const file =
     args.file === undefined ? undefined : await readReceiptFile(options.files, args.file);
   const stored = await loadStoredVoucher(client, args.id, signal);
-  const kind = checkDraft(stored, "changed");
+  const kind = checkDraft(stored, "changed", args.currency);
+  const oldCurrency = currencyCode(stored.record.currency);
+  const convertsCurrency = oldCurrency !== "EUR";
+  if (convertsCurrency && args.positions === undefined) {
+    refuse(
+      "Converting a draft to EUR requires all positions with EUR amounts. Pass positions " +
+        'and currency: "EUR"; no exchange rate is calculated or stored amount reused.',
+    );
+  }
   await assertUpdate2(client, signal, options.cacheOwner);
   const regime = await voucherRegime(client, options);
 
@@ -334,29 +349,25 @@ export async function prepareVoucherUpdate(
     );
   }
 
-  const warnings: string[] = [];
-  let rule: TaxRule;
-  if (args.taxRuleId === undefined) {
-    rule = storedRule(stored, "Pass taxRuleId to set one.");
-    warnings.push(...keptRuleWarnings(rule, kind, regime));
-  } else {
-    const resolved = resolveVoucherRule(kind, args.taxRuleId, regime);
-    rule = resolved.rule;
-    warnings.push(...resolved.warnings);
-  }
-
+  const rule =
+    args.taxRuleId === undefined
+      ? storedRule(stored, "Pass taxRuleId to set one.")
+      : resolveVoucherRule(kind, args.taxRuleId, regime).rule;
+  const accountWarnings: Phrase[] = [];
   let positions: VoucherPosition[] | undefined;
   let labels: ReadonlyMap<number, string> = new Map();
+  let labelsDe: ReadonlyMap<number, string> = new Map();
   const date = args.date ?? stored.dates.voucherDate ?? todayInBerlin();
   if (args.positions !== undefined) {
     positions = resolveVoucherPositions(rule, args.positions, regime);
     const check = await checkVoucherAccounts(client, kind, rule, positions, date, options);
     labels = check.labels;
-    warnings.push(...inLanguage(check.warnings, "en"));
+    labelsDe = check.labelsDe;
+    accountWarnings.push(...check.warnings);
   } else if (args.taxRuleId !== undefined) {
     const kept = storedPositionsFor(stored, rule, regime);
     const check = await checkVoucherAccounts(client, kind, rule, kept, date, options);
-    warnings.push(...inLanguage(check.warnings, "en"));
+    accountWarnings.push(...check.warnings);
   }
 
   const delivery = resolveDeliveryPeriod(
@@ -372,7 +383,9 @@ export async function prepareVoucherUpdate(
   const supplierName =
     args.supplierName ??
     (args.supplierId === undefined ? nonBlank(record.supplierName) : undefined);
-  const supplierChanged = args.supplierId !== undefined || args.supplierName !== undefined;
+  // Decide once from the stored values: a real name can equal a translated missing-name label.
+  const supplierChanged =
+    supplierId !== record.supplier?.id || supplierName !== nonBlank(record.supplierName);
   const shownName =
     args.supplierId === undefined
       ? supplierName
@@ -404,75 +417,144 @@ export async function prepareVoucherUpdate(
     "voucher",
   );
 
-  const log = new ChangeLog();
-  if (supplierChanged) {
+  const previews = bothPreviews((lang) => {
+    const german = lang === "de";
+    const text = (en: string, de: string): string => (german ? de : en);
+    const day = (value: string | undefined): string | undefined =>
+      value === undefined ? undefined : dateText(value, lang);
+    const period = (from: string, until: string | undefined): string =>
+      until === undefined
+        ? dateText(from, lang)
+        : `${dateText(from, lang)} – ${dateText(until, lang)}`;
+    const basis = (value: AmountMode): string =>
+      german ? (value === "net" ? "netto" : "brutto") : value;
+    const log = new ChangeLog(text("(none)", "(keine Angabe)"));
+    if (convertsCurrency)
+      log.value(text("currency", "Währung"), text("Currency", "Währung"), oldCurrency, "EUR");
+    if (supplierChanged) {
+      log.note(
+        text("supplier", "Lieferant/Kunde"),
+        partyLabel(kind, lang),
+        `${supplierText(nonBlank(record.supplierName), record.supplier?.id, lang)} → ` +
+          supplierText(shownName, supplierId, lang),
+      );
+    }
+    if (args.number !== undefined) {
+      log.value("Belegnummer", "Belegnummer", cleanText(record.description, 100), args.number);
+    }
     log.value(
-      "supplier",
-      partyLabel(kind),
-      supplierText(nonBlank(record.supplierName), record.supplier?.id),
-      supplierText(shownName, supplierId),
+      text("date", "Belegdatum"),
+      text("Voucher date (Belegdatum)", "Belegdatum"),
+      day(stored.dates.voucherDate),
+      day(date),
     );
-  }
-  if (args.number !== undefined) {
-    log.value("Belegnummer", "Belegnummer", cleanText(record.description, 100), args.number);
-  }
-  log.value("date", "Voucher date (Belegdatum)", stored.dates.voucherDate, date);
-  log.value(
-    "delivery date",
-    "Delivery date (Leistungsdatum)",
-    stored.dates.deliveryDate === undefined
-      ? undefined
-      : formatPeriod({ from: stored.dates.deliveryDate, until: stored.dates.deliveryDateUntil }),
-    formatPeriod(delivery),
-  );
-  log.value(
-    "payment deadline",
-    "Payment deadline (Fälligkeit)",
-    stored.dates.paymentDeadline,
-    paymentDeadline,
-  );
-  if (args.taxRuleId !== undefined) {
     log.value(
-      "tax rule",
-      "Tax rule (Steuerregel)",
-      record.taxRule === undefined ? undefined : `tax rule ${String(record.taxRule.id)}`,
-      taxRuleLabel(rule),
+      text("delivery date", "Leistungsdatum"),
+      text("Delivery date (Leistungsdatum)", "Leistungsdatum"),
+      stored.dates.deliveryDate === undefined
+        ? undefined
+        : period(stored.dates.deliveryDate, stored.dates.deliveryDateUntil),
+      period(delivery.from, delivery.until),
     );
-  }
-  if (mode !== storedMode) log.value("amount mode", "Amounts entered as", storedMode, mode);
-  if (positions !== undefined) {
-    log.note(
-      "positions",
-      "Positions",
-      `replace ${positionCount(stored.positions.length)} with ${positionCount(positions.length)}`,
+    log.value(
+      text("payment deadline", "Fälligkeit"),
+      text("Payment deadline (Fälligkeit)", "Fälligkeit"),
+      day(stored.dates.paymentDeadline),
+      day(paymentDeadline),
     );
-  }
-  if (file !== undefined)
-    log.note("file", "Receipt file (Belegbild)", `attach ${receiptText(file)}`);
+    if (args.taxRuleId !== undefined) {
+      log.value(
+        text("tax rule", "Steuerregel"),
+        text("Tax rule (Steuerregel)", "Steuerregel"),
+        record.taxRule === undefined
+          ? undefined
+          : `${text("tax rule", "Steuerregel")} ${String(record.taxRule.id)}`,
+        taxRuleLabel(rule),
+      );
+    }
+    if (mode !== storedMode)
+      log.value(
+        text("amount mode", "Betragseingabe"),
+        text("Amounts entered as", "Betragseingabe"),
+        basis(storedMode),
+        basis(mode),
+      );
+    if (positions !== undefined) {
+      log.note(
+        text("positions", "Positionen"),
+        text("Positions", "Positionen"),
+        text(
+          `replace ${positionCount(stored.positions.length)} with ${positionCount(positions.length)}`,
+          `${positionCount(stored.positions.length, lang)} durch ${positionCount(positions.length, lang)} ersetzen`,
+        ),
+      );
+    }
+    if (file !== undefined)
+      log.note(
+        text("file", "Datei"),
+        text("Receipt file (Belegbild)", "Belegdatei"),
+        `${text("attach", "anhängen:")} ${receiptText(file, lang)}`,
+      );
 
-  if (file !== undefined && stored.hasDocument === true) {
-    warnings.push(
-      "The voucher already has an attached file. sevDesk attaches the new one; whether the " +
-        "earlier file stays attached is not documented.",
+    const warnings =
+      args.taxRuleId === undefined
+        ? keptRuleWarnings(rule, kind, regime, lang)
+        : [...resolveVoucherRule(kind, args.taxRuleId, regime, lang).warnings];
+    warnings.push(...inLanguage(accountWarnings, lang));
+    if (convertsCurrency) {
+      // D-043: only these fields are the old document-currency sums. Missing and zero differ.
+      const oldSum = (value: string | undefined): string =>
+        value === undefined
+          ? text("not reported", "nicht gemeldet")
+          : moneyText(value, oldCurrency, lang);
+      warnings.push(
+        text(
+          "Currency changes to EUR using the supplied position amounts. No exchange rate is calculated; the old amounts are not reused.",
+          "Die Währung wird mit den angegebenen Positionsbeträgen auf EUR umgestellt. Es wird kein Wechselkurs berechnet; die alten Beträge werden nicht übernommen.",
+        ),
+      );
+      warnings.push(
+        text(
+          `Old foreign-currency sums: net ${oldSum(record.sumNetForeignCurrency)}, tax ${oldSum(record.sumTaxForeignCurrency)}, gross ${oldSum(record.sumGrossForeignCurrency)} (sum…ForeignCurrency).`,
+          `Alte Fremdwährungssummen: netto ${oldSum(record.sumNetForeignCurrency)}, USt. ${oldSum(record.sumTaxForeignCurrency)}, brutto ${oldSum(record.sumGrossForeignCurrency)} (sum…ForeignCurrency).`,
+        ),
+      );
+      warnings.push(
+        text(
+          "The stored result of a currency change has not been verified live. Check the currency and EUR amounts after saving, before finalizing.",
+          "Das gespeicherte Ergebnis einer Währungsumstellung wurde noch nicht am Live-System geprüft. Prüfen Sie nach dem Speichern die Währung und EUR-Beträge vor dem Fertigstellen.",
+        ),
+      );
+    }
+    if (file !== undefined && stored.hasDocument === true) {
+      warnings.push(
+        text(
+          "The voucher already has an attached file. sevDesk attaches the new one; whether the earlier file stays attached is not documented.",
+          "Am Beleg ist bereits eine Datei angehängt. sevDesk hängt die neue Datei an; ob die bisherige Datei angehängt bleibt, ist nicht dokumentiert.",
+        ),
+      );
+    }
+    return draftPreview(
+      text(
+        `Update draft voucher ${String(record.id)}: change ${log.changed.join(", ") || "nothing visible"}.`,
+        `Belegentwurf ${String(record.id)} aktualisieren: ${log.changed.join(", ") || "keine sichtbare Änderung"}.`,
+      ),
+      [
+        fact(text("Voucher (Beleg)", "Beleg"), `${String(record.id)}, ${text("draft", "Entwurf")}`),
+        fact(text("Kind", "Art"), kindText(kind, lang)),
+        ...log.facts,
+        ...(positions === undefined
+          ? []
+          : positionFacts(positions, mode, german ? labelsDe : labels, lang)),
+        expected === undefined
+          ? fact(text("Total (unchanged)", "Summe (unverändert)"), storedTotal(stored, lang))
+          : fact(text("Total (expected)", "Summe (erwartet)"), totalsText(expected, "EUR", lang)),
+      ],
+      [...warnings, ...deadlineWarnings(date, paymentDeadline, lang)],
     );
-  }
-  const facts: PreviewFact[] = [
-    fact("Voucher (Beleg)", `${String(record.id)}, draft`),
-    fact("Kind", kindText(kind)),
-    ...log.facts,
-    ...(positions === undefined ? [] : positionFacts(positions, mode, labels)),
-    expected === undefined
-      ? fact("Total (unchanged)", storedTotal(stored))
-      : fact("Total (expected)", totalsText(expected, "EUR")),
-  ];
-  const preview = draftPreview(
-    `Update draft voucher ${String(record.id)}: change ` +
-      `${log.changed.join(", ") || "nothing visible"}.`,
-    facts,
-    [...warnings, ...deadlineWarnings(date, paymentDeadline)],
-  );
+  });
   return {
-    preview,
+    ...previews,
     state: {
       body,
       file,
@@ -703,7 +785,14 @@ function readBackNotes(details: VoucherDetails, state: VoucherSaveState): string
   const notes: string[] = [];
   const { voucher } = details;
   const gross = voucher.totals.gross?.amount;
+  if (voucher.currency !== "EUR") {
+    notes.push(
+      "sevDesk did not return EUR after saving an EUR voucher. Check the currency and " +
+        "amounts with sevdesk_voucher_get before finalizing; do not repeat the conversion blindly.",
+    );
+  }
   if (
+    voucher.currency === "EUR" &&
     state.expected !== undefined &&
     gross !== undefined &&
     compare(gross, state.expected.gross) !== 0
@@ -770,22 +859,29 @@ function keptRuleWarnings(
   rule: TaxRule,
   kind: VoucherKind,
   regime: TaxRegime | undefined,
+  lang: PreviewLanguage = "en",
 ): string[] {
   const warnings: string[] = [];
   if (!voucherRuleScope(kind).allowedRuleIds.includes(rule.id)) {
     warnings.push(
-      `The draft keeps tax rule ${String(rule.id)} (${rule.nameDe}), which is not a rule for ` +
-        `${kind} vouchers; pass taxRuleId to fix it before finalizing.`,
+      lang === "de"
+        ? `Der Entwurf behält Steuerregel ${String(rule.id)} (${rule.nameDe}), die nicht für ${kind === "expense" ? "Ausgaben" : "Einnahmen"} gilt. Korrigieren Sie sie vor dem Fertigstellen mit taxRuleId.`
+        : `The draft keeps tax rule ${String(rule.id)} (${rule.nameDe}), which is not a rule for ` +
+            `${kind} vouchers; pass taxRuleId to fix it before finalizing.`,
     );
   } else if (regime !== undefined && !rule.regimes.includes(regime)) {
     warnings.push(
-      `The draft keeps tax rule ${String(rule.id)} (${rule.nameDe}), which does not fit this ` +
-        "account's VAT regulation: sevDesk will refuse to book it. Pass taxRuleId to fix it.",
+      lang === "de"
+        ? `Der Entwurf behält Steuerregel ${String(rule.id)} (${rule.nameDe}), die nicht zur Umsatzsteuerregelung dieses Kontos passt: sevDesk verweigert die Buchung. Korrigieren Sie sie mit taxRuleId.`
+        : `The draft keeps tax rule ${String(rule.id)} (${rule.nameDe}), which does not fit this ` +
+            "account's VAT regulation: sevDesk will refuse to book it. Pass taxRuleId to fix it.",
     );
   }
   if (rule.notSupportedFor?.includes("vouchers") === true) {
     warnings.push(
-      `Tax rule ${String(rule.id)} is not supported for vouchers; pass taxRuleId to fix it.`,
+      lang === "de"
+        ? `Steuerregel ${String(rule.id)} wird für Belege nicht unterstützt; korrigieren Sie sie mit taxRuleId.`
+        : `Tax rule ${String(rule.id)} is not supported for vouchers; pass taxRuleId to fix it.`,
     );
   }
   return warnings;
@@ -795,6 +891,7 @@ function positionFacts(
   positions: readonly VoucherPosition[],
   mode: AmountMode,
   labels: ReadonlyMap<number, string>,
+  lang: PreviewLanguage = "en",
 ): PreviewFact[] {
   return positions.map((position, index) => {
     const amounts = voucherPositionAmounts(position, mode);
@@ -802,9 +899,9 @@ function positionFacts(
     const asset = position.isAsset ? " (Anlagegut)" : "";
     return fact(
       `Position ${String(index + 1)}`,
-      `${labels.get(position.accountDatevId) ?? `account ${String(position.accountDatevId)}`}: ` +
-        `${moneyText(format(position.amount, 2), "EUR")} ${mode}, ${position.taxRate} % VAT → ` +
-        `net ${amounts.net}, tax ${amounts.tax}, gross ${amounts.gross}${asset}${comment}`,
+      `${labels.get(position.accountDatevId) ?? `${lang === "de" ? "Konto" : "account"} ${String(position.accountDatevId)}`}: ` +
+        `${moneyText(format(position.amount, 2), "EUR", lang)} ${lang === "de" ? (mode === "net" ? "netto" : "brutto") : mode}, ${numberText(position.taxRate, lang)} % ${lang === "de" ? "USt." : "VAT"} → ` +
+        `${lang === "de" ? "netto" : "net"} ${numberText(amounts.net, lang)}, ${lang === "de" ? "USt." : "tax"} ${numberText(amounts.tax, lang)}, ${lang === "de" ? "brutto" : "gross"} ${numberText(amounts.gross, lang)}${asset}${comment}`,
     );
   });
 }
@@ -826,8 +923,16 @@ function checkSupplierArgs(
   }
 }
 
-function deadlineWarnings(date: string, deadline: string | undefined): string[] {
+function deadlineWarnings(
+  date: string,
+  deadline: string | undefined,
+  lang: PreviewLanguage = "en",
+): string[] {
   return deadline !== undefined && deadline < date
-    ? [`The payment deadline ${deadline} is before the voucher date ${date}.`]
+    ? [
+        lang === "de"
+          ? `Die Fälligkeit ${dateText(deadline, lang)} liegt vor dem Belegdatum ${dateText(date, lang)}.`
+          : `The payment deadline ${deadline} is before the voucher date ${date}.`,
+      ]
     : [];
 }

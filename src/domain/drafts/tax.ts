@@ -24,6 +24,7 @@ import { SevdeskError } from "../../sevdesk/errors.js";
 import type { SystemVersion } from "../../sevdesk/system-version.js";
 import type { TaxRegime } from "../account-settings.js";
 import { compare, toDecimalString } from "../money.js";
+import type { PreviewLanguage } from "../preview-text.js";
 import { type TaxRule, taxRuleById } from "../reference-data.js";
 
 /**
@@ -156,6 +157,13 @@ export const UNKNOWN_REGIME_WARNING =
   "not be read, so the tax rule was not checked against it. sevDesk refuses to finalize " +
   "documents whose tax rule does not fit (e.g. tax rule 1 on a Kleinunternehmer account).";
 
+/** The same unknown-regime warning for a German preview. */
+export const UNKNOWN_REGIME_WARNING_DE =
+  "Die Umsatzsteuerregelung dieses sevDesk-Kontos (Regelbesteuerung oder Kleinunternehmer, " +
+  "§19 UStG) konnte nicht gelesen werden. Die Steuerregel wurde daher nicht dagegen geprüft. " +
+  "sevDesk verweigert das Fertigstellen bei einer unpassenden Steuerregel (z. B. Steuerregel 1 " +
+  "auf einem Kleinunternehmer-Konto).";
+
 /** Extra limit on the rates, e.g. "the rates of the source invoice". */
 export interface RateLimit {
   readonly rates: readonly string[];
@@ -241,18 +249,26 @@ export function checkTaxRuleUseCase(rule: TaxRule, useCase: string, noun: string
  * Preview warnings for a rule (trusted text). The Kleinunternehmer note is left out when the
  * account is known to use that regulation.
  */
-export function taxRuleWarnings(rule: TaxRule, regime?: TaxRegime): string[] {
+export function taxRuleWarnings(
+  rule: TaxRule,
+  regime?: TaxRegime,
+  lang: PreviewLanguage = "en",
+): string[] {
   const warnings: string[] = [];
   if (rule.id === SMALL_BUSINESS_RULE_ID && regime !== "small_business") {
     warnings.push(
-      "Tax rule 11 is for small businesses (Kleinunternehmer, §19 UStG) only: the document " +
-        "shows no VAT.",
+      lang === "de"
+        ? "Steuerregel 11 gilt nur für Kleinunternehmer (§19 UStG): Der Beleg weist keine Umsatzsteuer aus."
+        : "Tax rule 11 is for small businesses (Kleinunternehmer, §19 UStG) only: the document " +
+            "shows no VAT.",
     );
   }
   if (OSS_RULE_IDS.has(rule.id)) {
     warnings.push(
-      `Tax rule ${rule.id} is a One-Stop-Shop rule: every rate must be the destination ` +
-        "country's VAT rate; sevDesk checks it against the recipient's country.",
+      lang === "de"
+        ? `Steuerregel ${rule.id} ist eine One-Stop-Shop-Regel: Jeder Steuersatz muss dem des Ziellandes entsprechen; sevDesk prüft ihn anhand des Empfängerlandes.`
+        : `Tax rule ${rule.id} is a One-Stop-Shop rule: every rate must be the destination ` +
+            "country's VAT rate; sevDesk checks it against the recipient's country.",
     );
   }
   return warnings;

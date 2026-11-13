@@ -3,13 +3,35 @@
 exports[`prompts/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
 [
   {
-    "arguments": [],
+    "arguments": [
+      {
+        "description": "Payment account reference (name or id, up to 200 characters). Default: no account scope.",
+        "name": "checkAccount",
+        "required": false,
+      },
+      {
+        "description": "Month to reconcile, YYYY-MM (2000–2099). Default: no date scope.",
+        "name": "month",
+        "required": false,
+      },
+    ],
     "description": "Match unbooked bank transactions in sevDesk to invoices, credit notes and receipts: suggestions with reasons, then each booking the user confirms with a dry run first; private withdrawals and deposits, costs without a receipt and wrong bookings. Not tax advice.",
     "name": "bank_reconciliation",
     "title": "Bank reconciliation (Kontoabgleich)",
   },
   {
-    "arguments": [],
+    "arguments": [
+      {
+        "description": "Customer reference (name or id, up to 200 characters). Default: all customers.",
+        "name": "contact",
+        "required": false,
+      },
+      {
+        "description": "Minimum days overdue (inclusive, 0–3650, as 1–4 digits). Default: all overdue invoices.",
+        "name": "minDaysOverdue",
+        "required": false,
+      },
+    ],
     "description": "Find overdue invoices in sevDesk, rule out payments that are not booked yet, and prepare payment reminders (Mahnungen) for the ones the user picks, with a dry run first. Without the write tier it only lists the overdue invoices. Not tax advice.",
     "name": "dunning_run",
     "title": "Dunning run (Mahnlauf)",
@@ -56,13 +78,35 @@ exports[`prompts/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
 exports[`prompts/list > SEVDESK_ALLOW=write 1`] = `
 [
   {
-    "arguments": [],
+    "arguments": [
+      {
+        "description": "Payment account reference (name or id, up to 200 characters). Default: no account scope.",
+        "name": "checkAccount",
+        "required": false,
+      },
+      {
+        "description": "Month to reconcile, YYYY-MM (2000–2099). Default: no date scope.",
+        "name": "month",
+        "required": false,
+      },
+    ],
     "description": "Match unbooked bank transactions in sevDesk to invoices, credit notes and receipts: suggestions with reasons, then each booking the user confirms with a dry run first; private withdrawals and deposits, costs without a receipt and wrong bookings. Not tax advice.",
     "name": "bank_reconciliation",
     "title": "Bank reconciliation (Kontoabgleich)",
   },
   {
-    "arguments": [],
+    "arguments": [
+      {
+        "description": "Customer reference (name or id, up to 200 characters). Default: all customers.",
+        "name": "contact",
+        "required": false,
+      },
+      {
+        "description": "Minimum days overdue (inclusive, 0–3650, as 1–4 digits). Default: all overdue invoices.",
+        "name": "minDaysOverdue",
+        "required": false,
+      },
+    ],
     "description": "Find overdue invoices in sevDesk, rule out payments that are not booked yet, and prepare payment reminders (Mahnungen) for the ones the user picks, with a dry run first. Without the write tier it only lists the overdue invoices. Not tax advice.",
     "name": "dunning_run",
     "title": "Dunning run (Mahnlauf)",
@@ -119,13 +163,35 @@ exports[`prompts/list > SEVDESK_FILE_DIRS set: adds receipt_intake for the e-inv
 exports[`prompts/list > default configuration (read tier, default toolsets) 1`] = `
 [
   {
-    "arguments": [],
+    "arguments": [
+      {
+        "description": "Payment account reference (name or id, up to 200 characters). Default: no account scope.",
+        "name": "checkAccount",
+        "required": false,
+      },
+      {
+        "description": "Month to reconcile, YYYY-MM (2000–2099). Default: no date scope.",
+        "name": "month",
+        "required": false,
+      },
+    ],
     "description": "Match unbooked bank transactions in sevDesk to invoices, credit notes and receipts: suggestions with reasons, then each booking the user confirms with a dry run first; private withdrawals and deposits, costs without a receipt and wrong bookings. Not tax advice.",
     "name": "bank_reconciliation",
     "title": "Bank reconciliation (Kontoabgleich)",
   },
   {
-    "arguments": [],
+    "arguments": [
+      {
+        "description": "Customer reference (name or id, up to 200 characters). Default: all customers.",
+        "name": "contact",
+        "required": false,
+      },
+      {
+        "description": "Minimum days overdue (inclusive, 0–3650, as 1–4 digits). Default: all overdue invoices.",
+        "name": "minDaysOverdue",
+        "required": false,
+      },
+    ],
     "description": "Find overdue invoices in sevDesk, rule out payments that are not booked yet, and prepare payment reminders (Mahnungen) for the ones the user picks, with a dry run first. Without the write tier it only lists the overdue invoices. Not tax advice.",
     "name": "dunning_run",
     "title": "Dunning run (Mahnlauf)",

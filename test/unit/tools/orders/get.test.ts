@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { orderGetTool as tool } from "../../../../src/tools/orders/get.js";
+import { withCountryRoute } from "../../../helpers/country-route.js";
 import { type FakeRoute, FakeSevdeskClient, testContext } from "../../../helpers/fake-client.js";
 
 const orderRoute: FakeRoute = {
@@ -23,7 +24,7 @@ const relatedRoute: FakeRoute = {
 const routes = [orderRoute, positionsRoute, unitsRoute, relatedRoute];
 
 async function get(withRoutes: readonly FakeRoute[] = routes) {
-  const client = new FakeSevdeskClient(withRoutes);
+  const client = new FakeSevdeskClient(withCountryRoute(withRoutes));
   const result = await tool.handler(tool.input.parse({ id: 3002 }), testContext(client));
   return { client, result };
 }
@@ -45,13 +46,13 @@ describe("sevdesk_order_get (community: recorded Order shapes, fake data)", () =
       id: 3002,
       number: "AB-1002",
       type: { code: "AB" },
-      status: { code: 500, label: "Accepted" },
+      status: { code: 500, label: "Accepted", key: "accepted" },
       priceMode: "gross",
       version: 1,
       origin: { objectName: "Order", id: 3001 },
       paymentTerms: "14 Tage netto",
       deliveryTerms: "Lieferung frei Haus",
-      address: { countryId: 1 },
+      address: { countryId: 1, country: "DE" },
       headText: "<p>Gerne bieten wir Ihnen an:</p>",
       link: "https://my.sevdesk.de/om/detail/type/AB/id/3002",
     });
@@ -99,7 +100,7 @@ describe("sevdesk_order_get (community: recorded Order shapes, fake data)", () =
         id: 1010,
         number: "RE-1010",
         typeCode: "RE",
-        status: { code: 1000, label: "Paid" },
+        status: { code: 1000, label: "Paid", key: "paid" },
         link: "https://my.sevdesk.de/fi/detail/type/RE/id/1010",
       },
       { objectName: "Order", id: 3005, number: "LI-1005", typeCode: "LI" },
@@ -132,14 +133,14 @@ describe("sevdesk_order_get (community: recorded Order shapes, fake data)", () =
         objectName: "CreditNote",
         id: 2001,
         number: "GU-1",
-        status: { code: 100, label: "Draft" },
+        status: { code: 100, label: "Draft", key: "draft" },
         link: "https://my.sevdesk.de/cn/edit/type/CN/id/2001",
       },
       {
         objectName: "Order",
         id: 3006,
         typeCode: "AN",
-        status: { code: 500, label: "Accepted" },
+        status: { code: 500, label: "Accepted", key: "accepted" },
         link: "https://my.sevdesk.de/om/detail/type/AN/id/3006",
       },
       { objectName: "Letter", id: 1, status: { code: 100, label: "unknown" } },
@@ -168,15 +169,17 @@ describe("sevdesk_order_get (community: recorded Order shapes, fake data)", () =
   });
 
   it("passes a cancellation through instead of hiding it", async () => {
-    const client = new FakeSevdeskClient([
-      orderRoute,
-      positionsRoute,
-      unitsRoute,
-      {
-        ...relatedRoute,
-        response: { error: new SevdeskError({ kind: "aborted", message: "cancelled" }) },
-      },
-    ]);
+    const client = new FakeSevdeskClient(
+      withCountryRoute([
+        orderRoute,
+        positionsRoute,
+        unitsRoute,
+        {
+          ...relatedRoute,
+          response: { error: new SevdeskError({ kind: "aborted", message: "cancelled" }) },
+        },
+      ]),
+    );
     await expect(
       tool.handler(tool.input.parse({ id: 3002 }), testContext(client)),
     ).rejects.toMatchObject({ kind: "aborted" });

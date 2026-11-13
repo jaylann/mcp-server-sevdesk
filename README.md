@@ -34,7 +34,10 @@ server is built around that fact:
 - **Correct for sevDesk Update 2.0.** Tax rules and booking accounts are validated before anything
   is sent.
 - **Compact, typed output.** Aggregations run on the server, so the model doesn't page through
-  hundreds of records.
+  hundreds of records. Status, type and booking-category objects include an accepted input/filter
+  `key` when available. Addresses include an ISO `country` beside `countryId` when the country
+  table resolves it. Reference lookups report `hasMore` and the effective `limit` (`null` for
+  unpaged kinds); `truncated` separately reports missing upstream entries.
 
 ## Quick start
 
@@ -51,7 +54,7 @@ your token. The extension needs no Node.js and keeps the token in your system's 
 ### Claude Code
 
 ```bash
-npx -y mcp-server-sevdesk token set work   # stores the token in the OS keychain (macOS, Linux)
+npx -y mcp-server-sevdesk token set work   # stores the token in the OS keychain (macOS, Linux, Windows)
 claude mcp add --env SEVDESK_API_TOKEN_KEYCHAIN=work --scope user sevdesk -- npx -y mcp-server-sevdesk
 ```
 
@@ -100,18 +103,25 @@ The VAT summary is clearly marked as an estimate (accrual or cash basis). Every 
 `dryRun: true` and then only returns exactly what it would do. The full generated reference is
 [docs/tools.md](docs/tools.md).
 
+A foreign-currency voucher draft can be changed to EUR with `sevdesk_voucher_update_draft`:
+pass `currency: "EUR"` and **all positions with your EUR amounts**, optionally `amountMode`.
+No exchange rate is calculated. Preview with `dryRun: true`, then check the stored currency and
+amounts with `sevdesk_voucher_get` before finalizing. The currency change has fixture coverage;
+its actual stored behavior still needs a [live probe](spec/deviations.md#d-081-converting-a-voucher-draft-to-eur-is-unverified).
+Direct imports of non-EUR e-invoices remain unsupported.
+
 ## Prompts
 
 Ready-made workflows as MCP prompts. Clients list them next to the tools; in Claude Code they are
 slash commands such as `/mcp__sevdesk__month_end_close`.
 
-| Prompt                | What it does                                                                                                              | Arguments                                  |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `month_end_close`     | Monatsabschluss: changes, unbooked transactions, drafts, receivables and payables, VAT pre-check, profit, DATEV hand-over | `month` (YYYY-MM, default: previous month) |
-| `receipt_intake`      | Beleg erfassen, E-Rechnung importieren: duplicate check, booking account and tax rule, voucher draft, finalize, payment   | `file` (optional)                          |
-| `dunning_run`         | Mahnlauf: overdue invoices, unbooked incoming payments, reminder drafts                                                   | none                                       |
-| `vat_precheck`        | UStVA-Vorprüfung: unbooked transactions and drafts, VAT summary (Kennzahlen), ZM                                          | `period` (YYYY-MM or YYYY-Qn)              |
-| `bank_reconciliation` | Kontoabgleich: suggestions, bookings, private transactions, corrections                                                   | none                                       |
+| Prompt                | What it does                                                                                                              | Arguments                                                          |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `month_end_close`     | Monatsabschluss: changes, unbooked transactions, drafts, receivables and payables, VAT pre-check, profit, DATEV hand-over | `month` (YYYY-MM, default: previous month)                         |
+| `receipt_intake`      | Beleg erfassen, E-Rechnung importieren: duplicate check, booking account and tax rule, voucher draft, finalize, payment   | `file` (optional)                                                  |
+| `dunning_run`         | Mahnlauf: overdue invoices, unbooked incoming payments, reminder drafts                                                   | `contact` (name/id), `minDaysOverdue` (0–3650 days); both optional |
+| `vat_precheck`        | UStVA-Vorprüfung: unbooked transactions and drafts, VAT summary (Kennzahlen), ZM                                          | `period` (YYYY-MM or YYYY-Qn)                                      |
+| `bank_reconciliation` | Kontoabgleich: suggestions, bookings, private transactions, corrections                                                   | `checkAccount` (name/id), `month` (YYYY-MM); both optional         |
 
 A prompt appears only when the tools it needs are enabled; steps that need a disabled tier,
 toolset or folder are listed with the setting that enables them. Prompts only produce text for the
@@ -219,8 +229,8 @@ it stays read-only unless you set `SEVDESK_ALLOW`).
 | [Architecture](docs/architecture.md)           | How the server is built, and the [decision records](docs/adr/README.md)    |
 | [Security](SECURITY.md), [Privacy](PRIVACY.md) | Threat model, reporting vulnerabilities, what is stored where              |
 
-**What's next** in 1.x: sending letters by post, sevDesk accounts in Austria, and the Windows
-credential store. The [changelog](CHANGELOG.md) lists every release.
+**What's next** in 1.x: sending letters by post and sevDesk accounts in Austria.
+The [changelog](CHANGELOG.md) lists every release.
 
 ## Contributing
 

@@ -24,7 +24,7 @@ import {
   TRANSACTION_STATUS_KEYS,
   type transactionDtoSchema,
 } from "../banking.js";
-import { compact, toUnixRange } from "../common.js";
+import { compact, statusDtoSchema, toUnixRange } from "../common.js";
 import { CREDIT_NOTE_STATUS_FILTERS, listCreditNotes } from "../credit-notes.js";
 import {
   INVOICE_STATUS_FILTERS,
@@ -136,8 +136,6 @@ const DRAFT_CODES: Readonly<Partial<Record<SummarySubject, number>>> = {
 // Output
 // ---------------------------------------------------------------------------------------------
 
-const statusSchema = z.object({ code: z.number().int(), label: z.string() });
-
 const partySchema = z.object({
   id: z.number().int().optional().describe("Contact id, for sevdesk_contact_get."),
   name: z.string().optional(),
@@ -150,7 +148,7 @@ const groupSchema = z.object({
       "YYYY-MM (month), YYYY-Qn (quarter), the status code, contact:<id>, name:<supplier " +
         "name> (vouchers without a contact), account:<id>, or no_date/no_status/none.",
     ),
-  status: statusSchema.optional(),
+  status: statusDtoSchema.optional(),
   contact: partySchema.optional().describe("Customer or supplier of the group (contact groups)."),
   account: z
     .object({ id: z.number().int(), name: z.string().optional() })

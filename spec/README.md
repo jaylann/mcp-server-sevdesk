@@ -3,6 +3,9 @@
 This directory holds a snapshot of the official sevDesk API description and what we know about
 where it is wrong.
 
+The separate [`mcp-registry/`](mcp-registry/README.md) directory holds the official MCP Registry
+schema used to test the release's generated `server.json`, with its own provenance and license.
+
 | File                             | What it is                                                                                                                  |
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | [`openapi.yaml`](openapi.yaml)   | Unmodified copy of [api.sevdesk.de/openapi.yaml](https://api.sevdesk.de/openapi.yaml) (OpenAPI 3.0). Never edit it by hand. |

@@ -4,6 +4,7 @@
  */
 import { SevdeskError } from "../../sevdesk/errors.js";
 import { cleanText, currencyCode, splitTotals, type SumFields } from "../common.js";
+import type { PreviewLanguage } from "../preview-text.js";
 import type { TaxRule } from "../reference-data.js";
 import { type DraftPreview, fact, type PreviewFact } from "./preview.js";
 import type { DocumentAddress } from "./recipient.js";
@@ -87,11 +88,13 @@ export class ChangeLog {
   private readonly names: string[] = [];
   readonly facts: PreviewFact[] = [];
 
+  constructor(private readonly missing = "(none)") {}
+
   /** Adds a change when `before` and `after` differ (both compared as given). */
   value(name: string, label: string, before: string | undefined, after: string | undefined): void {
     if (before === after) return;
     this.names.push(name);
-    this.facts.push(fact(label, `${before ?? "(none)"} → ${after ?? "(none)"}`));
+    this.facts.push(fact(label, `${before ?? this.missing} → ${after ?? this.missing}`));
   }
 
   /** Adds a change whose details are given as one text (e.g. "changed"). */
@@ -120,7 +123,8 @@ export function draftPreview(
 }
 
 /** "1 position" / "3 positions". */
-export function positionCount(count: number): string {
+export function positionCount(count: number, lang: PreviewLanguage = "en"): string {
+  if (lang === "de") return `${count} Position${count === 1 ? "" : "en"}`;
   return `${count} position${count === 1 ? "" : "s"}`;
 }
 

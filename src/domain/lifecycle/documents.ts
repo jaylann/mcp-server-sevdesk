@@ -26,6 +26,7 @@ import { sevdeskPath, toSevdeskId } from "../../sevdesk/paths.js";
 import { parseUpstream, zOptionalDecimal } from "../../sevdesk/schema.js";
 import type { QueryValue, SevdeskClient } from "../../sevdesk/types.js";
 import type { Amounts } from "../common.js";
+import { withDocumentCountry } from "../country-codes.js";
 import { type CreditNoteDetail, mapCreditNoteDetail } from "../credit-notes.js";
 import type { ContactRef } from "../document-positions.js";
 import { type InvoiceDetail, mapInvoiceDetail } from "../invoices.js";
@@ -207,13 +208,21 @@ export interface LifecycleDocument<K extends LifecycleKind = LifecycleKind> {
   readonly raw?: unknown;
 }
 
-const MAPPERS: { readonly [K in LifecycleKind]: (raw: unknown, today: string) => DetailByKind[K] } =
-  {
-    invoice: mapInvoiceDetail,
-    creditNote: (raw) => mapCreditNoteDetail(raw),
-    order: (raw) => mapOrderDetail(raw),
-    voucher: (raw) => mapVoucherDetail(raw),
-  };
+const MAPPERS: {
+  readonly [K in LifecycleKind]: (
+    raw: unknown,
+    today: string,
+    client: SevdeskClient,
+    signal: AbortSignal | undefined,
+  ) => Promise<DetailByKind[K]>;
+} = {
+  invoice: (raw, today, client, signal) =>
+    withDocumentCountry(mapInvoiceDetail(raw, today), client, signal),
+  creditNote: (raw, _today, client, signal) =>
+    withDocumentCountry(mapCreditNoteDetail(raw), client, signal),
+  order: (raw, _today, client, signal) => withDocumentCountry(mapOrderDetail(raw), client, signal),
+  voucher: (raw) => Promise.resolve(mapVoucherDetail(raw)),
+};
 
 /** Payment direction of the sales kinds, fixed by the kind. */
 const SALES_DIRECTION: Readonly<Record<SalesKind, PaymentDirection>> = {
@@ -245,7 +254,7 @@ export async function readLifecycleDocument<K extends LifecycleKind>(
     ...(signal === undefined ? {} : { signal }),
   });
   const raw = expectSingle(payload, `${info.noun} ${String(id)}`);
-  const dto = MAPPERS[kind](raw, today);
+  const dto = await MAPPERS[kind](raw, today, client, signal);
   const { paidAmount } = parseUpstream(paidAmountSchema, raw, `a ${info.noun}`);
   return { ...toLifecycleDocument(kind, dto, paidAmount), raw };
 }
