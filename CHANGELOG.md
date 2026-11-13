@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Performance Improvements
+
+* **output:** return minified JSON in tool result text and reference resources; summaries, JSON values and `structuredContent` are unchanged ([#62](https://github.com/jaylann/mcp-server-sevdesk/issues/62)).
+
 ## [1.4.0](https://github.com/jaylann/mcp-server-sevdesk/compare/v1.3.0...v1.4.0) (2026-11-13)
 
 

@@ -4,6 +4,8 @@
 
 75 tools. Which ones a client sees depends on `SEVDESK_TOOLSETS` and `SEVDESK_ALLOW` (see docs/configuration.md); tools above the enabled tiers are never listed.
 
+Successful results contain a trusted summary, a blank line and minified JSON in one text block, including write previews and completed writes. When structured output is enabled, `structuredContent` contains the same data. Parse the JSON; its whitespace is not part of the compatibility contract.
+
 Output objects keep sevDesk codes and labels and add a `key` accepted by the matching status/type filter or bookingCategory input when one exists. Unsupported or unknown codes have no key. Addresses add the uppercase ISO 3166-1 `country` beside `countryId` using the same country table as inputs; unresolved countries keep their id without a code.
 
 `sevdesk_reference_lookup` returns `hasMore` and `limit`: for receipt_guidance, these describe the next local page and effective page size; for unpaged kinds they are false and null. `hasMore` agrees with the presence of `nextOffset`. `truncated` separately indicates entries sevDesk reported but the server could not fetch.

@@ -150,9 +150,9 @@ curated tool; see [SECURITY.md](../SECURITY.md#generic-read-surface).
 
 ## Structured output
 
-Every tool returns its result as a JSON text block. With structured output it also declares an
-`outputSchema` in `tools/list` and returns the same data as typed `structuredContent`, which
-clients can validate and display.
+Every successful tool call returns a trusted summary, a blank line and minified JSON in one
+text block. With structured output it also declares an `outputSchema` in `tools/list` and returns
+the same data as typed `structuredContent`, which clients can validate and display.
 
 | Value  | Behavior                                                                                                                  |
 | ------ | ------------------------------------------------------------------------------------------------------------------------- |

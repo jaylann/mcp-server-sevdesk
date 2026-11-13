@@ -189,9 +189,7 @@ describe("tools/call", () => {
     });
 
     expect(result.isError).toBeFalsy();
-    expect(text(result)).toBe(
-      `Echoed the text.\n\n${JSON.stringify({ text: "Hallo", count: 0 }, null, 2)}`,
-    );
+    expect(text(result)).toBe(`Echoed the text.\n\n${JSON.stringify({ text: "Hallo", count: 0 })}`);
   });
 
   it("rejects unknown arguments by name, lists the accepted ones and skips the handler", async () => {
@@ -344,7 +342,9 @@ describe("structured output", () => {
       required: ["text", "count"],
     });
     expect(seen.structuredContent).toEqual({ text: "a", count: 1 });
-    expect(text(seen.result)).toContain('"text": "a"');
+    const json = text(seen.result).split("\n\n")[1]!;
+    expect(JSON.parse(json)).toEqual(seen.structuredContent);
+    expect(json).toBe('{"text":"a","count":1}');
   });
 
   it("auto: plain JSON text only for legacy (2025-era) clients", async () => {
@@ -352,7 +352,9 @@ describe("structured output", () => {
 
     expect(seen.outputSchema).toBeUndefined();
     expect(seen.structuredContent).toBeUndefined();
-    expect(text(seen.result)).toContain('"text": "a"');
+    const json = text(seen.result).split("\n\n")[1]!;
+    expect(JSON.parse(json)).toEqual({ text: "a", count: 1 });
+    expect(json).toBe('{"text":"a","count":1}');
   });
 
   it("advertises a named root with local refs and accepts its structured result in the SDK", async () => {
@@ -451,7 +453,7 @@ describe("extra content blocks", () => {
 
     expect(result.isError).toBeFalsy();
     expect(result.content).toEqual([
-      { type: "text", text: `Linked.\n\n${JSON.stringify({ uri: link.uri }, null, 2)}` },
+      { type: "text", text: `Linked.\n\n${JSON.stringify({ uri: link.uri })}` },
       link,
     ]);
     expect(result.structuredContent).toEqual({ uri: link.uri });

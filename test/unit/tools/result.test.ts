@@ -5,15 +5,31 @@ import { errorResult, successResult } from "../../../src/tools/result.js";
 describe("successResult", () => {
   const output = { summary: "Found 2 contacts.", data: { items: [{ id: "1" }, { id: "2" }] } };
 
-  it("puts the summary, a blank line and indented JSON into one text block", () => {
+  it("puts the summary, a blank line and minified JSON into one text block", () => {
     expect(successResult(output, { structured: false })).toEqual({
       content: [
         {
           type: "text",
-          text: `Found 2 contacts.\n\n${JSON.stringify(output.data, null, 2)}`,
+          text: 'Found 2 contacts.\n\n{"items":[{"id":"1"},{"id":"2"}]}',
         },
       ],
     });
+  });
+
+  it.each([false, true])("round-trips compact data with structured output %s", (structured) => {
+    const data = {
+      items: [{ text: "  Keep spaces\nand\ttabs  ", count: 0, flag: false }],
+      next: null,
+    };
+    const result = successResult({ summary: " Found 1 item. ", data }, { structured });
+    const first = result.content[0];
+    expect(first?.type).toBe("text");
+    const text = first?.type === "text" ? first.text : "";
+    expect(text.startsWith("Found 1 item.\n\n")).toBe(true);
+    const json = text.slice(text.indexOf("\n\n") + 2);
+    expect(JSON.parse(json)).toEqual(structured ? result.structuredContent : data);
+    expect(json).not.toMatch(/[\r\n\t]/);
+    expect(json).toBe(JSON.stringify(data));
   });
 
   it("adds structuredContent only when structured output is on", () => {
@@ -23,7 +39,7 @@ describe("successResult", () => {
 
   it("omits an empty summary", () => {
     const result = successResult({ summary: "  ", data: { a: 1 } }, { structured: false });
-    expect(result.content).toEqual([{ type: "text", text: '{\n  "a": 1\n}' }]);
+    expect(result.content).toEqual([{ type: "text", text: '{"a":1}' }]);
   });
 
   it("appends extra content blocks after the text block; structuredContent stays data", () => {
@@ -37,7 +53,7 @@ describe("successResult", () => {
     const result = successResult({ ...output, extraContent: [link, link] }, { structured: true });
 
     expect(result.content).toEqual([
-      { type: "text", text: `Found 2 contacts.\n\n${JSON.stringify(output.data, null, 2)}` },
+      { type: "text", text: `Found 2 contacts.\n\n${JSON.stringify(output.data)}` },
       link,
       link,
     ]);

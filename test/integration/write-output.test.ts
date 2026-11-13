@@ -14,6 +14,7 @@ import {
   closeWriteHarnessesAfterEach,
   resultData,
   resultSummary,
+  resultText,
   writeHarness,
 } from "../helpers/write-flow.js";
 
@@ -89,6 +90,7 @@ describe("modern clients (structured output on)", () => {
 
     expect(result.structuredContent).toEqual({ status: "done", result: { status: "open" } });
     expect(resultData(result)).toEqual(result.structuredContent);
+    expect(resultText(result).split("\n\n")[1]).toBe(JSON.stringify(result.structuredContent));
     expect(resultSummary(result)).toBe("Finalized the invoice.");
   });
 
@@ -101,6 +103,8 @@ describe("modern clients (structured output on)", () => {
     });
 
     expect(result.structuredContent).toEqual({ status: "dry_run", preview: PREVIEW });
+    expect(resultData(result)).toEqual(result.structuredContent);
+    expect(resultText(result).split("\n\n")[1]).toBe(JSON.stringify(result.structuredContent));
     expect(resultSummary(result)).toBe(
       "Dry run: nothing was sent to sevDesk. The preview shows what sevdesk_dummy_finalize " +
         "would do; call it without dryRun to make the change (the user will be asked to approve it).",
@@ -125,6 +129,8 @@ describe("modern clients (structured output on)", () => {
         opened: false,
       },
     });
+    expect(resultData(result)).toEqual(result.structuredContent);
+    expect(resultText(result).split("\n\n")[1]).toBe(JSON.stringify(result.structuredContent));
   });
 
   it("receive declined results with the preview", async () => {
@@ -138,6 +144,8 @@ describe("modern clients (structured output on)", () => {
 
     expect(result.isError).toBeFalsy();
     expect(result.structuredContent).toEqual({ status: "declined", preview: PREVIEW });
+    expect(resultData(result)).toEqual(result.structuredContent);
+    expect(resultText(result).split("\n\n")[1]).toBe(JSON.stringify(result.structuredContent));
     expect(resultSummary(result)).toBe(
       "The user did not approve this action, so nothing was changed in sevDesk. Do not call " +
         "sevdesk_dummy_finalize again for it unless the user asks you to.",
