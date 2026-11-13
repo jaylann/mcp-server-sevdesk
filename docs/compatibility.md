@@ -32,6 +32,7 @@ A change that breaks anything in this list needs a new major version, unless it 
 
 These may change in any release, including patch releases:
 
+- **Schema layout:** output schemas may use local `$defs`/`$ref`; each tool's schema stands alone.
 - **Text written for people or models:** tool and prompt descriptions and titles, argument
   descriptions, the summary text of results, error messages, warnings, notes, the server
   instructions, the rendered text of prompts and the wording of confirmation previews. Models read

@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Config } from "../../src/config.js";
 import { allEnabledConfig, testConfig, tiers } from "../helpers/config.js";
 import { connectInProcess } from "../helpers/connect.js";
+import { inlineLocalRefs } from "../helpers/json-schema.js";
 import { filesConfig } from "../helpers/transfer.js";
 
 const clients: Client[] = [];
@@ -146,7 +147,7 @@ it("advertises additive output keys, countries and lookup paging", async () => {
   const { tools } = await client.listTools();
   const outputs: Record<string, Record<string, unknown>> = {};
   for (const tool of tools) {
-    const fields = outputFields(tool.outputSchema);
+    const fields = outputFields(inlineLocalRefs(tool.outputSchema));
     if (Object.keys(fields).length > 0) outputs[tool.name] = fields;
   }
   expect(outputs).toMatchSnapshot();

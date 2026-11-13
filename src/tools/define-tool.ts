@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { isTier, type Tier, TIERS, type WriteTier } from "../safety/tiers.js";
+import { JSON_SCHEMA_OPTIONS } from "./json-schema.js";
 import { isToolsetName, TOOLSETS } from "./toolsets.js";
 import type {
   ReadToolDefinition,
@@ -24,9 +25,6 @@ const LOCAL_EFFECTS: readonly unknown[] = ["reads-files", "writes-files", "opens
  * ticket): a `read` tool that declares one is not read-only.
  */
 const STATE_CHANGING_EFFECTS: readonly string[] = ["writes-files", "opens-upload"];
-/** The JSON Schema dialect the MCP SDK advertises tool schemas in. */
-export const JSON_SCHEMA_TARGET = "draft-2020-12";
-
 const ANNOTATION_KEYS = [
   "readOnlyHint",
   "destructiveHint",
@@ -287,7 +285,7 @@ function toJsonSchema(
   problems: string[],
 ): Record<string, unknown> | undefined {
   try {
-    return z.toJSONSchema(schema, { io, target: JSON_SCHEMA_TARGET });
+    return z.toJSONSchema(schema, { ...JSON_SCHEMA_OPTIONS, io });
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     problems.push(`${io} schema cannot be converted to JSON Schema: ${reason}`);

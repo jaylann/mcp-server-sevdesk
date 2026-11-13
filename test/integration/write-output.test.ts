@@ -9,6 +9,7 @@ import type { AnyToolDefinition } from "../../src/tools/types.js";
 import { writeOutputSchema } from "../../src/tools/write-flow.js";
 import { createDummyTools, dummyInvoiceBody } from "../helpers/dummy-tools.js";
 import type { FakeRoute } from "../helpers/fake-client.js";
+import { inlineLocalRefs } from "../helpers/json-schema.js";
 import {
   closeWriteHarnessesAfterEach,
   resultData,
@@ -72,7 +73,7 @@ describe("modern clients (structured output on)", () => {
 
     const { tools } = await client.listTools();
 
-    expect(tools[0]?.outputSchema).toMatchObject({
+    expect(inlineLocalRefs(tools[0]?.outputSchema)).toMatchObject({
       type: "object",
       properties: {
         status: { enum: ["done", "dry_run", "approval_pending", "declined"] },

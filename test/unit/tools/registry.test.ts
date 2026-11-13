@@ -16,6 +16,7 @@ import type { AnyToolDefinition } from "../../../src/tools/types.js";
 import { allEnabledConfig, TEST_TOKEN, testConfig, tiers } from "../../helpers/config.js";
 import { connectFactory, connectInProcess, type ConnectOptions } from "../../helpers/connect.js";
 import { createDummyTools, READ_ANNOTATIONS, stubClient } from "../../helpers/dummy-tools.js";
+import { inlineLocalRefs } from "../../helpers/json-schema.js";
 
 const clients: Client[] = [];
 
@@ -338,7 +339,10 @@ describe("structured output", () => {
   it("auto: declares outputSchema and sends structuredContent to modern clients", async () => {
     const seen = await observe(testConfig({ structuredOutput: "auto" }), { era: "modern" });
 
-    expect(seen.outputSchema).toMatchObject({ type: "object", required: ["text", "count"] });
+    expect(inlineLocalRefs(seen.outputSchema)).toMatchObject({
+      type: "object",
+      required: ["text", "count"],
+    });
     expect(seen.structuredContent).toEqual({ text: "a", count: 1 });
     expect(text(seen.result)).toContain('"text": "a"');
   });
@@ -349,6 +353,51 @@ describe("structured output", () => {
     expect(seen.outputSchema).toBeUndefined();
     expect(seen.structuredContent).toBeUndefined();
     expect(text(seen.result)).toContain('"text": "a"');
+  });
+
+  it("advertises a named root with local refs and accepts its structured result in the SDK", async () => {
+    const money = z.object({ amount: z.string(), currency: z.string() }).meta({ id: "ProbeMoney" });
+    const output = z
+      .object({ net: money, gross: money.describe("Gross amount."), count: z.number().int() })
+      .meta({ id: "ProbeResult" });
+    const data = {
+      net: { amount: "1.00", currency: "EUR" },
+      gross: { amount: "1.19", currency: "EUR" },
+      count: 1,
+    };
+    const tool = defineTool({
+      name: "sevdesk_dummy_refs",
+      title: "Named output probe",
+      description: "Check named output schemas through the SDK.",
+      tier: "read",
+      toolset: "meta",
+      annotations: READ_ANNOTATIONS,
+      input: z.strictObject({ count: z.number().int().min(1).max(1000) }),
+      output,
+      handler: () => Promise.resolve({ data, summary: "Named result." }),
+    });
+    const client = await connect(testConfig(), {}, [tool]);
+    const { tools } = await client.listTools();
+    expect(tools[0]?.inputSchema.properties?.["count"]).toMatchObject({
+      type: "integer",
+      minimum: 1,
+      maximum: 1000,
+    });
+    expect(tools[0]?.outputSchema).toMatchObject({
+      type: "object",
+      $ref: "#/$defs/ProbeResult",
+      $defs: {
+        ProbeResult: {
+          properties: {
+            gross: { $ref: "#/$defs/ProbeMoney", description: "Gross amount." },
+            count: { type: "integer" },
+          },
+        },
+      },
+    });
+    expect(JSON.stringify(tools[0]?.outputSchema)).not.toContain("9007199254740991");
+    const result = await client.callTool({ name: tool.name, arguments: { count: 1 } });
+    expect(result.structuredContent).toEqual(data);
   });
 
   it("on: structured output for legacy clients too", async () => {

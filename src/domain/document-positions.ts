@@ -156,11 +156,13 @@ export function refId(raw: unknown, what: string): number | undefined {
 }
 
 /** Net, tax and gross of a document or position, all in one currency. */
-const totalsSchema = z.object({
-  net: moneySchema.optional().describe("Netto."),
-  tax: moneySchema.optional().describe("Umsatzsteuer."),
-  gross: moneySchema.optional().describe("Brutto."),
-});
+const totalsSchema = z
+  .object({
+    net: moneySchema.optional().describe("Netto."),
+    tax: moneySchema.optional().describe("Umsatzsteuer."),
+    gross: moneySchema.optional().describe("Brutto."),
+  })
+  .meta({ id: "DocumentTotals" });
 
 export const documentTotalsSchema = z.object({
   currency: z.string().length(3).describe("Document currency (ISO 4217)."),

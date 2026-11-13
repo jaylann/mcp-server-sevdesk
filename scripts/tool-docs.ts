@@ -9,6 +9,7 @@ import { PROMPTS } from "../src/prompts/catalog.js";
 import type { PromptDefinition } from "../src/prompts/types.js";
 import { requiresConfirmation, TIER_DESCRIPTIONS, TIERS } from "../src/safety/tiers.js";
 import { ALL_TOOLS } from "../src/tools/index.js";
+import { JSON_SCHEMA_OPTIONS } from "../src/tools/json-schema.js";
 import { TOOLSETS } from "../src/tools/toolsets.js";
 import type { AnyToolDefinition } from "../src/tools/types.js";
 
@@ -42,7 +43,10 @@ function cell(text: string): string {
 }
 
 function inputTable(tool: AnyToolDefinition): string {
-  const schema = z.toJSONSchema(tool.input as z.ZodObject, { io: "input" }) as {
+  const schema = z.toJSONSchema(tool.input as z.ZodObject, {
+    ...JSON_SCHEMA_OPTIONS,
+    io: "input",
+  }) as {
     properties?: Record<string, JsonSchemaProperty>;
     required?: readonly string[];
   };
@@ -83,7 +87,7 @@ function requirementText(prompt: PromptDefinition): string {
 }
 
 function argumentTable(prompt: PromptDefinition): string {
-  const schema = z.toJSONSchema(prompt.args, { io: "input" }) as {
+  const schema = z.toJSONSchema(prompt.args, { ...JSON_SCHEMA_OPTIONS, io: "input" }) as {
     properties?: Record<string, JsonSchemaProperty>;
     required?: readonly string[];
   };

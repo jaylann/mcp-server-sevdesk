@@ -53,8 +53,6 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
       "type": "boolean",
     },
     "/properties/limit": {
-      "maximum": 9007199254740991,
-      "minimum": -9007199254740991,
       "type": "integer",
     },
   },
@@ -192,8 +190,6 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
       "type": "string",
     },
     "/properties/limit": {
-      "maximum": 9007199254740991,
-      "minimum": -9007199254740991,
       "type": "integer",
     },
   },
@@ -395,8 +391,6 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
       "type": "string",
     },
     "/properties/limit": {
-      "maximum": 9007199254740991,
-      "minimum": -9007199254740991,
       "type": "integer",
     },
   },
@@ -493,8 +487,6 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
       "type": "string",
     },
     "/properties/limit": {
-      "maximum": 9007199254740991,
-      "minimum": -9007199254740991,
       "type": "integer",
     },
   },
@@ -504,8 +496,6 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
       "type": "boolean",
     },
     "/properties/limit": {
-      "maximum": 9007199254740991,
-      "minimum": -9007199254740991,
       "type": "integer",
     },
   },
@@ -515,8 +505,6 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
       "type": "boolean",
     },
     "/properties/limit": {
-      "maximum": 9007199254740991,
-      "minimum": -9007199254740991,
       "type": "integer",
     },
     "/properties/suggestions/items/properties/transaction/properties/status/properties/key": {
@@ -539,7 +527,6 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
       "anyOf": [
         {
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         {
@@ -595,8 +582,6 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
       "type": "string",
     },
     "/properties/limit": {
-      "maximum": 9007199254740991,
-      "minimum": -9007199254740991,
       "type": "integer",
     },
   },
@@ -668,8 +653,6 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
       "type": "string",
     },
     "/properties/limit": {
-      "maximum": 9007199254740991,
-      "minimum": -9007199254740991,
       "type": "integer",
     },
   },
@@ -717,7 +700,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "offset": {
           "default": 0,
           "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -841,7 +823,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "offset": {
           "default": 0,
           "description": "sevDesk rows to skip (a previous nextOffset); only with exactly one subject.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -1021,7 +1002,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Contact id, e.g. from sevdesk_contacts_search.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -1098,7 +1078,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Contact id, e.g. from sevdesk_contacts_search.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "lastName": {
@@ -1212,7 +1191,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "offset": {
           "default": 0,
           "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -1250,7 +1228,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "checkAccountId": {
           "description": "Check account (Zahlungskonto) the money moved on, from sevdesk_bank_accounts_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "date": {
@@ -1264,7 +1241,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Credit note id (not the credit note number), e.g. from sevdesk_credit_notes_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "paymentType": {
@@ -1280,7 +1256,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "transactionId": {
           "description": "Imported bank transaction (Umsatz) to link, from sevdesk_transactions_list (status created, same account). Without it sevDesk creates a new transaction (offline and cash accounts only).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -1352,13 +1327,11 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "contactId": {
           "description": "Customer contact id (Kontakt), from sevdesk_contacts_search.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "contactPersonId": {
           "description": "sevDesk user (SevUser) shown as contact person (Ansprechpartner). Required only when the account has several users: sevdesk_reference_lookup kind=users lists them.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "currency": {
@@ -1419,7 +1392,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
               "partId": {
                 "description": "Inventory part (Artikel, see sevdesk_parts_list) to link. Name and price still come from this position; sevDesk does not fill them in.",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "quantity": {
@@ -1444,7 +1416,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
               "unitId": {
                 "description": "Einheit (Unity id, see sevdesk_reference_lookup kind=units); default 1 = Stk.",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "unitPrice": {
@@ -1477,13 +1448,11 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "sourceInvoiceId": {
           "description": "underachievement only: id of the finalized invoice this credit note reduces (refSrcInvoice).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "taxRuleId": {
           "description": "Tax rule (Steuerregel) id. Default: the source invoice's rule (underachievement), 9 (provision; 10 on a Kleinunternehmer account) or the account's: 1 for regular VAT, 11 for Kleinunternehmer. See sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "taxText": {
@@ -1527,7 +1496,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "invoiceId": {
           "description": "Invoice id (not its number), e.g. from sevdesk_invoices_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -1558,7 +1526,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Credit note id (not the credit note number), e.g. from sevdesk_credit_notes_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -1589,7 +1556,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Credit note id (not the credit note number), e.g. from sevdesk_credit_notes_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "sentVia": {
@@ -1626,7 +1592,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Credit note id (not its number), e.g. from sevdesk_credit_notes_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -1653,7 +1618,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "sevDesk id of the document (not its number such as RE-1001).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -1684,7 +1648,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Credit note id (not the credit note number), e.g. from sevdesk_credit_notes_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "to": {
@@ -1740,7 +1703,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Credit note id (not the credit note number), e.g. from sevdesk_credit_notes_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "sendCopyToMe": {
@@ -1790,7 +1752,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "contactId": {
           "description": "Only credit notes of this contact.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "from": {
@@ -1813,7 +1774,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "offset": {
           "default": 0,
           "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -1859,7 +1819,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "checkAccountId": {
           "description": "Check account (Zahlungskonto) the money moved on, from sevdesk_bank_accounts_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "date": {
@@ -1873,7 +1832,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Invoice id (not the invoice number), e.g. from sevdesk_invoices_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "paymentType": {
@@ -1890,7 +1848,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "transactionId": {
           "description": "Imported bank transaction (Umsatz) to link, from sevdesk_transactions_list (status created, same account). Without it sevDesk creates a new transaction (offline and cash accounts only).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -1923,7 +1880,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Invoice id (not the invoice number), e.g. from sevdesk_invoices_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -1979,13 +1935,11 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "contactId": {
           "description": "Customer contact id (Kontakt), from sevdesk_contacts_search.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "contactPersonId": {
           "description": "sevDesk user (SevUser) shown as contact person (Ansprechpartner). Required only when the account has several users: sevdesk_reference_lookup kind=users lists them.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "currency": {
@@ -2046,7 +2000,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
               "partId": {
                 "description": "Inventory part (Artikel, see sevdesk_parts_list) to link. Name and price still come from this position; sevDesk does not fill them in.",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "quantity": {
@@ -2071,7 +2024,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
               "unitId": {
                 "description": "Einheit (Unity id, see sevdesk_reference_lookup kind=units); default 1 = Stk.",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "unitPrice": {
@@ -2104,7 +2056,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "taxRuleId": {
           "description": "Tax rule (Steuerregel) id: 1 taxable domestic revenue (default), 2 exports, 3 intra-EU supplies, 4 tax-exempt §4, 5 reverse charge §13b, 11 Kleinunternehmer §19, 17 not taxable in Germany, 18–20 One-Stop-Shop, 21 reverse charge for EU services. Details: sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "taxText": {
@@ -2180,7 +2131,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "orderId": {
           "description": "Order id (not its number), e.g. from sevdesk_orders_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -2216,7 +2166,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "invoiceId": {
           "description": "Id of the overdue invoice (not its number), e.g. from sevdesk_invoices_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -2243,7 +2192,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Invoice id (not the invoice number), e.g. from sevdesk_invoices_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -2274,7 +2222,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Invoice id (not the invoice number), e.g. from sevdesk_invoices_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -2305,7 +2252,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Invoice id (not the invoice number), e.g. from sevdesk_invoices_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "sentVia": {
@@ -2342,7 +2288,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Invoice id (not the invoice number), e.g. from sevdesk_invoices_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -2369,7 +2314,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "sevDesk id of the document (not its number such as RE-1001).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -2400,7 +2344,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Invoice id (not the invoice number), e.g. from sevdesk_invoices_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "to": {
@@ -2460,7 +2403,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Invoice id (not the invoice number), e.g. from sevdesk_invoices_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "sendCopyToMe": {
@@ -2539,13 +2481,11 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "contactId": {
           "description": "Customer contact id (Kontakt), from sevdesk_contacts_search.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "contactPersonId": {
           "description": "sevDesk user (SevUser) shown as contact person (Ansprechpartner). Required only when the account has several users: sevdesk_reference_lookup kind=users lists them.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "currency": {
@@ -2588,7 +2528,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Id of the draft invoice (not its number), e.g. from sevdesk_invoices_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "positions": {
@@ -2612,7 +2551,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
               "partId": {
                 "description": "Inventory part (Artikel, see sevdesk_parts_list) to link. Name and price still come from this position; sevDesk does not fill them in.",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "quantity": {
@@ -2637,7 +2575,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
               "unitId": {
                 "description": "Einheit (Unity id, see sevdesk_reference_lookup kind=units); default 1 = Stk.",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "unitPrice": {
@@ -2670,7 +2607,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "taxRuleId": {
           "description": "New tax rule (Steuerregel) id; see sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "taxText": {
@@ -2709,7 +2645,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "sevDesk id of the document (not its number such as RE-1001).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -2736,7 +2671,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "contactId": {
           "description": "Only invoices of this contact (id from sevdesk_contacts_search).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "from": {
@@ -2759,7 +2693,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "offset": {
           "default": 0,
           "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -2845,13 +2778,11 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "contactId": {
           "description": "Customer contact id (Kontakt), from sevdesk_contacts_search.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "contactPersonId": {
           "description": "sevDesk user (SevUser) shown as contact person (Ansprechpartner). Required only when the account has several users: sevdesk_reference_lookup kind=users lists them.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "currency": {
@@ -2918,7 +2849,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
               "partId": {
                 "description": "Inventory part (Artikel, see sevdesk_parts_list) to link. Name and price still come from this position; sevDesk does not fill them in.",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "quantity": {
@@ -2943,7 +2873,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
               "unitId": {
                 "description": "Einheit (Unity id, see sevdesk_reference_lookup kind=units); default 1 = Stk.",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "unitPrice": {
@@ -2976,7 +2905,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "taxRuleId": {
           "description": "Tax rule (Steuerregel) id: 1 taxable domestic revenue (default), 2 exports, 3 intra-EU supplies, 4 tax-exempt §4, 5 reverse charge §13b, 11 Kleinunternehmer §19, 17 not taxable in Germany, 18–20 One-Stop-Shop, 21 reverse charge for EU services. Details: sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "taxText": {
@@ -3024,7 +2952,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Order id (not the order number), e.g. from sevdesk_orders_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "sentVia": {
@@ -3061,7 +2988,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Order id (not its number), e.g. from sevdesk_orders_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -3088,7 +3014,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "sevDesk id of the document (not its number such as RE-1001).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -3135,7 +3060,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Order id (not the order number), e.g. from sevdesk_orders_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "sendCopyToMe": {
@@ -3214,13 +3138,11 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "contactId": {
           "description": "Customer contact id (Kontakt), from sevdesk_contacts_search.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "contactPersonId": {
           "description": "sevDesk user (SevUser) shown as contact person (Ansprechpartner). Required only when the account has several users: sevdesk_reference_lookup kind=users lists them.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "currency": {
@@ -3260,7 +3182,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Id of the draft order (not its number), e.g. from sevdesk_orders_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "paymentTerms": {
@@ -3293,7 +3214,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
               "partId": {
                 "description": "Inventory part (Artikel, see sevdesk_parts_list) to link. Name and price still come from this position; sevDesk does not fill them in.",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "quantity": {
@@ -3318,7 +3238,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
               "unitId": {
                 "description": "Einheit (Unity id, see sevdesk_reference_lookup kind=units); default 1 = Stk.",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "unitPrice": {
@@ -3351,7 +3270,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "taxRuleId": {
           "description": "New tax rule (Steuerregel) id; see sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "taxText": {
@@ -3384,7 +3302,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "contactId": {
           "description": "Only orders of this contact.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "from": {
@@ -3407,7 +3324,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "offset": {
           "default": 0,
           "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -3528,7 +3444,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "default": 1,
           "description": "Unit (Einheit) id, see sevdesk_reference_lookup kind=units (1 = Stk).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -3556,7 +3471,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Part id, e.g. from sevdesk_parts_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -3597,7 +3511,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Part id, e.g. from sevdesk_parts_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "internalComment": {
@@ -3662,7 +3575,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "unitId": {
           "description": "Unit (Einheit) id, see sevdesk_reference_lookup kind=units (1 = Stk).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -3702,7 +3614,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "offset": {
           "default": 0,
           "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -3844,7 +3755,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "checkAccountId": {
           "description": "Payment account (Zahlungskonto) id, from sevdesk_bank_accounts_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "from": {
@@ -3868,7 +3778,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "offset": {
           "default": 0,
           "description": "sevDesk transaction rows to skip: pass nextOffset from the previous call.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -3879,7 +3788,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "transactionId": {
           "description": "One transaction (Umsatz) id; leave out to scan unassigned ones.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -3903,13 +3811,11 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "checkAccountId": {
           "description": "Transactions only: payment account (Zahlungskonto) id.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "contactId": {
           "description": "Customer (invoices, credit notes) or supplier (vouchers) contact id.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "from": {
@@ -4036,7 +3942,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         },
         "offset": {
           "description": "receipt_guidance only: entries to skip; pass the previous nextOffset.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -4057,7 +3962,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "taxRuleId": {
           "description": "receipt_guidance only: accounts that allow this tax rule id.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -4096,7 +4000,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
               "id": {
                 "description": "Document id (not its number).",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "kind": {
@@ -4137,7 +4040,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Bank transaction (Umsatz) id, from sevdesk_transactions_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -4165,7 +4067,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Bank transaction (Umsatz) id, from sevdesk_transactions_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -4196,7 +4097,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Bank transaction (Umsatz) id, from sevdesk_transactions_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -4227,7 +4127,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Bank transaction (Umsatz) id, from sevdesk_transactions_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -4254,7 +4153,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "checkAccountId": {
           "description": "Payment account (Zahlungskonto) id.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "dateField": {
@@ -4288,7 +4186,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "offset": {
           "default": 0,
           "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -4392,7 +4289,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "checkAccountId": {
           "description": "Check account (Zahlungskonto) the money moved on, from sevdesk_bank_accounts_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "date": {
@@ -4406,7 +4302,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Voucher id (not the Belegnummer), e.g. from sevdesk_vouchers_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "paymentType": {
@@ -4422,7 +4317,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "transactionId": {
           "description": "Imported bank transaction (Umsatz) to link, from sevdesk_transactions_list (status created, same account). Without it sevDesk creates a new transaction (offline and cash accounts only).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -4508,7 +4402,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
               "accountDatevId": {
                 "description": "Buchungskonto (booking account, accountDatev id), from sevdesk_reference_lookup kind=receipt_guidance (it lists the tax rules and rates each account allows).",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "amount": {
@@ -4549,7 +4442,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "supplierId": {
           "description": "Lieferant (supplier; the customer of a revenue voucher) as a contact id from sevdesk_contacts_search. Pass supplierId or supplierName.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "supplierName": {
@@ -4561,7 +4453,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "taxRuleId": {
           "description": "Steuerregel id. Default: expense 9 (Vorsteuerabziehbare Aufwendungen), on a Kleinunternehmer account 10; revenue 1, or 11 for Kleinunternehmer. Others: 8, 12–14 (intra-EU, reverse charge), 2–5, 17. Not 18–21. sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -4592,7 +4483,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Voucher id (not the Belegnummer), e.g. from sevdesk_vouchers_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -4623,7 +4513,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Voucher id (not the Belegnummer), e.g. from sevdesk_vouchers_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -4654,7 +4543,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Voucher id (not the Belegnummer), e.g. from sevdesk_vouchers_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -4681,7 +4569,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Voucher id, e.g. from sevdesk_vouchers_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -4712,7 +4599,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Voucher id (not the Belegnummer), e.g. from sevdesk_vouchers_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "to": {
@@ -4783,7 +4669,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "id": {
           "description": "Id of the draft voucher, e.g. from sevdesk_vouchers_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "number": {
@@ -4804,7 +4689,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
               "accountDatevId": {
                 "description": "Buchungskonto (booking account, accountDatev id), from sevdesk_reference_lookup kind=receipt_guidance (it lists the tax rules and rates each account allows).",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "amount": {
@@ -4845,7 +4729,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "supplierId": {
           "description": "Lieferant (supplier; the customer of a revenue voucher) as a contact id from sevdesk_contacts_search. Pass supplierId or supplierName.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "supplierName": {
@@ -4857,7 +4740,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "taxRuleId": {
           "description": "New Steuerregel id; every position (stored or new) must allow it. See sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -4909,7 +4791,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "offset": {
           "default": 0,
           "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -4927,7 +4808,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "supplierId": {
           "description": "Contact id of the supplier (Lieferant) or customer.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "supplierName": {
@@ -5058,7 +4938,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "offset": {
           "default": 0,
           "description": "sevDesk rows to skip (a previous nextOffset); only with exactly one subject.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -5238,7 +5117,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "id": {
           "description": "Contact id, e.g. from sevdesk_contacts_search.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -5315,7 +5193,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "id": {
           "description": "Contact id, e.g. from sevdesk_contacts_search.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "lastName": {
@@ -5429,7 +5306,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "offset": {
           "default": 0,
           "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -5503,13 +5379,11 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "contactId": {
           "description": "Customer contact id (Kontakt), from sevdesk_contacts_search.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "contactPersonId": {
           "description": "sevDesk user (SevUser) shown as contact person (Ansprechpartner). Required only when the account has several users: sevdesk_reference_lookup kind=users lists them.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "currency": {
@@ -5570,7 +5444,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
               "partId": {
                 "description": "Inventory part (Artikel, see sevdesk_parts_list) to link. Name and price still come from this position; sevDesk does not fill them in.",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "quantity": {
@@ -5595,7 +5468,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
               "unitId": {
                 "description": "Einheit (Unity id, see sevdesk_reference_lookup kind=units); default 1 = Stk.",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "unitPrice": {
@@ -5628,13 +5500,11 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "sourceInvoiceId": {
           "description": "underachievement only: id of the finalized invoice this credit note reduces (refSrcInvoice).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "taxRuleId": {
           "description": "Tax rule (Steuerregel) id. Default: the source invoice's rule (underachievement), 9 (provision; 10 on a Kleinunternehmer account) or the account's: 1 for regular VAT, 11 for Kleinunternehmer. See sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "taxText": {
@@ -5678,7 +5548,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "invoiceId": {
           "description": "Invoice id (not its number), e.g. from sevdesk_invoices_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -5705,7 +5574,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "id": {
           "description": "Credit note id (not its number), e.g. from sevdesk_credit_notes_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -5732,7 +5600,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "id": {
           "description": "sevDesk id of the document (not its number such as RE-1001).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -5759,7 +5626,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "contactId": {
           "description": "Only credit notes of this contact.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "from": {
@@ -5782,7 +5648,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "offset": {
           "default": 0,
           "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -5850,13 +5715,11 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "contactId": {
           "description": "Customer contact id (Kontakt), from sevdesk_contacts_search.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "contactPersonId": {
           "description": "sevDesk user (SevUser) shown as contact person (Ansprechpartner). Required only when the account has several users: sevdesk_reference_lookup kind=users lists them.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "currency": {
@@ -5917,7 +5780,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
               "partId": {
                 "description": "Inventory part (Artikel, see sevdesk_parts_list) to link. Name and price still come from this position; sevDesk does not fill them in.",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "quantity": {
@@ -5942,7 +5804,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
               "unitId": {
                 "description": "Einheit (Unity id, see sevdesk_reference_lookup kind=units); default 1 = Stk.",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "unitPrice": {
@@ -5975,7 +5836,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "taxRuleId": {
           "description": "Tax rule (Steuerregel) id: 1 taxable domestic revenue (default), 2 exports, 3 intra-EU supplies, 4 tax-exempt §4, 5 reverse charge §13b, 11 Kleinunternehmer §19, 17 not taxable in Germany, 18–20 One-Stop-Shop, 21 reverse charge for EU services. Details: sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "taxText": {
@@ -6051,7 +5911,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "orderId": {
           "description": "Order id (not its number), e.g. from sevdesk_orders_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -6087,7 +5946,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "invoiceId": {
           "description": "Id of the overdue invoice (not its number), e.g. from sevdesk_invoices_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -6114,7 +5972,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "id": {
           "description": "Invoice id (not the invoice number), e.g. from sevdesk_invoices_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -6141,7 +5998,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "id": {
           "description": "Invoice id (not the invoice number), e.g. from sevdesk_invoices_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -6168,7 +6024,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "id": {
           "description": "sevDesk id of the document (not its number such as RE-1001).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -6224,13 +6079,11 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "contactId": {
           "description": "Customer contact id (Kontakt), from sevdesk_contacts_search.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "contactPersonId": {
           "description": "sevDesk user (SevUser) shown as contact person (Ansprechpartner). Required only when the account has several users: sevdesk_reference_lookup kind=users lists them.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "currency": {
@@ -6273,7 +6126,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "id": {
           "description": "Id of the draft invoice (not its number), e.g. from sevdesk_invoices_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "positions": {
@@ -6297,7 +6149,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
               "partId": {
                 "description": "Inventory part (Artikel, see sevdesk_parts_list) to link. Name and price still come from this position; sevDesk does not fill them in.",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "quantity": {
@@ -6322,7 +6173,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
               "unitId": {
                 "description": "Einheit (Unity id, see sevdesk_reference_lookup kind=units); default 1 = Stk.",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "unitPrice": {
@@ -6355,7 +6205,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "taxRuleId": {
           "description": "New tax rule (Steuerregel) id; see sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "taxText": {
@@ -6394,7 +6243,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "id": {
           "description": "sevDesk id of the document (not its number such as RE-1001).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -6421,7 +6269,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "contactId": {
           "description": "Only invoices of this contact (id from sevdesk_contacts_search).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "from": {
@@ -6444,7 +6291,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "offset": {
           "default": 0,
           "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -6530,13 +6376,11 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "contactId": {
           "description": "Customer contact id (Kontakt), from sevdesk_contacts_search.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "contactPersonId": {
           "description": "sevDesk user (SevUser) shown as contact person (Ansprechpartner). Required only when the account has several users: sevdesk_reference_lookup kind=users lists them.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "currency": {
@@ -6603,7 +6447,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
               "partId": {
                 "description": "Inventory part (Artikel, see sevdesk_parts_list) to link. Name and price still come from this position; sevDesk does not fill them in.",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "quantity": {
@@ -6628,7 +6471,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
               "unitId": {
                 "description": "Einheit (Unity id, see sevdesk_reference_lookup kind=units); default 1 = Stk.",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "unitPrice": {
@@ -6661,7 +6503,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "taxRuleId": {
           "description": "Tax rule (Steuerregel) id: 1 taxable domestic revenue (default), 2 exports, 3 intra-EU supplies, 4 tax-exempt §4, 5 reverse charge §13b, 11 Kleinunternehmer §19, 17 not taxable in Germany, 18–20 One-Stop-Shop, 21 reverse charge for EU services. Details: sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "taxText": {
@@ -6705,7 +6546,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "id": {
           "description": "Order id (not its number), e.g. from sevdesk_orders_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -6732,7 +6572,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "id": {
           "description": "sevDesk id of the document (not its number such as RE-1001).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -6788,13 +6627,11 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "contactId": {
           "description": "Customer contact id (Kontakt), from sevdesk_contacts_search.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "contactPersonId": {
           "description": "sevDesk user (SevUser) shown as contact person (Ansprechpartner). Required only when the account has several users: sevdesk_reference_lookup kind=users lists them.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "currency": {
@@ -6834,7 +6671,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "id": {
           "description": "Id of the draft order (not its number), e.g. from sevdesk_orders_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "paymentTerms": {
@@ -6867,7 +6703,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
               "partId": {
                 "description": "Inventory part (Artikel, see sevdesk_parts_list) to link. Name and price still come from this position; sevDesk does not fill them in.",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "quantity": {
@@ -6892,7 +6727,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
               "unitId": {
                 "description": "Einheit (Unity id, see sevdesk_reference_lookup kind=units); default 1 = Stk.",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "unitPrice": {
@@ -6925,7 +6759,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "taxRuleId": {
           "description": "New tax rule (Steuerregel) id; see sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "taxText": {
@@ -6958,7 +6791,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "contactId": {
           "description": "Only orders of this contact.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "from": {
@@ -6981,7 +6813,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "offset": {
           "default": 0,
           "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -7102,7 +6933,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "default": 1,
           "description": "Unit (Einheit) id, see sevdesk_reference_lookup kind=units (1 = Stk).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -7130,7 +6960,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "id": {
           "description": "Part id, e.g. from sevdesk_parts_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -7171,7 +7000,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "id": {
           "description": "Part id, e.g. from sevdesk_parts_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "internalComment": {
@@ -7236,7 +7064,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "unitId": {
           "description": "Unit (Einheit) id, see sevdesk_reference_lookup kind=units (1 = Stk).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -7276,7 +7103,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "offset": {
           "default": 0,
           "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -7418,7 +7244,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "checkAccountId": {
           "description": "Payment account (Zahlungskonto) id, from sevdesk_bank_accounts_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "from": {
@@ -7442,7 +7267,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "offset": {
           "default": 0,
           "description": "sevDesk transaction rows to skip: pass nextOffset from the previous call.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -7453,7 +7277,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "transactionId": {
           "description": "One transaction (Umsatz) id; leave out to scan unassigned ones.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -7477,13 +7300,11 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "checkAccountId": {
           "description": "Transactions only: payment account (Zahlungskonto) id.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "contactId": {
           "description": "Customer (invoices, credit notes) or supplier (vouchers) contact id.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "from": {
@@ -7610,7 +7431,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         },
         "offset": {
           "description": "receipt_guidance only: entries to skip; pass the previous nextOffset.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -7631,7 +7451,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "taxRuleId": {
           "description": "receipt_guidance only: accounts that allow this tax rule id.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -7658,7 +7477,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "id": {
           "description": "Bank transaction (Umsatz) id, from sevdesk_transactions_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -7685,7 +7503,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "checkAccountId": {
           "description": "Payment account (Zahlungskonto) id.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "dateField": {
@@ -7719,7 +7536,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "offset": {
           "default": 0,
           "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -7873,7 +7689,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
               "accountDatevId": {
                 "description": "Buchungskonto (booking account, accountDatev id), from sevdesk_reference_lookup kind=receipt_guidance (it lists the tax rules and rates each account allows).",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "amount": {
@@ -7914,7 +7729,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "supplierId": {
           "description": "Lieferant (supplier; the customer of a revenue voucher) as a contact id from sevdesk_contacts_search. Pass supplierId or supplierName.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "supplierName": {
@@ -7926,7 +7740,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "taxRuleId": {
           "description": "Steuerregel id. Default: expense 9 (Vorsteuerabziehbare Aufwendungen), on a Kleinunternehmer account 10; revenue 1, or 11 for Kleinunternehmer. Others: 8, 12–14 (intra-EU, reverse charge), 2–5, 17. Not 18–21. sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -7953,7 +7766,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "id": {
           "description": "Voucher id, e.g. from sevdesk_vouchers_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -8015,7 +7827,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "id": {
           "description": "Id of the draft voucher, e.g. from sevdesk_vouchers_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "number": {
@@ -8036,7 +7847,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
               "accountDatevId": {
                 "description": "Buchungskonto (booking account, accountDatev id), from sevdesk_reference_lookup kind=receipt_guidance (it lists the tax rules and rates each account allows).",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "amount": {
@@ -8077,7 +7887,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "supplierId": {
           "description": "Lieferant (supplier; the customer of a revenue voucher) as a contact id from sevdesk_contacts_search. Pass supplierId or supplierName.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "supplierName": {
@@ -8089,7 +7898,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "taxRuleId": {
           "description": "New Steuerregel id; every position (stored or new) must allow it. See sevdesk_reference_lookup kind=tax_rules.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -8141,7 +7949,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "offset": {
           "default": 0,
           "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -8159,7 +7966,6 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "supplierId": {
           "description": "Contact id of the supplier (Lieferant) or customer.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "supplierName": {
@@ -8216,7 +8022,6 @@ exports[`tools/list > SEVDESK_OUTPUT_DIR set (adds the file-writing save tool) 1
         "id": {
           "description": "sevDesk id of the document (not its number such as RE-1001).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -8333,7 +8138,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "offset": {
           "default": 0,
           "description": "sevDesk rows to skip (a previous nextOffset); only with exactly one subject.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -8392,7 +8196,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "id": {
           "description": "Contact id, e.g. from sevdesk_contacts_search.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -8459,7 +8262,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "offset": {
           "default": 0,
           "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -8490,7 +8292,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "id": {
           "description": "Credit note id (not its number), e.g. from sevdesk_credit_notes_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -8517,7 +8318,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "id": {
           "description": "sevDesk id of the document (not its number such as RE-1001).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -8544,7 +8344,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "contactId": {
           "description": "Only credit notes of this contact.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "from": {
@@ -8567,7 +8366,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "offset": {
           "default": 0,
           "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -8606,7 +8404,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "id": {
           "description": "Invoice id (not the invoice number), e.g. from sevdesk_invoices_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -8633,7 +8430,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "id": {
           "description": "Invoice id (not the invoice number), e.g. from sevdesk_invoices_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -8660,7 +8456,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "id": {
           "description": "sevDesk id of the document (not its number such as RE-1001).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -8687,7 +8482,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "id": {
           "description": "sevDesk id of the document (not its number such as RE-1001).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -8714,7 +8508,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "contactId": {
           "description": "Only invoices of this contact (id from sevdesk_contacts_search).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "from": {
@@ -8737,7 +8530,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "offset": {
           "default": 0,
           "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -8794,7 +8586,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "id": {
           "description": "Order id (not its number), e.g. from sevdesk_orders_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -8821,7 +8612,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "id": {
           "description": "sevDesk id of the document (not its number such as RE-1001).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -8848,7 +8638,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "contactId": {
           "description": "Only orders of this contact.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "from": {
@@ -8871,7 +8660,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "offset": {
           "default": 0,
           "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -8921,7 +8709,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "id": {
           "description": "Part id, e.g. from sevdesk_parts_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -8961,7 +8748,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "offset": {
           "default": 0,
           "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -9103,7 +8889,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "checkAccountId": {
           "description": "Payment account (Zahlungskonto) id, from sevdesk_bank_accounts_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "from": {
@@ -9127,7 +8912,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "offset": {
           "default": 0,
           "description": "sevDesk transaction rows to skip: pass nextOffset from the previous call.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -9138,7 +8922,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "transactionId": {
           "description": "One transaction (Umsatz) id; leave out to scan unassigned ones.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -9162,13 +8945,11 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "checkAccountId": {
           "description": "Transactions only: payment account (Zahlungskonto) id.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "contactId": {
           "description": "Customer (invoices, credit notes) or supplier (vouchers) contact id.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "from": {
@@ -9295,7 +9076,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         },
         "offset": {
           "description": "receipt_guidance only: entries to skip; pass the previous nextOffset.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -9316,7 +9096,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "taxRuleId": {
           "description": "receipt_guidance only: accounts that allow this tax rule id.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -9343,7 +9122,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "id": {
           "description": "Bank transaction (Umsatz) id, from sevdesk_transactions_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -9370,7 +9148,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "checkAccountId": {
           "description": "Payment account (Zahlungskonto) id.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "dateField": {
@@ -9404,7 +9181,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "offset": {
           "default": 0,
           "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -9501,7 +9277,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "id": {
           "description": "Voucher id, e.g. from sevdesk_vouchers_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -9553,7 +9328,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "offset": {
           "default": 0,
           "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
-          "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
@@ -9571,7 +9345,6 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "supplierId": {
           "description": "Contact id of the supplier (Lieferant) or customer.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "supplierName": {
@@ -9754,7 +9527,6 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
         "id": {
           "description": "sevDesk id of the document (not its number such as RE-1001).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -9870,7 +9642,6 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
         "accountDatevId": {
           "description": "Buchungskonto (accountDatev id) for every VAT rate of the invoice; see sevdesk_reference_lookup kind=receipt_guidance.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "accounts": {
@@ -9881,7 +9652,6 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
               "accountDatevId": {
                 "description": "Buchungskonto for this rate.",
                 "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
                 "type": "integer",
               },
               "taxRate": {
@@ -9919,13 +9689,11 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
         "supplierId": {
           "description": "Lieferant contact id. Default: the contact that matches the issuer's VAT id or IBAN (exactly one), else the issuer's name only; contacts are never created.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
         "taxRuleId": {
           "description": "Steuerregel. Default: derived from the invoice's VAT categories and the account's VAT regulation (e.g. 9, or 10 for Kleinunternehmer).",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
@@ -9952,7 +9720,6 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
         "id": {
           "description": "Voucher id (not the Belegnummer), e.g. from sevdesk_vouchers_list.",
           "exclusiveMinimum": 0,
-          "maximum": 9007199254740991,
           "type": "integer",
         },
       },
