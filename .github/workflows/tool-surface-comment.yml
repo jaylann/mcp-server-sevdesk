@@ -59,13 +59,17 @@ jobs:
               throw new Error('Invalid surface report.');
             }
             const configurations = ['read', 'write', 'all', 'http-files'];
-            const components = ['tools', 'instructions', 'prompts'];
             const hasKeys = (value, keys) => value !== null && typeof value === 'object' &&
               !Array.isArray(value) && Object.keys(value).length === keys.length &&
               keys.every(key => Object.hasOwn(value, key));
-            // Older v1 reports remain usable. New data carries only bounded integer counts:
-            // all Markdown labels and formatting come from this trusted workflow.
+            // Older v1 reports remain usable, with or without costs and with or without tool
+            // definitions. New data carries only bounded integer counts: all Markdown labels
+            // and formatting come from this trusted workflow.
             const cost = report.contextCost;
+            const withDefinitions = hasKeys(cost?.base?.read, ['definitions', 'tools', 'instructions', 'prompts']);
+            const components = withDefinitions
+              ? ['definitions', 'tools', 'instructions', 'prompts']
+              : ['tools', 'instructions', 'prompts'];
             if (cost !== undefined && (!hasKeys(cost, ['base', 'head']) ||
                 !['base', 'head'].every(revision => hasKeys(cost[revision], configurations) &&
                   configurations.every(config => hasKeys(cost[revision][config], components) &&
@@ -94,33 +98,51 @@ jobs:
             if (!report.changed && !previous && cost === undefined) return;
             let contextCost = '';
             if (cost !== undefined) {
-              const labels = { tools: 'tools/list', instructions: 'Instructions', prompts: 'prompts/list', total: 'Total' };
+              const labels = {
+                definitions: 'Tool definitions', model: '**Model context**', tools: 'tools/list',
+                instructions: 'Instructions', prompts: 'prompts/list', total: 'Total',
+              };
+              const sums = { model: ['definitions', 'instructions'], total: ['tools', 'instructions', 'prompts'] };
+              const rowOrder = withDefinitions
+                ? ['definitions', 'instructions', 'model', 'tools', 'prompts', 'total']
+                : ['tools', 'instructions', 'prompts', 'total'];
               const format = value => value.toLocaleString('en-US', { maximumFractionDigits: 2 });
               const signed = value => (value > 0 ? '+' : '') + format(value);
               const pair = (value, delta = false) => {
                 const number = delta ? signed : format;
                 return `${number(value)} / ${number(value / 4)}`;
               };
+              // A nonzero change too small for two decimals reads "<0.01%", never "+0%" or "-0%".
+              const percent = (base, head) => {
+                if (base === 0) return head === 0 ? '0%' : 'n/a (base 0)';
+                const value = (head - base) / base * 100;
+                if (head !== base && format(Math.abs(value)) === '0') return (head > base ? '+' : '-') + '<0.01%';
+                return `${signed(value)}%`;
+              };
               const rows = [];
               for (const config of configurations) {
-                for (const component of [...components, 'total']) {
-                  const count = revision => component === 'total'
-                    ? components.reduce((sum, key) => sum + cost[revision][config][key], 0)
+                for (const component of rowOrder) {
+                  const count = revision => Object.hasOwn(sums, component)
+                    ? sums[component].reduce((sum, key) => sum + cost[revision][config][key], 0)
                     : cost[revision][config][component];
                   const base = count('base');
                   const head = count('head');
-                  const delta = head - base;
-                  const percent = base === 0 ? (head === 0 ? '0%' : 'n/a (base 0)')
-                    : `${signed(delta / base * 100)}%`;
-                  rows.push(`| ${config} | ${labels[component]} | ${pair(base)} | ${pair(head)} | ${pair(delta, true)} | ${percent} |`);
+                  rows.push(`| ${config} | ${labels[component]} | ${pair(base)} | ${pair(head)} | ${pair(head - base, true)} | ${percent(base, head)} |`);
                 }
               }
+              const legend = withDefinitions
+                ? '**Model context** is what clients usually put in front of the model: tool definitions ' +
+                  '(name, description and input schema, the fields function-calling APIs take) plus the ' +
+                  'instructions. tools/list is the full protocol response; its output schemas and annotations ' +
+                  'stay with the client. prompts/list is shown to the user, not the model. ' +
+                  'Total sums tools/list, instructions and prompts/list. '
+                : 'Totals sum the three components. ';
               contextCost = '### Context cost\n\n' +
                 'Estimated tokens = characters / 4, calculated locally without an API key. ' +
-                'Characters are Unicode code points in compact tools/list and prompts/list JSON result objects ' +
-                '(including schemas) and raw instructions. Prompt bodies (prompts/get), JSON-RPC envelopes ' +
+                'Characters are Unicode code points in compact JSON result objects and raw instructions. ' +
+                'Prompt bodies (prompts/get), JSON-RPC envelopes ' +
                 'and client formatting are excluded; actual model context use varies by client. ' +
-                'Totals sum the three components; percentage changes apply to both characters and estimated tokens.\n\n' +
+                legend + 'Percentage changes apply to both characters and estimated tokens.\n\n' +
                 '| Configuration | Surface | Base chars / est. tokens | Head chars / est. tokens | Δ chars / est. tokens | Δ % |\n' +
                 '| --- | --- | ---: | ---: | ---: | ---: |\n' + rows.join('\n') + '\n\n';
             }

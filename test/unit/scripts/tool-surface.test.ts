@@ -77,6 +77,10 @@ describe("tool surface", () => {
     expect(sizes.write.tools).toBeGreaterThan(sizes.read.tools);
     expect(sizes.all.tools).toBeGreaterThan(sizes.write.tools);
     expect(sizes["http-files"].tools).toBeGreaterThan(sizes.all.tools);
+    for (const size of Object.values(sizes)) {
+      expect(size.definitions).toBeGreaterThan(0);
+      expect(size.definitions).toBeLessThan(size.tools);
+    }
     expect(http.instructions).toContain("uploadId");
     expect(fetch).not.toHaveBeenCalled();
     expect(surfaceJson(await dumpToolSurface())).toBe(surfaceJson(dump));
@@ -221,11 +225,12 @@ describe("tool surface", () => {
 
 describe("tool surface context size", () => {
   it("counts empty list result wrappers and empty instructions in every configuration", () => {
+    const emptySizes = { definitions: 12, tools: 12, prompts: 14, instructions: 0 };
     expect(measureToolSurface(empty())).toEqual({
-      read: { tools: 12, prompts: 14, instructions: 0 },
-      write: { tools: 12, prompts: 14, instructions: 0 },
-      all: { tools: 12, prompts: 14, instructions: 0 },
-      "http-files": { tools: 12, prompts: 14, instructions: 0 },
+      read: emptySizes,
+      write: emptySizes,
+      all: emptySizes,
+      "http-files": emptySizes,
     });
   });
 
@@ -237,10 +242,32 @@ describe("tool surface context size", () => {
       instructions: 'ä😀\n"',
     };
     expect(measureToolSurface(surface).read).toEqual({
+      definitions: 43,
       tools: 43,
       prompts: 47,
       instructions: 4,
     });
+  });
+
+  it("counts only name, description and input schema as tool definitions", () => {
+    const surface = empty();
+    surface.configurations.read.tools = [
+      {
+        name: "x",
+        title: "X",
+        description: "d",
+        inputSchema: { type: "object" },
+        outputSchema: { type: "object", properties: { big: { type: "string" } } },
+        annotations: { readOnlyHint: true },
+        _meta: { tier: "read" },
+      },
+    ];
+    const size = measureToolSurface(surface).read;
+    expect(size.definitions).toBe(
+      '{"tools":[{"name":"x","description":"d","inputSchema":{"type":"object"}}]}'.length,
+    );
+    expect(size.tools).toBe(JSON.stringify({ tools: surface.configurations.read.tools }).length);
+    expect(size.tools).toBeGreaterThan(size.definitions);
   });
 
   it("includes complete schemas and prompt arguments, independent of dump layout and key order", () => {
@@ -257,8 +284,11 @@ describe("tool surface context size", () => {
     expect(size.all.prompts).toBe(
       '{"prompts":[{"name":"p","arguments":[{"name":"month"}]}]}'.length,
     );
+    expect(size.all.definitions).toBe(
+      '{"tools":[{"name":"x","inputSchema":{"type":"object"}}]}'.length,
+    );
     expect(measureToolSurface(JSON.parse(surfaceJson(surface)))).toEqual(size);
-    expect(size.read).toEqual({ tools: 12, prompts: 14, instructions: 0 });
+    expect(size.read).toEqual({ definitions: 12, tools: 12, prompts: 14, instructions: 0 });
     expect(size.write).toEqual(size.read);
     expect(size["http-files"]).toEqual(size.read);
   });
