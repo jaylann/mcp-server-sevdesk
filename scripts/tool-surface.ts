@@ -19,8 +19,8 @@
  * and bounds the text for a comment; the workflow also retains the complete diff artifact.
  * contextCost retains Unicode character sizes for the full protocol catalog. New dumps also
  * capture modelContext (legacy name/description/input_schema + system) and recorded response
- * text. Reports add tokenCost.base/head using messages.countTokens with ANTHROPIC_API_KEY,
- * otherwise estimates at characters / 2.3. Missing legacy captures are null, never zero.
+ * text. Reports add estimated tokenCost.base/head at characters / 2.3. The trusted
+ * workflow_run publisher can upgrade these with WIF. Missing captures are null, never zero.
  * Prompt bodies, JSON-RPC and tool-result envelopes are excluded. Invalid input fails nonzero.
  * Server configuration never comes from the caller's environment.
  *
@@ -351,7 +351,6 @@ export async function runToolSurface(args: readonly string[]): Promise<void> {
       await readJson(first),
       await readJson(second),
       await readJson(third),
-      createTokenCounter(process.env.ANTHROPIC_API_KEY),
     );
     await writeFile(fourth, `${JSON.stringify(report)}\n`);
   } else {

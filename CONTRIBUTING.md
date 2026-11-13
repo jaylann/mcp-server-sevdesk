@@ -158,19 +158,17 @@ comment leads with **model-context tokens** and **response tokens**, base → he
   The compatibility diff still covers full tools, prompts and instructions; review names and
   schemas yourself, since the report does not decide the required version bump.
 
-Without `ANTHROPIC_API_KEY`, counts are clearly labelled **estimated**: Unicode characters ÷ 2.3,
-rounded to whole tokens (the ratio measured in [#61](https://github.com/jaylann/mcp-server-sevdesk/issues/61)).
-With the key, the report uses **exact** `messages.countTokens` counts for the fixed model
-`claude-opus-5-5`. Model-context counts subtract the whole calibration message; response counts
-subtract only its framing, retaining the response payload (the calibration text `x` is one token).
-Model context counts the Messages API tool shape plus system text; response counts include the actual legacy text
-blocks, summaries and fences. Client message envelopes, rendered prompt bodies and deferred-tool
-loading policies are outside this comparison. Missing captures in older dumps display `n/a`,
-including their delta, rather than zero.
+Local and PR counts are labelled **estimated**: Unicode characters ÷ 2.3, rounded to whole
+tokens (the ratio measured in [#61](https://github.com/jaylann/mcp-server-sevdesk/issues/61)).
+The trusted publisher can upgrade the complete comparison to **exact** `messages.countTokens`
+counts for `claude-opus-5-5` using Workload Identity Federation (WIF). Model-context counts subtract
+the whole calibration message; response counts subtract only its framing, retaining the payload
+(the calibration text `x` is one token). Model context counts the Messages API tool shape plus
+system text; responses include the actual legacy text blocks, summaries and fences. Client message
+envelopes, rendered prompt bodies and deferred-tool loading policies are outside this comparison.
+Missing captures in older dumps display `n/a`, including their delta, rather than zero.
 
-Capture or compare locally without a sevDesk token or network access (leave the Anthropic key
-unset for estimated reports). The standalone counter can recount those JSON files with the key,
-without importing server code or installing dependencies:
+Capture, compare or recount locally without credentials or network access:
 
 ```bash
 node --import tsx scripts/tool-surface.ts dump /tmp/head-surface.json
@@ -184,33 +182,65 @@ The report takes a GitHub PR event JSON (`number`, `pull_request.base.sha`,
 `responses`; reports add `tokenCost` with the method, fixed model, and nullable base/head counts.
 `contextCost` retains protocol character counts for older consumers. Model-context serialization
 preserves the client's tool/schema key order; only the protocol catalog is canonicalized.
-The script header documents the format. CI copies `scripts/tool-surface*.ts` and the same recorded corpus into the base
-checkout, and both revisions install their own frozen dependencies. Full dumps and diffs remain
-in run artifacts for seven days; long comments link there and say when truncated.
+CI copies `scripts/tool-surface*.ts` and the recorded corpus into the base checkout, and both
+revisions install their own frozen dependencies. Full dumps and diffs remain in run artifacts for
+seven days; long comments link there and say when truncated.
 
-The normal **Tool surface** workflow is secret-free, including for forks. The independent,
-optional **Tool surface exact** workflow is path-filtered to relevant code/fixtures/workflows,
-runs only for same-repository PRs, and skips Dependabot. Its capture job runs the head and base
-servers **without secrets**. A fresh counting job checks out only the **base revision's**
-standalone `scripts/tool-surface-tokens.ts`, downloads the already-captured JSON, and counts it
-using Node built-ins. There is no head checkout, dependency install, `tsx` loader or server import
-in that job. Only that base-script invocation receives `ANTHROPIC_API_KEY` from `evals`.
-If the base has no standalone counter yet (including this feature's first PR), exact counting is
-skipped; it never falls back to a head script. If the key is absent, the counter produces estimates.
+The **Tool surface** PR workflow is path-filtered to relevant code/fixtures/workflows and skips
+Dependabot. It runs PR code without secrets or identity permissions, including for forks. It
+uploads `report.json` plus both plain JSON captures (`base.json`, `head.json`) in the
+`tool-surface-report` artifact. There is no separate exact workflow or counting use of `evals`.
 
-Environment reviewers can approve the separate counting job without delaying the normal check
-or estimated comment. API failures leave the independent estimate available. The publisher
-upgrades the sticky comment when an exact report arrives and prevents a late estimate from
-replacing exact counts for the same base/head. Neither capture uses a live sevDesk account or a
-dependency cache. Exact counts have not been verified live merely because the workflow succeeds:
-a run without the environment key exercises only the estimate path.
+Only the default branch's **Tool surface comment** `workflow_run` job can acquire credentials. It
+uses the `token-count` environment and job-level `id-token: write`, artifact-read and PR-comment
+permissions. It checks out no code, installs nothing and executes no artifact contents. It
+verifies provenance/current PR commits, rejects artifact claims of exact counts, bounds the report
+at 300 KB and each capture at 20 MB, validates tool/system and response shapes and limits each
+counted context/response to 2 million characters. Invalid or missing captures leave estimates.
+Only the validated tool definitions, system strings and response text go to the counting endpoint.
 
-The separate `workflow_run` publisher has only artifact-read and PR-comment permissions: it checks
-out no code, installs nothing, verifies the report's PR and commits against GitHub, validates
-bounded counts and fixed labels, and fences artifact diff text. Stale reports are skipped.
-Publisher changes must land on the default branch before GitHub uses them: on the first PR,
-inspect the new token counts in the artifacts while the existing publisher still runs
-([GitHub's workflow separation pattern](https://securitylab.github.com/resources/github-actions-preventing-pwn-requests/)).
+The inline script obtains a fresh GitHub OIDC token for `https://api.anthropic.com`, masks it and
+writes a private temporary file identified by `ANTHROPIC_IDENTITY_TOKEN_FILE`. It exchanges that
+single-use assertion once at `/v1/oauth/token` for a short-lived bearer token, masks that token,
+and calls `/v1/messages/count_tokens` with the same counter/calibration for base and head. Native
+`fetch` uses fixed origins, refuses redirects and bounds the exchange/count sequence to 90 seconds;
+no SDK installation or PR package code runs in the privileged job. The identity file is removed
+in `finally`; credentials and provider errors are never logged or uploaded.
+
+Missing repository variables or any exchange/count failure publish the **entire estimated**
+comparison. Exact counts replace estimates only after every available capture succeeds; a late
+estimate never replaces an exact comment for the same base/head. Stale reports are skipped and
+diff text is fenced. No live sevDesk account or dependency cache is used. Publisher changes only
+run after landing on the default branch; inspect this PR's artifacts before then.
+
+### Maintainer setup for exact counts
+
+No API key secret is needed. [Token counting is free and rate-limited](https://platform.claude.com/docs/en/build-with-claude/token-counting#pricing-and-rate-limits).
+Follow the [Anthropic GitHub Actions WIF setup](https://platform.claude.com/docs/en/manage-claude/wif-providers/github-actions):
+
+1. In Claude Console → **Workload identity → Connect workload → GitHub Actions**, set:
+   - Issuer: `https://token.actions.githubusercontent.com`, using discovery.
+   - Subject: `repo:jaylann/mcp-server-sevdesk:environment:token-count` (exact, no wildcard).
+   - Audience: `https://api.anthropic.com`.
+   - Exact claims: `repository_owner: jaylann`, `repository: jaylann/mcp-server-sevdesk`,
+     `event_name: workflow_run`, and
+     `workflow_ref: jaylann/mcp-server-sevdesk/.github/workflows/tool-surface-comment.yml@refs/heads/main`.
+     Use `workflow_ref`: [GitHub documents `job_workflow_ref` for reusable workflows](https://docs.github.com/en/actions/reference/security/oidc#custom-claims-provided-by-github),
+     whereas this is a top-level workflow.
+   - Target: a **new service account** with only the dedicated workspace added explicitly, using
+     that workspace's lowest available spend limit. Bind the rule and exchanged token to this
+     workspace only. Anthropic documents an implicit Default Workspace membership for every
+     service account; do not treat membership alone as workspace isolation.
+   - Scope: the narrowest offered (wizard default `workspace:developer`); lifetime **600 seconds**.
+2. In GitHub, create environment **`token-count`**, limit deployment branches to **`main`**,
+   and set **no required reviewers**, so estimates are not held behind manual approval.
+3. Set these four **repository variables**, using the IDs from the Console:
+   `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID`,
+   `ANTHROPIC_SERVICE_ACCOUNT_ID`, `ANTHROPIC_WORKSPACE_ID`.
+
+The federation is not configured by this PR, and its trusted publisher only runs from `main`.
+The first relevant PR run after merge and setup must verify the live exchange and an **Exact**
+comment. A successful workflow with an **Estimated** comment verifies fallback only.
 
 ## HTTP mode
 

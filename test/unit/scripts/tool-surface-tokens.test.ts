@@ -31,84 +31,12 @@ function surface(): ToolSurface {
 
 describe("tool surface token counter", () => {
   it("estimates Unicode characters / 2.3 without invoking a provider", async () => {
-    const api = vi.fn();
-    const counter = createTokenCounter(undefined, api);
+    const counter = createTokenCounter();
     expect(counter.method).toBe("estimated");
     expect(await counter.count({ kind: "context", view })).toBe(
       Math.round(Array.from(JSON.stringify({ tools: view.tools }) + view.system).length / 2.3),
     );
     expect(await counter.count({ kind: "response", text: "😀".repeat(23) })).toBe(10);
-    expect(api).not.toHaveBeenCalled();
-  });
-
-  it("uses the fixed model and subtracts the calibration for context but only framing for responses", async () => {
-    const api = vi
-      .fn()
-      .mockResolvedValueOnce(10)
-      .mockResolvedValueOnce(110)
-      .mockResolvedValueOnce(45);
-    const counter = createTokenCounter("test-key", api);
-    expect(counter.method).toBe("exact");
-    expect(await counter.count({ kind: "context", view })).toBe(100);
-    expect(await counter.count({ kind: "response", text: 'Summary\n\n{"x":1}' })).toBe(36);
-    expect(api.mock.calls).toEqual([
-      [{ model: TOKEN_MODEL, messages: [{ role: "user", content: "x" }] }],
-      [
-        {
-          model: TOKEN_MODEL,
-          system: view.system,
-          tools: view.tools,
-          messages: [{ role: "user", content: "x" }],
-        },
-      ],
-      [{ model: TOKEN_MODEL, messages: [{ role: "user", content: 'Summary\n\n{"x":1}' }] }],
-    ]);
-  });
-
-  it("counts the one-token calibration payload as one response token, not zero", async () => {
-    const api = vi.fn().mockResolvedValue(10);
-    expect(await createTokenCounter("test-key", api).count({ kind: "response", text: "x" })).toBe(
-      1,
-    );
-  });
-
-  it("uses only the fixed count endpoint and sanitizes fetch failures", async () => {
-    const fetch = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(new Response('{"input_tokens":10}'));
-    // Each HTTP response body is consumed once.
-    fetch.mockImplementation(() => Promise.resolve(new Response('{"input_tokens":10}')));
-    expect(await createTokenCounter("test-key").count({ kind: "response", text: "x" })).toBe(1);
-    expect(fetch).toHaveBeenCalledWith(
-      "https://api.anthropic.com/v1/messages/count_tokens",
-      expect.objectContaining({
-        redirect: "error",
-        headers: {
-          "x-api-key": "test-key",
-          "anthropic-version": "2026-10-21",
-          "content-type": "application/json",
-        },
-      }),
-    );
-    fetch.mockResolvedValue(new Response("sensitive provider response", { status: 401 }));
-    await expect(
-      createTokenCounter("test-key").count({ kind: "response", text: "x" }),
-    ).rejects.toThrow(/^Token counting failed; see the independent estimated report\.$/);
-  });
-
-  it("does not expose provider errors or silently relabel failed exact counts", async () => {
-    const api = vi.fn().mockRejectedValue(new Error("sensitive provider request"));
-    const counter = createTokenCounter("test-key", api);
-    await expect(counter.count({ kind: "context", view })).rejects.toThrow(
-      /^Token counting failed; see the independent estimated report\.$/,
-    );
-  });
-
-  it.each([-1, 1.5, Number.NaN])("rejects invalid exact counts (%s)", async (invalid) => {
-    const api = vi.fn().mockResolvedValueOnce(10).mockResolvedValueOnce(invalid);
-    await expect(
-      createTokenCounter("test-key", api).count({ kind: "context", view }),
-    ).rejects.toThrow("Token counting failed");
   });
 
   it("measures base and head with the injected counter, preserving missing captures as null", async () => {
@@ -169,7 +97,7 @@ it("runs the isolated Node-only counter on JSON, without dependencies or head im
     );
     const { stdout } = await promisify(execFile)(process.execPath, [script, base, head, report], {
       cwd: directory,
-      env: { ANTHROPIC_API_KEY: "" },
+      env: {},
     });
     expect(stdout).toBe("");
     const estimated: unknown = JSON.parse(await readFile(report, "utf8"));

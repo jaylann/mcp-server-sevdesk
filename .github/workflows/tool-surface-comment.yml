@@ -4,7 +4,7 @@ name: Tool surface comment
 # restore caches, or execute artifact contents in this job: it holds the comment write token.
 on:
   workflow_run: # zizmor: ignore[dangerous-triggers] -- No checkout or execution of PR code; only validated, fenced comment data.
-    workflows: [Tool surface, Tool surface exact]
+    workflows: [Tool surface]
     types: [completed]
 
 permissions: {}
@@ -20,7 +20,9 @@ jobs:
       github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    environment: token-count
     permissions:
+      id-token: write # federate only this trusted publisher, never PR code
       actions: read # download only the triggering run's report
       pull-requests: write # read the PR and create/update its sticky comment
     steps:
@@ -35,6 +37,13 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           REPORT_PATH: ${{ runner.temp }}/tool-surface-report/report.json
+          BASE_PATH: ${{ runner.temp }}/tool-surface-report/base.json
+          HEAD_PATH: ${{ runner.temp }}/tool-surface-report/head.json
+          ANTHROPIC_IDENTITY_TOKEN_FILE: ${{ runner.temp }}/anthropic-identity.jwt
+          ANTHROPIC_FEDERATION_RULE_ID: ${{ vars.ANTHROPIC_FEDERATION_RULE_ID }}
+          ANTHROPIC_ORGANIZATION_ID: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
+          ANTHROPIC_SERVICE_ACCOUNT_ID: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
+          ANTHROPIC_WORKSPACE_ID: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
         with:
           script: |
             const fs = require('node:fs/promises');
@@ -43,7 +52,7 @@ jobs:
             const fullName = `${repo.owner}/${repo.repo}`;
             if (run.event !== 'pull_request' || run.conclusion !== 'success' ||
                 run.repository.full_name !== fullName ||
-                !['.github/workflows/tool-surface.yml', '.github/workflows/tool-surface-exact.yml'].includes(run.path)) {
+                run.path !== '.github/workflows/tool-surface.yml') {
               throw new Error('Unexpected source workflow.');
             }
             const stat = await fs.lstat(process.env.REPORT_PATH);
@@ -80,7 +89,7 @@ jobs:
                     }))))) {
               throw new Error('Invalid context cost.');
             }
-            const tokens = report.tokenCost;
+            let tokens = report.tokenCost;
             const responseLabels = {
               invoice_get: 'invoice_get', records_summarize: 'records_summarize (invoices by month)',
               contacts_search: 'contacts_search (default limit)', transactions_list: 'transactions_list (default limit)',
@@ -90,12 +99,10 @@ jobs:
             const validCounts = (value, keys) => hasKeys(value, keys) && keys.every(key =>
               value[key] === null || (Number.isSafeInteger(value[key]) && value[key] >= 0 && value[key] <= 1_000_000_000));
             if (tokens !== undefined && (!hasKeys(tokens, ['method', 'model', 'base', 'head']) ||
-                !['exact', 'estimated'].includes(tokens.method) || tokens.model !== 'claude-opus-5-5' ||
+                tokens.method !== 'estimated' || tokens.model !== 'claude-opus-5-5' ||
                 !['base', 'head'].every(revision => hasKeys(tokens[revision], ['configurations', 'responses']) &&
                   validCounts(tokens[revision].configurations, configurations) &&
-                  validCounts(tokens[revision].responses, Object.keys(responseLabels))) ||
-                (tokens.method === 'exact' && (run.path !== '.github/workflows/tool-surface-exact.yml' ||
-                  run.head_repository.full_name !== fullName)))) {
+                  validCounts(tokens[revision].responses, Object.keys(responseLabels))))) {
               throw new Error('Invalid token cost.');
             }
             // Artifact PR numbers are only hints. Verify the current PR against the trusted run,
@@ -115,6 +122,123 @@ jobs:
             const previous = comments.find(comment => comment.user?.login === 'github-actions[bot]' &&
               comment.user?.type === 'Bot' && comment.body?.startsWith(marker));
             if (!report.changed && !previous && cost === undefined && tokens === undefined) return;
+            // Validate both captured inputs before requesting an identity. Artifacts are JSON data
+            // only: no imports, checkout, installation, URL overrides or executable content.
+            if (tokens !== undefined) {
+              const fields = ['FEDERATION_RULE_ID', 'ORGANIZATION_ID', 'SERVICE_ACCOUNT_ID', 'WORKSPACE_ID'];
+              const configured = fields.every(field => process.env[`ANTHROPIC_${field}`]?.trim());
+              if (configured) {
+                let identityWritten = false;
+                try {
+                  const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+                  const captures = {};
+                  for (const revision of ['base', 'head']) {
+                    const path = process.env[`${revision.toUpperCase()}_PATH`];
+                    const stat = await fs.lstat(path);
+                    if (!stat.isFile() || stat.size > 20_000_000) throw new Error('Invalid capture file.');
+                    const capture = JSON.parse(await fs.readFile(path, 'utf8'));
+                    if (!isObject(capture) || capture.version !== 1 ||
+                        !hasKeys(capture.configurations, configurations) ||
+                        (capture.responses !== undefined && (!isObject(capture.responses) ||
+                          !Object.keys(capture.responses).every(id => Object.hasOwn(responseLabels, id))))) {
+                      throw new Error('Invalid capture.');
+                    }
+                    for (const config of configurations) {
+                      if (!isObject(capture.configurations[config])) throw new Error('Invalid configuration.');
+                      const view = capture.configurations[config].modelContext;
+                      if (view !== undefined && (!hasKeys(view, ['system', 'tools']) ||
+                          typeof view.system !== 'string' || !Array.isArray(view.tools) || view.tools.length > 1_000 ||
+                          !view.tools.every(tool => hasKeys(tool, ['name', 'description', 'input_schema']) &&
+                            typeof tool.name === 'string' && typeof tool.description === 'string' &&
+                            isObject(tool.input_schema) && tool.input_schema.type === 'object') ||
+                          JSON.stringify(view).length > 2_000_000)) throw new Error('Invalid model context.');
+                      if ((view === undefined) !== (tokens[revision].configurations[config] === null)) {
+                        throw new Error('Capture availability mismatch.');
+                      }
+                    }
+                    for (const id of Object.keys(responseLabels)) {
+                      const text = capture.responses?.[id];
+                      if (text !== undefined && (typeof text !== 'string' || text.length > 2_000_000)) {
+                        throw new Error('Invalid response text.');
+                      }
+                      if ((text === undefined) !== (tokens[revision].responses[id] === null)) {
+                        throw new Error('Capture availability mismatch.');
+                      }
+                    }
+                    captures[revision] = capture;
+                  }
+                  // One fresh, single-use assertion and one exchange; no refresh or replay. The whole
+                  // exchange/count sequence has a 90 s budget so failure still leaves time to comment.
+                  const signal = AbortSignal.timeout(90_000);
+                  const identity = await core.getIDToken('https://api.anthropic.com');
+                  core.setSecret(identity);
+                  await fs.writeFile(process.env.ANTHROPIC_IDENTITY_TOKEN_FILE, identity, { mode: 0o600, flag: 'wx' });
+                  identityWritten = true;
+                  const exchange = await fetch('https://api.anthropic.com/v1/oauth/token', {
+                    method: 'POST', redirect: 'error', signal,
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({
+                      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+                      assertion: await fs.readFile(process.env.ANTHROPIC_IDENTITY_TOKEN_FILE, 'utf8'),
+                      ...Object.fromEntries(fields.map(field => [field.toLowerCase(), process.env[`ANTHROPIC_${field}`]])),
+                    }),
+                  });
+                  if (!exchange.ok) throw new Error('Exchange failed.');
+                  const credential = await exchange.json();
+                  if (typeof credential?.access_token !== 'string' || !credential.access_token ||
+                      credential.token_type !== 'Bearer') throw new Error('Invalid exchange response.');
+                  core.setSecret(credential.access_token);
+                  const count = async request => {
+                    const response = await fetch('https://api.anthropic.com/v1/messages/count_tokens', {
+                      method: 'POST', redirect: 'error', signal,
+                      headers: {
+                        Authorization: `Bearer ${credential.access_token}`,
+                        'anthropic-version': '2026-10-21', 'content-type': 'application/json',
+                      },
+                      body: JSON.stringify({ model: 'claude-opus-5-5', ...request }),
+                    });
+                    if (!response.ok) throw new Error('Count failed.');
+                    const result = await response.json();
+                    if (!Number.isSafeInteger(result?.input_tokens) || result.input_tokens < 0 ||
+                        result.input_tokens > 1_000_000_000) throw new Error('Invalid token count.');
+                    return result.input_tokens;
+                  };
+                  const messages = content => [{ role: 'user', content }];
+                  const baseline = await count({ messages: messages('x') });
+                  if (baseline < 1) throw new Error('Invalid calibration.');
+                  const exact = { method: 'exact', model: 'claude-opus-5-5' };
+                  for (const revision of ['base', 'head']) {
+                    const measured = { configurations: {}, responses: {} };
+                    for (const config of configurations) {
+                      const view = captures[revision].configurations[config].modelContext;
+                      // Subtract the entire calibration message for context, preserving tool key order.
+                      const value = view === undefined ? null : await count({ ...view, messages: messages('x') }) - baseline;
+                      if (value !== null && value < 0) throw new Error('Invalid context count.');
+                      measured.configurations[config] = value;
+                    }
+                    for (const id of Object.keys(responseLabels)) {
+                      const text = captures[revision].responses?.[id];
+                      // x is one payload token; response text replaces it, so remove only framing.
+                      const value = text === undefined ? null : await count({ messages: messages(text) }) - (baseline - 1);
+                      if (value !== null && value < 0) throw new Error('Invalid response count.');
+                      measured.responses[id] = value;
+                    }
+                    exact[revision] = measured;
+                  }
+                  tokens = exact; // Atomic upgrade: failures never mix exact and estimated counts.
+                } catch {
+                  // Do not log provider errors, response bodies, request data, or tokens.
+                  core.info('Exact token counting unavailable; publishing estimates.');
+                } finally {
+                  if (identityWritten) {
+                    try { await fs.unlink(process.env.ANTHROPIC_IDENTITY_TOKEN_FILE); }
+                    catch { core.info('Temporary identity cleanup unavailable.'); }
+                  }
+                }
+              } else {
+                core.info('Federation variables missing; publishing estimates.');
+              }
+            }
             const exactStamp = `<!-- sevdesk-tool-surface-tokens:${report.base}:${report.head}:exact -->`;
             // Completion order is arbitrary. An estimate must never replace exact counts for
             // the same comparison, including on reruns; a new base/head still gets fresh data.
