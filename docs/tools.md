@@ -1131,7 +1131,10 @@ Ready-made bookkeeping workflows (MCP prompts). Clients offer them by name, e.g.
 
 Match unbooked bank transactions in sevDesk to invoices, credit notes and receipts: suggestions with reasons, then each booking the user confirms with a dry run first; private withdrawals and deposits, costs without a receipt and wrong bookings. Not tax advice.
 
-No arguments.
+| Argument       | Required | Description                                                                              |
+| -------------- | -------- | ---------------------------------------------------------------------------------------- |
+| `checkAccount` | no       | Payment account reference (name or id, up to 200 characters). Default: no account scope. |
+| `month`        | no       | Month to reconcile, YYYY-MM (2000–2099). Default: no date scope.                         |
 
 ### `dunning_run`
 
@@ -1139,7 +1142,10 @@ No arguments.
 
 Find overdue invoices in sevDesk, rule out payments that are not booked yet, and prepare payment reminders (Mahnungen) for the ones the user picks, with a dry run first. Without the write tier it only lists the overdue invoices. Not tax advice.
 
-No arguments.
+| Argument         | Required | Description                                                                             |
+| ---------------- | -------- | --------------------------------------------------------------------------------------- |
+| `contact`        | no       | Customer reference (name or id, up to 200 characters). Default: all customers.          |
+| `minDaysOverdue` | no       | Minimum days overdue (inclusive, 0–3650, as 1–4 digits). Default: all overdue invoices. |
 
 ### `month_end_close`
 

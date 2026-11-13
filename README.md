@@ -105,13 +105,13 @@ The VAT summary is clearly marked as an estimate (accrual or cash basis). Every 
 Ready-made workflows as MCP prompts. Clients list them next to the tools; in Claude Code they are
 slash commands such as `/mcp__sevdesk__month_end_close`.
 
-| Prompt                | What it does                                                                                                              | Arguments                                  |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `month_end_close`     | Monatsabschluss: changes, unbooked transactions, drafts, receivables and payables, VAT pre-check, profit, DATEV hand-over | `month` (YYYY-MM, default: previous month) |
-| `receipt_intake`      | Beleg erfassen, E-Rechnung importieren: duplicate check, booking account and tax rule, voucher draft, finalize, payment   | `file` (optional)                          |
-| `dunning_run`         | Mahnlauf: overdue invoices, unbooked incoming payments, reminder drafts                                                   | none                                       |
-| `vat_precheck`        | UStVA-Vorprüfung: unbooked transactions and drafts, VAT summary (Kennzahlen), ZM                                          | `period` (YYYY-MM or YYYY-Qn)              |
-| `bank_reconciliation` | Kontoabgleich: suggestions, bookings, private transactions, corrections                                                   | none                                       |
+| Prompt                | What it does                                                                                                              | Arguments                                                          |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `month_end_close`     | Monatsabschluss: changes, unbooked transactions, drafts, receivables and payables, VAT pre-check, profit, DATEV hand-over | `month` (YYYY-MM, default: previous month)                         |
+| `receipt_intake`      | Beleg erfassen, E-Rechnung importieren: duplicate check, booking account and tax rule, voucher draft, finalize, payment   | `file` (optional)                                                  |
+| `dunning_run`         | Mahnlauf: overdue invoices, unbooked incoming payments, reminder drafts                                                   | `contact` (name/id), `minDaysOverdue` (0–3650 days); both optional |
+| `vat_precheck`        | UStVA-Vorprüfung: unbooked transactions and drafts, VAT summary (Kennzahlen), ZM                                          | `period` (YYYY-MM or YYYY-Qn)                                      |
+| `bank_reconciliation` | Kontoabgleich: suggestions, bookings, private transactions, corrections                                                   | `checkAccount` (name/id), `month` (YYYY-MM); both optional         |
 
 A prompt appears only when the tools it needs are enabled; steps that need a disabled tier,
 toolset or folder are listed with the setting that enables them. Prompts only produce text for the

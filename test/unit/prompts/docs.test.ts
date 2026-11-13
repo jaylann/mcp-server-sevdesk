@@ -27,7 +27,18 @@ describe("docs/tools.md prompt section", () => {
     expect(docs).toContain(
       "| `month` | no | Month to close, YYYY-MM (e.g. 2026-10). Default: the previous month. |",
     );
-    expect(docs).toMatch(/### `dunning_run`\n\n[^\n]+\n\n[^\n]+\n\nNo arguments\./);
+    expect(docs).toContain(
+      "| `contact` | no | Customer reference (name or id, up to 200 characters). Default: all customers. |",
+    );
+    expect(docs).toContain(
+      "| `minDaysOverdue` | no | Minimum days overdue (inclusive, 0–3650, as 1–4 digits). Default: all overdue invoices. |",
+    );
+    expect(docs).toContain(
+      "| `checkAccount` | no | Payment account reference (name or id, up to 200 characters). Default: no account scope. |",
+    );
+    expect(docs).toContain(
+      "| `month` | no | Month to reconcile, YYYY-MM (2000–2099). Default: no date scope. |",
+    );
   });
 
   it("leaves the section out without prompts", () => {
