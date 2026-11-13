@@ -68,10 +68,11 @@
  *
  * **Blocking** (trusted sentences): arithmetic or VAT breakdown errors, MINIMUM/BASIC WL profiles,
  * documents that are not invoices, credit notes (whether sevDesk wants a supplier credit note as
- * a negative expense or as revenue is not settled), foreign currencies, no or mixed tax rules,
+ * a negative expense or as revenue is not settled), no or mixed tax rules,
  * rates the rule does not allow (unless folded), revenue that sevDesk already has as an invoice or
  * that could not be checked. Formal defects that do not change the amounts (missing
- * identifiers, addresses, XRechnung-only rules) are warnings.
+ * identifiers, addresses, XRechnung-only rules) are warnings. Foreign currencies warn that the
+ * import needs an explicit exchange rate or deadline; the importer validates that choice.
  */
 import { z } from "zod";
 
@@ -90,6 +91,7 @@ import { moneySchema } from "../common.js";
 import { type ContactDto, parseContactRecord, toContactDto } from "../contacts.js";
 import { listInvoices } from "../invoices.js";
 import { add, compare, isZero, type Money, money } from "../money.js";
+import { numberText, type PreviewLanguage } from "../preview-text.js";
 import { taxRuleById } from "../reference-data.js";
 import { normalizeIban, normalizeVatId } from "./fields.js";
 import {
@@ -236,6 +238,10 @@ type Candidate = EInvoiceVoucherSuggestion["supplierCandidates"][number];
 
 /** What {@link planVoucherFromEInvoice} needs. */
 export interface EInvoiceSuggestionContext {
+  /** Internal import preview: reuse the same loaded inputs for German wording, without I/O. */
+  readonly includeGermanPreview?: boolean | undefined;
+  /** Import supplied a rate or deadline; omit the reminder that parse-only callers still need. */
+  readonly exchangeRateSelected?: boolean | undefined;
   readonly client: SevdeskClient;
   /** Cache owner of the account settings: tools pass `ctx.config`. */
   readonly cacheOwner: object;
@@ -260,6 +266,7 @@ export interface ContactIndex {
 
 /** Inputs of the pure {@link suggestVoucherFields}. */
 export interface SuggestionInputs {
+  readonly exchangeRateSelected?: boolean | undefined;
   readonly regime: TaxRegime | undefined;
   readonly company: AccountCompany | undefined;
   readonly contacts: ContactIndex;
@@ -284,7 +291,7 @@ export type OwnInvoiceCheck =
 export async function planVoucherFromEInvoice(
   parsed: ParsedEInvoice,
   ctx: EInvoiceSuggestionContext,
-): Promise<EInvoiceVoucherSuggestion> {
+): Promise<EInvoiceVoucherSuggestion & { readonly previewDe?: EInvoiceVoucherSuggestion }> {
   const options = { cacheOwner: ctx.cacheOwner, signal: ctx.signal };
   // Sequential on purpose: the second call is served from the cache the first one filled.
   const settings = await loadAccountSettings(ctx.client, options);
@@ -296,12 +303,17 @@ export async function planVoucherFromEInvoice(
     direction.kind === "revenue"
       ? await findOwnInvoice(ctx.client, parsed.number, ctx.signal)
       : undefined;
-  return suggestVoucherFields(parsed, {
+  const inputs = {
+    exchangeRateSelected: ctx.exchangeRateSelected,
     regime: taxRegimeOf(settings),
     company,
     contacts,
     ownInvoice,
-  });
+  };
+  const suggestion = suggestVoucherFields(parsed, inputs);
+  return ctx.includeGermanPreview === true
+    ? { ...suggestion, previewDe: suggestVoucherFields(parsed, inputs, "de") }
+    : suggestion;
 }
 
 /** Most invoices read when looking for the e-invoice's number. */
@@ -335,20 +347,26 @@ export async function findOwnInvoice(
 export function suggestVoucherFields(
   parsed: ParsedEInvoice,
   inputs: SuggestionInputs,
+  lang: PreviewLanguage = "en",
 ): EInvoiceVoucherSuggestion {
+  const de = lang === "de";
   const blocking: string[] = [];
   const warnings: string[] = [];
   const direction = directionOf(parsed, inputs.company);
   if (direction.basis === "assumed_expense") {
     warnings.push(
-      "Neither party matched the account's company (VAT id, tax number or name in the sevDesk " +
-        "settings), so the invoice is assumed to be a supplier invoice (expense). Check it.",
+      de
+        ? "Keine Partei stimmt mit dem Unternehmen dieses Kontos überein (USt-IdNr., Steuernummer oder Name in sevDesk). Die Rechnung wird als Eingangsrechnung behandelt; prüfen Sie die Zuordnung."
+        : "Neither party matched the account's company (VAT id, tax number or name in the sevDesk " +
+            "settings), so the invoice is assumed to be a supplier invoice (expense). Check it.",
     );
   }
   if (direction.ambiguous) {
     warnings.push(
-      "Both the seller and the buyer match the account's company; the invoice is treated as an " +
-        "expense. Check it.",
+      de
+        ? "Verkäufer und Käufer stimmen beide mit dem Unternehmen dieses Kontos überein. Die Rechnung wird als Ausgabe behandelt; prüfen Sie die Zuordnung."
+        : "Both the seller and the buyer match the account's company; the invoice is treated as an " +
+            "expense. Check it.",
     );
   }
   const counterpartyRole = direction.kind === "expense" ? "seller" : "buyer";
@@ -358,12 +376,14 @@ export function suggestVoucherFields(
   const regime = inputs.regime ?? "regular";
   if (inputs.regime === undefined) {
     warnings.push(
-      "The account's VAT regulation could not be read; the tax rule assumes regular VAT " +
-        "(Regelbesteuerung), not Kleinunternehmer.",
+      de
+        ? "Die Umsatzsteuerregelung des Kontos konnte nicht gelesen werden. Die Steuerregel setzt Regelbesteuerung voraus, keine Kleinunternehmerregelung."
+        : "The account's VAT regulation could not be read; the tax rule assumes regular VAT " +
+            "(Regelbesteuerung), not Kleinunternehmer.",
     );
   }
 
-  addFindingNotes(parsed, blocking, warnings);
+  addFindingNotes(parsed, blocking, warnings, lang);
   if (parsed.documentKind === "credit_note") {
     blocking.push(
       "The document is a credit note (Gutschrift, type code " +
@@ -376,10 +396,11 @@ export function suggestVoucherFields(
         "automatically.",
     );
   }
-  if (parsed.currency !== "EUR") {
-    blocking.push(
-      `The invoice is in ${parsed.currency}. Foreign-currency invoices are not imported ` +
-        "automatically: book them with sevdesk_voucher_create_draft and the EUR amounts.",
+  if (parsed.currency !== "EUR" && inputs.exchangeRateSelected !== true) {
+    warnings.push(
+      de
+        ? `Die Rechnung ist in ${parsed.currency}. Der Import benötigt exchangeRate oder foreignCurrencyDeadline; die Positionsbeträge bleiben in der Rechnungswährung.`
+        : `The invoice is in ${parsed.currency}. Import requires exchangeRate or foreignCurrencyDeadline; position amounts stay in the invoice currency.`,
     );
   }
   const ownInvoiceId =
@@ -401,16 +422,18 @@ export function suggestVoucherFields(
   }
   if (parsed.totals.prepaid !== undefined && !isZero(parsed.totals.prepaid)) {
     warnings.push(
-      `The invoice states ${parsed.totals.prepaid} ${parsed.currency} as already paid (BT-113); ` +
-        "book that payment separately.",
+      de
+        ? `Die Rechnung weist ${numberText(parsed.totals.prepaid, lang)} ${parsed.currency} als bereits bezahlt aus (BT-113); buchen Sie diese Zahlung separat.`
+        : `The invoice states ${parsed.totals.prepaid} ${parsed.currency} as already paid (BT-113); ` +
+            "book that payment separately.",
     );
   }
 
-  const rule = suggestRule(parsed, direction.kind, regime);
+  const rule = suggestRule(parsed, direction.kind, regime, lang);
   if (rule.id === undefined) blocking.push(rule.reason);
   for (const note of rule.warnings) warnings.push(note);
 
-  const { positions, fold } = buildPositions(parsed, rule.id, blocking);
+  const { positions, fold } = buildPositions(parsed, rule.id, blocking, lang);
   if (fold !== undefined) warnings.push(fold);
 
   const matches = matchContacts(inputs.contacts.rows, counterparty, counterpartyIban);
@@ -444,43 +467,59 @@ export function suggestVoucherFields(
   const supplierId = picked === undefined || ibanConflict ? undefined : picked.candidate.contactId;
   if (ibanConflict) {
     warnings.push(
-      `The invoice's payee IBAN ${maskIban(counterpartyIban) ?? "(unknown)"} differs from the ` +
-        `IBAN stored for the matching supplier contact ${String(picked.candidate.contactId)} ` +
-        `(${maskIban(picked.iban) ?? "(unknown)"}). Check the bank details with the supplier ` +
-        "before paying (possible payment redirection); the contact is not chosen automatically.",
+      de
+        ? `Die Empfänger-IBAN ${maskIban(counterpartyIban) ?? "(unbekannt)"} der Rechnung weicht von der IBAN des passenden Lieferantenkontakts ${String(picked.candidate.contactId)} (${maskIban(picked.iban) ?? "(unbekannt)"}) ab. Klären Sie die Bankdaten vor der Zahlung mit dem Lieferanten (mögliche Zahlungsumleitung). Der Kontakt wird nicht automatisch gewählt.`
+        : `The invoice's payee IBAN ${maskIban(counterpartyIban) ?? "(unknown)"} differs from the ` +
+            `IBAN stored for the matching supplier contact ${String(picked.candidate.contactId)} ` +
+            `(${maskIban(picked.iban) ?? "(unknown)"}). Check the bank details with the supplier ` +
+            "before paying (possible payment redirection); the contact is not chosen automatically.",
     );
   } else if (ibanMatch !== undefined && ibanDoubt !== undefined) {
     const account =
       `Contact ${String(ibanMatch.candidate.contactId)} has the invoice's payee IBAN ` +
       (maskIban(counterpartyIban) ?? "(unknown)");
     warnings.push(
-      ibanDoubt === "payee"
-        ? `${account}, but the invoice names a payee of its own (BG-10, e.g. a factoring ` +
+      de
+        ? ibanDoubt === "payee"
+          ? `Kontakt ${String(ibanMatch.candidate.contactId)} hat die Empfänger-IBAN ${maskIban(counterpartyIban) ?? "(unbekannt)"}. Die Rechnung nennt jedoch einen eigenen Zahlungsempfänger (BG-10, etwa eine Factoringgesellschaft); dessen Konto identifiziert nicht den Lieferanten. Der Kontakt wird nicht automatisch gewählt. Geben Sie den Lieferantenkontakt an, nicht den Zahlungsempfänger.`
+          : `Kontakt ${String(ibanMatch.candidate.contactId)} hat die Empfänger-IBAN ${maskIban(counterpartyIban) ?? "(unbekannt)"}, aber eine andere USt-IdNr. als der Verkäufer. Das Konto kann einem Dritten gehören oder der Kontakt veraltet sein. Er wird nicht automatisch gewählt; prüfen Sie die Bankdaten vor Buchung und Zahlung.`
+        : ibanDoubt === "payee"
+          ? `${account}, but the invoice names a payee of its own (BG-10, e.g. a factoring ` +
             "company), so the account is the payee's and does not tell who the supplier is. The " +
             "contact is not chosen automatically: pass the supplier's contact, not the payee's."
-        : `${account}, but its VAT id differs from the seller's VAT id on the invoice, so the ` +
+          : `${account}, but its VAT id differs from the seller's VAT id on the invoice, so the ` +
             "account may belong to someone else (e.g. a factoring company) or the contact is " +
             "outdated. The contact is not chosen automatically: check the bank details before " +
             "booking and paying.",
     );
   } else if (candidates.length === 0) {
     warnings.push(
-      "No sevDesk contact matches the " +
-        (counterpartyRole === "seller" ? "supplier" : "customer") +
-        " (VAT id, IBAN or exact name). Create one with sevdesk_contact_create, or book the " +
-        "voucher with the name only.",
+      de
+        ? `Kein sevDesk-Kontakt passt zum ${counterpartyRole === "seller" ? "Lieferanten" : "Kunden"} (USt-IdNr., IBAN oder exakter Name). Legen Sie ihn mit sevdesk_contact_create an oder speichern Sie den Beleg nur mit dem Namen.`
+        : "No sevDesk contact matches the " +
+            (counterpartyRole === "seller" ? "supplier" : "customer") +
+            " (VAT id, IBAN or exact name). Create one with sevdesk_contact_create, or book the " +
+            "voucher with the name only.",
     );
   } else if (supplierId === undefined && strong.length > 1) {
     warnings.push(
-      "Several contacts share the VAT id or IBAN; pick the right one from supplierCandidates.",
+      de
+        ? "Mehrere Kontakte haben dieselbe USt-IdNr. oder IBAN. Wählen Sie den richtigen aus supplierCandidates."
+        : "Several contacts share the VAT id or IBAN; pick the right one from supplierCandidates.",
     );
   } else if (supplierId === undefined) {
-    warnings.push("The contact matched by name only; confirm it before booking.");
+    warnings.push(
+      de
+        ? "Der Kontakt passt nur anhand des Namens; bestätigen Sie ihn vor der Buchung."
+        : "The contact matched by name only; confirm it before booking.",
+    );
   }
   if (!inputs.contacts.complete) {
     warnings.push(
-      `Only the first ${String(inputs.contacts.scanned)} contacts were compared; a matching ` +
-        "contact may exist beyond them (search with sevdesk_contacts_search).",
+      de
+        ? `Nur die ersten ${String(inputs.contacts.scanned)} Kontakte wurden verglichen. Weitere passende Kontakte können existieren; suchen Sie mit sevdesk_contacts_search.`
+        : `Only the first ${String(inputs.contacts.scanned)} contacts were compared; a matching ` +
+            "contact may exist beyond them (search with sevdesk_contacts_search).",
     );
   }
 
@@ -581,6 +620,7 @@ function suggestRule(
   parsed: ParsedEInvoice,
   kind: "expense" | "revenue",
   regime: TaxRegime,
+  lang: PreviewLanguage,
 ): RuleSuggestion {
   const categories = usedCategories(parsed);
   if (categories.length === 0) {
@@ -592,7 +632,7 @@ function suggestRule(
   }
   const choices = categories.map((category) => ({
     category,
-    ...ruleFor(category, kind, regime, parsed),
+    ...ruleFor(category, kind, regime, parsed, lang),
   }));
   const missing = choices.find((choice) => choice.id === undefined);
   if (missing !== undefined) return { id: undefined, reason: missing.reason, warnings: [] };
@@ -619,7 +659,9 @@ function ruleFor(
   kind: "expense" | "revenue",
   regime: TaxRegime,
   parsed: ParsedEInvoice,
+  lang: PreviewLanguage,
 ): RuleSuggestion {
+  const de = lang === "de";
   const sellerCountry = parsed.seller.address.countryCode;
   const buyerCountry = parsed.buyer.address.countryCode;
   if (kind === "expense") {
@@ -627,15 +669,21 @@ function ruleFor(
       if (category === "AE") {
         return rule(
           13,
-          "Reverse charge on a Kleinunternehmer account: the VAT is owed without input VAT deduction (rule 13, §13b Abs. 5, §19 UStG).",
+          de
+            ? "Reverse Charge bei Kleinunternehmern: Umsatzsteuer ohne Vorsteuerabzug geschuldet (Regel 13, §13b Abs. 5, §19 UStG)."
+            : "Reverse charge on a Kleinunternehmer account: the VAT is owed without input VAT deduction (rule 13, §13b Abs. 5, §19 UStG).",
         );
       }
       return rule(
         10,
-        "Kleinunternehmer accounts cannot deduct input VAT (rule 10, §19 UStG).",
+        de
+          ? "Kleinunternehmer können keine Vorsteuer abziehen (Regel 10, §19 UStG)."
+          : "Kleinunternehmer accounts cannot deduct input VAT (rule 10, §19 UStG).",
         category === "K"
           ? [
-              "An intra-EU acquisition can be taxable for a Kleinunternehmer (§1a UStG, Erwerbsschwelle); check it with the tax advisor.",
+              de
+                ? "Ein innergemeinschaftlicher Erwerb kann bei Kleinunternehmern steuerpflichtig sein (§1a UStG, Erwerbsschwelle); klären Sie dies mit der Steuerberatung."
+                : "An intra-EU acquisition can be taxable for a Kleinunternehmer (§1a UStG, Erwerbsschwelle); check it with the tax advisor.",
             ]
           : [],
       );
@@ -645,38 +693,66 @@ function ruleFor(
         if (sellerCountry !== undefined && sellerCountry !== "DE") {
           return noRule(FOREIGN_VAT_REASON);
         }
-        return rule(9, "Domestic invoice with VAT: input VAT is deductible (rule 9, §15 UStG).");
+        return rule(
+          9,
+          de
+            ? "Inlandsrechnung mit Umsatzsteuer: Vorsteuerabzug möglich (Regel 9, §15 UStG)."
+            : "Domestic invoice with VAT: input VAT is deductible (rule 9, §15 UStG).",
+        );
       case "Z":
       case "E":
       case "O":
-        return rule(9, `No VAT on the invoice (category ${category}): booked with rule 9 at 0 %.`);
+        return rule(
+          9,
+          de
+            ? `Keine Umsatzsteuer auf der Rechnung (Kategorie ${category}): Buchung mit Regel 9 zu 0 %.`
+            : `No VAT on the invoice (category ${category}): booked with rule 9 at 0 %.`,
+        );
       case "G":
-        return rule(9, "No VAT on the invoice (category G, export): booked with rule 9 at 0 %.", [
-          "The invoice is marked as an export (G) although the account is the buyer; check it.",
-        ]);
+        return rule(
+          9,
+          de
+            ? "Keine Umsatzsteuer auf der Rechnung (Kategorie G, Ausfuhr): Buchung mit Regel 9 zu 0 %."
+            : "No VAT on the invoice (category G, export): booked with rule 9 at 0 %.",
+          [
+            de
+              ? "Die Rechnung ist als Ausfuhr (G) markiert, obwohl das Konto den Käufer darstellt; prüfen Sie dies."
+              : "The invoice is marked as an export (G) although the account is the buyer; check it.",
+          ],
+        );
       case "AE":
         if (sellerCountry === undefined || sellerCountry === "DE") {
           return rule(
             12,
-            "Domestic reverse charge (§13b Abs. 2 UStG, e.g. construction services): rule 12.",
+            de
+              ? "Inländisches Reverse Charge (§13b Abs. 2 UStG, etwa Bauleistungen): Regel 12."
+              : "Domestic reverse charge (§13b Abs. 2 UStG, e.g. construction services): rule 12.",
           );
         }
         if (EU_COUNTRIES.has(sellerCountry)) {
           return rule(
             14,
-            "Reverse charge for services from another EU state (§13b Abs. 1 UStG): rule 14.",
+            de
+              ? "Reverse Charge für Leistungen aus einem anderen EU-Staat (§13b Abs. 1 UStG): Regel 14."
+              : "Reverse charge for services from another EU state (§13b Abs. 1 UStG): rule 14.",
           );
         }
         return rule(
           12,
-          "Reverse charge for services from outside the EU (§13b Abs. 2 Nr. 1 UStG): rule 12.",
+          de
+            ? "Reverse Charge für Leistungen aus Drittstaaten (§13b Abs. 2 Nr. 1 UStG): Regel 12."
+            : "Reverse charge for services from outside the EU (§13b Abs. 2 Nr. 1 UStG): rule 12.",
         );
       case "K":
         return rule(
           8,
-          "Intra-community acquisition (innergemeinschaftlicher Erwerb, §1a UStG): rule 8.",
+          de
+            ? "Innergemeinschaftlicher Erwerb (§1a UStG): Regel 8."
+            : "Intra-community acquisition (innergemeinschaftlicher Erwerb, §1a UStG): rule 8.",
           [
-            "For an intra-community acquisition sevDesk may expect the German rate (19 % or 7 %) on the position; the invoice states 0 %.",
+            de
+              ? "Bei innergemeinschaftlichem Erwerb kann sevDesk den deutschen Steuersatz (19 % oder 7 %) je Position erwarten; die Rechnung weist 0 % aus."
+              : "For an intra-community acquisition sevDesk may expect the German rate (19 % or 7 %) on the position; the invoice states 0 %.",
           ],
         );
       case "L":
@@ -687,10 +763,14 @@ function ruleFor(
   if (regime === "small_business") {
     return rule(
       11,
-      "Kleinunternehmer revenue (rule 11, §19 UStG).",
+      de
+        ? "Kleinunternehmer-Einnahmen (Regel 11, §19 UStG)."
+        : "Kleinunternehmer revenue (rule 11, §19 UStG).",
       parsed.vatBreakdown.some((row) => !isZero(row.taxAmount))
         ? [
-            "The invoice shows VAT although the account is a Kleinunternehmer; VAT shown on an invoice is owed (§14c UStG).",
+            de
+              ? "Die Rechnung weist Umsatzsteuer aus, obwohl das Konto die Kleinunternehmerregelung nutzt. Ausgewiesene Umsatzsteuer wird geschuldet (§14c UStG)."
+              : "The invoice shows VAT although the account is a Kleinunternehmer; VAT shown on an invoice is owed (§14c UStG).",
           ]
         : [],
     );
@@ -698,12 +778,23 @@ function ruleFor(
   switch (category) {
     case "S":
     case "Z":
-      return rule(1, "Domestic taxable revenue (rule 1).");
+      return rule(
+        1,
+        de ? "Steuerpflichtige Inlandseinnahmen (Regel 1)." : "Domestic taxable revenue (rule 1).",
+      );
     case "E":
-      return rule(4, "Tax-exempt revenue (§4 UStG): rule 4.");
+      return rule(
+        4,
+        de ? "Steuerfreie Einnahmen (§4 UStG): Regel 4." : "Tax-exempt revenue (§4 UStG): rule 4.",
+      );
     case "AE":
       if (buyerCountry === undefined || buyerCountry === "DE") {
-        return rule(5, "Domestic reverse charge revenue (§13b UStG): rule 5.");
+        return rule(
+          5,
+          de
+            ? "Inlandseinnahmen mit Reverse Charge (§13b UStG): Regel 5."
+            : "Domestic reverse charge revenue (§13b UStG): rule 5.",
+        );
       }
       if (EU_COUNTRIES.has(buyerCountry)) {
         return {
@@ -714,11 +805,24 @@ function ruleFor(
           warnings: [],
         };
       }
-      return rule(17, "Service to a buyer outside the EU, not taxable in Germany: rule 17.");
+      return rule(
+        17,
+        de
+          ? "Leistung an einen Käufer außerhalb der EU, nicht im Inland steuerbar: Regel 17."
+          : "Service to a buyer outside the EU, not taxable in Germany: rule 17.",
+      );
     case "K":
-      return rule(3, "Intra-community supply (innergemeinschaftliche Lieferung): rule 3.");
+      return rule(
+        3,
+        de
+          ? "Innergemeinschaftliche Lieferung: Regel 3."
+          : "Intra-community supply (innergemeinschaftliche Lieferung): rule 3.",
+      );
     case "G":
-      return rule(2, "Export outside the EU (Ausfuhr): rule 2.");
+      return rule(
+        2,
+        de ? "Ausfuhr außerhalb der EU: Regel 2." : "Export outside the EU (Ausfuhr): rule 2.",
+      );
     case "O":
     case "L":
     case "M":
@@ -769,14 +873,17 @@ function buildPositions(
   parsed: ParsedEInvoice,
   ruleId: number | undefined,
   blocking: string[],
+  lang: PreviewLanguage,
 ): { positions: EInvoiceVoucherSuggestion["positions"]; fold: string | undefined } {
   const allowed = ruleId === undefined ? undefined : taxRuleById(ruleId)?.allowedTaxRates;
   const zeroOnly = allowed !== undefined && allowed.length === 1 && allowed[0] === 0;
   const { currency } = parsed;
   const fold =
     zeroOnly && parsed.vatBreakdown.some((row) => !isZero(row.taxAmount))
-      ? `Tax rule ${String(ruleId)} allows only 0 %, so the VAT on the invoice is not deductible ` +
-        "and is booked as part of the expense: each position at 0 % with amount = gross."
+      ? lang === "de"
+        ? `Steuerregel ${String(ruleId)} erlaubt nur 0 %. Die Umsatzsteuer der Rechnung ist nicht als Vorsteuer abziehbar und wird als Teil der Ausgabe gebucht: jede Position mit 0 % und dem Bruttobetrag.`
+        : `Tax rule ${String(ruleId)} allows only 0 %, so the VAT on the invoice is not deductible ` +
+          "and is booked as part of the expense: each position at 0 % with amount = gross."
       : undefined;
   const positions = parsed.vatBreakdown.map((row) => {
     const rate = row.rate ?? "0";
@@ -820,7 +927,12 @@ function position(
 // Findings
 // ---------------------------------------------------------------------------------------------
 
-function addFindingNotes(parsed: ParsedEInvoice, blocking: string[], warnings: string[]): void {
+function addFindingNotes(
+  parsed: ParsedEInvoice,
+  blocking: string[],
+  warnings: string[],
+  lang: PreviewLanguage,
+): void {
   const errors = parsed.findings.filter((finding) => finding.severity === "error");
   const amountErrors = errors.filter((finding) => BLOCKING_FINDING.test(finding.code));
   const formal = errors.filter((finding) => !BLOCKING_FINDING.test(finding.code));
@@ -833,16 +945,20 @@ function addFindingNotes(parsed: ParsedEInvoice, blocking: string[], warnings: s
   }
   if (formal.length > 0) {
     warnings.push(
-      `The e-invoice has ${String(formal.length)} formal defect(s) ` +
-        `(${unique(formal.map((finding) => finding.code)).join(", ")}); see findings. The amounts ` +
-        "are consistent, but the input VAT deduction (§15 UStG) needs a correct invoice.",
+      lang === "de"
+        ? `Die E-Rechnung hat ${String(formal.length)} formale Mängel (${unique(formal.map((finding) => finding.code)).join(", ")}); siehe findings. Die Beträge sind konsistent, aber der Vorsteuerabzug (§15 UStG) setzt eine ordnungsgemäße Rechnung voraus.`
+        : `The e-invoice has ${String(formal.length)} formal defect(s) ` +
+            `(${unique(formal.map((finding) => finding.code)).join(", ")}); see findings. The amounts ` +
+            "are consistent, but the input VAT deduction (§15 UStG) needs a correct invoice.",
     );
   }
   if (parsed.findings.some((finding) => finding.code === "SD-LINE-NET")) {
     warnings.push(
-      "On at least one line the net amount is not the quantity times the price (finding " +
-        "SD-LINE-NET). The voucher uses the stated amounts; compare those lines with the visual " +
-        "invoice before booking.",
+      lang === "de"
+        ? "Bei mindestens einer Position entspricht der Nettobetrag nicht Menge mal Preis (SD-LINE-NET). Der Beleg übernimmt die angegebenen Beträge. Vergleichen Sie diese Positionen vor der Buchung mit der sichtbaren Rechnung."
+        : "On at least one line the net amount is not the quantity times the price (finding " +
+            "SD-LINE-NET). The voucher uses the stated amounts; compare those lines with the visual " +
+            "invoice before booking.",
     );
   }
 }

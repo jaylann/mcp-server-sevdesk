@@ -470,8 +470,9 @@ export interface VoucherDuplicateQuery {
   readonly number?: string | undefined;
   /** Voucher date, `YYYY-MM-DD`. */
   readonly date: string;
-  /** Expected gross total with two decimals, EUR. */
+  /** Expected gross total in the voucher currency (EUR when omitted). */
   readonly gross: string;
+  readonly currency?: string | undefined;
 }
 
 /**
@@ -502,7 +503,8 @@ export async function findVoucherDuplicates(
   return result.items
     .filter(
       (row) =>
-        row.currency === "EUR" &&
+        row.currency === (query.currency ?? "EUR") &&
+        (row.currency === "EUR" || row.totalsEur !== undefined) &&
         row.totals.gross !== undefined &&
         compare(row.totals.gross.amount, query.gross) === 0 &&
         (query.number === undefined || same(row.number, query.number)) &&
@@ -526,13 +528,14 @@ export function duplicateCheck(
   ids: readonly number[],
   query: VoucherDuplicateQuery,
   allowDuplicate: boolean,
+  lang: PreviewLanguage = "en",
 ): string | undefined {
   if (ids.length === 0) return undefined;
   const which = ids.length === 1 ? `voucher ${String(ids[0])}` : `vouchers ${ids.join(", ")}`;
   const what =
     `${which} with the same supplier, ` +
     `${query.number === undefined ? "" : "Belegnummer, "}date (${query.date}) and gross total ` +
-    `(${query.gross} EUR)`;
+    `(${query.gross} ${query.currency ?? "EUR"})`;
   if (!allowDuplicate) {
     refuse(
       `Possible duplicate: ${what} already exist${ids.length === 1 ? "s" : ""}. Check it with ` +
@@ -540,6 +543,8 @@ export function duplicateCheck(
         "allowDuplicate: true.",
     );
   }
+  if (lang === "de")
+    return `Mögliche Dublette (allowDuplicate ist gesetzt): Beleg ${ids.join(", ")} hat denselben Lieferanten, ${query.number === undefined ? "" : "dieselbe Belegnummer, "}dasselbe Datum (${dateText(query.date, lang)}) und dieselbe Bruttosumme (${query.gross.replace(".", ",")} ${query.currency ?? "EUR"}).`;
   return `Possible duplicate (allowDuplicate is set): ${what} already exist${
     ids.length === 1 ? "s" : ""
   }.`;

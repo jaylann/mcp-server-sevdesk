@@ -171,6 +171,10 @@ function m4Account(
     foreignInvoices?: number;
     /** Synthetic refusal to store the currency-change setup. */
     ignoreCurrencyChange?: boolean;
+    /** Synthetic USD-create failures; these are probe safety tests, not API recordings. */
+    refuseUsdCreate?: boolean;
+    usdCreateStatus?: string;
+    hideCurrencyProperties?: boolean;
     exportConfigured?: boolean;
     /** fileImportAccount refused: the split probe falls back to D-071 transactions. */
     importRefused?: boolean;
@@ -382,13 +386,19 @@ function m4Account(
       const voucher = body["voucher"] as Rec;
       const voucherId = voucher["id"] === undefined ? nextId++ : Number(voucher["id"]);
       if (voucher["id"] === undefined) {
+        if (voucher["currency"] === "USD" && settings.refuseUsdCreate === true) {
+          refused(422, "Synthetic currency refusal");
+        }
         if ((voucher["taxRule"] as Rec)["id"] === "1" && voucher["creditDebit"] === "C") {
           refused(422, "Tax rule 'USTPFL_UMS_EINN' is not valid for account '6815'");
         }
         const record: Rec = {
           ...voucher,
           id: String(voucherId),
-          status: String(voucher["status"]),
+          status:
+            voucher["currency"] === "USD"
+              ? (settings.usdCreateStatus ?? String(voucher["status"]))
+              : String(voucher["status"]),
           paidAmount: 0,
           voucherDate: `${TODAY}T00:00:00+01:00`,
         };
@@ -460,6 +470,14 @@ function m4Account(
       if (method === "PUT") {
         Object.assign(record ?? {}, { status: String(body["status"]) });
         return { objects: record };
+      }
+      if (record !== undefined && settings.hideCurrencyProperties === true) {
+        const {
+          propertyExchangeRate: _rate,
+          propertyForeignCurrencyDeadline: _date,
+          ...shown
+        } = record;
+        return { objects: [shown] };
       }
       return record === undefined ? refused(404, "not found") : { objects: [record] };
     }
@@ -962,6 +980,85 @@ describe("M4 probes on a simulated trial account", () => {
     });
     expect(JSON.stringify(saves[2]?.body)).not.toMatch(/propertyExchangeRate|ForeignCurrency/);
     expect(report.created.filter((record) => record.objectName === "Voucher")).toHaveLength(1);
+  });
+
+  it.each([
+    "write-voucher-usd-rate",
+    "write-voucher-usd-deadline",
+    "write-voucher-usd-rate-update",
+  ])("%s records the currency contract using draft-only writes (D-082)", async (id) => {
+    const account = m4Account();
+    const report = await runProbes(options(account.client, { only: [id] }));
+    const result = byId(report, id);
+    expect(result.status).toBe("observed");
+    expect(result.finding).toContain('currency="USD", status="50"');
+    expect(result.finding).toContain("Positions:");
+    expect(result.deviations).toContainEqual({ id: "D-082", verdict: "informs" });
+    const saves = account.client.writes();
+    expect(saves).toHaveLength(id.endsWith("-update") ? 3 : 1);
+    for (const call of saves) {
+      expect(call).toMatchObject({
+        method: "POST",
+        path: "/Voucher/Factory/saveVoucher",
+        tier: "write",
+        body: { voucher: { currency: "USD", status: 50, creditDebit: "C", voucherType: "VOU" } },
+      });
+    }
+    const body = saves[0]!.body as Rec;
+    expect(body["voucherPosSave"]).toMatchObject([{ sumNet: 100, taxRate: 19, net: true }]);
+    if (id.endsWith("-deadline")) {
+      expect(body["voucher"]).toHaveProperty("propertyForeignCurrencyDeadline", "19.11.2026");
+      expect(body["voucher"]).not.toHaveProperty("propertyExchangeRate");
+      expect(result.finding).toContain('propertyForeignCurrencyDeadline="19.11.2026"');
+    } else {
+      expect(body["voucher"]).toHaveProperty("propertyExchangeRate", "0.9");
+      expect(body["voucher"]).not.toHaveProperty("propertyForeignCurrencyDeadline");
+      expect(result.finding).toContain('propertyExchangeRate="0.9"');
+    }
+    if (id.endsWith("-update")) {
+      expect(saves[1]!.body).toMatchObject({
+        voucher: { propertyExchangeRate: "0.8" },
+        voucherPosSave: null,
+        voucherPosDelete: null,
+      });
+      expect(saves[2]!.body).toMatchObject({
+        voucher: { propertyExchangeRate: "0.8" },
+        voucherPosSave: [{ sumNet: 100 }],
+        voucherPosDelete: [{ objectName: "VoucherPos" }],
+      });
+      expect(result.finding).toContain('propertyExchangeRate="0.8"');
+    }
+    expect(report.created).toMatchObject([
+      { objectName: "Voucher", state: "draft voucher (deletable)", probe: id },
+    ]);
+    expect(() => {
+      assertNoSecrets(renderReport(report), [TOKEN]);
+    }).not.toThrow();
+  });
+
+  it.each([
+    "write-voucher-usd-rate",
+    "write-voucher-usd-deadline",
+    "write-voucher-usd-rate-update",
+  ])("%s leaves refused/non-draft setup inconclusive", async (id) => {
+    for (const settings of [{ refuseUsdCreate: true }, { usdCreateStatus: "100" }]) {
+      const account = m4Account(settings);
+      const report = await runProbes(options(account.client, { only: [id] }));
+      expect(byId(report, id).status).toBe("inconclusive");
+      expect(account.client.writes()).toHaveLength(1);
+    }
+  });
+
+  it("reports absent GET properties without substituting the requested rate (D-082)", async () => {
+    const account = m4Account({ hideCurrencyProperties: true });
+    const report = await runProbes(
+      options(account.client, { only: ["write-voucher-usd-rate-update"] }),
+    );
+    const result = byId(report, "write-voucher-usd-rate-update");
+    expect(result.finding.match(/propertyExchangeRate=absent/g)).toHaveLength(3);
+    expect(result.finding.match(/propertyForeignCurrencyDeadline=absent/g)).toHaveLength(3);
+    expect(result.finding).not.toMatch(/propertyExchangeRate="0\.[89]"/);
+    expect(result.status).toBe("observed");
   });
 
   it("leaves EUR conversion inconclusive when USD setup is not stored", async () => {

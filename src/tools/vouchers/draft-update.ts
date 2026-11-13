@@ -11,15 +11,7 @@ export const voucherUpdateDraftTool = defineWriteTool({
   name: "sevdesk_voucher_update_draft",
   title: "Update a draft voucher",
   description:
-    "Change a draft voucher (Beleg, status draft 50): supplier (Lieferant), Belegnummer, " +
-    "dates, Steuerregel, or replace ALL positions (Belegpositionen) at once, and/or attach a " +
-    "receipt file (PDF/PNG/JPEG from SEVDESK_FILE_DIRS or an upload). Fields left out keep " +
-    "their stored values. A new tax rule must fit every position; accounts × rule × rate are " +
-    "checked against sevDesk's ReceiptGuidance before anything is sent. Only drafts that are not " +
-    'enshrined (Update 2.0). To convert a foreign-currency draft, pass currency: "EUR" and ' +
-    "ALL positions with EUR amounts; no exchange rate is calculated. A booked voucher must be reset to draft first " +
-    "(sevdesk_voucher_reset). Tier write; dryRun previews. Before: sevdesk_voucher_get. After: " +
-    "sevdesk_voucher_finalize.",
+    "Update an unlocked draft voucher (Beleg, status 50): supplier, dates, tax rule, positions or receipt file. EUR drafts keep omitted fields. Every non-EUR update needs a fresh exchangeRate or foreignCurrencyDeadline and ALL positions in the voucher currency: retaining stored EUR amounts can convert them again. Any currency change also needs all positions. Use currency EUR with EUR amounts to convert back, without a rate. Update 2.0 only; ReceiptGuidance is checked. Tier write; dryRun previews. Foreign-currency drafts cannot be finalized here.",
   toolset: "vouchers",
   tier: "write",
   annotations: {

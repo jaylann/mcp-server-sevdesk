@@ -217,15 +217,11 @@ export function carriedVoucher(
 }
 
 /**
- * Checks that a stored voucher can be changed or finalized here: a normal (VOU), EUR, Update 2.0
- * draft that is not enshrined and says whether it is an expense or revenue. An update may
- * explicitly convert to EUR (the caller must also replace all positions). Returns its kind.
+ * Checks a normal (VOU), unlocked draft with a known expense/revenue direction.
+ * Foreign-currency updates require a fresh rate and replacement positions at the caller;
+ * finalizing a foreign-currency voucher remains outside this server's supported contract.
  */
-export function checkDraft(
-  stored: StoredVoucher,
-  action: "changed" | "finalized",
-  currency?: "EUR",
-): VoucherKind {
+export function checkDraft(stored: StoredVoucher, action: "changed" | "finalized"): VoucherKind {
   const { record } = stored;
   const id = String(record.id);
   if (stored.enshrined) {
@@ -244,9 +240,9 @@ export function checkDraft(
         "edit it in the sevDesk web app.",
     );
   }
-  if (currencyCode(record.currency) !== "EUR" && !(action === "changed" && currency === "EUR")) {
+  if (currencyCode(record.currency) !== "EUR" && action === "finalized") {
     refuse(
-      `Voucher ${id} is a foreign-currency voucher; this server writes EUR vouchers only. ` +
+      `Voucher ${id} is a foreign-currency voucher; finalizing it is not supported here. ` +
         'Use sevdesk_voucher_update_draft with currency: "EUR" and all positions with EUR ' +
         "amounts to convert the draft first; no exchange rate is calculated.",
     );

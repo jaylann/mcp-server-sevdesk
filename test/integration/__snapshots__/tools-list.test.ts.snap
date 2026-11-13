@@ -4354,6 +4354,10 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           ],
           "type": "string",
         },
+        "currency": {
+          "description": "ISO 4217 currency, e.g. USD; default EUR. Non-EUR requires exchangeRate or foreignCurrencyDeadline.",
+          "type": "string",
+        },
         "date": {
           "description": "Belegdatum, YYYY-MM-DD; default today (Berlin).",
           "type": "string",
@@ -4370,10 +4374,20 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
           "type": "boolean",
         },
+        "exchangeRate": {
+          "description": "EUR per 1 unit of the voucher currency, as a positive decimal string: "0.9" means 1 USD = 0.9 EUR. For non-EUR, pass this or foreignCurrencyDeadline, never both.",
+          "maxLength": 32,
+          "pattern": "^\\d+(?:\\.\\d+)?$",
+          "type": "string",
+        },
         "file": {
           "description": "Receipt file (Belegbild: PDF, PNG or JPEG, up to 20 MB) inside SEVDESK_FILE_DIRS, absolute or relative to one of those folders, or on a remote server the uploadId from sevdesk_upload_request. It is uploaded and attached.",
           "maxLength": 1000,
           "minLength": 1,
+          "type": "string",
+        },
+        "foreignCurrencyDeadline": {
+          "description": "Exchange-rate date, YYYY-MM-DD. sevDesk selects the rate; EUR totals are known after saving. For non-EUR only, instead of exchangeRate.",
           "type": "string",
         },
         "kind": {
@@ -4405,7 +4419,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
                 "type": "integer",
               },
               "amount": {
-                "description": "Betrag of this position in EUR, gross or net as amountMode says, e.g. "119.00".",
+                "description": "Betrag in the voucher currency, gross or net as amountMode says, e.g. "119.00".",
                 "type": [
                   "string",
                   "number",
@@ -4640,8 +4654,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "string",
         },
         "currency": {
-          "const": "EUR",
-          "description": "Pass "EUR" explicitly to convert a foreign-currency draft. Requires ALL positions with caller-supplied EUR amounts; no exchange rate is calculated. Review with dryRun first.",
+          "description": "Target currency; default the stored currency. A currency change needs ALL positions in that currency. Pass "EUR" to convert back without a rate.",
           "type": "string",
         },
         "date": {
@@ -4660,10 +4673,20 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
           "type": "boolean",
         },
+        "exchangeRate": {
+          "description": "EUR per 1 unit of the voucher currency, as a positive decimal string: "0.9" means 1 USD = 0.9 EUR. For non-EUR, pass this or foreignCurrencyDeadline, never both.",
+          "maxLength": 32,
+          "pattern": "^\\d+(?:\\.\\d+)?$",
+          "type": "string",
+        },
         "file": {
           "description": "Receipt file to attach (PDF, PNG or JPEG inside SEVDESK_FILE_DIRS, or on a remote server the uploadId from sevdesk_upload_request).",
           "maxLength": 1000,
           "minLength": 1,
+          "type": "string",
+        },
+        "foreignCurrencyDeadline": {
+          "description": "Exchange-rate date, YYYY-MM-DD. sevDesk selects the rate; EUR totals are known after saving. For non-EUR only, instead of exchangeRate.",
           "type": "string",
         },
         "id": {
@@ -4682,7 +4705,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "string",
         },
         "positions": {
-          "description": "When given, replaces ALL positions; leave out to keep them. Required with EUR amounts when converting currency.",
+          "description": "Replaces ALL positions, in the target currency. Required for any currency change and every non-EUR update, together with a fresh rate or deadline.",
           "items": {
             "additionalProperties": false,
             "properties": {
@@ -4692,7 +4715,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
                 "type": "integer",
               },
               "amount": {
-                "description": "Betrag of this position in EUR, gross or net as amountMode says, e.g. "119.00".",
+                "description": "Betrag in the voucher currency, gross or net as amountMode says, e.g. "119.00".",
                 "type": [
                   "string",
                   "number",
@@ -7641,6 +7664,10 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           ],
           "type": "string",
         },
+        "currency": {
+          "description": "ISO 4217 currency, e.g. USD; default EUR. Non-EUR requires exchangeRate or foreignCurrencyDeadline.",
+          "type": "string",
+        },
         "date": {
           "description": "Belegdatum, YYYY-MM-DD; default today (Berlin).",
           "type": "string",
@@ -7657,10 +7684,20 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
           "type": "boolean",
         },
+        "exchangeRate": {
+          "description": "EUR per 1 unit of the voucher currency, as a positive decimal string: "0.9" means 1 USD = 0.9 EUR. For non-EUR, pass this or foreignCurrencyDeadline, never both.",
+          "maxLength": 32,
+          "pattern": "^\\d+(?:\\.\\d+)?$",
+          "type": "string",
+        },
         "file": {
           "description": "Receipt file (Belegbild: PDF, PNG or JPEG, up to 20 MB) inside SEVDESK_FILE_DIRS, absolute or relative to one of those folders, or on a remote server the uploadId from sevdesk_upload_request. It is uploaded and attached.",
           "maxLength": 1000,
           "minLength": 1,
+          "type": "string",
+        },
+        "foreignCurrencyDeadline": {
+          "description": "Exchange-rate date, YYYY-MM-DD. sevDesk selects the rate; EUR totals are known after saving. For non-EUR only, instead of exchangeRate.",
           "type": "string",
         },
         "kind": {
@@ -7692,7 +7729,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
                 "type": "integer",
               },
               "amount": {
-                "description": "Betrag of this position in EUR, gross or net as amountMode says, e.g. "119.00".",
+                "description": "Betrag in the voucher currency, gross or net as amountMode says, e.g. "119.00".",
                 "type": [
                   "string",
                   "number",
@@ -7798,8 +7835,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "string",
         },
         "currency": {
-          "const": "EUR",
-          "description": "Pass "EUR" explicitly to convert a foreign-currency draft. Requires ALL positions with caller-supplied EUR amounts; no exchange rate is calculated. Review with dryRun first.",
+          "description": "Target currency; default the stored currency. A currency change needs ALL positions in that currency. Pass "EUR" to convert back without a rate.",
           "type": "string",
         },
         "date": {
@@ -7818,10 +7854,20 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
           "type": "boolean",
         },
+        "exchangeRate": {
+          "description": "EUR per 1 unit of the voucher currency, as a positive decimal string: "0.9" means 1 USD = 0.9 EUR. For non-EUR, pass this or foreignCurrencyDeadline, never both.",
+          "maxLength": 32,
+          "pattern": "^\\d+(?:\\.\\d+)?$",
+          "type": "string",
+        },
         "file": {
           "description": "Receipt file to attach (PDF, PNG or JPEG inside SEVDESK_FILE_DIRS, or on a remote server the uploadId from sevdesk_upload_request).",
           "maxLength": 1000,
           "minLength": 1,
+          "type": "string",
+        },
+        "foreignCurrencyDeadline": {
+          "description": "Exchange-rate date, YYYY-MM-DD. sevDesk selects the rate; EUR totals are known after saving. For non-EUR only, instead of exchangeRate.",
           "type": "string",
         },
         "id": {
@@ -7840,7 +7886,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "string",
         },
         "positions": {
-          "description": "When given, replaces ALL positions; leave out to keep them. Required with EUR amounts when converting currency.",
+          "description": "Replaces ALL positions, in the target currency. Required for any currency change and every non-EUR update, together with a fresh rate or deadline.",
           "items": {
             "additionalProperties": false,
             "properties": {
@@ -7850,7 +7896,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
                 "type": "integer",
               },
               "amount": {
-                "description": "Betrag of this position in EUR, gross or net as amountMode says, e.g. "119.00".",
+                "description": "Betrag in the voucher currency, gross or net as amountMode says, e.g. "119.00".",
                 "type": [
                   "string",
                   "number",
@@ -9680,10 +9726,20 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
           "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
           "type": "boolean",
         },
+        "exchangeRate": {
+          "description": "EUR per 1 unit of the voucher currency, as a positive decimal string: "0.9" means 1 USD = 0.9 EUR. For non-EUR, pass this or foreignCurrencyDeadline, never both.",
+          "maxLength": 32,
+          "pattern": "^\\d+(?:\\.\\d+)?$",
+          "type": "string",
+        },
         "file": {
           "description": "The e-invoice: an XRechnung XML or a ZUGFeRD/Factur-X PDF inside SEVDESK_FILE_DIRS, absolute or relative to one of those folders, or on a remote server the uploadId from sevdesk_upload_request. It is attached to the voucher.",
           "maxLength": 1000,
           "minLength": 1,
+          "type": "string",
+        },
+        "foreignCurrencyDeadline": {
+          "description": "Exchange-rate date, YYYY-MM-DD. sevDesk selects the rate; EUR totals are known after saving. For non-EUR only, instead of exchangeRate.",
           "type": "string",
         },
         "supplierId": {

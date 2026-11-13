@@ -1,4 +1,4 @@
-import { copyFile, mkdtemp, rm } from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,9 +50,90 @@ const draftRoutes = [
 
 /** Open expense voucher 2001 (gross 298.10, nothing paid, not enshrined). */
 const openVoucher = openVoucherRow({ enshrined: null });
+const usd = {
+  currency: "USD",
+  sumNet: "90",
+  sumTax: "17.1",
+  sumGross: "107.1",
+  sumNetForeignCurrency: "100",
+  sumTaxForeignCurrency: "19",
+  sumGrossForeignCurrency: "119",
+};
 
 /** Known-good cases of the M4 vouchers write tools (owned by the agent that ships the tools). */
 export const VOUCHERS_CASES: readonly WriteToolCase[] = [
+  {
+    label: "create a USD draft voucher with an exact rate",
+    tool: tool("sevdesk_voucher_create_draft"),
+    args: { ...createArgs, currency: "USD", exchangeRate: "0.9" },
+    routes: [...CREATE_READ_ROUTES, saveRoute(), ...readBackRoutes(draftRow(usd))],
+    writes: [{ method: "POST", path: "/Voucher/Factory/saveVoucher" }],
+  },
+  {
+    label: "create a USD draft voucher with an exchange-rate date",
+    tool: tool("sevdesk_voucher_create_draft"),
+    args: { ...createArgs, currency: "USD", foreignCurrencyDeadline: "2026-11-02" },
+    routes: [...CREATE_READ_ROUTES, saveRoute(), ...readBackRoutes(draftRow(usd))],
+    writes: [{ method: "POST", path: "/Voucher/Factory/saveVoucher" }],
+  },
+  {
+    label: "change a USD draft exchange rate with replacement positions",
+    tool: tool("sevdesk_voucher_update_draft"),
+    args: { id: 2101, exchangeRate: "0.8", positions: createArgs.positions },
+    routes: [
+      voucherRoute(draftRow(usd)),
+      positionsRoute(2101, [positionRow()]),
+      ...CREATE_READ_ROUTES,
+      saveRoute(),
+    ],
+    writes: [{ method: "POST", path: "/Voucher/Factory/saveVoucher" }],
+  },
+  {
+    label: "change a USD draft exchange-rate date with replacement positions",
+    tool: tool("sevdesk_voucher_update_draft"),
+    args: { id: 2101, foreignCurrencyDeadline: "2026-11-12", positions: createArgs.positions },
+    routes: [
+      voucherRoute(draftRow(usd)),
+      positionsRoute(2101, [positionRow()]),
+      ...CREATE_READ_ROUTES,
+      saveRoute(),
+    ],
+    writes: [{ method: "POST", path: "/Voucher/Factory/saveVoucher" }],
+  },
+  {
+    label: "import a USD XRechnung with an exact rate",
+    tool: tool("sevdesk_voucher_import_einvoice"),
+    args: { file: "usd.xml", accountDatevId: 4266, exchangeRate: "0.9" },
+    routes: [
+      ...CREATE_READ_ROUTES,
+      { path: "/Contact", response: { fixture: "contacts/contacts-list.json" } },
+      uploadRoute,
+      saveRoute(),
+      ...readBackRoutes(
+        draftRow({
+          ...usd,
+          sumNetForeignCurrency: "314.86",
+          sumTaxForeignCurrency: "22.04",
+          sumGrossForeignCurrency: "336.90",
+          sumNet: "283.37",
+          sumTax: "19.84",
+          sumGross: "303.21",
+        }),
+      ),
+    ],
+    writes: [
+      { method: "POST", path: "/Voucher/Factory/uploadTempFile" },
+      { method: "POST", path: "/Voucher/Factory/saveVoucher" },
+    ],
+    setup: async () => {
+      const dir = await mkdtemp(join(tmpdir(), "sevdesk-usd-einvoice-"));
+      await writeFile(
+        join(dir, "usd.xml"),
+        (await readFile(KOSIT_SAMPLE, "utf8")).replaceAll("EUR", "USD"),
+      );
+      return { config: { fileDirs: [dir] }, undo: () => rm(dir, { recursive: true, force: true }) };
+    },
+  },
   {
     label: "create a draft voucher",
     tool: tool("sevdesk_voucher_create_draft"),

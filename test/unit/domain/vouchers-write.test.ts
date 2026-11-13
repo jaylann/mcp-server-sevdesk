@@ -350,7 +350,7 @@ describe("e-invoice import mapping", () => {
     { category: "S", rate: "7.00", taxableAmount: "50.00", taxAmount: "3.50" },
   ];
 
-  it("refuses blocking findings and foreign currency", () => {
+  it("refuses blocking findings and foreign currency without a rate choice", () => {
     expect(
       refusal(() => {
         assertImportable(suggestion({ blocking: ["The totals do not add up."] }));
@@ -364,7 +364,10 @@ describe("e-invoice import mapping", () => {
       refusal(() => {
         assertImportable(suggestion({ currency: "CHF" }));
       }),
-    ).toContain("not in EUR");
+    ).toContain("exchangeRate or foreignCurrencyDeadline");
+    expect(() => {
+      assertImportable(suggestion({ currency: "CHF" }), { exchangeRate: "1.05" });
+    }).not.toThrow();
     expect(
       refusal(() => {
         assertImportable(suggestion());
@@ -385,6 +388,9 @@ describe("e-invoice import mapping", () => {
     );
     expect(spec).toEqual({
       kind: "expense",
+      currency: "EUR",
+      exchangeRate: undefined,
+      foreignCurrencyDeadline: undefined,
       supplierName: "Lieferant GmbH",
       number: "RE-4711",
       date: "2026-11-02",

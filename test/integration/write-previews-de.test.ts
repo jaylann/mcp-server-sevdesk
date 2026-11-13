@@ -19,11 +19,15 @@ import { prepareWrite } from "../helpers/write-tools.js";
 import { WRITE_TOOL_CASES } from "../write-cases/index.js";
 
 const CONFIRMED = WRITE_TOOL_CASES.filter((testCase) => requiresConfirmation(testCase.tool.tier));
-// Voucher updates also carry bilingual previews, including the currency conversion warning.
+// Voucher create/update/import also carry bilingual previews, including currency and rate facts.
 const BILINGUAL = WRITE_TOOL_CASES.filter(
   (testCase) =>
     requiresConfirmation(testCase.tool.tier) ||
-    testCase.tool.name === "sevdesk_voucher_update_draft",
+    [
+      "sevdesk_voucher_update_draft",
+      "sevdesk_voucher_create_draft",
+      "sevdesk_voucher_import_einvoice",
+    ].includes(testCase.tool.name),
 );
 const UNCONFIRMED = WRITE_TOOL_CASES.filter((testCase) => !BILINGUAL.includes(testCase));
 

@@ -81,5 +81,6 @@ legt = "legt"
 Offener = "Offener"
 Typs = "Typs"
 passt = "passt"
+separat = "separat"
 # Informal address the German page texts must not use (asserted by a test).
 deine = "deine"

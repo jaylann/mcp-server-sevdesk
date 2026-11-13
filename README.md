@@ -103,12 +103,19 @@ The VAT summary is clearly marked as an estimate (accrual or cash basis). Every 
 `dryRun: true` and then only returns exactly what it would do. The full generated reference is
 [docs/tools.md](docs/tools.md).
 
-A foreign-currency voucher draft can be changed to EUR with `sevdesk_voucher_update_draft`:
-pass `currency: "EUR"` and **all positions with your EUR amounts**, optionally `amountMode`.
-No exchange rate is calculated. Preview with `dryRun: true`, then check the stored currency and
-amounts with `sevdesk_voucher_get` before finalizing. The currency change has fixture coverage;
-its actual stored behavior still needs a [live probe](spec/deviations.md#d-081-converting-a-voucher-draft-to-eur-is-unverified).
-Direct imports of non-EUR e-invoices remain unsupported.
+Voucher drafts can be created and updated in a foreign `currency`, including imports of non-EUR
+e-invoices. Supply exactly one of `exchangeRate` (a positive decimal string: `"0.9"` means
+**1 USD = 0.9 EUR**) or `foreignCurrencyDeadline` (`YYYY-MM-DD`). Position amounts stay in the
+voucher currency. An explicit rate previews a server-computed EUR equivalent; with a deadline,
+sevDesk chooses the rate and EUR amounts are known after saving. Read-back checks the stored
+foreign and EUR totals and reports mismatches and approximate implied rates.
+
+**Every foreign-currency update requires a fresh rate or deadline and all positions.**
+[Trial-account probes](spec/deviations.md#d-082-voucher-exchange-rates-are-not-returned-and-updates-reconvert-positions)
+showed that rate changes can convert stored EUR positions again; GET does not return the rate.
+To convert back, pass `currency: "EUR"` and all positions with your EUR amounts, without a rate.
+Preview with `dryRun: true`, then check the saved amounts with `sevdesk_voucher_get`.
+Finalizing foreign-currency vouchers remains unsupported.
 
 ## Prompts
 
