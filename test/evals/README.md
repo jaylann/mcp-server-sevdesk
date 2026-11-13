@@ -93,8 +93,12 @@ cassette.
 ## CI
 
 `.github/workflows/evals.yml` runs on pull requests that touch `src/tools/**`,
-`src/instructions.ts` or the evals. The **replay** job always runs, without secrets. The
-**record** job runs for branches of this repository when the `evals` environment holds an
-`ANTHROPIC_API_KEY` secret (add required reviewers there to approve each spend), records stale
-cases and uploads the new cassettes as the `eval-cassettes` artifact. Both jobs are informational
+`src/instructions.ts` or the evals. It only **replays**: it scores the committed cassettes,
+without secrets and at no cost, and its summary lists the stale cases. It is informational
 (`continue-on-error`) and not part of `ci-ok`.
+
+Recording never runs in CI. It calls a paid model, and almost every tool change stales every
+case of its configuration, so recording on each push would re-record the whole suite again and
+again. Record locally instead, when it is worth it: before a release, or after a change that is
+mostly about tool descriptions or the server instructions. Run `pnpm evals:record` with your own
+key (about $1 for a full run with prompt caching) and commit the cassettes.

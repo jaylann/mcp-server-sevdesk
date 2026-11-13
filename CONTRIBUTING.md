@@ -330,8 +330,9 @@ skipped as "stale cassette". A cassette is keyed on the whole request, which con
 of its configuration: changing any tool's name, description or schema, or the server
 instructions, stales every case of that configuration. Re-record with
 `ANTHROPIC_API_KEY=… pnpm evals:record` (about $1–2 per full run) and commit the cassettes; when
-you rename a tool, also update the expected tool names in `test/evals/cases.ts`. On pull requests that touch tools, `.github/workflows/evals.yml` replays them and, for
-branches of this repository with the `evals` environment configured, records fresh answers. The
+you rename a tool, also update the expected tool names in `test/evals/cases.ts`. On pull requests
+that touch tools, `.github/workflows/evals.yml` only replays them, without secrets or cost.
+Recording is a local step, run before a release or after description changes, never in CI. The
 evals are informative, not a required check. Details: [test/evals/README.md](test/evals/README.md).
 
 ## Reporting bugs and security issues

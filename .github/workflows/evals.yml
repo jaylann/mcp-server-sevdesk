@@ -1,14 +1,12 @@
 name: Evals
 
 # Tool-selection evals (test/evals/README.md): do the tool descriptions and the server
-# instructions lead a model to the right first tool call? Informational only: both jobs may fail
-# without blocking the PR, and neither is part of ci-ok (models vary between runs).
+# instructions lead a model to the right first tool call? Informational only: the job may fail
+# without blocking the PR and is not part of ci-ok (models vary between runs).
 #
-# - replay: always; scores the committed model answers (cassettes) against the current tools.
-#   Cassettes that no longer match the tools are skipped as stale. No secret.
-# - record: same-repository PRs only, when the `evals` environment holds ANTHROPIC_API_KEY.
-#   Records answers for stale or missing cassettes (about $1-3 for a full run) and uploads them
-#   as an artifact to commit.
+# Replay only: scores the committed model answers (cassettes) against the current tools and
+# reports stale ones. No secret, no cost. Recording calls a paid model, and nearly every tool
+# change stales every case, so it runs locally on purpose (`pnpm evals:record`), never in CI.
 on:
   pull_request:
     paths:
@@ -46,57 +44,3 @@ jobs:
       # The eval writes its score table to $GITHUB_STEP_SUMMARY.
       - name: Replay recorded answers
         run: pnpm evals
-
-  record:
-    name: Evals (record)
-    # Fork PRs get no secrets; do not even ask for the environment.
-    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    continue-on-error: true
-    # Holds the ANTHROPIC_API_KEY secret; add required reviewers there to approve each spend.
-    environment:
-      name: evals
-    permissions:
-      contents: read # check out the repository
-    steps:
-      - name: Check for the API key
-        id: key
-        env:
-          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
-        run: |
-          if [ "$HAS_KEY" = "true" ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice title=Eval recording skipped::The evals environment has no ANTHROPIC_API_KEY secret, so no model answers were recorded. The replay job still scores the committed cassettes."
-            echo "Eval recording skipped: no ANTHROPIC_API_KEY in the evals environment." >> "$GITHUB_STEP_SUMMARY"
-            echo "present=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Check out
-        if: ${{ steps.key.outputs.present == 'true' }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      # No dependency cache: this job holds the API key.
-      - name: Set up toolchain
-        if: ${{ steps.key.outputs.present == 'true' }}
-        uses: $/.github/actions/setup
-        with:
-          cache: "false"
-
-      - name: Record stale or missing answers
-        if: ${{ steps.key.outputs.present == 'true' }}
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: pnpm evals:record
-
-      - name: Upload cassettes
-        if: ${{ steps.key.outputs.present == 'true' && !cancelled() }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: eval-cassettes
-          path: test/evals/cassettes/
-          retention-days: 7
-          if-no-files-found: ignore
