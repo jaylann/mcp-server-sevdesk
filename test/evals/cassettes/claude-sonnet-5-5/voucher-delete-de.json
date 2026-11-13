@@ -1,8 +1,8 @@
 {
   "caseId": "voucher-delete-de",
   "model": "claude-sonnet-5-5",
-  "key": "3786a04eaf7aa9e697687a5dc3dacfd954134bd264ba028f95fe7f58d8fd4188",
-  "recordedAt": "2026-11-08T17:38:28.684Z",
+  "key": "0338c7d6aecaf871e067422d501ca2b87651fd849115ca42ca064c781978d46b",
+  "recordedAt": "2026-11-13T14:12:24.811Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -11,9 +11,9 @@
     ],
     "usage": {
       "inputTokens": 111,
-      "outputTokens": 186,
+      "outputTokens": 197,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 56314
+      "cacheReadInputTokens": 57128
     }
   }
 }

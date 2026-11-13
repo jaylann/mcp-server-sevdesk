@@ -1,8 +1,8 @@
 {
   "caseId": "voucher-reset-de",
   "model": "claude-sonnet-5-5",
-  "key": "ca9d1b375ee61c511463082d8ea3a932d0906f2e5bd531f027eaf074b64787f3",
-  "recordedAt": "2026-11-08T17:38:38.569Z",
+  "key": "7da1da104d5aaf1c67c1f9f5eddefd6cd4d8097b465703a6f6d27baa42cc116d",
+  "recordedAt": "2026-11-13T14:12:35.593Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -15,9 +15,9 @@
     ],
     "usage": {
       "inputTokens": 115,
-      "outputTokens": 208,
+      "outputTokens": 203,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 56314
+      "cacheReadInputTokens": 57128
     }
   }
 }

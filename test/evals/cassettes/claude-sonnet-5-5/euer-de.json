@@ -1,8 +1,8 @@
 {
   "caseId": "euer-de",
   "model": "claude-sonnet-5-5",
-  "key": "25f7eb86df886cfbe8cda1ce8fde467b281ebbe5f59f0fad9d359b7e102c113f",
-  "recordedAt": "2026-11-08T17:06:31.706Z",
+  "key": "883e74bae5159586fc23835e3871e7a61c38e6084eee040f70f6de1855b5686f",
+  "recordedAt": "2026-11-13T14:13:09.178Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -13,7 +13,7 @@
       "inputTokens": 97,
       "outputTokens": 58,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17167
+      "cacheReadInputTokens": 17202
     }
   }
 }

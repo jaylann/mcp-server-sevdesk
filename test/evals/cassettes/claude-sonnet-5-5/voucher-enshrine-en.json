@@ -1,8 +1,8 @@
 {
   "caseId": "voucher-enshrine-en",
   "model": "claude-sonnet-5-5",
-  "key": "e56ec97ee67cac62931e2360e52d93b93d84f40f9df766dda8f2b6662873d775",
-  "recordedAt": "2026-11-08T17:38:35.952Z",
+  "key": "8fd77d2a24cdda221970248553a0b4f5144b2c563645f35e65fc1c3cea678ce6",
+  "recordedAt": "2026-11-13T14:12:33.004Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -16,9 +16,9 @@
     ],
     "usage": {
       "inputTokens": 106,
-      "outputTokens": 295,
+      "outputTokens": 290,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 56314
+      "cacheReadInputTokens": 57128
     }
   }
 }

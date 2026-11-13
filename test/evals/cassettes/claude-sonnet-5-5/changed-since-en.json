@@ -1,8 +1,8 @@
 {
   "caseId": "changed-since-en",
   "model": "claude-sonnet-5-5",
-  "key": "3e35532aa0a5b5a6d173ebdfda01278aaae0b149fcd099c37a8fccf3a7a18193",
-  "recordedAt": "2026-11-08T17:06:24.808Z",
+  "key": "b008f80c9e7664c94652f9c9616eae93e05008988f2420a7b8f6686b70d52a8e",
+  "recordedAt": "2026-11-13T14:13:01.818Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -13,7 +13,7 @@
       "inputTokens": 96,
       "outputTokens": 59,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17167
+      "cacheReadInputTokens": 17202
     }
   }
 }

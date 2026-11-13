@@ -1,8 +1,8 @@
 {
   "caseId": "invoice-book-payment-de",
   "model": "claude-sonnet-5-5",
-  "key": "e79ec65f90fb5747ff0764039845d0f3cfb7f4b8c4147aa3cf0ad45623fc59c0",
-  "recordedAt": "2026-11-08T17:38:03.287Z",
+  "key": "b4a2e5c4053de29538ef31793df06943e78d267a1a6b42f55881812161f6f04a",
+  "recordedAt": "2026-11-13T14:11:37.419Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -15,9 +15,9 @@
     ],
     "usage": {
       "inputTokens": 155,
-      "outputTokens": 299,
+      "outputTokens": 321,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 56314
+      "cacheReadInputTokens": 57128
     }
   }
 }

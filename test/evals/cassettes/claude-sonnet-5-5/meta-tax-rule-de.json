@@ -1,8 +1,8 @@
 {
   "caseId": "meta-tax-rule-de",
   "model": "claude-sonnet-5-5",
-  "key": "0850ff4ca2b456763a8214b55ac1fb19916a9133b6f5d5365c9d9d29b83938af",
-  "recordedAt": "2026-11-08T17:04:42.137Z",
+  "key": "79a03c0f47079bc02e156eebd3a7bfe29d35caee67c12f8cbcd4e6f4b1f462dd",
+  "recordedAt": "2026-11-13T14:11:07.870Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -12,9 +12,9 @@
     ],
     "usage": {
       "inputTokens": 135,
-      "outputTokens": 165,
+      "outputTokens": 183,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17167
+      "cacheReadInputTokens": 17202
     }
   }
 }

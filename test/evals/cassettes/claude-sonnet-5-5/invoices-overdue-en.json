@@ -1,8 +1,8 @@
 {
   "caseId": "invoices-overdue-en",
   "model": "claude-sonnet-5-5",
-  "key": "edc720d0e90eee7261ae3273408b3c9dcb92e35870d4a23d85c8081ece774f5e",
-  "recordedAt": "2026-11-08T17:04:54.828Z",
+  "key": "89e9d896cea00b3d7c385a3543bdf565add32de0ec73d9b0445db55b9c776161",
+  "recordedAt": "2026-11-13T14:11:20.649Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -18,7 +18,7 @@
       "inputTokens": 100,
       "outputTokens": 135,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17167
+      "cacheReadInputTokens": 17202
     }
   }
 }
