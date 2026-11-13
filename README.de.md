@@ -109,6 +109,14 @@ Die Umsatzsteuer-Auswertung ist deutlich als Schätzung gekennzeichnet (Soll- od
 Istversteuerung). Jedes Schreibwerkzeug akzeptiert `dryRun: true` und gibt dann nur genau das
 zurück, was es tun würde. Die vollständige, generierte Referenz ist [docs/tools.md](docs/tools.md).
 
+Ein Belegentwurf in Fremdwährung lässt sich mit `sevdesk_voucher_update_draft` auf EUR umstellen:
+Übergeben Sie `currency: "EUR"` und **alle Positionen mit Ihren EUR-Beträgen**, bei Bedarf auch
+`amountMode`. Es wird kein Wechselkurs berechnet. Prüfen Sie zuerst die Vorschau mit `dryRun: true`
+und nach dem Speichern die Währung und Beträge mit `sevdesk_voucher_get`, bevor Sie den Beleg
+fertigstellen. Die Umstellung ist mit Testdaten geprüft; das tatsächlich gespeicherte Ergebnis
+muss noch [am Live-System geprüft werden](spec/deviations.md#d-081-converting-a-voucher-draft-to-eur-is-unverified).
+Der direkte Import von E-Rechnungen in Fremdwährung bleibt ausgeschlossen.
+
 ## Prompts
 
 Fertige Arbeitsabläufe als MCP-Prompts. Clients zeigen sie neben den Werkzeugen an; in Claude Code
