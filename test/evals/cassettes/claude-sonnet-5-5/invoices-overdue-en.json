@@ -1,8 +1,8 @@
 {
   "caseId": "invoices-overdue-en",
   "model": "claude-sonnet-5-5",
-  "key": "89e9d896cea00b3d7c385a3543bdf565add32de0ec73d9b0445db55b9c776161",
-  "recordedAt": "2026-11-13T14:11:20.649Z",
+  "key": "1132878c7fb53e68134ceed5a33f33702181e9f75164d408f58c4a25f49ba9a9",
+  "recordedAt": "2026-11-13T18:16:58.751Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -11,14 +11,14 @@
       {
         "type": "tool_use",
         "name": "sevdesk_invoices_list",
-        "input": { "overdueOnly": true, "limit": 100 }
+        "input": { "overdueOnly": true, "detail": "summary", "limit": 100 }
       }
     ],
     "usage": {
       "inputTokens": 100,
-      "outputTokens": 135,
+      "outputTokens": 158,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17202
+      "cacheReadInputTokens": 17341
     }
   }
 }

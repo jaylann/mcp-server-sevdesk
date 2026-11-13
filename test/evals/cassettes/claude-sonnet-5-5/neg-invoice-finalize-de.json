@@ -1,8 +1,8 @@
 {
   "caseId": "neg-invoice-finalize-de",
   "model": "claude-sonnet-5-5",
-  "key": "ce28f22f9fd7b80cf93a4110ec394bd3722f5d139fc8e1ab23547c43cc6ac772",
-  "recordedAt": "2026-11-13T14:13:22.304Z",
+  "key": "246552ada6088d6f0400ffe94e444e7bed1e7b7300cc90f9321f707f45113863",
+  "recordedAt": "2026-11-13T18:18:47.856Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -11,9 +11,9 @@
     ],
     "usage": {
       "inputTokens": 91,
-      "outputTokens": 169,
+      "outputTokens": 172,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 43886
+      "cacheReadInputTokens": 43737
     }
   }
 }

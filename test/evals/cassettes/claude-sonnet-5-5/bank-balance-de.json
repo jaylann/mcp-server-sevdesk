@@ -1,8 +1,8 @@
 {
   "caseId": "bank-balance-de",
   "model": "claude-sonnet-5-5",
-  "key": "cd00217037ff48e7485e87da7a8f5c9166cbaf9d1b40425be61baa931d741576",
-  "recordedAt": "2026-11-13T14:12:37.193Z",
+  "key": "e3b4796541c89e0a733063479edc1b8ed6dd923cfdd3d788ebfba29ef6fcdbb1",
+  "recordedAt": "2026-11-13T18:18:10.103Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -11,7 +11,7 @@
       "inputTokens": 103,
       "outputTokens": 37,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17202
+      "cacheReadInputTokens": 17341
     }
   }
 }

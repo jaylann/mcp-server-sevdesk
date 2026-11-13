@@ -1,29 +1,34 @@
 {
   "caseId": "voucher-create-de",
   "model": "claude-sonnet-5-5",
-  "key": "da0aeb397392cfa83f823adf7a66949dd6f5a8e6809d2fa18427a129f5cb8272",
-  "recordedAt": "2026-11-13T14:12:11.624Z",
+  "key": "7c0bc14609560c888ddc819d9ee34cb8ae4e1a3d71f4f76217173df16be7d16e",
+  "recordedAt": "2026-11-13T18:17:46.405Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
     "content": [
+      { "type": "tool_use", "name": "sevdesk_account_info", "input": {} },
       {
         "type": "tool_use",
         "name": "sevdesk_contacts_search",
-        "input": { "query": "Muster Bürowelt" }
+        "input": { "query": "Muster Bürowelt", "detail": "summary" }
       },
       {
         "type": "tool_use",
         "name": "sevdesk_reference_lookup",
-        "input": { "kind": "receipt_guidance", "receiptType": "expense", "query": "Bürobedarf" }
-      },
-      { "type": "tool_use", "name": "sevdesk_account_info", "input": {} }
+        "input": {
+          "kind": "receipt_guidance",
+          "receiptType": "expense",
+          "taxRuleId": 9,
+          "limit": 100
+        }
+      }
     ],
     "usage": {
       "inputTokens": 170,
-      "outputTokens": 329,
+      "outputTokens": 298,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 57128
+      "cacheReadInputTokens": 56615
     }
   }
 }

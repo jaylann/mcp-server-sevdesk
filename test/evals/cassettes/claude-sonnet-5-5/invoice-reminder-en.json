@@ -1,8 +1,8 @@
 {
   "caseId": "invoice-reminder-en",
   "model": "claude-sonnet-5-5",
-  "key": "3fac5266d6bd56909cc35a76dcdfd931fc08b836d94938c0182e3dc1c0b94523",
-  "recordedAt": "2026-11-13T14:11:46.460Z",
+  "key": "abb23ae17668a8f5c7e1d43e966825f49516034e46744c5b2d6914a14c3cba48",
+  "recordedAt": "2026-11-13T18:17:21.543Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -10,14 +10,14 @@
       {
         "type": "tool_use",
         "name": "sevdesk_invoice_create_reminder",
-        "input": { "invoiceId": 4711, "dryRun": true }
+        "input": { "invoiceId": 4711 }
       }
     ],
     "usage": {
       "inputTokens": 112,
-      "outputTokens": 88,
+      "outputTokens": 64,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 57128
+      "cacheReadInputTokens": 56615
     }
   }
 }

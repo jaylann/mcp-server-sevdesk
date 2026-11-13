@@ -1,8 +1,8 @@
 {
   "caseId": "voucher-create-en",
   "model": "claude-sonnet-5-5",
-  "key": "83a6c3177b8ca9fa726dfd22804d0492216215439911858161d7851d3d88bbe9",
-  "recordedAt": "2026-11-13T14:12:14.338Z",
+  "key": "2a32b2dc6ea0dfca58315dd64dbc09d27c19185aeeb80b6c50b98f98063af536",
+  "recordedAt": "2026-11-13T18:17:49.037Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -11,24 +11,19 @@
       {
         "type": "tool_use",
         "name": "sevdesk_contacts_search",
-        "input": { "query": "Deutsche Bahn" }
+        "input": { "query": "Deutsche Bahn", "detail": "summary" }
       },
       {
         "type": "tool_use",
         "name": "sevdesk_reference_lookup",
-        "input": {
-          "kind": "receipt_guidance",
-          "receiptType": "expense",
-          "taxRuleId": 9,
-          "query": "Reise"
-        }
+        "input": { "kind": "receipt_guidance", "receiptType": "expense", "query": "Reise" }
       }
     ],
     "usage": {
       "inputTokens": 154,
-      "outputTokens": 280,
+      "outputTokens": 282,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 57128
+      "cacheReadInputTokens": 56615
     }
   }
 }

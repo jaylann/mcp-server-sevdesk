@@ -1,8 +1,8 @@
 {
   "caseId": "meta-receipt-guidance-en",
   "model": "claude-sonnet-5-5",
-  "key": "767ebd36a38b1bb0436d4c212e17f9dd6300052f78872d2ce4dba339c4aa505c",
-  "recordedAt": "2026-11-13T14:11:10.490Z",
+  "key": "6a1dc8c6fb7d0e8bbd5a5f8b21ce34f5388a30a7f1bbd9db2802fd9d3d30d698",
+  "recordedAt": "2026-11-13T18:16:50.831Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -21,9 +21,9 @@
     ],
     "usage": {
       "inputTokens": 117,
-      "outputTokens": 238,
+      "outputTokens": 293,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17202
+      "cacheReadInputTokens": 17341
     }
   }
 }

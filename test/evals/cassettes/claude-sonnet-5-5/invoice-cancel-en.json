@@ -1,8 +1,8 @@
 {
   "caseId": "invoice-cancel-en",
   "model": "claude-sonnet-5-5",
-  "key": "5679386965125b14b3253c88f93376898600ee0f097b355d3c99cd9869e3507d",
-  "recordedAt": "2026-11-13T14:11:40.916Z",
+  "key": "69288d24616d2c3e37a486fbace18ab2e763f491cce82395f39163d1b3b84cb5",
+  "recordedAt": "2026-11-13T18:17:17.170Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -16,9 +16,9 @@
     ],
     "usage": {
       "inputTokens": 103,
-      "outputTokens": 326,
+      "outputTokens": 267,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 57128
+      "cacheReadInputTokens": 56615
     }
   }
 }

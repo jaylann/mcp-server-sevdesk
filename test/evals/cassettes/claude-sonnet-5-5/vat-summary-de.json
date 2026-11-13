@@ -1,8 +1,8 @@
 {
   "caseId": "vat-summary-de",
   "model": "claude-sonnet-5-5",
-  "key": "e472d6c974bb8bff2850b2e2336f750b8df669b52180cc87e8ddae52b674bf48",
-  "recordedAt": "2026-11-13T14:13:03.935Z",
+  "key": "15a1fc3004f2277fd16752743f58541fe86ba384b954f9df905f73d73251e42f",
+  "recordedAt": "2026-11-13T18:18:31.972Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -13,7 +13,7 @@
       "inputTokens": 137,
       "outputTokens": 77,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17202
+      "cacheReadInputTokens": 17341
     }
   }
 }

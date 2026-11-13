@@ -1,0 +1,23 @@
+{
+  "caseId": "invoices-summary-browse-en",
+  "model": "claude-sonnet-5-5",
+  "key": "35ffb6bdf26d5cb8811c108ef9bff25141f25e9be7ac0ffd7e8e7b7d006d142c",
+  "recordedAt": "2026-11-13T18:16:40.107Z",
+  "response": {
+    "model": "claude-sonnet-5-5",
+    "stopReason": "tool_use",
+    "content": [
+      {
+        "type": "tool_use",
+        "name": "sevdesk_invoices_list",
+        "input": { "number": "RE-1003", "detail": "summary" }
+      }
+    ],
+    "usage": {
+      "inputTokens": 99,
+      "outputTokens": 82,
+      "cacheCreationInputTokens": 17341,
+      "cacheReadInputTokens": 0
+    }
+  }
+}

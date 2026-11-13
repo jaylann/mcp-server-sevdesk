@@ -1,17 +1,17 @@
 {
   "caseId": "neg-mark-private-en",
   "model": "claude-sonnet-5-5",
-  "key": "432ebb5a0f2a92115ba2da336caf5c8636851bd422f416d470dfa7d52fd60925",
-  "recordedAt": "2026-11-13T14:13:33.322Z",
+  "key": "de06c3a41fb22ea70b60aab5ce1cb65278ddcb536b301c8d6af01f2631ad1759",
+  "recordedAt": "2026-11-13T18:18:59.255Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
     "content": [{ "type": "tool_use", "name": "sevdesk_transaction_get", "input": { "id": 556 } }],
     "usage": {
       "inputTokens": 96,
-      "outputTokens": 167,
+      "outputTokens": 182,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17202
+      "cacheReadInputTokens": 17341
     }
   }
 }

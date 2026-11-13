@@ -1,8 +1,8 @@
 {
   "caseId": "invoice-create-de",
   "model": "claude-sonnet-5-5",
-  "key": "9de67b97a929d90b5441c0eace8bf053148fad1c8899ed7245fbcce344ae6da2",
-  "recordedAt": "2026-11-13T14:11:31.654Z",
+  "key": "50508464fa420d224ae7e4beb2e9f42bf8d60c643ece46c3ca90bf5514860f74",
+  "recordedAt": "2026-11-13T18:17:10.960Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -12,16 +12,19 @@
         "name": "sevdesk_invoice_create_draft",
         "input": {
           "contactId": 1234,
-          "positions": [{ "name": "Beratung", "quantity": 10, "unitPrice": 120, "taxRate": 19 }],
-          "timeToPay": 14
+          "positions": [
+            { "name": "Beratung", "quantity": 10, "unitPrice": "120.00", "taxRate": 19 }
+          ],
+          "timeToPay": 14,
+          "priceMode": "net"
         }
       }
     ],
     "usage": {
       "inputTokens": 147,
-      "outputTokens": 225,
+      "outputTokens": 249,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 57128
+      "cacheReadInputTokens": 56615
     }
   }
 }

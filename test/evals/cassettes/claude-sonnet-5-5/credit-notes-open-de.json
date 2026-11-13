@@ -1,8 +1,8 @@
 {
   "caseId": "credit-notes-open-de",
   "model": "claude-sonnet-5-5",
-  "key": "ecb61c8d5ece4436b3ef3f703c99a9ff3af6f93ad6153a9cbdab8467d507d59f",
-  "recordedAt": "2026-11-13T14:11:52.946Z",
+  "key": "18978808c104d38e22fbf99f4064f971c4b161134a1e93bfdc6cf09835ad5049",
+  "recordedAt": "2026-11-13T18:17:28.565Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -22,7 +22,7 @@
       "inputTokens": 92,
       "outputTokens": 159,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 17202
+      "cacheReadInputTokens": 17341
     }
   }
 }

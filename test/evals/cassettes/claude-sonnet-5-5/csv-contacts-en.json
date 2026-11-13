@@ -1,8 +1,8 @@
 {
   "caseId": "csv-contacts-en",
   "model": "claude-sonnet-5-5",
-  "key": "0a7e56f04424c03e68048ab1231d9d693a94040f98412c2e19ef551930a74287",
-  "recordedAt": "2026-11-13T14:13:12.880Z",
+  "key": "4af584b5e74f7275af2f5e326f9fbd49a6114e090e2ddc5202b8f7f442204171",
+  "recordedAt": "2026-11-13T18:18:40.628Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -13,7 +13,7 @@
       "inputTokens": 89,
       "outputTokens": 57,
       "cacheCreationInputTokens": 0,
-      "cacheReadInputTokens": 19343
+      "cacheReadInputTokens": 19456
     }
   }
 }

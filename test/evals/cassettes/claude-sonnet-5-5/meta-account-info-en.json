@@ -1,8 +1,8 @@
 {
   "caseId": "meta-account-info-en",
   "model": "claude-sonnet-5-5",
-  "key": "799942a090a990c67228a0d6af575b47fca09ed380905b62a9f8cee51d45fe8c",
-  "recordedAt": "2026-11-13T14:11:03.227Z",
+  "key": "6063929915c54f009d14dacf8cc6378f855864996b6e12ae6a4293202f277d27",
+  "recordedAt": "2026-11-13T18:16:43.522Z",
   "response": {
     "model": "claude-sonnet-5-5",
     "stopReason": "tool_use",
@@ -10,8 +10,8 @@
     "usage": {
       "inputTokens": 117,
       "outputTokens": 32,
-      "cacheCreationInputTokens": 17202,
-      "cacheReadInputTokens": 0
+      "cacheCreationInputTokens": 0,
+      "cacheReadInputTokens": 17341
     }
   }
 }
