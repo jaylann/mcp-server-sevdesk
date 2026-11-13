@@ -10,11 +10,16 @@ import {
   type TransactionListResult,
 } from "../../domain/banking.js";
 import { dateRangeInputShape } from "../../domain/common.js";
+import {
+  listDetailInputShape,
+  transactionSummary,
+  transactionSummarySchema,
+} from "../../domain/list-summary.js";
 import { pagingInputShape } from "../../domain/paging.js";
 import { defineTool } from "../define-tool.js";
 
 const output = z.object({
-  items: z.array(transactionDtoSchema),
+  items: z.array(z.union([transactionDtoSchema, transactionSummarySchema])),
   total: z
     .number()
     .int()
@@ -53,7 +58,7 @@ export const transactionsListTool = defineTool({
     `ranges are checked here while reading up to ${MAX_SCAN_ROWS} rows per call; ` +
     "dateField=entry lets sevDesk filter by entry date instead (faster). offset/nextOffset " +
     "count sevDesk rows, not matches: pass nextOffset while hasMore is true. Account ids: " +
-    "sevdesk_bank_accounts_list.",
+    "sevdesk_bank_accounts_list. Use detail=summary to browse/find; sevdesk_transaction_get or detail=full for details.",
   toolset: "banking",
   tier: "read",
   annotations: {
@@ -63,6 +68,7 @@ export const transactionsListTool = defineTool({
     openWorldHint: false,
   },
   input: z.strictObject({
+    ...listDetailInputShape,
     checkAccountId: z
       .number()
       .int()
@@ -112,7 +118,7 @@ export const transactionsListTool = defineTool({
     );
     return {
       data: {
-        items: [...result.items],
+        items: args.detail === "summary" ? result.items.map(transactionSummary) : [...result.items],
         ...(result.filteredLocally || result.rowsTotal === undefined
           ? {}
           : { total: result.rowsTotal }),

@@ -12,6 +12,11 @@ import {
   documentListSummary,
   localFilterOutputShape,
 } from "../../domain/document-positions.js";
+import {
+  creditNoteSummary,
+  creditNoteSummarySchema,
+  listDetailInputShape,
+} from "../../domain/list-summary.js";
 import { pageOutputShape, pagingInputShape } from "../../domain/paging.js";
 import { defineTool } from "../define-tool.js";
 
@@ -21,7 +26,7 @@ const STATUS_KEYS = Object.keys(CREDIT_NOTE_STATUS_FILTERS) as [
 ];
 
 const output = z.object({
-  items: z.array(creditNoteRowSchema),
+  items: z.array(z.union([creditNoteRowSchema, creditNoteSummarySchema])),
   ...pageOutputShape,
   ...localFilterOutputShape,
 });
@@ -35,8 +40,8 @@ export const creditNotesListTool = defineTool({
     "net/tax/gross, booking category (e.g. UNDERACHIEVEMENT = Minderleistung, PROVISION) and " +
     "the invoice they refer to (sourceInvoiceId). Filter by status (draft = Entwurf, open, " +
     "partially_paid, paid), contactId, exact credit note number (Gutschriftsnummer) and date " +
-    "range. Page with offset = nextOffset while hasMore. Details and positions: " +
-    "sevdesk_credit_note_get; the source invoice: sevdesk_invoice_get.",
+    "range. Page with offset = nextOffset while hasMore. Use detail=summary to browse/find; sevdesk_credit_note_get or detail=full for details. " +
+    "The source invoice: sevdesk_invoice_get.",
   toolset: "credit-notes",
   tier: "read",
   annotations: {
@@ -46,6 +51,7 @@ export const creditNotesListTool = defineTool({
     openWorldHint: false,
   },
   input: z.strictObject({
+    ...listDetailInputShape,
     status: z
       .enum(STATUS_KEYS)
       .optional()
@@ -71,7 +77,10 @@ export const creditNotesListTool = defineTool({
   handler: async (args, ctx) => {
     const result = await listCreditNotes(ctx.client, args, ctx.signal);
     return {
-      data: documentListData(result, args),
+      data: {
+        ...documentListData(result, args),
+        items: args.detail === "summary" ? result.items.map(creditNoteSummary) : [...result.items],
+      },
       summary: documentListSummary("Credit notes", "matching credit notes", result, args),
     };
   },

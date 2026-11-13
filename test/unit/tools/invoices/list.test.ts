@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { invoiceRowSchema } from "../../../../src/domain/invoices.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { invoicesListTool as tool } from "../../../../src/tools/invoices/list.js";
 import {
@@ -18,7 +19,14 @@ const listRoute: FakeRoute = {
 async function list(args: Record<string, unknown>, routes: readonly FakeRoute[] = [listRoute]) {
   const client = new FakeSevdeskClient(routes);
   const result = await tool.handler(tool.input.parse(args), testContext(client));
-  return { client, result };
+  // These existing assertions exercise the unchanged full/default contract.
+  return {
+    client,
+    result: {
+      ...result,
+      data: { ...result.data, items: result.data.items.map((row) => invoiceRowSchema.parse(row)) },
+    },
+  };
 }
 
 beforeEach(() => {

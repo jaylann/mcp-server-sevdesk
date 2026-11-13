@@ -1,4 +1,5 @@
 import { type EvalCase, NO_TOOL } from "./cases.js";
+import type { JsonObject } from "./cassette.js";
 
 /** What one case run produced (the harness output). JSON only, for the vitest-evals report. */
 export type SelectionOutput = {
@@ -6,6 +7,7 @@ export type SelectionOutput = {
   firstTool: string;
   /** Every tool called in the answer, in order. */
   tools: string[];
+  calls: { name: string; input: JsonObject }[];
   stopReason: string | null;
   /** Where the answer came from: a cassette, or a call made by this run. */
   source: "replay" | "record";
@@ -35,6 +37,21 @@ export function scoreFirstAnswer(testCase: EvalCase, output: SelectionOutput): S
   const listed = calls.join(", ");
   const expected = testCase.expected.join(" or ");
   if (calls.some((name) => testCase.expected.includes(name))) {
+    if (
+      testCase.expectedInput !== undefined &&
+      !output.calls.some(
+        (call) =>
+          testCase.expected.includes(call.name) &&
+          Object.entries(testCase.expectedInput ?? {}).every(
+            ([key, value]) => call.input[key] === value,
+          ),
+      )
+    ) {
+      return {
+        score: 0,
+        rationale: `Expected call (${expected}) did not include the required arguments.`,
+      };
+    }
     return { score: 1, rationale: `First answer (${listed}) makes an expected call.` };
   }
   if (calls.some((name) => testCase.secondChoice?.includes(name) === true)) {

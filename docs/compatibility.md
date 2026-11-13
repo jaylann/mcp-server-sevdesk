@@ -101,6 +101,13 @@ A name that is going away is deprecated first:
 Pull requests that change the public surface follow the same rules
 ([CONTRIBUTING.md](../CONTRIBUTING.md#compatibility)).
 
+## Planned changes
+
+The document and record list/search tools accept `detail: "summary"` for browsing. In 1.x,
+`detail` defaults to `"full"` and keeps the existing output. The next major version may switch
+the default to `"summary"`; callers that need every list field can explicitly use
+`detail: "full"` today. Use the matching `*_get` tool for a selected record. Paging and default limits are unchanged.
+
 ## Changes from 0.x
 
 Before 1.0, a review renamed these so the frozen names are consistent. Configurations and scripts

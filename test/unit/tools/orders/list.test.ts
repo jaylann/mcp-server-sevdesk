@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { orderRowSchema } from "../../../../src/domain/orders.js";
 import { ordersListTool as tool } from "../../../../src/tools/orders/list.js";
 import { type FakeRoute, FakeSevdeskClient, testContext } from "../../../helpers/fake-client.js";
 
@@ -12,7 +13,14 @@ const listRoute: FakeRoute = {
 async function list(args: Record<string, unknown>, routes: readonly FakeRoute[] = [listRoute]) {
   const client = new FakeSevdeskClient(routes);
   const result = await tool.handler(tool.input.parse(args), testContext(client));
-  return { client, result };
+  // These existing assertions exercise the unchanged full/default contract.
+  return {
+    client,
+    result: {
+      ...result,
+      data: { ...result.data, items: result.data.items.map((row) => orderRowSchema.parse(row)) },
+    },
+  };
 }
 
 describe("sevdesk_orders_list (community: recorded Order shape, fake data)", () => {

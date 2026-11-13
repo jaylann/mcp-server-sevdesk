@@ -24,6 +24,8 @@ export interface EvalCase {
   readonly prompt: string;
   /** First calls that score 1. {@link NO_TOOL} means answering without a tool. */
   readonly expected: readonly string[];
+  /** Required argument subset on an expected call, e.g. browsing must opt into summary. */
+  readonly expectedInput?: Readonly<Record<string, string | number | boolean>>;
   /** Reasonable but not ideal first calls (score 0.5), e.g. a read before a write. */
   readonly secondChoice?: readonly string[];
   /** Negative cases: tools the env must not offer (the premise of the case). */
@@ -58,6 +60,32 @@ const ENVS = {
 const ORIENT = "sevdesk_account_info";
 
 export const EVAL_CASES: readonly EvalCase[] = [
+  {
+    id: "invoices-summary-browse-en",
+    lang: "en",
+    toolset: "invoices",
+    kind: "positive",
+    env: ENVS.read,
+    prompt:
+      "Find invoice RE-1003. First browse with a compact list, then inspect the matching invoice's line items and payment terms.",
+    expected: ["sevdesk_invoices_list"],
+    expectedInput: { detail: "summary", number: "RE-1003" },
+    notes:
+      "First stage: select summary for browsing. The paired get case supplies a summary result because this harness scores one answer per case.",
+  },
+  {
+    id: "invoice-get-after-summary-en",
+    lang: "en",
+    toolset: "invoices",
+    kind: "positive",
+    env: ENVS.read,
+    prompt:
+      'Find invoice RE-1003 and inspect its line items and payment terms. The preceding sevdesk_invoices_list call with detail="summary" returned {"items":[{"id":1003,"number":"RE-1003","status":"partially_paid","contact":{"id":1001,"name":"Musterfirma GmbH"},"date":"2026-09-01","dueDate":"2026-10-01","gross":"238.00","openAmount":"188.00","currency":"EUR"}],"hasMore":false}. Continue with the matching record.',
+    expected: ["sevdesk_invoice_get"],
+    expectedInput: { id: 1003 },
+    notes:
+      "Second stage: the summary gives the record id; fetch details instead of listing all full records.",
+  },
   // ------------------------------------------------------------------ meta
   {
     id: "meta-account-info-en",
