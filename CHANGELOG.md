@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.5.0](https://github.com/jaylann/mcp-server-sevdesk/compare/v1.4.0...v1.5.0) (2026-11-13)
+
+
+### Features
+
+* **vouchers:** create and update foreign-currency voucher drafts ([#59](https://github.com/jaylann/mcp-server-sevdesk/issues/59)) ([4a671ec](https://github.com/jaylann/mcp-server-sevdesk/commit/4a671ecb94a5142366870f6aec02c540f14e0dcf))
+
+
+### Performance
+
+* **lifecycle:** load the country table once per tool call instead of on every document read ([#58](https://github.com/jaylann/mcp-server-sevdesk/issues/58)) ([3a9b788](https://github.com/jaylann/mcp-server-sevdesk/commit/3a9b78810453593a8a5f57e4bf574d45ef6b967c))
+* **lists:** add a summary detail level to the list tools ([#69](https://github.com/jaylann/mcp-server-sevdesk/issues/69)) ([f061020](https://github.com/jaylann/mcp-server-sevdesk/commit/f0610208f6d3d6bb20b95c392e27e8c4eee04c01))
+* **output:** return minified json in tool results ([#64](https://github.com/jaylann/mcp-server-sevdesk/issues/64)) ([dd9e9b7](https://github.com/jaylann/mcp-server-sevdesk/commit/dd9e9b70de2d97b4e0d145921c387d1b12561124))
+* **schemas:** slim the output schemas in tools/list ([#60](https://github.com/jaylann/mcp-server-sevdesk/issues/60)) ([e738115](https://github.com/jaylann/mcp-server-sevdesk/commit/e738115818ce724d1827642bc12650748a99d963))
+
 ## [1.4.0](https://github.com/jaylann/mcp-server-sevdesk/compare/v1.3.0...v1.4.0) (2026-11-13)
 
 

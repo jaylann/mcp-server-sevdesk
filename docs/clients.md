@@ -299,7 +299,7 @@ image's default `--http`:
         "--read-only",
         "-e",
         "SEVDESK_API_TOKEN",
-        "ghcr.io/jaylann/mcp-server-sevdesk:1.4.0",
+        "ghcr.io/jaylann/mcp-server-sevdesk:1.5.0",
         "--stdio"
       ],
       "env": {

@@ -3,7 +3,7 @@
   "name": "io.github.jaylann/mcp-server-sevdesk",
   "title": "sevDesk",
   "description": "Safety-first MCP server for sevDesk accounting: invoices, receipts, banking, reports. Unofficial.",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "websiteUrl": "https://sevdeskmcp.lanfermann.dev",
   "repository": {
     "url": "https://github.com/jaylann/mcp-server-sevdesk",
@@ -14,7 +14,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "mcp-server-sevdesk",
-      "version": "1.4.0",
+      "version": "1.5.0",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
@@ -91,7 +91,7 @@
     },
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/jaylann/mcp-server-sevdesk:1.4.0",
+      "identifier": "ghcr.io/jaylann/mcp-server-sevdesk:1.5.0",
       "runtimeHint": "docker",
       "transport": {
         "type": "stdio"
