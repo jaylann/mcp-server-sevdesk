@@ -82,7 +82,7 @@ describe("sevdesk_transactions_list (community: recorded transaction shape, fake
       entryDate: "2026-01-05",
       amount: { amount: "-298.10", currency: "EUR" },
       direction: "out",
-      status: { code: 100, label: "Created" },
+      status: { code: 100, label: "Created", key: "created" },
       counterparty: "Beispiel Lieferant AG",
       purpose: "RE-2026-0042 Kundennr 4711",
       enshrined: false,

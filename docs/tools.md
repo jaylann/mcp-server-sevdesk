@@ -4,6 +4,10 @@
 
 74 tools. Which ones a client sees depends on `SEVDESK_TOOLSETS` and `SEVDESK_ALLOW` (see docs/configuration.md); tools above the enabled tiers are never listed.
 
+Output objects keep sevDesk codes and labels and add a `key` accepted by the matching status/type filter or bookingCategory input when one exists. Unsupported or unknown codes have no key. Addresses add the uppercase ISO 3166-1 `country` beside `countryId` using the same country table as inputs; unresolved countries keep their id without a code.
+
+`sevdesk_reference_lookup` returns `hasMore` and `limit`: for receipt_guidance, these describe the next local page and effective page size; for unpaged kinds they are false and null. `hasMore` agrees with the presence of `nextOffset`. `truncated` separately indicates entries sevDesk reported but the server could not fetch.
+
 Tiers:
 
 - `read`: reads only; changes nothing in sevDesk.
@@ -90,7 +94,7 @@ Create a contact (Kontakt anlegen): an organisation (organisationName) or a pers
 
 **Get a sevDesk contact** · tier `read` · read-only, idempotent
 
-Get one contact (Kontakt) by its sevDesk id, with its postal addresses (Adressen, e.g. Rechnungsanschrift) and communication ways (email, phone, website). Use it after sevdesk_contacts_search to check a customer's (Kunde) or supplier's (Lieferant) details, e.g. the billing address or invoice email, before working with their documents. Country ids can be resolved with sevdesk_reference_lookup kind=countries.
+Get one contact (Kontakt) by its sevDesk id, with its postal addresses (Adressen, e.g. Rechnungsanschrift) and communication ways (email, phone, website). Use it after sevdesk_contacts_search to check a customer's (Kunde) or supplier's (Lieferant) details, e.g. the billing address or invoice email, before working with their documents. ISO country codes are included when the country table resolves the ids.
 
 | Argument | Type    | Required | Description                                    |
 | -------- | ------- | -------- | ---------------------------------------------- |

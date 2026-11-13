@@ -36,6 +36,7 @@ import type { AnyWriteToolDefinition } from "../../src/tools/types.js";
 import { voucherUpdateDraftTool } from "../../src/tools/vouchers/draft-update.js";
 import { voucherFinalizeTool } from "../../src/tools/vouchers/finalize.js";
 import { approve } from "../helpers/confirm-client.js";
+import { withCountryRoute } from "../helpers/country-route.js";
 import { FakeSevdeskClient } from "../helpers/fake-client.js";
 import {
   closeWriteHarnessesAfterEach,
@@ -97,10 +98,12 @@ function position(overrides: Row = {}): Row {
 }
 
 function client(row: Row, positions: readonly Row[] = [position()]): FakeSevdeskClient {
-  return new FakeSevdeskClient([
-    documentRoute("invoice", row),
-    ...positionRoutes({ "/InvoicePos": positions }),
-  ]);
+  return new FakeSevdeskClient(
+    withCountryRoute([
+      documentRoute("invoice", row),
+      ...positionRoutes({ "/InvoicePos": positions }),
+    ]),
+  );
 }
 
 describe("approval binds the document content", () => {

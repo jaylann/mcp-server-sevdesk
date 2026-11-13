@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { getContactDetails } from "../../../../src/domain/contacts.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { contactGetTool as tool } from "../../../../src/tools/contacts/get.js";
+import { withCountryRoute } from "../../../helpers/country-route.js";
 import { type FakeRoute, FakeSevdeskClient, testContext } from "../../../helpers/fake-client.js";
 
 const contactFilter = { "contact[id]": "1001", "contact[objectName]": "Contact" };
@@ -47,7 +48,7 @@ function manyAddresses(count: number): FakeRoute["response"] {
 }
 
 async function get(id: number, fakeRoutes: readonly FakeRoute[] = routes()) {
-  const client = new FakeSevdeskClient(fakeRoutes);
+  const client = new FakeSevdeskClient(withCountryRoute(fakeRoutes));
   const result = await tool.handler(tool.input.parse({ id }), testContext(client));
   return { client, result };
 }
@@ -65,7 +66,7 @@ describe("sevdesk_contact_get (community: recorded shapes, fake data)", () => {
 
   it("returns the contact with addresses and communication ways, GETs only", async () => {
     const { client, result } = await get(1001);
-    expect(client.methods()).toEqual(["GET", "GET", "GET"]);
+    expect(client.methods()).toEqual(["GET", "GET", "GET", "GET"]);
     expect(client.callsTo("/ContactAddress")[0]?.query).toMatchObject({
       "contact[id]": 1001,
       "contact[objectName]": "Contact",
@@ -85,6 +86,7 @@ describe("sevdesk_contact_get (community: recorded shapes, fake data)", () => {
         zip: "12345",
         city: "Musterstadt",
         countryId: 1,
+        country: "DE",
         category: { id: 47, name: "Rechnungsanschrift" },
       },
       expect.objectContaining({ id: 3002, category: { id: 48, name: "Lieferanschrift" } }),
@@ -141,14 +143,14 @@ describe("sevdesk_contact_get (community: recorded shapes, fake data)", () => {
 
   it("propagates not_found without fetching addresses", async () => {
     const error = new SevdeskError({ kind: "not_found", message: "no contact", status: 400 });
-    const client = new FakeSevdeskClient(routes({ contact: { error } }));
+    const client = new FakeSevdeskClient(withCountryRoute(routes({ contact: { error } })));
     await expect(tool.handler({ id: 1001 }, testContext(client))).rejects.toBe(error);
     expect(client.calls).toHaveLength(1);
   });
 
   it("treats an empty GET-by-id result as not_found", async () => {
     const client = new FakeSevdeskClient(
-      routes({ contact: { fixture: "contacts/contact-empty.json" } }),
+      withCountryRoute(routes({ contact: { fixture: "contacts/contact-empty.json" } })),
     );
     await expect(tool.handler({ id: 1001 }, testContext(client))).rejects.toMatchObject({
       kind: "not_found",
@@ -160,7 +162,7 @@ describe("sevdesk_contact_get (community: recorded shapes, fake data)", () => {
       expect(tool.input.safeParse({ id }).success, `id ${id}`).toBe(false);
     }
     expect(tool.input.safeParse({ id: "1001" }).success).toBe(false);
-    const client = new FakeSevdeskClient(routes());
+    const client = new FakeSevdeskClient(withCountryRoute(routes()));
     await expect(getContactDetails(client, 0)).rejects.toMatchObject({ kind: "validation" });
     expect(client.calls).toHaveLength(0);
   });

@@ -138,7 +138,7 @@ describe("contact references", () => {
 
 describe("status, tax and send state", () => {
   it("labels documented status codes and keeps unknown ones", () => {
-    expect(statusDto("order", 500)).toEqual({ code: 500, label: "Accepted" });
+    expect(statusDto("order", 500)).toEqual({ code: 500, label: "Accepted", key: "accepted" });
     expect(statusDto("creditNote", 300)).toEqual({ code: 300, label: "unknown" });
   });
 

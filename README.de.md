@@ -39,7 +39,11 @@ Testumgebung. Dieser Server ist um diese Tatsache herum gebaut:
 - **Korrekt für sevDesk-Update 2.0.** Steuerregeln und Buchungskonten werden geprüft, bevor
   etwas gesendet wird.
 - **Kompakte, typisierte Ausgabe.** Zusammenfassungen rechnet der Server, damit das Modell nicht
-  durch Hunderte Datensätze blättert.
+  durch Hunderte Datensätze blättert. Status-, Typ- und Buchungskategorie-Objekte enthalten nach
+  Möglichkeit einen `key`, den die passende Eingabe oder der Filter akzeptiert. Adressen enthalten
+  neben `countryId` den ISO-Code `country`, sofern die Ländertabelle ihn auflösen kann.
+  Referenzabfragen liefern `hasMore` und das wirksame `limit` (`null` für Listen ohne Seiten);
+  `truncated` zeigt getrennt davon fehlende Einträge aus sevDesk an.
 
 ## Schnellstart
 

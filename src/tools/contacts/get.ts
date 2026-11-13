@@ -30,8 +30,8 @@ export const contactGetTool = defineTool({
     "Get one contact (Kontakt) by its sevDesk id, with its postal addresses (Adressen, e.g. " +
     "Rechnungsanschrift) and communication ways (email, phone, website). Use it after " +
     "sevdesk_contacts_search to check a customer's (Kunde) or supplier's (Lieferant) details, " +
-    "e.g. the billing address or invoice email, before working with their documents. Country " +
-    "ids can be resolved with sevdesk_reference_lookup kind=countries.",
+    "e.g. the billing address or invoice email, before working with their documents. " +
+    "ISO country codes are included when the country table resolves the ids.",
   toolset: "contacts",
   tier: "read",
   annotations: {
