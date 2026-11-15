@@ -28,7 +28,7 @@ for electronic bookkeeping. They matter for every write in sevDesk.
 | Situation                            | Do                                                                                                                          | Don't                                       |
 | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
 | Draft invoice, order or voucher      | Change it (`…_update_draft`) or delete a voucher draft (`sevdesk_voucher_delete_draft`).                                    | –                                           |
-| Finalized invoice, not paid          | Cancel it: `sevdesk_invoice_cancel` creates a Stornorechnung, the original gets status cancelled.                           | Delete it or edit it in place.              |
+| Finalized invoice, not paid          | Cancel it: `sevdesk_invoice_cancel` creates a Stornorechnung that offsets it; the original keeps status paid.               | Delete it or edit it in place.              |
 | Finalized invoice, paid              | Issue a credit note: `sevdesk_credit_note_create_from_invoice`. sevDesk creates a Storno only while the invoice is unpaid.  | Reset payments just to change the invoice.  |
 | Finalized voucher, not enshrined     | Reset it to draft (`sevdesk_voucher_reset`, `commit`), correct, finalize again.                                             | Delete booked vouchers.                     |
 | Enshrined (festgeschrieben) document | Leave it. Correct with a new document (credit note, correcting voucher).                                                    | Anything else: enshrining cannot be undone. |
