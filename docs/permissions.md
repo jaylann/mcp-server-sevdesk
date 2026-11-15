@@ -3,8 +3,9 @@
 A sevDesk API token can do everything its user can, on the whole account: there are no scopes, no
 read-only tokens and no expiry. sevDesk also has no sandbox, so every write changes your real
 books. The server therefore brings its own least privilege: permission tiers you choose, a human
-confirmation for every binding step, dry runs, and a local audit log. This page explains each of
-them. The threat model behind them is in [SECURITY.md](../SECURITY.md).
+confirmation for every binding step, dry runs, and a local audit log. This page explains how to
+use each of them; the guarantees behind confirmations are in
+[Human confirmation](security/confirmation.md), the threat model in [SECURITY.md](../SECURITY.md).
 
 ## Tiers
 
@@ -40,31 +41,26 @@ and `external` once you trust the drafts and your client shows confirmations
 - **Never a way to approve.** No tool argument approves anything. A `confirm: true` the model
   sets is not accepted as a confirmation.
 
-The tier is enforced three times: when tools are registered, again on every call, and in the HTTP
-client, which knows the minimum tier of every sevDesk endpoint (for example `bookAmount` and
-`enshrine` need `commit`, `sendViaEmail` needs `external`) and refuses a request from a tool whose
-tier is too low. In OAuth remote mode each connection gets the tiers ticked on the consent page,
-capped by `SEVDESK_ALLOW` ([remote.md](remote.md#tiers-per-grant)).
+The tier is enforced again on every call and in the HTTP client, which refuses a request to a
+sevDesk endpoint above the calling tool's tier ([Safety model](architecture/safety.md#enforcement-in-three-places)). In OAuth remote
+mode each connection gets the tiers ticked on the consent page, capped by `SEVDESK_ALLOW`
+([remote.md](remote.md#tiers-per-grant)).
 
 ## How a write runs
 
-1. **Check the arguments.** Unknown parameters are refused by name. Text with characters a human
-   would not see (zero-width, bidi and other control characters) is refused before anything is
-   read, so nothing hidden reaches sevDesk.
+1. **Check the arguments.** Unknown parameters are refused by name, and so is text with characters
+   a human would not see ([hidden characters](security/confirmation.md#hidden-characters-in-arguments)).
 2. **Prepare.** The tool reads what it needs with a client that cannot write, checks the call
    locally (status, amounts, tax rule × rate, booking accounts, duplicates, open amounts) and
    builds a preview: the action in one sentence, warnings, and the key facts such as amounts,
-   recipients and the full email text. Finalizing, emailing and enshrining a document also list
-   what the document says as sevDesk stores it: the address on it, head and foot text, every
-   position with its text, terms and dates. Most mistakes are refused here, before anything is
-   sent.
+   recipients and the full email text. Most mistakes are refused here, before anything is sent.
 3. **Dry run?** Then the preview is the result (status `dry_run`) and the call ends.
 4. **Confirm.** For `commit` and `external`, you see the preview and approve or decline
    ([Confirmation modes](#confirmation-modes)). The server then prepares again; if the record
    changed in the meantime, it asks again instead of executing.
-5. **Execute.** The audit log records `executing` (if that line cannot be written, nothing is
-   sent), then the tool sends the request with a client limited to its tier. Writes are never
-   retried, so a timeout cannot create a duplicate.
+5. **Execute.** The [audit log](permissions/audit-log.md) records `executing` (if that line cannot
+   be written, nothing is sent), then the tool sends the request with a client limited to its tier.
+   Writes are never retried, so a timeout cannot create a duplicate.
 6. **Read back.** The result is read back from sevDesk and returned (status `done`). A multi-step
    write that fails half-way reports the records it already changed.
 
@@ -76,25 +72,29 @@ your decision in the browser) or `declined`.
 A dry run runs every check of a write and returns its preview, without sending anything to sevDesk
 and without asking anyone. Reads still happen, so the preview reflects the current data.
 
-- Per call: the model passes `dryRun: true`. You can simply ask for it ("show me what you would do
-  first").
+- Per call: the model passes `dryRun: true`. You can simply ask for it:
+
+  > Show me what you would do first, as a dry run.
+
 - For everything: `SEVDESK_DRY_RUN=1`. Every write tool then returns its preview only. A good
   setting for the first sessions with a new tier.
 
 ## Confirmation modes
 
 `SEVDESK_CONFIRM` decides how you confirm `commit` and `external` calls. `write` calls need no
-confirmation.
+confirmation. Whatever the mode, a confirmation is valid for 10 minutes, is used once and covers
+exactly the call and the preview you saw ([what an approval
+binds](security/confirmation.md#what-an-approval-binds)).
 
 ### elicit
 
 The default. The client shows the preview and an "Approve this action" switch, off by default,
 through MCP elicitation. Decline, cancel or an unchecked switch return `declined`: nothing changes.
-The pending confirmation is signed by the server and bound to the tool, the arguments and the
-preview, valid for 10 minutes and usable once.
 
 Not every client supports elicitation ([Clients](clients.md#confirmations-by-client)). A client
 that cannot be asked gets an error that says so, and nothing is sent; switch to `browser` then.
+Elicitation trusts the client application to show the form honestly
+([what elicitation trusts](security/confirmation.md#what-elicitation-trusts)).
 
 ### browser
 
@@ -103,12 +103,12 @@ ask the assistant to try again with the same arguments.
 
 - **Over stdio** the server serves the page itself on `127.0.0.1` and opens it in your default
   browser. With `SEVDESK_CONFIRM_OPEN=0` it only writes the link to its log (stderr). The link is
-  a secret: it never reaches the model, the tool result or the audit log.
+  a secret and never reaches the model ([the local approval
+  page](security/confirmation.md#the-local-approval-page)).
 - **In remote mode** approvals wait in the server's approval inbox (`/approvals`), which you open
-  after signing in ([remote.md](remote.md#the-approval-inbox)).
+  after signing in ([Approvals](remote/approvals.md)).
 
-Each approval is bound to the tool, the arguments and the preview, expires after 10 minutes and is
-used once; at most five wait at a time. The page shows the same reference code as the tool result,
+At most five approvals wait at a time. The page shows the same reference code as the tool result,
 so you can match them.
 
 The page comes in German and English and follows your browser's language. In German the preview
@@ -117,10 +117,9 @@ while the assistant, dry runs and the audit log keep the English text of the sam
 the two by the reference code. The page shows how long the request is still valid and takes the
 buttons away when it has expired. It runs no script and loads nothing from other servers.
 
-The limit of this mode: an agent that can read the server's log or drive your browser (browser
-automation, a computer-use tool) could approve on its own. `browser` protects against a model that
-only talks, for example one steered by text hidden in sevDesk data. Prefer `elicit` in agentic
-clients that can run commands.
+Prefer `elicit` in agentic clients that can run commands: an agent that can read the server's log
+or drive your browser could approve on its own
+([limits](security/confirmation.md#limits-of-the-browser-mode)).
 
 ### off
 
@@ -130,84 +129,22 @@ emailed. The Claude Desktop extension does not offer it.
 
 ## Audit log
 
-With `SEVDESK_AUDIT_LOG=<path>` the server appends one JSON line per event of every write call to
-that file, and in remote mode one per file that moves through an upload page or a download link.
-It answers "what did the assistant do in my books, and who approved it?".
-
-| Event                    | When                                                                                                                                    |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `dry_run`                | A dry run returned its preview.                                                                                                         |
-| `confirmation_requested` | A confirmation was asked for, with the preview (and in browser mode the reference code).                                                |
-| `confirmation_refused`   | A retry presented a confirmation that was replayed, expired or made for other arguments.                                                |
-| `approval_decided`       | Approve or Reject was pressed on an approval page.                                                                                      |
-| `declined`               | You declined in the client, or rejected the approval in the browser.                                                                    |
-| `executing`              | The action is about to be sent, with how it was approved: `elicit`, `browser`, `confirmation_off` or `not_required` (the `write` tier). |
-| `executed`               | The action ran; with the records it changed.                                                                                            |
-| `failed`                 | The action failed; with the error kind and any records an earlier step already changed.                                                 |
-| `file_received`          | Remote mode: a file was uploaded on an upload page.                                                                                     |
-| `file_link_created`      | Remote mode: a tool created a download link.                                                                                            |
-| `file_downloaded`        | Remote mode: a download link was used.                                                                                                  |
-
-Every line starts with `ts` (the time, ISO 8601) and `v`, the version of the line format (`1`),
-followed by `event`. In remote mode `account` and `grant` come next. The other fields depend on the
-event:
-
-| Field         | Events                                                               | Meaning                                                                                                                                                          |
-| ------------- | -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `account`     | all, remote mode only                                                | The sevDesk account id (in bearer mode `bearer` if the server could not look it up). On file lines, the account whose tool call created the upload page or link. |
-| `grant`       | all, remote mode only                                                | The OAuth grant id, or `bearer`.                                                                                                                                 |
-| `callId`      | write events                                                         | Shared by the lines of one action, from the request to the result.                                                                                               |
-| `tool`        | write events                                                         | The tool name.                                                                                                                                                   |
-| `tier`        | write events                                                         | `write`, `commit` or `external`.                                                                                                                                 |
-| `argsHash`    | write events                                                         | A hash of the tool and its arguments (without `dryRun`).                                                                                                         |
-| `args`        | write events except `approval_decided`                               | The arguments: the token redacted, upload ids redacted, hidden characters written as visible `\u{…}` escapes, strings up to 20,000 characters.                   |
-| `previewHash` | `dry_run`, `confirmation_requested`, `approval_decided`, `executing` | A hash of the preview that was shown and approved; for `commit` and `external` tools it covers the English and the German text.                                  |
-| `preview`     | `dry_run`, `confirmation_requested`                                  | The preview as shown: `action` (one sentence), `facts` (`label`, `value`), `warnings` and `irreversible`.                                                        |
-| `approval`    | `executing`                                                          | How the action was approved: `elicit`, `browser`, `confirmation_off` or `not_required`.                                                                          |
-| `reason`      | `confirmation_refused`                                               | `replayed_or_expired` or `mismatch` (made for another tool or other arguments).                                                                                  |
-| `decision`    | `approval_decided`                                                   | `approved` or `rejected`.                                                                                                                                        |
-| `reference`   | browser `confirmation_requested`, `approval_decided`, file events    | The reference code shown on the page and in the tool result. Not a secret.                                                                                       |
-| `affected`    | `executed`, `failed`                                                 | The records changed (`objectName`, `id`); for `failed`, those an earlier step already changed.                                                                   |
-| `error`       | `failed`                                                             | The error kind, such as `validation`, `not_found`, `auth`, `timeout`, `network`, `server`, `aborted`, `internal` or `output_invalid`.                            |
-| `kind`        | file events                                                          | `pdf`, `png`, `jpeg`, `xml`, `csv` or `zip`.                                                                                                                     |
-| `bytes`       | file events                                                          | The size of the file.                                                                                                                                            |
-| `sha256`      | file events                                                          | The SHA-256 of the content, hex. File lines never contain the file name or the content.                                                                          |
-
-For example (shortened):
-
-```json
-{
-  "ts": "2026-11-09T14:03:12.481Z",
-  "v": 1,
-  "event": "executed",
-  "callId": "6f1c…",
-  "tool": "sevdesk_invoice_finalize",
-  "tier": "commit",
-  "argsHash": "9b2e…",
-  "args": { "id": 1042, "sentVia": "email" },
-  "affected": [{ "objectName": "Invoice", "id": "1042" }]
-}
-```
-
-The file is created with mode 0600, opened append-only and never through a symbolic link. If the
-`executing` line cannot be written, the action is not run. The log is local and not tamper-proof:
-it records what this server did, for you, and is no defense against someone who controls the
-machine. `v` changes only when a field changes its meaning or is removed; new fields can appear
-without it ([Compatibility](compatibility.md)).
+With `SEVDESK_AUDIT_LOG=<path>` the server appends one JSON line per event of every write call:
+previews, confirmations, executions and failures. Events, fields and the file's guarantees are in
+[Audit log](permissions/audit-log.md).
 
 ## Files
 
 Tools read and write local files only where you allow it:
 
-- **Reading** (receipts, e-invoices) only inside the folders of `SEVDESK_FILE_DIRS`: real paths are
-  checked, symbolic links may not lead outside, the file type is recognized by its content and the
-  size is capped.
+- **Reading** (receipts, e-invoices) only inside the folders of `SEVDESK_FILE_DIRS`.
 - **Writing** (PDFs, e-invoice XML, CSV and DATEV exports) only into `SEVDESK_OUTPUT_DIR`: new files
-  only, mode 0600, never overwriting.
+  only, never overwriting.
 
-Without these settings no tool touches your disk. In remote mode files travel through upload
-pages and download links in your browser instead, which need a browser session of your sevDesk
-account ([remote.md](remote.md#files-uploads-and-download-links)).
+Without these settings no tool touches your disk. How paths and file contents are checked is in
+[Local files](security/local.md#local-files). In remote mode files travel through upload pages and
+download links in your browser instead, which need a browser session of your sevDesk account
+([Files](remote/files.md)).
 
 ## Recommendations
 
@@ -219,13 +156,14 @@ account ([remote.md](remote.md#files-uploads-and-download-links)).
   `off` for an account with real data.
 - **Set `SEVDESK_AUDIT_LOG`** as soon as you enable a write tier.
 - **Keep the token out of configuration files**: the OS keychain, a token file, or the Claude
-  Desktop extension ([Configuration](configuration.md#keep-the-token-in-the-os-keychain)).
+  Desktop extension ([Profiles](configuration/profiles.md)).
 - **Allow narrow folders**: a receipts folder for `SEVDESK_FILE_DIRS`, an empty export folder for
   `SEVDESK_OUTPUT_DIR`, not your home directory.
 - **Load only the toolsets you need** (`SEVDESK_TOOLSETS`); leave `advanced` off unless a task
   needs it.
-- Check the preview before you approve. It is built from what the tool just read, not from what
+- **Check the preview before you approve.** It is built from what the tool just read, not from what
   the model says. Before you finalize, email or enshrine a document, read its address, texts and
   positions in the preview: a draft can be changed without a confirmation, so the foot text you
   see there (the bank details, for example) is the one that becomes binding. A warning in the
-  preview names what it does not show, such as the PDF layout.
+  preview names what it does not show, such as the PDF layout
+  ([Previews of binding documents](security/confirmation.md#previews-of-binding-documents)).
