@@ -34,10 +34,7 @@ server is built around that fact:
 - **Correct for sevDesk Update 2.0.** Tax rules and booking accounts are validated before anything
   is sent.
 - **Compact, typed output.** Aggregations run on the server, so the model doesn't page through
-  hundreds of records. Status, type and booking-category objects include an accepted input/filter
-  `key` when available. Addresses include an ISO `country` beside `countryId` when the country
-  table resolves it. Reference lookups report `hasMore` and the effective `limit` (`null` for
-  unpaged kinds); `truncated` separately reports missing upstream entries.
+  hundreds of records; the fields are described in the [tool reference](docs/tools.md).
 
 ## Quick start
 
@@ -45,44 +42,25 @@ You need a sevDesk plan with API access (Buchhaltung Pro; the free trial include
 token of a sevDesk user (Settings → Users → API token; ideally a user just for the assistant) and,
 except for the Claude Desktop extension, Node.js 22.12 or later.
 
-### Claude Desktop
+- **Claude Desktop:** download `mcp-server-sevdesk-<version>.mcpb` from the
+  [latest release](https://github.com/jaylann/mcp-server-sevdesk/releases/latest), open it and
+  paste your token ([details](docs/clients/claude-desktop.md)).
+- **Claude Code:** store the token in the OS keychain, then add the server, or install the
+  [plugin](#claude-code-plugin):
 
-Download `mcp-server-sevdesk-<version>.mcpb` from the
-[latest release](https://github.com/jaylann/mcp-server-sevdesk/releases/latest), open it and paste
-your token. The extension needs no Node.js and keeps the token in your system's secure storage.
+  ```bash
+  npx -y mcp-server-sevdesk token set work
+  claude mcp add --env SEVDESK_API_TOKEN_KEYCHAIN=work --scope user sevdesk -- npx -y mcp-server-sevdesk
+  ```
 
-### Claude Code
+- **Cursor, VS Code, Windsurf, Codex, Zed and others** start `npx -y mcp-server-sevdesk` with the
+  token in the environment; [docs/clients.md](docs/clients.md) has the exact file for each.
+- **claude.ai and the Claude mobile apps** connect to a server you host in
+  [remote mode](#remote-mode).
 
-```bash
-npx -y mcp-server-sevdesk token set work   # stores the token in the OS keychain (macOS, Linux, Windows)
-claude mcp add --env SEVDESK_API_TOKEN_KEYCHAIN=work --scope user sevdesk -- npx -y mcp-server-sevdesk
-```
-
-Or install the [Claude Code plugin](#claude-code-plugin), which adds a bookkeeping skill.
-
-### Cursor, VS Code, Windsurf, Codex, Zed and others
-
-Every client starts the server like this; [docs/clients.md](docs/clients.md) has the exact file
-and format for each:
-
-```json
-{
-  "mcpServers": {
-    "sevdesk": {
-      "command": "npx",
-      "args": ["-y", "mcp-server-sevdesk"],
-      "env": { "SEVDESK_API_TOKEN": "<your sevDesk API token>" }
-    }
-  }
-}
-```
-
-### First steps
-
-Ask _"What is my sevDesk account set up like?"_. The server starts read-only; the
+Then ask _"What is my sevDesk account set up like?"_. The server starts read-only; the
 [quickstart guide](docs/quickstart.md) continues with enabling writes, a dry run first, and keeping
-the token safe. claude.ai and the Claude mobile apps connect to a server you host in
-[remote mode](#remote-mode).
+the token safe.
 
 ## What it can do
 
@@ -100,22 +78,10 @@ enabled, 37 more tools create and change data.
 | **Advanced** (off by default)      | `sevdesk_api_get`: a read-only GET of any sevDesk endpoint no other tool covers, such as text templates. It refuses everything that could change data, return files or start jobs |                                                                                                                                                                                                                                                                   |
 
 The VAT summary is clearly marked as an estimate (accrual or cash basis). Every write tool accepts
-`dryRun: true` and then only returns exactly what it would do. The full generated reference is
+`dryRun: true` and then only returns exactly what it would do. Voucher drafts can be in a foreign
+currency, with an exchange rate or a rate date; such drafts cannot be finalized through the server
+([Receipts](docs/guides/receipts.md)). The full generated reference is
 [docs/tools.md](docs/tools.md).
-
-Voucher drafts can be created and updated in a foreign `currency`, including imports of non-EUR
-e-invoices. Supply exactly one of `exchangeRate` (a positive decimal string: `"0.9"` means
-**1 USD = 0.9 EUR**) or `foreignCurrencyDeadline` (`YYYY-MM-DD`). Position amounts stay in the
-voucher currency. An explicit rate previews a server-computed EUR equivalent; with a deadline,
-sevDesk chooses the rate and EUR amounts are known after saving. Read-back checks the stored
-foreign and EUR totals and reports mismatches and approximate implied rates.
-
-**Every foreign-currency update requires a fresh rate or deadline and all positions.**
-[Trial-account probes](spec/deviations.md#d-082-voucher-exchange-rates-are-not-returned-and-updates-reconvert-positions)
-showed that rate changes can convert stored EUR positions again; GET does not return the rate.
-To convert back, pass `currency: "EUR"` and all positions with your EUR amounts, without a rate.
-Preview with `dryRun: true`, then check the saved amounts with `sevdesk_voucher_get`.
-Finalizing foreign-currency vouchers remains unsupported.
 
 ## Prompts
 
@@ -135,106 +101,58 @@ toolset or folder are listed with the setting that enables them. Prompts only pr
 assistant: every change still goes through the tools, with a dry run first and your confirmation
 for binding steps. Not tax advice.
 
-## Permissions
+## Permissions and configuration
 
-| Tier       | What it allows                                                                                                                                     | Confirmation |
-| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
-| `read`     | List, get, search, reports, PDF previews, saving document files and CSV exports to the output folder (or as download links)                        | no           |
-| `write`    | Contacts, parts, drafts of invoices, credit notes, orders and vouchers, dunning reminders, DATEV export                                            | no           |
-| `commit`   | Finalize, book payments, reconcile bank transactions, mark transactions as private, cancel (Storno), enshrine (GoBD), reset, delete voucher drafts | **yes**      |
-| `external` | Send documents by email                                                                                                                            | **yes**      |
-
-Enable tiers with `SEVDESK_ALLOW` (for example `write,commit`). Before anything binding is sent,
-the server shows you exactly what will happen (amounts, recipients, the full email text) and waits
-for your approval; if the record changes before you approve, it asks again.
-[docs/permissions.md](docs/permissions.md) explains the tiers, confirmation modes, dry runs and
-the audit log; [docs/clients.md](docs/clients.md#confirmations-by-client) shows which clients can
-ask you in the chat.
-
-## Configuration
-
-All settings are environment variables in your MCP client's server configuration. Only a token is
-required; everything else defaults to the safest option.
-
-| Variable                                  | Purpose                                                                                           | Default   |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------- | --------- |
-| `SEVDESK_API_TOKEN`                       | The token. Or from a file (`SEVDESK_API_TOKEN_FILE`) or the OS keychain (`…_KEYCHAIN`)            | required  |
-| `SEVDESK_ALLOW`                           | The tiers: `write`, `commit`, `external` or `all`                                                 | `read`    |
-| `SEVDESK_DRY_RUN`                         | `1`: every write only returns a preview                                                           | `0`       |
-| `SEVDESK_CONFIRM`                         | `elicit` (in the client) or `browser` (an approval page)                                          | `elicit`  |
-| `SEVDESK_TOOLSETS`                        | Load only the toolsets you need; `advanced` is off by default                                     | `default` |
-| `SEVDESK_FILE_DIRS`, `SEVDESK_OUTPUT_DIR` | Folders to read receipts from and save PDFs and exports to. Without them, no local files are used |           |
-| `SEVDESK_AUDIT_LOG`                       | A local JSON Lines log of every write                                                             |           |
-| `SEVDESK_PROFILE`                         | Pick one of several accounts or setups from a profiles file                                       |           |
-
-Every variable, the toolsets, profiles, limits and the command line:
-[docs/configuration.md](docs/configuration.md).
+The server only reads until you enable more with `SEVDESK_ALLOW`: `write` (drafts, contacts,
+parts, DATEV export), `commit` (finalize, book, cancel, enshrine) and `external` (send by email).
+Before anything binding is sent, the server shows you exactly what will happen (amounts,
+recipients, the full email text) and waits for your approval; if the record changes before you
+approve, it asks again ([Permissions](docs/permissions.md);
+[which clients can ask in the chat](docs/clients.md#confirmations-by-client)). All settings are
+environment variables in your client's server configuration; only a token is required, and
+everything else defaults to the safest option ([Configuration](docs/configuration.md)).
 
 ## Remote mode
 
-Over stdio the server runs on your computer, started by your MCP client. With `--http` it runs as
-a web service you host yourself (a VM with Docker Compose and Caddy, Fly.io, Render, Railway or
-your own machine; there is no hosted instance), to connect claude.ai and the Claude apps, an editor
-on another machine, or a small team. It refuses to start without authentication
-(`SEVDESK_HTTP_AUTH`):
-
-- **`oauth`**: the server is its own OAuth 2.1 authorization server. Each user connects through a
-  consent page, chooses the tiers for that connection and pastes their sevDesk token once; the
-  token is sealed into the tokens the client holds, and the server stores none. Only the sevDesk
-  accounts you list can connect. claude.ai needs this mode.
-- **`bearer`**: one shared secret protects one sevDesk account, the server's `SEVDESK_API_TOKEN`.
-  For clients you configure yourself, such as Claude Code, Cursor or VS Code.
-
-claude.ai cannot ask for confirmations in the chat (at the time of writing), so binding steps are
-approved in the server's approval inbox (`SEVDESK_CONFIRM=browser`). Receipts and e-invoices are
-uploaded, and PDFs and exports downloaded, through pages on your server that the assistant links
-to. For several receipts, `sevdesk_upload_request` with `count: 2` through `10` opens one page
-for all files. After uploading, `sevdesk_uploads_list` matches cleaned names to the `uploadId`s
-used by the draft tools; each file keeps its own size limit, quota slot and expiry.
-Connect Claude Code with:
-
-```bash
-claude mcp add --transport http sevdesk https://<host>/mcp                     # OAuth: then /mcp to sign in
-claude mcp add --transport http sevdesk https://<host>/mcp \
-  --header "Authorization: Bearer $MCP_BEARER_SECRET"                          # bearer
-```
-
-The full guide, with a Docker quick start, deployment templates and operations, is
-[docs/remote.md](docs/remote.md); the threat model is in [SECURITY.md](SECURITY.md#remote-mode).
+With `--http` the server runs as a web service you host yourself (there is no hosted instance), for
+claude.ai and the Claude apps, an editor on another machine, or a small team. It refuses to start
+without authentication: OAuth, where each user connects through a consent page and the server
+stores no sevDesk token, or a shared bearer secret for one account. [Remote mode](docs/remote.md)
+has the quick starts, deployment, configuration and operations.
 
 ## Claude Code plugin
 
-The repository is also a Claude Code plugin marketplace. The `sevdesk` plugin starts this server,
-pinned to the release the plugin belongs to (a new npm version never runs before the plugin is
-updated), and adds a bookkeeping skill: German tax rules and
-their sevDesk tax rules (incl. §13b reverse charge and §19 Kleinunternehmer), common SKR03/SKR04
-accounts, GoBD, the e-invoice obligations, and step-by-step workflows for receipts, e-invoices,
-bank reconciliation, the VAT pre-check, month and year end.
-
-```text
-/plugin marketplace add jaylann/mcp-server-sevdesk
-/plugin install sevdesk@mcp-server-sevdesk
-```
-
-On Claude Code 2.1.275 or later, one step is enough:
-`/plugin install sevdesk --marketplace jaylann/mcp-server-sevdesk`. The plugin passes the
-`SEVDESK_*` variables from the environment Claude Code was started in (at least a token variable;
-it stays read-only unless you set `SEVDESK_ALLOW`).
+The repository is also a Claude Code plugin marketplace: the `sevdesk` plugin starts this server
+and adds a bookkeeping skill for German tax rules, SKR03/SKR04, GoBD and e-invoices. Installing
+and configuring it: [The plugin](docs/clients/claude-code.md#the-plugin).
 
 ## Documentation
 
-| Page                                           | For                                                                        |
-| ---------------------------------------------- | -------------------------------------------------------------------------- |
-| [Quickstart](docs/quickstart.md)               | From a sevDesk account to a first answer, then writes and token safety     |
-| [Clients](docs/clients.md)                     | Setup for Claude Desktop, Claude Code, claude.ai, Cursor, VS Code and more |
-| [Permissions](docs/permissions.md)             | Tiers, confirmation modes, dry runs, the audit log                         |
-| [Configuration](docs/configuration.md)         | Every setting, toolsets, profiles, the keychain, the command line          |
-| [Tool reference](docs/tools.md)                | Every tool and prompt with its arguments (generated)                       |
-| [Remote mode](docs/remote.md)                  | Hosting the server over HTTP: OAuth, bearer, deployment, operations        |
-| [FAQ](docs/faq.md)                             | Data and privacy, Update 2.0, e-invoices, DATEV, support                   |
-| [Compatibility](docs/compatibility.md)         | What 1.0 keeps stable, and the deprecation policy                          |
-| [Architecture](docs/architecture.md)           | How the server is built, and the [decision records](docs/adr/README.md)    |
-| [Security](SECURITY.md), [Privacy](PRIVACY.md) | Threat model, reporting vulnerabilities, what is stored where              |
+- **Start:** [Quickstart](docs/quickstart.md) · [Troubleshooting](docs/troubleshooting.md) ·
+  [FAQ](docs/faq.md) · [Glossary](docs/glossary.md)
+- **Clients:** [Overview](docs/clients.md) · [Claude Desktop](docs/clients/claude-desktop.md) ·
+  [Claude Code](docs/clients/claude-code.md) · [claude.ai](docs/clients/claude-ai.md) ·
+  [Cursor](docs/clients/cursor.md) · [VS Code](docs/clients/vscode.md) ·
+  [Windsurf](docs/clients/windsurf.md) · [Codex](docs/clients/codex.md) ·
+  [Zed](docs/clients/zed.md)
+- **Guides:** [Invoices](docs/guides/invoices.md) · [Receipts](docs/guides/receipts.md) ·
+  [Reports](docs/guides/evaluations.md)
+- **Reference:** [Permissions](docs/permissions.md) · [Audit log](docs/permissions/audit-log.md) ·
+  [Configuration](docs/configuration.md) · [Profiles](docs/configuration/profiles.md) ·
+  [Tools](docs/tools.md) · [Compatibility](docs/compatibility.md)
+- **Remote mode:** [Overview](docs/remote.md) · [Deployment](docs/remote/deployment.md) ·
+  [Configuration](docs/remote/configuration.md) · [Approvals](docs/remote/approvals.md) ·
+  [Files](docs/remote/files.md) · [Operations](docs/remote/operations.md) ·
+  [Troubleshooting](docs/remote/troubleshooting.md)
+- **Security:** [Policy](SECURITY.md) · [Confirmation](docs/security/confirmation.md) ·
+  [Local](docs/security/local.md) · [Remote](docs/security/remote.md) ·
+  [Supply chain](docs/security/supply-chain.md) · [Privacy](PRIVACY.md)
+- **Project:** [Architecture](docs/architecture.md) · [Safety](docs/architecture/safety.md) ·
+  [Transports](docs/architecture/transports.md) ·
+  [Build and test](docs/architecture/build-and-test.md) · [ADRs](docs/adr/README.md) ·
+  [Contributing](CONTRIBUTING.md) ·
+  [Changes](docs/contributing/changes.md) · [Testing](docs/contributing/testing.md) ·
+  [Recording session](docs/recording-session.md)
 
 **What's next** in 1.x: sending letters by post and sevDesk accounts in Austria.
 The [changelog](CHANGELOG.md) lists every release.

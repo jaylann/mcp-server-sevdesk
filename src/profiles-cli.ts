@@ -52,7 +52,7 @@ export async function runProfilesCommand(
   }
   if (file === undefined) {
     io.out(
-      `No profiles file at ${location.path}. Create one (see Profiles in docs/configuration.md), or set ` +
+      `No profiles file at ${location.path}. Create one (see docs/configuration/profiles.md), or set ` +
         "SEVDESK_PROFILES_PATH to yours.\n",
     );
     return 0;
