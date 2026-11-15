@@ -9,7 +9,7 @@
  * all Host/Origin checks derive from it), bearer secrets must be long and random, OAuth needs the
  * server secret and an account allowlist, and the server's disk is never shared between OAuth
  * accounts. Remote file transfer (`SEVDESK_HTTP_FILES`, upload pages and download links) is on by
- * default with a byte budget and a lifetime. See `docs/remote.md` for the variables.
+ * default with a byte budget and a lifetime. See `docs/remote/configuration.md` for the variables.
  *
  * Invariant: no problem or warning contains a secret value.
  */
