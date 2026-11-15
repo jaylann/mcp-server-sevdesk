@@ -6,7 +6,7 @@ Mit `--http` spricht der Server MCP über Streamable HTTP statt über stdio. Dan
 Clients nutzen, die keinen lokalen Prozess starten können: benutzerdefinierte Connectoren in
 claude.ai (und die Claude-Apps, die mit demselben Konto angemeldet sind), Claude Code, Cursor oder
 VS Code auf einem anderen Rechner oder ein kleines Team, das sich einen Server teilt. Eine gehostete
-Instanz gibt es nicht: Sie betreiben den Server selbst, auf Ihrem eigenen Rechner, einer VM oder
+Instanz gibt es nicht: Du betreibst den Server selbst, auf deinem eigenen Rechner, einer VM oder
 einer Plattform wie Fly.io. Für eine Person an einem Rechner bleibt stdio die einfachere Wahl.
 
 Diese Seite ist die Anleitung für den Betrieb. Der Entwurf steht in
@@ -31,12 +31,12 @@ Bedrohungsmodell in [SECURITY.de.md](../SECURITY.de.md#fernzugriff).
 | Zugriff entziehen          | das Geheimnis ändern                                        | je Verbindung, je Konto oder alles (`grants revoke`)                                        |
 
 **`bearer`** ist der einfache Modus: Ein gemeinsames Geheimnis (`SEVDESK_HTTP_BEARER_TOKEN`)
-schützt ein sevDesk-Konto. Verwenden Sie ihn in einem privaten Netz, hinter einer anderen
-Zugangskontrolle oder für Clients, die Sie selbst einrichten. Wer das Geheimnis hat, kann die
-Stufen des Servers für dieses Konto nutzen; behandeln Sie es also wie das sevDesk-Token.
+schützt ein sevDesk-Konto. Verwende ihn in einem privaten Netz, hinter einer anderen
+Zugangskontrolle oder für Clients, die du selbst einrichtest. Wer das Geheimnis hat, kann die
+Stufen des Servers für dieses Konto nutzen; behandle es also wie das sevDesk-Token.
 
 **`oauth`** macht den Server zu seinem eigenen OAuth-2.1-Autorisierungsserver. Ein Client, der sich
-verbindet, wird auf eine Zustimmungsseite auf Ihrem Server geleitet. Dort wählt der Benutzer die
+verbindet, wird auf eine Zustimmungsseite auf deinem Server geleitet. Dort wählt der Benutzer die
 Stufen für diese Verbindung und fügt sein sevDesk-API-Token einmal ein. Der Server prüft das Token
 bei sevDesk, verschlüsselt es (AES-256-GCM) in den Autorisierungscode und in die Access- und
 Refresh-Tokens, die er dem Client gibt, und behält nur einen Vermerk, dass die Verbindung besteht:
@@ -45,25 +45,25 @@ einen _Zugang_ (Grant). Benutzerdefinierte Connectoren in claude.ai brauchen die
 Clients weisen sich mit einem Client ID Metadata Document (CIMD) aus: Ihre `client_id` ist eine
 https-URL, die ihren Namen und ihre Redirect-URIs liefert. Dynamic Client Registration wird nicht
 angeboten; ein Client, der nur die Registrierung unterstützt, kann den OAuth-Modus also nicht
-nutzen. Verwenden Sie für ihn den Bearer-Modus.
+nutzen. Verwende für ihn den Bearer-Modus.
 
-### Standardmäßig nur für Ihre Konten
+### Standardmäßig nur für deine Konten
 
-Im OAuth-Modus können sich nur die sevDesk-Konten in `SEVDESK_OAUTH_ACCOUNTS` verbinden. Ihre
-Konto-ID finden Sie mit [`account-id`](#befehle); ein abgelehnter Benutzer sieht seine eigene
+Im OAuth-Modus können sich nur die sevDesk-Konten in `SEVDESK_OAUTH_ACCOUNTS` verbinden. Deine
+Konto-ID findest du mit [`account-id`](#befehle); ein abgelehnter Benutzer sieht seine eigene
 Konto-ID auf der Zustimmungsseite. `SEVDESK_OAUTH_ACCOUNTS=any` lässt jeden mit einem
-sevDesk-Token Ihren Server nutzen, und der Start protokolliert eine Warnung: Sie würden dann die
+sevDesk-Token deinen Server nutzen, und der Start protokolliert eine Warnung: Du würdest dann die
 Buchhaltungsdaten anderer Leute verarbeiten (siehe [PRIVACY.de.md](../PRIVACY.de.md)).
 
 Auch Clients sind beschränkt. `SEVDESK_OAUTH_CLIENTS` führt die Hosts auf, die das
 Metadaten-Dokument eines Clients liefern dürfen (Standard `claude.ai`). Der Server prüft das, bevor
 er etwas abruft. Ohne diese Liste könnte ein Angreifer sein eigenes Metadaten-Dokument
-bereitstellen und Ihnen einen Link auf Ihre eigene Zustimmungsseite schicken, der echt aussieht
+bereitstellen und dir einen Link auf deine eigene Zustimmungsseite schicken, der echt aussieht
 (Consent-Phishing).
 
-Beide Listen gelten für jede Anfrage und jede Erneuerung, nicht nur bei der Zustimmung. Entfernen
-Sie ein Konto oder einen Client-Host und starten neu, werden dessen bestehende Zugänge bei der
-nächsten Nutzung widerrufen (fügen Sie den Eintrag später wieder hinzu, stellt das sie nicht wieder
+Beide Listen gelten für jede Anfrage und jede Erneuerung, nicht nur bei der Zustimmung. Entfernst
+du ein Konto oder einen Client-Host und startest neu, werden dessen bestehende Zugänge bei der
+nächsten Nutzung widerrufen (fügst du den Eintrag später wieder hinzu, stellt das sie nicht wieder
 her; der Benutzer verbindet sich erneut), und die Browser-Sitzungen eines entfernten Kontos enden.
 
 ### Stufen je Zugang
@@ -121,7 +121,7 @@ sevDesk-Token ohnehin nutzlos.
 
 ### Eine Instanz
 
-MCP-Anfragen werden zustandslos bearbeitet, aber betreiben Sie **genau eine Instanz**. Zugänge,
+MCP-Anfragen werden zustandslos bearbeitet, aber betreibe **genau eine Instanz**. Zugänge,
 Browser-Sitzungen, ausstehende Freigaben, Uploads und Download-Links, die Einmal-Nonces der
 Bestätigungen und die Ratenbegrenzungen leben im Prozess und seinem Zustandsverzeichnis, und eine
 zweite Instanz auf demselben Zustandsverzeichnis startet nicht. Das gilt auch im Bearer-Modus,
@@ -133,13 +133,13 @@ Konto).
 
 ## Schnellstart: Bearer-Modus mit Docker
 
-Für einen ersten Versuch auf Ihrem eigenen Rechner:
+Für einen ersten Versuch auf deinem eigenen Rechner:
 
 ```bash
 # 1. Ein zufälliges Client-Geheimnis (43 Zeichen).
 docker run --rm ghcr.io/jaylann/mcp-server-sevdesk:latest generate-secret
 
-# 2. Die Einstellungen, in einer Datei, die nur Sie lesen können (außerhalb jedes Repositorys).
+# 2. Die Einstellungen, in einer Datei, die nur du lesen kannst (außerhalb jedes Repositorys).
 umask 077
 cat > ~/sevdesk-mcp.env <<'EOF'
 SEVDESK_HTTP_AUTH=bearer
@@ -153,16 +153,16 @@ docker run --rm --read-only -p 127.0.0.1:8080:8080 --env-file ~/sevdesk-mcp.env 
   -v sevdesk-mcp-data:/data ghcr.io/jaylann/mcp-server-sevdesk:latest
 ```
 
-Der Server schreibt den MCP-Endpunkt, den er bereitstellt, nach stderr. Verbinden Sie einen Client
+Der Server schreibt den MCP-Endpunkt, den er bereitstellt, nach stderr. Verbinde einen Client
 mit `http://localhost:8080/mcp` und dem Header `Authorization: Bearer <the secret>`
 ([Clients verbinden](#clients-verbinden)).
 
 Warum hier `SEVDESK_HTTP_PUBLIC_URL`: Das Image lauscht im Container auf `0.0.0.0`, und ein
 Lauschen außerhalb von Loopback braucht die URL, die Clients verwenden. Einfaches `http` ist
-erlaubt, weil der Host `localhost` ist. Verwenden Sie `localhost` auch im Client: Andere Hostnamen
-werden abgelehnt, sofern sie nicht in `SEVDESK_HTTP_ALLOWED_HOSTS` stehen. Behalten Sie das
+erlaubt, weil der Host `localhost` ist. Verwende `localhost` auch im Client: Andere Hostnamen
+werden abgelehnt, sofern sie nicht in `SEVDESK_HTTP_ALLOWED_HOSTS` stehen. Behalte das
 `127.0.0.1:` in `-p`: Auf allen Schnittstellen veröffentlicht, nähme der Port Anfragen über
-einfaches http aus Ihrem Netz an, wo das Geheimnis unverschlüsselt übertragen wird und jeder
+einfaches http aus deinem Netz an, wo das Geheimnis unverschlüsselt übertragen wird und jeder
 Rechner `Host: localhost` senden kann. Der Start warnt genau vor dieser Kombination (ein Server,
 der auf allen Schnittstellen lauscht, mit einer öffentlichen Loopback-URL); ist der Port nur auf
 `127.0.0.1` veröffentlicht, trifft die Warnung nicht zu.
@@ -170,31 +170,31 @@ der auf allen Schnittstellen lauscht, mit einer öffentlichen Loopback-URL); ist
 Einfaches http auf `localhost` ist nur für einen kurzen Test gedacht. Browser trennen Cookies
 nicht nach Port, daher geht das Cookie der Browser-Sitzung (der Seiten zum Hoch- und Herunterladen,
 standardmäßig an, und mit `SEVDESK_CONFIRM=browser` des Freigabe-Postfachs) auch an jeden anderen
-Webserver, den der Browser auf `localhost` erreicht; dieser könnte dann Ihre Dateien abrufen, in
-Ihrem Namen hochladen oder Ihre Freigaben lesen und entscheiden. Der Start warnt davor, solange die
-Dateiübertragung aktiv ist. Verwenden Sie https (eine der Bereitstellungen unten) oder zumindest
-ein Browserprofil, das Sie für nichts anderes nutzen.
+Webserver, den der Browser auf `localhost` erreicht; dieser könnte dann deine Dateien abrufen, in
+deinem Namen hochladen oder deine Freigaben lesen und entscheiden. Der Start warnt davor, solange die
+Dateiübertragung aktiv ist. Verwende https (eine der Bereitstellungen unten) oder zumindest
+ein Browserprofil, das du für nichts anderes nutzt.
 
-Für alles, was länger als ein Test läuft, legen Sie eine Version (`:<version>`) oder einen Digest
-statt `latest` fest und übergeben Geheimnisse als Dateien (`SEVDESK_HTTP_BEARER_TOKEN_FILE`,
+Für alles, was länger als ein Test läuft, lege eine Version (`:<version>`) oder einen Digest
+statt `latest` fest und übergib Geheimnisse als Dateien (`SEVDESK_HTTP_BEARER_TOKEN_FILE`,
 `SEVDESK_API_TOKEN_FILE`) statt als Umgebungswerte, die `docker inspect` anzeigt.
 
 ## Schnellstart: OAuth mit einem benutzerdefinierten Connector in claude.ai
 
-claude.ai verbindet sich von den Servern von Anthropic aus, nicht aus Ihrem Browser; der Server
+claude.ai verbindet sich von den Servern von Anthropic aus, nicht aus deinem Browser; der Server
 braucht daher eine öffentliche https-URL.
 
-1. **Wählen Sie, wo er läuft** ([Bereitstellung](#bereitstellung)): eine Domain hinter Caddy,
+1. **Wähle, wo er läuft** ([Bereitstellung](#bereitstellung)): eine Domain hinter Caddy,
    Fly.io, Render oder Railway. Für einen kurzen Test geht auch ein Tunnel:
    `cloudflared tunnel --url http://localhost:8080` gibt eine `https://….trycloudflare.com`-URL
    aus.
-2. **Erzeugen Sie das Server-Geheimnis** mit `generate-secret`. Es schützt jede Verbindung:
-   Bewahren Sie es wie ein Passwort auf, im Secret-Speicher Ihrer Plattform oder in einer Datei.
-3. **Ermitteln Sie Ihre Konto-ID**:
+2. **Erzeuge das Server-Geheimnis** mit `generate-secret`. Es schützt jede Verbindung:
+   Bewahre es wie ein Passwort auf, im Secret-Speicher deiner Plattform oder in einer Datei.
+3. **Ermittle deine Konto-ID**:
    `docker run --rm -e SEVDESK_API_TOKEN ghcr.io/jaylann/mcp-server-sevdesk:latest account-id`
-   (mit `SEVDESK_API_TOKEN` in Ihrer Shell exportiert; `-e NAME` ohne Wert reicht die Variable
+   (mit `SEVDESK_API_TOKEN` in deiner Shell exportiert; `-e NAME` ohne Wert reicht die Variable
    weiter, ohne sie auf die Kommandozeile zu schreiben).
-4. **Konfigurieren Sie den Server**:
+4. **Konfiguriere den Server**:
 
    ```bash
    SEVDESK_HTTP_AUTH=oauth
@@ -213,14 +213,14 @@ braucht daher eine öffentliche https-URL.
    Es gibt kein `SEVDESK_API_TOKEN`: Im OAuth-Modus bringt jeder Benutzer sein eigenes auf der
    Zustimmungsseite mit.
 
-5. **Fügen Sie den Connector in claude.ai hinzu**: Einstellungen → Connectors → Benutzerdefinierten
+5. **Füge den Connector in claude.ai hinzu**: Einstellungen → Connectors → Benutzerdefinierten
    Connector hinzufügen, mit der URL `https://mcp.example.com/mcp`. claude.ai öffnet die
-   Zustimmungsseite Ihres Servers:
-   - Prüfen Sie, dass der Client `claude.ai` ist und dass die Seite Sie zu `claude.ai` zurückleitet;
-   - haken Sie die Stufen an, die diese Verbindung nutzen darf (`read` ist immer enthalten);
-   - fügen Sie Ihr sevDesk-API-Token ein; der Server prüft es bei sevDesk und gegen
+   Zustimmungsseite deines Servers:
+   - Prüfe, dass der Client `claude.ai` ist und dass die Seite dich zu `claude.ai` zurückleitet;
+   - hake die Stufen an, die diese Verbindung nutzen darf (`read` ist immer enthalten);
+   - füge dein sevDesk-API-Token ein; der Server prüft es bei sevDesk und gegen
      `SEVDESK_OAUTH_ACCOUNTS` und zeigt dann das Konto, zu dem es gehört (nie wieder das Token);
-   - bestätigen Sie dieses Konto. Sie sind zurück in claude.ai, und dieser Browser ist jetzt für
+   - bestätige dieses Konto. Du bist zurück in claude.ai, und dieser Browser ist jetzt für
      12 Stunden an den eigenen Seiten des Servers angemeldet: den
      [Seiten zum Hoch- und Herunterladen](#dateien-hochladen-und-herunterladen) (standardmäßig an)
      und, mit `SEVDESK_CONFIRM=browser`, dem [Freigabe-Postfach](#das-freigabe-postfach).
@@ -236,7 +236,7 @@ andere Befehl ersetzt `--http`, zum Beispiel `docker run --rm <image> generate-s
 
 Die Vorlagen unten betreiben das Image im OAuth-Modus, als eine Instanz mit einem Volume unter
 `/data`, `SEVDESK_CONFIRM=browser`, dem Audit-Log in `/data/audit.jsonl` und `SEVDESK_ALLOW=read`:
-Erhöhen Sie `SEVDESK_ALLOW` auf das Höchste, was eine Verbindung bekommen soll. release-please
+Erhöhe `SEVDESK_ALLOW` auf das Höchste, was eine Verbindung bekommen soll. release-please
 aktualisiert ihren Image-Tag mit jedem Release. Jede Bereitstellung braucht mindestens
 `SEVDESK_HTTP_PUBLIC_URL` und entweder `SEVDESK_HTTP_SECRET` plus `SEVDESK_OAUTH_ACCOUNTS` (OAuth)
 oder `SEVDESK_HTTP_BEARER_TOKEN` plus `SEVDESK_API_TOKEN` (Bearer).
@@ -250,12 +250,12 @@ Für eine VM oder einen Heimserver mit Domainnamen.
   `no-new-privileges`, Grenzen für Speicher und Prozesse, das Server-Geheimnis aus einer Datei über
   Compose-Secrets (`SEVDESK_HTTP_SECRET_FILE`), ein benanntes Volume unter `/data` und kein Port,
   der auf dem Host veröffentlicht ist;
-- **`caddy`** (per Digest festgelegt): holt und erneuert das TLS-Zertifikat für Ihre Domain,
+- **`caddy`** (per Digest festgelegt): holt und erneuert das TLS-Zertifikat für deine Domain,
   behält den `Host`-Header bei, setzt `X-Forwarded-For` und gibt gestreamte Antworten sofort weiter
   (`flush_interval -1`). Er schreibt bewusst kein Access-Log: OAuth-Redirect-URLs enthalten
   Autorisierungscodes.
 
-Richten Sie das DNS der Domain auf den Rechner und öffnen Sie die Ports 80 und 443. Dann, in
+Richte das DNS der Domain auf den Rechner und öffne die Ports 80 und 443. Dann, in
 `deploy/compose/`:
 
 ```bash
@@ -268,8 +268,8 @@ docker compose up -d
 
 Compose bindet eine Secret-Datei so ein, wie sie auf dem Host liegt; sie muss daher für uid 65532
 lesbar sein (das `chown`). `secrets/` ist in Git ignoriert. Caddy ist der eine Proxy davor, daher
-setzt die Vorlage `SEVDESK_HTTP_TRUST_PROXY=1`. Für den Bearer-Modus folgen Sie den
-auskommentierten Zeilen in `compose.yaml`. Die Betriebsbefehle führen Sie in einem einmaligen
+setzt die Vorlage `SEVDESK_HTTP_TRUST_PROXY=1`. Für den Bearer-Modus folgst du den
+auskommentierten Zeilen in `compose.yaml`. Die Betriebsbefehle führst du in einem einmaligen
 Container desselben Dienstes aus, zum Beispiel `docker compose run --rm mcp grants list`.
 
 ### Fly.io (`deploy/fly/fly.toml`)
@@ -281,33 +281,33 @@ der nächsten Anfrage.
 
 ```bash
 fly apps create <app>
-# In fly.toml: `app`, SEVDESK_HTTP_PUBLIC_URL (https://<app>.fly.dev oder Ihre Domain) und
+# In fly.toml: `app`, SEVDESK_HTTP_PUBLIC_URL (https://<app>.fly.dev oder deine Domain) und
 # SEVDESK_OAUTH_ACCOUNTS setzen.
 fly secrets set --app <app> --stage \
   SEVDESK_HTTP_SECRET="$(docker run --rm ghcr.io/jaylann/mcp-server-sevdesk:latest generate-secret)"
 fly deploy --config deploy/fly/fly.toml --ha=false
 ```
 
-Bleiben Sie bei einer Machine (`--ha=false`): Eine zweite hätte ihr eigenes Volume und ihre
+Bleib bei einer Machine (`--ha=false`): Eine zweite hätte ihr eigenes Volume und ihre
 eigenen Zugänge. Der Fly-Proxy ist ein Hop (`SEVDESK_HTTP_TRUST_PROXY=1`).
 
 ### Render (`deploy/render/render.yaml`)
 
 [`deploy/render/render.yaml`](../deploy/render/render.yaml) ist ein Blueprint: ein Webdienst aus
-dem Image in Frankfurt, mit einer 1-GB-Disk unter `/data` und `/healthz` als Zustandsprüfung. Wählen
-Sie im Render-Dashboard New → Blueprint, dieses Repository (oder Ihren Fork) und als
+dem Image in Frankfurt, mit einer 1-GB-Disk unter `/data` und `/healthz` als Zustandsprüfung. Wähle
+im Render-Dashboard New → Blueprint, dieses Repository (oder deinen Fork) und als
 Blueprint-Pfad `deploy/render/render.yaml`. Render erzeugt `SEVDESK_HTTP_SECRET` selbst
 (`generateValue`, nie in der Datei sichtbar) und fragt beim Anlegen nach `SEVDESK_HTTP_PUBLIC_URL`
-(`https://<service>.onrender.com` oder Ihre Domain) und `SEVDESK_OAUTH_ACCOUNTS`. Eine Disk braucht
+(`https://<service>.onrender.com` oder deine Domain) und `SEVDESK_OAUTH_ACCOUNTS`. Eine Disk braucht
 einen kostenpflichtigen Instanztyp und hält den Dienst bei einer Instanz. Die Vorlage setzt
 `PORT=8080`, den Port, an den Render weiterleitet.
 
 ### Railway
 
 Railway liest `railway.json` für neue Dienste nicht mehr (seine Konfiguration als Code ist
-abgekündigt und wird ab dem 2026-12-01 nicht mehr gelesen). Legen Sie den Dienst im Dashboard aus
-dem Image an, oder beschreiben Sie ihn in einer Railway-Datei für Infrastructure as Code
-(`.railway/railway.ts`) in Ihrem eigenen Projekt: [`deploy/README.md`](../deploy/README.md#railway)
+abgekündigt und wird ab dem 2026-12-01 nicht mehr gelesen). Lege den Dienst im Dashboard aus
+dem Image an, oder beschreibe ihn in einer Railway-Datei für Infrastructure as Code
+(`.railway/railway.ts`) in deinem eigenen Projekt: [`deploy/README.md`](../deploy/README.md#railway)
 enthält beides, mit einem Volume unter `/data`, `/healthz` als Zustandsprüfung und einer Replica.
 Railway bindet Volumes mit root als Eigentümer ein, daher läuft der Dienst mit
 `RAILWAY_RUN_UID=0`. Das Image lauscht auf Port 8080.
@@ -315,15 +315,15 @@ Railway bindet Volumes mit root als Eigentümer ein, daher läuft der Dienst mit
 ### Ein Tunnel, zum Testen
 
 `cloudflared tunnel --url http://localhost:8080` gibt einem lokalen Server eine vorübergehende
-öffentliche https-URL. Setzen Sie sie als `SEVDESK_HTTP_PUBLIC_URL` (Neustart, wenn sie sich ändert)
+öffentliche https-URL. Setze sie als `SEVDESK_HTTP_PUBLIC_URL` (Neustart, wenn sie sich ändert)
 und `SEVDESK_HTTP_TRUST_PROXY=1`. Der Tunnelanbieter terminiert TLS und sieht den Verkehr,
-einschließlich der Tokens; verwenden Sie ihn für Tests, nicht für Ihre Buchhaltung.
+einschließlich der Tokens; verwende ihn für Tests, nicht für deine Buchhaltung.
 
 ## Konfigurationsreferenz
 
 Alle Variablen werden beim Start gelesen. Der Start meldet alle Probleme auf einmal und verweigert
 sich, bis alle behoben sind. Variablen, die auf `_FILE` enden, lesen den Wert stattdessen aus einer
-Datei (Docker- und Kubernetes-Secrets); setzen Sie die eine oder die andere.
+Datei (Docker- und Kubernetes-Secrets); setze die eine oder die andere.
 
 ### HTTP-Variablen
 
@@ -338,7 +338,7 @@ Datei (Docker- und Kubernetes-Secrets); setzen Sie die eine oder die andere.
 | `SEVDESK_HTTP_TRUST_PROXY`               | `0`                                   | Reverse Proxys vor dem Server, 0–5. Die Client-IP (Ratenbegrenzung, Logs) ist der Eintrag, der so viele Stellen von rechts in `X-Forwarded-For` steht.                                                                                                                                                                                                                                                                                                                                                                                |
 | `SEVDESK_HTTP_BEARER_TOKEN` (`_FILE`)    |                                       | Bearer-Modus, Pflicht: das Client-Geheimnis, oder zwei durch Komma getrennte Geheimnisse während eines Wechsels. Jedes mindestens 32 Zeichen mit mindestens 16 verschiedenen, ohne Leerraum und nicht das sevDesk-Token.                                                                                                                                                                                                                                                                                                              |
 | `SEVDESK_HTTP_SECRET` (`_FILE`)          |                                       | OAuth, Pflicht: das Server-Geheimnis, mit dem alle Tokens und Cookies verschlüsselt werden; mindestens 32 zufällige Bytes, hex oder base64/base64url (`generate-secret`). Optional im Bearer-Modus, wo es Browser-Anmeldungen über einen Neustart hinweg gültig hält.                                                                                                                                                                                                                                                                 |
-| `SEVDESK_HTTP_SECRET_PREVIOUS` (`_FILE`) |                                       | Das vorige Server-Geheimnis, während Sie [es wechseln](#das-server-geheimnis-wechseln): Damit verschlüsselte Tokens werden weiter angenommen und bei der Erneuerung neu verschlüsselt.                                                                                                                                                                                                                                                                                                                                                |
+| `SEVDESK_HTTP_SECRET_PREVIOUS` (`_FILE`) |                                       | Das vorige Server-Geheimnis, während du [es wechselst](#das-server-geheimnis-wechseln): Damit verschlüsselte Tokens werden weiter angenommen und bei der Erneuerung neu verschlüsselt.                                                                                                                                                                                                                                                                                                                                                |
 | `SEVDESK_HTTP_STATE_DIR`                 | Speicher (Image: `/data`)             | Absolutes Verzeichnis für den Zugangsspeicher und die verschlüsselten Dateien der Dateiübertragung (`files/`); angelegt mit Modus 0700 (ein bestehendes wird auf 0700 verschärft) und beim Start auf Schreibrechte geprüft. Ohne die Variable enden Zugänge und Browser-Sitzungen mit dem Prozess (der OAuth-Start warnt), und Dateien werden im Speicher gehalten.                                                                                                                                                                   |
 | `SEVDESK_HTTP_FILES`                     | `on`                                  | [Dateiübertragung](#dateien-hochladen-und-herunterladen): Upload-Seiten für Belege und E-Rechnungen und Download-Links für die Dateien, die Werkzeuge erzeugen. `on`/`off`, `1`/`0`, `true`/`false` oder `yes`/`no`. Aus: keine Seiten, kein `sevdesk_upload_request` und kein `sevdesk_uploads_list`; im OAuth-Modus außerdem kein Werkzeug, das eine Datei zum Lesen oder einen Ort zum Speichern braucht. Die PDF- und XML-Werkzeuge und die `sevdesk://`-Ressourcen bleiben: Ein Client liest Dokumentdateien weiterhin über MCP. |
 | `SEVDESK_HTTP_FILES_MAX_MB`              | 256 mit Zustandsverzeichnis, sonst 64 | Mebibyte (MiB), die die hochgeladenen Dateien und Download-Links aller Konten zusammen belegen dürfen, 32 bis 4096. Ein Konto darf ein Viertel davon nutzen (mindestens 20 MiB, höchstens die Hälfte); Platz für einen Upload bleibt für Konten frei, die noch keine Dateien halten. Mit Zustandsverzeichnis liegen die Dateien auf der Festplatte, sonst im Speicher.                                                                                                                                                                |
@@ -350,7 +350,7 @@ Datei (Docker- und Kubernetes-Secrets); setzen Sie die eine oder die andere.
 | `SEVDESK_OAUTH_REFRESH_IDLE_TTL`         | `14d`                                 | Ein Refresh-Token, das so lange ungenutzt bleibt, läuft ab; 1 bis 90 Tage.                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `SEVDESK_OAUTH_GRANT_TTL`                | `90d`                                 | Laufzeit eines Zugangs ab der Zustimmung; 1 bis 365 Tage.                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
-Dauern schreiben Sie als ganze Zahl mit der Einheit `s`, `m`, `h` oder `d` (`90s`, `30m`, `1h`,
+Dauern schreibst du als ganze Zahl mit der Einheit `s`, `m`, `h` oder `d` (`90s`, `30m`, `1h`,
 `14d`) oder als bloße Anzahl Sekunden.
 
 ### Andere Variablen im HTTP-Modus
@@ -374,7 +374,7 @@ Unterschieden:
   claude.ai. Der Start warnt daher, wenn `elicit` mit der Stufe `commit` oder `external`
   kombiniert ist. `browser` nutzt das [Freigabe-Postfach](#das-freigabe-postfach) des Servers.
 - **`SEVDESK_CONFIRM_OPEN`**: im HTTP-Modus aus, sofern nicht ausdrücklich gesetzt, und dort ohne
-  Wirkung: Freigaben warten im Postfach, das Sie selbst öffnen. `1` zusammen mit einem Lauschen
+  Wirkung: Freigaben warten im Postfach, das du selbst öffnest. `1` zusammen mit einem Lauschen
   außerhalb von Loopback wird abgelehnt.
 - **`SEVDESK_FILE_DIRS`, `SEVDESK_OUTPUT_DIR`**: im OAuth-Modus abgelehnt, weil sich alle
   Verbindungen die Festplatte des Servers teilen würden. Dateien erreichen die Werkzeuge
@@ -385,7 +385,7 @@ Unterschieden:
   Download-Links: Dateien werden dann auf dem Server gespeichert.
 - **`SEVDESK_AUDIT_LOG`**: ein Log für alle Konten; jede Zeile nennt das Konto und den Zugang. Es
   hält außerdem jeden empfangenen Upload, jeden angelegten Download-Link und jeden Download fest. Im
-  Image ist das Root-Dateisystem schreibgeschützt; legen Sie es also unter `/data` ab.
+  Image ist das Root-Dateisystem schreibgeschützt; lege es also unter `/data` ab.
 - **`SEVDESK_RATE_LIMIT`**: gilt je sevDesk-Konto, geteilt von allen seinen Verbindungen.
 
 ### Abbrüche und Warnungen beim Start
@@ -419,7 +419,7 @@ Der Start warnt (und startet) bei `SEVDESK_CONFIRM=elicit` mit der Stufe `commit
 `SEVDESK_OAUTH_ACCOUNTS=any` (mit aktiver Dateiübertragung auch, weil der Server dann kurzzeitig
 die Belege und Exporte jedes verbundenen Kontos hält und einige Konten zusammen seinen Platz für
 Dateien füllen können), `SEVDESK_OAUTH_CLIENTS=any`, OAuth ohne Zustandsverzeichnis, `SEVDESK_API_TOKEN` oder einem Bearer-Geheimnis im OAuth-Modus, einem Server-
-oder Bearer-Geheimnis, das eher wie eine Passphrase als wie zufällige Bytes aussieht (verwenden Sie
+oder Bearer-Geheimnis, das eher wie eine Passphrase als wie zufällige Bytes aussieht (verwende
 `generate-secret`), einem Lauschen außerhalb von Loopback mit einer öffentlichen Loopback-URL (jeder,
 der den Port erreicht, kann den Server nutzen; siehe den
 [Docker-Schnellstart](#schnellstart-bearer-modus-mit-docker)), Dateiübertragung über einfaches
@@ -439,7 +439,7 @@ Einstellungen → Connectors → Benutzerdefinierten Connector hinzufügen, mit 
 `https://<host>/mcp`. claude.ai öffnet die Zustimmungsseite
 ([Schnellstart](#schnellstart-oauth-mit-einem-benutzerdefinierten-connector-in-claudeai)). Der
 Connector steht dann in den Claude-Apps zur Verfügung, die mit demselben Konto angemeldet sind.
-Entfernen Sie den Connector in claude.ai, verwirft claude.ai seine Tokens;
+Entfernst du den Connector in claude.ai, verwirft claude.ai seine Tokens;
 [den Zugang zu widerrufen](#zugriff-entziehen) beendet ihn auch auf dem Server.
 
 ### Claude Code
@@ -450,13 +450,13 @@ Mit OAuth:
 claude mcp add --transport http sevdesk https://<host>/mcp
 ```
 
-Führen Sie dann `/mcp` in Claude Code aus und wählen Sie die Authentifizierung: Die
-Zustimmungsseite öffnet sich in Ihrem Browser und leitet Sie zu Claude Code zurück. Claude Code
+Führe dann `/mcp` in Claude Code aus und wähle die Authentifizierung: Die
+Zustimmungsseite öffnet sich in deinem Browser und leitet dich zu Claude Code zurück. Claude Code
 weist sich mit einem eigenen Metadaten-Dokument aus, das wie das von claude.ai unter `claude.ai`
 liegt (der Standardwert von `SEVDESK_OAUTH_CLIENTS` deckt es also ab), und mit einer
 Loopback-Weiterleitung, auf die die Zustimmungsseite hinweist.
 
-Mit einem Bearer-Geheimnis (lesen Sie es aus einer Datei oder Ihrem Passwortmanager, statt es
+Mit einem Bearer-Geheimnis (lies es aus einer Datei oder deinem Passwortmanager, statt es
 einzutippen):
 
 ```bash
@@ -506,28 +506,28 @@ In `.vscode/mcp.json`, mit einer Passwortabfrage, damit das Geheimnis nicht in d
 ### Andere Clients
 
 Jeder Client, der Streamable HTTP spricht und einen Header senden kann, funktioniert im
-Bearer-Modus. Im OAuth-Modus braucht ein Client Client ID Metadata Documents; nehmen Sie den Host
+Bearer-Modus. Im OAuth-Modus braucht ein Client Client ID Metadata Documents; nimm den Host
 seiner `client_id`-URL in `SEVDESK_OAUTH_CLIENTS` auf.
 
 ## Das Freigabe-Postfach
 
 Mit `SEVDESK_CONFIRM=browser` warten Aufrufe der Stufen `commit` und `external` auf eine
 Entscheidung im Freigabe-Postfach des Servers unter `<public URL>/approvals`. Es ersetzt die lokale
-Freigabeseite des stdio-Modus, die ein entfernter Server nicht in Ihrem Browser öffnen kann.
+Freigabeseite des stdio-Modus, die ein entfernter Server nicht in deinem Browser öffnen kann.
 
 So läuft eine Bestätigung ab:
 
 1. Das Modell ruft etwa das Werkzeug auf, das eine Rechnung fertigstellt. Der Server bereitet den
    Aufruf vor und antwortet mit `approval_pending`, einem kurzen Referenzcode, dem Ablauf
    (10 Minuten) und der URL des Postfachs.
-2. Sie öffnen das Postfach, suchen die Anfrage mit diesem Referenzcode und lesen die Vorschau: die
+2. Du öffnest das Postfach, suchst die Anfrage mit diesem Referenzcode und liest die Vorschau: die
    Aktion, Warnungen, Beträge, Empfänger, Texte. In einem deutschen Browser sind das Postfach
    und die Vorschau deutsch ([Berechtigungen](permissions.de.md#browser)).
-3. Sie drücken „Freigeben“ oder „Ablehnen“ (in einem englischen Browser „Approve“ oder
+3. Du drückst „Freigeben“ oder „Ablehnen“ (in einem englischen Browser „Approve“ oder
    „Reject“).
-4. Sie bitten das Modell, es erneut zu versuchen. Es ruft das Werkzeug mit denselben Argumenten
-   auf; der Server bereitet die Aktion noch einmal vor und führt sie nur aus, wenn Sie freigegeben
-   haben und die Vorschau unverändert ist. Jede Freigabe wird einmal verwendet.
+4. Du bittest das Modell, es erneut zu versuchen. Es ruft das Werkzeug mit denselben Argumenten
+   auf; der Server bereitet die Aktion noch einmal vor und führt sie nur aus, wenn du freigegeben
+   hast und die Vorschau unverändert ist. Jede Freigabe wird einmal verwendet.
 
 **Anmelden.** Das Postfach zeigt nichts außer einem Anmeldeformular, bis der Browser nachweist,
 dass er für das Konto handeln darf:
@@ -541,11 +541,11 @@ dass er für das Konto handeln darf:
   `SEVDESK_API_TOKEN` des Servers sein; das Bearer-Geheimnis meldet nicht an, weil der Client es
   hält.
 
-Eine Anmeldung gilt 12 Stunden oder bis Sie sich abmelden, der Zugang, aus dem sie stammt,
+Eine Anmeldung gilt 12 Stunden oder bis du dich abmeldest, der Zugang, aus dem sie stammt,
 widerrufen wird oder `grants revoke --account <id>` alle Sitzungen des Kontos beendet. Eine
 Anmeldung mit eingefügtem Token ist nicht an dieses Token gebunden: Wird das Token in sevDesk neu
 erzeugt, endet sie nicht. Anmeldeversuche sind je Client-Adresse begrenzt, IPv6-Adressen je
-/64-Netz gezählt (5 pro Minute, 20 pro Stunde). Setzen Sie im Bearer-Modus zusätzlich
+/64-Netz gezählt (5 pro Minute, 20 pro Stunde). Setze im Bearer-Modus zusätzlich
 `SEVDESK_HTTP_SECRET`, wenn Anmeldungen einen Neustart überdauern sollen.
 
 **Was das Modell sieht.** Den Referenzcode, den Ablauf und die URL des Postfachs. Die URL ist
@@ -558,10 +558,10 @@ Kontos auf; jeder, der an diesem Konto angemeldet ist, sieht sie also und kann �
 entscheiden. Höchstens fünf Freigaben je Konto warten gleichzeitig, und die Anfragen eines Kontos
 können die Freigaben eines anderen Kontos nicht aus dem Speicher des Servers verdrängen.
 
-**Grenzen.** Ein Agent, der Ihren Browser steuern kann, während er angemeldet ist
+**Grenzen.** Ein Agent, der deinen Browser steuern kann, während er angemeldet ist
 (Browser-Automatisierung, ein Werkzeug zur Computersteuerung), könnte selbst freigeben. Und das
-Postfach fragt nach Ihrem sevDesk-Token; eine nachgeahmte Seite könnte also versuchen, es
-abzugreifen: Fügen Sie es nur in eine Seite ein, deren Adresse `/approvals` Ihres Servers ist. Bei
+Postfach fragt nach deinem sevDesk-Token; eine nachgeahmte Seite könnte also versuchen, es
+abzugreifen: Füge es nur in eine Seite ein, deren Adresse `/approvals` deines Servers ist. Bei
 einer Einrichtung mit einfachem http auf `localhost` erhalten auch andere lokale Webserver das
 Sitzungs-Cookie ([Schnellstart](#schnellstart-bearer-modus-mit-docker)). Ausstehende Freigaben
 enden, wenn der Server neu startet; das Modell fragt dann einfach erneut. Siehe
@@ -569,23 +569,23 @@ enden, wenn der Server neu startet; das Modell fragt dann einfach erneut. Siehe
 
 ## Dateien: Hochladen und Herunterladen
 
-Ein entfernter Server kann keine Dateien auf Ihrem Rechner lesen, und die Dateien, die er erzeugt,
+Ein entfernter Server kann keine Dateien auf deinem Rechner lesen, und die Dateien, die er erzeugt,
 gelangen nicht von selbst dorthin. Mit `SEVDESK_HTTP_FILES=on` (der Standard) wandern Dateien über
-Seiten des Servers, die Sie in Ihrem Browser öffnen. Das Modell sieht und sendet nie den Inhalt
+Seiten des Servers, die du in deinem Browser öffnest. Das Modell sieht und sendet nie den Inhalt
 dieser Dateien. (Dokument-PDFs und -XML, die ein Client als `sevdesk://`-Ressource anfordert,
 nehmen einen anderen Weg: Sie gehen per MCP an den Client.)
 
 **Einen Beleg oder eine E-Rechnung hochladen:**
 
-1. Das Modell ruft `sevdesk_upload_request` auf (Zweck `receipt` oder `einvoice`) und gibt Ihnen
+1. Das Modell ruft `sevdesk_upload_request` auf (Zweck `receipt` oder `einvoice`) und gibt dir
    einen Link, `<public URL>/uploads/<id>`, mit einem kurzen Referenzcode und einem Ablauf.
-2. Sie öffnen den Link. Die Seite zeigt nur, was der Server weiß: was sie annimmt, die größte
+2. Du öffnest den Link. Die Seite zeigt nur, was der Server weiß: was sie annimmt, die größte
    Datei, bis wann sie gültig ist, das Konto und den Referenzcode. Das Modell kann keinen Text
    darauf setzen.
-3. Sie wählen die Datei und drücken Upload. Der Server prüft den Dateityp am Inhalt, nicht am
+3. Du wählst die Datei und drückst Upload. Der Server prüft den Dateityp am Inhalt, nicht am
    Namen, und behält einen bereinigten Namen (Buchstaben, Ziffern, `.`, `_`, `-`; Umlaute
    ausgeschrieben; höchstens 100 Zeichen; die Endung aus dem Inhalt).
-4. Sie sagen dem Modell, dass der Upload erledigt ist. Es übergibt die erhaltene `uploadId`
+4. Du sagst dem Modell, dass der Upload erledigt ist. Es übergibt die erhaltene `uploadId`
    (`upload:<id>`) als `file` an `sevdesk_voucher_create_draft`, `sevdesk_voucher_update_draft`,
    `sevdesk_einvoice_parse` oder `sevdesk_voucher_import_einvoice`. Nur die Verbindung, die den
    Upload angefordert hat, kann ihn nutzen. Sobald das Erstellen, Ändern oder Importieren gelingt
@@ -597,11 +597,11 @@ nehmen einen anderen Weg: Sie gehen per MCP an den Client.)
    Speichern geprüften Stand ändern (oder erstmals ein Anhang vorliegen, wenn vorher ausdrücklich
    keiner vorhanden war). Bei gleicher ID oder unbekanntem vorherigem Anhang bleibt der Upload
    bis zum Ablauf verfügbar. Um eine erfolgreich angehängte Datei nach der Freigabe ihres
-   Uploads erneut zu verwenden, fordern Sie einen neuen Upload an.
+   Uploads erneut zu verwenden, fordere einen neuen Upload an.
 
-**Mehrere Dateien auf einer Seite.** Übergeben Sie `sevdesk_upload_request` das optionale `count`
+**Mehrere Dateien auf einer Seite.** Übergib `sevdesk_upload_request` das optionale `count`
 (1–10, Standard 1). Bei `count > 1` gibt es statt `uploadId` eine `batchId`, `count` und eine
-einzige Seiten-URL zurück. Wählen Sie mehrere Dateien und senden Sie sie einmal ab. Das Modell ruft
+einzige Seiten-URL zurück. Wähle mehrere Dateien und sende sie einmal ab. Das Modell ruft
 danach `sevdesk_uploads_list` mit der `batchId` auf: Jeder Platz hat eine `uploadId` und einen
 Status; hochgeladene Plätze haben zusätzlich ihren bereinigten Namen, die Art, die Größe, SHA-256
 und ihren eigenen Ablauf. Das Modell ordnet diese Namen den vorgesehenen Entwürfen zu und verwendet
@@ -612,12 +612,12 @@ Größe und SHA-256 zur Unterscheidung nicht aus, klärt es die gewünschte Zuor
 Die ganze Upload-Anfrage reserviert vorab einen Eintrag je Datei. Passt sie nicht mehr in die
 verbleibenden Einträge des Kontos oder des Servers, wird kein Platz angelegt; die Ablehnung nennt
 den nächsten bekannten Ablaufzeitpunkt dieses Kontos. Eine Upload-Anfrage für mehrere Dateien zählt
-als eine der fünf wartenden Seiten. Sie können weniger Dateien hochladen und vor Ablauf der
+als eine der fünf wartenden Seiten. Du kannst weniger Dateien hochladen und vor Ablauf der
 ursprünglichen 15 Minuten auf dieselbe Seite zurückkehren, um den Rest nachzureichen. Scheitert
 eine spätere Datei, bleiben die zuvor erfolgreich hochgeladenen verfügbar, und die Seite listet,
-was noch fehlt; wählen Sie beim erneuten Versuch nur die fehlenden Dateien. Jedes Formular ist an
+was noch fehlt; wähle beim erneuten Versuch nur die fehlenden Dateien. Jedes Formular ist an
 die darin angezeigten freien Plätze gebunden: Das erneute Absenden eines veralteten Formulars
-belegt keine weiteren Plätze, sondern die Seite zeigt den aktuellen Stand und fordert Sie auf, nur
+belegt keine weiteren Plätze, sondern die Seite zeigt den aktuellen Stand und fordert dich auf, nur
 die noch fehlenden Dateien erneut auszuwählen. Nach einem erfolgreichen Upload führt eine
 Weiterleitung zur Fortschrittsseite; deren Aktualisierung sendet keine Dateien erneut. Laufen
 ungenutzte Plätze ab, bleiben bereits hochgeladene Dateien bis zu ihrem eigenen Ablauf verfügbar.
@@ -647,9 +647,9 @@ angemeldet, sieht ein Browser die Upload-Seiten und Links aller Verbindungen die
 Werkzeuge verwenden nur die Uploads ihrer eigenen Verbindung.
 
 **Auf dem Telefon.** Die Claude-Apps öffnen einen Link unter Umständen in einem Browser, der die
-Cookies desjenigen nicht teilt, in dem Sie zugestimmt haben: Sie sehen dann das Anmeldeformular.
-Melden Sie sich dort mit dem sevDesk-API-Token an oder öffnen Sie den Link in dem Browser, in dem
-Sie zugestimmt haben.
+Cookies desjenigen nicht teilt, in dem du zugestimmt hast: Du siehst dann das Anmeldeformular.
+Melde dich dort mit dem sevDesk-API-Token an oder öffne den Link in dem Browser, in dem
+du zugestimmt hast.
 
 **Grenzen und Laufzeiten:**
 
@@ -662,7 +662,7 @@ Sie zugestimmt haben.
 | Je Konto                 | 5 Upload-Seiten, die auf eine Datei warten; `SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT` reservierte Dateiplätze, Uploads und Links zusammen (Standard 10, Bereich 1–1000); ein Viertel von `SEVDESK_HTTP_FILES_MAX_MB` (mindestens 20 MiB, höchstens die Hälfte). |
 | Alle Konten              | `SEVDESK_HTTP_FILES_MAX_MB` (256 MiB mit Zustandsverzeichnis, 64 MiB ohne), 1.000 Uploads und Links. Platz für einen Upload bleibt für Konten frei, die noch keine Dateien halten.                                                                         |
 | Anfragen je Client       | 60 pro Minute an die Upload- und Download-Seiten zusammen; 10 Uploads pro Minute und 60 pro Stunde (IPv6 je /64-Netz).                                                                                                                                     |
-| Gleichzeitige Uploads    | 2 für den ganzen Server, 1 je Konto; ein weiterer bekommt „Server busy“ oder „Upload in progress“ (503): Versuchen Sie es gleich noch einmal.                                                                                                              |
+| Gleichzeitige Uploads    | 2 für den ganzen Server, 1 je Konto; ein weiterer bekommt „Server busy“ oder „Upload in progress“ (503): Versuche es gleich noch einmal.                                                                                                                   |
 | Upload-Tempo             | Die Datei muss innerhalb von 90 Sekunden eintreffen, ohne 10 Sekunden Pause und nach den ersten 10 Sekunden mit durchschnittlich mindestens 16 KB/s; sonst 408.                                                                                            |
 | Download-Tempo           | Der Browser muss die Datei laufend abnehmen: Ein Download, von dem er in einer Minute weniger als 64 KiB abnimmt, wird abgebrochen und zählt trotzdem als einer der 5 des Links.                                                                           |
 | Ein Neustart             | Macht jede Upload-Seite, jeden Upload und jeden Link ungültig. Das Modell fordert einen neuen an.                                                                                                                                                          |
@@ -671,12 +671,12 @@ Nichts wird verdrängt, um Platz zu schaffen: Ist eine Grenze erreicht, werden n
 Links abgelehnt, bis ältere ablaufen oder freigegeben werden. Bei einer erreichten Anzahlgrenze
 nennt die Meldung den frühesten bekannten Ablaufzeitpunkt des anfragenden Kontos, niemals Zeiten
 anderer Konten. Noch laufende Speichervorgänge haben keinen festen Ablaufzeitpunkt; wenn keiner
-bekannt ist, sagt die Meldung das. Für mehr gleichzeitige Einträge erhöhen Sie
+bekannt ist, sagt die Meldung das. Für mehr gleichzeitige Einträge erhöhe
 `SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT`; die Byte-Grenzen ändern sich dadurch nicht.
 Download-Links zählen gegen denselben Platz wie Uploads; ein
 großer DATEV-Export passt daher unter Umständen nicht (mit 64 MiB im Speicher hat ein Konto 20 MiB).
-Das Werkzeug sagt dann, dass sevDesk den Export gestartet hat, und Sie laden ihn stattdessen in
-sevDesk herunter; oder Sie erhöhen `SEVDESK_HTTP_FILES_MAX_MB`, am besten mit einem
+Das Werkzeug sagt dann, dass sevDesk den Export gestartet hat, und du lädst ihn stattdessen in
+sevDesk herunter; oder du erhöhst `SEVDESK_HTTP_FILES_MAX_MB`, am besten mit einem
 Zustandsverzeichnis, damit die Dateien auf die Festplatte gehen.
 
 **Speicher.** Ohne Zustandsverzeichnis werden Dateien im Speicher gehalten. Während ein Upload
@@ -685,16 +685,16 @@ angenommen. Der Body einer Upload-Anfrage für mehrere Dateien ist schon vor dem
 auf das Kleinere aus ihren freien Plätzen mal der Grenze je Datei und dem verbleibenden
 Byte-Anteil des Kontos, plus 64 KiB für die Multipart-Hülle (absolute Obergrenze: 200 MiB plus
 Hülle). Beim Standard von 256 MiB Speicherplatz hat ein leeres Konto 64 MiB für eine solche
-Anfrage; ohne Zustandsverzeichnis beträgt der Standardanteil 20 MiB. Planen Sie Speicher für das
-Einlesen dieser Bodys ebenso ein wie für die gehaltenen Dateien, besonders wenn Sie die
-Speichergrenze erhöhen. Dateien werden nacheinander gespeichert, wobei Byte-Grenzen und Ablauf für
+Anfrage; ohne Zustandsverzeichnis beträgt der Standardanteil 20 MiB. Plane Speicher für das
+Einlesen dieser Bodys ebenso ein wie für die gehaltenen Dateien, besonders wenn du die
+Speichergrenze erhöhst. Dateien werden nacheinander gespeichert, wobei Byte-Grenzen und Ablauf für
 jede erneut geprüft werden; eine gleichzeitige Reservierung für einen Download kann trotzdem zu
 einem teilweisen Fehlschlag führen.
 
 **Reverse Proxys.** Der Body eines Uploads muss innerhalb von 90 Sekunden ohne 10 Sekunden Pause
 eintreffen und `Content-Length` tragen; ein Upload in Chunks ohne diesen Header wird mit 411
-abgelehnt. Setzen Sie die Body-Grenze des Proxys auf die Größe, die Sie für eine Upload-Anfrage
-zulassen, plus Hülle: zum Beispiel nginx `client_max_body_size 65m;` für den Kontoanteil von
+abgelehnt. Setze die Body-Grenze des Proxys auf die Größe, die du für eine Upload-Anfrage
+zulässt, plus Hülle: zum Beispiel nginx `client_max_body_size 65m;` für den Kontoanteil von
 64 MiB beim Standard mit Zustandsverzeichnis, oder `201m` für die absolute Obergrenze von 200 MiB.
 Sein Standard von 1 MB lehnt die meisten Belege ab; seine standardmäßige Pufferung von Anfragen
 sendet `Content-Length`. Caddy, wie in der Compose-Vorlage, braucht nichts. Jede Datei hat
@@ -711,9 +711,9 @@ Bearer-Modus nutzt weiterhin `SEVDESK_FILE_DIRS` und `SEVDESK_OUTPUT_DIR`, wenn 
 Die PDF- und XML-Werkzeuge und die `sevdesk://`-Ressourcen sind nicht betroffen: Ein Client liest
 Dokumentdateien über sie per MCP.
 
-**Grenzen des Entwurfs.** Ein Agent, der Ihren angemeldeten Browser steuern kann, könnte selbst
+**Grenzen des Entwurfs.** Ein Agent, der deinen angemeldeten Browser steuern kann, könnte selbst
 hoch- oder herunterladen, so wie er im Postfach freigeben könnte. Eine heruntergeladene Datei ist
-das, was sevDesk geliefert hat; öffnen Sie sie wie jedes Dokument aus Ihrer Buchhaltung. Bei einer
+das, was sevDesk geliefert hat; öffne sie wie jedes Dokument aus deiner Buchhaltung. Bei einer
 Einrichtung mit einfachem http auf `localhost` erhalten auch andere lokale Webserver das
 Sitzungs-Cookie. Siehe [ADR 0008](adr/0008-file-transfer-over-http.md).
 
@@ -721,7 +721,7 @@ Sitzungs-Cookie. Siehe [ADR 0008](adr/0008-file-transfer-over-http.md).
 
 ### Befehle
 
-Das Programm hat außer dem Bereitstellen einige Befehle. Mit Docker hängen Sie sie an
+Das Programm hat außer dem Bereitstellen einige Befehle. Mit Docker hängst du sie an
 `docker run --rm <image>` an (der Standardbefehl des Images ist `--http`).
 
 | Befehl                                   | Was er tut                                                                                                                                                                                                                                                                                                                                                         |
@@ -747,18 +747,18 @@ von etwa einer Sekunde. Mit dem Image brauchen sie das Volume, zum Beispiel
 `docker run --rm -v sevdesk-mcp-data:/data ghcr.io/jaylann/mcp-server-sevdesk:<version> grants list`.
 Ohne Zustandsverzeichnis gibt es Zugänge nur im Serverprozess, und die Befehle sehen sie nicht. Das
 Image hat keine Shell; eine Plattform-Konsole, die eine braucht, kann sie also nicht ausführen. Dort
-entziehen Sie den Zugriff, indem Sie das Server-Geheimnis oder das sevDesk-Token ersetzen
+entziehst du den Zugriff, indem du das Server-Geheimnis oder das sevDesk-Token ersetzt
 ([Zugriff entziehen](#zugriff-entziehen)).
 
 ### Zugriff entziehen
 
-| Um zu beenden                   | Tun Sie                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Eine Verbindung                 | `grants revoke <grant-id>`. Ihre nächste Anfrage bekommt 401, und der Client bittet um eine neue Verbindung. Clients, die den Widerruf von Tokens unterstützen (RFC 7009, `/revoke`), tun dasselbe, wenn Sie sie trennen.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Alle Verbindungen eines Kontos  | `grants revoke --account <id>`. Das beendet auch jede Browser-Sitzung des Kontos, einschließlich Anmeldungen mit eingefügtem Token.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| Alles                           | `grants revoke --all` (jeder Zugang und jede Browser-Sitzung, auch Anmeldungen mit einem Token), oder ersetzen Sie `SEVDESK_HTTP_SECRET`, ohne das alte als `_PREVIOUS` zu behalten: Kein zuvor ausgestelltes Token lässt sich dann noch öffnen.                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| Zugriff mit einem sevDesk-Token | Erzeugen Sie das Token in sevDesk neu (Einstellungen → Benutzer → API-Token). sevDesk lehnt das alte sofort ab, Werkzeugaufrufe funktionieren also nicht mehr, und die nächste Erneuerung jedes Zugangs, der es hält (innerhalb der Laufzeit des Access-Tokens), widerruft diesen Zugang. Das wirkt auch, wenn das Server-Geheimnis oder die Tokens eines Clients nach außen gelangt sind. Browser-Sitzungen sind nicht an das Token gebunden: Eine Anmeldung mit dem alten Token bleibt bis zu 12 Stunden gültig und eine Sitzung aus einer Zustimmung, bis ihr Zugang widerrufen wird. Führen Sie zusätzlich `grants revoke --account <id>` aus, um sie sofort zu beenden. |
-| Bearer-Zugriff                  | Ersetzen Sie `SEVDESK_HTTP_BEARER_TOKEN` und starten Sie neu. Browser-Anmeldungen überdauern einen Neustart, wenn `SEVDESK_HTTP_SECRET` und das Zustandsverzeichnis erhalten bleiben; `grants revoke --account <id>` beendet sie (die ID ist die, die der Server beim Start protokolliert hat, oder `bearer`, falls diese Abfrage fehlschlug).                                                                                                                                                                                                                                                                                                                               |
+| Um zu beenden                   | Was du tust                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Eine Verbindung                 | `grants revoke <grant-id>`. Ihre nächste Anfrage bekommt 401, und der Client bittet um eine neue Verbindung. Clients, die den Widerruf von Tokens unterstützen (RFC 7009, `/revoke`), tun dasselbe, wenn du sie trennst.                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Alle Verbindungen eines Kontos  | `grants revoke --account <id>`. Das beendet auch jede Browser-Sitzung des Kontos, einschließlich Anmeldungen mit eingefügtem Token.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Alles                           | `grants revoke --all` (jeder Zugang und jede Browser-Sitzung, auch Anmeldungen mit einem Token), oder ersetze `SEVDESK_HTTP_SECRET`, ohne das alte als `_PREVIOUS` zu behalten: Kein zuvor ausgestelltes Token lässt sich dann noch öffnen.                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Zugriff mit einem sevDesk-Token | Erzeuge das Token in sevDesk neu (Einstellungen → Benutzer → API-Token). sevDesk lehnt das alte sofort ab, Werkzeugaufrufe funktionieren also nicht mehr, und die nächste Erneuerung jedes Zugangs, der es hält (innerhalb der Laufzeit des Access-Tokens), widerruft diesen Zugang. Das wirkt auch, wenn das Server-Geheimnis oder die Tokens eines Clients nach außen gelangt sind. Browser-Sitzungen sind nicht an das Token gebunden: Eine Anmeldung mit dem alten Token bleibt bis zu 12 Stunden gültig und eine Sitzung aus einer Zustimmung, bis ihr Zugang widerrufen wird. Führe zusätzlich `grants revoke --account <id>` aus, um sie sofort zu beenden. |
+| Bearer-Zugriff                  | Ersetze `SEVDESK_HTTP_BEARER_TOKEN` und starte neu. Browser-Anmeldungen überdauern einen Neustart, wenn `SEVDESK_HTTP_SECRET` und das Zustandsverzeichnis erhalten bleiben; `grants revoke --account <id>` beendet sie (die ID ist die, die der Server beim Start protokolliert hat, oder `bearer`, falls diese Abfrage fehlschlug).                                                                                                                                                                                                                                                                                                                               |
 
 Uploads und Download-Links werden nicht mit einem Zugang widerrufen: Das Ende einer Sitzung sperrt
 den Browser, der sie hielt, und die Dateien laufen innerhalb von `SEVDESK_HTTP_FILES_TTL` ab. Ein
@@ -766,22 +766,22 @@ Neustart macht sie alle auf einmal ungültig.
 
 ### Das Server-Geheimnis wechseln
 
-1. Erzeugen Sie mit `generate-secret` ein neues Geheimnis.
-2. Setzen Sie es als `SEVDESK_HTTP_SECRET`, verschieben Sie das alte nach
-   `SEVDESK_HTTP_SECRET_PREVIOUS` und starten Sie neu. Mit dem alten Geheimnis verschlüsselte Tokens
+1. Erzeuge mit `generate-secret` ein neues Geheimnis.
+2. Setze es als `SEVDESK_HTTP_SECRET`, verschiebe das alte nach
+   `SEVDESK_HTTP_SECRET_PREVIOUS` und starte neu. Mit dem alten Geheimnis verschlüsselte Tokens
    werden weiter angenommen; ihre Erneuerung verschlüsselt die neuen mit dem neuen Geheimnis.
-3. Behalten Sie `_PREVIOUS` so lange wie die Leerlaufzeit der Erneuerung
-   (`SEVDESK_OAUTH_REFRESH_IDLE_TTL`, standardmäßig 14 Tage), entfernen Sie es dann und starten Sie
+3. Behalte `_PREVIOUS` so lange wie die Leerlaufzeit der Erneuerung
+   (`SEVDESK_OAUTH_REFRESH_IDLE_TTL`, standardmäßig 14 Tage), entferne es dann und starte
    neu. Ein Client, der in dieser Zeit nicht erneuert hat, verbindet sich neu.
 
-Wenn das Geheimnis nach außen gelangt sein könnte, überspringen Sie die Wartezeit aus Schritt 3:
-Ersetzen Sie es ohne `_PREVIOUS`. Jeder Client verbindet sich neu. Wenn auch Tokens nach außen
-gelangt sein könnten (das Geheimnis öffnet sie und das sevDesk-Token darin), erzeugen Sie außerdem
-die sevDesk-Tokens neu und führen für jedes Konto `grants revoke --account <id>` aus, was auch seine
+Wenn das Geheimnis nach außen gelangt sein könnte, überspringe die Wartezeit aus Schritt 3:
+Ersetze es ohne `_PREVIOUS`. Jeder Client verbindet sich neu. Wenn auch Tokens nach außen
+gelangt sein könnten (das Geheimnis öffnet sie und das sevDesk-Token darin), erzeuge außerdem
+die sevDesk-Tokens neu und führe für jedes Konto `grants revoke --account <id>` aus, was auch seine
 Browser-Sitzungen beendet.
 
-Bearer-Geheimnisse wechseln Sie genauso: Setzen Sie `SEVDESK_HTTP_BEARER_TOKEN=<new>,<old>`,
-aktualisieren Sie die Clients und entfernen Sie dann den alten Wert.
+Bearer-Geheimnisse wechselst du genauso: Setze `SEVDESK_HTTP_BEARER_TOKEN=<new>,<old>`,
+aktualisiere die Clients und entferne dann den alten Wert.
 
 ### Logs
 
@@ -831,10 +831,10 @@ Zugangsspeicher und gibt die Sperre frei.
 ## Fehlersuche
 
 **claude.ai meldet, den Server nicht erreichen oder sich nicht verbinden zu können.** claude.ai
-verbindet sich aus dem Internet; prüfen Sie also von außerhalb Ihres Netzes:
+verbindet sich aus dem Internet; prüfe also von außerhalb deines Netzes:
 
 - `curl https://<host>/healthz` antwortet `{"status":"ok"}`;
-- `curl https://<host>/.well-known/oauth-protected-resource/mcp` liefert JSON mit Ihrer
+- `curl https://<host>/.well-known/oauth-protected-resource/mcp` liefert JSON mit deiner
   öffentlichen URL;
 - die URL des Connectors ist genau `SEVDESK_HTTP_PUBLIC_URL` plus `/mcp`;
 - der Server läuft im OAuth-Modus (im Bearer-Modus antworten die Metadaten-Dokumente mit 404, und
@@ -846,41 +846,41 @@ Access-Token gilt nur für `<public URL>/mcp`, ist mit dem aktuellen Geheimnis v
 wird gegen den Zugangsspeicher geprüft.
 
 - Die URL des Connectors weicht von der öffentlichen URL ab (anderer Host, `http` statt `https`,
-  ein abschließender Schrägstrich oder ein anderer Pfad): Korrigieren Sie die URL oder
+  ein abschließender Schrägstrich oder ein anderer Pfad): Korrigiere die URL oder
   `SEVDESK_HTTP_PUBLIC_URL`.
 - Das Geheimnis hat sich seit der Zustimmung geändert, oder zwei Instanzen mit verschiedenen
   Geheimnissen bedienen dieselbe URL.
-- Das Zustandsverzeichnis ist nicht dauerhaft, ein Neustart hat die Zugänge also vergessen. Binden
-  Sie dort ein Volume ein.
+- Das Zustandsverzeichnis ist nicht dauerhaft, ein Neustart hat die Zugänge also vergessen. Binde
+  dort ein Volume ein.
 - Mehr als eine Instanz: Ein Zugang existiert nur im Speicher der Instanz, die ihn angelegt hat.
 
 **Anfragen werden wegen `Host` oder `Origin` abgelehnt, hinter einem Proxy.** Der Server nimmt nur
 den Host seiner öffentlichen URL an. Die meisten Proxys (Caddy, Fly, Render, Railway, cloudflared)
-reichen den ursprünglichen `Host` weiter; sendet Ihrer einen eigenen (einen internen Namen wie
-`localhost:8080`), stellen Sie ihn so ein, dass er den ursprünglichen Host weiterreicht, oder
-nehmen Sie diesen Namen in `SEVDESK_HTTP_ALLOWED_HOSTS` auf. Ein Client, der einen anderen
+reichen den ursprünglichen `Host` weiter; sendet deiner einen eigenen (einen internen Namen wie
+`localhost:8080`), stelle ihn so ein, dass er den ursprünglichen Host weiterreicht, oder
+nimm diesen Namen in `SEVDESK_HTTP_ALLOWED_HOSTS` auf. Ein Client, der einen anderen
 `Origin`-Header als den öffentlichen Origin sendet, braucht ihn in `SEVDESK_HTTP_ALLOWED_ORIGINS`;
 ein MCP-Client, der in einer Webseite auf einem anderen Origin läuft, kann gar nicht funktionieren,
 weil `/mcp` kein CORS unterstützt. `/healthz` wird nie wegen seines Hosts abgelehnt. Beide
 Ablehnungen antworten mit 403.
 
-**Viele Antworten mit 429, oder jede Anfrage mit der IP des Proxys protokolliert.** Setzen Sie
+**Viele Antworten mit 429, oder jede Anfrage mit der IP des Proxys protokolliert.** Setze
 hinter einem Proxy `SEVDESK_HTTP_TRUST_PROXY` auf die Anzahl der Proxys, die etwas an
 `X-Forwarded-For` anhängen; sonst teilen sich alle Clients die Ratenbegrenzung der Adresse des
-Proxys. Setzen Sie den Wert nie höher als die tatsächliche Anzahl: Clients könnten sonst ihre
+Proxys. Setze den Wert nie höher als die tatsächliche Anzahl: Clients könnten sonst ihre
 eigene IP-Adresse wählen. Eine 429, deren Meldung das sevDesk-Konto nennt, ist eine andere Grenze:
 Für dieses Konto laufen bereits 8 Anfragen an `/mcp`, gleich von welchen Adressen
 ([Grenzen](#grenzen)). Sie vergeht, sobald eine davon endet.
 
 **Antworten hängen oder kommen alle auf einmal.** Ein Proxy puffert die gestreamten Antworten.
-Schalten Sie die Pufferung für den Server ab: Caddy `flush_interval -1` (die Compose-Vorlage tut
+Schalte die Pufferung für den Server ab: Caddy `flush_interval -1` (die Compose-Vorlage tut
 das), nginx `proxy_buffering off`.
 
 **Uploads scheitern hinter einem Proxy.** Die Upload-Seite antwortet mit den eigenen Worten des
 Servers; alles andere kommt vom Proxy.
 
 - „Size missing“ (411): Der Proxy hat den Upload ohne `Content-Length` weitergeleitet (in Chunks).
-  Lassen Sie ihn das `Content-Length` des Browsers weiterreichen, oder lassen Sie ihn Request-Bodys
+  Lass ihn das `Content-Length` des Browsers weiterreichen, oder lass ihn Request-Bodys
   puffern: nginx tut das standardmäßig (`proxy_request_buffering on`); Caddy reicht es unverändert
   weiter.
 - Eine 413-Seite des Proxys, nicht das „File too large“ des Servers: Die Grenze des Proxys für den
@@ -888,45 +888,45 @@ Servers; alles andere kommt vom Proxy.
   Byte-Anteil des Kontos für mehrere Dateien auf einer Seite; siehe
   [Reverse Proxys](#dateien-hochladen-und-herunterladen)). nginx: `client_max_body_size 65m;` beim
   Standard mit Zustandsverzeichnis, oder `201m` für die absolute Obergrenze (Standard 1 MB). Caddy
-  hat keine Grenze, sofern Sie keine setzen.
+  hat keine Grenze, sofern du keine setzt.
 - Eine Zeitüberschreitung (408) bei großen Dateien über eine langsame Verbindung: Der Body muss
   innerhalb von 90 Sekunden eintreffen, mit durchschnittlich mindestens 16 KB/s und nie 10 Sekunden
   lang pausieren. Ein Proxy, der Anfragen puffert (nginx standardmäßig), reicht sie mit voller
   Geschwindigkeit weiter.
 
 **Ein Link aus dem Chat zeigt das Anmeldeformular.** Der Browser hat keine Sitzung dieses Kontos:
-Es ist nicht der Browser, in dem Sie zugestimmt haben (die Claude-Apps öffnen Links unter Umständen
-in ihrem eigenen Browser), die 12 Stunden sind vorbei, Sie haben sich abgemeldet, oder er ist an
-einem anderen Konto angemeldet. Melden Sie sich in diesem Formular mit dem sevDesk-API-Token des
-Kontos an; es bringt Sie zur Seite zurück.
+Es ist nicht der Browser, in dem du zugestimmt hast (die Claude-Apps öffnen Links unter Umständen
+in ihrem eigenen Browser), die 12 Stunden sind vorbei, du hast dich abgemeldet, oder er ist an
+einem anderen Konto angemeldet. Melde dich in diesem Formular mit dem sevDesk-API-Token des
+Kontos an; es bringt dich zur Seite zurück.
 
 **„Upload page not found“ oder „File not found“.** Der Link ist unbekannt, gehört zu einem anderen
 sevDesk-Konto, wurde bereits erfolgreich angehängt, oder der Server wurde inzwischen neu gestartet
-(ein Neustart macht jeden Upload und jeden Link ungültig). „Expired“ und „used up“ bedeuten, was sie sagen. Bitten Sie das Modell um
+(ein Neustart macht jeden Upload und jeden Link ungültig). „Expired“ und „used up“ bedeuten, was sie sagen. Bitte das Modell um
 einen neuen Upload-Link oder darum, die Datei erneut zu erzeugen.
 
 **„No space for the file“ (507), oder das Modell meldet, dass die Grenze erreicht ist.** Die
 Uploads und Links des Kontos füllen sein Viertel von `SEVDESK_HTTP_FILES_MAX_MB`, die Konten
 zusammen füllen den Platz, oder das Konto hat `SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT` erreicht
 (Standard 10). Erfolgreiches Anhängen gibt Uploads sofort frei. Bei einer erreichten Anzahlgrenze
-warten Sie bis zum in der Meldung genannten Ablaufzeitpunkt des Kontos oder erhöhen diese
-Einstellung; bei Platzmangel warten Sie auf den Ablauf von Dateien oder erhöhen
+wartest du bis zum in der Meldung genannten Ablaufzeitpunkt des Kontos oder erhöhst diese
+Einstellung; bei Platzmangel wartest du auf den Ablauf von Dateien oder erhöhst
 `SEVDESK_HTTP_FILES_MAX_MB`. „Server busy“ (503) heißt, dass gerade
 zwei andere Uploads eintreffen, „Upload in progress“ (503), dass ein anderer Upload desselben
-Kontos eintrifft; versuchen Sie es gleich noch einmal.
+Kontos eintrifft; versuche es gleich noch einmal.
 
 **Das Modell sagt, der Client könne nicht um Bestätigung gebeten werden.** Der Client hat über HTTP
-keine Formular-Elicitation (claude.ai zum Zeitpunkt des Schreibens). Setzen Sie
-`SEVDESK_CONFIRM=browser` und verwenden Sie das [Freigabe-Postfach](#das-freigabe-postfach).
+keine Formular-Elicitation (claude.ai zum Zeitpunkt des Schreibens). Setze
+`SEVDESK_CONFIRM=browser` und verwende das [Freigabe-Postfach](#das-freigabe-postfach).
 
 **Die Zustimmungsseite lehnt das Konto oder den Client ab.** Sie nennt die Konto-ID oder den
-Client-Host; nehmen Sie ihn in `SEVDESK_OAUTH_ACCOUNTS` oder `SEVDESK_OAUTH_CLIENTS` auf und
-starten Sie neu, wenn Sie ihn zulassen wollen. Einen Eintrag zu entfernen und neu zu starten
+Client-Host; nimm ihn in `SEVDESK_OAUTH_ACCOUNTS` oder `SEVDESK_OAUTH_CLIENTS` auf und
+starte neu, wenn du ihn zulassen willst. Einen Eintrag zu entfernen und neu zu starten
 widerruft auch die bestehenden Zugänge dieses Kontos oder Clients bei ihrer nächsten Nutzung und
 beendet die Browser-Sitzungen des Kontos.
 
 **Die Zustimmungsseite meldet zu viele Verbindungen.** Der Zugangsspeicher ist voll.
-`grants list` zeigt die Zugänge; widerrufen Sie die, die niemand nutzt.
+`grants list` zeigt die Zugänge; widerrufe die, die niemand nutzt.
 
 **Das Zustandsverzeichnis ist nicht beschreibbar.** Das Image läuft als uid 65532. Ein benanntes
 Docker-Volume übernimmt seinen Eigentümer aus dem Image und funktioniert einfach. Ein Bind-Mount
@@ -935,13 +935,13 @@ braucht ein Verzeichnis, in das uid 65532 schreiben kann:
 Eigentümer einbindet, braucht ihre eigene Lösung: Railway dokumentiert `RAILWAY_RUN_UID=0`, das den
 Container als root ausführt
 ([deploy/README.md](../deploy/README.md#volumes-and-the-container-user)). Ohne beschreibbares
-Volume setzen Sie `SEVDESK_HTTP_STATE_DIR` auf einen leeren Wert: Der Zustand wird dann im
+Volume setzt du `SEVDESK_HTTP_STATE_DIR` auf einen leeren Wert: Der Zustand wird dann im
 Speicher gehalten, und jeder Neustart meldet alle Clients ab.
 
 **Der Start meldet, dass eine andere Instanz das Zustandsverzeichnis nutzt.** Nur ein laufender
 Server darf es nutzen. Nach einem Absturz gilt die alte Sperre nach 30 Sekunden als veraltet, und
 der nächste Start übernimmt sie. Laufen wirklich zwei (eine zweite Replica oder Machine),
-reduzieren Sie auf eine. Ein laufender Server, der seine Sperre von einem anderen übernommen
+reduziere auf eine. Ein laufender Server, der seine Sperre von einem anderen übernommen
 findet, vertraut seinem Zugangsspeicher nicht mehr: OAuth-Anfragen scheitern mit einem
 Serverfehler (Clients behalten ihre Tokens), und der Prozess beendet sich, sodass die Plattform ihn
 neu startet.
@@ -949,7 +949,7 @@ neu startet.
 ## Das Image prüfen
 
 Jedes Release-Image trägt eine Build-Provenance-Attestierung von GitHub Actions sowie die SBOM und
-Provenance von BuildKit. So prüfen Sie, dass ein Image aus diesem Repository von seinem
+Provenance von BuildKit. So prüfst du, dass ein Image aus diesem Repository von seinem
 Release-Workflow gebaut wurde:
 
 ```bash
@@ -963,7 +963,7 @@ docker buildx imagetools inspect ghcr.io/jaylann/mcp-server-sevdesk:<version> --
 docker buildx imagetools inspect ghcr.io/jaylann/mcp-server-sevdesk:<version> --format '{{ json .Provenance }}'
 ```
 
-Legen Sie dann den geprüften Digest (`ghcr.io/jaylann/mcp-server-sevdesk@sha256:…`) in Ihrer
+Lege dann den geprüften Digest (`ghcr.io/jaylann/mcp-server-sevdesk@sha256:…`) in deiner
 Bereitstellung fest.
 
 ## Grenzen
@@ -1007,4 +1007,4 @@ Bereitstellung fest.
   (`sevdesk://…`), gleich wie `SEVDESK_HTTP_FILES` gesetzt ist.
 - **Clients ohne Client ID Metadata Documents** können den OAuth-Modus nicht nutzen; für sie
   funktioniert der Bearer-Modus.
-- **Keine gehostete Instanz.** Sie betreiben, was Sie bereitstellen.
+- **Keine gehostete Instanz.** Du betreibst, was du bereitstellst.
