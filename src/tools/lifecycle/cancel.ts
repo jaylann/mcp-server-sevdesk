@@ -38,7 +38,7 @@ const CANCEL_WARNINGS: readonly Phrase[] = [
   ),
   phrase(
     "If the customer already received the invoice, send them the cancellation invoice too.",
-    "Hat der Kunde die Rechnung bereits erhalten, senden Sie ihm auch die Stornorechnung.",
+    "Hat der Kunde die Rechnung bereits erhalten, sende ihm auch die Stornorechnung.",
   ),
 ];
 

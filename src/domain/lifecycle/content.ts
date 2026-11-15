@@ -344,7 +344,7 @@ function salesNotShown(pdfTool: string): Phrase {
       `the positions, and the layout of the PDF. Check ${pdfTool} if they matter.`,
     "Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht " +
       "gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und " +
-      `verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfen Sie bei Bedarf ` +
+      `verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfe bei Bedarf ` +
       `${pdfTool}.`,
   );
 }
@@ -358,7 +358,7 @@ const NOT_SHOWN: Readonly<Record<LifecycleKind, Phrase>> = {
       "their ids) and the content of the attached receipt file. Check sevdesk_voucher_get and " +
       "the receipt if they matter.",
     "Die Angaben nennen die gespeicherten Positionen. Nicht gezeigt werden: die Namen der " +
-      "Buchungskonten (nur ihre IDs) und der Inhalt der angehängten Belegdatei. Prüfen Sie bei " +
+      "Buchungskonten (nur ihre IDs) und der Inhalt der angehängten Belegdatei. Prüfe bei " +
       "Bedarf sevdesk_voucher_get und den Beleg.",
   ),
 };
@@ -529,7 +529,7 @@ function listedPositions<T>(
       value:
         lang === "de"
           ? `sevDesk hat nicht alle Positionen geliefert: ${total} wurden gelesen, ${listed} ` +
-            "sind hier aufgeführt, und es gibt weitere. Prüfen Sie sie vor der Freigabe in sevDesk."
+            "sind hier aufgeführt, und es gibt weitere. Prüfe sie vor der Freigabe in sevDesk."
           : `sevDesk did not return every position: ${total} were read, ${listed} are listed ` +
             "here, and there are more. Check them in sevDesk before you approve.",
     });
@@ -539,7 +539,7 @@ function listedPositions<T>(
       value:
         lang === "de"
           ? `${String(rest)} weitere Positionen sind hier nicht aufgeführt (insgesamt ${total}). ` +
-            "Prüfen Sie sie vor der Freigabe in sevDesk."
+            "Prüfe sie vor der Freigabe in sevDesk."
           : `${String(rest)} more positions are not listed here (${total} in total). Check ` +
             "them in sevDesk before you approve.",
     });

@@ -356,7 +356,7 @@ export function suggestVoucherFields(
   if (direction.basis === "assumed_expense") {
     warnings.push(
       de
-        ? "Keine Partei stimmt mit dem Unternehmen dieses Kontos überein (USt-IdNr., Steuernummer oder Name in sevDesk). Die Rechnung wird als Eingangsrechnung behandelt; prüfen Sie die Zuordnung."
+        ? "Keine Partei stimmt mit dem Unternehmen dieses Kontos überein (USt-IdNr., Steuernummer oder Name in sevDesk). Die Rechnung wird als Eingangsrechnung behandelt; prüfe die Zuordnung."
         : "Neither party matched the account's company (VAT id, tax number or name in the sevDesk " +
             "settings), so the invoice is assumed to be a supplier invoice (expense). Check it.",
     );
@@ -364,7 +364,7 @@ export function suggestVoucherFields(
   if (direction.ambiguous) {
     warnings.push(
       de
-        ? "Verkäufer und Käufer stimmen beide mit dem Unternehmen dieses Kontos überein. Die Rechnung wird als Ausgabe behandelt; prüfen Sie die Zuordnung."
+        ? "Verkäufer und Käufer stimmen beide mit dem Unternehmen dieses Kontos überein. Die Rechnung wird als Ausgabe behandelt; prüfe die Zuordnung."
         : "Both the seller and the buyer match the account's company; the invoice is treated as an " +
             "expense. Check it.",
     );
@@ -423,7 +423,7 @@ export function suggestVoucherFields(
   if (parsed.totals.prepaid !== undefined && !isZero(parsed.totals.prepaid)) {
     warnings.push(
       de
-        ? `Die Rechnung weist ${numberText(parsed.totals.prepaid, lang)} ${parsed.currency} als bereits bezahlt aus (BT-113); buchen Sie diese Zahlung separat.`
+        ? `Die Rechnung weist ${numberText(parsed.totals.prepaid, lang)} ${parsed.currency} als bereits bezahlt aus (BT-113); buche diese Zahlung separat.`
         : `The invoice states ${parsed.totals.prepaid} ${parsed.currency} as already paid (BT-113); ` +
             "book that payment separately.",
     );
@@ -468,7 +468,7 @@ export function suggestVoucherFields(
   if (ibanConflict) {
     warnings.push(
       de
-        ? `Die Empfänger-IBAN ${maskIban(counterpartyIban) ?? "(unbekannt)"} der Rechnung weicht von der IBAN des passenden Lieferantenkontakts ${String(picked.candidate.contactId)} (${maskIban(picked.iban) ?? "(unbekannt)"}) ab. Klären Sie die Bankdaten vor der Zahlung mit dem Lieferanten (mögliche Zahlungsumleitung). Der Kontakt wird nicht automatisch gewählt.`
+        ? `Die Empfänger-IBAN ${maskIban(counterpartyIban) ?? "(unbekannt)"} der Rechnung weicht von der IBAN des passenden Lieferantenkontakts ${String(picked.candidate.contactId)} (${maskIban(picked.iban) ?? "(unbekannt)"}) ab. Kläre die Bankdaten vor der Zahlung mit dem Lieferanten (mögliche Zahlungsumleitung). Der Kontakt wird nicht automatisch gewählt.`
         : `The invoice's payee IBAN ${maskIban(counterpartyIban) ?? "(unknown)"} differs from the ` +
             `IBAN stored for the matching supplier contact ${String(picked.candidate.contactId)} ` +
             `(${maskIban(picked.iban) ?? "(unknown)"}). Check the bank details with the supplier ` +
@@ -481,8 +481,8 @@ export function suggestVoucherFields(
     warnings.push(
       de
         ? ibanDoubt === "payee"
-          ? `Kontakt ${String(ibanMatch.candidate.contactId)} hat die Empfänger-IBAN ${maskIban(counterpartyIban) ?? "(unbekannt)"}. Die Rechnung nennt jedoch einen eigenen Zahlungsempfänger (BG-10, etwa eine Factoringgesellschaft); dessen Konto identifiziert nicht den Lieferanten. Der Kontakt wird nicht automatisch gewählt. Geben Sie den Lieferantenkontakt an, nicht den Zahlungsempfänger.`
-          : `Kontakt ${String(ibanMatch.candidate.contactId)} hat die Empfänger-IBAN ${maskIban(counterpartyIban) ?? "(unbekannt)"}, aber eine andere USt-IdNr. als der Verkäufer. Das Konto kann einem Dritten gehören oder der Kontakt veraltet sein. Er wird nicht automatisch gewählt; prüfen Sie die Bankdaten vor Buchung und Zahlung.`
+          ? `Kontakt ${String(ibanMatch.candidate.contactId)} hat die Empfänger-IBAN ${maskIban(counterpartyIban) ?? "(unbekannt)"}. Die Rechnung nennt jedoch einen eigenen Zahlungsempfänger (BG-10, etwa eine Factoringgesellschaft); dessen Konto identifiziert nicht den Lieferanten. Der Kontakt wird nicht automatisch gewählt. Gib den Lieferantenkontakt an, nicht den Zahlungsempfänger.`
+          : `Kontakt ${String(ibanMatch.candidate.contactId)} hat die Empfänger-IBAN ${maskIban(counterpartyIban) ?? "(unbekannt)"}, aber eine andere USt-IdNr. als der Verkäufer. Das Konto kann einem Dritten gehören oder der Kontakt veraltet sein. Er wird nicht automatisch gewählt; prüfe die Bankdaten vor Buchung und Zahlung.`
         : ibanDoubt === "payee"
           ? `${account}, but the invoice names a payee of its own (BG-10, e.g. a factoring ` +
             "company), so the account is the payee's and does not tell who the supplier is. The " +
@@ -495,7 +495,7 @@ export function suggestVoucherFields(
   } else if (candidates.length === 0) {
     warnings.push(
       de
-        ? `Kein sevDesk-Kontakt passt zum ${counterpartyRole === "seller" ? "Lieferanten" : "Kunden"} (USt-IdNr., IBAN oder exakter Name). Legen Sie ihn mit sevdesk_contact_create an oder speichern Sie den Beleg nur mit dem Namen.`
+        ? `Kein sevDesk-Kontakt passt zum ${counterpartyRole === "seller" ? "Lieferanten" : "Kunden"} (USt-IdNr., IBAN oder exakter Name). Lege ihn mit sevdesk_contact_create an oder speichere den Beleg nur mit dem Namen.`
         : "No sevDesk contact matches the " +
             (counterpartyRole === "seller" ? "supplier" : "customer") +
             " (VAT id, IBAN or exact name). Create one with sevdesk_contact_create, or book the " +
@@ -504,20 +504,20 @@ export function suggestVoucherFields(
   } else if (supplierId === undefined && strong.length > 1) {
     warnings.push(
       de
-        ? "Mehrere Kontakte haben dieselbe USt-IdNr. oder IBAN. Wählen Sie den richtigen aus supplierCandidates."
+        ? "Mehrere Kontakte haben dieselbe USt-IdNr. oder IBAN. Wähle den richtigen aus supplierCandidates."
         : "Several contacts share the VAT id or IBAN; pick the right one from supplierCandidates.",
     );
   } else if (supplierId === undefined) {
     warnings.push(
       de
-        ? "Der Kontakt passt nur anhand des Namens; bestätigen Sie ihn vor der Buchung."
+        ? "Der Kontakt passt nur anhand des Namens; bestätige ihn vor der Buchung."
         : "The contact matched by name only; confirm it before booking.",
     );
   }
   if (!inputs.contacts.complete) {
     warnings.push(
       de
-        ? `Nur die ersten ${String(inputs.contacts.scanned)} Kontakte wurden verglichen. Weitere passende Kontakte können existieren; suchen Sie mit sevdesk_contacts_search.`
+        ? `Nur die ersten ${String(inputs.contacts.scanned)} Kontakte wurden verglichen. Weitere passende Kontakte können existieren; suche mit sevdesk_contacts_search.`
         : `Only the first ${String(inputs.contacts.scanned)} contacts were compared; a matching ` +
             "contact may exist beyond them (search with sevdesk_contacts_search).",
     );
@@ -682,7 +682,7 @@ function ruleFor(
         category === "K"
           ? [
               de
-                ? "Ein innergemeinschaftlicher Erwerb kann bei Kleinunternehmern steuerpflichtig sein (§1a UStG, Erwerbsschwelle); klären Sie dies mit der Steuerberatung."
+                ? "Ein innergemeinschaftlicher Erwerb kann bei Kleinunternehmern steuerpflichtig sein (§1a UStG, Erwerbsschwelle); kläre dies mit der Steuerberatung."
                 : "An intra-EU acquisition can be taxable for a Kleinunternehmer (§1a UStG, Erwerbsschwelle); check it with the tax advisor.",
             ]
           : [],
@@ -716,7 +716,7 @@ function ruleFor(
             : "No VAT on the invoice (category G, export): booked with rule 9 at 0 %.",
           [
             de
-              ? "Die Rechnung ist als Ausfuhr (G) markiert, obwohl das Konto den Käufer darstellt; prüfen Sie dies."
+              ? "Die Rechnung ist als Ausfuhr (G) markiert, obwohl das Konto den Käufer darstellt; prüfe dies."
               : "The invoice is marked as an export (G) although the account is the buyer; check it.",
           ],
         );
@@ -955,7 +955,7 @@ function addFindingNotes(
   if (parsed.findings.some((finding) => finding.code === "SD-LINE-NET")) {
     warnings.push(
       lang === "de"
-        ? "Bei mindestens einer Position entspricht der Nettobetrag nicht Menge mal Preis (SD-LINE-NET). Der Beleg übernimmt die angegebenen Beträge. Vergleichen Sie diese Positionen vor der Buchung mit der sichtbaren Rechnung."
+        ? "Bei mindestens einer Position entspricht der Nettobetrag nicht Menge mal Preis (SD-LINE-NET). Der Beleg übernimmt die angegebenen Beträge. Vergleiche diese Positionen vor der Buchung mit der sichtbaren Rechnung."
         : "On at least one line the net amount is not the quantity times the price (finding " +
             "SD-LINE-NET). The voucher uses the stated amounts; compare those lines with the visual " +
             "invoice before booking.",

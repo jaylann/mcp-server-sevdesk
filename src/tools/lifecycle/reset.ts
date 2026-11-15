@@ -91,7 +91,7 @@ function resetWarnings(doc: LifecycleDocument<PaymentKind>, to: ResetTarget): Ph
           "solange sie noch andere Dokumente bezahlen (Sammelzahlungen), als teilweise " +
           "verknüpft (Status 200); der bezahlte Betrag geht auf 0 zurück. sevDesk erstellt " +
           "keine Gegenbuchung. Umsätze, die sevDesk für Zahlungen auf Offline-Konten selbst " +
-          "angelegt hat, werden gelöscht; für Kassen wurde das nicht geprüft, kontrollieren Sie " +
+          "angelegt hat, werden gelöscht; für Kassen wurde das nicht geprüft, kontrolliere " +
           "diese daher anschließend.",
       ),
       phrase(
@@ -139,14 +139,14 @@ function resetWarnings(doc: LifecycleDocument<PaymentKind>, to: ResetTarget): Ph
             "(sevdesk_invoice_cancel) or issue a credit note instead.",
           "Eine Rechnung zu ändern, die der Kunde bereits erhalten hat, ist kein zulässiger " +
             "Buchhaltungsvorgang (Dokumentation von sevDesk). Wurde sie bereits versendet, " +
-            "stornieren Sie sie stattdessen (sevdesk_invoice_cancel) oder stellen Sie eine " +
+            "storniere sie stattdessen (sevdesk_invoice_cancel) oder stelle eine " +
             "Gutschrift aus.",
         )
       : phrase(
           "Changing a credit note the customer already received is not an allowed bookkeeping " +
             "process; if it was sent, issue a new document instead.",
           "Eine Gutschrift zu ändern, die der Kunde bereits erhalten hat, ist kein zulässiger " +
-            "Buchhaltungsvorgang; wurde sie bereits versendet, stellen Sie stattdessen ein " +
+            "Buchhaltungsvorgang; wurde sie bereits versendet, stelle stattdessen ein " +
             "neues Dokument aus.",
         ),
   ];
