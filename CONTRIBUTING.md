@@ -1,6 +1,7 @@
 # Contributing to mcp-server-sevdesk
 
-Thanks for helping build the best sevDesk MCP server. This guide gets you from clone to merged PR.
+Thanks for helping build the best sevDesk MCP server. This guide gets you from clone to merged PR;
+the detailed pages are listed under [Where to read on](#where-to-read-on).
 
 ## Setup
 
@@ -17,7 +18,7 @@ Useful scripts: `pnpm test:watch`, `pnpm dev` (run the server from source over s
 the built server).
 
 You do **not** need a sevDesk account to contribute: the test suite runs against recorded and
-spec-derived fixtures. If you have one, see [Live tests](#live-tests).
+spec-derived fixtures. If you have one, see [Live tests](docs/contributing/testing.md#live-tests).
 
 ## Branches and pull requests
 
@@ -29,6 +30,8 @@ spec-derived fixtures. If you have one, see [Live tests](#live-tests).
 - Local commits are checked by the `commit-msg` hook; staged files are linted and formatted on
   commit.
 - Keep PRs focused. Add or update tests for every behavior change.
+- A PR that changes the public surface (tool names, arguments, outputs, variables and the rest)
+  follows the [compatibility rules](docs/contributing/changes.md#compatibility).
 
 ## Releases
 
@@ -42,371 +45,19 @@ other PR. Maintainers set this up once per repository: install the app on the re
 its private key as the Actions secret `RP_APP_KEY` and its App ID as the Actions variable
 `RP_APP_ID`. Without them the release workflow fails when it mints the bot's token.
 
-## Architecture in one minute
+## Where to read on
 
-Read [docs/architecture.md](docs/architecture.md) first. The short version:
-
-- `src/sevdesk/` talks HTTP to sevDesk (auth, pacing, envelope unwrapping, errors).
-- `src/domain/` holds normalized types, money/date handling and business rules.
-- `src/tools/<toolset>/` defines MCP tools with `defineTool`. Tools never call HTTP directly.
-- `src/safety/` holds tiers, confirmations, dry-run, audit log, redaction, the OS keychain and
-  the file access tools use for local folders and remote uploads.
-- `src/prompts/` holds the MCP prompts, rendered from the registered tools.
-- `src/http/` (with `oauth/`) and `src/accounts/` hold the HTTP mode: hardening, bearer and
-  OAuth, the approval inbox, and the per-account contexts the tools run with. Tools never see
-  them; they get a `Config` and a client as over stdio.
-
-Hand-written zod schemas are the source of truth for sevDesk payloads, because the official
-OpenAPI spec is incomplete and wrong in places. Every known deviation is listed in
-[spec/deviations.md](spec/deviations.md) and has a test.
-
-## Adding a tool
-
-1. Pick the toolset (`src/tools/<toolset>/`) and the **tier**: `read`, `write` (reversible),
-   `commit` (legally binding or irreversible) or `external` (reaches third parties). When in doubt,
-   pick the higher tier.
-2. Define it with `defineTool`: name, title, description (mention German terms such as Rechnung,
-   Beleg), input/output zod schemas, and **all four annotations** (`readOnlyHint`,
-   `destructiveHint`, `idempotentHint`, `openWorldHint`). The metadata lint test fails otherwise.
-3. Implement the handler through the domain layer. Return compact DTOs, never raw sevDesk payloads.
-   A `commit` or `external` tool writes its confirmation preview in English and in German,
-   because a human reads it on the approval page: build both from the same data with
-   `bothPreviews` (`src/domain/preview-text.ts`; the tool does not compile without the German
-   one). Keep the same facts and warnings in the same order, and use sevDesk's own German terms
-   (Rechnung, Beleg, festschreiben).
-4. Add fixtures and tests: happy path, error paths, and tier gating. Update the `tools/list`
-   snapshot (`pnpm test -u`) and review the diff. For a tool with a German preview, add a case
-   to `test/write-cases/` and read its German text in the snapshot of
-   `test/integration/write-previews-de.test.ts`.
-5. Regenerate the tool reference with `pnpm docs:tools` and commit `docs/tools.md` (a test fails
-   when it is stale).
-
-New tools appear in the Claude Desktop extension's manifest by themselves; the build generates its
-tool list.
-
-## Changing a page
-
-The pages a human sees (approval, inbox, sign-in, consent, upload) share `src/pages/`: the
-`markup` template tag escapes every value, the texts live in `src/pages/text/en.ts` and `de.ts`,
-and one stylesheet (`theme.ts`) styles them all. There is no script, no `style=""` attribute and
-nothing loaded from outside `/assets/`; a test renders every page in every state and both
-languages and fails on any of these.
-
-```bash
-pnpm pages:preview    # http://127.0.0.1:4173: every page state, en/de, light/dark, real headers
-pnpm pages:assets     # after changing a file in assets/: regenerate the embedded copy
-```
-
-Add a new state to `test/helpers/page-gallery.ts`, so the preview and the tests cover it. The
-preview's `/texts` page lists every text in both languages side by side.
-
-## Adding a prompt
-
-Prompts are bookkeeping workflows the user picks in the client. They render text only and never
-call sevDesk.
-
-1. Add the prompt to `src/prompts/catalog.ts` with `definePrompt`: a snake_case `name` without a
-   `sevdesk_` prefix (clients namespace prompts per server), title, description, the tools it
-   `requires` to be listed, and its steps. Keep it in line with the matching workflow in
-   `plugin/skills/sevdesk-bookkeeping/references/workflows.md`.
-2. Each step lists every tool its text names (in backticks) in `tools`; the step is shown only
-   when all of them are registered. Give a `fallback` (what is skipped, naming no tool) when the
-   user should learn that a setting would enable the step; the renderer adds which one.
-3. Arguments are optional strings with a pattern or length check. Show a raw argument only
-   through `fenceInline`, never in the trusted text.
-4. Run `test/unit/prompts/` and `test/integration/prompts-list.test.ts`: the lint renders every
-   prompt in many configurations and fails when a step names a tool that configuration does not
-   register. Update the `prompts/list` snapshot
-   (`pnpm test test/integration/prompts-list.test.ts -u`) and review the diff, then
-   `pnpm docs:tools`.
-
-## Compatibility
-
-From 1.0 the tool names, arguments, output fields, toolsets, tiers, prompts, environment
-variables, commands, routes, resource URIs, audit-log fields and the extension's setting keys are
-a public contract ([docs/compatibility.md](docs/compatibility.md)).
-
-- Adding is fine: new tools, optional arguments, output fields, variables.
-- Renaming or removing needs a deprecation first: keep the old name working next to the new one,
-  mark it `Deprecated: use … instead.` in its description, and list it in the PR. Removal happens
-  in the next major release.
-- A PR that breaks the contract anyway marks its title with `!` (`feat(invoices)!: …`) and explains
-  the break in its body.
-- Descriptions, result texts, error messages and logs are not part of the contract; improve them
-  freely, but re-record the evals when you change what models read (below).
-
-The **Tool surface** PR workflow compares the event's base commit with the PR merged into that
-base (GitHub's test merge commit), so a branch behind `main` shows only its own changes. One sticky
-comment leads with **model-context tokens** and **response tokens**, base → head with signed Δ:
-
-- Model context is the legacy (2025-era) Claude view: tool `name`, `description`, `input_schema`
-  and the server instructions as the system prompt, as in `test/evals/tools.ts`. Watch this when
-  adding tools or growing descriptions and input schemas. The four configurations remain read,
-  write, all toolsets/tiers (including advanced), and all over HTTP with OAuth and remote files.
-- Response cost runs an invoice get, an invoice summary by month, and default-limit contact,
-  transaction, voucher and invoice lists through the real server on **recorded fixtures**.
-  `transactions_list`, `vouchers_list` and `invoices_list` each also run with `detail: "summary"`;
-  `invoices_list` runs with both detail levels at `limit: 100` too.
-  Each recorded list is expanded deterministically to 100 items by repeating its scrubbed row
-  shapes with distinct ids, discarding the original upstream total. Default-limit calls currently
-  return 25 rows. Tests assert those counts and
-  compare full and `detail: "summary"` responses for transactions, vouchers and both invoice
-  page sizes, with each summary row immediately after its full counterpart. They also
-  verify that reducing the default to 10 changes the measured cost. Both revisions use the same
-  generated corpus. This measures page-size and formatting changes, not a representative sample
-  of 100 different real documents. The clock is fixed to 2026-11-13 so overdue flags cannot drift.
-  A missing/erroring tool or fixture route leaves only that response absent (`n/a`); even a corpus
-  setup failure preserves the tools, prompts, instructions and compatibility diff.
-- The full modern `tools/list`, including output schemas, is secondary and labelled **not in
-  model context for Claude clients**. It is shown in Unicode characters, not model tokens.
-  The compatibility diff still covers full tools, prompts and instructions; review names and
-  schemas yourself, since the report does not decide the required version bump.
-
-Local and PR counts are labelled **estimated**: Unicode characters ÷ 2.3, rounded to whole
-tokens (the ratio measured in [#61](https://github.com/jaylann/mcp-server-sevdesk/issues/61)).
-The trusted publisher can upgrade the complete comparison to **exact** `messages.countTokens`
-counts for `claude-opus-5-5` using Workload Identity Federation (WIF). Model-context counts subtract
-the whole calibration message; response counts subtract only its framing, retaining the payload
-(the calibration text `x` is one token). Model context counts the Messages API tool shape plus
-system text; responses include the actual legacy text blocks, summaries and fences. Client message
-envelopes, rendered prompt bodies and deferred-tool loading policies are outside this comparison.
-Missing captures in older dumps display `n/a`, including their delta, rather than zero.
-The publisher accepts missing response ids and excludes unknown ids from both rows and exact
-count requests, so different harness and publisher vocabularies do not break the report. All
-provided counts and response texts still undergo type and size checks; labels come only from
-the publisher. CI copies the current harness to the base, so a base that already supports
-`detail: "summary"` can capture these calls too; older tools that reject `detail` leave them `n/a`.
-
-Capture, compare or recount locally without credentials or network access:
-
-```bash
-node --import tsx scripts/tool-surface.ts dump /tmp/head-surface.json
-node --import tsx scripts/tool-surface.ts diff /tmp/base-surface.json /tmp/head-surface.json
-node --import tsx scripts/tool-surface.ts report /tmp/base-surface.json /tmp/head-surface.json /tmp/pr-event.json /tmp/report.json
-node scripts/tool-surface-tokens.ts /tmp/base-surface.json /tmp/head-surface.json /tmp/report.json
-```
-
-The report takes a GitHub PR event JSON (`number`, `pull_request.base.sha`,
-`pull_request.head.sha`). Version 1 dumps optionally carry `modelContext` per configuration and
-`responses`; reports add `tokenCost` with the method, fixed model, and nullable base/head counts.
-`contextCost` retains protocol character counts for older consumers. Model-context serialization
-preserves the client's tool/schema key order; only the protocol catalog is canonicalized.
-CI copies `scripts/tool-surface*.ts` and the recorded corpus into the base checkout, and both
-revisions install their own frozen dependencies. Full dumps and diffs remain in run artifacts for
-seven days; long comments link there and say when truncated.
-
-The **Tool surface** PR workflow is path-filtered to relevant code/fixtures/workflows and skips
-Dependabot. It runs PR code without secrets or identity permissions, including for forks. It
-uploads `report.json` plus both plain JSON captures (`base.json`, `head.json`) in the
-`tool-surface-report` artifact. There is no separate exact workflow or counting use of `evals`.
-
-Only the default branch's **Tool surface comment** `workflow_run` job can acquire credentials. It
-uses the `token-count` environment and job-level `id-token: write`, artifact-read and PR-comment
-permissions. It checks out no code, installs nothing and executes no artifact contents. It
-verifies provenance/current PR commits, rejects artifact claims of exact counts, bounds the report
-at 300 KB and each capture at 20 MB, validates tool/system and response shapes and limits each
-counted context/response to 2 million characters. Both readers open without following symlinks,
-validate the open handle, read through that same handle and close it in `finally`. Invalid or
-missing captures leave estimates.
-Only the validated tool definitions, system strings and response text go to the counting endpoint.
-
-The inline script obtains a fresh GitHub OIDC token for `https://api.anthropic.com`, masks it and
-passes that single-use assertion directly in memory to one `/v1/oauth/token` exchange for a
-short-lived bearer token. It masks that token
-and calls `/v1/messages/count_tokens` with the same counter/calibration for base and head. Native
-`fetch` uses fixed origins, refuses redirects and bounds the exchange/count sequence to 90 seconds;
-no SDK installation or PR package code runs in the privileged job. No identity-token file is
-created; credentials and provider errors are never logged or uploaded.
-
-Missing repository variables or any exchange/count failure publish the **entire estimated**
-comparison. Exact counts replace estimates only after every available capture succeeds; a late
-estimate never replaces an exact comment for the same base/head. Stale reports are skipped and
-diff text is fenced. No live sevDesk account or dependency cache is used. Publisher changes only
-run after landing on the default branch; inspect this PR's artifacts before then.
-
-### Maintainer setup for exact counts
-
-No API key secret is needed. [Token counting is free and rate-limited](https://platform.claude.com/docs/en/build-with-claude/token-counting#pricing-and-rate-limits).
-Follow the [Anthropic GitHub Actions WIF setup](https://platform.claude.com/docs/en/manage-claude/wif-providers/github-actions):
-
-1. **Before merging**, create the GitHub environment **`token-count`**, restrict deployment
-   branches to **`main`**, and set **no required reviewers**. Do not let the first run
-   auto-create an unrestricted environment.
-2. In Claude Console → **Workload identity → Connect workload → GitHub Actions**, set:
-   - Issuer: `https://token.actions.githubusercontent.com`, using discovery.
-   - Exact subject: `repo:jaylann@61842101/mcp-server-sevdesk@1449574146:environment:token-count`,
-     with **no trailing `*`**.
-   - Audience: `https://api.anthropic.com`.
-   - Exact claims: `repository_owner: jaylann`, `repository_owner_id: 61842101`,
-     `repository: jaylann/mcp-server-sevdesk`, `repository_id: 1449574146`,
-     `event_name: workflow_run`, and
-     `workflow_ref: jaylann/mcp-server-sevdesk/.github/workflows/tool-surface-comment.yml@refs/heads/main`.
-     Use `workflow_ref` for this top-level workflow, not the reusable-workflow claim `job_workflow_ref`.
-   - Target: a **new service account**, with only the dedicated workspace added explicitly and
-     its lowest available spend limit. Bind the rule and exchanged token to that workspace only;
-     Anthropic's implicit Default Workspace membership means membership alone is not isolation.
-   - Scope: the narrowest offered (wizard default `workspace:developer`); lifetime **600 seconds**.
-3. Set these four **repository variables** using the Console IDs:
-   `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID`,
-   `ANTHROPIC_SERVICE_ACCOUNT_ID`, `ANTHROPIC_WORKSPACE_ID`. No API key secret is needed.
-4. **After merge and the first relevant PR run**, confirm the actual subject, audience and all
-   claim strings above in the **Console authentication history**. Verify a successful exchange
-   and an **Exact** comment; an **Estimated** comment verifies fallback only. Independently
-   confirm that `x` is one payload token for `claude-opus-5-5`, as assumed by `baseline - 1`.
-
-This repository uses GitHub's [immutable subject claims](https://docs.github.com/en/actions/reference/security/oidc#immutable-subject-claims).
-The federation is not configured by this PR; live exchange, claim matching and the one-token
-calibration assumption remain open until the first configured run from `main`.
-
-## HTTP mode
-
-The remote mode (`--http`) is documented for operators in [docs/remote.md](docs/remote.md). To run
-it locally in bearer mode against a trial account:
-
-```bash
-pnpm build
-export SEVDESK_HTTP_AUTH=bearer
-export SEVDESK_HTTP_BEARER_TOKEN="$(node dist/index.js generate-secret)"
-export SEVDESK_API_TOKEN_FILE=~/.config/sevdesk-trial.token
-node dist/index.js --http      # or from source: pnpm dev --http
-```
-
-It listens on `http://127.0.0.1:8080/mcp` (`SEVDESK_HTTP_PORT` changes the port). Connect a client
-with the bearer header, for example Claude Code:
-
-```bash
-claude mcp add --transport http sevdesk-dev http://127.0.0.1:8080/mcp \
-  --header "Authorization: Bearer $SEVDESK_HTTP_BEARER_TOKEN"
-```
-
-Pass the flag as `pnpm dev --http`, not `pnpm dev -- --http`: pnpm hands the `--` on to the
-server, which refuses unknown arguments. Plain http on loopback is for development only: browsers
-share cookies across the ports of a host, so another local web server could receive the approval
-inbox's session cookie. Try the inbox in a browser profile you use for nothing else.
-
-OAuth mode works locally too, with a loopback public URL
-(`SEVDESK_HTTP_PUBLIC_URL=http://localhost:8080`, `SEVDESK_HTTP_SECRET`, `SEVDESK_OAUTH_ACCOUNTS`);
-claude.ai cannot reach it, so the end-to-end check with claude.ai runs through a tunnel
-([docs/recording-session.md](docs/recording-session.md#3b-m5-remote-check-about-60-to-90-minutes)).
-
-- **HTTP smoke test:** `pnpm build && node scripts/smoke-http.ts --bin dist/index.js` starts the
-  built server in bearer mode on a free port (with a dummy sevDesk token, so nothing reaches
-  sevDesk) and checks the health endpoint, the 401s, the Host and Origin refusals, the MCP
-  handshake on both protocol eras and a clean shutdown. Against a running server, with
-  `SEVDESK_HTTP_BEARER_TOKEN` exported (the script reads the token from the environment only, so
-  it never shows up in the process list): `node scripts/smoke-http.ts --url http://127.0.0.1:8080`.
-- **The image:** `docker build -t mcp-server-sevdesk:dev .`, then run it read-only as in the
-  [Docker quick start](docs/remote.md#quick-start-bearer-mode-with-docker) and point the smoke
-  test at it with `--url`. CI does the same in its `docker` job.
-- **Tests:** unit tests in `test/unit/http/` (OAuth in `test/unit/http/oauth/`), integration tests
-  on a real socket in `test/integration/http-*.test.ts` (bearer, OAuth with the real SDK client,
-  the full flow through the approval inbox) and `test/integration/cross-account.test.ts`; helpers
-  for the consent and inbox pages in `test/helpers/`. Every module with secrets has a test with a
-  captured logger or response that asserts no secret appears; keep it that way.
-
-## The Claude Desktop extension
-
-`pnpm mcpb` builds the `.mcpb` bundle into `build/`: it bundles the server with all its
-dependencies into one file (`tsdown.mcpb.config.ts`), generates the manifest's tool list, writes
-the license notices of every bundled package, validates and packs the bundle with the `mcpb`
-library, and then starts the unpacked server the way Claude Desktop does. The CI job `mcpb` runs
-it on every pull request and uploads the bundle as an artifact; the release job `publish-mcpb`
-attaches it to the GitHub release with a provenance attestation.
-
-The checked-in `server.json` is the npm/OCI template. `publish-registry` waits for `publish-mcpb`,
-downloads the public release bundle, and runs `scripts/prepare-registry.ts` with plain Node to add
-its MCPB URL and SHA-256 to the `server.json` it publishes. It checks the bundle's name and manifest
-version before writing; no dependency install runs in that privileged job. The MCPB entry is
-generated at publication time because release-please cannot know the hash of a future asset.
-The generator's tests validate against the official schema pinned by `server.json` (snapshot and
-provenance in `spec/mcp-registry/`). To dry-run the same preparation after `pnpm mcpb`:
-
-```bash
-version="$(node -p 'require("./package.json").version')"
-node scripts/prepare-registry.ts "$version" "v$version" \
-  "build/mcp-server-sevdesk-$version.mcpb" build/registry/server.json
-```
-
-Change the extension's settings only in `mcpb/manifest.json`. Keep its `JSON.stringify` layout
-(release-please rewrites the file when it bumps the version, so Prettier ignores it), and give
-every optional setting a default: Claude Desktop passes an empty setting without one as the
-literal `${user_config.…}`, and the build refuses such a manifest. The setting keys are part of the
-[compatibility](#compatibility) contract, because Claude Desktop stores the user's values under
-them. To try a build, open `build/mcp-server-sevdesk-<version>.mcpb` in Claude Desktop.
-
-## Keychain and profiles
-
-The keychain code (`src/safety/keychain.ts`) takes an injected `spawn`, so tests never run
-`security`, `secret-tool` or Windows PowerShell; the profile code takes an injected platform,
-user id and home folder. A real round trip is a manual check: `token set`, `token check`, a
-server start with `SEVDESK_API_TOKEN_KEYCHAIN` set to a throwaway label, then `token delete`.
-
-On Windows, from a clean PowerShell session in the repository (use a new throwaway label and
-paste the token only at the hidden prompt):
-
-```powershell
-pnpm build
-node dist/index.js token set windows-check-11
-node dist/index.js token check windows-check-11
-$env:SEVDESK_API_TOKEN_KEYCHAIN = 'windows-check-11'
-node dist/index.js --stdio
-# After the startup message, stop the server with Ctrl+C, then:
-Remove-Item Env:SEVDESK_API_TOKEN_KEYCHAIN
-node dist/index.js token delete windows-check-11
-node dist/index.js token check windows-check-11 # must report no stored token
-```
-
-Repeat `token set` before deletion to check replacement, and confirm no token appears in the
-output or PowerShell process arguments. `PasswordVault` requires Windows PowerShell's
-`FullLanguage` mode; Constrained Language Mode must give a safe refusal, never bypass the policy
-([ADR 0009](docs/adr/0009-local-profiles-and-os-keychain.md)).
-
-## Fixtures
-
-Fixtures live in `test/fixtures/` and record their provenance (`spec`, `community` or `recorded`,
-plus date and bookkeeping system version). Recorded fixtures must be scrubbed of personal data and
-tokens before committing; the recorder does this, but review the diff anyway.
-
-## Live tests
-
-sevDesk has no sandbox: every write is real, and finalized documents cannot be deleted. The live
-tooling therefore reads only a short list of variables (`SEVDESK_API_TOKEN` or
-`SEVDESK_API_TOKEN_FILE`, `SEVDESK_BASE_URL`, `SEVDESK_RATE_LIMIT`, `SEVDESK_TIMEOUT_MS`) and
-ignores tier switches from your shell.
-
-- `pnpm test:live` calls every read tool through the real server against your account, in
-  read-only mode (the HTTP client refuses any data-changing request), and checks that each answers
-  without an error and with schema-valid output. Without a token every test is skipped with the
-  reason. It runs from its own config (`vitest.live.config.ts`) and never in `pnpm test`.
-- `SEVDESK_LIVE_LIFECYCLE=1 SEVDESK_LIVE_I_UNDERSTAND_WRITES=1 pnpm test:live` adds a write
-  scenario through the write tools (contact, draft, finalize, payments, reminder, cancellation,
-  credit note). **Trial accounts only**: it refuses accounts that already hold many records,
-  e-mails nothing unless `SEVDESK_LIVE_EMAIL_TO` names your own address, tags what it creates
-  (`MCP-E2E <run id>`) and prints a cleanup list.
-- `pnpm probe --out report.md` checks the open questions of `spec/deviations.md` against the API
-  and reports each finding with scrubbed evidence; `--allow-writes` (plus
-  `SEVDESK_LIVE_I_UNDERSTAND_WRITES=1`) adds probes that create their own tagged test data;
-  `--probe-email <your address>` adds one e-mail probe to that address only.
-  `pnpm probe --list` shows every probe.
-- `pnpm fixtures:record` records scrubbed read responses as fixtures (read-only;
-  `--dry-run` lists the requests).
-
-The step-by-step runbook for a recording session on a free trial account, including what to commit
-and what never to commit, is [docs/recording-session.md](docs/recording-session.md). The manual
-workflow `Live E2E` runs `pnpm test:live` in CI behind the protected `live` environment.
-
-## Tool-selection evals
-
-`test/evals/` checks which tool a model picks first for about 70 German and English requests.
-`pnpm evals` replays recorded model answers (no API key, no cost); cases without a recording are
-skipped as "stale cassette". A cassette is keyed on the whole request, which contains every tool
-of its configuration: changing any tool's name, description or schema, or the server
-instructions, stales every case of that configuration. Re-record with
-`ANTHROPIC_API_KEY=… pnpm evals:record` (about $1–2 per full run) and commit the cassettes; when
-you rename a tool, also update the expected tool names in `test/evals/cases.ts`. On pull requests
-that touch tools, `.github/workflows/evals.yml` only replays them, without secrets or cost.
-Recording is a local step, run before a release or after description changes, never in CI. The
-evals are informative, not a required check. Details: [test/evals/README.md](test/evals/README.md).
+- [Architecture](docs/architecture.md): the layers, the module map and the lifecycle of a tool
+  call. Read it first.
+- [Making changes](docs/contributing/changes.md): adding a tool, changing a page, adding a prompt,
+  staying within the compatibility contract, and the Tool surface report on PRs.
+- [Testing](docs/contributing/testing.md): the HTTP mode, the Claude Desktop extension, keychain
+  and profiles, fixtures, live tests and the tool-selection evals.
+- [Recording session runbook](docs/recording-session.md): checking the API on a free trial account
+  and recording fixtures.
+- [Compatibility](docs/compatibility.md): what 1.0 freezes and the deprecation policy.
+- [Architecture decision records](docs/adr/README.md): why the bigger decisions went the way they
+  did.
 
 ## Reporting bugs and security issues
 

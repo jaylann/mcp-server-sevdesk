@@ -64,7 +64,8 @@ Evidence that shaped the choice:
 - Bad: coverage grows only as fast as we write tools. An operation without a curated tool is
   reachable read-only through `api_get`, and not at all for writes.
 - Bad: more code to maintain than a generated 1:1 mapping. Contributors can request endpoints with
-  an issue form, and "add a tool in 5 steps" is documented in CONTRIBUTING.md.
+  an issue form, and "add a tool in 5 steps" is documented in
+  [Making changes](../contributing/changes.md#adding-a-tool).
 
 ## Alternatives considered
 
