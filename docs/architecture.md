@@ -4,6 +4,7 @@ This document explains how `mcp-server-sevdesk` is built and why. It is for cont
 anyone who wants to judge whether the server is safe to point at their books. The reasoning behind
 the bigger decisions is in the [architecture decision records](adr/README.md).
 
+> [!NOTE]
 > **Status.** This page describes version 1.0, built through milestones M1 core, M2 read
 > coverage, M3 document lifecycle, M4 receipt and e-invoice intake, voucher writes, reconciliation
 > and tax reports, M5 remote HTTP, and M6 launch (the Claude Desktop extension, prompts, local
