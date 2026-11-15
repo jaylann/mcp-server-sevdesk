@@ -84,5 +84,5 @@ Offener = "Offener"
 Typs = "Typs"
 passt = "passt"
 separat = "separat"
-# Informal address the German page texts must not use (asserted by a test).
+# The informal address of the German page texts, which their tests quote.
 deine = "deine"

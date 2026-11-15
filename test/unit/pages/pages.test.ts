@@ -240,13 +240,13 @@ describe("approval page", () => {
     const html = renderApprovalPage(approval({ inboxHref: "/approvals" }), ctx("de-DE"));
     expect(html).toContain('<html lang="de">');
     expect(html).toContain("<title>sevDesk-Aktion freigeben</title>");
-    expect(html).toContain("sevDesk MCP bittet um Ihre Freigabe");
+    expect(html).toContain("sevDesk MCP bittet um deine Freigabe");
     expect(html).toContain("<h1>Diese Aktion freigeben?</h1>");
     expect(html).toContain("</svg>Rechtlich bindende Buchhaltung</span>");
     expect(html).toContain("<strong>Das lässt sich nicht rückgängig machen.</strong>");
     expect(html).toContain(">Ablehnen</button>");
     expect(html).toContain("</svg>Freigeben</button>");
-    expect(html).toContain("Ohne Ihre Freigabe passiert nichts.");
+    expect(html).toContain("Ohne deine Freigabe passiert nichts.");
     expect(html).toContain('<a href="/approvals">Zurück zum Freigabe-Postfach</a>');
     expect(html).toContain("<h2>Finalize invoice RE-1042.</h2>");
     // Tool titles exist in English only: the German page names the tool, not its title.
@@ -325,7 +325,7 @@ describe("inbox page", () => {
   it("says so when nothing waits, in the reader's language", () => {
     const none = renderInboxPage({ ...model, items: [] }, ctx("de"));
     expect(none).toContain('<div class="empty">');
-    expect(none).toContain("<h2>Nichts wartet auf Sie</h2>");
+    expect(none).toContain("<h2>Nichts wartet auf dich</h2>");
     expect(none).not.toContain('<ul class="rows">');
     expect(none).toContain("</svg>Aktualisieren</a>");
     const decided = renderInboxPage({ ...model, items: [item("approved", "BBBBBB")] }, ctx("de"));
@@ -356,7 +356,7 @@ describe("consent pages", () => {
     };
     for (const [lang, promise, warning] of [
       ["en", "still ask you to approve", "without asking anyone"],
-      ["de", "fragen Sie weiterhin", "ohne jede Rückfrage"],
+      ["de", "fragen dich weiterhin", "ohne jede Rückfrage"],
     ] as const) {
       const token = renderTokenStep(
         { ...model, offered: [...model.offered], chosen: [...model.chosen] },
