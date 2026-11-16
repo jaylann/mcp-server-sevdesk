@@ -3,6 +3,7 @@
  * irreversible or reach third parties.
  */
 import type { ProbeDefinition } from "./core.js";
+import { GAPS_DOCUMENTS_PROBES } from "./gaps-documents-probes.js";
 import { M4_BANKING_PROBES } from "./m4-banking-probes.js";
 import { M4_EINVOICE_PROBES } from "./m4-einvoice-probes.js";
 import { M4_REPORT_PROBES } from "./m4-reports-probes.js";
@@ -18,6 +19,7 @@ export const ALL_PROBES: readonly ProbeDefinition[] = [
   ...M4_BANKING_PROBES,
   ...M4_REPORT_PROBES,
   ...M4_EINVOICE_PROBES,
+  ...GAPS_DOCUMENTS_PROBES,
 ];
 
 /** A question the probe never asks sevDesk; it belongs to a human, by hand, if at all. */
@@ -56,11 +58,6 @@ export const NOT_PROBED: readonly ManualCheck[] = [
       "Reach third parties (external tier). Only write-send-email-shape e-mails, only with " +
       "--probe-email, only to that address.",
     deviations: ["D-023", "D-025"],
-  },
-  {
-    what: "GET /Order/Factory/getNextOrderNumber with useNextNumber=true",
-    why: "Consumes a number of the offer sequence.",
-    deviations: ["D-027"],
   },
   {
     what: "getPdf with preventSendBy=1 instead of the literal true",

@@ -430,6 +430,36 @@ export function recordPlan(today: string): readonly RecordEntry[] {
       note: "Shape on Update 2.0 (D-036 was observed on 1.0).",
     },
 
+    // --- order discounts, recurring templates, layouts (issues #89, #91, #94) --------------
+    {
+      file: "orders/order-discounts.json",
+      mirrors: [],
+      path: "/Order/{order}/getDiscounts",
+      list: true,
+      requires: ["order"],
+      note: "Document-level discounts of an order (#89, #94); empty unless the order has one.",
+    },
+    {
+      file: "invoices/recurring-templates.json",
+      mirrors: [],
+      path: "/Invoice",
+      query: { showWkr: "all" },
+      list: true,
+      note: "Recurring invoice templates (WKR) with their schedule fields (D-014, D-049, #91).",
+    },
+    {
+      file: "layouts/letterpapers.json",
+      mirrors: [],
+      path: "/DocServer/getLetterpapersWithThumb",
+      note: "Letterheads for changeParameter (#94); the scrubber replaces PDFs and thumbnails.",
+    },
+    {
+      file: "layouts/templates.json",
+      mirrors: [],
+      path: "/DocServer/getTemplatesWithThumb",
+      note: "Document templates for changeParameter (#94); the scrubber replaces their base64.",
+    },
+
     // --- document files (non-drafts only) -------------------------------------------------
     {
       file: "documents/invoice-pdf.json",
