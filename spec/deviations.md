@@ -3458,7 +3458,8 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   costCentre null (D-092)", "removes the stored cost centre and shows which one, in both
   languages", "sends no costCentre key when none is stored and none is asked for");
   `test/unit/domain/cost-centres.test.ts` ("costCentreUpdate (set, remove or keep)");
-  `test/unit/tools/documents/cost-centre-reads.test.ts`;
+  `test/unit/tools/documents/cost-centre-reads.test.ts` ("sevdesk_credit_notes_list, with the
+  filter recorded on 2026-11-17 (D-092)");
   `test/regressions/report-filters-never-unfiltered.test.ts` (both reports: an unknown cost
   centre is refused before any document list, and only its documents count when every row comes
   back); `test/unit/tools/reports/summarize-tags-cost-centres.test.ts` ("answers this month's
