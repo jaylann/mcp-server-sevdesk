@@ -62,6 +62,44 @@ assistant has to name one as contact person.
 A position can link a part (Artikel) from [`sevdesk_parts_list`](../tools.md#sevdesk_parts_list),
 but its name and price still come from the position.
 
+### Offers: accept, confirm, deliver
+
+Before an offer (Angebot) is invoiced, the assistant can record the customer's answer and create
+the documents that follow it:
+
+> Musterfirma accepted offer AN-1042 by phone. Mark it as accepted.
+
+> They declined AN-1043.
+
+[`sevdesk_order_set_offer_status`](../tools.md#sevdesk_order_set_offer_status) (`commit`, **you
+confirm**) marks a sent offer as accepted (angenommen) or rejected (abgelehnt), or sets an accepted
+or rejected offer back to sent (`reopen`). It changes nothing but the status and sends nothing to
+the customer. Offer drafts are refused (send them first: sevDesk would renumber a draft), and so are
+order confirmations and delivery notes.
+
+> Create the order confirmation for AN-1042.
+
+[`sevdesk_order_create_confirmation`](../tools.md#sevdesk_order_create_confirmation) (`commit`,
+**you confirm**) creates an order confirmation (Auftragsbestätigung, AB) draft with the offer's
+contact, texts and positions, which the preview lists. sevDesk marks the offer as accepted in the
+same step, which is why you confirm it. It takes sent and accepted offers only: a draft is refused
+(it would accept an offer the customer never received), and a rejected offer must be reopened
+first, so turning a rejection into an acceptance is always a step of its own.
+
+> Create a delivery note for AB-1007.
+
+[`sevdesk_order_create_delivery_note`](../tools.md#sevdesk_order_create_delivery_note) (`write`,
+no confirmation) creates a delivery note (Lieferschein, LI) draft from an order confirmation (draft,
+sent or accepted) or a sent offer, and leaves the source as it is. Offer drafts, rejected and
+accepted offers are refused (for an accepted offer, deliver on its confirmation).
+
+Both creating tools refuse a second document from the same order unless you ask for one, and
+finalize the new draft with [`sevdesk_order_finalize`](../tools.md#sevdesk_order_finalize). sevDesk
+gives the new document the next number of its range without moving the counter, so it can carry a
+number another confirmation or delivery note already has; the result names any it finds. To find
+offers that are still open, ask for sent offers in a date range
+([`sevdesk_orders_list`](../tools.md#sevdesk_orders_list)).
+
 ### From an offer or order confirmation
 
 > Turn offer AN-1042 into an invoice.

@@ -21,6 +21,10 @@ Jedes Werkzeug gehört zu genau einer Stufe. Lesen und Schreiben teilen sich nie
 | `commit`   | Fertigstellen, Zahlungen buchen, Kontoumsätze zuordnen, Umsätze als privat markieren, stornieren, festschreiben (GoBD), zurücksetzen, Belegentwürfe löschen. Rechtlich bindend oder schwer rückgängig zu machen.                         | **ja**      |
 | `external` | Rechnungen, Gutschriften und Aufträge per E-Mail versenden. Erreicht Dritte.                                                                                                                                                             | **ja**      |
 
+Für Aufträge gilt dieselbe Linie: Ein Lieferschein zu einem Angebot ist ein `write`-Entwurf, ein
+Angebot anzunehmen oder abzulehnen dagegen `commit`, ebenso seine Auftragsbestätigung anzulegen,
+weil sevDesk das Angebot dabei als angenommen markiert.
+
 Die Stufen wählst du mit `SEVDESK_ALLOW`, zum Beispiel `SEVDESK_ALLOW=write` oder
 `SEVDESK_ALLOW=write,commit`; `all` aktiviert alle Stufen. `SEVDESK_READ_ONLY=1` schaltet alles
 außer `read` ab, unabhängig davon, was in `SEVDESK_ALLOW` steht. Die [Werkzeugreferenz](tools.md)

@@ -3682,17 +3682,40 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   - `createPackingListFromOrder` worked from a sent offer, a draft confirmation and a sent one,
     and left the source's status alone. A confirmation marked as sent with `sendBy` read back with
     status 500, not 200.
+  - One-off check of the sources the probes had not tried: `createContractNoteFromOrder` from an
+    offer that is already **accepted** (500) works, gives a draft `AB` with `origin` the offer, and
+    the offer stays at 500. From a **rejected** offer (300) it works too and sets the offer to 500:
+    the request silently turns a rejection into an acceptance. `createPackingListFromOrder` from a
+    **draft** offer (100) works, gives a draft `LI` with `origin` the offer, and leaves the offer at 100.
 - **Sources:** spec (`createContractNoteFromOrder`, `createPackingListFromOrder`,
   `Model_CreatePackingListFromOrder`); recorded 2026-11-16, trial account, Update 2.0 (probes
-  `write-order-contract-note-from-order`, `write-order-packing-list-from-order`).
-- **Impact:** A tool that makes a confirmation must say in its preview that the offer becomes
-  accepted (500), and should refuse a draft offer or say that it accepts an unsent one. The new
-  order's number may equal one sevDesk already handed out; the tool reads the order back and shows
-  its number. The id comes from the answer itself (`createdDocumentId` already accepts a bare
-  record, D-064). (#89)
-- **Test:** pending: the #89 tools. Live: probes `write-order-contract-note-from-order`,
-  `write-order-packing-list-from-order` (their reporting: `test/unit/scripts/gaps-documents-probes.test.ts`,
-  "describes order confirmations and delivery notes against their source").
+  `write-order-contract-note-from-order`, `write-order-packing-list-from-order`); recorded
+  2026-11-16, trial account, Update 2.0 (one-off check by the orchestrator).
+- **Impact:** `sevdesk_order_create_confirmation` (commit tier, because it accepts the offer)
+  takes sent (200) and accepted (500) offers only, and its preview says whether the offer becomes
+  accepted or stays so. It refuses drafts (that would accept an offer the customer never received)
+  and rejected offers (reopening one is its own confirmed step,
+  `sevdesk_order_set_offer_status`, D-108). `sevdesk_order_create_delivery_note` (write tier,
+  the source stays as it is) takes sent offers and order confirmations that are drafts, sent or
+  accepted; it refuses offer drafts although sevDesk accepts them (nothing was offered to the
+  customer yet to deliver on) and accepted offers (not recorded; deliver on their confirmation).
+  Both send the order in the query and the body, read the new order back (its id comes from the
+  answer itself, `createdDocumentId`, D-064), check that it is a draft of the expected type that
+  points to the source, and look up other orders of the type with the same number for a trusted
+  note. Both refuse a second document from the same source unless `allowDuplicate` (the delivery
+  note only a second draft). (#89)
+- **Test:** `test/unit/tools/orders/create-confirmation.test.ts` ("creates the confirmation with
+  the offer in query and body, and reads both back", "creates one from an accepted offer and says
+  the offer stays accepted", "refuses a draft offer before any request", "refuses a rejected
+  offer before any request", "names another confirmation with the same number"),
+  `test/unit/tools/orders/create-delivery-note.test.ts` ("creates the delivery note with the
+  source in query and body, and reads it back", "refuses offer drafts, rejected and accepted
+  offers, and other statuses"), `test/regressions/offer-status-and-confirmation.test.ts`
+  ("refuses a confirmation from an offer with status 100/300"),
+  `test/integration/order-acceptance-path.test.ts`. Live: probes
+  `write-order-contract-note-from-order`, `write-order-packing-list-from-order` (their reporting:
+  `test/unit/scripts/gaps-documents-probes.test.ts`, "describes order confirmations and delivery
+  notes against their source").
 
 ### D-108: `PUT /Order/{id}` sets an offer's status; on a draft it also renumbered it
 
@@ -3709,10 +3732,16 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
     renumbers a draft that leaves status 100 this way.
 - **Sources:** spec (`updateOrder`, `Model_OrderUpdate`); recorded 2026-11-16, trial account,
   Update 2.0 (probe `write-order-status-accept-reject`).
-- **Impact:** Accepting or rejecting an offer is one `PUT /Order/{id}` with `{status}` only. The
-  tool allows it only from a sent offer (200) and back to 200, and refuses drafts, so the
-  renumbering never happens through it. (#89)
-- **Test:** pending: the #89 tools. Live: probe `write-order-status-accept-reject`
+- **Impact:** Accepting or rejecting an offer is one `PUT /Order/{id}` with `{status}` only
+  (`setOrderStatus`, strict body). `sevdesk_order_set_offer_status` (commit tier) accepts or
+  rejects only a sent offer (200) and reopens only an accepted or rejected one (back to 200); it
+  refuses drafts, so the renumbering never happens through it, and every order that is not an
+  offer. The offer is read back afterwards. (#89)
+- **Test:** `test/unit/tools/orders/offer-status.test.ts` ("accepts a sent offer with a body of
+  only the status, and reads it back", "refuses a draft offer before any request", "allows accept
+  and reject only from sent, reopen only from accepted or rejected"),
+  `test/regressions/offer-status-and-confirmation.test.ts` ("refuses to accept/reject/reopen a
+  draft offer", "builds and sends only {status}"). Live: probe `write-order-status-accept-reject`
   (`test/unit/scripts/gaps-documents-probes.test.ts`, "sets offer statuses, sets them back, and
   records the refusal on a draft").
 

@@ -1,5 +1,33 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`German previews > accept a sent offer: says the same in German 1`] = `
+"Angebot AN-1001 als angenommen markieren (versendet 200 → angenommen 500).
+! Das Angebot wird als vom Kunden angenommen vermerkt (Status 500); an niemanden wird etwas gesendet. Danach: sevdesk_order_create_confirmation oder sevdesk_invoice_create_from_order. Mit der Aktion „reopen“ lässt es sich zurücksetzen.
+! sevDesk ändert nur den Status des Angebots: Die Anfrage enthält nichts anderes.
+! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfe bei Bedarf sevdesk_order_pdf.
+(umkehrbar)
+Auftrag: AN-1001 (ID 3001)
+Typ: Angebot (AN)
+Status: Versendet (200)
+Kunde: Musterfirma GmbH (Kontakt 1001)
+Anschrift auf dem Dokument: Musterfirma GmbH
+Musterstraße 1
+12345 Musterstadt
+Adressfelder (strukturiert): Musterfirma GmbH
+Datum: 20.09.2026
+Netto: 144,02 EUR
+Umsatzsteuer: 27,36 EUR
+Brutto: 171,38 EUR
+Betreff auf dem Dokument: Angebot AN-1001
+Steuerregel: 1 Umsatzsteuerpflichtige Umsätze
+Steuerhinweis: 0
+Kopftext: <p>Gerne bieten wir Ihnen an:</p>
+Positionen: keine
+Fußtext: <p>Das Angebot ist 30 Tage gültig.</p>
+Zahlungsbedingungen: 14 Tage netto
+Lieferbedingungen: Lieferung frei Haus"
+`;
+
 exports[`German previews > book a bank transaction to an invoice: says the same in German 1`] = `
 "Kontoumsatz 5101 (177,33 EUR) zuordnen zu Rechnung RE-1001: insgesamt 177,33 EUR.
 ! Der Status jedes Dokuments ändert sich (siehe die einzelnen Zuordnungen). Rückgängig machen lässt sich das mit sevdesk_transaction_reset: Das setzt diese Dokumente auf offen zurück und entfernt damit alle ihre Zahlungen.
@@ -208,6 +236,37 @@ Betragseingabe: brutto
 Position 1: 6815 Bürobedarf (Konto 4266): 119,00 EUR brutto, 19 % USt. → netto 100,00, USt. 19,00, brutto 119,00
 Summe (erwartet): netto 100,00 EUR, USt. 19,00 EUR, brutto 119,00 EUR
 Status nach dem Speichern: Entwurf (50), noch nicht gebucht"
+`;
+
+exports[`German previews > create an order confirmation from a sent offer: says the same in German 1`] = `
+"Aus dem Angebot AN-1001 eine Auftragsbestätigung (AB) als Entwurf erstellen; sevDesk markiert das Angebot dabei als angenommen (versendet 200 → angenommen 500).
+! sevDesk markiert das Angebot in derselben Anfrage als angenommen (Status 500): Das ist der bindende Schritt dieser Aktion. War das nicht gewollt, setze das Angebot mit sevdesk_order_set_offer_status (Aktion „reopen“) zurück.
+! Die Auftragsbestätigung wird als Entwurf mit Kontakt, Texten und Positionen des Angebots erstellt, wie hier aufgeführt; prüfe sie mit sevdesk_order_get und stelle sie mit sevdesk_order_finalize fertig.
+! sevDesk gibt der Auftragsbestätigung die nächste Nummer des AB-Nummernkreises, ohne den Zähler weiterzuschalten; eine andere Auftragsbestätigung kann daher dieselbe Nummer tragen. Das Ergebnis nennt solche, die es findet.
+! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfe bei Bedarf sevdesk_order_pdf.
+(umkehrbar)
+Auftrag: AN-1001 (ID 3001)
+Typ: Angebot (AN)
+Status: Versendet (200)
+Kunde: Musterfirma GmbH (Kontakt 1001)
+Anschrift auf dem Dokument: Musterfirma GmbH
+Musterstraße 1
+12345 Musterstadt
+Adressfelder (strukturiert): Musterfirma GmbH
+Datum: 20.09.2026
+Netto: 144,02 EUR
+Umsatzsteuer: 27,36 EUR
+Brutto: 171,38 EUR
+Wird erstellt: Auftragsbestätigung (AB) als Entwurf
+Betreff auf dem Dokument: Angebot AN-1001
+Steuerregel: 1 Umsatzsteuerpflichtige Umsätze
+Steuerhinweis: 0
+Kopftext: <p>Gerne bieten wir Ihnen an:</p>
+Position 1: Testartikel: 2 × 49,9919 EUR brutto, 19 % USt. → 84,02 EUR netto, 99,98 EUR brutto
+Position 2: Optionale Einweisung: 1 × 119,00 EUR brutto, 19 % USt., optional (nicht in der Summe) → 100,00 EUR netto, 119,00 EUR brutto
+Fußtext: <p>Das Angebot ist 30 Tage gültig.</p>
+Zahlungsbedingungen: 14 Tage netto
+Lieferbedingungen: Lieferung frei Haus"
 `;
 
 exports[`German previews > delete a draft voucher: says the same in German 1`] = `

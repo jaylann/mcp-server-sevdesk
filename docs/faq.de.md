@@ -148,6 +148,15 @@ E-Rechnungen und der Buchhaltungs-Skill folgen deutschem Recht, und der Server i
 deutschen Konten getestet. Lesen kann mit einem österreichischen Konto funktionieren, aber dort ist
 nichts überprüft. Unterstützung für Österreich ist für ein späteres 1.x-Release vorgesehen.
 
+### Kann es mit Angeboten, Auftragsbestätigungen und Lieferscheinen umgehen?
+
+Ja. Neben Angebotsentwürfen hält es die Antwort des Kunden fest (angenommen oder abgelehnt,
+`commit`), legt aus einem Angebot die Auftragsbestätigung an (`commit`, weil sevDesk das Angebot
+dabei als angenommen markiert) und aus einer Auftragsbestätigung einen Lieferschein (`write`) und
+danach die Rechnung aus dem Auftrag ([Rechnungen](guides/invoices.de.md#angebote-annehmen-bestätigen-liefern)).
+Einen eigenen Filter für liegengebliebene Angebote gibt es nicht; frag nach versendeten Angeboten
+in einem Zeitraum.
+
 ### Kann es Briefe per Post versenden?
 
 Nicht in 1.0. Dokumente lassen sich per E-Mail versenden (Stufe `external`), und beim
