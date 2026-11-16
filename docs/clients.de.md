@@ -1,16 +1,18 @@
-<!-- translated-from: docs/clients.md sha256:44ac123e6fb3 -->
+<!-- translated-from: docs/clients.md sha256:6c6e9f02e833 -->
 
 # Clients
 
 Jeder MCP-Client, der ein lokales Programm starten kann, startet diesen Server auf dieselbe Weise:
-mit dem Befehl `npx -y mcp-server-sevdesk` und deinem sevDesk-API-Token in der Umgebung. Diese
-Seite zeigt das genaue Format für jeden Client. Clients, die kein Programm starten können, etwa
-claude.ai und die mobilen Claude-Apps, verbinden sich mit einem Server, den du im
-[Fernzugriff](remote.de.md) betreibst.
+mit dem Befehl `npx -y mcp-server-sevdesk` und deinem sevDesk-API-Token in der Umgebung. Clients,
+die kein Programm starten können, etwa claude.ai und die mobilen Claude-Apps, verbinden sich mit
+einem Server, den du im [Fernzugriff](remote.de.md) betreibst. Diese Seite zeigt, welche Clients
+funktionieren und wie sie dich um Bestätigung bitten; jeder Client hat eine eigene Seite mit der
+genauen Einrichtung, lokal und im Fernzugriff.
 
 Bevor du beginnst:
 
-- **Node.js 22.12 oder neuer** für `npx`. Die [Claude-Desktop-Erweiterung](#die-erweiterung) und
+- **Node.js 22.12 oder neuer** für `npx`. Die
+  [Claude-Desktop-Erweiterung](clients/claude-desktop.de.md#die-erweiterung) und
   [Docker](#docker-statt-npx) brauchen keins.
 - **Ein sevDesk-API-Token**, am besten eines eigenen Benutzers
   ([Schnellstart](quickstart.de.md#bevor-du-beginnst)).
@@ -19,8 +21,26 @@ Die Beispiele schreiben das Token selbst als `SEVDESK_API_TOKEN` in die Konfigur
 der Datei herauszuhalten, ersetze diese Zeile durch `"SEVDESK_API_TOKEN_KEYCHAIN": "<label>"`,
 nachdem du das Token mit `npx -y mcp-server-sevdesk token set <label>` abgelegt hast (macOS,
 Linux und Windows), oder durch `"SEVDESK_API_TOKEN_FILE": "/absolute/path/to/token"`
-([Konfiguration](configuration.de.md#das-token-im-schlüsselbund-ablegen)). Jede weitere
-Einstellung kommt in denselben `env`-Block; ohne weitere Einstellungen liest der Server nur.
+([Profile und Schlüsselbund](configuration/profiles.de.md#das-token-im-schlüsselbund-ablegen)).
+Jede weitere Einstellung kommt in denselben `env`-Block ([Konfiguration](configuration.de.md));
+ohne weitere Einstellungen liest der Server nur.
+
+## Client-Seiten
+
+| Client                                                   | Lokal (stdio)                        | Fernzugriff (HTTP)                    |
+| -------------------------------------------------------- | ------------------------------------ | ------------------------------------- |
+| [Claude Desktop](clients/claude-desktop.de.md)           | Erweiterung oder Konfigurationsdatei | über einen Connector in claude.ai     |
+| [Claude Code](clients/claude-code.de.md)                 | `claude mcp add` oder das Plugin     | OAuth oder Bearer                     |
+| [claude.ai und die Claude-Apps](clients/claude-ai.de.md) | nicht möglich                        | OAuth (benutzerdefinierter Connector) |
+| [Cursor](clients/cursor.de.md)                           | `mcp.json`                           | Bearer                                |
+| [VS Code](clients/vscode.de.md)                          | `mcp.json`                           | Bearer                                |
+| [Windsurf](clients/windsurf.de.md)                       | `mcp_config.json`                    | Bearer (allgemein)                    |
+| [Codex](clients/codex.de.md)                             | `config.toml` oder `codex mcp add`   | Bearer (allgemein)                    |
+| [Zed](clients/zed.de.md)                                 | `settings.json`                      | Bearer (allgemein)                    |
+
+„Allgemein“ heißt: Jeder Client, der Streamable HTTP spricht und einen Header senden kann,
+funktioniert, aber diese Dokumentation hat für diesen Client keinen getesteten Eintrag
+([Andere Clients](#andere-clients)).
 
 ## Bestätigung je Client
 
@@ -46,255 +66,10 @@ Die Funktionen der Clients ändern sich häufig; diese Tabelle gibt ihre Dokumen
 einem Fehler, der genau das sagt, und nichts wird an sevDesk gesendet. Werkzeuge der Stufe `write`
 und Probeläufe brauchen in keinem Client eine Bestätigung.
 
-## Claude Desktop
-
-### Die Erweiterung
-
-Die `.mcpb`-Erweiterung bündelt den Server mit allem, was er braucht, und läuft auf dem
-eingebauten Node.js von Claude Desktop. Unter macOS und Windows ist sie der einfachste Weg zur
-Installation.
-
-1. Lade `mcp-server-sevdesk-<version>.mcpb` aus dem
-   [neuesten Release](https://github.com/jaylann/mcp-server-sevdesk/releases/latest) herunter.
-2. Doppelklicke auf die Datei, ziehe sie in das Fenster von Claude Desktop oder wähle
-   **Settings → Extensions → Advanced settings → Install Extension…** und dann die Datei.
-3. Füge dein sevDesk-API-Token ein und aktiviere die Erweiterung. Alles andere ist
-   optional: Die Erweiterung startet nur lesend.
-
-Claude Desktop bewahrt das Token im sicheren Speicher deines Betriebssystems auf (Schlüsselbund
-unter macOS, Anmeldeinformationsverwaltung unter Windows). Die Einstellungen änderst du später
-unter **Settings → Extensions → sevDesk**:
-
-| Einstellung       | Variable             | Bedeutung                                                                                                                                                                                                           |
-| ----------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| sevDesk API token | `SEVDESK_API_TOKEN`  | Pflicht.                                                                                                                                                                                                            |
-| Permission tiers  | `SEVDESK_ALLOW`      | `read` (Standard), `write`, `commit`, `external` oder `all`, durch Kommas getrennt.                                                                                                                                 |
-| Read only         | `SEVDESK_READ_ONLY`  | Nur Lesewerkzeuge, unabhängig von den Stufen.                                                                                                                                                                       |
-| Dry run           | `SEVDESK_DRY_RUN`    | Schreibwerkzeuge geben nur eine Vorschau zurück.                                                                                                                                                                    |
-| Confirmation      | `SEVDESK_CONFIRM`    | `browser` (Standard: Eine Freigabeseite öffnet sich in deinem Browser) oder `elicit` (Claude Desktop zeigt dafür keinen Dialog). In der Erweiterung lässt sich die Bestätigung nicht abschalten.                    |
-| Toolsets          | `SEVDESK_TOOLSETS`   | Leer lädt alle außer `advanced`.                                                                                                                                                                                    |
-| Receipt folder    | `SEVDESK_FILE_DIRS`  | Ein Ordner, aus dem Belege und E-Rechnungen gelesen werden dürfen.                                                                                                                                                  |
-| Output folder     | `SEVDESK_OUTPUT_DIR` | Ein Ordner, in dem PDFs und Exporte gespeichert werden dürfen.                                                                                                                                                      |
-| Audit log         | `SEVDESK_AUDIT_LOG`  | Pfad eines lokalen Protokolls schreibender Aufrufe im Format JSON Lines; Einträge werden angehängt, Geheimnisse entfernt. Leer: kein Audit-Log. Ist die Datei nicht beschreibbar, werden Schreibvorgänge abgelehnt. |
-
-So prüfst du einen Download vor der Installation:
-`gh attestation verify mcp-server-sevdesk-<version>.mcpb --owner jaylann`. Ein neueres Release
-installierst du auf dieselbe Weise über das alte.
-
-### Die Konfigurationsdatei
-
-Ohne die Erweiterung startet Claude Desktop den Server aus seiner Konfigurationsdatei. Öffne
-sie mit **Settings → Developer → Edit Config**; sie liegt unter
-
-- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "sevdesk": {
-      "command": "npx",
-      "args": ["-y", "mcp-server-sevdesk"],
-      "env": {
-        "SEVDESK_API_TOKEN": "<your sevDesk API token>"
-      }
-    }
-  }
-}
-```
-
-Beende Claude Desktop vollständig und starte es neu. Das Log des Servers liegt unter
-macOS in `~/Library/Logs/Claude/mcp-server-sevdesk.log` und unter Windows in
-`%APPDATA%\Claude\logs`.
-
-## Claude Code
-
-Trage den Server für alle deine Projekte ein (`--scope user`), mit dem Token aus dem
-Schlüsselbund:
-
-```bash
-npx -y mcp-server-sevdesk token set work
-claude mcp add --env SEVDESK_API_TOKEN_KEYCHAIN=work --scope user sevdesk -- npx -y mcp-server-sevdesk
-```
-
-Weitere Einstellungen sind weitere `--env NAME=value`-Optionen vor `--scope`. Alles nach `--` ist
-der Befehl, den Claude Code ausführt. Vermeide `--env SEVDESK_API_TOKEN=<token>` auf der
-Kommandozeile: Das Token bleibt sonst in deiner Shell-Historie. Mit `/mcp` siehst du in Claude Code
-den Server und seine Werkzeuge.
-
-In die gemeinsame `.mcp.json` eines Projekts gehört nie ein Token. Verweise stattdessen auf
-eine Variable, die Claude Code aus der Umgebung einsetzt, in der es gestartet wurde; jede Person
-exportiert dann die Bezeichnung ihres eigenen Schlüsselbund-Eintrags:
-
-```json
-{
-  "mcpServers": {
-    "sevdesk": {
-      "command": "npx",
-      "args": ["-y", "mcp-server-sevdesk"],
-      "env": { "SEVDESK_API_TOKEN_KEYCHAIN": "${SEVDESK_API_TOKEN_KEYCHAIN}" }
-    }
-  }
-}
-```
-
-Die [Prompts](../README.de.md#prompts) des Servers erscheinen im `/`-Menü als
-`/sevdesk:month_end_close (MCP)`; `/mcp__sevdesk__month_end_close 2026-10` führt einen mit einem
-Argument aus. Bestätigungen erscheinen in interaktiven Sitzungen als Dialog; im Print-Modus
-(`claude -p`) verwendest du Probeläufe oder `SEVDESK_CONFIRM=browser`.
-
-### Das Plugin
-
-Das Repository ist zugleich ein Plugin-Marktplatz für Claude Code. Das Plugin `sevdesk` startet
-diesen Server und bringt einen Buchhaltungs-Skill mit: deutsche Steuerregeln und die passenden
-Steuerregeln in sevDesk (einschließlich §13b Reverse Charge und §19 Kleinunternehmer), gängige
-SKR03- und SKR04-Konten, GoBD, die E-Rechnungspflichten und Abläufe Schritt für Schritt.
-
-```text
-/plugin marketplace add jaylann/mcp-server-sevdesk
-/plugin install sevdesk@mcp-server-sevdesk
-```
-
-Das Plugin startet das Release, zu dem es gehört (`npx -y mcp-server-sevdesk@<version>`), damit
-nie eine neue npm-Version läuft, bevor du das Plugin aktualisierst. Es übergibt die
-`SEVDESK_*`-Variablen der Umgebung, in der Claude Code gestartet wurde, zum Beispiel aus deinem
-Shell-Profil:
-
-```bash
-export SEVDESK_API_TOKEN_KEYCHAIN=work   # oder SEVDESK_API_TOKEN / SEVDESK_API_TOKEN_FILE
-export SEVDESK_ALLOW=write               # optional; ohne die Variable nur lesend
-```
-
-## claude.ai und die Claude-Apps
-
-claude.ai kann kein Programm auf deinem Rechner starten und verbindet sich daher mit einem Server,
-den du im Fernzugriff mit OAuth betreibst: auf einer VM, einer Plattform wie Fly.io oder deinem
-eigenen Rechner hinter einem Tunnel. Die
-[Anleitung zum Fernzugriff](remote.de.md#schnellstart-oauth-mit-einem-benutzerdefinierten-connector-in-claudeai) führt
-Schritt für Schritt hindurch. Danach in claude.ai: **Einstellungen → Connectors →
-Benutzerdefinierten Connector hinzufügen**, mit der URL `https://<your host>/mcp`. Der Connector
-steht auch in Claude Desktop und den mobilen Apps zur Verfügung, die mit demselben Konto angemeldet
-sind.
-
-claude.ai kann zum Zeitpunkt des Schreibens keine Bestätigungen im Chat anzeigen. Setze daher
-`SEVDESK_CONFIRM=browser` auf dem Server, wenn du `commit` oder `external` aktivierst: Du gibst
-dann im Freigabe-Postfach des Servers frei. Belege lädst du über Seiten auf deinem Server hoch und
-Exporte dort herunter; du öffnest diese Seiten über Links im Chat ([remote.de.md](remote.de.md#dateien-hochladen-und-herunterladen)).
-
-## Cursor
-
-In `~/.cursor/mcp.json` (alle Projekte) oder `.cursor/mcp.json` in einem Projekt:
-
-```json
-{
-  "mcpServers": {
-    "sevdesk": {
-      "command": "npx",
-      "args": ["-y", "mcp-server-sevdesk"],
-      "env": {
-        "SEVDESK_API_TOKEN": "<your sevDesk API token>"
-      }
-    }
-  }
-}
-```
-
-Halte das Token aus einer Projektdatei heraus, die eingecheckt wird: Verwende
-`SEVDESK_API_TOKEN_KEYCHAIN` oder `"${env:SEVDESK_API_TOKEN}"`, um es aus der Umgebung zu lesen,
-in der Cursor gestartet wurde.
-
-## VS Code
-
-In `.vscode/mcp.json` in einem Arbeitsbereich oder in deiner Benutzerkonfiguration
-(Befehlspalette: **MCP: Open User Configuration**). Der Eintrag unter `inputs` fragt das Token
-einmal verdeckt ab, und VS Code speichert es sicher:
-
-```json
-{
-  "inputs": [
-    {
-      "type": "promptString",
-      "id": "sevdesk-token",
-      "description": "sevDesk API token",
-      "password": true
-    }
-  ],
-  "servers": {
-    "sevdesk": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "mcp-server-sevdesk"],
-      "env": {
-        "SEVDESK_API_TOKEN": "${input:sevdesk-token}"
-      }
-    }
-  }
-}
-```
-
-Prompts startest du im Chat als `/sevdesk.month_end_close`.
-
-## Windsurf
-
-Windsurf führt seine MCP-Server in `mcp_config.json`; öffne die Datei aus den
-MCP-Einstellungen von Cascade (ihr Speicherort hat sich zwischen Versionen geändert). Ergänze:
-
-```json
-{
-  "mcpServers": {
-    "sevdesk": {
-      "command": "npx",
-      "args": ["-y", "mcp-server-sevdesk"],
-      "env": {
-        "SEVDESK_API_TOKEN": "<your sevDesk API token>"
-      }
-    }
-  }
-}
-```
-
-`"${env:SEVDESK_API_TOKEN}"` liest das Token stattdessen aus der Umgebung. Aktualisiere die
-Serverliste in den MCP-Einstellungen oder starte Windsurf neu.
-
-## Codex
-
-In `~/.codex/config.toml`:
-
-```toml
-[mcp_servers.sevdesk]
-command = "npx"
-args = ["-y", "mcp-server-sevdesk"]
-
-[mcp_servers.sevdesk.env]
-SEVDESK_API_TOKEN_KEYCHAIN = "work"
-```
-
-Oder über die Kommandozeile:
-`codex mcp add sevdesk --env SEVDESK_API_TOKEN_KEYCHAIN=work -- npx -y mcp-server-sevdesk`. Um
-stattdessen Variablen aus der Umgebung weiterzugeben, in der Codex läuft, führe sie auf:
-`env_vars = ["SEVDESK_API_TOKEN"]`.
-
-## Zed
-
-In der `settings.json` von Zed (oder über **Settings → AI → MCP Servers → Add Server → Add Local
-Server**):
-
-```json
-{
-  "context_servers": {
-    "sevdesk": {
-      "command": "npx",
-      "args": ["-y", "mcp-server-sevdesk"],
-      "env": {
-        "SEVDESK_API_TOKEN": "<your sevDesk API token>"
-      }
-    }
-  }
-}
-```
-
-Zed unterstützt Werkzeuge und Prompts, aber keine Elicitation: Setze
-`SEVDESK_CONFIRM=browser`, bevor du `commit` oder `external` aktivierst.
+Über HTTP braucht `elicit` außerdem einen Client, der das Protokoll 2026-07-28 spricht und
+Formular-Elicitation unterstützt; bei jedem anderen Client setzt du `SEVDESK_CONFIRM=browser` auf
+dem Server und gibst in seinem [Freigabe-Postfach](remote/approvals.de.md) frei
+([Konfiguration des Fernzugriffs](remote/configuration.de.md)).
 
 ## Docker statt npx
 
@@ -341,9 +116,11 @@ das voreingestellte `--http` des Images:
   passe das Tag also an, wenn ein neues Release erscheint. Das Image hat außerdem ein Tag für
   die Minor-Linie (nur Haupt- und Nebenversionsnummer), das zu jedem neuen Patch-Release
   weiterwandert, und `latest`; Docker holt ein weitergewandertes Tag erst bei `docker pull` neu.
-  Prüfe das Image vorher ([SECURITY.de.md](../SECURITY.de.md#lieferkette)).
+  Prüfe das Image vorher ([Das Image prüfen](remote/deployment.de.md#das-image-prüfen)).
 
 ## Andere Clients
+
+### Lokal
 
 Jeder Client, der einen lokalen MCP-Server über stdio starten kann, funktioniert: Befehl `npx`,
 Argumente `-y mcp-server-sevdesk`, das Token in der Umgebung. Prüfe zwei Dinge:
@@ -354,6 +131,15 @@ Argumente `-y mcp-server-sevdesk`, das Token in der Umgebung. Prüfe zwei Dinge:
   gestartet werden, sehen den `PATH` deiner Shell unter Umständen nicht; gib dann den
   vollständigen Pfad von `npx` als Befehl an.
 
+### Fernzugriff
+
 Clients auf einem anderen Rechner oder solche, die ein Team gemeinsam nutzt, verbinden sich mit
-einem Server im Fernzugriff, mit einem Bearer-Geheimnis oder OAuth: siehe
-[Clients verbinden](remote.de.md#clients-verbinden).
+einem Server im [Fernzugriff](remote.de.md). Der MCP-Endpunkt ist immer `<public URL>/mcp`, zum
+Beispiel `https://mcp.example.com/mcp`.
+
+- **Bearer-Modus:** Jeder Client, der Streamable HTTP spricht und einen Header senden kann
+  (`Authorization: Bearer <secret>`), funktioniert.
+- **OAuth-Modus:** Ein Client braucht Client ID Metadata Documents; nimm den Host seiner
+  `client_id`-URL in `SEVDESK_OAUTH_CLIENTS` auf. Ein Client, der nur Dynamic Client Registration
+  unterstützt, kann den OAuth-Modus nicht nutzen; verwende für ihn den Bearer-Modus
+  ([Bearer oder OAuth](remote.de.md#bearer-oder-oauth)).

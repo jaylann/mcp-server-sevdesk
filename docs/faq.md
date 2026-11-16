@@ -1,5 +1,8 @@
 # FAQ
 
+Short answers to the questions people ask before and while using the server, each with a link
+to the page that explains it in full.
+
 ## General
 
 ### Is this an official sevDesk product?

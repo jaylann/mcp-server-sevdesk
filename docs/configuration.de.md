@@ -1,18 +1,20 @@
-<!-- translated-from: docs/configuration.md sha256:3cbbec919733 -->
+<!-- translated-from: docs/configuration.md sha256:075431bce20e -->
 
 # Konfiguration
 
-Alle Einstellungen sind Umgebungsvariablen. Über stdio setzt du sie im `env` des Servereintrags
-deines MCP-Clients ([Clients](clients.de.md)); im [Fernzugriff](remote.de.md) gehören sie in die
-Umgebung des Servers. Nur ein Token ist Pflicht. Alles andere steht standardmäßig auf der
-sichersten Option: nur lesend, Bestätigung durch einen Menschen für bindende Schritte, kein Zugriff
-auf lokale Dateien.
+Diese Seite ist die Referenz für jede Einstellung des lokalen Servers (stdio), für die
+Werkzeuggruppen, die Grenzen und die Kommandozeile. Alle Einstellungen sind Umgebungsvariablen.
+Über stdio setzt du sie im `env` des Servereintrags deines MCP-Clients ([Clients](clients.de.md));
+im [Fernzugriff](remote.de.md) gehören sie in die Umgebung des Servers. Nur ein Token ist Pflicht.
+Alles andere steht standardmäßig auf der sichersten Option: nur lesend, Bestätigung durch einen
+Menschen für bindende Schritte, kein Zugriff auf lokale Dateien.
 
 Der Server liest die Variablen einmal beim Start, meldet alle Probleme auf einmal und startet erst,
 wenn alle behoben sind. Starte nach einer Änderung den Client (oder den Server) neu.
 
 Er prüft auch die Namen. Eine Variable, deren Name mit `SEVDESK_` beginnt und die keine der
-Einstellungen auf dieser Seite oder im [Fernzugriff](remote.de.md) ist, wird nicht stillschweigend
+Einstellungen auf dieser Seite oder in der
+[Konfiguration des Fernzugriffs](remote/configuration.de.md) ist, wird nicht stillschweigend
 ignoriert:
 
 - Ein Name, der einer Einstellung fast gleicht, gilt als Problem, und der Server startet erst,
@@ -26,7 +28,7 @@ ignoriert:
   in deiner Shell, wird ignoriert; das Log des Servers nennt die Namen in einer Warnung.
 
 Variablen mit leerem Wert werden nicht geprüft, und die Namen `SEVDESK_TOKEN_…`, aus denen ein
-[Profil](#profile) sein Token lesen darf, sind bekannt.
+[Profil](configuration/profiles.de.md#profile) sein Token lesen darf, sind bekannt.
 
 Formate der Werte:
 
@@ -42,19 +44,19 @@ Formate der Werte:
 
 ### Token
 
-Setze genau eine dieser drei, es sei denn, das [Profil](#profile), das du verwendest, gibt an,
-wo das Token liegt.
+Setze genau eine dieser drei, es sei denn, das [Profil](configuration/profiles.de.md#profile), das
+du verwendest, gibt an, wo das Token liegt.
 
-| Variable                     | Standard | Bedeutung                                                                                                                                                                                                                                                                                                                                                       |
-| ---------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SEVDESK_API_TOKEN`          |          | Dein sevDesk-API-Token (sevDesk: Einstellungen → Benutzer → API-Token), am besten eines eigenen Benutzers. Das reine Token, ohne vorangestelltes `Bearer `. Pflicht über stdio und im Bearer-Modus; im OAuth-Modus nicht verwendet, dort fügt jeder Benutzer sein eigenes auf der Zustimmungsseite ein.                                                         |
-| `SEVDESK_API_TOKEN_FILE`     |          | Das Token stattdessen aus dieser Datei lesen (ohne umgebende Leerzeichen). Für Docker- und Kubernetes-Secrets oder eine Datei, die nur du lesen kannst (`chmod 600`).                                                                                                                                                                                           |
-| `SEVDESK_API_TOKEN_KEYCHAIN` |          | Über stdio: das Token aus dem Schlüsselbund des Betriebssystems lesen, abgelegt unter dieser Bezeichnung mit [`token set`](#das-token-im-schlüsselbund-ablegen). macOS, Linux und Windows (Windows PowerShell im FullLanguage-Modus). Eine Bezeichnung hat bis zu 64 Buchstaben, Ziffern, `.`, `_` oder `-` und beginnt mit einem Buchstaben oder einer Ziffer. |
+| Variable                     | Standard | Bedeutung                                                                                                                                                                                                                                                                                                                                                                                   |
+| ---------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SEVDESK_API_TOKEN`          |          | Dein sevDesk-API-Token (sevDesk: Einstellungen → Benutzer → API-Token), am besten eines eigenen Benutzers. Das reine Token, ohne vorangestelltes `Bearer `. Pflicht über stdio und im Bearer-Modus; im OAuth-Modus nicht verwendet, dort fügt jeder Benutzer sein eigenes auf der Zustimmungsseite ein.                                                                                     |
+| `SEVDESK_API_TOKEN_FILE`     |          | Das Token stattdessen aus dieser Datei lesen (ohne umgebende Leerzeichen). Für Docker- und Kubernetes-Secrets oder eine Datei, die nur du lesen kannst (`chmod 600`).                                                                                                                                                                                                                       |
+| `SEVDESK_API_TOKEN_KEYCHAIN` |          | Über stdio: das Token aus dem Schlüsselbund des Betriebssystems lesen, abgelegt unter dieser Bezeichnung mit [`token set`](configuration/profiles.de.md#das-token-im-schlüsselbund-ablegen). macOS, Linux und Windows (Windows PowerShell im FullLanguage-Modus). Eine Bezeichnung hat bis zu 64 Buchstaben, Ziffern, `.`, `_` oder `-` und beginnt mit einem Buchstaben oder einer Ziffer. |
 
-Eine Variable mit `…_FILE` (diese und die des [Fernzugriffs](remote.de.md)) nimmt den Pfad einer
-Datei, die den Wert enthält, nie den Wert selbst; verwende einen absoluten Pfad. Kann die
-Datei nicht gelesen werden, nennt das Problem den Pfad nur, wenn er absolut ist. Alles andere wird
-nicht gezeigt, weil es das Geheimnis selbst sein kann, in die falsche Variable eingefügt.
+Eine Variable mit `…_FILE` (diese und die des [Fernzugriffs](remote/configuration.de.md)) nimmt den
+Pfad einer Datei, die den Wert enthält, nie den Wert selbst; verwende einen absoluten Pfad. Kann
+die Datei nicht gelesen werden, nennt das Problem den Pfad nur, wenn er absolut ist. Alles andere
+wird nicht gezeigt, weil es das Geheimnis selbst sein kann, in die falsche Variable eingefügt.
 
 ### Berechtigungen
 
@@ -80,10 +82,11 @@ nicht gezeigt, weil es das Geheimnis selbst sein kann, in die falsche Variable e
 | -------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `SEVDESK_FILE_DIRS`  |          | Ordner, aus denen Belege und E-Rechnungen gelesen werden dürfen: für Belegentwürfe (`sevdesk_voucher_create_draft`, `sevdesk_voucher_update_draft`), `sevdesk_einvoice_parse` und `sevdesk_voucher_import_einvoice`. Symbolische Links müssen innerhalb bleiben; sonst kann nichts auf deiner Festplatte gelesen werden. Ohne die Variable nehmen diese Werkzeuge keine lokalen Dateien an (und die beiden E-Rechnungs-Werkzeuge werden nicht angeboten). |
 | `SEVDESK_OUTPUT_DIR` |          | Der Ordner, in den `sevdesk_document_save`, `sevdesk_csv_export` und `sevdesk_datev_export` Dateien schreiben dürfen (PDFs, E-Rechnungs-XML, CSV- und DATEV-Exporte). Diese Werkzeuge werden nur angeboten, wenn die Variable gesetzt ist. Sie legen nur neue Dateien an, mit Modus 0600, und überschreiben nie eine.                                                                                                                                     |
-| `SEVDESK_AUDIT_LOG`  |          | Pfad eines Protokolls im Format JSON Lines, an das nur angehängt wird, für jeden schreibenden Aufruf (Modus 0600): Vorschauen, Bestätigungen, Ausführungen und Fehlschläge. Ist die Variable gesetzt, die Datei aber nicht beschreibbar, werden Schreibvorgänge abgelehnt. Siehe [Audit-Log](permissions.de.md#audit-log).                                                                                                                                |
+| `SEVDESK_AUDIT_LOG`  |          | Pfad eines Protokolls im Format JSON Lines, an das nur angehängt wird, für jeden schreibenden Aufruf (Modus 0600): Vorschauen, Bestätigungen, Ausführungen und Fehlschläge. Ist die Variable gesetzt, die Datei aber nicht beschreibbar, werden Schreibvorgänge abgelehnt. Siehe [Audit-Log](permissions/audit-log.de.md).                                                                                                                                |
 
 Im Fernzugriff liegen die Ordner auf dem Server. Der OAuth-Modus lehnt beide Ordnervariablen ab
-und verwendet stattdessen Seiten zum Hochladen und Download-Links ([remote.de.md](remote.de.md#dateien-hochladen-und-herunterladen)).
+und verwendet stattdessen Upload-Seiten und Download-Links
+([Dateien über HTTP](remote/files.de.md)).
 
 ### Verbindung
 
@@ -97,23 +100,18 @@ und verwendet stattdessen Seiten zum Hochladen und Download-Links ([remote.de.md
 
 | Variable                | Standard                                     | Bedeutung                                                                                                                                                                                                                       |
 | ----------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SEVDESK_PROFILE`       |                                              | Über stdio: dieses Profil aus der Profildatei verwenden ([Profile](#profile)).                                                                                                                                                  |
+| `SEVDESK_PROFILE`       |                                              | Über stdio: dieses Profil aus der Profildatei verwenden ([Profile](configuration/profiles.de.md#profile)).                                                                                                                      |
 | `SEVDESK_PROFILES_PATH` | `~/.config/mcp-server-sevdesk/profiles.json` | Wo die Profildatei liegt, als absoluter Pfad. Standard unter Linux und macOS: `$XDG_CONFIG_HOME/mcp-server-sevdesk/profiles.json`, wenn diese Variable gesetzt ist; unter Windows `%APPDATA%\mcp-server-sevdesk\profiles.json`. |
 
 `SEVDESK_PROFILE`, `SEVDESK_PROFILES_PATH` und `SEVDESK_API_TOKEN_KEYCHAIN` funktionieren nur über
-stdio; der HTTP-Server startet mit ihnen nicht.
+stdio; der HTTP-Server startet mit ihnen nicht. Wie du eine Profildatei schreibst und ein Token im
+Schlüsselbund ablegst: [Profile und Schlüsselbund](configuration/profiles.de.md).
 
 ### HTTP-Modus
 
 `--http` liest weitere Variablen (`SEVDESK_HTTP_*`, `SEVDESK_OAUTH_*`) und ändert die Bedeutung
-einiger der oben genannten Variablen. Beides beschreibt die
-[Konfigurationsreferenz des Fernzugriffs](remote.de.md#konfigurationsreferenz).
-
-Für die Dateiübertragung begrenzt `SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT` (Standard `10`, ganze
-Zahlen von 1 bis 1000) die gemeinsame Anzahl reservierter Dateiplätze für Uploads (einer je Datei,
-die eine Seite annimmt), hochgeladener Dateien und Download-Links je Konto. Erfolgreiches Anhängen gibt Uploads sofort frei; die Byte-Grenzen werden
-weiterhin durch `SEVDESK_HTTP_FILES_MAX_MB` bestimmt. Alle Dateigrenzen stehen in der oben
-verlinkten Referenz des Fernzugriffs.
+einiger der oben genannten Variablen: siehe die
+[Konfiguration des Fernzugriffs](remote/configuration.de.md).
 
 ## Werkzeuggruppen
 
@@ -158,7 +156,7 @@ sevDesk-Endpunkt, den kein anderes Werkzeug abdeckt, zum Beispiel die Textvorlag
 
 Die Werkzeuggruppe ist standardmäßig aus, weil ein allgemeiner Lesezugriff nicht jeden Endpunkt so
 gut kennen kann wie ein kuratiertes Werkzeug; siehe
-[SECURITY.de.md](../SECURITY.de.md#generischer-lesezugriff).
+[Generischer Lesezugriff](security/local.de.md#generischer-lesezugriff).
 
 ## Strukturierte Ausgabe
 
@@ -186,107 +184,7 @@ den Clients prüfen und anzeigen können.
 | Anweisungen des Servers                  | Höchstens 1.500 Zeichen.                                                                                                                |
 
 Der Fernzugriff hat eigene Grenzen (Größe von Anfragen, Ratenbegrenzung je Client, Größe von
-Uploads): siehe [remote.de.md](remote.de.md#grenzen).
-
-## Das Token im Schlüsselbund ablegen
-
-Statt das Token in die Konfiguration deines Clients zu schreiben, lege es einmal im
-Schlüsselbund deines Betriebssystems ab und gib dem Server nur seine Bezeichnung:
-
-```sh
-npx -y mcp-server-sevdesk token set work
-```
-
-Der Befehl fragt nach dem Token (die Eingabe ist verdeckt), prüft es bei sevDesk, legt es unter der
-Bezeichnung `work` ab und gibt die Konto-ID aus. Lehnt sevDesk das Token ab, wird nichts abgelegt;
-ist sevDesk nicht erreichbar, wird es mit einer Warnung abgelegt. Konfiguriere den Server dann
-mit `"SEVDESK_API_TOKEN_KEYCHAIN": "work"` statt `SEVDESK_API_TOKEN`.
-
-- `token check work` prüft das abgelegte Token bei sevDesk; `token delete work` entfernt es.
-- Das Token wird nie von der Kommandozeile übernommen, wo es in deiner Shell-Historie bliebe. Um es
-  aus einer Datei abzulegen, leite es per Pipe ein:
-  `npx -y mcp-server-sevdesk token set work < token.txt`, und lösche die Datei danach.
-  Diese Umleitung funktioniert in POSIX-Shells und `cmd.exe`; in PowerShell verwendest du
-  `Get-Content -Raw token.txt | npx -y mcp-server-sevdesk token set work`.
-- **macOS:** der Anmeldeschlüsselbund, Objekt `mcp-server-sevdesk`, Account = deine Bezeichnung.
-- **Linux:** der Secret Service über `secret-tool` (Paket `libsecret-tools` unter Debian und
-  Ubuntu, `libsecret` unter Fedora), mit laufendem und entsperrtem GNOME Keyring oder KWallet. Auf
-  einem Server ohne grafische Oberfläche verwendest du `SEVDESK_API_TOKEN_FILE`.
-- **Windows:** der Credential Locker über WinRT `PasswordVault`, Ressource
-  `mcp-server-sevdesk`, Benutzername = deine Bezeichnung. Verwendet Windows PowerShell unter
-  `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`, ohne Profile oder Suche im
-  `PATH`. Lass `SystemRoot` auf das Windows-Installationsverzeichnis zeigen. PowerShell 7
-  (`pwsh`) wird nicht verwendet. Der Constrained Language Mode kann auch ohne `Add-Type` nicht
-  auf diese API zugreifen; verwende `SEVDESK_API_TOKEN_FILE` oder die
-  [Claude-Desktop-Erweiterung](clients.de.md#claude-desktop), wenn Windows PowerShell fehlt
-  oder eingeschränkt ist. Einträge im Credential Locker können über dein Microsoft-Konto
-  synchronisiert werden; verwende eine geschützte Token-Datei, wenn das Token auf diesem
-  Gerät bleiben muss.
-
-Der Schlüsselbund hält das Token aus Konfigurationsdateien, Backups und Screenshots heraus. Er
-schützt nicht vor Programmen, die bereits unter deinem Benutzerkonto laufen (siehe
-[SECURITY.de.md](../SECURITY.de.md#lokale-token-ablage-und-profile)).
-
-## Profile
-
-Profile halten mehrere Einrichtungen in einer Datei, zum Beispiel zwei sevDesk-Konten oder eine
-nur lesende und eine buchende Einrichtung desselben Kontos, und wählen eine mit `SEVDESK_PROFILE`
-aus. Lege `~/.config/mcp-server-sevdesk/profiles.json` an (oder zeige mit
-`SEVDESK_PROFILES_PATH` auf einen anderen Ort):
-
-```json
-{
-  "version": 1,
-  "profiles": {
-    "work": {
-      "token": { "keychain": "work" },
-      "allow": ["write"],
-      "fileDirs": ["/Users/me/Belege"],
-      "auditLog": "/Users/me/.local/state/sevdesk-work.jsonl"
-    },
-    "client-a": {
-      "token": { "file": "/Users/me/.config/sevdesk/client-a.token" },
-      "readOnly": true
-    }
-  }
-}
-```
-
-Setze dann `"SEVDESK_PROFILE": "work"` im `env` des Clients. Der Server schreibt beim Start
-`using profile "work"` in sein Log.
-
-| Schlüssel   | Setzt                | Wert                                                                                           |
-| ----------- | -------------------- | ---------------------------------------------------------------------------------------------- |
-| `token`     | die Token-Quelle     | `{"keychain": "<label>"}`, `{"file": "/absolute/path"}` oder `{"env": "SEVDESK_TOKEN_<NAME>"}` |
-| `allow`     | `SEVDESK_ALLOW`      | eine Liste oder eine durch Kommas getrennte Zeichenkette                                       |
-| `readOnly`  | `SEVDESK_READ_ONLY`  | `true` oder `false`                                                                            |
-| `dryRun`    | `SEVDESK_DRY_RUN`    | `true` oder `false`                                                                            |
-| `confirm`   | `SEVDESK_CONFIRM`    | eine Zeichenkette                                                                              |
-| `toolsets`  | `SEVDESK_TOOLSETS`   | eine Liste oder eine durch Kommas getrennte Zeichenkette                                       |
-| `fileDirs`  | `SEVDESK_FILE_DIRS`  | eine Liste absoluter Pfade                                                                     |
-| `outputDir` | `SEVDESK_OUTPUT_DIR` | eine Zeichenkette                                                                              |
-| `auditLog`  | `SEVDESK_AUDIT_LOG`  | eine Zeichenkette                                                                              |
-| `baseUrl`   | `SEVDESK_BASE_URL`   | eine Zeichenkette                                                                              |
-| `rateLimit` | `SEVDESK_RATE_LIMIT` | eine Zahl                                                                                      |
-| `timeoutMs` | `SEVDESK_TIMEOUT_MS` | eine Zahl                                                                                      |
-
-Jeder Schlüssel setzt die Variable mit derselben Bedeutung und wird genauso geprüft. Regeln:
-
-- **Die Datei enthält nie ein Token.** `token` sagt, wo es aufbewahrt wird: eine Bezeichnung im
-  Schlüsselbund, ein absoluter Dateipfad oder eine Variable namens `SEVDESK_TOKEN_<NAME>`, die du
-  im `env` des Clients setzt. Ohne `token` gelten die üblichen Token-Variablen.
-- **Kein stilles Überschreiben.** Eine Variable, die sowohl in der Umgebung als auch im Profil
-  gesetzt ist, ist ein Fehler, der beide nennt. Erlaubt ist nur das Verschärfen:
-  `SEVDESK_READ_ONLY=1` und `SEVDESK_DRY_RUN=1` in der Umgebung haben immer Vorrang.
-- **Die Datei muss dir gehören.** Unter macOS und Linux müssen die Datei und ihr Ordner dir
-  (oder root) gehören und dürfen für Gruppe und andere nicht beschreibbar sein (`chmod go-w`), weil
-  ein Profil Stufen und Ordner erweitern kann. Unter Windows wird das nicht geprüft.
-- Die Datei ist striktes JSON mit höchstens 64 KiB und `"version": 1`; unbekannte Schlüssel werden
-  abgelehnt.
-- `npx -y mcp-server-sevdesk profiles list` zeigt jedes Profil mit dem Ort seines Tokens, seinen
-  Stufen und Werkzeuggruppen und markiert das Profil, das `SEVDESK_PROFILE` nennt. Es gibt nie ein
-  Token aus.
-- Profile funktionieren nur über stdio, nicht mit `--http`.
+Uploads): siehe [Den Server betreiben](remote/operations.de.md#grenzen).
 
 ## Kommandozeile
 
@@ -294,24 +192,24 @@ Jeder Schlüssel setzt die Variable mit derselben Bedeutung und wird genauso gep
 übrigen Befehle sind für dich. Führe sie mit `npx -y mcp-server-sevdesk <command>` aus oder mit
 Docker als `docker run --rm ghcr.io/jaylann/mcp-server-sevdesk:<version> <command>`.
 
-| Befehl                              | Was er tut                                                                                                                                               |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--stdio`                           | MCP über stdio bereitstellen (Standard).                                                                                                                 |
-| `--http`                            | MCP über Streamable HTTP bereitstellen; braucht `SEVDESK_HTTP_AUTH` ([remote.de.md](remote.de.md)).                                                      |
-| `token set <label>`                 | Ein sevDesk-Token im Schlüsselbund des Betriebssystems ablegen; fragt danach oder liest es von stdin. Siehe [oben](#das-token-im-schlüsselbund-ablegen). |
-| `token check <label>`               | Das unter der Bezeichnung abgelegte Token bei sevDesk prüfen.                                                                                            |
-| `token delete <label>`              | Das unter der Bezeichnung abgelegte Token löschen.                                                                                                       |
-| `profiles list`                     | Die Profile der Profildatei auflisten.                                                                                                                   |
-| `account-id`                        | Die sevDesk-Konto-ID des konfigurierten Tokens ausgeben (jede Token-Quelle oder ein Profil), für `SEVDESK_OAUTH_ACCOUNTS`.                               |
-| `grants list [--json]`              | Fernzugriff: die OAuth-Zugänge (Grants) in `SEVDESK_HTTP_STATE_DIR` auflisten.                                                                           |
-| `grants revoke <grant-id>`          | Fernzugriff: einen Zugang widerrufen; `--account <id>` widerruft alle Zugänge eines Kontos, `--all` alle.                                                |
-| `generate-secret`                   | 32 zufällige Bytes für `SEVDESK_HTTP_SECRET` oder ein Bearer-Geheimnis ausgeben.                                                                         |
-| `healthcheck`                       | Den lokalen HTTP-Server nach `/healthz` fragen (die Zustandsprüfung des Containers).                                                                     |
-| `--version` (`-v`), `--help` (`-h`) | Die Version oder die Hilfe ausgeben.                                                                                                                     |
+| Befehl                              | Was er tut                                                                                                                                                                                                |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--stdio`                           | MCP über stdio bereitstellen (Standard).                                                                                                                                                                  |
+| `--http`                            | MCP über Streamable HTTP bereitstellen; braucht `SEVDESK_HTTP_AUTH` ([Fernzugriff](remote.de.md)).                                                                                                        |
+| `token set <label>`                 | Ein sevDesk-Token im Schlüsselbund des Betriebssystems ablegen; fragt danach oder liest es von stdin. Siehe [Profile und Schlüsselbund](configuration/profiles.de.md#das-token-im-schlüsselbund-ablegen). |
+| `token check <label>`               | Das unter der Bezeichnung abgelegte Token bei sevDesk prüfen.                                                                                                                                             |
+| `token delete <label>`              | Das unter der Bezeichnung abgelegte Token löschen.                                                                                                                                                        |
+| `profiles list`                     | Die Profile der Profildatei auflisten ([Profile](configuration/profiles.de.md#profile)).                                                                                                                  |
+| `account-id`                        | Die sevDesk-Konto-ID des konfigurierten Tokens ausgeben (jede Token-Quelle oder ein Profil), für `SEVDESK_OAUTH_ACCOUNTS`.                                                                                |
+| `grants list [--json]`              | Fernzugriff: die OAuth-Zugänge (Grants) in `SEVDESK_HTTP_STATE_DIR` auflisten.                                                                                                                            |
+| `grants revoke <grant-id>`          | Fernzugriff: einen Zugang widerrufen; `--account <id>` widerruft alle Zugänge eines Kontos, `--all` alle.                                                                                                 |
+| `generate-secret`                   | 32 zufällige Bytes für `SEVDESK_HTTP_SECRET` oder ein Bearer-Geheimnis ausgeben.                                                                                                                          |
+| `healthcheck`                       | Den lokalen HTTP-Server nach `/healthz` fragen (die Zustandsprüfung des Containers).                                                                                                                      |
+| `--version` (`-v`), `--help` (`-h`) | Die Version oder die Hilfe ausgeben.                                                                                                                                                                      |
 
 Exit-Codes: `0` Erfolg, `1` Fehlschlag (der Grund steht in stderr), `2` unbekannter Befehl oder
 unbekanntes Argument. Die Befehle für den Fernzugriff beschreibt
-[remote.de.md](remote.de.md#befehle) ausführlich.
+[Den Server betreiben](remote/operations.de.md#befehle) ausführlich.
 
 Bei einer ungültigen Konfiguration schreibt der stdio-Server die Probleme nach stderr und startet
 trotzdem, weil manche Clients (Claude Desktop) stderr nicht zeigen und nur „Server disconnected“
