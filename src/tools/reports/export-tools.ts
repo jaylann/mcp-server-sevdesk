@@ -9,6 +9,8 @@
  *   job is a request that changes state in sevDesk (it may mark the exported documents as
  *   exported); it never enshrines.
  * - `sevdesk_csv_export` (read tier, `writes-files`): one of sevDesk's CSV exports, saved as is.
+ * - `sevdesk_archive_export` (write tier, `./archive-export.ts`): the invoice or voucher PDFs of
+ *   a period as one ZIP.
  */
 import { z } from "zod";
 
@@ -21,6 +23,7 @@ import {
   MAX_CSV_ROWS,
 } from "../../domain/exports/csv.js";
 import {
+  DATEV_FORMATS,
   DATEV_SCOPE_KEYS,
   datevFilename,
   type DatevJobParams,
@@ -33,6 +36,7 @@ import {
   SCOPE_LABELS,
   startDatevExportJob,
   waitForDatevExport,
+  XML_SCOPE_KEYS,
 } from "../../domain/exports/datev.js";
 import { shiftDays } from "../../domain/reports/shared.js";
 import { resolvePeriod } from "../../domain/reports/vat.js";
@@ -43,6 +47,7 @@ import { defineTool, defineWriteTool } from "../define-tool.js";
 import { deliveryData, deliveryOutputShape, downloadText } from "../documents/delivery.js";
 import type { AnyToolDefinition, ExecuteContext, SevdeskObjectRef } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
+import { archiveExportTool } from "./archive-export.js";
 import { periodInputShape } from "./period-input.js";
 
 // ---------------------------------------------------------------------------------------------
@@ -57,6 +62,9 @@ const datevOutput = z.object({
   exportByPaydate: z.boolean(),
   includeDocumentImages: z.boolean(),
   jobId: z.string().describe("sevDesk's export job id (ExportJob)."),
+  format: z
+    .enum(DATEV_FORMATS)
+    .describe("csv: booking batch (Buchungsstapel); xml: documents as XML with receipt images."),
 });
 
 interface DatevPlanState {
@@ -74,10 +82,11 @@ export const datevExportTool = defineWriteTool({
     "(on a remote server: a download link for the user), e.g. for the tax adviser " +
     "(Steuerberater). scope picks earnings, expenditure, transactions, " +
     "cash register and assets (default all); exportByPaydate keeps only documents paid in the " +
-    "period; includeDocumentImages adds the receipts (larger). Write tier: it starts an export " +
-    "job in sevDesk, which may mark the documents as exported; it never enshrines " +
-    "(festschreiben). Needs the DATEV settings in sevDesk (Beraternummer, Mandantennummer, " +
-    "Wirtschaftsjahresbeginn); refused with guidance when they are missing. dryRun previews. " +
+    "period; includeDocumentImages adds the receipts (larger). format=xml: the documents as " +
+    "DATEV XML with receipt images (earnings, expenditure; MBs per month). Write tier: it " +
+    "starts an export job in sevDesk; it never enshrines (festschreiben). Needs the DATEV " +
+    "settings (sevdesk_datev_settings_update); refused with guidance when they are missing. " +
+    "dryRun previews. " +
     "The download link is never shown. Takes up to a few minutes.",
   toolset: "reports",
   tier: "write",
@@ -106,12 +115,33 @@ export const datevExportTool = defineWriteTool({
     includeDocumentImages: z
       .boolean()
       .default(false)
-      .describe("Add the document images (Belegbilder) to the ZIP; makes it much larger."),
+      .describe(
+        "Add the document images (Belegbilder) to the ZIP; makes it much larger. CSV only: the " +
+          "XML export always has them.",
+      ),
+    format: z
+      .enum(DATEV_FORMATS)
+      .default("csv")
+      .describe(
+        "csv (default): the booking batch (Buchungsstapel). xml: the documents as DATEV XML with " +
+          "their receipt images, for an adviser who imports documents (Belegbilder).",
+      ),
     ...dryRunInputShape,
   }),
   output: datevOutput,
   prepare: async (args, ctx) => {
     const period = resolvePeriod(args);
+    const xml = args.format === "xml";
+    const scope = DATEV_SCOPE_KEYS.filter(
+      (key) => args.scope.includes(key) && (!xml || XML_SCOPE_KEYS.includes(key)),
+    );
+    const leftOut = args.scope.filter((key) => !scope.includes(key));
+    if (scope.length === 0) {
+      throw refused(
+        "The XML export covers documents only: give scope earnings and/or expenditure (or use " +
+          "format csv for transactions, cash register and assets). Nothing was sent",
+      );
+    }
     // Local checks first: a misconfiguration costs no sevDesk request.
     await ctx.files.checkDelivery();
     const delivery = ctx.files.describeDelivery();
@@ -119,8 +149,9 @@ export const datevExportTool = defineWriteTool({
     if (config.missing.length > 0) {
       throw refused(
         `The DATEV export needs sevDesk's DATEV settings, which are missing: ` +
-          `${config.missing.join(", ")}. The user sets them once in sevDesk (Einstellungen → ` +
-          "DATEV-Export), then calls this tool again. Nothing was sent",
+          `${config.missing.join(", ")}. Set them once with the numbers from the tax adviser, ` +
+          "in sevDesk (Einstellungen → DATEV-Export) or with sevdesk_datev_settings_update, " +
+          "then call this tool again. Nothing was sent",
       );
     }
     const yearStart =
@@ -138,16 +169,17 @@ export const datevExportTool = defineWriteTool({
     const params: DatevJobParams = {
       from: period.from,
       to: period.to,
-      scope: args.scope,
+      scope,
       exportByPaydate: args.exportByPaydate,
-      includeDocumentImages: args.includeDocumentImages,
+      // The XML export always holds the receipt images.
+      includeDocumentImages: xml || args.includeDocumentImages,
+      format: args.format,
     };
-    const scope = DATEV_SCOPE_KEYS.filter((key) => args.scope.includes(key));
     return {
       preview: {
         action:
-          `Start a DATEV export (CSV ZIP) in sevDesk for ${period.label} and provide the ZIP as ` +
-          `${delivery}.`,
+          `Start a DATEV export (${xml ? "XML with receipt images" : "CSV"} ZIP) in sevDesk for ` +
+          `${period.label} and provide the ZIP as ${delivery}.`,
         facts: [
           { label: "Period", value: `${period.from} to ${period.to}` },
           { label: "Scope", value: scope.map((key) => SCOPE_LABELS[key]).join(", ") },
@@ -160,7 +192,11 @@ export const datevExportTool = defineWriteTool({
           },
           {
             label: "Document images",
-            value: args.includeDocumentImages ? "included (larger file)" : "not included",
+            value: xml
+              ? "always included in the XML export (several MB per month)"
+              : args.includeDocumentImages
+                ? "included (larger file)"
+                : "not included",
           },
           {
             label: "DATEV accountant / client number",
@@ -170,19 +206,28 @@ export const datevExportTool = defineWriteTool({
           {
             label: "File name",
             value:
-              "as sevDesk names the export (BITTE-ENTPACKEN_Buchungsstapel_…zip), a suffix is " +
-              "added if taken",
+              `as sevDesk names the export (BITTE-ENTPACKEN_${xml ? "Belegbilder" : "Buchungsstapel"}` +
+              "_…zip), a suffix is added if taken",
           },
         ],
         warnings: [
-          "sevDesk starts an export job and may note the export internally; the documents are " +
-            "not locked (nothing is enshrined, festgeschrieben).",
+          xml
+            ? "sevDesk starts an export job; the documents are not locked (nothing is enshrined, " +
+              "festgeschrieben) and not marked as exported."
+            : "sevDesk starts an export job and may note the export internally; the documents " +
+              "are not locked (nothing is enshrined, festgeschrieben).",
           "sevDesk keeps the ZIP behind a download link for 7 days; this server downloads it " +
             "once and never shows the link.",
-          ...(args.includeDocumentImages
+          ...(xml || args.includeDocumentImages
             ? [
                 "With document images the ZIP can exceed the 100 MiB this server downloads; then " +
-                  "nothing is saved and the export has to be downloaded in sevDesk.",
+                  "nothing is saved: export a shorter period, or download it in sevDesk.",
+              ]
+            : []),
+          ...(leftOut.length > 0
+            ? [
+                `The XML export covers documents only; left out: ` +
+                  `${leftOut.map((key) => SCOPE_LABELS[key]).join(", ")}.`,
               ]
             : []),
         ],
@@ -213,6 +258,7 @@ export const datevExportTool = defineWriteTool({
         bytes: download.bytes,
       });
       const size = String(download.bytes.byteLength);
+      const name = params.format === "xml" ? "DATEV XML export" : "DATEV export";
       return {
         data: {
           ...deliveryData(delivery),
@@ -222,12 +268,13 @@ export const datevExportTool = defineWriteTool({
           exportByPaydate: params.exportByPaydate === true,
           includeDocumentImages: params.includeDocumentImages === true,
           jobId,
+          format: params.format ?? "csv",
         },
         summary:
           "download" in delivery
-            ? `DATEV export ${label}: the ZIP (${size} bytes) is ready as ` +
+            ? `${name} ${label}: the ZIP (${size} bytes) is ready as ` +
               `${downloadText(delivery.download)}; sevDesk export job ${jobId}.`
-            : `DATEV export ${label}: saved the ZIP (${size} bytes) as a new file in ` +
+            : `${name} ${label}: saved the ZIP (${size} bytes) as a new file in ` +
               `SEVDESK_OUTPUT_DIR; sevDesk export job ${jobId}.`,
         affected: [job],
       };
@@ -400,5 +447,12 @@ export const csvExportTool = defineTool({
   },
 });
 
-/** Export tools, M4: the DATEV export job and CSV exports, as files or download links. */
-export const REPORT_EXPORT_TOOLS: readonly AnyToolDefinition[] = [datevExportTool, csvExportTool];
+/**
+ * Export tools: the DATEV export job, CSV exports and the document archives, as files or download
+ * links.
+ */
+export const REPORT_EXPORT_TOOLS: readonly AnyToolDefinition[] = [
+  datevExportTool,
+  csvExportTool,
+  archiveExportTool,
+];

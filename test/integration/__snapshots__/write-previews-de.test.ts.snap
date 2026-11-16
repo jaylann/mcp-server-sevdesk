@@ -609,6 +609,16 @@ Brutto: 298,10 EUR
 Bisher bezahlt: 0,00 EUR"
 `;
 
+exports[`German previews > set the DATEV client number: says the same in German 1`] = `
+"DATEV-Exporteinstellungen in sevDesk ändern (gilt für das ganze Konto).
+! Jeder spätere DATEV-Export trägt diese Nummern, und der DATEV-Import der Steuerkanzlei ordnet die Daten danach zu: Falsche Nummern führen dazu, dass die Buchungsdaten beim falschen Mandanten landen oder der Import scheitert.
+! Der Wirtschaftsjahresbeginn bestimmt, wie DATEV-Exporte nach Wirtschaftsjahren getrennt werden.
+(umkehrbar)
+Beraternummer: 1234567 (unverändert)
+Mandantennummer: 12345 → 54321
+Wirtschaftsjahresbeginn: 01.01.2026 (unverändert)"
+`;
+
 exports[`German previews > undo the booking of a bank transaction: says the same in German 1`] = `
 "Buchungen des Kontoumsatzes 5101 rückgängig machen: 1 Dokument auf offen zurücksetzen (Rechnung RE-1001) und dabei alle ihre Zahlungen entfernen.
 ! sevDesk kann einen einzelnen Umsatz nicht lösen: Jedes Dokument wird auf offen zurückgesetzt, und das entfernt ALLE darauf gebuchten Zahlungen, nicht nur die dieses Umsatzes. Dieser Umsatz verliert alle seine Buchungen und gilt wieder als ungebucht (Status 100). Andere Kontoumsätze, die auf diese Dokumente gebucht sind (je Dokument aufgeführt), verlieren nur diese Buchungen: Bezahlt ein solcher Umsatz noch andere Dokumente, gilt er danach als teilweise verknüpft (200), sonst als ungebucht (100). Umsätze, die sevDesk für Zahlungen ohne Umsatz selbst angelegt hat, werden stattdessen gelöscht.

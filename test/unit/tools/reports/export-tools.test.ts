@@ -4,7 +4,12 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { DATEV_JOB_PATH, MAY_HAVE_STARTED } from "../../../../src/domain/exports/datev.js";
+import {
+  DATEV_JOB_PATH,
+  DATEV_XML_JOB_PATH,
+  MAY_HAVE_STARTED,
+} from "../../../../src/domain/exports/datev.js";
+import { listZipEntries } from "../../../../src/domain/exports/zip.js";
 import { type Tier, TIERS } from "../../../../src/safety/tiers.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { swapPresignedFetch } from "../../../../src/sevdesk/export-download.js";
@@ -17,6 +22,7 @@ import {
 import { testConfig } from "../../../helpers/config.js";
 import { type FakeRoute, FakeSevdeskClient, testContext } from "../../../helpers/fake-client.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
+import { buildZip } from "../../../helpers/zip.js";
 import { DATEV_ROUTES, DATEV_ZIP, zipFetch } from "../../../write-cases/reports.js";
 
 const LINK_HOST = "sevexport-filestorage-workload-prod.s3.eu-central-1.amazonaws.com";
@@ -94,6 +100,7 @@ describe("export tools: metadata and registration", () => {
     expect(names({ allowedTiers: all })).toEqual([]);
     expect(names({ outputDir: "/srv/out" })).toEqual(["sevdesk_csv_export"]);
     expect(names({ outputDir: "/srv/out", allowedTiers: all })).toEqual([
+      "sevdesk_archive_export",
       "sevdesk_csv_export",
       "sevdesk_datev_export",
     ]);
@@ -536,5 +543,114 @@ describe("sevdesk_csv_export", () => {
       ),
     ).rejects.toMatchObject({ kind: "validation" });
     expect(client.calls.length).toBe(before);
+  });
+});
+
+describe("sevdesk_datev_export: format xml", () => {
+  /** The XML export as recorded (D-102): a ZIP of inner DATEV ZIPs. */
+  const NESTED = buildZip([
+    { name: "DATEV_1234567_12345_20260101_bis_20260331.zip", content: buildZip([]) },
+    { name: "DATEV_1234567_12345_20260101_bis_20260331_2.zip", content: buildZip([]) },
+  ]);
+
+  it("keeps csv as the default and the CSV preview unchanged", async () => {
+    const plan = await prepareWrite(
+      datevExportTool,
+      { year: 2026, quarter: 1 },
+      new FakeSevdeskClient(DATEV_ROUTES),
+      { outputDir: directory },
+    );
+    expect(datevExportTool.input.parse({ year: 2026 })).toMatchObject({ format: "csv" });
+    expect(plan.preview.action).toContain("(CSV ZIP)");
+    expect(plan.preview.warnings.join(" ")).not.toContain("XML");
+  });
+
+  it("previews documents only, receipt images always, and nothing marked as exported", async () => {
+    const plan = await prepareWrite(
+      datevExportTool,
+      { year: 2026, quarter: 1, format: "xml" },
+      new FakeSevdeskClient(DATEV_ROUTES),
+      { outputDir: directory },
+    );
+
+    expect(plan.preview.action).toContain("(XML with receipt images ZIP)");
+    const facts = Object.fromEntries(plan.preview.facts.map((fact) => [fact.label, fact.value]));
+    expect(facts).toMatchObject({
+      Scope: "Einnahmen (earnings), Ausgaben (expenditure)",
+      "Document images": "always included in the XML export (several MB per month)",
+    });
+    expect(facts["File name"]).toContain("BITTE-ENTPACKEN_Belegbilder_");
+    const warnings = plan.preview.warnings.join(" ");
+    expect(warnings).toContain("not marked as exported");
+    expect(warnings).toContain("can exceed the 100 MiB");
+    expect(warnings).toContain(
+      "left out: Kontoumsätze (transactions), Kasse (cash register), Anlagen (assets)",
+    );
+    expect(warnings).not.toContain("includeExportedDocuments");
+  });
+
+  it("refuses a scope without documents before sending anything", async () => {
+    const client = new FakeSevdeskClient(DATEV_ROUTES);
+    const error = await prepareWrite(
+      datevExportTool,
+      { year: 2026, format: "xml", scope: ["transactions", "assets"] },
+      client,
+      { outputDir: directory },
+    ).catch((caught: unknown) => caught);
+    expect(error).toMatchObject({ kind: "validation" });
+    expect((error as Error).message).toContain("earnings and/or expenditure");
+    expect(client.calls).toEqual([]);
+  });
+
+  it("starts the XML job with the write tier and saves the nested ZIP", async () => {
+    useFetch(zipFetch(NESTED));
+    const client = new FakeSevdeskClient(DATEV_ROUTES);
+
+    const { output } = await executeWrite(
+      datevExportTool,
+      { year: 2026, quarter: 1, format: "xml" },
+      client,
+      { outputDir: directory },
+    );
+
+    expect(client.writes()).toEqual([
+      expect.objectContaining({ method: "POST", path: DATEV_XML_JOB_PATH, tier: "write" }),
+    ]);
+    expect(client.writes()[0]?.query).toEqual({
+      startDate: Date.parse("2026-01-01T00:00:00+01:00") / 1000,
+      endDate: Date.parse("2026-04-01T00:00:00+02:00") / 1000 - 1,
+      scope: "EX",
+    });
+    expect(output.data).toMatchObject({
+      format: "xml",
+      scope: ["earnings", "expenditure"],
+      includeDocumentImages: true,
+      bytes: NESTED.byteLength,
+      jobId: JOB,
+    });
+    const savedTo = (output.data as { savedTo: string }).savedTo;
+    expect(listZipEntries(await readFile(savedTo))?.map((entry) => entry.name)).toEqual([
+      "DATEV_1234567_12345_20260101_bis_20260331.zip",
+      "DATEV_1234567_12345_20260101_bis_20260331_2.zip",
+    ]);
+    expect(output.summary).toContain("DATEV XML export 2026-Q1");
+  });
+
+  it("refuses an XML download that is not a ZIP and names the started job", async () => {
+    useFetch(() => Promise.resolve(new Response("<Error/>", { status: 200 })));
+    const client = new FakeSevdeskClient(DATEV_ROUTES);
+
+    const error = await executeWrite(
+      datevExportTool,
+      { year: 2026, quarter: 1, format: "xml" },
+      client,
+      { outputDir: directory },
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({
+      kind: "unexpected_response",
+      completedWrites: [{ objectName: "ExportJob", id: JOB }],
+    });
+    expect(await readdir(directory)).toEqual([]);
   });
 });

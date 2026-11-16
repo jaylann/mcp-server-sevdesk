@@ -1821,6 +1821,44 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
       "idempotentHint": false,
       "openWorldHint": false,
       "readOnlyHint": false,
+      "title": "Set sevDesk's DATEV export settings",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "accountantClientNumber": {
+          "description": "Mandantennummer at the adviser, 1–99999.",
+          "maximum": 99999,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "accountantNumber": {
+          "description": "Beraternummer of the tax adviser, 1001–9999999.",
+          "maximum": 9999999,
+          "minimum": 1001,
+          "type": "integer",
+        },
+        "accountingYearBegin": {
+          "description": "First day of the current fiscal year (Wirtschaftsjahresbeginn), YYYY-MM-DD, usually January 1st.",
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_datev_settings_update",
+    "title": "Set sevDesk's DATEV export settings",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
       "title": "Book a payment on a sevDesk invoice",
     },
     "inputSchema": {
@@ -9617,6 +9655,91 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
       "idempotentHint": false,
       "openWorldHint": false,
       "readOnlyHint": false,
+      "title": "Invoice or voucher PDFs as a ZIP file",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "contactId": {
+          "description": "Invoices only: only this customer's invoices (contact id).",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "from": {
+          "description": "First day, YYYY-MM-DD (instead of year).",
+          "type": "string",
+        },
+        "limit": {
+          "default": 1000,
+          "description": "Most documents, 1–1000.",
+          "maximum": 1000,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "maxAmount": {
+          "description": "Vouchers only: largest gross amount in EUR.",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "minAmount": {
+          "description": "Vouchers only: smallest gross amount in EUR, e.g. 100.00.",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "month": {
+          "description": "Month 1–12 (with year).",
+          "maximum": 12,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "quarter": {
+          "description": "Quarter 1–4 (with year).",
+          "maximum": 4,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "subject": {
+          "description": "invoices (Rechnungen, the rendered PDFs) or vouchers (Belege, the receipts).",
+          "enum": [
+            "invoices",
+            "vouchers",
+          ],
+          "type": "string",
+        },
+        "to": {
+          "description": "Last day, YYYY-MM-DD (instead of year).",
+          "type": "string",
+        },
+        "year": {
+          "description": "Calendar year; alone for the whole year, or with month or quarter.",
+          "maximum": 2100,
+          "minimum": 2000,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "subject",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_archive_export",
+    "title": "Invoice or voucher PDFs as a ZIP file",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
       "title": "CSV export to a file",
     },
     "inputSchema": {
@@ -9678,13 +9801,22 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
           "description": "Only paid documents whose pay date lies in the period (Zahlungsdatum).",
           "type": "boolean",
         },
+        "format": {
+          "default": "csv",
+          "description": "csv (default): the booking batch (Buchungsstapel). xml: the documents as DATEV XML with their receipt images, for an adviser who imports documents (Belegbilder).",
+          "enum": [
+            "csv",
+            "xml",
+          ],
+          "type": "string",
+        },
         "from": {
           "description": "First day, YYYY-MM-DD (instead of year).",
           "type": "string",
         },
         "includeDocumentImages": {
           "default": false,
-          "description": "Add the document images (Belegbilder) to the ZIP; makes it much larger.",
+          "description": "Add the document images (Belegbilder) to the ZIP; makes it much larger. CSV only: the XML export always has them.",
           "type": "boolean",
         },
         "month": {

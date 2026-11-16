@@ -2559,7 +2559,11 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   export reads the three DATEV settings fresh (`readDatevExportConfig` in
   `src/domain/exports/datev.ts`) and refuses to start without them (D-077). The VAT summary cannot
   learn the Ist/Soll choice, so it takes a `basis` input and defaults to accrual, saying so
-  (`DEFAULT_VAT_BASIS` in `src/domain/reports/vat.ts`).
+  (`DEFAULT_VAT_BASIS` in `src/domain/reports/vat.ts`). `sevdesk_datev_settings_update` (a
+  `commit` tool, `src/domain/exports/datev-settings.ts`) writes the three DATEV settings in the
+  recorded form (JSON numbers, the fiscal-year start as Unix seconds of Berlin midnight), fills the
+  ones not given from the current values (the spec requires all three), refuses a call that
+  changes nothing, and reads them back.
 - **Test:** `test/unit/domain/account-settings.test.ts` (including "takes a single object as well
   as the first row of a list, and lenient scalars", "maps every recorded company key, cleans text
   and compacts the IBAN"), `test/unit/tools/drafts/regime.test.ts`,
@@ -2569,7 +2573,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   sevDesk's DATEV settings are missing"), `test/unit/domain/reports/vat.test.ts` ("fills every
   line from a mixed quarter and estimates Kz 83": the default basis and its note),
   `test/contract/recorded-fixtures-m4.test.ts` ("reads the regime, the chart of accounts and the
-  company fields", "reads the DATEV export configuration the M4 probe set (D-067)"). Live: the
+  company fields", "reads the DATEV export configuration the M4 probe set (D-067)"),
+  `test/unit/domain/exports/datev-settings.test.ts`,
+  `test/unit/tools/reports/datev-settings.test.ts`. Live: the
   write probes on a small-business account (all finalizing probes then fail with the 422 above);
   the draft tools refuse rule-1 drafts there; probes `read-sevclient-keys`,
   `write-export-datev-config`.
@@ -3603,8 +3609,21 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   client until a tool settles it, since a ZIP of many PDFs is a heavy job on sevDesk's side.
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("exports the ZIPs, describes entries
   as patterns and sees no change to documents": the null JSON content, the raw ZIP with drafts,
-  unchanged documents; "keeps only the signature of a binary body in the evidence"). Handling:
-  pending, the archive export of #95.
+  unchanged documents; "keeps only the signature of a binary body in the evidence");
+  `test/unit/domain/exports/archive.test.ts` ("accepts the recorded raw ZIP with the stray
+  apostrophe and counts entries and drafts", "refuses %s and saves nothing", "is a side effect for
+  the client, and never carries an enshrine flag"), `test/unit/domain/exports/zip.test.ts`,
+  `test/unit/tools/reports/archive-export.test.ts` ("asks once with the write tier, saves the ZIP
+  unchanged and counts entries and drafts": entry names and count read back from the saved file),
+  `test/regressions/export-archives-no-enshrine.test.ts`, `test/unit/sevdesk/paths.test.ts`
+  ("treats the document archive %s as a side effect"), `test/regressions/api-get-side-effects.test.ts`
+  (`/Export/invoiceZip`, `/Export/voucherZip`). Handling: `sevdesk_archive_export`
+  (`src/tools/reports/archive-export.ts`, `src/domain/exports/archive.ts`), a `write` tool:
+  `download=true`, a fixed query with an explicit `limit` and only the recorded filters (contact
+  for invoices, gross amounts for vouchers), the media type parsed leniently, the body checked as
+  a readable ZIP, drafts counted from their entry names (`draftEntries`) and named in the result,
+  100 MiB at most; `resolveGetSafety` treats both endpoints as side effects (`ARCHIVE_ENDPOINTS`
+  in `src/sevdesk/paths.ts`), and `sevdesk_api_get` refuses them anywhere in a path.
 
 ### D-102: The DATEV XML job works like the CSV job and marks nothing as exported
 
@@ -3630,7 +3649,15 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   promise `includeExportedDocuments` has any effect).
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("runs the opt-in probes only when
   named…": a POST without enshrine flags, download only through `downloadPresignedExport`, nested
-  ZIPs, unchanged documents, equal entries). Handling: pending, the XML option of #95.
+  ZIPs, unchanged documents, equal entries); `test/unit/domain/exports/datev.test.ts` ("builds the
+  XML job's query from the recorded keys only: E/X scope, no image or export flags", "starts the
+  XML job with a POST to its own path"), `test/unit/tools/reports/export-tools.test.ts`
+  ("sevdesk_datev_export: format xml"), `test/regressions/export-archives-no-enshrine.test.ts`
+  ("DATEV XML export"). Handling: `sevdesk_datev_export` takes `format: "xml"` (default `csv`,
+  unchanged): the same job flow, downloader, host allowlist and 100 MiB cap, a POST to
+  `createDatevXmlZipExportJob` with only `startDate`, `endDate`, a scope of E/X and
+  `exportByPaydate` when asked (`datevJobQuery`), never `includeExportedDocuments`; the preview
+  names the parts the XML export leaves out and does not warn about an "exported" mark.
 
 ### D-103: `createVoucherFromFile` makes a draft that sevDesk fills in within seconds
 

@@ -30,6 +30,7 @@ const FILE_WRITERS = [
   "sevdesk_document_save",
   "sevdesk_datev_export",
   "sevdesk_csv_export",
+  "sevdesk_archive_export",
 ];
 const FILE_READERS = [
   "sevdesk_voucher_create_draft",
@@ -52,6 +53,8 @@ const WITHOUT_LOCKS: Readonly<Record<string, string>> = {
   sevdesk_order_create_draft:
     "creates a new draft; its duplicate check only warns, and the number is reserved by one sevDesk request",
   sevdesk_datev_export: "starts an export job from its arguments; no record is checked before it",
+  sevdesk_archive_export:
+    "asks sevDesk for an archive of PDFs from its arguments; no record is checked and none changes",
 };
 
 const cases = ALL_TOOLS.map((tool): [string, AnyToolDefinition] => [tool.name, tool]);
