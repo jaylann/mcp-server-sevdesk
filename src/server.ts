@@ -4,10 +4,12 @@ import { tierKey } from "./accounts/resolver.js";
 import type { AccountResolver } from "./accounts/types.js";
 import type { Config, Settings } from "./config.js";
 import { buildInstructions } from "./instructions.js";
+import { accountCompleters } from "./prompts/completions.js";
 import { type PlannedPrompt, planPrompts, registerPrompts } from "./prompts/index.js";
 import { registerResources } from "./resources/index.js";
 import { createSafetyRuntime, type SafetyRuntime } from "./safety/runtime.js";
 import type { TransferStore } from "./safety/transfer-types.js";
+import { SERVER_ICONS } from "./server-icon.js";
 import type { SevdeskClient } from "./sevdesk/types.js";
 import { ToolDefinitionError, validateToolDefinition } from "./tools/define-tool.js";
 import { ALL_TOOLS, assertUniqueNames } from "./tools/index.js";
@@ -15,8 +17,16 @@ import { registerTools, resolveStructuredOutput, selectTools } from "./tools/reg
 import type { AnyToolDefinition } from "./tools/types.js";
 import { PACKAGE_NAME, VERSION } from "./version.js";
 
-/** Identity advertised in the MCP `initialize` / discovery exchange. */
-export const SERVER_INFO = { name: PACKAGE_NAME, title: "sevDesk", version: VERSION };
+/**
+ * Identity advertised in the MCP `initialize` / discovery exchange (and, in the 2026-07-28 era,
+ * in the `_meta` of every response), with the icon from `assets/icon.svg` (`src/server-icon.ts`).
+ */
+export const SERVER_INFO = {
+  name: PACKAGE_NAME,
+  title: "sevDesk",
+  version: VERSION,
+  icons: SERVER_ICONS,
+};
 
 /**
  * Upper bound on array elements plus object members in one `tools/call` payload, enforced by the
@@ -98,8 +108,8 @@ export function createServerFactory(deps: ServerDeps | AccountServerDeps): Serve
  * Creates one fully configured server instance: {@link SERVER_INFO}, generated instructions, the
  * tools selected for `deps.config`, the matching resources (`src/resources/`: document file
  * templates of enabled toolsets, reference data) and prompts (`src/prompts/`: workflows whose
- * tools are registered). `era` decides structured output in `auto` mode (see
- * `resolveStructuredOutput`); without it the instance behaves as legacy. Prefer
+ * tools are registered, with suggestions for their arguments). `era` decides structured output in
+ * `auto` mode (see `resolveStructuredOutput`); without it the instance behaves as legacy. Prefer
  * {@link createServerFactory} for serving, which does the preparation once.
  */
 export function createServer(deps: ServerDeps, era?: ProtocolEra): McpServer {
@@ -206,6 +216,13 @@ function instantiate(prepared: PreparedServer, era: ProtocolEra | undefined): Mc
     transfer: prepared.transfer,
   });
   registerResources(server, { config, client });
-  registerPrompts(server, prepared.prompts);
+  registerPrompts(server, prepared.prompts, {
+    // Per instance, for this account's client; the names they read are cached per `config`.
+    completers: accountCompleters({
+      config,
+      client,
+      tools: new Set(prepared.tools.map((tool) => tool.name)),
+    }),
+  });
   return server;
 }

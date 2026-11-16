@@ -110,6 +110,11 @@ Einstellung aufgeführt, die sie freischaltet. Prompts erzeugen nur Text für de
 Änderung läuft weiter über die Werkzeuge, zuerst im Probelauf und mit deiner Bestätigung für
 bindende Schritte. Keine Steuerberatung.
 
+Clients, die Argumente vervollständigen können, schlagen beim Tippen Werte vor: Monate und
+Quartale, die jüngsten zuerst, und die Namen deiner Kontakte und Zahlungskonten. Die Namen kommen
+aus sevDesk (nur lesend, eine Minute zwischengespeichert) und nur, wenn die Werkzeuge für Kontakte
+oder Bankkonten aktiviert sind.
+
 ## Berechtigungen und Konfiguration
 
 Der Server liest nur, bis du mit `SEVDESK_ALLOW` mehr freischaltest: `write` (Entwürfe, Kontakte,

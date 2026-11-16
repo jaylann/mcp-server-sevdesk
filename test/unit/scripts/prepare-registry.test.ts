@@ -35,6 +35,8 @@ const schema = z
       ),
     ),
   );
+/** The Desktop extension's icon, read before any test mocks `node:fs`. */
+const png = fs.readFileSync(new URL("../../../mcpb/icon.png", import.meta.url));
 // The upstream schema uses OpenAPI annotation keywords as well as JSON Schema draft-07.
 const ajv = new Ajv({ strict: false, allErrors: true });
 ajv.addFormat("uri", (value: string) => URL.canParse(value));
@@ -302,6 +304,20 @@ describe("registry manifest for a release bundle", () => {
     expect(() => registryWithBundle(prepared, manifest, bundle, source.version, tag)).toThrow(
       "precomputed MCPB entry",
     );
+  });
+
+  it("declares the extension's icon over HTTPS, as the registry schema requires", () => {
+    const { icons } = z.object({ icons: z.array(z.record(z.string(), z.unknown())) }).parse(source);
+
+    expect(icons).toEqual([
+      {
+        src: "https://raw.githubusercontent.com/jaylann/mcp-server-sevdesk/main/mcpb/icon.png",
+        mimeType: "image/png",
+        sizes: [`${String(png.readUInt32BE(16))}x${String(png.readUInt32BE(20))}`],
+      },
+    ]);
+    expect(validate(source), JSON.stringify(validate.errors)).toBe(true);
+    expect(validate({ ...source, icons: [{ src: "not a uri" }] })).toBe(false);
   });
 
   it("has a schema validator that rejects invalid checksums and missing transports", () => {

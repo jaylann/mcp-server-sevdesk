@@ -65,6 +65,7 @@ const monthEndClose = definePrompt({
       .optional()
       .describe("Month to close, YYYY-MM (e.g. 2026-10). Default: the previous month."),
   }),
+  completions: { month: "month" },
   requires: ["sevdesk_changed_since"],
   resolve: (args, context) => ({
     period: args.month === undefined ? previousMonth(context.today) : parsePeriod(args.month),
@@ -319,6 +320,7 @@ const dunningRun = definePrompt({
         "Minimum days overdue (inclusive, 0–3650, as 1–4 digits). Default: all overdue invoices.",
       ),
   }),
+  completions: { contact: "contact" },
   requires: ["sevdesk_invoices_list"],
   resolve: (args, context) => ({ ...args, today: context.today }),
   intro: ({ today, contact, minDaysOverdue }) =>
@@ -412,6 +414,7 @@ const vatPrecheck = definePrompt({
           "month.",
       ),
   }),
+  completions: { period: "period" },
   requires: ["sevdesk_vat_summary"],
   resolve: (args, context) => ({
     period: args.period === undefined ? previousMonth(context.today) : parsePeriod(args.period),
@@ -522,6 +525,7 @@ const bankReconciliation = definePrompt({
       .optional()
       .describe("Month to reconcile, YYYY-MM (2000–2099). Default: no date scope."),
   }),
+  completions: { checkAccount: "checkAccount", month: "month" },
   requires: [
     "sevdesk_bank_accounts_list",
     "sevdesk_transactions_list",
