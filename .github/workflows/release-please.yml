@@ -15,6 +15,9 @@ name: Release
 #   publish-mcpb      attests and attaches the .mcpb; a plain-Node script in this privileged job
 #                     adds .sigstore.json and .intoto.jsonl, no dependency install; companion-file
 #                     failures warn without blocking MCP Registry publication
+#   deploy-site       starts a deploy of the website, whose build takes the docs and the tool
+#                     reference from the latest release (Vercel deploy hook, secret
+#                     SITE_DEPLOY_HOOK)
 #
 # The release PR is opened and updated by the lanfermann-release-bot GitHub App (repository
 # variable RP_APP_ID, secret RP_APP_KEY), not by GITHUB_TOKEN: GitHub runs no workflows on PRs and
@@ -132,6 +135,31 @@ jobs:
           git config user.email "291497190+lanfermann-release-bot[bot]@users.noreply.github.com"
           git commit --quiet -m "chore: pin the plugin and the image to $version" -- plugin/.mcp.json server.json
           git push --quiet "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
+
+  # The website (jaylann/mcp-server-sevdesk-web) renders the docs and the tool reference from the
+  # latest release: its build on Vercel syncs them before it builds. This job starts that build as
+  # soon as the release exists, so the docs go live with it. SITE_DEPLOY_HOOK is a Vercel deploy
+  # hook for the site's main branch; whoever holds it can start a deploy of the site, nothing more.
+  # No checkout and no code from the repository run here. Without the secret the job only warns.
+  deploy-site:
+    name: Deploy the website with the release's docs
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Call the website's deploy hook
+        env:
+          HOOK: ${{ secrets.SITE_DEPLOY_HOOK }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::warning::SITE_DEPLOY_HOOK is not set: the website takes $TAG with its next deploy."
+            exit 0
+          fi
+          curl --fail --silent --show-error --retry 3 --max-time 30 --output /dev/null -X POST "$HOOK"
+          echo "Started a website deploy for $TAG."
 
   # Builds and packs the package from the release tag without a dependency cache. Read-only, no
   # OIDC token, no environment: whatever a dependency does here cannot publish anything.
