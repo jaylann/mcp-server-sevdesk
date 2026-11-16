@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/jaylann/mcp-server-sevdesk/compare/v1.5.0...v1.6.0) (2026-11-16)
+
+
+### Features
+
+* **de:** address the reader as du in the German docs and pages ([#74](https://github.com/jaylann/mcp-server-sevdesk/issues/74)) ([f8890af](https://github.com/jaylann/mcp-server-sevdesk/commit/f8890afb69fc0a2e5d59158d2a83a8364c335778))
+
 ## [1.5.0](https://github.com/jaylann/mcp-server-sevdesk/compare/v1.4.0...v1.5.0) (2026-11-13)
 
 
