@@ -271,11 +271,34 @@ describe("executeTransactionCreate", () => {
     return { method: "POST", path: "/CheckAccountTransaction", response: { body: { objects } } };
   }
 
+  it("creates the row once and reads its id from the recorded answer: the new row itself (D-071)", async () => {
+    const client = new FakeSevdeskClient([
+      {
+        method: "POST",
+        path: "/CheckAccountTransaction",
+        response: { fixture: "banking/transaction-create-5401.json" },
+      },
+    ]);
+    const result = await executeTransactionCreate(client, state());
+    expect(result).toEqual({
+      id: 5401,
+      changed: [{ objectName: "CheckAccountTransaction", id: "5401" }],
+    });
+    expect(client.writes()).toEqual([
+      expect.objectContaining({
+        method: "POST",
+        path: "/CheckAccountTransaction",
+        body: state().payload,
+      }),
+    ]);
+  });
+
+  // Never seen on this endpoint, but tolerated: a GET by id answers an array of one, and the
+  // factory saves nest the record under its name.
   it.each([
-    ["one object", { id: "5401", objectName: "CheckAccountTransaction" }],
     ["an array of one", [{ id: "5401", objectName: "CheckAccountTransaction" }]],
     ["a nested object", { checkAccountTransaction: { id: "5401" } }],
-  ])("creates the row once and reads its id from %s", async (_label, objects) => {
+  ])("also reads the id from %s", async (_label, objects) => {
     const client = new FakeSevdeskClient([post(objects)]);
     const result = await executeTransactionCreate(client, state());
     expect(result).toEqual({

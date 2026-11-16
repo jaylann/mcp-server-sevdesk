@@ -55,10 +55,11 @@ function dayRows(rows: readonly Row[] = []): FakeRoute {
   return listRoute("/CheckAccountTransaction", rows, { "checkAccount[id]": 4004 });
 }
 
+/** sevDesk's answer as recorded (D-071): `objects` is one object, the new row as `created()`. */
 const POST: FakeRoute = {
   method: "POST",
   path: "/CheckAccountTransaction",
-  response: { body: { objects: created() } },
+  response: { fixture: "banking/transaction-create-5401.json" },
 };
 
 function reads(extra: readonly FakeRoute[] = [], rows: readonly Row[] = []): FakeRoute[] {

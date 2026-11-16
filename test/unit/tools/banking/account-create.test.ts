@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { bankAccountCreateTool as tool } from "../../../../src/tools/banking/account-create.js";
+import { describeSevdeskError } from "../../../../src/tools/tool-errors.js";
 import { ACCOUNT_CHECK_ACCOUNTS } from "../../../../src/tools/types.js";
+import { testConfig } from "../../../helpers/config.js";
 import { type FakeRoute, FakeSevdeskClient } from "../../../helpers/fake-client.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 
@@ -86,6 +89,38 @@ describe("sevdesk_bank_account_create", () => {
       "Created clearing account 4101 (booking account 1803). Note: sevDesk stored booking " +
         "account 1803, not the requested 3320.",
     );
+  });
+
+  it("shows the model its own explanation of sevDesk's refusal of a booking account (D-119)", async () => {
+    // An archived account keeps its number and is not listed, so the pre-check passes 1803.
+    const refusal = new SevdeskError({
+      kind: "validation",
+      status: 422,
+      message: "sevDesk rejected the request as invalid.",
+      upstreamMessage: "The given account number is already used",
+    });
+    const client = new FakeSevdeskClient([
+      ACCOUNTS,
+      { ...CLEARING_CREATED, response: { error: refusal } },
+    ]);
+    const error = await executeWrite(
+      tool,
+      { kind: "clearing", name: "Verrechnung", accountingNumber: 1803 },
+      client,
+    ).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(SevdeskError);
+    const text = describeSevdeskError(error as SevdeskError, {
+      toolName: tool.name,
+      tier: tool.tier,
+      config: testConfig(),
+    });
+    expect(text).toBe(
+      "sevDesk refused the request (HTTP 422): sevDesk refused booking account 1803: another " +
+        "payment account already uses it, possibly an archived one, which keeps its number and is " +
+        "not listed. Nothing was created. Choose another number, or leave accountingNumber out to " +
+        "get the next free number of the 18xx range.",
+    );
+    expect(text).not.toContain("already used");
   });
 
   it("previews without writing and refuses a same-named active account before sending", async () => {

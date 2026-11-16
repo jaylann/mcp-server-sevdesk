@@ -6,7 +6,8 @@
  *
  * What sevDesk does (recorded on the trial account, Update 2.0, spec/deviations.md):
  * - `POST /CheckAccountTransaction` creates a row at status 100 only on a file-import account
- *   (type `online`, `importType` CSV). The cash register, offline (clearing) accounts and the
+ *   (type `online`, `importType` CSV) and answers with the new row as one object under `objects`
+ *   (value date at noon Berlin as sent). The cash register, offline (clearing) accounts and the
  *   base account refuse it with 422 "Use document bookAmount to create transactions on other
  *   types" (D-071, D-095, D-097). A bank-connected account could not be tested (a trial has
  *   none): its rows come from the bank, so it is refused here too. A cash sale or expense is a
@@ -323,9 +324,10 @@ const createdSchema = z.object({ id: zId });
 const nestedCreatedSchema = z.object({ checkAccountTransaction: createdSchema });
 
 /**
- * The id of the transaction sevDesk created, from its answer: one object or an array of one
- * (`objects`, unwrapped by the client), or the object under a `checkAccountTransaction` key, as
- * the probes accepted it. `undefined` when the answer names none.
+ * The id of the transaction sevDesk created, from its answer. As recorded (D-071), `objects`
+ * (unwrapped by the client) is one object: the new row itself, with the keys of a GET row. An
+ * array of one or the row under a `checkAccountTransaction` key were never seen here and are only
+ * tolerated. `undefined` when the answer names none.
  */
 function createdTransactionId(answer: unknown): number | undefined {
   let single: unknown;

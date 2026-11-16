@@ -271,6 +271,8 @@ function accountingNumberRefusal(
     kind: "validation",
     message,
     ...(error.status === undefined ? {} : { status: error.status }),
+    // Our own sentence for a known refusal: shown instead of the generic advice.
+    explained: true,
     cause: error,
   });
 }

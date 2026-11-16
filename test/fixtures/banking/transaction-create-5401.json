@@ -1,0 +1,46 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "POST /CheckAccountTransaction (one-off check by the orchestrator, 2026-11-17, run tag MCP-E2E 20261117-0037-nb2e)",
+    "date": "2026-11-17",
+    "systemVersion": "2.0",
+    "note": "Shape as recorded: objects is one object, the new row itself, with the keys of a GET row (amount a decimal string, status 100, valueDate and entryDate at 12:00 Berlin as sent; scalar types as in recorded/2026-11-08/banking/transaction-by-id.json). The exact 2xx code was not noted. Values fake: the answer to the request of test/unit/tools/banking/transaction-create.test.ts (an expense of 298.10 on file-import account 4004). D-071."
+  },
+  "status": 201,
+  "body": {
+    "objects": {
+      "id": "5401",
+      "objectName": "CheckAccountTransaction",
+      "additionalInformation": null,
+      "create": "2026-11-16T12:05:00+01:00",
+      "update": "2026-11-16T12:05:00+01:00",
+      "sevClient": {
+        "id": "9001",
+        "objectName": "SevClient"
+      },
+      "valueDate": "2026-11-16T12:00:00+01:00",
+      "entryDate": "2026-11-16T12:00:00+01:00",
+      "amount": "-298.1",
+      "feeAmount": null,
+      "gvCode": null,
+      "entryText": null,
+      "primaNotaNo": null,
+      "paymtPurpose": "RE-2026-0042",
+      "payeePayerBankCode": null,
+      "payeePayerAcctNo": null,
+      "payeePayerName": "Beispiel Lieferant AG",
+      "checkAccount": {
+        "id": "4004",
+        "objectName": "CheckAccount"
+      },
+      "status": "100",
+      "score": null,
+      "compareHash": null,
+      "enshrined": null,
+      "obonoReceiptUuid": null,
+      "externalId": null,
+      "deletedAt": null,
+      "restoredAt": null
+    }
+  }
+}

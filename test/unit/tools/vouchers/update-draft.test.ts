@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { tierScopedClient } from "../../../../src/sevdesk/scoped-client.js";
+import { describeSevdeskError } from "../../../../src/tools/tool-errors.js";
 import { voucherUpdateDraftTool as tool } from "../../../../src/tools/vouchers/draft-update.js";
+import { testConfig } from "../../../helpers/config.js";
 import { type FakeRoute, FakeSevdeskClient, testContext } from "../../../helpers/fake-client.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import {
@@ -358,6 +360,46 @@ describe("sevdesk_voucher_update_draft", () => {
         'first with sevdesk_voucher_reset (to "draft").',
     );
     expect(error.upstreamMessage).toContain("only update draft documents");
+    // The model gets that explanation, not the generic advice and not sevDesk's text.
+    expect(error.explained).toBe(true);
+    const text = describeSevdeskError(error, {
+      toolName: tool.name,
+      tier: tool.tier,
+      config: testConfig(),
+    });
+    expect(text).toBe(`sevDesk refused the request (HTTP 400): ${error.message}`);
+    expect(text).not.toContain("resetToDraft first");
+  });
+
+  it("keeps that explanation shown when a new receipt had been uploaded first", async () => {
+    const folder = await receiptFolder();
+    cleanup = folder.undo;
+    const refused: FakeRoute = {
+      method: "POST",
+      path: "/Voucher/Factory/saveVoucher",
+      response: {
+        error: new SevdeskError({
+          kind: "validation",
+          status: 400,
+          message: "sevDesk rejected the request.",
+          upstreamMessage: "You can only update draft documents. Use resetToDraft first.",
+        }),
+      },
+    };
+    const error = (await executeWrite(
+      tool,
+      { id: 2101, file: folder.file },
+      client(draftRow(), [positionRow()], [refused]),
+      { fileDirs: [folder.dir] },
+    ).catch((caught: unknown) => caught)) as SevdeskError;
+    expect(error.explained).toBe(true);
+    const text = describeSevdeskError(error, {
+      toolName: tool.name,
+      tier: tool.tier,
+      config: testConfig(),
+    });
+    expect(text).toContain("sevDesk refused to change voucher 2101: it is no longer a draft");
+    expect(text).toContain("The voucher was not saved.");
   });
 
   it("notes a receipt that is gone after an update without a new file", async () => {

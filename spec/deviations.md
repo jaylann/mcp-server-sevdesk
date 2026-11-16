@@ -2701,14 +2701,20 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   transactions on other types." On a file-import account (created with
   `POST /CheckAccount/Factory/fileImportAccount`: type `online`, import type CSV) it creates the
   transaction at status 100. Cash registers and clearing accounts refuse the POST with the same
-  422 (recorded 2026-11-16, D-095, D-097).
+  422 (recorded 2026-11-16, D-095, D-097). The answer of that POST (recorded 2026-11-17, body
+  with `mapAll: true`, both dates as UTC ISO at 11:00Z, `amount: -12.34`, `status: 100`, with and
+  without `paymtPurpose`) is 2xx with `objects` as one object, the new row itself, with the keys
+  of a GET row (`id` … `deletedAt`, `restoredAt`): `amount` the string `"-12.34"`, `status` 100,
+  `valueDate` `…T12:00:00+01:00` (noon Berlin, as sent); without a purpose `paymtPurpose` is
+  null. A GET by id of the new row answers an array of one, as usual (D-001).
 - **Sources:** spec (`bookInvoice`, `bookVoucher`, `invoiceResetToOpen`, `createTransaction`);
   recorded 2026-11-07, trial account, Update 2.0 (probes `write-offline-booking-transaction`,
   `write-book-amount-noon-date`; `test/fixtures/recorded/2026-11-07/banking/transactions-list.json`,
   transactions created this way); recorded 2026-11-08 (probes `write-voucher-book-amount`,
   `write-voucher-reset`, `write-transaction-create`, in both write runs); recorded 2026-11-16,
   trial account, Update 2.0 (probes `write-cash-register-transaction`,
-  `write-check-account-factories`).
+  `write-check-account-factories`); recorded 2026-11-17, trial account, Update 2.0 (one-off check
+  by the orchestrator, run tag `MCP-E2E 20261117-0037-nb2e`; the answer of the POST).
 - **Impact:** The payment preview says that sevDesk creates a new transaction on offline accounts
   and a cash book entry on cash registers (`src/domain/lifecycle/payments.ts`). The reset
   previews say that such transactions on offline (clearing) accounts are deleted and that a cash
@@ -2716,8 +2722,10 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   a deleted transaction as deleted. `sevdesk_transaction_create` (#88) sends
   `POST /CheckAccountTransaction` only for file-import accounts and refuses offline accounts, cash
   registers and bank-connected accounts before anything is sent, naming the payment tools that
-  book on the document instead. `sevdesk_reconcile_suggest` says that offline and cash accounts
-  get their transactions from bookings.
+  book on the document instead; it reads the new id from the recorded answer (the row as one
+  object, `createdTransactionId`; an array of one or a nested row are only tolerated) and reads
+  the row back. `sevdesk_reconcile_suggest` says that offline and cash accounts get their
+  transactions from bookings.
 - **Test:** `test/unit/domain/lifecycle/payments.test.ts` ("warns that sevDesk creates a
   transaction on offline and cash accounts"),
   `test/unit/domain/reconciliation/transaction-status.test.ts` ("warns that sevDesk deletes
@@ -2726,6 +2734,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   the reset"). The 422: `test/regressions/manual-transactions.test.ts` ("a transaction is never
   created on a cash register, offline or bank-connected account"),
   `test/unit/domain/reconciliation/manual-transactions.test.ts` (`assertManualEntryAccount`); the
+  answer: `test/fixtures/banking/transaction-create-5401.json` in
+  `test/unit/domain/reconciliation/manual-transactions.test.ts` ("creates the row once and reads
+  its id from the recorded answer…") and `test/unit/tools/banking/transaction-create.test.ts`; the
   live M4 scenario creates its transaction on a file-import account (`test/live/lifecycle.test.ts`).
   Live: probes `write-offline-booking-transaction`, `write-voucher-reset`,
   `write-transaction-create`, `write-cash-register-transaction` (cash registers; the simulated
@@ -3446,7 +3457,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   the listed rows. A soft-deleted row stays readable only by id.
 - **Sources:** spec (`deleteCheckAccountTransaction`); recorded 2026-11-16, trial account,
   Update 2.0 (probes `write-transaction-delete`, `write-check-account-factories`,
-  `read-transaction-soft-delete`).
+  `read-transaction-soft-delete`); recorded 2026-11-17, trial account, Update 2.0 (one-off check
+  by the orchestrator, run tag `MCP-E2E 20261117-0037-nb2e`: two rows created by hand, each
+  DELETE answered `[null]` and the read-back had `deletedAt` set).
 - **Impact:** A delete tool (#88) must treat 2xx plus `deletedAt` as deleted, never a 404 or a
   missing row; it must refuse rows that are not at status 100 (and name the reset or "back to
   unbooked" step for private rows), and a read by id must not mistake a row with `deletedAt` for

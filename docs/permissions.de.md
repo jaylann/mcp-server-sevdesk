@@ -1,4 +1,4 @@
-<!-- translated-from: docs/permissions.md sha256:8405988d460f -->
+<!-- translated-from: docs/permissions.md sha256:fecaa7ea4f3f -->
 
 # Berechtigungen und Bestätigung
 
@@ -17,7 +17,7 @@ Jedes Werkzeug gehört zu genau einer Stufe. Lesen und Schreiben teilen sich nie
 | Stufe      | Was sie erlaubt                                                                                                                                                                                                                          | Bestätigung |
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
 | `read`     | Auflisten, abrufen, suchen, Auswertungen, PDF-Vorschauen (die ein Dokument nie als versendet markieren), E-Rechnungen auslesen, Dokumentdateien und CSV-Exporte in `SEVDESK_OUTPUT_DIR` speichern (oder als Download-Link). Immer aktiv. | nein        |
-| `write`    | Kontakte, Artikel, Entwürfe von Rechnungen, Gutschriften, Aufträgen und Belegen, Mahnungen, der DATEV-Export. Umkehrbar oder harmlos.                                                                                                    | nein        |
+| `write`    | Kontakte, Artikel, Zahlungskonten, Entwürfe von Rechnungen, Gutschriften, Aufträgen und Belegen, Mahnungen, der DATEV-Export. Umkehrbar oder harmlos.                                                                                    | nein        |
 | `commit`   | Fertigstellen, Zahlungen buchen, Kontoumsätze erfassen, zuordnen, löschen, festschreiben und privat markieren, stornieren, festschreiben (GoBD), zurücksetzen, Belegentwürfe löschen. Bindend oder schwer rückgängig zu machen.          | **ja**      |
 | `external` | Rechnungen, Gutschriften und Aufträge per E-Mail versenden. Erreicht Dritte.                                                                                                                                                             | **ja**      |
 
