@@ -157,7 +157,7 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 | [D-114](#d-114-docserver-layout-lists-sit-under-objects-and-carry-large-base64-fields)             | DocServer layout lists sit under `objects` and carry large base64 fields               | Open                  |
 | [D-115](#d-115-post-and-delete-texttemplate-create-and-delete-text-templates)                      | `POST` and `DELETE /TextTemplate` create and delete text templates                     | Open                  |
 | [D-116](#d-116-document-discounts-discountsave-takes-a-list-getdiscounts-reads-them)               | Document discounts: `discountSave` takes a list; `getDiscounts` reads them             | Open                  |
-| [D-119](#d-119-the-account-factories-accountingnumber-is-documented-but-not-recorded)              | The account factories' `accountingNumber` is documented but not recorded               | Open                  |
+| [D-119](#d-119-the-account-factories-refuse-an-accountingnumber-in-use-or-not-allowed-422)         | The account factories refuse an `accountingNumber` in use or not allowed (422)         | Open                  |
 
 ## Entries
 
@@ -3947,30 +3947,48 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   null for an order without discounts"); the draft tools: pending, #94. Live: probes
   `write-document-discount`, `read-order-get-discounts`.
 
-### D-119: The account factories' `accountingNumber` is documented but not recorded
+### D-119: The account factories refuse an `accountingNumber` in use or not allowed (422)
 
-- **Status:** Open. **Evidence:** spec.
+- **Status:** Open. **Evidence:** spec + recorded.
 - **Spec says:** `createFileImportAccount` and `createClearingAccount` take an optional integer
   `accountingNumber`, the booking account of the new account, which "must be unique among all
   your CheckAccounts" ("Ignore to use a sensible default" for a file-import account, "Ask your tax
-  consultant what to choose" for a clearing account). `createFileImportAccount` also takes
-  `importType` (`CSV` or `MT940`) and `iban`.
-- **Actual behavior:** Not recorded. The clearing account of 2026-11-16 was created without
-  `accountingNumber` (sevDesk chose `"1803"`, D-097), and every file-import account (2026-11-08,
-  2026-11-16) with `{name, importType: "CSV"}` only; the probes read only the new id from the
-  file-import factory's answer. Open: whether a given number is stored as sent, whether sevDesk
-  checks it against the chart of accounts (SKR03/SKR04) or the other accounts and how a refusal
-  reads, and whether `MT940` and `iban` are taken.
+  consultant what to choose" for a clearing account). Neither says that other numbers are
+  refused, nor how a refusal reads. `createFileImportAccount` also takes `importType` (`CSV` or
+  `MT940`) and `iban`.
+- **Actual behavior:** On the trial account (active numbers 1800, 1801, 1802, 1805, 1806 for
+  file-import accounts and 1820 for the offline account; archived test accounts held 1803 and
+  1804):
+  - A free, allowed number is stored as sent: `clearingAccount` with 1830 and with 1460 created
+    an `offline` account (`importType` null, status 100) reading `accountingNumber` `"1830"` /
+    `"1460"`; `fileImportAccount {name, importType: "CSV", accountingNumber: 1811}` created an
+    `online` account with `importType` `CSV` and `"1811"`. The number reads back as a string.
+  - A number in use is refused with 422 "The given account number is already used" (1800 on
+    `clearingAccount`, 1801 on `fileImportAccount`).
+  - Other numbers are refused with 422 "The given account number 3321 is invalid": 3321 (sent
+    as a number and, as `"3322"`, as a string) and 99999, on both factories. sevDesk checks the
+    number against a set of allowed booking accounts; that set is known only by these samples
+    (1460, 1811, 1830 accepted; 3321, 3322, 99999 refused).
+  - Without a number, `fileImportAccount` took `"1807"`, the next free number of the 18xx range;
+    it skipped 1803 and 1804, which the archived accounts hold, so an archived account keeps its
+    number (D-097: archived accounts are not listed).
+  - Whether `MT940` and `iban` are taken is still not recorded.
 - **Sources:** spec (`createFileImportAccount`, `createClearingAccount`); recorded 2026-11-16,
-  trial account, Update 2.0 (probe `write-check-account-factories`); recorded 2026-11-08 (probe
-  `write-transaction-create`).
+  trial account, Update 2.0 (one-off checks by the orchestrator, run tags
+  `MCP-E2E 20261116-2324-hg4n` and `MCP-E2E 20261116-2325-tgpq`; every account created was
+  archived again); recorded 2026-11-16 (probe `write-check-account-factories`).
 - **Impact:** `sevdesk_bank_account_create` (#88) sends `accountingNumber` only when the user
-  gives one, as a JSON integer, after checking that no listed account has it; its preview says
-  that the handling is not recorded, and the result takes the number from sevDesk's answer and
-  reports a different or missing one. It always sends `importType` `CSV`, the recorded value, and
-  never `iban` or `MT940`.
+  gives one, as a JSON integer, after checking that no listed account has it (archived accounts
+  hold their numbers but are not listed, so sevDesk's own check remains the last word). The two
+  422 refusals become the tool's own sentences ("already used, possibly by an archived account";
+  "not accepted as the booking account of a payment account"), without sevDesk's text; leaving
+  the number out gives the next free 18xx number. The result takes the number from sevDesk's
+  answer and reports a different or missing one. The tool always sends `importType` `CSV`, the
+  recorded value, and never `iban` or `MT940`.
 - **Test:** `test/unit/domain/bank-account-create.test.ts` ("sends a file-import account as CSV,
   with a booking account number when given", "refuses a booking account number another account
-  (archived ones too) already has", "reports when the answer shows another kind or booking
-  account than requested"). Live: not probed yet; the question is one tagged clearing account
-  created with a free `accountingNumber`.
+  (archived ones too) already has", "reads a given booking account back as stored, a string",
+  "turns sevDesk's 'already used' refusal into its own sentence without sevDesk's text", "turns
+  sevDesk's 'is invalid' refusal into its own sentence without sevDesk's text", "leaves other
+  refusals, and refusals without a booking account, as sevDesk sent them"). Live: the one-off
+  checks above; no probe in `pnpm probe` yet.

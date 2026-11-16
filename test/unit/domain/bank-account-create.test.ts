@@ -53,7 +53,9 @@ describe("planBankAccountCreate", () => {
     expect(plan.preview.warnings).toEqual([
       expect.stringMatching(/cannot delete a payment account through its API, only archive it/),
       expect.stringMatching(/clearing account takes no transactions entered by hand/),
-      expect.stringMatching(/^Without accountingNumber sevDesk chooses the booking account/),
+      expect.stringMatching(
+        /^Without accountingNumber sevDesk gives the account the next free number of the 18xx/,
+      ),
     ]);
     expect(plan.preview.irreversible).toBe(false);
   });
@@ -74,10 +76,7 @@ describe("planBankAccountCreate", () => {
       value: "1806",
     });
     expect(plan.preview.facts).toContainEqual({ label: "Import type", value: "CSV" });
-    expect(plan.preview.warnings).toEqual([
-      expect.stringMatching(/only archive it/),
-      expect.stringMatching(/documents accountingNumber but its handling has not been recorded/),
-    ]);
+    expect(plan.preview.warnings).toEqual([expect.stringMatching(/only archive it/)]);
   });
 
   it("refuses a name an active account has, ignoring case and extra spaces, without echoing it", async () => {
@@ -133,7 +132,7 @@ describe("planBankAccountCreate", () => {
       message:
         "Booking account 1820 is already used by payment account 4001, and every payment " +
         "account needs a booking account of its own. Choose another number, or leave " +
-        "accountingNumber out to let sevDesk choose one.",
+        "accountingNumber out to get the next free number of the 18xx range.",
     });
     const client = new FakeSevdeskClient([
       accountsWith([
@@ -274,5 +273,99 @@ describe("executeBankAccountCreate", () => {
     const client = new FakeSevdeskClient([created(CLEARING, { error: failure })]);
     await expect(executeBankAccountCreate(client, clearingState)).rejects.toBe(failure);
     expect(client.writes()).toHaveLength(1);
+  });
+
+  it("reads a given booking account back as stored, a string (D-119, recorded 2026-11-16)", async () => {
+    // Recorded: clearingAccount {name, accountingNumber: 1830} answered type offline, importType
+    // null, status 100, accountingNumber "1830".
+    const client = new FakeSevdeskClient([
+      created(CLEARING, {
+        body: {
+          objects: {
+            id: "4105",
+            name: "Verrechnung 1830",
+            type: "offline",
+            importType: null,
+            status: "100",
+            accountingNumber: "1830",
+          },
+        },
+      }),
+    ]);
+    const result = await executeBankAccountCreate(client, {
+      ...clearingState,
+      payload: { name: "Verrechnung 1830", accountingNumber: 1830 },
+    });
+    expect(client.writes().map((call) => call.body)).toEqual([
+      { name: "Verrechnung 1830", accountingNumber: 1830 },
+    ]);
+    expect(result.account).toMatchObject({ type: "clearing", accountingNumber: "1830" });
+    expect(result.notes).toEqual([]);
+  });
+
+  /** A 422 as the client raises it, with sevDesk's (recorded) text as upstreamMessage. */
+  function refused(upstreamMessage: string): SevdeskError {
+    return new SevdeskError({
+      kind: "validation",
+      status: 422,
+      message: "sevDesk rejected the request as invalid.",
+      upstreamMessage,
+    });
+  }
+
+  it("turns sevDesk's 'already used' refusal into its own sentence without sevDesk's text", async () => {
+    const client = new FakeSevdeskClient([
+      created(FILE_IMPORT, { error: refused("The given account number is already used") }),
+    ]);
+    const attempt = executeBankAccountCreate(client, {
+      ...importState,
+      payload: { name: "Kasse Import", importType: "CSV", accountingNumber: 1803 },
+    });
+    await expect(attempt).rejects.toMatchObject({
+      kind: "validation",
+      status: 422,
+      message:
+        "sevDesk refused booking account 1803: another payment account already uses it, possibly " +
+        "an archived one, which keeps its number and is not listed. Nothing was created. Choose " +
+        "another number, or leave accountingNumber out to get the next free number of the 18xx " +
+        "range.",
+      upstreamMessage: undefined,
+    });
+    expect(client.writes()).toHaveLength(1);
+  });
+
+  it("turns sevDesk's 'is invalid' refusal into its own sentence without sevDesk's text", async () => {
+    const client = new FakeSevdeskClient([
+      created(CLEARING, { error: refused("The given account number 3321 is invalid") }),
+    ]);
+    const attempt = executeBankAccountCreate(client, {
+      ...clearingState,
+      payload: { name: "X", accountingNumber: 3321 },
+    });
+    await expect(attempt).rejects.toMatchObject({
+      kind: "validation",
+      message:
+        "sevDesk does not accept 3321 as the booking account of a payment account. Nothing was " +
+        "created. Choose a booking account the chart of accounts provides for bank or clearing " +
+        "accounts (ask the tax consultant), or leave accountingNumber out to get the next free " +
+        "number of the 18xx range.",
+      upstreamMessage: undefined,
+    });
+    expect(client.writes()).toHaveLength(1);
+  });
+
+  it("leaves other refusals, and refusals without a booking account, as sevDesk sent them", async () => {
+    const other = refused("Name must not be empty");
+    const withNumber = new FakeSevdeskClient([created(CLEARING, { error: other })]);
+    await expect(
+      executeBankAccountCreate(withNumber, {
+        ...clearingState,
+        payload: { name: "X", accountingNumber: 1830 },
+      }),
+    ).rejects.toBe(other);
+
+    const used = refused("The given account number is already used");
+    const withoutNumber = new FakeSevdeskClient([created(CLEARING, { error: used })]);
+    await expect(executeBankAccountCreate(withoutNumber, clearingState)).rejects.toBe(used);
   });
 });

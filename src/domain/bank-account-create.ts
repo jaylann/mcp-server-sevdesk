@@ -11,9 +11,10 @@
  * only archives, so a created account stays.
  *
  * Only documented fields are sent: `name`, `importType` (always `CSV`, the recorded value) and,
- * when the user gives one, `accountingNumber`, which the spec documents but no recording has sent
- * yet (D-119). The created account is taken from sevDesk's answer, not from the request, and
- * every difference from the request is reported. The POST is never retried.
+ * when the user gives one, `accountingNumber` (D-119: stored as sent; sevDesk refuses a number in
+ * use, also by an archived account, and a number it does not allow, both with 422, which become
+ * our own messages). The created account is taken from sevDesk's answer, not from the request,
+ * and every difference from the request is reported. The POST is never retried.
  */
 import { z } from "zod";
 
@@ -118,7 +119,8 @@ export async function planBankAccountCreate(
       throw validation(
         `Booking account ${String(input.accountingNumber)} is already used by payment account ` +
           `${String(owner.id)}, and every payment account needs a booking account of its own. ` +
-          "Choose another number, or leave accountingNumber out to let sevDesk choose one.",
+          "Choose another number, or leave accountingNumber out to get the next free number of " +
+          "the 18xx range.",
       );
     }
   }
@@ -165,14 +167,13 @@ function warningsFor(input: BankAccountCreateInput, complete: boolean): string[]
         "transactions when payments are booked on it. Use a file-import account for those.",
     );
   }
-  warnings.push(
-    input.accountingNumber === undefined
-      ? "Without accountingNumber sevDesk chooses the booking account (on the recorded SKR04 " +
-          "account the next free number from 1800, for clearing accounts too). Ask the tax " +
-          "consultant whether the account needs a specific one."
-      : "sevDesk documents accountingNumber but its handling has not been recorded yet: check " +
-          "the booking account in the result.",
-  );
+  if (input.accountingNumber === undefined) {
+    warnings.push(
+      "Without accountingNumber sevDesk gives the account the next free number of the 18xx " +
+        "range (recorded on SKR04, for file-import and clearing accounts alike). Ask the tax " +
+        "consultant whether the account needs a specific one.",
+    );
+  }
   if (!complete) {
     warnings.push(
       "sevDesk lists more than 1000 payment accounts: the name and booking account were checked " +
@@ -203,12 +204,17 @@ export async function executeBankAccountCreate(
   state: BankAccountCreateState,
   signal?: AbortSignal,
 ): Promise<BankAccountCreated> {
-  const answer = await client.request({
-    method: "POST",
-    path: state.path,
-    body: state.payload,
-    ...(signal === undefined ? {} : { signal }),
-  });
+  let answer: unknown;
+  try {
+    answer = await client.request({
+      method: "POST",
+      path: state.path,
+      body: state.payload,
+      ...(signal === undefined ? {} : { signal }),
+    });
+  } catch (error) {
+    throw accountingNumberRefusal(error, state) ?? error;
+  }
   let account: BankAccountDto;
   try {
     account = bankAccountFromAnswer(answer, "created payment account");
@@ -224,6 +230,49 @@ export async function executeBankAccountCreate(
     });
   }
   return { account, notes: differences(state, account) };
+}
+
+/**
+ * sevDesk's two recorded refusals of a booking account number (D-119), both HTTP 422: "The given
+ * account number is already used" (also by an archived account, which keeps its number and is
+ * not listed, so the pre-check cannot see it) and "The given account number … is invalid" (the
+ * number is not one sevDesk allows for a payment account). Each becomes a trusted sentence of our
+ * own, without sevDesk's text; any other error is left as it is (`undefined`). Nothing was
+ * created in either case.
+ */
+function accountingNumberRefusal(
+  error: unknown,
+  state: BankAccountCreateState,
+): SevdeskError | undefined {
+  const requested = state.payload.accountingNumber;
+  if (
+    requested === undefined ||
+    !(error instanceof SevdeskError) ||
+    error.kind !== "validation" ||
+    error.upstreamMessage === undefined
+  ) {
+    return undefined;
+  }
+  const number = String(requested);
+  const upstream = error.upstreamMessage;
+  const message = /account number.*already used/i.test(upstream)
+    ? `sevDesk refused booking account ${number}: another payment account already uses it, ` +
+      "possibly an archived one, which keeps its number and is not listed. Nothing was created. " +
+      "Choose another number, or leave accountingNumber out to get the next free number of the " +
+      "18xx range."
+    : /account number.*invalid/i.test(upstream)
+      ? `sevDesk does not accept ${number} as the booking account of a payment account. Nothing ` +
+        "was created. Choose a booking account the chart of accounts provides for bank or " +
+        "clearing accounts (ask the tax consultant), or leave accountingNumber out to get the " +
+        "next free number of the 18xx range."
+      : undefined;
+  if (message === undefined) return undefined;
+  return new SevdeskError({
+    kind: "validation",
+    message,
+    ...(error.status === undefined ? {} : { status: error.status }),
+    cause: error,
+  });
 }
 
 /** What the answer shows differently from what was requested (kind, booking account). */

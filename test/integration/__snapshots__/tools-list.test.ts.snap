@@ -760,7 +760,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
       "additionalProperties": false,
       "properties": {
         "accountingNumber": {
-          "description": "Booking account (Buchungskonto) number, unused by other payment accounts; default: sevDesk chooses. Ask the tax consultant.",
+          "description": "Booking account (Buchungskonto) number, unused by other payment accounts; default: the next free 18xx number (SKR04). Ask the tax consultant.",
           "exclusiveMinimum": 0,
           "maximum": 99999999,
           "type": "integer",
@@ -5007,7 +5007,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
       "additionalProperties": false,
       "properties": {
         "accountingNumber": {
-          "description": "Booking account (Buchungskonto) number, unused by other payment accounts; default: sevDesk chooses. Ask the tax consultant.",
+          "description": "Booking account (Buchungskonto) number, unused by other payment accounts; default: the next free 18xx number (SKR04). Ask the tax consultant.",
           "exclusiveMinimum": 0,
           "maximum": 99999999,
           "type": "integer",
