@@ -192,7 +192,7 @@ export function valueFormat(value: unknown): string {
 }
 
 /** A string answer, or the first string member of an object answer (job ids, hashes). */
-function stringAnswer(objects: unknown, keys: readonly string[]): string | undefined {
+export function stringAnswer(objects: unknown, keys: readonly string[]): string | undefined {
   if (typeof objects === "string" && objects !== "") return objects;
   const row = firstRow(objects);
   for (const key of keys) {
@@ -273,7 +273,7 @@ async function foreignCounts(ctx: ProbeContext): Promise<{ invoices: number; con
 }
 
 /** The host of a link (never the path or the query), `none` or `not a URL`. */
-function hostOf(link: string): string {
+export function hostOf(link: string): string {
   if (link === "") return "none";
   try {
     return new URL(link).host;

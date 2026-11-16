@@ -26,8 +26,10 @@ on a free 14-day trial account**, with three tools. This page is the maintainer'
   (`SEVDESK_LIVE_MAX_EXISTING_RECORDS` changes the limit). They enable the `write` and `commit`
   tiers. The `external` tier (e-mail) is enabled only when you pass an address of your own
   (`pnpm probe --probe-email`, `SEVDESK_LIVE_EMAIL_TO` for `test:live`), and then exactly one
-  e-mail goes to that address, never to a contact. Nothing is enshrined. The only export is the
-  DATEV CSV job of the M4 probe and scenario (it starts a job; never with `enshrineDocuments`).
+  e-mail goes to that address, never to a contact. Nothing is enshrined except one tagged
+  transaction by the opt-in probe `write-transaction-enshrine`. Exports: the DATEV CSV job of the
+  M4 probe and scenario (it starts a job; never with `enshrineDocuments`), the invoice and voucher
+  ZIPs of the gap probes, and the DATEV XML job of the opt-in probe `write-export-datev-xml`.
 - Everything written is named after a run tag such as `MCP-E2E 20261120-1432-k3f9` and listed in a
   cleanup list (end of the probe report, end of the `test:live` log).
 - Recordings and reports are scrubbed (`scripts/lib/scrub.ts`): names, e-mails, phones,

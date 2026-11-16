@@ -554,6 +554,15 @@ export function recordPlan(today: string): readonly RecordEntry[] {
       list: true,
       note: "Without filter: the log entries of the whole account (D-057, paging).",
     },
+    // Gap probes (#88): the rules that mark transactions private. The ZIP exports (#95) are not
+    // recorded: they may change documents and answer files, not JSON records.
+    {
+      file: "banking/private-transaction-rules.json",
+      mirrors: [],
+      path: "/PrivateTransactionRule",
+      list: true,
+      note: "Rules for marking transactions private (empty unless a rule exists; the probe deletes its own).",
+    },
 
     // --- parts ----------------------------------------------------------------------------
     {
