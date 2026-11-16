@@ -145,7 +145,7 @@ export const MASTERDATA_CASES: readonly WriteToolCase[] = [
     writes: [{ method: "DELETE", path: "/ContactAddress/3002" }],
   },
   {
-    label: "delete a contact with its addresses and communication ways",
+    label: "delete an organisation with its addresses, communication ways and contact persons",
     tool: contactDeleteTool,
     args: { id: 1001 },
     routes: [
@@ -155,12 +155,14 @@ export const MASTERDATA_CASES: readonly WriteToolCase[] = [
         "contacts/contact-addresses-1001.json",
         "contacts/communication-ways-1001.json",
       ),
-      // Its contact persons (D-083: `GET /Contact` honours the parent filter): person 1002.
+      // Its contact persons (D-083: `GET /Contact` honours the parent filter): person 1002, which
+      // sevDesk deletes with it (D-084) and which is read back afterwards.
       {
         path: "/Contact",
         query: { "parent[id]": 1001, "parent[objectName]": "Contact" },
         response: { fixture: "contacts/contact-1002.json" },
       },
+      { path: "/Contact/1002", response: { fixture: "contacts/contact-1002.json" } },
       { method: "DELETE", path: "/Contact/1001", response: DELETED },
     ],
     writes: [{ method: "DELETE", path: "/Contact/1001" }],

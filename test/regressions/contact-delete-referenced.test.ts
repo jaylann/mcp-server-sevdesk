@@ -77,7 +77,8 @@ describe("D-085: a refused contact deletion arrives as HTTP 200", () => {
     expect(output.data.deleted).toBe(false);
     expect(output.data.stillReferenced).toBe(true);
     expect(output.summary).toBe(
-      "sevDesk refused to delete contact 1002: documents still reference it. Nothing was deleted.",
+      "sevDesk refused to delete contact 1002: documents still reference it. Nothing was " +
+        "deleted. See notes.",
     );
     expect(output.data.notes?.[0]).toMatch(/^sevDesk refused to delete contact 1002: documents/);
     expect(output.affected).toEqual([]);

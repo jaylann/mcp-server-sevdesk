@@ -3167,22 +3167,35 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   address can be deleted while it is the billing address (category 47) and while it is the last
   one; the contact stays. The main e-mail and then the last e-mail can be deleted; the other
   e-mail does not become main (`main` stays `"0"`), so a contact can be left without a main entry
-  of a type. A contact a document references is not deleted (D-085).
+  of a type. A contact a document references is not deleted (D-085). Deleting an organisation
+  also deletes its contact persons (the persons whose `parent` it is): after `DELETE` of an
+  organisation with one such person, neither referenced by a document, answered `[null]`, `GET` of
+  the organisation and of the person both answered 404, and a `DELETE` of the person answered 404.
+  Not measured: an organisation whose contact person a document references (whether the whole
+  delete is refused or only the person stays), and contact persons with addresses or
+  communication ways of their own.
 - **Sources:** spec (`deleteContact`, `deleteContactAddress`, `deleteCommunicationWay`); recorded
   2026-11-16, trial account, Update 2.0 (probes `write-contact-delete`,
   `write-contact-delete-referenced`, `write-contact-address-delete`,
-  `write-communication-way-delete`).
-- **Impact:** No tool deletes yet. #86's contact delete must say in its preview that the
-  addresses and communication ways go too, and treat 404 on a repeated delete as "already gone";
-  removing an address or way must say when it removes the billing address or the main entry, since
-  sevDesk elects no new one.
+  `write-communication-way-delete`); the contact persons: recorded 2026-11-16, trial account,
+  Update 2.0 (one-off check by the orchestrator, run tag `MCP-E2E 20261116-2319-p4jr`).
+- **Impact:** `sevdesk_contact_delete` says in its preview that the addresses and communication
+  ways go too, and for an organisation lists the contact persons that go with it (up to 20 by name
+  and id, the rest counted; it refuses an organisation with more than 100, which it cannot all
+  read). The approval is bound to the ids of those persons, so a person added in between asks
+  again. Afterwards it reads each person back and says so when one is still there or could not be
+  checked. A 404 on the DELETE counts as "already gone". Removing an address or way says when it
+  removes the billing address or the main entry, since sevDesk elects no new one.
 - **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("deletes contacts, addresses and
   communication ways and reports what is left"); `test/unit/tools/masterdata/contact-delete.test.ts`
-  ("deletes an organisation and confirms with a read that it is gone (D-084)", "counts a 404 on
-  the DELETE as already gone (D-084)"); `test/unit/tools/masterdata/contact-update.test.ts`
-  ("removes an address and the main e-mail last and says what is left", "warns when the billing
-  address goes and changes what remains instead", "counts an entry sevDesk no longer has as
-  already gone"). Live: the four probes above.
+  ("deletes an organisation with its contact persons and reads every one back (D-084)", "lists up
+  to 20 contact persons by name and binds the approval to all of them", "refuses an organisation
+  whose contact persons cannot all be read", "says so when a contact person is still there or
+  could not be checked", "counts a 404 on the DELETE as already gone (D-084)");
+  `test/unit/tools/masterdata/contact-update.test.ts` ("removes an address and the main e-mail
+  last and says what is left", "warns when the billing address goes and changes what remains
+  instead", "counts an entry sevDesk no longer has as already gone"). Live: the four probes above;
+  the contact-person cascade has no probe yet.
 
 ### D-085: Refused deletes of referenced contacts and cost centres arrive as HTTP 200
 
