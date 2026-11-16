@@ -3287,7 +3287,12 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Test:** `test/contract/recorded-gaps-contacts.test.ts` (both recorded lists: keys, references,
   no usage count, the object types; the probe `read-tag-lists` on them);
   `test/unit/scripts/gaps-contacts-probes.test.ts` ("tags documents of every kind, reuses a tag by
-  name and removes one relation"). Live: the three probes above.
+  name and removes one relation"). The tools: `test/unit/tools/documents/tag-tool.test.ts`
+  ("previews a new tag as created by sevDesk and creates it with the factory", "reuses an existing
+  tag in another letter case with its own spelling", "refuses a name two tags share, since
+  sevDesk's pick is unknown, without naming it"), `test/unit/tools/documents/tags-list.test.ts`
+  ("pages the recorded tags with an explicit limit and counts uses per kind from the relations",
+  "says when the cap cut the counts short"). Live: the three probes above.
 
 ### D-089: `DELETE /TagRelation/{id}` removes a tag from a document, the last one the tag
 
@@ -3307,7 +3312,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   says in the preview when that removes the tag altogether; a rename must check for an existing
   name itself.
 - **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("tags documents of every kind, reuses
-  a tag by name and removes one relation"). Live: the two probes above.
+  a tag by name and removes one relation"); `test/unit/tools/documents/tag-tool.test.ts` ("removes
+  the document's relation and keeps the tag when others use it", "warns that removing the last use
+  deletes the tag (D-089)"). Live: the two probes above.
 
 ### D-090: Document lists filter by tag only with `tags[0][id]`; `tag[id]` is ignored
 
@@ -3323,7 +3330,11 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   `tags[0][objectName]`; an ignored filter would return every document, so the parameter names are
   pinned by tests and the rows are checked against the tag's relations where the tool can.
 - **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("tells honoured list filters from
-  ignored ones, with an untagged control"). Live: probe `write-tag-list-filters`.
+  ignored ones, with an untagged control"); `test/regressions/tag-filter-never-unfiltered.test.ts`
+  (per list tool: an unknown name is refused before any list request; `tags[0][id]` is sent and
+  rows the tag's relations do not name are dropped even when every row comes back);
+  `test/unit/tools/documents/tags-list.test.ts` ("keeps rows on sevDesk's word beyond 10,000 uses
+  and says so"). Live: probe `write-tag-list-filters`.
 
 ### D-091: Cost centres are managed through the undocumented `/CostCentre` endpoints
 

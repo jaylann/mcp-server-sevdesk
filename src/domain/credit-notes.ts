@@ -53,6 +53,7 @@ import {
 } from "./document-positions.js";
 import { BOOKING_CATEGORY_NAMES, CREDIT_NOTE_STATUS_FILTERS, keyForCode } from "./filter-keys.js";
 import { creditNoteLink } from "./links.js";
+import { carriesTag, tagFilterQuery, type TagListFilter } from "./tags.js";
 
 export { CREDIT_NOTE_STATUS_FILTERS } from "./filter-keys.js";
 
@@ -237,14 +238,17 @@ export interface CreditNoteListParams {
   readonly number?: string | undefined;
   readonly from?: string | undefined;
   readonly to?: string | undefined;
+  /** Only credit notes with this tag (`resolveTagFilter`), re-checked on every row. */
+  readonly tagFilter?: TagListFilter | undefined;
   readonly limit: number;
   readonly offset: number;
 }
 
 /**
  * Lists credit notes (`GET /CreditNote`) with sevDesk's filters `status`, `contact[id]`,
- * `creditNoteNumber` and `startDate`/`endDate` (Unix seconds, Berlin days). The number is
- * re-checked on every row (`matchesNumber`).
+ * `creditNoteNumber`, `startDate`/`endDate` (Unix seconds, Berlin days) and the tag. The number is
+ * re-checked on every row (`matchesNumber`), the date range and the tag without a scan
+ * (`documentDateFilter`, `carriesTag`).
  */
 export async function listCreditNotes(
   client: SevdeskClient,
@@ -252,7 +256,11 @@ export async function listCreditNotes(
   signal?: AbortSignal,
 ): Promise<DocumentListResult<CreditNoteRow>> {
   const dates = documentDateFilter(params);
-  const query: Record<string, QueryValue> = { embed: EMBED_CONTACT, ...dates.query };
+  const query: Record<string, QueryValue> = {
+    embed: EMBED_CONTACT,
+    ...dates.query,
+    ...tagFilterQuery(params.tagFilter),
+  };
   if (params.status !== undefined) query["status"] = CREDIT_NOTE_STATUS_FILTERS[params.status];
   if (params.contactId !== undefined) {
     query["contact[id]"] = toSevdeskId(params.contactId);
@@ -267,7 +275,7 @@ export async function listCreditNotes(
     offset: params.offset,
     map: (raw) => toCreditNoteRow(parseCreditNoteRecord(raw)),
     keep: matchesNumber(params.number),
-    recheck: (row) => dates.contains(row.date),
+    recheck: (row) => dates.contains(row.date) && carriesTag(params.tagFilter, row.id),
     signal,
   });
 }

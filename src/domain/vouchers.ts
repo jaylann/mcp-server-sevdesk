@@ -56,6 +56,7 @@ import { voucherLink } from "./links.js";
 import { compare, DEFAULT_CURRENCY } from "./money.js";
 import { type ChildRows, listChildRows, type PageState, type PageWindow } from "./paging.js";
 import { taxRuleById } from "./reference-data.js";
+import { carriesTag, tagFilterQuery, type TagListFilter } from "./tags.js";
 
 export { VOUCHER_STATUS_CODES, VOUCHER_TYPE_CODES } from "./filter-keys.js";
 
@@ -435,6 +436,8 @@ export interface VoucherListParams {
   readonly from?: string | undefined;
   readonly to?: string | undefined;
   readonly type?: VoucherTypeKey | undefined;
+  /** Only vouchers with this tag (`resolveTagFilter`), re-checked on every row. */
+  readonly tagFilter?: TagListFilter | undefined;
   readonly limit: number;
   readonly offset: number;
 }
@@ -458,7 +461,7 @@ export interface VoucherListResult {
  * The date range goes out as Unix seconds (`startDate`/`endDate`, starting one second before the
  * first day) and every voucher date is checked against it again, so the first day counts under
  * either reading of the spec (see `documentDateFilter`); that re-check only drops rows and keeps
- * sevDesk's paging.
+ * sevDesk's paging. So does the tag's (`carriesTag`).
  */
 export async function listVouchers(
   client: SevdeskClient,
@@ -467,7 +470,10 @@ export async function listVouchers(
 ): Promise<VoucherListResult> {
   const dates = documentDateFilter(params);
   const { type } = params;
-  const query: Record<string, QueryValue> = { ...dates.query };
+  const query: Record<string, QueryValue> = {
+    ...dates.query,
+    ...tagFilterQuery(params.tagFilter),
+  };
   if (params.status !== undefined) query["status"] = VOUCHER_STATUS_CODES[params.status];
   if (params.kind !== undefined) query["creditDebit"] = creditDebitForKind(params.kind);
   if (params.supplierId !== undefined) {
@@ -486,7 +492,7 @@ export async function listVouchers(
     offset: params.offset,
     map: (raw) => toVoucherDto(parseVoucherRecord(raw), raw),
     keep: type === undefined ? undefined : (item) => item.type === type,
-    recheck: (item) => dates.contains(item.date),
+    recheck: (item) => dates.contains(item.date) && carriesTag(params.tagFilter, item.id),
     signal,
   });
   return {

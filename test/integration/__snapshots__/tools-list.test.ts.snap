@@ -536,6 +536,15 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
       "description": "Effective receipt_guidance page size; null for unpaged kinds.",
     },
   },
+  "sevdesk_tags_list": {
+    "/properties/hasMore": {
+      "description": "More rows may follow: call again with offset = nextOffset. An empty page ends.",
+      "type": "boolean",
+    },
+    "/properties/limit": {
+      "type": "integer",
+    },
+  },
   "sevdesk_transaction_book": {
     "/properties/result/properties/bookings/items/properties/document/properties/status/properties/key": {
       "description": "Accepted status filter key; absent when no filter accepts this code.",
@@ -1805,6 +1814,12 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           ],
           "type": "string",
         },
+        "tag": {
+          "description": "Only documents with this tag (name, any case; see sevdesk_tags_list).",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
         "to": {
           "description": "Last day to include, YYYY-MM-DD (Berlin time).",
           "type": "string",
@@ -1814,6 +1829,63 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     },
     "name": "sevdesk_credit_notes_list",
     "title": "List sevDesk credit notes",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Tag a sevDesk document",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "description": "add or remove the tag.",
+          "enum": [
+            "add",
+            "remove",
+          ],
+          "type": "string",
+        },
+        "document": {
+          "description": "Document kind: invoice, credit_note, order or voucher.",
+          "enum": [
+            "invoice",
+            "credit_note",
+            "order",
+            "voucher",
+          ],
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Document id (not its number), e.g. from sevdesk_invoices_list.",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
+        "tag": {
+          "description": "The tag's name, e.g. 'Projekt Y'.",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "action",
+        "document",
+        "id",
+        "tag",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_document_tag",
+    "title": "Tag a sevDesk document",
   },
   {
     "annotations": {
@@ -2738,6 +2810,12 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           ],
           "type": "string",
         },
+        "tag": {
+          "description": "Only documents with this tag (name, any case; see sevdesk_tags_list).",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
         "to": {
           "description": "Last day to include, YYYY-MM-DD (Berlin time).",
           "type": "string",
@@ -3373,6 +3451,12 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
             "partially_invoiced",
             "invoiced",
           ],
+          "type": "string",
+        },
+        "tag": {
+          "description": "Only documents with this tag (name, any case; see sevdesk_tags_list).",
+          "maxLength": 255,
+          "minLength": 1,
           "type": "string",
         },
         "to": {
@@ -4017,6 +4101,37 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     },
     "name": "sevdesk_reference_lookup",
     "title": "Look up sevDesk ids and codes",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List sevDesk tags",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 50,
+          "description": "Page size, 1–100.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
+          "minimum": 0,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_tags_list",
+    "title": "List sevDesk tags",
   },
   {
     "annotations": {
@@ -4902,6 +5017,12 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "minLength": 1,
           "type": "string",
         },
+        "tag": {
+          "description": "Only documents with this tag (name, any case; see sevdesk_tags_list).",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
         "to": {
           "description": "Last day to include, YYYY-MM-DD (Berlin time).",
           "type": "string",
@@ -5765,6 +5886,12 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           ],
           "type": "string",
         },
+        "tag": {
+          "description": "Only documents with this tag (name, any case; see sevdesk_tags_list).",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
         "to": {
           "description": "Last day to include, YYYY-MM-DD (Berlin time).",
           "type": "string",
@@ -5774,6 +5901,63 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
     },
     "name": "sevdesk_credit_notes_list",
     "title": "List sevDesk credit notes",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Tag a sevDesk document",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "description": "add or remove the tag.",
+          "enum": [
+            "add",
+            "remove",
+          ],
+          "type": "string",
+        },
+        "document": {
+          "description": "Document kind: invoice, credit_note, order or voucher.",
+          "enum": [
+            "invoice",
+            "credit_note",
+            "order",
+            "voucher",
+          ],
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Document id (not its number), e.g. from sevdesk_invoices_list.",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
+        "tag": {
+          "description": "The tag's name, e.g. 'Projekt Y'.",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "action",
+        "document",
+        "id",
+        "tag",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_document_tag",
+    "title": "Tag a sevDesk document",
   },
   {
     "annotations": {
@@ -6422,6 +6606,12 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           ],
           "type": "string",
         },
+        "tag": {
+          "description": "Only documents with this tag (name, any case; see sevdesk_tags_list).",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
         "to": {
           "description": "Last day to include, YYYY-MM-DD (Berlin time).",
           "type": "string",
@@ -6948,6 +7138,12 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
             "partially_invoiced",
             "invoiced",
           ],
+          "type": "string",
+        },
+        "tag": {
+          "description": "Only documents with this tag (name, any case; see sevdesk_tags_list).",
+          "maxLength": 255,
+          "minLength": 1,
           "type": "string",
         },
         "to": {
@@ -7599,6 +7795,37 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
+      "title": "List sevDesk tags",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 50,
+          "description": "Page size, 1–100.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
+          "minimum": 0,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_tags_list",
+    "title": "List sevDesk tags",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
       "title": "Get a sevDesk bank transaction with its assignments",
     },
     "inputSchema": {
@@ -8146,6 +8373,12 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "minLength": 1,
           "type": "string",
         },
+        "tag": {
+          "description": "Only documents with this tag (name, any case; see sevdesk_tags_list).",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
         "to": {
           "description": "Last day to include, YYYY-MM-DD (Berlin time).",
           "type": "string",
@@ -8569,6 +8802,12 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           ],
           "type": "string",
         },
+        "tag": {
+          "description": "Only documents with this tag (name, any case; see sevdesk_tags_list).",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
         "to": {
           "description": "Last day to include, YYYY-MM-DD (Berlin time).",
           "type": "string",
@@ -8747,6 +8986,12 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           ],
           "type": "string",
         },
+        "tag": {
+          "description": "Only documents with this tag (name, any case; see sevdesk_tags_list).",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
         "to": {
           "description": "Last day to include, YYYY-MM-DD (Berlin time).",
           "type": "string",
@@ -8881,6 +9126,12 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
             "partially_invoiced",
             "invoiced",
           ],
+          "type": "string",
+        },
+        "tag": {
+          "description": "Only documents with this tag (name, any case; see sevdesk_tags_list).",
+          "maxLength": 255,
+          "minLength": 1,
           "type": "string",
         },
         "to": {
@@ -9330,6 +9581,37 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
+      "title": "List sevDesk tags",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 50,
+          "description": "Page size, 1–100.",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
+          "minimum": 0,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_tags_list",
+    "title": "List sevDesk tags",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
       "title": "Get a sevDesk bank transaction with its assignments",
     },
     "inputSchema": {
@@ -9585,6 +9867,12 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
         "supplierName": {
           "description": "Part of the supplier name, for vouchers without a contact too.",
           "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "tag": {
+          "description": "Only documents with this tag (name, any case; see sevdesk_tags_list).",
+          "maxLength": 255,
           "minLength": 1,
           "type": "string",
         },

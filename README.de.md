@@ -71,8 +71,8 @@ freischalten, zuerst im Probelauf, und das Token sicher aufbewahren.
 
 ## Was er kann
 
-75 Werkzeuge in 10 Werkzeuggruppen. Die 38 Lesewerkzeuge füllen die erste Spalte; mit den
-Schreibstufen kommen 37 weitere Werkzeuge hinzu, die Daten anlegen und ändern.
+77 Werkzeuge in 10 Werkzeuggruppen. Die 39 Lesewerkzeuge füllen die erste Spalte; mit den
+Schreibstufen kommen 38 weitere Werkzeuge hinzu, die Daten anlegen und ändern.
 
 | Bereich                                | Lesen                                                                                                                                                                                                                                        | Schreiben (`write`, `commit`, `external`)                                                                                                                                                                                                                    |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -83,6 +83,11 @@ Schreibstufen kommen 37 weitere Werkzeuge hinzu, die Daten anlegen und ändern.
 | **Auswertungen**                       | Zusammenfassungen, Altersstruktur offener Forderungen und Verbindlichkeiten, Liquidität, Änderungen seit einem Datum, eine **Umsatzsteuer-Auswertung** (UStVA-Kennzahlen, ZM, OSS) und eine **Gewinn- und Verlustrechnung nach Art der EÜR** | Der **DATEV-Export** (Buchungsstapel als ZIP, schreibt nie fest)                                                                                                                                                                                             |
 | **Kontakte und Artikel**               | Suchen und abrufen, Artikel mit ihrem Lagerbestand                                                                                                                                                                                           | Anlegen und ändern, auch `stock` und `stockEnabled` eines Artikels                                                                                                                                                                                           |
 | **Advanced** (standardmäßig aus)       | `sevdesk_api_get`: ein reines Lese-GET auf jeden sevDesk-Endpunkt, den kein anderes Werkzeug abdeckt, etwa Textvorlagen. Es lehnt alles ab, was Daten ändern, Dateien liefern oder Hintergrundaufgaben starten könnte                        |                                                                                                                                                                                                                                                              |
+
+Rechnungen, Gutschriften, Aufträge und Belege können Tags tragen (Projekte, Kunden, Filialen):
+`sevdesk_tags_list` zeigt jeden Tag mit seinen Verwendungen, die vier Listenwerkzeuge filtern nach
+Tag, und `sevdesk_document_tag` (Stufe `write`) fügt einem Dokument einen Tag hinzu oder entfernt
+ihn.
 
 Die Umsatzsteuer-Auswertung ist deutlich als Schätzung gekennzeichnet (Soll- oder
 Istversteuerung). Jedes Schreibwerkzeug akzeptiert `dryRun: true` und gibt dann nur genau das

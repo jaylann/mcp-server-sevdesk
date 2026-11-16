@@ -161,6 +161,17 @@ Ja. `sevdesk_part_get` meldet den aktuellen Bestand, wenn die Bestandsführung a
 `sevdesk_part_create` und `sevdesk_part_update` setzen sie. Die sevDesk-API hat keine weiteren
 Endpunkte für den Lagerbestand.
 
+### Kann es Dokumente nach Projekt oder Kunde gruppieren (Tags)?
+
+Ja, mit den Tags von sevDesk. `sevdesk_tags_list` listet die Tags und wie viele Rechnungen,
+Gutschriften, Aufträge und Belege jeden tragen. `sevdesk_invoices_list`,
+`sevdesk_credit_notes_list`, `sevdesk_orders_list` und `sevdesk_vouchers_list` nehmen einen
+`tag`-Namen und zeigen nur die Dokumente mit diesem Tag; ein unbekannter Name wird abgelehnt,
+statt alles aufzulisten. `sevdesk_document_tag` (Stufe `write`) fügt einem Dokument einen Tag
+hinzu oder entfernt ihn, ein Dokument pro Aufruf. Tags haben einen Namen, keine Nummer: Ein Name,
+den sevDesk noch nicht kennt, legt den Tag an, und wer einen Tag von seinem letzten Dokument
+entfernt, löscht ihn in sevDesk; die Vorschau sagt beides.
+
 ## Hilfe
 
 ### Wo bekomme ich Hilfe?

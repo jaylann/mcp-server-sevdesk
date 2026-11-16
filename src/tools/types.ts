@@ -98,6 +98,13 @@ export const ACCOUNT_CONTACT_NUMBERS: SevdeskObjectRef = {
 export const ACCOUNT_PART_NUMBERS: SevdeskObjectRef = { objectName: "PartNumbers", id: "account" };
 
 /**
+ * A lock key for an account's tags: tagging checks whether a name is new and untagging whether it
+ * removes a tag's last use (which deletes the tag), then writes. Two such calls at once would
+ * each preview what the other changes.
+ */
+export const ACCOUNT_TAGS: SevdeskObjectRef = { objectName: "Tags", id: "account" };
+
+/**
  * A lock key for creating voucher drafts in an account: a new voucher is refused when one with
  * the same supplier, number, date and gross exists already, then it is created. Two identical
  * creations at once both passed that check and left two drafts (review 2026-11, round 3).

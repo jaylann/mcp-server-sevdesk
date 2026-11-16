@@ -1,0 +1,21 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "POST /Tag/Factory/create (probe write-tag-create-on-documents, recording session 2026-11-16)",
+    "date": "2026-11-16",
+    "systemVersion": "2.0",
+    "note": "Keys, nesting and scalar types as recorded: objects is one TagRelation object, not an array. Ids replaced: relation 8101, tag 7001, invoice 1001."
+  },
+  "status": 200,
+  "body": {
+    "objects": {
+      "id": "8101",
+      "objectName": "TagRelation",
+      "additionalInformation": null,
+      "create": "2026-11-16T21:40:45+01:00",
+      "tag": { "id": "7001", "objectName": "Tag" },
+      "object": { "id": "1001", "objectName": "Invoice" },
+      "sevClient": { "id": "9001", "objectName": "SevClient" }
+    }
+  }
+}
