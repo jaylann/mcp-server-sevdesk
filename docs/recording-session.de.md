@@ -30,8 +30,13 @@ drei Werkzeugen. Diese Seite ist das Runbook des Maintainers dafür.
   Grenze). Sie schalten die Stufen `write` und `commit` frei. Die Stufe `external` (E-Mail) wird
   nur freigeschaltet, wenn du eine eigene Adresse übergibst (`pnpm probe --probe-email`,
   `SEVDESK_LIVE_EMAIL_TO` für `test:live`), und dann geht genau eine E-Mail an diese Adresse, nie an
-  einen Kontakt. Nichts wird festgeschrieben. Der einzige Export ist der DATEV-CSV-Job der M4-Probe
-  und des M4-Szenarios (er startet einen Job; nie mit `enshrineDocuments`).
+  einen Kontakt. Nichts wird festgeschrieben, mit einer Ausnahme: Die Opt-in-Probe
+  `write-transaction-enshrine` schreibt einen markierten Kontoumsatz fest, den sie selbst angelegt
+  hat (unumkehrbar, nur auf dem Testkonto). Exporte: der DATEV-CSV-Job der M4-Probe und des
+  M4-Szenarios (er startet einen Job; nie mit `enshrineDocuments`), die Rechnungs- und Beleg-ZIPs
+  der Lückenproben (sie ändern kein Dokument, D-101) und der DATEV-XML-Job der Opt-in-Probe
+  `write-export-datev-xml`. Die Opt-in-Probe `write-voucher-from-file` schickt einen erzeugten Beleg
+  an `createVoucherFromFile`; der Entwurfsbeleg, den das anlegt, bleibt auf dem Konto.
 - Alles Geschriebene trägt einen Lauf-Tag wie `MCP-E2E 20261120-1432-k3f9` im Namen und steht in
   einer Aufräumliste (am Ende des Probe-Berichts, am Ende des `test:live`-Logs).
 - Aufzeichnungen und Berichte werden bereinigt (`scripts/lib/scrub.ts`): Namen, E-Mail-Adressen,
@@ -160,7 +165,10 @@ Hinweise:
 Die M4-Proben und das M4-Lebenszyklus-Szenario decken Belege, Kontoumsätze, den DATEV-Export und
 E-Rechnungen ab. Sie brauchen vorher Firmendaten und eine DATEV-Konfiguration; Vorbereitung,
 Läufe, was sie anlegen und was du committest, stehen auf einer eigenen Seite:
-[M4-Läufe](recording-session/m4.de.md).
+[M4-Läufe](recording-session/m4.de.md). Die Lückenproben vom 2026-11-16 (Kassen und
+Verrechnungskonten, Kontoumsätze löschen und festschreiben, Regeln für private Umsätze, Hashes von
+Belegdateien, ZIP-Exporte, der DATEV-XML-Job, die Belegerkennung) laufen von derselben Seite aus:
+[Lückenproben](recording-session/m4.de.md#lückenproben-banking-exporte-belegerkennung).
 
 ## 3b. M5: Prüfung des Fernzugriffs (etwa 60 bis 90 Minuten)
 

@@ -138,6 +138,15 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 | [D-090](#d-090-document-lists-filter-by-tag-only-with-tags0id-tagid-is-ignored)                    | Document lists filter by tag only with `tags[0][id]`; `tag[id]` is ignored             | Open                  |
 | [D-091](#d-091-cost-centres-are-managed-through-the-undocumented-costcentre-endpoints)             | Cost centres are managed through the undocumented `/CostCentre` endpoints              | Open                  |
 | [D-092](#d-092-saveorder-drops-costcentre-invoices-vouchers-and-credit-notes-keep-it)              | `saveOrder` drops `costCentre`; invoices, vouchers and credit notes keep it            | Open                  |
+| [D-095](#d-095-on-a-cash-register-resettoopen-books-a-counter-entry-instead-of-deleting)           | On a cash register `resetToOpen` books a counter-entry instead of deleting             | Open                  |
+| [D-096](#d-096-deleting-a-transaction-is-a-soft-delete-and-works-only-at-status-100)               | Deleting a transaction is a soft delete and works only at status 100                   | Open                  |
+| [D-097](#d-097-check-accounts-come-only-from-two-factories-and-delete-archives-them)               | Check accounts come only from two factories, and `DELETE` archives them                | Open                  |
+| [D-098](#d-098-an-enshrined-transaction-locks-itself-and-the-payment-it-books)                     | An enshrined transaction locks itself and the payment it books                         | Open                  |
+| [D-099](#d-099-private-transaction-rules-did-not-mark-hand-made-transactions)                      | Private-transaction rules did not mark hand-made transactions                          | Open                  |
+| [D-100](#d-100-a-receipts-contenthash-is-the-sha-256-of-the-file-rendered-pdfs-have-none)          | A receipt's `contentHash` is the SHA-256 of the file; rendered PDFs have none          | Open                  |
+| [D-101](#d-101-the-zip-exports-answer-files-only-with-downloadtrue-and-change-no-document)         | The ZIP exports answer files only with `download=true` and change no document          | Open                  |
+| [D-102](#d-102-the-datev-xml-job-works-like-the-csv-job-and-marks-nothing-as-exported)             | The DATEV XML job works like the CSV job and marks nothing as exported                 | Open                  |
+| [D-103](#d-103-createvoucherfromfile-makes-a-draft-that-sevdesk-fills-in-within-seconds)           | `createVoucherFromFile` makes a draft that sevDesk fills in within seconds             | Open                  |
 | [D-107](#d-107-order-factories-copy-the-order-a-confirmation-marks-the-offer-accepted)             | Order factories copy the order; a confirmation marks the offer accepted                | Open                  |
 | [D-108](#d-108-put-orderid-sets-an-offers-status-on-a-draft-it-also-renumbered-it)                 | `PUT /Order/{id}` sets an offer's status; on a draft it also renumbered it             | Open                  |
 | [D-109](#d-109-delete-order-and-delete-creditnote-delete-only-drafts)                              | `DELETE /Order` and `DELETE /CreditNote` delete only drafts                            | Open                  |
@@ -516,10 +525,14 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   was not probed. The `sevQuery[filter][startDate|endDate]` date filters take **Unix seconds**
   although the spec says date-time: filtered to one day, `invoiceCsv` returned exactly that day's
   7 of 88 invoices with Unix seconds, and 0 rows with ISO date-time or `dd.mm.yyyy`. The DATEV
-  export is a job with a download link instead (D-077).
+  export is a job with a download link instead (D-077, D-102). The ZIP exports `invoiceZip` and
+  `voucherZip` behave alike with `download=true` (a raw ZIP; its media type
+  `application/zip; charset=UTF-8'` has a stray apostrophe), but their JSON form answers
+  `content: null`, never the file (recorded 2026-11-16, D-101).
 - **Sources:** spec; [peerigon/sevdesk README](https://github.com/peerigon/sevdesk#readme);
   recorded 2026-11-08, trial account, Update 2.0 (probes `read-export-csv`, two runs, and
-  `read-export-csv-date-filter`).
+  `read-export-csv-date-filter`); recorded 2026-11-16, trial account, Update 2.0 (probes
+  `write-export-invoice-zip`, `write-export-voucher-zip`).
 - **Impact:** `client.download` (`src/sevdesk/client.ts`) returns the raw body with its
   `Content-Type` instead of parsing JSON, so the caller decides by the type, not by the endpoint.
   `sevdesk_csv_export` (`exportCsv` in `src/domain/exports/csv.ts`) asks for `download=true`,
@@ -813,7 +826,14 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   `/Export/createDatevCsvZipExportJob` is refused with 500 "Function createDatevCsvZipExportJob
   was called with wrong HTTP Type", and the job starts with a POST carrying the same query (D-077).
   Started without `enshrineDocuments`, it left an invoice and a voucher of the exported period
-  unchanged. The XML job and the deprecated `/Export/datevCSV` were not probed.
+  unchanged. The XML job (POST as well; it has no enshrine flag) changed no invoice and no
+  voucher of the account either (recorded 2026-11-16, D-102). The deprecated `/Export/datevCSV`
+  was not probed.
+
+  The ZIP exports `GET /Export/invoiceZip` and `/Export/voucherZip` render every document they
+  export, drafts included, but changed nothing: a draft invoice kept its status, `sendDate`,
+  `sendType` and `update`, and no invoice or voucher of the account changed any key (recorded
+  2026-11-16, D-101). They are not like `getPdf` without `preventSendBy`.
 
 - **Sources:** spec; [joosthel/sevdesk-mcp v0.5.0](https://github.com/joosthel/sevdesk-mcp/releases/tag/v0.5.0)
   changelog; [jernoxit/sevdesk-rs](https://github.com/jernoxit/sevdesk-rs) (README and
@@ -822,7 +842,8 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   recorded 2026-11-07, trial account, Update 2.0 (probes `write-getpdf-preview-drafts`,
   `read-getpdf-preview-finalized`, `read-getpdf-download`; `enshrined` in the recorded invoice and
   credit note lists); recorded 2026-11-08 (probe `write-export-datev-csv`, first write run and the
-  DATEV run).
+  DATEV run); recorded 2026-11-16, trial account, Update 2.0 (probes `write-export-invoice-zip`,
+  `write-export-voucher-zip`, `write-export-datev-xml`).
 - **Impact:** The client recognizes these endpoints by path (`resolveGetSafety` in
   `src/sevdesk/paths.ts`), not only through the caller's `sideEffect` flag. A `getPdf` that is not
   declared a side effect always goes out with the literal `preventSendBy=true`, the form both
@@ -887,27 +908,27 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   sessions read or measured the endpoint on a trial account (2026-11-07, -08 or -10); "known"
   means community SDKs use it routinely; "uncertain" means we found only isolated uses.
 
-  | Endpoint                                                                               | Used for                                                                                                           | Standing  |
-  | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | --------- |
-  | `GET /SevUser`                                                                         | `contactPerson`, required on invoices, orders and credit notes                                                     | recorded  |
-  | `GET /StaticCountry`                                                                   | country ids for addresses                                                                                          | recorded  |
-  | `GET /PaymentMethod`                                                                   | payment method ids                                                                                                 | recorded  |
-  | `GET /Unity`                                                                           | units for positions                                                                                                | recorded  |
-  | `GET /AccountDatev`                                                                    | booking accounts (Update 2.0): names and kinds for previews (D-079)                                                | recorded  |
-  | `GET /Category`                                                                        | categories                                                                                                         | recorded  |
-  | `GET /TaxRule`                                                                         | tax rule ids and codes (D-006)                                                                                     | recorded  |
-  | `GET /SevClient`                                                                       | the account's taxation regime, chart of accounts, company data and DATEV settings (D-067)                          | recorded  |
-  | `GET /Order/Factory/getNextOrderNumber`, `/CreditNote/Factory/getNextCreditNoteNumber` | the next order and credit note numbers (D-066)                                                                     | recorded  |
-  | `GET /CheckAccountTransactionLog`                                                      | what a bank transaction was booked against, and how much (D-057)                                                   | recorded  |
-  | `DELETE /Invoice/{invoiceId}`                                                          | deleting a draft invoice (no tool uses it)                                                                         | recorded  |
-  | `DELETE /Voucher/{voucherId}`                                                          | deleting draft vouchers (the spec has only GET and PUT; D-074)                                                     | recorded  |
-  | `GET`, `POST /CostCentre`, `GET`, `DELETE /CostCentre/{costCentreId}`                  | cost centres of documents (D-091)                                                                                  | recorded  |
-  | `DELETE /TagRelation/{tagRelationId}`                                                  | removing one tag from one document (D-089)                                                                         | recorded  |
-  | `GET /TextTemplate`                                                                    | head and foot texts (read through `sevdesk_api_get`)                                                               | recorded  |
-  | `GET /PartUnity`                                                                       | alternative units of parts, with their own price and factor (`sevdesk_api_get`)                                    | known     |
-  | `GET /Document`, document download                                                     | attached documents and receipts (metadata through `sevdesk_api_get`, files through `sevdesk_voucher_receipt_save`) | recorded  |
-  | `GET /SevSequence/Factory/getByType`                                                   | next document number (see D-027); `sevdesk_api_get` refuses it                                                     | known     |
-  | `POST /Voucher/Factory/createVoucherFromFile`                                          | voucher from an uploaded file (no tool uses it)                                                                    | uncertain |
+  | Endpoint                                                                               | Used for                                                                                                           | Standing |
+  | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | -------- |
+  | `GET /SevUser`                                                                         | `contactPerson`, required on invoices, orders and credit notes                                                     | recorded |
+  | `GET /StaticCountry`                                                                   | country ids for addresses                                                                                          | recorded |
+  | `GET /PaymentMethod`                                                                   | payment method ids                                                                                                 | recorded |
+  | `GET /Unity`                                                                           | units for positions                                                                                                | recorded |
+  | `GET /AccountDatev`                                                                    | booking accounts (Update 2.0): names and kinds for previews (D-079)                                                | recorded |
+  | `GET /Category`                                                                        | categories                                                                                                         | recorded |
+  | `GET /TaxRule`                                                                         | tax rule ids and codes (D-006)                                                                                     | recorded |
+  | `GET /SevClient`                                                                       | the account's taxation regime, chart of accounts, company data and DATEV settings (D-067)                          | recorded |
+  | `GET /Order/Factory/getNextOrderNumber`, `/CreditNote/Factory/getNextCreditNoteNumber` | the next order and credit note numbers (D-066)                                                                     | recorded |
+  | `GET /CheckAccountTransactionLog`                                                      | what a bank transaction was booked against, and how much (D-057)                                                   | recorded |
+  | `DELETE /Invoice/{invoiceId}`                                                          | deleting a draft invoice (no tool uses it)                                                                         | recorded |
+  | `DELETE /Voucher/{voucherId}`                                                          | deleting draft vouchers (the spec has only GET and PUT; D-074)                                                     | recorded |
+  | `GET`, `POST /CostCentre`, `GET`, `DELETE /CostCentre/{costCentreId}`                  | cost centres of documents (D-091)                                                                                  | recorded |
+  | `DELETE /TagRelation/{tagRelationId}`                                                  | removing one tag from one document (D-089)                                                                         | recorded |
+  | `GET /TextTemplate`                                                                    | head and foot texts (read through `sevdesk_api_get`)                                                               | recorded |
+  | `GET /PartUnity`                                                                       | alternative units of parts, with their own price and factor (`sevdesk_api_get`)                                    | known    |
+  | `GET /Document`, document download                                                     | attached documents and receipts (metadata through `sevdesk_api_get`, files through `sevdesk_voucher_receipt_save`) | recorded |
+  | `GET /SevSequence/Factory/getByType`                                                   | next document number (see D-027); `sevdesk_api_get` refuses it                                                     | known    |
+  | `POST /Voucher/Factory/createVoucherFromFile`                                          | voucher draft from a file, filled in by sevDesk's recognition (D-103; no tool uses it)                             | recorded |
 
   Recorded shapes: `GET /AccountDatev` rows have 28 keys (`number`, `name`, `accountDatevCategory`,
   `accountCategory`, …), scalars as strings, and GET by id answers one row; the list ignores every
@@ -927,6 +948,13 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   `GET /Document/{documentId}/download` answers the `getPdf` envelope (`filename` a hash such as
   `a9e6….pdf`, `mimetype: null`, `base64Encoded: true`, `content`); the uploaded 1,503-byte PDF came
   back byte for byte. `/Document/{id}/getContent` and `/Voucher/{id}/getDocument` answer 404.
+
+  Recorded 2026-11-16 (probes `write-voucher-from-file`, `write-receipt-hash`,
+  `read-document-hash`): `createVoucherFromFile` takes a multipart body (`creditDebit`, file part
+  `voucher`) and answers a draft voucher that sevDesk's recognition fills in seconds later
+  (D-103). A Document's `contentHash` is the SHA-256 of the uploaded receipt, and null for PDFs
+  sevDesk renders; the receipt of a draft voucher is readable by id but not listed by
+  `GET /Document`, and goes when the draft is deleted (D-100).
 
   Community model (j-mastr/sevdesk-api, not recorded by us): `GET /TextTemplate` rows carry
   `name`, `text`, `category` (`DOCUMENT`, `LETTER`, `MAIL`), `objectType` (`RE`, `AN`, `AB`, `LI`,
@@ -956,11 +984,13 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   `write-voucher-delete`); recorded 2026-11-10, trial account, Update 2.0 (probes
   `read-text-template`, `read-part-unity`, `read-document`; `pnpm fixtures:record`); recorded
   2026-11-16, trial account, Update 2.0 (probes `read-cost-centre-list`, `write-cost-centre-create`,
-  `write-cost-centre-delete`, `write-tag-relation-remove`).
+  `write-cost-centre-delete`, `write-tag-relation-remove`, `write-voucher-from-file`,
+  `write-receipt-hash`, `read-document-hash`).
 - **Impact:** Each undocumented endpoint gets a hand-written schema, a smoke test, and lives in
   the `advanced` toolset or behind a lookup until a recording confirms its shape. `uncertain`
   endpoints are not used by default tools: receipts go through `uploadTempFile` and `saveVoucher`
-  (D-011, D-026), never `createVoucherFromFile`. `GET /TextTemplate`, `/PartUnity` and `/Document`
+  (D-011, D-026); `createVoucherFromFile` is recorded now, but no tool uses it until #96 does
+  (D-103). `GET /TextTemplate`, `/PartUnity` and `/Document`
   have no curated tool; the generic read `sevdesk_api_get` (advanced toolset, off by default)
   reads them without a schema of its own: it returns the raw `objects` sanitized as untrusted
   text, drops binary fields and `sevClient` echoes, and always sends `limit`, `offset` and
@@ -2210,13 +2240,21 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
     `resetToOpen` every linked transaction was back at 100. The account's unfiltered log had 24
     entries after the second write run and again after the split run, which booked four entries
     and reset all four invoices; that fits sevdesk-rs's finding that the entries are deleted.
+  - Recorded with an enshrined payment transaction (2026-11-16, D-098): `resetToOpen` on the
+    voucher it paid is refused with **400** "Already enshrined by transaction" (not 422 code 322
+    as sevdesk-rs measured for invoices); the voucher stays paid.
+  - Recorded on a cash register (2026-11-16, D-095): `resetToOpen` on a voucher paid there
+    without a transaction keeps the transaction sevDesk created and books a counter-entry dated
+    at the reset, instead of deleting it as on offline accounts.
 - **Sources:** [jernoxit/sevdesk-rs](https://github.com/jernoxit/sevdesk-rs) (README,
   `src/endpoints/invoice.rs`, `src/endpoints/transaction.rs`; measured, not recorded);
   [firsttris/haben `docs/sevdesk.md`](https://github.com/firsttris/haben/blob/main/docs/sevdesk.md)
   ("Aufgehobene Zuordnungen"); recorded 2026-11-07, trial account, Update 2.0 (probe
   `write-offline-booking-transaction`; the invoice in
   `test/fixtures/recorded/2026-11-07/invoices/invoices-list.json`); recorded 2026-11-08 (probes
-  `write-voucher-reset`, `write-transaction-split-variants`, `read-transaction-log`).
+  `write-voucher-reset`, `write-transaction-split-variants`, `read-transaction-log`); recorded
+  2026-11-16, trial account, Update 2.0 (probes `write-transaction-enshrine`,
+  `write-cash-register-transaction`).
 - **Impact:** `assertResettable` (`src/domain/lifecycle/transitions.ts`): to open, it accepts paid
   and partially paid documents and open ones that still show payments, and refuses drafts,
   cancelled originals (1000 with `paidAmount` 0, D-037), cancellation invoices and recurring
@@ -2650,24 +2688,31 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   creates a booked `CheckAccountTransaction` itself: the booked amount, status 400, value and
   entry date on the booking day (D-056), the contact as counterparty. `resetToOpen` on the invoice
   deletes that transaction again (it is gone from the account), unlike a linked bank transaction,
-  which only returns to status 100 (D-060). Cash registers (type `register`) are assumed to
-  behave the same but were not measured. Recorded for vouchers (2026-11-08): every booking on the
+  which only returns to status 100 (D-060). Cash registers (type `register`) create the
+  transaction the same way, but `resetToOpen` does **not** delete it there: it books a
+  counter-entry (recorded 2026-11-16, D-095). Recorded for vouchers (2026-11-08): every booking on the
   offline account without a transaction created one with the signed amount (−10, −119) at
   status 400, and `resetToOpen` deleted it. A transaction cannot be made by hand on such an
   account: `POST /CheckAccountTransaction` on the offline account is refused with 422 "You can
   only create transactions on online checkaccounts. Use document bookAmount to create
   transactions on other types." On a file-import account (created with
   `POST /CheckAccount/Factory/fileImportAccount`: type `online`, import type CSV) it creates the
-  transaction at status 100.
+  transaction at status 100. Cash registers and clearing accounts refuse the POST with the same
+  422 (recorded 2026-11-16, D-095, D-097).
 - **Sources:** spec (`bookInvoice`, `bookVoucher`, `invoiceResetToOpen`, `createTransaction`);
   recorded 2026-11-07, trial account, Update 2.0 (probes `write-offline-booking-transaction`,
   `write-book-amount-noon-date`; `test/fixtures/recorded/2026-11-07/banking/transactions-list.json`,
   transactions created this way); recorded 2026-11-08 (probes `write-voucher-book-amount`,
-  `write-voucher-reset`, `write-transaction-create`, in both write runs).
+  `write-voucher-reset`, `write-transaction-create`, in both write runs); recorded 2026-11-16,
+  trial account, Update 2.0 (probes `write-cash-register-transaction`,
+  `write-check-account-factories`).
 - **Impact:** The payment preview says that sevDesk creates a new transaction on offline and cash
   accounts (`src/domain/lifecycle/payments.ts`). The reset preview says that such transactions on
-  offline accounts are deleted and asks to check cash registers, which were not measured (D-060;
-  fix in this PR); `sevdesk_transaction_reset` names such a transaction as deleted. No tool
+  offline accounts are deleted and asks to check cash registers (D-060). For cash registers that
+  is now known to be wrong: sevDesk keeps the transaction and books a counter-entry (D-095); the
+  preview and `transaction-status.ts`, which today say "deleted" for offline and cash accounts
+  alike, still have to change (open for the #88 slice). `sevdesk_transaction_reset` names such a
+  transaction as deleted. No tool
   creates transactions: bank reconciliation works on imported (online) accounts, and
   `sevdesk_reconcile_suggest` says that offline and cash accounts get their transactions from
   bookings.
@@ -2679,7 +2724,8 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   the reset"). The 422 needs no test: no tool sends `POST /CheckAccountTransaction`; the live M4
   scenario creates its transaction on a file-import account (`test/live/lifecycle.test.ts`).
   Live: probes `write-offline-booking-transaction`, `write-voucher-reset`,
-  `write-transaction-create`. Cash registers: pending (no probe).
+  `write-transaction-create`, `write-cash-register-transaction` (cash registers; the simulated
+  register in `test/unit/scripts/gaps-banking-probes.test.ts` replays its answers).
 
 ### D-072: `getPdf` answers `mimetype` and `base64Encoded`, not the spec's casing
 
@@ -2870,11 +2916,15 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
     with `EXTF_Buchungsstapel_….csv` and `EXTF_GP_Stamm_….csv`.
   - An invoice and a voucher of the exported period read back unchanged (no visible "exported"
     mark).
+  - The XML job (`createDatevXmlZipExportJob`, recorded 2026-11-16) starts with the same POST and
+    answers the same job id, progress and download info with the same S3 host; its file is
+    `BITTE-ENTPACKEN_Belegbilder_…zip` holding two inner `DATEV_…zip` files (D-102).
 - **Sources:** spec (`exportDatevCSV`, `generateDownloadHash`, `getProgress`, `jobDownloadInfo`,
   `Export_Progress_Data`, `Export_Job_Download_Info`, `updateExportConfig`); recorded 2026-11-08,
   trial account, Update 2.0 (probe `write-export-datev-csv`: the GET in the first write run, the
   missing configuration in the second, the whole job in the opt-in DATEV run after
-  `write-export-datev-config`).
+  `write-export-datev-config`); recorded 2026-11-16, trial account, Update 2.0 (probe
+  `write-export-datev-xml`, opt-in).
 - **Impact:** `sevdesk_datev_export` (`src/tools/reports/export-tools.ts`, a write tool) reads the
   DATEV settings first and refuses with guidance when one is missing (`readDatevExportConfig`),
   starts the job with a POST whose query comes from a fixed key list without `enshrineDocuments`
@@ -3325,6 +3375,290 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("checks costCentre on create and on
   updates with the id, per document kind", "tells honoured list filters from ignored ones, with an
   untagged control"). Live: the two probes above.
+
+### D-095: On a cash register `resetToOpen` books a counter-entry instead of deleting
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `POST /CheckAccountTransaction` "should only be used with check account type
+  online"; `bookAmount` creates a transaction by itself on other account types; `resetToOpen`
+  says "Linked transactions will be unlinked" (D-060, D-071). Cash registers (type `register`)
+  are not mentioned anywhere.
+- **Actual behavior:** On the trial's cash register (Kasse), `POST /CheckAccountTransaction` is
+  refused with 422 "You can only create transactions on online checkaccounts. Use document
+  bookAmount to create transactions on other types.", like on offline and clearing accounts
+  (D-071, D-097). A cash sale and a cash expense work through `bookAmount` without a transaction
+  on a voucher: a revenue voucher booked `+23.8` and an expense voucher booked `-11.9`
+  (`FULL_PAYMENT`, date 12:00 Berlin) each created a register transaction with that signed
+  amount, status 400, value and entry date at 12:00 of the booking day, a counterparty and a
+  purpose; the vouchers went to status 1000 and `getBalanceAtDate` went from `"500"` to
+  `"511.9"`. `resetToOpen` on the vouchers set them back to 100 with `paidAmount` 0, but **did
+  not delete** the register transactions, as it does on offline accounts (D-071): it booked a
+  counter-entry for each, status 400, the negated amount (`-23.8`, `11.9`), value and entry date
+  at the moment of the reset (not the booking day), and `payeePayerName` null. The balance went
+  back to `"500"`; the register keeps four rows. The register's opening entry made in the web
+  app carried an `enshrined` timestamp.
+- **Sources:** spec (`createTransaction`, `bookVoucher`, `voucherResetToOpen`); recorded
+  2026-11-16, trial account, Update 2.0 (probe `write-cash-register-transaction`).
+- **Impact:** A cash sale or expense is recorded through `bookAmount` on a document, never with
+  `POST /CheckAccountTransaction` (the tools of #88 must refuse cash registers before sending).
+  Undoing a cash payment leaves two rows in the cash book: previews of a reset on a register must
+  say that sevDesk books a counter-entry dated today, not that the row disappears. Today's reset
+  preview (D-060, D-071) still asks the user to check cash registers; it can state this once a
+  tool of #88 changes it.
+- **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("answers the banking questions as
+  recorded…": the simulated register books the recorded counter-entries and the balance returns
+  to 500). Handling: pending, the cash tools of #88.
+
+### D-096: Deleting a transaction is a soft delete and works only at status 100
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `DELETE /CheckAccountTransaction/{checkAccountTransactionId}` "Deletes a check
+  account transaction" and answers `{objects: [null]}`; 409 is declared without a reason. The
+  response model has no `deletedAt`.
+- **Actual behavior:** On a file-import account, DELETE of an unbooked row (status 100) answers
+  2xx `{objects: [null]}`, but the row is not gone: `GET /CheckAccountTransaction/{id}` still
+  answers it, unchanged, with `deletedAt` set to the time of the delete (and `restoredAt` null).
+  A second DELETE of the same row answers 2xx again. Rows at any other status are refused with
+  409 "CheckAccountTransaction can only be deleted in status 100 but is status 300" (private) or
+  "… 400" (booked). A booked row can be deleted after `resetToOpen` on the document it paid has
+  set it back to 100 (D-060). Every transaction carries `deletedAt` and `restoredAt` (null
+  unless deleted), keys the spec does not declare. Lists and balances leave soft-deleted rows
+  out: after the run, the unfiltered `GET /CheckAccountTransaction` (53 rows, total 53) held no
+  row with `deletedAt`, and on all seven active accounts `getBalanceAtDate` equalled the sum of
+  the listed rows. A soft-deleted row stays readable only by id.
+- **Sources:** spec (`deleteCheckAccountTransaction`); recorded 2026-11-16, trial account,
+  Update 2.0 (probes `write-transaction-delete`, `write-check-account-factories`,
+  `read-transaction-soft-delete`).
+- **Impact:** A delete tool (#88) must treat 2xx plus `deletedAt` as deleted, never a 404 or a
+  missing row; it must refuse rows that are not at status 100 (and name the reset or "back to
+  unbooked" step for private rows), and a read by id must not mistake a row with `deletedAt` for
+  a live one. Lists and balances need no filtering of their own: sevDesk already leaves the rows
+  out.
+- **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("answers the banking questions as
+  recorded…": the soft delete, the 409 texts, the cleanup of private and booked rows). Handling:
+  pending, the delete tool of #88. Live: probes `write-transaction-delete`,
+  `read-transaction-soft-delete`.
+
+### D-097: Check accounts come only from two factories, and `DELETE` archives them
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** Accounts are created with `POST /CheckAccount/Factory/fileImportAccount` or
+  `/clearingAccount` (`accountingNumber` optional for the first, "ask your tax consultant" for
+  the second); there is no way to create a cash register. `DELETE /CheckAccount/{checkAccountId}`
+  "Deletes a check account". The response model declares `autoMapTransactions`.
+- **Actual behavior:**
+  - `POST /CheckAccount/Factory/clearingAccount {name}` without `accountingNumber` creates an
+    account of type `offline`, `importType` null, with the next free number of the 18xx range
+    (`"1803"` after 1800–1802), and answers it in `objects` with the whole `sevClient` embedded.
+    It takes no hand-made transaction (422 as in D-095).
+  - `POST /CheckAccount` (a cash register, type `register`) is refused with 400 "Use the factory
+    endpoint fileImportAccount or clearingAccount to create new CheckAccounts": registers are
+    made in the web app only.
+  - `PUT /CheckAccount/{id} {name}` answers the account in `objects` (one object) and changes
+    `name` and `update`.
+  - `DELETE /CheckAccount/{id}` answers 2xx `{objects: [null]}` and **archives** the account:
+    `GET /CheckAccount/{id}` still answers it with `status` `"0"`, and `GET /CheckAccount` leaves
+    it out (6 accounts listed after the run, all at 100). An account that still holds a
+    transaction is archived just as well, and its transaction gets `deletedAt` (D-096). The
+    unfiltered `GET /CheckAccountTransaction` lists no row of an archived account
+    (`read-transaction-soft-delete`, 53 rows, none outside the active accounts).
+  - Rows carry `autoMapTransaction` (singular), not the spec's `autoMapTransactions`. A
+    file-import account is type `online` with `importType` `CSV` and `bankServer` null; the
+    offline base account and clearing accounts are `offline`; the Kasse is `register`. No
+    account on the trial is bank-connected, so how a real connection reads (`bankServer`,
+    `lastSync`, `importType` null) stays the spec's word.
+- **Sources:** spec (`createClearingAccount`, `updateCheckAccount`, `deleteCheckAccount`,
+  `Model_CheckAccountResponse`); recorded 2026-11-16, trial account, Update 2.0 (probes
+  `write-check-account-factories`, `read-check-account-kinds`, `read-transaction-soft-delete`;
+  `test/fixtures/recorded/2026-11-16/banking/check-accounts.json`).
+- **Impact:** The account tools of #88 offer file-import and clearing accounts only, say that a
+  cash register is set up in the web app, describe "delete" as archiving (the account and its
+  rows stay readable by id, but leave the transaction list), and tell a file-import account by `importType`, never by `type`
+  alone. `listBankAccounts` already hides status 0 unless asked (`includeArchived`), which fits
+  archived accounts that sevDesk's list leaves out anyway.
+- **Test:** `test/contract/recorded-gaps-banking.test.ts` (the recorded list through
+  `listBankAccounts`: file-import accounts as `bank`, the offline account as `clearing`, only
+  active rows, an incomplete page); `test/unit/scripts/gaps-banking-probes.test.ts` (archiving,
+  the refusal text). Live: probes `write-check-account-factories`, `read-check-account-kinds`.
+
+### D-098: An enshrined transaction locks itself and the payment it books
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `PUT /CheckAccountTransaction/{id}/enshrine` sets `enshrined`; it "is only
+  possible if the status is 'Linked' (200) or higher", and "linked invoices, credit notes or
+  vouchers cannot be changed" afterwards. It answers `{objects: null}`; 422 is a
+  `validationError`.
+- **Actual behavior:** On one tagged file-import transaction (the only record any probe
+  enshrines):
+  - at status 100: 422 "Cannot enshrine transaction with status created (100). At least status
+    linked (200) is required.";
+  - after booking an open voucher on it (status 400): 2xx `{objects: null}`; the transaction's
+    `enshrined` became an ISO date-time with offset, nothing else but `update` changed, and the
+    voucher did not change at all (its own `enshrined` stayed null);
+  - a second enshrine answers 2xx and keeps the first timestamp (idempotent, like D-059);
+  - `PUT /CheckAccountTransaction/{id} {status: 100}` is refused with 422 "Cannot set or change
+    property 'enshrined'. Please use the dedicated endpoint instead." (any PUT on it, it seems);
+  - DELETE is refused with 409 "… can only be deleted in status 100 but is status 400" (D-096);
+  - booking a second voucher on it: 422 "Voucher is not bookable with given payment
+    information" (the row was fully used as well, so this does not separate the two reasons);
+  - `resetToOpen` on the paid voucher: **400** "Already enshrined by transaction", not the 422
+    code 322 sevdesk-rs measured for invoices (D-060); the voucher stays paid (1000).
+- **Sources:** spec (`checkAccountTransactionEnshrine`); recorded 2026-11-16, trial account,
+  Update 2.0 (probe `write-transaction-enshrine`, opt-in).
+- **Impact:** An enshrine tool (#88) is `commit`, irreversible, and only offered for rows at 200
+  or higher; its preview says that the row can no longer be changed, deleted or reset and that
+  the document it pays can no longer be reset to open. A reset of a document whose payment is
+  enshrined must expect 400 as well as 422.
+- **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("runs the opt-in probes only when
+  named…": the recorded refusal texts and statuses; only the probe's own transaction is ever
+  enshrined), `test/unit/scripts/probes.test.ts` (one enshrine call site, opt-in). Handling:
+  pending, the enshrine tool of #88 and the reset preview (D-060).
+
+### D-099: Private-transaction rules did not mark hand-made transactions
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `GET /PrivateTransactionRule` lists the rules "for automated marking private
+  transactions", `POST` creates one (`objectName`, `paymentPurpose`, `counterpartName`, both
+  nullable) and answers 201 with the bare model, `DELETE /PrivateTransactionRule/{id}` deletes
+  one. When and how a rule is applied is not said.
+- **Actual behavior:** `GET` with `limit`/`offset` answers `{objects: []}` (no `total` without
+  `countAll`). `POST` answers 2xx with the rule wrapped in `objects` (keys `id`, `objectName`,
+  `additionalInformation`, `create`, `update`, `sevClient`, `paymentPurpose`, `counterpartName`;
+  the field not sent is `null`; ids were small integers, `951`). `DELETE` answers
+  `{objects: [null]}`. Two tagged rules (one per field) turned **none** of five tagged open
+  transactions on a file-import account private (exact and partial counterpart, exact and
+  partial purpose, neither), nor a matching one created after the rules, and deleting the rules
+  changed nothing. Rules probably act only when sevDesk imports bank transactions, which a trial
+  cannot do.
+- **Sources:** spec (`listPrivateTransactionRules`, `createPrivateTransactionRule`,
+  `deletePrivateTransactionRule`); recorded 2026-11-16, trial account, Update 2.0 (probe
+  `write-private-transaction-rule`).
+- **Impact:** The rule tools of #88 can list, create and delete rules, but a preview of which
+  open transactions a new rule "would match" cannot rely on sevDesk applying it to existing or
+  hand-made rows: it must say that sevDesk applies rules to imported transactions, and mark any
+  local matching as an estimate.
+- **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("answers the banking questions as
+  recorded…": no row turns private, the rules are deleted). Handling: pending, the rule tools of
+  #88. The recorded list was empty, so no fixture was kept.
+
+### D-100: A receipt's `contentHash` is the SHA-256 of the file; rendered PDFs have none
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** The `uploadTempFile` answer declares `contentHash` without saying what it
+  hashes. `GET /Document` is undocumented (D-024); the community model lists `contentHash`.
+- **Actual behavior:**
+  - For a generated 1,507-byte receipt PDF, `uploadTempFile`'s `contentHash` is the lower-case
+    hex SHA-256 of the uploaded bytes (not MD5 or SHA-1). A second upload of the same bytes got a
+    new `filename` token and the same hash.
+  - The draft voucher saved with it has no hash key; its `document` reference points to a
+    Document whose `GET /Document/{id}` carries the same SHA-256, `filesize` equal to the upload,
+    `status` `"50"`, `mimeType` null and no `object`/`baseObject`. This Document is **not**
+    listed by `GET /Document` (80 rows, it was not among them), and `GET /Document/{id}/download`
+    gives the uploaded bytes back.
+  - Deleting the draft voucher deletes the Document too (404 afterwards).
+  - Documents sevDesk renders itself (the PDF stored when an invoice is finalized, linked to the
+    invoice as `baseObject`) are listed, at status 100, with `contentHash` **null**; so were the
+    three newest documents of the account.
+- **Sources:** spec (`uploadTempFile`); recorded 2026-11-16, trial account, Update 2.0 (probes
+  `write-receipt-hash`, `read-document-hash`).
+- **Impact:** The receipt check of #92 computes SHA-256 locally and compares it with the
+  `contentHash` of the Document a voucher references (`GET /Document/{id}`), not with
+  `GET /Document` (which leaves receipts of drafts out); a null hash means "unknown", never "no
+  match". A file in a local folder matches a booked receipt by hash only; rendered invoices have
+  no hash to match.
+- **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("compares receipt hashes without
+  showing them": SHA-256 match, new token per upload, Document gone with the draft, null hashes
+  of rendered documents). Handling: pending, the receipt-folder check of #92.
+
+### D-101: The ZIP exports answer files only with `download=true` and change no document
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `GET /Export/invoiceZip` and `/Export/voucherZip` take `download` and a
+  `sevQuery` (`limit`, `modelName`, `objectName`, `filter` with `startDate`/`endDate` as
+  date-time, `contact`, `startAmount`/`endAmount`, and `invoiceType` for invoices) and declare
+  only the JSON answer `{filename, mimetype, base64Encoded, content}`.
+- **Actual behavior:**
+  - Without `download`, both answer that JSON with `filename` like `Rechnungen_dd.mm.yy.zip` /
+    `Belege_dd.mm.yy.zip`, `mimetype` `application/zip`, `base64Encoded` true and `content`
+    **null**, also when invoices or vouchers match: the JSON form never carries the file.
+  - With `download=true` the body is the raw ZIP, `Content-Type: application/zip; charset=UTF-8'`
+    (with a stray apostrophe). Filtered to a fresh contact and the last 31 days (Unix seconds,
+    as for the CSV exports, D-012), `invoiceZip` held exactly that contact's two invoices of 130;
+    `voucherZip` filtered to today and 123–124 EUR held exactly the two tagged vouchers of 49.
+  - Entries are one PDF per document, named `YYYY-MM-DD_Rechnung_<number>_<32 hex>.pdf`;
+    **drafts are included**, with a seven-letter label in parentheses and no number
+    (`YYYY-MM-DD_Rechnung(<label>)__<32 hex>.pdf`, presumably "Entwurf"); voucher entries carry
+    the date, a label (again with the draft label for a draft), the voucher's description and a
+    hash. A voucher entry is the uploaded receipt (1.5 KB), an invoice entry the rendered PDF
+    (138 KB).
+  - Nothing changed: the draft invoice kept status, `sendDate`, `sendType` and `update`, and no
+    invoice (130) or voucher (49) changed any key. Unlike `getPdf` without `preventSendBy`
+    (D-023), the export does not mark drafts as sent.
+- **Sources:** spec (`exportInvoiceZip`, `exportVoucherZip`); recorded 2026-11-16, trial account,
+  Update 2.0 (probes `write-export-invoice-zip`, `write-export-voucher-zip`).
+- **Impact:** The archive export of #95 asks for `download=true`, parses the media type leniently
+  (the stray apostrophe), checks that the body is a ZIP, always sends the filters and an explicit
+  `limit`, says that drafts are included (or filters them out), and needs no `commit` tier: it
+  changes no document. It stays a side-effect GET with the `write` tier in this repository's
+  client until a tool settles it, since a ZIP of many PDFs is a heavy job on sevDesk's side.
+- **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("exports the ZIPs, describes entries
+  as patterns and sees no change to documents": the null JSON content, the raw ZIP with drafts,
+  unchanged documents; "keeps only the signature of a binary body in the evidence"). Handling:
+  pending, the archive export of #95.
+
+### D-102: The DATEV XML job works like the CSV job and marks nothing as exported
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `GET /Export/createDatevXmlZipExportJob` (`startDate`, `endDate`, `scope` of
+  `E`/`X`, `exportByPaydate`, `includeEnshrined`, `includeExportedDocuments` "If set to false, the
+  export excludes already exported documents", `includeDocumentXml`) answers the job id; the
+  progress and download steps are those of the CSV job. It has no enshrine flag.
+- **Actual behavior:** A POST with the query `startDate`/`endDate` (Unix seconds, the last 31
+  days) and `scope=EX` started the job at once (the GET form was not tried; the CSV job's GET is
+  refused, D-077). Job id, `generateDownloadHash`, `getProgress` (done after 6–9 polls at two
+  seconds) and `jobDownloadInfo` answered exactly as for the CSV job (D-077), with a link to the
+  same S3 host, which downloaded without credentials as `binary/octet-stream`. The file,
+  `BITTE-ENTPACKEN_Belegbilder_…_bis_….zip`, is a ZIP of two inner ZIPs named `DATEV_…_bis_….zip`
+  (5.6 MB and 6.7 KB for one month of the trial). No invoice (130) and no voucher (51) changed
+  any key. A second job with `includeExportedDocuments=false` exported the same two entries of
+  almost the same size: nothing was marked as exported in a way this flag reads.
+- **Sources:** spec (`exportDatevXML`); recorded 2026-11-16, trial account, Update 2.0 (probe
+  `write-export-datev-xml`, opt-in).
+- **Impact:** `sevdesk_datev_export` can offer the XML format (#95) with the same job flow,
+  downloader and host allowlist (`EXPORT_HOSTS`); its size cap must allow several MB of receipt
+  images, and its preview need not warn that documents get marked as exported (but should not
+  promise `includeExportedDocuments` has any effect).
+- **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("runs the opt-in probes only when
+  named…": a POST without enshrine flags, download only through `downloadPresignedExport`, nested
+  ZIPs, unchanged documents, equal entries). Handling: pending, the XML option of #95.
+
+### D-103: `createVoucherFromFile` makes a draft that sevDesk fills in within seconds
+
+- **Status:** Open. **Evidence:** community + recorded.
+- **Spec says:** Nothing: the endpoint is not in the spec (D-024).
+- **Actual behavior:** A multipart `POST /Voucher/Factory/createVoucherFromFile` with the field
+  `creditDebit` `C` and the PDF in the part `voucher` (as lippoliv/paperlessngx-to-sevdesk sends
+  it) answers 2xx with the new voucher in `objects`: the full voucher keys plus
+  `propertyCreationOrigin` and `propertyIsBookkeepingV1` (both null) and the whole `sevClient`.
+  It is a **draft (status 50)** from the start, with placeholders: `voucherDate` the moment of
+  creation, `supplierName` and `description` null, sums `"0"`, `showNet` `"1"`, `taxType`
+  `"default"`, `inSource` set, and a `document`. About two seconds later (the second read,
+  about 5 s after the upload) sevDesk's recognition had filled in `voucherDate` (the PDF's date),
+  `description` (the PDF's "Rechnung Nr."), `sumNet` 100, `sumTax` 19, `sumGross` 119, `showNet`
+  `"0"`, `supplierName` (a text, but not the PDF's supplier line, and no supplier contact) and
+  `resultDisdar`; `taxRule` stayed null. It added one position: `taxRate` 19, `sum` 100, net
+  `"0"`, the three sums, and `accountDatev` **null**.
+- **Sources:** [lippoliv/paperlessngx-to-sevdesk](https://github.com/lippoliv/paperlessngx-to-sevdesk)
+  (`src/main.py`); recorded 2026-11-16, trial account, Update 2.0 (probe
+  `write-voucher-from-file`, opt-in).
+- **Impact:** Recognition can start a voucher draft (#96), but the result is incomplete: no tax
+  rule, no booking account, an unreliable supplier. A tool must poll the draft until the sums
+  appear (bounded, a few seconds), show which fields came from sevDesk, and complete tax rule and
+  account through the normal update with ReceiptGuidance before anything is finalized. The
+  draft exists even if recognition fails, so the tool must name it for cleanup.
+- **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("runs the opt-in probes only when
+  named…": the multipart request, the placeholders, the recognised fields, `taxRule` and
+  `accountDatev` null). Handling: pending, the recognition option of #96.
 
 ### D-107: Order factories copy the order; a confirmation marks the offer accepted
 

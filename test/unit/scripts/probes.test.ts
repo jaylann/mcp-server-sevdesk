@@ -106,14 +106,29 @@ describe("probe catalog", () => {
 
   it("never probes irreversible endpoints, and e-mails only from the e-mail probe", () => {
     // Every probe module (`*-probes.ts`), including the M4 ones. Export jobs may be probed (they
-    // only start a job), but never with an enshrine flag.
+    // only start a job), but never with an enshrine flag. The one exception: the opt-in probe
+    // write-transaction-enshrine enshrines a transaction it created itself, through exactly one
+    // call site in gaps-banking-probes.ts.
     const directory = new URL("../../../scripts/lib/probes/", import.meta.url);
     const files = readdirSync(directory).filter((file) => file.endsWith("-probes.ts"));
     expect(files).toEqual(expect.arrayContaining(["read-probes.ts", "write-probes.ts"]));
     const sources = new Map(
       files.map((file) => [file, readFileSync(new URL(file, directory), "utf8")] as const),
     );
-    const source = [...sources.values()].join("\n");
+    const allowed = "`/CheckAccountTransaction/${id}/enshrine`";
+    // The same path in prose (`{id}`, no `$`): questions and comments, never a request.
+    const documented = "/CheckAccountTransaction/{id}/enshrine";
+    const gaps = sources.get("gaps-banking-probes.ts") ?? "";
+    expect(gaps.split(allowed)).toHaveLength(2);
+    expect(gaps.match(/enshrineOwnTransaction\(/g)).toHaveLength(4);
+    expect(ALL_PROBES.find((probe) => probe.id === "write-transaction-enshrine")?.optIn).toBe(true);
+    const source = [...sources]
+      .map(([file, text]) =>
+        file === "gaps-banking-probes.ts"
+          ? text.replace(allowed, "").replaceAll(documented, "")
+          : text,
+      )
+      .join("\n");
     expect(source).not.toMatch(
       /\/enshrine|sendByWithRender|enshrine(?:Documents)?: (?:true|1|"1"|"true")/,
     );
@@ -133,7 +148,7 @@ describe("probe catalog", () => {
     expect(
       ALL_PROBES.filter((probe) => probe.sendsEmail === true).map((probe) => probe.id),
     ).toEqual(["write-send-email-shape"]);
-    expect(NOT_PROBED.map((check) => check.what).join("\n")).toMatch(/createDatevXmlZipExportJob/);
+    expect(NOT_PROBED.map((check) => check.what).join("\n")).toMatch(/enshrineDocuments/);
   });
 
   it("orders write probes before read probes", () => {
