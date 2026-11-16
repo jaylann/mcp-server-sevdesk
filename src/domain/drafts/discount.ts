@@ -11,11 +11,19 @@
  * `discountSave: null` and `discountDelete` as a list of `{id, objectName: "Discounts"}` removed
  * it again.
  *
- * Not recorded, so a new discount is refused with a trusted sentence: on gross prices, on
+ * Checked on 2026-11-17 (trial account, Update 2.0, by the orchestrator) on an invoice draft of
+ * 100.00 net at 19 %: the update body this module builds, `invoicePosSave: null`,
+ * `invoicePosDelete: null`, `discountSave: [a fixed 5]` and `discountDelete: [the stored 10 %
+ * row]`, replaced the discount in one request (one row afterwards; 95.00, 18.05, 113.05), and
+ * adding one with `invoicePosSave: null` worked too (10 %: 90.00, 17.10, 107.10). A second
+ * `discountSave` without a delete stored a second row, but sevDesk's sums then counted only the
+ * newer one; that is why a draft with several discounts is never changed here.
+ *
+ * Not measured, so a new discount is refused with a trusted sentence: on gross prices, on
  * positions with several tax rates, a fixed amount on a document in another currency than EUR, on
- * an e-invoice, and changing a draft that has several discounts (made in the sevDesk web app).
- * A stored discount the call keeps is never refused; when the totals cannot be computed with it,
- * the preview says that sevDesk computes them.
+ * an e-invoice, and changing a draft that has several discounts. A stored discount the call keeps
+ * is never refused; when the totals cannot be computed with it, the preview says that sevDesk
+ * computes them.
  *
  * Totals (single rate r, net prices): the discount's net D is the percentage of the net total N
  * (rounded to cents) or the fixed amount; its tax is D × r (rounded); net N − D, tax T − D × r,
@@ -216,8 +224,9 @@ export function planDiscountChange(
   }
   if (stored.rows.length > 1) {
     throw refusal(
-      `${label} has ${stored.rows.length} discounts on the whole document (made in the sevDesk ` +
-        "web app); this tool changes a single one. Change them in sevDesk.",
+      `${label} has ${stored.rows.length} discounts on the whole document, and sevDesk's totals ` +
+        "do not count all of them (in a check, only the newest). This tool changes a single " +
+        "discount: correct them in sevDesk.",
     );
   }
   const deleted =
@@ -457,7 +466,8 @@ export function updateTotals(input: {
     case "other":
       return uncomputed(
         "The draft keeps its discounts on the whole document (several, a surcharge or a gross " +
-          "amount, made in the sevDesk web app), which this server does not compute.",
+          "amount), which this server does not compute; with several, sevDesk's totals may " +
+          "count only one of them.",
       );
     default: {
       const unknown: never = after;
@@ -497,8 +507,9 @@ export function storedDiscountText(
 }
 
 /**
- * A trusted read-back note when the discounts sevDesk stored differ from what the call sent (a
- * replacement saves and deletes in one request, which is not recorded as such), else `undefined`.
+ * A trusted read-back note when the discounts sevDesk stored differ from what the call sent, else
+ * `undefined`. The replacement in one request is checked (see the module comment); the note stays
+ * so that whatever sevDesk did with a save is seen before finalizing.
  */
 export function discountReadBackNote(
   planned: DraftDiscount | null | undefined,

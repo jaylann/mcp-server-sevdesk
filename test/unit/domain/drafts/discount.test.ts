@@ -331,11 +331,17 @@ describe("what an update does with the discount", () => {
     expect(refusal(() => planDiscountChange(null, stored(), "Invoice 2102")).message).toBe(
       "Invoice 2102 has no discount on the whole document to remove.",
     );
+    // Several rows: sevDesk's sums counted only the newer one (checked 2026-11-17), so neither a
+    // replacement nor a removal is offered; the refusal says why.
     const several = stored(row(), row({ id: 9002 }));
-    expect(refusal(() => planDiscountChange(null, several, "Invoice 2102")).message).toBe(
-      "Invoice 2102 has 2 discounts on the whole document (made in the sevDesk web app); this " +
-        "tool changes a single one. Change them in sevDesk.",
-    );
+    const message =
+      "Invoice 2102 has 2 discounts on the whole document, and sevDesk's totals do not count " +
+      "all of them (in a check, only the newest). This tool changes a single discount: correct " +
+      "them in sevDesk.";
+    expect(refusal(() => planDiscountChange(null, several, "Invoice 2102")).message).toBe(message);
+    expect(
+      refusal(() => planDiscountChange({ percent: "3" }, several, "Invoice 2102")).message,
+    ).toBe(message);
     // Keeping them is fine.
     expect(planDiscountChange(undefined, several, "Invoice 2102").after).toEqual({
       kind: "other",

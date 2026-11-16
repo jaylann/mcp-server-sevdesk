@@ -69,7 +69,8 @@ export const invoiceGetTool = defineTool({
       // Labels come from reference data (or "unknown"), never from sevDesk's text.
       summary:
         `Invoice ${invoice.id} (${invoice.type.label}, status ${invoice.status.label}) ` +
-        `with ${count}.${partial}`,
+        `with ${count}.${partial}` +
+        (discount?.warning === undefined ? "" : ` ${discount.warning}`),
     };
   },
 });

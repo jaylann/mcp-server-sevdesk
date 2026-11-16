@@ -3932,27 +3932,53 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
     `getDiscounts` answers `{objects: [], total: null}`.
   - `discountDelete` as a list of `{id, objectName: "Discounts"}` in an update with the id
     (`discountSave: null`) removed the discount and the sums went back to 100/119.
+  - Checked on 2026-11-17 on an invoice draft (one position of 100.00 net at 19 %): an update with
+    `invoice: {id, objectName, mapAll: true, invoiceType: "RE"}`, `invoicePosSave: null`,
+    `invoicePosDelete: null`, `discountSave` with a fixed 5 and `discountDelete` with the stored
+    10 % row answered 2xx; `getDiscounts` then listed one row (the fixed 5) and the sums were 95,
+    18.05, 113.05 (`sumDiscounts` -5). Adding 10 % with `invoicePosSave: null` gave 90, 17.1, 107.1.
+  - **Several rows are stored, but the sums count only one.** A second `discountSave` (3 %)
+    without a delete left two rows (the fixed 5 and the 3 %), yet the sums were 97, 18.43, 115.43
+    (`sumDiscounts` -3): only the newer row counted. One update with both ids in `discountDelete`
+    and `discountSave: null` removed both (100, 19, 119).
+  - `POST /Invoice/Factory/createInvoiceFromOrder` copies the order's discount: a sent offer (status
+    200; a `saveOrder` update with `orderPosSave: null` had put 10 % on it, 90/17.1/107.1) gave an
+    invoice draft with the same row and the same sums, and the offer went to status 1000.
 - **Sources:** spec (`createInvoiceByFactory`, `createcreditNote`, `getDiscounts`,
   `Model_Discount`); recorded 2026-11-16, trial account, Update 2.0 (probes
   `write-document-discount`, `read-order-get-discounts`;
-  `test/fixtures/recorded/2026-11-16/orders/order-discounts.json`).
+  `test/fixtures/recorded/2026-11-16/orders/order-discounts.json`); recorded 2026-11-17, trial
+  account, Update 2.0 (one-off check by the orchestrator: replacement in one request, several
+  rows, invoice from an offer; tagged test drafts, removed afterwards; no fixture).
 - **Impact:** A document discount goes out as `discountSave: [{…}]` on all three factories and is
   read back with `/<kind>/{id}/getDiscounts`; updates that change it delete the stored rows in
-  `discountDelete` (a list) and save the new one. `sumDiscounts` is negative and must be shown as a
-  deduction. Whatever discount a draft carries is part of the finalize approval. (#94) Built so
-  (`src/domain/drafts/discount.ts`, `src/domain/document-discounts.ts`): the draft tools' `discount`
-  argument (percent or a fixed net amount, one per document; `null` removes it) reads the stored
-  rows before every update; the get and draft tools return them with sevDesk's
-  `sumDiscountNet`/`sumDiscountGross`; finalize, send and enshrine bind the rows and list them in
-  both languages. Not recorded, so a new discount is refused with a reason: on gross prices, on
-  positions with several tax rates, a fixed amount on a document in another currency than EUR, on
-  an e-invoice, and replacing or removing several stored discounts at once. A replacement saves
-  and deletes in one request, which only the removal half of this recording covers; the read-back
-  says when sevDesk stored something else.
+  `discountDelete` (a list) and save the new one in the same request. `sumDiscounts` is negative and
+  must be shown as a deduction. With several rows sevDesk's totals do not reflect all of them, so a
+  document carries one discount at most. Whatever discount a draft carries is part of the finalize
+  approval. (#94) Built so (`src/domain/drafts/discount.ts`, `src/domain/document-discounts.ts`):
+  the draft tools' `discount` argument (percent or a fixed net amount, one per document; `null`
+  removes it) reads the stored rows before every update; the get and draft tools return them with
+  sevDesk's `sumDiscountNet`/`sumDiscountGross`; finalize, send and enshrine bind the rows and list
+  them in both languages; `sevdesk_invoice_create_from_order` shows the order's discounts in its
+  preview and the invoice's in its result. A document with several rows is never replaced or
+  removed by the draft tools (the refusal says that sevDesk's totals do not count all of them),
+  and the get tools, the from-order tool and the approvals of finalize, send and enshrine warn
+  about it. Not measured, so a new discount is refused with a reason: on gross prices, on
+  positions with several tax rates, a fixed amount on a document in another currency than EUR,
+  and on an e-invoice. What a partial or advance invoice from an order does with its discount is
+  not checked either; the from-order preview says so. The replacement was checked on an invoice;
+  orders and credit notes send the same discount keys. The read-back still says when sevDesk
+  stored something other than what was sent.
 - **Test:** `test/contract/recorded-gaps-documents.test.ts` ("answers an empty list with total
   null for an order without discounts", "reads through the document discount reader: no rows,
   nothing shown or bound"), `test/unit/domain/drafts/discount.test.ts` ("gives the recorded sums
   for 10 % and for a fixed 10.00 on 100.00 at 19 %", "removes the stored discount as recorded
-  (discountSave null)"), `test/unit/tools/drafts/document-discount.test.ts`,
-  `test/regressions/approval-binds-document-discount.test.ts`. Live: probes
-  `write-document-discount`, `read-order-get-discounts`.
+  (discountSave null)", "refuses to remove a discount that is not there, and to change several"),
+  `test/unit/tools/drafts/document-discount.test.ts` ("replaces the stored 10 % with a fixed 5.00
+  in one request: the checked body and sums", "adds 10 % with invoicePosSave null: the checked
+  sums"), `test/unit/tools/invoices/get.test.ts` ("shows a discount on the whole invoice with what
+  sevDesk deducted (D-116)"), `test/unit/tools/masterdata/invoice-from-order.test.ts`
+  ("sevdesk_invoice_create_from_order with a discount on the whole order"),
+  `test/regressions/approval-binds-document-discount.test.ts` (Guard 3: "warns in English and
+  German when the document has several discounts"). Live: probes `write-document-discount`,
+  `read-order-get-discounts`.

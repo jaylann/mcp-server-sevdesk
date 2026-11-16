@@ -79,7 +79,9 @@ sich daraus ergibt; das Ergebnis zeigt, was sevDesk abgezogen hat. Angebote, Auf
 und Gutschriften nehmen denselben Rabatt. Vorerst setzt der Server ihn nur bei Nettopreisen mit
 einem einzigen Steuersatz und nicht auf einer E-Rechnung: Wie sevDesk die anderen Fälle behandelt,
 ist noch nicht geprüft, und die Werkzeuge sagen das, statt zu raten. Ändert der Assistent den
-Entwurf später, bleibt der Rabatt, solange du ihn nicht ersetzt oder entfernst.
+Entwurf später, bleibt der Rabatt, solange du ihn nicht ersetzt oder entfernst. Ein Dokument mit
+mehreren Rabatten (sevDesk rechnet dann nur einen davon in die Summen ein) bleibt der Web-App von
+sevDesk überlassen; die Abfragewerkzeuge und die Freigabe weisen darauf hin.
 
 ### Aus einem Angebot oder einer Auftragsbestätigung
 
@@ -91,8 +93,10 @@ Entwurf später, bleibt der Rabatt, solange du ihn nicht ersetzt oder entfernst.
 Bestätigung) übernimmt die Positionen eines Angebots oder einer Auftragsbestätigung: den ganzen
 Auftrag, eine Teilrechnung oder eine Abschlagsrechnung über einen Prozentsatz oder einen Betrag,
 netto oder brutto. Der Auftrag muss versendet, angenommen oder teilweise abgerechnet sein; Teil- und
-Abschlagsrechnungen brauchen Steuerregel 1 oder 11. Gibt es schon einen Entwurf aus demselben
-Auftrag, lehnt das Werkzeug ab, außer du willst ausdrücklich einen zweiten. Angebote selbst
+Abschlagsrechnungen brauchen Steuerregel 1 oder 11. sevDesk übernimmt auch den Rabatt auf den
+Gesamtbetrag des Auftrags; die Vorschau zeigt ihn, das Ergebnis den der Rechnung. Gibt es schon
+einen Entwurf aus demselben Auftrag, lehnt das Werkzeug ab, außer du willst ausdrücklich einen
+zweiten. Angebote selbst
 entstehen mit [`sevdesk_order_create_draft`](../tools.md#sevdesk_order_create_draft).
 
 ## Den Entwurf prüfen

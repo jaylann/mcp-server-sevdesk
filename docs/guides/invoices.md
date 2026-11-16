@@ -73,7 +73,8 @@ leads to; the result shows what sevDesk deducted. Offers, order confirmations an
 the same discount. For now the server sets one only on net prices with a single tax rate, and not
 on an e-invoice: sevDesk's handling of the other cases is not verified yet, and the tools say so
 instead of guessing. Changing the draft later keeps the discount unless you replace it or remove
-it.
+it. A document with several discounts (sevDesk's totals then count only one of them) is left to
+the sevDesk web app, and the get tools and the approval warn about it.
 
 ### From an offer or order confirmation
 
@@ -85,8 +86,10 @@ it.
 confirmation) copies the positions of an offer (Angebot) or order confirmation
 (Auftragsbestätigung): the whole order, a partial invoice (Teilrechnung) or an advance invoice
 (Abschlagsrechnung) for a percentage or an amount, net or gross. The order must be sent, accepted
-or partially invoiced; partial and advance invoices need tax rule 1 or 11. If a draft from the
-same order already exists, the tool refuses unless you ask for a second one. Offers themselves are
+or partially invoiced; partial and advance invoices need tax rule 1 or 11. sevDesk also copies the
+order's discount on the whole document; the preview shows it, and the result shows the invoice's.
+If a draft from the same order already exists, the tool refuses unless you ask for a second one.
+Offers themselves are
 drafted with [`sevdesk_order_create_draft`](../tools.md#sevdesk_order_create_draft).
 
 ## Check the draft

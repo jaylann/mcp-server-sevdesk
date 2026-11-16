@@ -73,6 +73,11 @@ export interface DocumentContent {
   readonly facts: (lang: PreviewLanguage) => Fact[];
   /** The fixed warning that names what the facts do not show. */
   readonly notShown: Phrase;
+  /**
+   * Warnings about this document's content, e.g. several discounts on the whole document, whose
+   * total sevDesk may not compute from all of them (D-116). Empty for most documents.
+   */
+  readonly notes: readonly Phrase[];
 }
 
 /** Where the positions of each kind live and how they point back to their document. */
@@ -160,6 +165,7 @@ export async function readDocumentContent(
       (lang) => documentFacts(doc, lang),
       (lang) => voucherFacts(doc, rows, positions.complete, lang),
       NOT_SHOWN.voucher,
+      [],
     );
   }
   const record: PrintedRecord = parseUpstream(
@@ -179,6 +185,7 @@ export async function readDocumentContent(
     (lang) => documentFacts(doc, lang, addressFacts(record, TEXT[lang])),
     (lang) => salesFacts(doc, record, rows, positions.complete, discounts.rows, lang),
     NOT_SHOWN[doc.kind],
+    discounts.rows.length > 1 ? [severalDiscountsNote(discounts.rows.length)] : [],
   );
 }
 
@@ -187,6 +194,7 @@ function content(
   identity: (lang: PreviewLanguage) => Fact[],
   printed: (lang: PreviewLanguage) => Fact[],
   notShown: Phrase,
+  notes: readonly Phrase[],
 ): DocumentContent {
   return {
     binding,
@@ -194,7 +202,25 @@ function content(
     printed,
     facts: (lang) => [...identity(lang), ...printed(lang)],
     notShown,
+    notes,
   };
+}
+
+/**
+ * Several discounts on the whole document: sevDesk's totals do not count all of them (in the
+ * check of 2026-11-17 only the newest, D-116), so the total shown may not be what the rows listed
+ * above suggest.
+ */
+function severalDiscountsNote(count: number): Phrase {
+  return phrase(
+    `This document has ${String(count)} discounts on the whole document, and sevDesk's totals ` +
+      "may count only one of them (in a check, only the newest), so the total may not be what " +
+      "the discounts listed suggest. Check the total in sevDesk before you approve.",
+    `Das Dokument hat ${String(count)} Rabatte auf den Gesamtbetrag, und sevDesk rechnet in den ` +
+      "Summen womöglich nur einen davon ein (in einer Prüfung nur den neuesten); die Summe ist " +
+      "dann nicht, was die aufgeführten Rabatte erwarten lassen. Prüfe die Summe vor der " +
+      "Freigabe in sevDesk.",
+  );
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -11,6 +11,11 @@
  * not recorded), `percentage` "1" (percent) or "0" (a fixed amount), `value`, `isNet` ("1" net,
  * "0" gross) and `object`, the document, all as strings. For a document without discounts the
  * answer is `{objects: [], total: null}`.
+ *
+ * A document can hold several rows (a second `discountSave` without a delete adds one), but then
+ * sevDesk's sums do not count all of them: in the check of 2026-11-17 (a fixed 5.00, then 3 %) only
+ * the newer row was in the totals. Every place that shows the rows says so when there are several
+ * ({@link severalDiscountsWarning}).
  */
 import { z } from "zod";
 
@@ -148,6 +153,13 @@ export const documentDiscountSchema = z
     gross: moneySchema
       .optional()
       .describe("The same on the gross total (sumDiscountGross): negative for a deduction."),
+    warning: z
+      .string()
+      .optional()
+      .describe(
+        "Set when there are several rows: sevDesk's totals may count only one of them, so check " +
+          "the total in sevDesk.",
+      ),
   })
   .meta({ id: "DocumentDiscount" });
 
@@ -182,8 +194,22 @@ export function discountTotals(
 }
 
 /**
- * The DTO of a document's discounts: the rows (text cleaned) and the sums sevDesk computed for
- * them in the document's currency. `undefined` when the document has none.
+ * A trusted warning for a document with `count` discount rows when there are several: sevDesk's
+ * totals then do not count all of them (see the module comment). `undefined` for one or none.
+ */
+function severalDiscountsWarning(count: number): string | undefined {
+  if (count < 2) return undefined;
+  return (
+    `This document has ${String(count)} discounts on the whole document, and sevDesk's totals ` +
+    "may count only one of them (in a check, only the newest), so the total may not be what the " +
+    "rows suggest. Check it in sevDesk."
+  );
+}
+
+/**
+ * The DTO of a document's discounts: the rows (text cleaned), the sums sevDesk computed for them
+ * in the document's currency, and a warning when there are several. `undefined` when the document
+ * has none.
  */
 export function documentDiscountDto(
   rows: readonly DiscountRow[],
@@ -204,5 +230,6 @@ export function documentDiscountDto(
       }),
     ),
     ...discountTotals(sums, currency),
+    warning: severalDiscountsWarning(rows.length),
   });
 }

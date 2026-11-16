@@ -80,7 +80,8 @@ export const orderGetTool = defineTool({
       // Labels come from reference data (or "unknown"), never from sevDesk's text.
       summary:
         `Order ${order.id} (${order.type.label}, status ${order.status.label}) ` +
-        `with ${count}.${partial}${relatedNote}`,
+        `with ${count}.${partial}${relatedNote}` +
+        (discount?.warning === undefined ? "" : ` ${discount.warning}`),
     };
   },
 });

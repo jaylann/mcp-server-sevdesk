@@ -17,6 +17,9 @@
  * Guard 2: the facts list every discount (percentage or amount, net or gross, a surcharge marked,
  * the text as stored) and what they deduct in total, in English and German, built from the same
  * read as the binding.
+ *
+ * Guard 3: a document with several discount rows gets a warning in both languages, because
+ * sevDesk's totals then count only one of them (checked 2026-11-17, D-116).
  */
 import { describe, expect, it } from "vitest";
 
@@ -266,6 +269,50 @@ describe("the approval shows the discount it makes binding", () => {
         value: "10,00 EUR netto\nText: Rabatt",
       });
       expect(discounted.binding).not.toBe(without.binding);
+    },
+  );
+
+  // Guard 3: with several rows sevDesk's totals count only one of them (checked 2026-11-17: a
+  // fixed 5.00 and 3 %, and only the 3 % was in the sums), so the totals in the facts may not be
+  // what the listed discounts suggest. The approval says so in both languages.
+  it.each([
+    ["finalize", finalizeTool("invoice"), { id: 1001 }, draft],
+    ["send", sendEmailTool("invoice"), email, open],
+    ["enshrine", enshrineTool("invoice"), { id: 1001 }, open],
+  ] as const)(
+    "%s warns in English and German when the document has several discounts",
+    async (_name, tool, args, row) => {
+      const rows = [
+        discountRow("Invoice", 1001, { percentage: "0", value: "5" }),
+        discountRow("Invoice", 1001, { id: "9002", value: "3" }),
+      ];
+      const several = await prepareWrite(tool as AnyWriteToolDefinition, args, client(row(), rows));
+      const one = await prepareWrite(
+        tool as AnyWriteToolDefinition,
+        args,
+        client(row(), rows.slice(1)),
+      );
+
+      const english =
+        "This document has 2 discounts on the whole document, and sevDesk's totals may count " +
+        "only one of them (in a check, only the newest), so the total may not be what the " +
+        "discounts listed suggest. Check the total in sevDesk before you approve.";
+      expect(several.preview.warnings).toContain(english);
+      expect(several.previewDe?.warnings).toContain(
+        "Das Dokument hat 2 Rabatte auf den Gesamtbetrag, und sevDesk rechnet in den Summen " +
+          "womöglich nur einen davon ein (in einer Prüfung nur den neuesten); die Summe ist dann " +
+          "nicht, was die aufgeführten Rabatte erwarten lassen. Prüfe die Summe vor der Freigabe " +
+          "in sevDesk.",
+      );
+      expect(several.previewDe?.warnings).toHaveLength(several.preview.warnings.length);
+      expect(several.preview.facts.map((fact) => fact.label)).toEqual(
+        expect.arrayContaining([
+          "Discount on the whole document (Rabatt) 1",
+          "Discount on the whole document (Rabatt) 2",
+        ]),
+      );
+      expect(one.preview.warnings).not.toContain(english);
+      expect(several.preview.warnings).toHaveLength(one.preview.warnings.length + 1);
     },
   );
 });

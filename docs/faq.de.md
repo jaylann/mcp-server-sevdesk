@@ -122,7 +122,8 @@ ersetzt oder entfernt mit den Entwurfswerkzeugen
 ([Ein Rabatt auf die ganze Rechnung](guides/invoices.de.md#ein-rabatt-auf-die-ganze-rechnung)).
 Vorerst nur bei Nettopreisen mit einem einzigen Steuersatz und nicht auf E-Rechnungen, den Fällen,
 die gegen sevDesk geprüft sind. Welchen Rabatt ein Entwurf auch trägt, die Freigabe zeigt ihn,
-bevor du fertigstellst oder versendest.
+bevor du fertigstellst oder versendest, und eine Rechnung aus einem Angebot übernimmt dessen
+Rabatt.
 
 ### Kann es mit E-Rechnungen umgehen?
 

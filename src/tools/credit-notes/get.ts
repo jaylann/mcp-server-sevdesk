@@ -65,7 +65,9 @@ export const creditNoteGetTool = defineTool({
         ...(discount === undefined ? {} : { discount }),
       },
       summary:
-        `Credit note ${creditNote.id} (status ${creditNote.status.label}) with ${count}.` + partial,
+        `Credit note ${creditNote.id} (status ${creditNote.status.label}) with ${count}.` +
+        partial +
+        (discount?.warning === undefined ? "" : ` ${discount.warning}`),
     };
   },
 });

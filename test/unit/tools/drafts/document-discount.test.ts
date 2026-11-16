@@ -3,7 +3,8 @@
  * D-116, recorded 2026-11-16): create sends `discountSave` as a list of one; update keeps the
  * stored discount, replaces it (the stored rows in `discountDelete`) or removes it (`null`), after
  * reading the stored rows with `getDiscounts`; the preview and the expected totals include it; the
- * read-back shows it and says when sevDesk stored something else.
+ * read-back shows it and says when sevDesk stored something else. The replacement in one request
+ * and an addition with `invoicePosSave: null` were checked live on 2026-11-17.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -317,6 +318,82 @@ describe("update: keep, replace, remove", () => {
     });
   });
 
+  describe("on an invoice as checked live on 2026-11-17 (100.00 net at 19 %)", () => {
+    /** Invoice 2102 with one position of 100.00 net at 19 % (its first stored row, repriced). */
+    function onePosition(): FakeRoute {
+      const stored = loadFixture("drafts/invoice-positions-2102.json").body as { objects: Row[] };
+      return {
+        path: "/InvoicePos",
+        query: { "invoice[id]": 2102 },
+        response: { body: { objects: [{ ...stored.objects[0], price: "100", sumNet: "100" }] } },
+      };
+    }
+
+    function invoice(fields: Row, rows: readonly Row[]): FakeRoute[] {
+      return withRoutes(
+        invoiceUpdateRoutes,
+        record("/Invoice/2102", "drafts/invoice-2102-draft.json", fields),
+        onePosition(),
+        discountsRoute("Invoice", 2102, rows),
+      );
+    }
+
+    it("replaces the stored 10 % with a fixed 5.00 in one request: the checked body and sums", async () => {
+      const client = new FakeSevdeskClient(
+        invoice(
+          {
+            sumNet: "90",
+            sumTax: "17.1",
+            sumGross: "107.1",
+            sumDiscountNet: "-10",
+            sumDiscountGross: "-11.9",
+          },
+          [discountRow("Invoice", 2102)],
+        ),
+      );
+      const plan = await prepareWrite(
+        invoiceUpdateDraftTool,
+        { id: 2102, discount: { amount: 5 } },
+        client,
+      );
+
+      // The keys and their order as sent in the check; T0 (#110): invoiceType "RE".
+      expect(Object.keys(plan.state.body)).toEqual([
+        "invoice",
+        "invoicePosSave",
+        "invoicePosDelete",
+        "discountSave",
+        "discountDelete",
+      ]);
+      expect(plan.state.body).toMatchObject({
+        invoice: { id: 2102, objectName: "Invoice", mapAll: true, invoiceType: "RE" },
+        invoicePosSave: null,
+        invoicePosDelete: null,
+        discountSave: [{ ...savedTen, percentage: false, value: 5 }],
+        discountDelete: [{ id: 9001, objectName: "Discounts" }],
+      });
+      // sevDesk's sums after the check: 95, 18.05, 113.05.
+      expect(plan.state.expected).toEqual({ net: "95.00", tax: "18.05", gross: "113.05" });
+    });
+
+    it("adds 10 % with invoicePosSave null: the checked sums", async () => {
+      const client = new FakeSevdeskClient(
+        invoice({ sumNet: "100", sumTax: "19", sumGross: "119" }, []),
+      );
+      const plan = await prepareWrite(
+        invoiceUpdateDraftTool,
+        { id: 2102, discount: { percent: 10 } },
+        client,
+      );
+      expect(plan.state.body).toMatchObject({
+        invoicePosSave: null,
+        discountSave: [savedTen],
+        discountDelete: null,
+      });
+      expect(plan.state.expected).toEqual({ net: "90.00", tax: "17.10", gross: "107.10" });
+    });
+  });
+
   it("puts a new discount on new positions of an invoice (one rate)", async () => {
     const client = new FakeSevdeskClient(invoiceUpdateRoutes);
     const plan = await prepareWrite(
@@ -375,6 +452,9 @@ describe("update: keep, replace, remove", () => {
     expect(plan.preview.warnings.join(" ")).toContain(
       "The draft keeps its discounts on the whole document",
     );
+    expect(plan.preview.warnings.join(" ")).toContain(
+      "with several, sevDesk's totals may count only one of them",
+    );
   });
 
   it.each([
@@ -407,7 +487,8 @@ describe("update: keep, replace, remove", () => {
           discountRow("Invoice", 2102, { id: "9002" }),
         ]),
       ),
-      "has 2 discounts on the whole document",
+      // With several rows sevDesk's totals do not count all of them (checked 2026-11-17).
+      "has 2 discounts on the whole document, and sevDesk's totals do not count all of them",
     ],
     [
       "removing a discount that is not there",

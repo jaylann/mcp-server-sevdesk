@@ -215,6 +215,12 @@ describe("sevdesk_invoice_get (community: recorded Invoice/InvoicePos shapes, fa
       ]),
     ]);
 
+    // Two rows: sevDesk's totals may count only one of them (checked 2026-11-17), so the DTO and
+    // the summary say so.
+    const several =
+      "This document has 2 discounts on the whole document, and sevDesk's totals may count only " +
+      "one of them (in a check, only the newest), so the total may not be what the rows " +
+      "suggest. Check it in sevDesk.";
     expect(tool.output.parse(result.data)).toEqual(result.data);
     expect(result.data.discount).toEqual({
       items: [
@@ -223,7 +229,18 @@ describe("sevdesk_invoice_get (community: recorded Invoice/InvoicePos shapes, fa
       ],
       net: { amount: "-14.90", currency: "EUR" },
       gross: { amount: "-17.73", currency: "EUR" },
+      warning: several,
     });
+    expect(result.summary.endsWith(` ${several}`)).toBe(true);
+  });
+
+  it("gives no warning for a single discount", async () => {
+    const { result } = await get(1001, [
+      ...routes,
+      discountsRoute("Invoice", 1001, [discountRow("Invoice", 1001)]),
+    ]);
+    expect(result.data.discount).not.toHaveProperty("warning");
+    expect(result.summary).not.toContain("discounts on the whole document");
   });
 
   it("refuses a discount row of another document instead of showing it", async () => {
