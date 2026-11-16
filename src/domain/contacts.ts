@@ -23,7 +23,7 @@ import type { QueryValue, SevdeskClient } from "../sevdesk/types.js";
 import { cleanText, compact, trimmedText } from "./common.js";
 import { countryCodeSchema, type CountryReadOptions, loadCountryCodes } from "./country-codes.js";
 import { contactLink } from "./links.js";
-import { type ChildRows, listChildRows, readPage } from "./paging.js";
+import { type ChildRows, listChildRows, type ListPage, readPage } from "./paging.js";
 import {
   addressCategoryById,
   communicationWayKeyById,
@@ -408,6 +408,37 @@ export async function getNextCustomerNumber(
     });
   }
   return sanitizeUntrusted(value.trim(), FIELD_MAX);
+}
+
+/** A contact address reduced to whose it is and the country it is in. */
+export interface ContactAddressLocation {
+  readonly contactId: number | undefined;
+  /** StaticCountry id. */
+  readonly countryId: number | undefined;
+}
+
+/**
+ * One page of the addresses of all contacts (`GET /ContactAddress` without a contact filter),
+ * reduced to contact and country, for reports that need where many contacts are established:
+ * reading the whole list page by page costs a few requests however many contacts a report
+ * looks at, and does not depend on the undocumented contact filter (D-032).
+ */
+export async function listContactAddressLocations(
+  client: SevdeskClient,
+  page: { readonly limit: number; readonly offset: number },
+  signal?: AbortSignal,
+): Promise<ListPage<ContactAddressLocation>> {
+  return readPage(
+    client,
+    "/ContactAddress",
+    {},
+    page,
+    (raw) => {
+      const row = parseUpstream(addressRecordSchema, raw, "contact addresses");
+      return { contactId: row.contact?.id, countryId: row.country?.id };
+    },
+    signal,
+  );
 }
 
 // ---------------------------------------------------------------------------------------------

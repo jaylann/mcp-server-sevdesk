@@ -1,5 +1,6 @@
 import type { AnyToolDefinition } from "../types.js";
 import { payablesAgingTool, receivablesAgingTool } from "./aging.js";
+import { recordsAuditTool } from "./audit.js";
 import { cashPositionTool } from "./cash-position.js";
 import { changedSinceTool } from "./changed-since.js";
 import { REPORT_EXPORT_TOOLS } from "./export-tools.js";
@@ -14,5 +15,6 @@ export const REPORT_TOOLS: readonly AnyToolDefinition[] = [
   cashPositionTool,
   changedSinceTool,
   ...REPORT_TAX_TOOLS,
+  recordsAuditTool,
   ...REPORT_EXPORT_TOOLS,
 ];

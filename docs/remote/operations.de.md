@@ -1,4 +1,4 @@
-<!-- translated-from: docs/remote/operations.md sha256:e318171913b5 -->
+<!-- translated-from: docs/remote/operations.md sha256:ba6e23355e30 -->
 
 # Den Server betreiben
 
@@ -138,8 +138,9 @@ Zugangsspeicher und gibt die Sperre frei.
   Freigabe-Postfach und den Dateiseiten vorbehalten, damit diese erreichbar bleiben, während `/mcp`
   ausgelastet ist; `/mcp` selbst antwortet mit 503, sobald seine 56 belegt sind, was sieben Konten
   an ihrer Grenze bewirken können. Eine Anfrage darf 120 Sekunden dauern; die Steuerberichte
-  (`sevdesk_vat_summary`, `sevdesk_profit_and_loss`) hören nach 90 Sekunden auf zu lesen und geben
-  zurück, was sie haben, als unvollständig markiert. Diese Zahlen sind fest.
+  (`sevdesk_vat_summary`, `sevdesk_profit_and_loss`) und die Prüfungen (`sevdesk_records_audit`)
+  hören nach 90 Sekunden auf zu lesen und geben zurück, was sie haben, als unvollständig markiert.
+  Diese Zahlen sind fest.
 - **JSON-RPC-Batches** (mehrere Nachrichten in einer Anfrage, nur von Clients der Protokollversion
   2025-03-26 gesendet) dürfen höchstens 8 Nachrichten enthalten und keine Anfrage-ID doppelt;
   sonst wird der ganze Batch mit 400 abgelehnt, und nichts davon läuft. Ein Batch zählt als eine

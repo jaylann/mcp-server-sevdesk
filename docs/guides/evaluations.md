@@ -1,9 +1,9 @@
 # Reports and exports
 
 What the assistant can tell you about your books, and where its answers stop: totals, open items,
-cash, the VAT summary, the profit and loss, and the exports for your tax adviser. It is for anyone
-who wants numbers out of sevDesk, and for anyone deciding how far to trust them. Every report here
-is `read`; only the DATEV export needs `write` ([Permissions](../permissions.md#tiers)).
+cash, the VAT summary, the profit and loss, the audits, and the exports for your tax adviser. It is
+for anyone who wants numbers out of sevDesk, and for anyone deciding how far to trust them. Every
+report here is `read`; only the DATEV export needs `write` ([Permissions](../permissions.md#tiers)).
 
 > [!IMPORTANT]
 > The reports are computed by this server from your sevDesk records. They are not sevDesk's own
@@ -20,6 +20,7 @@ is `read`; only the DATEV export needs `write` ([Permissions](../permissions.md#
 | What changed since a date                     | [`sevdesk_changed_since`](../tools.md#sevdesk_changed_since)         | `read`  |
 | What the VAT return will roughly say          | [`sevdesk_vat_summary`](../tools.md#sevdesk_vat_summary)             | `read`  |
 | Profit for a month, quarter or year           | [`sevdesk_profit_and_loss`](../tools.md#sevdesk_profit_and_loss)     | `read`  |
+| What looks wrong: VAT treatment, §13b base    | [`sevdesk_records_audit`](../tools.md#sevdesk_records_audit)         | `read`  |
 | A CSV file for Excel or the tax adviser       | [`sevdesk_csv_export`](../tools.md#sevdesk_csv_export)               | `read`  |
 | The DATEV booking data for the tax adviser    | [`sevdesk_datev_export`](../tools.md#sevdesk_datev_export)           | `write` |
 
@@ -83,6 +84,59 @@ an Einnahmenüberschussrechnung (EÜR): net income by tax rule, net expenses by 
 result, and the VAT flows apart (VAT collected, input VAT paid, VAT paid to or refunded by the
 Finanzamt). The basis is cash by default (the day the money moved, from the payments sevDesk links
 to documents) or accrual (by document date).
+
+## Audits
+
+> Check the VAT treatment of our purchases and sales in the third quarter.
+
+> What is our §13b base for October, by tax rule?
+
+[`sevdesk_records_audit`](../tools.md#sevdesk_records_audit) answers "what is wrong?" instead of
+"what are the numbers?". It runs one check per call for a month, quarter, year or date range and
+returns findings. Each names its kind (`code`) and how sure it is (`severity`: `warning` when the
+data points to a wrong booking, `check` when the answer depends on facts sevDesk does not hold),
+gives a reason that cites the law and says what to check or do, with the contact and the documents
+and their links into sevDesk. The documents of one kind and one contact form one finding. Findings
+are hints, not tax advice, and every result says so in English and German. The tool changes
+nothing.
+
+### VAT treatment (`vat`)
+
+The check compares each document's tax rule with where the other side is established, as far as
+sevDesk knows it: the contact's VAT ID and the countries of its addresses. A German VAT ID or a
+German address counts as registered or established in Germany. Documents are taken by document
+date; sales are checked on invoices.
+
+| Code                                                                            | Means                                                                                                       |
+| ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `foreign_supplier_charged_german_vat`                                           | A supplier abroad charged German VAT, booked as input VAT (rule 9); usually you owe it instead (§ 13b UStG) |
+| `foreign_vat_deducted`                                                          | VAT at a rate Germany does not charge, booked as input VAT (rule 9)                                         |
+| `foreign_supplier_zero_rate`                                                    | A supplier abroad booked at 0 % (rule 9 or 10) without reverse charge or intra-EU acquisition               |
+| `eu_reverse_charge_for_domestic_supplier`, `acquisition_from_domestic_supplier` | Rule 14 or 8 for a supplier with only German data                                                           |
+| `eu_reverse_charge_for_non_eu_supplier`, `acquisition_from_non_eu_supplier`     | Rule 14 or 8 for a supplier outside the EU                                                                  |
+| `eu_supplier_under_rule_12`                                                     | A service from another EU state under rule 12 instead of 14                                                 |
+| `german_vat_to_eu_business`                                                     | German VAT on an invoice to a customer with a VAT ID of another EU state                                    |
+| `intra_eu_supply_without_eu_vat_id`, `eu_service_without_eu_vat_id`             | Rule 3 or 21 without the customer's VAT ID of another EU state                                              |
+
+Not flagged on purpose: a foreign supplier with a German VAT ID or a German address (it may charge
+German VAT), a supplier with only German data that charges no VAT (for example a Kleinunternehmer),
+a supplier in the EU small-business scheme (VAT ID ending in EX), and import VAT on the import VAT
+account. A contact without VAT ID and address cannot be placed: its documents are counted as not
+judged (`coverage.notJudged`), so complete the contact to have them checked.
+
+### §13b base (`reverse_charge`)
+
+The check sums the §13b base of the period by tax rule: received (rules 12, 13 and 14, where you
+owe the VAT as recipient, with the tax owed and the part deducted again as input VAT) and issued
+(rule 5, Kz 60; rule 21, Kz 21). Each sum names its UStVA Kennzahlen and lists the documents
+behind it. It uses the same tax points as `sevdesk_vat_summary`, so the sums match its Kz 46/47,
+84/85, 67, 60 and 21. It flags rule 13 (no input VAT deduction) on an account with regular
+taxation (`reverse_charge_without_deduction`).
+
+Both checks read the period's documents and, where the rates decide, their positions; `vat` also
+reads the contact and address lists once each. Like the other reports they say what they left out
+(`coverage.truncated`, `coverage.documentsLeftOut`), and over HTTP they stop reading after about 90
+seconds: ask for a month when a quarter is too much.
 
 ## How far you can rely on them
 

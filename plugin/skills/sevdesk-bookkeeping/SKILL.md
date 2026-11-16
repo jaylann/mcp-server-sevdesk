@@ -51,6 +51,7 @@ every write is real, and finalized or enshrined records cannot simply be deleted
 | match transactions to documents              | `sevdesk_reconcile_suggest`, then `sevdesk_transaction_book`        |
 | mark a private withdrawal or deposit         | `sevdesk_transaction_mark_private`                                  |
 | VAT for a month or quarter                   | `sevdesk_vat_summary`                                               |
+| find wrong VAT treatment, the §13b base      | `sevdesk_records_audit` (`check: vat` / `reverse_charge`)           |
 | profit, EÜR                                  | `sevdesk_profit_and_loss`                                           |
 | revenue or costs grouped by month, contact … | `sevdesk_records_summarize`                                         |
 | open receivables or payables                 | `sevdesk_receivables_aging`, `sevdesk_payables_aging`               |
