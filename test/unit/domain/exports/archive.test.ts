@@ -1,16 +1,20 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ARCHIVE_TIMEOUT_MS,
   archiveFilename,
   type ArchiveParams,
   archiveQuery,
   exportArchive,
   isDraftEntry,
+  isPlaceholderEntry,
   MAX_ARCHIVE_BYTES,
   mediaType,
 } from "../../../../src/domain/exports/archive.js";
+import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { resolveGetSafety } from "../../../../src/sevdesk/paths.js";
 import { readOnlyClient, tierScopedClient } from "../../../../src/sevdesk/scoped-client.js";
+import type { SevdeskRequest } from "../../../../src/sevdesk/types.js";
 import { FakeSevdeskClient } from "../../../helpers/fake-client.js";
 import { buildZip, pdfBytes } from "../../../helpers/zip.js";
 
@@ -34,6 +38,14 @@ const RECORDED = buildZip([
   {
     name: "2026-10-09_Rechnung(Entwurf)__00112233445566778899aabbccddeeff.pdf",
     content: pdfBytes("3"),
+  },
+]);
+
+/** What sevDesk answers when nothing matches (recorded 2026-11-16, D-101): one readme entry. */
+const README_ONLY = buildZip([
+  {
+    name: "readme.txt",
+    content: "Es wurden keine Dateien hochgeladen, daher ist diese ZIP leer.",
   },
 ]);
 
@@ -176,7 +188,6 @@ describe("exportArchive", () => {
     [{ ...INVOICES, limit: 0 }, "limit"],
     [{ ...INVOICES, limit: 1001 }, "limit"],
     [{ ...INVOICES, subject: "vouchers", contactId: 1 } as const, "contactId"],
-    [{ ...INVOICES, minAmount: "10" }, "minAmount"],
   ] as const)("refuses invalid arguments locally (%#)", async (params, text) => {
     const client = zipClient("/Export/invoiceZip", RECORDED);
     const error = await exportArchive(tierScopedClient(client, "write"), params).catch(
@@ -187,22 +198,82 @@ describe("exportArchive", () => {
     expect(client.calls).toEqual([]);
   });
 
-  it("asks for the archive with a size cap", async () => {
+  it("asks for the archive with a size cap and its own, longer time budget", async () => {
     const client = zipClient("/Export/invoiceZip", RECORDED, RECORDED_TYPE);
-    let maxBytes: number | undefined;
+    const seen: SevdeskRequest[] = [];
     await exportArchive(
       {
         request: (request) => client.request(request),
         list: (...args) => client.list(...args),
         listAll: (...args) => client.listAll(...args),
         download: (request) => {
-          maxBytes = request.maxBytes;
+          seen.push(request);
           return client.download(request);
         },
       },
       INVOICES,
     );
-    expect(maxBytes).toBe(MAX_ARCHIVE_BYTES);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.maxBytes).toBe(MAX_ARCHIVE_BYTES);
+    expect(seen[0]?.timeoutMs).toBe(ARCHIVE_TIMEOUT_MS);
+    expect(ARCHIVE_TIMEOUT_MS).toBe(300_000);
+  });
+
+  it("sends the invoice amount filter, now recorded (bounds inclusive, decimals)", async () => {
+    const client = zipClient("/Export/invoiceZip", RECORDED, RECORDED_TYPE);
+    await exportArchive(tierScopedClient(client, "write"), {
+      ...INVOICES,
+      minAmount: "99.99",
+      maxAmount: "100.01",
+    });
+    expect(client.writes()[0]?.query).toMatchObject({
+      "sevQuery[filter][startAmount]": "99.99",
+      "sevQuery[filter][endAmount]": "100.01",
+    });
+  });
+
+  it("treats sevDesk's readme-only ZIP as empty: no document is counted", async () => {
+    const client = zipClient("/Export/voucherZip", README_ONLY, RECORDED_TYPE);
+
+    const archive = await exportArchive(tierScopedClient(client, "write"), {
+      ...INVOICES,
+      subject: "vouchers",
+    });
+
+    expect(archive).toMatchObject({ entries: 0, pdfEntries: 0, draftEntries: 0 });
+  });
+
+  it("never counts the readme next to documents", async () => {
+    const mixed = buildZip([
+      { name: "readme.txt", content: "x" },
+      { name: "2026-10-05_Rechnung_RE-1000_01.pdf", content: pdfBytes("1") },
+    ]);
+    const client = zipClient("/Export/invoiceZip", mixed, RECORDED_TYPE);
+    await expect(exportArchive(tierScopedClient(client, "write"), INVOICES)).resolves.toMatchObject(
+      { entries: 1, pdfEntries: 1 },
+    );
+  });
+
+  it("turns a timeout into the remedy: a shorter period, nothing saved or changed", async () => {
+    const client = new FakeSevdeskClient([
+      {
+        path: "/Export/invoiceZip",
+        response: {
+          error: new SevdeskError({ kind: "timeout", message: "sevDesk did not answer." }),
+        },
+      },
+    ]);
+
+    const error = await exportArchive(tierScopedClient(client, "write"), INVOICES).catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toMatchObject({ kind: "timeout" });
+    expect((error as Error).message).toBe(
+      "sevDesk did not finish the archive of invoices within 5 minutes (it renders every PDF " +
+        "first). Nothing changed in sevDesk and nothing was saved: export a shorter period, for " +
+        "example one month, or fewer documents.",
+    );
   });
 });
 
@@ -221,6 +292,13 @@ describe("helpers", () => {
     expect(isDraftEntry({ name: "2026-10-05_Rechnung_RE-1000_0123.pdf" })).toBe(false);
     // A parenthesis in a voucher's description is not a draft label.
     expect(isDraftEntry({ name: "2026-10-05_Beleg_Kaffee (Bio)_0123.pdf" })).toBe(false);
+  });
+
+  it("recognizes sevDesk's placeholder only at the top of the ZIP", () => {
+    expect(isPlaceholderEntry({ name: "readme.txt" })).toBe(true);
+    expect(isPlaceholderEntry({ name: "README.TXT" })).toBe(true);
+    expect(isPlaceholderEntry({ name: "ordner/readme.txt" })).toBe(false);
+    expect(isPlaceholderEntry({ name: "2026-10-05_Beleg_readme.txt_01.pdf" })).toBe(false);
   });
 
   it("names the file from our own values", () => {

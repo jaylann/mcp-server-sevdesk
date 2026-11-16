@@ -9682,14 +9682,14 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
           "type": "integer",
         },
         "maxAmount": {
-          "description": "Vouchers only: largest gross amount in EUR.",
+          "description": "Largest amount in EUR (inclusive); for vouchers the gross amount.",
           "type": [
             "string",
             "number",
           ],
         },
         "minAmount": {
-          "description": "Vouchers only: smallest gross amount in EUR, e.g. 100.00.",
+          "description": "Smallest amount in EUR (inclusive), e.g. 100.00; for vouchers the gross amount.",
           "type": [
             "string",
             "number",

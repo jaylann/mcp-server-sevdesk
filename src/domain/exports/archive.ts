@@ -10,13 +10,23 @@
  * - The query is the flattened `sevQuery` of the CSV exports (`sevQuery[objectName]=SevQuery`,
  *   `[modelName]`, `[limit]`, `[filter][startDate|endDate]` in Unix seconds, D-012). Recorded
  *   filters: `[filter][contact][id]` with `[contact][objectName]=Contact` on invoices (exactly that
- *   contact's two invoices of 130), and `[filter][startAmount]`/`[endAmount]` on vouchers (exactly
- *   the two vouchers of 49 between 123 and 124 EUR gross). The other combinations are not
- *   recorded, so they are not offered.
+ *   contact's two invoices of 130), and `[filter][startAmount]`/`[endAmount]` on both (vouchers:
+ *   decimal bounds, inclusive; invoices: 110 entries for an amount range 111 listed invoices
+ *   fall into). The contact filter on vouchers is not recorded, so it is not offered.
  * - One PDF per document, named `YYYY-MM-DD_Rechnung_<number>_<hash>.pdf`. **Drafts are
  *   included**, with a label in parentheses after the kind and no number
  *   (`YYYY-MM-DD_Rechnung(<label>)__<hash>.pdf`); voucher entries carry date, label, description
  *   and hash the same way. {@link isDraftEntry} counts them, so the tool can say so.
+ * - **Fewer entries than documents is normal:** a voucher archive holds only vouchers with a
+ *   receipt file (13 entries for 53 listed vouchers), and an invoice archive held one invoice
+ *   fewer than the list (130 of 131, 110 of 111; which one is unknown).
+ * - **Nothing matched:** sevDesk still answers a ZIP, with one entry `readme.txt` ("Es wurden keine
+ *   Dateien hochgeladen, daher ist diese ZIP leer."). That entry is never counted as a document
+ *   ({@link isPlaceholderEntry}); an archive without documents is not saved.
+ * - **Slow:** sevDesk renders the whole ZIP before answering: 30 s for 110 invoices (21 MB), 46 s
+ *   for 25 (a first call), 63 s for 130 (24.6 MB); about 1 s for 13 small receipts. The request
+ *   therefore gets its own time budget ({@link ARCHIVE_TIMEOUT_MS}) instead of
+ *   `SEVDESK_TIMEOUT_MS` (30 s by default), and a timeout says to export a shorter period.
  * - Nothing changes on any document: a draft kept status, `sendDate`, `sendType` and `update`
  *   (unlike `getPdf` without `preventSendBy`, D-023). It is still requested as a side effect with
  *   the `write` tier (`resolveGetSafety` recognizes both endpoints): sevDesk renders every PDF of
@@ -56,6 +66,13 @@ export const MAX_ARCHIVE_DOCUMENTS = 1_000;
  * trial account, so about 700 invoices fit; a longer period is exported in parts.
  */
 export const MAX_ARCHIVE_BYTES = 100 * 1024 * 1024;
+/**
+ * Time sevDesk gets to render and send one archive: 5 minutes. The slowest recorded archive (130
+ * invoices, 24.6 MB) took 63 s, so this leaves about four times that, roughly a quarter of a
+ * small business's invoices. Larger archives are exported in shorter periods. (A remote server
+ * still ends every request after 120 s, `docs/remote/operations.md`.)
+ */
+export const ARCHIVE_TIMEOUT_MS = 300_000;
 
 export interface ArchiveParams {
   readonly subject: ArchiveSubject;
@@ -65,7 +82,7 @@ export interface ArchiveParams {
   readonly limit: number;
   /** Invoices only: the customer contact's id. */
   readonly contactId?: number | undefined;
-  /** Vouchers only: gross amount range, exact decimal strings in EUR. */
+  /** Amount range in EUR (inclusive), exact decimal strings, as sevDesk's amount filter reads it. */
   readonly minAmount?: string | undefined;
   readonly maxAmount?: string | undefined;
 }
@@ -100,7 +117,7 @@ export function archiveQuery(params: ArchiveParams): Record<string, QueryValue> 
 /** An archive as sevDesk sent it, checked. */
 export interface DocumentArchive {
   readonly bytes: Uint8Array;
-  /** Entries in the ZIP (one per document). */
+  /** Documents in the ZIP: its entries without sevDesk's `readme.txt` placeholder. */
   readonly entries: number;
   /** Entries whose name ends in `.pdf`. */
   readonly pdfEntries: number;
@@ -123,20 +140,14 @@ export function checkArchiveParams(params: ArchiveParams): void {
         "unverified, so it is not sent.",
     );
   }
-  const amounts = params.minAmount !== undefined || params.maxAmount !== undefined;
-  if (amounts && params.subject !== "vouchers") {
-    throw invalid(
-      "minAmount and maxAmount filter vouchers only; sevDesk's amount filter on the invoice " +
-        "archive is unverified, so it is not sent.",
-    );
-  }
 }
 
 /**
  * Asks sevDesk for the archive (a side-effect GET: needs a `write`-tier client, never retried)
  * and checks the answer: the JSON form is decoded (and refused without content), anything else
- * must be a ZIP-like media type and a readable ZIP. Throws `unexpected_response` otherwise;
- * nothing has been saved then.
+ * must be a ZIP-like media type and a readable ZIP. Throws `unexpected_response` otherwise, and
+ * `timeout` (with the remedy) when sevDesk takes longer than {@link ARCHIVE_TIMEOUT_MS}; nothing
+ * has been saved then.
  */
 export async function exportArchive(
   client: SevdeskClient,
@@ -144,14 +155,31 @@ export async function exportArchive(
   signal?: AbortSignal,
 ): Promise<DocumentArchive> {
   checkArchiveParams(params);
-  const answer = await client.download({
-    method: "GET",
-    path: ARCHIVE_EXPORTS[params.subject].path,
-    query: archiveQuery(params),
-    sideEffect: true,
-    maxBytes: MAX_ARCHIVE_BYTES,
-    ...(signal === undefined ? {} : { signal }),
-  });
+  let answer: { body: Uint8Array; contentType: string | undefined };
+  try {
+    answer = await client.download({
+      method: "GET",
+      path: ARCHIVE_EXPORTS[params.subject].path,
+      query: archiveQuery(params),
+      sideEffect: true,
+      maxBytes: MAX_ARCHIVE_BYTES,
+      timeoutMs: ARCHIVE_TIMEOUT_MS,
+      ...(signal === undefined ? {} : { signal }),
+    });
+  } catch (error) {
+    if (error instanceof SevdeskError && error.kind === "timeout") {
+      throw new SevdeskError({
+        kind: "timeout",
+        message:
+          `sevDesk did not finish the archive of ${ARCHIVE_EXPORTS[params.subject].noun} within ` +
+          `${String(ARCHIVE_TIMEOUT_MS / 60_000)} minutes (it renders every PDF first). Nothing ` +
+          "changed in sevDesk and nothing was saved: export a shorter period, for example one " +
+          "month, or fewer documents.",
+        cause: error,
+      });
+    }
+    throw error;
+  }
   const type = mediaType(answer.contentType);
   const bytes =
     type?.endsWith("json") === true || answer.body[0] === 0x7b
@@ -160,14 +188,24 @@ export async function exportArchive(
   if (type !== undefined && !type.endsWith("json") && !ZIP_TYPES.has(type)) {
     throw notAZip(`sevDesk answered with the media type ${safeType(type)}, not a ZIP`);
   }
-  const entries = looksLikeZip(bytes) ? listZipEntries(bytes) : undefined;
-  if (entries === undefined) throw notAZip("the answer is not a readable ZIP archive");
+  const listed = looksLikeZip(bytes) ? listZipEntries(bytes) : undefined;
+  if (listed === undefined) throw notAZip("the answer is not a readable ZIP archive");
+  const documents = listed.filter((entry) => !isPlaceholderEntry(entry));
   return {
     bytes,
-    entries: entries.length,
-    pdfEntries: entries.filter((entry) => /\.pdf$/i.test(entry.name)).length,
-    draftEntries: entries.filter((entry) => isDraftEntry(entry)).length,
+    entries: documents.length,
+    pdfEntries: documents.filter((entry) => /\.pdf$/i.test(entry.name)).length,
+    draftEntries: documents.filter((entry) => isDraftEntry(entry)).length,
   };
+}
+
+/**
+ * Whether an entry is sevDesk's placeholder for "nothing matched": `readme.txt` at the top of the
+ * ZIP (recorded: the only entry, 62 bytes, "Es wurden keine Dateien hochgeladen, daher ist diese
+ * ZIP leer."). It is never a document.
+ */
+export function isPlaceholderEntry(entry: Pick<ZipEntry, "name">): boolean {
+  return entry.name.toLowerCase() === "readme.txt";
 }
 
 /** Media types accepted for the raw ZIP (sevDesk sends `application/zip`). */

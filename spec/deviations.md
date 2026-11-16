@@ -3600,13 +3600,32 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   - Nothing changed: the draft invoice kept status, `sendDate`, `sendType` and `update`, and no
     invoice (130) or voucher (49) changed any key. Unlike `getPdf` without `preventSendBy`
     (D-023), the export does not mark drafts as sent.
+  - When nothing matches, `download=true` still answers a real ZIP (179 bytes) with one entry,
+    `readme.txt` (62 bytes, "Es wurden keine Dateien hochgeladen, daher ist diese ZIP leer."),
+    for `limit` 1 and 1000, a window in January 2000 and an amount range nothing falls into. (The
+    probes' "JSON with content null" came from their own HTTP layer.)
+  - `startAmount`/`endAmount` take decimals, bounds inclusive: on `voucherZip`, a voucher with a
+    decimal gross amount g was in the archive for g..g and g−0.01..g+0.01, and not for
+    g+0.01..g+0.02 (readme ZIP). `invoiceZip` honours them too: 110 entries for an amount range
+    111 listed invoices fall into, against 130 entries unfiltered for 131 listed.
+  - Entries can be fewer than documents: a voucher archive holds only vouchers with a receipt
+    file (13 entries for 53 listed vouchers in the window, the 13 that had a `document`); both
+    invoice runs held one invoice fewer than the list (130 of 131, 110 of 111).
+  - Duration: sevDesk answers only once the ZIP is rendered. `invoiceZip` took 30 s for 110
+    entries (21 MB), 46 s for 25 entries (6.6 MB, a first call) and 63 s for 130 entries
+    (24.6 MB); `voucherZip` about 1 s for 13 small receipts.
+  - Not measured: the contact filter on `voucherZip` (no voucher with a supplier contact in the
+    window), which invoice the invoice archive leaves out, and archives beyond 25 MB.
 - **Sources:** spec (`exportInvoiceZip`, `exportVoucherZip`); recorded 2026-11-16, trial account,
-  Update 2.0 (probes `write-export-invoice-zip`, `write-export-voucher-zip`).
+  Update 2.0 (probes `write-export-invoice-zip`, `write-export-voucher-zip`); recorded 2026-11-16,
+  trial account, Update 2.0 (one-off checks by the orchestrator).
 - **Impact:** The archive export of #95 asks for `download=true`, parses the media type leniently
   (the stray apostrophe), checks that the body is a ZIP, always sends the filters and an explicit
   `limit`, says that drafts are included (or filters them out), and needs no `commit` tier: it
   changes no document. It stays a side-effect GET with the `write` tier in this repository's
-  client until a tool settles it, since a ZIP of many PDFs is a heavy job on sevDesk's side.
+  client until a tool settles it, since a ZIP of many PDFs is a heavy job on sevDesk's side. The
+  readme-only ZIP is the empty case, a lower entry count is no error, and the default
+  `SEVDESK_TIMEOUT_MS` of 30 s is too short for a month of invoices.
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("exports the ZIPs, describes entries
   as patterns and sees no change to documents": the null JSON content, the raw ZIP with drafts,
   unchanged documents; "keeps only the signature of a binary body in the evidence");
@@ -3617,13 +3636,24 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   unchanged and counts entries and drafts": entry names and count read back from the saved file),
   `test/regressions/export-archives-no-enshrine.test.ts`, `test/unit/sevdesk/paths.test.ts`
   ("treats the document archive %s as a side effect"), `test/regressions/api-get-side-effects.test.ts`
-  (`/Export/invoiceZip`, `/Export/voucherZip`). Handling: `sevdesk_archive_export`
+  (`/Export/invoiceZip`, `/Export/voucherZip`); for the one-off checks:
+  `test/unit/domain/exports/archive.test.ts` ("treats sevDesk's readme-only ZIP as empty",
+  "never counts the readme next to documents", "sends the invoice amount filter, now recorded",
+  "asks for the archive with a size cap and its own, longer time budget", "turns a timeout into
+  the remedy"), `test/unit/tools/reports/archive-export.test.ts` ("saves nothing for %s and says
+  no document matched", "treats fewer entries than documents as normal, not as an error"),
+  `test/unit/sevdesk/client.test.ts` ("gives a download its own, longer time budget, and only a
+  download", "bounds a request's own time budget…"). Handling: `sevdesk_archive_export`
   (`src/tools/reports/archive-export.ts`, `src/domain/exports/archive.ts`), a `write` tool:
   `download=true`, a fixed query with an explicit `limit` and only the recorded filters (contact
-  for invoices, gross amounts for vouchers), the media type parsed leniently, the body checked as
-  a readable ZIP, drafts counted from their entry names (`draftEntries`) and named in the result,
-  100 MiB at most; `resolveGetSafety` treats both endpoints as side effects (`ARCHIVE_ENDPOINTS`
-  in `src/sevdesk/paths.ts`), and `sevdesk_api_get` refuses them anywhere in a path.
+  for invoices, amounts for both), the media type parsed leniently, the body checked as a
+  readable ZIP, the top-level `readme.txt` never counted and an archive without documents not
+  saved (in our own words), drafts counted from their entry names (`draftEntries`), a note that
+  fewer files than documents is normal, 100 MiB at most, and its own time budget of 5 minutes
+  (`ARCHIVE_TIMEOUT_MS`, through `SevdeskRequest.timeoutMs`, which only `download` honours,
+  bounded by `requestTimeoutMs` in `src/sevdesk/client.ts`) with a timeout error that names the
+  remedy; `resolveGetSafety` treats both endpoints as side effects (`ARCHIVE_ENDPOINTS` in
+  `src/sevdesk/paths.ts`), and `sevdesk_api_get` refuses them anywhere in a path.
 
 ### D-102: The DATEV XML job works like the CSV job and marks nothing as exported
 

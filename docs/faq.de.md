@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:ad83259c80ac -->
+<!-- translated-from: docs/faq.md sha256:0710f20c7863 -->
 
 # Häufige Fragen
 
@@ -140,8 +140,9 @@ sevDesk, zum Beispiel für Excel.
 
 Ja. [`sevdesk_archive_export`](tools.md#sevdesk_archive_export) lässt sevDesk die Rechnungs-PDFs
 oder die Belege eines Zeitraums in ein ZIP packen, höchstens 1.000 Dokumente und 100 MiB pro
-Datei, und ändert nichts an den Dokumenten. sevDesk nimmt Entwürfe mit; das Ergebnis zählt sie,
-damit du sie herausnehmen kannst. Mehr dazu:
+Datei, und ändert nichts an den Dokumenten. sevDesk nimmt Entwürfe mit (das Ergebnis zählt sie,
+damit du sie herausnehmen kannst) und lässt Belege ohne Belegdatei weg. Ein großes Archiv dauert
+Minuten; die Abhilfe ist ein kürzerer Zeitraum. Mehr dazu:
 [Auswertungen und Exporte](guides/evaluations.de.md#rechnungs--und-belegarchiv).
 
 ### Wie weit kann ich mich auf die Umsatzsteuer-Auswertung und die Gewinn- und Verlustrechnung verlassen?

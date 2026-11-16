@@ -37,7 +37,13 @@ const archiveOutput = z.object({
     .int()
     .describe("Size of the ZIP; 0 when nothing matched and nothing was saved."),
   period: z.object({ from: z.string(), to: z.string(), label: z.string() }),
-  entries: z.number().int().describe("Files in the ZIP: one per document."),
+  entries: z
+    .number()
+    .int()
+    .describe(
+      "Documents in the ZIP, one file each. Can be lower than the documents listed: vouchers " +
+        "without a receipt file are not included. 0 when nothing matched.",
+    ),
   pdfEntries: z.number().int().describe("Entries that are PDF files."),
   draftEntries: z
     .number()
@@ -61,6 +67,19 @@ const DRAFTS_INCLUDED =
   "sevDesk includes drafts in the archive (marked in the entry name, without a number); remove " +
   "them before handing the archive to the tax adviser.";
 
+/**
+ * Why an archive can hold fewer files than the document lists show (recorded, D-101): not an
+ * error, but worth saying so nobody takes the archive as complete.
+ */
+const COVERAGE: Readonly<Record<ArchiveParams["subject"], string>> = {
+  invoices:
+    "The archive can hold fewer invoices than sevdesk_invoices_list shows (one fewer when " +
+    "recorded); compare the count there when completeness matters.",
+  vouchers:
+    "Only vouchers with an uploaded receipt file are in the archive; vouchers without a file " +
+    "are left out, so it can hold fewer files than vouchers.",
+};
+
 export const archiveExportTool = defineWriteTool({
   name: "sevdesk_archive_export",
   title: "Invoice or voucher PDFs as a ZIP file",
@@ -69,12 +88,13 @@ export const archiveExportTool = defineWriteTool({
     "(Belege) of a month, quarter, year or date range into one ZIP and save it as a new file in " +
     "SEVDESK_OUTPUT_DIR (on a remote server: a download link for the user), e.g. for the tax " +
     "adviser or a tax audit (Betriebsprüfung). subject picks invoices or vouchers; contactId " +
-    "narrows invoices to one customer, minAmount/maxAmount narrow vouchers by gross amount. " +
-    "sevDesk includes drafts (draftEntries counts them). Nothing changes on any document (no " +
-    "status, no send date, nothing enshrined); write tier because sevDesk renders every PDF, " +
-    `which takes time. At most ${String(MAX_ARCHIVE_DOCUMENTS)} documents and 100 MiB per ZIP: ` +
-    "export long periods in parts. Returns the path or link and counts, never the content. " +
-    "dryRun previews.",
+    "narrows invoices to one customer, minAmount/maxAmount narrow by amount. sevDesk includes " +
+    "drafts (draftEntries counts them); vouchers without a receipt file are not in it, so it can " +
+    "hold fewer files than documents. Nothing changes on any document; write tier because " +
+    "sevDesk renders every PDF first: a large archive takes minutes (about a minute per 100 " +
+    `invoices; stopped after 5); the remedy is a shorter period. At most ` +
+    `${String(MAX_ARCHIVE_DOCUMENTS)} documents and 100 MiB per ZIP. Returns the path or link ` +
+    "and counts, never the content. dryRun previews.",
   toolset: "reports",
   tier: "write",
   localEffects: "writes-files",
@@ -95,8 +115,10 @@ export const archiveExportTool = defineWriteTool({
       .describe("Invoices only: only this customer's invoices (contact id)."),
     minAmount: amountInput()
       .optional()
-      .describe("Vouchers only: smallest gross amount in EUR, e.g. 100.00."),
-    maxAmount: amountInput().optional().describe("Vouchers only: largest gross amount in EUR."),
+      .describe("Smallest amount in EUR (inclusive), e.g. 100.00; for vouchers the gross amount."),
+    maxAmount: amountInput()
+      .optional()
+      .describe("Largest amount in EUR (inclusive); for vouchers the gross amount."),
     limit: z
       .number()
       .int()
@@ -126,7 +148,8 @@ export const archiveExportTool = defineWriteTool({
     const amounts =
       args.minAmount === undefined && args.maxAmount === undefined
         ? undefined
-        : `${args.minAmount ?? "any"} to ${args.maxAmount ?? "any"} EUR gross`;
+        : `${args.minAmount ?? "any"} to ${args.maxAmount ?? "any"} EUR` +
+          (args.subject === "vouchers" ? " gross" : "");
     return {
       preview: {
         action:
@@ -153,8 +176,10 @@ export const archiveExportTool = defineWriteTool({
           "Nothing changes on any document: no status, no send date, nothing enshrined " +
             "(festgeschrieben).",
           DRAFTS_INCLUDED,
-          "sevDesk renders every PDF of the period, which can take a while; a ZIP above 100 MiB " +
-            "is not saved (export a shorter period).",
+          COVERAGE[args.subject],
+          "sevDesk renders every PDF of the period before it answers: a large archive takes " +
+            "minutes and is stopped after 5; a ZIP above 100 MiB is not saved. The remedy for " +
+            "both is a shorter period.",
         ],
         irreversible: false,
       },
@@ -163,8 +188,14 @@ export const archiveExportTool = defineWriteTool({
   },
   execute: async (_args, plan, ctx) => {
     const { params, label } = plan.state;
-    const archive = await exportArchive(ctx.client, params, ctx.signal);
     const noun = ARCHIVE_EXPORTS[params.subject].noun;
+    // sevDesk answers only once the whole ZIP is rendered (up to minutes): tell the client.
+    await ctx.progress(
+      0,
+      undefined,
+      `sevDesk is rendering the ${noun} of ${label} into one ZIP; this can take minutes.`,
+    );
+    const archive = await exportArchive(ctx.client, params, ctx.signal);
     const period = { from: params.from, to: params.to, label };
     const mayBeTruncated = archive.entries >= params.limit;
     // No sevDesk record changed; the audit log names the export request itself.
@@ -183,6 +214,7 @@ export const archiveExportTool = defineWriteTool({
       ...(mayBeTruncated
         ? [`The ZIP has the maximum of ${String(params.limit)} documents; more may exist.`]
         : []),
+      ...(archive.entries > 0 ? [COVERAGE[params.subject]] : []),
     ];
     const counts = {
       entries: archive.entries,
@@ -194,7 +226,9 @@ export const archiveExportTool = defineWriteTool({
     if (archive.entries === 0) {
       return {
         data: { subject: params.subject, bytes: 0, period, ...counts, warnings },
-        summary: `No ${noun} matched ${label}; sevDesk sent an empty ZIP, nothing was saved.`,
+        summary:
+          `No ${noun} ${params.subject === "vouchers" ? "with a receipt file " : ""}matched ` +
+          `${label} and the filters; nothing was saved and nothing changed in sevDesk.`,
         affected,
       };
     }

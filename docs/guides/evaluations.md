@@ -174,18 +174,26 @@ your booking data under another client or makes the import fail.
 [`sevdesk_archive_export`](../tools.md#sevdesk_archive_export) (`write`, no confirmation) lets
 sevDesk put every invoice PDF (`subject: "invoices"`) or every voucher receipt
 (`subject: "vouchers"`) of a month, quarter, year or date range into one ZIP, one file per
-document, and saves it like the DATEV export. Invoices can be narrowed to one customer, vouchers to
-a range of gross amounts.
+document, and saves it like the DATEV export. Invoices can be narrowed to one customer, both to a
+range of amounts (inclusive; for vouchers the gross amount).
 
 - Nothing changes on any document: no status, no send date, nothing enshrined. It needs `write`
-  because sevDesk renders every PDF on request, which takes a while for a long period.
+  because sevDesk renders every PDF on request.
 - **sevDesk includes drafts.** Their file names carry a label in parentheses and no number; the
   result counts them (`draftEntries`) and says so. Remove them before you hand the archive on.
-- At most 1,000 documents and 100 MiB per ZIP (a rendered invoice is about 140 KB, so roughly 700
-  invoices fit): export long periods in parts. The result says when the limit may have cut the
-  archive. sevDesk renders the whole ZIP in one request; if it takes longer than
-  `SEVDESK_TIMEOUT_MS` (30 seconds by default), raise it or export a shorter period.
-- When nothing matches, nothing is saved.
+- **The archive can hold fewer files than you have documents.** Vouchers without an uploaded
+  receipt file are not in it (13 files for 53 vouchers on the test account), and an invoice archive
+  held one invoice fewer than the invoice list. This is how sevDesk builds the archive, not an
+  error; compare the counts with the lists when completeness matters.
+- **It takes time.** sevDesk renders the whole ZIP before it answers: about 30 to 60 seconds for
+  100 to 130 invoices (20 to 25 MB), about a second for a few receipts. The archive request gets
+  up to 5 minutes, independent of `SEVDESK_TIMEOUT_MS`; beyond that it stops with nothing saved,
+  and the remedy is a shorter period. On a remote server every request ends after 120 seconds
+  ([Operations](../remote/operations.md)), so export about a month of invoices per call there.
+- At most 1,000 documents and 100 MiB per ZIP (a rendered invoice is about 140 to 190 KB): export
+  long periods in parts. The result says when the limit may have cut the archive.
+- When nothing matches, sevDesk sends a ZIP with only a note in it; the tool saves nothing and
+  says that no document matched.
 
 ### CSV
 

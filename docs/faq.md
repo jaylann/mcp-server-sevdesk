@@ -127,8 +127,9 @@ example for Excel.
 
 Yes. [`sevdesk_archive_export`](tools.md#sevdesk_archive_export) lets sevDesk put the invoice PDFs
 or the voucher receipts of a period into one ZIP, at most 1,000 documents and 100 MiB per file, and
-changes nothing on the documents. sevDesk includes drafts; the result counts them so you can take
-them out. Details: [Reports and exports](guides/evaluations.md#invoice-and-receipt-archive).
+changes nothing on the documents. sevDesk includes drafts (the result counts them so you can take
+them out) and leaves out vouchers without a receipt file. A large archive takes minutes; a shorter
+period is the remedy. Details: [Reports and exports](guides/evaluations.md#invoice-and-receipt-archive).
 
 ### How far can I rely on the VAT summary and the profit and loss?
 

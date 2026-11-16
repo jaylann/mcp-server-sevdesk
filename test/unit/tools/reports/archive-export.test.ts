@@ -7,10 +7,18 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { listZipEntries } from "../../../../src/domain/exports/zip.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { archiveExportTool } from "../../../../src/tools/reports/archive-export.js";
-import { FakeSevdeskClient } from "../../../helpers/fake-client.js";
+import { FakeSevdeskClient, testContext } from "../../../helpers/fake-client.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import { buildZip, pdfBytes } from "../../../helpers/zip.js";
 import { ARCHIVE_ROUTES, INVOICE_ARCHIVE } from "../../../write-cases/reports.js";
+
+/** What sevDesk answers when nothing matches (recorded 2026-11-16, D-101). */
+const README_ONLY = buildZip([
+  {
+    name: "readme.txt",
+    content: "Es wurden keine Dateien hochgeladen, daher ist diese ZIP leer.",
+  },
+]);
 
 let directory: string;
 
@@ -90,11 +98,25 @@ describe("sevdesk_archive_export: prepare", () => {
     );
     const facts = Object.fromEntries(plan.preview.facts.map((fact) => [fact.label, fact.value]));
     expect(facts["Amounts"]).toBe("123 to 124 EUR gross");
+    expect(plan.preview.warnings.join(" ")).toContain("Only vouchers with an uploaded receipt");
+  });
+
+  it("offers the amount filter on invoices too (recorded) and says the archive can be shorter", async () => {
+    const plan = await prepareWrite(
+      archiveExportTool,
+      { subject: "invoices", year: 2026, month: 10, maxAmount: "500" },
+      new FakeSevdeskClient([]),
+      { outputDir: directory },
+    );
+    const facts = Object.fromEntries(plan.preview.facts.map((fact) => [fact.label, fact.value]));
+    expect(facts["Amounts"]).toBe("any to 500 EUR");
+    const warnings = plan.preview.warnings.join(" ");
+    expect(warnings).toContain("fewer invoices than sevdesk_invoices_list shows");
+    expect(warnings).toContain("stopped after 5");
   });
 
   it.each([
     [{ subject: "vouchers", year: 2026, contactId: 1 }, "contactId filters invoices only"],
-    [{ subject: "invoices", year: 2026, maxAmount: "5" }, "vouchers only"],
     [{ subject: "invoices", from: "2026-02-01", to: "2026-01-01" }, "from is after to"],
     [{ subject: "invoices" }, "give either year"],
   ])("refuses %j before anything is sent", async (args, text) => {
@@ -149,7 +171,10 @@ describe("sevdesk_archive_export: execute", () => {
       mayBeTruncated: false,
     });
     const data = output.data as { savedTo: string; warnings: string[] };
-    expect(data.warnings).toEqual([expect.stringContaining("1 entry is named like drafts")]);
+    expect(data.warnings).toEqual([
+      expect.stringContaining("1 entry is named like drafts"),
+      expect.stringContaining("fewer invoices than sevdesk_invoices_list shows"),
+    ]);
     expect(data.savedTo.endsWith("invoices_2026-10-01_2026-10-31.zip")).toBe(true);
     const saved = await readFile(data.savedTo);
     expect(Buffer.from(saved)).toEqual(Buffer.from(INVOICE_ARCHIVE));
@@ -195,19 +220,73 @@ describe("sevdesk_archive_export: execute", () => {
     });
   });
 
-  it("saves nothing when the archive is empty", async () => {
+  it.each([
+    ["sevDesk's readme-only ZIP (what it answers when nothing matches)", README_ONLY],
+    ["a ZIP without entries", buildZip([])],
+  ])("saves nothing for %s and says no document matched", async (_label, bytes) => {
     const client = new FakeSevdeskClient([
-      { path: "/Export/invoiceZip", response: { bytes: buildZip([]) } },
+      {
+        path: "/Export/voucherZip",
+        response: { bytes, contentType: "application/zip; charset=UTF-8'" },
+      },
     ]);
 
-    const { output } = await executeWrite(archiveExportTool, OCTOBER, client, {
-      outputDir: directory,
-    });
+    const { output } = await executeWrite(
+      archiveExportTool,
+      { subject: "vouchers", year: 2026, month: 10 },
+      client,
+      { outputDir: directory },
+    );
 
-    expect(output.data).toMatchObject({ entries: 0, bytes: 0 });
+    expect(output.data).toMatchObject({ entries: 0, pdfEntries: 0, bytes: 0, warnings: [] });
     expect(output.data).not.toHaveProperty("savedTo");
-    expect(output.summary).toContain("nothing was saved");
+    expect(output.summary).toBe(
+      "No vouchers with a receipt file matched 2026-10 and the filters; nothing was saved and " +
+        "nothing changed in sevDesk.",
+    );
+    // Our own words only: sevDesk's readme text never reaches the model.
+    expect(JSON.stringify(output)).not.toContain("hochgeladen");
     expect(await readdir(directory)).toEqual([]);
+  });
+
+  it("treats fewer entries than documents as normal, not as an error", async () => {
+    const one = buildZip([{ name: "2026-10-01_Beleg_A_01.pdf", content: pdfBytes("a") }]);
+    const client = new FakeSevdeskClient([
+      { path: "/Export/voucherZip", response: { bytes: one, contentType: "application/zip" } },
+    ]);
+
+    const { output } = await executeWrite(
+      archiveExportTool,
+      { subject: "vouchers", year: 2026, month: 10 },
+      client,
+      { outputDir: directory },
+    );
+
+    expect(output.data).toMatchObject({ entries: 1, mayBeTruncated: false });
+    expect((output.data as { warnings: string[] }).warnings).toEqual([
+      expect.stringContaining("vouchers without a file are left out"),
+    ]);
+    expect(output.summary).toContain("1 files");
+    expect(await readdir(directory)).toHaveLength(1);
+  });
+
+  it("tells the client up front that rendering can take minutes", async () => {
+    const client = new FakeSevdeskClient(ARCHIVE_ROUTES);
+    const plan = await prepareWrite(archiveExportTool, OCTOBER, client, { outputDir: directory });
+    const messages: string[] = [];
+    const ctx = {
+      ...testContext(client, { SEVDESK_OUTPUT_DIR: directory }),
+      progress: (_done: number, _total: number | undefined, message?: string) => {
+        messages.push(message ?? "");
+        return Promise.resolve();
+      },
+    };
+
+    await archiveExportTool.execute(archiveExportTool.input.parse(OCTOBER), plan, ctx);
+
+    expect(messages).toEqual([
+      "sevDesk is rendering the invoices of 2026-10 into one ZIP; this can take minutes.",
+    ]);
   });
 
   it("refuses an answer that is not a ZIP and saves nothing", async () => {

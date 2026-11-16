@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/evaluations.md sha256:7a53732d88db -->
+<!-- translated-from: docs/guides/evaluations.md sha256:8135007a5904 -->
 
 # Auswertungen und Exporte
 
@@ -187,20 +187,29 @@ scheitern.
 [`sevdesk_archive_export`](../tools.md#sevdesk_archive_export) (`write`, ohne Bestätigung) lässt
 sevDesk jedes Rechnungs-PDF (`subject: "invoices"`) oder jeden Beleg (`subject: "vouchers"`)
 eines Monats, Quartals, Jahres oder Zeitraums in ein ZIP packen, eine Datei pro Dokument, und
-speichert es wie den DATEV-Export. Rechnungen lassen sich auf einen Kunden eingrenzen, Belege auf
-einen Bereich von Bruttobeträgen.
+speichert es wie den DATEV-Export. Rechnungen lassen sich auf einen Kunden eingrenzen, beide auf
+einen Bereich von Beträgen (einschließlich der Grenzen; bei Belegen der Bruttobetrag).
 
 - An keinem Dokument ändert sich etwas: kein Status, kein Versanddatum, nichts festgeschrieben. Es
-  braucht `write`, weil sevDesk auf Anfrage jedes PDF erzeugt, was bei einem langen Zeitraum dauert.
+  braucht `write`, weil sevDesk auf Anfrage jedes PDF erzeugt.
 - **sevDesk nimmt Entwürfe mit.** Ihre Dateinamen tragen eine Kennzeichnung in Klammern und keine
   Nummer; das Ergebnis zählt sie (`draftEntries`) und sagt es. Entferne sie, bevor du das Archiv
   weitergibst.
-- Höchstens 1.000 Dokumente und 100 MiB pro ZIP (eine erzeugte Rechnung hat etwa 140 KB, es passen
-  also rund 700 Rechnungen): Exportiere lange Zeiträume in Teilen. Das Ergebnis sagt, wenn die
-  Grenze das Archiv abgeschnitten haben kann. sevDesk erzeugt das ganze ZIP in einer Anfrage;
-  dauert es länger als `SEVDESK_TIMEOUT_MS` (standardmäßig 30 Sekunden), erhöhe den Wert oder
-  exportiere einen kürzeren Zeitraum.
-- Passt nichts, wird nichts gespeichert.
+- **Das Archiv kann weniger Dateien enthalten, als du Dokumente hast.** Belege ohne hochgeladene
+  Belegdatei fehlen darin (13 Dateien für 53 Belege auf dem Testkonto), und ein Rechnungsarchiv
+  enthielt eine Rechnung weniger als die Rechnungsliste. So baut sevDesk das Archiv, das ist kein
+  Fehler; vergleiche die Anzahl mit den Listen, wenn es auf Vollständigkeit ankommt.
+- **Es dauert.** sevDesk erzeugt das ganze ZIP, bevor es antwortet: etwa 30 bis 60 Sekunden für
+  100 bis 130 Rechnungen (20 bis 25 MB), etwa eine Sekunde für ein paar Belege. Die Anfrage für
+  das Archiv bekommt bis zu 5 Minuten, unabhängig von `SEVDESK_TIMEOUT_MS`; danach bricht sie ab,
+  ohne etwas zu speichern, und die Abhilfe ist ein kürzerer Zeitraum. Auf einem entfernten Server
+  endet jede Anfrage nach 120 Sekunden ([Betrieb](../remote/operations.de.md)), exportiere dort
+  also etwa einen Monat Rechnungen pro Aufruf.
+- Höchstens 1.000 Dokumente und 100 MiB pro ZIP (eine erzeugte Rechnung hat etwa 140 bis 190 KB):
+  Exportiere lange Zeiträume in Teilen. Das Ergebnis sagt, wenn die Grenze das Archiv abgeschnitten
+  haben kann.
+- Passt nichts, schickt sevDesk ein ZIP mit nur einem Hinweis darin; das Werkzeug speichert nichts
+  und sagt, dass kein Dokument gepasst hat.
 
 ### CSV
 
