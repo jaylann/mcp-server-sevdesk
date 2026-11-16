@@ -8,7 +8,7 @@
 import { assetPath } from "./assets.js";
 import type { RenderContext } from "./context.js";
 import { type Html, markup, trusted } from "./html.js";
-import { SEAL } from "./icons.js";
+import { MARK } from "./icons.js";
 import type { Locale } from "./locale.js";
 import { DARK_TOKENS, LIGHT_TOKENS, PAGE_CSS } from "./theme.js";
 
@@ -46,7 +46,7 @@ export function renderFrame(options: FrameOptions, ctx: RenderContext): string {
 </head>
 <body${options.wide === true ? trusted(' class="wide"') : ""}>
 <div class="page">
-<header class="top"><span class="wordmark">${SEAL}<span>sevDesk&nbsp;MCP</span></span></header>
+<header class="top"><span class="wordmark">${MARK}<span>sevDesk&nbsp;MCP</span></span></header>
 <main>
 ${options.body}
 </main>

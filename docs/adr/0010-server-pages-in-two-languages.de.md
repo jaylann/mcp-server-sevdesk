@@ -1,4 +1,4 @@
-<!-- translated-from: docs/adr/0010-server-pages-in-two-languages.md sha256:27068a0f0042 -->
+<!-- translated-from: docs/adr/0010-server-pages-in-two-languages.md sha256:c5523f0799ad -->
 
 # ADR 0010: Die Seiten des Servers: ein Design, zwei Sprachen, Vorschauen auf Deutsch
 
@@ -145,3 +145,13 @@ gelesen.
   lassen sich später in diese Form bringen, ohne zu ändern, was eine Seite zeigt.
 - **Deutsch auch für die Elicitation-Abfrage und Probeläufe.** Nichts sagt dem Server, welche
   Sprache die Person an einem MCP-Client liest, und diese Texte liest auch das Modell. So belassen.
+
+## Nachtrag 2026-11-16: ein neues Zeichen, die alte Palette
+
+Die Website nutzt das Designsystem, aus dem diese Entscheidung ihre Tokens nahm, nicht mehr: Sie
+ist auf das Lanfermann-System umgezogen (Sofia Sans, Indigo), und sevDesk MCP hat ein neues
+Zeichen bekommen, „Summe“, ein großes Sigma aus vier Balken, dessen Fuß in der Akzentfarbe steht.
+Die Seiten übernehmen das Zeichen (die Wortmarke im Rahmen, `assets/icon.svg` als Icon) und
+behalten Palette und Schriften wie oben beschrieben, bis auch sie auf das neue System umziehen.
+Der Fuß des Zeichens steht in Stempelviolett, wie zuvor der Haken des alten Zeichens; sonst bleibt
+die Farbe dem Freigeben vorbehalten.

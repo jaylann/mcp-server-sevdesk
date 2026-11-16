@@ -129,3 +129,12 @@ keep the English text: there is no browser language to go by, and they are read 
 - **German for the elicitation prompt and dry runs as well.** Nothing tells the server which
   language the person at an MCP client reads, and those texts are read by the model too. Left as
   it is.
+
+## Update 2026-11-16: a new mark, the old palette
+
+The website no longer uses the design system this decision took its tokens from: it moved to the
+Lanfermann system (Sofia Sans, Indigo), and sevDesk MCP got a new mark, Summe, a capital sigma
+from four bars whose foot is in the accent. The pages took the mark (the wordmark in the frame,
+`assets/icon.svg` as their icon) and keep the palette and the type described above until they
+move to the new system as well. The foot of the mark is in stamp ink, as the tick of the old mark
+was; otherwise the colour stays reserved for approving.

@@ -11,7 +11,7 @@ import {
   stamp,
 } from "../../../src/pages/components.js";
 import { pageContext, type RenderContext } from "../../../src/pages/context.js";
-import { icon, SEAL } from "../../../src/pages/icons.js";
+import { icon, MARK } from "../../../src/pages/icons.js";
 import { renderMessagePage, toneForStatus } from "../../../src/pages/message.js";
 import {
   type ApprovalPageModel,
@@ -119,7 +119,12 @@ describe("components", () => {
         .match(/class="ink-accent"/g),
     ).toHaveLength(2);
     expect(icon("lock").toString()).toContain('<circle class="dot" cx="12" cy="15.5" r="1"/>');
-    expect(SEAL.toString()).toContain('class="ink-accent"');
+    // The mark is filled, not inked: the sum in text colour, its foot in stamp ink.
+    expect(MARK.toString()).toMatch(
+      /^<svg class="mark" viewBox="0 0 20\.5 24" aria-hidden="true">/,
+    );
+    expect(MARK.toString().match(/<path /g)).toHaveLength(2);
+    expect(MARK.toString()).toContain('<path class="mark-foot" ');
     for (const name of [
       "envelope",
       "key",

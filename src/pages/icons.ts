@@ -80,12 +80,14 @@ export function icon(name: IconName, stroke = 1.75): Html {
 }
 
 /**
- * The mark of sevDesk MCP: a round office stamp (Rundstempel) with a tick in stamp ink, as on the
- * website (`components/system/wordmark.tsx`).
+ * The mark of sevDesk MCP, as on the website and in `assets/logo.svg`: Summe, a capital sigma
+ * from four bars of one thickness. The foot, the line under the sum, is the second piece and the
+ * one in the accent (`.mark-foot`): what is booked below it is the person's decision. At the
+ * wordmark's size the two pieces meet without a seam; the body reaches a hair under the foot,
+ * which is drawn over it.
  */
-export const SEAL: Html = trusted(
-  '<svg class="ink" viewBox="0 0 32 32" aria-hidden="true">' +
-    '<circle cx="16" cy="16" r="14.25" stroke-width="2.5"/>' +
-    '<circle cx="16" cy="16" r="10.25" stroke-width="1" stroke-dasharray="1.6 1.9" stroke-linecap="butt"/>' +
-    '<path class="ink-accent" d="M10.6 16.4l3.6 3.5 7.4-8" stroke-width="3"/></svg>',
+export const MARK: Html = trusted(
+  '<svg class="mark" viewBox="0 0 20.5 24" aria-hidden="true">' +
+    '<path d="M0 0L20.5 0L20.5 4L9.66 4L17.66 12L9.66 20L9.66 20.4L0 24L12 12Z"/>' +
+    '<path class="mark-foot" d="M0 24L9.66 20L20.5 20L20.5 24Z"/></svg>',
 );
