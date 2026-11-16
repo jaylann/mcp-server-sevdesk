@@ -72,10 +72,19 @@ export interface AuditEvent {
   readonly args?: unknown;
   /** `previewHash` of what was shown or approved (`dry_run`, `confirmation_requested`, `executing`). */
   readonly previewHash?: string;
-  /** `confirmation_refused`: why (`replayed_or_expired`, `mismatch`). */
+  /**
+   * `confirmation_refused`: why (`replayed_or_expired`, `mismatch`). `approval_decided`: why the
+   * server withdrew the approval instead of a human deciding it (`link_used_twice`).
+   */
   readonly reason?: string;
   /** `approval_decided`: the decision. */
   readonly decision?: "approved" | "rejected";
+  /**
+   * `approval_decided`, when one decision covered several requests: its id, shared by their
+   * lines, and how many requests it covered (`batchSize`), so a missing line shows.
+   */
+  readonly batch?: string;
+  readonly batchSize?: number;
   /** `approval_decided`, browser `confirmation_requested`: the approval's non-secret reference code. */
   readonly reference?: string;
   /** `executing`: how the action was approved. */
@@ -267,6 +276,8 @@ function toLine(event: AuditEvent, at: Date, secrets: readonly string[]): Record
     ...(event.reason === undefined ? {} : { reason: event.reason }),
     ...(event.decision === undefined ? {} : { decision: event.decision }),
     ...(event.reference === undefined ? {} : { reference: event.reference }),
+    ...(event.batch === undefined ? {} : { batch: event.batch }),
+    ...(event.batchSize === undefined ? {} : { batchSize: event.batchSize }),
     ...(event.preview === undefined ? {} : { preview: event.preview }),
     ...(event.affected === undefined
       ? {}

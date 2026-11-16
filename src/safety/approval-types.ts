@@ -67,12 +67,62 @@ export interface ApprovalView {
   readonly expiresAt: string;
 }
 
+/** How a record left the store. */
+export type ApprovalEnd =
+  /** A retry took it: an approved one ran, a rejected one was declined. */
+  | "taken"
+  /** Its 10 minutes ran out. */
+  | "expired"
+  /** The same call asked again with a different preview (the record changed): a new request. */
+  | "replaced"
+  /** It made room for newer records (see the limits on {@link ApprovalStore}). */
+  | "evicted";
+
+/**
+ * A record that left the store, kept for a while (30 minutes, at most 10 per account scope and 100
+ * in all), so a page that still shows it can say what became of it. It holds the action line, not
+ * the preview.
+ */
+export interface ApprovalTrace {
+  readonly id: string;
+  readonly reference: string;
+  readonly owner: RequestPrincipal;
+  readonly toolName: string;
+  readonly toolTitle: string;
+  readonly tier: WriteTier;
+  /** The preview's one-line action, in English and (when the tool wrote one) German. */
+  readonly action: { readonly en: string; readonly de?: string };
+  /** Its status when it left. */
+  readonly status: ApprovalStatus;
+  readonly end: ApprovalEnd;
+  /** `replaced`: the reference code of the request that replaced it. */
+  readonly replacedBy?: string;
+  /** ISO 8601 (UTC). */
+  readonly endedAt: string;
+}
+
+/**
+ * One decision that covered several requests (ADR 0011): every audit line of it carries the id
+ * and the number of requests decided together, so a line that is missing shows.
+ */
+interface DecisionBatch {
+  readonly id: string;
+  readonly size: number;
+}
+
+/** Why a channel withdrew an approval: its launch link reached a second browser. */
+type WithdrawReason = "link_used_twice";
+
 /** A decision made on a page, reported for the audit log. */
 export interface ApprovalDecision {
   readonly owner: RequestPrincipal;
   readonly binding: ApprovalBinding;
   readonly reference: string;
   readonly decision: "approved" | "rejected";
+  /** Set when the decision covered several requests. */
+  readonly batch?: DecisionBatch;
+  /** Set when a channel withdrew the approval rather than a human deciding it. */
+  readonly reason?: WithdrawReason;
 }
 
 /** Outcome of {@link ApprovalStore.decide}. */
@@ -116,18 +166,40 @@ export interface ApprovalStore {
   list(accountScope: string): readonly ApprovalView[];
   /** One unexpired approval by id (the caller checks the owner before showing it). */
   get(id: string): ApprovalView | undefined;
-  /** Decides a pending approval (once) and reports it through `onDecision`. */
-  decide(id: string, decision: "approved" | "rejected"): DecideOutcome;
+  /** Records of one account scope that left the store recently, newest first. */
+  ended(accountScope: string): readonly ApprovalTrace[];
+  /** What became of a record that left the store (the caller checks the owner). */
+  trace(id: string): ApprovalTrace | undefined;
+  /**
+   * Decides a pending approval (once) and reports it through `onDecision`, with `batch` when the
+   * human decided several requests together.
+   */
+  decide(id: string, decision: "approved" | "rejected", batch?: DecisionBatch): DecideOutcome;
   /**
    * Turns an approval that was not taken yet into a rejected one, whatever was decided before,
-   * and reports that through `onDecision`. For a channel that learns its page reached someone
-   * else: an approval given there must not run. `false` when the approval is unknown, expired or
-   * taken already (then the action ran, or will not).
+   * and reports that through `onDecision` (with `reason`). For a channel that learns its page
+   * reached someone else: an approval given there must not run. `false` when the approval is
+   * unknown, expired or taken already (then the action ran, or will not).
    */
-  withdraw(id: string): boolean;
-  /** Forgets every approval and closes the channel. */
+  withdraw(id: string, reason?: WithdrawReason): boolean;
+  /**
+   * Calls `listener` with the account scope whenever that scope's records change: created,
+   * decided, withdrawn, taken, replaced, evicted or expired (expiry is noticed by a timer that
+   * never keeps the process alive). Returns the function that stops it. What a listener throws
+   * is ignored.
+   */
+  subscribe(listener: (accountScope: string) => void): () => void;
+  /** Most approvals of one account scope that may wait at once. */
+  readonly pendingLimit: number;
+  /** Forgets every approval and listener and closes the channel. */
   close(): Promise<void>;
 }
+
+/** What a channel's pages may do with the store: show, decide and follow it, never create. */
+export type ApprovalDesk = Pick<
+  ApprovalStore,
+  "get" | "list" | "ended" | "trace" | "decide" | "withdraw" | "subscribe" | "pendingLimit"
+>;
 
 /** How new approvals reach the human. */
 export interface ApprovalChannel {
@@ -142,7 +214,7 @@ export interface ApprovalChannel {
    * Called once by the store factory with the store the channel serves, so a page the channel
    * runs (the local one) can show and decide records.
    */
-  attach(store: Pick<ApprovalStore, "get" | "decide" | "withdraw">): void;
+  attach(desk: ApprovalDesk): void;
   /**
    * Makes a new approval reachable. Resolves whether a page was opened in the user's browser;
    * rejects when it cannot be presented at all (for example, the local server cannot listen).

@@ -41,8 +41,8 @@ import type { PageMessage } from "../pages/text/index.js";
 import { previewFor, renderApprovalPage, renderDecisionPage } from "./approval-page.js";
 import type {
   ApprovalChannel,
+  ApprovalDesk,
   ApprovalStatus,
-  ApprovalStore,
   ApprovalView,
 } from "./approval-types.js";
 import type { OpenUrl } from "./open-url.js";
@@ -67,7 +67,7 @@ const APPROVAL_PATH = /^\/approve\/([A-Za-z0-9_-]{43})$/;
 /** `/open/<ticket>`: the launch link, with a 256-bit base64url ticket. */
 const LAUNCH_PATH = /^\/open\/([A-Za-z0-9_-]{43})$/;
 
-type DecisionStore = Pick<ApprovalStore, "get" | "decide" | "withdraw">;
+type DecisionStore = ApprovalDesk;
 
 /**
  * The launch link of one approval (review 2026-11, round 3). The page's address used to be the
@@ -275,7 +275,7 @@ export function createLocalApprovalChannel(
     );
     if (launch.used && !sameBrowser) {
       launch.voided ??= {
-        cancelled: attached.withdraw(approval.id),
+        cancelled: attached.withdraw(approval.id, "link_used_twice"),
       };
     }
     if (launch.voided !== undefined) {

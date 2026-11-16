@@ -26,6 +26,11 @@
  *   round 3: five accounts with 20 approved records each used to fill the store, and everyone
  *   else was refused). The owner of a dropped approved record is asked again when the call is
  *   retried, as after an expiry.
+ *
+ * A record that leaves (taken, expired, replaced, evicted) leaves an {@link ApprovalTrace} for 30
+ * minutes, so the approvals workspace can still say what became of a request it showed (ADR
+ * 0011), and every change is announced to subscribers per account scope. One timer, set to the
+ * next expiry and `unref`ed, makes expiry an event too.
  */
 import { randomInt } from "node:crypto";
 
@@ -34,10 +39,12 @@ import {
   type ApprovalBinding,
   type ApprovalChannel,
   type ApprovalDecision,
+  type ApprovalEnd,
   ApprovalLimitError,
   type ApprovalStatus,
   type ApprovalStore,
   type ApprovalTicket,
+  type ApprovalTrace,
   type ApprovalView,
   type DecideOutcome,
 } from "./approval-types.js";
@@ -73,6 +80,10 @@ const DEFAULT_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_MAX_APPROVALS = 100;
 const DEFAULT_MAX_PER_SCOPE = 20;
 const DEFAULT_MAX_PENDING = 5;
+/** How long, and how many, traces of records that left are kept. */
+const TRACE_TTL_MS = 30 * 60 * 1000;
+const MAX_TRACES = 100;
+const MAX_TRACES_PER_SCOPE = 10;
 /** What a scope at its own cap drops first. */
 const OWN_EVICTION_ORDER: readonly ApprovalStatus[] = ["rejected", "approved", "pending"];
 /** What the overall cap takes from a larger scope first: not an approved, untaken request. */
@@ -118,6 +129,83 @@ export function createApprovalStore(options: ApprovalStoreOptions): ApprovalStor
   const maxPerScope = options.maxPerScope ?? DEFAULT_MAX_PER_SCOPE;
   /** By id, in creation order. */
   const records = new Map<string, ApprovalRecord>();
+  /** Records that left, by id, in the order they left. */
+  const traces = new Map<string, { readonly trace: ApprovalTrace; readonly atMs: number }>();
+  const listeners = new Set<(accountScope: string) => void>();
+  let expiryTimer: NodeJS.Timeout | undefined;
+
+  /** Tells the subscribers which scopes changed; a listener's error never reaches the caller. */
+  function notify(scopes: Iterable<string>): void {
+    for (const scope of new Set(scopes)) {
+      for (const listener of [...listeners]) {
+        try {
+          listener(scope);
+        } catch {
+          // A listener (a page's live connection) must never break the store.
+        }
+      }
+    }
+  }
+
+  /** Removes `record` and keeps its trace; returns its scope, for {@link notify}. */
+  function end(record: ApprovalRecord, how: ApprovalEnd, replacedBy?: string): string {
+    records.delete(record.id);
+    const scope = record.owner.accountScope;
+    const { binding } = record;
+    const atMs = now();
+    traces.set(record.id, {
+      atMs,
+      trace: {
+        id: record.id,
+        reference: record.reference,
+        owner: record.owner,
+        toolName: binding.toolName,
+        toolTitle: binding.toolTitle,
+        tier: binding.tier,
+        action: {
+          en: binding.preview.action,
+          ...(binding.previewDe === undefined ? {} : { de: binding.previewDe.action }),
+        },
+        status: record.status,
+        end: how,
+        ...(replacedBy === undefined ? {} : { replacedBy }),
+        endedAt: new Date(atMs).toISOString(),
+      },
+    });
+    const ofScope = [...traces.values()].filter(({ trace }) => trace.owner.accountScope === scope);
+    for (const { trace } of ofScope.slice(0, Math.max(0, ofScope.length - MAX_TRACES_PER_SCOPE))) {
+      traces.delete(trace.id);
+    }
+    for (const id of [...traces.keys()].slice(0, Math.max(0, traces.size - MAX_TRACES))) {
+      traces.delete(id);
+    }
+    return scope;
+  }
+
+  function pruneTraces(): void {
+    const at = now();
+    for (const [id, { atMs }] of traces) {
+      if (atMs + TRACE_TTL_MS <= at) traces.delete(id);
+    }
+  }
+
+  /** Sets the one timer to the next expiry, so expiring is announced without a request. */
+  function scheduleExpiry(): void {
+    if (expiryTimer !== undefined) clearTimeout(expiryTimer);
+    expiryTimer = undefined;
+    let next = Infinity;
+    for (const record of records.values()) next = Math.min(next, record.expiresAtMs);
+    if (next === Infinity) return;
+    expiryTimer = setTimeout(
+      () => {
+        expiryTimer = undefined;
+        prune();
+      },
+      Math.max(0, next - now()),
+    );
+    // Never keeps the process alive: over stdio it ends when the client leaves.
+    expiryTimer.unref();
+  }
 
   /**
    * The ids `create` drops to make room for a new record of `scope` that replaces `key`, or
@@ -167,11 +255,15 @@ export function createApprovalStore(options: ApprovalStoreOptions): ApprovalStor
     return dropped;
   }
 
+  /** Ends expired records and announces their scopes; sets the timer to the next expiry. */
   function prune(): void {
     const at = now();
-    for (const [id, record] of records) {
-      if (record.expiresAtMs <= at) records.delete(id);
+    const changed: string[] = [];
+    for (const record of [...records.values()]) {
+      if (record.expiresAtMs <= at) changed.push(end(record, "expired"));
     }
+    scheduleExpiry();
+    notify(changed);
   }
 
   function ticket(record: ApprovalRecord): ApprovalTicket {
@@ -229,7 +321,6 @@ export function createApprovalStore(options: ApprovalStoreOptions): ApprovalStor
       if (waiting >= maxPending) throw new ApprovalLimitError(maxPending);
       const dropped = evictionsFor(owner.accountScope, key);
       if (dropped === undefined) throw new ApprovalStoreFullError(maxApprovals);
-      for (const id of dropped) records.delete(id);
       const createdAtMs = now();
       const record: ApprovalRecord = {
         id: randomId(),
@@ -242,21 +333,34 @@ export function createApprovalStore(options: ApprovalStoreOptions): ApprovalStor
         status: "pending",
         opened: false,
       };
+      // The record this one replaces (same owner, tool and arguments) says by which one.
+      const changed = [owner.accountScope];
+      for (const id of dropped) {
+        const old = records.get(id);
+        if (old === undefined) continue;
+        changed.push(
+          old.key === key ? end(old, "replaced", record.reference) : end(old, "evicted"),
+        );
+      }
       records.set(record.id, record);
+      scheduleExpiry();
       try {
         record.opened = (await channel.present(view(record))).opened;
       } catch (error) {
         // Unreachable for the human: forget it, so it neither blocks a retry nor counts as pending.
         if (records.get(record.id) === record) records.delete(record.id);
+        notify(changed);
         throw error;
       }
+      notify(changed);
       return ticket(record);
     },
     take(owner, id) {
       prune();
       const record = records.get(id);
       if (record === undefined || !sameOwner(record.owner, owner)) return undefined;
-      records.delete(id);
+      notify([end(record, "taken")]);
+      scheduleExpiry();
       return ticket(record);
     },
     list(accountScope) {
@@ -271,58 +375,95 @@ export function createApprovalStore(options: ApprovalStoreOptions): ApprovalStor
       const record = records.get(id);
       return record === undefined ? undefined : view(record);
     },
-    decide(id, decision): DecideOutcome {
+    ended(accountScope) {
+      prune();
+      pruneTraces();
+      return [...traces.values()]
+        .map(({ trace }) => trace)
+        .filter((trace) => trace.owner.accountScope === accountScope)
+        .reverse();
+    },
+    trace(id) {
+      prune();
+      pruneTraces();
+      return traces.get(id)?.trace;
+    },
+    decide(id, decision, batch): DecideOutcome {
       const record = records.get(id);
       if (record === undefined) return "unknown";
       if (record.expiresAtMs <= now()) {
-        records.delete(id);
+        notify([end(record, "expired")]);
+        scheduleExpiry();
         return "expired";
       }
       if (record.status !== "pending") return "already_decided";
       record.status = decision;
-      try {
-        options.onDecision?.({
-          owner: record.owner,
-          binding: record.binding,
-          reference: record.reference,
-          decision,
-        });
-      } catch {
-        // Reporting must never undo or hide the decision.
-      }
+      report({
+        owner: record.owner,
+        binding: record.binding,
+        reference: record.reference,
+        decision,
+        ...(batch === undefined ? {} : { batch }),
+      });
+      notify([record.owner.accountScope]);
       return "decided";
     },
-    withdraw(id): boolean {
+    withdraw(id, reason): boolean {
       const record = records.get(id);
       if (record === undefined) return false;
       if (record.expiresAtMs <= now()) {
-        records.delete(id);
+        notify([end(record, "expired")]);
+        scheduleExpiry();
         return false;
       }
       // Rejected already: nothing will run, and it was reported when it was decided.
       if (record.status === "rejected") return true;
       record.status = "rejected";
-      try {
-        options.onDecision?.({
-          owner: record.owner,
-          binding: record.binding,
-          reference: record.reference,
-          decision: "rejected",
-        });
-      } catch {
-        // Reporting must never undo or hide the withdrawal.
-      }
+      report({
+        owner: record.owner,
+        binding: record.binding,
+        reference: record.reference,
+        decision: "rejected",
+        ...(reason === undefined ? {} : { reason }),
+      });
+      notify([record.owner.accountScope]);
       return true;
     },
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    pendingLimit: maxPending,
     async close() {
+      if (expiryTimer !== undefined) clearTimeout(expiryTimer);
+      expiryTimer = undefined;
       records.clear();
+      traces.clear();
+      listeners.clear();
       await channel.close();
     },
   };
+
+  /** Reports a decision for the audit log; reporting must never undo or hide it. */
+  function report(decision: ApprovalDecision): void {
+    try {
+      options.onDecision?.(decision);
+    } catch {
+      // Ignored, see above.
+    }
+  }
+
   channel.attach({
     get: (id) => store.get(id),
-    decide: (id, decision) => store.decide(id, decision),
-    withdraw: (id) => store.withdraw(id),
+    list: (accountScope) => store.list(accountScope),
+    ended: (accountScope) => store.ended(accountScope),
+    trace: (id) => store.trace(id),
+    decide: (id, decision, batch) => store.decide(id, decision, batch),
+    withdraw: (id, reason) => store.withdraw(id, reason),
+    subscribe: (listener) => store.subscribe(listener),
+    pendingLimit: maxPending,
   });
   return store;
 }

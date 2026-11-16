@@ -6,6 +6,7 @@ import {
   type ApprovalBinding,
   type ApprovalChannel,
   type ApprovalDecision,
+  type ApprovalDesk,
   ApprovalLimitError,
   type ApprovalStore,
   type ApprovalView,
@@ -33,7 +34,7 @@ function binding(overrides: Partial<ApprovalBinding> = {}): ApprovalBinding {
 
 interface FakeChannel extends ApprovalChannel {
   readonly presented: ApprovalView[];
-  attached: Pick<ApprovalStore, "get" | "decide" | "withdraw"> | undefined;
+  attached: ApprovalDesk | undefined;
   closed: number;
 }
 
@@ -559,5 +560,186 @@ describe("approval store: fair eviction (no account pushes out another's approva
     expect(replaced.id).not.toBe(first.id);
     expect(approvals.current(A1, TOOL, "a1")?.id).toBe(replaced.id);
     expect(approvals.current(B, TOOL, "b1")?.status).toBe("approved");
+  });
+});
+
+describe("approval store: what became of a request", () => {
+  const GERMAN = { action: "Rechnung RE-1042 fertigstellen.", facts: [], warnings: [] };
+
+  it("keeps a trace of a taken request, with its status and both action lines", async () => {
+    const { approvals } = store();
+    const ticket = await approvals.create(
+      A1,
+      binding({ previewDe: { ...GERMAN, irreversible: false } }),
+    );
+    approvals.decide(ticket.id, "approved");
+    approvals.take(A1, ticket.id);
+
+    expect(approvals.get(ticket.id)).toBeUndefined();
+    expect(approvals.trace(ticket.id)).toEqual({
+      id: ticket.id,
+      reference: ticket.reference,
+      owner: A1,
+      toolName: TOOL,
+      toolTitle: "Finalize invoice",
+      tier: "commit",
+      action: { en: "Finalize invoice RE-1042.", de: "Rechnung RE-1042 fertigstellen." },
+      status: "approved",
+      end: "taken",
+      endedAt: new Date(1_000_000).toISOString(),
+    });
+  });
+
+  it("keeps a trace of an expired request", async () => {
+    const { approvals, advance } = store();
+    const ticket = await approvals.create(A1, binding());
+    advance(600_000);
+
+    expect(approvals.list("1001")).toEqual([]);
+    expect(approvals.trace(ticket.id)).toMatchObject({ end: "expired", status: "pending" });
+  });
+
+  it("names the request that replaced one whose record changed", async () => {
+    const { approvals } = store();
+    const first = await approvals.create(A1, binding());
+    const second = await approvals.create(A1, binding({ previewHash: "q".repeat(64) }));
+
+    expect(approvals.trace(first.id)).toMatchObject({
+      end: "replaced",
+      replacedBy: second.reference,
+    });
+    expect(approvals.trace(second.id)).toBeUndefined();
+  });
+
+  it("keeps a trace of a request that made room for a newer one", async () => {
+    const { approvals } = store({ maxPerScope: 2 });
+    const oldest = await approvals.create(A1, binding({ argsHash: "1" }));
+    await approvals.create(A1, binding({ argsHash: "2" }));
+    await approvals.create(A1, binding({ argsHash: "3" }));
+
+    expect(approvals.trace(oldest.id)).toMatchObject({ end: "evicted", status: "pending" });
+  });
+
+  it("lists a scope's traces newest first, at most 10, for 30 minutes", async () => {
+    const { approvals, advance } = store();
+    const references: string[] = [];
+    for (let i = 0; i < 12; i += 1) {
+      const ticket = await approvals.create(A1, binding({ argsHash: String(i) }));
+      approvals.take(A1, ticket.id);
+      references.push(ticket.reference);
+    }
+    const other = await approvals.create(B, binding());
+    approvals.take(B, other.id);
+
+    expect(approvals.ended("1001").map((trace) => trace.reference)).toEqual(
+      references.slice(2).reverse(),
+    );
+    expect(approvals.ended("2002").map((trace) => trace.reference)).toEqual([other.reference]);
+    advance(30 * 60_000);
+    expect(approvals.ended("1001")).toEqual([]);
+  });
+
+  it("keeps at most 100 traces in all", async () => {
+    const { approvals } = store();
+    const first = await approvals.create({ grantKey: "g", accountScope: "s0" }, binding());
+    approvals.take({ grantKey: "g", accountScope: "s0" }, first.id);
+    for (let i = 1; i <= 100; i += 1) {
+      const owner = { grantKey: "g", accountScope: `s${String(i)}` };
+      approvals.take(owner, (await approvals.create(owner, binding())).id);
+    }
+
+    expect(approvals.trace(first.id)).toBeUndefined();
+    expect(approvals.ended("s100")).toHaveLength(1);
+  });
+});
+
+describe("approval store: changes", () => {
+  it("announces each change to its scope", async () => {
+    const { approvals, advance } = store();
+    const seen: string[] = [];
+    approvals.subscribe((scope) => seen.push(scope));
+
+    const first = await approvals.create(A1, binding({ argsHash: "1" }));
+    expect(seen).toEqual(["1001"]);
+    approvals.decide(first.id, "approved");
+    approvals.take(A1, first.id);
+    const second = await approvals.create(A1, binding({ argsHash: "2" }));
+    approvals.withdraw(second.id);
+    await approvals.create(A1, binding({ argsHash: "2", previewHash: "q" }));
+    await approvals.create(B, binding());
+    expect(seen).toEqual(["1001", "1001", "1001", "1001", "1001", "1001", "2002"]);
+
+    advance(600_000);
+    approvals.list("1001");
+    expect(seen.slice(7).sort()).toEqual(["1001", "2002"]);
+  });
+
+  it("stops announcing to a listener that unsubscribed, and survives one that throws", async () => {
+    const { approvals } = store();
+    const seen: string[] = [];
+    approvals.subscribe(() => {
+      throw new Error("broken listener");
+    });
+    const stop = approvals.subscribe((scope) => seen.push(scope));
+
+    await approvals.create(A1, binding({ argsHash: "1" }));
+    stop();
+    await approvals.create(A1, binding({ argsHash: "2" }));
+
+    expect(seen).toEqual(["1001"]);
+  });
+
+  it("notices an expiry without a request, by a timer that close stops", async () => {
+    vi.useFakeTimers({ now: 1_000_000 });
+    try {
+      const approvals = createApprovalStore({ channel: fakeChannel() });
+      const seen: string[] = [];
+      approvals.subscribe((scope) => seen.push(scope));
+      const ticket = await approvals.create(A1, binding());
+      expect(vi.getTimerCount()).toBe(1);
+
+      vi.advanceTimersByTime(600_000);
+
+      expect(seen).toEqual(["1001", "1001"]);
+      expect(approvals.trace(ticket.id)?.end).toBe("expired");
+      expect(vi.getTimerCount()).toBe(0);
+      await approvals.create(A1, binding());
+      await approvals.close();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("passes a decision's batch and a withdrawal's reason on for the audit log", async () => {
+    const decisions: ApprovalDecision[] = [];
+    const { approvals } = store({ onDecision: (decision) => decisions.push(decision) });
+    const first = await approvals.create(A1, binding({ argsHash: "1" }));
+    const second = await approvals.create(A1, binding({ argsHash: "2" }));
+
+    approvals.decide(first.id, "approved", { id: "batch-1", size: 2 });
+    approvals.withdraw(second.id, "link_used_twice");
+
+    expect(decisions.map(({ decision, batch, reason }) => ({ decision, batch, reason }))).toEqual([
+      { decision: "approved", batch: { id: "batch-1", size: 2 }, reason: undefined },
+      { decision: "rejected", batch: undefined, reason: "link_used_twice" },
+    ]);
+  });
+
+  it("gives the channel a desk that lists and follows, and states the pending limit", async () => {
+    const { approvals, channel } = store({ maxPending: 3 });
+    const ticket = await approvals.create(A1, binding());
+    const desk = channel.attached;
+    if (desk === undefined) throw new Error("the store attached no desk");
+    const seen: string[] = [];
+    desk.subscribe((scope) => seen.push(scope));
+
+    expect(approvals.pendingLimit).toBe(3);
+    expect(desk.pendingLimit).toBe(3);
+    expect(desk.list("1001").map((view) => view.id)).toEqual([ticket.id]);
+    desk.decide(ticket.id, "rejected");
+    expect(seen).toEqual(["1001"]);
+    expect(desk.ended("1001")).toEqual([]);
+    expect(desk.trace(ticket.id)).toBeUndefined();
   });
 });
