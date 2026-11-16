@@ -55,8 +55,23 @@ function personRows(...extra: readonly [id: number, firstName: string][]): unkno
   ];
 }
 
-/** Organisation 1001 with its two addresses and three communication ways. */
-function organisationRoutes(persons: FakeRoute = personsRoute()): FakeRoute[] {
+/** The custom field values of a contact (D-086: read on their own, with the setting embedded). */
+function customFieldsRoute(
+  id: number,
+  response: FakeRoute["response"] = { body: { objects: [] } },
+): FakeRoute {
+  return {
+    path: "/ContactCustomField",
+    query: { ...filter(id), embed: "contactCustomFieldSetting" },
+    response,
+  };
+}
+
+/** Organisation 1001 with its two addresses, three communication ways and two custom fields. */
+function organisationRoutes(
+  persons: FakeRoute = personsRoute(),
+  customFields: FakeRoute["response"] = { fixture: "contacts/custom-fields-1001.json" },
+): FakeRoute[] {
   return [
     { path: "/Contact/1001", response: { fixture: "contacts/contact-1001.json" } },
     {
@@ -69,16 +84,18 @@ function organisationRoutes(persons: FakeRoute = personsRoute()): FakeRoute[] {
       query: filter(1001),
       response: { fixture: "contacts/communication-ways-1001.json" },
     },
+    customFieldsRoute(1001, customFields),
     persons,
   ];
 }
 
-/** Person 1002 (belongs to 1001) without addresses or communication ways. */
+/** Person 1002 (belongs to 1001) without addresses, communication ways or custom fields. */
 function personRoutes(): FakeRoute[] {
   return [
     { path: "/Contact/1002", response: { fixture: "contacts/contact-1002.json" } },
     { path: "/ContactAddress", query: filter(1002), response: { body: { objects: [] } } },
     { path: "/CommunicationWay", query: filter(1002), response: { body: { objects: [] } } },
+    customFieldsRoute(1002),
   ];
 }
 
@@ -133,6 +150,7 @@ describe("sevdesk_contact_delete", () => {
         { label: "Category", value: "Kunde (customer)" },
         { label: "Addresses (deleted with it)", value: "2" },
         { label: "Communication ways (deleted with it)", value: "3" },
+        { label: "Custom field values (Zusatzfelder)", value: "2" },
         { label: "Contact persons (deleted with it)", value: "1" },
         { label: "Contact person (deleted with it)", value: "Dr. Max Mustermann (contact 1002)" },
       ],
@@ -152,6 +170,7 @@ describe("sevdesk_contact_delete", () => {
         { label: "Kategorie", value: "Kunde" },
         { label: "Adressen (werden mitgelöscht)", value: "2" },
         { label: "Kommunikationswege (werden mitgelöscht)", value: "3" },
+        { label: "Werte von Zusatzfeldern", value: "2" },
         { label: "Ansprechpartner (werden mitgelöscht)", value: "1" },
         {
           label: "Ansprechpartner (wird mitgelöscht)",
@@ -201,11 +220,30 @@ describe("sevdesk_contact_delete", () => {
       { label: "Contact person of", value: "contact 1001" },
       { label: "Addresses (deleted with it)", value: "0" },
       { label: "Communication ways (deleted with it)", value: "0" },
+      { label: "Custom field values (Zusatzfelder)", value: "0" },
     ]);
     expect(preview.warnings).toHaveLength(1);
     expect(previewDe.action).toBe("Kontakt 1002 (Person) aus sevDesk löschen.");
     expect(previewDe.facts[3]).toEqual({ label: "Ansprechpartner von", value: "Kontakt 1001" });
     expect(client.callsTo("/Contact")).toEqual([]);
+  });
+
+  it("counts the custom field values, and says when they could not be read (D-086)", async () => {
+    const error = new SevdeskError({ kind: "server", status: 500, message: "Down." });
+    const client = new FakeSevdeskClient(
+      withCountryRoute(organisationRoutes(personsRoute([]), { error })),
+    );
+    const { preview, previewDe } = await prepareWrite(tool, { id: 1001 }, client);
+    expect(preview.facts).toContainEqual({
+      label: "Custom field values (Zusatzfelder)",
+      value: "could not be read",
+    });
+    expect(previewDe.facts).toContainEqual({
+      label: "Werte von Zusatzfeldern",
+      value: "nicht lesbar",
+    });
+    expect(client.writes()).toEqual([]);
+    expect(client.callsTo("/ContactCustomField").every((call) => call.method === "GET")).toBe(true);
   });
 
   it("lists no contact persons as none, and says when address lists were cut", async () => {

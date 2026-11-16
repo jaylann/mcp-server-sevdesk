@@ -31,6 +31,7 @@ import { type CompletedWrite, SevdeskError } from "../sevdesk/errors.js";
 import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
 import type { SevdeskClient } from "../sevdesk/types.js";
 import { cleanText } from "./common.js";
+import { customFieldDtoSchema, readCustomFieldsForDisplay } from "./contact-custom-fields.js";
 import {
   addressDtoSchema,
   communicationWayDtoSchema,
@@ -68,7 +69,8 @@ const VALUE_MAX = 200;
 
 /**
  * What `remove` of `sevdesk_contact_update` takes off a contact: an address, one communication way
- * of a type (e-mail, phone, mobile, website) or the link to the organisation a person belongs to.
+ * of a type (e-mail, phone, mobile, website), the link to the organisation a person belongs to, or
+ * one custom field value (`contact-custom-fields.ts`).
  */
 export const REMOVE_KINDS = [
   "address",
@@ -77,11 +79,12 @@ export const REMOVE_KINDS = [
   "mobile",
   "website",
   "parentOrganisation",
+  "customField",
 ] as const;
 type RemoveKind = (typeof REMOVE_KINDS)[number];
 
 /** The kinds that name a communication way. */
-export type WayKind = Exclude<RemoveKind, "address" | "parentOrganisation">;
+export type WayKind = Exclude<RemoveKind, "address" | "parentOrganisation" | "customField">;
 
 /** One entry of `remove`: the kind and the id `sevdesk_contact_get` shows for it. */
 export interface RemoveInput {
@@ -131,13 +134,14 @@ export interface RemovalPlan {
  * Checks the addresses and communication ways of `remove` against the contact as read: every id
  * must be one of this contact's entries of that kind, and none may be listed twice. Throws a
  * `validation` SevdeskError (trusted text, ids only) before anything is sent otherwise.
- * `parentOrganisation` entries are the caller's (the contact itself changes, nothing is deleted).
+ * `parentOrganisation` entries are the caller's (the contact itself changes, nothing is deleted),
+ * and so are `customField` entries (`planCustomFieldRemovals`).
  */
 export function planRemovals(details: ContactDetails, remove: readonly RemoveInput[]): RemovalPlan {
   const seen = new Set<string>();
   const removals: PlannedRemoval[] = [];
   for (const entry of remove) {
-    if (entry.kind === "parentOrganisation") continue;
+    if (entry.kind === "parentOrganisation" || entry.kind === "customField") continue;
     const resource = entry.kind === "address" ? "address" : "way";
     const key = `${resource}:${String(entry.id)}`;
     if (seen.has(key)) {
@@ -243,6 +247,9 @@ export const removedEntrySchema = z.object({
   communicationWay: communicationWayDtoSchema
     .optional()
     .describe("email, phone, mobile, website: the entry as it was."),
+  customField: customFieldDtoSchema
+    .optional()
+    .describe("customField: the value as it was (field id and name, value)."),
   alreadyGone: z
     .boolean()
     .optional()
@@ -331,6 +338,7 @@ function removalFact(removal: PlannedRemoval): ConfirmationFact {
 function describeEntry(entry: RemoveInput): string {
   if (entry.kind === "address") return `address ${String(entry.id)}`;
   if (entry.kind === "parentOrganisation") return `the link to organisation ${String(entry.id)}`;
+  if (entry.kind === "customField") return `custom field value ${String(entry.id)}`;
   return `${WAYS[entry.kind].label.toLowerCase()} ${String(entry.id)}`;
 }
 
@@ -377,9 +385,11 @@ interface DeletePreview {
 /**
  * Reads the contact with its addresses and communication ways (and, for an organisation, the
  * persons that belong to it) and builds the confirmation in English and German: the contact by
- * name and customer number, how many addresses and communication ways sevDesk deletes with it, an
- * organisation's contact persons, which sevDesk deletes with it too (listed by name and id up to
- * {@link LISTED_PERSONS}), and that this cannot be undone. Refuses a contact that does not exist,
+ * name and customer number, how many addresses and communication ways sevDesk deletes with it, how
+ * many custom field values the contact has (whether they go with it is not recorded, D-086; a
+ * failed read of them is shown, not raised), an organisation's contact persons, which sevDesk
+ * deletes with it too (listed by name and id up to {@link LISTED_PERSONS}), and that this cannot
+ * be undone. Refuses a contact that does not exist,
  * and an organisation whose contact persons cannot all be read (a partial list would hide what
  * goes). Whether documents still reference the contact only sevDesk knows, and it refuses that
  * itself (see {@link executeContactDelete}).
@@ -400,11 +410,18 @@ export async function prepareContactDelete(
     throw error;
   }
   const { contact } = details;
-  const persons =
-    contact.kind === "organisation" ? await contactPersons(client, id, options.signal) : [];
+  const [persons, customFields] = await Promise.all([
+    contact.kind === "organisation"
+      ? contactPersons(client, id, options.signal)
+      : Promise.resolve([]),
+    readCustomFieldsForDisplay(client, id, options.signal),
+  ]);
 
   const addresses = countText(details.addresses.length, details.addressesComplete);
   const ways = countText(details.communicationWays.length, details.communicationWaysComplete);
+  const customFieldValues: Record<PreviewLanguage, string> = customFields.readable
+    ? countText(customFields.rows.length, customFields.complete)
+    : { en: "could not be read", de: "nicht lesbar" };
   const warnings: Phrase[] = [
     phrase(
       `The contact, its ${addresses.en} address${details.addresses.length === 1 ? "" : "es"} ` +
@@ -461,6 +478,12 @@ export async function prepareContactDelete(
             ? "Kommunikationswege (werden mitgelöscht)"
             : "Communication ways (deleted with it)",
           value: ways[lang],
+        },
+        {
+          // Whether sevDesk deletes a contact's custom field values with it is not recorded
+          // (D-086), so this fact only counts them.
+          label: de ? "Werte von Zusatzfeldern" : "Custom field values (Zusatzfelder)",
+          value: customFieldValues[lang],
         },
       );
       if (contact.kind === "organisation") facts.push(...personFacts(persons, lang));

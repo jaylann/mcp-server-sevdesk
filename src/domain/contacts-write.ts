@@ -25,9 +25,13 @@
  *   (recorded 2026-11-16, D-083). sevDesk checks nothing (a person as parent, a parent on an
  *   organisation are stored), so the checks are made here: only a person gets a parent, and the
  *   parent must be an existing organisation.
- * Three things are taken away, and only when an update names them in `remove`: the link to the
- * organisation (the `PUT` above), and one address or communication way at a time (a `DELETE`, sent
- * after every other change; `contacts-delete.ts`). Nothing else is ever cleared.
+ * - Custom field values (Zusatzfelder) are a fourth resource, `ContactCustomField`, one record per
+ *   field and contact (`contact-custom-fields.ts`, D-086). They are sent after the communication
+ *   ways: `POST` for a field the contact has no value of yet, `PUT` of the value for one it has.
+ * Four things are taken away, and only when an update names them in `remove`: the link to the
+ * organisation (the `PUT` above), and one address, communication way or custom field value at a
+ * time (a `DELETE`, sent after every other change; `contacts-delete.ts`,
+ * `contact-custom-fields.ts`). Nothing else is ever cleared.
  * Outgoing payloads are built from strict schemas, because sevDesk ignores unknown fields
  * silently (D-003).
  */
@@ -45,6 +49,20 @@ import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
 import { parseUpstream, zId, zOptionalRef, zText } from "../sevdesk/schema.js";
 import type { SevdeskClient } from "../sevdesk/types.js";
 import { cleanText, trimmedText } from "./common.js";
+import {
+  type ContactCustomFields,
+  type CustomFieldInput,
+  type CustomFieldRemoval,
+  customFieldRemovalFact,
+  type CustomFieldSettings,
+  type CustomFieldWrite,
+  executeCustomFieldRemovals,
+  executeCustomFieldWrites,
+  listCustomFieldSettings,
+  planCustomFieldRemovals,
+  planCustomFieldValues,
+  readContactCustomFields,
+} from "./contact-custom-fields.js";
 import {
   type ContactDetails,
   type ContactRecord,
@@ -209,6 +227,8 @@ export interface ContactCreateInput extends AddressInput, CommunicationInput {
   readonly buyerReference?: string | undefined;
   /** Persons only: the organisation contact the person belongs to (Ansprechpartner). */
   readonly parentOrganisationId?: number | undefined;
+  /** Custom field values to set, each by setting id or name. */
+  readonly customFields?: readonly CustomFieldInput[] | undefined;
   readonly allowDuplicate: boolean;
 }
 
@@ -225,7 +245,9 @@ export interface ContactUpdateInput extends AddressInput, CommunicationInput {
   readonly buyerReference?: string | undefined;
   /** Persons only: links the person to this organisation (or moves it to another one). */
   readonly parentOrganisationId?: number | undefined;
-  /** Addresses, communication ways or the organisation link to take off this contact. */
+  /** Custom field values to set or change, each by setting id or name. */
+  readonly customFields?: readonly CustomFieldInput[] | undefined;
+  /** Addresses, communication ways, custom field values or the organisation link to take off. */
   readonly remove?: readonly RemoveInput[] | undefined;
 }
 
@@ -248,12 +270,15 @@ export interface ContactCreateState {
   readonly contact: ContactCreatePayload;
   readonly address: AddressFields | undefined;
   readonly communicationWays: readonly WayFields[];
+  /** Custom field values, all new (`POST`), sent after the communication ways. */
+  readonly customFields: readonly CustomFieldWrite[];
 }
 
 /**
  * Checks a new contact and builds its preview: one kind of name, a known country, a free customer
- * number, and no existing contact with the same name or e-mail address unless `allowDuplicate`.
- * Reads only. Throws a `validation` SevdeskError naming the existing contacts otherwise.
+ * number, no existing contact with the same name or e-mail address unless `allowDuplicate`, and
+ * custom fields the account defines (each once). Reads only. Throws a `validation` SevdeskError
+ * naming the existing contacts otherwise.
  */
 export async function planContactCreate(
   client: SevdeskClient,
@@ -273,7 +298,8 @@ export async function planContactCreate(
     );
   }
 
-  const [parentCandidate, nameMatches, emailMatches, numberOwner, nextNumber, country] =
+  const customFieldEntries = input.customFields ?? [];
+  const [parentCandidate, nameMatches, emailMatches, numberOwner, nextNumber, country, settings] =
     await Promise.all([
       input.parentOrganisationId === undefined
         ? Promise.resolve(undefined)
@@ -291,9 +317,16 @@ export async function planContactCreate(
       hasAddress
         ? resolveCountry(client, input.country ?? DEFAULT_COUNTRY_CODE, signal)
         : Promise.resolve(undefined),
+      customFieldEntries.length === 0
+        ? Promise.resolve(undefined)
+        : listCustomFieldSettings(client, signal),
     ]);
 
   const parent = parentCandidate === undefined ? undefined : checkParent(parentCandidate);
+  const customFields =
+    settings === undefined
+      ? undefined
+      : planCustomFieldValues(customFieldEntries, settings, { kind: "create" });
   if (numberOwner !== undefined) {
     throw validation(
       `The customer number is already used by contact ${numberOwner}. Use another number, or ` +
@@ -371,6 +404,7 @@ export async function planContactCreate(
     });
   }
   for (const { field, label } of COMMUNICATION_FIELDS) pushFact(facts, label, input[field]);
+  facts.push(...(customFields?.facts ?? []));
 
   const warnings: string[] = [];
   if (duplicates.length > 0) {
@@ -388,33 +422,40 @@ export async function planContactCreate(
         "next free one right now.",
     );
   }
+  const customFieldWrites = customFields?.writes ?? [];
   const parts = [
     address === undefined ? undefined : "a billing address",
     wayCount(communicationWays.length),
+    customFieldCount(customFieldWrites.length),
   ];
   const extras = parts.filter((part): part is string => part !== undefined);
   return {
     preview: {
       action:
         `Create the ${kind} contact ${displayName} (${category?.name ?? `category ${categoryId}`})` +
-        `${extras.length === 0 ? "" : ` with ${extras.join(" and ")}`}.`,
+        `${extras.length === 0 ? "" : ` with ${joinParts(extras)}`}.`,
       facts,
       warnings,
       irreversible: false,
     },
-    state: { contact, address, communicationWays },
+    state: { contact, address, communicationWays, customFields: customFieldWrites },
   };
 }
 
 /**
- * Creates the contact, then its address, then its communication ways, and reads it back. Never
- * retries. When a step after the contact fails, the thrown error lists the records already created.
+ * Creates the contact, then its address, then its communication ways, then its custom field
+ * values, and reads it back (the custom fields only when it set some). Never retries. When a step
+ * after the contact fails, the thrown error lists the records already created.
  */
 export async function executeContactCreate(
   client: SevdeskClient,
   state: ContactCreateState,
   options: CountryReadOptions,
-): Promise<{ details: ContactDetails; affected: SevdeskObjectRef[] }> {
+): Promise<{
+  details: ContactDetails;
+  customFields: ContactCustomFields | undefined;
+  affected: SevdeskObjectRef[];
+}> {
   const { signal, cacheOwner } = options;
   const withSignal = signal === undefined ? {} : { signal };
   const created = await client.request({
@@ -453,8 +494,13 @@ export async function executeContactCreate(
         id: String(createdId(answer, "communication way")),
       });
     }
+    await executeCustomFieldWrites(client, contactId, state.customFields, completed, signal);
     const details = await getContactDetails(client, contactId, { signal, cacheOwner });
-    return { details, affected: completed.map((entry) => ({ ...entry })) };
+    const customFields =
+      state.customFields.length === 0
+        ? undefined
+        : await readContactCustomFields(client, contactId, signal);
+    return { details, customFields, affected: completed.map((entry) => ({ ...entry })) };
   } catch (error) {
     throw afterPartialWrite(error, completed);
   }
@@ -478,8 +524,12 @@ export interface ContactUpdateState {
   readonly contact: ContactUpdatePayload | undefined;
   readonly address: AddressChange | undefined;
   readonly communicationWays: readonly WayChange[];
+  /** Custom field values set or changed, after the communication ways. */
+  readonly customFields: readonly CustomFieldWrite[];
   /** Addresses and communication ways deleted after every other change. */
   readonly removals: readonly PlannedRemoval[];
+  /** Custom field values deleted last. */
+  readonly customFieldRemovals: readonly CustomFieldRemoval[];
   /** The organisation whose link the contact `PUT` removes (`parent: null`), if any. */
   readonly removedParentId: number | undefined;
 }
@@ -487,12 +537,13 @@ export interface ContactUpdateState {
 /**
  * Reads the contact with its addresses and communication ways and works out the smallest change:
  * contact fields that differ, the organisation a person belongs to, the billing address (or the
- * only address; a new billing address when there is neither) and the main e-mail/phone/website of
- * each type (added when missing), then what `remove` takes off. Changes apply to what remains after
- * the removals, so a removed entry is never the one changed. Fields that were not given are never
- * touched. Throws a `validation` SevdeskError when the change is impossible (names of the other
- * contact kind, customer number taken, a parent that is no organisation, an id of another contact)
- * or empty.
+ * only address; a new billing address when there is neither), the main e-mail/phone/website of
+ * each type (added when missing) and the custom field values given (the contact's values and the
+ * account's fields are read only when the update names custom fields), then what `remove` takes
+ * off. Changes apply to what remains after the removals, so a removed entry is never the one
+ * changed. Fields that were not given are never touched. Throws a `validation` SevdeskError when
+ * the change is impossible (names of the other contact kind, customer number taken, a parent that
+ * is no organisation, an id of another contact, a field the account does not define) or empty.
  */
 export async function planContactUpdate(
   client: SevdeskClient,
@@ -510,19 +561,29 @@ export async function planContactUpdate(
       `Contact ${id} cannot belong to itself: parentOrganisationId must be another contact.`,
     );
   }
-  const [record, details, numberOwner, country, parentCandidate] = await Promise.all([
-    readContactRecord(client, id, signal),
-    getContactDetails(client, id, { signal, cacheOwner }),
-    input.customerNumber === undefined
-      ? Promise.resolve(undefined)
-      : findContactByCustomerNumber(client, input.customerNumber, signal),
-    input.country === undefined
-      ? Promise.resolve(undefined)
-      : resolveCountry(client, input.country, signal),
-    input.parentOrganisationId === undefined
-      ? Promise.resolve(undefined)
-      : readParentCandidate(client, input.parentOrganisationId, signal),
-  ]);
+  const customFieldEntries = input.customFields ?? [];
+  const customFieldRemoveIds = (input.remove ?? [])
+    .filter((entry) => entry.kind === "customField")
+    .map((entry) => entry.id);
+  const readsCustomFields = customFieldEntries.length > 0 || customFieldRemoveIds.length > 0;
+  const [record, details, numberOwner, country, parentCandidate, currentFields, settings] =
+    await Promise.all([
+      readContactRecord(client, id, signal),
+      getContactDetails(client, id, { signal, cacheOwner }),
+      input.customerNumber === undefined
+        ? Promise.resolve(undefined)
+        : findContactByCustomerNumber(client, input.customerNumber, signal),
+      input.country === undefined
+        ? Promise.resolve(undefined)
+        : resolveCountry(client, input.country, signal),
+      input.parentOrganisationId === undefined
+        ? Promise.resolve(undefined)
+        : readParentCandidate(client, input.parentOrganisationId, signal),
+      readsCustomFields ? readContactCustomFields(client, id, signal) : Promise.resolve(undefined),
+      customFieldEntries.length === 0
+        ? Promise.resolve(undefined)
+        : listCustomFieldSettings(client, signal),
+    ]);
   const name = cleanText(details.contact.displayName, DISPLAY_MAX) ?? `contact ${id}`;
 
   if (details.contact.kind === "person" && input.organisationName !== undefined) {
@@ -565,6 +626,13 @@ export async function planContactUpdate(
     }
   }
   const removal = planRemovals(details, input.remove ?? []);
+  const customFields = planUpdateCustomFields(
+    id,
+    customFieldEntries,
+    customFieldRemoveIds,
+    settings,
+    currentFields,
+  );
 
   const facts: ConfirmationFact[] = [{ label: "Contact", value: `${name} (id ${id})` }];
   const changed: string[] = [];
@@ -675,6 +743,8 @@ export async function planContactUpdate(
       "sevDesk had more communication ways than could be read; the main entry may have been missed.",
     );
   }
+  facts.push(...customFields.values.facts);
+  changed.push(...customFields.values.changes);
 
   if (removal.removals.length > 0) {
     facts.push(...removal.facts);
@@ -698,6 +768,10 @@ export async function planContactUpdate(
       ),
     });
   }
+  facts.push(...customFields.removals.map(customFieldRemovalFact));
+  changed.push(
+    ...customFields.removals.map((entry) => `remove custom field value ${String(entry.id)}`),
+  );
 
   if (changed.length === 0) {
     throw validation(`Nothing to change: contact ${id} already has these values.`);
@@ -714,16 +788,51 @@ export async function planContactUpdate(
       contact,
       address,
       communicationWays,
+      customFields: customFields.values.writes,
       removals: removal.removals,
+      customFieldRemovals: customFields.removals,
       removedParentId: unlink,
     },
   };
 }
 
 /**
- * Sends the planned changes in order (contact, address, communication ways), then the removals
- * (`DELETE`s last, so nothing is gone before its replacement exists), and reads the contact back.
- * Never retries; a failure after the first write lists what was already changed or deleted.
+ * The custom field part of an update: the values `remove` names (checked against the contact's
+ * values), then the values to set, which never change a value being removed. `current` is read
+ * whenever either list is non-empty, `settings` whenever values are set.
+ */
+function planUpdateCustomFields(
+  contactId: number,
+  entries: readonly CustomFieldInput[],
+  removeIds: readonly number[],
+  settings: CustomFieldSettings | undefined,
+  current: ContactCustomFields | undefined,
+): {
+  readonly values: ReturnType<typeof planCustomFieldValues>;
+  readonly removals: readonly CustomFieldRemoval[];
+} {
+  if (current === undefined) {
+    return { values: { writes: [], facts: [], changes: [] }, removals: [] };
+  }
+  const removals = planCustomFieldRemovals(removeIds, current, contactId);
+  const values =
+    settings === undefined
+      ? { writes: [], facts: [], changes: [] }
+      : planCustomFieldValues(entries, settings, {
+          kind: "update",
+          contactId,
+          current,
+          removedIds: new Set(removals.map((entry) => entry.id)),
+        });
+  return { values, removals };
+}
+
+/**
+ * Sends the planned changes in order (contact, address, communication ways, custom field values),
+ * then the removals (`DELETE`s last, addresses and communication ways before custom field values,
+ * so nothing is gone before its replacement exists), and reads the contact back (its custom fields
+ * only when the update touched them). Never retries; a failure after the first write lists what
+ * was already changed or deleted.
  */
 export async function executeContactUpdate(
   client: SevdeskClient,
@@ -731,6 +840,7 @@ export async function executeContactUpdate(
   options: CountryReadOptions,
 ): Promise<{
   details: ContactDetails;
+  customFields: ContactCustomFields | undefined;
   affected: SevdeskObjectRef[];
   removed: RemovedEntry[];
 }> {
@@ -792,13 +902,37 @@ export async function executeContactUpdate(
         });
       }
     }
+    await executeCustomFieldWrites(client, state.contactId, state.customFields, completed, signal);
     const removed: RemovedEntry[] =
       state.removedParentId === undefined
         ? []
         : [{ kind: "parentOrganisation", id: state.removedParentId }];
     removed.push(...(await executeRemovals(client, state.removals, completed, signal)));
+    const customRemoved = await executeCustomFieldRemovals(
+      client,
+      state.customFieldRemovals,
+      completed,
+      signal,
+    );
+    for (const { removal, alreadyGone } of customRemoved) {
+      removed.push({
+        kind: "customField",
+        id: removal.id,
+        customField: removal.field,
+        ...(alreadyGone ? { alreadyGone: true } : {}),
+      });
+    }
     const details = await getContactDetails(client, state.contactId, { signal, cacheOwner });
-    return { details, affected: completed.map((entry) => ({ ...entry })), removed };
+    const customFields =
+      state.customFields.length === 0 && state.customFieldRemovals.length === 0
+        ? undefined
+        : await readContactCustomFields(client, state.contactId, signal);
+    return {
+      details,
+      customFields,
+      affected: completed.map((entry) => ({ ...entry })),
+      removed,
+    };
   } catch (error) {
     throw completed.length === 0 ? error : afterPartialWrite(error, completed);
   }
@@ -1207,6 +1341,17 @@ function pushFact(facts: ConfirmationFact[], label: string, value: string | unde
 function wayCount(count: number): string | undefined {
   if (count === 0) return undefined;
   return count === 1 ? "1 communication way" : `${count} communication ways`;
+}
+
+function customFieldCount(count: number): string | undefined {
+  if (count === 0) return undefined;
+  return count === 1 ? "1 custom field value" : `${count} custom field values`;
+}
+
+/** "a", "a and b", "a, b and c". */
+function joinParts(parts: readonly string[]): string {
+  const last = parts.at(-1) ?? "";
+  return parts.length <= 1 ? last : `${parts.slice(0, -1).join(", ")} and ${last}`;
 }
 
 function show(value: string | number | undefined): string {

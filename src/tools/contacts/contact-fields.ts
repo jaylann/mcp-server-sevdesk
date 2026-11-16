@@ -2,11 +2,17 @@
  * Input fields and the output schema shared by `sevdesk_contact_create` and
  * `sevdesk_contact_update`. Text is trimmed and empty strings are rejected, so a text field is
  * never cleared, by accident or on purpose. What an update may take away is named explicitly in
- * its `remove` argument ({@link removeInput}): one address, one communication way, or the link to
- * the organisation a person belongs to.
+ * its `remove` argument ({@link removeInput}): one address, one communication way, one custom
+ * field value, or the link to the organisation a person belongs to.
  */
 import { z } from "zod";
 
+import {
+  type ContactCustomFields,
+  customFieldDtoSchema,
+  SETTING_NAME_MAX,
+  VALUE_MAX as CUSTOM_FIELD_VALUE_MAX,
+} from "../../domain/contact-custom-fields.js";
 import {
   addressDtoSchema,
   communicationWayDtoSchema,
@@ -61,16 +67,42 @@ export const removeInput = z
       kind: z
         .enum(REMOVE_KINDS)
         .describe(
-          "address, email, phone, mobile or website (one entry of the contact), or " +
-            "parentOrganisation (the person's link to its organisation).",
+          "address, email, phone, mobile, website or customField (one entry or custom field " +
+            "value of the contact), or parentOrganisation (the person's link to its organisation).",
         ),
       id: recordIdInput().describe(
-        "The entry's id from sevdesk_contact_get; for parentOrganisation the organisation's id.",
+        "The entry's id from sevdesk_contact_get (for customField the value's id in " +
+          "customFields); for parentOrganisation the organisation's id.",
       ),
     }),
   )
   .min(1)
   .max(25);
+
+/** A custom field named by the model: its setting id or its name (exactly one). */
+export const customFieldRefShape = {
+  settingId: recordIdInput()
+    .optional()
+    .describe("The field's id from sevdesk_reference_lookup kind=contact_custom_fields."),
+  name: textInput(SETTING_NAME_MAX)
+    .optional()
+    .describe("Or the field's name; refused when no field or more than one has it."),
+};
+
+/** The `customFields` argument of create and update: values by field (Zusatzfelder). */
+export const customFieldsInput = z
+  .array(
+    z.strictObject({
+      ...customFieldRefShape,
+      value: textInput(CUSTOM_FIELD_VALUE_MAX).describe("The value to store."),
+    }),
+  )
+  .min(1)
+  .max(20)
+  .describe(
+    "Custom field values (Zusatzfelder), each {settingId or name, value}. Fields are defined in " +
+      "the sevDesk web app; sevdesk_reference_lookup kind=contact_custom_fields lists them.",
+  );
 
 /** The contact category argument. */
 export const categoryInput = z
@@ -123,17 +155,31 @@ export const contactWriteOutput = z.object({
   communicationWaysComplete: z
     .boolean()
     .describe("False when sevDesk had more rows than could be read: communicationWays is partial."),
+  customFields: z
+    .array(customFieldDtoSchema)
+    .optional()
+    .describe("Custom field values (Zusatzfelder) read back; only when this call changed some."),
+  customFieldsComplete: z
+    .boolean()
+    .optional()
+    .describe("With customFields: false when sevDesk had more values than could be read."),
 });
 
 export type ContactWriteOutput = z.output<typeof contactWriteOutput>;
 
-/** The read-back contact as tool output. */
-export function contactWriteData(details: ContactDetails): ContactWriteOutput {
+/** The read-back contact as tool output, with its custom fields when the write read them back. */
+export function contactWriteData(
+  details: ContactDetails,
+  customFields: ContactCustomFields | undefined,
+): ContactWriteOutput {
   return {
     contact: details.contact,
     addresses: [...details.addresses],
     addressesComplete: details.addressesComplete,
     communicationWays: [...details.communicationWays],
     communicationWaysComplete: details.communicationWaysComplete,
+    ...(customFields === undefined
+      ? {}
+      : { customFields: [...customFields.rows], customFieldsComplete: customFields.complete }),
   };
 }

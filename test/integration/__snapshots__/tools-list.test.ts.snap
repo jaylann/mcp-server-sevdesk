@@ -916,6 +916,38 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "pattern": "^[A-Za-z]{2}$",
           "type": "string",
         },
+        "customFields": {
+          "description": "Custom field values (Zusatzfelder), each {settingId or name, value}. Fields are defined in the sevDesk web app; sevdesk_reference_lookup kind=contact_custom_fields lists them.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "description": "Or the field's name; refused when no field or more than one has it.",
+                "maxLength": 30,
+                "minLength": 1,
+                "type": "string",
+              },
+              "settingId": {
+                "description": "The field's id from sevdesk_reference_lookup kind=contact_custom_fields.",
+                "exclusiveMinimum": 0,
+                "type": "integer",
+              },
+              "value": {
+                "description": "The value to store.",
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string",
+              },
+            },
+            "required": [
+              "value",
+            ],
+            "type": "object",
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "type": "array",
+        },
         "customerNumber": {
           "description": "Kundennummer; must not be used yet.",
           "maxLength": 50,
@@ -1092,6 +1124,38 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "pattern": "^[A-Za-z]{2}$",
           "type": "string",
         },
+        "customFields": {
+          "description": "Custom field values (Zusatzfelder), each {settingId or name, value}. Fields are defined in the sevDesk web app; sevdesk_reference_lookup kind=contact_custom_fields lists them.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "description": "Or the field's name; refused when no field or more than one has it.",
+                "maxLength": 30,
+                "minLength": 1,
+                "type": "string",
+              },
+              "settingId": {
+                "description": "The field's id from sevdesk_reference_lookup kind=contact_custom_fields.",
+                "exclusiveMinimum": 0,
+                "type": "integer",
+              },
+              "value": {
+                "description": "The value to store.",
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string",
+              },
+            },
+            "required": [
+              "value",
+            ],
+            "type": "object",
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "type": "array",
+        },
         "customerNumber": {
           "description": "Kundennummer; must not be used yet.",
           "maxLength": 50,
@@ -1150,12 +1214,12 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
             "additionalProperties": false,
             "properties": {
               "id": {
-                "description": "The entry's id from sevdesk_contact_get; for parentOrganisation the organisation's id.",
+                "description": "The entry's id from sevdesk_contact_get (for customField the value's id in customFields); for parentOrganisation the organisation's id.",
                 "exclusiveMinimum": 0,
                 "type": "integer",
               },
               "kind": {
-                "description": "address, email, phone, mobile or website (one entry of the contact), or parentOrganisation (the person's link to its organisation).",
+                "description": "address, email, phone, mobile, website or customField (one entry or custom field value of the contact), or parentOrganisation (the person's link to its organisation).",
                 "enum": [
                   "address",
                   "email",
@@ -1163,6 +1227,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
                   "mobile",
                   "website",
                   "parentOrganisation",
+                  "customField",
                 ],
                 "type": "string",
               },
@@ -1252,6 +1317,33 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
             "prospect",
           ],
           "type": "string",
+        },
+        "customField": {
+          "additionalProperties": false,
+          "description": "Contacts whose custom field (Zusatzfeld) has this value: {settingId or name, value}. Not combined with query, customerNumber or category.",
+          "properties": {
+            "name": {
+              "description": "Or the field's name; refused when no field or more than one has it.",
+              "maxLength": 30,
+              "minLength": 1,
+              "type": "string",
+            },
+            "settingId": {
+              "description": "The field's id from sevdesk_reference_lookup kind=contact_custom_fields.",
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            "value": {
+              "description": "The whole value, compared ignoring case: 'EXT-4711' finds 'ext-4711', but a part such as 'EXT' finds nothing.",
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string",
+            },
+          },
+          "required": [
+            "value",
+          ],
+          "type": "object",
         },
         "customerNumber": {
           "description": "Exact customer number (Kundennummer), e.g. 'K-1001'.",
@@ -4054,6 +4146,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
             "units",
             "payment_methods",
             "receipt_guidance",
+            "contact_custom_fields",
           ],
           "type": "string",
         },
@@ -5190,6 +5283,38 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "pattern": "^[A-Za-z]{2}$",
           "type": "string",
         },
+        "customFields": {
+          "description": "Custom field values (Zusatzfelder), each {settingId or name, value}. Fields are defined in the sevDesk web app; sevdesk_reference_lookup kind=contact_custom_fields lists them.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "description": "Or the field's name; refused when no field or more than one has it.",
+                "maxLength": 30,
+                "minLength": 1,
+                "type": "string",
+              },
+              "settingId": {
+                "description": "The field's id from sevdesk_reference_lookup kind=contact_custom_fields.",
+                "exclusiveMinimum": 0,
+                "type": "integer",
+              },
+              "value": {
+                "description": "The value to store.",
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string",
+              },
+            },
+            "required": [
+              "value",
+            ],
+            "type": "object",
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "type": "array",
+        },
         "customerNumber": {
           "description": "Kundennummer; must not be used yet.",
           "maxLength": 50,
@@ -5336,6 +5461,38 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "pattern": "^[A-Za-z]{2}$",
           "type": "string",
         },
+        "customFields": {
+          "description": "Custom field values (Zusatzfelder), each {settingId or name, value}. Fields are defined in the sevDesk web app; sevdesk_reference_lookup kind=contact_custom_fields lists them.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "description": "Or the field's name; refused when no field or more than one has it.",
+                "maxLength": 30,
+                "minLength": 1,
+                "type": "string",
+              },
+              "settingId": {
+                "description": "The field's id from sevdesk_reference_lookup kind=contact_custom_fields.",
+                "exclusiveMinimum": 0,
+                "type": "integer",
+              },
+              "value": {
+                "description": "The value to store.",
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string",
+              },
+            },
+            "required": [
+              "value",
+            ],
+            "type": "object",
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "type": "array",
+        },
         "customerNumber": {
           "description": "Kundennummer; must not be used yet.",
           "maxLength": 50,
@@ -5394,12 +5551,12 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
             "additionalProperties": false,
             "properties": {
               "id": {
-                "description": "The entry's id from sevdesk_contact_get; for parentOrganisation the organisation's id.",
+                "description": "The entry's id from sevdesk_contact_get (for customField the value's id in customFields); for parentOrganisation the organisation's id.",
                 "exclusiveMinimum": 0,
                 "type": "integer",
               },
               "kind": {
-                "description": "address, email, phone, mobile or website (one entry of the contact), or parentOrganisation (the person's link to its organisation).",
+                "description": "address, email, phone, mobile, website or customField (one entry or custom field value of the contact), or parentOrganisation (the person's link to its organisation).",
                 "enum": [
                   "address",
                   "email",
@@ -5407,6 +5564,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
                   "mobile",
                   "website",
                   "parentOrganisation",
+                  "customField",
                 ],
                 "type": "string",
               },
@@ -5496,6 +5654,33 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
             "prospect",
           ],
           "type": "string",
+        },
+        "customField": {
+          "additionalProperties": false,
+          "description": "Contacts whose custom field (Zusatzfeld) has this value: {settingId or name, value}. Not combined with query, customerNumber or category.",
+          "properties": {
+            "name": {
+              "description": "Or the field's name; refused when no field or more than one has it.",
+              "maxLength": 30,
+              "minLength": 1,
+              "type": "string",
+            },
+            "settingId": {
+              "description": "The field's id from sevdesk_reference_lookup kind=contact_custom_fields.",
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            "value": {
+              "description": "The whole value, compared ignoring case: 'EXT-4711' finds 'ext-4711', but a part such as 'EXT' finds nothing.",
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string",
+            },
+          },
+          "required": [
+            "value",
+          ],
+          "type": "object",
         },
         "customerNumber": {
           "description": "Exact customer number (Kundennummer), e.g. 'K-1001'.",
@@ -7672,6 +7857,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
             "units",
             "payment_methods",
             "receipt_guidance",
+            "contact_custom_fields",
           ],
           "type": "string",
         },
@@ -8539,6 +8725,33 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           ],
           "type": "string",
         },
+        "customField": {
+          "additionalProperties": false,
+          "description": "Contacts whose custom field (Zusatzfeld) has this value: {settingId or name, value}. Not combined with query, customerNumber or category.",
+          "properties": {
+            "name": {
+              "description": "Or the field's name; refused when no field or more than one has it.",
+              "maxLength": 30,
+              "minLength": 1,
+              "type": "string",
+            },
+            "settingId": {
+              "description": "The field's id from sevdesk_reference_lookup kind=contact_custom_fields.",
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            "value": {
+              "description": "The whole value, compared ignoring case: 'EXT-4711' finds 'ext-4711', but a part such as 'EXT' finds nothing.",
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string",
+            },
+          },
+          "required": [
+            "value",
+          ],
+          "type": "object",
+        },
         "customerNumber": {
           "description": "Exact customer number (Kundennummer), e.g. 'K-1001'.",
           "maxLength": 100,
@@ -9403,6 +9616,7 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
             "units",
             "payment_methods",
             "receipt_guidance",
+            "contact_custom_fields",
           ],
           "type": "string",
         },

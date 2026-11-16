@@ -1,6 +1,10 @@
 import { z } from "zod";
 
 import { compact } from "../../domain/common.js";
+import {
+  customFieldSettingDtoSchema,
+  listCustomFieldSettings,
+} from "../../domain/contact-custom-fields.js";
 import { loadReceiptGuidance, RECEIPT_TYPES } from "../../domain/receipt-guidance.js";
 import {
   CONTACT_CATEGORIES,
@@ -28,6 +32,7 @@ const LOOKUP_KINDS = [
   "units",
   "payment_methods",
   "receipt_guidance",
+  "contact_custom_fields",
 ] as const;
 type LookupKind = (typeof LOOKUP_KINDS)[number];
 
@@ -149,6 +154,10 @@ const output = z.object({
   countries: z.array(countryItem).optional(),
   units: z.array(unitItem).optional(),
   paymentMethods: z.array(paymentMethodItem).optional(),
+  contactCustomFields: z
+    .array(customFieldSettingDtoSchema)
+    .optional()
+    .describe("Kind contact_custom_fields: the account's custom contact fields (Zusatzfelder)."),
   receiptGuidance: z
     .array(receiptGuidanceItem)
     .optional()
@@ -180,8 +189,9 @@ export const referenceLookupTool = defineTool({
     "units (Einheiten), payment_methods (Zahlungsarten) and receipt_guidance (Kontierungshilfe: " +
     "which booking account (accountDatev) allows which tax rules and tax rates for expense or " +
     "revenue receipts (Belege); filter with accountNumber, taxRuleId and receiptType, paged " +
-    "with limit/offset). Use query to filter by a case-insensitive substring of names, codes " +
-    "or ids.",
+    "with limit/offset) and contact_custom_fields (the custom contact fields, Zusatzfelder, " +
+    "defined in the sevDesk web app; their ids go into customFields of the contact tools). Use " +
+    "query to filter by a case-insensitive substring of names, codes or ids.",
   toolset: "meta",
   tier: "read",
   annotations: {
@@ -411,6 +421,16 @@ async function lookup(
         .filter((method) => keep(method.id, method.name, method.text))
         .map((method) => ({ ...method }));
       return { ...upstreamCounts(kind, list, paymentMethods.length), paymentMethods };
+    }
+    case "contact_custom_fields": {
+      const list = await listCustomFieldSettings(ctx.client, ctx.signal);
+      const contactCustomFields = list.items
+        .filter((setting) => keep(setting.id, setting.name, setting.description))
+        .map((setting) => ({ ...setting }));
+      return {
+        ...upstreamCounts(kind, list, contactCustomFields.length),
+        contactCustomFields,
+      };
     }
   }
 }

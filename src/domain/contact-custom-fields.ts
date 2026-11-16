@@ -1,0 +1,577 @@
+/**
+ * Custom contact fields (Zusatzfelder): reading a contact's values, planning and sending the
+ * values `sevdesk_contact_create` and `sevdesk_contact_update` set or remove, the account's field
+ * definitions for `sevdesk_reference_lookup`, and the search behind `sevdesk_contacts_search`.
+ *
+ * sevDesk keeps a custom field in two resources (recorded on a trial account, Update 2.0,
+ * 2026-11-16; spec/deviations.md D-086):
+ * - a **setting** (`/ContactCustomFieldSetting`: `name` of at most 30 characters, `identifier`,
+ *   `description`), the field's definition for the whole account. Two settings may share a name.
+ *   Deleting a setting deletes every value of it on every contact, without a 409, so nothing here
+ *   ever writes a setting: this module only reads `/ContactCustomFieldSetting`, and fields are
+ *   defined in the sevDesk web app.
+ * - per contact a **value** (`/ContactCustomField`: `contact`, `contactCustomFieldSetting`,
+ *   `value`). No read of a contact shows its values, with any `embed`; they are read with
+ *   `GET /ContactCustomField?contact[id]=…&contact[objectName]=Contact&embed=contactCustomFieldSetting`
+ *   and checked against the contact id again here (D-035). `POST` answers the new value as one
+ *   object, `PUT` with only `objectName` and `value` changes the value and keeps both references,
+ *   `DELETE` answers `{objects: [null]}`.
+ * - `GET /Contact/Factory/findContactsByCustomFieldValue` with `customFieldSetting[id]` alone
+ *   answers the contacts whose value of that field equals the value, ignoring case; a part of the
+ *   value finds nothing.
+ *
+ * Not measured: the longest `value` sevDesk accepts, whether one contact can hold two values of one
+ * setting, and how the two lists page. A contact with two values of one setting is therefore
+ * refused for a change of that field rather than guessed at.
+ *
+ * Setting names and values are untrusted text (typed in by users) and go through `cleanText`.
+ */
+import { z } from "zod";
+
+import type { ConfirmationFact } from "../safety/write-types.js";
+import { expectSingle } from "../sevdesk/envelope.js";
+import { type CompletedWrite, SevdeskError } from "../sevdesk/errors.js";
+import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
+import { parseUpstream, zId, zOptionalRef, zText } from "../sevdesk/schema.js";
+import type { QueryValue, SevdeskClient } from "../sevdesk/types.js";
+import { cleanText, compact } from "./common.js";
+import { type ContactDto, parseContactRecord, toContactDto } from "./contacts.js";
+import { type ChildRows, listChildRows } from "./paging.js";
+
+/** sevDesk refuses longer setting names (400, recorded, D-086). */
+export const SETTING_NAME_MAX = 30;
+/**
+ * Longest value accepted here. sevDesk's own limit is not measured (D-086: 17 and 21 characters
+ * were sent); 255 matches the other free-text contact fields, and a longer value sevDesk refuses
+ * arrives as its validation error.
+ */
+export const VALUE_MAX = 255;
+/** Settings read for names and ids; an account with more is refused where that matters. */
+const SETTINGS_LIMIT = 1000;
+/** Contacts read from one custom-field search (one page, paged locally). */
+const FIND_LIMIT = 1000;
+/** Longest setting description in a lookup. */
+const DESCRIPTION_MAX = 500;
+
+// ---------------------------------------------------------------------------------------------
+// Upstream schemas (lenient) and DTOs
+// ---------------------------------------------------------------------------------------------
+
+/** `ContactCustomFieldSetting` (recorded: `test/fixtures/recorded/2026-11-16/contacts/`). */
+const settingRecordSchema = z.object({
+  id: zId,
+  name: zText,
+  description: zText,
+});
+
+/**
+ * `ContactCustomField`. `contactCustomFieldSetting` is `{id, objectName}`, or the whole setting
+ * with `embed=contactCustomFieldSetting`.
+ */
+const valueRecordSchema = z.object({
+  id: zId,
+  contact: zOptionalRef,
+  contactCustomFieldSetting: z
+    .object({ id: zId, name: zText })
+    .nullish()
+    .transform((value) => value ?? undefined),
+  value: zText,
+});
+
+type ValueRecord = z.output<typeof valueRecordSchema>;
+
+/** A custom field the account defines (tool output of `sevdesk_reference_lookup`). */
+export const customFieldSettingDtoSchema = z.object({
+  id: z.number().int().describe("Setting id: pass it as settingId to the contact tools."),
+  name: z.string().describe("The field's name (at most 30 characters in sevDesk)."),
+  description: z.string().optional(),
+});
+
+export type CustomFieldSetting = z.output<typeof customFieldSettingDtoSchema>;
+
+/** One custom field value of a contact (tool output). */
+export const customFieldDtoSchema = z.object({
+  id: z
+    .number()
+    .int()
+    .describe("Id of this value; sevdesk_contact_update removes it with remove kind customField."),
+  settingId: z.number().int().describe("Id of the field (see sevdesk_reference_lookup)."),
+  name: z.string().optional().describe("The field's name, as defined in sevDesk."),
+  value: z.string(),
+});
+
+type CustomFieldDto = z.output<typeof customFieldDtoSchema>;
+
+function toCustomFieldDto(record: ValueRecord): CustomFieldDto | undefined {
+  const setting = record.contactCustomFieldSetting;
+  if (setting === undefined) return undefined;
+  return compact({
+    id: record.id,
+    settingId: setting.id,
+    name: cleanText(setting.name, SETTING_NAME_MAX * 4),
+    value: cleanText(record.value, VALUE_MAX * 2) ?? "",
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Reads
+// ---------------------------------------------------------------------------------------------
+
+/** The account's settings: up to {@link SETTINGS_LIMIT}, `truncated` when sevDesk has more. */
+export interface CustomFieldSettings {
+  readonly items: readonly CustomFieldSetting[];
+  readonly total: number;
+  readonly truncated: boolean;
+}
+
+/**
+ * The account's custom fields (`GET /ContactCustomFieldSetting`, one page of
+ * {@link SETTINGS_LIMIT}). Only ever a GET: settings are defined in the sevDesk web app.
+ */
+export async function listCustomFieldSettings(
+  client: SevdeskClient,
+  signal?: AbortSignal,
+): Promise<CustomFieldSettings> {
+  const page = await client.list("/ContactCustomFieldSetting", undefined, {
+    limit: SETTINGS_LIMIT,
+    ...(signal === undefined ? {} : { signal }),
+  });
+  const items = page.items.map((raw) => {
+    const row = parseUpstream(settingRecordSchema, raw, "custom field settings");
+    return compact({
+      id: row.id,
+      name: cleanText(row.name, SETTING_NAME_MAX * 4) ?? `(unnamed field ${String(row.id)})`,
+      description: cleanText(row.description, DESCRIPTION_MAX),
+    });
+  });
+  const total = page.total ?? items.length;
+  return { items, total, truncated: total > items.length };
+}
+
+/** A contact's custom field values, as read. */
+export type ContactCustomFields = ChildRows<CustomFieldDto>;
+
+/**
+ * The custom field values of one contact, with the setting's name (see the module comment). Rows
+ * of other contacts, should sevDesk ignore the filter, and rows without a setting are left out.
+ */
+export async function readContactCustomFields(
+  client: SevdeskClient,
+  contactId: number,
+  signal: AbortSignal | undefined,
+): Promise<ContactCustomFields> {
+  const id = toSevdeskId(contactId);
+  const rows = await listChildRows(
+    client,
+    "/ContactCustomField",
+    { "contact[id]": id, "contact[objectName]": "Contact", embed: "contactCustomFieldSetting" },
+    {
+      parse: (raw) => parseUpstream(valueRecordSchema, raw, "custom field values"),
+      belongs: (row) => row.contact?.id === id,
+    },
+    signal,
+  );
+  return {
+    rows: rows.rows
+      .map(toCustomFieldDto)
+      .filter((row): row is CustomFieldDto => row !== undefined)
+      .sort((a, b) => a.id - b.id),
+    complete: rows.complete,
+  };
+}
+
+/** {@link readContactCustomFields} for a display, where a failed read must not fail the call. */
+export type DisplayedCustomFields =
+  ({ readonly readable: true } & ContactCustomFields) | { readonly readable: false };
+
+/**
+ * {@link readContactCustomFields}, but a sevDesk failure (other than a cancellation) becomes
+ * `readable: false` instead of an error: `sevdesk_contact_get` and the delete preview still show
+ * the contact, and say that its custom fields could not be read.
+ */
+export async function readCustomFieldsForDisplay(
+  client: SevdeskClient,
+  contactId: number,
+  signal: AbortSignal | undefined,
+): Promise<DisplayedCustomFields> {
+  try {
+    return { readable: true, ...(await readContactCustomFields(client, contactId, signal)) };
+  } catch (error) {
+    if (error instanceof SevdeskError && error.kind !== "aborted") return { readable: false };
+    throw error;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Which setting an argument names
+// ---------------------------------------------------------------------------------------------
+
+/** A custom field named by an argument: its setting id or its name, never both. */
+export interface CustomFieldRef {
+  readonly settingId?: number | undefined;
+  readonly name?: string | undefined;
+}
+
+/**
+ * The setting `ref` names, checked against the account's settings: an id must be one of them; a
+ * name must match exactly one (compared ignoring case and spacing), since sevDesk allows two
+ * settings with one name. Throws a `validation` SevdeskError before anything is sent otherwise;
+ * the messages name ids only, never sevDesk's text. `where` names the argument, e.g.
+ * "customFields entry 2".
+ */
+export function resolveSetting(
+  settings: CustomFieldSettings,
+  ref: CustomFieldRef,
+  where: string,
+): CustomFieldSetting {
+  if ((ref.settingId === undefined) === (ref.name === undefined)) {
+    throw validation(
+      `${where}: give the field either by settingId or by name, not both and not neither. ` +
+        "sevdesk_reference_lookup kind=contact_custom_fields lists them.",
+    );
+  }
+  if (ref.settingId !== undefined) {
+    const setting = settings.items.find((item) => item.id === ref.settingId);
+    if (setting !== undefined) return setting;
+    throw validation(
+      `${where}: custom field ${String(ref.settingId)} is not one of this account's custom ` +
+        `fields${settings.truncated ? " that could be read (sevDesk has more than could be read)" : ""}. ` +
+        "sevdesk_reference_lookup kind=contact_custom_fields lists them; fields are defined in " +
+        "the sevDesk web app.",
+    );
+  }
+  const wanted = normalizeName(ref.name ?? "");
+  const matches = settings.items.filter((item) => normalizeName(item.name) === wanted);
+  if (settings.truncated) {
+    throw validation(
+      `${where}: the account has more custom fields than could be read, so a name cannot be ` +
+        "matched safely. Give the field by settingId (sevdesk_reference_lookup " +
+        "kind=contact_custom_fields).",
+    );
+  }
+  const [only, ...others] = matches;
+  if (only === undefined) {
+    throw validation(
+      `${where}: no custom field of this account has that name. sevdesk_reference_lookup ` +
+        "kind=contact_custom_fields lists them; fields are defined in the sevDesk web app.",
+    );
+  }
+  if (others.length > 0) {
+    throw validation(
+      `${where}: ${String(matches.length)} custom fields have that name (settings ` +
+        `${matches.map((item) => String(item.id)).join(", ")}). Give the one you mean by settingId.`,
+    );
+  }
+  return only;
+}
+
+/** Case- and whitespace-insensitive form of a setting name. */
+function normalizeName(name: string): string {
+  return name.normalize("NFC").trim().replace(/\s+/g, " ").toLocaleLowerCase("de-DE");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Writes: plan
+// ---------------------------------------------------------------------------------------------
+
+/** One custom field value a create or update sets. */
+export interface CustomFieldInput extends CustomFieldRef {
+  readonly value: string;
+}
+
+/** A value to send: a new one (`POST`) or a change of an existing one (`PUT`). */
+export type CustomFieldWrite =
+  | { readonly kind: "create"; readonly settingId: number; readonly value: string }
+  | { readonly kind: "update"; readonly id: number; readonly value: string };
+
+/** A value an update deletes, as it was read. */
+export interface CustomFieldRemoval {
+  readonly id: number;
+  readonly field: CustomFieldDto;
+}
+
+/** Where planned values go: a new contact, or an existing contact whose values were read. */
+export type CustomFieldTarget =
+  | { readonly kind: "create" }
+  | {
+      readonly kind: "update";
+      readonly contactId: number;
+      readonly current: ContactCustomFields;
+      /** Values the same update removes: never the one changed. */
+      readonly removedIds: ReadonlySet<number>;
+    };
+
+/** What the values of a create or update add to its plan and preview. */
+export interface CustomFieldValuesPlan {
+  readonly writes: readonly CustomFieldWrite[];
+  /** One fact per value set or changed, in the order of the entries. */
+  readonly facts: readonly ConfirmationFact[];
+  /** For the update's action sentence, e.g. "custom field 19498". */
+  readonly changes: readonly string[];
+}
+
+/**
+ * Plans the custom field values of a create or update before anything is sent. Every entry names
+ * one setting of the account ({@link resolveSetting}), and none twice. On a create every value is
+ * new. On an update the contact's value of that setting is changed when it differs (left alone
+ * when equal), and a value is added when the contact has none. A contact with two values of one
+ * setting is refused for that setting, since which one to change cannot be known, and so is an
+ * added value when not every value could be read. Values the update removes are not candidates,
+ * so setting a field and removing its old value adds a new one and deletes the old one (the same
+ * rule as for addresses).
+ */
+export function planCustomFieldValues(
+  entries: readonly CustomFieldInput[],
+  settings: CustomFieldSettings,
+  target: CustomFieldTarget,
+): CustomFieldValuesPlan {
+  const seen = new Set<number>();
+  const writes: CustomFieldWrite[] = [];
+  const facts: ConfirmationFact[] = [];
+  const changes: string[] = [];
+  for (const [index, entry] of entries.entries()) {
+    const where = `customFields entry ${String(index + 1)}`;
+    const setting = resolveSetting(settings, entry, where);
+    if (seen.has(setting.id)) {
+      throw validation(
+        `${where}: custom field ${String(setting.id)} is listed twice; give each field once.`,
+      );
+    }
+    seen.add(setting.id);
+    const shown = cleanText(entry.value, VALUE_MAX) ?? "";
+    const label = `Custom field (setting ${String(setting.id)})`;
+    if (target.kind === "create") {
+      writes.push({ kind: "create", settingId: setting.id, value: entry.value });
+      facts.push({ label, value: `${setting.name}: ${shown}` });
+      continue;
+    }
+    const contact = String(target.contactId);
+    const existing = target.current.rows.filter(
+      (row) => row.settingId === setting.id && !target.removedIds.has(row.id),
+    );
+    const [value, ...more] = existing;
+    if (more.length > 0) {
+      throw validation(
+        `${where}: contact ${contact} has ${String(existing.length)} values of custom field ` +
+          `${String(setting.id)} (ids ${existing.map((row) => String(row.id)).join(", ")}), so ` +
+          "which one to change is unclear; nothing was changed. Remove the extra ones with " +
+          "remove kind customField first.",
+      );
+    }
+    if (value === undefined) {
+      if (!target.current.complete) {
+        throw validation(
+          `${where}: contact ${contact} has more custom field values than could be read, so ` +
+            "whether it has this field already is unknown; nothing was changed.",
+        );
+      }
+      writes.push({ kind: "create", settingId: setting.id, value: entry.value });
+      facts.push({ label: `${label} (new)`, value: `${setting.name}: ${shown}` });
+    } else {
+      if (value.value === entry.value) continue;
+      writes.push({ kind: "update", id: value.id, value: entry.value });
+      facts.push({
+        label: `${label}, value id ${String(value.id)}`,
+        value: `${setting.name}: ${shownValue(value.value)} → ${shown}`,
+      });
+    }
+    changes.push(`custom field ${String(setting.id)}`);
+  }
+  return { writes, facts, changes };
+}
+
+/**
+ * Checks the custom field values `remove` names against the contact's values as read: each must be
+ * one of them, none listed twice. Throws a `validation` SevdeskError (ids only) before anything is
+ * sent otherwise.
+ */
+export function planCustomFieldRemovals(
+  ids: readonly number[],
+  current: ContactCustomFields,
+  contactId: number,
+): CustomFieldRemoval[] {
+  const seen = new Set<number>();
+  return ids.map((id) => {
+    if (seen.has(id)) {
+      throw validation(
+        `remove lists custom field value ${String(id)} twice; list each entry once.`,
+      );
+    }
+    seen.add(id);
+    const field = current.rows.find((row) => row.id === id);
+    if (field === undefined) {
+      const partial = current.complete
+        ? ""
+        : " that could be read (sevDesk had more than could be read)";
+      throw validation(
+        `Custom field value ${String(id)} is not one of contact ${String(contactId)}'s custom ` +
+          `field values${partial}; nothing was changed. sevdesk_contact_get lists them with ` +
+          "their ids.",
+      );
+    }
+    return { id, field };
+  });
+}
+
+/** The preview fact of one removed value: field name and value as read, so it can be re-entered. */
+export function customFieldRemovalFact(removal: CustomFieldRemoval): ConfirmationFact {
+  const { field } = removal;
+  return {
+    label: `Remove custom field value (id ${String(removal.id)})`,
+    value: `${field.name ?? `field ${String(field.settingId)}`}: ${shownValue(field.value)}`,
+  };
+}
+
+function shownValue(value: string): string {
+  return value === "" ? "(empty)" : value;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Writes: send
+// ---------------------------------------------------------------------------------------------
+
+function refSchema<N extends string>(objectName: N) {
+  return z.strictObject({ id: z.number().int().positive(), objectName: z.literal(objectName) });
+}
+
+/** `POST /ContactCustomField` (strict: sevDesk ignores unknown fields, D-003). */
+const valueCreatePayloadSchema = z.strictObject({
+  objectName: z.literal("ContactCustomField"),
+  contact: refSchema("Contact"),
+  contactCustomFieldSetting: refSchema("ContactCustomFieldSetting"),
+  value: z.string().min(1),
+});
+
+/** `PUT /ContactCustomField/{id}`: only the value; both references stay (D-086). */
+const valueUpdatePayloadSchema = z.strictObject({
+  objectName: z.literal("ContactCustomField"),
+  value: z.string().min(1),
+});
+
+/**
+ * Sends the planned values in order, each once, and records each in `completed` (the caller
+ * reports them when a later step fails). Never retries.
+ */
+export async function executeCustomFieldWrites(
+  client: SevdeskClient,
+  contactId: number,
+  writes: readonly CustomFieldWrite[],
+  completed: CompletedWrite[],
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  const withSignal = signal === undefined ? {} : { signal };
+  for (const write of writes) {
+    if (write.kind === "update") {
+      await client.request({
+        method: "PUT",
+        path: sevdeskPath("ContactCustomField", write.id),
+        body: valueUpdatePayloadSchema.parse({
+          objectName: "ContactCustomField",
+          value: write.value,
+        }),
+        ...withSignal,
+      });
+      completed.push({ objectName: "ContactCustomField", id: String(write.id) });
+      continue;
+    }
+    const answer = await client.request({
+      method: "POST",
+      path: "/ContactCustomField",
+      body: valueCreatePayloadSchema.parse({
+        objectName: "ContactCustomField",
+        contact: { id: contactId, objectName: "Contact" },
+        contactCustomFieldSetting: { id: write.settingId, objectName: "ContactCustomFieldSetting" },
+        value: write.value,
+      }),
+      ...withSignal,
+    });
+    const created = parseUpstream(
+      z.object({ id: zId }),
+      expectSingle(answer, "created custom field value"),
+      "the created custom field value",
+    );
+    completed.push({ objectName: "ContactCustomField", id: String(created.id) });
+  }
+}
+
+/** A custom field value `remove` took off, and whether sevDesk had it still. */
+export interface RemovedCustomField {
+  readonly removal: CustomFieldRemoval;
+  /** True when the DELETE answered 404: the value was gone already. */
+  readonly alreadyGone: boolean;
+}
+
+/**
+ * Deletes the planned values one by one, in order, after every other change, and records each in
+ * `completed`. A 404 means the value is gone already and is reported, not raised.
+ */
+export async function executeCustomFieldRemovals(
+  client: SevdeskClient,
+  removals: readonly CustomFieldRemoval[],
+  completed: CompletedWrite[],
+  signal: AbortSignal | undefined,
+): Promise<RemovedCustomField[]> {
+  const removed: RemovedCustomField[] = [];
+  for (const removal of removals) {
+    let alreadyGone = false;
+    try {
+      await client.request({
+        method: "DELETE",
+        path: sevdeskPath("ContactCustomField", removal.id),
+        ...(signal === undefined ? {} : { signal }),
+      });
+    } catch (error) {
+      if (!(error instanceof SevdeskError && error.kind === "not_found")) throw error;
+      alreadyGone = true;
+    }
+    completed.push({ objectName: "ContactCustomField", id: String(removal.id) });
+    removed.push({ removal, alreadyGone });
+  }
+  return removed;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Search
+// ---------------------------------------------------------------------------------------------
+
+/** The contacts one custom-field search found. */
+export interface CustomFieldMatches {
+  readonly items: readonly ContactDto[];
+  /** True when sevDesk may have had more matches than the {@link FIND_LIMIT} read. */
+  readonly truncated: boolean;
+}
+
+/**
+ * The contacts whose value of `settingId` equals `value`, ignoring case
+ * (`GET /Contact/Factory/findContactsByCustomFieldValue` with `customFieldSetting[id]` alone,
+ * D-086), de-duplicated by id and sorted by id. One request of {@link FIND_LIMIT} rows; how the
+ * endpoint pages is not measured, so a full page counts as possibly more.
+ */
+export async function findContactsByCustomField(
+  client: SevdeskClient,
+  settingId: number,
+  value: string,
+  signal?: AbortSignal,
+): Promise<CustomFieldMatches> {
+  const query: Record<string, QueryValue> = {
+    value,
+    "customFieldSetting[id]": toSevdeskId(settingId),
+    "customFieldSetting[objectName]": "ContactCustomFieldSetting",
+  };
+  const page = await client.list("/Contact/Factory/findContactsByCustomFieldValue", query, {
+    limit: FIND_LIMIT,
+    ...(signal === undefined ? {} : { signal }),
+  });
+  const byId = new Map<number, ContactDto>();
+  for (const raw of page.items) {
+    const dto = toContactDto(parseContactRecord(raw));
+    if (!byId.has(dto.id)) byId.set(dto.id, dto);
+  }
+  const truncated =
+    page.items.length >= FIND_LIMIT && (page.total === undefined || page.total > FIND_LIMIT);
+  return { items: [...byId.values()].sort((a, b) => a.id - b.id), truncated };
+}
+
+function validation(message: string): SevdeskError {
+  return new SevdeskError({ kind: "validation", message });
+}

@@ -38,7 +38,10 @@ function answer(request: { readonly url: URL; readonly method: string }): Respon
   const path = request.url.pathname.replace(/^\/api\/v1/, "");
   if (request.method === "DELETE" && path === "/Contact/1002") return jsonResponse(REFUSAL, 200);
   if (request.method === "GET" && path === "/Contact/1002") return envelope(PERSON);
-  if (request.method === "GET" && (path === "/ContactAddress" || path === "/CommunicationWay")) {
+  if (
+    request.method === "GET" &&
+    (path === "/ContactAddress" || path === "/CommunicationWay" || path === "/ContactCustomField")
+  ) {
     return envelope([], "0");
   }
   throw new Error(`unexpected request: ${request.method} ${path}`);

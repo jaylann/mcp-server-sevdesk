@@ -11,6 +11,7 @@ import {
   contactFieldsShape,
   contactWriteData,
   contactWriteOutput,
+  customFieldsInput,
   recordIdInput,
   removeInput,
 } from "./contact-fields.js";
@@ -20,8 +21,9 @@ import {
  * the entries `remove` names.
  *
  * Removing stays in this `write` tool (no human confirmation), like changing: a removed address,
- * e-mail address or organisation link is re-entered with this tool, and the result lists every
- * removed entry as it was. Overwriting the billing address or the main e-mail, which this tool
+ * e-mail address, custom field value or organisation link is re-entered with this tool, and the
+ * result lists every removed entry as it was. Custom field definitions (settings) are never
+ * written: deleting one deletes its values on every contact (D-086). Overwriting the billing address or the main e-mail, which this tool
  * always did, loses the old value the same way. Deleting a whole contact cannot be undone and is
  * the `commit` tool `sevdesk_contact_delete`.
  */
@@ -36,12 +38,13 @@ export const contactUpdateTool = defineWriteTool({
     "organisation as contact person (Ansprechpartner; only an organisation is accepted); " +
     "street/zip/city/country change the billing address (Rechnungsanschrift, or the only " +
     "address; added when there is none); email/phone/website change the main entry of that type " +
-    "or add one. remove deletes single entries of this contact (an address, e-mail, phone, " +
-    "mobile or website, by the id sevdesk_contact_get shows) or the organisation link (kind " +
-    "parentOrganisation, id of that organisation); ids of other contacts are refused, and the " +
-    "result lists what was removed. Delete the whole contact with sevdesk_contact_delete. Tier " +
-    "write. Reads the contact first (sevdesk_contact_get shows the current values) and fails " +
-    "when nothing would change.",
+    "or add one; customFields sets or changes custom field values (Zusatzfelder) by field id or " +
+    "name. remove deletes single entries of this contact (an address, e-mail, phone, mobile, " +
+    "website or custom field value, by the id sevdesk_contact_get shows) or the organisation " +
+    "link (kind parentOrganisation, id of that organisation); ids of other contacts are " +
+    "refused, and the result lists what was removed. Delete the whole contact with " +
+    "sevdesk_contact_delete. Tier write. Reads the contact first (sevdesk_contact_get shows the " +
+    "current values) and fails when nothing would change.",
   toolset: "contacts",
   tier: "write",
   annotations: {
@@ -55,6 +58,7 @@ export const contactUpdateTool = defineWriteTool({
     ...contactFieldsShape,
     category: categoryInput.optional(),
     ...addressAndCommunicationShape,
+    customFields: customFieldsInput.optional(),
     remove: removeInput
       .optional()
       .describe(
@@ -84,22 +88,24 @@ export const contactUpdateTool = defineWriteTool({
   prepare: (args, ctx) =>
     planContactUpdate(ctx.client, args, { signal: ctx.signal, cacheOwner: ctx.config }),
   execute: async (_args, plan, ctx) => {
-    const { details, affected, removed } = await executeContactUpdate(ctx.client, plan.state, {
-      signal: ctx.signal,
-      cacheOwner: ctx.config,
-    });
+    const { details, customFields, affected, removed } = await executeContactUpdate(
+      ctx.client,
+      plan.state,
+      { signal: ctx.signal, cacheOwner: ctx.config },
+    );
     const deletedRecords = removed.filter((entry) => entry.kind !== "parentOrganisation").length;
     const changed = affected.length - deletedRecords;
     const summary =
       `Updated contact ${details.contact.id}: ${changed} record` +
       `${changed === 1 ? "" : "s"} changed or added`;
+    const data = contactWriteData(details, customFields);
     if (removed.length === 0) {
-      return { data: contactWriteData(details), summary: `${summary}.`, affected };
+      return { data, summary: `${summary}.`, affected };
     }
     const addresses = details.addresses.length;
     const ways = details.communicationWays.length;
     return {
-      data: { ...contactWriteData(details), removed },
+      data: { ...data, removed },
       summary:
         `${summary}, ${removed.length} removed (see removed). It has ${addresses} ` +
         `address${addresses === 1 ? "" : "es"} and ${ways} communication ` +

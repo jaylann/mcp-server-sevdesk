@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { contactsSearchTool as tool } from "../../../../src/tools/contacts/search.js";
-import { type FakeRoute, FakeSevdeskClient, testContext } from "../../../helpers/fake-client.js";
+import {
+  type FakeRoute,
+  FakeSevdeskClient,
+  loadFixture,
+  testContext,
+} from "../../../helpers/fake-client.js";
 
 const listRoute: FakeRoute = {
   path: "/Contact",
@@ -163,5 +168,168 @@ describe("sevdesk_contacts_search (community: recorded Contact shape, fake data)
   it("lets sevDesk errors propagate for the framework to map", async () => {
     const error = new SevdeskError({ kind: "auth", message: "token rejected", status: 401 });
     await expect(search({}, [{ ...listRoute, response: { error } }])).rejects.toBe(error);
+  });
+});
+
+describe("sevdesk_contacts_search by custom field value (D-086)", () => {
+  const FIND = "/Contact/Factory/findContactsByCustomFieldValue";
+  const settingsRoute: FakeRoute = {
+    path: "/ContactCustomFieldSetting",
+    response: { fixture: "contacts/custom-field-settings.json" },
+  };
+  function findRoute(response: FakeRoute["response"] = { fixture: "contacts/contacts-list.json" }) {
+    return {
+      path: FIND,
+      query: { "customFieldSetting[id]": "19498" },
+      response,
+    } satisfies FakeRoute;
+  }
+
+  it("resolves the field by name and asks sevDesk with the setting id alone, GETs only", async () => {
+    const { client, result } = await search(
+      { customField: { name: " kundennr  EXTERN ", value: " ext-4711 " } },
+      [settingsRoute, findRoute()],
+    );
+    expect(client.methods().every((method) => method === "GET")).toBe(true);
+    expect(client.callsTo(FIND)).toEqual([
+      expect.objectContaining({
+        query: {
+          value: "ext-4711",
+          "customFieldSetting[id]": 19498,
+          "customFieldSetting[objectName]": "ContactCustomFieldSetting",
+          limit: 1000,
+          offset: 0,
+          countAll: true,
+        },
+      }),
+    ]);
+    // The spec's required customFieldName is not needed with the id (recorded) and not sent.
+    expect(client.callsTo(FIND)[0]?.query).not.toHaveProperty("customFieldName");
+    expect(result.data).toMatchObject({ total: 6, offset: 0, limit: 25, hasMore: false });
+    expect(result.data.items.map((item) => item.id)).toEqual(
+      [...result.data.items.map((item) => item.id)].sort((a, b) => a - b),
+    );
+    expect(result.summary).toBe("Contacts 1–6 of 6 with this value in custom field 19498.");
+  });
+
+  it("pages the matches itself and keeps detail=summary", async () => {
+    const { client, result } = await search(
+      {
+        customField: { settingId: 19498, value: "EXT-4711" },
+        limit: 2,
+        offset: 2,
+        detail: "summary",
+      },
+      [settingsRoute, findRoute()],
+    );
+    expect(client.callsTo(FIND)).toHaveLength(1);
+    expect(result.data).toMatchObject({
+      total: 6,
+      offset: 2,
+      limit: 2,
+      hasMore: true,
+      nextOffset: 4,
+    });
+    expect(result.data.items).toHaveLength(2);
+    expect(result.data.items[0]).not.toHaveProperty("link");
+    expect(result.summary).toBe(
+      "Contacts 3–4 of 6 with this value in custom field 19498; more follow (nextOffset 4).",
+    );
+  });
+
+  it("says when no contact has the value, and when the offset is past the matches", async () => {
+    const none = await search({ customField: { settingId: 19498, value: "EXT" } }, [
+      settingsRoute,
+      findRoute({ body: { objects: [] } }),
+    ]);
+    expect(none.result.data).toMatchObject({ items: [], total: 0, hasMore: false });
+    expect(none.result.summary).toBe("No contacts have this value in that custom field.");
+    const past = await search({ customField: { settingId: 19498, value: "x" }, offset: 10 }, [
+      settingsRoute,
+      findRoute(),
+    ]);
+    expect(past.result.summary).toBe("No contacts at offset 10; 6 matched.");
+  });
+
+  it("reports a full page of matches as possibly more, without a total", async () => {
+    const [row] = (
+      loadFixture("contacts/contacts-list.json").body as { objects: Record<string, unknown>[] }
+    ).objects;
+    const objects = Array.from({ length: 1000 }, (_, index) => ({
+      ...row,
+      id: String(20_000 + index),
+    }));
+    const { result } = await search({ customField: { settingId: 19498, value: "x" } }, [
+      settingsRoute,
+      findRoute({ body: { objects, total: "1500" } }),
+    ]);
+    expect(result.data).not.toHaveProperty("total");
+    expect(result.data).toMatchObject({ hasMore: true, nextOffset: 25 });
+    expect(result.summary).toMatch(
+      /sevDesk returned 1000 or more matches; only those are paged here\.$/,
+    );
+  });
+
+  it.each([
+    [{ query: "Muster" }, "query"],
+    [{ customerNumber: "K-1001" }, "customerNumber"],
+    [{ category: "customer" }, "category"],
+  ])("refuses customField together with %o before any request", async (extra, name) => {
+    const client = new FakeSevdeskClient([settingsRoute, findRoute()]);
+    const args = tool.input.parse({ customField: { settingId: 19498, value: "x" }, ...extra });
+    await expect(tool.handler(args, testContext(client))).rejects.toMatchObject({
+      kind: "validation",
+      message: expect.stringContaining(`customField is not combined with ${name}`) as string,
+    });
+    expect(client.calls).toEqual([]);
+  });
+
+  it.each([
+    [{ name: "Unbekannt", value: "x" }, "no custom field of this account has that name"],
+    [{ name: "PROJEKT", value: "x" }, "2 custom fields have that name (settings 19500, 19501)"],
+    [{ settingId: 99, value: "x" }, "custom field 99 is not one of this account's custom fields"],
+    [
+      { settingId: 19498, name: "Branche", value: "x" },
+      "give the field either by settingId or by name",
+    ],
+    [{ value: "x" }, "give the field either by settingId or by name"],
+  ])("refuses %o without searching", async (customField, message) => {
+    const client = new FakeSevdeskClient([settingsRoute, findRoute()]);
+    await expect(
+      tool.handler(tool.input.parse({ customField }), testContext(client)),
+    ).rejects.toMatchObject({
+      kind: "validation",
+      message: expect.stringContaining(message) as string,
+    });
+    expect(client.callsTo(FIND)).toEqual([]);
+  });
+
+  it("refuses a name when the account has more fields than could be read", async () => {
+    const client = new FakeSevdeskClient([
+      {
+        path: "/ContactCustomFieldSetting",
+        response: { body: { objects: [{ id: "1", name: "Kundennr extern" }], total: "1001" } },
+      },
+      findRoute(),
+    ]);
+    await expect(
+      tool.handler(
+        tool.input.parse({ customField: { name: "Kundennr extern", value: "x" } }),
+        testContext(client),
+      ),
+    ).rejects.toMatchObject({
+      kind: "validation",
+      message: expect.stringContaining("more custom fields than could be read") as string,
+    });
+  });
+
+  it("checks the argument's shape", () => {
+    const parse = (customField: unknown) => tool.input.safeParse({ customField }).success;
+    expect(parse({ settingId: 19498, value: "" })).toBe(false);
+    expect(parse({ settingId: 19498, value: "x".repeat(256) })).toBe(false);
+    expect(parse({ name: "x".repeat(31), value: "x" })).toBe(false);
+    expect(parse({ settingId: 0, value: "x" })).toBe(false);
+    expect(parse({ settingId: 19498, value: "x", other: 1 })).toBe(false);
+    expect(parse({ settingId: 19498, value: "x".repeat(255) })).toBe(true);
   });
 });
