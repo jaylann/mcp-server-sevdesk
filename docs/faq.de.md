@@ -1,14 +1,17 @@
-<!-- translated-from: docs/faq.md sha256:7f726a6e7dff -->
+<!-- translated-from: docs/faq.md sha256:82927922c84c -->
 
 # Häufige Fragen
+
+Kurze Antworten auf die Fragen, die vor und während der Arbeit mit dem Server aufkommen, jeweils
+mit einem Link zur Seite, die es ausführlich erklärt.
 
 ## Allgemeines
 
 ### Ist das ein offizielles sevDesk-Produkt?
 
 Nein. mcp-server-sevdesk ist ein inoffizielles Open-Source-Projekt und nicht mit der sevdesk GmbH
-verbunden und wird von ihr weder empfohlen noch unterstützt. Es nutzt die öffentliche sevDesk-API mit
-deinem eigenen API-Token.
+verbunden und wird von ihr weder empfohlen noch unterstützt. Es nutzt die öffentliche sevDesk-API
+mit deinem eigenen API-Token.
 
 ### Was kostet das?
 
@@ -20,7 +23,8 @@ unterstützt. Was dein Modellanbieter berechnet, regelst du mit ihm.
 
 Jeder MCP-Client: Claude Desktop, Claude Code, Cursor, VS Code, Windsurf, Codex, Zed und andere
 über stdio; claude.ai und die mobilen Claude-Apps über einen Server, den du im Fernzugriff selbst
-betreibst. Die Einrichtung für jeden steht unter [Clients](clients.de.md).
+betreibst. Jeder Client hat eine eigene Seite zur Einrichtung; die Liste steht unter
+[Clients](clients.de.md#client-seiten).
 
 ### Ersetzt das meine Steuerberatung?
 
@@ -34,9 +38,8 @@ sagt, ist Steuerberatung.
 ### Sieht die KI mein API-Token?
 
 Nein. Das Token steht in der Konfiguration des Servers (oder in deinem Schlüsselbund), wird nie an
-das Modell gegeben und aus jeder Logzeile, jedem Fehler und jedem Eintrag im Audit-Log
-geschwärzt. Weil es vollen Zugriff auf das Konto hat, lege es für einen eigenen
-sevDesk-Benutzer an.
+das Modell gegeben und aus jeder Logzeile, jedem Fehler und jedem Eintrag im Audit-Log geschwärzt.
+Weil es vollen Zugriff auf das Konto hat, lege es für einen eigenen sevDesk-Benutzer an.
 
 ### Wohin gehen meine Daten?
 
@@ -44,14 +47,13 @@ Der Server läuft auf deinem Rechner (oder im Fernzugriff auf deinem eigenen Ser
 mit der sevDesk-API. Es gibt zwei Ausnahmen: den DATEV-Export, den sevDesk als Download aus seinem
 eigenen Speicher (bei Amazon S3) ausliefert, und einen Server im Fernzugriff mit OAuth, der das
 Metadaten-Dokument eines Clients, der sich verbindet, vom Host dieses Clients abruft. Ergebnisse
-gehen an deinen MCP-Client und von dort an deinen
-Modellanbieter: Rechnungen, Kontakte und Kontoumsätze sind dann Teil deiner Unterhaltung, zu den
-Bedingungen dieses Anbieters. Buchhaltungsdaten enthalten personenbezogene Daten deiner Kunden;
-prüfe daher die Bedingungen deines Anbieters zur Auftragsverarbeitung, bevor du ein echtes
-Konto verbindest.
+gehen an deinen MCP-Client und von dort an deinen Modellanbieter: Rechnungen, Kontakte und
+Kontoumsätze sind dann Teil deiner Unterhaltung, zu den Bedingungen dieses Anbieters.
+Buchhaltungsdaten enthalten personenbezogene Daten deiner Kunden; prüfe daher die Bedingungen
+deines Anbieters zur Auftragsverarbeitung, bevor du ein echtes Konto verbindest.
 
 Das Projekt betreibt keinen Dienst und erhebt keine Telemetrie. Einzelheiten:
-[PRIVACY.de.md](../PRIVACY.de.md).
+[Datenschutz](../PRIVACY.de.md).
 
 ### Kann die KI ohne mich Rechnungen fertigstellen oder versenden?
 
@@ -65,8 +67,10 @@ nicht selbst geben ([Berechtigungen](permissions.de.md)).
 Jeder Schreibvorgang wird geprüft, bevor etwas gesendet wird (Status, Beträge, Steuerregel und
 Steuersatz, Buchungskonten, Dubletten), nie automatisch wiederholt und danach aus sevDesk
 zurückgelesen. Ein Probelauf zeigt, was passieren würde, ohne etwas zu senden, und das optionale
-Audit-Log auf deinem Rechner hält jeden Schritt fest. Fertiggestellte und festgeschriebene Dokumente
-lassen sich in sevDesk nicht einfach löschen; deshalb brauchen diese Schritte deine Bestätigung.
+Audit-Log auf deinem Rechner hält jeden Schritt fest
+([Wie ein Schreibvorgang abläuft](permissions.de.md#wie-ein-schreibvorgang-abläuft),
+[Audit-Log](permissions/audit-log.de.md)). Fertiggestellte und festgeschriebene Dokumente lassen
+sich in sevDesk nicht einfach löschen; deshalb brauchen diese Schritte deine Bestätigung.
 
 ### Warum gibt es keine gehostete Version?
 
@@ -81,8 +85,8 @@ kleinen VM, einer Plattform wie Fly.io oder deinem eigenen Rechner.
 
 Ja. Über stdio trägst du den Server einmal pro Konto unter verschiedenen Namen ein, oder du hältst
 die Konten in einer Profildatei und wählst eines mit `SEVDESK_PROFILE`
-([Konfiguration](configuration.de.md#profile)). Im Fernzugriff mit OAuth bedient ein Server jedes
-Konto, das du in `SEVDESK_OAUTH_ACCOUNTS` aufführst.
+([Profile](configuration/profiles.de.md#profile)). Im Fernzugriff mit OAuth bedient ein Server
+jedes Konto, das du in `SEVDESK_OAUTH_ACCOUNTS` aufführst.
 
 ## Funktionen in sevDesk
 
@@ -112,53 +116,30 @@ sagt dem Assistenten, welche Regelung gilt.
 
 ### Kann es mit E-Rechnungen umgehen?
 
-Ja, in beide Richtungen:
-
-- **Empfangen:** Es liest XRechnung (UBL und CII) und ZUGFeRD / Factur-X lokal aus, prüft Summen
-  und Aufschlüsselung der Umsatzsteuer, schlägt einen Beleg vor (Lieferant, Steuerregel, eine
-  Position je Steuersatz) und importiert die E-Rechnung als Belegentwurf mit angehängter
-  Originaldatei.
-- **Versenden:** Es prüft eine ausgehende Rechnung vor dem Fertigstellen auf
-  E-Rechnungs-Tauglichkeit (deine Firmendaten, den Kunden, Leitweg-ID, Zahlungsbedingungen,
-  Einheiten, Steuerregel) und holt das XML, das sevDesk für eine E-Rechnung erzeugt.
-
-Über stdio kommen die Dateien aus einem Ordner, den du erlaubst (`SEVDESK_FILE_DIRS`); im
-Fernzugriff lädst du sie über eine Seite auf deinem Server hoch.
+Ja, in beide Richtungen. Empfangene XRechnungen (UBL und CII) und ZUGFeRD-/Factur-X-Dateien werden
+lokal ausgelesen, geprüft und als Belegentwürfe mit angehängter Originaldatei importiert
+([Eine E-Rechnung importieren](guides/receipts.de.md#eine-e-rechnung-importieren)). Ausgehende Rechnungen lassen sich vor dem
+Fertigstellen auf E-Rechnungs-Tauglichkeit prüfen, und das XML, das sevDesk erzeugt, lässt sich
+abrufen ([Bereit für die E-Rechnung](guides/invoices.de.md#bereit-für-die-e-rechnung)). Über stdio kommen die Dateien aus
+einem Ordner, den du erlaubst (`SEVDESK_FILE_DIRS`); im Fernzugriff lädst du sie über eine Seite
+auf deinem Server hoch.
 
 ### Kann es nach DATEV exportieren?
 
-Ja. `sevdesk_datev_export` lässt sevDesk den DATEV-Buchungsstapel (CSV-Dateien in einem ZIP) für
-einen Monat, ein Quartal, ein Jahr oder einen Zeitraum erstellen und speichert ihn in deinem
-Ausgabeordner oder bietet ihn im Fernzugriff als Download-Link an. Es schreibt die Dokumente nie
-fest. Es braucht die DATEV-Einstellungen in sevDesk (Beraternummer, Mandantennummer, Beginn des
-Wirtschaftsjahres). `sevdesk_csv_export` speichert die CSV-Exporte von sevDesk für Rechnungen,
-Gutschriften, Belege, Kontoumsätze oder Kontakte, zum Beispiel für Excel.
+Ja. [`sevdesk_datev_export`](tools.md#sevdesk_datev_export) lässt sevDesk den
+DATEV-Buchungsstapel (CSV-Dateien in einem ZIP) für einen Monat, ein Quartal, ein Jahr oder einen
+Zeitraum erstellen, gespeichert in deinem Ausgabeordner oder im Fernzugriff als Download-Link
+angeboten. Es schreibt die Dokumente nie fest und braucht die DATEV-Einstellungen in sevDesk
+(Beraternummer, Mandantennummer, Beginn des Wirtschaftsjahres).
+[`sevdesk_csv_export`](tools.md#sevdesk_csv_export) speichert die CSV-Exporte von sevDesk, zum
+Beispiel für Excel.
 
 ### Wie weit kann ich mich auf die Umsatzsteuer-Auswertung und die Gewinn- und Verlustrechnung verlassen?
 
-`sevdesk_vat_summary` und `sevdesk_profit_and_loss` sind Schätzungen zum Prüfen. Der Server
-berechnet sie aus deinen Dokumenten und deren Positionen; sie sind weder die Auswertungen von
-sevDesk noch eine Steuererklärung. Was sie leisten und was bei dir bleibt:
-
-- **Zeitpunkt (Sollversteuerung).** Umsätze zählen zum Ende der Leistung. Das gilt auch für
-  Leistungen an Unternehmen in anderen EU-Staaten (Kz 21 und die Zusammenfassende Meldung): Sie
-  gehören in den Zeitraum, in dem sie ausgeführt werden. Innergemeinschaftliche Lieferungen zählen
-  nach dem Rechnungsdatum, spätestens im Monat nach der Lieferung.
-- **Abschlagsrechnungen.** Ihre Umsatzsteuer entsteht, wenn die Zahlung eingeht. Bei der
-  Sollversteuerung berechnet die Umsatzsteuer-Auswertung das nicht: Sie zählt eine
-  Abschlagsrechnung wie jede Rechnung zum Leistungsdatum und listet die betroffenen auf
-  (`coverage.advanceInvoices`, mit einem Hinweis), damit du sie von Hand prüfen kannst.
-- **Einfuhrumsatzsteuer.** sevDesk bucht sie als Betrag einer Position auf dem Konto
-  Einfuhrumsatzsteuer (SKR04 1433, SKR03 1588) mit Steuerregel 9. Solche Beträge gehen in Kz 62
-  und zählen als Vorsteuer, nicht als Ausgabe. Auf einem anderen Konto gebuchte
-  Einfuhrumsatzsteuer wird nicht erkannt.
-- **Unvollständiges Lesen.** Wenn eine Obergrenze erreicht ist, wenn sich die Positionen eines
-  Dokuments nicht vollständig lesen lassen oder wenn einem Server im Fernzugriff die Zeit ausgeht,
-  sagt die Auswertung das (`coverage.truncated`, mit einem Hinweis), und die
-  Umsatzsteuer-Auswertung schätzt Kz 83 nicht. Über HTTP hört eine Auswertung nach etwa
-  90 Sekunden auf, Dokumente zu lesen, weil eine Anfrage 120 Sekunden dauern darf. Bei der
-  voreingestellten Anfragerate sind das einige hundert Dokumente: Frag nach einem Monat
-  statt nach einem Quartal oder Jahr.
+Sie sind Schätzungen zum Prüfen, die der Server aus deinen Dokumenten berechnet; sie sind weder die
+Auswertungen von sevDesk noch eine Steuererklärung. Jedes Ergebnis sagt, was es ausgelassen hat.
+Was sie abdecken und was bei dir bleibt, steht unter
+[Auswertungen und Exporte](guides/evaluations.de.md#wie-weit-du-dich-darauf-verlassen-kannst).
 
 ### Unterstützt es sevDesk in Österreich?
 
@@ -184,13 +165,16 @@ Endpunkte für den Lagerbestand.
 
 ### Wo bekomme ich Hilfe?
 
+- **Der Server startet nicht, oder ein Werkzeug scheitert:** [Fehlersuche](troubleshooting.de.md)
+  und, für einen Server, den du selbst betreibst,
+  [Fehlersuche im Fernzugriff](remote/troubleshooting.de.md).
 - **Fragen und Hilfe bei der Einrichtung:**
   [GitHub Discussions](https://github.com/jaylann/mcp-server-sevdesk/discussions/categories/q-a).
 - **Fehler und Wünsche:** die
   [Formulare für Issues](https://github.com/jaylann/mcp-server-sevdesk/issues/new/choose). Gib
   die Version des Servers an (`npx -y mcp-server-sevdesk --version`), deinen Client und den
   Fehlertext, nie dein Token oder echte Kundendaten.
-- **Sicherheitslücken:** melde sie vertraulich, wie in [SECURITY.de.md](../SECURITY.de.md)
+- **Sicherheitslücken:** melde sie vertraulich, wie in der [Sicherheitsrichtlinie](../SECURITY.de.md)
   beschrieben.
 - **Dein sevDesk-Konto** (Tarife, Tokens, Daten in sevDesk): der Support von sevDesk.
 - **Steuerfragen:** deine Steuerberatung.

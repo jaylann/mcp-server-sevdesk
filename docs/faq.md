@@ -1,5 +1,8 @@
 # FAQ
 
+Short answers to the questions people ask before and while using the server, each with a link
+to the page that explains it in full.
+
 ## General
 
 ### Is this an official sevDesk product?
@@ -16,8 +19,8 @@ provider charges is between you and them.
 ### Which AI clients work?
 
 Any MCP client: Claude Desktop, Claude Code, Cursor, VS Code, Windsurf, Codex, Zed and others over
-stdio; claude.ai and the Claude mobile apps through a server you host in remote mode. The setup for
-each is in [Clients](clients.md).
+stdio; claude.ai and the Claude mobile apps through a server you host in remote mode. Each client
+has its own setup page, listed in [Clients](clients.md#client-pages).
 
 ### Does it replace my tax advisor?
 
@@ -43,7 +46,7 @@ contacts and bank transactions are then part of your conversation, under that pr
 Accounting data contains personal data of your customers, so check your provider's
 data-processing terms before you connect a live account.
 
-The project runs no service and collects no telemetry. Details: [PRIVACY.md](../PRIVACY.md).
+The project runs no service and collects no telemetry. Details: [Privacy](../PRIVACY.md).
 
 ### Can the AI finalize or send invoices without me?
 
@@ -57,8 +60,9 @@ an approval page in your browser. The model cannot give that confirmation itself
 Every write is checked before anything is sent (status, amounts, tax rule and rate, booking
 accounts, duplicates), never retried automatically, and read back from sevDesk afterwards. A dry
 run shows what would happen without sending anything, and the optional audit log on your computer
-records every step. Finalized and enshrined documents cannot simply be deleted in sevDesk, which is
-why those steps need your confirmation.
+records every step ([How a write runs](permissions.md#how-a-write-runs),
+[Audit log](permissions/audit-log.md)). Finalized and enshrined documents cannot simply be deleted
+in sevDesk, which is why those steps need your confirmation.
 
 ### Why is there no hosted version?
 
@@ -71,8 +75,8 @@ sevDesk and your model provider. For claude.ai or a team you can host it yoursel
 ### Can I use several sevDesk accounts?
 
 Yes. Over stdio, add the server once per account under different names, or keep the accounts in a
-profiles file and pick one with `SEVDESK_PROFILE` ([Configuration](configuration.md#profiles)). In
-OAuth remote mode one server serves every account you list in `SEVDESK_OAUTH_ACCOUNTS`.
+profiles file and pick one with `SEVDESK_PROFILE`
+([Profiles](configuration/profiles.md#profiles)). In OAuth remote mode one server serves every account you list in `SEVDESK_OAUTH_ACCOUNTS`.
 
 ## sevDesk features
 
@@ -100,49 +104,28 @@ refused before anything is saved, because sevDesk would not finalize such docume
 
 ### Can it handle e-invoices (E-Rechnung)?
 
-Yes, both directions:
-
-- **Received:** it parses XRechnung (UBL and CII) and ZUGFeRD / Factur-X files locally, checks
-  their sums and VAT breakdown, suggests a voucher (supplier, tax rule, one position per rate) and
-  imports the e-invoice as a voucher draft with the original file attached.
-- **Sent:** it checks an outgoing invoice for e-invoice readiness before you finalize it (your
-  company data, the customer, Leitweg-ID, payment terms, units, tax rule) and fetches the XML
-  sevDesk generates for an e-invoice.
-
-Over stdio the files come from a folder you allow (`SEVDESK_FILE_DIRS`); in remote mode you upload
-them through a page on your server.
+Yes, both directions. Received XRechnung (UBL and CII) and ZUGFeRD / Factur-X files are parsed
+locally, checked and imported as voucher drafts with the original file attached
+([Import an e-invoice](guides/receipts.md#import-an-e-invoice)). Outgoing invoices can be checked
+for e-invoice readiness before you finalize them, and the XML sevDesk generates can be fetched
+([E-invoice readiness](guides/invoices.md#e-invoice-readiness)). Over stdio the files come from a
+folder you allow (`SEVDESK_FILE_DIRS`); in remote mode you upload them through a page on your
+server.
 
 ### Can it export to DATEV?
 
-Yes. `sevdesk_datev_export` lets sevDesk build the DATEV Buchungsstapel (CSV files in a ZIP) for a
-month, quarter, year or date range and saves it in your output folder, or offers it as a download
-link in remote mode. It never enshrines (festschreiben) the documents. It needs the DATEV settings
-in sevDesk (Beraternummer, Mandantennummer, start of the fiscal year). `sevdesk_csv_export` saves
-sevDesk's CSV exports of invoices, credit notes, vouchers, transactions or contacts, for example
-for Excel.
+Yes. [`sevdesk_datev_export`](tools.md#sevdesk_datev_export) lets sevDesk build the DATEV
+Buchungsstapel (CSV files in a ZIP) for a month, quarter, year or date range, saved in your output
+folder or offered as a download link in remote mode. It never enshrines (festschreiben) the
+documents and needs the DATEV settings in sevDesk (Beraternummer, Mandantennummer, start of the
+fiscal year). [`sevdesk_csv_export`](tools.md#sevdesk_csv_export) saves sevDesk's CSV exports, for
+example for Excel.
 
 ### How far can I rely on the VAT summary and the profit and loss?
 
-`sevdesk_vat_summary` and `sevdesk_profit_and_loss` are estimates for checking. The server computes
-them from your documents and their positions; they are not sevDesk's own reports and not a filing.
-What they do and what they leave to you:
-
-- **Timing (accrual basis).** Revenue counts at the end of the supply. That also holds for services
-  to businesses in other EU states (Kz 21 and the Zusammenfassende Meldung), which belong to the
-  period in which they are performed. Intra-EU supplies of goods count by the invoice date, at the
-  latest in the month after the supply.
-- **Advance invoices (Abschlagsrechnungen).** Their VAT is due when the payment arrives. On the
-  accrual basis the VAT summary does not compute that: it counts an advance invoice at its supply
-  date like any invoice and lists the ones concerned (`coverage.advanceInvoices`, with a note), so
-  you can check them by hand.
-- **Import VAT (Einfuhrumsatzsteuer).** sevDesk books it as the amount of a position on the import
-  VAT account (SKR04 1433, SKR03 1588) under tax rule 9. Such amounts go to Kz 62 and count as
-  input VAT, not as an expense. Import VAT booked on another account is not recognized.
-- **Incomplete reads.** When a cap is reached, when a document's positions cannot all be read, or
-  when a remote server runs out of time, the report says so (`coverage.truncated`, with a note) and
-  the VAT summary gives no Kz 83 estimate. Over HTTP a report stops reading documents after about
-  90 seconds, because a request may take 120. At the default request rate that is a few hundred
-  documents: ask for a month instead of a quarter or a year.
+They are estimates for checking, computed by the server from your documents; they are not
+sevDesk's own reports and not a filing. Each result says what it left out. What they cover and
+what they leave to you is in [Reports and exports](guides/evaluations.md#how-far-you-can-rely-on-them).
 
 ### Does it support sevDesk in Austria?
 
@@ -166,11 +149,13 @@ and `sevdesk_part_get` show `stock` and `stockEnabled`, and `sevdesk_part_create
 
 ### Where do I get help?
 
+- **The server does not start, or a tool fails:** [Troubleshooting](troubleshooting.md), and
+  [Troubleshooting remote mode](remote/troubleshooting.md) for a server you host.
 - **Questions and setup help:** [GitHub Discussions](https://github.com/jaylann/mcp-server-sevdesk/discussions/categories/q-a).
 - **Bugs and feature requests:** the [issue forms](https://github.com/jaylann/mcp-server-sevdesk/issues/new/choose).
   Include the server version (`npx -y mcp-server-sevdesk --version`), your client and the error
   text, never your token or real customer data.
-- **Security issues:** report them privately, as described in [SECURITY.md](../SECURITY.md).
+- **Security issues:** report them privately, as described in the [Security policy](../SECURITY.md).
 - **Your sevDesk account** (plans, tokens, data in sevDesk): sevDesk's own support.
 - **Tax questions:** your Steuerberater.
 

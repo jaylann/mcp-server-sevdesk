@@ -36,7 +36,7 @@ collects **no telemetry**.
 
 ## Remote mode
 
-If you self-host the HTTP transport ([docs/remote.md](docs/remote.md)), you are the operator and
+If you self-host the HTTP transport ([Remote mode (HTTP)](docs/remote.md)), you are the operator and
 responsible for the personal data processed there (GDPR). With `SEVDESK_OAUTH_ACCOUNTS=any` that
 can include other people's accounts.
 

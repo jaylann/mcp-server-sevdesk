@@ -1,4 +1,4 @@
-<!-- translated-from: docs/quickstart.md sha256:cbf57934d030 -->
+<!-- translated-from: docs/quickstart.md sha256:6eb2fb2cf13d -->
 
 # Schnellstart
 
@@ -15,20 +15,19 @@ die mobilen Claude-Apps oder ein Team mit einem Server zu verbinden, lies
   Konto, ohne einschränkbare Rechte und ohne Ablaufdatum. Lege einen Benutzer nur für den
   Assistenten an, damit du sein Token jederzeit zurücksetzen kannst, ohne deine eigene Anmeldung
   anzurühren.
-- **Dessen API-Token.** Öffne in sevDesk Einstellungen → Benutzer, wähle diesen Benutzer
-  und kopiere sein API-Token (32 Zeichen, Ziffern und `a`–`f`). Behandle es wie ein
-  Passwort.
+- **Dessen API-Token.** Öffne in sevDesk Einstellungen → Benutzer, wähle diesen Benutzer und
+  kopiere sein API-Token (32 Zeichen, Ziffern und `a`–`f`). Behandle es wie ein Passwort.
 - **Node.js 22.12 oder neuer**, das `npx` mitbringt. Prüfe das mit `node --version`. Wer
-  Claude Desktop nutzt, kommt mit der [Erweiterung](clients.de.md#die-erweiterung) ohne Node.js
-  aus.
+  Claude Desktop nutzt, kommt mit der [Erweiterung](clients/claude-desktop.de.md#die-erweiterung)
+  ohne Node.js aus.
 - **Ein MCP-Client**, zum Beispiel Claude Desktop, Claude Code, Cursor oder VS Code. Die
-  [Anleitung für Clients](clients.de.md) nennt für jeden das genaue Format.
+  [Client-Seiten](clients.de.md#client-seiten) nennen für jeden das genaue Format.
 
 ## 1. Den Server im Client eintragen
 
 Dein Client startet den Server mit `npx -y mcp-server-sevdesk` und übergibt das Token in seiner
 Umgebung. Die meisten Clients nehmen dieses JSON (der Dateiname unterscheidet sich je Client, siehe
-[Clients](clients.de.md)):
+[Clients](clients.de.md#client-seiten)):
 
 ```json
 {
@@ -79,8 +78,7 @@ nur lesend, und Werkzeuge, die schreiben, bekommt das Modell gar nicht erst zu s
 
 ## 3. Schreiben freischalten, zuerst im Probelauf
 
-Ergänze zwei Einstellungen, sodass der `env`-Block so aussieht, und starte den Client
-neu:
+Ergänze zwei Einstellungen, sodass der `env`-Block so aussieht, und starte den Client neu:
 
 ```json
 {
@@ -98,8 +96,8 @@ würde. Frag:
 > Stunde.
 
 Die Antwort hat den Status `dry_run` und zeigt die Rechnung, die das Werkzeug anlegen würde. Wenn
-die Vorschauen stimmen, entferne `SEVDESK_DRY_RUN` (einen Probelauf kannst du weiterhin für
-jede einzelne Anfrage verlangen).
+die Vorschauen stimmen, entferne `SEVDESK_DRY_RUN` (einen Probelauf kannst du weiterhin für jede
+einzelne Anfrage verlangen).
 
 Die nächsten Stufen sind `commit` (fertigstellen, Zahlungen buchen, stornieren, festschreiben) und
 `external` (per E-Mail versenden). Sie fragen dich vor jedem Aufruf. Dein Client muss diese Frage
@@ -119,8 +117,7 @@ Repositorys. Besser sind:
   npx -y mcp-server-sevdesk token set work
   ```
 
-  und verwende `"SEVDESK_API_TOKEN_KEYCHAIN": "work"` statt `SEVDESK_API_TOKEN`. In Claude
-  Code:
+  und verwende `"SEVDESK_API_TOKEN_KEYCHAIN": "work"` statt `SEVDESK_API_TOKEN`. In Claude Code:
   `claude mcp add --env SEVDESK_API_TOKEN_KEYCHAIN=work --scope user sevdesk -- npx -y mcp-server-sevdesk`.
 
 - **Eine Token-Datei**, die nur du lesen kannst:
@@ -131,17 +128,19 @@ Repositorys. Besser sind:
 - **Profile** halten mehrere Konten oder Einrichtungen in einer Datei, jeweils mit eigener
   Token-Quelle, und wählen eines mit `SEVDESK_PROFILE` aus.
 
-Einzelheiten: [Konfiguration](configuration.de.md#das-token-im-schlüsselbund-ablegen). Falls ein
-Token nach außen gelangt sein könnte, setze es in sevDesk zurück; das alte Token funktioniert
-dann sofort nicht mehr.
+Einzelheiten: [Profile und Schlüsselbund](configuration/profiles.de.md). Falls ein Token nach außen
+gelangt sein könnte, setze es in sevDesk zurück; das alte Token funktioniert dann sofort nicht mehr.
 
 ## Nächste Schritte
 
 - [Clients](clients.de.md): die Einrichtung für deinen Client und welche Clients Bestätigungen
   anzeigen.
 - [Berechtigungen](permissions.de.md): Stufen, Bestätigungen, Probelauf und Audit-Log.
-- [Konfiguration](configuration.de.md): alle Einstellungen, Werkzeuggruppen, Profile und die
+- Anleitungen für [Rechnungen](guides/invoices.de.md), [Belege](guides/receipts.de.md) und
+  [Auswertungen](guides/evaluations.de.md): die tägliche Buchhaltung mit dem Assistenten.
+- [Konfiguration](configuration.de.md): alle Einstellungen, Werkzeuggruppen, Grenzen und die
   Kommandozeile.
 - [Werkzeugreferenz](tools.md): jedes Werkzeug und jeder Prompt mit seinen Argumenten.
 - [Fernzugriff](remote.de.md): den Server für claude.ai, die mobilen Apps oder ein Team betreiben.
+- [Fehlersuche](troubleshooting.de.md): wenn der Server nicht startet oder ein Werkzeug scheitert.
 - [Häufige Fragen](faq.de.md): Daten und Datenschutz, Update 2.0, E-Rechnungen, DATEV.

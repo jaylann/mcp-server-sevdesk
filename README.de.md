@@ -1,4 +1,4 @@
-<!-- translated-from: README.md sha256:44b007f1d80d -->
+<!-- translated-from: README.md sha256:6e8228289e25 -->
 
 <img src="https://raw.githubusercontent.com/jaylann/mcp-server-sevdesk/main/assets/icon.svg" alt="" width="96" height="96" align="right">
 
@@ -31,19 +31,15 @@ Testumgebung. Dieser Server ist um diese Tatsache herum gebaut:
 - **Standardmäßig nur lesend.** Schreiben schaltest du stufenweise frei (`write` → `commit` →
   `external`); Werkzeuge oberhalb deiner Stufe bekommt das Modell gar nicht erst zu sehen.
 - **Echte Bestätigung durch einen Menschen.** Fertigstellen, Buchen, Stornieren oder Versenden
-  fragt _dich_: in deinem Client oder auf einer Freigabeseite in deinem Browser. Das Modell kann sich
-  nicht selbst freigeben.
+  fragt _dich_: in deinem Client oder auf einer Freigabeseite in deinem Browser. Das Modell kann
+  sich nicht selbst freigeben.
 - **Keine überraschenden Nebenwirkungen.** Eine PDF-Vorschau markiert eine Rechnung nie als
   versendet, Schreibvorgänge werden nie wiederholt, und jeder Schreibvorgang wird zurückgelesen
   und kann in ein lokales Audit-Log geschrieben werden.
 - **Korrekt für sevDesk-Update 2.0.** Steuerregeln und Buchungskonten werden geprüft, bevor
   etwas gesendet wird.
 - **Kompakte, typisierte Ausgabe.** Zusammenfassungen rechnet der Server, damit das Modell nicht
-  durch Hunderte Datensätze blättert. Status-, Typ- und Buchungskategorie-Objekte enthalten nach
-  Möglichkeit einen `key`, den die passende Eingabe oder der Filter akzeptiert. Adressen enthalten
-  neben `countryId` den ISO-Code `country`, sofern die Ländertabelle ihn auflösen kann.
-  Referenzabfragen liefern `hasMore` und das wirksame `limit` (`null` für Listen ohne Seiten);
-  `truncated` zeigt getrennt davon fehlende Einträge aus sevDesk an.
+  durch Hunderte Datensätze blättert; die Felder beschreibt die [Werkzeugreferenz](docs/tools.md).
 
 ## Schnellstart
 
@@ -52,47 +48,25 @@ enthält ihn), das API-Token eines sevDesk-Benutzers (Einstellungen → Benutzer
 besten ein Benutzer nur für den Assistenten) und, außer für die Claude-Desktop-Erweiterung,
 Node.js 22.12 oder neuer.
 
-### Claude Desktop
+- **Claude Desktop:** Lade `mcp-server-sevdesk-<version>.mcpb` aus dem
+  [neuesten Release](https://github.com/jaylann/mcp-server-sevdesk/releases/latest) herunter,
+  öffne die Datei und füge dein Token ein ([Einzelheiten](docs/clients/claude-desktop.de.md)).
+- **Claude Code:** Lege das Token im Schlüsselbund des Betriebssystems ab und trage dann den Server
+  ein, oder installiere das [Plugin](#claude-code-plugin):
 
-Lade `mcp-server-sevdesk-<version>.mcpb` aus dem
-[neuesten Release](https://github.com/jaylann/mcp-server-sevdesk/releases/latest) herunter,
-öffne die Datei und füge dein Token ein. Die Erweiterung braucht kein Node.js und
-bewahrt das Token im sicheren Speicher deines Systems auf.
+  ```bash
+  npx -y mcp-server-sevdesk token set work
+  claude mcp add --env SEVDESK_API_TOKEN_KEYCHAIN=work --scope user sevdesk -- npx -y mcp-server-sevdesk
+  ```
 
-### Claude Code
+- **Cursor, VS Code, Windsurf, Codex, Zed und andere** starten `npx -y mcp-server-sevdesk` mit dem
+  Token in der Umgebung; [Clients](docs/clients.de.md) nennt für jeden die genaue Datei.
+- **claude.ai und die mobilen Claude-Apps** verbinden sich mit einem Server, den du im
+  [Fernzugriff](#fernzugriff) selbst betreibst.
 
-```bash
-npx -y mcp-server-sevdesk token set work   # legt das Token im Schlüsselbund des Betriebssystems ab (macOS, Linux, Windows)
-claude mcp add --env SEVDESK_API_TOKEN_KEYCHAIN=work --scope user sevdesk -- npx -y mcp-server-sevdesk
-```
-
-Oder installiere das [Claude-Code-Plugin](#claude-code-plugin), das einen
-Buchhaltungs-Skill mitbringt.
-
-### Cursor, VS Code, Windsurf, Codex, Zed und andere
-
-Jeder Client startet den Server so; [Clients](docs/clients.de.md) nennt für jeden die genaue
-Datei und das Format:
-
-```json
-{
-  "mcpServers": {
-    "sevdesk": {
-      "command": "npx",
-      "args": ["-y", "mcp-server-sevdesk"],
-      "env": { "SEVDESK_API_TOKEN": "<your sevDesk API token>" }
-    }
-  }
-}
-```
-
-### Erste Schritte
-
-Frag _„Wie ist mein sevDesk-Konto eingerichtet?“_. Der Server startet nur lesend; die
+Frag dann _„Wie ist mein sevDesk-Konto eingerichtet?“_. Der Server startet nur lesend; die
 [Schnellstart-Anleitung](docs/quickstart.de.md) zeigt die nächsten Schritte: Schreiben
-freischalten, zuerst im Probelauf, und das Token sicher aufbewahren. claude.ai und die mobilen
-Claude-Apps verbinden sich mit einem Server, den du im [Fernzugriff](#fernzugriff) selbst
-betreibst.
+freischalten, zuerst im Probelauf, und das Token sicher aufbewahren.
 
 ## Was er kann
 
@@ -111,23 +85,10 @@ Schreibstufen kommen 37 weitere Werkzeuge hinzu, die Daten anlegen und ändern.
 
 Die Umsatzsteuer-Auswertung ist deutlich als Schätzung gekennzeichnet (Soll- oder
 Istversteuerung). Jedes Schreibwerkzeug akzeptiert `dryRun: true` und gibt dann nur genau das
-zurück, was es tun würde. Die vollständige, generierte Referenz ist [docs/tools.md](docs/tools.md).
-
-Belegentwürfe lassen sich in Fremdwährung (`currency`) erstellen und ändern, auch durch den
-Import von E-Rechnungen. Übergib genau eines von `exchangeRate` (eine positive Dezimalzahl
-als Zeichenkette: `"0.9"` bedeutet **1 USD = 0,9 EUR**) oder `foreignCurrencyDeadline`
-(`YYYY-MM-DD`). Positionsbeträge bleiben in der Belegwährung. Bei einem expliziten Kurs zeigt
-die Vorschau den vom Server berechneten EUR-Gegenwert. Bei einem Wechselkursdatum wählt sevDesk
-den Kurs; die EUR-Beträge stehen erst nach dem Speichern fest. Danach prüft der Server die
-Fremdwährungs- und EUR-Summen und meldet Abweichungen sowie ungefähr abgeleitete Kurse.
-
-**Jede Änderung eines Fremdwährungsbelegs benötigt erneut einen Kurs oder ein Wechselkursdatum
-und alle Positionen.** [Tests im Testkonto](spec/deviations.md#d-082-voucher-exchange-rates-are-not-returned-and-updates-reconvert-positions)
-zeigten, dass Kursänderungen gespeicherte EUR-Positionen erneut umrechnen können; GET liefert den
-Kurs nicht zurück. Für die Umstellung auf EUR übergibst du `currency: "EUR"` und alle Positionen
-mit deinen EUR-Beträgen, ohne Kurs. Prüfe zuerst die Vorschau mit `dryRun: true` und danach die
-gespeicherten Beträge mit `sevdesk_voucher_get`. Fremdwährungsbelege können hier weiterhin nicht
-fertiggestellt werden.
+zurück, was es tun würde. Belegentwürfe können in Fremdwährung sein, mit einem Wechselkurs oder
+einem Wechselkursdatum; solche Entwürfe lassen sich über den Server nicht fertigstellen
+([Belege](docs/guides/receipts.de.md)). Die vollständige, generierte Referenz ist
+[docs/tools.md](docs/tools.md).
 
 ## Prompts
 
@@ -148,117 +109,70 @@ Einstellung aufgeführt, die sie freischaltet. Prompts erzeugen nur Text für de
 Änderung läuft weiter über die Werkzeuge, zuerst im Probelauf und mit deiner Bestätigung für
 bindende Schritte. Keine Steuerberatung.
 
-## Berechtigungen
+## Berechtigungen und Konfiguration
 
-| Stufe      | Was sie erlaubt                                                                                                                                                  | Bestätigung |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| `read`     | Auflisten, abrufen, suchen, Auswertungen, PDF-Vorschauen, Dokumentdateien und CSV-Exporte im Ausgabeordner speichern (oder als Download-Link)                    | nein        |
-| `write`    | Kontakte, Artikel, Entwürfe von Rechnungen, Gutschriften, Aufträgen und Belegen, Mahnungen, DATEV-Export                                                         | nein        |
-| `commit`   | Fertigstellen, Zahlungen buchen, Kontoumsätze zuordnen, Kontoumsätze als privat markieren, stornieren, festschreiben (GoBD), zurücksetzen, Belegentwürfe löschen | **ja**      |
-| `external` | Dokumente per E-Mail versenden                                                                                                                                   | **ja**      |
-
-Die Stufen schaltest du mit `SEVDESK_ALLOW` frei (zum Beispiel `write,commit`). Bevor etwas
-Bindendes gesendet wird, zeigt dir der Server genau, was passieren wird (Beträge, Empfänger, der
-vollständige E-Mail-Text), und wartet auf deine Freigabe; ändert sich der Datensatz vor deiner
-Freigabe, fragt er erneut. [Berechtigungen](docs/permissions.de.md) erklärt die Stufen, die
-Bestätigungsarten, den Probelauf und das Audit-Log; [Clients](docs/clients.de.md#bestätigung-je-client)
-zeigt, welche Clients dich im Chat fragen können.
-
-## Konfiguration
-
-Alle Einstellungen sind Umgebungsvariablen in der Serverkonfiguration deines MCP-Clients. Nur ein
-Token ist Pflicht; alles andere steht standardmäßig auf der sichersten Option.
-
-| Variable                                  | Zweck                                                                                                                | Standard  |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | --------- |
-| `SEVDESK_API_TOKEN`                       | Das Token. Oder aus einer Datei (`SEVDESK_API_TOKEN_FILE`) oder dem Schlüsselbund des Betriebssystems (`…_KEYCHAIN`) | Pflicht   |
-| `SEVDESK_ALLOW`                           | Die Stufen: `write`, `commit`, `external` oder `all`                                                                 | `read`    |
-| `SEVDESK_DRY_RUN`                         | `1`: Jeder Schreibvorgang gibt nur eine Vorschau zurück                                                              | `0`       |
-| `SEVDESK_CONFIRM`                         | `elicit` (im Client) oder `browser` (eine Freigabeseite)                                                             | `elicit`  |
-| `SEVDESK_TOOLSETS`                        | Nur die Werkzeuggruppen laden, die du brauchst; `advanced` ist standardmäßig aus                                     | `default` |
-| `SEVDESK_FILE_DIRS`, `SEVDESK_OUTPUT_DIR` | Ordner, aus denen Belege gelesen und in die PDFs und Exporte gespeichert werden. Ohne sie keine lokalen Dateien      |           |
-| `SEVDESK_AUDIT_LOG`                       | Ein lokales Protokoll jedes Schreibvorgangs im Format JSON Lines                                                     |           |
-| `SEVDESK_PROFILE`                         | Eines von mehreren Konten oder Einrichtungen aus einer Profildatei wählen                                            |           |
-
-Alle Variablen, die Werkzeuggruppen, Profile, Grenzen und die Kommandozeile:
-[Konfiguration](docs/configuration.de.md).
+Der Server liest nur, bis du mit `SEVDESK_ALLOW` mehr freischaltest: `write` (Entwürfe, Kontakte,
+Artikel, DATEV-Export), `commit` (fertigstellen, buchen, stornieren, festschreiben) und `external`
+(per E-Mail versenden). Bevor etwas Bindendes gesendet wird, zeigt dir der Server genau, was
+passieren wird (Beträge, Empfänger, der vollständige E-Mail-Text), und wartet auf deine Freigabe;
+ändert sich der Datensatz vor deiner Freigabe, fragt er erneut
+([Berechtigungen](docs/permissions.de.md);
+[welche Clients im Chat fragen können](docs/clients.de.md#bestätigung-je-client)). Alle
+Einstellungen sind Umgebungsvariablen in der Serverkonfiguration deines Clients; nur ein Token ist
+Pflicht, alles andere steht standardmäßig auf der sichersten Option
+([Konfiguration](docs/configuration.de.md)).
 
 ## Fernzugriff
 
-Über stdio läuft der Server auf deinem Rechner, gestartet von deinem MCP-Client. Mit `--http` läuft
-er als Webdienst, den du selbst betreibst (eine VM mit Docker Compose und Caddy, Fly.io, Render,
-Railway oder dein eigener Rechner; eine gehostete Instanz gibt es nicht), um claude.ai und die
-Claude-Apps, einen Editor auf einem anderen Rechner oder ein kleines Team zu verbinden. Ohne
-Authentifizierung (`SEVDESK_HTTP_AUTH`) startet er nicht:
-
-- **`oauth`**: Der Server ist sein eigener OAuth-2.1-Autorisierungsserver. Jeder Benutzer verbindet
-  sich über eine Zustimmungsseite, wählt die Stufen für diese Verbindung und fügt sein
-  sevDesk-Token einmal ein; das Token steckt verschlüsselt in den Tokens, die der Client hält, und
-  der Server speichert keins. Nur die sevDesk-Konten, die du aufführst, können sich verbinden.
-  claude.ai braucht diesen Modus.
-- **`bearer`**: Ein gemeinsames Geheimnis schützt ein sevDesk-Konto, das `SEVDESK_API_TOKEN` des
-  Servers. Für Clients, die du selbst einrichtest, etwa Claude Code, Cursor oder VS Code.
-
-claude.ai kann (zum Zeitpunkt des Schreibens) keine Bestätigungen im Chat erfragen, daher gibst
-du bindende Schritte im Freigabe-Postfach des Servers frei (`SEVDESK_CONFIRM=browser`). Belege
-und E-Rechnungen lädst du über Seiten auf deinem Server hoch, PDFs und Exporte lädst du dort
-herunter; der Assistent verlinkt diese Seiten. Für mehrere Belege öffnet `sevdesk_upload_request`
-mit `count: 2` bis `10` eine gemeinsame Seite. Danach ordnet `sevdesk_uploads_list` die bereinigten
-Dateinamen den `uploadId`s für die Entwurfswerkzeuge zu. Größenlimit, Speicherplatz und Ablauf
-werden weiterhin für jede Datei einzeln geprüft. Claude Code verbindest du so:
-
-```bash
-claude mcp add --transport http sevdesk https://<host>/mcp                     # OAuth: danach mit /mcp anmelden
-claude mcp add --transport http sevdesk https://<host>/mcp \
-  --header "Authorization: Bearer $MCP_BEARER_SECRET"                          # Bearer
-```
-
-Die vollständige Anleitung mit Docker-Schnellstart, Vorlagen für das Deployment und dem Betrieb
-steht in [docs/remote.de.md](docs/remote.de.md); das Bedrohungsmodell in
-[SECURITY.de.md](SECURITY.de.md#fernzugriff).
+Mit `--http` läuft der Server als Webdienst, den du selbst betreibst (eine gehostete Instanz gibt
+es nicht), für claude.ai und die Claude-Apps, einen Editor auf einem anderen Rechner oder ein
+kleines Team. Ohne Authentifizierung startet er nicht: OAuth, bei dem sich jeder Benutzer über eine
+Zustimmungsseite verbindet und der Server kein sevDesk-Token speichert, oder ein gemeinsames
+Bearer-Geheimnis für ein Konto. [Fernzugriff](docs/remote.de.md) enthält die Schnellstarts, die
+Bereitstellung, die Konfiguration und den Betrieb.
 
 ## Claude-Code-Plugin
 
-Das Repository ist zugleich ein Plugin-Marktplatz für Claude Code. Das Plugin `sevdesk` startet
-diesen Server, fest auf das Release, zu dem das Plugin gehört (eine neue npm-Version läuft nie,
-bevor das Plugin aktualisiert ist), und bringt einen Buchhaltungs-Skill mit: deutsche Steuerregeln
-und die passenden Steuerregeln in sevDesk (inkl. §13b Reverse Charge und §19 Kleinunternehmer),
-gängige SKR03/SKR04-Konten, GoBD, die E-Rechnungspflichten und Abläufe Schritt für Schritt für
-Belege, E-Rechnungen, den Bankabgleich, die Umsatzsteuer-Vorprüfung, den Monats- und
-Jahresabschluss.
-
-```text
-/plugin marketplace add jaylann/mcp-server-sevdesk
-/plugin install sevdesk@mcp-server-sevdesk
-```
-
-Ab Claude Code 2.1.275 genügt ein Schritt:
-`/plugin install sevdesk --marketplace jaylann/mcp-server-sevdesk`. Das Plugin übergibt die
-`SEVDESK_*`-Variablen aus der Umgebung, in der Claude Code gestartet wurde (mindestens eine
-Token-Variable; ohne `SEVDESK_ALLOW` bleibt es nur lesend).
+Das Repository ist zugleich ein Plugin-Marktplatz für Claude Code: Das Plugin `sevdesk` startet
+diesen Server und bringt einen Buchhaltungs-Skill für deutsche Steuerregeln, SKR03/SKR04, GoBD und
+E-Rechnungen mit. Installation und Einrichtung: [Das Plugin](docs/clients/claude-code.de.md#das-plugin).
 
 ## Dokumentation
 
-| Seite                                                      | Inhalt                                                                             |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| [Schnellstart](docs/quickstart.de.md)                      | Vom sevDesk-Konto zur ersten Antwort, dann Schreiben und ein sicheres Token        |
-| [Clients](docs/clients.de.md)                              | Einrichtung für Claude Desktop, Claude Code, claude.ai, Cursor, VS Code u. a.      |
-| [Berechtigungen](docs/permissions.de.md)                   | Stufen, Bestätigungsarten, Probelauf, Audit-Log                                    |
-| [Konfiguration](docs/configuration.de.md)                  | Alle Einstellungen, Werkzeuggruppen, Profile, Schlüsselbund, Kommandozeile         |
-| [Werkzeugreferenz](docs/tools.md)                          | Jedes Werkzeug und jeder Prompt mit Argumenten (generiert)                         |
-| [Fernzugriff](docs/remote.de.md)                           | Den Server über HTTP betreiben: OAuth, Bearer, Deployment, Betrieb                 |
-| [Häufige Fragen](docs/faq.de.md)                           | Daten und Datenschutz, Update 2.0, E-Rechnungen, DATEV, Hilfe                      |
-| [Kompatibilität](docs/compatibility.md)                    | Was 1.0 stabil hält, und die Regeln für Abkündigungen                              |
-| [Architektur](docs/architecture.md)                        | Wie der Server gebaut ist, und die [Architekturentscheidungen](docs/adr/README.md) |
-| [Sicherheit](SECURITY.de.md), [Datenschutz](PRIVACY.de.md) | Bedrohungsmodell, Schwachstellen melden, was wo gespeichert wird                   |
+- **Start:** [Schnellstart](docs/quickstart.de.md) · [Fehlersuche](docs/troubleshooting.de.md) ·
+  [Häufige Fragen](docs/faq.de.md) · [Glossar](docs/glossary.de.md)
+- **Clients:** [Übersicht](docs/clients.de.md) · [Claude Desktop](docs/clients/claude-desktop.de.md) ·
+  [Claude Code](docs/clients/claude-code.de.md) · [claude.ai](docs/clients/claude-ai.de.md) ·
+  [Cursor](docs/clients/cursor.de.md) · [VS Code](docs/clients/vscode.de.md) ·
+  [Windsurf](docs/clients/windsurf.de.md) · [Codex](docs/clients/codex.de.md) ·
+  [Zed](docs/clients/zed.de.md)
+- **Anleitungen:** [Rechnungen](docs/guides/invoices.de.md) · [Belege](docs/guides/receipts.de.md) ·
+  [Auswertungen](docs/guides/evaluations.de.md)
+- **Referenz:** [Berechtigungen](docs/permissions.de.md) ·
+  [Audit-Log](docs/permissions/audit-log.de.md) · [Konfiguration](docs/configuration.de.md) ·
+  [Profile](docs/configuration/profiles.de.md) · [Werkzeuge](docs/tools.md) ·
+  [Kompatibilität](docs/compatibility.de.md)
+- **Fernzugriff:** [Übersicht](docs/remote.de.md) · [Bereitstellung](docs/remote/deployment.de.md) ·
+  [Konfiguration](docs/remote/configuration.de.md) · [Freigaben](docs/remote/approvals.de.md) ·
+  [Dateien](docs/remote/files.de.md) · [Betrieb](docs/remote/operations.de.md) ·
+  [Fehlersuche](docs/remote/troubleshooting.de.md)
+- **Sicherheit:** [Richtlinie](SECURITY.de.md) · [Bestätigung](docs/security/confirmation.de.md) ·
+  [Lokal](docs/security/local.de.md) · [Sicherheit im Fernzugriff](docs/security/remote.de.md) ·
+  [Lieferkette](docs/security/supply-chain.de.md) · [Datenschutz](PRIVACY.de.md)
+- **Projekt:** [Architektur](docs/architecture.de.md) · [Absicherung](docs/architecture/safety.de.md) ·
+  [Transporte](docs/architecture/transports.de.md) ·
+  [Bauen und Testen](docs/architecture/build-and-test.de.md) ·
+  [Architekturentscheidungen](docs/adr/README.de.md) · [Mitwirken](CONTRIBUTING.de.md) ·
+  [Änderungen](docs/contributing/changes.de.md) · [Tests](docs/contributing/testing.de.md) ·
+  [Aufnahmesitzung](docs/recording-session.de.md)
 
 **Als Nächstes** in 1.x: Briefe per Post versenden und sevDesk-Konten in Österreich.
 Das [Changelog](CHANGELOG.md) listet jedes Release.
 
 ## Mitwirken
 
-Beiträge sind willkommen. Beginne mit [CONTRIBUTING.md](CONTRIBUTING.md), und melde
-Sicherheitslücken bitte vertraulich, wie in [SECURITY.de.md](SECURITY.de.md) beschrieben.
+Beiträge sind willkommen. Beginne mit [Mitwirken](CONTRIBUTING.de.md), und melde
+Sicherheitslücken bitte vertraulich, wie in der [Sicherheitsrichtlinie](SECURITY.de.md) beschrieben.
 
 ## Lizenz
 

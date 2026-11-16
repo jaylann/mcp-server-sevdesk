@@ -1,4 +1,4 @@
-<!-- translated-from: PRIVACY.md sha256:723c362e9f98 -->
+<!-- translated-from: PRIVACY.md sha256:080c900ec3fe -->
 
 # Datenschutz
 
@@ -41,7 +41,7 @@ erhebt **keine Telemetrie**.
 
 ## Fernzugriff
 
-Betreibst du den HTTP-Transport selbst ([docs/remote.de.md](docs/remote.de.md)), bist du der
+Betreibst du den HTTP-Transport selbst ([Fernzugriff (HTTP)](docs/remote.de.md)), bist du der
 Betreiber und für die dort verarbeiteten personenbezogenen Daten verantwortlich (DSGVO). Mit
 `SEVDESK_OAUTH_ACCOUNTS=any` können dazu auch die Konten anderer Leute gehören.
 

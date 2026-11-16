@@ -23,11 +23,12 @@
  * - the page is static HTML with every value escaped, under a strict CSP (no scripts, no
  *   framing, forms only to itself) with the headers of `htmlResponse`.
  *
- * Limits (documented in SECURITY.md): anything that can read the server log or drive the user's
- * browser, including an agent with such tools, can still open the page and press Approve. And
- * another local user who reads the link from the process list and opens it before the user's own
- * browser does holds the page until that browser arrives: a decision made in that time stands,
- * because the store cannot take back a decision (the user's browser then says so).
+ * Limits (documented in docs/security/confirmation.md): anything that can read the server log or
+ * drive the user's browser, including an agent with such tools, can still open the page and press
+ * Approve. And another local user who reads the link from the process list and opens it before the
+ * user's own browser does holds the page until that browser arrives: the browser's arrival then
+ * withdraws the request, but an approval the tool already ran in that time stands (the user's
+ * browser then says so).
  */
 import { createHmac, randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
