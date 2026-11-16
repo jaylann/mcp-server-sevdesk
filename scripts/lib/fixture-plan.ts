@@ -575,5 +575,42 @@ export function recordPlan(today: string): readonly RecordEntry[] {
       path: "/Part/{part}/getStock",
       requires: ["part"],
     },
+
+    // --- tags, cost centres, custom contact fields (#86, #87) ------------------------------
+    {
+      file: "tags/tags-list.json",
+      mirrors: [],
+      path: "/Tag",
+      list: true,
+      note: "Tags of documents (#87): whether a row carries a usage count; probe read-tag-lists.",
+    },
+    {
+      file: "tags/tag-relations.json",
+      mirrors: [],
+      path: "/TagRelation",
+      list: true,
+      note: "Which document each tag is on (#87): tag and object references.",
+    },
+    {
+      file: "cost-centres/cost-centres-list.json",
+      mirrors: [],
+      path: "/CostCentre",
+      list: true,
+      note: "Cost centres (#87); undocumented GET (D-024), probe read-cost-centre-list.",
+    },
+    {
+      file: "contacts/custom-field-settings.json",
+      mirrors: [],
+      path: "/ContactCustomFieldSetting",
+      list: true,
+      note: "Custom contact field definitions (#86).",
+    },
+    {
+      file: "contacts/custom-fields.json",
+      mirrors: [],
+      path: "/ContactCustomField",
+      list: true,
+      note: "Custom contact field values (#86): contact and setting references.",
+    },
   ];
 }

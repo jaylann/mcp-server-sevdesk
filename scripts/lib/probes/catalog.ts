@@ -3,6 +3,7 @@
  * irreversible or reach third parties.
  */
 import type { ProbeDefinition } from "./core.js";
+import { GAPS_CONTACTS_PROBES } from "./gaps-contacts-probes.js";
 import { M4_BANKING_PROBES } from "./m4-banking-probes.js";
 import { M4_EINVOICE_PROBES } from "./m4-einvoice-probes.js";
 import { M4_REPORT_PROBES } from "./m4-reports-probes.js";
@@ -18,6 +19,7 @@ export const ALL_PROBES: readonly ProbeDefinition[] = [
   ...M4_BANKING_PROBES,
   ...M4_REPORT_PROBES,
   ...M4_EINVOICE_PROBES,
+  ...GAPS_CONTACTS_PROBES,
 ];
 
 /** A question the probe never asks sevDesk; it belongs to a human, by hand, if at all. */
