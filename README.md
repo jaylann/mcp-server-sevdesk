@@ -1,4 +1,4 @@
-<img src="https://raw.githubusercontent.com/jaylann/mcp-server-sevdesk/main/assets/icon.svg" alt="" width="96" height="96" align="right">
+<img src="https://raw.githubusercontent.com/jaylann/mcp-server-sevdesk/main/assets/logo.svg" alt="" width="96" height="96" align="right">
 
 # mcp-server-sevdesk
 

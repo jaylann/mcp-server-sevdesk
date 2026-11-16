@@ -188,9 +188,10 @@ svg{flex:none}
   margin:0 auto;padding:clamp(1.25rem,5vw,3rem) 1rem 2rem}
 .wide .page{max-width:46rem}
 .top{margin-bottom:clamp(1.75rem,7vw,3.25rem)}
-.wordmark{display:inline-flex;align-items:center;gap:.625rem;font-weight:620;font-size:1.0625rem;
+.wordmark{display:inline-flex;align-items:center;gap:.5em;font-weight:620;font-size:1.0625rem;
   line-height:1;letter-spacing:-.02em}
-.wordmark svg{width:2rem;height:2rem;transform:rotate(-12deg)}
+.mark{width:.854em;height:1em;fill:currentColor}
+.mark-foot{fill:var(--stamp-ink)}
 main{flex:1}
 .foot{margin-top:3rem;font-size:.8125rem;line-height:1.45;color:var(--text-3)}
 

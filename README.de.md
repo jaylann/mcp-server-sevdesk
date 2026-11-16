@@ -1,6 +1,6 @@
-<!-- translated-from: README.md sha256:6e8228289e25 -->
+<!-- translated-from: README.md sha256:da9302ee7aa1 -->
 
-<img src="https://raw.githubusercontent.com/jaylann/mcp-server-sevdesk/main/assets/icon.svg" alt="" width="96" height="96" align="right">
+<img src="https://raw.githubusercontent.com/jaylann/mcp-server-sevdesk/main/assets/logo.svg" alt="" width="96" height="96" align="right">
 
 # mcp-server-sevdesk
 

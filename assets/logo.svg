@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- The mark of sevDesk MCP, the sigma "Summe", on its raised key tile, as the website draws
+       it. Drawn large (README, the Claude Desktop icon), so the seam between the sum and its
+       foot is open (0.42 units); the favicon icon.svg keeps it closed and has no gradients. -->
+  <defs>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".2"/>
+      <stop offset=".5" stop-color="#fff" stop-opacity=".06"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".28"/>
+      <stop offset=".3" stop-color="#fff" stop-opacity="0"/>
+      <stop offset=".7" stop-color="#000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000" stop-opacity=".4"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="15.4" fill="#08070c"/>
+  <rect x="1" y="1" width="62" height="62" rx="14.4" fill="#24232f"/>
+  <rect x="1" y="1" width="62" height="62" rx="14.4" fill="url(#gloss)"/>
+  <rect x="1.75" y="1.75" width="60.5" height="60.5" rx="13.65" fill="none" stroke="url(#rim)" stroke-width="1.5"/>
+  <g transform="translate(17.24 14.72) scale(1.44)">
+    <path d="M0 0L20.5 0L20.5 4L9.66 4L17.66 12L10.04 19.61L0.39 23.61L12 12Z" fill="#fbfbfd"/>
+    <path d="M0.55 24L10.21 20L20.5 20L20.5 24Z" fill="#a6a1fd"/>
+  </g>
+</svg>
