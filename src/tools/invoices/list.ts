@@ -2,6 +2,12 @@ import { z } from "zod";
 
 import { dateRangeInputShape } from "../../domain/common.js";
 import {
+  costCentreFilterInputShape,
+  costCentreFilterOutput,
+  costCentreFilterOutputShape,
+  resolveCostCentreFilter,
+} from "../../domain/cost-centres.js";
+import {
   documentListData,
   documentListSummary,
   localFilterOutputShape,
@@ -40,6 +46,7 @@ const output = z.object({
   ...pageOutputShape,
   ...localFilterOutputShape,
   ...tagFilterOutputShape,
+  ...costCentreFilterOutputShape,
 });
 
 /** `sevdesk_invoices_list`: find invoices by status, type, contact, number, date or overdue. */
@@ -52,7 +59,7 @@ export const invoicesListTool = defineTool({
     "= offen, partially_paid, paid = bezahlt), type (invoice RE, advance AR Abschlagsrechnung, " +
     "partial TR, final ER, cancellation SR Stornorechnung, reminder MA Mahnung, recurring WKR), " +
     "contactId, exact number (Rechnungsnummer), date range, overdueOnly (open/partially paid " +
-    "past the due date, überfällig), tag (by name). overdueOnly, type and number are checked here too (up to " +
+    "past the due date, überfällig), tag (by name), costCentre (Kostenstelle). overdueOnly, type and number are checked here too (up to " +
     "1,000 rows scanned per call; total left out, filteredLocally set). A cancelled " +
     "invoice keeps status paid; its SR invoice has cancelsInvoiceId. Page with offset = " +
     "nextOffset while hasMore. Use detail=summary to browse/find. Use sevdesk_invoice_get for positions, tax and payment terms.",
@@ -94,17 +101,24 @@ export const invoicesListTool = defineTool({
       .default(false)
       .describe("Only open/partially paid invoices past their due date (Berlin time)."),
     ...tagFilterInputShape,
+    ...costCentreFilterInputShape,
     ...pagingInputShape({ limit: 25, max: 100 }),
   }),
   output,
   handler: async (args, ctx) => {
+    const costCentreFilter = await resolveCostCentreFilter(ctx.client, args.costCentre, ctx.signal);
     const tagFilter = await resolveTagFilter(ctx.client, args.tag, "invoice", ctx.signal);
-    const result = await listInvoices(ctx.client, { ...args, tagFilter }, ctx.signal);
+    const result = await listInvoices(
+      ctx.client,
+      { ...args, tagFilter, costCentreFilter },
+      ctx.signal,
+    );
     return {
       data: {
         ...documentListData(result, args),
         items: args.detail === "summary" ? result.items.map(invoiceSummary) : [...result.items],
         ...tagFilterOutput(tagFilter),
+        ...costCentreFilterOutput(costCentreFilter),
       },
       summary:
         documentListSummary(

@@ -1,11 +1,11 @@
 /**
  * Read answers recorded on the trial account on 2026-11-16 (Update 2.0) for issues #86 and #87:
  * tags, tag relations, cost centres and custom contact field settings (spec/deviations.md D-086,
- * D-088, D-091). No production parser reads them yet, so, like
- * `test/contract/undocumented-endpoints.test.ts`, each file is pinned three ways: its recorded
- * keys and scalar types, a read through `sevdesk_api_get` (the only tool that reaches these
- * endpoints today), and a run of the probe that asked the question. The tools #86 and #87 add must
- * parse these files with their own schemas and extend this test.
+ * D-088, D-091). Like `test/contract/undocumented-endpoints.test.ts`, each file is pinned three
+ * ways: its recorded keys and scalar types, a read through `sevdesk_api_get`, and a run of the
+ * probe that asked the question. The tools #86 and #87 add parse these files with their own
+ * schemas and extend this test: the cost centre list goes through `listCostCentres`
+ * (`src/domain/cost-centres.ts`).
  *
  * Not committed: `contacts/custom-fields.json` (`GET /ContactCustomField`). The recording answered
  * an empty list (the probe had deleted its values), which pins no row shape; the value rows are in
@@ -17,6 +17,7 @@ import { GAPS_CONTACTS_PROBES } from "../../scripts/lib/probes/gaps-contacts-pro
 import { runProbes } from "../../scripts/lib/probes/runner.js";
 import { createScrubber } from "../../scripts/lib/scrub.js";
 import { apiGet } from "../../src/domain/api-get.js";
+import { listCostCentres } from "../../src/domain/cost-centres.js";
 import type { Tier } from "../../src/safety/tiers.js";
 import { createSevdeskClient } from "../../src/sevdesk/client.js";
 import { apiGetTool } from "../../src/tools/advanced/api-get.js";
@@ -236,6 +237,26 @@ describe("recorded values the tools will rely on", () => {
     expect(typeof row?.["identifier"]).toBe("string");
     expect(typeof row?.["placeholder"]).toBe("string");
     expect(row?.["description"]).toBeNull();
+  });
+});
+
+describe("the production parsers on the recorded answers", () => {
+  it("listCostCentres reads the recorded cost centres with an explicit limit (D-091)", async () => {
+    const body = bodyOf("recorded/2026-11-16/cost-centres/cost-centres-list.json");
+    const { client, fake } = realClient(jsonResponse(body));
+    const list = await listCostCentres(client);
+    expect(fake.requests).toHaveLength(1);
+    expect(fake.requests[0]?.url.pathname).toBe("/api/v1/CostCentre");
+    expect(fake.requests[0]?.url.searchParams.get("limit")).toBe("1000");
+    expect(list).toEqual({
+      items: [
+        { id: 344964, number: "M62573C", name: "Mustername 1" },
+        { id: 344962, number: "M62573A", name: "Mustername 2" },
+        { id: 344959, number: "MCP1", name: "Mustername 3" },
+      ],
+      total: 3,
+      truncated: false,
+    });
   });
 });
 

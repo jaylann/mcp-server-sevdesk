@@ -152,6 +152,7 @@ const creditNoteDocumentSchema = z
     bookingCategory: z.enum(CREDIT_NOTE_BOOKING_CATEGORIES),
     refSrcInvoice: ref("Invoice").optional(),
     ...structuredAddressShape,
+    costCentre: ref("CostCentre").optional(),
   })
   .refine(oneTaxSetting, TAX_MESSAGE);
 

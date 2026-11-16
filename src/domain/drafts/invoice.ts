@@ -22,6 +22,14 @@ import { z } from "zod";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { statusDto } from "../common.js";
+import {
+  chooseCostCentre,
+  type CostCentreArg,
+  costCentreInput,
+  costCentreLabel,
+  costCentreRef,
+  resolveCostCentre,
+} from "../cost-centres.js";
 import type { CountryReadOptions } from "../country-codes.js";
 import { getInvoice, type InvoiceDetails } from "../invoices.js";
 import { documentTypeByCode } from "../reference-data.js";
@@ -132,6 +140,7 @@ export const invoiceCreateInputShape = {
   footText: footTextInput,
   contactPersonId: contactPersonIdInput,
   ...addressInputShape,
+  costCentre: costCentreInput,
 };
 
 /** Input fields of `sevdesk_invoice_update_draft` (without `dryRun`). */
@@ -163,6 +172,10 @@ export const invoiceUpdateInputShape = {
   footText: footTextInput,
   contactPersonId: contactPersonIdInput,
   ...addressInputShape,
+  costCentre: costCentreInput.describe(
+    "New Kostenstelle: id, number or name (see sevdesk_reference_lookup kind=cost_centres). " +
+      "Leave out to keep the stored one; removing it is not supported here.",
+  ),
 };
 
 export interface InvoiceCreateArgs extends CreateArgs {
@@ -174,6 +187,7 @@ export interface InvoiceCreateArgs extends CreateArgs {
   readonly header?: string | undefined;
   readonly headText?: string | undefined;
   readonly footText?: string | undefined;
+  readonly costCentre?: CostCentreArg | undefined;
 }
 
 export interface InvoiceUpdateArgs extends UpdateArgs {
@@ -185,6 +199,7 @@ export interface InvoiceUpdateArgs extends UpdateArgs {
   readonly header?: string | undefined;
   readonly headText?: string | undefined;
   readonly footText?: string | undefined;
+  readonly costCentre?: CostCentreArg | undefined;
 }
 
 /** What `execute` needs: the exact body the preview describes. */
@@ -210,6 +225,10 @@ export async function prepareInvoiceCreate(
   const { signal } = options;
   const date = args.date ?? todayInBerlin();
   const delivery = resolveDeliveryPeriod(date, args.deliveryDate, args.deliveryDateUntil, true);
+  const centre =
+    args.costCentre === undefined
+      ? undefined
+      : await resolveCostCentre(client, args.costCentre, signal);
   const basics = await resolveCreateBasics(
     client,
     args,
@@ -243,6 +262,7 @@ export async function prepareInvoiceCreate(
         showNet: mode === "net",
         ...basics.tax,
         ...structuredAddress(address),
+        costCentre: centre === undefined ? undefined : costCentreRef(centre.id),
       },
       invoicePosSave: basics.positions.map((position, index) =>
         positionPayload(position, index, "InvoicePos"),
@@ -263,6 +283,7 @@ export async function prepareInvoiceCreate(
     fact("Prices entered as", mode),
     fact("Tax", taxText(basics.rule, basics.tax)),
     fact("Tax text", basics.tax.taxText),
+    ...(centre === undefined ? [] : [fact("Cost centre (Kostenstelle)", costCentreLabel(centre))]),
     ...positionFacts(basics.positions, mode, currency),
     fact("Total (expected)", totalsText(expected, currency)),
   ];
@@ -287,6 +308,10 @@ export async function prepareInvoiceUpdate(
   const current = await loadCurrentInvoice(client, args.id, signal);
   const doc = current.document;
   checkUpdatable(doc);
+  const centre =
+    args.costCentre === undefined
+      ? undefined
+      : await chooseCostCentre(client, args.costCentre, doc.costCentre?.id, signal);
 
   const basics = await resolveUpdateBasics(
     client,
@@ -351,7 +376,10 @@ export async function prepareInvoiceUpdate(
           : { address: addressBlock(basics.address), ...structuredAddress(basics.address) }),
         customerInternalNote: doc.customerInternalNote,
         paymentMethod: storedRef(doc.paymentMethod, "PaymentMethod"),
-        costCentre: storedRef(doc.costCentre, "CostCentre"),
+        costCentre:
+          centre === undefined
+            ? storedRef(doc.costCentre, "CostCentre")
+            : costCentreRef(centre.centre.id),
         origin:
           doc.origin === undefined
             ? undefined
@@ -429,6 +457,14 @@ export async function prepareInvoiceUpdate(
       `${taxText(basics.rule, basics.tax)}; text: ${basics.tax.taxText ?? "(none)"}`,
     );
   if (basics.currencyChanged) log.value("currency", "Currency", doc.currency, basics.currency);
+  if (centre !== undefined) {
+    log.value(
+      "cost centre",
+      "Cost centre (Kostenstelle)",
+      centre.stored === undefined ? undefined : costCentreLabel(centre.stored),
+      costCentreLabel(centre.centre),
+    );
+  }
   if (basics.positions !== undefined) {
     log.note(
       "positions",

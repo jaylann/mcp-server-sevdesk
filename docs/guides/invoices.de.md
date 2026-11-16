@@ -68,6 +68,14 @@ Assistent einen als Ansprechpartner angeben.
 Eine Position kann einen Artikel aus [`sevdesk_parts_list`](../tools.md#sevdesk_parts_list)
 verknüpfen, Bezeichnung und Preis kommen aber trotzdem aus der Position.
 
+> Buch sie auf die Kostenstelle München.
+
+Der Entwurf kann eine Kostenstelle deines Kontos tragen, angegeben mit ihrer ID, Nummer oder ihrem
+Namen; [`sevdesk_reference_lookup`](../tools.md#sevdesk_reference_lookup) mit der Art
+`cost_centres` listet sie auf. Ein Name oder eine Nummer, die das Konto nicht kennt oder die zu
+mehreren Kostenstellen passt, wird abgelehnt, bevor etwas gespeichert wird. Eine Änderung ohne
+Kostenstelle behält die gespeicherte; entfernen lässt sie sich wieder in sevDesk.
+
 ### Aus einem Angebot oder einer Auftragsbestätigung
 
 > Mach aus dem Angebot AN-1042 eine Rechnung.

@@ -19,6 +19,7 @@ import { canonicalJson, sha256Hex } from "../../safety/hashing.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import { sevdeskPath } from "../../sevdesk/paths.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
+import { costCentreFacts, describeCostCentre } from "../cost-centres.js";
 import type { CountryReadOptions } from "../country-codes.js";
 import { type LifecycleDocument, readLifecycleDocument, statusOf } from "../lifecycle/documents.js";
 import { documentFacts, documentTitle } from "../lifecycle/preview.js";
@@ -204,6 +205,10 @@ export async function prepareVoucherFinalize(
   const kept = storedPositionsFor(stored, rule, regime);
   const date = stored.dates.voucherDate ?? todayInBerlin();
   const accounts = await checkVoucherAccounts(client, kind, rule, kept, date, options);
+  const centre =
+    stored.record.costCentre === undefined
+      ? undefined
+      : await describeCostCentre(client, stored.record.costCentre.id, signal);
 
   const body = finalizeBody(stored, rule);
   const mode = storedAmountMode(stored.positions);
@@ -225,14 +230,16 @@ export async function prepareVoucherFinalize(
           : dateText(stored.dates.voucherDate, lang),
       ),
       // Everything else sevdesk_voucher_update_draft writes without confirmation is listed too
-      // (review 2026-11, round 3): the service period, the payment deadline, each position's
-      // asset flag and whole comment, and whether a receipt file is attached. Dates sevDesk
-      // does not store are left out, so the preview changes only when the voucher does.
+      // (review 2026-11, round 3): the service period, the payment deadline, the cost centre,
+      // each position's asset flag and whole comment, and whether a receipt file is attached.
+      // Dates sevDesk does not store are left out, so the preview changes only when the voucher
+      // does.
       ...(period === undefined ? [] : [fact(t.delivery, period)]),
       ...(stored.dates.paymentDeadline === undefined
         ? []
         : [fact(t.deadline, dateText(stored.dates.paymentDeadline, lang))]),
       fact(t.rule, taxRuleLabel(rule)),
+      ...costCentreFacts(centre, lang),
       ...stored.positions.map((row, index) =>
         positionFact(
           `Position ${String(index + 1)}`,
@@ -299,8 +306,7 @@ export async function prepareVoucherFinalize(
     })),
     // The approval covers the exact save payload and the stored voucher, positions included: a
     // draft changed after the human was asked must be asked about again, also in what the
-    // preview does not show, such as the cost centre or which file is attached (security review
-    // 2026-11, wave 2).
+    // preview does not show, such as which file is attached (security review 2026-11, wave 2).
     binding: sha256Hex(canonicalJson({ body, record: stored.record, positions: stored.positions })),
     state: {
       body,

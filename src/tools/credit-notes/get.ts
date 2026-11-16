@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { costCentreOf, costCentreOutput } from "../../domain/cost-centres.js";
 import { creditNoteDetailSchema, getCreditNote } from "../../domain/credit-notes.js";
 import { positionDtoSchema } from "../../domain/document-positions.js";
 import { defineTool } from "../define-tool.js";
@@ -12,6 +13,7 @@ const output = z.object({
     .describe(
       "False when sevDesk had more position rows than could be read: positions is partial.",
     ),
+  costCentre: costCentreOutput,
 });
 
 /** `sevdesk_credit_note_get`: one credit note with positions, totals and tax rule. */
@@ -47,6 +49,7 @@ export const creditNoteGetTool = defineTool({
       cacheOwner: ctx.config,
     });
     const { creditNote, positions } = details;
+    const costCentre = await costCentreOf(ctx.client, creditNote.costCentreId, ctx.signal);
     const count = `${positions.length} position${positions.length === 1 ? "" : "s"}`;
     const partial = details.positionsComplete
       ? ""
@@ -56,6 +59,7 @@ export const creditNoteGetTool = defineTool({
         creditNote,
         positions: [...positions],
         positionsComplete: details.positionsComplete,
+        ...costCentre,
       },
       summary:
         `Credit note ${creditNote.id} (status ${creditNote.status.label}) with ${count}.` + partial,

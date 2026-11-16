@@ -74,6 +74,13 @@ rate, gross by default. Every account × tax rule × rate is checked against the
 before anything is saved, and the file, if given, is uploaded and attached. The voucher stays a
 draft: nothing is booked yet.
 
+> Book it on cost centre MCP1.
+
+A voucher can carry a cost centre (Kostenstelle), named by its id, number or name
+([`sevdesk_reference_lookup`](../tools.md#sevdesk_reference_lookup), kind `cost_centres`); an
+unknown or ambiguous one is refused. `sevdesk_vouchers_list` filters by it, and the finalize
+approval shows it.
+
 Foreign currencies work with an exchange rate or a rate date, but such drafts cannot be finalized
 through the server. The rules for updating them are in the
 [tool reference](../tools.md#sevdesk_voucher_update_draft).

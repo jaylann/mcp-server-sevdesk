@@ -32,6 +32,7 @@ import {
 } from "../../sevdesk/schema.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { moneyFromUpstream, splitTotals, trimmedText } from "../common.js";
+import { costCentreFacts, storedCostCentre } from "../cost-centres.js";
 import type { CreditNoteDetail } from "../credit-notes.js";
 import type { InvoiceDetail } from "../invoices.js";
 import { isDecimal, isZero, type Money } from "../money.js";
@@ -130,6 +131,8 @@ export async function readDocumentContent(
     signal,
   );
   const binding = documentBinding(doc, positions);
+  // The stored cost centre (the binding covers its id) with number and name; one more read.
+  const centre = await storedCostCentre(client, doc.raw, signal);
   if (doc.kind === "voucher") {
     const rows = positions.rows.map((row) =>
       parseUpstream(voucherPositionSchema, row, "voucher positions"),
@@ -137,7 +140,10 @@ export async function readDocumentContent(
     return content(
       binding,
       (lang) => documentFacts(doc, lang),
-      (lang) => voucherFacts(doc, rows, positions.complete, lang),
+      (lang) => [
+        ...voucherFacts(doc, rows, positions.complete, lang),
+        ...costCentreFacts(centre, lang),
+      ],
       NOT_SHOWN.voucher,
     );
   }
@@ -156,7 +162,10 @@ export async function readDocumentContent(
   return content(
     binding,
     (lang) => documentFacts(doc, lang, addressFacts(record, TEXT[lang])),
-    (lang) => salesFacts(doc, record, rows, positions.complete, lang),
+    (lang) => [
+      ...salesFacts(doc, record, rows, positions.complete, lang),
+      ...costCentreFacts(centre, lang),
+    ],
     NOT_SHOWN[doc.kind],
   );
 }

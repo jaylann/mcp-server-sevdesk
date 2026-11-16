@@ -420,6 +420,37 @@ Kopftext: Wir schreiben Ihnen folgenden Betrag gut.
 Positionen: keine"
 `;
 
+exports[`German previews > finalize a draft invoice on a cost centre: says the same in German 1`] = `
+"Rechnung 1001 (noch ohne Nummer) fertigstellen: Entwurf → offen, als Versandart wird „PDF-Download (VPDF)“ vermerkt.
+! Die Rechnung wird rechtlich bindend: sevDesk vergibt ihre endgültige Nummer und bucht sie. Danach lässt sie sich nur noch durch Zurücksetzen auf Entwurf (solange sie nicht festgeschrieben ist), ein Storno oder eine Gutschrift korrigieren.
+! sevDesk sendet nichts an den Kunden: Es wird nur vermerkt, wie das Dokument versendet wurde. Für den Versand per E-Mail über sevDesk gibt es stattdessen sevdesk_invoice_send_email.
+! Schreibt das sevDesk-Konto Dokumente beim Abschließen automatisch fest (Einstellung „Automatische Festschreibung“), wird das Dokument dabei auch festgeschrieben und kann nie wieder geändert oder zurückgesetzt werden.
+! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfe bei Bedarf sevdesk_invoice_pdf.
+(umkehrbar)
+Rechnung: ID 1001, noch ohne Nummer
+Typ: Rechnung (RE)
+Status: Entwurf (100)
+Kunde: Musterfirma GmbH (Kontakt 1001)
+Anschrift auf dem Dokument: Musterfirma GmbH
+Musterstraße 1
+12345 Musterstadt
+Datum: 01.10.2026
+Fällig am: 15.10.2026
+Netto: 149,02 EUR
+Umsatzsteuer: 28,31 EUR
+Brutto: 177,33 EUR
+Bisher bezahlt: 0,00 EUR
+Vermerkte Versandart: PDF-Download (VPDF)
+Betreff auf dem Dokument: Rechnung RE-1001
+Leistungsdatum oder -zeitraum: 01.10.2026
+Skonto: 2 % innerhalb von 7 Tagen
+Steuerregel: 1 Umsatzsteuerpflichtige Umsätze
+Kopftext: Vielen Dank für Ihren Auftrag.
+Positionen: keine
+Fußtext: Bitte überweisen Sie den Betrag innerhalb von 14 Tagen.
+Kostenstelle: MCP1 Mustername 3 (ID 344959)"
+`;
+
 exports[`German previews > finalize a draft invoice: says the same in German 1`] = `
 "Rechnung 1001 (noch ohne Nummer) fertigstellen: Entwurf → offen, als Versandart wird „PDF-Download (VPDF)“ vermerkt.
 ! Die Rechnung wird rechtlich bindend: sevDesk vergibt ihre endgültige Nummer und bucht sie. Danach lässt sie sich nur noch durch Zurücksetzen auf Entwurf (solange sie nicht festgeschrieben ist), ein Storno oder eine Gutschrift korrigieren.
@@ -477,6 +508,26 @@ Positionen: keine
 Fußtext: <p>Das Angebot ist 30 Tage gültig.</p>
 Zahlungsbedingungen: 14 Tage netto
 Lieferbedingungen: Lieferung frei Haus"
+`;
+
+exports[`German previews > finalize a draft voucher on a cost centre: says the same in German 1`] = `
+"Belegentwurf 2101 fertigstellen (Ausgabe, brutto 119 EUR): Entwurf → offen, verbucht.
+! Das Fertigstellen verbucht den Beleg (offen 100): Er zählt ab jetzt in der Buchhaltung (EÜR, UStVA), und seine Zahlung kann gebucht werden (sevdesk_voucher_book_payment). Solange er nicht festgeschrieben ist, lässt er sich mit sevdesk_voucher_reset auf Entwurf zurücksetzen.
+! An diesem Beleg hängt keine Belegdatei; nach den GoBD gehört der Originalbeleg dazu.
+(umkehrbar)
+Beleg: 2101, Entwurf
+Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
+Lieferant: Musterfirma GmbH (Kontakt 1001)
+Belegnummer: ER-2026-0815
+Belegdatum: 02.11.2026
+Leistungsdatum oder -zeitraum: 02.11.2026
+Fälligkeit: 16.11.2026
+Steuerregel: 9 Vorsteuerabziehbare Aufwendungen
+Kostenstelle: MCP1 Mustername 3 (ID 344959)
+Position 1: 6815 Bürobedarf (Konto 4266): 119 EUR brutto, 19 % USt.; Druckerpapier und Toner
+Summe: 119 EUR
+Belegdatei: keine angehängt
+Status: Entwurf 50 → offen 100"
 `;
 
 exports[`German previews > finalize a draft voucher: says the same in German 1`] = `
@@ -559,6 +610,15 @@ Status: Erstellt (100)
 Auftraggeber/Empfänger: Musterfirma GmbH
 Verwendungszweck: RE-1001
 Wird zu: Privatentnahme: Der Inhaber hat dieses Geld für private Zwecke aus dem Unternehmen entnommen; es ist keine Betriebsausgabe."
+`;
+
+exports[`German previews > move a draft voucher to another cost centre: says the same in German 1`] = `
+"Belegentwurf 2101 aktualisieren: Kostenstelle.
+(umkehrbar)
+Beleg: 2101, Entwurf
+Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
+Kostenstelle: MCP1 Mustername 3 (ID 344959) → M62573C Mustername 1 (ID 344964)
+Summe (unverändert): 119 EUR"
 `;
 
 exports[`German previews > reset a paid invoice to open: says the same in German 1`] = `

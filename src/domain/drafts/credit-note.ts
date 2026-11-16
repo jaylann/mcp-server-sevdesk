@@ -27,6 +27,13 @@ import { z } from "zod";
 
 import { SevdeskError } from "../../sevdesk/errors.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
+import {
+  type CostCentreArg,
+  costCentreInput,
+  costCentreLabel,
+  costCentreRef,
+  resolveCostCentre,
+} from "../cost-centres.js";
 import type { CountryReadOptions } from "../country-codes.js";
 import { type CreditNoteDetails, getCreditNote } from "../credit-notes.js";
 import { checkInvoiceCreditable, findCreditNotesForInvoice } from "../derived-documents.js";
@@ -177,6 +184,7 @@ export const creditNoteCreateInputShape = {
   footText: footTextInput,
   contactPersonId: contactPersonIdInput,
   ...addressInputShape,
+  costCentre: costCentreInput,
 };
 
 export interface CreditNoteCreateArgs extends CreateArgs {
@@ -190,6 +198,7 @@ export interface CreditNoteCreateArgs extends CreateArgs {
   readonly header?: string | undefined;
   readonly headText?: string | undefined;
   readonly footText?: string | undefined;
+  readonly costCentre?: CostCentreArg | undefined;
 }
 
 export interface CreditNoteDraftState {
@@ -229,6 +238,10 @@ export async function prepareCreditNoteCreate(
         "credit note that reduces an invoice).",
     });
   }
+  const centre =
+    args.costCentre === undefined
+      ? undefined
+      : await resolveCostCentre(client, args.costCentre, signal);
   const sourceCheck =
     category === "UNDERACHIEVEMENT"
       ? await checkSourceInvoice(client, args, { signal, cacheOwner: options.cacheOwner })
@@ -279,6 +292,7 @@ export async function prepareCreditNoteCreate(
         bookingCategory: category,
         refSrcInvoice: source === undefined ? undefined : ref(source.invoice.id, "Invoice"),
         ...structuredAddress(address),
+        costCentre: centre === undefined ? undefined : costCentreRef(centre.id),
       },
       creditNotePosSave: basics.positions.map((position, index) =>
         positionPayload(position, index, "CreditNotePos"),
@@ -308,6 +322,7 @@ export async function prepareCreditNoteCreate(
     fact("Prices entered as", mode),
     fact("Tax", taxText(basics.rule, basics.tax)),
     fact("Tax text", basics.tax.taxText),
+    ...(centre === undefined ? [] : [fact("Cost centre (Kostenstelle)", costCentreLabel(centre))]),
     ...positionFacts(basics.positions, mode, currency),
     fact("Total (expected)", totalsText(expected, currency)),
   ];

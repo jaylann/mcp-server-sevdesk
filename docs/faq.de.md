@@ -173,6 +173,20 @@ sevDesk vergleicht Namen ohne Rücksicht auf Groß- und Kleinschreibung und Akze
 „cafe“): Ein Name, den sevDesk noch nicht kennt, legt den Tag an, und wer einen Tag von seinem
 letzten Dokument entfernt, löscht ihn in sevDesk; die Vorschau sagt beides.
 
+### Kann es Rechnungen und Belege auf eine Kostenstelle buchen?
+
+Ja. `sevdesk_invoice_create_draft`, `sevdesk_invoice_update_draft`,
+`sevdesk_voucher_create_draft`, `sevdesk_voucher_update_draft` und
+`sevdesk_credit_note_create_draft` nehmen das Argument `costCentre`: die ID der Kostenstelle oder
+ihre Nummer oder ihren Namen als Text, verglichen ohne Rücksicht auf Groß- und Kleinschreibung und Akzente.
+`sevdesk_reference_lookup` mit der Art `cost_centres` listet die Kostenstellen des Kontos. Ein
+unbekannter Name oder einer, der zu mehreren Kostenstellen passt, wird abgelehnt, bevor etwas
+gespeichert wird. `sevdesk_invoices_list` und `sevdesk_vouchers_list` filtern nach Kostenstelle
+(„die Ausgaben dieses Monats auf der Kostenstelle München“), die Abrufwerkzeuge zeigen sie, und die
+Freigabe beim Fertigstellen nennt sie. Aufträge nehmen keine: sevDesk nimmt eine Kostenstelle am
+Auftrag an, speichert sie aber nicht. Eine Änderung ohne `costCentre` behält die gespeicherte; eine
+Kostenstelle von einem Dokument entfernen und die Kostenstellen selbst verwalten geht in sevDesk.
+
 ## Hilfe
 
 ### Wo bekomme ich Hilfe?

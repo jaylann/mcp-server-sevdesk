@@ -62,6 +62,14 @@ assistant has to name one as contact person.
 A position can link a part (Artikel) from [`sevdesk_parts_list`](../tools.md#sevdesk_parts_list),
 but its name and price still come from the position.
 
+> Put it on cost centre Munich.
+
+The draft can carry a cost centre (Kostenstelle) of your account, named by its id, number or name;
+[`sevdesk_reference_lookup`](../tools.md#sevdesk_reference_lookup) with kind `cost_centres` lists
+them. A name or number the account does not have, or one that fits several cost centres, is
+refused before anything is saved. An update that does not name a cost centre keeps the stored one;
+removing it again is done in sevDesk.
+
 ### From an offer or order confirmation
 
 > Turn offer AN-1042 into an invoice.

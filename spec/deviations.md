@@ -3375,13 +3375,22 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Sources:** recorded 2026-11-16, trial account, Update 2.0 (probes `read-cost-centre-list`,
   `write-cost-centre-create`, `write-cost-centre-delete`; the list in
   `test/fixtures/recorded/2026-11-16/cost-centres/cost-centres-list.json`).
-- **Impact:** No tool reads cost centres yet (D-024). #87 lists them for `sevdesk_reference_lookup`
-  with an explicit `limit` and checks a `costCentre` argument against that list.
+- **Impact:** `sevdesk_reference_lookup` kind `cost_centres` lists them (id, number, name, the
+  default flag) from one `GET /CostCentre` with `limit` 1000; a longer list is reported as
+  `truncated` (`listCostCentres` in `src/domain/cost-centres.ts`). The `costCentre` argument of
+  the draft tools and the list filters is checked against that list: an id, or a number or name
+  compared ignoring case and accents; an unknown or ambiguous one is refused before any write.
+  The get tools and the finalize, send and enshrine approvals show a stored cost centre with
+  number and name from the same list. Creating, renaming and deleting cost centres is not
+  offered.
 - **Test:** `test/contract/recorded-gaps-contacts.test.ts` (the recorded list: keys, the number
-  pattern, `defaultCentre`, through `sevdesk_api_get` and the probe `read-cost-centre-list`);
+  pattern, `defaultCentre`, through `sevdesk_api_get`, the probe `read-cost-centre-list` and
+  "listCostCentres reads the recorded cost centres with an explicit limit (D-091)");
+  `test/unit/domain/cost-centres.test.ts`; `test/unit/tools/meta/reference-lookup.test.ts`
+  ("lists the account's cost centres (Kostenstellen) with an explicit limit (D-091)");
   `test/unit/scripts/gaps-contacts-probes.test.ts` ("checks costCentre on create and on updates
   with the id, per document kind", "deletes only its own cost centres, unused and in use"). Live:
-  the three probes above.
+  the three probes above; `pnpm test:live` runs the lookup kind.
 
 ### D-092: `saveOrder` drops `costCentre`; invoices, vouchers and credit notes keep it
 
@@ -3400,12 +3409,22 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Sources:** spec (`Model_Voucher`, `Model_VoucherUpdate`, `Model_InvoiceResponse`); recorded
   2026-11-16, trial account, Update 2.0 (probes `write-cost-centre-documents`,
   `write-cost-centre-list-filters`).
-- **Impact:** #87 offers `costCentre` on invoice, voucher and credit note drafts only, never on
-  orders, and filters the invoice and voucher lists with both keys. The invoice update already
-  carries the stored `costCentre` over (D-052, D-054).
+- **Impact:** `costCentre` is an argument of `sevdesk_invoice_create_draft`,
+  `sevdesk_invoice_update_draft`, `sevdesk_voucher_create_draft`,
+  `sevdesk_voucher_update_draft` and `sevdesk_credit_note_create_draft` only, never of the order
+  tools; the strict `saveOrder` body has no such key. An update without it carries the stored
+  one over (D-052, D-054). `sevdesk_invoices_list` and `sevdesk_vouchers_list` filter with both
+  keys and check every row's `costCentre` again, so a filter sevDesk ignored cannot answer the
+  whole list; the credit-note list has no filter (not measured). Not recorded, so not offered:
+  how a cost centre is removed from a document (an update that leaves it out keeps it; whether
+  `costCentre: null` clears it is unknown), and cost centres on voucher positions.
 - **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("checks costCentre on create and on
   updates with the id, per document kind", "tells honoured list filters from ignored ones, with an
-  untagged control"). Live: the two probes above.
+  untagged control"); `test/regressions/cost-centre-filter-never-unfiltered.test.ts`;
+  `test/regressions/order-never-sends-cost-centre.test.ts`;
+  `test/unit/tools/drafts/cost-centre-drafts.test.ts` ("keeps the stored cost centre when the
+  call leaves it out (D-052, D-054)"); `test/unit/tools/documents/cost-centre-reads.test.ts`.
+  Live: the two probes above.
 
 ### D-095: On a cash register `resetToOpen` books a counter-entry instead of deleting
 

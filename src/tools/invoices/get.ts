@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { costCentreOf, costCentreOutput } from "../../domain/cost-centres.js";
 import { positionDtoSchema } from "../../domain/document-positions.js";
 import { getInvoice, invoiceDetailSchema } from "../../domain/invoices.js";
 import { defineTool } from "../define-tool.js";
@@ -12,6 +13,7 @@ const output = z.object({
     .describe(
       "False when sevDesk had more position rows than could be read: positions is partial.",
     ),
+  costCentre: costCentreOutput,
 });
 
 /** `sevdesk_invoice_get`: one invoice with positions, totals, tax rule and terms. */
@@ -49,12 +51,18 @@ export const invoiceGetTool = defineTool({
       cacheOwner: ctx.config,
     });
     const { invoice, positions } = details;
+    const costCentre = await costCentreOf(ctx.client, invoice.costCentreId, ctx.signal);
     const count = `${positions.length} position${positions.length === 1 ? "" : "s"}`;
     const partial = details.positionsComplete
       ? ""
       : " Partial: sevDesk had more positions than could be read.";
     return {
-      data: { invoice, positions: [...positions], positionsComplete: details.positionsComplete },
+      data: {
+        invoice,
+        positions: [...positions],
+        positionsComplete: details.positionsComplete,
+        ...costCentre,
+      },
       // Labels come from reference data (or "unknown"), never from sevDesk's text.
       summary:
         `Invoice ${invoice.id} (${invoice.type.label}, status ${invoice.status.label}) ` +

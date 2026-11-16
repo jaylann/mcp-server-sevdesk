@@ -6,6 +6,7 @@
 import { z } from "zod";
 
 import { amountInput, isoDateInput } from "../common.js";
+import { type CostCentreArg, costCentreInput } from "../cost-centres.js";
 import { VOUCHER_KINDS, type VoucherKind } from "../vouchers.js";
 import {
   AMOUNT_MODES,
@@ -130,6 +131,7 @@ export const voucherCreateInputShape = {
   amountMode: amountModeInput,
   positions: positionsInput,
   file: fileInput.optional(),
+  costCentre: costCentreInput,
   allowDuplicate: z
     .boolean()
     .optional()
@@ -169,6 +171,10 @@ export const voucherUpdateInputShape = {
       "Receipt file to attach (PDF, PNG or JPEG inside SEVDESK_FILE_DIRS, or on a remote " +
         "server the uploadId from sevdesk_upload_request).",
     ),
+  costCentre: costCentreInput.describe(
+    "New Kostenstelle: id, number or name (see sevdesk_reference_lookup kind=cost_centres). " +
+      "Leave out to keep the stored one; removing it is not supported here.",
+  ),
 };
 
 export interface VoucherCreateArgs extends ExchangeArgs {
@@ -185,6 +191,7 @@ export interface VoucherCreateArgs extends ExchangeArgs {
   readonly amountMode?: AmountMode | undefined;
   readonly positions: readonly VoucherPositionInput[];
   readonly file?: string | undefined;
+  readonly costCentre?: CostCentreArg | undefined;
   readonly allowDuplicate?: boolean | undefined;
 }
 
@@ -202,6 +209,7 @@ export interface VoucherUpdateArgs extends ExchangeArgs {
   readonly amountMode?: AmountMode | undefined;
   readonly positions?: readonly VoucherPositionInput[] | undefined;
   readonly file?: string | undefined;
+  readonly costCentre?: CostCentreArg | undefined;
 }
 
 /** Input fields of `sevdesk_voucher_import_einvoice` (without `dryRun`). */

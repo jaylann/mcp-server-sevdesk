@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { compact } from "../../domain/common.js";
+import { costCentreDtoSchema, listCostCentres } from "../../domain/cost-centres.js";
 import { loadReceiptGuidance, RECEIPT_TYPES } from "../../domain/receipt-guidance.js";
 import {
   CONTACT_CATEGORIES,
@@ -27,6 +28,7 @@ const LOOKUP_KINDS = [
   "countries",
   "units",
   "payment_methods",
+  "cost_centres",
   "receipt_guidance",
 ] as const;
 type LookupKind = (typeof LOOKUP_KINDS)[number];
@@ -149,6 +151,10 @@ const output = z.object({
   countries: z.array(countryItem).optional(),
   units: z.array(unitItem).optional(),
   paymentMethods: z.array(paymentMethodItem).optional(),
+  costCentres: z
+    .array(costCentreDtoSchema)
+    .optional()
+    .describe("Kind cost_centres: the account's Kostenstellen."),
   receiptGuidance: z
     .array(receiptGuidanceItem)
     .optional()
@@ -177,7 +183,8 @@ export const referenceLookupTool = defineTool({
     "(Steuerregeln for Update 2.0, e.g. 1 = steuerpflichtig, 11 = Kleinunternehmer §19), " +
     "contact_categories (Kunde, Lieferant, …), status_codes (Entwurf, offen, bezahlt per " +
     "document type), document_types (RE, AN, …), users (SevUser), countries (StaticCountry), " +
-    "units (Einheiten), payment_methods (Zahlungsarten) and receipt_guidance (Kontierungshilfe: " +
+    "units (Einheiten), payment_methods (Zahlungsarten), cost_centres (Kostenstellen: id, " +
+    "number, name) and receipt_guidance (Kontierungshilfe: " +
     "which booking account (accountDatev) allows which tax rules and tax rates for expense or " +
     "revenue receipts (Belege); filter with accountNumber, taxRuleId and receiptType, paged " +
     "with limit/offset). Use query to filter by a case-insensitive substring of names, codes " +
@@ -411,6 +418,13 @@ async function lookup(
         .filter((method) => keep(method.id, method.name, method.text))
         .map((method) => ({ ...method }));
       return { ...upstreamCounts(kind, list, paymentMethods.length), paymentMethods };
+    }
+    case "cost_centres": {
+      const list = await listCostCentres(ctx.client, ctx.signal);
+      const costCentres = list.items
+        .filter((centre) => keep(centre.id, centre.number, centre.name))
+        .map((centre) => ({ ...centre }));
+      return { ...upstreamCounts(kind, list, costCentres.length), costCentres };
     }
   }
 }

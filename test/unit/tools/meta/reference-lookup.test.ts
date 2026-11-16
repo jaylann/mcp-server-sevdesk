@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { TAX_RULES } from "../../../../src/domain/reference-data.js";
 import { referenceLookupTool as tool } from "../../../../src/tools/meta/reference-lookup.js";
+import {
+  costCentreRow,
+  costCentresRoute,
+  costCentresRouteOf,
+  RECORDED_CENTRES,
+} from "../../../helpers/cost-centres.js";
 import { type FakeRoute, FakeSevdeskClient, testContext } from "../../../helpers/fake-client.js";
 
 const upstreamRoutes: FakeRoute[] = [
@@ -9,6 +15,7 @@ const upstreamRoutes: FakeRoute[] = [
   { path: "/StaticCountry", response: { fixture: "meta/static-countries.json" } },
   { path: "/Unity", response: { fixture: "meta/units.json" } },
   { path: "/PaymentMethod", response: { fixture: "meta/payment-methods.json" } },
+  costCentresRoute,
 ];
 
 async function lookup(
@@ -80,6 +87,7 @@ describe("sevdesk_reference_lookup", () => {
     "countries",
     "units",
     "payment_methods",
+    "cost_centres",
   ])("marks %s as unpaged, including empty results", async (kind) => {
     for (const query of [undefined, "nonexistent"]) {
       const { result } = await lookup({ kind, query });
@@ -123,6 +131,39 @@ describe("sevdesk_reference_lookup", () => {
     for (const { client } of [users, countries, units, methods]) {
       expect(client.methods().every((method) => method === "GET")).toBe(true);
     }
+  });
+
+  it("lists the account's cost centres (Kostenstellen) with an explicit limit (D-091)", async () => {
+    const all = await lookup({ kind: "cost_centres" });
+    expect(all.result.data).toMatchObject({
+      kind: "cost_centres",
+      source: "sevdesk",
+      total: 3,
+      returned: 3,
+      truncated: false,
+    });
+    expect(all.result.data.costCentres).toEqual([
+      RECORDED_CENTRES.first,
+      RECORDED_CENTRES.second,
+      RECORDED_CENTRES.third,
+    ]);
+    expect(all.client.calls).toHaveLength(1);
+    expect(all.client.calls[0]).toMatchObject({ method: "GET", path: "/CostCentre" });
+    expect(all.client.calls[0]?.query).toMatchObject({ limit: 1000 });
+    expect(all.result.summary).toBe("3 of 3 cost centres.");
+
+    const byNumber = await lookup({ kind: "cost_centres", query: "mcp1" });
+    expect(byNumber.result.data.costCentres).toEqual([RECORDED_CENTRES.third]);
+    const byId = await lookup({ kind: "cost_centres", query: "344962" });
+    expect(byId.result.data.costCentres).toEqual([RECORDED_CENTRES.second]);
+
+    const withDefault = await lookup({ kind: "cost_centres" }, [
+      costCentresRouteOf([costCentreRow(1, "HQ", "Zentrale", true)], 1200),
+    ]);
+    expect(withDefault.result.data.costCentres).toEqual([
+      { id: 1, number: "HQ", name: "Zentrale", isDefault: true },
+    ]);
+    expect(withDefault.result.data).toMatchObject({ total: 1200, truncated: true });
   });
 
   it("flags lists sevDesk could not return completely", async () => {

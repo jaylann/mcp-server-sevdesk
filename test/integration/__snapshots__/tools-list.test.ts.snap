@@ -1352,6 +1352,20 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "exclusiveMinimum": 0,
           "type": "integer",
         },
+        "costCentre": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Kostenstelle: its id (number), or its number or name (text, case and accents ignored); see sevdesk_reference_lookup kind=cost_centres. An unknown or ambiguous one is refused. Removing a cost centre is not supported here.",
+        },
         "currency": {
           "description": "ISO 4217 code; default EUR or the source invoice's currency.",
           "pattern": "^[A-Za-z]{3}$",
@@ -2032,6 +2046,20 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "exclusiveMinimum": 0,
           "type": "integer",
         },
+        "costCentre": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Kostenstelle: its id (number), or its number or name (text, case and accents ignored); see sevdesk_reference_lookup kind=cost_centres. An unknown or ambiguous one is refused. Removing a cost centre is not supported here.",
+        },
         "currency": {
           "description": "ISO 4217 currency code (Währung); default EUR.",
           "pattern": "^[A-Za-z]{3}$",
@@ -2578,6 +2606,20 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "exclusiveMinimum": 0,
           "type": "integer",
         },
+        "costCentre": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "New Kostenstelle: id, number or name (see sevdesk_reference_lookup kind=cost_centres). Leave out to keep the stored one; removing it is not supported here.",
+        },
         "currency": {
           "description": "ISO 4217 currency code (Währung); default EUR.",
           "pattern": "^[A-Za-z]{3}$",
@@ -2762,6 +2804,20 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "description": "Only invoices of this contact (id from sevdesk_contacts_search).",
           "exclusiveMinimum": 0,
           "type": "integer",
+        },
+        "costCentre": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Only documents booked on this Kostenstelle: its id (number), or its number or name (text); see sevdesk_reference_lookup kind=cost_centres.",
         },
         "detail": {
           "default": "full",
@@ -4059,6 +4115,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
             "countries",
             "units",
             "payment_methods",
+            "cost_centres",
             "receipt_guidance",
           ],
           "type": "string",
@@ -4523,6 +4580,20 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           ],
           "type": "string",
         },
+        "costCentre": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Kostenstelle: its id (number), or its number or name (text, case and accents ignored); see sevdesk_reference_lookup kind=cost_centres. An unknown or ambiguous one is refused. Removing a cost centre is not supported here.",
+        },
         "currency": {
           "description": "ISO 4217 currency, e.g. USD; default EUR. Non-EUR requires exchangeRate or foreignCurrencyDeadline.",
           "type": "string",
@@ -4822,6 +4893,20 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           ],
           "type": "string",
         },
+        "costCentre": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "New Kostenstelle: id, number or name (see sevdesk_reference_lookup kind=cost_centres). Leave out to keep the stored one; removing it is not supported here.",
+        },
         "currency": {
           "description": "Target currency; default the stored currency. A currency change needs ALL positions in that currency. Pass "EUR" to convert back without a rate.",
           "type": "string",
@@ -4955,6 +5040,20 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
+        "costCentre": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Only documents booked on this Kostenstelle: its id (number), or its number or name (text); see sevdesk_reference_lookup kind=cost_centres.",
+        },
         "description": {
           "description": "Part of the Belegnummer or description, e.g. an invoice number.",
           "maxLength": 100,
@@ -5602,6 +5701,20 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "exclusiveMinimum": 0,
           "type": "integer",
         },
+        "costCentre": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Kostenstelle: its id (number), or its number or name (text, case and accents ignored); see sevdesk_reference_lookup kind=cost_centres. An unknown or ambiguous one is refused. Removing a cost centre is not supported here.",
+        },
         "currency": {
           "description": "ISO 4217 code; default EUR or the source invoice's currency.",
           "pattern": "^[A-Za-z]{3}$",
@@ -6010,6 +6123,20 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "exclusiveMinimum": 0,
           "type": "integer",
         },
+        "costCentre": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Kostenstelle: its id (number), or its number or name (text, case and accents ignored); see sevdesk_reference_lookup kind=cost_centres. An unknown or ambiguous one is refused. Removing a cost centre is not supported here.",
+        },
         "currency": {
           "description": "ISO 4217 currency code (Währung); default EUR.",
           "pattern": "^[A-Za-z]{3}$",
@@ -6374,6 +6501,20 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "exclusiveMinimum": 0,
           "type": "integer",
         },
+        "costCentre": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "New Kostenstelle: id, number or name (see sevdesk_reference_lookup kind=cost_centres). Leave out to keep the stored one; removing it is not supported here.",
+        },
         "currency": {
           "description": "ISO 4217 currency code (Währung); default EUR.",
           "pattern": "^[A-Za-z]{3}$",
@@ -6558,6 +6699,20 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "description": "Only invoices of this contact (id from sevdesk_contacts_search).",
           "exclusiveMinimum": 0,
           "type": "integer",
+        },
+        "costCentre": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Only documents booked on this Kostenstelle: its id (number), or its number or name (text); see sevdesk_reference_lookup kind=cost_centres.",
         },
         "detail": {
           "default": "full",
@@ -7746,6 +7901,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
             "countries",
             "units",
             "payment_methods",
+            "cost_centres",
             "receipt_guidance",
           ],
           "type": "string",
@@ -8008,6 +8164,20 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           ],
           "type": "string",
         },
+        "costCentre": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Kostenstelle: its id (number), or its number or name (text, case and accents ignored); see sevdesk_reference_lookup kind=cost_centres. An unknown or ambiguous one is refused. Removing a cost centre is not supported here.",
+        },
         "currency": {
           "description": "ISO 4217 currency, e.g. USD; default EUR. Non-EUR requires exchangeRate or foreignCurrencyDeadline.",
           "type": "string",
@@ -8178,6 +8348,20 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           ],
           "type": "string",
         },
+        "costCentre": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "New Kostenstelle: id, number or name (see sevdesk_reference_lookup kind=cost_centres). Leave out to keep the stored one; removing it is not supported here.",
+        },
         "currency": {
           "description": "Target currency; default the stored currency. A currency change needs ALL positions in that currency. Pass "EUR" to convert back without a rate.",
           "type": "string",
@@ -8311,6 +8495,20 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
+        "costCentre": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Only documents booked on this Kostenstelle: its id (number), or its number or name (text); see sevdesk_reference_lookup kind=cost_centres.",
+        },
         "description": {
           "description": "Part of the Belegnummer or description, e.g. an invoice number.",
           "maxLength": 100,
@@ -8939,6 +9137,20 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           "exclusiveMinimum": 0,
           "type": "integer",
         },
+        "costCentre": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Only documents booked on this Kostenstelle: its id (number), or its number or name (text); see sevdesk_reference_lookup kind=cost_centres.",
+        },
         "detail": {
           "default": "full",
           "description": "Use summary to browse/find; full (default) or the matching get tool for details.",
@@ -9532,6 +9744,7 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
             "countries",
             "units",
             "payment_methods",
+            "cost_centres",
             "receipt_guidance",
           ],
           "type": "string",
@@ -9808,6 +10021,20 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
+        "costCentre": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Only documents booked on this Kostenstelle: its id (number), or its number or name (text); see sevdesk_reference_lookup kind=cost_centres.",
+        },
         "description": {
           "description": "Part of the Belegnummer or description, e.g. an invoice number.",
           "maxLength": 100,
