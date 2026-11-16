@@ -94,6 +94,13 @@ export interface Settings {
    * (`readConfinedFile`, `src/safety/local-files.ts`). Empty: no tool reads local files.
    */
   readonly fileDirs: readonly string[];
+  /**
+   * Hosts a tool may download a receipt or e-invoice from when its `file` is an https link
+   * (`SEVDESK_FILE_URL_HOSTS`, `src/safety/url-files.ts`): exact host names, lower case, or
+   * `*.example.com` for every subdomain of example.com. Empty: links are refused before any
+   * request is made.
+   */
+  readonly fileUrlHosts: readonly string[];
   readonly userAgent: string;
 }
 
@@ -226,6 +233,7 @@ export const KNOWN_SETTINGS: readonly string[] = [
   "SEVDESK_AUDIT_LOG",
   "SEVDESK_OUTPUT_DIR",
   "SEVDESK_FILE_DIRS",
+  "SEVDESK_FILE_URL_HOSTS",
   // Secrets (`readSecret`): the value, or the file that holds it.
   ...SECRET_SETTINGS,
   ...SECRET_SETTINGS.map(secretFileSetting),
@@ -405,6 +413,7 @@ export function readSettings(env: Env, problems: string[]): Settings {
     auditLogPath: nonEmpty(env["SEVDESK_AUDIT_LOG"]),
     outputDir: nonEmpty(env["SEVDESK_OUTPUT_DIR"]),
     fileDirs: readAbsolutePaths(env, "SEVDESK_FILE_DIRS", problems),
+    fileUrlHosts: readFileUrlHosts(env, problems),
     userAgent: `${PACKAGE_NAME}/${VERSION} (+https://github.com/jaylann/mcp-server-sevdesk)`,
   };
   problems.push(...checkSettingNames(env).problems);
@@ -703,6 +712,34 @@ function readAbsolutePaths(env: Env, name: string, problems: string[]): string[]
     return [];
   }
   return paths;
+}
+
+/**
+ * A host name with at least one dot and a top-level label that starts with a letter (so no IPv4
+ * address passes), optionally after `*.` (every subdomain of the rest). Lower case, as
+ * {@link readList} returns it.
+ */
+const FILE_URL_HOST =
+  /^(?:\*\.)?(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
+/**
+ * `SEVDESK_FILE_URL_HOSTS`: comma-separated host names (`portal.example.com`, or
+ * `*.example.com` for every subdomain of example.com) that receipt and e-invoice files may be
+ * downloaded from. A scheme, port, path, IP address or a wildcard on a single label is refused:
+ * the host is resolved when used and must be public. Unset: an empty list (off).
+ */
+function readFileUrlHosts(env: Env, problems: string[]): readonly string[] {
+  const name = "SEVDESK_FILE_URL_HOSTS";
+  const values = readList(env[name]);
+  const invalid = values.filter((value) => !FILE_URL_HOST.test(value));
+  if (invalid.length > 0) {
+    problems.push(
+      `${name}: expected host names such as portal.example.com or *.example.com (no scheme, ` +
+        `port, path or IP address), got ${invalid.map((value) => JSON.stringify(value.slice(0, 64))).join(", ")}.`,
+    );
+    return [];
+  }
+  return [...new Set(values)];
 }
 
 export function nonEmpty(raw: string | undefined): string | undefined {

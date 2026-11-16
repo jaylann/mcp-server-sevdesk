@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/receipts.md sha256:1c9abfce6225 -->
+<!-- translated-from: docs/guides/receipts.md sha256:e29a5da92960 -->
 
 # Belege und Eingangsrechnungen
 
@@ -41,6 +41,11 @@ Die Beleg-Werkzeuge lesen nie von sich aus auf deiner Festplatte:
   [`sevdesk_upload_request`](../tools.md#sevdesk_upload_request) auf, gibt dir einen Link und
   reicht den Upload weiter, sobald du sagst, dass du fertig bist. Auf eine Seite passen bis zu 10
   Dateien; siehe [Dateien über HTTP](../remote/files.de.md).
+- **Von einem Link**, in beiden Modi, wenn die Hosts, von denen er kommen darf, in
+  `SEVDESK_FILE_URL_HOSTS` stehen: Gib dem Assistenten einen https-Link zur Datei (den
+  Download-Link eines Lieferantenportals, einen Speicher-Link). Der Server lädt sie nur für diesen
+  Aufruf herunter, ohne sich irgendwo anzumelden; siehe
+  [Dateien von einem Link](../configuration.de.md#dateien-von-einem-link).
 
 > Erfasse den Beleg Belege/2026-11/tankstelle-shell.pdf.
 

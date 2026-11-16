@@ -11,8 +11,10 @@ in a confirmation prompt; never ask them to "just approve" without showing the p
 
 Tiers needed (`SEVDESK_ALLOW`): `read` is always on; `write` for drafts; `commit` for finalizing,
 booking, resetting and enshrining; `external` for email. Local files need `SEVDESK_FILE_DIRS`
-(reading receipts and e-invoices) and `SEVDESK_OUTPUT_DIR` (writing exports). If a tool below is
-missing from the tool list, the setting is off: tell the user which one, do not work around it.
+(reading receipts and e-invoices) and `SEVDESK_OUTPUT_DIR` (writing exports). A receipt or
+e-invoice that is online can be passed as an https link instead of a path when its host is in
+`SEVDESK_FILE_URL_HOSTS`; the server downloads it during the call. If a tool below is missing from
+the tool list, the setting is off: tell the user which one, do not work around it.
 
 ## Session start (every workflow)
 
@@ -23,7 +25,8 @@ missing from the tool list, the setting is off: tell the user which one, do not 
 
 ## File a receipt (Beleg erfassen)
 
-Tiers: `write` (draft); `commit` to finalize or book the payment. File upload: `SEVDESK_FILE_DIRS`.
+Tiers: `write` (draft); `commit` to finalize or book the payment. Receipt file: `SEVDESK_FILE_DIRS`,
+or an https link to a host in `SEVDESK_FILE_URL_HOSTS`.
 
 1. Read the receipt with the user: supplier, date, Belegnummer, gross amount, VAT rate(s), what
    was bought, whether it is already paid.
@@ -40,7 +43,8 @@ Tiers: `write` (draft); `commit` to finalize or book the payment. File upload: `
    (`supplierId` or `supplierName`), Belegnummer (`number`), Belegdatum (`date`), positions with
    booking account, amount and rate, the tax rule (defaults to 9, or 10 on a Kleinunternehmer
    account) and, if there is a scan, its path as `file` (inside `SEVDESK_FILE_DIRS`; PDF, PNG,
-   JPEG or XML). The tool checks every account × tax rule × rate against the receipt guidance
+   JPEG or XML), or its https link (a host in `SEVDESK_FILE_URL_HOSTS`; the preview shows the
+   downloaded file's SHA-256 and host). The tool checks every account × tax rule × rate against the receipt guidance
    and refuses a likely duplicate (same supplier, number, date and amount) unless
    `allowDuplicate` is set. Show the preview, then call it again without `dryRun`. The voucher
    is a draft (status 50).
@@ -56,9 +60,11 @@ Tiers: `write` (draft); `commit` to finalize or book the payment. File upload: `
 
 ## Import an e-invoice (E-Rechnung)
 
-Tiers: `read` to check, `write` to import. Needs `SEVDESK_FILE_DIRS`.
+Tiers: `read` to check, `write` to import. Needs `SEVDESK_FILE_DIRS`, or `SEVDESK_FILE_URL_HOSTS`
+for a file passed as an https link.
 
-1. `sevdesk_einvoice_parse` with the path of the XRechnung XML or ZUGFeRD/Factur-X PDF: it reads
+1. `sevdesk_einvoice_parse` with the path (or https link) of the XRechnung XML or
+   ZUGFeRD/Factur-X PDF: it reads
    the structured data (EN 16931), checks totals, VAT breakdown and required fields, and reports
    findings. Nothing is sent to sevDesk. For a hybrid PDF the XML is what counts.
 2. Go through the findings with the user. A non-structured PDF (no XML inside) is not an

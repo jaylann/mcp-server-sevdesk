@@ -50,14 +50,18 @@ const positionsInput = z
   .max(MAX_VOUCHER_POSITIONS)
   .describe("Belegpositionen: one per booking account and tax rate.");
 
+/** Longest `file` argument: a path, an `upload:` reference or a (presigned) https link. */
+const MAX_FILE_REF_LENGTH = 2_048;
+
 const fileInput = z
   .string()
   .min(1)
-  .max(1_000)
+  .max(MAX_FILE_REF_LENGTH)
   .describe(
     "Receipt file (Belegbild: PDF, PNG or JPEG, up to 20 MB) inside SEVDESK_FILE_DIRS, " +
       "absolute or relative to one of those folders, or on a remote server the uploadId from " +
-      "sevdesk_upload_request. It is uploaded and attached.",
+      "sevdesk_upload_request, or an https link to a host in SEVDESK_FILE_URL_HOSTS. It is " +
+      "uploaded and attached.",
   );
 
 const supplierIdInput = positiveId
@@ -166,8 +170,9 @@ export const voucherUpdateInputShape = {
   file: fileInput
     .optional()
     .describe(
-      "Receipt file to attach (PDF, PNG or JPEG inside SEVDESK_FILE_DIRS, or on a remote " +
-        "server the uploadId from sevdesk_upload_request).",
+      "Receipt file to attach (PDF, PNG or JPEG inside SEVDESK_FILE_DIRS, on a remote server " +
+        "the uploadId from sevdesk_upload_request, or an https link to a host in " +
+        "SEVDESK_FILE_URL_HOSTS).",
     ),
 };
 
@@ -210,11 +215,12 @@ export const voucherImportInputShape = {
   file: z
     .string()
     .min(1)
-    .max(1_000)
+    .max(MAX_FILE_REF_LENGTH)
     .describe(
       "The e-invoice: an XRechnung XML or a ZUGFeRD/Factur-X PDF inside SEVDESK_FILE_DIRS, " +
         "absolute or relative to one of those folders, or on a remote server the uploadId from " +
-        "sevdesk_upload_request. It is attached to the voucher.",
+        "sevdesk_upload_request, or an https link to a host in SEVDESK_FILE_URL_HOSTS. It is " +
+        "attached to the voucher.",
     ),
   accountDatevId: positiveId
     .optional()

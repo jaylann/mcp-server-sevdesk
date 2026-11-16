@@ -4388,7 +4388,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     "annotations": {
       "destructiveHint": false,
       "idempotentHint": false,
-      "openWorldHint": false,
+      "openWorldHint": true,
       "readOnlyHint": false,
       "title": "Create a draft voucher",
     },
@@ -4435,8 +4435,8 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "string",
         },
         "file": {
-          "description": "Receipt file (Belegbild: PDF, PNG or JPEG, up to 20 MB) inside SEVDESK_FILE_DIRS, absolute or relative to one of those folders, or on a remote server the uploadId from sevdesk_upload_request. It is uploaded and attached.",
-          "maxLength": 1000,
+          "description": "Receipt file (Belegbild: PDF, PNG or JPEG, up to 20 MB) inside SEVDESK_FILE_DIRS, absolute or relative to one of those folders, or on a remote server the uploadId from sevdesk_upload_request, or an https link to a host in SEVDESK_FILE_URL_HOSTS. It is uploaded and attached.",
+          "maxLength": 2048,
           "minLength": 1,
           "type": "string",
         },
@@ -4691,7 +4691,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     "annotations": {
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": false,
+      "openWorldHint": true,
       "readOnlyHint": false,
       "title": "Update a draft voucher",
     },
@@ -4734,8 +4734,8 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "string",
         },
         "file": {
-          "description": "Receipt file to attach (PDF, PNG or JPEG inside SEVDESK_FILE_DIRS, or on a remote server the uploadId from sevdesk_upload_request).",
-          "maxLength": 1000,
+          "description": "Receipt file to attach (PDF, PNG or JPEG inside SEVDESK_FILE_DIRS, on a remote server the uploadId from sevdesk_upload_request, or an https link to a host in SEVDESK_FILE_URL_HOSTS).",
+          "maxLength": 2048,
           "minLength": 1,
           "type": "string",
         },
@@ -7761,7 +7761,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
     "annotations": {
       "destructiveHint": false,
       "idempotentHint": false,
-      "openWorldHint": false,
+      "openWorldHint": true,
       "readOnlyHint": false,
       "title": "Create a draft voucher",
     },
@@ -7808,8 +7808,8 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "string",
         },
         "file": {
-          "description": "Receipt file (Belegbild: PDF, PNG or JPEG, up to 20 MB) inside SEVDESK_FILE_DIRS, absolute or relative to one of those folders, or on a remote server the uploadId from sevdesk_upload_request. It is uploaded and attached.",
-          "maxLength": 1000,
+          "description": "Receipt file (Belegbild: PDF, PNG or JPEG, up to 20 MB) inside SEVDESK_FILE_DIRS, absolute or relative to one of those folders, or on a remote server the uploadId from sevdesk_upload_request, or an https link to a host in SEVDESK_FILE_URL_HOSTS. It is uploaded and attached.",
+          "maxLength": 2048,
           "minLength": 1,
           "type": "string",
         },
@@ -7935,7 +7935,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
     "annotations": {
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": false,
+      "openWorldHint": true,
       "readOnlyHint": false,
       "title": "Update a draft voucher",
     },
@@ -7978,8 +7978,8 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "string",
         },
         "file": {
-          "description": "Receipt file to attach (PDF, PNG or JPEG inside SEVDESK_FILE_DIRS, or on a remote server the uploadId from sevdesk_upload_request).",
-          "maxLength": 1000,
+          "description": "Receipt file to attach (PDF, PNG or JPEG inside SEVDESK_FILE_DIRS, on a remote server the uploadId from sevdesk_upload_request, or an https link to a host in SEVDESK_FILE_URL_HOSTS).",
+          "maxLength": 2048,
           "minLength": 1,
           "type": "string",
         },
@@ -9778,7 +9778,7 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
     "annotations": {
       "destructiveHint": false,
       "idempotentHint": true,
-      "openWorldHint": false,
+      "openWorldHint": true,
       "readOnlyHint": true,
       "title": "Parse an e-invoice file",
     },
@@ -9787,8 +9787,8 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
       "additionalProperties": false,
       "properties": {
         "file": {
-          "description": "The e-invoice file: an absolute path inside one of the SEVDESK_FILE_DIRS folders, or a path relative to one of them, e.g. Rechnungen/RE-4711.xml; or on a remote server the uploadId from sevdesk_upload_request.",
-          "maxLength": 1024,
+          "description": "The e-invoice file: an absolute path inside one of the SEVDESK_FILE_DIRS folders, or a path relative to one of them, e.g. Rechnungen/RE-4711.xml; on a remote server the uploadId from sevdesk_upload_request; or an https link to a host in SEVDESK_FILE_URL_HOSTS.",
+          "maxLength": 2048,
           "minLength": 1,
           "type": "string",
         },
@@ -9866,7 +9866,7 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
     "annotations": {
       "destructiveHint": false,
       "idempotentHint": false,
-      "openWorldHint": false,
+      "openWorldHint": true,
       "readOnlyHint": false,
       "title": "Import an e-invoice as a voucher",
     },
@@ -9922,8 +9922,8 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
           "type": "string",
         },
         "file": {
-          "description": "The e-invoice: an XRechnung XML or a ZUGFeRD/Factur-X PDF inside SEVDESK_FILE_DIRS, absolute or relative to one of those folders, or on a remote server the uploadId from sevdesk_upload_request. It is attached to the voucher.",
-          "maxLength": 1000,
+          "description": "The e-invoice: an XRechnung XML or a ZUGFeRD/Factur-X PDF inside SEVDESK_FILE_DIRS, absolute or relative to one of those folders, or on a remote server the uploadId from sevdesk_upload_request, or an https link to a host in SEVDESK_FILE_URL_HOSTS. It is attached to the voucher.",
+          "maxLength": 2048,
           "minLength": 1,
           "type": "string",
         },

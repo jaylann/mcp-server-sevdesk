@@ -174,6 +174,7 @@ describe("settings as Claude Desktop passes them", () => {
       SEVDESK_CONFIRM: "browser",
       SEVDESK_TOOLSETS: "",
       SEVDESK_FILE_DIRS: "",
+      SEVDESK_FILE_URL_HOSTS: "",
       SEVDESK_OUTPUT_DIR: "",
       SEVDESK_AUDIT_LOG: "",
     });
@@ -183,6 +184,7 @@ describe("settings as Claude Desktop passes them", () => {
       dryRun: false,
       confirm: "browser",
       fileDirs: [],
+      fileUrlHosts: [],
       outputDir: undefined,
       auditLogPath: undefined,
     });
@@ -199,6 +201,7 @@ describe("settings as Claude Desktop passes them", () => {
       confirm: "browser",
       toolsets: "invoices,vouchers",
       file_dir: "/home/user/Belege",
+      file_url_hosts: "portal.example.com, *.files.example.net",
       output_dir: "/home/user/Exports",
       audit_log: "/home/user/Audit logs/sevdesk.jsonl",
     });
@@ -208,6 +211,7 @@ describe("settings as Claude Desktop passes them", () => {
       dryRun: true,
       confirm: "browser",
       fileDirs: ["/home/user/Belege"],
+      fileUrlHosts: ["portal.example.com", "*.files.example.net"],
       outputDir: "/home/user/Exports",
       auditLogPath: "/home/user/Audit logs/sevdesk.jsonl",
     });
@@ -306,6 +310,7 @@ describe("manifestProblems", () => {
       "user_config.dry_run is never passed to the server.",
       "user_config.confirm is never passed to the server.",
       "user_config.file_dir is never passed to the server.",
+      "user_config.file_url_hosts is never passed to the server.",
       "user_config.output_dir is never passed to the server.",
       "user_config.audit_log is never passed to the server.",
     ]);

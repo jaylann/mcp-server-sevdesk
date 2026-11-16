@@ -1,4 +1,5 @@
-import { copyFile, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -6,10 +7,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { ciiXml, EN16931_INVOICE } from "../../../../scripts/gen-einvoice-fixtures.js";
 import { loadConfig } from "../../../../src/config.js";
+import { localFileAccess } from "../../../../src/safety/file-sources.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { einvoiceParseTool as tool } from "../../../../src/tools/vouchers/einvoice-parse.js";
 import { VOUCHER_EINVOICE_TOOLS } from "../../../../src/tools/vouchers/einvoice-tools.js";
 import { type FakeRoute, FakeSevdeskClient, testContext } from "../../../helpers/fake-client.js";
+import { fakeLinks, LINK, LINK_HOST, served } from "../../../helpers/links.js";
 
 const FIXTURES = new URL("../../../fixtures/einvoice/", import.meta.url);
 
@@ -87,25 +90,54 @@ async function refusal(file: string, env?: Record<string, string>) {
 }
 
 describe("sevdesk_einvoice_parse", () => {
-  it("is a read tool that reads local files, offered only with SEVDESK_FILE_DIRS", () => {
+  it("is a read tool that reads files, offered only with a folder or link hosts", () => {
     expect(VOUCHER_EINVOICE_TOOLS).toContain(tool);
     expect(tool).toMatchObject({ tier: "read", toolset: "vouchers", localEffects: "reads-files" });
+    // Open world: a file may be downloaded from an https link (SEVDESK_FILE_URL_HOSTS).
     expect(tool.annotations).toEqual({
       readOnlyHint: true,
       destructiveHint: false,
       idempotentHint: true,
-      openWorldHint: false,
+      openWorldHint: true,
     });
     const config = (env: Record<string, string>) =>
       loadConfig({ SEVDESK_API_TOKEN: "0123456789abcdef0123456789abcdef", ...env });
     expect(tool.available?.(config({}))).toBe(false);
     expect(tool.available?.(config({ SEVDESK_FILE_DIRS: base }))).toBe(true);
+    expect(tool.available?.(config({ SEVDESK_FILE_URL_HOSTS: LINK_HOST }))).toBe(true);
+  });
+
+  it("parses an e-invoice downloaded from an allowed link, with its SHA-256 and origin", async () => {
+    const xml = await readFile(new URL("generated/cii-en16931-invoice.xml", FIXTURES));
+    const links = fakeLinks({ respond: () => served(xml, { "content-type": "text/xml" }) });
+    const client = new FakeSevdeskClient([sevClient, contacts]);
+    const context = testContext(client, { SEVDESK_FILE_URL_HOSTS: LINK_HOST });
+    const result = await tool.handler(tool.input.parse({ file: LINK }), {
+      ...context,
+      files: localFileAccess(context.config, links.reader),
+    });
+
+    const data = tool.output.parse(result.data);
+    expect(data.file).toEqual({
+      name: "Rechnung-4711.xml",
+      kind: "xml",
+      sha256: createHash("sha256").update(xml).digest("hex"),
+      downloadedFrom: `https://${LINK_HOST}`,
+    });
+    expect(data.invoice.number).toBe("RE-2026-0001");
+    expect(client.writes()).toEqual([]);
+    expect(JSON.stringify(result)).not.toContain("SIGNATURE-7f3a");
+    expect(links.requests[0]?.signal).toBeDefined();
   });
 
   it("parses an XRechnung-style XML by relative path and suggests a voucher", async () => {
     const { client, data, result } = await parse("2026/RE-2026-0001.xml");
     expect(client.writes()).toEqual([]);
-    expect(data.file).toEqual({ name: "RE-2026-0001.xml", kind: "xml" });
+    expect(data.file).toEqual({
+      name: "RE-2026-0001.xml",
+      kind: "xml",
+      sha256: expect.stringMatching(/^[0-9a-f]{64}$/) as string,
+    });
     expect(data.invoice).toMatchObject({
       syntax: "cii",
       container: "xml",

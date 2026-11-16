@@ -4,6 +4,7 @@
  * folder behaviour is tested next to each tool; the transfer store and the file accesses in
  * `test/unit/safety/`.
  */
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
@@ -397,7 +398,8 @@ describe("receipts and e-invoices from uploads", () => {
 
   it("parses an uploaded e-invoice", async () => {
     const transfer = await openTransfer();
-    const ref = await transfer.upload(await readFile(CII), {
+    const bytes = await readFile(CII);
+    const ref = await transfer.upload(bytes, {
       name: "RE-2026-0001.xml",
       kind: "xml",
       purpose: "einvoice",
@@ -417,7 +419,11 @@ describe("receipts and e-invoices from uploads", () => {
       files: transfer.access(),
     });
 
-    expect(result.data.file).toEqual({ name: "RE-2026-0001.xml", kind: "xml" });
+    expect(result.data.file).toEqual({
+      name: "RE-2026-0001.xml",
+      kind: "xml",
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    });
     expect(result.data.invoice.number).toBe("RE-2026-0001");
     expect(client.writes()).toEqual([]);
     expect(transfer.store.usage().records).toBe(1);

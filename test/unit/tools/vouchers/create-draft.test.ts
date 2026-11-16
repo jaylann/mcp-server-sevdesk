@@ -1,8 +1,12 @@
+import { createHash } from "node:crypto";
+
 import { afterEach, describe, expect, it } from "vitest";
 
+import { localFileAccess } from "../../../../src/safety/file-sources.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { voucherCreateDraftTool as tool } from "../../../../src/tools/vouchers/draft-create.js";
 import { type FakeRoute, FakeSevdeskClient } from "../../../helpers/fake-client.js";
+import { fakeLinks, LINK, LINK_HOST, LINK_PDF } from "../../../helpers/links.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import {
   accountsRoute,
@@ -88,14 +92,14 @@ afterEach(async () => {
 });
 
 describe("sevdesk_voucher_create_draft", () => {
-  it("is a write tool that may read local files", () => {
+  it("is a write tool that may read local files or download one from a link", () => {
     expect(tool.tier).toBe("write");
     expect(tool.localEffects).toBe("reads-files");
     expect(tool.annotations).toEqual({
       readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: false,
-      openWorldHint: false,
+      openWorldHint: true,
     });
     expect(tool.description.length).toBeLessThanOrEqual(1000);
   });
@@ -244,6 +248,7 @@ describe("sevdesk_voucher_create_draft", () => {
       name: "Rechnung-0815.pdf",
       kind: "pdf",
       bytes: PDF_BYTES.length,
+      sha256: createHash("sha256").update(PDF_BYTES).digest("hex"),
       pages: 1,
     });
     expect(output.summary).toContain("receipt attached");
@@ -298,6 +303,50 @@ describe("sevdesk_voucher_create_draft", () => {
     const fake = client();
     const message = await refusal(prepareWrite(tool, { ...args, file: "beleg.pdf" }, fake));
     expect(message).toContain("SEVDESK_FILE_DIRS is not set");
+    expect(fake.calls).toEqual([]);
+  });
+
+  it("attaches a receipt from an allowed https link: hash and host in preview and result", async () => {
+    const links = fakeLinks();
+    const config = { fileUrlHosts: [LINK_HOST] };
+    const files = localFileAccess({ fileDirs: [], outputDir: undefined, ...config }, links.reader);
+    const fake = client();
+    const { plan, output } = await executeWrite(tool, { ...args, file: LINK }, fake, config, files);
+
+    const digest = createHash("sha256").update(LINK_PDF).digest("hex");
+    expect(links.requests).toHaveLength(1);
+    const [upload] = fake.writes();
+    const part = upload?.form?.get("file") as File;
+    expect(part.name).toBe("Rechnung-4711.pdf");
+    expect(part.type).toBe("application/pdf");
+    expect(new Uint8Array(await part.arrayBuffer())).toEqual(LINK_PDF);
+
+    const fact = (preview: typeof plan.preview, label: string) =>
+      preview.facts.find((entry) => entry.label === label)?.value;
+    expect(fact(plan.preview, "Receipt file (Belegbild)")).toBe(
+      `Rechnung-4711.pdf (PDF, ${String(LINK_PDF.length)} bytes, SHA-256 ${digest}), ` +
+        `downloaded from https://${LINK_HOST}`,
+    );
+    expect(plan.previewDe === undefined ? undefined : fact(plan.previewDe, "Belegdatei")).toBe(
+      `Rechnung-4711.pdf (PDF, ${String(LINK_PDF.length)} Bytes, SHA-256 ${digest}), ` +
+        `heruntergeladen von https://${LINK_HOST}`,
+    );
+    expect(output.data.receipt).toMatchObject({
+      name: "Rechnung-4711.pdf",
+      sha256: digest,
+      downloadedFrom: `https://${LINK_HOST}`,
+    });
+    // The link's path and query (its signature) appear nowhere in what the model gets back.
+    const everything = JSON.stringify({ plan: plan.preview, de: plan.previewDe, output });
+    expect(everything).not.toContain("SIGNATURE-7f3a");
+    expect(everything).not.toContain("/portal");
+  });
+
+  it("refuses a link while SEVDESK_FILE_URL_HOSTS is empty, before any request", async () => {
+    const fake = client();
+    const message = await refusal(prepareWrite(tool, { ...args, file: LINK }, fake));
+    expect(message).toContain("SEVDESK_FILE_URL_HOSTS is not set");
+    expect(message).not.toContain("SIGNATURE");
     expect(fake.calls).toEqual([]);
   });
 

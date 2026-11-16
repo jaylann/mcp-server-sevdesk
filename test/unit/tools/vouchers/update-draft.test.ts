@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 
+import { localFileAccess } from "../../../../src/safety/file-sources.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { tierScopedClient } from "../../../../src/sevdesk/scoped-client.js";
 import { voucherUpdateDraftTool as tool } from "../../../../src/tools/vouchers/draft-update.js";
 import { type FakeRoute, FakeSevdeskClient, testContext } from "../../../helpers/fake-client.js";
+import { fakeLinks, LINK, LINK_HOST } from "../../../helpers/links.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import {
   accountsRoute,
@@ -78,15 +80,43 @@ const carried = {
 };
 
 describe("sevdesk_voucher_update_draft", () => {
-  it("is a write tool with update annotations that may read local files", () => {
+  it("is a write tool with update annotations that may read local files or a link", () => {
     expect(tool.tier).toBe("write");
     expect(tool.localEffects).toBe("reads-files");
     expect(tool.annotations).toEqual({
       readOnlyHint: false,
       destructiveHint: true,
       idempotentHint: false,
-      openWorldHint: false,
+      openWorldHint: true,
     });
+  });
+
+  it("attaches a receipt downloaded from an allowed link to the draft", async () => {
+    const links = fakeLinks();
+    const files = localFileAccess(
+      { fileDirs: [], outputDir: undefined, fileUrlHosts: [LINK_HOST] },
+      links.reader,
+    );
+    const fake = client();
+    const { plan, output } = await executeWrite(
+      tool,
+      { id: 2101, file: LINK },
+      fake,
+      { fileUrlHosts: [LINK_HOST] },
+      files,
+    );
+
+    expect(fake.writes().map((call) => call.path)).toEqual([
+      "/Voucher/Factory/uploadTempFile",
+      "/Voucher/Factory/saveVoucher",
+    ]);
+    expect(JSON.stringify(plan.preview)).toContain(`downloaded from https://${LINK_HOST}`);
+    expect(JSON.stringify(plan.preview)).not.toContain("SIGNATURE-7f3a");
+    expect(output.data.receipt).toMatchObject({
+      name: "Rechnung-4711.pdf",
+      downloadedFrom: `https://${LINK_HOST}`,
+    });
+    expect(links.requests).toHaveLength(1);
   });
 
   it("changes the Belegnummer and carries every stored field over, positions untouched", async () => {

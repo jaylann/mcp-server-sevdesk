@@ -17,7 +17,8 @@
  * - the supplier contact exists; a possible duplicate (same supplier, Belegnummer, date and gross)
  *   is refused unless the caller says it is intended (`allowDuplicate`);
  * - the receipt file is read only through the call's `FileAccess`: from `SEVDESK_FILE_DIRS`
- *   (`readConfinedFile`) or, over HTTP with file transfer, from the caller's own uploads.
+ *   (`readConfinedFile`), over HTTP with file transfer from the caller's own uploads, or from an
+ *   https link to a host in `SEVDESK_FILE_URL_HOSTS`.
  *
  * Messages are trusted text: ids, our labels and reference-data names only.
  */
@@ -555,26 +556,50 @@ export function duplicateCheck(
 // ---------------------------------------------------------------------------------------------
 
 /**
- * Reads the receipt `ref` names (a path inside `SEVDESK_FILE_DIRS`, or an `upload:` reference
- * over HTTP) through `files`, which refuses with an actionable message otherwise; `kinds`
- * defaults to {@link RECEIPT_FILE_KINDS}.
+ * Reads the receipt `ref` names (a path inside `SEVDESK_FILE_DIRS`, an `upload:` reference over
+ * HTTP, or an https link to a host in `SEVDESK_FILE_URL_HOSTS`) through `options.files`, which
+ * refuses with an actionable message otherwise; `kinds` defaults to {@link RECEIPT_FILE_KINDS}.
+ * `options.signal` stops a download.
  */
 export async function readReceiptFile(
-  files: FileAccess,
+  options: Pick<VoucherCallOptions, "files" | "signal">,
   ref: string,
   kinds: readonly LocalFileKind[] = RECEIPT_FILE_KINDS,
 ): Promise<ReceiptFile> {
-  const file = await files.read(ref, { maxBytes: MAX_RECEIPT_BYTES, kinds });
-  return { name: file.name, kind: file.kind, bytes: file.bytes };
+  const file = await options.files.read(ref, {
+    maxBytes: MAX_RECEIPT_BYTES,
+    kinds,
+    signal: options.signal,
+  });
+  return {
+    name: file.name,
+    kind: file.kind,
+    bytes: file.bytes,
+    ...(file.host === undefined ? {} : { host: file.host }),
+  };
 }
 
-/** "Rechnung-4711.pdf (PDF, 48211 bytes, SHA-256 3f2a…)": local text, cleaned by the fact. */
+/** Lower-case hex SHA-256 of a receipt's bytes. */
+export function receiptSha256(file: ReceiptFile): string {
+  return createHash("sha256").update(file.bytes).digest("hex");
+}
+
+/**
+ * "Rechnung-4711.pdf (PDF, 48211 bytes, SHA-256 3f2a…)": local text, cleaned by the fact. A file
+ * from a link shows its full SHA-256 and the host it came from ("…, downloaded from
+ * https://portal.example.com"), never the link's path or query.
+ */
 export function receiptText(file: ReceiptFile, lang: PreviewLanguage = "en"): string {
-  const hash = createHash("sha256").update(file.bytes).digest("hex").slice(0, 16);
-  return (
-    `${file.name} (${file.kind.toUpperCase()}, ${String(file.bytes.length)} ${lang === "de" ? "Bytes" : "bytes"}, SHA-256 ` +
-    `${hash}…)`
-  );
+  const de = lang === "de";
+  const size = `${String(file.bytes.length)} ${de ? "Bytes" : "bytes"}`;
+  const digest = receiptSha256(file);
+  if (file.host !== undefined) {
+    return (
+      `${file.name} (${file.kind.toUpperCase()}, ${size}, SHA-256 ${digest}), ` +
+      `${de ? "heruntergeladen von" : "downloaded from"} https://${file.host}`
+    );
+  }
+  return `${file.name} (${file.kind.toUpperCase()}, ${size}, SHA-256 ${digest.slice(0, 16)}…)`;
 }
 
 // ---------------------------------------------------------------------------------------------

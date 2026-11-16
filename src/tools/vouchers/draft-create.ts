@@ -12,14 +12,15 @@ export const voucherCreateDraftTool = defineWriteTool({
   name: "sevdesk_voucher_create_draft",
   title: "Create a draft voucher",
   description:
-    "Create a draft voucher (Beleg) for a receipt or supplier invoice: expense or revenue, supplier, dates and booking-account positions. EUR by default; non-EUR requires exchangeRate (EUR per currency unit) or foreignCurrencyDeadline. Amounts are in the voucher currency. Update 2.0 only; accounts and tax rules are checked against ReceiptGuidance. Optionally attach a PDF/PNG/JPEG from SEVDESK_FILE_DIRS or an upload. Possible duplicates need allowDuplicate. Tier write: nothing is booked; dryRun previews. Foreign-currency drafts cannot be finalized here.",
+    "Create a draft voucher (Beleg) for a receipt or supplier invoice: expense or revenue, supplier, dates and booking-account positions. EUR by default; non-EUR requires exchangeRate (EUR per currency unit) or foreignCurrencyDeadline. Amounts are in the voucher currency. Update 2.0 only; accounts and tax rules are checked against ReceiptGuidance. Optionally attach a PDF/PNG/JPEG from SEVDESK_FILE_DIRS, an upload or an allowed https link. Possible duplicates need allowDuplicate. Tier write: nothing is booked; dryRun previews. Foreign-currency drafts cannot be finalized here.",
   toolset: "vouchers",
   tier: "write",
+  // Open world: `file` may be an https link the server downloads (SEVDESK_FILE_URL_HOSTS).
   annotations: {
     readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: false,
-    openWorldHint: false,
+    openWorldHint: true,
   },
   localEffects: "reads-files",
   input: z.strictObject({ ...voucherCreateInputShape, ...dryRunInputShape }),

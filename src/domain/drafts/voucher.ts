@@ -55,6 +55,7 @@ import {
   loadSupplierName,
   partyLabel,
   readReceiptFile,
+  receiptSha256,
   receiptText,
   resolveVoucherPositions,
   resolveVoucherRule,
@@ -181,8 +182,7 @@ export async function prepareVoucherCreate(
 ): Promise<VoucherSavePlan> {
   checkSupplierArgs(args.supplierId, args.supplierName, true);
   resolveVoucherCurrency(args.currency ?? "EUR", args);
-  const file =
-    args.file === undefined ? undefined : await readReceiptFile(options.files, args.file);
+  const file = args.file === undefined ? undefined : await readReceiptFile(options, args.file);
   return prepareVoucherCreateSpec(
     client,
     {
@@ -390,8 +390,7 @@ export async function prepareVoucherUpdate(
   const { signal } = options;
   assertChanges(args, "voucher");
   checkSupplierArgs(args.supplierId, args.supplierName, false);
-  const file =
-    args.file === undefined ? undefined : await readReceiptFile(options.files, args.file);
+  const file = args.file === undefined ? undefined : await readReceiptFile(options, args.file);
   const stored = await loadStoredVoucher(client, args.id, signal);
   const kind = checkDraft(stored, "changed");
   const oldCurrency = currencyCode(stored.record.currency);
@@ -675,13 +674,18 @@ export interface VoucherSaveResult {
    * confirms a new attachment; mere document presence cannot confirm replacement of a receipt.
    */
   readonly previousDocumentId?: number | null | undefined;
-  /** The uploaded receipt (name, kind, size, pages), when a file was attached. */
+  /**
+   * The uploaded receipt (name, kind, size, SHA-256, pages), when a file was attached; for a file
+   * from a link also the origin it was downloaded from.
+   */
   readonly receipt?:
     | {
         readonly name: string;
         readonly kind: string;
         readonly bytes: number;
+        readonly sha256: string;
         readonly pages?: number;
+        readonly downloadedFrom?: string;
       }
     | undefined;
 }
@@ -759,7 +763,11 @@ export async function executeVoucherSave(
           name: cleanText(state.file.name, 200) ?? "file",
           kind: state.file.kind,
           bytes: state.file.bytes.length,
+          sha256: receiptSha256(state.file),
           ...(uploaded?.pages === undefined ? {} : { pages: uploaded.pages }),
+          ...(state.file.host === undefined
+            ? {}
+            : { downloadedFrom: `https://${state.file.host}` }),
         };
   const notes = readBackNotes(details, state);
   const notesDe = readBackNotes(details, state, "de");

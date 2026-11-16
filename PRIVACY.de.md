@@ -1,4 +1,4 @@
-<!-- translated-from: PRIVACY.md sha256:080c900ec3fe -->
+<!-- translated-from: PRIVACY.md sha256:55227034cc3b -->
 
 # Datenschutz
 
@@ -9,13 +9,20 @@ erhebt **keine Telemetrie**.
   (`https://my.sevdesk.de/api/v1`, oder die von dir gesetzte `SEVDESK_BASE_URL`), mit deinem
   Token, und gibt Ergebnisse an den MCP-Client zurück, den du verbunden hast (zum Beispiel
   Claude Desktop). Was dein Client oder dein Modellanbieter mit diesen Daten tut, regeln deren
-  Bedingungen. Einen anderen Host kontaktiert er nicht, mit zwei Ausnahmen:
+  Bedingungen. Einen anderen Host kontaktiert er nicht, mit drei Ausnahmen:
   - **DATEV-Export.** `sevdesk_datev_export` (Stufe `write`) lädt das fertige ZIP aus dem
     Export-Speicher von sevDesk bei Amazon S3
     (`sevexport-filestorage-workload-prod.s3.eu-central-1.amazonaws.com`), über den vorsignierten
     Link, den sevDesk für den Export zurückgibt. Die Anfrage enthält diesen Link und kein
     sevDesk-Token; der Speicher-Host sieht die IP-Adresse des Servers und den Zeitpunkt. Ein Link
     zu einem anderen Host wird abgelehnt, und Weiterleitungen werden nicht verfolgt.
+  - **Belege von einem Link**, nur wenn du in `SEVDESK_FILE_URL_HOSTS` Hosts einträgst
+    (standardmäßig leer). Die Beleg- und E-Rechnungs-Werkzeuge laden dann einen https-Link zu einem
+    dieser Hosts herunter, wenn das Modell ihn als Datei übergibt, während dieses Aufrufs, und
+    behalten danach nichts. Die Anfrage enthält den Link samt seiner Query und kein sevDesk-Token,
+    kein Cookie und keine Zugangsdaten; der Host sieht die IP-Adresse des Servers und den
+    Zeitpunkt. Andere Hosts, IP-Adressen und nicht öffentliche Adressen werden abgelehnt, auch als
+    Ziel einer Weiterleitung.
   - **Client-Metadaten im Fernzugriff mit OAuth**: siehe „Dritte“ unter
     [Fernzugriff](#fernzugriff).
 - **Freigabeseite.** Mit `SEVDESK_CONFIRM=browser` (lokale Nutzung) wird die Vorschau einer Aktion

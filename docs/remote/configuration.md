@@ -64,6 +64,10 @@ differences:
   Bearer mode keeps them; the folders are on the server, not on the client's machine. There a file
   argument may be a path inside `SEVDESK_FILE_DIRS` or an upload, and `SEVDESK_OUTPUT_DIR`, when
   set, wins over download links: files are then saved on the server.
+- **`SEVDESK_FILE_URL_HOSTS`**: works in every mode, OAuth included: it touches no disk, and a
+  link is downloaded only from the hosts you list, from public addresses, without credentials
+  ([Files from a link](../configuration.md#files-from-a-link)). The server then reaches those
+  hosts for every connected account.
 - **`SEVDESK_AUDIT_LOG`**: one log for all accounts; every line names the account and the grant.
   It also records each received upload, created download link and download. In the image the
   root filesystem is read-only, so put it under `/data`.

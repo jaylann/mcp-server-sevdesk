@@ -38,6 +38,10 @@ The voucher tools never read your disk on their own:
   [`sevdesk_upload_request`](../tools.md#sevdesk_upload_request), gives you a link, and passes the
   upload on once you say it is done. Up to 10 files fit on one page; see
   [Files over HTTP](../remote/files.md).
+- **From a link**, in either mode, when the hosts it may come from are listed in
+  `SEVDESK_FILE_URL_HOSTS`: give the assistant an https link to the file (a supplier portal's
+  download link, a storage link). The server downloads it for this call only, without signing in
+  anywhere; see [Files from a link](../configuration.md#files-from-a-link).
 
 > File the receipt Belege/2026-11/tankstelle-shell.pdf.
 

@@ -28,6 +28,38 @@ The DATEV export ZIP is fetched from a presigned link that sevDesk returns. The 
 exactly one https host for it, follows no redirects, sends no credentials, caps the size and never
 shows the link to the model.
 
+## Files from a link
+
+With `SEVDESK_FILE_URL_HOSTS` set (it is empty, and the feature off, by default), the tools that
+take a receipt or e-invoice also accept an https link as `file`. The link comes from the model,
+which can be manipulated, so the server must not become a way to reach its own network or to
+fetch from anywhere (`src/safety/url-files.ts`):
+
+- Before any network request: https only, the default port, no user name or password, a host name
+  rather than an IP literal (also the forms `0x7f.1` or `2130706433` that parsers turn into one),
+  and the host on the operator's list (exact, or `*.example.com` for its subdomains). With an
+  empty list every link is refused, naming the setting.
+- The host is resolved once per download and every address must be public, with the same rules
+  as the client metadata fetch of OAuth mode ([SSRF](remote.md#fetching-client-metadata-ssrf)):
+  private, loopback, link-local, CGNAT, unique-local, documentation and multicast ranges are
+  refused, also inside NAT64, 6to4 and IPv4-mapped addresses. The connection goes to the checked
+  address (pinned lookup, SNI and certificate check for the name), so a second DNS answer is never
+  used (DNS rebinding).
+- Redirects are followed at most three times, because cloud storage and portals hand out links
+  that redirect; each target passes the same checks, including the list, and a host already
+  resolved in the download keeps its address.
+- The request carries only `Accept` and `User-Agent`: no cookie, no `Authorization`, never the
+  sevDesk token. A response must be 200, uncompressed, of a content type that fits a PDF, PNG,
+  JPEG or XML file and agrees with the content, at most 20 MiB (checked on `Content-Length` and
+  while the body streams), within 60 seconds; at most four downloads run at once.
+- Nothing is kept after the call. Refusals are trusted text: they name the setting and the allowed
+  hosts, never the link, its path or query, a redirect target or anything the host sent. The
+  preview and the result show the file's SHA-256 and host; the audit log records the link without
+  user info, query and fragment.
+
+The residual risk is the list itself: a host on it that serves files anyone can upload (a shared
+cloud storage domain, especially under `*.`) lets the model attach such a file as a receipt.
+
 ## Generic read surface
 
 `sevdesk_api_get` (toolset `advanced`, off by default) lets the model choose a GET path, which a

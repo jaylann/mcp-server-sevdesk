@@ -81,6 +81,13 @@
           "isSecret": false
         },
         {
+          "name": "SEVDESK_FILE_URL_HOSTS",
+          "description": "Comma-separated hosts receipts and e-invoices may be downloaded from when a tool gets an https link (portal.example.com, or *.example.com for its subdomains). Unset: links are refused.",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
           "name": "SEVDESK_OUTPUT_DIR",
           "description": "Folder where PDFs, e-invoice XML, CSV and DATEV exports may be saved. Unset: the file-saving tools are not offered.",
           "format": "string",
@@ -161,6 +168,13 @@
         {
           "name": "SEVDESK_FILE_DIRS",
           "description": "Absolute folders inside the container (separated by colons) that receipts and e-invoices may be read from; mount them into the container. Unset: no local file is read.",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SEVDESK_FILE_URL_HOSTS",
+          "description": "Comma-separated hosts receipts and e-invoices may be downloaded from when a tool gets an https link (portal.example.com, or *.example.com for its subdomains). Unset: links are refused.",
           "format": "string",
           "isRequired": false,
           "isSecret": false
