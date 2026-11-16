@@ -2332,11 +2332,13 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   account, Update 2.0 (probe `write-contact-partial-update`, in both write runs); recorded
   2026-11-16, trial account, Update 2.0 (probe `write-contact-parent`).
 - **Impact:** `sevdesk_contact_update` sends only the fields that change, to the contact, its
-  billing address and its main communication ways (`src/domain/contacts-write.ts`). Nothing can be
-  cleared (empty strings are rejected by the input schema), an update without changes is a
-  validation error, and a person never gets an organisation name or an organisation a first or
-  last name. `sevdesk_part_update` relies on the same reading for `PUT /Part/{partId}`
-  (`src/domain/parts-write.ts`).
+  billing address and its main communication ways (`src/domain/contacts-write.ts`). A text field
+  is never cleared (empty strings are rejected by the input schema); what an update takes away is
+  named in its `remove` argument: the link to a person's organisation (`PUT` with `parent: null`,
+  D-083) and single addresses and communication ways (`DELETE`, D-084, sent after every other
+  change). An update without changes is a validation error, and a person never gets an
+  organisation name or an organisation a first or last name. `sevdesk_part_update` relies on the
+  same reading for `PUT /Part/{partId}` (`src/domain/parts-write.ts`).
 - **Test:** `test/unit/tools/masterdata/contact-update.test.ts` ("changes only the given fields of
   contact, billing address and main entries", "sends no contact PUT when only a communication way
   changes", "refuses an update that changes nothing", "never mixes the kinds of contacts"),
@@ -3143,6 +3145,12 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("follows parent through create, set,
   change and clear and checks the parent filter", "reports wrong-sided parents as stored, as
   recorded, and a refusal with its message (D-083)"); its simulated account behaves as recorded.
+  `test/unit/tools/masterdata/contact-create.test.ts` ("links a new person to its organisation and
+  names it in the preview", "refuses %s (sevDesk would store it)"),
+  `test/unit/tools/masterdata/contact-update.test.ts` ("moves a person to another organisation and
+  names both", "removes the link with parent null and lists it as removed", "refuses %s (sevDesk
+  would store it)"), `test/unit/tools/masterdata/contact-delete.test.ts` ("deletes an organisation
+  and confirms with a read that it is gone (D-084)": the contact persons by the parent filter).
   Live: probes `write-contact-parent`, `write-contact-parent-invalid`.
 
 ### D-084: Deleting a contact deletes its addresses and communication ways
@@ -3169,7 +3177,12 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   removing an address or way must say when it removes the billing address or the main entry, since
   sevDesk elects no new one.
 - **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("deletes contacts, addresses and
-  communication ways and reports what is left"). Live: the four probes above.
+  communication ways and reports what is left"); `test/unit/tools/masterdata/contact-delete.test.ts`
+  ("deletes an organisation and confirms with a read that it is gone (D-084)", "counts a 404 on
+  the DELETE as already gone (D-084)"); `test/unit/tools/masterdata/contact-update.test.ts`
+  ("removes an address and the main e-mail last and says what is left", "warns when the billing
+  address goes and changes what remains instead", "counts an entry sevDesk no longer has as
+  already gone"). Live: the four probes above.
 
 ### D-085: Refused deletes of referenced contacts and cost centres arrive as HTTP 200
 
@@ -3193,7 +3206,11 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   unexpected_response", "keeps sevDesk's error text from a 2xx error body as the upstream message
   only"); `test/unit/scripts/gaps-contacts-probes.test.ts` ("deletes contacts, addresses and
   communication ways and reports what is left", "deletes only its own cost centres, unused and in
-  use"). Live: probes `write-contact-delete-referenced`, `write-cost-centre-delete`.
+  use"); `test/regressions/contact-delete-referenced.test.ts` ("is reported as a refusal in our
+  words, not as a deletion, and never retried", through the real client);
+  `test/unit/tools/masterdata/contact-delete.test.ts` ("reports sevDesk's refusal of a referenced
+  contact in its own words (D-085)"). Live: probes `write-contact-delete-referenced`,
+  `write-cost-centre-delete`.
 
 ### D-086: Custom contact fields: 30-character names, no contact embed, cascading deletes
 

@@ -21,10 +21,11 @@ export const contactCreateTool = defineWriteTool({
     "(firstName/lastName), as customer (Kunde, default), supplier (Lieferant), partner or " +
     "prospect, with optional customer number (Kundennummer; default: sevDesk assigns the next " +
     "free one), USt-IdNr., Steuernummer, Leitweg-ID, billing address (Rechnungsanschrift) and " +
-    "e-mail, phone, website. Tier write. Checks first that no contact with the same name or " +
-    "e-mail exists (allowDuplicate: true creates one anyway) and that the customer number is " +
-    "free. Search with sevdesk_contacts_search before; change it later with " +
-    "sevdesk_contact_update.",
+    "e-mail, phone, website; a person can belong to an organisation as its contact person " +
+    "(Ansprechpartner, parentOrganisationId). Tier write. Checks first that no contact with the " +
+    "same name or e-mail exists (allowDuplicate: true creates one anyway), that the customer " +
+    "number is free and that parentOrganisationId is an organisation. Search with " +
+    "sevdesk_contacts_search before; change it later with sevdesk_contact_update.",
   toolset: "contacts",
   tier: "write",
   annotations: {
@@ -49,7 +50,13 @@ export const contactCreateTool = defineWriteTool({
   output: contactWriteOutput,
   // "No contact with this name or e-mail yet" and "the customer number is free" are checked,
   // then the contact is created: two creations at once both passed (review 2026-11, round 3).
-  locks: () => [ACCOUNT_CONTACT_NUMBERS],
+  // The organisation is checked to be one, so a deletion of it must not run in between.
+  locks: (args) => [
+    ACCOUNT_CONTACT_NUMBERS,
+    ...(args.parentOrganisationId === undefined
+      ? []
+      : [{ objectName: "Contact", id: String(args.parentOrganisationId) }]),
+  ],
   prepare: (args, ctx) => planContactCreate(ctx.client, args, ctx.signal),
   execute: async (_args, plan, ctx) => {
     const { details, affected } = await executeContactCreate(ctx.client, plan.state, {

@@ -2,11 +2,11 @@
  * Contact writes (Kontakte anlegen und ändern): the checks, previews and requests behind
  * `sevdesk_contact_create` and `sevdesk_contact_update`.
  *
- * A contact is spread over three resources: `Contact` (names, category, numbers), `ContactAddress`
- * and `CommunicationWay` (e-mail, phone, website). Creating one is therefore up to three separate,
- * non-atomic writes; when a later one fails, the error carries the records already created
- * (`completedWrites`) so the user can finish the contact with the update tool instead of creating
- * it twice.
+ * A contact is spread over three resources: `Contact` (names, category, numbers, the organisation
+ * a person belongs to), `ContactAddress` and `CommunicationWay` (e-mail, phone, website). Creating
+ * one is therefore up to three separate, non-atomic writes; when a later one fails, the error
+ * carries the records already created (`completedWrites`) so the user can finish the contact with
+ * the update tool instead of creating it twice.
  *
  * Payload evidence (live-measured by sevdesk-rs, https://github.com/jernoxit/sevdesk-rs,
  * `src/document_payload/contact.rs` and `src/endpoints/contact.rs`, 2026-10-01; the same shapes
@@ -15,11 +15,19 @@
  *   spelling), `category` `{id, objectName: "Category"}` and `status`; without `customerNumber`
  *   sevDesk assigns the next free number itself.
  * - `PUT /Contact/{id}`, `PUT /ContactAddress/{id}` and `PUT /CommunicationWay/{id}` are partial
- *   updates: fields left out stay as they are. So updates send only what changes, and nothing is
- *   ever cleared. `name` sent for a person does not make it an organisation, so the kinds are
- *   never mixed here.
+ *   updates: fields left out stay as they are. So updates send only what changes, and a text field
+ *   is never cleared (an empty text is not accepted). `name` sent for a person does not make it an
+ *   organisation, so the kinds are never mixed here.
  * - `GET /Contact?customerNumber=` filters exactly; `name=` matches loosely (organisation name,
  *   first or last name), so candidates are compared here.
+ * - `parent` `{id, objectName: "Contact"}` on `POST` and `PUT /Contact` links a person to its
+ *   organisation, and `PUT` with `parent: null` removes the link; reads then leave the key out
+ *   (recorded 2026-11-16, D-083). sevDesk checks nothing (a person as parent, a parent on an
+ *   organisation are stored), so the checks are made here: only a person gets a parent, and the
+ *   parent must be an existing organisation.
+ * Three things are taken away, and only when an update names them in `remove`: the link to the
+ * organisation (the `PUT` above), and one address or communication way at a time (a `DELETE`, sent
+ * after every other change; `contacts-delete.ts`). Nothing else is ever cleared.
  * Outgoing payloads are built from strict schemas, because sevDesk ignores unknown fields
  * silently (D-003).
  */
@@ -43,7 +51,18 @@ import {
   getContactDetails,
   getNextCustomerNumber,
   parseContactRecord,
+  toContactDto,
 } from "./contacts.js";
+import {
+  executeRemovals,
+  type PlannedRemoval,
+  planRemovals,
+  removalWarnings,
+  type RemovedEntry,
+  type RemoveInput,
+  type WayKind,
+  wayKindOfType,
+} from "./contacts-delete.js";
 import type { CountryReadOptions } from "./country-codes.js";
 import {
   CONTACT_CATEGORIES,
@@ -91,6 +110,7 @@ const contactCreatePayloadSchema = z.strictObject({
   vatNumber: text.optional(),
   taxNumber: text.optional(),
   buyerReference: text.optional(),
+  parent: refSchema("Contact").optional(),
 });
 
 const contactUpdatePayloadSchema = z.strictObject({
@@ -102,6 +122,8 @@ const contactUpdatePayloadSchema = z.strictObject({
   vatNumber: text.optional(),
   taxNumber: text.optional(),
   buyerReference: text.optional(),
+  /** The organisation a person belongs to; `null` removes the link (D-083). */
+  parent: refSchema("Contact").nullable().optional(),
 });
 
 const addressFieldsSchema = z.strictObject({
@@ -185,10 +207,12 @@ export interface ContactCreateInput extends AddressInput, CommunicationInput {
   readonly vatNumber?: string | undefined;
   readonly taxNumber?: string | undefined;
   readonly buyerReference?: string | undefined;
+  /** Persons only: the organisation contact the person belongs to (Ansprechpartner). */
+  readonly parentOrganisationId?: number | undefined;
   readonly allowDuplicate: boolean;
 }
 
-/** What `sevdesk_contact_update` asks for: only the fields to change. */
+/** What `sevdesk_contact_update` asks for: only the fields to change, and what to remove. */
 export interface ContactUpdateInput extends AddressInput, CommunicationInput {
   readonly id: number;
   readonly organisationName?: string | undefined;
@@ -199,6 +223,10 @@ export interface ContactUpdateInput extends AddressInput, CommunicationInput {
   readonly vatNumber?: string | undefined;
   readonly taxNumber?: string | undefined;
   readonly buyerReference?: string | undefined;
+  /** Persons only: links the person to this organisation (or moves it to another one). */
+  readonly parentOrganisationId?: number | undefined;
+  /** Addresses, communication ways or the organisation link to take off this contact. */
+  readonly remove?: readonly RemoveInput[] | undefined;
 }
 
 const COMMUNICATION_FIELDS: readonly {
@@ -238,23 +266,34 @@ export async function planContactCreate(
   if (!hasAddress && input.country !== undefined) {
     throw validation("A country alone is no address: add street, zip or city, or leave it out.");
   }
+  if (kind === "organisation" && input.parentOrganisationId !== undefined) {
+    throw validation(
+      "parentOrganisationId is only for persons (firstName/lastName): an organisation does not " +
+        "belong to another organisation. Leave it out.",
+    );
+  }
 
-  const [nameMatches, emailMatches, numberOwner, nextNumber, country] = await Promise.all([
-    findContactsByName(client, input, kind, signal),
-    input.email === undefined
-      ? Promise.resolve(emptyScan())
-      : findContactsByEmail(client, input.email, signal),
-    input.customerNumber === undefined
-      ? Promise.resolve(undefined)
-      : findContactByCustomerNumber(client, input.customerNumber, signal),
-    input.customerNumber === undefined
-      ? getNextCustomerNumber(client, signal)
-      : Promise.resolve(undefined),
-    hasAddress
-      ? resolveCountry(client, input.country ?? DEFAULT_COUNTRY_CODE, signal)
-      : Promise.resolve(undefined),
-  ]);
+  const [parentCandidate, nameMatches, emailMatches, numberOwner, nextNumber, country] =
+    await Promise.all([
+      input.parentOrganisationId === undefined
+        ? Promise.resolve(undefined)
+        : readParentCandidate(client, input.parentOrganisationId, signal),
+      findContactsByName(client, input, kind, signal),
+      input.email === undefined
+        ? Promise.resolve(emptyScan())
+        : findContactsByEmail(client, input.email, signal),
+      input.customerNumber === undefined
+        ? Promise.resolve(undefined)
+        : findContactByCustomerNumber(client, input.customerNumber, signal),
+      input.customerNumber === undefined
+        ? getNextCustomerNumber(client, signal)
+        : Promise.resolve(undefined),
+      hasAddress
+        ? resolveCountry(client, input.country ?? DEFAULT_COUNTRY_CODE, signal)
+        : Promise.resolve(undefined),
+    ]);
 
+  const parent = parentCandidate === undefined ? undefined : checkParent(parentCandidate);
   if (numberOwner !== undefined) {
     throw validation(
       `The customer number is already used by contact ${numberOwner}. Use another number, or ` +
@@ -279,6 +318,7 @@ export async function planContactCreate(
     vatNumber: input.vatNumber,
     taxNumber: input.taxNumber,
     buyerReference: input.buyerReference,
+    parent: parent === undefined ? undefined : ref("Contact", parent.id),
   });
   const address =
     country === undefined
@@ -320,6 +360,7 @@ export async function planContactCreate(
         `${nextNumber ?? "next free number"} (next free number, assigned by sevDesk)`,
     },
   ];
+  if (parent !== undefined) facts.push({ label: PARENT_LABEL, value: organisationText(parent) });
   pushFact(facts, "VAT ID (USt-IdNr.)", input.vatNumber);
   pushFact(facts, "Tax number (Steuernummer)", input.taxNumber);
   pushFact(facts, "Buyer reference (Leitweg-ID)", input.buyerReference);
@@ -437,14 +478,21 @@ export interface ContactUpdateState {
   readonly contact: ContactUpdatePayload | undefined;
   readonly address: AddressChange | undefined;
   readonly communicationWays: readonly WayChange[];
+  /** Addresses and communication ways deleted after every other change. */
+  readonly removals: readonly PlannedRemoval[];
+  /** The organisation whose link the contact `PUT` removes (`parent: null`), if any. */
+  readonly removedParentId: number | undefined;
 }
 
 /**
  * Reads the contact with its addresses and communication ways and works out the smallest change:
- * contact fields that differ, the billing address (or the only address; a new billing address when
- * there is neither) and the main e-mail/phone/website of each type (added when missing). Fields
- * that were not given are never touched. Throws a `validation` SevdeskError when the change is
- * impossible (names of the other contact kind, customer number taken) or empty.
+ * contact fields that differ, the organisation a person belongs to, the billing address (or the
+ * only address; a new billing address when there is neither) and the main e-mail/phone/website of
+ * each type (added when missing), then what `remove` takes off. Changes apply to what remains after
+ * the removals, so a removed entry is never the one changed. Fields that were not given are never
+ * touched. Throws a `validation` SevdeskError when the change is impossible (names of the other
+ * contact kind, customer number taken, a parent that is no organisation, an id of another contact)
+ * or empty.
  */
 export async function planContactUpdate(
   client: SevdeskClient,
@@ -456,7 +504,13 @@ export async function planContactUpdate(
   const hasAddress = [input.street, input.zip, input.city, input.country].some(
     (value) => value !== undefined,
   );
-  const [record, details, numberOwner, country] = await Promise.all([
+  const unlink = parentRemoval(input);
+  if (input.parentOrganisationId === id) {
+    throw validation(
+      `Contact ${id} cannot belong to itself: parentOrganisationId must be another contact.`,
+    );
+  }
+  const [record, details, numberOwner, country, parentCandidate] = await Promise.all([
     readContactRecord(client, id, signal),
     getContactDetails(client, id, { signal, cacheOwner }),
     input.customerNumber === undefined
@@ -465,6 +519,9 @@ export async function planContactUpdate(
     input.country === undefined
       ? Promise.resolve(undefined)
       : resolveCountry(client, input.country, signal),
+    input.parentOrganisationId === undefined
+      ? Promise.resolve(undefined)
+      : readParentCandidate(client, input.parentOrganisationId, signal),
   ]);
   const name = cleanText(details.contact.displayName, DISPLAY_MAX) ?? `contact ${id}`;
 
@@ -483,9 +540,31 @@ export async function planContactUpdate(
         "(persons are separate contacts in sevDesk).",
     );
   }
+  if (details.contact.kind === "organisation" && input.parentOrganisationId !== undefined) {
+    throw validation(
+      `Contact ${id} is an organisation: only persons belong to an organisation ` +
+        "(parentOrganisationId). Leave it out.",
+    );
+  }
+  const parent = parentCandidate === undefined ? undefined : checkParent(parentCandidate);
   if (numberOwner !== undefined && numberOwner !== id) {
     throw validation(`The customer number is already used by contact ${numberOwner}.`);
   }
+  const currentParentId = record.parent?.id;
+  if (unlink !== undefined) {
+    if (currentParentId === undefined) {
+      throw validation(
+        `Contact ${id} belongs to no organisation: there is no link to remove; nothing was changed.`,
+      );
+    }
+    if (currentParentId !== unlink) {
+      throw validation(
+        `Contact ${id} belongs to organisation ${currentParentId}, not ${unlink}; nothing was ` +
+          "changed. Name the current organisation to remove the link.",
+      );
+    }
+  }
+  const removal = planRemovals(details, input.remove ?? []);
 
   const facts: ConfirmationFact[] = [{ label: "Contact", value: `${name} (id ${id})` }];
   const changed: string[] = [];
@@ -519,15 +598,43 @@ export async function planContactUpdate(
   field("vatNumber", input.vatNumber, "VAT ID");
   field("taxNumber", input.taxNumber, "Tax number");
   field("buyerReference", input.buyerReference, "Buyer reference");
+  const linkChanges =
+    (parent !== undefined && parent.id !== currentParentId) || unlink !== undefined;
+  if (linkChanges) {
+    const before =
+      currentParentId === undefined
+        ? "(none)"
+        : parentText(await readParentCandidate(client, currentParentId, signal));
+    contactBody["parent"] = parent === undefined ? null : ref("Contact", parent.id);
+    facts.push({
+      label: PARENT_LABEL,
+      value: `${before} → ${parent === undefined ? "(none)" : organisationText(parent)}`,
+    });
+    changed.push("organisation link");
+  }
   const contact =
     Object.keys(contactBody).length === 0
       ? undefined
       : contactUpdatePayloadSchema.parse(contactBody);
 
+  const removedAddressIds = new Set(
+    removal.removals.filter((entry) => entry.kind === "address").map((entry) => entry.id),
+  );
+  const removedWayIds = new Set(
+    removal.removals.filter((entry) => entry.kind !== "address").map((entry) => entry.id),
+  );
   const warnings: string[] = [];
   let address: AddressChange | undefined;
   if (hasAddress) {
-    address = await planAddressChange(client, input, details, country, facts, signal);
+    address = await planAddressChange(
+      client,
+      input,
+      details,
+      removedAddressIds,
+      country,
+      facts,
+      signal,
+    );
     if (address !== undefined) changed.push("address");
     if (!details.addressesComplete) {
       warnings.push(
@@ -540,7 +647,7 @@ export async function planContactUpdate(
   for (const { field: key, type, label } of COMMUNICATION_FIELDS) {
     const value = input[key];
     if (value === undefined) continue;
-    const target = mainWay(details, type);
+    const target = mainWay(details, type, removedWayIds);
     if (target !== undefined) {
       if (sameValue(type, target.value, value)) continue;
       communicationWays.push({
@@ -569,6 +676,29 @@ export async function planContactUpdate(
     );
   }
 
+  if (removal.removals.length > 0) {
+    facts.push(...removal.facts);
+    changed.push(...removal.changes);
+    const newMainKinds = new Set(
+      communicationWays
+        .filter((way) => way.kind === "create")
+        .map((way) => wayKindOfType(way.body.type))
+        .filter((kind): kind is WayKind => kind !== undefined),
+    );
+    warnings.push(...removalWarnings(details, removal.removals, newMainKinds));
+    facts.push({
+      label: "Left afterwards",
+      value: leftText(
+        details.addresses.length - removedAddressIds.size + (address?.kind === "create" ? 1 : 0),
+        details.addressesComplete,
+        details.communicationWays.length -
+          removedWayIds.size +
+          communicationWays.filter((way) => way.kind === "create").length,
+        details.communicationWaysComplete,
+      ),
+    });
+  }
+
   if (changed.length === 0) {
     throw validation(`Nothing to change: contact ${id} already has these values.`);
   }
@@ -579,19 +709,31 @@ export async function planContactUpdate(
       warnings,
       irreversible: false,
     },
-    state: { contactId: id, contact, address, communicationWays },
+    state: {
+      contactId: id,
+      contact,
+      address,
+      communicationWays,
+      removals: removal.removals,
+      removedParentId: unlink,
+    },
   };
 }
 
 /**
- * Sends the planned changes in order (contact, address, communication ways) and reads the contact
- * back. Never retries; a failure after the first write lists what was already changed.
+ * Sends the planned changes in order (contact, address, communication ways), then the removals
+ * (`DELETE`s last, so nothing is gone before its replacement exists), and reads the contact back.
+ * Never retries; a failure after the first write lists what was already changed or deleted.
  */
 export async function executeContactUpdate(
   client: SevdeskClient,
   state: ContactUpdateState,
   options: CountryReadOptions,
-): Promise<{ details: ContactDetails; affected: SevdeskObjectRef[] }> {
+): Promise<{
+  details: ContactDetails;
+  affected: SevdeskObjectRef[];
+  removed: RemovedEntry[];
+}> {
   const { signal, cacheOwner } = options;
   const withSignal = signal === undefined ? {} : { signal };
   const completed: CompletedWrite[] = [];
@@ -650,8 +792,13 @@ export async function executeContactUpdate(
         });
       }
     }
+    const removed: RemovedEntry[] =
+      state.removedParentId === undefined
+        ? []
+        : [{ kind: "parentOrganisation", id: state.removedParentId }];
+    removed.push(...(await executeRemovals(client, state.removals, completed, signal)));
     const details = await getContactDetails(client, state.contactId, { signal, cacheOwner });
-    return { details, affected: completed.map((entry) => ({ ...entry })) };
+    return { details, affected: completed.map((entry) => ({ ...entry })), removed };
   } catch (error) {
     throw completed.length === 0 ? error : afterPartialWrite(error, completed);
   }
@@ -661,11 +808,12 @@ async function planAddressChange(
   client: SevdeskClient,
   input: ContactUpdateInput,
   details: ContactDetails,
+  removedIds: ReadonlySet<number>,
   country: { readonly id: number; readonly name: string } | undefined,
   facts: ConfirmationFact[],
   signal: AbortSignal | undefined,
 ): Promise<AddressChange | undefined> {
-  const target = targetAddress(details);
+  const target = targetAddress(details, removedIds);
   if (target !== undefined) {
     const body: Record<string, unknown> = {};
     const lines: string[] = [];
@@ -707,26 +855,140 @@ async function planAddressChange(
 }
 
 /**
- * The address an update changes: the billing address (Rechnungsanschrift, lowest id first), else
- * the only address; `undefined` (add a billing address) when there is neither.
+ * The address an update changes, among those it does not remove: the billing address
+ * (Rechnungsanschrift, lowest id first), else the only address; `undefined` (add a billing
+ * address) when there is neither.
  */
-function targetAddress(details: ContactDetails): ContactDetails["addresses"][number] | undefined {
-  const sorted = [...details.addresses].sort((a, b) => a.id - b.id);
+function targetAddress(
+  details: ContactDetails,
+  removedIds: ReadonlySet<number>,
+): ContactDetails["addresses"][number] | undefined {
+  const sorted = details.addresses
+    .filter((address) => !removedIds.has(address.id))
+    .sort((a, b) => a.id - b.id);
   return (
     sorted.find((address) => address.category?.id === BILLING_ADDRESS_CATEGORY) ??
     (sorted.length === 1 ? sorted[0] : undefined)
   );
 }
 
-/** The main communication way of a type, else the one with the lowest id. */
+/**
+ * The main communication way of a type, else the one with the lowest id, among those the update
+ * does not remove.
+ */
 function mainWay(
   details: ContactDetails,
   type: CommunicationType,
+  removedIds: ReadonlySet<number>,
 ): ContactDetails["communicationWays"][number] | undefined {
   const ofType = details.communicationWays
-    .filter((way) => way.type.toUpperCase() === type)
+    .filter((way) => way.type.toUpperCase() === type && !removedIds.has(way.id))
     .sort((a, b) => a.id - b.id);
   return ofType.find((way) => way.main) ?? ofType[0];
+}
+
+// ---------------------------------------------------------------------------------------------
+// The organisation a person belongs to (parent, D-083)
+// ---------------------------------------------------------------------------------------------
+
+/** The label of the preview fact that names a person's organisation. */
+const PARENT_LABEL = "Contact person of";
+
+/** What a read of a would-be (or current) parent contact found. */
+type ParentCandidate =
+  | { readonly kind: "missing"; readonly id: number }
+  | { readonly kind: "person" | "organisation"; readonly id: number; readonly name: string };
+
+/**
+ * Reads the contact `id` names as a parent. A missing contact is a result, not an error, so the
+ * caller decides in a fixed order which refusal comes first.
+ */
+async function readParentCandidate(
+  client: SevdeskClient,
+  id: number,
+  signal: AbortSignal | undefined,
+): Promise<ParentCandidate> {
+  try {
+    const dto = toContactDto(await readContactRecord(client, toSevdeskId(id), signal));
+    return {
+      kind: dto.kind,
+      id,
+      name: cleanText(dto.displayName, DISPLAY_MAX) ?? `contact ${id}`,
+    };
+  } catch (error) {
+    if (error instanceof SevdeskError && error.kind === "not_found") return { kind: "missing", id };
+    throw error;
+  }
+}
+
+/**
+ * The parent a person may get: an existing organisation. sevDesk itself stores any contact as a
+ * parent (D-083), so a missing contact and a person are refused here, naming only the id.
+ */
+function checkParent(candidate: ParentCandidate): { readonly id: number; readonly name: string } {
+  switch (candidate.kind) {
+    case "missing":
+      throw validation(
+        `Contact ${candidate.id} does not exist in sevDesk. parentOrganisationId must be the id ` +
+          "of an organisation contact; find it with sevdesk_contacts_search.",
+      );
+    case "person":
+      throw validation(
+        `Contact ${candidate.id} is a person, not an organisation: a person can only belong to ` +
+          "an organisation (as its contact person, Ansprechpartner). Use the organisation's " +
+          "contact id as parentOrganisationId.",
+      );
+    case "organisation":
+      return candidate;
+    default:
+      return unreachable(candidate);
+  }
+}
+
+/** The organisation link `remove` takes off, if it names one (at most once). */
+function parentRemoval(input: ContactUpdateInput): number | undefined {
+  const entries = (input.remove ?? []).filter((entry) => entry.kind === "parentOrganisation");
+  if (entries.length > 1) {
+    throw validation("remove lists the organisation link more than once; list it once.");
+  }
+  const entry = entries[0];
+  if (entry !== undefined && input.parentOrganisationId !== undefined) {
+    throw validation(
+      "Give either parentOrganisationId (link to an organisation) or remove kind " +
+        "parentOrganisation (remove the link), not both.",
+    );
+  }
+  return entry?.id;
+}
+
+/** "Musterfirma GmbH (contact 1001)". */
+function organisationText(parent: { readonly id: number; readonly name: string }): string {
+  return `${parent.name} (contact ${parent.id})`;
+}
+
+/** The current parent as the preview shows it, also when it is gone or not an organisation. */
+function parentText(candidate: ParentCandidate): string {
+  return candidate.kind === "missing"
+    ? `contact ${candidate.id} (no longer in sevDesk)`
+    : organisationText(candidate);
+}
+
+/** "1 address, 2 communication ways", "at least" for a list that could not be read in full. */
+function leftText(
+  addresses: number,
+  addressesComplete: boolean,
+  ways: number,
+  waysComplete: boolean,
+): string {
+  const atLeast = (complete: boolean): string => (complete ? "" : "at least ");
+  return (
+    `${atLeast(addressesComplete)}${addresses} address${addresses === 1 ? "" : "es"}, ` +
+    `${atLeast(waysComplete)}${ways} communication way${ways === 1 ? "" : "s"}`
+  );
+}
+
+function unreachable(value: never): never {
+  throw new Error(`Unexpected value: ${JSON.stringify(value)}`);
 }
 
 function sameValue(type: CommunicationType, current: string, next: string): boolean {

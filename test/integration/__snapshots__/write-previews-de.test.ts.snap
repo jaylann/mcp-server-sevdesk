@@ -210,6 +210,19 @@ Summe (erwartet): netto 100,00 EUR, USt. 19,00 EUR, brutto 119,00 EUR
 Status nach dem Speichern: Entwurf (50), noch nicht gebucht"
 `;
 
+exports[`German previews > delete a contact with its addresses and communication ways: says the same in German 1`] = `
+"Kontakt 1001 (Organisation) aus sevDesk löschen.
+! Der Kontakt, seine 2 Adressen und seine 3 Kommunikationswege werden aus sevDesk gelöscht; das lässt sich nicht rückgängig machen.
+! Zu dieser Organisation gehört 1 Ansprechpartner; was sevDesk mit den Ansprechpartnern einer gelöschten Organisation macht, ist nicht erfasst: Prüfen Sie das danach mit sevdesk_contact_get.
+(nicht umkehrbar)
+Kontakt: Musterfirma GmbH (ID 1001)
+Kundennummer: K-1001
+Kategorie: Kunde
+Ansprechpartner: 1: Kontakt 1002
+Adressen (werden mitgelöscht): 2
+Kommunikationswege (werden mitgelöscht): 3"
+`;
+
 exports[`German previews > delete a draft voucher: says the same in German 1`] = `
 "Beleg 2101 (Entwurf) aus sevDesk löschen.
 ! Der Entwurf und alle seine Positionen werden aus sevDesk gelöscht; das lässt sich nicht rückgängig machen.
