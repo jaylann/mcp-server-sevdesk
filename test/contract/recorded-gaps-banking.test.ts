@@ -64,7 +64,7 @@ describe(`recorded ${SESSION}: check accounts (D-097)`, () => {
     })),
   ];
 
-  it("lists the recorded page: valid DTOs, file-import accounts as bank, offline as clearing", async () => {
+  it("lists the recorded page: valid DTOs, file-import accounts as bank with fileImport, offline as clearing", async () => {
     const result = await listBankAccounts(new FakeSevdeskClient(routes()), {
       asOf: SESSION,
       includeArchived: false,
@@ -76,12 +76,22 @@ describe(`recorded ${SESSION}: check accounts (D-097)`, () => {
       expect(bankAccountDtoSchema.safeParse(account).success, String(account.id)).toBe(true);
     }
     // File-import accounts are type online with an importType; nothing tells them from a real
-    // bank connection except importType and bankServer (D-097).
+    // bank connection except importType and bankServer (D-097), so type stays "bank" and
+    // fileImport carries the difference.
     const imports = accountRows().filter((row) => row.type === "online");
     expect(imports.length).toBeGreaterThan(0);
     expect(imports.every((row) => row.importType === "CSV")).toBe(true);
     expect(result.items.filter((account) => account.type === "bank")).toHaveLength(imports.length);
     expect(result.items.filter((account) => account.type === "clearing")).toHaveLength(1);
+    // fileImport follows importType on the online rows: every recorded file-import account is
+    // marked, with its import type, and the offline account is not.
+    for (const account of result.items) {
+      const row = accountRows().find((candidate) => candidate.id === String(account.id));
+      const isImport = row?.type === "online" && row.importType === "CSV";
+      expect(account.fileImport, String(account.id)).toBe(isImport);
+      expect(account.importType, String(account.id)).toBe(isImport ? "CSV" : undefined);
+    }
+    expect(result.items.filter((account) => account.fileImport)).toHaveLength(imports.length);
     // A recorded page of 5 rows of a total of 7: the list says it is incomplete.
     expect(result.complete).toBe(false);
   });

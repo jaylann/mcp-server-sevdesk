@@ -157,6 +157,7 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 | [D-114](#d-114-docserver-layout-lists-sit-under-objects-and-carry-large-base64-fields)             | DocServer layout lists sit under `objects` and carry large base64 fields               | Open                  |
 | [D-115](#d-115-post-and-delete-texttemplate-create-and-delete-text-templates)                      | `POST` and `DELETE /TextTemplate` create and delete text templates                     | Open                  |
 | [D-116](#d-116-document-discounts-discountsave-takes-a-list-getdiscounts-reads-them)               | Document discounts: `discountSave` takes a list; `getDiscounts` reads them             | Open                  |
+| [D-119](#d-119-the-account-factories-accountingnumber-is-documented-but-not-recorded)              | The account factories' `accountingNumber` is documented but not recorded               | Open                  |
 
 ## Entries
 
@@ -3475,11 +3476,23 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   cash register is set up in the web app, describe "delete" as archiving (the account and its
   rows stay readable by id, but leave the transaction list), and tell a file-import account by `importType`, never by `type`
   alone. `listBankAccounts` already hides status 0 unless asked (`includeArchived`), which fits
-  archived accounts that sevDesk's list leaves out anyway.
+  archived accounts that sevDesk's list leaves out anyway. Handling (#88):
+  `sevdesk_bank_account_create` (tier `write`) creates file-import and clearing accounts through
+  the two factories, says that a cash register is set up in the web app and that an account is
+  only archived, refuses a name an active account has (no human confirms this tier, and a second
+  account could not be deleted again), and takes the created account from sevDesk's answer.
+  The account list's `fileImport` (with `importType`) is true only for an `online` account with
+  `importType` `CSV` or `MT940`; `type` keeps its meaning.
 - **Test:** `test/contract/recorded-gaps-banking.test.ts` (the recorded list through
-  `listBankAccounts`: file-import accounts as `bank`, the offline account as `clearing`, only
-  active rows, an incomplete page); `test/unit/scripts/gaps-banking-probes.test.ts` (archiving,
-  the refusal text). Live: probes `write-check-account-factories`, `read-check-account-kinds`.
+  `listBankAccounts`: file-import accounts as `bank` with `fileImport` and `importType` `CSV`,
+  the offline account as `clearing`, only active rows, an incomplete page);
+  `test/unit/tools/banking/accounts.test.ts` ("tells file-import accounts by importType, never by
+  type alone"); `test/unit/domain/bank-account-create.test.ts` (the two factories and their
+  bodies, the account read from the answer, the refusal of a same-named active account);
+  `test/unit/tools/banking/account-create.test.ts` (no cash register, archive-only wording);
+  `test/regressions/concurrent-check-then-write.test.ts` (two creations at once make one
+  account); `test/unit/scripts/gaps-banking-probes.test.ts` (archiving, the refusal text). Live:
+  probes `write-check-account-factories`, `read-check-account-kinds`.
 
 ### D-098: An enshrined transaction locks itself and the payment it books
 
@@ -3933,3 +3946,31 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
 - **Test:** `test/contract/recorded-gaps-documents.test.ts` ("answers an empty list with total
   null for an order without discounts"); the draft tools: pending, #94. Live: probes
   `write-document-discount`, `read-order-get-discounts`.
+
+### D-119: The account factories' `accountingNumber` is documented but not recorded
+
+- **Status:** Open. **Evidence:** spec.
+- **Spec says:** `createFileImportAccount` and `createClearingAccount` take an optional integer
+  `accountingNumber`, the booking account of the new account, which "must be unique among all
+  your CheckAccounts" ("Ignore to use a sensible default" for a file-import account, "Ask your tax
+  consultant what to choose" for a clearing account). `createFileImportAccount` also takes
+  `importType` (`CSV` or `MT940`) and `iban`.
+- **Actual behavior:** Not recorded. The clearing account of 2026-11-16 was created without
+  `accountingNumber` (sevDesk chose `"1803"`, D-097), and every file-import account (2026-11-08,
+  2026-11-16) with `{name, importType: "CSV"}` only; the probes read only the new id from the
+  file-import factory's answer. Open: whether a given number is stored as sent, whether sevDesk
+  checks it against the chart of accounts (SKR03/SKR04) or the other accounts and how a refusal
+  reads, and whether `MT940` and `iban` are taken.
+- **Sources:** spec (`createFileImportAccount`, `createClearingAccount`); recorded 2026-11-16,
+  trial account, Update 2.0 (probe `write-check-account-factories`); recorded 2026-11-08 (probe
+  `write-transaction-create`).
+- **Impact:** `sevdesk_bank_account_create` (#88) sends `accountingNumber` only when the user
+  gives one, as a JSON integer, after checking that no listed account has it; its preview says
+  that the handling is not recorded, and the result takes the number from sevDesk's answer and
+  reports a different or missing one. It always sends `importType` `CSV`, the recorded value, and
+  never `iban` or `MT940`.
+- **Test:** `test/unit/domain/bank-account-create.test.ts` ("sends a file-import account as CSV,
+  with a booking account number when given", "refuses a booking account number another account
+  (archived ones too) already has", "reports when the answer shows another kind or booking
+  account than requested"). Live: not probed yet; the question is one tagged clearing account
+  created with a free `accountingNumber`.

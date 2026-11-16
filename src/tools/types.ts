@@ -98,6 +98,16 @@ export const ACCOUNT_CONTACT_NUMBERS: SevdeskObjectRef = {
 export const ACCOUNT_PART_NUMBERS: SevdeskObjectRef = { objectName: "PartNumbers", id: "account" };
 
 /**
+ * The same for payment accounts (Zahlungskonten): creating one checks first that no listed
+ * account has its name or booking account number, then creates it. Two such calls at once would
+ * both pass, and an account cannot be deleted again, only archived.
+ */
+export const ACCOUNT_CHECK_ACCOUNTS: SevdeskObjectRef = {
+  objectName: "CheckAccounts",
+  id: "account",
+};
+
+/**
  * A lock key for creating voucher drafts in an account: a new voucher is refused when one with
  * the same supplier, number, date and gross exists already, then it is created. Two identical
  * creations at once both passed that check and left two drafts (review 2026-11, round 3).

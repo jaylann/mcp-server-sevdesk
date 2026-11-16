@@ -1,0 +1,43 @@
+{
+  "_provenance": {
+    "source": "spec",
+    "ref": "spec/openapi.yaml#/components/schemas/createFileImportAccountResponse",
+    "date": "2026-11-16",
+    "systemVersion": "2.0",
+    "note": "Answer of POST /CheckAccount/Factory/fileImportAccount {name, importType: CSV}. Key set, scalar types and the file-import shape (type online, importType CSV, bankServer null, accountingNumber from 1800 on) of the recorded list rows (recorded/2026-11-16/banking/check-accounts.json, D-097); wrapped in objects like the recorded clearingAccount answer. sevClient abbreviated. Fake values."
+  },
+  "status": 201,
+  "body": {
+    "objects": {
+      "id": "4102",
+      "objectName": "CheckAccount",
+      "additionalInformation": null,
+      "create": "2026-11-16T22:12:00+01:00",
+      "update": "2026-11-16T22:12:00+01:00",
+      "sevClient": {
+        "id": "9001",
+        "objectName": "SevClient"
+      },
+      "name": "Kasse Import",
+      "type": "online",
+      "importType": "CSV",
+      "currency": "EUR",
+      "checkAccId": null,
+      "pin": null,
+      "defaultAccount": "0",
+      "status": "100",
+      "translationCode": null,
+      "bankServer": null,
+      "balance": "0",
+      "accountingNumber": "1806",
+      "iban": null,
+      "bic": null,
+      "baseAccount": "0",
+      "priority": "0",
+      "countryCode": null,
+      "autoMapTransaction": "1",
+      "autoSyncTransactions": "0",
+      "lastSync": null
+    }
+  }
+}

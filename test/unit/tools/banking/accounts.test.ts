@@ -79,6 +79,7 @@ describe("sevdesk_bank_accounts_list (community: recorded CheckAccount shape, fa
         name: "Basiskonto",
         type: "clearing",
         sevdeskType: "offline",
+        fileImport: false,
         currency: "EUR",
         status: { code: 100, label: "Active" },
         isDefault: true,
@@ -90,6 +91,7 @@ describe("sevdesk_bank_accounts_list (community: recorded CheckAccount shape, fa
         name: "Geschäftskonto Musterbank",
         type: "bank",
         sevdeskType: "online",
+        fileImport: false,
         currency: "EUR",
         status: { code: 100, label: "Active" },
         isDefault: false,
@@ -184,6 +186,7 @@ describe("sevdesk_bank_accounts_list (community: recorded CheckAccount shape, fa
         id: 8100,
         name: "(unnamed account 8100)",
         type: "unknown",
+        fileImport: false,
         currency: "EUR",
         isDefault: false,
         balance: { amount: "5.00", currency: "EUR" },
@@ -192,6 +195,32 @@ describe("sevdesk_bank_accounts_list (community: recorded CheckAccount shape, fa
 
     const empty = await run({}, [{ path: "/CheckAccount", response: { body: { objects: [] } } }]);
     expect(empty.result.summary).toMatch(/^No payment accounts found\.$/);
+  });
+
+  it("tells file-import accounts by importType, never by type alone (D-097)", async () => {
+    const objects = [
+      { id: "8201", name: "Import CSV", type: "online", importType: "CSV", status: "100" },
+      { id: "8202", name: "Import MT940", type: "online", importType: "MT940", status: "100" },
+      { id: "8203", name: "Bankverbindung", type: "online", importType: null, status: "100" },
+      { id: "8204", name: "Unbekannter Import", type: "online", importType: "XML", status: "100" },
+      { id: "8205", name: "Verrechnung", type: "offline", importType: "CSV", status: "100" },
+      { id: "8206", name: "Kasse", type: "register", status: "100" },
+    ];
+    const { result } = await run({ asOf: "2026-06-30" }, [
+      { path: "/CheckAccount", response: { body: { objects } } },
+      ...objects.map((account) => balance(Number(account.id), { body: { objects: "0" } })),
+    ]);
+    expect(tool.output.parse(result.data)).toEqual(result.data);
+    expect(
+      result.data.items.map((item) => [item.id, item.type, item.fileImport, item.importType]),
+    ).toEqual([
+      [8201, "bank", true, "CSV"],
+      [8202, "bank", true, "MT940"],
+      [8203, "bank", false, undefined],
+      [8204, "bank", false, undefined],
+      [8205, "clearing", false, undefined],
+      [8206, "cash", false, undefined],
+    ]);
   });
 
   it("says when sevDesk has more accounts than one request returns", async () => {

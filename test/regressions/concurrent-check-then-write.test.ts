@@ -20,6 +20,7 @@ import type { CallToolResult } from "@modelcontextprotocol/client";
 import { describe, expect, it, vi } from "vitest";
 
 import type { SevdeskRequest } from "../../src/sevdesk/types.js";
+import { bankAccountCreateTool } from "../../src/tools/banking/account-create.js";
 import { contactCreateTool } from "../../src/tools/contacts/create.js";
 import { contactUpdateTool } from "../../src/tools/contacts/update.js";
 import { creditNoteCreateDraftTool } from "../../src/tools/credit-notes/draft-create.js";
@@ -32,6 +33,7 @@ import { orderUpdateDraftTool } from "../../src/tools/orders/draft-update.js";
 import { partCreateTool } from "../../src/tools/parts/create.js";
 import { partUpdateTool } from "../../src/tools/parts/update.js";
 import {
+  ACCOUNT_CHECK_ACCOUNTS,
   ACCOUNT_CONTACT_NUMBERS,
   ACCOUNT_CREDIT_NOTE_NUMBERS,
   ACCOUNT_PART_NUMBERS,
@@ -293,6 +295,49 @@ describe("concurrent price and tax edits of one part", () => {
   });
 });
 
+describe("concurrent creations of one payment account", () => {
+  it("creates one account and refuses the second call (accounts cannot be deleted)", async () => {
+    const accounts: Row[] = [];
+    let posts = 0;
+    const { client, fake } = await writeHarness({ tools: [bankAccountCreateTool], routes: [] });
+    stateful(fake, (req) => {
+      if (req.method === "POST" && req.path === "/CheckAccount/Factory/clearingAccount") {
+        posts += 1;
+        const row = {
+          id: String(4100 + posts),
+          name: (req.body as { name: string }).name,
+          type: "offline",
+          importType: null,
+          status: "100",
+          accountingNumber: String(1802 + posts),
+        };
+        accounts.push(row);
+        return row;
+      }
+      return PASS;
+    });
+    vi.spyOn(fake, "list").mockImplementation(async (path) => {
+      await tick();
+      const rows = path === "/CheckAccount" ? [...accounts] : [];
+      return { items: rows, total: rows.length };
+    });
+    const call = {
+      name: "sevdesk_bank_account_create",
+      arguments: { kind: "clearing", name: "Verrechnung" },
+    };
+
+    const all = await Promise.all([client.callTool(call), client.callTool(call)]);
+
+    const { done, refused } = results(all);
+    expect(done).toHaveLength(1);
+    expect(refused).toHaveLength(1);
+    expect(resultText(refused[0]!)).toContain(
+      "An active payment account with this name exists already: account 4101",
+    );
+    expect(posts).toBe(1);
+  });
+});
+
 describe("check-then-write tools declare the records they check", () => {
   const cases: readonly [AnyWriteToolDefinition, Row, readonly unknown[]][] = [
     [
@@ -326,6 +371,7 @@ describe("check-then-write tools declare the records they check", () => {
       { id: 6001, partNumber: "ART-9" },
       [{ objectName: "Part", id: "6001" }, ACCOUNT_PART_NUMBERS],
     ],
+    [bankAccountCreateTool, { kind: "clearing", name: "Verrechnung" }, [ACCOUNT_CHECK_ACCOUNTS]],
   ];
 
   it.each(cases)("%#", (tool, args, expected) => {

@@ -25,7 +25,9 @@ export const bankAccountsListTool = defineTool({
     "List the payment accounts (Zahlungskonten): bank accounts (Bankkonten), clearing accounts " +
     "(Verrechnungskonten) and cash registers (Kasse), each with its balance (Saldo) at a day, " +
     "today in Berlin by default. The balance is sevDesk's sum of the transactions it knows, " +
-    "not necessarily the bank's figure. IBANs show only their last four characters. " +
+    "not necessarily the bank's figure. fileImport marks file-import accounts " +
+    "(Dateiimport-Konten), the ones for transactions entered by hand. IBANs show only their " +
+    "last four characters. " +
     `Balances are fetched for at most ${MAX_BALANCE_ACCOUNTS} accounts per call. Use an ` +
     "account id with sevdesk_transactions_list to see its transactions (Umsätze).",
   toolset: "banking",
