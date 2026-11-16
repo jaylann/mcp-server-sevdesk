@@ -40,7 +40,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store,sharing=locked \
 # Runtime: distroless Node.js, no shell or package manager, non-root user 65532 ("nonroot"). The
 # application files belong to root and are read-only for the server; only /data is writable, so the
 # container runs with a read-only root filesystem.
-FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:088a01637f22908632ba09018be2e0b516f2fa6f7869c191d29491139db43c78 AS runtime
+FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:6abfcb367ebc291572c774c1592a986be2ab26a2486f73093401327495a5962a AS runtime
 LABEL org.opencontainers.image.title="mcp-server-sevdesk" \
       org.opencontainers.image.description="Safety-first MCP server for the sevDesk accounting API (remote mode over Streamable HTTP). Unofficial." \
       org.opencontainers.image.source="https://github.com/jaylann/mcp-server-sevdesk" \
