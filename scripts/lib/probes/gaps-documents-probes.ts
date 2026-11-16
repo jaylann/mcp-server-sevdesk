@@ -18,6 +18,7 @@
  * Only the opt-in probe `write-reserved-number-delete-draft` reserves numbers, as the draft tools
  * do (D-066), and so consumes numbers of the trial's sequences.
  */
+import { minimumWriteTier } from "../../../src/sevdesk/paths.js";
 import { rowsOf } from "../fixture-plan.js";
 import { RUN_TAG_PREFIX } from "../live-env.js";
 import {
@@ -318,7 +319,8 @@ async function deriveFromOrders(
     const sourcePositions = await positionsOf(ctx, "Order", order.id);
     const before = await peekNumber(ctx, range);
     const result = await ctx.http.write("POST", `/Order/Factory/${factory}`, {
-      tier: "write",
+      // A confirmation accepts the source offer (D-107), so the client requires commit for it.
+      tier: factory === "createContractNoteFromOrder" ? "commit" : "write",
       query: { "order[id]": order.id, "order[objectName]": "Order" },
       body: { id: order.id, objectName: "Order" },
     });
@@ -364,14 +366,17 @@ async function deriveFromOrders(
   return { verdict: "observed", finding: `${lines.join(". ")}.` };
 }
 
-/** `PUT /Order/{id}` with only a status; the answer and what changed. */
+/**
+ * `PUT /Order/{id}` with only a status (commit: it accepts or rejects an offer); the answer and
+ * what changed.
+ */
 async function putOrderStatus(
   ctx: ProbeContext,
   id: number,
   status: number,
 ): Promise<{ readonly text: string; readonly status: string }> {
   const before = await ctx.read.byId("Order", id);
-  const result = await ctx.http.write("PUT", `/Order/${id}`, { tier: "write", body: { status } });
+  const result = await ctx.http.write("PUT", `/Order/${id}`, { tier: "commit", body: { status } });
   const after = await ctx.read.byId("Order", id);
   const answered = firstRow(result.objects);
   return {
@@ -625,7 +630,7 @@ async function scheduledTemplate(
     const fields = variant.update.fields(next);
     const result =
       variant.update.via === "PUT"
-        ? await ctx.http.write("PUT", `/Invoice/${id}`, { tier: "write", body: fields })
+        ? await ctx.http.write("PUT", `/Invoice/${id}`, { tier: "commit", body: fields })
         : await saveTemplate(ctx, id, fields);
     update = `, update ${outcomeOf(result)}`;
   }
@@ -688,14 +693,17 @@ async function listedIn(ctx: ProbeContext, query: Query | undefined, id: number)
   );
 }
 
-/** `saveInvoice` with a template's id and these header fields (positions untouched). */
+/**
+ * `saveInvoice` with a template's id and these header fields (positions untouched). Commit: a
+ * template change, and without `invoiceType` the client cannot tell it from one either.
+ */
 async function saveTemplate(
   ctx: ProbeContext,
   id: number,
   fields: Readonly<Record<string, unknown>>,
 ): Promise<HttpResult> {
   return ctx.http.write("POST", "/Invoice/Factory/saveInvoice", {
-    tier: "write",
+    tier: "commit",
     body: {
       invoice: { id, objectName: "Invoice", mapAll: true, ...fields },
       invoicePosSave: [],
@@ -718,7 +726,7 @@ async function deactivateTemplate(
     return { route: "saveInvoice", text: `saveInvoice {status: 50} ok → status 50` };
   }
   const put = await ctx.http.write("PUT", `/Invoice/${id}`, {
-    tier: "write",
+    tier: "commit",
     body: { status: 50 },
   });
   const afterPut = await ctx.read.byId("Invoice", id);
@@ -1567,7 +1575,7 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
           deactivated.route === "saveInvoice"
             ? await saveTemplate(ctx, id, { status: "100" })
             : await ctx.http.write("PUT", `/Invoice/${id}`, {
-                tier: "write",
+                tier: "commit",
                 body: { status: 100 },
               });
         const afterBack = await ctx.read.byId("Invoice", id);
@@ -1792,15 +1800,18 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
             ...new Set([...readBack.ids, ...inAnswer.map((item) => Number(item["id"]))]),
           ].filter((item) => Number.isSafeInteger(item) && item > 0);
           if (percentage && discountIds.length > 0) {
-            const result = await ctx.http.write("POST", `/${kind}/Factory/save${kind}`, {
-              tier: "write",
-              body: {
-                [BODY_KEY[kind]]: { id, objectName: kind, mapAll: true },
-                [`${BODY_KEY[kind]}PosSave`]: [],
-                [`${BODY_KEY[kind]}PosDelete`]: null,
-                discountSave: null,
-                discountDelete: discountIds.map((item) => ({ id: item, objectName: "Discounts" })),
-              },
+            const path = `/${kind}/Factory/save${kind}`;
+            const body = {
+              [BODY_KEY[kind]]: { id, objectName: kind, mapAll: true },
+              [`${BODY_KEY[kind]}PosSave`]: [],
+              [`${BODY_KEY[kind]}PosDelete`]: null,
+              discountSave: null,
+              discountDelete: discountIds.map((item) => ({ id: item, objectName: "Discounts" })),
+            };
+            // An invoice update without invoiceType needs commit (`minimumWriteTier`).
+            const result = await ctx.http.write("POST", path, {
+              tier: minimumWriteTier(path, undefined, body),
+              body,
             });
             const after = await ctx.read.byId(kind, id);
             const left = await discountReadBack(ctx, kind, id);

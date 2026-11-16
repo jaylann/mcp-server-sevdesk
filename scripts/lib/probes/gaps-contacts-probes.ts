@@ -14,6 +14,7 @@
  * account: values such as tag names, custom field values or customer numbers are compared locally
  * and reported as "same"/"changed".
  */
+import { minimumWriteTier } from "../../../src/sevdesk/paths.js";
 import { rowsOf } from "../fixture-plan.js";
 import {
   createdId,
@@ -467,7 +468,9 @@ async function costCentreOf(ctx: ProbeContext, kind: DocumentKind, id: number): 
 
 /**
  * `save<Kind>` of an existing draft with only `header` fields (and the id): the update form the
- * recordings showed to keep omitted fields (D-054). Vouchers send their full probe header.
+ * recordings showed to keep omitted fields (D-054). Vouchers send their full probe header. An
+ * invoice update without `invoiceType` needs commit: the client cannot tell it from a change of a
+ * recurring template (`minimumWriteTier`).
  */
 function saveWithId(
   ctx: ProbeContext,
@@ -478,14 +481,13 @@ function saveWithId(
 ): Promise<HttpResult> {
   if (kind === "Voucher") return saveVoucherStatus(ctx, id, { label, status: 50 }, header);
   const key = SAVE_KEY[kind];
-  return ctx.http.write("POST", `/${kind}/Factory/save${kind}`, {
-    tier: "write",
-    body: {
-      [key]: { id, objectName: kind, mapAll: true, ...header },
-      [`${key}PosSave`]: [],
-      [`${key}PosDelete`]: null,
-    },
-  });
+  const path = `/${kind}/Factory/save${kind}`;
+  const body = {
+    [key]: { id, objectName: kind, mapAll: true, ...header },
+    [`${key}PosSave`]: [],
+    [`${key}PosDelete`]: null,
+  };
+  return ctx.http.write("POST", path, { tier: minimumWriteTier(path, undefined, body), body });
 }
 
 // ---------------------------------------------------------------------------------------------

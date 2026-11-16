@@ -90,7 +90,8 @@ async function postTransaction(
 ): Promise<{ readonly id: number | undefined; readonly result: HttpResult }> {
   const tag = data(ctx).tag;
   const result = await ctx.http.write("POST", "/CheckAccountTransaction", {
-    tier: "write",
+    // A new bank transaction needs commit (`minimumWriteTier`, D-096, D-098).
+    tier: "commit",
     body: {
       objectName: "CheckAccountTransaction",
       mapAll: true,

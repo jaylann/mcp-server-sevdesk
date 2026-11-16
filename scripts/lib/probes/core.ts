@@ -9,6 +9,7 @@
  */
 import type { SevdeskClientEvent } from "../../../src/sevdesk/client.js";
 import { SevdeskError, type SevdeskErrorKind } from "../../../src/sevdesk/errors.js";
+import { minimumWriteTier } from "../../../src/sevdesk/paths.js";
 import type { QueryValue, SevdeskClient } from "../../../src/sevdesk/types.js";
 import { rowsOf } from "../fixture-plan.js";
 import type { Scrubber } from "../scrub.js";
@@ -677,14 +678,17 @@ export function createTestData(options: {
         taxRate: 19,
         ...position,
       }));
+      const body = {
+        [RESPONSE_KEY[kind]]: header,
+        [POSITION_KEY[kind]]: positions,
+        [POSITION_KEY[kind].replace("Save", "Delete")]: null,
+        ...documentOptions.body,
+      };
+      // The tier the client requires for this body: `write` for a draft, `commit` for a recurring
+      // invoice template (`invoiceType` WKR, or none: `minimumWriteTier`).
       const result = await http.write("POST", SAVE_PATH[kind], {
-        tier: "write",
-        body: {
-          [RESPONSE_KEY[kind]]: header,
-          [POSITION_KEY[kind]]: positions,
-          [POSITION_KEY[kind].replace("Save", "Delete")]: null,
-          ...documentOptions.body,
-        },
+        tier: minimumWriteTier(SAVE_PATH[kind], undefined, body),
+        body,
       });
       const id = createdId(result.objects, RESPONSE_KEY[kind]);
       if (id !== undefined) register(kind, id, "draft (deletable in the web app)");

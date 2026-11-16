@@ -8,6 +8,7 @@
  * Nothing here sends e-mails, enshrines or exports: those are listed as "not probed, manual".
  */
 import { format, subtract } from "../../../src/domain/money.js";
+import { minimumWriteTier } from "../../../src/sevdesk/paths.js";
 import {
   addDays,
   berlinMidnight,
@@ -637,7 +638,8 @@ export const WRITE_PROBES: readonly ProbeDefinition[] = [
     deviations: ["D-021"],
     async run(ctx) {
       const result = await ctx.http.write("POST", "/Invoice/Factory/saveInvoice", {
-        tier: "write",
+        // Without invoiceType the client counts it as a possible recurring template: commit.
+        tier: "commit",
         body: {
           invoice: { objectName: "Invoice", mapAll: true, header: `${data(ctx).tag} invalid` },
           invoicePosSave: [],
@@ -930,18 +932,21 @@ export const WRITE_PROBES: readonly ProbeDefinition[] = [
           continue;
         }
         const before = await ctx.read.byId(kind, draft.id);
-        const update = await ctx.http.write("POST", `/${kind}/Factory/save${kind}`, {
-          tier: "write",
-          body: {
-            [key]: {
-              id: draft.id,
-              objectName: kind,
-              mapAll: true,
-              header: `${data(ctx).tag} ${kind} updated`,
-            },
-            [`${key}PosSave`]: [],
-            [`${key}PosDelete`]: null,
+        const path = `/${kind}/Factory/save${kind}`;
+        const body = {
+          [key]: {
+            id: draft.id,
+            objectName: kind,
+            mapAll: true,
+            header: `${data(ctx).tag} ${kind} updated`,
           },
+          [`${key}PosSave`]: [],
+          [`${key}PosDelete`]: null,
+        };
+        // An invoice update without invoiceType needs commit (`minimumWriteTier`).
+        const update = await ctx.http.write("POST", path, {
+          tier: minimumWriteTier(path, undefined, body),
+          body,
         });
         const answerId = createdId(update.objects, key);
         const after = await ctx.read.byId(kind, draft.id);
