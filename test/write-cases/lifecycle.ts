@@ -1,4 +1,5 @@
 import { CREDIT_NOTE_LIFECYCLE_TOOLS } from "../../src/tools/credit-notes/lifecycle-tools.js";
+import { documentDeleteDraftTool } from "../../src/tools/documents/delete-draft-tool.js";
 import { INVOICE_LIFECYCLE_TOOLS } from "../../src/tools/invoices/lifecycle-tools.js";
 import { ORDER_LIFECYCLE_TOOLS } from "../../src/tools/orders/lifecycle-tools.js";
 import type { AnyToolDefinition, AnyWriteToolDefinition } from "../../src/tools/types.js";
@@ -187,6 +188,16 @@ const CASES: readonly WriteToolCase[] = [
       writeRoute("PUT", "/CreditNote/2001/resetToDraft", "credit-note-reset.json"),
     ],
     writes: [{ method: "PUT", path: "/CreditNote/2001/resetToDraft" }],
+  },
+  {
+    label: "delete a numbered credit note draft",
+    tool: documentDeleteDraftTool,
+    args: { kind: "credit_note", id: 2001 },
+    routes: [
+      documentRoute("creditNote", draftCreditNote),
+      writeRoute("DELETE", "/CreditNote/2001", "document-delete.json"),
+    ],
+    writes: [{ method: "DELETE", path: "/CreditNote/2001" }],
   },
 ];
 

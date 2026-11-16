@@ -479,6 +479,17 @@ export const EVAL_CASES: readonly EvalCase[] = [
     notes: "Deleting a draft (not a booked voucher).",
   },
   {
+    id: "invoice-draft-delete-de",
+    lang: "de",
+    toolset: "invoices",
+    kind: "positive",
+    env: ENVS.all,
+    prompt: "Lösch den Rechnungsentwurf mit der ID 9101, der ist für den falschen Kunden.",
+    expected: ["sevdesk_document_delete_draft"],
+    secondChoice: ["sevdesk_invoice_get"],
+    notes: "Deleting an invoice draft (not cancelling a finalized invoice).",
+  },
+  {
     id: "voucher-finalize-en",
     lang: "en",
     toolset: "vouchers",

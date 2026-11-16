@@ -415,7 +415,8 @@ describe("sevdesk_order_finalize details", () => {
         "Credit note 2001 is a draft without a number, and finalizing it could fail half-way in " +
           "sevDesk and leave a finalized credit note without a number. Create it again with " +
           "sevdesk_credit_note_create_draft (which takes a number from the number range) and " +
-          "delete this draft in sevDesk, or give it a number in the sevDesk web app first.",
+          "delete this draft with sevdesk_document_delete_draft, or give it a number in the " +
+          "sevDesk web app first.",
       );
       expect(client.writes()).toEqual([]);
     },

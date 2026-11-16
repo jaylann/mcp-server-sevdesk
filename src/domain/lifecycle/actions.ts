@@ -158,3 +158,21 @@ export async function cancelInvoice(
     throw error;
   }
 }
+
+/**
+ * Deletes a draft: `DELETE /{Invoice|CreditNote|Order}/{id}`, no body. sevDesk answers
+ * `{objects: [null]}` for a draft, which is ignored, and 409 for any other status (recorded,
+ * spec/deviations.md D-109, D-074); whether the document is gone is for the caller to read back.
+ */
+export async function deleteDocument(
+  client: SevdeskClient,
+  kind: SalesKind,
+  id: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  await client.request({
+    method: "DELETE",
+    path: sevdeskPath(KINDS[kind].objectName, id),
+    ...(signal === undefined ? {} : { signal }),
+  });
+}

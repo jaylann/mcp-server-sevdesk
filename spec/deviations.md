@@ -920,7 +920,7 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   | `GET /SevClient`                                                                       | the account's taxation regime, chart of accounts, company data and DATEV settings (D-067)                          | recorded |
   | `GET /Order/Factory/getNextOrderNumber`, `/CreditNote/Factory/getNextCreditNoteNumber` | the next order and credit note numbers (D-066)                                                                     | recorded |
   | `GET /CheckAccountTransactionLog`                                                      | what a bank transaction was booked against, and how much (D-057)                                                   | recorded |
-  | `DELETE /Invoice/{invoiceId}`                                                          | deleting a draft invoice (no tool uses it)                                                                         | recorded |
+  | `DELETE /Invoice/{invoiceId}`                                                          | deleting draft invoices (`sevdesk_document_delete_draft`; D-109)                                                   | recorded |
   | `DELETE /Voucher/{voucherId}`                                                          | deleting draft vouchers (the spec has only GET and PUT; D-074)                                                     | recorded |
   | `GET`, `POST /CostCentre`, `GET`, `DELETE /CostCentre/{costCentreId}`                  | cost centres of documents (D-091)                                                                                  | recorded |
   | `DELETE /TagRelation/{tagRelationId}`                                                  | removing one tag from one document (D-089)                                                                         | recorded |
@@ -2805,10 +2805,13 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   (`prepareVoucherDelete` in `src/domain/drafts/voucher-finalize.ts`), sends the DELETE once,
   ignores its answer and confirms with a GET that the voucher is gone (`executeVoucherDelete`). A
   409 (the voucher was finalized in the meantime) becomes a trusted message that nothing was
-  deleted. The preview warns that an attached receipt file may stay.
+  deleted. The preview warns that an attached receipt file may stay. `sevdesk_document_delete_draft`
+  does the same for invoice, order and credit note drafts (D-109).
 - **Test:** `test/unit/tools/vouchers/finalize-delete.test.ts` ("deletes a draft and confirms it is
   gone", "explains sevDesk's 409 for a voucher that is no draft anymore", "refuses an open
-  voucher", "warns that an attached receipt may stay"). Live: probe `write-voucher-delete`.
+  voucher", "warns that an attached receipt may stay"); for invoices, orders and credit notes
+  `test/unit/tools/documents/delete-draft.test.ts` and `test/regressions/delete-only-drafts.test.ts`
+  (D-109). Live: probe `write-voucher-delete`.
 
 ### D-075: A `FULL_PAYMENT` must use the whole linked transaction; type `N` splits it
 
@@ -3731,9 +3734,13 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   Update 2.0 (probe `write-delete-draft-order-credit-note`).
 - **Impact:** The draft delete tool refuses anything but status 100 before sending, reads back
   with a GET to confirm, and turns a 409 into a trusted message that nothing was deleted. (#90)
-- **Test:** pending: the #90 tools. Live: probe `write-delete-draft-order-credit-note`
-  (`test/unit/scripts/gaps-documents-probes.test.ts`, "deletes drafts, records the refusal of
-  non-drafts, and follows the counters").
+- **Test:** `test/unit/tools/documents/delete-draft.test.ts` ("deletes a … draft and confirms
+  with a GET that it is gone", "explains sevDesk's 409 for a document that is no draft anymore",
+  "says that the number of a numbered … draft is handed out again (D-066)"),
+  `test/regressions/delete-only-drafts.test.ts` (no DELETE for a non-draft or a template),
+  `test/unit/domain/lifecycle/transitions.test.ts` (`assertDeletable`). Live: probe
+  `write-delete-draft-order-credit-note` (`test/unit/scripts/gaps-documents-probes.test.ts`,
+  "deletes drafts, records the refusal of non-drafts, and follows the counters").
 
 ### D-110: `saveCreditNote` with an id updates a draft; `creditNotePosDelete` is a list
 
