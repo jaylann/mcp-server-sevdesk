@@ -3854,10 +3854,12 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
       "additionalProperties": false,
       "properties": {
         "check": {
-          "description": "Which check: vat (VAT treatment against where suppliers and customers are established), reverse_charge (the §13b base by tax rule).",
+          "description": "Which check: vat (VAT treatment against where suppliers and customers are established), reverse_charge (the §13b base by tax rule), duplicates (vouchers booked twice and stuck drafts), recurring_gaps (missing bills of regular suppliers).",
           "enum": [
             "vat",
             "reverse_charge",
+            "duplicates",
+            "recurring_gaps",
           ],
           "type": "string",
         },
@@ -7484,10 +7486,12 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
       "additionalProperties": false,
       "properties": {
         "check": {
-          "description": "Which check: vat (VAT treatment against where suppliers and customers are established), reverse_charge (the §13b base by tax rule).",
+          "description": "Which check: vat (VAT treatment against where suppliers and customers are established), reverse_charge (the §13b base by tax rule), duplicates (vouchers booked twice and stuck drafts), recurring_gaps (missing bills of regular suppliers).",
           "enum": [
             "vat",
             "reverse_charge",
+            "duplicates",
+            "recurring_gaps",
           ],
           "type": "string",
         },
@@ -9270,10 +9274,12 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
       "additionalProperties": false,
       "properties": {
         "check": {
-          "description": "Which check: vat (VAT treatment against where suppliers and customers are established), reverse_charge (the §13b base by tax rule).",
+          "description": "Which check: vat (VAT treatment against where suppliers and customers are established), reverse_charge (the §13b base by tax rule), duplicates (vouchers booked twice and stuck drafts), recurring_gaps (missing bills of regular suppliers).",
           "enum": [
             "vat",
             "reverse_charge",
+            "duplicates",
+            "recurring_gaps",
           ],
           "type": "string",
         },

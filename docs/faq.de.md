@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:82927922c84c -->
+<!-- translated-from: docs/faq.md sha256:f1967a9c4e30 -->
 
 # Häufige Fragen
 
@@ -140,6 +140,16 @@ Sie sind Schätzungen zum Prüfen, die der Server aus deinen Dokumenten berechne
 Auswertungen von sevDesk noch eine Steuererklärung. Jedes Ergebnis sagt, was es ausgelassen hat.
 Was sie abdecken und was bei dir bleibt, steht unter
 [Auswertungen und Exporte](guides/evaluations.de.md#wie-weit-du-dich-darauf-verlassen-kannst).
+
+### Findet es doppelt gebuchte Belege oder fehlende Rechnungen?
+
+Ja, als Hinweise. `sevdesk_records_audit` mit `check: duplicates` sucht doppelt gebuchte Belege
+(derselbe Lieferant und dieselbe Belegnummer, dieselbe Belegdatei oder derselbe Betrag innerhalb
+weniger Tage) und Entwürfe, die drei Wochen oder länger offen liegen; `check: recurring_gaps` lernt,
+welche Lieferanten jeden Monat, jedes Quartal oder jedes Jahr abrechnen, und nennt die Zeiträume
+ohne Rechnung, meist ein verlorener Beleg. Beide lesen nur deine Daten und ändern nichts. Was sie
+melden und was sie bewusst auslassen, steht unter
+[Auswertungen und Exporte](guides/evaluations.de.md#prüfungen).
 
 ### Unterstützt es sevDesk in Österreich?
 

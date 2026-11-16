@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/evaluations.md sha256:4af99a4fd764 -->
+<!-- translated-from: docs/guides/evaluations.md sha256:2bef130e3834 -->
 
 # Auswertungen und Exporte
 
@@ -15,18 +15,18 @@ braucht `write` ([Berechtigungen](../permissions.de.md#stufen)).
 
 ## Welche Auswertung was beantwortet
 
-| Frage                                                     | Werkzeug                                                             | Stufe   |
-| --------------------------------------------------------- | -------------------------------------------------------------------- | ------- |
-| Umsatz je Monat, Kosten je Lieferant, Summen              | [`sevdesk_records_summarize`](../tools.md#sevdesk_records_summarize) | `read`  |
-| Wer uns was schuldet, und seit wann                       | [`sevdesk_receivables_aging`](../tools.md#sevdesk_receivables_aging) | `read`  |
-| Was wir schulden, und wann es fällig ist                  | [`sevdesk_payables_aging`](../tools.md#sevdesk_payables_aging)       | `read`  |
-| Wie viel Geld wir haben und haben werden                  | [`sevdesk_cash_position`](../tools.md#sevdesk_cash_position)         | `read`  |
-| Was sich seit einem Datum geändert hat                    | [`sevdesk_changed_since`](../tools.md#sevdesk_changed_since)         | `read`  |
-| Was ungefähr in der Umsatzsteuer-Voranmeldung stehen wird | [`sevdesk_vat_summary`](../tools.md#sevdesk_vat_summary)             | `read`  |
-| Gewinn für einen Monat, ein Quartal oder ein Jahr         | [`sevdesk_profit_and_loss`](../tools.md#sevdesk_profit_and_loss)     | `read`  |
-| Was falsch aussieht: Umsatzsteuer-Behandlung, § 13b       | [`sevdesk_records_audit`](../tools.md#sevdesk_records_audit)         | `read`  |
-| Eine CSV-Datei für Excel oder die Steuerberatung          | [`sevdesk_csv_export`](../tools.md#sevdesk_csv_export)               | `read`  |
-| Die DATEV-Buchungsdaten für die Steuerberatung            | [`sevdesk_datev_export`](../tools.md#sevdesk_datev_export)           | `write` |
+| Frage                                                       | Werkzeug                                                             | Stufe   |
+| ----------------------------------------------------------- | -------------------------------------------------------------------- | ------- |
+| Umsatz je Monat, Kosten je Lieferant, Summen                | [`sevdesk_records_summarize`](../tools.md#sevdesk_records_summarize) | `read`  |
+| Wer uns was schuldet, und seit wann                         | [`sevdesk_receivables_aging`](../tools.md#sevdesk_receivables_aging) | `read`  |
+| Was wir schulden, und wann es fällig ist                    | [`sevdesk_payables_aging`](../tools.md#sevdesk_payables_aging)       | `read`  |
+| Wie viel Geld wir haben und haben werden                    | [`sevdesk_cash_position`](../tools.md#sevdesk_cash_position)         | `read`  |
+| Was sich seit einem Datum geändert hat                      | [`sevdesk_changed_since`](../tools.md#sevdesk_changed_since)         | `read`  |
+| Was ungefähr in der Umsatzsteuer-Voranmeldung stehen wird   | [`sevdesk_vat_summary`](../tools.md#sevdesk_vat_summary)             | `read`  |
+| Gewinn für einen Monat, ein Quartal oder ein Jahr           | [`sevdesk_profit_and_loss`](../tools.md#sevdesk_profit_and_loss)     | `read`  |
+| Was falsch aussieht: Umsatzsteuer, § 13b, Dubletten, Lücken | [`sevdesk_records_audit`](../tools.md#sevdesk_records_audit)         | `read`  |
+| Eine CSV-Datei für Excel oder die Steuerberatung            | [`sevdesk_csv_export`](../tools.md#sevdesk_csv_export)               | `read`  |
+| Die DATEV-Buchungsdaten für die Steuerberatung              | [`sevdesk_datev_export`](../tools.md#sevdesk_datev_export)           | `write` |
 
 Zwei Prompts kombinieren sie: [`vat_precheck`](../tools.md#vat_precheck) vor der
 Umsatzsteuer-Voranmeldung und [`month_end_close`](../tools.md#month_end_close) für den
@@ -98,6 +98,10 @@ die sevDesk mit Dokumenten verknüpft) oder auf Wunsch das Dokumentdatum (period
 
 > Wie hoch ist unsere Bemessungsgrundlage nach § 13b für Oktober, je Steuerregel?
 
+> Haben wir im dritten Quartal einen Beleg doppelt gebucht, und welche Entwürfe sind noch offen?
+
+> Fehlt dieses Jahr eine Monatsrechnung?
+
 [`sevdesk_records_audit`](../tools.md#sevdesk_records_audit) beantwortet „Was ist falsch?“ statt
 „Wie lauten die Zahlen?“. Es führt pro Aufruf eine Prüfung für einen Monat, ein Quartal, ein Jahr
 oder einen Zeitraum aus und liefert Befunde. Jeder nennt seine Art (`code`) und wie sicher er ist
@@ -143,11 +147,71 @@ nutzt dieselben Steuerzeitpunkte wie `sevdesk_vat_summary`, die Summen stimmen a
 46/47, 84/85, 67, 60 und 21 überein. Sie meldet Regel 13 (ohne Vorsteuerabzug) bei einem Konto mit
 Regelbesteuerung (`reverse_charge_without_deduction`).
 
-Beide Prüfungen lesen die Dokumente des Zeitraums und, wo die Steuersätze entscheiden, deren
-Positionen; `vat` liest außerdem die Kontakt- und die Adressliste je einmal. Wie die anderen
-Auswertungen sagen sie, was sie ausgelassen haben (`coverage.truncated`,
-`coverage.documentsLeftOut`), und über HTTP hören sie nach etwa 90 Sekunden auf zu lesen: Frag
-nach einem Monat, wenn ein Quartal zu viel ist.
+### Doppelt gebuchte Belege und liegen gebliebene Entwürfe (`duplicates`)
+
+Die Prüfung vergleicht die Belege jedes Lieferanten, Ausgaben und Einnahmen getrennt. Lieferant
+ist der Kontakt des Belegs oder, wenn er keinen hat, der Lieferantenname auf dem Beleg; ein Beleg
+ohne beides wird nicht verglichen, die Hinweise zählen ihn. Ein Paar zählt im Zeitraum seines
+späteren Belegs; für den früheren werden Belege bis 31 Tage vor dem Zeitraum gelesen.
+
+| Code                    | Bedeutet                                                                                                                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `voucher_number_twice`  | Gebuchte Belege mit derselben Belegnummer (`warning`). Groß- und Kleinschreibung, Leerzeichen und `-_/.#` zählen nicht; eine Nummer braucht eine Ziffer, „Miete“ als Beschreibung ist keine |
+| `voucher_receipt_twice` | Ein Paar mit gleichem Betrag, dessen Belegdateien dieselbe SHA-256-Prüfsumme haben: dieselbe Datei zweimal hochgeladen (`warning`)                                                          |
+| `voucher_amount_twice`  | Gebuchte Belege mit demselben Bruttobetrag und derselben Währung, höchstens 5 Tage auseinander, nicht durch zwei verschiedene Nummern unterschieden (`check`)                               |
+| `draft_repeats_voucher` | Ein Entwurf mit derselben Nummer wie ein gebuchter Beleg oder demselben Betrag innerhalb von 5 Tagen (`check`): lieber löschen als buchen                                                   |
+| `voucher_draft_stuck`   | Ein Beleg mit Datum im Zeitraum, der 21 Tage oder länger nach dem Anlegen in sevDesk noch ein Entwurf ist (`check`)                                                                         |
+| `sales_draft_stuck`     | Dasselbe für eine Rechnung oder Gutschrift: Der Kunde hat noch keine Rechnung (`check`)                                                                                                     |
+
+Bewusst nicht gemeldet: Einkäufe mit gleichem Betrag im Abstand einer Woche, zwei Belege mit
+verschiedenen Nummern, ein Beleg und seine Stornierung (+x und −x), dieselbe Nummer von einem
+anderen Lieferanten oder in der anderen Richtung, ein Bruttobetrag von 0, zwei Entwürfe (jeder wird
+gemeldet, sobald er liegen geblieben ist) und ein Entwurf, der vor weniger als 21 Tagen angelegt
+wurde, wie alt sein Belegdatum auch ist. Ausgangsrechnungen werden nur auf liegen gebliebene
+Entwürfe geprüft: Ihre Nummern kommen aus dem Nummernkreis von sevDesk, und eine doppelt gestellte
+Rechnung wird mit einer Stornorechnung berichtigt.
+
+Um ein Paar mit gleichem Betrag zu bestätigen, liest die Prüfung die Prüfsumme der Belegdateien
+seiner Belege (zwei Abrufe je Beleg), für höchstens 40 Belege; die Hinweise sagen, wenn sie dort
+aufgehört hat. Verschiedene Prüfsummen beweisen nichts, denn dasselbe Papier zweimal gescannt ergibt
+zwei Dateien; ein solches Paar bleibt ein `check`.
+
+### Fehlende Rechnungen regelmäßiger Lieferanten (`recurring_gaps`)
+
+Die Prüfung lernt aus den Ausgabenbelegen, welche Lieferanten jeden Monat, jedes Quartal oder jedes
+Jahr abrechnen, und meldet einen Zeitraum innerhalb der Prüfung ohne einen Beleg dieses
+Lieferanten: meist ein verlorener oder nicht gebuchter Beleg. Sie liest die Belege (Entwürfe
+eingeschlossen) von 24 Monaten vor dem Zeitraum bis 12 Monate danach, aber nicht über heute
+hinaus. Der Befund nennt die fehlenden Monate (`missing`) und listet die Rechnungen des Lieferanten
+vor und nach jeder Lücke.
+
+Ein Lieferant gilt als regelmäßig, wenn seine Rechnungen mindestens in drei von vier Fällen auf
+ungefähr denselben Tag fallen (innerhalb von 7 Tagen), in der Regel eine Rechnung (oder seine
+übliche Zahl an Rechnungen) je Zeitraum, mit höchstens einem von vier Zeiträumen ohne Rechnung;
+Quartals- und Jahresrechnungen müssen in denselben Monat des Quartals oder Jahres fallen. Ein
+Zeitraum gilt nur dann als fehlend, wenn davor mindestens drei Monate (bei Quartal und Jahr: zwei
+Zeiträume) mit Rechnungen liegen und danach einer.
+
+| Code                     | Bedeutet                                                                 |
+| ------------------------ | ------------------------------------------------------------------------ |
+| `monthly_bill_missing`   | Ein Monat ohne Rechnung eines Lieferanten, der monatlich abrechnet       |
+| `quarterly_bill_missing` | Ein Quartal ohne Rechnung eines Lieferanten, der quartalsweise abrechnet |
+| `yearly_bill_missing`    | Ein Jahr ohne Rechnung eines Lieferanten, der jährlich abrechnet         |
+
+Bewusst nicht gemeldet: ein geänderter Betrag (Beträge werden nicht verglichen), eine Rechnung, die
+sich um ein paar Tage über ein Monatsende verschoben hat, zwei Rechnungen in einem Monat neben einem
+Monat ohne Rechnung (die Rechnung kam zu spät oder zu früh), ein Lieferant, der nicht mehr abrechnet,
+und der letzte Zeitraum, solange die nächste Rechnung des Lieferanten noch nicht da ist.
+Wiederkehrende Belegvorlagen (RV) von sevDesk sind keine Rechnungen und werden nicht gelesen; die
+daraus gebuchten Belege zählen wie alle anderen. Hört die Liste an ihrer Obergrenze auf, meldet die
+Prüfung gar keine Lücken, denn ein nicht gelesener Beleg sähe wie eine aus.
+
+Die Prüfungen `vat` und `reverse_charge` lesen die Dokumente des Zeitraums und, wo die Steuersätze
+entscheiden, deren Positionen; `vat` liest außerdem die Kontakt- und die Adressliste je einmal.
+`duplicates` und `recurring_gaps` lesen nur Dokumentlisten (und `duplicates` die oben genannten
+Prüfsummen). Wie die anderen Auswertungen sagen sie, was sie ausgelassen haben
+(`coverage.truncated`, `coverage.documentsLeftOut`), und über HTTP hören sie nach etwa 90 Sekunden
+auf zu lesen: Frag nach einem Monat, wenn ein Quartal zu viel ist.
 
 ## Wie weit du dich darauf verlassen kannst
 

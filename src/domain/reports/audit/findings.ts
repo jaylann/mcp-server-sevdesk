@@ -79,6 +79,13 @@ export interface FindingDraft {
   readonly text: FindingText;
   readonly contact: AuditContact | undefined;
   readonly header: DocumentHeader;
+  /**
+   * A document that is context for the finding, not flagged itself (the bills before and after a
+   * gap): listed, but left out of the finding's `net` and `tax` sums.
+   */
+  readonly context?: boolean | undefined;
+  /** recurring_gaps: the month (YYYY-MM) in which a bill was expected and none exists. */
+  readonly missing?: string | undefined;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -148,10 +155,20 @@ export const auditFindingSchema = z.object({
     .array(auditRecordSchema)
     .describe(`The documents by date, at most ${String(MAX_FINDING_RECORDS)}.`),
   recordsOmitted: z.number().int().optional().describe("Documents not listed in records."),
+  missing: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "recurring_gaps: the months (YYYY-MM) in which a bill of this supplier was expected and " +
+        "none exists; records then are the bills before and after each gap.",
+    ),
   net: moneySchema
     .optional()
-    .describe("Sum of the documents' net in EUR (documents without EUR values left out)."),
-  tax: moneySchema.optional().describe("Sum of the documents' VAT in EUR."),
+    .describe(
+      "Sum of the flagged documents' net in EUR (documents without EUR values left out; absent " +
+        "for recurring_gaps, whose records are context).",
+    ),
+  tax: moneySchema.optional().describe("Sum of the flagged documents' VAT in EUR."),
 });
 
 export type AuditFinding = z.output<typeof auditFindingSchema>;
@@ -161,14 +178,20 @@ export const auditCoverageSchema = z.object({
   documentsInScope: z
     .number()
     .int()
-    .describe("Documents this check looks at (in the period, under a tax rule it checks)."),
+    .describe(
+      "Documents this check looks at: vat and reverse_charge those in the period under a tax " +
+        "rule they check; duplicates the vouchers (drafts included) and the invoice and credit " +
+        "note drafts dated in the period; " +
+        "recurring_gaps the expense vouchers of the whole range read (see the notes).",
+    ),
   documentsChecked: z.number().int().describe("Documents checked in full."),
   documentsLeftOut: z
     .number()
     .int()
     .describe(
-      "Documents in scope not checked: a cap or the time budget stopped reading, or a " +
-        "foreign-currency document has no EUR values.",
+      "Documents in scope not checked: a cap or the time budget stopped reading, a " +
+        "foreign-currency document has no EUR values, or (recurring_gaps) a voucher has no " +
+        "supplier.",
     ),
   notJudged: z
     .number()
@@ -369,16 +392,24 @@ export function byDateThenId(a: DocumentHeader, b: DocumentHeader): number {
 
 const SEVERITY_ORDER: Readonly<Record<AuditSeverity, number>> = { warning: 0, check: 1 };
 
+/** The contact part of a finding's group key: the id, else the name (vouchers may have only one). */
+function contactKey(contact: AuditContact | undefined): string {
+  if (contact?.id !== undefined) return `id:${String(contact.id)}`;
+  if (contact?.name !== undefined) return `name:${contact.name}`;
+  return "none";
+}
+
 /**
  * Groups `drafts` into findings, one per kind and contact (a supplier with twelve vouchers under
- * the same wrong treatment is one finding with twelve documents), lists at most
- * {@link MAX_FINDING_RECORDS} documents each and sums the EUR amounts of all of them. Sorted by
- * severity (warnings first), then kind, then contact id.
+ * the same wrong treatment is one finding with twelve documents; a contact known only by name
+ * forms its own group), lists at most {@link MAX_FINDING_RECORDS} documents each and sums the EUR
+ * amounts of all of them but context documents. Sorted by severity (warnings first), then kind,
+ * then contact id.
  */
 export function buildFindings(check: string, drafts: readonly FindingDraft[]): AuditFinding[] {
   const groups = new Map<string, FindingDraft[]>();
   for (const draft of drafts) {
-    const key = `${draft.code}|${String(draft.contact?.id ?? "none")}`;
+    const key = `${draft.code}|${contactKey(draft.contact)}`;
     const group = groups.get(key);
     if (group === undefined) groups.set(key, [draft]);
     else group.push(draft);
@@ -404,14 +435,24 @@ function toFinding(
   first: FindingDraft,
   group: readonly FindingDraft[],
 ): AuditFinding {
-  const headers = group.map((draft) => draft.header).sort(byDateThenId);
+  // A document listed by two drafts (a bill between two gaps) counts once.
+  const unique = new Map<string, FindingDraft>();
+  for (const draft of group) {
+    const key = `${draft.header.kind}|${String(draft.header.id)}`;
+    if (!unique.has(key)) unique.set(key, draft);
+  }
+  const headers = [...unique.values()].map((draft) => draft.header).sort(byDateThenId);
   let net: Decimal | undefined;
   let tax: Decimal | undefined;
-  for (const header of headers) {
-    if (header.eur === undefined) continue;
-    net = add(net ?? decimal(0), header.eur.net);
-    tax = add(tax ?? decimal(0), header.eur.tax);
+  for (const draft of unique.values()) {
+    const { eur: amounts } = draft.header;
+    if (amounts === undefined || draft.context === true) continue;
+    net = add(net ?? decimal(0), amounts.net);
+    tax = add(tax ?? decimal(0), amounts.tax);
   }
+  const missing = [
+    ...new Set(group.flatMap((draft) => (draft.missing === undefined ? [] : [draft.missing]))),
+  ].sort();
   const { contact } = first;
   const omitted = headers.length - MAX_FINDING_RECORDS;
   return compact({
@@ -426,6 +467,7 @@ function toFinding(
     documents: headers.length,
     records: headers.slice(0, MAX_FINDING_RECORDS).map((header) => recordOf(header)),
     recordsOmitted: omitted > 0 ? omitted : undefined,
+    missing: missing.length === 0 ? undefined : missing,
     net: net === undefined ? undefined : eur(net),
     tax: tax === undefined ? undefined : eur(tax),
   });

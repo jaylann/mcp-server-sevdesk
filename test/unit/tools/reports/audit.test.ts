@@ -30,14 +30,15 @@ describe("sevdesk_records_audit: metadata", () => {
   it("advertises only the checks that exist, in the description and the enum", () => {
     const json = z.toJSONSchema(recordsAuditTool.input, { ...JSON_SCHEMA_OPTIONS, io: "input" });
     expect(json.required).toEqual(["check"]);
-    expect(json.properties?.["check"]).toMatchObject({ enum: ["vat", "reverse_charge"] });
-    for (const check of ["duplicates", "recurring_gaps", "receipt_folder"]) {
-      expect(recordsAuditTool.description).not.toContain(check);
-      expect(() => recordsAuditTool.input.parse({ check, year: 2026 })).toThrow();
-    }
+    expect(json.properties?.["check"]).toMatchObject({
+      enum: ["vat", "reverse_charge", "duplicates", "recurring_gaps"],
+    });
+    expect(recordsAuditTool.description).not.toContain("receipt_folder");
+    expect(() => recordsAuditTool.input.parse({ check: "receipt_folder", year: 2026 })).toThrow();
     const { description } = recordsAuditTool;
-    expect(description).toContain("vat:");
-    expect(description).toContain("reverse_charge:");
+    for (const check of ["vat", "reverse_charge", "duplicates", "recurring_gaps"]) {
+      expect(description).toContain(`${check}:`);
+    }
     expect(description).toContain("Hinweise, keine Steuerberatung");
     expect(description.length).toBeLessThanOrEqual(MAX_DESCRIPTION_LENGTH);
     expect(Object.keys(recordsAuditTool.input.shape)).toEqual([
@@ -81,6 +82,27 @@ describe("sevdesk_records_audit", () => {
     expect(report.reverseCharge?.received.map((rule) => rule.taxRule.id)).toEqual([12, 14]);
     expect(result.summary).toContain("§ 13b received: base");
   });
+
+  it.each(["duplicates", "recurring_gaps"] as const)(
+    "runs the %s check on voucher lists only, changing nothing",
+    async (check) => {
+      const { client, data, result } = await runTool(
+        recordsAuditTool,
+        { check, year: 2026, quarter: 1 },
+        [regularAccount, ...quarterRoutes()],
+      );
+      const report = data as AuditResult;
+
+      expect(report.check).toBe(check);
+      expect(report.caveatDe).toContain("keine Steuerberatung");
+      expect(result.summary).toMatch(new RegExp(`^Audit ${check} 2026-Q1: `));
+      expect(client.writes()).toEqual([]);
+      expect(
+        client.calls.every((call) => ["/Voucher", "/Invoice", "/CreditNote"].includes(call.path)),
+      ).toBe(true);
+      for (const call of client.calls) expect(call.query["limit"]).toBeDefined();
+    },
+  );
 
   it("refuses a malformed period before sending anything", async () => {
     await expect(

@@ -491,6 +491,48 @@ export async function fetchVoucherReceipt(
   };
 }
 
+const documentHashSchema = z.object({ contentHash: zOptionalString });
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+
+/**
+ * The SHA-256 checksum of the receipt file attached to voucher `voucherId`, as sevDesk stores it:
+ * `GET /Voucher/{id}` names the attached `Document`, and `GET /Document/{id}` carries
+ * `contentHash`, the SHA-256 of the uploaded bytes (spec/deviations.md D-100 (PR #104); also in
+ * the upload answer). Two plain reads, no file content. `undefined` when the voucher has no
+ * receipt or the receipt no checksum (files sevDesk rendered itself have `null`), or when the
+ * value is not a SHA-256 hex digest. Lower case, so two checksums compare as strings.
+ */
+export async function fetchVoucherReceiptHash(
+  client: SevdeskClient,
+  voucherId: number,
+  signal?: AbortSignal,
+): Promise<string | undefined> {
+  const options = signal === undefined ? {} : { signal };
+  const voucherPayload = await client.request({
+    method: "GET",
+    path: sevdeskPath("Voucher", voucherId),
+    ...options,
+  });
+  const voucher = parseUpstream(
+    voucherDocumentSchema,
+    expectSingle(voucherPayload, `voucher ${voucherId}`),
+    "a voucher",
+  );
+  if (voucher.document === undefined) return undefined;
+  const documentPayload = await client.request({
+    method: "GET",
+    path: sevdeskPath("Document", voucher.document.id),
+    ...options,
+  });
+  const document = parseUpstream(
+    documentHashSchema,
+    expectSingle(documentPayload, `the receipt of voucher ${voucherId}`),
+    "a document",
+  );
+  const hash = document.contentHash?.trim().toLowerCase();
+  return hash !== undefined && SHA256_HEX.test(hash) ? hash : undefined;
+}
+
 function unexpected(message: string): SevdeskError {
   return new SevdeskError({ kind: "unexpected_response", message });
 }
