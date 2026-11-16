@@ -110,17 +110,30 @@ describe("probe catalog", () => {
     const directory = new URL("../../../scripts/lib/probes/", import.meta.url);
     const files = readdirSync(directory).filter((file) => file.endsWith("-probes.ts"));
     expect(files).toEqual(expect.arrayContaining(["read-probes.ts", "write-probes.ts"]));
-    const source = files.map((file) => readFileSync(new URL(file, directory), "utf8")).join("\n");
-    expect(source).not.toMatch(
-      /\/enshrine|sendByWithRender|enshrine(?:Documents)?: (?:true|1|"1"|"true")|useNextNumber: "true"/,
+    const sources = new Map(
+      files.map((file) => [file, readFileSync(new URL(file, directory), "utf8")] as const),
     );
+    const source = [...sources.values()].join("\n");
+    expect(source).not.toMatch(
+      /\/enshrine|sendByWithRender|enshrine(?:Documents)?: (?:true|1|"1"|"true")/,
+    );
+    // Reserving a document number (D-066) consumes a number of the trial's sequence: only the
+    // opt-in probe write-reserved-number-delete-draft does it, through one helper.
+    for (const [file, text] of sources) {
+      expect(text.match(/useNextNumber: (?!"false")/g) ?? [], file).toHaveLength(
+        file === "gaps-documents-probes.ts" ? 1 : 0,
+      );
+    }
+    expect(sources.get("gaps-documents-probes.ts")).toMatch(/useNextNumber: "true"/);
+    expect(
+      ALL_PROBES.find((probe) => probe.id === "write-reserved-number-delete-draft"),
+    ).toMatchObject({ mode: "write", optIn: true });
     expect(source.match(/sendViaEmail`/g)).toHaveLength(1);
     expect(source.match(/tier: "external"/g)).toHaveLength(1);
     expect(
       ALL_PROBES.filter((probe) => probe.sendsEmail === true).map((probe) => probe.id),
     ).toEqual(["write-send-email-shape"]);
     expect(NOT_PROBED.map((check) => check.what).join("\n")).toMatch(/createDatevXmlZipExportJob/);
-    expect(NOT_PROBED.map((check) => check.what).join("\n")).toMatch(/useNextNumber=true/);
   });
 
   it("orders write probes before read probes", () => {

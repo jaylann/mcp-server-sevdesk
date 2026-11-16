@@ -731,7 +731,6 @@ describe("M4 probe catalog", () => {
     const manual = NOT_PROBED.map((check) => check.what).join("\n");
     expect(manual).toMatch(/createDatevXmlZipExportJob/);
     expect(manual).toMatch(/enshrineDocuments/);
-    expect(manual).toMatch(/useNextNumber=true/);
     expect(manual).toMatch(/Voucher\|?.*enshrine|Voucher\/\{id\}\/enshrine/);
   });
 

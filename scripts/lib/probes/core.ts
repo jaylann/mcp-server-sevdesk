@@ -477,6 +477,8 @@ interface DocumentOptions {
   readonly fields?: Readonly<Record<string, unknown>>;
   /** Header fields to leave out (e.g. `deliveryDate`, to see whether sevDesk requires it). */
   readonly omit?: readonly string[];
+  /** Top-level body keys sent after the position keys (e.g. `discountSave`, `discountDelete`). */
+  readonly body?: Readonly<Record<string, unknown>>;
 }
 
 export type DocumentKind = "Invoice" | "CreditNote" | "Order";
@@ -661,6 +663,7 @@ export function createTestData(options: {
           [RESPONSE_KEY[kind]]: header,
           [POSITION_KEY[kind]]: positions,
           [POSITION_KEY[kind].replace("Save", "Delete")]: null,
+          ...documentOptions.body,
         },
       });
       const id = createdId(result.objects, RESPONSE_KEY[kind]);

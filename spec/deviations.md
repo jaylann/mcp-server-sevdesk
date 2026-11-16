@@ -138,6 +138,16 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 | [D-090](#d-090-document-lists-filter-by-tag-only-with-tags0id-tagid-is-ignored)                    | Document lists filter by tag only with `tags[0][id]`; `tag[id]` is ignored             | Open                  |
 | [D-091](#d-091-cost-centres-are-managed-through-the-undocumented-costcentre-endpoints)             | Cost centres are managed through the undocumented `/CostCentre` endpoints              | Open                  |
 | [D-092](#d-092-saveorder-drops-costcentre-invoices-vouchers-and-credit-notes-keep-it)              | `saveOrder` drops `costCentre`; invoices, vouchers and credit notes keep it            | Open                  |
+| [D-107](#d-107-order-factories-copy-the-order-a-confirmation-marks-the-offer-accepted)             | Order factories copy the order; a confirmation marks the offer accepted                | Open                  |
+| [D-108](#d-108-put-orderid-sets-an-offers-status-on-a-draft-it-also-renumbered-it)                 | `PUT /Order/{id}` sets an offer's status; on a draft it also renumbered it             | Open                  |
+| [D-109](#d-109-delete-order-and-delete-creditnote-delete-only-drafts)                              | `DELETE /Order` and `DELETE /CreditNote` delete only drafts                            | Open                  |
+| [D-110](#d-110-savecreditnote-with-an-id-updates-a-draft-creditnoteposdelete-is-a-list)            | `saveCreditNote` with an id updates a draft; `creditNotePosDelete` is a list           | Open                  |
+| [D-111](#d-111-recurring-templates-run-from-accountstartdate-accountnextinvoice-is-ignored)        | Recurring templates run from `accountStartDate`; `accountNextInvoice` is ignored       | Open                  |
+| [D-112](#d-112-recurring-templates-status-50-ends-status-200-blocks-delete-lists-hide-them)        | Recurring templates: status 50 ends, status 200 blocks `DELETE`, lists hide them       | Open                  |
+| [D-113](#d-113-changeparameter-answers-the-layout-in-metadata-orders-need-a-preview-first)         | `changeParameter` answers the layout in `metaData`; orders need a preview first        | Open                  |
+| [D-114](#d-114-docserver-layout-lists-sit-under-objects-and-carry-large-base64-fields)             | DocServer layout lists sit under `objects` and carry large base64 fields               | Open                  |
+| [D-115](#d-115-post-and-delete-texttemplate-create-and-delete-text-templates)                      | `POST` and `DELETE /TextTemplate` create and delete text templates                     | Open                  |
+| [D-116](#d-116-document-discounts-discountsave-takes-a-list-getdiscounts-reads-them)               | Document discounts: `discountSave` takes a list; `getDiscounts` reads them             | Open                  |
 
 ## Entries
 
@@ -569,13 +579,19 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 - **Spec says:** `Model_InvoiceResponse.accountIntervall` is described as "The interval in which
   recurring invoices are due as ISO-8601 duration", but its example is `'2022-03-14'`.
   `accountNextInvoice` is a `string` in the response model and an `integer` in the request model.
-- **Actual behavior:** Not yet recorded; we expect an ISO-8601 duration as described.
-- **Sources:** spec.
+- **Actual behavior:** Recorded 2026-11-16: sevDesk stores `accountIntervall` as any string sent
+  (`P0Y1M0W`, `P1M`, but also `monthly`) and returns it unchanged. `accountNextInvoice` reads
+  back as an ISO date-time (`2026-11-15T00:00:00+01:00`), set from `accountStartDate`; sent on its
+  own it is ignored (D-111).
+- **Sources:** spec; recorded 2026-11-16, trial account, Update 2.0 (probes
+  `write-recurring-interval-formats`, `write-recurring-schedule-fields`;
+  `test/fixtures/recorded/2026-11-16/invoices/recurring-templates.json`).
 - **Impact:** The invoice tools show `accountIntervall` as text, exactly as sevDesk sent it, and do
   not parse it. `accountNextInvoice` is read as a date given as Unix seconds (number or string), ISO
   8601 or `dd.mm.yyyy`; any other value fails the call instead of being dropped.
 - **Test:** `test/unit/domain/invoices.test.ts` ("maps the schedule of a recurring invoice (WKR)
-  as sevDesk sent it").
+  as sevDesk sent it"), `test/contract/recorded-gaps-documents.test.ts` ("reads through the
+  invoice parser: interval as sent, next run as a Berlin date").
 
 ### D-015: Invoice type filters use `Re` instead of `RE`
 
@@ -976,11 +992,15 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 - **Actual behavior:** Since 2026-04-07 these endpoints return `{objects: {…, pdf: "<base64>"}}`.
   The `getAsPdf=true` opt-in from the transition period is ignored. `getPdf` was not part of the
   change: on 2026-11-07 it still answered `{objects: {filename, mimetype, base64Encoded,
-content}}` for invoices, credit notes and orders (recorded; key casing: D-072).
+content}}` for invoices, credit notes and orders (recorded; key casing: D-072). Recorded
+  2026-11-16: `changeParameter` answers `{objects: {metaData: {docId, parameters, pdf}}}` on
+  invoices and `{objects: {result, metaData}}` on orders and credit notes, not the spec's
+  `metadaten`; `POST /Invoice/{id}/render` answers `{objects: {docId, pdf, parameters}}` (D-113).
 - **Sources:**
   [API news 2026-02-19, "Breaking Changes Q1 2026"](https://tech.sevdesk.com/api_news/posts/2026_02_breaking_changes_q1_2026/);
   recorded 2026-11-07, trial account, Update 2.0 (probe `read-getpdf-download`;
-  `test/fixtures/recorded/2026-11-07/documents/*-pdf.json`).
+  `test/fixtures/recorded/2026-11-07/documents/*-pdf.json`); recorded 2026-11-16, trial account,
+  Update 2.0 (probes `write-change-parameter-draft`, `write-change-parameter-read-back`).
 - **Impact:** Render schemas expect `pdf` only. The PDF is written to a file or returned as a
   resource, never inlined as base64 text. `getPdf` is not among the changed endpoints, and the
   current spec still declares `content` for it: the PDF tools use `getPdf`, parse `content`, and
@@ -988,7 +1008,7 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072).
 - **Test:** `test/unit/domain/document-files.test.ts` (the render shape is rejected for `getPdf`),
   `test/contract/recorded-fixtures.test.ts` (the recorded `getPdf` answers through
   `fetchDocumentFile`). `render` and `changeParameter`: pending until a tool uses them (no M3 tool
-  does).
+  does; the #94 tools, D-113).
 
 ### D-026: `saveVoucher` key order and top-level `filename`
 
@@ -1043,6 +1063,11 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072).
     from `getNextCreditNoteNumber` finalizes normally, and finalizing it advanced the counter.
     `createFromInvoice` gives its draft a number itself (`GU-1000`) without advancing the
     counter.
+  - Derived orders (recorded 2026-11-16): `createContractNoteFromOrder` and
+    `createPackingListFromOrder` give the new `AB` or `LI` the number `getNextOrderNumber` peeks
+    for its type without advancing the counter, so consecutive ones share a number (D-107).
+    Saving or deleting a draft with a peeked number does not move the counter either; a draft
+    that leaves status 100 through `PUT /Order/{id}` gets a new number (D-108).
   - Placeholders: none of the 48 invoice, credit note and order numbers of the trial account
     contained `%…%`. In exlo89/laravel-sevdesk-api#16 an invoice got the number `RE-%YYYY%MM1038`
     because the library filled the number itself from the number range, whose format comes back
@@ -1058,6 +1083,9 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072).
   recorded 2026-11-07, trial account, Update 2.0 (probes `write-numbering-invoice`,
   `write-numbering-order-draft`, `write-numbering-credit-note`, `write-next-order-number`,
   `write-credit-note-from-invoice`, `write-credit-note-payout-sign`, `read-number-placeholders`);
+  recorded 2026-11-16, trial account, Update 2.0 (probes `write-order-contract-note-from-order`,
+  `write-order-packing-list-from-order`, `write-delete-draft-order-credit-note`,
+  `write-order-status-accept-reject`);
   manual check (lead) of saving and finalizing with peeked and reserved numbers.
 - **Impact:** No tool ever sends a number it made up (B4): the create inputs do not accept one,
   and updates send the stored number unchanged, or none when none is stored. Invoices are created
@@ -1675,9 +1703,13 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072).
   (D-064). A second run (2026-11-08) repeated this (default 74 rows of types RE, AR and SR,
   `showMa=all` the 10 reminders only, `showAll=true` 84, `showWkr=all` 0). The voucher default
   (`noRv`) is still not shown: the account then had 11 vouchers, all of type VOU, and
-  `noRv=true` returned the same 11.
+  `noRv=true` returned the same 11. Recorded 2026-11-16 with recurring templates on the account:
+  the default list leaves them out; `showWkr=all` and `invoiceType=WKR` return only templates,
+  and `showAll=true` includes them (D-112).
 - **Sources:** spec (filter tables of the Invoice and Voucher tags); recorded 2026-11-07 and
-  2026-11-08, trial account, Update 2.0 (probes `read-list-defaults`, `write-reminder`).
+  2026-11-08, trial account, Update 2.0 (probes `read-list-defaults`, `write-reminder`); recorded
+  2026-11-16, trial account, Update 2.0 (probes `write-recurring-template-create`,
+  `read-recurring-generated`; `test/fixtures/recorded/2026-11-16/invoices/recurring-templates.json`).
 - **Impact:** Templates and reminders are not documents of their own, so the tools keep them out
   of totals whatever the default is. `sevdesk_invoices_list` sends `showWkr=all` or `showMa=all`
   only when the caller asks for type `recurring` or `reminder`, and re-checks the type on every
@@ -1699,9 +1731,9 @@ content}}` for invoices, credit notes and orders (recorded; key casing: D-072).
   with their EUR base"), `test/unit/tools/reports/aging.test.ts` ("explains approximate, unknown
   and left-out rows in its notes", "flags wrong-signed payments, foreign paid amounts and
   left-out rows"), `test/unit/tools/reports/cash-position.test.ts` ("adds an expected outlook
-  from open items by due date, never mixing currencies"). Templates and RV vouchers: pending:
-  recording session, probe `read-list-defaults` (the trial account has neither a recurring
-  template nor an RV voucher).
+  from open items by due date, never mixing currencies"). Templates:
+  `test/contract/recorded-gaps-documents.test.ts` ("lists only templates, active ones (status 200) included, with total and paging"). RV vouchers: pending: recording session, probe
+  `read-list-defaults` (the trial account has no RV voucher).
 
 ### D-050: A position `price` is read by the document's `showNet`
 
@@ -1869,10 +1901,13 @@ true`) and a lone `priceGross` 119 (with `showNet: false`) give the same totals.
   2026-11-07 had this shape and was accepted). Working `saveOrder` bodies leave
   `orderPosDelete` out entirely (community, not recorded). For `saveVoucher` the spec insists on
   the order of `voucherPosDelete` and `filename`; the recording shows that the order does not
-  matter there either (D-026).
+  matter there either (D-026). Recorded 2026-11-16: `saveOrder` accepts `orderPosDelete: null`,
+  and `discountSave` (as a list) followed by `discountDelete: null` after the position keys is
+  accepted by all three factories (D-116).
 - **Sources:** spec (`createInvoiceByFactory`, `createcreditNote`);
   [jernoxit/sevdesk-rs](https://github.com/jernoxit/sevdesk-rs) (`tests/fixtures/write_invoice_save.json`,
-  `write_credit_note_save.json`); the order bodies named in D-052.
+  `write_credit_note_save.json`); the order bodies named in D-052; recorded 2026-11-16, trial
+  account, Update 2.0 (probe `write-document-discount`).
 - **Impact:** Draft bodies end with `*PosDelete` (null on create) and never send `discountSave`,
   `discountDelete`, `takeDefaultAddress` or `forCashRegister`; the strict body schemas in
   `src/domain/drafts/payloads.ts` have no such keys.
@@ -1910,14 +1945,19 @@ true`) and a lone `priceGross` 119 (with `showNet: false`) give the same totals.
   with the new position. `voucherPosDelete` must be an array: one `{id, objectName}` object was
   refused with 400 "voucherPosDelete expected array with 'id' and 'objectName'. integer given",
   while an array of them deleted the stored position, saved the new one and recomputed the
-  voucher's sums in the same request.
+  voucher's sums in the same request. Recorded 2026-11-16: credit notes behave like invoices
+  (header-only update in place, `creditNotePosDelete` only as an array; D-110), and a `saveOrder`
+  with the order's id and no other header field was accepted (the `discountDelete` step of
+  `write-document-discount`, D-116); omitted order fields are still unrecorded.
 - **Sources:** spec (`createInvoiceByFactory`, `createcreditNote`, `createOrder`, `saveInvoice`,
   `saveOrder`, `voucherFactorySaveVoucher`, `Model_Invoice`, `Model_Order`; tag `InvoicePos`);
   [FSCreative/fs-creative](https://github.com/FSCreative/fs-creative) (`server.js`,
   `sevdesk-ops.js` at `2d776fa`, 2026-11-07);
   [codestra/sevdesk-mcp `src/tools/orders.ts`](https://github.com/codestra/sevdesk-mcp/blob/5de1725c4758ea102fce079329a05b26e5b0f1bb/src/tools/orders.ts);
   recorded 2026-11-07, trial account, Update 2.0 (probe `write-save-update-omitted-fields`);
-  recorded 2026-11-08 (probe `write-voucher-update-draft`, second write run).
+  recorded 2026-11-08 (probe `write-voucher-update-draft`, second write run); recorded
+  2026-11-16, trial account, Update 2.0 (probes `write-credit-note-update-draft`,
+  `write-document-discount`).
 - **Impact:** `sevdesk_invoice_update_draft` and `sevdesk_order_update_draft` update drafts with
   one `saveInvoice`/`saveOrder` request carrying the draft's id (not `PUT /Order/{orderId}` plus
   position requests, which can fail half-way). Every writable field the tools know is carried
@@ -2400,9 +2440,17 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   number does not advance the order counter (D-027); finalizing a credit note saved with a peeked
   number did (`GU-1002` → `GU-1003`).
 
+  Recorded 2026-11-16 (offers and credit notes alike): after `useNextNumber=true` the peek shows
+  the following number; saving a draft with the reserved number does not move the counter again;
+  after that draft is deleted (D-109), the peek shows the **reserved number again**. A number
+  reserved for a draft that is then deleted is handed out once more, so deleting a numbered draft
+  leaves no gap. Saving or deleting a draft with a peeked number moves nothing.
+
 - **Sources:** recorded 2026-11-07, trial account, Update 2.0 (probe `write-next-order-number`:
   two peeks, the same number); manual check (lead) of `useNextNumber=true`, the credit note and
-  invoice endpoints, and saving and finalizing with peeked numbers.
+  invoice endpoints, and saving and finalizing with peeked numbers; recorded 2026-11-16, trial
+  account, Update 2.0 (probes `write-reserved-number-delete-draft`,
+  `write-delete-draft-order-credit-note`).
 - **Impact:** The order and credit note draft tools peek the number for the preview and reserve
   it in execute, right before `saveOrder`/`saveCreditNote` (`peekNextNumber`,
   `reserveNextNumber` in `src/domain/drafts/numbering.ts`; D-027); invoices are never reserved,
@@ -2416,8 +2464,10 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Test:** `test/unit/sevdesk/paths.test.ts`, `test/unit/sevdesk/client.test.ts`,
   `test/unit/sevdesk/scoped-client.test.ts` (side-effect classification),
   `test/unit/domain/drafts/numbering.test.ts`, `test/unit/tools/drafts/numbering.test.ts`. Live:
-  probe `write-next-order-number`; `useNextNumber=true` is not probed (`NOT_PROBED`: it consumes a
-  number of the sequence).
+  probe `write-next-order-number`, and the opt-in probe `write-reserved-number-delete-draft`
+  (it consumes a number of each sequence; the catalog test in `test/unit/scripts/probes.test.ts`
+  allows `useNextNumber=true` only there); the delete tools of #90 pin the "number is handed out
+  again" note when they come.
 
 ### D-067: `GET /SevClient` tells the taxation regime, and sevDesk checks it only when finalizing
 
@@ -2698,9 +2748,13 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Actual behavior:** Recorded 2026-11-08: `DELETE /Voucher/{voucherId}` on a draft (status 50)
   answers `{objects: [null]}`, after which GET answers 404. On an open voucher (100) it answers 409
   "Voucher can only be deleted in status 50 but is status 100", and the voucher stays. Whether
-  the attached receipt file is deleted with a draft was not checked.
+  the attached receipt file is deleted with a draft was not checked. Orders, credit notes and
+  recurring invoice templates answer the same way (2026-11-16): `{objects: [null]}` for a draft,
+  409 "… can only be deleted in status 100 but is status 200" otherwise (D-109, D-112).
 - **Sources:** recorded 2026-11-08, trial account, Update 2.0 (probe `write-voucher-delete`: the
-  draft case in both write runs, the open voucher in the second).
+  draft case in both write runs, the open voucher in the second); recorded 2026-11-16, trial
+  account, Update 2.0 (probes `write-delete-draft-order-credit-note`,
+  `write-recurring-schedule-fields`).
 - **Impact:** `sevdesk_voucher_delete_draft` refuses anything but a draft before sending
   (`prepareVoucherDelete` in `src/domain/drafts/voucher-finalize.ts`), sends the DELETE once,
   ignores its answer and confirms with a GET that the voucher is gone (`executeVoucherDelete`). A
@@ -3271,3 +3325,277 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("checks costCentre on create and on
   updates with the id, per document kind", "tells honoured list filters from ignored ones, with an
   untagged control"). Live: the two probes above.
+
+### D-107: Order factories copy the order; a confirmation marks the offer accepted
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `POST /Order/Factory/createContractNoteFromOrder` and
+  `createPackingListFromOrder` take `order[id]` and `order[objectName]` in the query and the order
+  (`{id, objectName}`) in the body, and answer 200 with a bare `Model_OrderResponse`. Nothing says
+  which source statuses they accept, what the new order copies, how it is numbered or what happens
+  to the source.
+- **Actual behavior:** Recorded on 2026-11-16 with the order in the query and the body:
+  - Both answer the new order itself under `objects` (D-001), not a nested `order` member. The new
+    order is a draft (100) of type `AB` (order confirmation) or `LI` (delivery note), with
+    `origin: {id: <source>, objectName: "Order"}`, the source's contact, head and foot text, all
+    positions (same names, quantities, prices) and the same `sumNet`.
+  - Its `orderNumber` is the next number of its range, the one `getNextOrderNumber` peeks, and the
+    counter does not move (D-027): two confirmations made in a row got the same `AB` number, three
+    delivery notes the same `LI` number.
+  - `createContractNoteFromOrder` worked from a **draft** offer (100) as well as a sent one (200),
+    and set the source offer to status 500 (accepted) in both cases: creating a confirmation
+    accepts the offer, even one that was never sent.
+  - `createPackingListFromOrder` worked from a sent offer, a draft confirmation and a sent one,
+    and left the source's status alone. A confirmation marked as sent with `sendBy` read back with
+    status 500, not 200.
+- **Sources:** spec (`createContractNoteFromOrder`, `createPackingListFromOrder`,
+  `Model_CreatePackingListFromOrder`); recorded 2026-11-16, trial account, Update 2.0 (probes
+  `write-order-contract-note-from-order`, `write-order-packing-list-from-order`).
+- **Impact:** A tool that makes a confirmation must say in its preview that the offer becomes
+  accepted (500), and should refuse a draft offer or say that it accepts an unsent one. The new
+  order's number may equal one sevDesk already handed out; the tool reads the order back and shows
+  its number. The id comes from the answer itself (`createdDocumentId` already accepts a bare
+  record, D-064). (#89)
+- **Test:** pending: the #89 tools. Live: probes `write-order-contract-note-from-order`,
+  `write-order-packing-list-from-order` (their reporting: `test/unit/scripts/gaps-documents-probes.test.ts`,
+  "describes order confirmations and delivery notes against their source").
+
+### D-108: `PUT /Order/{id}` sets an offer's status; on a draft it also renumbered it
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `PUT /Order/{orderId}` updates an order with `Model_OrderUpdate`; `status` is a
+  field of it. Nothing says which status changes are allowed. For vouchers the same kind of `PUT`
+  refuses a status (D-073).
+- **Actual behavior:** Recorded on 2026-11-16 with a body of only `{status}`:
+  - On sent offers (200), `{status: 500}` (accepted) and `{status: 300}` (rejected) were
+    accepted, and `{status: 200}` set both back. The answer is the order under `objects`, with the
+    new status. No other field changed.
+  - On a **draft** offer (100), `{status: 500}` was accepted too, and the order's `orderNumber`
+    changed to another number of the range (in the scrubbed evidence `AN-0007` → `AN-0008`): sevDesk
+    renumbers a draft that leaves status 100 this way.
+- **Sources:** spec (`updateOrder`, `Model_OrderUpdate`); recorded 2026-11-16, trial account,
+  Update 2.0 (probe `write-order-status-accept-reject`).
+- **Impact:** Accepting or rejecting an offer is one `PUT /Order/{id}` with `{status}` only. The
+  tool allows it only from a sent offer (200) and back to 200, and refuses drafts, so the
+  renumbering never happens through it. (#89)
+- **Test:** pending: the #89 tools. Live: probe `write-order-status-accept-reject`
+  (`test/unit/scripts/gaps-documents-probes.test.ts`, "sets offer statuses, sets them back, and
+  records the refusal on a draft").
+
+### D-109: `DELETE /Order` and `DELETE /CreditNote` delete only drafts
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `DELETE /Order/{orderId}` and `DELETE /CreditNote/{creditNoteId}` delete the
+  record; nothing says for which statuses, and the answers are not described in detail.
+- **Actual behavior:** Recorded on 2026-11-16: on an offer draft and on credit note drafts (with
+  and without a number) the DELETE answers `{objects: [null]}`, after which GET answers 404, as for
+  vouchers (D-074) and invoices (D-024). A sent offer (200) is refused with 409 "Order can only be
+  deleted in status 100 but is status 200" and stays. A finalized credit note was not at hand.
+  Deleting a draft saved with a peeked number does not move the counter; deleting one saved with
+  a reserved number gives that number back (D-066).
+- **Sources:** spec (`deleteOrder`, `deletecreditNote`); recorded 2026-11-16, trial account,
+  Update 2.0 (probe `write-delete-draft-order-credit-note`).
+- **Impact:** The draft delete tool refuses anything but status 100 before sending, reads back
+  with a GET to confirm, and turns a 409 into a trusted message that nothing was deleted. (#90)
+- **Test:** pending: the #90 tools. Live: probe `write-delete-draft-order-credit-note`
+  (`test/unit/scripts/gaps-documents-probes.test.ts`, "deletes drafts, records the refusal of
+  non-drafts, and follows the counters").
+
+### D-110: `saveCreditNote` with an id updates a draft; `creditNotePosDelete` is a list
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `saveCreditNote` can update credit notes like `saveInvoice` (D-054) and declares
+  `creditNotePosDelete` as one `{id, objectName}` object.
+- **Actual behavior:** Recorded on 2026-11-16:
+  - `saveCreditNote` with `creditNote: {id, objectName, mapAll, header}` only (and
+    `creditNotePosSave: []`, `creditNotePosDelete: null`) updates the draft in place: the answer
+    names the same id, and only `header` changed; the other fields stayed.
+  - `creditNotePosDelete` as an array of `{id, objectName: "CreditNotePos"}` together with a new
+    position in `creditNotePosSave` replaced the position and recomputed the sums. As one object
+    it is refused with 400 "creditNotePosDelete expected array with 'id' and 'objectName'. integer
+    given" (as `voucherPosDelete`, D-054).
+  - A credit note made by `createFromInvoice` keeps `origin`, `refSrcInvoice`, type `CN` and its
+    number through a header-only update; its `discountTime` went from `null` to `"0"`.
+- **Sources:** spec (`createcreditNote`, `Model_creditNote` request schema); recorded 2026-11-16,
+  trial account, Update 2.0 (probe `write-credit-note-update-draft`).
+- **Impact:** `sevdesk_credit_note_update_draft` works like the invoice update (D-054): one
+  `saveCreditNote` with the id and every stored field carried over; replaced positions go out
+  with `creditNotePosDelete` as an array. (#90)
+- **Test:** pending: the #90 tools. Live: probe `write-credit-note-update-draft`
+  (`test/unit/scripts/gaps-documents-probes.test.ts`, "updates credit note drafts in place,
+  replaces positions and keeps the invoice link").
+
+### D-111: Recurring templates run from `accountStartDate`; `accountNextInvoice` is ignored
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** A recurring invoice template is an invoice with `invoiceType: "WKR"`;
+  `accountIntervall` ("ISO-8601 duration", D-014) and `accountNextInvoice` are its schedule. The
+  request model marks both read-only and names no start or end date. Issue #91 assumed the
+  voucher fields `recurringInterval`, `recurringStartDate`, `recurringNextVoucher`.
+- **Actual behavior:** Recorded on 2026-11-16 with `saveInvoice` (status 100):
+  - `accountIntervall` is stored as any string sent: `P0Y1M0W`, `P1M`, `P0Y0M1W`, `P0Y3M`,
+    `P1Y`, but also `1 month` and `monthly`; nothing is validated.
+  - `accountNextInvoice` alone is not stored, as Unix seconds, `dd.mm.yyyy` or ISO.
+  - `accountStartDate` (Unix seconds, ISO or `dd.mm.yyyy`) is stored and sets `accountNextInvoice`
+    to the same date; sent together, both read back as the start date. A start date in the past
+    (yesterday) was accepted. `accountEndDate` in the same three forms is stored on its own.
+    `accountLastInvoice` stayed `null`. Dates read back as ISO date-times (`…T00:00:00+01:00`).
+  - The same holds for an update with the template's id through `saveInvoice` and through
+    `PUT /Invoice/{id}` (not in the spec; D-024).
+  - `invoiceDate` does not drive the schedule, and the `recurring…` fields are dropped silently
+    (D-003).
+  - What sevDesk generates on the run date is pending: the template left by
+    `write-recurring-template-due` (start 2026-11-15) is read by `read-recurring-generated` on
+    2026-11-17.
+- **Sources:** spec (`Model_Invoice`, `Model_InvoiceResponse`); recorded 2026-11-16, trial
+  account, Update 2.0 (probes `write-recurring-template-create`, `write-recurring-interval-formats`,
+  `write-recurring-schedule-fields`, `write-recurring-template-due`;
+  `test/fixtures/recorded/2026-11-16/invoices/recurring-templates.json`).
+- **Impact:** A recurring template is created with `invoiceType: "WKR"`, a validated
+  `accountIntervall` (the server checks the ISO-8601 form itself, since sevDesk does not) and
+  `accountStartDate`, optionally `accountEndDate`; never `accountNextInvoice` or `recurring…`.
+  Reads show interval, next run, start and end date; the invoice parser reads `accountIntervall`
+  and `accountNextInvoice` today and needs `accountStartDate` and `accountEndDate`. (#91)
+- **Test:** `test/contract/recorded-gaps-documents.test.ts` ("carries the schedule fields the
+  parser does not read yet", "reads through the invoice parser: interval as sent, next run as a
+  Berlin date"); the create tool: pending, #91.
+
+### D-112: Recurring templates: status 50 ends, status 200 blocks `DELETE`, lists hide them
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** Status 50 is "Deactivated recurring invoice". The Invoice tag's filter table
+  offers `showWkr=all` (D-049). Nothing says how a template is started, ended or deleted.
+- **Actual behavior:** Recorded on 2026-11-16:
+  - A new template has status 100. `saveInvoice` with its id and `status: "50"` deactivates it,
+    `status: "100"` sets it back; `status: "200"` is accepted too and keeps the schedule.
+  - `DELETE /Invoice/{id}` deletes a template at status 100 and at 50 (`{objects: [null]}`, then
+    404), but refuses one at 200 with 409 "Invoice can only be deleted in status 100 but is status
+    200"; such a template has to be set to 50 or 100 first.
+  - The default `GET /Invoice` leaves templates out; `showWkr=all` and `invoiceType=WKR` list
+    them (only templates), `showAll=true` too. A template has no number and no `sendDate`.
+  - Whether status 100 or only 200 makes sevDesk generate invoices is pending (D-111).
+- **Sources:** spec (Invoice tag, status table and filters); recorded 2026-11-16, trial account,
+  Update 2.0 (probes `write-recurring-template-update-end`, `write-recurring-schedule-fields`,
+  `write-recurring-template-create`).
+- **Impact:** Ending a template is `saveInvoice` with its id and status 50, previewed; deleting
+  is allowed only at 50 or 100. The lifecycle tools keep refusing templates
+  (`refuseTemplate`). (#91)
+- **Test:** `test/contract/recorded-gaps-documents.test.ts` ("lists only templates, active ones
+  (status 200) included, with total and paging"); the end tool: pending, #91.
+
+### D-113: `changeParameter` answers the layout in `metaData`; orders need a preview first
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `PUT /{Invoice,Order,CreditNote}/{id}/changeParameter` takes `{key, value}`
+  (`Model_ChangeLayout`: `language`, `template`, `letterpaper`, `payPal`) and answers
+  `Model_ChangeLayoutResponse` (`{result, metadaten: {pdf, docId}}`). `POST /Invoice/{id}/render`
+  declares `{pdf, docId, parameters: [{key, name, values, visible, value}]}`.
+- **Actual behavior:** Recorded on 2026-11-16 on drafts:
+  - Invoices: each key is accepted. The answer is `{objects: {metaData: {docId, parameters,
+pdf}}}`. `parameters` lists 15 print options with their current `value`, `values` (the choices)
+    and `visible`: `language` (8 choices), `template` (21), `letterpaper` (2), `payPal`,
+    `epcQrCode`, `printDeliveryReturn`, `printFooter`, `printPageNumbers`, `printCustomerNumber`,
+    `printContactPerson`, `logoSize`, `color`, `printPosTax`, `printPartNumber`,
+    `printFoldLines`. The chosen template and letterpaper read back as `value`; after `en_US` the
+    language read `en`.
+  - The record does not change: status, `sendDate`, `sendType`, number and even `update` stay, and
+    no field of `GET /Invoice/{id}` (also with `embed=document|letterpaper|template|language`) nor
+    of the `getPdf` answer holds the choices. They live in the rendered document (`docId`). A
+    second call without a change answers the same `metaData`, and `POST /Invoice/{id}/render
+{forceReload: false}` answers `{docId, pdf, parameters}` with the same values, also without
+    changing the draft.
+  - Orders and credit notes: every call was refused with 500 "Syntax error" until the draft had a
+    `getPdf` preview (`preventSendBy=true`); after it the call is accepted and answers
+    `{result, metaData}`. Orders list 17 options (no `payPal`; `qrCode`, `printAcceptance`,
+    `sumBlock`; `letterpaper` without a value), credit notes 15 (`printSwissPaymentSlip`, no
+    `printCustomerNumber`).
+  - The trial has one letterpaper; the template list is in D-114.
+- **Sources:** spec (`updateInvoiceTemplate`, `updateOrderTemplate`, `updateCreditNoteTemplate`,
+  `Model_ChangeLayout`, `Model_ChangeLayoutResponse`, `invoiceRender`); recorded 2026-11-16, trial
+  account, Update 2.0 (probes `write-change-parameter-draft`, `write-change-parameter-read-back`).
+- **Impact:** On a draft `changeParameter` changes no booking state, so it can be `write` tier
+  there; the HTTP client still requires `commit` for the endpoint (`src/sevdesk/paths.ts`). For
+  orders and credit notes the tool first fetches a `getPdf` preview (`preventSendBy=true`, which
+  leaves a draft a draft, B1). Since the record does not show the layout, the finalize preview
+  reads it from `metaData.parameters` (a call that changes nothing, or `render`) and never shows
+  the base64 `pdf`. (#94)
+- **Test:** pending: the #94 tools. Live: probes `write-change-parameter-draft`,
+  `write-change-parameter-read-back` (`test/unit/scripts/gaps-documents-probes.test.ts`, "reads
+  changeParameter choices back from metaData and render, and finds the order form").
+
+### D-114: DocServer layout lists sit under `objects` and carry large base64 fields
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `GET /DocServer/getLetterpapersWithThumb` answers `{result, letterpapers: [{id,
+pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?type=…` answers
+  `{result, templates: [{id, name, translationCode, sevClient, type, html, default, premium}]}`.
+- **Actual behavior:** Recorded on 2026-11-16: both lists sit under `objects` (D-001).
+  Letterpapers: `objects: {result: 1, letterpapers: [...]}`, rows with `id` (a string; 24 hex
+  digits in the spec's example, scrubbed in the recording),
+  `pdf` (base64, about 114 KB), `sevClient` (`"0"` for stock entries), `name`, `default` (a
+  number), `isCustom` (boolean, undeclared) and `img` (base64 thumbnail, about 86 KB); the trial
+  has one. Templates: `objects: {templates: [...]}`, 147 stock rows without a type and 21 per
+  type (`Invoice`, `Order`, `Creditnote`), one default per type; rows add `isCustom`,
+  `pdfreactorVersion` and sometimes `structure`, `default` is a boolean or a number, `img` holds
+  up to 184 KB and `html` up to 74 KB. The whole template list is 3.2 MB even scrubbed, so it is
+  not recorded as a fixture; the letterpaper list is.
+- **Sources:** spec (`getLetterpapersWithThumb`, `getTemplates`); recorded 2026-11-16, trial
+  account, Update 2.0 (probe `read-docserver-layouts`; `pnpm fixtures:record`,
+  `test/fixtures/recorded/2026-11-16/layouts/letterpapers.json`).
+- **Impact:** A layout lookup reads the lists with `type`, keeps only `id`, `name`,
+  `translationCode`, `type`, `default` and `sevClient`, and drops `pdf`, `img`, `html` and
+  `structure` before anything reaches the model; it needs a body cap well above the 1 MiB of
+  `sevdesk_api_get`, which keeps refusing `DocServer` (D-024). (#94)
+- **Test:** `test/contract/recorded-gaps-documents.test.ts` ("answers result and letterpapers
+  under objects, with the thumbnails scrubbed", "is what read-docserver-layouts describes, without
+  any base64"); the lookup: pending, #94.
+
+### D-115: `POST` and `DELETE /TextTemplate` create and delete text templates
+
+- **Status:** Open. **Evidence:** recorded.
+- **Spec says:** `/TextTemplate` is not in the spec (D-024).
+- **Actual behavior:** Recorded on 2026-11-16: `POST /TextTemplate` with `{objectName:
+"TextTemplate", mapAll: true, name, text, category: "DOCUMENT", objectType: "RE", textType:
+"HEAD"}` answers the new row under `objects` (`id`, `objectName`, `additionalInformation`,
+  `create`, `update`, `name`, `text`, `objectType`, `textType`, `sevClient`, `main` `"0"`,
+  `category`); GET by id answers the same keys, and the `textType=HEAD` filter lists it.
+  `DELETE /TextTemplate/{id}` answers `{objects: [null]}`, then GET answers 404.
+- **Sources:** recorded 2026-11-16, trial account, Update 2.0 (probe
+  `write-text-template-create-delete`).
+- **Impact:** Text templates can be created and chosen by name; the lookup reads them with
+  `textType` and `objectType`. (#94)
+- **Test:** pending: the #94 tools. Live: probe `write-text-template-create-delete`
+  (`test/unit/scripts/gaps-documents-probes.test.ts`, "creates and deletes a text template").
+
+### D-116: Document discounts: `discountSave` takes a list; `getDiscounts` reads them
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `saveInvoice` and `saveCreditNote` declare `discountSave` and `discountDelete` as
+  one object each (`{discount, text, percentage, value, objectName: "Discounts", mapAll}` and
+  `{id, objectName}`); `saveOrder` declares neither. Only `GET /Order/{orderId}/getDiscounts`
+  reads discounts (`Model_Discount`: `object`, `text`, `percentage`, `value`, `isNet`).
+- **Actual behavior:** Recorded on 2026-11-16 on invoice, order and credit note drafts with one
+  position of 100.00 net at 19 %:
+  - `discountSave` as a list of one object was accepted by all three factories, for 10 % and for
+    a fixed 10.00. The save answer adds a `discount` list. Both gave `sumNet` 90, `sumTax` 17.1,
+    `sumGross` 107.1 and **negative** `sumDiscounts` -10 (`sumDiscountNet` -10,
+    `sumDiscountGross` -11.9). The stored row has `discount` `"1"`, `percentage` `"1"`/`"0"`,
+    `value` `"10"`, `isNet` `"1"` (all strings) and `object: {id, objectName}`.
+  - The raw `GET /<kind>/{id}` carries only the sums (`discount` and `discountTime` are Skonto).
+    `GET /Invoice/{id}/getDiscounts`, `/Order/{id}/getDiscounts` and `/CreditNote/{id}/getDiscounts`
+    (the first and last undocumented) list the rows; `GET /Discounts` (undocumented) lists every
+    discount of the account and ignores the `object` filter. For an order without discounts,
+    `getDiscounts` answers `{objects: [], total: null}`.
+  - `discountDelete` as a list of `{id, objectName: "Discounts"}` in an update with the id
+    (`discountSave: null`) removed the discount and the sums went back to 100/119.
+- **Sources:** spec (`createInvoiceByFactory`, `createcreditNote`, `getDiscounts`,
+  `Model_Discount`); recorded 2026-11-16, trial account, Update 2.0 (probes
+  `write-document-discount`, `read-order-get-discounts`;
+  `test/fixtures/recorded/2026-11-16/orders/order-discounts.json`).
+- **Impact:** A document discount goes out as `discountSave: [{…}]` on all three factories and is
+  read back with `/<kind>/{id}/getDiscounts`; updates that change it delete the stored rows in
+  `discountDelete` (a list) and save the new one. `sumDiscounts` is negative and must be shown as a
+  deduction. Whatever discount a draft carries is part of the finalize approval. (#94)
+- **Test:** `test/contract/recorded-gaps-documents.test.ts` ("answers an empty list with total
+  null for an order without discounts"); the draft tools: pending, #94. Live: probes
+  `write-document-discount`, `read-order-get-discounts`.
