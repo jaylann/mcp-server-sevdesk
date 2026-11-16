@@ -47,11 +47,25 @@ languages and fails on any of these.
 
 ```bash
 pnpm pages:preview    # http://127.0.0.1:4173: every page state, en/de, light/dark, real headers
+pnpm pages:watch      # the same, started again on every save (reload the tab)
+pnpm pages:shots      # screenshots of every state into build/page-shots/; fails on page errors
 pnpm pages:assets     # after changing a file in assets/: regenerate the embedded copy
 ```
 
 Add a new state to `test/helpers/page-gallery.ts`, so the preview and the tests cover it. The
 preview's `/texts` page lists every text in both languages side by side.
+
+`pages:shots` photographs each state in both languages and both schemes at 1280 and 390 px
+(`--only <name>`, `--locale`, `--scheme` and `--width` narrow it) and fails when a page logs an
+error, including anything its Content-Security-Policy refused. It drives the installed Google
+Chrome (`SEVDESK_CHROME=<path>` for another one); run it outside a sandboxed shell.
+
+To try the approval flow itself, `pnpm approvals:dev` plays an assistant against recorded
+fixtures: keys call the confirmed write tools, the server opens its local approval page as it does
+for Claude Desktop, and you decide in the browser. `r` retries the waiting calls (approved ones
+run against the fixtures), `c` changes a waiting record so the server asks again, `e`/`x` move the
+clock 9 or 10 minutes, `f` fills up to the limit; `--scenario steady|burst` sends requests by
+itself and `--no-open` only logs the links. It needs no token, and nothing leaves the machine.
 
 ## Adding a prompt
 

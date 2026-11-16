@@ -1,7 +1,8 @@
 /**
  * `pnpm pages:preview`: every page of the server, in every state, language and colour scheme, on
- * `http://127.0.0.1:4173` (or `PORT`). For looking at the pages while changing them (restart it
- * after a change); nothing here runs in the server.
+ * `http://127.0.0.1:4173` (or `PORT`). For looking at the pages while changing them; nothing here
+ * runs in the server. `pnpm pages:watch` starts it again whenever a file it imports changes
+ * (reload the tab), and `pnpm pages:shots` (`scripts/page-shots.ts`) photographs it.
  *
  * The pages are rendered by the real renderers from the made-up content in
  * `test/helpers/page-gallery.ts` and answered with the real page headers (`htmlResponse`), so the
@@ -13,6 +14,8 @@
  * with `?phone` shows the narrow-screen layout in a 375px column.
  */
 import { createServer, type ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
+import { pathToFileURL } from "node:url";
 
 import { assetHeaders, pageAsset } from "../src/pages/assets.js";
 import { pageContext, type RenderContext } from "../src/pages/context.js";
@@ -28,14 +31,13 @@ import { flattenTexts } from "../test/helpers/page-texts.js";
 
 const HOST = "127.0.0.1";
 const PORT = Number(process.env["PORT"] ?? "4173");
-const ORIGIN = `http://${HOST}:${String(PORT)}`;
 
 const SCHEMES = { light: LIGHT_SCHEME, dark: DARK_SCHEME } as const;
-type Scheme = keyof typeof SCHEMES;
-const SCHEME_NAMES = Object.keys(SCHEMES) as Scheme[];
+export type Scheme = keyof typeof SCHEMES;
+export const SCHEME_NAMES = Object.keys(SCHEMES) as Scheme[];
 
-function context(locale: Locale): RenderContext {
-  return { ...pageContext(locale, ORIGIN), nonce: styleNonce() };
+function context(locale: Locale, origin: string): RenderContext {
+  return { ...pageContext(locale, origin), nonce: styleNonce() };
 }
 
 /** Applies one colour scheme whatever the desktop prefers: its tokens, after the stylesheet. */
@@ -105,11 +107,47 @@ function texts(ctx: RenderContext): string {
   return renderFrame({ title: "Page texts", body, wide: true, css: INDEX_CSS }, ctx);
 }
 
-const server = createServer((request, response) => {
-  const [path = "/", query] = (request.url ?? "/").split("?");
-  const ctx = context("en");
-  if (request.method !== "GET") {
+/** A running preview: where it listens, and how to stop it. */
+export interface Preview {
+  readonly origin: string;
+  close(): Promise<void>;
+}
+
+/** Starts the preview on `port` of 127.0.0.1 (0: any free port). */
+export async function startPreview(port: number = PORT): Promise<Preview> {
+  let origin = `http://${HOST}:${String(port)}`;
+  const server = createServer((request, response) => {
+    handle(origin, request.method, request.url, response);
     request.resume();
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, HOST, () => {
+      resolve();
+    });
+  });
+  origin = `http://${HOST}:${String((server.address() as AddressInfo).port)}`;
+  return {
+    origin,
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.closeAllConnections();
+        server.close(() => {
+          resolve();
+        });
+      }),
+  };
+}
+
+function handle(
+  origin: string,
+  method: string | undefined,
+  url: string | undefined,
+  response: ServerResponse,
+): void {
+  const [path = "/", query] = (url ?? "/").split("?");
+  const ctx = context("en", origin);
+  if (method !== "GET") {
     const note = {
       title: "Preview only",
       message: "Forms post nowhere in the preview. Open the result pages from the index.",
@@ -142,11 +180,12 @@ const server = createServer((request, response) => {
     send(response, 404, renderMessagePage(missing, ctx, { tone: "info" }), ctx);
     return;
   }
-  const pageCtx = context(locale);
+  const pageCtx = context(locale, origin);
   const rendered = forceScheme(page.render(pageCtx), scheme);
   send(response, 200, query === "phone" ? forcePhone(rendered) : rendered, pageCtx);
-});
+}
 
-server.listen(PORT, HOST, () => {
-  console.log(`Page preview: ${ORIGIN}/  (Ctrl+C to stop)`);
-});
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const preview = await startPreview();
+  console.log(`Page preview: ${preview.origin}/  (Ctrl+C to stop)`);
+}

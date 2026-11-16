@@ -1,4 +1,4 @@
-<!-- translated-from: docs/contributing/changes.md sha256:bdf1c426e028 -->
+<!-- translated-from: docs/contributing/changes.md sha256:ba3c910417ea -->
 
 # Änderungen vornehmen
 
@@ -53,11 +53,27 @@ dieser Punkte fehl.
 
 ```bash
 pnpm pages:preview    # http://127.0.0.1:4173: jeder Seitenzustand, en/de, hell/dunkel, echte Header
+pnpm pages:watch      # dasselbe, bei jedem Speichern neu gestartet (Tab neu laden)
+pnpm pages:shots      # Screenshots jedes Zustands nach build/page-shots/; schlägt bei Seitenfehlern fehl
 pnpm pages:assets     # nach einer Änderung an einer Datei in assets/: die eingebettete Kopie neu erzeugen
 ```
 
 Trage einen neuen Zustand in `test/helpers/page-gallery.ts` ein, damit die Vorschau und die Tests
 ihn abdecken. Die Seite `/texts` der Vorschau zeigt jeden Text in beiden Sprachen nebeneinander.
+
+`pages:shots` fotografiert jeden Zustand in beiden Sprachen und beiden Farbschemata bei 1280 und
+390 px (`--only <name>`, `--locale`, `--scheme` und `--width` grenzen das ein) und schlägt fehl,
+wenn eine Seite einen Fehler meldet, auch alles, was ihre Content-Security-Policy abgelehnt hat. Es
+steuert das installierte Google Chrome (`SEVDESK_CHROME=<Pfad>` für ein anderes); führe es
+außerhalb einer Sandbox-Shell aus.
+
+Um den Freigabeablauf selbst auszuprobieren, spielt `pnpm approvals:dev` einen Assistenten gegen
+aufgezeichnete Fixtures: Tasten rufen die bestätigungspflichtigen Schreibwerkzeuge auf, der Server
+öffnet seine lokale Freigabeseite wie für Claude Desktop, und du entscheidest im Browser. `r`
+wiederholt die wartenden Aufrufe (freigegebene laufen gegen die Fixtures), `c` ändert einen
+wartenden Datensatz, sodass der Server erneut fragt, `e`/`x` stellen die Uhr 9 oder 10 Minuten
+vor, `f` füllt bis zur Grenze auf; `--scenario steady|burst` schickt Anfragen von selbst, und
+`--no-open` schreibt die Links nur ins Log. Es braucht kein Token, und nichts verlässt den Rechner.
 
 ## Einen Prompt hinzufügen
 
