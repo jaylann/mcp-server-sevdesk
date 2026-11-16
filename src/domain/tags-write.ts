@@ -4,8 +4,9 @@
  *
  * Recorded 2026-11-16 (spec/deviations.md D-088, D-089):
  * - `POST /Tag/Factory/create {name, object: {id, objectName}}` tags an invoice, voucher, order or
- *   credit note by name and answers the TagRelation. A name that exists, in any letter case,
- *   reuses that tag; a new name creates the tag. A tag cannot be given by id.
+ *   credit note by name, drafts and finalized documents alike, and answers the TagRelation. A
+ *   name that exists, also with other letter case or accents, reuses that tag; a new name creates
+ *   the tag. A tag cannot be given by id.
  * - Nothing in the spec takes a tag off a document. The undocumented
  *   `DELETE /TagRelation/{id}` removes one relation; removing a tag's last relation deletes the
  *   tag itself.
@@ -132,8 +133,9 @@ async function planAdd(
   if (found.matches.length > 1) {
     // sevDesk picks one of them by name; which one is not measured, so the preview could not say.
     throw validation(
-      "Several tags have this name (compared ignoring case), and sevDesk would pick one of " +
-        "them. Give one a distinct name in sevDesk first; sevdesk_tags_list shows their ids.",
+      "Several tags have this name (compared ignoring case and accents), and sevDesk would pick " +
+        "one of them. Give one a distinct name in sevDesk first; sevdesk_tags_list shows their " +
+        "ids.",
     );
   }
   const existing = found.matches[0];
@@ -165,12 +167,13 @@ async function planAdd(
   const warnings: string[] = [];
   if (existing === undefined) {
     warnings.push(
-      "No tag has this name yet (compared ignoring case, as sevDesk does): sevDesk creates the " +
-        "tag.",
+      "No tag has this name yet (compared ignoring case and accents, as sevDesk does): sevDesk " +
+        "creates the tag.",
     );
   } else if (existing.name !== name) {
     warnings.push(
-      "sevDesk compares tag names ignoring case: the existing tag is used with its own spelling.",
+      "A tag whose name differs only in case or accents exists: sevDesk reuses it, with its own " +
+        "spelling.",
     );
   }
   return {
@@ -209,8 +212,8 @@ async function planRemove(
     tag === undefined ? undefined : await findTagRelation(client, tag.id, object, signal);
   if (tag === undefined || relation === undefined) {
     throw validation(
-      `${documentRef(doc, true)} does not carry this tag (compared ignoring case); nothing to ` +
-        "remove. sevdesk_tags_list lists the tags.",
+      `${documentRef(doc, true)} does not carry this tag (compared ignoring case and accents); ` +
+        "nothing to remove. sevdesk_tags_list lists the tags.",
     );
   }
   const uses = await countTagUses(client, tag.id, signal);

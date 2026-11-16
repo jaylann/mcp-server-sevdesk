@@ -42,7 +42,7 @@ Save the PDF of an invoice (Rechnung), credit note (Gutschrift) or order (Angebo
 
 **Tag a sevDesk document** · tier `write` · changes state, destructive, idempotent, supports `dryRun`
 
-Add a tag (Tag, Schlagwort, e.g. a project, customer or branch) to an invoice (Rechnung), credit note (Gutschrift), order (Angebot/Auftrag) or voucher (Beleg), or remove it. Tags are given by name, compared ignoring case as sevDesk does; adding an unknown name creates the tag (the preview says so). Removing a tag's last use deletes the tag in sevDesk (the preview warns). One document per call: to tag three invoices, call it three times. Tier write. List tags with sevdesk_tags_list; find documents tagged with a name through the tag argument of the list tools.
+Add a tag (Tag, Schlagwort, e.g. a project, customer or branch) to an invoice (Rechnung), credit note (Gutschrift), order (Angebot/Auftrag) or voucher (Beleg), or remove it. Tags are given by name, compared ignoring case and accents as sevDesk does; adding an unknown name creates the tag (the preview says so). Removing a tag's last use deletes the tag in sevDesk (the preview warns). One document per call: to tag three invoices, call it three times. Tier write. List tags with sevdesk_tags_list; find documents tagged with a name through the tag argument of the list tools.
 
 | Argument   | Type                                               | Required | Description                                                                                                                                              |
 | ---------- | -------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -411,7 +411,7 @@ List invoices (Rechnungen): number, type, status, customer, date, due date, net/
 | `from`        | string                                                                                        | no       | First day to include, YYYY-MM-DD (Berlin time).                                                     |
 | `to`          | string                                                                                        | no       | Last day to include, YYYY-MM-DD (Berlin time).                                                      |
 | `overdueOnly` | boolean                                                                                       | no       | Only open/partially paid invoices past their due date (Berlin time). Default: `false`.              |
-| `tag`         | string                                                                                        | no       | Only documents with this tag (name, any case; see sevdesk_tags_list).                               |
+| `tag`         | string                                                                                        | no       | Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).               |
 | `limit`       | integer                                                                                       | no       | Page size, 1–100. Default: `25`.                                                                    |
 | `offset`      | integer                                                                                       | no       | Rows to skip, for paging: pass the previous result's nextOffset. Default: `0`.                      |
 
@@ -562,7 +562,7 @@ List credit notes (Gutschriften) with compact rows: number, status, contact, dat
 | `number`    | string                                          | no       | Exact credit note number, e.g. 'GU-1000'.                                                           |
 | `from`      | string                                          | no       | First day to include, YYYY-MM-DD (Berlin time).                                                     |
 | `to`        | string                                          | no       | Last day to include, YYYY-MM-DD (Berlin time).                                                      |
-| `tag`       | string                                          | no       | Only documents with this tag (name, any case; see sevdesk_tags_list).                               |
+| `tag`       | string                                          | no       | Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).               |
 | `limit`     | integer                                         | no       | Page size, 1–100. Default: `25`.                                                                    |
 | `offset`    | integer                                         | no       | Rows to skip, for paging: pass the previous result's nextOffset. Default: `0`.                      |
 
@@ -690,7 +690,7 @@ List orders in sevDesk: offers (Angebote, AN), order confirmations (Auftragsbest
 | `number`    | string                                                                              | no       | Exact order number, e.g. 'AN-1000'.                                                                 |
 | `from`      | string                                                                              | no       | First day to include, YYYY-MM-DD (Berlin time).                                                     |
 | `to`        | string                                                                              | no       | Last day to include, YYYY-MM-DD (Berlin time).                                                      |
-| `tag`       | string                                                                              | no       | Only documents with this tag (name, any case; see sevdesk_tags_list).                               |
+| `tag`       | string                                                                              | no       | Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).               |
 | `limit`     | integer                                                                             | no       | Page size, 1–100. Default: `25`.                                                                    |
 | `offset`    | integer                                                                             | no       | Rows to skip, for paging: pass the previous result's nextOffset. Default: `0`.                      |
 
@@ -873,7 +873,7 @@ List vouchers (Belege): receipts and supplier invoices (Ausgaben, kind=expense) 
 | `from`         | string                                                           | no       | First day to include, YYYY-MM-DD (Berlin time).                                                     |
 | `to`           | string                                                           | no       | Last day to include, YYYY-MM-DD (Berlin time).                                                      |
 | `type`         | `normal` \| `recurring`                                          | no       | normal (VOU) or recurring (RV).                                                                     |
-| `tag`          | string                                                           | no       | Only documents with this tag (name, any case; see sevdesk_tags_list).                               |
+| `tag`          | string                                                           | no       | Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).               |
 | `limit`        | integer                                                          | no       | Page size, 1–100. Default: `25`.                                                                    |
 | `offset`       | integer                                                          | no       | Rows to skip, for paging: pass the previous result's nextOffset. Default: `0`.                      |
 

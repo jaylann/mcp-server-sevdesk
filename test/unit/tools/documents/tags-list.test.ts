@@ -117,6 +117,32 @@ describe("the tag filter of the list tools", () => {
     expect(result.summary).toContain("The tag has more than 10,000 uses");
   });
 
+  it("finds the tag by a spelling with other accents and case (CAFE → Café)", async () => {
+    const client = new FakeSevdeskClient([
+      tagsRoute([tagRow(7002, "Filiale München"), tagRow(7001, "Café")]),
+      tagUsesRoute(7001, [relationRow(8101, 7001, "Invoice", 1001)]),
+      { path: "/Invoice", response: { body: { objects: [invoiceRow()] } } },
+    ]);
+    const result = await invoicesListTool.handler(
+      invoicesListTool.input.parse({ tag: "CAFE" }),
+      testContext(client),
+    );
+    expect(result.data.items.map((item) => item.id)).toEqual([1001]);
+    expect(result.data.tagFilter).toEqual({ tagId: 7001, rowsChecked: true });
+    expect(client.callsTo("/Invoice")[0]?.query).toMatchObject({ "tags[0][id]": 7001 });
+  });
+
+  it("refuses a name several tags fold to when none is spelled exactly so", async () => {
+    const client = new FakeSevdeskClient([
+      tagsRoute([tagRow(7001, "Café"), tagRow(7003, "Cafe")]),
+      { path: "/Invoice", response: { body: { objects: [invoiceRow()] } } },
+    ]);
+    await expect(
+      invoicesListTool.handler(invoicesListTool.input.parse({ tag: "cafe" }), testContext(client)),
+    ).rejects.toThrow("Several tags have this name (compared ignoring case and accents).");
+    expect(client.callsTo("/Invoice")).toEqual([]);
+  });
+
   it("leaves the lists unchanged without a tag (no tag requests, no tagFilter)", async () => {
     const client = new FakeSevdeskClient([
       { path: "/Invoice", response: { body: { objects: [invoiceRow()] } } },

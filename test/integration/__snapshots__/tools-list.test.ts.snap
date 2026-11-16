@@ -1815,7 +1815,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, any case; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -2811,7 +2811,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, any case; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -3454,7 +3454,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, any case; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -5018,7 +5018,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, any case; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -5887,7 +5887,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, any case; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -6607,7 +6607,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, any case; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -7141,7 +7141,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, any case; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -8374,7 +8374,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, any case; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -8803,7 +8803,7 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, any case; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -8987,7 +8987,7 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, any case; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -9129,7 +9129,7 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, any case; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",
@@ -9871,7 +9871,7 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           "type": "string",
         },
         "tag": {
-          "description": "Only documents with this tag (name, any case; see sevdesk_tags_list).",
+          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
           "maxLength": 255,
           "minLength": 1,
           "type": "string",

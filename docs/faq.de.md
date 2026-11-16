@@ -168,9 +168,10 @@ Gutschriften, Aufträge und Belege jeden tragen. `sevdesk_invoices_list`,
 `sevdesk_credit_notes_list`, `sevdesk_orders_list` und `sevdesk_vouchers_list` nehmen einen
 `tag`-Namen und zeigen nur die Dokumente mit diesem Tag; ein unbekannter Name wird abgelehnt,
 statt alles aufzulisten. `sevdesk_document_tag` (Stufe `write`) fügt einem Dokument einen Tag
-hinzu oder entfernt ihn, ein Dokument pro Aufruf. Tags haben einen Namen, keine Nummer: Ein Name,
-den sevDesk noch nicht kennt, legt den Tag an, und wer einen Tag von seinem letzten Dokument
-entfernt, löscht ihn in sevDesk; die Vorschau sagt beides.
+hinzu oder entfernt ihn, ein Dokument pro Aufruf. Tags haben einen Namen, keine Nummer, und
+sevDesk vergleicht Namen ohne Rücksicht auf Groß- und Kleinschreibung und Akzente („Café“ ist
+„cafe“): Ein Name, den sevDesk noch nicht kennt, legt den Tag an, und wer einen Tag von seinem
+letzten Dokument entfernt, löscht ihn in sevDesk; die Vorschau sagt beides.
 
 ## Hilfe
 

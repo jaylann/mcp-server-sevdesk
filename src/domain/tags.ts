@@ -8,9 +8,9 @@
  *   rows (`tag: {id, objectName: "Tag"}`, `object: {id, objectName}`), and `GET /TagRelation`
  *   honours `tag[id]` + `tag[objectName]` and `object[id]` + `object[objectName]`, with `total`.
  *   Usage counts are therefore counted from the relations.
- * - sevDesk compares tag names ignoring case when it tags a document by name. How `GET /Tag`'s own
- *   `name` filter matches is not measured, so names are looked up here, ignoring case, against
- *   all of the account's tags.
+ * - sevDesk compares tag names ignoring case and accents when it tags a document by name. How
+ *   `GET /Tag`'s own `name` filter matches is not measured, so names are looked up here, folded
+ *   the same way ({@link foldName}), against all of the account's tags.
  * - The document lists filter by tag only with `tags[0][id]` + `tags[0][objectName]=Tag`; the
  *   spellings `tag[id]` and `tag` are ignored without an error (the whole list comes back). The
  *   rows carry no tags, so every row is checked again against the ids of the documents the
@@ -188,16 +188,25 @@ export async function listTags(
 // Lookups
 // ---------------------------------------------------------------------------------------------
 
-/** The tags whose name equals a given one, ignoring case. */
+/** The tags whose name equals a given one, ignoring case and accents. */
 export interface TagMatches {
   readonly matches: readonly TagRecord[];
   /** False when the account has more tags than {@link TAG_READ_MAX}: some were not compared. */
   readonly complete: boolean;
 }
 
-/** Name comparison as sevDesk's tag factory does it: trimmed, ignoring case (D-088). */
+/**
+ * A tag name as sevDesk's tag factory compares it, as far as measured (D-088): trimmed, letter
+ * case and accents ignored ("Café" and "cafe" are one tag). Only case and the é/e pair were
+ * measured; sevDesk's exact collation (ß, ligatures, …) is not known. NFKD splits accented
+ * letters into base letter and combining mark, and the marks are dropped.
+ */
+function foldName(name: string): string {
+  return name.trim().normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase();
+}
+
 function sameName(a: string, b: string): boolean {
-  return a.trim().toLowerCase() === b.trim().toLowerCase();
+  return foldName(a) === foldName(b);
 }
 
 /** Reads the account's tags (up to {@link TAG_READ_MAX}) and keeps those named `name`. */
@@ -216,17 +225,18 @@ export async function findTagsByName(
 }
 
 /**
- * The one tag a name means: the only match, or among several matches (two tags whose names differ
- * only in case, or a rename that duplicated a name, D-089) the only one with exactly that
- * spelling. `undefined` when no tag has the name; a `validation` error when it stays ambiguous.
+ * The one tag a name means: the only match, or among several matches (tags whose names differ
+ * only in case or accents, or a rename that duplicated a name, D-089) the only one with exactly
+ * that spelling. `undefined` when no tag has the name; a `validation` error when it stays
+ * ambiguous.
  */
 export function pickTag(found: TagMatches, name: string): TagRecord | undefined {
   if (found.matches.length <= 1) return found.matches[0];
   const exact = found.matches.filter((tag) => tag.name === name.trim());
   if (exact.length === 1) return exact[0];
   throw validation(
-    "Several tags have this name (compared ignoring case). Give one of them a distinct name in " +
-      "sevDesk first; sevdesk_tags_list shows their ids.",
+    "Several tags have this name (compared ignoring case and accents). Give one of them a " +
+      "distinct name in sevDesk first; sevdesk_tags_list shows their ids.",
   );
 }
 
@@ -295,7 +305,9 @@ export const tagFilterInputShape = {
     .min(1)
     .max(TAG_NAME_MAX)
     .optional()
-    .describe("Only documents with this tag (name, any case; see sevdesk_tags_list)."),
+    .describe(
+      "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+    ),
 };
 
 /** A resolved `tag` filter for one document list. */
@@ -328,7 +340,7 @@ export async function resolveTagFilter(
   if (tag === undefined) {
     throw validation(
       found.complete
-        ? "No tag has this name (compared ignoring case), so no document carries it. " +
+        ? "No tag has this name (compared ignoring case and accents), so no document carries it. " +
             "sevdesk_tags_list lists the tags."
         : `The account has more than ${TAG_READ_MAX.toLocaleString("en-US")} tags and none of ` +
             "the first ones has this name; this server cannot filter by it.",

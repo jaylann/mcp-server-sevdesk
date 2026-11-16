@@ -32,6 +32,9 @@ function client(routes: readonly FakeRoute[]): FakeSevdeskClient {
 }
 
 const add = { action: "add", document: "invoice", id: 1001, tag: "Projekt Y" };
+const REUSES =
+  "A tag whose name differs only in case or accents exists: sevDesk reuses it, with its own " +
+  "spelling.";
 const remove = { ...add, action: "remove" };
 
 describe("sevdesk_document_tag: metadata and registration", () => {
@@ -85,7 +88,8 @@ describe("sevdesk_document_tag: add", () => {
       value: "new: sevDesk creates it",
     });
     expect(plan.preview.warnings).toEqual([
-      "No tag has this name yet (compared ignoring case, as sevDesk does): sevDesk creates the tag.",
+      "No tag has this name yet (compared ignoring case and accents, as sevDesk does): sevDesk " +
+        "creates the tag.",
     ]);
     expect(fake.writes().map((call) => [call.method, call.path, call.tier, call.body])).toEqual([
       [
@@ -123,9 +127,7 @@ describe("sevdesk_document_tag: add", () => {
       label: "Tag status",
       value: "exists (id 7001), added to this document",
     });
-    expect(plan.preview.warnings).toEqual([
-      "sevDesk compares tag names ignoring case: the existing tag is used with its own spelling.",
-    ]);
+    expect(plan.preview.warnings).toEqual([REUSES]);
     expect(fake.writes()[0]?.body).toEqual({
       name: "Projekt Y",
       object: { id: 1001, objectName: "Invoice" },
@@ -135,6 +137,34 @@ describe("sevdesk_document_tag: add", () => {
       { objectName: "Invoice", id: "1001" },
       { objectName: "TagRelation", id: "8101" },
     ]);
+  });
+
+  it("reuses an existing tag whose name differs only in accents (Café = Cafe, D-088)", async () => {
+    const fake = client([
+      INVOICE,
+      tagsRoute([tagRow(7001, "Café"), tagRow(7002, "Filiale München")]),
+      documentTagRoute(7001, "Invoice", 1001, []),
+      CREATE,
+    ]);
+    const { plan } = await executeWrite(tool, { ...add, tag: "CAFE" }, fake);
+    expect(plan.preview.action).toBe("Tag invoice RE-1001 with the tag Café.");
+    expect(plan.preview.facts).toContainEqual({
+      label: "Tag status",
+      value: "exists (id 7001), added to this document",
+    });
+    expect(plan.preview.warnings).toEqual([REUSES]);
+    expect(fake.writes()[0]?.body).toEqual({
+      name: "Café",
+      object: { id: 1001, objectName: "Invoice" },
+    });
+  });
+
+  it("refuses to add when tags differ only in accents, since sevDesk's pick is unknown", async () => {
+    const fake = client([INVOICE, tagsRoute([tagRow(7001, "Café"), tagRow(7003, "Cafe")])]);
+    await expect(prepareWrite(tool, { ...add, tag: "Cafe" }, fake)).rejects.toThrow(
+      "Several tags have this name (compared ignoring case and accents), and sevDesk would pick",
+    );
+    expect(fake.writes()).toEqual([]);
   });
 
   it("refuses when the document carries the tag already", async () => {
@@ -259,12 +289,13 @@ describe("sevdesk_document_tag: remove", () => {
     await expect(prepareWrite(tool, remove, notCarried)).rejects.toMatchObject({
       kind: "validation",
       message:
-        "Invoice 1001 does not carry this tag (compared ignoring case); nothing to remove. " +
-        "sevdesk_tags_list lists the tags.",
+        "Invoice 1001 does not carry this tag (compared ignoring case and accents); nothing to " +
+        "remove. sevdesk_tags_list lists the tags.",
     });
     const unknown = client([INVOICE, tagsRoute(TAGS)]);
     await expect(prepareWrite(tool, { ...remove, tag: "Unbekannt" }, unknown)).rejects.toThrow(
-      "Invoice 1001 does not carry this tag (compared ignoring case); nothing to remove.",
+      "Invoice 1001 does not carry this tag (compared ignoring case and accents); nothing to " +
+        "remove.",
     );
     expect([...notCarried.writes(), ...unknown.writes()]).toEqual([]);
   });
@@ -282,5 +313,46 @@ describe("sevdesk_document_tag: remove", () => {
     ]);
     const { output } = await executeWrite(tool, remove, fake);
     expect(output.data.tag).toEqual({ id: 7001, name: "Projekt Y" });
+  });
+
+  it("finds the tag by a spelling with other accents and case (cafe → Café)", async () => {
+    const fake = client([
+      INVOICE,
+      tagsRoute([tagRow(7001, "Café"), tagRow(7002, "Filiale München")]),
+      carries,
+      tagUsesRoute(7001, [
+        relationRow(8101, 7001, "Invoice", 1001),
+        relationRow(8102, 7001, "Order", 3002),
+      ]),
+      DELETE,
+    ]);
+    const { plan, output } = await executeWrite(tool, { ...remove, tag: "cafe" }, fake);
+    expect(plan.preview.action).toBe("Remove the tag Café from invoice RE-1001.");
+    expect(output.data.tag).toEqual({ id: 7001, name: "Café" });
+  });
+
+  it("uses the exact spelling among accent variants and refuses when none matches exactly", async () => {
+    const tags = tagsRoute([tagRow(7003, "Cafe"), tagRow(7001, "Café")]);
+    const exact = client([
+      INVOICE,
+      tags,
+      carries,
+      tagUsesRoute(7001, [relationRow(8101, 7001, "Invoice", 1001)]),
+      DELETE,
+    ]);
+    const { output } = await executeWrite(tool, { ...remove, tag: "Café" }, exact);
+    expect(output.data.tag).toEqual({ id: 7001, name: "Café" });
+
+    const ambiguous = client([INVOICE, tags]);
+    const error = await prepareWrite(tool, { ...remove, tag: "CAFE" }, ambiguous).catch(
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(SevdeskError);
+    const message = error instanceof SevdeskError ? error.message : "";
+    expect(message).toBe(
+      "Several tags have this name (compared ignoring case and accents). Give one of them a " +
+        "distinct name in sevDesk first; sevdesk_tags_list shows their ids.",
+    );
+    expect(ambiguous.writes()).toEqual([]);
   });
 });

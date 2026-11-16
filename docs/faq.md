@@ -152,8 +152,9 @@ orders and vouchers carry each. `sevdesk_invoices_list`, `sevdesk_credit_notes_l
 `sevdesk_orders_list` and `sevdesk_vouchers_list` take a `tag` name and show only the documents
 with that tag; an unknown name is refused instead of listing everything.
 `sevdesk_document_tag` (`write` tier) adds a tag to one document or removes it, one document per
-call. Tags are named, not numbered: a name sevDesk does not know yet creates the tag, and
-removing a tag from its last document deletes the tag in sevDesk; the preview says both.
+call. Tags are named, not numbered, and sevDesk compares names ignoring case and accents
+("Café" is "cafe"): a name sevDesk does not know yet creates the tag, and removing a tag from its
+last document deletes the tag in sevDesk; the preview says both.
 
 ## Support
 
