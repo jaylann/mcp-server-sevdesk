@@ -206,6 +206,49 @@ async function detailsOf(
 // Documents and tags
 // ---------------------------------------------------------------------------------------------
 
+const orderCounters = new WeakMap<object, { next: number }>();
+
+/**
+ * An order number for an offer (AN) draft: `saveOrder` refuses a draft without one (400, D-027).
+ * The next number is only peeked (`useNextNumber=false`, D-066), which never advances the
+ * sequence, so every order of the run gets the peeked number plus its own `-P<n>` suffix and no
+ * two drafts share a number.
+ */
+async function orderNumber(
+  ctx: ProbeContext,
+): Promise<{ readonly value: string | undefined; readonly failure: string }> {
+  const peek = await ctx.http.get("/Order/Factory/getNextOrderNumber", {
+    orderType: "AN",
+    useNextNumber: "false",
+  });
+  const peeked = typeof peek.objects === "string" ? peek.objects : "";
+  if (!peek.ok || peeked === "") {
+    return { value: undefined, failure: `getNextOrderNumber ${outcomeOf(peek)}` };
+  }
+  let counter = orderCounters.get(ctx.read);
+  if (counter === undefined) {
+    counter = { next: 1 };
+    orderCounters.set(ctx.read, counter);
+  }
+  const value = `${peeked}-P${counter.next}`;
+  counter.next += 1;
+  return { value, failure: "" };
+}
+
+/** The last part of the run tag (`MCP-E2E 20261116-2140-r5dr` → `r5dr`). */
+function runSuffix(ctx: ProbeContext): string {
+  return data(ctx).tag.split("-").at(-1) ?? "run";
+}
+
+/**
+ * A short name of this run, `E2E <suffix> <label>`, cut to 30 characters: sevDesk refuses longer
+ * custom field setting names (400 "Property 'name' is too long. Maximum for this property is 30",
+ * recorded 2026-11-16).
+ */
+function shortName(ctx: ProbeContext, label: string): string {
+  return `E2E ${runSuffix(ctx)} ${label}`.slice(0, 30);
+}
+
 /**
  * A tagged draft of `kind`: invoices, orders (AN) and credit notes through the test data factory
  * with `fields` merged into the header, vouchers through `saveVoucher` (status 50, one position
@@ -217,6 +260,15 @@ async function draftOf(
   label: string,
   fields: Readonly<Record<string, unknown>> = {},
 ): Promise<{ readonly id: number | undefined; readonly failure: string }> {
+  if (kind === "Order") {
+    const number = await orderNumber(ctx);
+    if (number.value === undefined) return { id: undefined, failure: number.failure };
+    const draft = await data(ctx).draft(kind, { fields: { orderNumber: number.value, ...fields } });
+    return {
+      id: draft.id,
+      failure: draft.id === undefined ? `Order draft ${outcomeOf(draft.result)}` : "",
+    };
+  }
   if (kind !== "Voucher") {
     const draft = await data(ctx).draft(kind, Object.keys(fields).length === 0 ? {} : { fields });
     return {
@@ -289,13 +341,18 @@ function describeRelations(rows: readonly Row[]): string {
     : `${rows.length} relation(s): ${rows.map((row) => `${str(firstRow(row["object"]), "objectName") || "?"} ${refId(row, "object") ?? "?"}`).join(", ")}`;
 }
 
-/** How a list answered a server-side filter, against the ids it should return. */
+/**
+ * How a list answered a server-side filter: honoured when every expected row is in, no control
+ * row is, and every other row `matches` the filter by its own fields (rows of other probes that
+ * carry the same cost centre, say). Without `matches`, any other row counts against the filter.
+ */
 async function filterOutcome(
   ctx: ProbeContext,
   path: string,
   query: Query,
   expected: ReadonlySet<number>,
   control: ReadonlySet<number>,
+  matches: (row: Row) => boolean = () => false,
 ): Promise<{ readonly honoured: boolean; readonly text: string }> {
   const page = await ctx.read.page(path, query, 1000);
   if (!page.result.ok) return { honoured: false, text: outcomeOf(page.result) };
@@ -303,14 +360,17 @@ async function filterOutcome(
   const found = ids.filter((id) => expected.has(id)).length;
   const others = ids.length - found;
   const controlShown = ids.some((id) => control.has(id));
-  const honoured = found === expected.size && others === 0;
+  const strays = page.rows.filter((row) => !expected.has(Number(row["id"])) && !matches(row));
+  const honoured = found === expected.size && !controlShown && strays.length === 0;
   const text = honoured
-    ? `honoured (${found} row(s), exactly the expected ones)`
+    ? others === 0
+      ? `honoured (${found} row(s), exactly the expected ones)`
+      : `honoured (${ids.length} row(s): the expected one(s) and ${others} other(s) that match, control out)`
     : ids.length === 0
       ? `empty answer (total ${page.total ?? "?"})`
       : controlShown
-        ? `ignored (${ids.length} rows incl. the untagged control, total ${page.total ?? "?"})`
-        : `unclear (${found} of ${expected.size} expected, ${others} other rows)`;
+        ? `ignored (${ids.length} rows incl. the control, total ${page.total ?? "?"})`
+        : `unclear (${found} of ${expected.size} expected, ${strays.length} other rows that do not match)`;
   return { honoured, text };
 }
 
@@ -328,7 +388,11 @@ interface CostCentreChoice {
   readonly createResult: HttpResult;
 }
 
-/** `POST /CostCentre` (undocumented) with a tagged name and a short upper-case number. */
+/**
+ * `POST /CostCentre` (undocumented) with a tagged name (`MCP-E2E <run suffix> <label>`) and a
+ * number of 7 letters and digits: sevDesk allows at most 8 characters of
+ * `/^[a-zA-Z0-9 äöüßÄÖÜ]+$/u` (422, recorded 2026-11-16).
+ */
 async function createCostCentre(
   ctx: ProbeContext,
   label: string,
@@ -338,8 +402,8 @@ async function createCostCentre(
     tier: "write",
     body: {
       objectName: "CostCentre",
-      name: `${data(ctx).tag} ${label}`,
-      number: `MCP${String(ctx.nowSeconds).slice(-5)}${suffix}`,
+      name: `MCP-E2E ${runSuffix(ctx)} ${label}`,
+      number: `M${String(ctx.nowSeconds).slice(-5)}${suffix}`,
     },
   });
   const id = createdId(result.objects);
@@ -365,7 +429,7 @@ function probeCostCentre(ctx: ProbeContext): Promise<CostCentreChoice> {
 }
 
 async function chooseCostCentre(ctx: ProbeContext): Promise<CostCentreChoice> {
-  const created = await createCostCentre(ctx, "Kostenstelle", "A");
+  const created = await createCostCentre(ctx, "KST", "A");
   if (created.id !== undefined) {
     return {
       id: created.id,
@@ -436,7 +500,7 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
     question:
       "Does POST /Contact take `parent` (an organisation) for a person, and does PUT /Contact/{id} set, change and clear it (parent null)? " +
       "How does a read show it (plain and with embed=parent), and does GET /Contact?depth=1 filter by parent[id] on the server?",
-    deviations: ["NEW", "D-062"],
+    deviations: ["D-083", "D-062"],
     async run(ctx) {
       const first = await organisation(ctx, "Firma A");
       const second = await organisation(ctx, "Firma B");
@@ -508,7 +572,7 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
     mode: "write",
     question:
       "What does sevDesk answer when the parent is a person (POST and PUT), or when an organisation gets a parent? Accepted and stored, accepted and dropped, or refused?",
-    deviations: ["NEW"],
+    deviations: ["D-083"],
     async run(ctx) {
       const parentPerson = await person(ctx, "Elternperson");
       const parentOrg = await organisation(ctx, "Elternfirma");
@@ -558,7 +622,7 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
     mode: "write",
     question:
       "What does DELETE /Contact/{id} answer for a contact no document references, are its address and communication way deleted with it, and is a second DELETE a 404?",
-    deviations: ["NEW"],
+    deviations: ["D-084"],
     async run(ctx) {
       const contact = await organisation(ctx, "Loeschen");
       if (contact.id === undefined) {
@@ -598,7 +662,7 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
     mode: "write",
     question:
       "Does DELETE /Contact/{id} refuse a contact that a draft invoice references (status, message), or delete it, and what happens to the draft and its contact reference?",
-    deviations: ["NEW"],
+    deviations: ["D-085", "D-084"],
     async run(ctx) {
       const contact = await organisation(ctx, "Referenziert");
       if (contact.id === undefined) {
@@ -632,7 +696,7 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
     mode: "write",
     question:
       "What does DELETE /ContactAddress/{id} answer, may the billing address (category 47) and the last remaining address be deleted, and is a second DELETE a 404?",
-    deviations: ["NEW"],
+    deviations: ["D-084"],
     async run(ctx) {
       const contact = await organisation(ctx, "Adressen");
       if (contact.id === undefined) {
@@ -672,7 +736,7 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
     mode: "write",
     question:
       "What does DELETE /CommunicationWay/{id} answer, may the main e-mail be deleted (does another e-mail become main), may the last e-mail be deleted, and is a second DELETE a 404?",
-    deviations: ["NEW"],
+    deviations: ["D-084"],
     async run(ctx) {
       const contact = await organisation(ctx, "Kommunikation");
       if (contact.id === undefined) {
@@ -719,17 +783,35 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
     title: "Custom contact field settings: list, create, read, rename, count, delete",
     mode: "write",
     question:
-      "What do GET/POST /ContactCustomFieldSetting, GET/PUT/DELETE /ContactCustomFieldSetting/{id} and getReferenceCount answer (shapes, identifier), is a second setting with the same name accepted, and is a second DELETE a 404?",
-    deviations: ["NEW"],
+      "What do GET/POST /ContactCustomFieldSetting, GET/PUT/DELETE /ContactCustomFieldSetting/{id} and getReferenceCount answer (shapes, identifier), is a second setting with the same name accepted, and is a second DELETE a 404? " +
+      "Where is the name's length limit (31 characters refused on POST, exactly 30 taken on PUT)?",
+    deviations: ["D-086"],
     async run(ctx) {
       const before = await ctx.read.page("/ContactCustomFieldSetting", undefined, 100);
-      const name = `${data(ctx).tag} Feld`;
+      const name = shortName(ctx, "Feld");
       const lines = [
         `GET /ContactCustomFieldSetting: ${before.result.ok ? `${before.rows.length} row(s), total ${before.total ?? "none"}, keys ${keysOf(before.rows).join(", ") || "none"}` : outcomeOf(before.result)}`,
       ];
+      const tooLong = await ctx.http.write("POST", "/ContactCustomFieldSetting", {
+        tier: "write",
+        body: { objectName: "ContactCustomFieldSetting", name: `${name} `.padEnd(31, "x") },
+      });
+      const tooLongId = createdId(tooLong.objects);
+      if (tooLongId !== undefined) {
+        data(ctx).register(
+          "ContactCustomFieldSetting",
+          tooLongId,
+          "custom field setting (delete it in the web app)",
+        );
+      }
+      lines.push(`POST with a 31-character name: ${outcomeOf(tooLong)}`);
       const created = await ctx.http.write("POST", "/ContactCustomFieldSetting", {
         tier: "write",
-        body: { objectName: "ContactCustomFieldSetting", name, description: data(ctx).tag },
+        body: {
+          objectName: "ContactCustomFieldSetting",
+          name,
+          description: shortName(ctx, "Beschreibung"),
+        },
       });
       const id = createdId(created.objects);
       lines.push(`POST: ${outcomeOf(created)}, answer ${shapeOf(created.objects)}`);
@@ -743,13 +825,15 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
       lines.push(
         `GET by id: keys ${keysOf(row).join(", ") || "none"}; name as sent ${str(row, "name") === name}, identifier ${str(row, "identifier") === "" ? "empty" : "set"}`,
       );
+      // Exactly 30 characters: the longest name the POST refusal allows.
+      const newName = `${name} neu `.padEnd(30, "x");
       const renamed = await ctx.http.write("PUT", `/ContactCustomFieldSetting/${id}`, {
         tier: "write",
-        body: { objectName: "ContactCustomFieldSetting", name: `${name} neu` },
+        body: { objectName: "ContactCustomFieldSetting", name: newName },
       });
       const afterRename = await ctx.read.byId("ContactCustomFieldSetting", id);
       lines.push(
-        `PUT name: ${outcomeOf(renamed)}, answer ${shapeOf(renamed.objects)}; renamed ${str(afterRename, "name") === `${name} neu`}, description kept ${str(afterRename, "description") === data(ctx).tag}`,
+        `PUT a 30-character name: ${outcomeOf(renamed)}, answer ${shapeOf(renamed.objects)}; renamed ${str(afterRename, "name") === newName}, description kept ${str(afterRename, "description") === shortName(ctx, "Beschreibung")}`,
       );
       const count = await ctx.http.get(`/ContactCustomFieldSetting/${id}/getReferenceCount`);
       lines.push(
@@ -757,7 +841,7 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
       );
       const duplicate = await ctx.http.write("POST", "/ContactCustomFieldSetting", {
         tier: "write",
-        body: { objectName: "ContactCustomFieldSetting", name: `${name} neu` },
+        body: { objectName: "ContactCustomFieldSetting", name: newName },
       });
       const duplicateId = createdId(duplicate.objects);
       if (duplicateId !== undefined) {
@@ -789,10 +873,9 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
     question:
       "How is a custom field value set on a contact (POST /ContactCustomField) and changed (PUT), which reads show it (GET /ContactCustomField with contact[id] and embed, GET /Contact/{id} with embed), " +
       "how does findContactsByCustomFieldValue match (exact, prefix, case, which parameters it needs), and what does deleting the value, or the setting while a value uses it, do?",
-    deviations: ["NEW"],
+    deviations: ["D-086"],
     async run(ctx) {
-      const tag = data(ctx).tag;
-      const settingName = `${tag} Kundennummer extern`;
+      const settingName = shortName(ctx, "Kundennr extern");
       const setting = await ctx.http.write("POST", "/ContactCustomFieldSetting", {
         tier: "write",
         body: { objectName: "ContactCustomFieldSetting", name: settingName },
@@ -811,7 +894,8 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
         return inconclusive(`Could not create the contact: ${outcomeOf(contact.result)}.`);
       }
       const contactId = contact.id;
-      const value = `${tag.replace(/\s+/g, "-")}-EXT-4711`;
+      // Short like the setting name: the value's own length limit is unknown.
+      const value = `E2E-${runSuffix(ctx)}-EXT-4711`;
       const fieldBody = (fieldValue: string) => ({
         objectName: "ContactCustomField",
         contact: ref("Contact", contactId),
@@ -958,7 +1042,7 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
     question:
       "Does POST /Tag/Factory/create tag a draft invoice, voucher, order (AN) and credit note, does a second call with the same name reuse the tag (same tag id), " +
       "what do the same name in other case, the same tag twice on one document and a tag given as {tag: {id}} without a name do, and what is the answer's shape?",
-    deviations: ["NEW"],
+    deviations: ["D-088"],
     async run(ctx) {
       const name = tagName(ctx, "Projekt");
       const lines: string[] = [];
@@ -1026,7 +1110,7 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
     mode: "write",
     question:
       "Does GET /TagRelation honour tag[id] and object[id]/object[objectName] filters and limit, which keys does a relation have, and does GET /Tag or the relation list give a usage count per tag?",
-    deviations: ["NEW"],
+    deviations: ["D-088"],
     async run(ctx) {
       const name = tagName(ctx, "Filter");
       const invoice = await draftOf(ctx, "Invoice", "relation filter");
@@ -1085,7 +1169,7 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
     question:
       "The spec documents no way to remove a tag from a document: does the undocumented DELETE /TagRelation/{id} remove one relation and keep the tag and its other relations, " +
       "does removing the last relation delete the tag too, and is a second DELETE a 404?",
-    deviations: ["D-024", "NEW"],
+    deviations: ["D-024", "D-089"],
     async run(ctx) {
       const name = tagName(ctx, "Entfernen");
       const first = await draftOf(ctx, "Invoice", "tag remove 1");
@@ -1141,7 +1225,7 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
     mode: "write",
     question:
       "What do PUT /Tag/{id} (rename; rename to another tag's name) and DELETE /Tag/{id} on a tag two documents use answer, what happens to its relations and documents, and is a second DELETE a 404?",
-    deviations: ["NEW"],
+    deviations: ["D-089"],
     async run(ctx) {
       const name = tagName(ctx, "Umbenennen");
       const otherName = tagName(ctx, "Andere");
@@ -1194,7 +1278,7 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
     question:
       "Do GET /Invoice, /Voucher, /Order and /CreditNote filter by tag on the server, and with which parameters (tag[id]+tag[objectName], tags[0][id]+tags[0][objectName], tags, tag)? " +
       "Each list is checked against one tagged and one untagged draft of this run.",
-    deviations: ["NEW"],
+    deviations: ["D-090"],
     async run(ctx) {
       const name = tagName(ctx, "Liste");
       const lines: string[] = [];
@@ -1245,7 +1329,7 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
     question:
       "Can a cost centre be created through POST /CostCentre (name, number), what does the answer and a read of it look like, and does it appear in GET /CostCentre? " +
       "(Without it the cost-centre probes use a hand-made cost centre named MCP-E2E….)",
-    deviations: ["D-024", "NEW"],
+    deviations: ["D-024", "D-091"],
     async run(ctx) {
       const choice = await probeCostCentre(ctx);
       const lines = [
@@ -1272,7 +1356,7 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
     mode: "write",
     question:
       "Do saveInvoice, saveVoucher, saveOrder (AN) and saveCreditNote keep costCentre on create, take it on an update with the id, and keep it on a later update with the id that leaves it out (invoices, orders and credit notes: only the id and a new header; vouchers: the full probe header, as the voucher tools send it)? How does a read show it?",
-    deviations: ["D-052", "NEW"],
+    deviations: ["D-052", "D-092"],
     async run(ctx) {
       const choice = await probeCostCentre(ctx);
       if (choice.id === undefined) return inconclusive(choice.note);
@@ -1322,7 +1406,7 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
     question:
       "Do GET /Invoice and /Voucher filter by cost centre on the server, and with which parameters (costCentre[id]+costCentre[objectName], costCentre)? " +
       "Each list is checked against one draft with the cost centre and one without.",
-    deviations: ["NEW"],
+    deviations: ["D-092"],
     async run(ctx) {
       const choice = await probeCostCentre(ctx);
       if (choice.id === undefined) return inconclusive(choice.note);
@@ -1352,6 +1436,8 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
             candidate.query,
             new Set([withCentre.id]),
             new Set([control.id]),
+            // Other drafts of the run carry the same cost centre: they belong in the answer.
+            (row) => refId(row, "costCentre") === centreId,
           );
           outcomes.push(`${candidate.label} ${outcome.text}`);
         }
@@ -1369,9 +1455,9 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
     question:
       "Can a cost centre the probe created itself be deleted through DELETE /CostCentre/{id}, unused and while a draft voucher uses it (refused, or the voucher's costCentre cleared), and is a second DELETE a 404? " +
       "Never touches a cost centre made in the web app.",
-    deviations: ["D-024", "NEW"],
+    deviations: ["D-024", "D-091", "D-085"],
     async run(ctx) {
-      const unused = await createCostCentre(ctx, "Kostenstelle loeschen", "B");
+      const unused = await createCostCentre(ctx, "KST frei", "B");
       if (unused.id === undefined) {
         return inconclusive(
           `POST /CostCentre ${outcomeOf(unused.result)}: nothing of the probe's own to delete.`,
@@ -1385,7 +1471,7 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
       lines.push(
         `DELETE unused cost centre ${unused.id}: ${outcomeOf(deleted)}, answer ${shapeOf(deleted.objects)}; GET afterwards ${presence(after)}; second DELETE ${outcomeOf(again)}`,
       );
-      const used = await createCostCentre(ctx, "Kostenstelle belegt", "C");
+      const used = await createCostCentre(ctx, "KST belegt", "C");
       if (used.id === undefined) {
         lines.push(`second POST /CostCentre ${outcomeOf(used.result)}`);
         return {
@@ -1428,7 +1514,7 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
     mode: "read",
     question:
       "What does GET /Contact/Mapper/checkCustomerNumberAvailability answer (shape) for a customer number a contact has, the same in lower case, a free number, and no number?",
-    deviations: ["NEW"],
+    deviations: ["D-087"],
     async run(ctx) {
       const taken = (await ctx.read.page("/Contact", { depth: 1 }, 100)).rows
         .map((row) => str(row, "customerNumber"))
@@ -1467,7 +1553,7 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
     mode: "read",
     question:
       "Which keys do GET /Tag and GET /TagRelation rows have (a usage count?), do they honour limit and the documented name filter, and which object types do relations point to?",
-    deviations: ["NEW"],
+    deviations: ["D-088"],
     async run(ctx) {
       const tags = await ctx.read.page("/Tag", undefined, 1000);
       if (!tags.result.ok) {
@@ -1509,7 +1595,7 @@ export const GAPS_CONTACTS_PROBES: readonly ProbeDefinition[] = [
     mode: "read",
     question:
       "Does the undocumented GET /CostCentre answer, with which row keys and total, does it honour limit and offset, and does GET /CostCentre/{id} answer one row?",
-    deviations: ["D-024", "NEW"],
+    deviations: ["D-024", "D-091"],
     async run(ctx) {
       const all = await ctx.read.page("/CostCentre", undefined, 1000);
       if (!all.result.ok) {

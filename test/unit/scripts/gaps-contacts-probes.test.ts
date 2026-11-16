@@ -41,12 +41,26 @@ function refused(status: number, upstreamMessage: string): never {
   });
 }
 
+/**
+ * A refusal inside HTTP 200, as the client reports it: sevDesk answers deletes of referenced
+ * contacts and cost centres this way (D-085, recorded 2026-11-16).
+ */
+function refusedInOk(): never {
+  throw new SevdeskError({
+    kind: "unexpected_response",
+    message: "sevDesk's answer could not be read: it reports an error despite its status.",
+    status: 200,
+    upstreamMessage: "Cannot delete because of existing necessary references",
+  });
+}
+
 const ref = (objectName: string, id: number) => ({ id: String(id), objectName });
 const idOf = (value: unknown) => Number((value as Rec | null | undefined)?.["id"]);
 
 /**
  * A simulated trial account with contacts, their details, custom fields, documents, tags and cost
- * centres. Synthetic behaviour (switchable) stands in for what the probes are meant to find out.
+ * centres. By default it behaves as recorded on 2026-11-16 (D-083 to D-092); the switches give
+ * synthetic variants so that every branch of the probes is exercised.
  */
 function gapsAccount(
   settings: {
@@ -54,12 +68,17 @@ function gapsAccount(
     refuseCostCentreCreate?: boolean;
     /** Hand-made cost centres already on the account. */
     costCentres?: readonly Rec[];
-    /** The lists honour `tag[id]` and `costCentre[id]`. */
+    /**
+     * The lists honour `tags[0][id]` and `costCentre[id]`, refuse `tags` (400) and a bare
+     * `costCentre` (422), as recorded (D-090, D-092). Off: every filter is ignored.
+     */
     honourFilters?: boolean;
-    /** saveOrder drops costCentre. */
+    /** saveOrder drops costCentre unless `false` (recorded: it drops it, D-092). */
     orderDropsCostCentre?: boolean;
-    /** DELETE /Contact refuses a contact a document references. */
-    refuseReferencedDelete?: boolean;
+    /** Synthetic: POST /Contact refuses a person as parent (recorded: no check, D-083). */
+    validateParent?: boolean;
+    /** Synthetic: DELETE of a referenced contact or used cost centre succeeds (recorded: D-085). */
+    allowReferencedDelete?: boolean;
     /** Existing contacts (read probes). */
     contacts?: readonly Rec[];
   } = {},
@@ -110,7 +129,7 @@ function gapsAccount(
       id: String(id),
       status: kind === "Voucher" ? "50" : "100",
     });
-    if (kind === "Order" && settings.orderDropsCostCentre === true) delete stored["costCentre"];
+    if (kind === "Order" && settings.orderDropsCostCentre !== false) delete stored["costCentre"];
     if (stored["costCentre"] !== undefined && stored["costCentre"] !== null) {
       stored["costCentre"] = ref("CostCentre", idOf(stored["costCentre"]));
     }
@@ -142,15 +161,20 @@ function gapsAccount(
     // --- contacts -----------------------------------------------------------------------------
     if (path === "/Contact" && method === "POST") {
       const parentId = idOf(body["parent"]);
-      if (body["parent"] !== undefined && contacts.get(parentId)?.["name"] === undefined) {
+      if (
+        settings.validateParent === true &&
+        body["parent"] !== undefined &&
+        contacts.get(parentId)?.["name"] === undefined
+      ) {
         refused(400, "The parent contact must be an organisation.");
       }
       const contactId = nextId++;
+      const { parent: _parent, ...fields } = body;
       contacts.set(contactId, {
-        ...body,
+        ...fields,
         id: String(contactId),
         objectName: "Contact",
-        parent: body["parent"] === undefined ? null : ref("Contact", parentId),
+        ...(body["parent"] === undefined ? {} : { parent: ref("Contact", parentId) }),
       });
       return { objects: contacts.get(contactId) };
     }
@@ -164,9 +188,7 @@ function gapsAccount(
     if (/^\/Contact\/\d+$/.test(path)) {
       if (method === "DELETE") {
         const referenced = [...documents.values()].some((doc) => idOf(doc["contact"]) === id);
-        if (referenced && settings.refuseReferencedDelete === true) {
-          refused(409, "Contact is still referenced.");
-        }
+        if (referenced && settings.allowReferencedDelete !== true) refusedInOk();
         for (const map of [addresses, ways, fields]) {
           for (const [key, row] of map) if (idOf(row["contact"]) === id) map.delete(key);
         }
@@ -174,14 +196,15 @@ function gapsAccount(
       }
       if (method === "PUT") {
         const stored = contacts.get(id) ?? refused(404, "not found");
-        if (body["parent"] === null) stored["parent"] = null;
+        // Recorded: `parent: null` removes the key from later reads (D-083).
+        if (body["parent"] === null) delete stored["parent"];
         else if (body["parent"] !== undefined)
           stored["parent"] = ref("Contact", idOf(body["parent"]));
         return { objects: stored };
       }
       const row = contacts.get(id);
-      if (row === undefined) return { objects: [] };
-      if (query["embed"] === "parent" && row["parent"] !== null) {
+      if (row === undefined) return refused(404, `No Model_Contact with the id ${id} was found`);
+      if (query["embed"] === "parent" && row["parent"] !== undefined) {
         return { objects: [{ ...row, parent: contacts.get(idOf(row["parent"])) }] };
       }
       return { objects: [row] };
@@ -221,6 +244,9 @@ function gapsAccount(
       return method === "DELETE" ? remove(map, id) : byId(map, id);
     }
     // --- custom fields ------------------------------------------------------------------------
+    if (/^\/ContactCustomFieldSetting(?:\/\d+)?$/.test(path) && String(body["name"]).length > 30) {
+      refused(400, "Property 'name' is too long. Maximum for this property is 30");
+    }
     if (path === "/ContactCustomFieldSetting") {
       if (method === "POST") {
         const rowId = nextId++;
@@ -273,10 +299,22 @@ function gapsAccount(
       return byId(fields, id);
     }
     // --- documents ----------------------------------------------------------------------------
+    if (path === "/Order/Factory/getNextOrderNumber") {
+      expect(query["useNextNumber"]).toBe("false");
+      return { objects: "AN-1000" };
+    }
     const save = /^\/(Invoice|Order|CreditNote|Voucher)\/Factory\/save\w+$/.exec(path);
     if (save !== null) {
       const kind = save[1] ?? "";
       const key = kind === "CreditNote" ? "creditNote" : kind.toLowerCase();
+      const header = (body[key] ?? {}) as Rec;
+      if (kind === "Order" && header["id"] === undefined) {
+        if (header["orderNumber"] === undefined) refused(400, "Bad Request");
+        const taken = [...documents.values()].some(
+          (row) => row["orderNumber"] === header["orderNumber"],
+        );
+        if (taken) refused(400, "Order number already used");
+      }
       const docId = saveDocument(kind, (body[key] ?? {}) as Rec);
       return { objects: { [key]: ref(kind, docId) } };
     }
@@ -289,26 +327,41 @@ function gapsAccount(
     if (docList !== null && method === "GET") {
       const kind = docList[1] ?? "";
       let rows = [...documents.values()].filter((row) => row["objectName"] === kind);
-      if (settings.honourFilters === true && query["tag[id]"] !== undefined) {
-        rows = rows.filter((row) =>
-          tagsOf(kind, Number(row["id"])).includes(Number(query["tag[id]"])),
-        );
-      }
-      if (settings.honourFilters === true && query["costCentre[id]"] !== undefined) {
-        rows = rows.filter((row) => idOf(row["costCentre"]) === Number(query["costCentre[id]"]));
+      if (settings.honourFilters === true) {
+        if (query["tags"] !== undefined) refused(400, "Bad Request");
+        if (query["costCentre"] !== undefined) {
+          refused(422, "Invalid costCentre given, must have id and objectName");
+        }
+        if (query["tags[0][id]"] !== undefined) {
+          rows = rows.filter((row) =>
+            tagsOf(kind, Number(row["id"])).includes(Number(query["tags[0][id]"])),
+          );
+        }
+        if (query["costCentre[id]"] !== undefined) {
+          rows = rows.filter((row) => idOf(row["costCentre"]) === Number(query["costCentre[id]"]));
+        }
       }
       return list(rows, query);
     }
     // --- tags ---------------------------------------------------------------------------------
     if (path === "/Tag/Factory/create") {
+      // Recorded (D-088): only by name, reusing a tag of that name in any case; a document that
+      // already has the tag gets its existing relation back.
       const object = body["object"] as Rec;
-      let tagId = idOf(body["tag"]);
-      if (!tags.has(tagId)) {
-        const name = String(body["name"]);
-        const existing = [...tags.values()].find((row) => row["name"] === name);
-        tagId = existing === undefined ? nextId++ : Number(existing["id"]);
-        if (existing === undefined) tags.set(tagId, { id: String(tagId), objectName: "Tag", name });
-      }
+      if (typeof body["name"] !== "string") refused(400, "Invalid type of parameter");
+      const name = body["name"];
+      const existing = [...tags.values()].find(
+        (row) => String(row["name"]).toLowerCase() === name.toLowerCase(),
+      );
+      const tagId = existing === undefined ? nextId++ : Number(existing["id"]);
+      if (existing === undefined) tags.set(tagId, { id: String(tagId), objectName: "Tag", name });
+      const known = [...relations.values()].find(
+        (row) =>
+          idOf(row["tag"]) === tagId &&
+          idOf(row["object"]) === idOf(object) &&
+          (row["object"] as Rec)["objectName"] === object["objectName"],
+      );
+      if (known !== undefined) return { objects: known };
       const relationId = nextId++;
       relations.set(relationId, {
         id: String(relationId),
@@ -345,12 +398,20 @@ function gapsAccount(
       return list(rows, query);
     }
     if (/^\/TagRelation\/\d+$/.test(path)) {
-      return method === "DELETE" ? remove(relations, id) : byId(relations, id);
+      if (method !== "DELETE") return byId(relations, id);
+      const tagId = idOf(relations.get(id)?.["tag"]);
+      const answer = remove(relations, id);
+      // Recorded (D-089): the tag goes with its last relation.
+      if (![...relations.values()].some((row) => idOf(row["tag"]) === tagId)) tags.delete(tagId);
+      return answer;
     }
     // --- cost centres -------------------------------------------------------------------------
     if (path === "/CostCentre") {
       if (method === "POST") {
         if (settings.refuseCostCentreCreate === true) refused(405, "Method not allowed");
+        if (!/^[a-zA-Z0-9 äöüßÄÖÜ]{1,8}$/u.test(String(body["number"]))) {
+          refused(422, "The given number (0) is not allowed.");
+        }
         const rowId = nextId++;
         costCentres.set(rowId, { ...body, id: String(rowId) });
         return { objects: costCentres.get(rowId) };
@@ -359,6 +420,8 @@ function gapsAccount(
     }
     if (/^\/CostCentre\/\d+$/.test(path)) {
       if (method === "DELETE") {
+        const used = [...documents.values()].some((doc) => idOf(doc["costCentre"]) === id);
+        if (used && settings.allowReferencedDelete !== true) refusedInOk();
         for (const doc of documents.values())
           if (idOf(doc["costCentre"]) === id) doc["costCentre"] = null;
         return remove(costCentres, id);
@@ -418,7 +481,10 @@ describe("gap probes (#86, #87): catalog", () => {
       ]),
     );
     const deviations = new Set(GAPS_CONTACTS_PROBES.flatMap((probe) => probe.deviations));
-    for (const id of ["D-024", "D-052", "D-062", "NEW"]) expect(deviations.has(id), id).toBe(true);
+    const recorded = ["D-024", "D-052", "D-062"];
+    for (let n = 83; n <= 92; n += 1) recorded.push(`D-0${n}`);
+    for (const id of recorded) expect(deviations.has(id), id).toBe(true);
+    expect(deviations.has("NEW")).toBe(false);
   });
 });
 
@@ -441,17 +507,37 @@ describe("gap probes (#86, #87) on a simulated trial account", () => {
       if (objectName === "TagRelation") continue;
       expect(created.has(`${objectName ?? ""}/${id ?? ""}`), call.path).toBe(true);
     }
-    // Everything named carries the run tag.
+    // Everything named carries the run tag, or its short form where sevDesk limits the length.
     for (const call of writes.filter((item) => item.method === "POST")) {
       const body = call.body as Rec | undefined;
       for (const key of ["name", "familyname"]) {
-        if (typeof body?.[key] === "string") expect(body[key], call.path).toMatch(/^MCP-E2E /);
+        if (typeof body?.[key] === "string") {
+          expect(body[key], call.path).toMatch(/^(?:MCP-E2E |E2E abcd )/);
+        }
       }
     }
+    // Short names: custom field settings within 30 characters (except the probe of the limit),
+    // cost-centre numbers within the 8-character pattern, order numbers distinct.
+    const settingNames = writes
+      .filter((call) => call.path === "/ContactCustomFieldSetting")
+      .map((call) => String((call.body as Rec)["name"]));
+    expect(settingNames.filter((name) => name.length > 30)).toEqual([
+      "E2E abcd Feld xxxxxxxxxxxxxxxxx",
+    ]);
+    for (const call of writes.filter((item) => item.path === "/CostCentre")) {
+      expect(String((call.body as Rec)["number"])).toMatch(/^[A-Za-z0-9]{1,8}$/);
+    }
+    const orderNumbers = writes
+      .filter((call) => call.path === "/Order/Factory/saveOrder")
+      .map((call) => ((call.body as Rec)["order"] as Rec)["orderNumber"])
+      .filter((number) => number !== undefined);
+    expect(orderNumbers.length).toBeGreaterThan(0);
+    expect(new Set(orderNumbers).size).toBe(orderNumbers.length);
+    expect(orderNumbers[0]).toBe("AN-1000-P1");
     for (const contact of account.contacts.values()) {
       expect(String(contact["name"] ?? contact["familyname"])).toMatch(/^MCP-E2E /);
     }
-    for (const tag of account.tags.values()) expect(String(tag["name"])).toMatch(/^MCP-E2E /);
+    for (const tag of account.tags.values()) expect(String(tag["name"])).toMatch(/^MCP-E2E /i);
     const kinds = new Set(report.created.map((record) => record.objectName));
     for (const kind of [
       "Contact",
@@ -484,22 +570,28 @@ describe("gap probes (#86, #87) on a simulated trial account", () => {
       /POST person \d+ with parent \d+: ok; read: parent Contact \d+, with embed=parent Contact \d+ \(\+\d+ keys\)/,
     );
     expect(finding).toMatch(/PUT set to \d+: ok, .*read parent Contact \d+/);
-    expect(finding).toMatch(/PUT clear \(null\): ok, .*read parent null/);
+    expect(finding).toMatch(/PUT clear \(null\): ok, .*read parent absent\.$/);
     expect(finding).toMatch(
       /parent\[id\]=\d+: 1 row\(s\), person included: true, rows with another parent: 0 \(honoured\)/,
     );
   });
 
-  it("reports refused parents with sevDesk's message", async () => {
+  it("reports wrong-sided parents as stored, as recorded, and a refusal with its message (D-083)", async () => {
     const report = await runProbes(
       options(gapsAccount().client, { only: ["write-contact-parent-invalid"] }),
     );
     const finding = result(report, "write-contact-parent-invalid").finding;
     expect(finding).toMatch(
-      /POST person with a person as parent: refused \(400: The parent contact must be an organisation\.\)/,
+      /^POST person with a person as parent: ok \(contact \d+, read parent Contact \d+\)\. POST organisation with an organisation as parent: ok \(contact \d+, read parent Contact \d+\)\. PUT a person's parent to a person: ok; read parent Contact \d+\.$/,
     );
-    expect(finding).toMatch(
-      /POST organisation with an organisation as parent: ok \(contact \d+, read parent Contact \d+\)/,
+
+    const validating = await runProbes(
+      options(gapsAccount({ validateParent: true }).client, {
+        only: ["write-contact-parent-invalid"],
+      }),
+    );
+    expect(result(validating, "write-contact-parent-invalid").finding).toMatch(
+      /POST person with a person as parent: refused \(400: The parent contact must be an organisation\.\)/,
     );
   });
 
@@ -515,10 +607,11 @@ describe("gap probes (#86, #87) on a simulated trial account", () => {
       }),
     );
     expect(result(report, "write-contact-delete").finding).toMatch(
-      /DELETE contact \d+: ok, answer a list of 1; GET afterwards gone \(empty list\)\. address \d+: gone \(404\)\. communication way \d+: gone \(404\)\. second DELETE: refused \(404: not found\)\./,
+      /DELETE contact \d+: ok, answer a list of 1; GET afterwards gone \(404\)\. address \d+: gone \(404\)\. communication way \d+: gone \(404\)\. second DELETE: refused \(404: not found\)\./,
     );
+    // Recorded (D-085): the refusal arrives inside HTTP 200; nothing changes.
     expect(result(report, "write-contact-delete-referenced").finding).toMatch(
-      /DELETE contact: ok, .*invoice afterwards still there, status 100, contact Contact \d+/,
+      /DELETE contact: refused \(200: Cannot delete because of existing necessary references\), answer nothing; contact afterwards still there; invoice afterwards still there, status 100, contact Contact \d+\./,
     );
     expect(result(report, "write-contact-address-delete").finding).toMatch(
       /the contact has 1 address\(es\) left.*the contact has 0 address\(es\) left.*second DELETE: refused \(404/,
@@ -531,13 +624,13 @@ describe("gap probes (#86, #87) on a simulated trial account", () => {
       expect.arrayContaining(["Contact", "ContactAddress", "CommunicationWay"]),
     );
 
-    const refusing = await runProbes(
-      options(gapsAccount({ refuseReferencedDelete: true }).client, {
+    const deleting = await runProbes(
+      options(gapsAccount({ allowReferencedDelete: true }).client, {
         only: ["write-contact-delete-referenced"],
       }),
     );
-    expect(result(refusing, "write-contact-delete-referenced").finding).toMatch(
-      /DELETE contact: refused \(409: Contact is still referenced\.\).*contact afterwards still there/,
+    expect(result(deleting, "write-contact-delete-referenced").finding).toMatch(
+      /DELETE contact: ok, .*contact afterwards gone \(404\); invoice afterwards still there, status 100, contact Contact \d+/,
     );
   });
 
@@ -548,7 +641,7 @@ describe("gap probes (#86, #87) on a simulated trial account", () => {
       }),
     );
     expect(result(report, "write-custom-field-settings").finding).toMatch(
-      /renamed true, description kept true.*getReferenceCount: answer 0.*DELETE: ok, answer a list of 1; GET afterwards gone \(404\); second DELETE refused \(404/,
+      /POST with a 31-character name: refused \(400: Property 'name' is too long\. Maximum for this property is 30\)\. POST: ok.*PUT a 30-character name: ok, .*renamed true, description kept true.*getReferenceCount: answer 0.*DELETE: ok, answer a list of 1; GET afterwards gone \(404\); second DELETE refused \(404/,
     );
     const values = result(report, "write-custom-field-values").finding;
     expect(values).toMatch(/value changed true, contact kept true, setting kept true/);
@@ -578,13 +671,20 @@ describe("gap probes (#86, #87) on a simulated trial account", () => {
     expect(create.finding).toMatch(
       /4 documents tagged by name, 1 distinct tag id\(s\) \(the name reuses the tag\)/,
     );
-    expect(create.finding).toMatch(/the name in upper case on order \d+: ok, a new tag/);
-    expect(create.finding).toMatch(/without a name on invoice \d+: ok, the same tag/);
+    // Recorded (D-088): the same name in any case reuses the tag, a second tagging of a document
+    // answers its existing relation, and a tag by id without a name is refused.
+    expect(create.finding).toMatch(
+      /Invoice (\d+): ok, .*relation (\d+)\..*the same name again on invoice \1: ok, tag \d+, relation \2\./,
+    );
+    expect(create.finding).toMatch(/the name in upper case on order \d+: ok, the same tag/);
+    expect(create.finding).toMatch(
+      /without a name on invoice \d+: refused \(400: Invalid type of parameter\), no tag id/,
+    );
     expect(result(report, "write-tag-relation-filters").finding).toMatch(
       /tag\[id\] filter: 2 row\(s\), 2 of this tag \(honoured\).*limit=1: 1 row\(s\).*count-like keys none/,
     );
     expect(result(report, "write-tag-relation-remove").finding).toMatch(
-      /the other relation \d+ kept: true.*DELETE the last relation \d+: ok; the tag afterwards still there/,
+      /the other relation \d+ kept: true.*DELETE the last relation \d+: ok; the tag afterwards gone \(404\)/,
     );
     expect(result(report, "write-tag-update-delete").finding).toMatch(
       /renamed true; 2 relation\(s\).*DELETE the used tag: ok.*tag afterwards gone \(404\); no relation left/,
@@ -594,14 +694,25 @@ describe("gap probes (#86, #87) on a simulated trial account", () => {
   it("tells honoured list filters from ignored ones, with an untagged control", async () => {
     const honoured = await runProbes(
       options(gapsAccount({ honourFilters: true }).client, {
-        only: ["write-tag-list-filters", "write-cost-centre-list-filters"],
+        // The documents probe leaves other drafts with the same cost centre behind.
+        only: [
+          "write-tag-list-filters",
+          "write-cost-centre-documents",
+          "write-cost-centre-list-filters",
+        ],
       }),
     );
-    expect(result(honoured, "write-tag-list-filters").finding).toMatch(
-      /Invoice \(tagged \d+, control \d+\): tag\[id\] honoured \(1 row\(s\), exactly the expected ones\); tags\[0\]\[id\] ignored/,
-    );
+    // As recorded (D-090, D-092).
+    for (const kind of ["Invoice", "Voucher", "Order", "CreditNote"]) {
+      expect(result(honoured, "write-tag-list-filters").finding).toMatch(
+        new RegExp(
+          `${kind} \\(tagged \\d+, control \\d+\\): tag\\[id\\] ignored \\(\\d+ rows incl\\. the control, total \\d+\\); ` +
+            "tags\\[0\\]\\[id\\] honoured \\(1 row\\(s\\), exactly the expected ones\\); tags refused \\(400: Bad Request\\); tag ignored",
+        ),
+      );
+    }
     expect(result(honoured, "write-cost-centre-list-filters").finding).toMatch(
-      /Voucher \(with \d+, stored CostCentre \d+; control \d+\): costCentre\[id\] honoured/,
+      /Voucher \(with \d+, stored CostCentre \d+; control \d+\): costCentre\[id\] honoured \(3 row\(s\): the expected one\(s\) and 2 other\(s\) that match, control out\); costCentre refused \(422: Invalid costCentre given, must have id and objectName\)/,
     );
     const ignored = await runProbes(
       options(gapsAccount().client, { only: ["write-tag-list-filters"] }),
@@ -669,7 +780,7 @@ describe("gap probes (#86, #87) on a simulated trial account", () => {
       options(gapsAccount().client, { only: ["write-cost-centre-delete"] }),
     );
     expect(result(report, "write-cost-centre-delete").finding).toMatch(
-      /DELETE unused cost centre \d+: ok.*second DELETE refused \(404.*used by voucher \d+ \(CostCentre \d+\): ok; .*voucher costCentre now null/,
+      /DELETE unused cost centre \d+: ok.*second DELETE refused \(404.*used by voucher \d+ \(CostCentre (\d+)\): refused \(200: Cannot delete because of existing necessary references\); cost centre afterwards still there; voucher costCentre now CostCentre \1\./,
     );
   });
 });

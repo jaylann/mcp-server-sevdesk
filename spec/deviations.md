@@ -128,6 +128,16 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 | [D-080](#d-080-a-voucher-is-booked-only-with-a-belegnummer)                                        | A voucher is booked only with a Belegnummer                                            | Open                  |
 | [D-081](#d-081-converting-a-voucher-draft-to-eur-clears-foreign-sums)                              | Converting a voucher draft to EUR clears foreign sums                                  | Open                  |
 | [D-082](#d-082-voucher-exchange-rates-are-not-returned-and-updates-reconvert-positions)            | Voucher exchange rates are not returned and updates reconvert positions                | Open                  |
+| [D-083](#d-083-parent-on-a-contact-is-stored-without-checks-and-clearing-it-drops-the-key)         | `parent` on a contact is stored without checks, and clearing it drops the key          | Open                  |
+| [D-084](#d-084-deleting-a-contact-deletes-its-addresses-and-communication-ways)                    | Deleting a contact deletes its addresses and communication ways                        | Open                  |
+| [D-085](#d-085-refused-deletes-of-referenced-contacts-and-cost-centres-arrive-as-http-200)         | Refused deletes of referenced contacts and cost centres arrive as HTTP 200             | Open                  |
+| [D-086](#d-086-custom-contact-fields-30-character-names-no-contact-embed-cascading-deletes)        | Custom contact fields: 30-character names, no contact embed, cascading deletes         | Open                  |
+| [D-087](#d-087-checkcustomernumberavailability-answers-a-bare-boolean-and-needs-a-number)          | `checkCustomerNumberAvailability` answers a bare boolean and needs a number            | Open                  |
+| [D-088](#d-088-tags-are-added-by-name-through-tagfactorycreate-which-reuses-a-tag)                 | Tags are added by name through `Tag/Factory/create`, which reuses a tag                | Open                  |
+| [D-089](#d-089-delete-tagrelationid-removes-a-tag-from-a-document-the-last-one-the-tag)            | `DELETE /TagRelation/{id}` removes a tag from a document, the last one the tag         | Open                  |
+| [D-090](#d-090-document-lists-filter-by-tag-only-with-tags0id-tagid-is-ignored)                    | Document lists filter by tag only with `tags[0][id]`; `tag[id]` is ignored             | Open                  |
+| [D-091](#d-091-cost-centres-are-managed-through-the-undocumented-costcentre-endpoints)             | Cost centres are managed through the undocumented `/CostCentre` endpoints              | Open                  |
+| [D-092](#d-092-saveorder-drops-costcentre-invoices-vouchers-and-credit-notes-keep-it)              | `saveOrder` drops `costCentre`; invoices, vouchers and credit notes keep it            | Open                  |
 
 ## Entries
 
@@ -875,6 +885,8 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   | `GET /CheckAccountTransactionLog`                                                      | what a bank transaction was booked against, and how much (D-057)                                                   | recorded  |
   | `DELETE /Invoice/{invoiceId}`                                                          | deleting a draft invoice (no tool uses it)                                                                         | recorded  |
   | `DELETE /Voucher/{voucherId}`                                                          | deleting draft vouchers (the spec has only GET and PUT; D-074)                                                     | recorded  |
+  | `GET`, `POST /CostCentre`, `GET`, `DELETE /CostCentre/{costCentreId}`                  | cost centres of documents (D-091)                                                                                  | recorded  |
+  | `DELETE /TagRelation/{tagRelationId}`                                                  | removing one tag from one document (D-089)                                                                         | recorded  |
   | `GET /TextTemplate`                                                                    | head and foot texts (read through `sevdesk_api_get`)                                                               | recorded  |
   | `GET /PartUnity`                                                                       | alternative units of parts, with their own price and factor (`sevdesk_api_get`)                                    | known     |
   | `GET /Document`, document download                                                     | attached documents and receipts (metadata through `sevdesk_api_get`, files through `sevdesk_voucher_receipt_save`) | recorded  |
@@ -909,6 +921,12 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   `mimeType`, `filesize`, `contentHash`, `folder`, `baseObject`, `object`), without the file
   content. All three take `limit`, `offset`, `countAll` and `embed`.
 
+  Recorded 2026-11-16 (probes `read-cost-centre-list`, `write-cost-centre-create`,
+  `write-cost-centre-delete`, `write-tag-relation-remove`): `/CostCentre` answers GET (list with
+  `total`; by id one row), POST and DELETE (D-091);
+  `DELETE /TagRelation/{tagRelationId}` removes one tag from one document (D-089). The spec has
+  `GET /TagRelation`, but no way to remove a relation.
+
 - **Sources:** [genz-its/sevdesk](https://github.com/genz-its/sevdesk),
   [exlo89/laravel-sevdesk-api](https://github.com/exlo89/laravel-sevdesk-api),
   [lippoliv/paperlessngx-to-sevdesk](https://github.com/lippoliv/paperlessngx-to-sevdesk)
@@ -920,7 +938,9 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   numbers: manual check (lead)); recorded 2026-11-08, trial account, Update 2.0 (probes
   `read-account-datev-paging`, `read-sevclient-keys`, `read-transaction-log`,
   `write-voucher-delete`); recorded 2026-11-10, trial account, Update 2.0 (probes
-  `read-text-template`, `read-part-unity`, `read-document`; `pnpm fixtures:record`).
+  `read-text-template`, `read-part-unity`, `read-document`; `pnpm fixtures:record`); recorded
+  2026-11-16, trial account, Update 2.0 (probes `read-cost-centre-list`, `write-cost-centre-create`,
+  `write-cost-centre-delete`, `write-tag-relation-remove`).
 - **Impact:** Each undocumented endpoint gets a hand-written schema, a smoke test, and lives in
   the `advanced` toolset or behind a lookup until a recording confirms its shape. `uncertain`
   endpoints are not used by default tools: receipts go through `uploadTempFile` and `saveVoucher`
@@ -942,7 +962,8 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   fixtures in `test/fixtures/advanced/` through `apiGet` and through their probes, and the
   recorded answers in `test/fixtures/recorded/2026-11-10/advanced/` against them, the ignored
   `limit` included); the receipt download: `test/unit/tools/vouchers/receipt-save.test.ts`. `/SevSequence/Factory/getByType`: no tool uses it, and `sevdesk_api_get` refuses it
-  (`test/unit/sevdesk/paths.test.ts`, `genericGetRefusal`).
+  (`test/unit/sevdesk/paths.test.ts`, `genericGetRefusal`). `/CostCentre` and
+  `DELETE /TagRelation/{tagRelationId}`: D-091 and D-089.
 
 ### D-025: PDF rendering returns one base64 `pdf` since 2026-04-07
 
@@ -1797,16 +1818,19 @@ true`) and a lone `priceGross` 119 (with `showNet: false`) give the same totals.
   without them, all of them null).
   codestra/sevdesk-mcp reports that `takeDefaultAddress: true` leaves an order's recipient block
   empty. Every working order body sends `mapAll` on its positions (codestra/sevdesk-mcp and a
-  production product configurator; community, not recorded). Not recorded: which address is
-  printed when the text and the structured fields are both sent, and whether `saveInvoice` keeps
-  `discountTime` and `costCentre`.
+  production product configurator; community, not recorded). `saveInvoice`, `saveVoucher` and
+  `saveCreditNote` keep `costCentre` on create and on updates with the id, also when an update
+  leaves it out; `saveOrder` drops it (recorded 2026-11-16, D-092). Not recorded: which address
+  is printed when the text and the structured fields are both sent, and whether `saveInvoice`
+  keeps `discountTime`.
 - **Sources:** spec (`Model_Invoice`, `Model_creditNote`, `Model_Order`, `Model_OrderPos`,
   `Model_InvoiceResponse`; `saveInvoice` and `saveCreditNote` descriptions);
   [jernoxit/sevdesk-rs](https://github.com/jernoxit/sevdesk-rs) (requests built by
   `src/document_payload/`, answers recorded in `tests/fixtures/write_invoice_save.json` and
   `write_credit_note_save.json`);
   [codestra/sevdesk-mcp `src/tools/orders.ts`](https://github.com/codestra/sevdesk-mcp/blob/5de1725c4758ea102fce079329a05b26e5b0f1bb/src/tools/orders.ts);
-  recorded 2026-11-07, trial account, Update 2.0 (probe `write-draft-address-fields`).
+  recorded 2026-11-07, trial account, Update 2.0 (probe `write-draft-address-fields`); recorded
+  2026-11-16, trial account, Update 2.0 (probe `write-cost-centre-documents`).
 - **Impact:** Invoice and credit note drafts send the structured address fields with
   `addressCountry`; order drafts send the multi-line `address` with `addressCountry`
   (`src/domain/drafts/document.ts`, `src/domain/drafts/order.ts`). Unless an address is given,
@@ -1825,8 +1849,9 @@ true`) and a lone `priceGross` 119 (with `showNet: false`) give the same totals.
   `test/unit/domain/drafts/recipient.test.ts` ("prefers the invoice address (category 47) over the
   first one"), `test/unit/domain/document-positions.test.ts` ("composes the text from the
   structured parts when sevDesk sent no address (API drafts)"). Live: probe
-  `write-draft-address-fields`. Which address is printed when text and fields are both sent, and
-  `discountTime`/`costCentre` on `saveInvoice`: pending (no probe).
+  `write-draft-address-fields`; `costCentre`: probe `write-cost-centre-documents` (D-092). Which
+  address is printed when text and fields are both sent, and `discountTime` on `saveInvoice`:
+  pending (no probe).
 
 ### D-053: The trailing factory parameters are optional
 
@@ -2220,12 +2245,14 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Actual behavior:** All three are partial updates: fields left out stay as they are. Sending
   `name` for a person sets `name`, but the contact stays a person (jernoxit/sevdesk-rs, measured
   2026-10-01, not recorded). Recorded for contacts: `PUT /Contact/{id}` with only `description`
-  changed the description and kept name, customer number, category and status. Addresses,
-  communication ways and `PUT /Part/{partId}` (`Model_PartUpdate`, no required fields either) are
-  not measured by us.
+  changed the description and kept name, customer number, category and status. `PUT /Contact/{id}`
+  with only `parent` sets, changes and, with `parent: null`, clears a person's organisation
+  (recorded 2026-11-16, D-083). Addresses, communication ways and `PUT /Part/{partId}`
+  (`Model_PartUpdate`, no required fields either) are not measured by us.
 - **Sources:** spec (the three update models); [jernoxit/sevdesk-rs](https://github.com/jernoxit/sevdesk-rs)
   (`src/endpoints/contact.rs`, `src/document_payload/contact.rs`); recorded 2026-11-07, trial
-  account, Update 2.0 (probe `write-contact-partial-update`, in both write runs).
+  account, Update 2.0 (probe `write-contact-partial-update`, in both write runs); recorded
+  2026-11-16, trial account, Update 2.0 (probe `write-contact-parent`).
 - **Impact:** `sevdesk_contact_update` sends only the fields that change, to the contact, its
   billing address and its main communication ways (`src/domain/contacts-write.ts`). Nothing can be
   cleared (empty strings are rejected by the input schema), an update without changes is a
@@ -2236,7 +2263,8 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   contact, billing address and main entries", "sends no contact PUT when only a communication way
   changes", "refuses an update that changes nothing", "never mixes the kinds of contacts"),
   `test/unit/tools/masterdata/part-update.test.ts` ("changes name, number, price and unit and
-  keeps everything else"). Live: probe `write-contact-partial-update`. `PUT /Part/{partId}`:
+  keeps everything else"). Live: probes `write-contact-partial-update`, `write-contact-parent`
+  (D-083). `PUT /Part/{partId}`:
   pending (no probe).
 
 ### D-063: `createInvoiceFromOrder` `amount` is described as the amount already paid
@@ -2985,3 +3013,261 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   bilingual mismatch notes and real-parser USD e-invoice imports. `test/write-cases/vouchers.ts`
   exercises USD creation, a rate change with all positions and USD import through the write flow;
   `test/integration/write-previews-de.test.ts` snapshots their German previews.
+
+### D-083: `parent` on a contact is stored without checks, and clearing it drops the key
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `Model_Contact.parent` and `Model_ContactUpdate.parent` (`{id, objectName:
+"Contact"}`, nullable) are "the parent contact to which this contact belongs. Must be an
+  organization." Nothing says what a person as parent, or a parent on an organisation, does, how
+  a parent is removed, or how to list an organisation's contact persons (`GET /Contact` documents
+  only `depth` and `customerNumber`).
+- **Actual behavior:** `POST /Contact` with `parent: {id, objectName: "Contact"}` and
+  `PUT /Contact/{contactId}` with only `parent` set and change it; a read shows
+  `parent: {id, objectName: "Contact"}`, and `embed=parent` expands it to the whole contact. No
+  other key names the parent. `PUT` with `parent: null` clears it: the `PUT` answer and every
+  later read leave the key out entirely (absent, not `null`). sevDesk checks nothing: a person as
+  parent (on `POST` and on `PUT`) and an organisation with an organisation as parent are accepted
+  and stored as sent. `GET /Contact?depth=1&parent[id]=…&parent[objectName]=Contact` returns only
+  the contacts of that parent. `PUT` answers the contact as one object.
+- **Sources:** spec (`Model_Contact`, `Model_ContactUpdate`, `getContacts`); recorded 2026-11-16,
+  trial account, Update 2.0 (probes `write-contact-parent`, `write-contact-parent-invalid`).
+- **Impact:** No tool sets `parent` yet. #86 must refuse a parent that is not an organisation and
+  a contact that is not a person itself (sevDesk would store both), read a missing `parent` key as
+  "no organisation", list contact persons with the `parent[id]` filter (and filter again locally,
+  D-035), and clear with `parent: null`.
+- **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("follows parent through create, set,
+  change and clear and checks the parent filter", "reports wrong-sided parents as stored, as
+  recorded, and a refusal with its message (D-083)"); its simulated account behaves as recorded.
+  Live: probes `write-contact-parent`, `write-contact-parent-invalid`.
+
+### D-084: Deleting a contact deletes its addresses and communication ways
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `DELETE /Contact/{contactId}`, `/ContactAddress/{contactAddressId}` and
+  `/CommunicationWay/{communicationWayId}` answer 200 with `objects` an array of `null` items, or
+  400, 409 (Conflict) or 500. Nothing says what happens to a contact's addresses and communication
+  ways, or whether the billing address, the main entry or the last entry may be deleted.
+- **Actual behavior:** All three answer `{objects: [null]}`. Afterwards `GET` by id answers 404,
+  and a second `DELETE` answers 404 "No Model_Contact with the id … was found" (the same pattern,
+  `No Model_<name> with the id <id> was found`, for every resource probed in this session).
+  Deleting a contact also deletes its addresses and communication ways (both 404 afterwards). An
+  address can be deleted while it is the billing address (category 47) and while it is the last
+  one; the contact stays. The main e-mail and then the last e-mail can be deleted; the other
+  e-mail does not become main (`main` stays `"0"`), so a contact can be left without a main entry
+  of a type. A contact a document references is not deleted (D-085).
+- **Sources:** spec (`deleteContact`, `deleteContactAddress`, `deleteCommunicationWay`); recorded
+  2026-11-16, trial account, Update 2.0 (probes `write-contact-delete`,
+  `write-contact-delete-referenced`, `write-contact-address-delete`,
+  `write-communication-way-delete`).
+- **Impact:** No tool deletes yet. #86's contact delete must say in its preview that the
+  addresses and communication ways go too, and treat 404 on a repeated delete as "already gone";
+  removing an address or way must say when it removes the billing address or the main entry, since
+  sevDesk elects no new one.
+- **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("deletes contacts, addresses and
+  communication ways and reports what is left"). Live: the four probes above.
+
+### D-085: Refused deletes of referenced contacts and cost centres arrive as HTTP 200
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `DELETE /Contact/{contactId}` declares 409 (Conflict) next to 200. `/CostCentre`
+  is not in the spec (D-091).
+- **Actual behavior:** `DELETE /Contact/{contactId}` of a contact that a draft invoice
+  references, and `DELETE /CostCentre/{costCentreId}` of a cost centre that a draft voucher uses,
+  answer HTTP **200** with an error body ("Cannot delete because of existing necessary
+  references") instead of `objects`. Nothing is deleted: the contact, the cost centre and the
+  referencing document stay unchanged (the voucher keeps its `costCentre`). The same trap as the
+  `cancelInvoice` refusals (D-058).
+- **Sources:** spec (`deleteContact`); recorded 2026-11-16, trial account, Update 2.0 (probes
+  `write-contact-delete-referenced`, `write-cost-centre-delete`).
+- **Impact:** The client already turns a 2xx body with an `error` member and no `objects` into an
+  `unexpected_response` error with status 200 and sevDesk's message as `upstreamMessage`
+  (`readJsonEnvelope` in `src/sevdesk/client.ts`), so such a refusal never passes as a successful
+  delete. #86 and #87 must report it as "sevDesk refused: the record is still referenced", read
+  the record back to confirm it still exists, and never retry.
+- **Test:** `test/unit/sevdesk/client.test.ts` ("treats objects null next to an error as
+  unexpected_response", "keeps sevDesk's error text from a 2xx error body as the upstream message
+  only"); `test/unit/scripts/gaps-contacts-probes.test.ts` ("deletes contacts, addresses and
+  communication ways and reports what is left", "deletes only its own cost centres, unused and in
+  use"). Live: probes `write-contact-delete-referenced`, `write-cost-centre-delete`.
+
+### D-086: Custom contact fields: 30-character names, no contact embed, cascading deletes
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `POST /ContactCustomFieldSetting` takes `name` (required, no length) and
+  `description` and answers an array; the setting model has `name`, `identifier` and
+  `description`. `POST /ContactCustomField` takes `contact`, `contactCustomFieldSetting`, `value`
+  and `objectName`. `DELETE /ContactCustomFieldSetting/{id}` declares 409 (Conflict).
+  `getReferenceCount` answers an integer. `findContactsByCustomFieldValue` requires `value` and
+  `customFieldName`; `customFieldSetting[id]` is optional. Nothing says how a contact's values are
+  read.
+- **Actual behavior:**
+  - Settings: a `name` longer than 30 characters is refused with 400 "Property 'name' is too long.
+    Maximum for this property is 30"; exactly 30 is accepted. A second setting with the same name
+    is accepted. `POST` and `PUT` answer one object (not an array) with `id`, `objectName`,
+    `additionalInformation`, `create`, `update`, `sevClient`, `name`, `identifier` (filled by
+    sevDesk), `description` and an undeclared `placeholder`. `PUT` with only `name` keeps the
+    description. `getReferenceCount` answers a bare integer (`0`, `1`).
+  - Values: `POST /ContactCustomField` answers one object with `contact` and
+    `contactCustomFieldSetting` as `{id, objectName}` and `value`; `PUT` with only `objectName` and
+    `value` changes the value and keeps both references. `GET /ContactCustomField` honours
+    `contact[id]` + `contact[objectName]`, and `embed=contactCustomFieldSetting` expands the
+    setting (name, identifier, …). No contact read shows custom fields: `GET /Contact/{id}` with
+    `embed=contactCustomFields`, `customFields` or `contactCustomField` adds no key.
+  - `findContactsByCustomFieldValue` answers a list of contacts and matches the whole value,
+    ignoring case; a prefix finds nothing. It works with the setting id alone, the name alone, or
+    both (the spec's required `customFieldName` is not needed with an id).
+  - `DELETE` of a value or a setting answers `{objects: [null]}`; deleting a setting that a value
+    uses succeeds and deletes the value too (no 409).
+  - Not measured: a length limit on `value` and `description` (the probe sent 17 and 21
+    characters).
+- **Sources:** spec (`ContactField` operations, `Model_ContactCustomField*`,
+  `findContactsByCustomFieldValue`); recorded 2026-11-16, trial account, Update 2.0 (probes
+  `write-custom-field-settings`, `write-custom-field-values`; the settings list in
+  `test/fixtures/recorded/2026-11-16/contacts/custom-field-settings.json`).
+- **Impact:** No tool reads or writes custom fields yet. #86 must keep setting names within 30
+  characters, read a contact's values with `GET /ContactCustomField?contact[id]=…` and
+  `embed=contactCustomFieldSetting` (filtered again locally, D-035), search with
+  `customFieldSetting[id]` (exact value, any case), and warn that deleting a setting deletes every
+  value of it.
+- **Test:** `test/contract/recorded-gaps-contacts.test.ts` (the recorded settings list: keys,
+  scalar types, `identifier` and `placeholder`, through `sevdesk_api_get`);
+  `test/unit/scripts/gaps-contacts-probes.test.ts` ("probes custom fields without putting their
+  values into the report"). Live: probes `write-custom-field-settings`,
+  `write-custom-field-values`.
+
+### D-087: `checkCustomerNumberAvailability` answers a bare boolean and needs a number
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `GET /Contact/Mapper/checkCustomerNumberAvailability` takes an optional
+  `customerNumber` and answers `objects` as a boolean ("whether given customer number is
+  available").
+- **Actual behavior:** `objects` is a bare JSON boolean: `false` for a number a contact has, `true`
+  for a free one. Without `customerNumber` it answers 400 "Invalid type of parameter". Whether the
+  comparison ignores case is not measured (the used number had no letters).
+- **Sources:** spec (`contactCustomerNumberAvailabilityCheck`); recorded 2026-11-16, trial
+  account, Update 2.0 (probe `read-customer-number-availability`).
+- **Impact:** No tool uses it yet. A check before creating a contact with a customer number must
+  always send the number and read `true` as "free".
+- **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("asks with the real customer number
+  and keeps it out of the report"). Live: probe `read-customer-number-availability`.
+
+### D-088: Tags are added by name through `Tag/Factory/create`, which reuses a tag
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `POST /Tag/Factory/create` takes `name` and the required `object`
+  (`{id, objectName}` of an Invoice, Voucher, Order or CreditNote) and answers a
+  `Model_TagCreateResponse` (a TagRelation). Nothing says what an existing name does, or whether a
+  tag can be given by id. `GET /Tag` takes `id` and `name`; `GET /TagRelation` documents no
+  parameters. `Model_TagResponse` has no `objectType` and no usage count.
+- **Actual behavior:**
+  - The factory tags draft invoices, vouchers, orders (AN) and credit notes. The answer is one
+    TagRelation object: `id`, `objectName: "TagRelation"`, `additionalInformation`, `create`,
+    `tag: {id, objectName: "Tag"}`, `object: {id, objectName}`, `sevClient`.
+  - A name that exists reuses that tag, ignoring case (the same name in upper case gave the same
+    tag id); a new name creates the tag. Tagging a document that already has the tag answers its
+    existing relation (same relation id): the call is idempotent.
+  - `{tag: {id, objectName: "Tag"}, object}` without `name` is refused with 400 "Invalid type of
+    parameter": a tag is added by name only.
+  - `GET /Tag` rows: `id`, `objectName`, `additionalInformation`, `create`, `name`, `objectType`
+    (`null`), `sevClient`; no usage count. The `name` filter is honoured; `GET /Tag/{tagId}`
+    answers one row.
+  - `GET /TagRelation` honours `tag[id]` + `tag[objectName]`, `object[id]` + `object[objectName]`
+    and `limit`, with `total`: a tag's usage count is the `countAll` total of its relations.
+- **Sources:** spec (`createTag`, `getTags`, `getTagRelations`, `Model_TagResponse`,
+  `Model_TagCreateResponse`); recorded 2026-11-16, trial account, Update 2.0 (probes
+  `write-tag-create-on-documents`, `write-tag-relation-filters`, `read-tag-lists`; the lists in
+  `test/fixtures/recorded/2026-11-16/tags/`).
+- **Impact:** No tag tools yet. #87's tag tool adds a tag by name (the preview says whether the name
+  is new, compared ignoring case as sevDesk does) and counts uses from `GET /TagRelation` totals.
+- **Test:** `test/contract/recorded-gaps-contacts.test.ts` (both recorded lists: keys, references,
+  no usage count, the object types; the probe `read-tag-lists` on them);
+  `test/unit/scripts/gaps-contacts-probes.test.ts` ("tags documents of every kind, reuses a tag by
+  name and removes one relation"). Live: the three probes above.
+
+### D-089: `DELETE /TagRelation/{id}` removes a tag from a document, the last one the tag
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** No operation removes a tag from a document. `PUT /Tag/{tagId}` renames a tag;
+  `DELETE /Tag/{tagId}` deletes one and declares 409 (Conflict).
+- **Actual behavior:** The undocumented `DELETE /TagRelation/{tagRelationId}` answers
+  `{objects: [null]}` and removes that one relation; the tag and its other relations stay. When
+  the last relation of a tag is removed, sevDesk deletes the tag itself (`GET /Tag/{id}` 404). A
+  second `DELETE` answers 404. `PUT /Tag/{tagId}` with `name` answers the tag object and keeps its
+  relations; a name another tag already has is accepted (two tags with one name).
+  `DELETE /Tag/{tagId}` of a tag that documents use answers `{objects: [null]}` and removes all its
+  relations; the documents stay.
+- **Sources:** spec (`updateTag`, `deleteTag`); recorded 2026-11-16, trial account, Update 2.0
+  (probes `write-tag-relation-remove`, `write-tag-update-delete`).
+- **Impact:** #87 removes one tag from one document with `DELETE /TagRelation/{id}` (D-024) and
+  says in the preview when that removes the tag altogether; a rename must check for an existing
+  name itself.
+- **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("tags documents of every kind, reuses
+  a tag by name and removes one relation"). Live: the two probes above.
+
+### D-090: Document lists filter by tag only with `tags[0][id]`; `tag[id]` is ignored
+
+- **Status:** Open. **Evidence:** recorded.
+- **Spec says:** `GET /Invoice`, `/Voucher`, `/Order` and `/CreditNote` document no tag filter.
+- **Actual behavior:** `tags[0][id]=<tagId>&tags[0][objectName]=Tag` filters all four lists on
+  the server (only the tagged draft, not the untagged control). `tag[id]` + `tag[objectName]` and
+  `tag=<id>` are ignored without an error: the whole list comes back. `tags=<id>` answers 400 "Bad
+  Request". More than one tag (`tags[1][…]`) is not measured.
+- **Sources:** recorded 2026-11-16, trial account, Update 2.0 (probe `write-tag-list-filters`,
+  run twice).
+- **Impact:** #87's `tag` filter on the list tools must send `tags[0][id]` and
+  `tags[0][objectName]`; an ignored filter would return every document, so the parameter names are
+  pinned by tests and the rows are checked against the tag's relations where the tool can.
+- **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("tells honoured list filters from
+  ignored ones, with an untagged control"). Live: probe `write-tag-list-filters`.
+
+### D-091: Cost centres are managed through the undocumented `/CostCentre` endpoints
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** Nothing: `/CostCentre` is not in the spec; only `costCentre: {id, objectName:
+"CostCentre"}` on invoices and vouchers is (D-052, D-092).
+- **Actual behavior:** `GET /CostCentre` answers a list with `total` (paging not measured: the
+  account had too few cost centres when the probe ran); rows have `id`, `objectName`,
+  `additionalInformation`, `create`, `update`, `sevClient`, `number`, `name`, `color` (`null`),
+  `postingAccount` (`null`) and `defaultCentre` (`"0"`). A read by id answers a list of one row.
+  `POST /CostCentre` with `objectName`, `name` and `number` answers the new cost centre as one
+  object. `number` must match
+  `/^[a-zA-Z0-9 äöüßÄÖÜ]+$/u` and be at most 8 characters: otherwise 422 "The given number (0) is
+  not allowed. Allowed values follow this pattern: … And cannot be longer than 8 characters." (the
+  message says `(0)` whatever was sent). `DELETE /CostCentre/{id}` of an unused cost centre answers
+  `{objects: [null]}`, then 404; of one a voucher uses it is refused inside HTTP 200 (D-085). A
+  cost centre made in the web app has the same shape.
+- **Sources:** recorded 2026-11-16, trial account, Update 2.0 (probes `read-cost-centre-list`,
+  `write-cost-centre-create`, `write-cost-centre-delete`; the list in
+  `test/fixtures/recorded/2026-11-16/cost-centres/cost-centres-list.json`).
+- **Impact:** No tool reads cost centres yet (D-024). #87 lists them for `sevdesk_reference_lookup`
+  with an explicit `limit` and checks a `costCentre` argument against that list.
+- **Test:** `test/contract/recorded-gaps-contacts.test.ts` (the recorded list: keys, the number
+  pattern, `defaultCentre`, through `sevdesk_api_get` and the probe `read-cost-centre-list`);
+  `test/unit/scripts/gaps-contacts-probes.test.ts` ("checks costCentre on create and on updates
+  with the id, per document kind", "deletes only its own cost centres, unused and in use"). Live:
+  the three probes above.
+
+### D-092: `saveOrder` drops `costCentre`; invoices, vouchers and credit notes keep it
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `Model_Voucher` and `Model_VoucherUpdate` take `costCentre: {id, objectName:
+"CostCentre"}`; `Model_InvoiceResponse` shows it, but `Model_Invoice` does not take it (D-052);
+  the order and credit note models have none. The lists document no cost-centre filter.
+- **Actual behavior:** `saveInvoice`, `saveVoucher` and `saveCreditNote` store `costCentre` on
+  create, take it on an update with the id, and keep it when a later update with the id leaves it
+  out; reads show `costCentre: {id, objectName: "CostCentre"}`. `saveOrder` accepts the field
+  without an error and drops it: the order reads back without a `costCentre` key, after create and
+  after updates (D-003). `GET /Invoice` and `/Voucher` honour `costCentre[id]` +
+  `costCentre[objectName]=CostCentre` (every row carries that cost centre, the control without it
+  is left out); `costCentre=<id>` alone answers 422 "Invalid costCentre given, must have id and
+  objectName".
+- **Sources:** spec (`Model_Voucher`, `Model_VoucherUpdate`, `Model_InvoiceResponse`); recorded
+  2026-11-16, trial account, Update 2.0 (probes `write-cost-centre-documents`,
+  `write-cost-centre-list-filters`).
+- **Impact:** #87 offers `costCentre` on invoice, voucher and credit note drafts only, never on
+  orders, and filters the invoice and voucher lists with both keys. The invoice update already
+  carries the stored `costCentre` over (D-052, D-054).
+- **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("checks costCentre on create and on
+  updates with the id, per document kind", "tells honoured list filters from ignored ones, with an
+  untagged control"). Live: the two probes above.

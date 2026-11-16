@@ -1,0 +1,63 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /CostCentre?limit=n (recording session 2026-11-16)",
+    "date": "2026-11-16",
+    "systemVersion": "2.0",
+    "note": "Personal and company data replaced by scripts/lib/scrub.ts; keys, nulls and scalar types as recorded. A recorded single page (has total). Cost centres (#87); undocumented GET (D-024), probe read-cost-centre-list."
+  },
+  "status": 200,
+  "body": {
+    "total": 3,
+    "objects": [
+      {
+        "id": "344964",
+        "objectName": "CostCentre",
+        "additionalInformation": null,
+        "create": "2026-11-16T21:56:49+01:00",
+        "update": "2026-11-16T21:56:49+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "number": "M62573C",
+        "name": "Mustername 1",
+        "color": null,
+        "postingAccount": null,
+        "defaultCentre": "0"
+      },
+      {
+        "id": "344962",
+        "objectName": "CostCentre",
+        "additionalInformation": null,
+        "create": "2026-11-16T21:56:35+01:00",
+        "update": "2026-11-16T21:56:35+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "number": "M62573A",
+        "name": "Mustername 2",
+        "color": null,
+        "postingAccount": null,
+        "defaultCentre": "0"
+      },
+      {
+        "id": "344959",
+        "objectName": "CostCentre",
+        "additionalInformation": null,
+        "create": "2026-11-16T21:33:33+01:00",
+        "update": "2026-11-16T21:33:33+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "number": "MCP1",
+        "name": "Mustername 3",
+        "color": null,
+        "postingAccount": null,
+        "defaultCentre": "0"
+      }
+    ]
+  }
+}

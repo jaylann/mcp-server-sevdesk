@@ -1,0 +1,105 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /TagRelation?limit=n (recording session 2026-11-16)",
+    "date": "2026-11-16",
+    "systemVersion": "2.0",
+    "note": "Personal and company data replaced by scripts/lib/scrub.ts; keys, nulls and scalar types as recorded. A recorded single page (has total). Which document each tag is on (#87): tag and object references."
+  },
+  "status": 200,
+  "body": {
+    "total": 17,
+    "objects": [
+      {
+        "id": "36970958",
+        "objectName": "TagRelation",
+        "additionalInformation": null,
+        "create": "2026-11-16T21:40:47+01:00",
+        "tag": {
+          "id": "5888323",
+          "objectName": "Tag"
+        },
+        "object": {
+          "id": "3105849",
+          "objectName": "CreditNote"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        }
+      },
+      {
+        "id": "36970976",
+        "objectName": "TagRelation",
+        "additionalInformation": null,
+        "create": "2026-11-16T21:41:04+01:00",
+        "tag": {
+          "id": "5888328",
+          "objectName": "Tag"
+        },
+        "object": {
+          "id": "3105850",
+          "objectName": "CreditNote"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        }
+      },
+      {
+        "id": "36971375",
+        "objectName": "TagRelation",
+        "additionalInformation": null,
+        "create": "2026-11-16T21:56:25+01:00",
+        "tag": {
+          "id": "5888406",
+          "objectName": "Tag"
+        },
+        "object": {
+          "id": "3105876",
+          "objectName": "CreditNote"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        }
+      },
+      {
+        "id": "36971390",
+        "objectName": "TagRelation",
+        "additionalInformation": null,
+        "create": "2026-11-16T21:56:34+01:00",
+        "tag": {
+          "id": "5888409",
+          "objectName": "Tag"
+        },
+        "object": {
+          "id": "3105877",
+          "objectName": "CreditNote"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        }
+      },
+      {
+        "id": "36971374",
+        "objectName": "TagRelation",
+        "additionalInformation": null,
+        "create": "2026-11-16T21:56:24+01:00",
+        "tag": {
+          "id": "5888406",
+          "objectName": "Tag"
+        },
+        "object": {
+          "id": "31710437",
+          "objectName": "Order"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        }
+      }
+    ]
+  }
+}
