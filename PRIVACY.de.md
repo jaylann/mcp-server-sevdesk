@@ -2,13 +2,13 @@
 
 # Datenschutz
 
-mcp-server-sevdesk ist Software, die Sie selbst betreiben. Das Projekt betreibt keinen Dienst und
+mcp-server-sevdesk ist Software, die du selbst betreibst. Das Projekt betreibt keinen Dienst und
 erhebt **keine Telemetrie**.
 
 - **Datenfluss.** Der Server sendet seine Anfragen an die sevDesk-API
-  (`https://my.sevdesk.de/api/v1`, oder die von Ihnen gesetzte `SEVDESK_BASE_URL`), mit Ihrem
-  Token, und gibt Ergebnisse an den MCP-Client zurück, den Sie verbunden haben (zum Beispiel
-  Claude Desktop). Was Ihr Client oder Ihr Modellanbieter mit diesen Daten tut, regeln deren
+  (`https://my.sevdesk.de/api/v1`, oder die von dir gesetzte `SEVDESK_BASE_URL`), mit deinem
+  Token, und gibt Ergebnisse an den MCP-Client zurück, den du verbunden hast (zum Beispiel
+  Claude Desktop). Was dein Client oder dein Modellanbieter mit diesen Daten tut, regeln deren
   Bedingungen. Einen anderen Host kontaktiert er nicht, mit zwei Ausnahmen:
   - **DATEV-Export.** `sevdesk_datev_export` (Stufe `write`) lädt das fertige ZIP aus dem
     Export-Speicher von sevDesk bei Amazon S3
@@ -20,28 +20,28 @@ erhebt **keine Telemetrie**.
     [Fernzugriff](#fernzugriff).
 - **Freigabeseite.** Mit `SEVDESK_CONFIRM=browser` (lokale Nutzung) wird die Vorschau einer Aktion
   auf einer Seite gezeigt, die der Server auf `127.0.0.1` bereitstellt und über den Öffner des
-  Betriebssystems in Ihrem Standardbrowser öffnet; mit `SEVDESK_CONFIRM_OPEN=0` schreibt er den
+  Betriebssystems in deinem Standardbrowser öffnet; mit `SEVDESK_CONFIRM_OPEN=0` schreibt er den
   Link nur in sein Log. Die Seite lädt nichts von anderen Hosts.
-- **Lokale Speicherung.** Nichts wird gespeichert, solange Sie es nicht aktivieren: Das optionale
+- **Lokale Speicherung.** Nichts wird gespeichert, solange du es nicht aktivierst: Das optionale
   Audit-Log (`SEVDESK_AUDIT_LOG`) und der Ausgabeordner (`SEVDESK_OUTPUT_DIR`) sind Dateien
-  auf Ihrem Rechner.
-- **Ihr Token.** Nutzen Sie `token set`, wird das Token im Schlüsselbund Ihres Betriebssystems
+  auf deinem Rechner.
+- **Dein Token.** Nutzt du `token set`, wird das Token im Schlüsselbund deines Betriebssystems
   (macOS-Schlüsselbund, Linux Secret Service oder Windows Credential Locker über `PasswordVault`)
   unter dem Dienst `mcp-server-sevdesk` abgelegt. Unter Windows können Anmeldeinformationen
-  [über Ihr Microsoft-Konto zwischen Geräten synchronisiert werden](https://learn.microsoft.com/en-us/windows/apps/develop/security/credential-locker).
-  Soll das Token auf diesem Gerät bleiben, verwenden Sie `SEVDESK_API_TOKEN_FILE` mit einer Datei,
-  die nur Ihr Benutzer lesen kann und die außerhalb synchronisierter Ordner liegt. Eine
+  [über dein Microsoft-Konto zwischen Geräten synchronisiert werden](https://learn.microsoft.com/en-us/windows/apps/develop/security/credential-locker).
+  Soll das Token auf diesem Gerät bleiben, verwende `SEVDESK_API_TOKEN_FILE` mit einer Datei,
+  die nur dein Benutzer lesen kann und die außerhalb synchronisierter Ordner liegt. Eine
   Profildatei enthält Einstellungen und den Ort jedes Tokens (eine Bezeichnung im Schlüsselbund,
   einen Dateipfad oder einen Variablennamen), nie ein Token. Die Einstellungen der
   Claude-Desktop-Erweiterung, einschließlich des Tokens, speichert Claude Desktop, das Token im
   sicheren Speicher des Betriebssystems.
 - **Buchhaltungsdaten sind personenbezogene Daten.** Rechnungen und Kontakte enthalten
-  personenbezogene Daten Ihrer Kunden. Prüfen Sie die Bedingungen Ihres Modellanbieters zur
-  Auftragsverarbeitung, bevor Sie ein echtes Konto verbinden.
+  personenbezogene Daten deiner Kunden. Prüfe die Bedingungen deines Modellanbieters zur
+  Auftragsverarbeitung, bevor du ein echtes Konto verbindest.
 
 ## Fernzugriff
 
-Betreiben Sie den HTTP-Transport selbst ([docs/remote.de.md](docs/remote.de.md)), sind Sie der
+Betreibst du den HTTP-Transport selbst ([docs/remote.de.md](docs/remote.de.md)), bist du der
 Betreiber und für die dort verarbeiteten personenbezogenen Daten verantwortlich (DSGVO). Mit
 `SEVDESK_OAUTH_ACCOUNTS=any` können dazu auch die Konten anderer Leute gehören.
 
@@ -71,5 +71,5 @@ Betreiber und für die dort verarbeiteten personenbezogenen Daten verantwortlich
   Clients von dessen Host ab (bei claude.ai: `claude.ai`); dieser Host sieht die IP-Adresse des
   Servers und den Zeitpunkt. Wer TLS vor dem Server terminiert (ein Tunnel wie der von Cloudflare
   oder eine Plattform wie Fly.io, Render oder Railway), verarbeitet den gesamten Verkehr,
-  einschließlich Tokens und Buchhaltungsdaten, und ist ein Auftragsverarbeiter, den Sie wählen.
+  einschließlich Tokens und Buchhaltungsdaten, und ist ein Auftragsverarbeiter, den du wählst.
   Das Anfrage-Log des Servers enthält Client-IP-Adressen.

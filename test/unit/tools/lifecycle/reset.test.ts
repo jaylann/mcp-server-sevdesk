@@ -107,7 +107,7 @@ describe("sevdesk_invoice_reset (spec resetToOpen/resetToDraft; behaviour per se
     );
     expect(plan.previewDe.warnings[0]).toContain("Die Rechnung ist dann nicht mehr bindend");
     expect(plan.previewDe.warnings[1]).toContain(
-      "stornieren Sie sie stattdessen (sevdesk_invoice_cancel)",
+      "storniere sie stattdessen (sevdesk_invoice_cancel)",
     );
     expect(output.data["invoice"]).toMatchObject({ status: { code: 100 } });
   });
@@ -152,8 +152,6 @@ describe("sevdesk_credit_note_reset", () => {
     const draft = await executeWrite(creditNoteTool, { id: 2001, to: "draft" }, toDraft);
     expect(toDraft.writes()[0]?.path).toBe("/CreditNote/2001/resetToDraft");
     expect(draft.plan.preview.warnings[1]).toContain("issue a new document instead");
-    expect(draft.plan.previewDe.warnings[1]).toContain(
-      "stellen Sie stattdessen ein neues Dokument aus",
-    );
+    expect(draft.plan.previewDe.warnings[1]).toContain("stelle stattdessen ein neues Dokument aus");
   });
 });

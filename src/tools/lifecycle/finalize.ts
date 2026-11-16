@@ -163,7 +163,7 @@ export function finalizeTool(kind: SalesKind) {
           phrase(
             "The document number still contains placeholders (%…%); check the number range in " +
               "sevDesk and the number after finalizing.",
-            "Die Dokumentnummer enthält noch Platzhalter (%…%); prüfen Sie den Nummernkreis in " +
+            "Die Dokumentnummer enthält noch Platzhalter (%…%); prüfe den Nummernkreis in " +
               "sevDesk und die Nummer nach dem Fertigstellen.",
           ),
         );

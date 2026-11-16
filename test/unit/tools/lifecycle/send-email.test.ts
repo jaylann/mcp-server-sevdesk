@@ -132,7 +132,7 @@ describe("sevdesk_invoice_send_email (spec request body; community record shapes
       { label: "An", value: "kunde@example.com" },
       { label: "Cc", value: "a@example.com" },
       { label: "Bcc", value: "b@example.com" },
-      { label: "Kopie an Sie", value: "ja, an die eigene Adresse des sevDesk-Benutzers" },
+      { label: "Kopie an dich", value: "ja, an die eigene Adresse des sevDesk-Benutzers" },
       { label: "Anhang", value: "Rechnung als PDF" },
       { label: "Betreff", value: "Ihre Rechnung" },
       { label: "Text", value: "Guten Tag,\nanbei Ihre Rechnung." },
@@ -145,7 +145,7 @@ describe("sevdesk_invoice_send_email (spec request body; community record shapes
         "Dokumente beim Abschließen automatisch fest, wird sie dabei auch festgeschrieben.",
       "Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht " +
         "gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und " +
-        "verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfen Sie bei Bedarf " +
+        "verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfe bei Bedarf " +
         "sevdesk_invoice_pdf.",
     ]);
     expect(plan.previewDe.irreversible).toBe(true);

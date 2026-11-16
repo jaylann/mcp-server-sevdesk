@@ -180,7 +180,7 @@ export function foreignReadBackNotes(
       mismatch = true;
       notes.push(
         de
-          ? `Die gespeicherte Fremdwährungssumme (${labels[key]}) fehlt oder weicht von ${numberText(expected[key], lang)} ${value.currency} ab. Prüfen Sie den Beleg; wiederholen Sie das Speichern nicht ungeprüft.`
+          ? `Die gespeicherte Fremdwährungssumme (${labels[key]}) fehlt oder weicht von ${numberText(expected[key], lang)} ${value.currency} ab. Prüfe den Beleg; wiederhole das Speichern nicht ungeprüft.`
           : `The stored foreign ${labels[key]} total is missing or differs from ${expected[key]} ${value.currency}. Check the voucher; do not repeat the save blindly.`,
       );
     }
@@ -196,7 +196,7 @@ export function foreignReadBackNotes(
         mismatch = true;
         notes.push(
           de
-            ? `Die gespeicherte EUR-Summe (${labels[key]}) fehlt oder weicht vom berechneten Wert ${numberText(calculated, lang)} EUR um mehr als ${numberText(format(tolerance, 2), lang)} EUR ab (ein Cent je Position). Prüfen Sie Wechselkurs und Positionen.`
+            ? `Die gespeicherte EUR-Summe (${labels[key]}) fehlt oder weicht vom berechneten Wert ${numberText(calculated, lang)} EUR um mehr als ${numberText(format(tolerance, 2), lang)} EUR ab (ein Cent je Position). Prüfe Wechselkurs und Positionen.`
             : `The stored EUR ${labels[key]} total is missing or differs from the computed ${calculated} EUR by more than ${format(tolerance, 2)} EUR (one cent per position). Check the exchange rate and positions.`,
         );
       }

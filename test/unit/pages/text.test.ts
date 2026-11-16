@@ -57,9 +57,15 @@ describe("page texts", () => {
     }
   });
 
-  it("addresses the reader formally in German", () => {
+  it("addresses the reader informally in German, with a lowercase du", () => {
+    // In the middle of a sentence „Sie“ and „Ihr…“ are the formal address. At the start of one,
+    // „Sie“ can also be a thing („Sie nennt sich …“), so only the middle is checked.
+    const formal = /\bIhnen\b|(?<=[\p{Ll}\d,;)]\s)(?:Sie|Ihre?[mnrs]?)\b/u;
+    const capitalDu = /(?<=[\p{Ll}\d,;)]\s)(?:Du|Dich|Dir|Dein\w*)\b/u;
     for (const [path, text] of german) {
-      expect(text, path).not.toMatch(/\b(?:du|dein|deine|deinen|dir|dich)\b/i);
+      expect(text, path).not.toMatch(formal);
+      expect(text, path).not.toMatch(capitalDu);
     }
+    expect([...german.values()].some((text) => /\bdu\b/.test(text))).toBe(true);
   });
 });

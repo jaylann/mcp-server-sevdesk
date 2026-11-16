@@ -240,10 +240,10 @@ export function importedVoucher(
       warnings.push(
         de
           ? candidates.length === 0
-            ? "Kein sevDesk-Kontakt passt zum Aussteller. Der Beleg wird nur mit dessen Namen gespeichert; mit supplierId können Sie einen Kontakt zuordnen."
+            ? "Kein sevDesk-Kontakt passt zum Aussteller. Der Beleg wird nur mit dessen Namen gespeichert; mit supplierId kannst du einen Kontakt zuordnen."
             : candidates.length === 1
-              ? `Kontakt ${String(candidates[0])} passt zum Aussteller, wurde aber wegen der Bankdaten nicht automatisch zugeordnet. Der Beleg wird nur mit dem Namen gespeichert. Prüfen Sie die Bankdaten und ordnen Sie den Kontakt mit supplierId zu.`
-              : `Mehrere Kontakte passen zum Aussteller (${candidates.join(", ")}). Der Beleg wird nur mit dem Namen gespeichert; wählen Sie einen Kontakt mit supplierId.`
+              ? `Kontakt ${String(candidates[0])} passt zum Aussteller, wurde aber wegen der Bankdaten nicht automatisch zugeordnet. Der Beleg wird nur mit dem Namen gespeichert. Prüfe die Bankdaten und ordne den Kontakt mit supplierId zu.`
+              : `Mehrere Kontakte passen zum Aussteller (${candidates.join(", ")}). Der Beleg wird nur mit dem Namen gespeichert; wähle einen Kontakt mit supplierId.`
           : candidates.length === 0
             ? "No sevDesk contact matches the issuer; the voucher is saved with the issuer's name " +
               "only. Pass supplierId to link a contact."
@@ -269,7 +269,7 @@ export function importedVoucher(
     if (compare(suggestion.totals.due.amount, suggestion.totals.gross.amount) !== 0) {
       warnings.push(
         de
-          ? `Der fällige Betrag (${numberText(suggestion.totals.due.amount, lang)} ${currency}) weicht von der Rechnungssumme (${numberText(suggestion.totals.gross.amount, lang)} ${currency}) ab, etwa nach einer Vorauszahlung. Berücksichtigen Sie dies bei der Zahlungsbuchung.`
+          ? `Der fällige Betrag (${numberText(suggestion.totals.due.amount, lang)} ${currency}) weicht von der Rechnungssumme (${numberText(suggestion.totals.gross.amount, lang)} ${currency}) ab, etwa nach einer Vorauszahlung. Berücksichtige dies bei der Zahlungsbuchung.`
           : `The amount due (${suggestion.totals.due.amount} ${currency}) differs from the invoice total ` +
               `(${suggestion.totals.gross.amount} ${currency}), e.g. after a prepayment; book the payment ` +
               "accordingly.",
@@ -392,7 +392,7 @@ export async function prepareVoucherImport(
       ...(attach
         ? []
         : [
-            "sevDesk nimmt keine reine XML-Datei als Belegdatei an. Die E-Rechnung wird ohne Anhang gespeichert; hängen Sie die PDF-Datei oder einen Ausdruck in sevDesk an (GoBD).",
+            "sevDesk nimmt keine reine XML-Datei als Belegdatei an. Die E-Rechnung wird ohne Anhang gespeichert; hänge die PDF-Datei oder einen Ausdruck in sevDesk an (GoBD).",
           ]),
     ],
   });

@@ -106,7 +106,7 @@ const EMAIL_TEXT = {
   },
   de: {
     to: "An",
-    copy: "Kopie an Sie",
+    copy: "Kopie an dich",
     copyYes: "ja, an die eigene Adresse des sevDesk-Benutzers",
     attachment: "Anhang",
     xml: "die XML der E-Rechnung statt des PDF",

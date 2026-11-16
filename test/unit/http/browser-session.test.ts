@@ -181,7 +181,7 @@ describe("browser session: sign-in page", () => {
     );
     expect(html).toContain('<html lang="de">');
     expect(html).toContain("<title>Anmelden: sevDesk-Dateien</title>");
-    expect(html).toContain("Geben Sie Ihr Token nur auf <strong>mcp.example.com</strong> ein.");
+    expect(html).toContain("Gib dein Token nur auf <strong>mcp.example.com</strong> ein.");
     expect(html).toContain("Die Anmeldung gilt 12 Stunden in diesem Browser");
     expect(html).not.toContain('role="alert"');
   });

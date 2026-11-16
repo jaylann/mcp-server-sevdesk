@@ -305,7 +305,7 @@ describe("sevdesk_invoice_finalize details", () => {
     const plan = await prepareWrite(tool, { id: 1001 }, client);
     expect(plan.preview.warnings.at(-1)).toContain("still contains placeholders (%…%)");
     expect(plan.previewDe.warnings.at(-1)).toBe(
-      "Die Dokumentnummer enthält noch Platzhalter (%…%); prüfen Sie den Nummernkreis in sevDesk " +
+      "Die Dokumentnummer enthält noch Platzhalter (%…%); prüfe den Nummernkreis in sevDesk " +
         "und die Nummer nach dem Fertigstellen.",
     );
   });

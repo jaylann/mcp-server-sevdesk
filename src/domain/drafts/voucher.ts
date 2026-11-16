@@ -361,7 +361,7 @@ export async function prepareVoucherCreateSpec(
               text(
                 "No Belegnummer: sevDesk saves the draft but books it only with one (D-080); add " +
                   "it with sevdesk_voucher_update_draft (number) before finalizing.",
-                "Ohne Belegnummer speichert sevDesk den Entwurf, bucht ihn aber erst mit Belegnummer (D-080). Ergänzen Sie sie vor dem Fertigstellen mit sevdesk_voucher_update_draft (number).",
+                "Ohne Belegnummer speichert sevDesk den Entwurf, bucht ihn aber erst mit Belegnummer (D-080). Ergänze sie vor dem Fertigstellen mit sevdesk_voucher_update_draft (number).",
               ),
             ]
           : []),
@@ -597,7 +597,7 @@ export async function prepareVoucherUpdate(
       warnings.push(
         text(
           "Check the currency and EUR amounts after saving, before finalizing.",
-          "Prüfen Sie nach dem Speichern die Währung und EUR-Beträge vor dem Fertigstellen.",
+          "Prüfe nach dem Speichern die Währung und EUR-Beträge vor dem Fertigstellen.",
         ),
       );
     }
@@ -917,7 +917,7 @@ function readBackNotes(
       text(
         `sevDesk did not return ${currency} after saving ${currency === "EUR" ? "an" : "a"} ${currency} voucher. Check the currency and ` +
           "amounts with sevdesk_voucher_get before finalizing; do not repeat the conversion blindly.",
-        `sevDesk hat nach dem Speichern eines ${currency}-Belegs nicht ${currency} zurückgegeben. Prüfen Sie Währung und Beträge mit sevdesk_voucher_get vor dem Fertigstellen; wiederholen Sie die Umstellung nicht ungeprüft.`,
+        `sevDesk hat nach dem Speichern eines ${currency}-Belegs nicht ${currency} zurückgegeben. Prüfe Währung und Beträge mit sevdesk_voucher_get vor dem Fertigstellen; wiederhole die Umstellung nicht ungeprüft.`,
       ),
     );
   }
@@ -933,7 +933,7 @@ function readBackNotes(
         `sevDesk computed a gross total of ${gross} EUR; the preview expected ` +
           `${state.expected.gross} EUR. Check the positions and amountMode (gross/net) before ` +
           `finalizing.`,
-        `sevDesk hat eine Bruttosumme von ${numberText(gross, lang)} EUR berechnet; erwartet waren ${numberText(state.expected.gross, lang)} EUR. Prüfen Sie Positionen und amountMode vor dem Fertigstellen.`,
+        `sevDesk hat eine Bruttosumme von ${numberText(gross, lang)} EUR berechnet; erwartet waren ${numberText(state.expected.gross, lang)} EUR. Prüfe Positionen und amountMode vor dem Fertigstellen.`,
       ),
     );
   }
@@ -957,7 +957,7 @@ function readBackNotes(
       text(
         `The voucher reads back with status ${String(voucher.status.code)} ` +
           `(${voucher.status.label}), not ${String(state.expectStatus)}. Check it in sevDesk.`,
-        `Der Beleg hat nach dem Speichern Status ${String(voucher.status.code)} statt ${String(state.expectStatus)}. Prüfen Sie ihn in sevDesk.`,
+        `Der Beleg hat nach dem Speichern Status ${String(voucher.status.code)} statt ${String(state.expectStatus)}. Prüfe ihn in sevDesk.`,
       ),
     );
   }
@@ -967,7 +967,7 @@ function readBackNotes(
         "The voucher had a receipt file attached before this call, and sevDesk's answer after the " +
           "save does not show it anymore. Check the voucher in sevDesk and attach the receipt " +
           "again if it is missing.",
-        "Vor diesem Aufruf war eine Belegdatei angehängt; nach dem Speichern zeigt sevDesk sie nicht mehr an. Prüfen Sie den Beleg und hängen Sie die fehlende Datei erneut an.",
+        "Vor diesem Aufruf war eine Belegdatei angehängt; nach dem Speichern zeigt sevDesk sie nicht mehr an. Prüfe den Beleg und hänge die fehlende Datei erneut an.",
       ),
     );
   }
@@ -977,7 +977,7 @@ function readBackNotes(
         text(
           "sevDesk reports no attached file although the receipt was uploaded and sent as the " +
             "voucher's filename. Check the voucher in sevDesk and attach the receipt there.",
-          "sevDesk meldet keine angehängte Datei, obwohl die Belegdatei hochgeladen und übergeben wurde. Prüfen Sie den Beleg und hängen Sie die Datei dort an.",
+          "sevDesk meldet keine angehängte Datei, obwohl die Belegdatei hochgeladen und übergeben wurde. Prüfe den Beleg und hänge die Datei dort an.",
         ),
       );
     } else if (voucher.hasDocument === undefined) {
@@ -985,7 +985,7 @@ function readBackNotes(
         text(
           "sevDesk's answer does not say whether the receipt file is attached (spec/deviations.md " +
             "D-044); check the voucher in sevDesk once.",
-          "sevDesk meldet nicht, ob eine Belegdatei angehängt ist (D-044). Prüfen Sie den Beleg in sevDesk.",
+          "sevDesk meldet nicht, ob eine Belegdatei angehängt ist (D-044). Prüfe den Beleg in sevDesk.",
         ),
       );
     }
@@ -1031,14 +1031,14 @@ function keptRuleWarnings(
   if (!voucherRuleScope(kind).allowedRuleIds.includes(rule.id)) {
     warnings.push(
       lang === "de"
-        ? `Der Entwurf behält Steuerregel ${String(rule.id)} (${rule.nameDe}), die nicht für ${kind === "expense" ? "Ausgaben" : "Einnahmen"} gilt. Korrigieren Sie sie vor dem Fertigstellen mit taxRuleId.`
+        ? `Der Entwurf behält Steuerregel ${String(rule.id)} (${rule.nameDe}), die nicht für ${kind === "expense" ? "Ausgaben" : "Einnahmen"} gilt. Korrigiere sie vor dem Fertigstellen mit taxRuleId.`
         : `The draft keeps tax rule ${String(rule.id)} (${rule.nameDe}), which is not a rule for ` +
             `${kind} vouchers; pass taxRuleId to fix it before finalizing.`,
     );
   } else if (regime !== undefined && !rule.regimes.includes(regime)) {
     warnings.push(
       lang === "de"
-        ? `Der Entwurf behält Steuerregel ${String(rule.id)} (${rule.nameDe}), die nicht zur Umsatzsteuerregelung dieses Kontos passt: sevDesk verweigert die Buchung. Korrigieren Sie sie mit taxRuleId.`
+        ? `Der Entwurf behält Steuerregel ${String(rule.id)} (${rule.nameDe}), die nicht zur Umsatzsteuerregelung dieses Kontos passt: sevDesk verweigert die Buchung. Korrigiere sie mit taxRuleId.`
         : `The draft keeps tax rule ${String(rule.id)} (${rule.nameDe}), which does not fit this ` +
             "account's VAT regulation: sevDesk will refuse to book it. Pass taxRuleId to fix it.",
     );
@@ -1046,7 +1046,7 @@ function keptRuleWarnings(
   if (rule.notSupportedFor?.includes("vouchers") === true) {
     warnings.push(
       lang === "de"
-        ? `Steuerregel ${String(rule.id)} wird für Belege nicht unterstützt; korrigieren Sie sie mit taxRuleId.`
+        ? `Steuerregel ${String(rule.id)} wird für Belege nicht unterstützt; korrigiere sie mit taxRuleId.`
         : `Tax rule ${String(rule.id)} is not supported for vouchers; pass taxRuleId to fix it.`,
     );
   }

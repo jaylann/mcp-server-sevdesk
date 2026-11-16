@@ -4,8 +4,8 @@
 
 Ein sevDesk-API-Token kann alles, was sein Benutzer kann, und zwar im gesamten Konto: Es gibt keine
 einschränkbaren Rechte, keine reinen Lese-Tokens und kein Ablaufdatum. sevDesk hat außerdem keine
-Testumgebung, jeder Schreibvorgang ändert also Ihre echte Buchhaltung. Deshalb bringt der Server
-seine eigenen minimalen Rechte mit: Berechtigungsstufen, die Sie wählen, eine Bestätigung durch
+Testumgebung, jeder Schreibvorgang ändert also deine echte Buchhaltung. Deshalb bringt der Server
+seine eigenen minimalen Rechte mit: Berechtigungsstufen, die du wählst, eine Bestätigung durch
 einen Menschen für jeden bindenden Schritt, Probeläufe und ein lokales Audit-Log. Diese Seite
 erklärt jedes davon. Das Bedrohungsmodell dahinter steht in [SECURITY.de.md](../SECURITY.de.md).
 
@@ -20,14 +20,14 @@ Jedes Werkzeug gehört zu genau einer Stufe. Lesen und Schreiben teilen sich nie
 | `commit`   | Fertigstellen, Zahlungen buchen, Kontoumsätze zuordnen, Umsätze als privat markieren, stornieren, festschreiben (GoBD), zurücksetzen, Belegentwürfe löschen. Rechtlich bindend oder schwer rückgängig zu machen.                         | **ja**      |
 | `external` | Rechnungen, Gutschriften und Aufträge per E-Mail versenden. Erreicht Dritte.                                                                                                                                                             | **ja**      |
 
-Die Stufen wählen Sie mit `SEVDESK_ALLOW`, zum Beispiel `SEVDESK_ALLOW=write` oder
+Die Stufen wählst du mit `SEVDESK_ALLOW`, zum Beispiel `SEVDESK_ALLOW=write` oder
 `SEVDESK_ALLOW=write,commit`; `all` aktiviert alle Stufen. `SEVDESK_READ_ONLY=1` schaltet alles
 außer `read` ab, unabhängig davon, was in `SEVDESK_ALLOW` steht. Die [Werkzeugreferenz](tools.md)
 nennt die Stufe jedes Werkzeugs.
 
-Eine sinnvolle Reihenfolge: Beginnen Sie mit `read`, ergänzen Sie `write` mit einem
-[Probelauf](#probelauf), und aktivieren Sie `commit` und `external` erst, wenn Sie den Entwürfen
-vertrauen und Ihr Client Bestätigungen anzeigt
+Eine sinnvolle Reihenfolge: Beginne mit `read`, ergänze `write` mit einem
+[Probelauf](#probelauf), und aktiviere `commit` und `external` erst, wenn du den Entwürfen
+vertraust und dein Client Bestätigungen anzeigt
 ([Clients](clients.de.md#bestätigung-je-client)).
 
 ## Was das Modell sieht
@@ -36,8 +36,8 @@ vertrauen und Ihr Client Bestätigungen anzeigt
   registriert: Sie stehen nicht in `tools/list`, das Modell kann sie also weder sehen noch
   aufrufen.
 - **Was deaktiviert ist und wer es ändern kann.** Die Anweisungen des Servers nennen die
-  aktivierten und deaktivierten Stufen und sagen dem Modell, dass Sie, nicht es, weitere
-  freischalten und dass es ein fehlendes Werkzeug nicht umgehen darf. `sevdesk_account_info`
+  aktivierten und deaktivierten Stufen und sagen dem Modell, dass du, nicht es, weitere
+  freischaltest und dass es ein fehlendes Werkzeug nicht umgehen darf. `sevdesk_account_info`
   meldet Stufen, Werkzeuggruppen, Nur-Lesen, Probelauf und Bestätigungsart, damit das Modell es
   weiß, bevor es etwas versucht.
 - **Passende Prompts.** Ein [Prompt](../README.de.md#prompts) erscheint nur, wenn die Werkzeuge,
@@ -67,7 +67,7 @@ Verbindung die Stufen, die auf der Zustimmungsseite angehakt wurden, höchstens 
    jede Position mit ihrem Text, Bedingungen und Daten. Die meisten Fehler werden hier abgelehnt,
    bevor etwas gesendet wird.
 3. **Probelauf?** Dann ist die Vorschau das Ergebnis (Status `dry_run`), und der Aufruf endet.
-4. **Bestätigen.** Bei `commit` und `external` sehen Sie die Vorschau und geben frei oder lehnen
+4. **Bestätigen.** Bei `commit` und `external` siehst du die Vorschau und gibst frei oder lehnst
    ab ([Bestätigungsarten](#bestätigungsarten)). Der Server bereitet danach erneut vor; hat sich
    der Datensatz in der Zwischenzeit geändert, fragt er erneut, statt auszuführen.
 5. **Ausführen.** Das Audit-Log verzeichnet `executing` (kann diese Zeile nicht geschrieben
@@ -79,7 +79,7 @@ Verbindung die Stufen, die auf der Zustimmungsseite angehakt wurden, höchstens 
    Datensätze, die er bereits geändert hat.
 
 Ein Schreibwerkzeug antwortet mit einem von vier Status: `done`, `dry_run`, `approval_pending`
-(wartet auf Ihre Entscheidung im Browser) oder `declined`.
+(wartet auf deine Entscheidung im Browser) oder `declined`.
 
 ## Probelauf
 
@@ -87,14 +87,14 @@ Ein Probelauf führt jede Prüfung eines Schreibvorgangs aus und gibt dessen Vor
 etwas an sevDesk zu senden und ohne jemanden zu fragen. Lesezugriffe finden trotzdem statt, die
 Vorschau gibt also den aktuellen Datenstand wieder.
 
-- Pro Aufruf: Das Modell übergibt `dryRun: true`. Sie können einfach danach fragen („Zeig mir
+- Pro Aufruf: Das Modell übergibt `dryRun: true`. Du kannst einfach danach fragen („Zeig mir
   zuerst, was du tun würdest“).
 - Für alles: `SEVDESK_DRY_RUN=1`. Jedes Schreibwerkzeug gibt dann nur seine Vorschau zurück. Eine
   gute Einstellung für die ersten Sitzungen mit einer neuen Stufe.
 
 ## Bestätigungsarten
 
-`SEVDESK_CONFIRM` legt fest, wie Sie Aufrufe der Stufen `commit` und `external` bestätigen.
+`SEVDESK_CONFIRM` legt fest, wie du Aufrufe der Stufen `commit` und `external` bestätigst.
 Aufrufe der Stufe `write` brauchen keine Bestätigung.
 
 ### elicit
@@ -106,34 +106,34 @@ Werkzeug, die Argumente und die Vorschau gebunden, 10 Minuten gültig und nur ei
 
 Nicht jeder Client unterstützt Elicitation ([Clients](clients.de.md#bestätigung-je-client)). Ein
 Client, der nicht fragen kann, bekommt einen Fehler, der genau das sagt, und nichts wird gesendet;
-wechseln Sie dann zu `browser`.
+wechsle dann zu `browser`.
 
 ### browser
 
-Der Aufruf gibt `approval_pending` mit einem kurzen Referenzcode zurück. Sie geben auf einer
-Webseite frei und bitten den Assistenten dann, es mit denselben Argumenten erneut zu versuchen.
+Der Aufruf gibt `approval_pending` mit einem kurzen Referenzcode zurück. Du gibst auf einer
+Webseite frei und bittest den Assistenten dann, es mit denselben Argumenten erneut zu versuchen.
 
-- **Über stdio** stellt der Server die Seite selbst auf `127.0.0.1` bereit und öffnet sie in Ihrem
+- **Über stdio** stellt der Server die Seite selbst auf `127.0.0.1` bereit und öffnet sie in deinem
   Standardbrowser. Mit `SEVDESK_CONFIRM_OPEN=0` schreibt er den Link nur in sein Log (stderr). Der
   Link ist geheim: Er erreicht nie das Modell, das Ergebnis des Werkzeugs oder das Audit-Log.
-- **Im Fernzugriff** warten Freigaben im Freigabe-Postfach des Servers (`/approvals`), das Sie
-  nach der Anmeldung öffnen ([remote.de.md](remote.de.md#das-freigabe-postfach)).
+- **Im Fernzugriff** warten Freigaben im Freigabe-Postfach des Servers (`/approvals`), das du
+  nach der Anmeldung öffnest ([remote.de.md](remote.de.md#das-freigabe-postfach)).
 
 Jede Freigabe ist an das Werkzeug, die Argumente und die Vorschau gebunden, läuft nach 10 Minuten
 ab und wird einmal verwendet; höchstens fünf warten gleichzeitig. Die Seite zeigt denselben
-Referenzcode wie das Ergebnis des Werkzeugs, sodass Sie beide zuordnen können.
+Referenzcode wie das Ergebnis des Werkzeugs, sodass du beide zuordnen kannst.
 
-Die Seite gibt es auf Deutsch und Englisch; sie richtet sich nach der Sprache Ihres Browsers. Auf
+Die Seite gibt es auf Deutsch und Englisch; sie richtet sich nach der Sprache deines Browsers. Auf
 Deutsch ist auch die Vorschau deutsch (die Aktion, die Angaben, die Warnungen, Beträge und Daten
 in deutscher Schreibweise), während der Assistent, Probeläufe und das Audit-Log den englischen
-Text derselben Anfrage behalten: Ordnen Sie beide über den Referenzcode zu. Die Seite zeigt, wie
+Text derselben Anfrage behalten: Ordne beide über den Referenzcode zu. Die Seite zeigt, wie
 lange die Anfrage noch gültig ist, und nimmt die Schaltflächen weg, sobald sie abgelaufen ist. Sie
 führt kein Skript aus und lädt nichts von anderen Servern.
 
-Die Grenze dieser Art: Ein Agent, der das Log des Servers lesen oder Ihren Browser steuern kann
+Die Grenze dieser Art: Ein Agent, der das Log des Servers lesen oder deinen Browser steuern kann
 (Browser-Automatisierung, ein Werkzeug zur Computersteuerung), könnte selbst freigeben. `browser`
 schützt vor einem Modell, das nur redet, zum Beispiel einem, das von in sevDesk-Daten verstecktem
-Text gesteuert wird. Bevorzugen Sie `elicit` in agentischen Clients, die Befehle ausführen können.
+Text gesteuert wird. Bevorzuge `elicit` in agentischen Clients, die Befehle ausführen können.
 
 ### off
 
@@ -154,7 +154,7 @@ Buchhaltung getan, und wer hat es freigegeben?“
 | `confirmation_requested` | Eine Bestätigung wurde angefordert, mit der Vorschau (und im Browser-Modus dem Referenzcode).                                               |
 | `confirmation_refused`   | Ein erneuter Versuch legte eine Bestätigung vor, die schon verwendet, abgelaufen oder für andere Argumente erteilt war.                     |
 | `approval_decided`       | Auf einer Freigabeseite wurde „Freigeben“ oder „Ablehnen“ gedrückt.                                                                         |
-| `declined`               | Sie haben im Client abgelehnt oder die Freigabe im Browser abgelehnt.                                                                       |
+| `declined`               | Du hast im Client abgelehnt oder die Freigabe im Browser abgelehnt.                                                                         |
 | `executing`              | Die Aktion wird gleich gesendet, mit der Art der Freigabe: `elicit`, `browser`, `confirmation_off` oder `not_required` (die Stufe `write`). |
 | `executed`               | Die Aktion wurde ausgeführt; mit den Datensätzen, die sie geändert hat.                                                                     |
 | `failed`                 | Die Aktion ist gescheitert; mit der Art des Fehlers und allen Datensätzen, die ein früherer Schritt bereits geändert hat.                   |
@@ -205,14 +205,14 @@ Zum Beispiel (gekürzt):
 
 Die Datei wird mit Modus 0600 angelegt, nur zum Anhängen geöffnet und nie über einen symbolischen
 Link. Kann die Zeile `executing` nicht geschrieben werden, wird die Aktion nicht ausgeführt. Das
-Log ist lokal und nicht fälschungssicher: Es hält für Sie fest, was dieser Server getan hat, und
+Log ist lokal und nicht fälschungssicher: Es hält für dich fest, was dieser Server getan hat, und
 schützt nicht vor jemandem, der den Rechner kontrolliert. `v` ändert sich nur, wenn ein Feld seine
 Bedeutung ändert oder entfällt; neue Felder können ohne Änderung von `v` hinzukommen
 ([Compatibility](compatibility.md)).
 
 ## Dateien
 
-Werkzeuge lesen und schreiben lokale Dateien nur dort, wo Sie es erlauben:
+Werkzeuge lesen und schreiben lokale Dateien nur dort, wo du es erlaubst:
 
 - **Lesen** (Belege, E-Rechnungen) nur innerhalb der Ordner aus `SEVDESK_FILE_DIRS`: Die echten
   Pfade werden geprüft, symbolische Links dürfen nicht nach außen führen, der Dateityp wird am
@@ -220,29 +220,29 @@ Werkzeuge lesen und schreiben lokale Dateien nur dort, wo Sie es erlauben:
 - **Schreiben** (PDFs, E-Rechnungs-XML, CSV- und DATEV-Exporte) nur in `SEVDESK_OUTPUT_DIR`: nur
   neue Dateien, mit Modus 0600, nie überschreibend.
 
-Ohne diese Einstellungen greift kein Werkzeug auf Ihre Festplatte zu. Im Fernzugriff gelangen
-Dateien stattdessen über Seiten zum Hochladen und Download-Links in Ihrem Browser zum Server und
-zurück; diese brauchen eine Browser-Sitzung Ihres sevDesk-Kontos ([remote.de.md](remote.de.md#dateien-hochladen-und-herunterladen)).
+Ohne diese Einstellungen greift kein Werkzeug auf deine Festplatte zu. Im Fernzugriff gelangen
+Dateien stattdessen über Seiten zum Hochladen und Download-Links in deinem Browser zum Server und
+zurück; diese brauchen eine Browser-Sitzung deines sevDesk-Kontos ([remote.de.md](remote.de.md#dateien-hochladen-und-herunterladen)).
 
 ## Empfehlungen
 
-- **Verwenden Sie einen eigenen sevDesk-Benutzer** für das Token, damit Sie dessen Token
-  zurücksetzen können, ohne Ihre eigene Anmeldung anzurühren.
-- **Beginnen Sie mit `read`.** Ergänzen Sie `write` für die ersten Sitzungen mit
-  `SEVDESK_DRY_RUN=1`, dann `commit` und `external` nur, wenn Sie sie brauchen, und in einem
+- **Verwende einen eigenen sevDesk-Benutzer** für das Token, damit du dessen Token
+  zurücksetzen kannst, ohne deine eigene Anmeldung anzurühren.
+- **Beginne mit `read`.** Ergänze `write` für die ersten Sitzungen mit
+  `SEVDESK_DRY_RUN=1`, dann `commit` und `external` nur, wenn du sie brauchst, und in einem
   Client, der Bestätigungen anzeigt.
-- **Behalten Sie `elicit`**, wo der Client es unterstützt; verwenden Sie `browser`, wo nicht, und
+- **Behalte `elicit`**, wo der Client es unterstützt; verwende `browser`, wo nicht, und
   nie `off` für ein Konto mit echten Daten.
-- **Setzen Sie `SEVDESK_AUDIT_LOG`**, sobald Sie eine Schreibstufe aktivieren.
-- **Halten Sie das Token aus Konfigurationsdateien heraus**: Schlüsselbund des Betriebssystems,
+- **Setze `SEVDESK_AUDIT_LOG`**, sobald du eine Schreibstufe aktivierst.
+- **Halte das Token aus Konfigurationsdateien heraus**: Schlüsselbund des Betriebssystems,
   eine Token-Datei oder die Claude-Desktop-Erweiterung
   ([Konfiguration](configuration.de.md#das-token-im-schlüsselbund-ablegen)).
-- **Erlauben Sie enge Ordner**: einen Belegordner für `SEVDESK_FILE_DIRS`, einen leeren
-  Exportordner für `SEVDESK_OUTPUT_DIR`, nicht Ihr Home-Verzeichnis.
-- **Laden Sie nur die Werkzeuggruppen, die Sie brauchen** (`SEVDESK_TOOLSETS`); lassen Sie
+- **Erlaube enge Ordner**: einen Belegordner für `SEVDESK_FILE_DIRS`, einen leeren
+  Exportordner für `SEVDESK_OUTPUT_DIR`, nicht dein Home-Verzeichnis.
+- **Lade nur die Werkzeuggruppen, die du brauchst** (`SEVDESK_TOOLSETS`); lass
   `advanced` aus, solange keine Aufgabe es braucht.
-- Prüfen Sie die Vorschau, bevor Sie freigeben. Sie entsteht aus dem, was das Werkzeug gerade
-  gelesen hat, nicht aus dem, was das Modell sagt. Lesen Sie vor dem Fertigstellen, Versenden oder
+- Prüfe die Vorschau, bevor du freigibst. Sie entsteht aus dem, was das Werkzeug gerade
+  gelesen hat, nicht aus dem, was das Modell sagt. Lies vor dem Fertigstellen, Versenden oder
   Festschreiben eines Dokuments dessen Anschrift, Texte und Positionen in der Vorschau: Ein Entwurf
   lässt sich ohne Bestätigung ändern, der Fußtext dort (etwa die Bankverbindung) ist also der, der
   verbindlich wird. Eine Warnung in der Vorschau nennt, was sie nicht zeigt, etwa das Layout des

@@ -308,7 +308,7 @@ describe("the content facts of an invoice", () => {
     );
     expect(valueOf(content.printed("de"), "Weitere Positionen")).toBe(
       `3 weitere Positionen sind hier nicht aufgeführt (insgesamt ` +
-        `${String(MAX_LISTED_POSITIONS + 3)}). Prüfen Sie sie vor der Freigabe in sevDesk.`,
+        `${String(MAX_LISTED_POSITIONS + 3)}). Prüfe sie vor der Freigabe in sevDesk.`,
     );
     expect(content.printed("de")).toHaveLength(content.printed("en").length);
   });
@@ -339,7 +339,7 @@ describe("the content facts of an invoice", () => {
     );
     expect(valueOf(content.printed("de"), "Weitere Positionen")).toBe(
       `sevDesk hat nicht alle Positionen geliefert: 10000 wurden gelesen, ` +
-        `${String(MAX_LISTED_POSITIONS)} sind hier aufgeführt, und es gibt weitere. Prüfen Sie ` +
+        `${String(MAX_LISTED_POSITIONS)} sind hier aufgeführt, und es gibt weitere. Prüfe ` +
         "sie vor der Freigabe in sevDesk.",
     );
   });

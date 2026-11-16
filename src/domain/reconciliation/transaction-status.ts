@@ -387,7 +387,7 @@ function resetWarnings(
           `${ref} also loses its payments from ${found.map((item) => item.en).join(", ")}; ` +
             "book them again afterwards if they stand.",
           `${refDe} verliert auch die Zahlungen aus ` +
-            `${found.map((item) => item.de).join(", ")}; buchen Sie diese danach erneut, wenn ` +
+            `${found.map((item) => item.de).join(", ")}; buche diese danach erneut, wenn ` +
             "sie weiterhin gelten.",
         ),
       );

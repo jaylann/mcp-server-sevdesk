@@ -4,11 +4,11 @@
 
 ## Eine Schwachstelle melden
 
-Bitte **eröffnen Sie kein öffentliches Issue**. Melden Sie Schwachstellen vertraulich über
+Bitte **eröffne kein öffentliches Issue**. Melde Schwachstellen vertraulich über
 [GitHub Private Vulnerability Reporting](https://github.com/jaylann/mcp-server-sevdesk/security/advisories/new).
-Sie erhalten innerhalb von 72 Stunden eine Eingangsbestätigung und für bestätigte Probleme
-innerhalb von 14 Tagen eine Behebung oder einen Plan zur Abhilfe. Im Advisory werden Sie genannt,
-sofern Sie das nicht anders wünschen.
+Du erhältst innerhalb von 72 Stunden eine Eingangsbestätigung und für bestätigte Probleme
+innerhalb von 14 Tagen eine Behebung oder einen Plan zur Abhilfe. Im Advisory wirst du genannt,
+sofern du das nicht anders wünschst.
 
 Sicherheitskorrekturen erhält nur die neueste veröffentlichte Version.
 
@@ -67,7 +67,7 @@ Dieser Server steht zwischen einem KI-Modell und einem sevDesk-Konto. Der Entwur
    verschlüsselt in den Tokens, die sein Client hält) und ordnet Freigaben, Bestätigungen und
    Caches dem Konto und Zugang jeder Anfrage zu. Siehe [Fernzugriff](#fernzugriff).
 
-Nicht im Umfang: Schwachstellen in sevDesk selbst (melden Sie diese der sevdesk GmbH) und Angriffe,
+Nicht im Umfang: Schwachstellen in sevDesk selbst (melde diese der sevdesk GmbH) und Angriffe,
 die die Kontrolle über den Rechner voraussetzen, auf dem der Server läuft.
 
 ## Bestätigung durch einen Menschen
@@ -144,7 +144,7 @@ Antwort zurück, und der signierte Zustand beweist nur, dass der Server gefragt 
 Mensch geantwortet hat. Ein Client, der selbst bösartig oder kompromittiert ist (nicht ein
 manipuliertes Modell in einem ehrlichen Client), kann von sich aus „freigeben“ antworten. Die
 Elicitation hält eine Prompt-Injection im Modell auf, das das Formular nicht beantworten kann; einen
-feindlichen Client hält sie nicht auf. Mit einem Client, dem Sie nicht vertrauen, verwenden Sie
+feindlichen Client hält sie nicht auf. Mit einem Client, dem du nicht vertraust, verwendest du
 `SEVDESK_CONFIRM=browser` (über HTTP den Freigabe-Posteingang), wo der Mensch auf einer Seite
 entscheidet, die der Server selbst ausliefert.
 
@@ -202,8 +202,8 @@ zieht die Anfrage dann zurück, auch wenn sie schon freigegeben wurde. Nur eine 
 Assistent in dieser Lücke bereits ausgeführt hat (er hat das Werkzeug erneut aufgerufen, bevor
 der Browser des Benutzers ankam), lässt sich nicht rückgängig machen; der Browser des Benutzers
 zeigt dann, dass der Link anderswo verwendet und entschieden wurde. Auf einem Computer, an dem sich
-Personen anmelden können, denen Sie nicht vertrauen, setzen Sie deshalb `SEVDESK_CONFIRM_OPEN=0`
-(der Link steht dann nur im Log des Servers, nicht in einer Befehlszeile) oder verwenden `elicit`.
+Personen anmelden können, denen du nicht vertraust, setzt du deshalb `SEVDESK_CONFIRM_OPEN=0`
+(der Link steht dann nur im Log des Servers, nicht in einer Befehlszeile) oder verwendest `elicit`.
 
 **`SEVDESK_CONFIRM=off`** wird nur zusammen mit `SEVDESK_I_UNDERSTAND_NO_CONFIRM=1` angenommen.
 
@@ -312,7 +312,7 @@ Windows) und übergibt es dem Server beim Start als `SEVDESK_API_TOKEN`; das Tok
 der Kommandozeile. Das Paket enthält den Server und alle seine Abhängigkeiten in einer Datei, die
 nur eingebaute Module von Node.js importiert, mit den Lizenzhinweisen jedes gebündelten Pakets. Die
 Bestätigung lässt sich in der Erweiterung nicht abschalten: Sie bietet keine Möglichkeit,
-`SEVDESK_I_UNDERSTAND_NO_CONFIRM` zu setzen. Das Paket ist noch nicht signiert; prüfen Sie einen
+`SEVDESK_I_UNDERSTAND_NO_CONFIRM` zu setzen. Das Paket ist noch nicht signiert; prüfe einen
 Download mit seiner Provenance-Attestierung (siehe [Lieferkette](#lieferkette)).
 
 ## Fernzugriff
@@ -344,7 +344,7 @@ er abgelehnt, bevor etwas davon läuft. Antworten tragen `nosniff`, `no-store, n
 Server ausgibt oder auf die er weiterleitet, werden aus der konfigurierten öffentlichen URL gebaut, nie aus
 Headern der Anfrage. `SEVDESK_HTTP_TRUST_PROXY` muss der tatsächlichen Zahl der Proxys davor
 entsprechen: Ein höherer Wert lässt Clients die IP-Adresse wählen, die die Ratenbegrenzung sieht.
-Einfaches http wird nur für eine öffentliche Loopback-URL angenommen; beschränken Sie eine solche
+Einfaches http wird nur für eine öffentliche Loopback-URL angenommen; beschränke eine solche
 Einrichtung auf kurze lokale Tests (siehe die Grenzen des Postfachs unten).
 
 **Bearer-Modus.** Ein gemeinsames Geheimnis (zwei während eines Wechsels), mindestens 32 Zeichen
@@ -360,7 +360,7 @@ den Host, auf den sie weiterleiten wird, mit einer Warnung, wenn jede Weiterleit
 Loopback-Adresse geht (eine App auf dem Rechner des Benutzers). Nur `read` ist vorausgewählt;
 andere Stufen müssen angehakt werden. So weit kommen Clients nur, wenn ihr Metadaten-Dokument auf
 einem Host in `SEVDESK_OAUTH_CLIENTS` liegt (Standard `claude.ai`), geprüft, bevor etwas abgerufen
-wird: Ein Angreifer kann Ihre Zustimmungsseite nicht seinen eigenen Client präsentieren lassen
+wird: Ein Angreifer kann deine Zustimmungsseite nicht seinen eigenen Client präsentieren lassen
 (Consent-Phishing). Nur sevDesk-Konten in `SEVDESK_OAUTH_ACCOUNTS` können die Zustimmung
 abschließen; ein Server, dessen URL bekannt wird, wird so nicht zu einem Dienst für die Konten
 Fremder; ein abgelehntes Konto wird als `account_refused` protokolliert. Beide Erlaubnislisten
@@ -412,12 +412,12 @@ aktuell halten kann.
 Wer es hat und einen Autorisierungscode, ein Access- oder Refresh-Token oder den Formularzustand
 einer Zustimmungsseite abfängt (von einem Client, aus einem Proxy-Log, von einer Middlebox, die TLS
 terminiert), kann das sevDesk-Token darin lesen. Das Geheimnis allein liefert kein sevDesk-Token,
-weil der Server keines speichert. Bewahren Sie es in einem Secret-Speicher auf
+weil der Server keines speichert. Bewahre es in einem Secret-Speicher auf
 (`SEVDESK_HTTP_SECRET_FILE`), nie im Image, im Repository oder in einer Deploy-Vorlage, und
-schützen Sie auch das Zustandsverzeichnis: Mit dem Geheimnis und einer Kopie davon könnte jemand
+schütze auch das Zustandsverzeichnis: Mit dem Geheimnis und einer Kopie davon könnte jemand
 eine Postfach-Sitzung für eine aufgeführte Sitzungs-ID fälschen. Wenn das Geheimnis nach außen
-gelangt sein könnte, ersetzen Sie es ohne `_PREVIOUS` (jeder Client verbindet sich neu); wenn auch
-Tokens nach außen gelangt sein könnten, erzeugen Sie die sevDesk-Tokens neu und führen
+gelangt sein könnte, ersetze es ohne `_PREVIOUS` (jeder Client verbindet sich neu); wenn auch
+Tokens nach außen gelangt sein könnten, erzeuge die sevDesk-Tokens neu und führe
 `grants revoke --account <id>` für die betroffenen Konten aus.
 
 **Das Freigabe-Postfach.** Im Fernzugriff stellt `SEVDESK_CONFIRM=browser` ein Postfach unter
@@ -447,16 +447,16 @@ wenige Konten, die erteilte Freigaben ungenutzt lassen, können die anderen nich
 **Grenzen des Postfachs.** Ein Agent, der einen angemeldeten Browser steuern kann
 (Browser-Automatisierung, ein Werkzeug zur Computersteuerung), kann trotzdem selbst freigeben: Wie
 die lokale Seite schützt das Postfach vor einem Modell, das nur redet. Eine nachgeahmte Seite
-könnte das sevDesk-Token abgreifen; fügen Sie es nur unter `/approvals` Ihres eigenen Servers ein
+könnte das sevDesk-Token abgreifen; füge es nur unter `/approvals` deines eigenen Servers ein
 (die meisten Benutzer müssen das nie, weil die Zustimmung den Browser anmeldet). Alle, die sich an
 einem Konto anmelden können, teilen sich sein Postfach und können über seine Freigaben entscheiden;
 sie halten ohnehin das Token dieses Kontos. Eine Sitzung bleibt in diesem Browser 12 Stunden
-gültig; melden Sie sich an einem gemeinsam genutzten Rechner also ab; ein neu erzeugtes
-sevDesk-Token beendet sie nicht (verwenden Sie `grants revoke --account`). Bei einer öffentlichen
+gültig; melde dich an einem gemeinsam genutzten Rechner also ab; ein neu erzeugtes
+sevDesk-Token beendet sie nicht (verwende `grants revoke --account`). Bei einer öffentlichen
 Loopback-URL über einfaches http (Entwicklung) hat das Cookie kein `__Host-`-Präfix und kein
 `Secure`-Flag, und Browser trennen Cookies nicht nach Port: Jeder andere Webserver, den der Browser
 unter diesem Hostnamen erreicht, erhält das Sitzungs-Cookie und könnte Freigaben lesen und
-entscheiden. Verwenden Sie für alles über einen kurzen lokalen Test hinaus https oder ein eigenes
+entscheiden. Verwende für alles über einen kurzen lokalen Test hinaus https oder ein eigenes
 Browserprofil. Ein Neustart macht ausstehende Freigaben ungültig.
 
 **Logs.** Eine JSON-Zeile pro Anfrage auf stderr: die Routen-Vorlage, Status, Dauer, Client-IP und
@@ -469,8 +469,8 @@ inspiziert wird. Sicherheitsereignisse werden mit Namen protokolliert (`refresh_
 `code_replay`, `account_refused`, `cimd_blocked`).
 
 **Was Aufgabe des Betreibers bleibt.** TLS vor dem Server (ein Reverse Proxy, der Rand einer
-Plattform oder ein Tunnel; wer TLS terminiert, kann Tokens unterwegs sehen, wählen Sie also einen
-Anbieter, dem Sie vertrauen, und nutzen Sie schnelle Tunnel nur für Tests), das Server-Geheimnis,
+Plattform oder ein Tunnel; wer TLS terminiert, kann Tokens unterwegs sehen, wähle also einen
+Anbieter, dem du vertraust, und nutze schnelle Tunnel nur für Tests), das Server-Geheimnis,
 ein dauerhaftes Volume für das Zustandsverzeichnis, genau eine Instanz, enge Erlaubnislisten und
 das Aktualisieren des Images.
 
@@ -556,8 +556,8 @@ Review und OpenSSF Scorecard geprüft.
 Das Container-Image `ghcr.io/jaylann/mcp-server-sevdesk` wird vom Release-Workflow aus Basis-Images
 gebaut, die per Digest festgelegt sind. Es läuft als Benutzer ohne root-Rechte (uid 65532) auf
 einer distroless-Basis mit Node.js, und jedes Release trägt eine Build-Provenance-Attestierung
-sowie die SBOM und Provenance von BuildKit. Prüfen Sie ein Image, bevor Sie es betreiben, und legen
-Sie dann den geprüften Digest fest:
+sowie die SBOM und Provenance von BuildKit. Prüfe ein Image, bevor du es betreibst, und lege
+dann den geprüften Digest fest:
 
 ```bash
 gh attestation verify oci://ghcr.io/jaylann/mcp-server-sevdesk:<version> --owner jaylann
@@ -571,7 +571,7 @@ Build-Provenance-Attestierung anzuhängen:
 - `<asset>.sigstore.json`: das vollständige Sigstore-Bundle mit Signatur, Zertifikat und
   Prüfmaterial aus dem Transparenzprotokoll.
 - `<asset>.intoto.jsonl`: die signierte DSSE-Hülle als eine JSON-Zeile mit der
-  in-toto-Provenance-Aussage. Das ist kein vollständiges Sigstore-Bundle; verwenden Sie mit `gh`
+  in-toto-Provenance-Aussage. Das ist kein vollständiges Sigstore-Bundle; verwende mit `gh`
   die Datei `.sigstore.json`.
 
 Der Upload der Begleitdateien wird bei einem Fehler einmal wiederholt. Scheitert der Schritt
@@ -579,13 +579,13 @@ weiterhin, gibt der Workflow eine Warnung aus und lässt die Veröffentlichung i
 weiterlaufen. Jede der beiden Begleitdateien kann fehlen, bis ein Maintainer sie nachträglich
 anhängt; die Attestierung im GitHub-Speicher bleibt verfügbar.
 
-Prüfen Sie die heruntergeladene Erweiterung gegen den Attestierungsspeicher von GitHub:
+Prüfe die heruntergeladene Erweiterung gegen den Attestierungsspeicher von GitHub:
 
 ```bash
 gh attestation verify mcp-server-sevdesk-<version>.mcpb --owner jaylann
 ```
 
-Oder laden Sie die passende Release-Datei `.sigstore.json` herunter und prüfen Sie mit diesem Bundle:
+Oder lade die passende Release-Datei `.sigstore.json` herunter und prüfe mit diesem Bundle:
 
 ```bash
 gh attestation verify mcp-server-sevdesk-<version>.mcpb \
@@ -594,7 +594,7 @@ gh attestation verify mcp-server-sevdesk-<version>.mcpb \
 
 Beide Befehle prüfen den Digest des Artefakts, die Signatur und die Identität des Signierenden.
 Die Variante mit `--bundle` verwendet die lokale Attestierung; `gh` kann trotzdem Vertrauensanker
-von Sigstore abrufen. Informationen zu Prüfregeln und Offline-Vertrauensankern finden Sie in der
+von Sigstore abrufen. Informationen zu Prüfregeln und Offline-Vertrauensankern findest du in der
 [Prüfreferenz der GitHub CLI](https://cli.github.com/manual/gh_attestation_verify).
 
 Maintainer verwenden `node scripts/attach-release-attestation.ts [--dry-run] <tag> <asset> [bundle]`
@@ -603,5 +603,5 @@ und prüft den SHA-256 des Subjekts, bevor es eine der Dateien schreibt oder hoc
 Bundle bleibt unverändert; andernfalls fragt es nach Digest ab, filtert nach SLSA-v1-Provenance
 und verlangt genau eine Attestierung über alle API-Seiten hinweg. `--dry-run` schreibt beide Dateien
 neben das Artefakt und zeigt den geplanten Upload an, ohne das Release zu ändern. Das Skript prüft
-die Übereinstimmung des Digests; verwenden Sie vor dem nachträglichen Anhängen
+die Übereinstimmung des Digests; verwende vor dem nachträglichen Anhängen
 `gh attestation verify` für die kryptografische Prüfung.
