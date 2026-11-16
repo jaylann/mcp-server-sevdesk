@@ -150,7 +150,7 @@ describe("sevdesk_contact_delete", () => {
         { label: "Category", value: "Kunde (customer)" },
         { label: "Addresses (deleted with it)", value: "2" },
         { label: "Communication ways (deleted with it)", value: "3" },
-        { label: "Custom field values (Zusatzfelder)", value: "2" },
+        { label: "Custom field values (Zusatzfelder, deleted with it)", value: "2" },
         { label: "Contact persons (deleted with it)", value: "1" },
         { label: "Contact person (deleted with it)", value: "Dr. Max Mustermann (contact 1002)" },
       ],
@@ -170,7 +170,7 @@ describe("sevdesk_contact_delete", () => {
         { label: "Kategorie", value: "Kunde" },
         { label: "Adressen (werden mitgelöscht)", value: "2" },
         { label: "Kommunikationswege (werden mitgelöscht)", value: "3" },
-        { label: "Werte von Zusatzfeldern", value: "2" },
+        { label: "Werte von Zusatzfeldern (werden mitgelöscht)", value: "2" },
         { label: "Ansprechpartner (werden mitgelöscht)", value: "1" },
         {
           label: "Ansprechpartner (wird mitgelöscht)",
@@ -220,7 +220,7 @@ describe("sevdesk_contact_delete", () => {
       { label: "Contact person of", value: "contact 1001" },
       { label: "Addresses (deleted with it)", value: "0" },
       { label: "Communication ways (deleted with it)", value: "0" },
-      { label: "Custom field values (Zusatzfelder)", value: "0" },
+      { label: "Custom field values (Zusatzfelder, deleted with it)", value: "0" },
     ]);
     expect(preview.warnings).toHaveLength(1);
     expect(previewDe.action).toBe("Kontakt 1002 (Person) aus sevDesk löschen.");
@@ -228,18 +228,18 @@ describe("sevdesk_contact_delete", () => {
     expect(client.callsTo("/Contact")).toEqual([]);
   });
 
-  it("counts the custom field values, and says when they could not be read (D-086)", async () => {
+  it("says the custom field values go too, and when they could not be read (D-086)", async () => {
     const error = new SevdeskError({ kind: "server", status: 500, message: "Down." });
     const client = new FakeSevdeskClient(
       withCountryRoute(organisationRoutes(personsRoute([]), { error })),
     );
     const { preview, previewDe } = await prepareWrite(tool, { id: 1001 }, client);
     expect(preview.facts).toContainEqual({
-      label: "Custom field values (Zusatzfelder)",
+      label: "Custom field values (Zusatzfelder, deleted with it)",
       value: "could not be read",
     });
     expect(previewDe.facts).toContainEqual({
-      label: "Werte von Zusatzfeldern",
+      label: "Werte von Zusatzfeldern (werden mitgelöscht)",
       value: "nicht lesbar",
     });
     expect(client.writes()).toEqual([]);

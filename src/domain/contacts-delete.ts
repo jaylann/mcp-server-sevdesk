@@ -7,7 +7,8 @@
  * - `DELETE /Contact/{id}`, `/ContactAddress/{id}` and `/CommunicationWay/{id}` answer
  *   `{objects: [null]}`. Afterwards a GET by id answers 404, and a second DELETE answers 404 "No
  *   Model_<Name> with the id <id> was found": a 404 on a DELETE means "already gone".
- * - Deleting a contact deletes its addresses and communication ways with it, and deleting an
+ * - Deleting a contact deletes its addresses and communication ways with it (and its custom field
+ *   values, recorded 2026-11-17, D-086), and deleting an
  *   organisation deletes its contact persons (the persons whose `parent` it is) as well. Not
  *   measured: a contact person a document uses (the whole deletion refused, or the person kept),
  *   so every person is read back afterwards.
@@ -385,11 +386,10 @@ interface DeletePreview {
 /**
  * Reads the contact with its addresses and communication ways (and, for an organisation, the
  * persons that belong to it) and builds the confirmation in English and German: the contact by
- * name and customer number, how many addresses and communication ways sevDesk deletes with it, how
- * many custom field values the contact has (whether they go with it is not recorded, D-086; a
- * failed read of them is shown, not raised), an organisation's contact persons, which sevDesk
- * deletes with it too (listed by name and id up to {@link LISTED_PERSONS}), and that this cannot
- * be undone. Refuses a contact that does not exist,
+ * name and customer number, how many addresses, communication ways and custom field values
+ * sevDesk deletes with it (the values: D-086; a failed read of them is shown, not raised), an
+ * organisation's contact persons, which sevDesk deletes with it too (listed by name and id up to
+ * {@link LISTED_PERSONS}), and that this cannot be undone. Refuses a contact that does not exist,
  * and an organisation whose contact persons cannot all be read (a partial list would hide what
  * goes). Whether documents still reference the contact only sevDesk knows, and it refuses that
  * itself (see {@link executeContactDelete}).
@@ -480,9 +480,10 @@ export async function prepareContactDelete(
           value: ways[lang],
         },
         {
-          // Whether sevDesk deletes a contact's custom field values with it is not recorded
-          // (D-086), so this fact only counts them.
-          label: de ? "Werte von Zusatzfeldern" : "Custom field values (Zusatzfelder)",
+          // sevDesk deletes a contact's custom field values with it (recorded 2026-11-17, D-086).
+          label: de
+            ? "Werte von Zusatzfeldern (werden mitgelöscht)"
+            : "Custom field values (Zusatzfelder, deleted with it)",
           value: customFieldValues[lang],
         },
       );

@@ -94,7 +94,9 @@ export const customFieldsInput = z
   .array(
     z.strictObject({
       ...customFieldRefShape,
-      value: textInput(CUSTOM_FIELD_VALUE_MAX).describe("The value to store."),
+      value: textInput(CUSTOM_FIELD_VALUE_MAX).describe(
+        `The value to store, at most ${String(CUSTOM_FIELD_VALUE_MAX)} characters (sevDesk's limit).`,
+      ),
     }),
   )
   .min(1)

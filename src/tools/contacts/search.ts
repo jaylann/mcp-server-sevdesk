@@ -156,7 +156,8 @@ async function searchByCustomField(
   const end = args.offset + page.length;
   const hasMore = end < matches.items.length;
   const truncatedNote = matches.truncated
-    ? ` sevDesk returned ${matches.items.length} or more matches; only those are paged here.`
+    ? ` The result was cut: sevDesk found more matches than the ${matches.items.length} kept ` +
+      "here; give a more specific value."
     : "";
   const range =
     page.length === 0

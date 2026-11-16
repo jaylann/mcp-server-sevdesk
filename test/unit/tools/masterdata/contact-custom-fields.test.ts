@@ -13,7 +13,7 @@ import type { SevdeskClient } from "../../../../src/sevdesk/types.js";
 import { contactCreateTool } from "../../../../src/tools/contacts/create.js";
 import { contactUpdateTool } from "../../../../src/tools/contacts/update.js";
 import { withCountryRoute } from "../../../helpers/country-route.js";
-import { type FakeRoute, FakeSevdeskClient } from "../../../helpers/fake-client.js";
+import { type FakeRoute, FakeSevdeskClient, testContext } from "../../../helpers/fake-client.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 
 const EMPTY: FakeRoute["response"] = { body: { objects: [] } };
@@ -236,13 +236,32 @@ describe("sevdesk_contact_create with custom fields (D-086)", () => {
       contactCreateTool.input.safeParse({ organisationName: "X", customFields }).success;
     expect(parse([])).toBe(false);
     expect(parse([{ settingId: 1, value: "  " }])).toBe(false);
-    expect(parse([{ settingId: 1, value: "x".repeat(256) }])).toBe(false);
+    // sevDesk's limit: 100 characters (400 "Property 'value' is too long", recorded 2026-11-17).
+    expect(parse([{ settingId: 1, value: "x".repeat(101) }])).toBe(false);
     expect(parse([{ name: "x".repeat(31), value: "x" }])).toBe(false);
     expect(parse([{ settingId: 1, value: "x", identifier: "y" }])).toBe(false);
     expect(
       parse(Array.from({ length: 21 }, (_, index) => ({ settingId: index + 1, value: "x" }))),
     ).toBe(false);
-    expect(parse([{ name: "x".repeat(30), value: "x".repeat(255) }])).toBe(true);
+    expect(parse([{ name: "x".repeat(30), value: "x".repeat(100) }])).toBe(true);
+  });
+
+  it("refuses a value over 100 characters before any request, also past the schema", async () => {
+    const fake = new FakeSevdeskClient(createRoutes());
+    const plan = contactCreateTool.prepare(
+      {
+        ...contactCreateTool.input.parse({ organisationName: "Beispiel Handel GmbH" }),
+        customFields: [{ settingId: 19498, value: "x".repeat(101) }],
+      },
+      testContext(fake),
+    );
+    await expect(plan).rejects.toMatchObject({
+      kind: "validation",
+      message: expect.stringContaining(
+        "the value has 101 characters; sevDesk takes at most 100",
+      ) as string,
+    });
+    expect(fake.writes()).toEqual([]);
   });
 });
 
@@ -345,21 +364,27 @@ describe("sevdesk_contact_update with custom fields (D-086)", () => {
     expect(output.summary).toMatch(/^Updated contact 1001: 3 records changed or added, 2 removed/);
   });
 
-  it("adds a new value and deletes the old one when the update removes the field's value", async () => {
+  it("refuses to set a field whose value the same update removes (one value per field)", async () => {
+    // D-086 (recorded 2026-11-17): a second POST for the same contact and setting is refused, so
+    // adding the new value before deleting the old one would fail half-way.
     const fake = new FakeSevdeskClient(updateRoutes());
-    await executeWrite(
-      contactUpdateTool,
-      {
-        id: 1001,
-        customFields: [{ settingId: 19498, value: "EXT-9" }],
-        remove: [{ kind: "customField", id: 7001 }],
-      },
-      fake,
-    );
-    expect(fake.writes().map((call) => [call.method, call.path])).toEqual([
-      ["POST", "/ContactCustomField"],
-      ["DELETE", "/ContactCustomField/7001"],
-    ]);
+    await expect(
+      prepareWrite(
+        contactUpdateTool,
+        {
+          id: 1001,
+          customFields: [{ settingId: 19498, value: "EXT-9" }],
+          remove: [{ kind: "customField", id: 7001 }],
+        },
+        fake,
+      ),
+    ).rejects.toMatchObject({
+      kind: "validation",
+      message: expect.stringContaining(
+        "remove also lists value 7001 of custom field 19498",
+      ) as string,
+    });
+    expect(fake.writes()).toEqual([]);
   });
 
   it("refuses an update whose values are already there", async () => {

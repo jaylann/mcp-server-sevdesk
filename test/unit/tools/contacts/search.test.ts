@@ -251,23 +251,33 @@ describe("sevdesk_contacts_search by custom field value (D-086)", () => {
     expect(past.result.summary).toBe("No contacts at offset 10; 6 matched.");
   });
 
-  it("reports a full page of matches as possibly more, without a total", async () => {
+  it("reads the whole match set once and cuts a huge one at 1000, saying so", async () => {
+    // D-086 (recorded 2026-11-17): the endpoint ignores limit and offset and answers every
+    // match. A recorded-page route answers all rows whatever the limit, as sevDesk does.
     const [row] = (
       loadFixture("contacts/contacts-list.json").body as { objects: Record<string, unknown>[] }
     ).objects;
-    const objects = Array.from({ length: 1000 }, (_, index) => ({
-      ...row,
-      id: String(20_000 + index),
-    }));
-    const { result } = await search({ customField: { settingId: 19498, value: "x" } }, [
-      settingsRoute,
-      findRoute({ body: { objects, total: "1500" } }),
-    ]);
-    expect(result.data).not.toHaveProperty("total");
-    expect(result.data).toMatchObject({ hasMore: true, nextOffset: 25 });
-    expect(result.summary).toMatch(
-      /sevDesk returned 1000 or more matches; only those are paged here\.$/,
+    const rows = (count: number) =>
+      Array.from({ length: count }, (_, index) => ({ ...row, id: String(20_000 + index) }));
+    const { client, result } = await search(
+      { customField: { settingId: 19498, value: "x" }, offset: 975 },
+      [settingsRoute, findRoute({ body: { objects: rows(1500), total: "1500" } })],
     );
+    expect(client.callsTo(FIND)).toHaveLength(1);
+    expect(client.callsTo(FIND)[0]?.query).toMatchObject({ offset: 0 });
+    expect(result.data).not.toHaveProperty("total");
+    expect(result.data).toMatchObject({ offset: 975, hasMore: false });
+    expect(result.data.items.at(-1)?.id).toBe(20_999);
+    expect(result.summary).toMatch(
+      /The result was cut: sevDesk found more matches than the 1000 kept here; give a more specific value\.$/,
+    );
+
+    const exact = await search({ customField: { settingId: 19498, value: "x" } }, [
+      settingsRoute,
+      findRoute({ body: { objects: rows(1000), total: "1000" } }),
+    ]);
+    expect(exact.result.data).toMatchObject({ total: 1000, hasMore: true, nextOffset: 25 });
+    expect(exact.result.summary).not.toMatch(/cut/);
   });
 
   it.each([
@@ -326,10 +336,11 @@ describe("sevdesk_contacts_search by custom field value (D-086)", () => {
   it("checks the argument's shape", () => {
     const parse = (customField: unknown) => tool.input.safeParse({ customField }).success;
     expect(parse({ settingId: 19498, value: "" })).toBe(false);
-    expect(parse({ settingId: 19498, value: "x".repeat(256) })).toBe(false);
+    // No stored value is longer than sevDesk's 100 characters (D-086).
+    expect(parse({ settingId: 19498, value: "x".repeat(101) })).toBe(false);
     expect(parse({ name: "x".repeat(31), value: "x" })).toBe(false);
     expect(parse({ settingId: 0, value: "x" })).toBe(false);
     expect(parse({ settingId: 19498, value: "x", other: 1 })).toBe(false);
-    expect(parse({ settingId: 19498, value: "x".repeat(255) })).toBe(true);
+    expect(parse({ settingId: 19498, value: "x".repeat(100) })).toBe(true);
   });
 });

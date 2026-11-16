@@ -15,14 +15,16 @@
  *   `GET /ContactCustomField?contact[id]=…&contact[objectName]=Contact&embed=contactCustomFieldSetting`
  *   and checked against the contact id again here (D-035). `POST` answers the new value as one
  *   object, `PUT` with only `objectName` and `value` changes the value and keeps both references,
- *   `DELETE` answers `{objects: [null]}`.
+ *   `DELETE` answers `{objects: [null]}`. A value has at most 100 characters (400 "Property
+ *   'value' is too long"), and a contact holds at most one value per setting: a second `POST` for
+ *   the same contact and setting is refused with 400 (recorded 2026-11-17). Deleting the contact
+ *   deletes its values.
  * - `GET /Contact/Factory/findContactsByCustomFieldValue` with `customFieldSetting[id]` alone
- *   answers the contacts whose value of that field equals the value, ignoring case; a part of the
- *   value finds nothing.
+ *   answers the contacts (organisations and persons) whose value of that field equals the value,
+ *   ignoring case; a part of the value finds nothing. It ignores `limit` and `offset` and answers
+ *   the whole match set (recorded 2026-11-17).
  *
- * Not measured: the longest `value` sevDesk accepts, whether one contact can hold two values of one
- * setting, and how the two lists page. A contact with two values of one setting is therefore
- * refused for a change of that field rather than guessed at.
+ * Not measured: how the lists of settings and values page.
  *
  * Setting names and values are untrusted text (typed in by users) and go through `cleanText`.
  */
@@ -41,14 +43,16 @@ import { type ChildRows, listChildRows } from "./paging.js";
 /** sevDesk refuses longer setting names (400, recorded, D-086). */
 export const SETTING_NAME_MAX = 30;
 /**
- * Longest value accepted here. sevDesk's own limit is not measured (D-086: 17 and 21 characters
- * were sent); 255 matches the other free-text contact fields, and a longer value sevDesk refuses
- * arrives as its validation error.
+ * sevDesk refuses longer values (400 "Property 'value' is too long. Maximum for this property is
+ * 100", recorded 2026-11-17, D-086); the tools refuse them before any request.
  */
-export const VALUE_MAX = 255;
+export const VALUE_MAX = 100;
 /** Settings read for names and ids; an account with more is refused where that matters. */
 const SETTINGS_LIMIT = 1000;
-/** Contacts read from one custom-field search (one page, paged locally). */
+/**
+ * Matches one custom-field search keeps. sevDesk answers the whole match set at once (it ignores
+ * `limit` and `offset`, D-086); a larger answer is cut here and the result says so.
+ */
 const FIND_LIMIT = 1000;
 /** Longest setting description in a lookup. */
 const DESCRIPTION_MAX = 500;
@@ -297,7 +301,7 @@ export type CustomFieldTarget =
       readonly kind: "update";
       readonly contactId: number;
       readonly current: ContactCustomFields;
-      /** Values the same update removes: never the one changed. */
+      /** Values the same update removes; their fields cannot be set in the same update. */
       readonly removedIds: ReadonlySet<number>;
     };
 
@@ -314,11 +318,11 @@ export interface CustomFieldValuesPlan {
  * Plans the custom field values of a create or update before anything is sent. Every entry names
  * one setting of the account ({@link resolveSetting}), and none twice. On a create every value is
  * new. On an update the contact's value of that setting is changed when it differs (left alone
- * when equal), and a value is added when the contact has none. A contact with two values of one
- * setting is refused for that setting, since which one to change cannot be known, and so is an
- * added value when not every value could be read. Values the update removes are not candidates,
- * so setting a field and removing its old value adds a new one and deletes the old one (the same
- * rule as for addresses).
+ * when equal), and a value is added when the contact has none. sevDesk keeps one value per
+ * setting and contact (a second `POST` is refused, D-086), so setting a field whose value the same
+ * update removes is refused: the new value would be added before the old one is deleted. An added
+ * value is refused too when not every value of the contact could be read, and a value longer than
+ * {@link VALUE_MAX}.
  */
 export function planCustomFieldValues(
   entries: readonly CustomFieldInput[],
@@ -338,6 +342,12 @@ export function planCustomFieldValues(
       );
     }
     seen.add(setting.id);
+    if (entry.value.length > VALUE_MAX) {
+      throw validation(
+        `${where}: the value has ${String(entry.value.length)} characters; sevDesk takes at most ` +
+          `${String(VALUE_MAX)}.`,
+      );
+    }
     const shown = cleanText(entry.value, VALUE_MAX) ?? "";
     const label = `Custom field (setting ${String(setting.id)})`;
     if (target.kind === "create") {
@@ -346,10 +356,20 @@ export function planCustomFieldValues(
       continue;
     }
     const contact = String(target.contactId);
-    const existing = target.current.rows.filter(
-      (row) => row.settingId === setting.id && !target.removedIds.has(row.id),
+    const removedHere = target.current.rows.find(
+      (row) => row.settingId === setting.id && target.removedIds.has(row.id),
     );
+    if (removedHere !== undefined) {
+      throw validation(
+        `${where}: remove also lists value ${String(removedHere.id)} of custom field ` +
+          `${String(setting.id)}. sevDesk keeps one value per field and contact, so give the new ` +
+          "value without removing the old one: it is changed in place. Nothing was changed.",
+      );
+    }
+    const existing = target.current.rows.filter((row) => row.settingId === setting.id);
     const [value, ...more] = existing;
+    // Defensive: sevDesk refused a second value of one setting when measured (D-086), so a
+    // contact should never have two; if one does, which to change cannot be known.
     if (more.length > 0) {
       throw validation(
         `${where}: contact ${contact} has ${String(existing.length)} values of custom field ` +
@@ -537,15 +557,17 @@ export async function executeCustomFieldRemovals(
 /** The contacts one custom-field search found. */
 export interface CustomFieldMatches {
   readonly items: readonly ContactDto[];
-  /** True when sevDesk may have had more matches than the {@link FIND_LIMIT} read. */
+  /** True when the answer was cut to {@link FIND_LIMIT} matches, or sevDesk reported more. */
   readonly truncated: boolean;
 }
 
 /**
- * The contacts whose value of `settingId` equals `value`, ignoring case
- * (`GET /Contact/Factory/findContactsByCustomFieldValue` with `customFieldSetting[id]` alone,
- * D-086), de-duplicated by id and sorted by id. One request of {@link FIND_LIMIT} rows; how the
- * endpoint pages is not measured, so a full page counts as possibly more.
+ * The contacts (organisations and persons) whose value of `settingId` equals `value`, ignoring
+ * case (`GET /Contact/Factory/findContactsByCustomFieldValue` with `customFieldSetting[id]` alone,
+ * D-086), de-duplicated by id, sorted by id, and cut to {@link FIND_LIMIT}. sevDesk ignores
+ * `limit` and `offset` here and answers every match at once, so the endpoint is read exactly once
+ * (the client still sends the explicit `limit` every list request carries) and the caller pages
+ * locally.
  */
 export async function findContactsByCustomField(
   client: SevdeskClient,
@@ -567,9 +589,10 @@ export async function findContactsByCustomField(
     const dto = toContactDto(parseContactRecord(raw));
     if (!byId.has(dto.id)) byId.set(dto.id, dto);
   }
+  const all = [...byId.values()].sort((a, b) => a.id - b.id);
   const truncated =
-    page.items.length >= FIND_LIMIT && (page.total === undefined || page.total > FIND_LIMIT);
-  return { items: [...byId.values()].sort((a, b) => a.id - b.id), truncated };
+    all.length > FIND_LIMIT || (page.total !== undefined && page.total > page.items.length);
+  return { items: all.slice(0, FIND_LIMIT), truncated };
 }
 
 function validation(message: string): SevdeskError {

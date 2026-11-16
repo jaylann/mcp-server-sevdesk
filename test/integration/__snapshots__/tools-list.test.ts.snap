@@ -933,8 +933,8 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
                 "type": "integer",
               },
               "value": {
-                "description": "The value to store.",
-                "maxLength": 255,
+                "description": "The value to store, at most 100 characters (sevDesk's limit).",
+                "maxLength": 100,
                 "minLength": 1,
                 "type": "string",
               },
@@ -1141,8 +1141,8 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
                 "type": "integer",
               },
               "value": {
-                "description": "The value to store.",
-                "maxLength": 255,
+                "description": "The value to store, at most 100 characters (sevDesk's limit).",
+                "maxLength": 100,
                 "minLength": 1,
                 "type": "string",
               },
@@ -1335,7 +1335,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
             },
             "value": {
               "description": "The whole value, compared ignoring case: 'EXT-4711' finds 'ext-4711', but a part such as 'EXT' finds nothing.",
-              "maxLength": 255,
+              "maxLength": 100,
               "minLength": 1,
               "type": "string",
             },
@@ -5300,8 +5300,8 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
                 "type": "integer",
               },
               "value": {
-                "description": "The value to store.",
-                "maxLength": 255,
+                "description": "The value to store, at most 100 characters (sevDesk's limit).",
+                "maxLength": 100,
                 "minLength": 1,
                 "type": "string",
               },
@@ -5478,8 +5478,8 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
                 "type": "integer",
               },
               "value": {
-                "description": "The value to store.",
-                "maxLength": 255,
+                "description": "The value to store, at most 100 characters (sevDesk's limit).",
+                "maxLength": 100,
                 "minLength": 1,
                 "type": "string",
               },
@@ -5672,7 +5672,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
             },
             "value": {
               "description": "The whole value, compared ignoring case: 'EXT-4711' finds 'ext-4711', but a part such as 'EXT' finds nothing.",
-              "maxLength": 255,
+              "maxLength": 100,
               "minLength": 1,
               "type": "string",
             },
@@ -8742,7 +8742,7 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
             },
             "value": {
               "description": "The whole value, compared ignoring case: 'EXT-4711' finds 'ext-4711', but a part such as 'EXT' finds nothing.",
-              "maxLength": 255,
+              "maxLength": 100,
               "minLength": 1,
               "type": "string",
             },
