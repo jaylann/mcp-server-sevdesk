@@ -18,13 +18,18 @@ import type { Icon } from "@modelcontextprotocol/server";
 
 import { EMBEDDED_ASSETS } from "./pages/assets.generated.js";
 
-/** `assets/icon.svg` without comments and the whitespace between its tags. */
+/**
+ * `assets/icon.svg` without comments and the whitespace between its tags. Comments are removed
+ * until none is left, so a removal can never join two halves into a new `<!--`.
+ */
 function minifiedIconSvg(): string {
-  return Buffer.from(EMBEDDED_ASSETS.icon.base64, "base64")
-    .toString("utf8")
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .replace(/>\s+</g, "><")
-    .trim();
+  let svg = Buffer.from(EMBEDDED_ASSETS.icon.base64, "base64").toString("utf8");
+  let previous: string;
+  do {
+    previous = svg;
+    svg = svg.replace(/<!--[\s\S]*?-->/g, "");
+  } while (svg !== previous);
+  return svg.replace(/>\s+</g, "><").trim();
 }
 
 /** The icons of `SERVER_INFO` (`src/server.ts`): one scalable SVG as a `data:` URI. */
