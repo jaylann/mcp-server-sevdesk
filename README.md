@@ -1,4 +1,5 @@
-<img src="https://raw.githubusercontent.com/jaylann/mcp-server-sevdesk/main/assets/logo.svg" alt="" width="96" height="96" align="right">
+<!-- Width only: with a height as well, GitHub draws a tinted box behind the image. -->
+<p align="center"><img src="https://raw.githubusercontent.com/jaylann/mcp-server-sevdesk/main/assets/logo.svg" alt="" width="96"></p>
 
 # mcp-server-sevdesk
 
