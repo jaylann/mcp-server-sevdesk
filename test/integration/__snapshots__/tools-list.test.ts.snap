@@ -1375,6 +1375,33 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "description": "End of the delivery period (Leistungszeitraum bis), YYYY-MM-DD.",
           "type": "string",
         },
+        "discount": {
+          "additionalProperties": false,
+          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Net prices with one tax rate only.",
+          "properties": {
+            "amount": {
+              "description": "Fixed Rabatt in EUR, net, e.g. "50.00"; at most the net total.",
+              "type": [
+                "string",
+                "number",
+              ],
+            },
+            "percent": {
+              "description": "Rabatt in percent of the net total, more than 0 and at most 100, e.g. 3.",
+              "type": [
+                "string",
+                "number",
+              ],
+            },
+            "text": {
+              "description": "Text printed with the discount; default "Rabatt".",
+              "maxLength": 250,
+              "minLength": 1,
+              "type": "string",
+            },
+          },
+          "type": "object",
+        },
         "dryRun": {
           "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
           "type": "boolean",
@@ -1829,6 +1856,41 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "description": "End of the delivery period (Leistungszeitraum bis), YYYY-MM-DD.",
           "type": "string",
         },
+        "discount": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Net prices with one tax rate only.",
+              "properties": {
+                "amount": {
+                  "description": "Fixed Rabatt in EUR, net, e.g. "50.00"; at most the net total.",
+                  "type": [
+                    "string",
+                    "number",
+                  ],
+                },
+                "percent": {
+                  "description": "Rabatt in percent of the net total, more than 0 and at most 100, e.g. 3.",
+                  "type": [
+                    "string",
+                    "number",
+                  ],
+                },
+                "text": {
+                  "description": "Text printed with the discount; default "Rabatt".",
+                  "maxLength": 250,
+                  "minLength": 1,
+                  "type": "string",
+                },
+              },
+              "type": "object",
+            },
+            {
+              "type": "null",
+            },
+          ],
+          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag), percent or amount: replaces the stored one; null removes it; leave out to keep it.",
+        },
         "dryRun": {
           "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
           "type": "boolean",
@@ -2178,6 +2240,33 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
         "deliveryDateUntil": {
           "description": "End of the delivery period (Leistungszeitraum bis), YYYY-MM-DD.",
           "type": "string",
+        },
+        "discount": {
+          "additionalProperties": false,
+          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Net prices with one tax rate only.",
+          "properties": {
+            "amount": {
+              "description": "Fixed Rabatt in EUR, net, e.g. "50.00"; at most the net total.",
+              "type": [
+                "string",
+                "number",
+              ],
+            },
+            "percent": {
+              "description": "Rabatt in percent of the net total, more than 0 and at most 100, e.g. 3.",
+              "type": [
+                "string",
+                "number",
+              ],
+            },
+            "text": {
+              "description": "Text printed with the discount; default "Rabatt".",
+              "maxLength": 250,
+              "minLength": 1,
+              "type": "string",
+            },
+          },
+          "type": "object",
         },
         "dryRun": {
           "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
@@ -2725,6 +2814,41 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "description": "End of the delivery period (Leistungszeitraum bis), YYYY-MM-DD.",
           "type": "string",
         },
+        "discount": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Net prices with one tax rate only.",
+              "properties": {
+                "amount": {
+                  "description": "Fixed Rabatt in EUR, net, e.g. "50.00"; at most the net total.",
+                  "type": [
+                    "string",
+                    "number",
+                  ],
+                },
+                "percent": {
+                  "description": "Rabatt in percent of the net total, more than 0 and at most 100, e.g. 3.",
+                  "type": [
+                    "string",
+                    "number",
+                  ],
+                },
+                "text": {
+                  "description": "Text printed with the discount; default "Rabatt".",
+                  "maxLength": 250,
+                  "minLength": 1,
+                  "type": "string",
+                },
+              },
+              "type": "object",
+            },
+            {
+              "type": "null",
+            },
+          ],
+          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag), percent or amount: replaces the stored one; null removes it; leave out to keep it.",
+        },
         "dryRun": {
           "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
           "type": "boolean",
@@ -3027,6 +3151,33 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "description": "Lieferbedingungen as printed on the document.",
           "maxLength": 5000,
           "type": "string",
+        },
+        "discount": {
+          "additionalProperties": false,
+          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Net prices with one tax rate only.",
+          "properties": {
+            "amount": {
+              "description": "Fixed Rabatt in EUR, net, e.g. "50.00"; at most the net total.",
+              "type": [
+                "string",
+                "number",
+              ],
+            },
+            "percent": {
+              "description": "Rabatt in percent of the net total, more than 0 and at most 100, e.g. 3.",
+              "type": [
+                "string",
+                "number",
+              ],
+            },
+            "text": {
+              "description": "Text printed with the discount; default "Rabatt".",
+              "maxLength": 250,
+              "minLength": 1,
+              "type": "string",
+            },
+          },
+          "type": "object",
         },
         "dryRun": {
           "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
@@ -3387,6 +3538,41 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "description": "Lieferbedingungen as printed on the document.",
           "maxLength": 5000,
           "type": "string",
+        },
+        "discount": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Net prices with one tax rate only.",
+              "properties": {
+                "amount": {
+                  "description": "Fixed Rabatt in EUR, net, e.g. "50.00"; at most the net total.",
+                  "type": [
+                    "string",
+                    "number",
+                  ],
+                },
+                "percent": {
+                  "description": "Rabatt in percent of the net total, more than 0 and at most 100, e.g. 3.",
+                  "type": [
+                    "string",
+                    "number",
+                  ],
+                },
+                "text": {
+                  "description": "Text printed with the discount; default "Rabatt".",
+                  "maxLength": 250,
+                  "minLength": 1,
+                  "type": "string",
+                },
+              },
+              "type": "object",
+            },
+            {
+              "type": "null",
+            },
+          ],
+          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag), percent or amount: replaces the stored one; null removes it; leave out to keep it.",
         },
         "dryRun": {
           "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
@@ -5700,6 +5886,33 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "description": "End of the delivery period (Leistungszeitraum bis), YYYY-MM-DD.",
           "type": "string",
         },
+        "discount": {
+          "additionalProperties": false,
+          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Net prices with one tax rate only.",
+          "properties": {
+            "amount": {
+              "description": "Fixed Rabatt in EUR, net, e.g. "50.00"; at most the net total.",
+              "type": [
+                "string",
+                "number",
+              ],
+            },
+            "percent": {
+              "description": "Rabatt in percent of the net total, more than 0 and at most 100, e.g. 3.",
+              "type": [
+                "string",
+                "number",
+              ],
+            },
+            "text": {
+              "description": "Text printed with the discount; default "Rabatt".",
+              "maxLength": 250,
+              "minLength": 1,
+              "type": "string",
+            },
+          },
+          "type": "object",
+        },
         "dryRun": {
           "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
           "type": "boolean",
@@ -5976,6 +6189,41 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "description": "End of the delivery period (Leistungszeitraum bis), YYYY-MM-DD.",
           "type": "string",
         },
+        "discount": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Net prices with one tax rate only.",
+              "properties": {
+                "amount": {
+                  "description": "Fixed Rabatt in EUR, net, e.g. "50.00"; at most the net total.",
+                  "type": [
+                    "string",
+                    "number",
+                  ],
+                },
+                "percent": {
+                  "description": "Rabatt in percent of the net total, more than 0 and at most 100, e.g. 3.",
+                  "type": [
+                    "string",
+                    "number",
+                  ],
+                },
+                "text": {
+                  "description": "Text printed with the discount; default "Rabatt".",
+                  "maxLength": 250,
+                  "minLength": 1,
+                  "type": "string",
+                },
+              },
+              "type": "object",
+            },
+            {
+              "type": "null",
+            },
+          ],
+          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag), percent or amount: replaces the stored one; null removes it; leave out to keep it.",
+        },
         "dryRun": {
           "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
           "type": "boolean",
@@ -6231,6 +6479,33 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
         "deliveryDateUntil": {
           "description": "End of the delivery period (Leistungszeitraum bis), YYYY-MM-DD.",
           "type": "string",
+        },
+        "discount": {
+          "additionalProperties": false,
+          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Net prices with one tax rate only.",
+          "properties": {
+            "amount": {
+              "description": "Fixed Rabatt in EUR, net, e.g. "50.00"; at most the net total.",
+              "type": [
+                "string",
+                "number",
+              ],
+            },
+            "percent": {
+              "description": "Rabatt in percent of the net total, more than 0 and at most 100, e.g. 3.",
+              "type": [
+                "string",
+                "number",
+              ],
+            },
+            "text": {
+              "description": "Text printed with the discount; default "Rabatt".",
+              "maxLength": 250,
+              "minLength": 1,
+              "type": "string",
+            },
+          },
+          "type": "object",
         },
         "dryRun": {
           "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
@@ -6596,6 +6871,41 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "description": "End of the delivery period (Leistungszeitraum bis), YYYY-MM-DD.",
           "type": "string",
         },
+        "discount": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Net prices with one tax rate only.",
+              "properties": {
+                "amount": {
+                  "description": "Fixed Rabatt in EUR, net, e.g. "50.00"; at most the net total.",
+                  "type": [
+                    "string",
+                    "number",
+                  ],
+                },
+                "percent": {
+                  "description": "Rabatt in percent of the net total, more than 0 and at most 100, e.g. 3.",
+                  "type": [
+                    "string",
+                    "number",
+                  ],
+                },
+                "text": {
+                  "description": "Text printed with the discount; default "Rabatt".",
+                  "maxLength": 250,
+                  "minLength": 1,
+                  "type": "string",
+                },
+              },
+              "type": "object",
+            },
+            {
+              "type": "null",
+            },
+          ],
+          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag), percent or amount: replaces the stored one; null removes it; leave out to keep it.",
+        },
         "dryRun": {
           "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
           "type": "boolean",
@@ -6899,6 +7209,33 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "maxLength": 5000,
           "type": "string",
         },
+        "discount": {
+          "additionalProperties": false,
+          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Net prices with one tax rate only.",
+          "properties": {
+            "amount": {
+              "description": "Fixed Rabatt in EUR, net, e.g. "50.00"; at most the net total.",
+              "type": [
+                "string",
+                "number",
+              ],
+            },
+            "percent": {
+              "description": "Rabatt in percent of the net total, more than 0 and at most 100, e.g. 3.",
+              "type": [
+                "string",
+                "number",
+              ],
+            },
+            "text": {
+              "description": "Text printed with the discount; default "Rabatt".",
+              "maxLength": 250,
+              "minLength": 1,
+              "type": "string",
+            },
+          },
+          "type": "object",
+        },
         "dryRun": {
           "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
           "type": "boolean",
@@ -7149,6 +7486,41 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "description": "Lieferbedingungen as printed on the document.",
           "maxLength": 5000,
           "type": "string",
+        },
+        "discount": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag): give percent or amount. Net prices with one tax rate only.",
+              "properties": {
+                "amount": {
+                  "description": "Fixed Rabatt in EUR, net, e.g. "50.00"; at most the net total.",
+                  "type": [
+                    "string",
+                    "number",
+                  ],
+                },
+                "percent": {
+                  "description": "Rabatt in percent of the net total, more than 0 and at most 100, e.g. 3.",
+                  "type": [
+                    "string",
+                    "number",
+                  ],
+                },
+                "text": {
+                  "description": "Text printed with the discount; default "Rabatt".",
+                  "maxLength": 250,
+                  "minLength": 1,
+                  "type": "string",
+                },
+              },
+              "type": "object",
+            },
+            {
+              "type": "null",
+            },
+          ],
+          "description": "Discount on the whole document (Rabatt auf den Gesamtbetrag), percent or amount: replaces the stored one; null removes it; leave out to keep it.",
         },
         "dryRun": {
           "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",

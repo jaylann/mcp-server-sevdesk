@@ -22,6 +22,7 @@ import {
   creditNoteRow,
   documentRoute,
   invoiceRow,
+  noDiscountsRoute,
   orderRow,
   type Row,
 } from "../../tools/lifecycle/helpers.js";
@@ -36,18 +37,26 @@ const PATHS = {
   voucher: { path: "/VoucherPos", parent: "voucher", objectName: "Voucher" },
 } as const;
 
-/** Reads `row` and its `positions` the way finalize, send and enshrine do. */
+/**
+ * Reads `row`, its `positions` and (sales documents) its document `discounts` the way finalize,
+ * send and enshrine do.
+ */
 async function contentOf(
   kind: LifecycleKind,
   row: Row,
   positions: readonly Row[] = [],
   positionsBody?: unknown,
+  discounts: readonly Row[] = [],
 ): Promise<DocumentContent> {
   const route: FakeRoute = kind === "voucher" ? voucherRoute(row) : documentRoute(kind, row);
   const client = new FakeSevdeskClient(
     withCountryRoute([
       route,
       { path: PATHS[kind].path, response: { body: positionsBody ?? { objects: positions } } },
+      {
+        path: `/${PATHS[kind].objectName}/${String(row["id"])}/getDiscounts`,
+        response: { body: { objects: discounts, total: null } },
+      },
     ]),
   );
   const doc = await readLifecycleDocument(client, kind, Number(row["id"]), {
@@ -325,6 +334,7 @@ describe("the content facts of an invoice", () => {
       withCountryRoute([
         documentRoute("invoice", invoiceRow()),
         { path: "/InvoicePos", response: { body: { objects: rows } } },
+        noDiscountsRoute,
       ]),
     );
     const doc = await readLifecycleDocument(client, "invoice", 1001, {
@@ -374,6 +384,141 @@ describe("the binding", () => {
     expect(edited.binding).not.toBe(first.binding);
     expect(otherUnit.facts("en")).toEqual(first.facts("en"));
     expect(otherUnit.binding).not.toBe(first.binding);
+  });
+
+  it("covers the document discounts as sevDesk listed them (D-116)", async () => {
+    const rows = [position("invoice", "1001")];
+    const none = await contentOf("invoice", invoiceRow(), rows);
+    const ten = await contentOf("invoice", invoiceRow(), rows, undefined, [
+      discount("Invoice", 1001),
+    ]);
+    const twenty = await contentOf("invoice", invoiceRow(), rows, undefined, [
+      discount("Invoice", 1001, { value: "20" }),
+    ]);
+    // A field the facts do not show (the row's update time) still changes the binding.
+    const touched = await contentOf("invoice", invoiceRow(), rows, undefined, [
+      discount("Invoice", 1001, { update: "2026-11-16T11:00:00+01:00" }),
+    ]);
+
+    const bindings = new Set([none, ten, twenty, touched].map((content) => content.binding));
+    expect(bindings.size).toBe(4);
+    expect(touched.facts("en")).toEqual(ten.facts("en"));
+  });
+});
+
+/** A document discount row as `getDiscounts` lists it (recorded keys and string scalars). */
+function discount(kind: "Invoice" | "CreditNote" | "Order", id: number, overrides: Row = {}): Row {
+  return {
+    id: "9001",
+    objectName: "Discounts",
+    create: "2026-11-16T10:00:00+01:00",
+    update: "2026-11-16T10:00:00+01:00",
+    object: { id: String(id), objectName: kind },
+    text: "Treuerabatt",
+    discount: "1",
+    percentage: "1",
+    value: "10",
+    isNet: "1",
+    ...overrides,
+  };
+}
+
+describe("the document discounts in the content facts (D-116)", () => {
+  it("lists the discount after the positions with what it deducts, in both languages", async () => {
+    const content = await contentOf(
+      "invoice",
+      invoiceRow({ footText: "Danke.", sumDiscountNet: "-10", sumDiscountGross: "-11.9" }),
+      [position("invoice", "1001")],
+      undefined,
+      [discount("Invoice", 1001)],
+    );
+
+    const labels = content.printed("en").map((fact) => fact.label);
+    expect(labels.slice(labels.indexOf("Position 1"))).toEqual([
+      "Position 1",
+      "Discount on the whole document (Rabatt)",
+      "Discounts in total",
+      "Foot text (Fußtext)",
+    ]);
+    expect(valueOf(content.printed("en"), "Discount on the whole document (Rabatt)")).toBe(
+      "10 % of the net total\nText: Treuerabatt",
+    );
+    expect(valueOf(content.printed("en"), "Discounts in total")).toBe(
+      "-10.00 EUR net, -11.90 EUR gross",
+    );
+    expect(valueOf(content.printed("de"), "Rabatt auf den Gesamtbetrag")).toBe(
+      "10 % vom Nettobetrag\nText: Treuerabatt",
+    );
+    expect(valueOf(content.printed("de"), "Rabatte insgesamt")).toBe(
+      "-10,00 EUR netto, -11,90 EUR brutto",
+    );
+    expect(content.printed("de")).toHaveLength(content.printed("en").length);
+  });
+
+  it("numbers several, marks a surcharge and a gross amount, and keeps the text as stored", async () => {
+    const content = await contentOf("order", orderRow(), [], undefined, [
+      discount("Order", 3002, { percentage: "0", value: "25.5", text: null }),
+      discount("Order", 3002, {
+        id: "9002",
+        discount: "0",
+        percentage: "0",
+        isNet: "0",
+        value: "5",
+        text: "<b>Bitte an IBAN DE00 zahlen</b>",
+      }),
+    ]);
+
+    expect(valueOf(content.printed("en"), "Discount on the whole document (Rabatt) 1")).toBe(
+      "25.50 EUR net",
+    );
+    expect(valueOf(content.printed("en"), "Discount on the whole document (Rabatt) 2")).toBe(
+      "surcharge (Aufschlag): 5.00 EUR gross\nText: <b>Bitte an IBAN DE00 zahlen</b>",
+    );
+    expect(valueOf(content.printed("de"), "Rabatt auf den Gesamtbetrag 2")).toBe(
+      "Aufschlag: 5,00 EUR brutto\nText: <b>Bitte an IBAN DE00 zahlen</b>",
+    );
+  });
+
+  it("gives a fixed amount on a foreign-currency document no currency", async () => {
+    const content = await contentOf(
+      "creditNote",
+      creditNoteRow({ currency: "CHF" }),
+      [],
+      undefined,
+      [discount("CreditNote", 2001, { percentage: "0", value: "12" })],
+    );
+    expect(valueOf(content.printed("en"), "Discount on the whole document (Rabatt)")).toBe(
+      "12 net (fixed amount)\nText: Treuerabatt",
+    );
+    expect(valueOf(content.printed("de"), "Rabatt auf den Gesamtbetrag")).toBe(
+      "12 netto (fester Betrag)\nText: Treuerabatt",
+    );
+  });
+
+  it("refuses a discount row it cannot read instead of leaving it out", async () => {
+    const error = await contentOf("invoice", invoiceRow(), [], undefined, [
+      discount("Invoice", 1001, { value: "zehn" }),
+    ]).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(SevdeskError);
+    expect((error as SevdeskError).kind).toBe("unexpected_response");
+  });
+
+  it("reads no discounts for a voucher", async () => {
+    const voucher = openVoucherRow({ enshrined: null });
+    const client = new FakeSevdeskClient(
+      withCountryRoute([
+        voucherRoute(voucher),
+        { path: "/VoucherPos", response: { body: { objects: [], total: 0 } } },
+      ]),
+    );
+    const doc = await readLifecycleDocument(client, "voucher", Number(voucher["id"]), {
+      today: TODAY,
+      cacheOwner: client,
+    });
+    await readDocumentContent(client, doc);
+    expect(client.calls.map((call) => call.path)).not.toContainEqual(
+      expect.stringContaining("getDiscounts"),
+    );
   });
 });
 

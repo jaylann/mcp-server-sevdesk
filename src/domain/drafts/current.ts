@@ -59,6 +59,11 @@ const documentShape = {
   sumNetForeignCurrency: zOptionalDecimal,
   sumTaxForeignCurrency: zOptionalDecimal,
   sumGrossForeignCurrency: zOptionalDecimal,
+  /** What the stored document discounts deduct (negative), for the totals of an update. */
+  sumDiscountNet: zOptionalDecimal,
+  sumDiscountGross: zOptionalDecimal,
+  sumDiscountNetForeignCurrency: zOptionalDecimal,
+  sumDiscountGrossForeignCurrency: zOptionalDecimal,
 };
 
 const currentInvoiceSchema = z.object({

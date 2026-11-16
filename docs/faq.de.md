@@ -114,6 +114,16 @@ Umsatzsteuer, und Steuerregeln für die reguläre Umsatzsteuer werden abgelehnt,
 gespeichert wird, weil sevDesk solche Dokumente nicht fertigstellen würde. `sevdesk_account_info`
 sagt dem Assistenten, welche Regelung gilt.
 
+### Kann es einen Rabatt auf die ganze Rechnung geben?
+
+Ja, auf Entwürfen von Rechnungen, Angeboten, Auftragsbestätigungen und Gutschriften: einen
+Prozentsatz vom Nettobetrag oder einen festen Nettobetrag in EUR, mit seinem Text, gesetzt,
+ersetzt oder entfernt mit den Entwurfswerkzeugen
+([Ein Rabatt auf die ganze Rechnung](guides/invoices.de.md#ein-rabatt-auf-die-ganze-rechnung)).
+Vorerst nur bei Nettopreisen mit einem einzigen Steuersatz und nicht auf E-Rechnungen, den Fällen,
+die gegen sevDesk geprüft sind. Welchen Rabatt ein Entwurf auch trägt, die Freigabe zeigt ihn,
+bevor du fertigstellst oder versendest.
+
 ### Kann es mit E-Rechnungen umgehen?
 
 Ja, in beide Richtungen. Empfangene XRechnungen (UBL und CII) und ZUGFeRD-/Factur-X-Dateien werden

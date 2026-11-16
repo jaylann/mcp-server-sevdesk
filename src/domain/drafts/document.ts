@@ -4,9 +4,16 @@
  */
 import { SevdeskError } from "../../sevdesk/errors.js";
 import { cleanText, currencyCode, splitTotals, type SumFields } from "../common.js";
+import type { DiscountRow } from "../document-discounts.js";
 import type { PreviewLanguage } from "../preview-text.js";
 import type { TaxRule } from "../reference-data.js";
-import { addressText, type DraftPreview, fact, type PreviewFact } from "./preview.js";
+import {
+  type DiscountChange,
+  discountText,
+  storedDiscountText,
+  type UpdateTotals,
+} from "./discount.js";
+import { addressText, type DraftPreview, fact, type PreviewFact, totalsText } from "./preview.js";
 import type { DocumentAddress } from "./recipient.js";
 import {
   addressBlock,
@@ -83,9 +90,7 @@ export function updatedAddressFields(
  * documents keep it in `sum…ForeignCurrency`, spec/deviations.md D-043), plus the EUR amount
  * sevDesk books when the two differ.
  */
-export function storedTotalText(
-  doc: SumFields & { readonly currency?: string | undefined },
-): string {
+function storedTotalText(doc: SumFields & { readonly currency?: string | undefined }): string {
   const { totals, eur } = splitTotals(doc, currencyCode(doc.currency));
   if (totals.gross === undefined) return "as stored";
   const booked = eur?.gross === undefined ? "" : ` (${eur.gross.amount} EUR booked)`;
@@ -224,6 +229,48 @@ export function logPricingChanges(
       `replace ${positionCount(storedPositions)} with ${positionCount(basics.positions.length)}`,
     );
   }
+}
+
+/**
+ * Logs a replaced or removed document discount (D-116); a kept one comes back as a fact, so the
+ * preview of every update says which discount the draft carries.
+ */
+export function logDiscountChange(
+  log: ChangeLog,
+  change: DiscountChange,
+  stored: readonly DiscountRow[],
+  currency: string,
+): PreviewFact[] {
+  const before = storedDiscountText(stored, currency);
+  if (change.changed) {
+    const planned = change.planned;
+    log.value(
+      "discount",
+      "Discount",
+      before,
+      planned === null || planned === undefined ? undefined : discountText(planned, currency),
+    );
+    return [];
+  }
+  return before === undefined ? [] : [fact("Discount (unchanged)", before)];
+}
+
+/**
+ * The total of an update preview: the expected one, or the stored one, called unchanged only when
+ * the call does not change it (see `updateTotals`).
+ */
+export function updateTotalFact(
+  totals: UpdateTotals,
+  stored: SumFields & { readonly currency?: string | undefined },
+  currency: string,
+): PreviewFact {
+  if (totals.expected !== undefined) {
+    return fact("Total (expected)", totalsText(totals.expected, currency));
+  }
+  return fact(
+    totals.changes ? "Total (before this change)" : "Total (unchanged)",
+    storedTotalText(stored),
+  );
 }
 
 /** A preview with trusted `action`, ordered facts and warnings; drafts are never irreversible. */

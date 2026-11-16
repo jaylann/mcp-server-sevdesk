@@ -1938,9 +1938,11 @@ true`) and a lone `priceGross` 119 (with `showNet: false`) give the same totals.
   [jernoxit/sevdesk-rs](https://github.com/jernoxit/sevdesk-rs) (`tests/fixtures/write_invoice_save.json`,
   `write_credit_note_save.json`); the order bodies named in D-052; recorded 2026-11-16, trial
   account, Update 2.0 (probe `write-document-discount`).
-- **Impact:** Draft bodies end with `*PosDelete` (null on create) and never send `discountSave`,
-  `discountDelete`, `takeDefaultAddress` or `forCashRegister`; the strict body schemas in
-  `src/domain/drafts/payloads.ts` have no such keys.
+- **Impact:** Draft bodies end with `*PosDelete` (null on create) and never send
+  `takeDefaultAddress` or `forCashRegister`; the strict body schemas in
+  `src/domain/drafts/payloads.ts` have no such keys. `discountSave` and `discountDelete` follow
+  the position keys only when the call sets, replaces or removes a discount on the whole document,
+  in the recorded form of D-116; otherwise they are left out.
 - **Test:** `test/unit/tools/drafts/invoice-create-draft.test.ts` ("prepares the recorded body
   with defaults and reads only"), `test/unit/tools/drafts/credit-note-create-draft.test.ts`
   ("prepares the recorded underachievement body: source invoice, its rule and rate"),
@@ -3937,7 +3939,20 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
 - **Impact:** A document discount goes out as `discountSave: [{…}]` on all three factories and is
   read back with `/<kind>/{id}/getDiscounts`; updates that change it delete the stored rows in
   `discountDelete` (a list) and save the new one. `sumDiscounts` is negative and must be shown as a
-  deduction. Whatever discount a draft carries is part of the finalize approval. (#94)
+  deduction. Whatever discount a draft carries is part of the finalize approval. (#94) Built so
+  (`src/domain/drafts/discount.ts`, `src/domain/document-discounts.ts`): the draft tools' `discount`
+  argument (percent or a fixed net amount, one per document; `null` removes it) reads the stored
+  rows before every update; the get and draft tools return them with sevDesk's
+  `sumDiscountNet`/`sumDiscountGross`; finalize, send and enshrine bind the rows and list them in
+  both languages. Not recorded, so a new discount is refused with a reason: on gross prices, on
+  positions with several tax rates, a fixed amount on a document in another currency than EUR, on
+  an e-invoice, and replacing or removing several stored discounts at once. A replacement saves
+  and deletes in one request, which only the removal half of this recording covers; the read-back
+  says when sevDesk stored something else.
 - **Test:** `test/contract/recorded-gaps-documents.test.ts` ("answers an empty list with total
-  null for an order without discounts"); the draft tools: pending, #94. Live: probes
+  null for an order without discounts", "reads through the document discount reader: no rows,
+  nothing shown or bound"), `test/unit/domain/drafts/discount.test.ts` ("gives the recorded sums
+  for 10 % and for a fixed 10.00 on 100.00 at 19 %", "removes the stored discount as recorded
+  (discountSave null)"), `test/unit/tools/drafts/document-discount.test.ts`,
+  `test/regressions/approval-binds-document-discount.test.ts`. Live: probes
   `write-document-discount`, `read-order-get-discounts`.

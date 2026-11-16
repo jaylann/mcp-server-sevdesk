@@ -21,7 +21,8 @@ export const creditNoteUpdateDraftTool = defineWriteTool({
     "the positions. Changing priceMode needs the positions too, and a new tax rule must allow " +
     "every stored rate and fit the account's VAT regulation. A credit note that reduces an " +
     "invoice (underachievement) keeps that invoice's contact, currency and tax rates. A new " +
-    "contactId also takes that contact's invoice address unless you give an address. Open or " +
+    "contactId also takes that contact's invoice address unless you give an address. discount " +
+    "replaces the discount on the whole credit note (Rabatt); null removes it. Open or " +
     "enshrined (festgeschrieben) credit notes cannot be changed: reset an open one to a draft " +
     "with sevdesk_credit_note_reset first. dryRun shows the changes without saving. Before: " +
     "sevdesk_credit_note_get. After: sevdesk_credit_note_pdf, sevdesk_credit_note_finalize.",

@@ -102,6 +102,14 @@ new documents default to the small-business tax rule without VAT, and tax rules 
 refused before anything is saved, because sevDesk would not finalize such documents.
 `sevdesk_account_info` tells the assistant which regime applies.
 
+### Can it give a discount on the whole invoice?
+
+Yes, on invoice, offer, order confirmation and credit note drafts: a percentage of the net total or
+a fixed net amount in EUR, with its text, set, replaced or removed with the draft tools
+([A discount on the whole invoice](guides/invoices.md#a-discount-on-the-whole-invoice)). For now
+only on net prices with a single tax rate and not on e-invoices, the cases verified against sevDesk.
+Whatever discount a draft carries is shown in the approval before you finalize or send it.
+
 ### Can it handle e-invoices (E-Rechnung)?
 
 Yes, both directions. Received XRechnung (UBL and CII) and ZUGFeRD / Factur-X files are parsed

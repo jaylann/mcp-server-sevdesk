@@ -15,7 +15,9 @@
  *   orders and credit notes the number reserved from the number range (`numbering.ts`); on
  *   update only the stored one, unchanged;
  * - drafts only (`status: 100`), references as `{id, objectName}`, `mapAll: true` on the document
- *   and every position (spec: "you always need to provide them").
+ *   and every position (spec: "you always need to provide them");
+ * - a document discount only in the recorded form (D-116): `discountSave` as a list of one
+ *   deduction followed by `discountDelete`, both after the position keys, or neither key.
  *
  * Shapes follow sevdesk-rs's invoice and credit note requests (rebuilt from its source; the
  * responses, recorded on Update 2.0 on 2026-10-01, show them accepted) and, for orders, the
@@ -59,6 +61,49 @@ function positionSchema<N extends "InvoicePos" | "CreditNotePos" | "OrderPos">(o
 function deleteSchema<N extends string>(objectName: N) {
   return z.array(ref(objectName)).min(1).nullable();
 }
+
+/**
+ * The document discount keys (D-116, `discount.ts`), sent after the position keys or not at all:
+ * `discountSave` a list of exactly one deduction (or `null` when the update removes the stored
+ * one), `discountDelete` the stored rows as a list of refs (or `null` when there are none).
+ */
+const discountShape = {
+  discountSave: z
+    .array(
+      z.strictObject({
+        objectName: z.literal("Discounts"),
+        mapAll: z.literal(true),
+        discount: z.literal(true),
+        text: z.string().min(1),
+        percentage: z.boolean(),
+        value: z.number().positive(),
+      }),
+    )
+    .length(1)
+    .nullable()
+    .optional(),
+  discountDelete: deleteSchema("Discounts").optional(),
+};
+
+/**
+ * Both discount keys or neither; a percentage of at most 100; a removal (`discountSave: null`)
+ * deletes something; a new document deletes nothing.
+ */
+function discountKeysFit(body: {
+  readonly discountSave?:
+    readonly { readonly percentage: boolean; readonly value: number }[] | null | undefined;
+  readonly discountDelete?: readonly unknown[] | null | undefined;
+  readonly isNew: boolean;
+}): boolean {
+  const { discountSave: save, discountDelete: deleted } = body;
+  if (save === undefined || deleted === undefined) return save === deleted;
+  if (save === null) return deleted !== null && !body.isNew;
+  if (body.isNew && deleted !== null) return false;
+  return save.every((item) => !item.percentage || item.value <= 100);
+}
+const DISCOUNT_MESSAGE =
+  "discountSave and discountDelete go together: one deduction (percent at most 100) or a " +
+  "removal of stored rows, and a new document deletes nothing";
 
 /** Document tax fields (exactly one of `taxRule` / `taxType` is checked by {@link oneTaxSetting}). */
 const taxShape = {
@@ -117,11 +162,17 @@ const invoiceDocumentSchema = z
   .refine(oneTaxSetting, TAX_MESSAGE);
 
 /** `POST /Invoice/Factory/saveInvoice` (create, or update with `invoice.id`). */
-export const saveInvoiceBodySchema = z.strictObject({
-  invoice: invoiceDocumentSchema,
-  invoicePosSave: z.array(positionSchema("InvoicePos")).min(1).nullable(),
-  invoicePosDelete: deleteSchema("InvoicePos"),
-});
+export const saveInvoiceBodySchema = z
+  .strictObject({
+    invoice: invoiceDocumentSchema,
+    invoicePosSave: z.array(positionSchema("InvoicePos")).min(1).nullable(),
+    invoicePosDelete: deleteSchema("InvoicePos"),
+    ...discountShape,
+  })
+  .refine(
+    (body) => discountKeysFit({ ...body, isNew: body.invoice.id === undefined }),
+    DISCOUNT_MESSAGE,
+  );
 export type SaveInvoiceBody = z.output<typeof saveInvoiceBodySchema>;
 
 /** Booking categories this server writes (ACCOUNTING_TYPE is not supported on Update 2.0). */
@@ -179,12 +230,17 @@ export const saveCreditNoteBodySchema = z
     creditNote: creditNoteDocumentSchema,
     creditNotePosSave: z.array(positionSchema("CreditNotePos")),
     creditNotePosDelete: deleteSchema("CreditNotePos"),
+    ...discountShape,
   })
   .refine(
     (body) =>
       body.creditNote.id !== undefined ||
       (body.creditNotePosSave.length > 0 && body.creditNotePosDelete === null),
     "a new credit note has positions and nothing to delete",
+  )
+  .refine(
+    (body) => discountKeysFit({ ...body, isNew: body.creditNote.id === undefined }),
+    DISCOUNT_MESSAGE,
   );
 export type SaveCreditNoteBody = z.output<typeof saveCreditNoteBodySchema>;
 
@@ -216,11 +272,17 @@ const orderDocumentSchema = z
   .refine(oneTaxSetting, TAX_MESSAGE);
 
 /** `POST /Order/Factory/saveOrder` (create, or update with `order.id`). */
-export const saveOrderBodySchema = z.strictObject({
-  order: orderDocumentSchema,
-  orderPosSave: z.array(positionSchema("OrderPos")).min(1).nullable(),
-  orderPosDelete: deleteSchema("OrderPos"),
-});
+export const saveOrderBodySchema = z
+  .strictObject({
+    order: orderDocumentSchema,
+    orderPosSave: z.array(positionSchema("OrderPos")).min(1).nullable(),
+    orderPosDelete: deleteSchema("OrderPos"),
+    ...discountShape,
+  })
+  .refine(
+    (body) => discountKeysFit({ ...body, isNew: body.order.id === undefined }),
+    DISCOUNT_MESSAGE,
+  );
 export type SaveOrderBody = z.output<typeof saveOrderBodySchema>;
 
 /**

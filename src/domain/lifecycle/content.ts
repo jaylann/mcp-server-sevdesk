@@ -4,7 +4,8 @@
  * content to the human who approves.
  *
  * Why both come from one read. Everything printed on a draft (head and foot text, the address
- * block, the positions, payment terms) can be written with the `write` tier, which asks nobody.
+ * block, the positions, payment terms, a discount on the whole document) can be written with the
+ * `write` tier, which asks nobody.
  * The binding alone only stops an edit made after the human was asked; an edit made before
  * (other bank details in the foot text, then "please finalize") was approved unseen, because the
  * preview showed number, customer, dates and totals only (review 2026-11, round 3). So the
@@ -33,8 +34,9 @@ import {
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { moneyFromUpstream, splitTotals, trimmedText } from "../common.js";
 import type { CreditNoteDetail } from "../credit-notes.js";
+import { type DiscountRow, discountTotals, readDocumentDiscounts } from "../document-discounts.js";
 import type { InvoiceDetail } from "../invoices.js";
-import { isDecimal, isZero, type Money } from "../money.js";
+import { DEFAULT_CURRENCY, isDecimal, isZero, type Money } from "../money.js";
 import type { OrderDetail } from "../orders.js";
 import { type ChildRows, listChildRows } from "../paging.js";
 import {
@@ -98,17 +100,31 @@ function parentIdOf(row: unknown, parentKey: string): string | undefined {
  * document edited after the human was asked is asked about again instead of finalized, sent or
  * enshrined. The first version hashed the display DTO, which cuts long texts and keeps only the
  * date of `update`, and read no positions (security review 2026-11, wave 2). `complete` is hashed
- * too, so a list cut at the read cap is not mistaken for a complete one.
+ * too, so a list cut at the read cap is not mistaken for a complete one. Sales documents also
+ * bind their document discounts as sevDesk listed them (D-116): a `write` tool can add or change
+ * one, and the record alone does not carry its text.
  */
-function documentBinding(doc: LifecycleDocument, positions: ChildRows<unknown>): string {
-  return sha256Hex(canonicalJson({ kind: doc.kind, record: doc.raw, positions }));
+function documentBinding(
+  doc: LifecycleDocument,
+  positions: ChildRows<unknown>,
+  discounts: readonly unknown[] | undefined,
+): string {
+  return sha256Hex(
+    canonicalJson({
+      kind: doc.kind,
+      record: doc.raw,
+      positions,
+      ...(discounts === undefined ? {} : { discounts }),
+    }),
+  );
 }
 
 /**
- * Reads the positions of `doc` (one request; the record itself came with
- * `readLifecycleDocument`) and returns the binding and the content facts built from the same
- * data. A record or position row that does not fit is an `unexpected_response` error: nothing is
- * approved on content this server could not read.
+ * Reads the positions of `doc` and, for an invoice, credit note or order, its document discounts
+ * (`getDiscounts`; two requests in parallel, the record itself came with `readLifecycleDocument`)
+ * and returns the binding and the content facts built from the same data. A record, position or
+ * discount row that does not fit is an `unexpected_response` error: nothing is approved on
+ * content this server could not read.
  */
 export async function readDocumentContent(
   client: SevdeskClient,
@@ -120,17 +136,22 @@ export async function readDocumentContent(
   }
   const { path, parentKey } = POSITIONS[doc.kind];
   const id = String(doc.id);
+  const kind = doc.kind;
   // The rows as sevDesk sent them (full texts), checked against their parent like every
   // position read.
-  const positions = await listChildRows(
-    client,
-    path,
-    { [`${parentKey}[id]`]: id, [`${parentKey}[objectName]`]: KINDS[doc.kind].objectName },
-    { parse: (row) => row, belongs: (row) => parentIdOf(row, parentKey) === id },
-    signal,
-  );
-  const binding = documentBinding(doc, positions);
-  if (doc.kind === "voucher") {
+  const [positions, discounts] = await Promise.all([
+    listChildRows(
+      client,
+      path,
+      { [`${parentKey}[id]`]: id, [`${parentKey}[objectName]`]: KINDS[kind].objectName },
+      { parse: (row) => row, belongs: (row) => parentIdOf(row, parentKey) === id },
+      signal,
+    ),
+    kind === "voucher" ? undefined : readDocumentDiscounts(client, kind, doc.id, signal),
+  ]);
+  const binding = documentBinding(doc, positions, discounts?.raw);
+  if (discounts === undefined) {
+    // A voucher: it has no document discounts.
     const rows = positions.rows.map((row) =>
       parseUpstream(voucherPositionSchema, row, "voucher positions"),
     );
@@ -156,7 +177,7 @@ export async function readDocumentContent(
   return content(
     binding,
     (lang) => documentFacts(doc, lang, addressFacts(record, TEXT[lang])),
-    (lang) => salesFacts(doc, record, rows, positions.complete, lang),
+    (lang) => salesFacts(doc, record, rows, positions.complete, discounts.rows, lang),
     NOT_SHOWN[doc.kind],
   );
 }
@@ -194,6 +215,11 @@ const printedTexts = {
   addressZip: zText,
   addressCity: zText,
   taxText: zText,
+  // What the document discounts deduct, as sevDesk computed it (D-116).
+  sumDiscountNet: zOptionalDecimal,
+  sumDiscountGross: zOptionalDecimal,
+  sumDiscountNetForeignCurrency: zOptionalDecimal,
+  sumDiscountGrossForeignCurrency: zOptionalDecimal,
 };
 
 const printedRecordSchema = z.object(printedTexts);
@@ -280,6 +306,12 @@ const TEXT = {
     vat: "VAT",
     discount: "discount",
     optional: "optional (not in the total)",
+    documentDiscount: "Discount on the whole document (Rabatt)",
+    discountsTotal: "Discounts in total",
+    surcharge: "surcharge (Aufschlag)",
+    ofNet: "of the net total",
+    ofGross: "of the gross total",
+    fixedAmount: "fixed amount",
     text: "Text",
     id: "id",
     account: "booking account (Buchungskonto) id",
@@ -314,6 +346,12 @@ const TEXT = {
     vat: "USt.",
     discount: "Rabatt",
     optional: "optional (nicht in der Summe)",
+    documentDiscount: "Rabatt auf den Gesamtbetrag",
+    discountsTotal: "Rabatte insgesamt",
+    surcharge: "Aufschlag",
+    ofNet: "vom Nettobetrag",
+    ofGross: "vom Bruttobetrag",
+    fixedAmount: "fester Betrag",
     text: "Text",
     id: "ID",
     account: "Buchungskonto-ID",
@@ -547,14 +585,54 @@ function listedPositions<T>(
   return facts;
 }
 
+/**
+ * One document discount: "10 % of the net total" or "10.00 EUR net", a surcharge marked as such,
+ * then its text as stored on the line below. A fixed amount on a document in another currency is
+ * not given a currency: which one sevDesk reads it in is not recorded (D-116).
+ */
+function documentDiscountText(row: DiscountRow, currency: string, lang: PreviewLanguage): string {
+  const t = TEXT[lang];
+  const gross = row.isNet === false;
+  const amount = row.percentage
+    ? `${numberText(row.value, lang)} % ${gross ? t.ofGross : t.ofNet}`
+    : currency === DEFAULT_CURRENCY
+      ? `${amountText(row.value, currency, lang) ?? row.value} ${gross ? t.gross : t.net}`
+      : `${numberText(row.value, lang)} ${gross ? t.gross : t.net} (${t.fixedAmount})`;
+  const line = row.surcharge ? `${t.surcharge}: ${amount}` : amount;
+  return trimmedText(row.text) === undefined ? line : `${line}\n${t.text}: ${row.text ?? ""}`;
+}
+
+/**
+ * The discounts on the whole document, one fact each (numbered when there are several), then
+ * what they deduct in total as sevDesk computed it (negative): a `write` tool can set them, so
+ * the approval shows them like the positions.
+ */
+function discountFacts(
+  doc: LifecycleDocument,
+  record: PrintedRecord,
+  discounts: readonly DiscountRow[],
+  lang: PreviewLanguage,
+): Fact[] {
+  if (discounts.length === 0) return [];
+  const t = TEXT[lang];
+  const facts = discounts.map((row, index) => ({
+    label:
+      discounts.length === 1 ? t.documentDiscount : `${t.documentDiscount} ${String(index + 1)}`,
+    value: documentDiscountText(row, doc.currency, lang),
+  }));
+  push(facts, t.discountsTotal, sumsText(discountTotals(record, doc.currency), t, lang));
+  return facts;
+}
+
 type SalesDetail = InvoiceDetail | CreditNoteDetail | OrderDetail;
 
-/** The printed content of an invoice, credit note or order: terms, texts, positions. */
+/** The printed content of an invoice, credit note or order: terms, texts, positions, discounts. */
 function salesFacts(
   doc: LifecycleDocument,
   record: PrintedRecord,
   rows: readonly Position[],
   complete: boolean,
+  discounts: readonly DiscountRow[],
   lang: PreviewLanguage,
 ): Fact[] {
   const t = TEXT[lang];
@@ -606,6 +684,7 @@ function salesFacts(
     ...listedPositions(rows, complete, lang, (row) =>
       positionText(row, doc, detail.priceMode, lang),
     ),
+    ...discountFacts(doc, record, discounts, lang),
   );
   push(facts, t.footText, record.footText);
   if (doc.kind === "order") {

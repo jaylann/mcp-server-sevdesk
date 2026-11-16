@@ -420,6 +420,39 @@ Kopftext: Wir schreiben Ihnen folgenden Betrag gut.
 Positionen: keine"
 `;
 
+exports[`German previews > finalize a draft invoice with a discount on the whole invoice: says the same in German 1`] = `
+"Rechnung 1002 (noch ohne Nummer) fertigstellen: Entwurf → offen, als Versandart wird „PDF-Download (VPDF)“ vermerkt.
+! Die Rechnung wird rechtlich bindend: sevDesk vergibt ihre endgültige Nummer und bucht sie. Danach lässt sie sich nur noch durch Zurücksetzen auf Entwurf (solange sie nicht festgeschrieben ist), ein Storno oder eine Gutschrift korrigieren.
+! sevDesk sendet nichts an den Kunden: Es wird nur vermerkt, wie das Dokument versendet wurde. Für den Versand per E-Mail über sevDesk gibt es stattdessen sevdesk_invoice_send_email.
+! Schreibt das sevDesk-Konto Dokumente beim Abschließen automatisch fest (Einstellung „Automatische Festschreibung“), wird das Dokument dabei auch festgeschrieben und kann nie wieder geändert oder zurückgesetzt werden.
+! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfe bei Bedarf sevdesk_invoice_pdf.
+(umkehrbar)
+Rechnung: ID 1002, noch ohne Nummer
+Typ: Rechnung (RE)
+Status: Entwurf (100)
+Kunde: Musterfirma GmbH (Kontakt 1001)
+Anschrift auf dem Dokument: Musterfirma GmbH
+Musterstraße 1
+12345 Musterstadt
+Datum: 01.10.2026
+Fällig am: 15.10.2026
+Netto: 149,02 EUR
+Umsatzsteuer: 28,31 EUR
+Brutto: 177,33 EUR
+Bisher bezahlt: 0,00 EUR
+Vermerkte Versandart: PDF-Download (VPDF)
+Betreff auf dem Dokument: Rechnung RE-1001
+Leistungsdatum oder -zeitraum: 01.10.2026
+Skonto: 2 % innerhalb von 7 Tagen
+Steuerregel: 1 Umsatzsteuerpflichtige Umsätze
+Kopftext: Vielen Dank für Ihren Auftrag.
+Positionen: keine
+Rabatt auf den Gesamtbetrag: 3 % vom Nettobetrag
+Text: Treuerabatt
+Rabatte insgesamt: -4,47 EUR netto, -5,32 EUR brutto
+Fußtext: Bitte überweisen Sie den Betrag innerhalb von 14 Tagen."
+`;
+
 exports[`German previews > finalize a draft invoice: says the same in German 1`] = `
 "Rechnung 1001 (noch ohne Nummer) fertigstellen: Entwurf → offen, als Versandart wird „PDF-Download (VPDF)“ vermerkt.
 ! Die Rechnung wird rechtlich bindend: sevDesk vergibt ihre endgültige Nummer und bucht sie. Danach lässt sie sich nur noch durch Zurücksetzen auf Entwurf (solange sie nicht festgeschrieben ist), ein Storno oder eine Gutschrift korrigieren.

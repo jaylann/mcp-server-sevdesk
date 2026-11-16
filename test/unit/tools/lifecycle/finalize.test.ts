@@ -9,6 +9,7 @@ import {
   creditNoteRow,
   documentRoute,
   invoiceRow,
+  noDiscountsRoute,
   orderRow,
   type Row,
   StagedClient,
@@ -85,9 +86,10 @@ describe.each(cases)("$name (community record shapes, fake values)", (kind) => {
     expect(client.calls.map(({ method, path }) => `${method} ${path}`)).toEqual([
       `GET ${kind.path}`,
       "GET /StaticCountry",
-      // One read of the positions, for the preview facts and the approval binding
-      // (readDocumentContent).
+      // One read of the positions and one of the document discounts, for the preview facts and
+      // the approval binding (readDocumentContent).
       `GET /${kind.path.split("/")[1] ?? ""}Pos`,
+      `GET ${kind.path}/getDiscounts`,
       `PUT ${kind.path}/sendBy`,
       `GET ${kind.path}`,
     ]);
@@ -234,6 +236,7 @@ describe("sevdesk_invoice_finalize details", () => {
             },
           },
         },
+        noDiscountsRoute,
       ]),
     );
 
@@ -356,7 +359,7 @@ describe("sevdesk_invoice_finalize details", () => {
       kind: "validation",
       completedWrites: [],
     });
-    expect(client.calls.map(({ method }) => method)).toEqual(["GET", "GET", "GET", "PUT"]);
+    expect(client.calls.map(({ method }) => method)).toEqual(["GET", "GET", "GET", "GET", "PUT"]);
   });
 
   it("accepts dryRun and rejects unknown arguments", () => {
