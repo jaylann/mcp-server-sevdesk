@@ -499,8 +499,145 @@ const TEMPLATE_FORMS: readonly {
   },
 ];
 
-/** Keys of a template row that describe its schedule. */
-const SCHEDULE_KEY = /intervall?|nextinvoice|lastinvoice|recurring|startdate|enddate|nextvoucher/i;
+/** Keys of a template row that describe its schedule (`account…` and `recurring…`). */
+const SCHEDULE_KEY = /^(?:account|recurring)/i;
+
+/** Schedule date keys whose stored value makes a template due on a date. */
+const DUE_KEYS: readonly string[] = ["accountNextInvoice", "accountStartDate"];
+const DATE_KEYS: readonly string[] = [...DUE_KEYS, "accountEndDate", "accountLastInvoice"];
+
+/** `date` (YYYY-MM-DD) at 00:00 Berlin as an ISO date-time in UTC. */
+function isoMidnight(date: string): string {
+  return new Date(berlinMidnight(date) * 1000).toISOString();
+}
+
+/**
+ * One way to give a template a schedule: header fields on create, then optionally an update with
+ * the template's id (through `saveInvoice` or `PUT /Invoice/{id}`). `next` is the run date.
+ */
+interface ScheduleVariant {
+  readonly label: string;
+  readonly create: (next: string) => Record<string, unknown>;
+  readonly update?: {
+    readonly via: "saveInvoice" | "PUT";
+    readonly fields: (next: string) => Record<string, unknown>;
+  };
+}
+
+const SCHEDULE_VARIANTS: readonly ScheduleVariant[] = [
+  {
+    label: "accountStartDate as Unix seconds",
+    create: (next) => ({ accountStartDate: berlinMidnight(next) }),
+  },
+  { label: "accountStartDate as ISO", create: (next) => ({ accountStartDate: isoMidnight(next) }) },
+  {
+    label: "accountStartDate as dd.mm.yyyy",
+    create: (next) => ({ accountStartDate: germanDate(next) }),
+  },
+  {
+    label: "accountNextInvoice as ISO",
+    create: (next) => ({ accountNextInvoice: isoMidnight(next) }),
+  },
+  {
+    label: "accountStartDate + accountNextInvoice (Unix seconds)",
+    create: (next) => ({
+      accountStartDate: berlinMidnight(next),
+      accountNextInvoice: berlinMidnight(next),
+    }),
+  },
+  {
+    label: "accountEndDate as Unix seconds (end in a year)",
+    create: (next) => ({ accountEndDate: berlinMidnight(addDays(next, 365)) }),
+  },
+  {
+    label: "accountEndDate as ISO",
+    create: (next) => ({ accountEndDate: isoMidnight(addDays(next, 365)) }),
+  },
+  {
+    label: "accountEndDate as dd.mm.yyyy",
+    create: (next) => ({ accountEndDate: germanDate(addDays(next, 365)) }),
+  },
+  {
+    label: "invoiceDate on the run date (no schedule date)",
+    create: (next) => ({ invoiceDate: germanDate(next) }),
+  },
+  {
+    label: "update with the id: accountStartDate + accountNextInvoice (Unix seconds)",
+    create: () => ({}),
+    update: {
+      via: "saveInvoice",
+      fields: (next) => ({
+        accountStartDate: berlinMidnight(next),
+        accountNextInvoice: berlinMidnight(next),
+      }),
+    },
+  },
+  {
+    label: "PUT /Invoice/{id}: accountStartDate + accountNextInvoice (Unix seconds)",
+    create: () => ({}),
+    update: {
+      via: "PUT",
+      fields: (next) => ({
+        accountStartDate: berlinMidnight(next),
+        accountNextInvoice: berlinMidnight(next),
+      }),
+    },
+  },
+  {
+    label: "update with the id: status 200 (starting the subscription?)",
+    create: (next) => ({
+      accountStartDate: berlinMidnight(next),
+      accountNextInvoice: berlinMidnight(next),
+    }),
+    update: { via: "saveInvoice", fields: () => ({ status: "200" }) },
+  },
+];
+
+/** The schedule date keys a template row holds a value in. */
+function storedDates(row: Row | undefined): string[] {
+  return DATE_KEYS.filter((key) => str(row, key) !== "");
+}
+
+/**
+ * Creates a monthly template with a variant's fields (and its update), then reads it back. The
+ * template is registered for cleanup; the caller decides whether to keep it.
+ */
+async function scheduledTemplate(
+  ctx: ProbeContext,
+  variant: ScheduleVariant,
+  next: string,
+): Promise<{
+  readonly id: number | undefined;
+  readonly row: Row | undefined;
+  readonly text: string;
+}> {
+  const draft = await templateDraft(ctx, {
+    accountIntervall: "P0Y1M0W",
+    ...variant.create(next),
+  });
+  if (draft.id === undefined) {
+    return { id: undefined, row: undefined, text: `create ${outcomeOf(draft.result)}` };
+  }
+  const id = draft.id;
+  data(ctx).mark("Invoice", id, "recurring template (WKR): delete in the web app");
+  let update = "";
+  if (variant.update !== undefined) {
+    const fields = variant.update.fields(next);
+    const result =
+      variant.update.via === "PUT"
+        ? await ctx.http.write("PUT", `/Invoice/${id}`, { tier: "write", body: fields })
+        : await saveTemplate(ctx, id, fields);
+    update = `, update ${outcomeOf(result)}`;
+  }
+  const row = await ctx.read.byId("Invoice", id);
+  return {
+    id,
+    row,
+    text:
+      `template ${id}${update}: status ${str(row, "status")}, invoiceDate ${str(row, "invoiceDate").slice(0, 10) || "-"}; ` +
+      `${schedule(ctx, row)}; stored dates: ${storedDates(row).join(", ") || "none"}`,
+  };
+}
 
 function schedule(ctx: ProbeContext, row: Row | undefined): string {
   const entries = Object.entries(row ?? {}).filter(([key]) => SCHEDULE_KEY.test(key));
@@ -720,6 +857,231 @@ function changeAnswer(result: HttpResult): string {
   return outcomeOf(result);
 }
 
+/**
+ * The `parameters` of a layout answer: under `metaData` (recorded for `changeParameter`),
+ * `metadaten` (the spec) or at the top (the spec's `render` answer).
+ */
+function layoutParameters(objects: unknown): Row[] {
+  const root = firstRow(objects);
+  const meta = root?.["metaData"] ?? root?.["metadaten"] ?? root;
+  const parameters = isRecord(meta) ? meta["parameters"] : undefined;
+  return Array.isArray(parameters) ? parameters.filter(isRecord) : [];
+}
+
+/** The keys of a layout answer and of its `metaData`, for the finding. */
+function layoutAnswerKeys(objects: unknown): string {
+  const root = firstRow(objects);
+  const meta = root?.["metaData"];
+  return `${Object.keys(root ?? {}).join(", ") || "(none)"}${isRecord(meta) ? `; metaData: ${Object.keys(meta).join(", ")}` : ""}`;
+}
+
+/** A sevDesk code that may be shown as is (parameter keys, language codes). */
+function codeText(value: string): string {
+  return /^[A-Za-z][A-Za-z_-]{0,30}$/.test(value) ? value : "(not a plain code)";
+}
+
+/**
+ * Each parameter of a layout answer: its key, whether its current `value` is the one the probe
+ * set last (`sent`), how many choices it offers and whether it is visible. Language values are
+ * shown (codes); letterpaper and template ids only as "= the one sent" or "another".
+ */
+function describeParameters(objects: unknown, sent: Readonly<Record<string, string>>): string {
+  const parameters = layoutParameters(objects);
+  if (parameters.length === 0) return "no parameters";
+  return parameters
+    .map((parameter) => {
+      const key = str(parameter, "key");
+      const value = str(parameter, "value");
+      const expected = sent[key];
+      const choices = Array.isArray(parameter["values"]) ? parameter["values"].length : 0;
+      const shownValue =
+        value === ""
+          ? "no value"
+          : expected !== undefined && value === expected
+            ? "= the one sent"
+            : key === "language"
+              ? codeText(value)
+              : expected === undefined
+                ? "a value"
+                : "ANOTHER value";
+      return `${codeText(key)}: ${shownValue}, ${choices} choice(s), visible ${str(parameter, "visible") || "-"}`;
+    })
+    .join("; ");
+}
+
+/** `PUT /<path>/<id>/changeParameter` with one key (commit tier, as `src/sevdesk/paths.ts` wants). */
+async function changeParameter(
+  ctx: ProbeContext,
+  pathKind: string,
+  id: number,
+  key: string,
+  value: string,
+): Promise<HttpResult> {
+  return ctx.http.write("PUT", `/${pathKind}/${id}/changeParameter`, {
+    tier: "commit",
+    body: { key, value },
+  });
+}
+
+/** Where in `row` the values the probe set can be found (`key in field`). */
+function chosenValuesIn(row: Row | undefined, sent: Readonly<Record<string, string>>): string {
+  const found = Object.entries(sent).flatMap(([key, value]) =>
+    fieldsHolding(undefined, row, value).map((field) => `${key} in ${field}`),
+  );
+  return found.join(", ") || "no field";
+}
+
+/**
+ * Sets each choice on an invoice draft, repeats the language call without a change, and looks
+ * for the chosen values in the answers and in every read that might carry them. Ends with the
+ * draft's send state, which must not have changed.
+ */
+async function invoiceLayoutReadBack(
+  ctx: ProbeContext,
+  id: number,
+  choices: readonly (readonly [string, string])[],
+): Promise<string> {
+  const sent: Record<string, string> = {};
+  const steps: string[] = [];
+  const before = await stateOf(ctx, "Invoice", id);
+  for (const [key, value] of choices) {
+    if (value === "") {
+      steps.push(`${key}: no id in the DocServer list`);
+      continue;
+    }
+    const result = await changeParameter(ctx, "Invoice", id, key, value);
+    if (result.ok) sent[key] = value;
+    steps.push(
+      `${key}: ${changeAnswer(result)}; answer keys ${layoutAnswerKeys(result.objects)}; parameters: ${describeParameters(result.objects, sent)}`,
+    );
+  }
+  const again = await changeParameter(ctx, "Invoice", id, "language", "en_US");
+  steps.push(
+    `language again (no change): ${changeAnswer(again)}; parameters: ${describeParameters(again.objects, sent)}`,
+  );
+  const plain = await ctx.read.byId("Invoice", id);
+  for (const embed of ["document", "letterpaper", "template", "language"]) {
+    const result = await ctx.http.get(`/Invoice/${id}`, { embed });
+    const row = firstRow(result.objects);
+    const extra = Object.keys(row ?? {}).filter((key) => !Object.hasOwn(plain ?? {}, key));
+    steps.push(
+      `GET /Invoice/{id}?embed=${embed}: ` +
+        (result.ok
+          ? `extra keys ${extra.join(", ") || "none"}; chosen values in: ${chosenValuesIn(row, sent)}`
+          : outcomeOf(result)),
+    );
+  }
+  const pdf = await ctx.http.get(`/Invoice/${id}/getPdf`, { preventSendBy: "true" });
+  const pdfRow = firstRow(pdf.objects);
+  steps.push(
+    `getPdf (preventSendBy=true): ` +
+      (pdf.ok
+        ? `keys ${Object.keys(pdfRow ?? {}).join(", ") || "(none)"}; chosen values in: ${chosenValuesIn(pdfRow, sent)}`
+        : outcomeOf(pdf)),
+  );
+  const render = await ctx.http.write("POST", `/Invoice/${id}/render`, {
+    tier: "write",
+    body: { forceReload: false },
+  });
+  steps.push(
+    `POST /Invoice/{id}/render {forceReload: false}: ` +
+      (render.ok
+        ? `answer keys ${layoutAnswerKeys(render.objects)}; parameters: ${describeParameters(render.objects, sent)}`
+        : outcomeOf(render)),
+  );
+  const after = await stateOf(ctx, "Invoice", id);
+  const diff = diffState(before.state, after.state);
+  if (diff !== "") data(ctx).mark("Invoice", id, `changed by the layout probe (${diff})`);
+  steps.push(
+    diff === ""
+      ? "status, sendDate, sendType and number unchanged after all of it"
+      : `STATE CHANGED: ${diff}`,
+  );
+  return `Invoice draft ${id}: ${steps.join(" | ")}`;
+}
+
+/**
+ * Tries `changeParameter` (language en_US) on an order or credit note draft in several forms
+ * until one is accepted, then repeats it without a change to read the parameters.
+ */
+async function layoutVariants(
+  ctx: ProbeContext,
+  kind: "Order" | "CreditNote",
+  id: number,
+): Promise<string> {
+  const before = await stateOf(ctx, kind, id);
+  const alternativePath = kind === "CreditNote" ? "Creditnote" : "order";
+  const attempts: readonly {
+    readonly label: string;
+    readonly run: () => Promise<{ readonly result: HttpResult; readonly pre?: string }>;
+  }[] = [
+    {
+      label: "body {key, value}",
+      run: async () => ({ result: await changeParameter(ctx, kind, id, "language", "en_US") }),
+    },
+    {
+      label: "after a getPdf preview (preventSendBy=true)",
+      run: async () => {
+        const pdf = await ctx.http.get(`/${kind}/${id}/getPdf`, { preventSendBy: "true" });
+        return {
+          pre: `getPdf ${outcomeOf(pdf)}`,
+          result: await changeParameter(ctx, kind, id, "language", "en_US"),
+        };
+      },
+    },
+    {
+      label: `after POST /${kind}/{id}/render {forceReload: false}`,
+      run: async () => {
+        const render = await ctx.http.write("POST", `/${kind}/${id}/render`, {
+          tier: "write",
+          body: { forceReload: false },
+        });
+        return {
+          pre: `render ${render.ok ? `ok, answer keys ${layoutAnswerKeys(render.objects)}` : outcomeOf(render)}`,
+          result: await changeParameter(ctx, kind, id, "language", "en_US"),
+        };
+      },
+    },
+    {
+      label: "key and value in the query",
+      run: async () => ({
+        result: await ctx.http.write("PUT", `/${kind}/${id}/changeParameter`, {
+          tier: "commit",
+          query: { key: "language", value: "en_US" },
+        }),
+      }),
+    },
+    {
+      label: `path /${alternativePath}/{id}/changeParameter`,
+      run: async () => ({
+        result: await changeParameter(ctx, alternativePath, id, "language", "en_US"),
+      }),
+    },
+  ];
+  const steps: string[] = [];
+  let accepted: string | undefined;
+  for (const attempt of attempts) {
+    const { result, pre } = await attempt.run();
+    steps.push(
+      `${attempt.label}: ${pre === undefined ? "" : `${pre}; `}${changeAnswer(result)}` +
+        (result.ok
+          ? `; parameters: ${describeParameters(result.objects, { language: "en_US" })}`
+          : ""),
+    );
+    if (result.ok) {
+      accepted = attempt.label;
+      break;
+    }
+  }
+  const after = await stateOf(ctx, kind, id);
+  const diff = diffState(before.state, after.state);
+  if (diff !== "") data(ctx).mark(kind, id, `changed by the layout probe (${diff})`);
+  return (
+    `${kind} draft ${id}: ${accepted === undefined ? "no form was accepted" : `accepted: ${accepted}`}. ${steps.join(" | ")} | ` +
+    (diff === "" ? "status, sendDate, sendType and number unchanged" : `STATE CHANGED: ${diff}`)
+  );
+}
+
 function discountBody(tag: string, percentage: boolean): Record<string, unknown> {
   return {
     objectName: "Discounts",
@@ -794,7 +1156,7 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
       "What does POST /Order/Factory/createContractNoteFromOrder (order[id] in the query and the order in the body) answer for a draft offer and for a sent one " +
       "(the probe marks that offer as sent with sendBy: an order is not enshrined): the new order's type, status, number (assigned? does the AB counter move, D-027), " +
       "its link to the offer (origin), and which positions, head and foot texts it takes over?",
-    deviations: ["D-027", "D-064", "NEW"],
+    deviations: ["D-107", "D-027", "D-064"],
     run: (ctx) =>
       deriveFromOrders(ctx, "createContractNoteFromOrder", "AB", [
         { label: "From a draft offer (AN)", orderType: "AN", finalize: false },
@@ -809,7 +1171,7 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
       "What does POST /Order/Factory/createPackingListFromOrder answer for a sent offer, a draft order confirmation and a sent one " +
       "(the probe marks those as sent with sendBy: an order is not enshrined): the delivery note's type, status, number and the LI counter (D-027), " +
       "its origin, and which positions and texts it takes over?",
-    deviations: ["D-027", "D-064", "NEW"],
+    deviations: ["D-107", "D-027", "D-064"],
     run: (ctx) =>
       deriveFromOrders(ctx, "createPackingListFromOrder", "LI", [
         { label: "From a sent offer (AN)", orderType: "AN", finalize: true },
@@ -825,7 +1187,7 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
       "Does PUT /Order/{id} with only {status: 500} (accepted) or {status: 300} (rejected) change an offer's status, from a sent offer " +
       "(the probe marks offers as sent with sendBy: an order is not enshrined) and from a draft; what else changes, what does it answer, " +
       "can an accepted or rejected offer be set back to 200 (compare D-073: PUT /Voucher refuses a status)?",
-    deviations: ["D-073", "NEW"],
+    deviations: ["D-108", "D-073"],
     async run(ctx) {
       const lines: string[] = [];
       const cases = [
@@ -875,7 +1237,7 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
       "What do DELETE /Order/{id} and DELETE /CreditNote/{id} answer on a draft (with and without a number), is the draft gone afterwards, " +
       "what do they answer for a non-draft (an offer the probe marks as sent with sendBy, and a finalized credit note an earlier probe of this run left), " +
       "and does saving or deleting a draft saved with a peeked number move the next number (D-066, peeks only)?",
-    deviations: ["D-024", "D-066", "D-074", "NEW"],
+    deviations: ["D-109", "D-066", "D-074"],
     async run(ctx) {
       const lines: string[] = [];
       // Offer draft with the peeked number.
@@ -943,7 +1305,7 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
       "OPT-IN, consumes one number of the trial's offer sequence and one of its credit note sequence: after reserving a number with " +
       "useNextNumber=true (as the draft tools do, D-066), saving an offer and a credit note draft with it and deleting the draft, which number comes next: " +
       "the reserved one again, or the one after it (a gap in the Nummernkreis)?",
-    deviations: ["D-066", "D-027", "NEW"],
+    deviations: ["D-066", "D-027"],
     async run(ctx) {
       const lines: string[] = [];
       for (const range of ["AN", "CN"] as const) {
@@ -994,7 +1356,7 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
       "Does saveCreditNote with an existing draft's id update it in place: which fields does a header-only update keep or clear, " +
       "does creditNotePosDelete replace a position as an array and as the spec's single object, and does an update keep origin, refSrcInvoice, " +
       "type and number of a credit note made by createFromInvoice (which needs a finalized invoice: the probe finalizes one with sendBy, auto-enshrined on the trial)?",
-    deviations: ["D-054", "D-053", "D-051", "D-064", "NEW"],
+    deviations: ["D-110", "D-054", "D-053", "D-051", "D-064"],
     async run(ctx) {
       const tag = data(ctx).tag;
       const lines: string[] = [];
@@ -1087,7 +1449,7 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
       "Which fields make a recurring invoice template (saveInvoice with invoiceType WKR): the accountIntervall/accountNextInvoice pair the code reads (D-014), " +
       "or the recurringInterval/recurringStartDate/recurringNextVoucher fields issue #91 names? What does sevDesk store and return (type, status, number, schedule fields), " +
       "and does GET /Invoice list the template by default, with showWkr=all and with invoiceType=WKR (D-049)?",
-    deviations: ["D-014", "D-049", "NEW"],
+    deviations: ["D-111", "D-014", "D-049"],
     async run(ctx) {
       const next = addDays(ctx.today, 30);
       const lines: string[] = [];
@@ -1128,7 +1490,7 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
     question:
       "Which accountIntervall values does saveInvoice accept for a WKR template and how are they stored (P0Y1M0W, P1M, P0Y0M1W, P0Y3M, P1Y; " +
       "and the wrong forms '1 month' and 'monthly'), and does accountNextInvoice take dd.mm.yyyy as well as Unix seconds?",
-    deviations: ["D-014", "NEW"],
+    deviations: ["D-111", "D-014"],
     async run(ctx) {
       const next = addDays(ctx.today, 30);
       const variants: readonly { label: string; fields: Record<string, unknown> }[] = [
@@ -1172,7 +1534,7 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
       "Does saveInvoice with a WKR template's id change its schedule (accountIntervall P0Y3M0W, a later accountNextInvoice) and header in place; " +
       "how is a template ended: saveInvoice with status 50 (Deactivated recurring invoice) or PUT /Invoice/{id}, can it be set back to 100, " +
       "and can a template be deleted (DELETE /Invoice/{id}) while active and while deactivated?",
-    deviations: ["D-014", "D-024", "NEW"],
+    deviations: ["D-112", "D-014", "D-024"],
     async run(ctx) {
       const lines: string[] = [];
       const first = await createTemplate(ctx, addDays(ctx.today, 30));
@@ -1230,48 +1592,40 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
     },
   },
   {
-    id: "write-recurring-template-due",
-    title: "A recurring template whose next run is due (opt-in, stays active)",
+    id: "write-recurring-schedule-fields",
+    title: "Which fields give a recurring template (WKR) its schedule",
     mode: "write",
-    optIn: true,
     question:
-      "OPT-IN, leaves an ACTIVE recurring template on the trial for a day: a WKR template (monthly) whose next run is yesterday, or today if a past date is refused, " +
-      "for the tagged contact, which has no e-mail address, so nothing can be e-mailed. What does sevDesk store, and does it generate an invoice at once? " +
-      "Run read-recurring-generated the next day to see what sevDesk generated (a draft or a finalized invoice; sent or not).",
-    deviations: ["D-014", "NEW"],
+      "accountNextInvoice (Unix seconds or dd.mm.yyyy) was not stored on create, and accountStartDate/EndDate/LastInvoice read back empty. Which input stores a start, " +
+      "end or next-run date: accountStartDate and accountEndDate as Unix seconds, ISO or dd.mm.yyyy, accountNextInvoice as ISO, start + next together, invoiceDate alone, " +
+      "the dates in an update with the template's id (saveInvoice or PUT /Invoice/{id}), or status 200 in an update? Each template is read back (every account… field) and deleted.",
+    deviations: ["D-111", "D-014"],
     async run(ctx) {
+      const next = addDays(ctx.today, 30);
       const lines: string[] = [];
-      let made: { id: number; form: string; next: string } | undefined;
-      for (const next of [addDays(ctx.today, -1), ctx.today]) {
-        const template = await createTemplate(ctx, next);
-        if ("failure" in template) {
-          lines.push(`Next run ${next}: ${template.failure}`);
+      const storing: string[] = [];
+      let created = 0;
+      for (const variant of SCHEDULE_VARIANTS) {
+        const made = await scheduledTemplate(ctx, variant, next);
+        if (made.id === undefined) {
+          lines.push(`${variant.label}: ${made.text}`);
           continue;
         }
-        made = { id: template.id, form: template.form, next };
-        break;
+        created += 1;
+        const stored = storedDates(made.row);
+        if (stored.length > 0) storing.push(`${variant.label} (${stored.join(", ")})`);
+        const deleted = await deleteAndCheck(ctx, "Invoice", made.id);
+        lines.push(`${variant.label}: ${made.text}; ${deleted.gone ? "deleted" : deleted.text}`);
       }
-      if (made === undefined)
-        return inconclusive(`No template could be saved. ${lines.join(". ")}.`);
-      data(ctx).mark(
-        "Invoice",
-        made.id,
-        "ACTIVE recurring template (WKR): deactivate or delete in the web app after read-recurring-generated",
-      );
-      const row = await ctx.read.byId("Invoice", made.id);
-      const generated = (
-        await ctx.read.page(
-          "/Invoice",
-          { showAll: "true", "origin[id]": made.id, "origin[objectName]": "Invoice" },
-          1000,
-        )
-      ).rows.filter((item) => refId(item, "origin") === made.id);
+      if (created === 0) return inconclusive(`No template was saved. ${lines.join(". ")}.`);
       return {
         verdict: "observed",
         finding:
-          `${lines.length === 0 ? "" : `${lines.join(". ")}. `}Template ${made.id} (${made.form}, next run asked for ${made.next}): ` +
-          `type ${str(row, "invoiceType")}, status ${str(row, "status")}; ${schedule(ctx, row)}. ` +
-          `Invoices with this template as origin right after saving: ${generated.length}. Run read-recurring-generated tomorrow.`,
+          (storing.length === 0
+            ? "NO input stored a start, end or next-run date: the API does not set a template's schedule this way. "
+            : `A schedule date was stored by: ${storing.join("; ")}. `) +
+          `Run date asked for: ${next} (Unix ${berlinMidnight(next)}). ${lines.join(". ")}.`,
+        deviations: { "D-014": "informs" },
       };
     },
   },
@@ -1285,7 +1639,7 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
       "What does PUT /{Invoice,Order,CreditNote}/{id}/changeParameter answer on a DRAFT for language, letterpaper and template (one key per request; " +
       "letterpaper and template ids from the DocServer lists, not the default), does anything else on the record change (status, sendDate, sendType, number), " +
       "and in which fields can the chosen values be read back? (The answer's base64 PDF is never kept.)",
-    deviations: ["D-025", "D-023", "NEW"],
+    deviations: ["D-113", "D-025", "D-023"],
     async run(ctx) {
       const choices = await layoutChoices(ctx);
       const lines: string[] = [];
@@ -1356,7 +1710,7 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
     question:
       "Does POST /TextTemplate (undocumented, D-024) create a head text template from {name, text, category DOCUMENT, objectType RE, textType HEAD}, " +
       "what does it answer and read back (keys, codes, main), does the textType filter list it, and does DELETE /TextTemplate/{id} remove it?",
-    deviations: ["D-024", "NEW"],
+    deviations: ["D-115", "D-024"],
     async run(ctx) {
       const tag = data(ctx).tag;
       const created = await ctx.http.write("POST", "/TextTemplate", {
@@ -1404,7 +1758,7 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
       "How does a document-level discount work: discountSave (as a list, else as the spec's single object) with 10 % and with a fixed 10.00 on saveInvoice, saveOrder " +
       "and saveCreditNote (one position of 100.00 net at 19 %); how do sevDesk's sums change; where can the discount be read back (the raw GET /<kind>/{id}, " +
       "GET /<kind>/{id}/getDiscounts, GET /Discounts by object); and does discountDelete with the document's id remove it?",
-    deviations: ["D-053", "NEW"],
+    deviations: ["D-116", "D-053"],
     async run(ctx) {
       const tag = data(ctx).tag;
       const lines: string[] = [];
@@ -1464,13 +1818,117 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
     },
   },
   {
+    id: "write-change-parameter-read-back",
+    title: "Where changeParameter choices can be read; changeParameter on orders and credit notes",
+    mode: "write",
+    question:
+      "On an invoice draft changeParameter answered {metaData} and the record showed none of the chosen values. Does metaData.parameters[].value hold the current " +
+      "language, letterpaper and template (also on a second call that changes nothing), and can they be read anywhere else: GET /Invoice/{id} with embed, the getPdf " +
+      "answer (preventSendBy=true), POST /Invoice/{id}/render {forceReload: false} (the spec declares parameters there)? On order and credit note drafts every call " +
+      "was refused with 500 'Syntax error': does it work after a getPdf preview, after render, with key and value in the query, or on the path Creditnote/order?",
+    deviations: ["D-113", "D-025", "D-023"],
+    async run(ctx) {
+      const letterpapers = (
+        await readLayouts(ctx, "/DocServer/getLetterpapersWithThumb", "letterpapers")
+      ).rows;
+      const templates = (
+        await readLayouts(ctx, "/DocServer/getTemplatesWithThumb", "templates", "Invoice")
+      ).rows;
+      // Only one letterpaper exists on the trial: then the default one (no change) is sent.
+      const pick = (rows: readonly Row[]) =>
+        str(rows.find((row) => !isDefaultLayout(row)) ?? rows[0], "id");
+      const choices: readonly (readonly [string, string])[] = [
+        ["language", "en_US"],
+        ["letterpaper", pick(letterpapers)],
+        ["template", pick(templates)],
+      ];
+      const lines: string[] = [];
+      const invoice = await data(ctx).draft("Invoice");
+      lines.push(
+        invoice.id === undefined
+          ? `Invoice draft refused (${outcomeOf(invoice.result)})`
+          : await invoiceLayoutReadBack(ctx, invoice.id, choices),
+      );
+      for (const kind of ["Order", "CreditNote"] as const) {
+        const draft = await documentDraft(ctx, kind);
+        lines.push(
+          draft.id === undefined
+            ? `${kind} draft refused (${outcomeOf(draft.result)})`
+            : await layoutVariants(ctx, kind, draft.id),
+        );
+      }
+      if (lines.every((line) => line.includes("draft refused"))) {
+        return inconclusive(`${lines.join(". ")}.`);
+      }
+      const changed = lines.some((line) => line.includes("STATE CHANGED"));
+      return {
+        verdict: changed ? "contradicted" : "observed",
+        finding: `${lines.join(". ")}.`,
+        deviations: { "D-023": changed ? "contradicts" : "informs" },
+      };
+    },
+  },
+  {
+    id: "write-recurring-template-due",
+    title: "A recurring template whose next run is due (opt-in, stays active)",
+    mode: "write",
+    optIn: true,
+    question:
+      "OPT-IN, leaves ONE ACTIVE recurring template on the trial for a day: a monthly WKR template for the tagged contact (no e-mail address, so nothing can be e-mailed) " +
+      "whose start or next run is yesterday, or today if a past date is refused. It tries the schedule inputs of write-recurring-schedule-fields in turn, keeps the first " +
+      "template that reads back with accountNextInvoice or accountStartDate and deletes the others. What does sevDesk store, and does it generate an invoice at once? " +
+      "Run read-recurring-generated the next day to see what sevDesk generated (a draft or a finalized invoice; sent or not).",
+    deviations: ["D-111", "D-014"],
+    async run(ctx) {
+      const tried: string[] = [];
+      for (const variant of SCHEDULE_VARIANTS) {
+        for (const next of [addDays(ctx.today, -1), ctx.today]) {
+          const made = await scheduledTemplate(ctx, variant, next);
+          if (made.id === undefined) {
+            tried.push(`${variant.label}, run ${next}: ${made.text}`);
+            continue;
+          }
+          const due = DUE_KEYS.filter((key) => str(made.row, key) !== "");
+          if (due.length === 0) {
+            const deleted = await deleteAndCheck(ctx, "Invoice", made.id);
+            tried.push(
+              `${variant.label}, run ${next}: no start or next-run date stored (${deleted.gone ? "deleted" : deleted.text})`,
+            );
+            break;
+          }
+          data(ctx).mark(
+            "Invoice",
+            made.id,
+            "ACTIVE recurring template (WKR): end or delete after read-recurring-generated",
+          );
+          const generated = (
+            await ctx.read.page(
+              "/Invoice",
+              { showAll: "true", "origin[id]": made.id, "origin[objectName]": "Invoice" },
+              1000,
+            )
+          ).rows.filter((item) => refId(item, "origin") === made.id);
+          return {
+            verdict: "observed",
+            finding:
+              `Kept ${made.text} (made with: ${variant.label}, run ${next}). Invoices with this template as origin right after saving: ` +
+              `${generated.length}. Run read-recurring-generated tomorrow. Tried before: ${tried.join(". ") || "nothing"}.`,
+          };
+        }
+      }
+      return inconclusive(
+        `NO input stored a start or next-run date, so no due template was left: the API cannot set a schedule this way. ${tried.join(". ")}.`,
+      );
+    },
+  },
+  {
     id: "read-order-get-discounts",
     title: "GET /Order/{id}/getDiscounts",
     mode: "read",
     question:
       "What does GET /Order/{id}/getDiscounts answer (envelope, row keys and types, isNet, the object reference)? Asks up to 10 orders, tagged ones first, " +
       "and describes the first answer with discounts (write-document-discount leaves tagged orders with one).",
-    deviations: ["NEW"],
+    deviations: ["D-116"],
     async run(ctx) {
       const orders = (await ctx.read.page("/Order", undefined, 100)).rows;
       const candidates = [...orders.filter(isTagged), ...orders.filter((row) => !isTagged(row))]
@@ -1505,7 +1963,7 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
     question:
       "What do GET /DocServer/getLetterpapersWithThumb and getTemplatesWithThumb (without a type, and with type Invoice, Order, Creditnote) answer: where the rows are, " +
       'their keys and types, how many, which is the default, stock (sevClient "0") or own? Base64 fields are named with their length only; the run\'s scrubber replaces them in the evidence.',
-    deviations: ["D-024", "D-025", "NEW"],
+    deviations: ["D-114", "D-024", "D-025"],
     async run(ctx) {
       const results = [
         await readLayouts(ctx, "/DocServer/getLetterpapersWithThumb", "letterpapers"),
@@ -1533,7 +1991,7 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
     question:
       "Which invoices did sevDesk generate from the tagged recurring templates (WKR, run tag) so far: type, status, number, sendDate/sendType and origin; " +
       "what do the templates' schedule fields read now; and do the templates show up in the default invoice list? Run it again the day after write-recurring-template-due.",
-    deviations: ["D-049", "D-014", "NEW"],
+    deviations: ["D-111", "D-112", "D-049"],
     async run(ctx) {
       const templates = (await ctx.read.page("/Invoice", { showWkr: "all" }, 1000)).rows.filter(
         (row) => str(row, "invoiceType") === "WKR" && isTagged(row),

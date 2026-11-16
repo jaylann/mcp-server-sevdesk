@@ -453,12 +453,8 @@ export function recordPlan(today: string): readonly RecordEntry[] {
       path: "/DocServer/getLetterpapersWithThumb",
       note: "Letterheads for changeParameter (#94); the scrubber replaces PDFs and thumbnails.",
     },
-    {
-      file: "layouts/templates.json",
-      mirrors: [],
-      path: "/DocServer/getTemplatesWithThumb",
-      note: "Document templates for changeParameter (#94); the scrubber replaces their base64.",
-    },
+    // GET /DocServer/getTemplatesWithThumb is not recorded: 147 stock templates with their HTML
+    // and thumbnails came to 3.2 MB even scrubbed; spec/deviations.md D-114 describes the shape.
 
     // --- document files (non-drafts only) -------------------------------------------------
     {

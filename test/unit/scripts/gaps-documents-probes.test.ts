@@ -114,12 +114,26 @@ interface AccountSettings {
   readonly invoices?: readonly Rec[];
   /** discountSave must be one object, not a list (synthetic, for the fallback). */
   readonly discountAsObject?: boolean;
+  /** No input stores a schedule date, not even an update (the case "the API cannot"). */
+  readonly ignoreScheduleDates?: boolean;
 }
 
+const DOC_ID = "d4605b19248ad176443b7cb382679b1f";
+
+const SCHEDULE_DATES: readonly string[] = [
+  "accountNextInvoice",
+  "accountStartDate",
+  "accountEndDate",
+  "accountLastInvoice",
+];
+
 /**
- * A simulated trial account for these probes. Its rules are assumptions for the probes' logic,
- * not recordings: orders need a number, only drafts and templates can be deleted, discounts are
- * saved as a list, `changeParameter` takes the language "en" only.
+ * A simulated trial account for these probes. Where the 2026-11-16 run recorded a behaviour, it
+ * follows it (orders need a number, templates store no schedule date on create, changeParameter
+ * answers `{metaData}` and leaves the record alone, order and credit note changeParameter answer
+ * 500 "Syntax error"); the rest are assumptions for the probes' logic (marked synthetic): a
+ * saveInvoice update stores schedule dates, changeParameter on orders and credit notes works after
+ * a getPdf preview, only the language en_US is known.
  */
 function gapsAccount(settings: AccountSettings = {}) {
   let nextId = 500;
@@ -128,6 +142,21 @@ function gapsAccount(settings: AccountSettings = {}) {
   const discounts: Rec[] = [];
   const textTemplates = new Map<string, Rec>();
   const counters: Record<string, number> = { AN: 1000, AB: 1000, LI: 1000, CN: 1000 };
+  /** Documents that had a getPdf preview (synthetic: changeParameter on orders needs one). */
+  const previewed = new Set<string>();
+  /** The layout choices per document, kept apart from the record. */
+  const layouts = new Map<string, Record<string, string>>();
+  const parameters = (store: string) =>
+    ["language", "template", "letterpaper", "payPal"].map((key) => ({
+      key,
+      name: key,
+      visible: true,
+      value: layouts.get(store)?.[key] ?? (key === "language" ? "de_DE" : null),
+      values: [
+        { name: "a", value: "de_DE", translationCode: "SEVDOC_LANG_DE_DE", isCustom: null },
+        { name: "b", value: "en_US", translationCode: "SEVDOC_LANG_EN_US", isCustom: null },
+      ],
+    }));
   for (const invoice of settings.invoices ?? [])
     docs.set(`Invoice/${idOf(invoice["id"])}`, invoice);
 
@@ -183,24 +212,32 @@ function gapsAccount(settings: AccountSettings = {}) {
       ) {
         refuse(422, "Must set contact");
       }
+      const keepDates = found["invoiceType"] === "WKR" && settings.ignoreScheduleDates !== true;
       for (const [field, value] of Object.entries(header)) {
-        if (!["id", "objectName", "mapAll"].includes(field)) found[field] = value;
+        if (["id", "objectName", "mapAll"].includes(field)) continue;
+        if (SCHEDULE_DATES.includes(field) && !keepDates) continue;
+        found[field] = SCHEDULE_DATES.includes(field) ? String(value) : value;
       }
       if (header["status"] !== undefined) found["status"] = idOf(header["status"]);
       doc = found;
     } else {
       if (kind === "Order" && (header["orderNumber"] ?? "") === "") refuse(400, "Bad Request");
-      if (
-        header["invoiceType"] === "WKR" &&
-        !/^P\d/.test(
-          typeof header["accountIntervall"] === "string" ? header["accountIntervall"] : "",
-        )
-      ) {
-        refuse(422, "accountIntervall must be an interval like P0Y1M0W");
-      }
       const id = String(nextId++);
+      // Recorded 2026-11-16: a WKR template keeps any accountIntervall string and stores no
+      // schedule date and no recurring* field on create.
+      const kept = Object.fromEntries(
+        Object.entries(header).filter(
+          ([field]) => !SCHEDULE_DATES.includes(field) && !field.startsWith("recurring"),
+        ),
+      );
       doc = {
-        ...header,
+        ...(header["invoiceType"] === "WKR" ? kept : header),
+        ...(header["invoiceType"] === "WKR"
+          ? {
+              accountIntervall: header["accountIntervall"] ?? null,
+              ...Object.fromEntries(SCHEDULE_DATES.map((field) => [field, null])),
+            }
+          : {}),
         id,
         objectName: kind,
         status: idOf(header["status"] ?? "100"),
@@ -343,21 +380,38 @@ function gapsAccount(settings: AccountSettings = {}) {
     }
     const change = /^\/(Invoice|CreditNote|Order)\/(\d+)\/changeParameter$/.exec(path);
     if (change !== null) {
-      const doc = docs.get(`${change[1] ?? ""}/${change[2] ?? ""}`);
+      const store = `${change[1] ?? ""}/${change[2] ?? ""}`;
+      const doc = docs.get(store);
       if (doc === undefined) return refuse(404, "not found");
+      if (change[1] !== "Invoice" && !previewed.has(store)) refuse(500, "Syntax error");
       const value = String(body["value"]);
-      if (body["key"] === "language") {
-        if (value !== "en") refuse(400, "Invalid language");
-        doc["language"] = value;
-      } else if (body["key"] === "letterpaper") {
-        doc["letterpaper"] = { id: value, objectName: "Letterpaper" };
-      } else {
-        doc["template"] = value;
-      }
+      if (body["key"] === "language" && value !== "en_US") refuse(400, "Invalid language");
+      // The choice lives in the document, not on the record (recorded 2026-11-16).
+      layouts.set(store, { ...layouts.get(store), [String(body["key"])]: value });
       if (settings.changeParameterSends === true) {
         Object.assign(doc, { sendDate: "2026-11-20T10:00:00+01:00", sendType: "VPDF" });
       }
-      return { objects: { pdf: PDF_BASE64, docId: "abc" } };
+      return { objects: { metaData: { docId: DOC_ID, parameters: parameters(store) } } };
+    }
+    const preview = /^\/(Invoice|CreditNote|Order)\/(\d+)\/getPdf$/.exec(path);
+    if (preview !== null) {
+      const store = `${preview[1] ?? ""}/${preview[2] ?? ""}`;
+      if (!docs.has(store)) return refuse(404, "not found");
+      previewed.add(store);
+      return {
+        objects: {
+          filename: `${DOC_ID}.pdf`,
+          mimetype: null,
+          base64Encoded: true,
+          content: PDF_BASE64,
+        },
+      };
+    }
+    const render = /^\/(Invoice|CreditNote|Order)\/(\d+)\/render$/.exec(path);
+    if (render !== null) {
+      const store = `${render[1] ?? ""}/${render[2] ?? ""}`;
+      if (render[1] !== "Invoice") refuse(404, "not found");
+      return { objects: { pdf: PDF_BASE64, docId: DOC_ID, parameters: parameters(store) } };
     }
     const discountsOf = /^\/(Invoice|CreditNote|Order)\/(\d+)\/getDiscounts$/.exec(path);
     if (discountsOf !== null) {
@@ -423,7 +477,7 @@ function gapsAccount(settings: AccountSettings = {}) {
     if (method !== "GET") refuse(422, "not simulated");
     return list([]);
   };
-  return { client: new ScriptedClient(handler), docs, counters };
+  return { client: new ScriptedClient(handler), handler, docs, counters };
 }
 
 async function run(client: ScriptedClient, overrides: Partial<RunOptions> = {}) {
@@ -626,20 +680,21 @@ describe("gaps-documents probes on a simulated trial account", () => {
     });
     const created = finding("write-recurring-template-create");
     expect(created).toMatch(
-      /accountIntervall \+ accountNextInvoice: saved as invoice \d+.*type WKR, status 100/,
+      /accountIntervall \+ accountNextInvoice: saved as invoice \d+.*type WKR, status 100.*; accountIntervall P0Y1M0W, accountNextInvoice \(empty\), accountStartDate \(empty\)/,
     );
-    expect(created).toMatch(/accountIntervall P0Y1M0W, accountNextInvoice \d+/);
     expect(created).toMatch(
-      /recurringInterval \+ recurringStartDate \+ recurringNextVoucher: refused \(422/,
+      /recurringInterval \+ recurringStartDate \+ recurringNextVoucher: saved as invoice \d+.*accountIntervall \(empty\)/,
     );
     expect(created).toMatch(
       /listed in: default list false, showWkr=all true, invoiceType=WKR true, showAll=true true/,
     );
+    // sendDate no longer counts as a schedule field.
+    expect(created).not.toContain("sendDate (empty)");
     const formats = finding("write-recurring-interval-formats");
     expect(formats).toMatch(/accountIntervall "P1M": saved/);
-    expect(formats).toMatch(/accountIntervall "1 month": refused \(422/);
+    expect(formats).toMatch(/accountIntervall "1 month": saved.*accountIntervall 1 month/);
     expect(formats).toMatch(
-      /accountNextInvoice as dd.mm.yyyy: saved.*accountNextInvoice 20.12.2026/,
+      /accountNextInvoice as dd.mm.yyyy: saved.*accountNextInvoice \(empty\)/,
     );
     const ended = finding("write-recurring-template-update-end");
     expect(ended).toMatch(
@@ -648,8 +703,14 @@ describe("gaps-documents probes on a simulated trial account", () => {
     expect(ended).toMatch(/Deactivate: saveInvoice \{status: 50\} ok → status 50/);
     expect(ended).toMatch(/Back to 100 \(saveInvoice\): ok → status 100/);
     expect(ended).toMatch(/Second template \d+: .*DELETE at status 50: DELETE ok.*gone/);
+    // The simulated account stores schedule dates only through an update with the id.
     const due = finding("write-recurring-template-due");
-    expect(due).toMatch(/next run asked for 2026-11-19\): type WKR/);
+    expect(due).toMatch(
+      /^Kept template (\d+), update ok: status 100.*stored dates: accountNextInvoice, accountStartDate \(made with: update with the id: accountStartDate \+ accountNextInvoice \(Unix seconds\), run 2026-11-19\)/,
+    );
+    expect(due).toMatch(
+      /Tried before: accountStartDate as Unix seconds, run 2026-11-19: no start or next-run date stored \(deleted\)/,
+    );
     expect(due).toMatch(/Run read-recurring-generated tomorrow/);
     const saves = client
       .writes()
@@ -709,17 +770,13 @@ describe("gaps-documents probes on a simulated trial account", () => {
     expect(report.results[0]?.status).toBe("observed");
     expect(text).toMatch(/^No draft left the draft state\./);
     expect(text).toMatch(
-      /language "en_US": refused \(400: Invalid language\).* \/ language "en": ok, answer an object with keys pdf, docId \(pdf: a base64 PDF, not kept\); status, sendDate, sendType and number unchanged; other changes: language: null → "Muster-Text \d+"; value read back in: language/,
+      /Invoice draft \d+: language "en_US": ok, answer an object with keys metaData; status, sendDate, sendType and number unchanged; other changes: none; value read back in: no field/,
     );
-    // The letterpaper id and the language value are scrubbed in the finding.
     expect(text).not.toContain("57d7ff34f23ada297d265f22");
-    expect(text).toMatch(
-      /letterpaper \(a non-default id\): ok.*value read back in: letterpaper.id/,
-    );
-    expect(text).toMatch(/template \(a non-default id\): ok.*value read back in: template/);
+    expect(text).toMatch(/Order draft \d+: language "en_US": refused \(500: Syntax error\)/);
     for (const kind of ["Invoice", "Order", "CreditNote"]) expect(text).toContain(`${kind} draft`);
     const changes = client.writes().filter((call) => call.path.endsWith("/changeParameter"));
-    expect(changes).toHaveLength(12);
+    expect(changes).toHaveLength(13);
     for (const call of changes) expect(Object.keys(call.body as Rec)).toEqual(["key", "value"]);
     const letterpapers = changes.filter((call) => (call.body as Rec)["key"] === "letterpaper");
     for (const call of letterpapers) {
@@ -740,6 +797,108 @@ describe("gaps-documents probes on a simulated trial account", () => {
     expect(
       report.created.some((record) => record.state.startsWith("changed by changeParameter")),
     ).toBe(true);
+  });
+
+  it("finds which input stores a template's schedule and deletes every probe template", async () => {
+    const { client, docs } = gapsAccount();
+    const { finding } = await run(client, { only: ["write-recurring-schedule-fields"] });
+    const text = finding("write-recurring-schedule-fields");
+    expect(text).toMatch(
+      /^A schedule date was stored by: update with the id: accountStartDate \+ accountNextInvoice \(Unix seconds\) \(accountNextInvoice, accountStartDate\)\. Run date asked for: 2026-12-20/,
+    );
+    expect(text).toMatch(
+      /accountStartDate as ISO: template \d+: status 100.*stored dates: none; deleted/,
+    );
+    expect(text).toMatch(/PUT \/Invoice\/\{id\}: .*update refused \(400: not simulated\)/);
+    expect(text).toMatch(
+      /status 200 \(starting the subscription\?\): template \d+, update ok: status 200/,
+    );
+    expect([...docs.keys()].filter((key) => key.startsWith("Invoice/"))).toEqual([]);
+    const creates = client
+      .writes()
+      .filter((call) => call.path === "/Invoice/Factory/saveInvoice")
+      .map((call) => (call.body as Rec)["invoice"] as Rec)
+      .filter((header) => header["id"] === undefined);
+    expect(creates).toHaveLength(12);
+    expect(creates[0]).toMatchObject({ accountStartDate: 1797721200, invoiceType: "WKR" });
+    expect(creates[1]).toMatchObject({ accountStartDate: "2026-12-19T23:00:00.000Z" });
+    expect(creates[2]).toMatchObject({ accountStartDate: "20.12.2026" });
+  });
+
+  it("says plainly when no input stores a schedule, and then leaves no due template", async () => {
+    const { client, docs } = gapsAccount({ ignoreScheduleDates: true });
+    const { report, finding } = await run(client, {
+      only: ["write-recurring-schedule-fields", "write-recurring-template-due"],
+    });
+    expect(finding("write-recurring-schedule-fields")).toMatch(
+      /^NO input stored a start, end or next-run date: the API does not set a template's schedule this way\./,
+    );
+    expect(report.results.find((r) => r.id === "write-recurring-template-due")).toMatchObject({
+      status: "inconclusive",
+      finding: expect.stringMatching(
+        /^NO input stored a start or next-run date, so no due template was left/,
+      ) as unknown,
+    });
+    expect([...docs.keys()].filter((key) => key.startsWith("Invoice/"))).toEqual([]);
+  });
+
+  it("reads changeParameter choices back from metaData and render, and finds the order form", async () => {
+    const { client } = gapsAccount();
+    const { finding, report } = await run(client, { only: ["write-change-parameter-read-back"] });
+    expect(report.results[0]?.status).toBe("observed");
+    const text = finding("write-change-parameter-read-back");
+    expect(text).toMatch(
+      /^Invoice draft \d+: language: ok, answer an object with keys metaData; answer keys metaData; metaData: docId, parameters; parameters: language: = the one sent, 2 choice\(s\), visible true; template: no value/,
+    );
+    expect(text).toMatch(/letterpaper: ok.*letterpaper: = the one sent/);
+    expect(text).toMatch(/template: ok.*template: = the one sent/);
+    expect(text).toMatch(/language again \(no change\): ok.*language: = the one sent/);
+    expect(text).toMatch(
+      /GET \/Invoice\/\{id\}\?embed=document: extra keys none; chosen values in: no field/,
+    );
+    expect(text).toMatch(
+      /getPdf \(preventSendBy=true\): keys filename, mimetype, base64Encoded, content; chosen values in: no field/,
+    );
+    expect(text).toMatch(
+      /POST \/Invoice\/\{id\}\/render \{forceReload: false\}: answer keys pdf, docId, parameters; parameters: language: = the one sent/,
+    );
+    expect(text).toMatch(/status, sendDate, sendType and number unchanged after all of it/);
+    expect(text).toMatch(
+      /Order draft \d+: accepted: after a getPdf preview \(preventSendBy=true\)\. body \{key, value\}: refused \(500: Syntax error\) \| after a getPdf preview \(preventSendBy=true\): getPdf ok; ok/,
+    );
+    expect(text).toMatch(/CreditNote draft \d+: accepted: after a getPdf preview/);
+    expect(text).not.toContain("57d7ff34f23ada297d265f21");
+    expect(text).not.toContain(PDF_BASE64.slice(0, 40));
+    const pdfReads = client.calls.filter((call) => call.path.endsWith("/getPdf"));
+    for (const call of pdfReads) expect(call.query).toMatchObject({ preventSendBy: "true" });
+    const tiers = client
+      .writes()
+      .map((call) => [call.path.split("/").pop(), call.tier] as const)
+      .filter(([endpoint]) => endpoint === "changeParameter" || endpoint === "render");
+    for (const [endpoint, tier] of tiers) {
+      expect(tier).toBe(endpoint === "changeParameter" ? "commit" : "write");
+    }
+  });
+
+  it("tries every changeParameter form on orders when none is accepted", async () => {
+    const { handler } = gapsAccount();
+    // Without the preview workaround: every form is refused on orders and credit notes.
+    const refusing = new ScriptedClient((call) => {
+      if (call.path.endsWith("/changeParameter") && !call.path.startsWith("/Invoice")) {
+        refuse(500, "Syntax error");
+      }
+      return handler(call);
+    });
+    const { finding } = await run(refusing, { only: ["write-change-parameter-read-back"] });
+    const text = finding("write-change-parameter-read-back");
+    expect(text).toMatch(
+      /Order draft \d+: no form was accepted\. body \{key, value\}: refused \(500: Syntax error\) \| after a getPdf preview.*refused \(500: Syntax error\) \| after POST \/Order\/\{id\}\/render \{forceReload: false\}: render refused \(404: not found\); refused \(500: Syntax error\) \| key and value in the query: refused \(500: Syntax error\) \| path \/order\/\{id\}\/changeParameter: refused \(500: Syntax error\)/,
+    );
+    expect(text).toMatch(/path \/Creditnote\/\{id\}\/changeParameter: refused/);
+    const queryForm = refusing
+      .writes()
+      .find((call) => call.path.endsWith("/changeParameter") && call.body === undefined);
+    expect(queryForm?.query).toEqual({ key: "language", value: "en_US" });
   });
 
   it("creates and deletes a text template", async () => {
