@@ -122,7 +122,13 @@ export function createMemoryApprovalStore(
   const ttlMs = options.ttlMs ?? 10 * 60 * 1000;
   const records = new Map<string, MemoryRecord>();
   const decisions: ApprovalDecision[] = [];
+  const listeners = new Set<(accountScope: string) => void>();
   let counter = 0;
+
+  /** Announces a change of `record`'s scope, as the real store does (no expiry timer here). */
+  function changed(record: MemoryRecord): void {
+    for (const listener of listeners) listener(record.owner.accountScope);
+  }
 
   function live(record: MemoryRecord | undefined): MemoryRecord | undefined {
     return record !== undefined && record.expiresAtMs > now() ? record : undefined;
@@ -171,8 +177,11 @@ export function createMemoryApprovalStore(
 
   const store: MemoryApprovalStore = {
     decisions,
+    pendingLimit: 5,
     add(owner, binding = {}) {
-      return view(insert(owner, binding));
+      const record = insert(owner, binding);
+      changed(record);
+      return view(record);
     },
     current(owner, toolName, argsHash) {
       for (const record of records.values()) {
@@ -192,12 +201,14 @@ export function createMemoryApprovalStore(
       if (options.channel !== undefined) {
         record.opened = (await options.channel.present(view(record))).opened;
       }
+      changed(record);
       return ticket(record);
     },
     take(owner, id) {
       const record = live(records.get(id));
       if (record === undefined || record.owner.grantKey !== owner.grantKey) return undefined;
       records.delete(id);
+      changed(record);
       return ticket(record);
     },
     list(accountScope) {
@@ -212,7 +223,14 @@ export function createMemoryApprovalStore(
       const record = live(records.get(id));
       return record === undefined ? undefined : view(record);
     },
-    decide(id, decision): DecideOutcome {
+    // Keeps no traces of records that left: the inbox tests do not need them.
+    ended() {
+      return [];
+    },
+    trace() {
+      return undefined;
+    },
+    decide(id, decision, batch): DecideOutcome {
       const record = records.get(id);
       if (record === undefined) return "unknown";
       if (live(record) === undefined) return "expired";
@@ -223,10 +241,12 @@ export function createMemoryApprovalStore(
         binding: record.binding,
         reference: record.reference,
         decision,
+        ...(batch === undefined ? {} : { batch }),
       });
+      changed(record);
       return "decided";
     },
-    withdraw(id): boolean {
+    withdraw(id, reason): boolean {
       const record = live(records.get(id));
       if (record === undefined) return false;
       if (record.status === "rejected") return true;
@@ -236,11 +256,20 @@ export function createMemoryApprovalStore(
         binding: record.binding,
         reference: record.reference,
         decision: "rejected",
+        ...(reason === undefined ? {} : { reason }),
       });
+      changed(record);
       return true;
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
     },
     close() {
       records.clear();
+      listeners.clear();
       return options.channel?.close() ?? Promise.resolve();
     },
   };

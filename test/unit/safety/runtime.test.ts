@@ -313,6 +313,53 @@ describe("safety runtime: parts", () => {
     }
   });
 
+  it("writes the batch of a decision on several requests and why a request was withdrawn", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "sevdesk-runtime-"));
+    try {
+      const path = join(dir, "audit.jsonl");
+      const channel: ApprovalChannel = {
+        kind: "remote",
+        inboxUrl: "https://mcp.example.com/approvals",
+        attach: () => undefined,
+        present: () => Promise.resolve({ opened: false }),
+        close: () => Promise.resolve(),
+      };
+      const runtime = createSafetyRuntime(testConfig({ auditLogPath: path }), {
+        approvalChannel: channel,
+      });
+      const owner = { grantKey: "stdio", accountScope: "local" };
+      const first = await runtime.approvals.create(owner, { ...APPROVAL, argsHash: "1" });
+      const second = await runtime.approvals.create(owner, { ...APPROVAL, argsHash: "2" });
+
+      runtime.approvals.decide(first.id, "approved", { id: "batch-1", size: 2 });
+      runtime.approvals.withdraw(second.id, "link_used_twice");
+
+      await vi.waitFor(async () => {
+        expect((await readFile(path, "utf8")).trimEnd().split("\n")).toHaveLength(2);
+      });
+      const [decided, withdrawn] = (await readFile(path, "utf8"))
+        .trimEnd()
+        .split("\n")
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      expect(decided).toMatchObject({
+        event: "approval_decided",
+        decision: "approved",
+        batch: "batch-1",
+        batchSize: 2,
+      });
+      expect(decided).not.toHaveProperty("reason");
+      expect(withdrawn).toMatchObject({
+        event: "approval_decided",
+        decision: "rejected",
+        reason: "link_used_twice",
+      });
+      expect(withdrawn).not.toHaveProperty("batch");
+      await runtime.close();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("closes the approval server", async () => {
     const runtime = createSafetyRuntime(testConfig(), { log: () => undefined });
     await runtime.approvals.create(STDIO, APPROVAL);

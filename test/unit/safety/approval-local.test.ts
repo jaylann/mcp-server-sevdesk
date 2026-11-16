@@ -263,9 +263,8 @@ describe("local approval page", () => {
     // The record vanishes between the request's first lookup and the decision.
     let lookups = 0;
     channel.attach({
+      ...approvals,
       get: (id) => (lookups++ === 0 ? approvals.get(id) : undefined),
-      decide: (id, decision) => approvals.decide(id, decision),
-      withdraw: (id) => approvals.withdraw(id),
     });
 
     const decided = await submitDecision(page, "approve", opened);
@@ -283,6 +282,7 @@ describe("local approval page", () => {
     const opened = await openApproval(page);
     let decided = false;
     channel.attach({
+      ...approvals,
       get: (id) => {
         const view = approvals.get(id);
         return view === undefined || !decided ? view : { ...view, status: "rejected" };
@@ -291,7 +291,6 @@ describe("local approval page", () => {
         decided = true;
         return outcome;
       },
-      withdraw: (id) => approvals.withdraw(id),
     });
 
     const response = await submitDecision(page, "approve", opened);

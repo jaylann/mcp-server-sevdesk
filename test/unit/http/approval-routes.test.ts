@@ -921,6 +921,7 @@ describe("approval inbox routes", () => {
     const env = setup({ explicitStore: true });
     const view = env.approvals.add(A1);
     env.inbox.channel.attach({
+      ...env.approvals,
       get: () => undefined,
       decide: () => "unknown",
       withdraw: () => false,

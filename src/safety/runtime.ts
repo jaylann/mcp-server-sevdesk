@@ -108,7 +108,7 @@ export function createSafetyRuntime(
   const approvals = createApprovalStore({
     channel,
     ...(options.now === undefined ? {} : { now: options.now }),
-    onDecision: ({ owner, binding, reference, decision }) => {
+    onDecision: ({ owner, binding, reference, decision, batch, reason }) => {
       audit
         .record({
           event: "approval_decided",
@@ -120,6 +120,8 @@ export function createSafetyRuntime(
           previewHash: binding.previewHash,
           reference,
           decision,
+          ...(batch === undefined ? {} : { batch: batch.id, batchSize: batch.size }),
+          ...(reason === undefined ? {} : { reason }),
         })
         .catch((error: unknown) => {
           console.error(
