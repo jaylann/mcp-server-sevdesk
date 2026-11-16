@@ -1,7 +1,7 @@
 # Recording session runbook
 
-sevDesk has no sandbox and no test account: every write is real, and finalized documents cannot be
-deleted. This project therefore checks its assumptions about the API in **one recording session
+sevDesk has no sandbox and no developer test account: every write is real, and finalized documents
+cannot be deleted. This project therefore checks its assumptions about the API in **one recording session
 on a free 14-day trial account**, with three tools. This page is the maintainer's runbook for it.
 
 | Command                | What it does                                                                                                                | Writes?                                         |
@@ -155,9 +155,9 @@ claude.ai connector and Claude Code over HTTP. The steps are on their own page:
 
 ## 4. Review before anything is shared (about 15 minutes)
 
-1. Read the end of the `fixtures:record` output: `Review: text under these keys was replaced by
-the default rule` lists keys the scrubber did not know. Check that nothing useful was lost and
-   nothing personal kept.
+1. Read the end of the `fixtures:record` output: the line starting with `Review: text under these
+keys` lists keys the scrubber did not know. Check that nothing useful was lost and nothing
+   personal kept.
 2. Search the recordings and reports for anything of yours (name, e-mail domain, company, street,
    IBAN, phone):
 
