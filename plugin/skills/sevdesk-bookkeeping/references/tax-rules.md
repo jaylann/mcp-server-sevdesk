@@ -4,6 +4,12 @@ With sevDesk Update 2.0 every document carries a **tax rule** instead of the old
 rule says how the transaction is treated for VAT; the positions carry the rates. The server
 checks rule × rate (and on receipts rule × booking account) before anything is sent.
 `sevdesk_reference_lookup` with `kind: "tax_rules"` lists the rules with their names and rates.
+For a sale, `sevdesk_tax_rule_suggest` applies the cases below to a customer (country, business or
+consumer, VAT ID) and the account's regime: it returns the rule, the rate (for One-Stop-Shop the
+customer country's standard rate), the invoice note and the legal basis, and lists the options
+when a threshold or a special service decides. `sevdesk_vat_id_check` checks a USt-IdNr.'s format,
+and with VIES only if the server's operator switched that on (it sends the number to the European
+Commission).
 
 > **Not tax advice.** The table maps sevDesk's rules to the business cases they are meant for,
 > following sevDesk's API documentation and the cited laws. Which case applies to a given

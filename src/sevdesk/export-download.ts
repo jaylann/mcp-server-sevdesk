@@ -1,8 +1,9 @@
 /**
  * Downloads a finished sevDesk export (the DATEV ZIP) from the presigned link sevDesk hands out
  * (`GET /ExportJob/jobDownloadInfo` → `link`, an Amazon S3 URL valid for 7 days). Besides the
- * client metadata fetch of OAuth mode (`src/http/oauth/cimd.ts`) this is the only request this
- * server sends anywhere but the sevDesk API, so it is deliberately narrow:
+ * client metadata fetch of OAuth mode (`src/http/oauth/cimd.ts`) and the opt-in VIES check
+ * (`src/domain/vat/vies.ts`) this is the only request this server sends anywhere but the sevDesk
+ * API, so it is deliberately narrow:
  *
  * - **https only**, default port, no user info, and the host must be in {@link EXPORT_HOSTS}
  *   (sevDesk's export bucket on Amazon S3);

@@ -1,4 +1,4 @@
-<!-- translated-from: docs/configuration.md sha256:075431bce20e -->
+<!-- translated-from: docs/configuration.md sha256:815c74cd6128 -->
 
 # Konfiguration
 
@@ -75,6 +75,7 @@ wird nicht gezeigt, weil es das Geheimnis selbst sein kann, in die falsche Varia
 | --------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `SEVDESK_TOOLSETS`          | `default` | Die [Werkzeuggruppen](#werkzeuggruppen), die geladen werden: eine Liste aus `meta`, `contacts`, `invoices`, `credit-notes`, `orders`, `vouchers`, `banking`, `parts`, `reports`, `advanced` oder `default` (alles außer `advanced`) oder `all`. `meta` wird immer geladen. |
 | `SEVDESK_STRUCTURED_OUTPUT` | `auto`    | `auto`, `on` oder `off`: ob Werkzeuge ein Ausgabeschema angeben und neben dem JSON-Text typisierten `structuredContent` zurückgeben. Siehe [Strukturierte Ausgabe](#strukturierte-ausgabe).                                                                                |
+| `SEVDESK_VIES_CHECK`        | `0`       | `1` erlaubt `sevdesk_vat_id_check`, beim VIES-Dienst der Europäischen Kommission zu fragen, ob eine USt-IdNr. gültig ist; dabei geht die USt-IdNr. an `ec.europa.eu` ([Datenschutz](../PRIVACY.de.md)). Aus: nur ihr Format wird geprüft.                                  |
 
 ### Dateien und Audit-Log
 
@@ -130,7 +131,7 @@ und spart Tokens.
 | `vouchers`     | Belege: auflisten, abrufen, Entwürfe mit angehängter Belegdatei, E-Rechnungen auslesen und importieren, Fertigstellen bis Festschreiben.                                                   |
 | `banking`      | Zahlungskonten und Kontoumsätze, Zuordnungsvorschläge, Kontoumsätze Dokumenten zuordnen, private Umsätze.                                                                                  |
 | `parts`        | Artikel einschließlich Lagerbestand: auflisten, abrufen, anlegen, ändern.                                                                                                                  |
-| `reports`      | Zusammenfassungen, Altersstruktur offener Forderungen und Verbindlichkeiten, Liquidität, Änderungen seit einem Datum, Umsatzsteuer-Auswertung, Gewinn und Verlust, CSV- und DATEV-Exporte. |
+| `reports`      | Zusammenfassungen, offene Posten nach Alter, Liquidität, Änderungen seit einem Stichtag, USt-Auswertung, Gewinn und Verlust, Steuerregel-Hilfe, USt-IdNr.-Prüfung, CSV- und DATEV-Exporte. |
 | `advanced`     | `sevdesk_api_get`, ein reines Lese-GET auf jeden sevDesk-Endpunkt. Standardmäßig aus.                                                                                                      |
 
 Jedes Werkzeug mit seiner Werkzeuggruppe, Stufe und seinen Argumenten steht in der

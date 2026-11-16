@@ -26,6 +26,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     auditLogPath: undefined,
     outputDir: undefined,
     fileDirs: [],
+    viesCheck: false,
     userAgent: "mcp-server-sevdesk/0.0.0-test",
     deployment: { kind: "stdio" },
     ...overrides,

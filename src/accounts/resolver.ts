@@ -210,6 +210,7 @@ function accountConfig(
     auditLogPath: settings.auditLogPath,
     outputDir: undefined,
     fileDirs: Object.freeze([]) as readonly string[],
+    viesCheck: settings.viesCheck,
     userAgent: settings.userAgent,
     account: Object.freeze({ id: grant.accountId }),
     deployment,
