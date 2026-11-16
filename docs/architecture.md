@@ -136,8 +136,7 @@ sequenceDiagram
   participant K as sevDesk client
   participant A as sevDesk API
   C->>D: tools/call
-  Note over D: validate · tier check<br/>confirm · dry-run
-  D->>H: arguments
+  D->>H: checked arguments
   H->>K: request
   K->>A: HTTPS
   A-->>K: response

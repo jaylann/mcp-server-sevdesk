@@ -1,4 +1,4 @@
-<!-- translated-from: docs/architecture.md sha256:c4dbc15ff516 -->
+<!-- translated-from: docs/architecture.md sha256:c6fc6133b2ee -->
 
 # Architektur
 
@@ -149,8 +149,7 @@ sequenceDiagram
   participant K as sevDesk-Client
   participant A as sevDesk-API
   C->>D: tools/call
-  Note over D: validieren · Stufe prüfen<br/>bestätigen · Probelauf
-  D->>H: Argumente
+  D->>H: geprüfte Argumente
   H->>K: Anfrage
   K->>A: HTTPS
   A-->>K: Antwort
