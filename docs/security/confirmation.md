@@ -41,7 +41,7 @@ So these previews list the document as sevDesk stores it, not only its number an
 
 A fixed warning in each of these previews names what the facts do not show: the contact person,
 the country of the address, the units and linked articles of the positions and the layout of the
-PDF; for an enshrined voucher the names of the booking accounts and the content of the receipt
+PDF; for a voucher to be enshrined the names of the booking accounts and the content of the receipt
 file.
 
 ## Hidden characters in arguments

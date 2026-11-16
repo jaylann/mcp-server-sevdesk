@@ -1,4 +1,4 @@
-<!-- translated-from: docs/permissions.md sha256:ce8835620b8c -->
+<!-- translated-from: docs/permissions.md sha256:a903125adcc1 -->
 
 # Berechtigungen und Bestätigung
 
@@ -7,7 +7,9 @@ einschränkbaren Rechte, keine reinen Lese-Tokens und kein Ablaufdatum. sevDesk 
 Testumgebung, jeder Schreibvorgang ändert also deine echte Buchhaltung. Deshalb bringt der Server
 seine eigenen minimalen Rechte mit: Berechtigungsstufen, die du wählst, eine Bestätigung durch
 einen Menschen für jeden bindenden Schritt, Probeläufe und ein lokales Audit-Log. Diese Seite
-erklärt jedes davon. Das Bedrohungsmodell dahinter steht in [SECURITY.de.md](../SECURITY.de.md).
+erklärt, wie du jedes davon verwendest; die Garantien hinter den Bestätigungen stehen unter
+[Bestätigung durch einen Menschen](security/confirmation.de.md), das Bedrohungsmodell in
+[SECURITY.de.md](../SECURITY.de.md).
 
 ## Stufen
 
@@ -46,34 +48,30 @@ vertraust und dein Client Bestätigungen anzeigt
 - **Nie ein Weg zur Freigabe.** Kein Argument eines Werkzeugs gibt etwas frei. Ein
   `confirm: true`, das das Modell setzt, gilt nicht als Bestätigung.
 
-Die Stufe wird dreimal durchgesetzt: beim Registrieren der Werkzeuge, erneut bei jedem Aufruf und
-im HTTP-Client, der die Mindeststufe jedes sevDesk-Endpunkts kennt (zum Beispiel brauchen
-`bookAmount` und `enshrine` die Stufe `commit`, `sendViaEmail` die Stufe `external`) und eine
-Anfrage eines Werkzeugs mit zu niedriger Stufe ablehnt. Im Fernzugriff mit OAuth bekommt jede
-Verbindung die Stufen, die auf der Zustimmungsseite angehakt wurden, höchstens aber die aus
-`SEVDESK_ALLOW` ([remote.de.md](remote.de.md#stufen-je-zugang)).
+Die Stufe wird bei jedem Aufruf erneut durchgesetzt und im HTTP-Client, der eine Anfrage an einen
+sevDesk-Endpunkt oberhalb der Stufe des aufrufenden Werkzeugs ablehnt
+([Sicherheitsmodell](architecture/safety.de.md#durchsetzung-an-drei-stellen)). Im Fernzugriff mit OAuth bekommt jede Verbindung
+die Stufen, die auf der Zustimmungsseite angehakt wurden, höchstens aber die aus `SEVDESK_ALLOW`
+([remote.de.md](remote.de.md#stufen-je-zugang)).
 
 ## Wie ein Schreibvorgang abläuft
 
-1. **Argumente prüfen.** Unbekannte Parameter werden mit Namen abgelehnt. Text mit Zeichen, die
-   ein Mensch nicht sehen würde (Zeichen mit Nullbreite, Bidi- und andere Steuerzeichen), wird
-   abgelehnt, bevor etwas gelesen wird, damit nichts Verstecktes sevDesk erreicht.
+1. **Argumente prüfen.** Unbekannte Parameter werden mit Namen abgelehnt, ebenso Text mit Zeichen,
+   die ein Mensch nicht sehen würde
+   ([versteckte Zeichen](security/confirmation.de.md#versteckte-zeichen-in-argumenten)).
 2. **Vorbereiten.** Das Werkzeug liest, was es braucht, mit einem Client, der nicht schreiben
    kann, prüft den Aufruf lokal (Status, Beträge, Steuerregel × Steuersatz, Buchungskonten,
    Dubletten, offene Beträge) und erstellt eine Vorschau: die Aktion in einem Satz, Warnungen und
-   die wichtigsten Angaben wie Beträge, Empfänger und den vollständigen E-Mail-Text. Beim
-   Fertigstellen, Versenden per E-Mail und Festschreiben eines Dokuments führt sie außerdem auf,
-   was im Dokument steht, so wie sevDesk es speichert: die Anschrift darauf, Kopf- und Fußtext,
-   jede Position mit ihrem Text, Bedingungen und Daten. Die meisten Fehler werden hier abgelehnt,
-   bevor etwas gesendet wird.
+   die wichtigsten Angaben wie Beträge, Empfänger und den vollständigen E-Mail-Text. Die meisten
+   Fehler werden hier abgelehnt, bevor etwas gesendet wird.
 3. **Probelauf?** Dann ist die Vorschau das Ergebnis (Status `dry_run`), und der Aufruf endet.
 4. **Bestätigen.** Bei `commit` und `external` siehst du die Vorschau und gibst frei oder lehnst
    ab ([Bestätigungsarten](#bestätigungsarten)). Der Server bereitet danach erneut vor; hat sich
    der Datensatz in der Zwischenzeit geändert, fragt er erneut, statt auszuführen.
-5. **Ausführen.** Das Audit-Log verzeichnet `executing` (kann diese Zeile nicht geschrieben
-   werden, wird nichts gesendet), dann sendet das Werkzeug die Anfrage mit einem Client, der auf
-   seine Stufe beschränkt ist. Schreibvorgänge werden nie wiederholt, damit eine Zeitüberschreitung
-   keine Dublette erzeugen kann.
+5. **Ausführen.** Das [Audit-Log](permissions/audit-log.de.md) verzeichnet `executing` (kann diese
+   Zeile nicht geschrieben werden, wird nichts gesendet), dann sendet das Werkzeug die Anfrage mit
+   einem Client, der auf seine Stufe beschränkt ist. Schreibvorgänge werden nie wiederholt, damit
+   eine Zeitüberschreitung keine Dublette erzeugen kann.
 6. **Zurücklesen.** Das Ergebnis wird aus sevDesk zurückgelesen und zurückgegeben (Status
    `done`). Ein Schreibvorgang aus mehreren Schritten, der mittendrin scheitert, meldet die
    Datensätze, die er bereits geändert hat.
@@ -87,26 +85,32 @@ Ein Probelauf führt jede Prüfung eines Schreibvorgangs aus und gibt dessen Vor
 etwas an sevDesk zu senden und ohne jemanden zu fragen. Lesezugriffe finden trotzdem statt, die
 Vorschau gibt also den aktuellen Datenstand wieder.
 
-- Pro Aufruf: Das Modell übergibt `dryRun: true`. Du kannst einfach danach fragen („Zeig mir
-  zuerst, was du tun würdest“).
+- Pro Aufruf: Das Modell übergibt `dryRun: true`. Du kannst einfach danach fragen:
+
+  > Zeig mir zuerst als Probelauf, was du tun würdest.
+
 - Für alles: `SEVDESK_DRY_RUN=1`. Jedes Schreibwerkzeug gibt dann nur seine Vorschau zurück. Eine
   gute Einstellung für die ersten Sitzungen mit einer neuen Stufe.
 
 ## Bestätigungsarten
 
 `SEVDESK_CONFIRM` legt fest, wie du Aufrufe der Stufen `commit` und `external` bestätigst.
-Aufrufe der Stufe `write` brauchen keine Bestätigung.
+Aufrufe der Stufe `write` brauchen keine Bestätigung. Gleich in welcher Art ist eine Bestätigung
+10 Minuten gültig, wird einmal verwendet und deckt genau den Aufruf und die Vorschau ab, die du
+gesehen hast ([was eine Freigabe
+bindet](security/confirmation.de.md#was-eine-freigabe-bindet)).
 
 ### elicit
 
 Die Voreinstellung. Der Client zeigt über MCP-Elicitation die Vorschau und einen Schalter „Approve
 this action“, der zunächst aus ist. Ablehnen, Abbrechen oder ein nicht umgelegter Schalter ergeben
-`declined`: Nichts ändert sich. Die ausstehende Bestätigung ist vom Server signiert und an das
-Werkzeug, die Argumente und die Vorschau gebunden, 10 Minuten gültig und nur einmal verwendbar.
+`declined`: Nichts ändert sich.
 
 Nicht jeder Client unterstützt Elicitation ([Clients](clients.de.md#bestätigung-je-client)). Ein
 Client, der nicht fragen kann, bekommt einen Fehler, der genau das sagt, und nichts wird gesendet;
-wechsle dann zu `browser`.
+wechsle dann zu `browser`. Die Elicitation verlässt sich darauf, dass die Client-Anwendung das
+Formular ehrlich zeigt
+([worauf sich die Elicitation verlässt](security/confirmation.de.md#worauf-sich-die-elicitation-verlässt)).
 
 ### browser
 
@@ -115,13 +119,13 @@ Webseite frei und bittest den Assistenten dann, es mit denselben Argumenten erne
 
 - **Über stdio** stellt der Server die Seite selbst auf `127.0.0.1` bereit und öffnet sie in deinem
   Standardbrowser. Mit `SEVDESK_CONFIRM_OPEN=0` schreibt er den Link nur in sein Log (stderr). Der
-  Link ist geheim: Er erreicht nie das Modell, das Ergebnis des Werkzeugs oder das Audit-Log.
+  Link ist geheim und erreicht nie das Modell
+  ([die lokale Freigabeseite](security/confirmation.de.md#die-lokale-freigabeseite)).
 - **Im Fernzugriff** warten Freigaben im Freigabe-Postfach des Servers (`/approvals`), das du
-  nach der Anmeldung öffnest ([remote.de.md](remote.de.md#das-freigabe-postfach)).
+  nach der Anmeldung öffnest ([Freigaben](remote/approvals.de.md)).
 
-Jede Freigabe ist an das Werkzeug, die Argumente und die Vorschau gebunden, läuft nach 10 Minuten
-ab und wird einmal verwendet; höchstens fünf warten gleichzeitig. Die Seite zeigt denselben
-Referenzcode wie das Ergebnis des Werkzeugs, sodass du beide zuordnen kannst.
+Höchstens fünf Freigaben warten gleichzeitig. Die Seite zeigt denselben Referenzcode wie das
+Ergebnis des Werkzeugs, sodass du beide zuordnen kannst.
 
 Die Seite gibt es auf Deutsch und Englisch; sie richtet sich nach der Sprache deines Browsers. Auf
 Deutsch ist auch die Vorschau deutsch (die Aktion, die Angaben, die Warnungen, Beträge und Daten
@@ -130,10 +134,9 @@ Text derselben Anfrage behalten: Ordne beide über den Referenzcode zu. Die Seit
 lange die Anfrage noch gültig ist, und nimmt die Schaltflächen weg, sobald sie abgelaufen ist. Sie
 führt kein Skript aus und lädt nichts von anderen Servern.
 
-Die Grenze dieser Art: Ein Agent, der das Log des Servers lesen oder deinen Browser steuern kann
-(Browser-Automatisierung, ein Werkzeug zur Computersteuerung), könnte selbst freigeben. `browser`
-schützt vor einem Modell, das nur redet, zum Beispiel einem, das von in sevDesk-Daten verstecktem
-Text gesteuert wird. Bevorzuge `elicit` in agentischen Clients, die Befehle ausführen können.
+Bevorzuge `elicit` in agentischen Clients, die Befehle ausführen können: Ein Agent, der das Log
+des Servers lesen oder deinen Browser steuern kann, könnte selbst freigeben
+([Grenzen](security/confirmation.de.md#grenzen-des-browser-modus)).
 
 ### off
 
@@ -144,106 +147,41 @@ storniert oder per E-Mail versendet wird. Die Claude-Desktop-Erweiterung bietet 
 ## Audit-Log
 
 Mit `SEVDESK_AUDIT_LOG=<path>` hängt der Server pro Ereignis jedes schreibenden Aufrufs eine
-JSON-Zeile an diese Datei an, im Fernzugriff außerdem eine je Datei, die über eine Upload-Seite
-oder einen Download-Link läuft. Es beantwortet die Frage: „Was hat der Assistent in meiner
-Buchhaltung getan, und wer hat es freigegeben?“
-
-| Ereignis                 | Wann                                                                                                                                        |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `dry_run`                | Ein Probelauf hat seine Vorschau zurückgegeben.                                                                                             |
-| `confirmation_requested` | Eine Bestätigung wurde angefordert, mit der Vorschau (und im Browser-Modus dem Referenzcode).                                               |
-| `confirmation_refused`   | Ein erneuter Versuch legte eine Bestätigung vor, die schon verwendet, abgelaufen oder für andere Argumente erteilt war.                     |
-| `approval_decided`       | Auf einer Freigabeseite wurde „Freigeben“ oder „Ablehnen“ gedrückt.                                                                         |
-| `declined`               | Du hast im Client abgelehnt oder die Freigabe im Browser abgelehnt.                                                                         |
-| `executing`              | Die Aktion wird gleich gesendet, mit der Art der Freigabe: `elicit`, `browser`, `confirmation_off` oder `not_required` (die Stufe `write`). |
-| `executed`               | Die Aktion wurde ausgeführt; mit den Datensätzen, die sie geändert hat.                                                                     |
-| `failed`                 | Die Aktion ist gescheitert; mit der Art des Fehlers und allen Datensätzen, die ein früherer Schritt bereits geändert hat.                   |
-| `file_received`          | Fernzugriff: Eine Datei wurde auf einer Upload-Seite hochgeladen.                                                                           |
-| `file_link_created`      | Fernzugriff: Ein Werkzeug hat einen Download-Link angelegt.                                                                                 |
-| `file_downloaded`        | Fernzugriff: Ein Download-Link wurde verwendet.                                                                                             |
-
-Jede Zeile beginnt mit `ts` (der Zeitpunkt, ISO 8601) und `v`, der Version des Zeilenformats
-(`1`), gefolgt von `event`. Im Fernzugriff folgen `account` und `grant`. Die übrigen Felder hängen
-vom Ereignis ab:
-
-| Feld          | Ereignisse                                                                     | Bedeutung                                                                                                                                                                                   |
-| ------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `account`     | alle, nur im Fernzugriff                                                       | Die sevDesk-Konto-ID (im Bearer-Modus `bearer`, falls der Server sie nicht ermitteln konnte). Bei Dateizeilen das Konto, dessen Werkzeugaufruf die Upload-Seite oder den Link angelegt hat. |
-| `grant`       | alle, nur im Fernzugriff                                                       | Die ID des OAuth-Zugangs oder `bearer`.                                                                                                                                                     |
-| `callId`      | Schreibereignisse                                                              | Gemeinsam für alle Zeilen einer Aktion, von der Anfrage bis zum Ergebnis.                                                                                                                   |
-| `tool`        | Schreibereignisse                                                              | Der Name des Werkzeugs.                                                                                                                                                                     |
-| `tier`        | Schreibereignisse                                                              | `write`, `commit` oder `external`.                                                                                                                                                          |
-| `argsHash`    | Schreibereignisse                                                              | Ein Hash des Werkzeugs und seiner Argumente (ohne `dryRun`).                                                                                                                                |
-| `args`        | Schreibereignisse außer `approval_decided`                                     | Die Argumente: Token und Upload-IDs geschwärzt, versteckte Zeichen als sichtbare `\u{…}`-Escapes geschrieben, Zeichenketten bis 20.000 Zeichen.                                             |
-| `previewHash` | `dry_run`, `confirmation_requested`, `approval_decided`, `executing`           | Ein Hash der Vorschau, die gezeigt und freigegeben wurde; bei Werkzeugen der Stufen `commit` und `external` umfasst er den englischen und den deutschen Text.                               |
-| `preview`     | `dry_run`, `confirmation_requested`                                            | Die Vorschau, wie sie gezeigt wurde: `action` (ein Satz), `facts` (`label`, `value`), `warnings` und `irreversible`.                                                                        |
-| `approval`    | `executing`                                                                    | Wie die Aktion freigegeben wurde: `elicit`, `browser`, `confirmation_off` oder `not_required`.                                                                                              |
-| `reason`      | `confirmation_refused`                                                         | `replayed_or_expired` oder `mismatch` (für ein anderes Werkzeug oder andere Argumente erteilt).                                                                                             |
-| `decision`    | `approval_decided`                                                             | `approved` oder `rejected`.                                                                                                                                                                 |
-| `reference`   | `confirmation_requested` im Browser-Modus, `approval_decided`, Dateiereignisse | Der Referenzcode, den die Seite und das Ergebnis des Werkzeugs zeigen. Nicht geheim.                                                                                                        |
-| `affected`    | `executed`, `failed`                                                           | Die geänderten Datensätze (`objectName`, `id`); bei `failed` die, die ein früherer Schritt bereits geändert hat.                                                                            |
-| `error`       | `failed`                                                                       | Die Art des Fehlers, etwa `validation`, `not_found`, `auth`, `timeout`, `network`, `server`, `aborted`, `internal` oder `output_invalid`.                                                   |
-| `kind`        | Dateiereignisse                                                                | `pdf`, `png`, `jpeg`, `xml`, `csv` oder `zip`.                                                                                                                                              |
-| `bytes`       | Dateiereignisse                                                                | Die Größe der Datei.                                                                                                                                                                        |
-| `sha256`      | Dateiereignisse                                                                | Der SHA-256 des Inhalts, hexadezimal. Dateizeilen enthalten nie den Dateinamen oder den Inhalt.                                                                                             |
-
-Zum Beispiel (gekürzt):
-
-```json
-{
-  "ts": "2026-11-09T14:03:12.481Z",
-  "v": 1,
-  "event": "executed",
-  "callId": "6f1c…",
-  "tool": "sevdesk_invoice_finalize",
-  "tier": "commit",
-  "argsHash": "9b2e…",
-  "args": { "id": 1042, "sentVia": "email" },
-  "affected": [{ "objectName": "Invoice", "id": "1042" }]
-}
-```
-
-Die Datei wird mit Modus 0600 angelegt, nur zum Anhängen geöffnet und nie über einen symbolischen
-Link. Kann die Zeile `executing` nicht geschrieben werden, wird die Aktion nicht ausgeführt. Das
-Log ist lokal und nicht fälschungssicher: Es hält für dich fest, was dieser Server getan hat, und
-schützt nicht vor jemandem, der den Rechner kontrolliert. `v` ändert sich nur, wenn ein Feld seine
-Bedeutung ändert oder entfällt; neue Felder können ohne Änderung von `v` hinzukommen
-([Compatibility](compatibility.md)).
+JSON-Zeile an: Vorschauen, Bestätigungen, Ausführungen und Fehlschläge. Ereignisse, Felder und die
+Garantien der Datei stehen unter [Audit-Log](permissions/audit-log.de.md).
 
 ## Dateien
 
 Werkzeuge lesen und schreiben lokale Dateien nur dort, wo du es erlaubst:
 
-- **Lesen** (Belege, E-Rechnungen) nur innerhalb der Ordner aus `SEVDESK_FILE_DIRS`: Die echten
-  Pfade werden geprüft, symbolische Links dürfen nicht nach außen führen, der Dateityp wird am
-  Inhalt erkannt, und die Größe ist begrenzt.
+- **Lesen** (Belege, E-Rechnungen) nur innerhalb der Ordner aus `SEVDESK_FILE_DIRS`.
 - **Schreiben** (PDFs, E-Rechnungs-XML, CSV- und DATEV-Exporte) nur in `SEVDESK_OUTPUT_DIR`: nur
-  neue Dateien, mit Modus 0600, nie überschreibend.
+  neue Dateien, nie überschreibend.
 
-Ohne diese Einstellungen greift kein Werkzeug auf deine Festplatte zu. Im Fernzugriff gelangen
-Dateien stattdessen über Seiten zum Hochladen und Download-Links in deinem Browser zum Server und
-zurück; diese brauchen eine Browser-Sitzung deines sevDesk-Kontos ([remote.de.md](remote.de.md#dateien-hochladen-und-herunterladen)).
+Ohne diese Einstellungen greift kein Werkzeug auf deine Festplatte zu. Wie Pfade und Dateiinhalte
+geprüft werden, steht unter [Lokale Dateien](security/local.de.md#lokale-dateien). Im Fernzugriff
+gelangen Dateien stattdessen über Upload-Seiten und Download-Links in deinem Browser zum Server und
+zurück; diese brauchen eine Browser-Sitzung deines sevDesk-Kontos ([Dateien](remote/files.de.md)).
 
 ## Empfehlungen
 
-- **Verwende einen eigenen sevDesk-Benutzer** für das Token, damit du dessen Token
-  zurücksetzen kannst, ohne deine eigene Anmeldung anzurühren.
-- **Beginne mit `read`.** Ergänze `write` für die ersten Sitzungen mit
-  `SEVDESK_DRY_RUN=1`, dann `commit` und `external` nur, wenn du sie brauchst, und in einem
-  Client, der Bestätigungen anzeigt.
-- **Behalte `elicit`**, wo der Client es unterstützt; verwende `browser`, wo nicht, und
-  nie `off` für ein Konto mit echten Daten.
+- **Verwende einen eigenen sevDesk-Benutzer** für das Token, damit du dessen Token zurücksetzen
+  kannst, ohne deine eigene Anmeldung anzurühren.
+- **Beginne mit `read`.** Ergänze `write` für die ersten Sitzungen mit `SEVDESK_DRY_RUN=1`, dann
+  `commit` und `external` nur, wenn du sie brauchst, und in einem Client, der Bestätigungen
+  anzeigt.
+- **Behalte `elicit`**, wo der Client es unterstützt; verwende `browser`, wo nicht, und nie `off`
+  für ein Konto mit echten Daten.
 - **Setze `SEVDESK_AUDIT_LOG`**, sobald du eine Schreibstufe aktivierst.
-- **Halte das Token aus Konfigurationsdateien heraus**: Schlüsselbund des Betriebssystems,
-  eine Token-Datei oder die Claude-Desktop-Erweiterung
-  ([Konfiguration](configuration.de.md#das-token-im-schlüsselbund-ablegen)).
-- **Erlaube enge Ordner**: einen Belegordner für `SEVDESK_FILE_DIRS`, einen leeren
-  Exportordner für `SEVDESK_OUTPUT_DIR`, nicht dein Home-Verzeichnis.
-- **Lade nur die Werkzeuggruppen, die du brauchst** (`SEVDESK_TOOLSETS`); lass
-  `advanced` aus, solange keine Aufgabe es braucht.
-- Prüfe die Vorschau, bevor du freigibst. Sie entsteht aus dem, was das Werkzeug gerade
-  gelesen hat, nicht aus dem, was das Modell sagt. Lies vor dem Fertigstellen, Versenden oder
-  Festschreiben eines Dokuments dessen Anschrift, Texte und Positionen in der Vorschau: Ein Entwurf
-  lässt sich ohne Bestätigung ändern, der Fußtext dort (etwa die Bankverbindung) ist also der, der
-  verbindlich wird. Eine Warnung in der Vorschau nennt, was sie nicht zeigt, etwa das Layout des
-  PDF.
+- **Halte das Token aus Konfigurationsdateien heraus**: Schlüsselbund des Betriebssystems, eine
+  Token-Datei oder die Claude-Desktop-Erweiterung ([Profile](configuration/profiles.de.md)).
+- **Erlaube enge Ordner**: einen Belegordner für `SEVDESK_FILE_DIRS`, einen leeren Exportordner
+  für `SEVDESK_OUTPUT_DIR`, nicht dein Home-Verzeichnis.
+- **Lade nur die Werkzeuggruppen, die du brauchst** (`SEVDESK_TOOLSETS`); lass `advanced` aus,
+  solange keine Aufgabe es braucht.
+- **Prüfe die Vorschau, bevor du freigibst.** Sie entsteht aus dem, was das Werkzeug gerade gelesen
+  hat, nicht aus dem, was das Modell sagt. Lies vor dem Fertigstellen, Versenden oder Festschreiben
+  eines Dokuments dessen Anschrift, Texte und Positionen in der Vorschau: Ein Entwurf lässt sich
+  ohne Bestätigung ändern, der Fußtext dort (etwa die Bankverbindung) ist also der, der verbindlich
+  wird. Eine Warnung in der Vorschau nennt, was sie nicht zeigt, etwa das Layout des PDF
+  ([Vorschauen verbindlicher Dokumente](security/confirmation.de.md#vorschauen-verbindlicher-dokumente)).
