@@ -187,4 +187,102 @@ describe("a draft from sevDesk's receipt recognition (D-103)", () => {
     expect(body.voucher["supplier"]).toEqual({ id: 1001, objectName: "Contact" });
     expect(body.voucher).not.toHaveProperty("supplierName");
   });
+
+  it("replaces a wrongly split position with one position per tax rate", async () => {
+    // Recorded 2026-11-17: 100.00 net at 19 % and 50.00 net at 7 % (gross 172.50) came back as
+    // ONE position at 7 % with net 161.21, tax 11.29, gross 172.50.
+    const wrong = recognisedPositionRow({
+      taxRate: "7",
+      sum: "161.21",
+      sumNet: "161.21",
+      sumTax: "11.29",
+      sumGross: "172.5",
+    });
+    const fake = client(recognisedRow({ sumNet: "161.21", sumTax: "11.29", sumGross: "172.5" }), [
+      wrong,
+    ]);
+    const { plan } = await executeWrite(
+      voucherUpdateDraftTool,
+      {
+        id: ID,
+        taxRuleId: 9,
+        amountMode: "net",
+        positions: [
+          { accountDatevId: 4266, amount: "100.00", taxRate: 19 },
+          { accountDatevId: 4266, amount: "50.00", taxRate: 7 },
+        ],
+      },
+      fake,
+    );
+
+    const body = fake.writes()[0]?.body as {
+      voucherPosSave: Record<string, unknown>[];
+      voucherPosDelete: unknown;
+    };
+    expect(
+      body.voucherPosSave.map((position) => [position["taxRate"], position["sumNet"]]),
+    ).toEqual([
+      [19, 100],
+      [7, 50],
+    ]);
+    expect(body.voucherPosDelete).toEqual([{ id: 3301, objectName: "VoucherPos" }]);
+    expect(plan.preview.facts).toContainEqual({
+      label: "Total (expected)",
+      value: "net 150.00 EUR, tax 22.50 EUR, gross 172.50 EUR",
+    });
+  });
+
+  it("handles a recognised revenue draft the same way: refused until completed, then finalized", async () => {
+    // Recorded 2026-11-17: creditDebit D gave a revenue draft with net 200, tax 38, gross 238,
+    // one position at 19 % and taxRule null.
+    const revenue = recognisedRow({
+      creditDebit: "D",
+      sumNet: "200",
+      sumTax: "38",
+      sumGross: "238",
+    });
+    const position = recognisedPositionRow({
+      sum: "200",
+      sumNet: "200",
+      sumTax: "38",
+      sumGross: "238",
+    });
+    const refused = await refusal(
+      prepareWrite(voucherFinalizeTool, { id: ID }, client(revenue, [position])),
+    );
+    expect(refused).toContain("has no Update 2.0 tax rule");
+
+    const fake = client(revenue, [position]);
+    await executeWrite(
+      voucherUpdateDraftTool,
+      {
+        id: ID,
+        taxRuleId: 1,
+        positions: [{ accountDatevId: 5192, amount: "238.00", taxRate: 19 }],
+      },
+      fake,
+    );
+    const body = fake.writes()[0]?.body as {
+      voucher: Record<string, unknown>;
+      voucherPosSave: Record<string, unknown>[];
+    };
+    expect(body.voucher).toMatchObject({
+      creditDebit: "D",
+      taxRule: { id: 1, objectName: "TaxRule" },
+    });
+    expect(body.voucherPosSave[0]).toMatchObject({
+      accountDatev: { id: 5192, objectName: "AccountDatev" },
+      taxRate: 19,
+      sumGross: 238,
+    });
+
+    const plan = await prepareWrite(
+      voucherFinalizeTool,
+      { id: ID },
+      client({ ...revenue, taxRule: { id: "1", objectName: "TaxRule" } }, [
+        { ...position, accountDatev: { id: "5192", objectName: "AccountDatev" } },
+      ]),
+    );
+    expect(plan.preview.action).toContain("Finalize draft voucher 2301 (revenue");
+  });
 });

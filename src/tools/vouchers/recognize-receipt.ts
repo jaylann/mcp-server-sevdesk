@@ -30,7 +30,7 @@ const recognitionOutput = voucherDraftOutput.extend({
         .describe(
           "Fields sevDesk's recognition filled in, none of them checked: date, number " +
             "(Belegnummer), supplierName (a text, not reliably the receipt's supplier), totals, " +
-            "positions.",
+            "positions (positions and rates can be wrong even when the total is right).",
         ),
       missing: z
         .array(z.enum(MISSING_FIELDS))
@@ -45,14 +45,15 @@ const recognitionOutput = voucherDraftOutput.extend({
   possibleDuplicates: z
     .array(z.number().int())
     .optional()
-    .describe("Other expense vouchers with the same date, gross total and Belegnummer."),
+    .describe("Other vouchers of the same kind with the same date, gross total and Belegnummer."),
 });
 
 type RecognitionOutput = z.output<typeof recognitionOutput>;
 
 /**
- * `sevdesk_voucher_recognize_receipt`: a draft expense voucher made by sevDesk's own receipt
- * recognition from a receipt PDF (`POST /Voucher/Factory/createVoucherFromFile`, D-103; mechanism
+ * `sevdesk_voucher_recognize_receipt`: a draft voucher (expense by default, or revenue) made by
+ * sevDesk's own receipt recognition from a receipt file
+ * (`POST /Voucher/Factory/createVoucherFromFile`, D-103; mechanism
  * in `src/domain/drafts/voucher-recognition.ts`). Tier `write`: it only creates a draft, which
  * cannot be finalized before a tax rule and booking accounts are set through the normal update.
  * `sleep` is injected by tests; the registered tool waits with a real timer.
@@ -64,16 +65,17 @@ export function voucherRecognizeReceiptTool(
     name: "sevdesk_voucher_recognize_receipt",
     title: "Draft a voucher with sevDesk's receipt recognition",
     description:
-      "Create a draft expense voucher (Beleg) from a receipt PDF with sevDesk's own receipt " +
-      "recognition (Belegerkennung): sevDesk creates the draft with the file attached at once " +
-      "and fills in date, Belegnummer, sums, a supplier text and positions within seconds; the " +
-      `tool waits up to ${WAIT_SECONDS} s. The result says which fields sevDesk filled in ` +
-      "(unchecked) and what is missing: always the tax rule and booking accounts, usually a " +
+      "Create a draft voucher (Beleg; expense by default, or revenue) from a receipt file with " +
+      "sevDesk's own receipt recognition (Belegerkennung): sevDesk creates the draft with the " +
+      "file attached at once and fills in date, Belegnummer, sums, a supplier text and " +
+      `positions within seconds; the tool waits up to ${WAIT_SECONDS} s. The result says which ` +
+      "fields sevDesk filled in (unchecked; positions and tax rates can be wrong even when the " +
+      "total is right) and what is missing: always the tax rule and booking accounts, usually a " +
       "supplier contact. Complete the draft with sevdesk_voucher_update_draft before " +
-      "sevdesk_voucher_finalize. PDF from SEVDESK_FILE_DIRS or an upload. Every call creates a " +
-      "new draft, also when nothing is recognised (delete it with " +
-      "sevdesk_voucher_delete_draft). Expense receipts only; when you know the fields, use " +
-      "sevdesk_voucher_create_draft. Update 2.0 only. Tier write; dryRun previews.",
+      "sevdesk_voucher_finalize. PDF (PNG/JPEG: recognition unmeasured) from SEVDESK_FILE_DIRS " +
+      "or an upload. Every call creates a new draft, also for a file sent before or when " +
+      "nothing is recognised (delete it with sevdesk_voucher_delete_draft). When you know the " +
+      "fields, use sevdesk_voucher_create_draft. Update 2.0 only. Tier write; dryRun previews.",
     toolset: "vouchers",
     tier: "write",
     annotations: {
@@ -90,7 +92,7 @@ export function voucherRecognizeReceiptTool(
     // duplicate scan after the recognition sees a draft another call made just before.
     locks: () => [ACCOUNT_VOUCHER_DRAFTS],
     prepare: (args, ctx) =>
-      prepareVoucherRecognition(ctx.client, args.file, {
+      prepareVoucherRecognition(ctx.client, args, {
         signal: ctx.signal,
         cacheOwner: ctx.config,
         files: ctx.files,

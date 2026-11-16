@@ -231,7 +231,8 @@ exports[`German previews > draft a voucher with sevDesk's receipt recognition: s
 "Belegdatei an sevDesks Belegerkennung senden: sevDesk legt sofort einen Belegentwurf (Ausgabe) mit der Datei an und füllt ihn binnen Sekunden aus; bis zu 15 s darauf warten.
 ! Der Entwurf entsteht, sobald die Datei gesendet ist, auch wenn die Erkennung nichts findet, und bleibt, bis er vervollständigt oder gelöscht wird (sevdesk_voucher_delete_draft). Jeder Aufruf legt einen weiteren Entwurf an.
 ! sevdesk_voucher_finalize lehnt den Entwurf ab, bis sevdesk_voucher_update_draft eine Steuerregel und auf jeder Position ein Buchungskonto gesetzt hat.
-! Dubletten lassen sich erst nach der Erkennung suchen: Das Ergebnis nennt Belege mit demselben Datum, derselben Bruttosumme und Belegnummer.
+! Die erkannten Positionen und Steuersätze können falsch sein, auch wenn die Summe stimmt (ein Beleg mit 19 % und 7 % kam als eine Position zu 7 % zurück).
+! sevDesk lehnt eine schon gesendete Datei nicht ab, und Dubletten lassen sich erst nach der Erkennung suchen: Das Ergebnis nennt Belege mit demselben Datum, derselben Bruttosumme und Belegnummer.
 (umkehrbar)
 Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
 Belegdatei: Rechnung-0815.pdf (PDF, 77 Bytes, SHA-256 56c2ac043c28d354…)

@@ -33,6 +33,9 @@ import {
 
 const ID = 2301;
 
+/** The PNG signature: enough for the content check that recognises the file kind. */
+const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
 let sleeps: number[] = [];
 const sleep = (ms: number): Promise<void> => {
   sleeps.push(ms);
@@ -145,8 +148,13 @@ describe("sevdesk_voucher_recognize_receipt", () => {
       label: "Left empty",
       value: "tax rule (Steuerregel), booking accounts (Buchungskonten), supplier contact",
     });
-    expect(plan.preview.warnings).toHaveLength(3);
+    expect(plan.preview.warnings).toHaveLength(4);
     expect(plan.preview.warnings[0]).toContain("Every call creates another draft.");
+    expect(plan.preview.warnings[2]).toBe(
+      "The recognised positions and tax rates can be wrong even when the total is right (a " +
+        "receipt with 19 % and 7 % came back as one position at 7 %).",
+    );
+    expect(plan.preview.warnings[3]).toContain("sevDesk does not refuse a file it has seen before");
     expect(plan.previewDe?.action).toContain("Belegerkennung");
     expect(plan.previewDe?.facts.map((f) => f.label)).toEqual([
       "Art",
@@ -155,24 +163,47 @@ describe("sevdesk_voucher_recognize_receipt", () => {
       "Bleibt leer",
       "Status nach dem Speichern",
     ]);
-    expect(plan.previewDe?.warnings).toHaveLength(3);
+    expect(plan.previewDe?.facts[3]?.value).toBe("Steuerregel, Buchungskonten, Lieferantenkontakt");
+    expect(plan.previewDe?.warnings).toHaveLength(4);
   });
 
-  it("refuses without a folder, a non-PDF file and an Update 1.0 account, before any write", async () => {
+  it("previews a revenue receipt with the customer, and an image with its warning", async () => {
+    const { dir } = await folder();
+    await writeFile(join(dir, "kasse.png"), PNG_BYTES);
+    const plan = await prepareWrite(tool, { file: "kasse.png", kind: "revenue" }, client().fake, {
+      fileDirs: [dir],
+    });
+    expect(plan.preview.action).toContain("creates a draft revenue voucher (Beleg)");
+    expect(plan.previewDe?.action).toContain("Belegentwurf (Einnahme)");
+    expect(plan.preview.facts).toContainEqual({
+      label: "Left empty",
+      value: "tax rule (Steuerregel), booking accounts (Buchungskonten), customer contact",
+    });
+    expect(plan.previewDe?.facts).toContainEqual({
+      label: "Von sevDesk ausgefüllt",
+      value: "Belegdatum, Belegnummer, Summen, ein Kundentext, Positionen (ungeprüft)",
+    });
+    expect(plan.previewDe?.facts).toContainEqual({
+      label: "Bleibt leer",
+      value: "Steuerregel, Buchungskonten, Kundenkontakt",
+    });
+    expect(plan.preview.warnings).toHaveLength(5);
+    expect(plan.preview.warnings[4]).toContain("How well sevDesk's recognition reads an image");
+    expect(plan.previewDe?.warnings).toHaveLength(5);
+  });
+
+  it("refuses without a folder, a file that is not a receipt and an Update 1.0 account, before any write", async () => {
     const { dir } = await folder();
     const none = await failure(prepareWrite(tool, { file: "beleg.pdf" }, client().fake));
     expect(none.kind).toBe("validation");
     expect(none.message).toContain("SEVDESK_FILE_DIRS is not set");
 
-    await writeFile(
-      join(dir, "beleg.png"),
-      new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    await writeFile(join(dir, "beleg.xml"), "<Invoice/>");
+    const xml = await failure(
+      prepareWrite(tool, { file: "beleg.xml" }, client().fake, { fileDirs: [dir] }),
     );
-    const png = await failure(
-      prepareWrite(tool, { file: "beleg.png" }, client().fake, { fileDirs: [dir] }),
-    );
-    expect(png.kind).toBe("validation");
-    expect(png.message).toContain("accepted: PDF;");
+    expect(xml.kind).toBe("validation");
+    expect(xml.message).toContain("accepted: PDF, PNG, JPEG;");
 
     const legacy = new FakeSevdeskClient([version1Route, recognitionRoute()]);
     const old = await failure(
@@ -236,6 +267,10 @@ describe("sevdesk_voucher_recognize_receipt", () => {
       "sevDesk's receipt recognition filled in the date, the Belegnummer, a supplier text, the " +
         "sums and the positions (recognition.filledIn); nobody has checked these values. " +
         "Compare them with the receipt before finalizing.",
+      "The recognised positions and tax rates can be wrong even when the total is right: " +
+        "sevDesk read a receipt with 19 % and 7 % as one position at 7 %. Check every position " +
+        "and rate against the receipt; a receipt with several tax rates has to be entered again " +
+        "as one position per rate (positions of sevdesk_voucher_update_draft).",
       "The supplier is only a text sevDesk read (voucher.supplier.name), not always the " +
         "receipt's supplier, and not a contact: set supplierId (from sevdesk_contacts_search) " +
         "or supplierName with sevdesk_voucher_update_draft.",
@@ -245,8 +280,11 @@ describe("sevdesk_voucher_recognize_receipt", () => {
         "recognised ones). sevdesk_reference_lookup kind=receipt_guidance lists which booking " +
         "accounts allow which tax rules and rates.",
     ]);
-    expect(data.notesDe).toHaveLength(3);
-    expect(data.notesDe?.[2]).toContain("lehnt sevdesk_voucher_finalize ihn ab");
+    expect(data.notesDe).toHaveLength(4);
+    expect(data.notesDe?.[1]).toContain(
+      "ein Beleg mit mehreren Steuersätzen muss als eine Position je Satz neu erfasst werden",
+    );
+    expect(data.notesDe?.[3]).toContain("lehnt sevdesk_voucher_finalize ihn ab");
     expect(output.summary).toBe(
       "Created draft voucher 2301 with sevDesk's receipt recognition (1 position, gross 119.00 " +
         "EUR); the recognised values are unchecked and the draft is not complete yet. See notes.",
@@ -254,14 +292,78 @@ describe("sevdesk_voucher_recognize_receipt", () => {
     expect(output.affected).toEqual([{ objectName: "Voucher", id: "2301" }]);
   });
 
+  it("sends a revenue receipt with creditDebit D and words the notes for the customer", async () => {
+    const { dir, file } = await folder();
+    // Recorded 2026-11-17: a D upload is a revenue draft recognised the same way.
+    const revenue = recognisedRow({
+      creditDebit: "D",
+      sumNet: "200",
+      sumTax: "38",
+      sumGross: "238",
+    });
+    const fake = new FakeSevdeskClient([
+      version2Route,
+      recognitionRoute(createdFromFileRow({ creditDebit: "D" })),
+      pollingRoute(1, revenue).route,
+      positionsRoute(ID, [recognisedPositionRow({ sumNet: "200", sumTax: "38", sumGross: "238" })]),
+      voucherListRoute([revenue]),
+    ]);
+    const { output } = await executeWrite(tool, { file, kind: "revenue" }, fake, {
+      fileDirs: [dir],
+    });
+
+    expect(fake.writes()[0]?.form?.get("creditDebit")).toBe("D");
+    expect(fake.callsTo("/Voucher")[0]?.query).toMatchObject({ creditDebit: "D" });
+    expect(output.data.voucher).toMatchObject({ kind: "revenue", paymentDirection: "in" });
+    expect(output.data.recognition.missing).toEqual([
+      "taxRule",
+      "bookingAccount",
+      "supplierContact",
+    ]);
+    expect(output.data.notes?.[0]).toContain(
+      "filled in the date, the Belegnummer, a customer text",
+    );
+    expect(output.data.notes).toContain(
+      "The customer is only a text sevDesk read (voucher.supplier.name), not always the " +
+        "receipt's customer, and not a contact: set supplierId (from sevdesk_contacts_search) " +
+        "or supplierName with sevdesk_voucher_update_draft.",
+    );
+    expect(output.data.notesDe).toContain(
+      "Der Kunde ist nur ein von sevDesk gelesener Text (voucher.supplier.name), nicht immer der " +
+        "Kunde des Belegs, und kein Kontakt: Setze supplierId (aus sevdesk_contacts_search) oder " +
+        "supplierName mit sevdesk_voucher_update_draft.",
+    );
+  });
+
+  it("sends a PNG with its MIME type and says that image recognition is unmeasured", async () => {
+    const { dir } = await folder();
+    await writeFile(join(dir, "photo.png"), PNG_BYTES);
+    // Recorded 2026-11-17: a 1x1 PNG made a draft and nothing was recognised.
+    const { fake } = client(null);
+    const { output } = await executeWrite(tool, { file: "photo.png" }, fake, { fileDirs: [dir] });
+
+    const part = fake.writes()[0]?.form?.get("voucher");
+    expect((part as File).type).toBe("image/png");
+    expect((part as File).name).toBe("photo.png");
+    expect(output.data.receipt?.kind).toBe("png");
+    expect(output.data.recognition.recognised).toBe(false);
+    expect(output.data.notes?.[1]).toBe(
+      "How well sevDesk's recognition reads an image is unmeasured (a test PNG made a draft " +
+        "with nothing filled in; JPEG was not tried): expect to enter the details yourself.",
+    );
+    expect(output.data.notesDe?.[1]).toContain("Wie gut sevDesks Erkennung ein Bild liest");
+  });
+
   it("waits between reads until the sums appear", async () => {
     const { dir, file } = await folder();
     const { fake, reads } = client(3);
     const { output } = await executeWrite(tool, { file }, fake, { fileDirs: [dir] });
 
+    // Recorded 2026-11-17: the sums were there one second after the upload.
+    expect(RECOGNITION_WAITS_MS[0]).toBe(1_000);
     expect(reads()).toBe(3);
     expect(sleeps).toEqual(RECOGNITION_WAITS_MS.slice(0, 2));
-    expect(output.data.recognition).toMatchObject({ recognised: true, reads: 3, waitedSeconds: 4 });
+    expect(output.data.recognition).toMatchObject({ recognised: true, reads: 3, waitedSeconds: 2 });
     expect(fake.writes()).toHaveLength(1);
   });
 
@@ -281,12 +383,12 @@ describe("sevdesk_voucher_recognize_receipt", () => {
       recognised: false,
       filledIn: [],
       missing: ["taxRule", "bookingAccount", "number", "supplierContact"],
-      reads: 7,
+      reads: 8,
       waitedSeconds: 15,
     });
     expect(data.voucher.totals.gross?.amount).toBe("0.00");
     expect(data.notes?.[0]).toBe(
-      "sevDesk's receipt recognition filled in no sums within 15 s (7 reads). What it did not " +
+      "sevDesk's receipt recognition filled in no sums within 15 s (8 reads). What it did not " +
         "fill in keeps sevDesk's placeholders: the upload time as date, sums 0, no supplier and " +
         "no Belegnummer. The recognition may still finish later: read draft 2301 again with " +
         "sevdesk_voucher_get, then complete it with sevdesk_voucher_update_draft (supplier, " +

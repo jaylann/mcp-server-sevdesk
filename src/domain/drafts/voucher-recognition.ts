@@ -12,12 +12,19 @@
  * contact) and one position with rate and sums, but no tax rule and no booking account
  * (`accountDatev` null). The draft exists even when recognition finds nothing.
  *
+ * Recorded 2026-11-17 (one-off check, same account): `creditDebit` `D` makes a revenue draft that
+ * is recognised the same way; a PNG in the part `voucher` makes a draft too (a 1x1 test image,
+ * nothing recognised; JPEG and real photos unmeasured); the sums were there one second after the
+ * upload; a receipt with 19 % and 7 % came back as ONE position at 7 % with the right gross total
+ * and a wrong split; the same file sent twice made a second draft (sevDesk does not deduplicate).
+ *
  * So {@link executeVoucherRecognition} sends the POST once (never retried), then reads the draft
  * until its sums appear, waiting at most {@link RECOGNITION_WAIT_MS} in total, and reports which
- * fields sevDesk filled in (none of them checked), what is still missing and how to complete the
- * draft with the normal update or delete it. Only what was recorded is offered: expense receipts
- * as PDF. Revenue vouchers (`D`), image files, the longest recognition time and receipts with
- * several tax rates were not recorded.
+ * fields sevDesk filled in (none of them checked; positions and rates can be wrong even when the
+ * total is right), what is still missing and how to complete the draft with the normal update or
+ * delete it. It takes the file kinds of a manual receipt (PDF, PNG, JPEG) and says that the
+ * recognition of images is unmeasured. The longest recognition time (scans, many pages) is
+ * unmeasured too.
  *
  * Every value on the new draft comes from sevDesk and is third-party text: it reaches the model
  * only as cleaned DTO values, never in a summary, note, preview action or error message.
@@ -34,11 +41,13 @@ import { cleanText } from "../common.js";
 import { compare, isZero } from "../money.js";
 import { bothPreviews, inLanguage, type Phrase, phrase } from "../preview-text.js";
 import {
+  creditDebitForKind,
   listVoucherPositions,
   listVouchers,
   mapVoucherDetail,
   type VoucherDetailDto,
   type VoucherDetails,
+  type VoucherKind,
 } from "../vouchers.js";
 import { draftPreview } from "./document.js";
 import { type DraftPreview, fact } from "./preview.js";
@@ -55,15 +64,16 @@ import { receiptBlob, type ReceiptFile, VOUCHER_DRAFT_STATUS } from "./voucher-p
 /** The endpoint (D-103). */
 const CREATE_FROM_FILE_PATH = "/Voucher/Factory/createVoucherFromFile";
 
-/** File kinds sent to the recognition: only a PDF was recorded (D-103). */
-const RECOGNITION_FILE_KINDS = ["pdf"] as const;
-
 /**
  * The waits between the reads of the new draft: the first read follows the upload at once, then
- * up to six more, 15 s of waiting in total. Recorded: the sums were there about 5 s after the
- * upload (D-103); three times that leaves headroom without holding the call for long.
+ * up to seven more, 15 s of waiting in total. Recorded: the sums were there one second after the
+ * upload (2026-11-17), at the latest about 5 s after it (2026-11-16, D-103); the short first
+ * waits catch the usual case, the bound of three times the slowest recorded one leaves headroom
+ * without holding the call for long.
  */
-export const RECOGNITION_WAITS_MS: readonly number[] = [2_000, 2_000, 2_000, 3_000, 3_000, 3_000];
+export const RECOGNITION_WAITS_MS: readonly number[] = [
+  1_000, 1_000, 2_000, 2_000, 3_000, 3_000, 3_000,
+];
 
 /** The longest total wait for the recognition, ms. */
 export const RECOGNITION_WAIT_MS = RECOGNITION_WAITS_MS.reduce((sum, wait) => sum + wait, 0);
@@ -88,6 +98,7 @@ type MissingField = (typeof MISSING_FIELDS)[number];
 
 export interface RecognitionState {
   readonly file: ReceiptFile;
+  readonly kind: VoucherKind;
 }
 
 export interface RecognitionPlan {
@@ -97,45 +108,55 @@ export interface RecognitionPlan {
 }
 
 /**
- * Reads the receipt (a PDF, through the call's file access with its size and type checks),
- * checks that the account is on Update 2.0 (a recognised draft can only be completed there) and
- * builds the preview. Nothing is written.
+ * The party of the voucher: the supplier of an expense, the customer of revenue. The German word
+ * is the stem compounds take ("Lieferante" + "ntext", "Kunde" + "nkontakt").
+ */
+function partyWord(kind: VoucherKind): Phrase {
+  return kind === "expense" ? phrase("supplier", "Lieferante") : phrase("customer", "Kunde");
+}
+
+/**
+ * Reads the receipt (PDF, PNG or JPEG, through the call's file access with its size and type
+ * checks, like the receipt of a manual draft), checks that the account is on Update 2.0 (a
+ * recognised draft can only be completed there) and builds the preview. Nothing is written.
  */
 export async function prepareVoucherRecognition(
   client: SevdeskClient,
-  fileRef: string,
+  args: { readonly file: string; readonly kind?: VoucherKind | undefined },
   options: VoucherCallOptions,
 ): Promise<RecognitionPlan> {
-  const file = await readReceiptFile(options.files, fileRef, RECOGNITION_FILE_KINDS);
+  const kind = args.kind ?? "expense";
+  const file = await readReceiptFile(options.files, args.file);
   await assertUpdate2(client, options.signal, options.cacheOwner);
   const seconds = String(RECOGNITION_WAIT_MS / 1_000);
+  const party = partyWord(kind);
   return {
     ...bothPreviews((lang) => {
       const text = (en: string, de: string): string => (lang === "de" ? de : en);
       return draftPreview(
         text(
-          "Send the receipt file to sevDesk's receipt recognition: sevDesk creates a draft " +
-            "expense voucher (Beleg) with the file attached at once and fills it in within " +
-            `seconds; wait up to ${seconds} s for it.`,
+          `Send the receipt file to sevDesk's receipt recognition: sevDesk creates a draft ${kind} ` +
+            "voucher (Beleg) with the file attached at once and fills it in within seconds; wait " +
+            `up to ${seconds} s for it.`,
           "Belegdatei an sevDesks Belegerkennung senden: sevDesk legt sofort einen " +
-            "Belegentwurf (Ausgabe) mit der Datei an und füllt ihn binnen Sekunden aus; bis zu " +
-            `${seconds} s darauf warten.`,
+            `Belegentwurf (${kind === "expense" ? "Ausgabe" : "Einnahme"}) mit der Datei an und ` +
+            `füllt ihn binnen Sekunden aus; bis zu ${seconds} s darauf warten.`,
         ),
         [
-          fact(text("Kind", "Art"), kindText("expense", lang)),
+          fact(text("Kind", "Art"), kindText(kind, lang)),
           fact(text("Receipt file (Belegbild)", "Belegdatei"), receiptText(file, lang)),
           fact(
             text("Filled in by sevDesk", "Von sevDesk ausgefüllt"),
             text(
-              "date, Belegnummer, sums, a supplier text, positions (unchecked)",
-              "Belegdatum, Belegnummer, Summen, ein Lieferantentext, Positionen (ungeprüft)",
+              `date, Belegnummer, sums, a ${party.en} text, positions (unchecked)`,
+              `Belegdatum, Belegnummer, Summen, ein ${party.de}ntext, Positionen (ungeprüft)`,
             ),
           ),
           fact(
             text("Left empty", "Bleibt leer"),
             text(
-              "tax rule (Steuerregel), booking accounts (Buchungskonten), supplier contact",
-              "Steuerregel, Buchungskonten, Lieferantenkontakt",
+              `tax rule (Steuerregel), booking accounts (Buchungskonten), ${party.en} contact`,
+              `Steuerregel, Buchungskonten, ${party.de}nkontakt`,
             ),
           ),
           fact(
@@ -146,12 +167,21 @@ export async function prepareVoucherRecognition(
             ),
           ),
         ],
-        inLanguage(PREVIEW_WARNINGS, lang),
+        inLanguage([...PREVIEW_WARNINGS, ...(file.kind === "pdf" ? [] : [IMAGE_WARNING])], lang),
       );
     }),
-    state: { file },
+    state: { file, kind },
   };
 }
+
+/** For a PNG or JPEG (2026-11-17: a test PNG made a draft, nothing was recognised). */
+const IMAGE_WARNING = phrase(
+  "How well sevDesk's recognition reads an image is unmeasured (a test PNG made a draft with " +
+    "nothing filled in; JPEG was not tried): expect to enter the details yourself.",
+  "Wie gut sevDesks Erkennung ein Bild liest, ist nicht gemessen (ein Test-PNG ergab einen " +
+    "Entwurf ohne ausgefüllte Angaben; JPEG wurde nicht probiert): Rechne damit, die Angaben " +
+    "selbst einzutragen.",
+);
 
 const PREVIEW_WARNINGS: readonly Phrase[] = [
   phrase(
@@ -169,10 +199,18 @@ const PREVIEW_WARNINGS: readonly Phrase[] = [
       "Steuerregel und auf jeder Position ein Buchungskonto gesetzt hat.",
   ),
   phrase(
-    "Duplicates can only be looked for after the recognition: the result names vouchers with " +
-      "the same date, gross total and Belegnummer.",
-    "Dubletten lassen sich erst nach der Erkennung suchen: Das Ergebnis nennt Belege mit " +
-      "demselben Datum, derselben Bruttosumme und Belegnummer.",
+    "The recognised positions and tax rates can be wrong even when the total is right (a " +
+      "receipt with 19 % and 7 % came back as one position at 7 %).",
+    "Die erkannten Positionen und Steuersätze können falsch sein, auch wenn die Summe stimmt " +
+      "(ein Beleg mit 19 % und 7 % kam als eine Position zu 7 % zurück).",
+  ),
+  phrase(
+    "sevDesk does not refuse a file it has seen before, and duplicates can only be looked for " +
+      "after the recognition: the result names vouchers with the same date, gross total and " +
+      "Belegnummer.",
+    "sevDesk lehnt eine schon gesendete Datei nicht ab, und Dubletten lassen sich erst nach der " +
+      "Erkennung suchen: Das Ergebnis nennt Belege mit demselben Datum, derselben Bruttosumme " +
+      "und Belegnummer.",
   ),
 ];
 
@@ -235,7 +273,7 @@ export async function executeVoucherRecognition(
   const answer = await client.request({
     method: "POST",
     path: CREATE_FROM_FILE_PATH,
-    form: recognitionForm(state.file),
+    form: recognitionForm(state.file, state.kind),
     ...withSignal,
   });
   const created = readCreatedVoucher(answer);
@@ -275,10 +313,12 @@ export async function executeVoucherRecognition(
   const filledIn = RECOGNISED_FIELDS.filter((field) => filled[field]);
   const missing = MISSING_FIELDS.filter((field) => lacking[field]);
   const duplicates = recognised
-    ? await scanDuplicates(client, voucher, signal)
+    ? await scanDuplicates(client, voucher, state.kind, signal)
     : ({ outcome: "skipped" } as const);
   const facts: NoteFacts = {
     id,
+    kind: state.kind,
+    image: state.file.kind !== "pdf",
     voucher,
     recognised,
     filledIn,
@@ -307,10 +347,13 @@ export async function executeVoucherRecognition(
   };
 }
 
-/** The multipart body: `creditDebit` C (an expense) and the file in the part `voucher` (D-103). */
-function recognitionForm(file: ReceiptFile): FormData {
+/**
+ * The multipart body: `creditDebit` C (expense) or D (revenue) and the file in the part `voucher`
+ * with its sniffed MIME type (D-103).
+ */
+function recognitionForm(file: ReceiptFile, kind: VoucherKind): FormData {
   const form = new FormData();
-  form.append("creditDebit", "C");
+  form.append("creditDebit", creditDebitForKind(kind));
   form.append("voucher", receiptBlob(file), file.name);
   return form;
 }
@@ -398,14 +441,16 @@ async function readVoucher(
 }
 
 /**
- * Other expense vouchers with the recognised date and gross total (and Belegnummer, when one was
- * recognised). The supplier is not compared: the recognised supplier text is not reliable
- * (D-103). A failed scan does not fail the call, since the draft exists already; the notes say
- * that it did not run.
+ * Other vouchers of the same direction with the recognised date and gross total (and
+ * Belegnummer, when one was recognised). The supplier is not compared: the recognised supplier
+ * text is not reliable (D-103). sevDesk itself makes a second draft from the same file
+ * (2026-11-17), so this is the only duplicate guard. A failed scan does not fail the call, since
+ * the draft exists already; the notes say that it did not run.
  */
 async function scanDuplicates(
   client: SevdeskClient,
   voucher: VoucherDetailDto,
+  kind: VoucherKind,
   signal: AbortSignal | undefined,
 ): Promise<DuplicateScan> {
   const date = voucher.date;
@@ -417,7 +462,7 @@ async function scanDuplicates(
     const result = await listVouchers(
       client,
       {
-        kind: "expense",
+        kind,
         description: voucher.number,
         from: date,
         to: date,
@@ -450,6 +495,9 @@ async function scanDuplicates(
 
 interface NoteFacts {
   readonly id: number;
+  readonly kind: VoucherKind;
+  /** The receipt was a PNG or JPEG (recognition of images is unmeasured). */
+  readonly image: boolean;
   readonly voucher: VoucherDetailDto;
   readonly recognised: boolean;
   readonly filledIn: readonly RecognisedField[];
@@ -460,13 +508,30 @@ interface NoteFacts {
   readonly positionsComplete: boolean;
 }
 
-const FIELD_NAMES: Readonly<Record<RecognisedField, Phrase>> = {
-  date: phrase("the date", "das Belegdatum"),
-  number: phrase("the Belegnummer", "die Belegnummer"),
-  supplierName: phrase("a supplier text", "einen Lieferantentext"),
-  totals: phrase("the sums", "die Summen"),
-  positions: phrase("the positions", "die Positionen"),
-};
+/** The words for the voucher's party in the notes (supplier of an expense, customer of revenue). */
+interface PartyWords {
+  readonly en: string;
+  /** Nominative, accusative and the compound with "Text". */
+  readonly de: string;
+  readonly deAcc: string;
+  readonly deText: string;
+}
+
+function partyWords(kind: VoucherKind): PartyWords {
+  return kind === "expense"
+    ? { en: "supplier", de: "Lieferant", deAcc: "Lieferanten", deText: "Lieferantentext" }
+    : { en: "customer", de: "Kunde", deAcc: "Kunden", deText: "Kundentext" };
+}
+
+function fieldNames(party: PartyWords): Readonly<Record<RecognisedField, Phrase>> {
+  return {
+    date: phrase("the date", "das Belegdatum"),
+    number: phrase("the Belegnummer", "die Belegnummer"),
+    supplierName: phrase(`a ${party.en} text`, `einen ${party.deText}`),
+    totals: phrase("the sums", "die Summen"),
+    positions: phrase("the positions", "die Positionen"),
+  };
+}
 
 /** "a, b and c" / "a, b und c". */
 function listed(items: readonly Phrase[]): Phrase {
@@ -489,29 +554,34 @@ function recognitionNotes(facts: NoteFacts): Phrase[] {
   const notes: Phrase[] = [];
   const id = String(facts.id);
   const seconds = String(facts.waitedMs / 1_000);
+  const party = partyWords(facts.kind);
   if (!facts.recognised) {
     notes.push(
       phrase(
         `sevDesk's receipt recognition filled in no sums within ${seconds} s (${String(facts.reads)} ` +
           "reads). What it did not fill in keeps sevDesk's placeholders: the upload time as " +
-          "date, sums 0, no supplier and no Belegnummer. The recognition may still finish " +
+          `date, sums 0, no ${party.en} and no Belegnummer. The recognition may still finish ` +
           `later: read draft ${id} again with sevdesk_voucher_get, then complete it with ` +
-          "sevdesk_voucher_update_draft (supplier, number, date, taxRuleId, positions) or delete " +
-          "it with sevdesk_voucher_delete_draft. Do not call this tool again for the same " +
+          `sevdesk_voucher_update_draft (${party.en}, number, date, taxRuleId, positions) or ` +
+          "delete it with sevdesk_voucher_delete_draft. Do not call this tool again for the same " +
           "receipt: every call creates another draft.",
         `sevDesks Belegerkennung hat binnen ${seconds} s (${String(facts.reads)} Abrufe) keine ` +
           "Summen ausgefüllt. Was sie nicht ausgefüllt hat, behält sevDesks Platzhalter: den " +
-          "Zeitpunkt des Hochladens als Datum, Summen 0, keinen Lieferanten und keine " +
+          `Zeitpunkt des Hochladens als Datum, Summen 0, keinen ${party.deAcc} und keine ` +
           `Belegnummer. Die Erkennung kann später noch fertig werden: Lies Entwurf ${id} mit ` +
           "sevdesk_voucher_get erneut, dann vervollständige ihn mit sevdesk_voucher_update_draft " +
-          "(Lieferant, Belegnummer, Datum, taxRuleId, Positionen) oder lösche ihn mit " +
+          `(${party.de}, Belegnummer, Datum, taxRuleId, Positionen) oder lösche ihn mit ` +
           "sevdesk_voucher_delete_draft. Rufe dieses Werkzeug für denselben Beleg nicht erneut " +
           "auf: Jeder Aufruf legt einen weiteren Entwurf an.",
       ),
     );
   }
+  if (facts.image) {
+    notes.push(IMAGE_WARNING);
+  }
   if (facts.filledIn.length > 0) {
-    const fields = listed(facts.filledIn.map((field) => FIELD_NAMES[field]));
+    const names = fieldNames(party);
+    const fields = listed(facts.filledIn.map((field) => names[field]));
     notes.push(
       phrase(
         `sevDesk's receipt recognition filled in ${fields.en} (recognition.filledIn); nobody has ` +
@@ -521,22 +591,38 @@ function recognitionNotes(facts: NoteFacts): Phrase[] {
       ),
     );
   }
+  if (facts.filledIn.includes("positions") || facts.filledIn.includes("totals")) {
+    // Recorded 2026-11-17: 100.00 net at 19 % and 50.00 net at 7 % came back as one position at
+    // 7 % with the right gross total and a wrong split (D-103).
+    notes.push(
+      phrase(
+        "The recognised positions and tax rates can be wrong even when the total is right: " +
+          "sevDesk read a receipt with 19 % and 7 % as one position at 7 %. Check every " +
+          "position and rate against the receipt; a receipt with several tax rates has to be " +
+          "entered again as one position per rate (positions of sevdesk_voucher_update_draft).",
+        "Die erkannten Positionen und Steuersätze können falsch sein, auch wenn die Summe stimmt: " +
+          "sevDesk hat einen Beleg mit 19 % und 7 % als eine Position zu 7 % gelesen. Prüfe jede " +
+          "Position und jeden Steuersatz am Beleg; ein Beleg mit mehreren Steuersätzen muss als " +
+          "eine Position je Satz neu erfasst werden (positions von sevdesk_voucher_update_draft).",
+      ),
+    );
+  }
   if (facts.missing.includes("supplierContact")) {
     notes.push(
       facts.filledIn.includes("supplierName")
         ? phrase(
-            "The supplier is only a text sevDesk read (voucher.supplier.name), not always the " +
-              "receipt's supplier, and not a contact: set supplierId (from " +
+            `The ${party.en} is only a text sevDesk read (voucher.supplier.name), not always the ` +
+              `receipt's ${party.en}, and not a contact: set supplierId (from ` +
               "sevdesk_contacts_search) or supplierName with sevdesk_voucher_update_draft.",
-            "Der Lieferant ist nur ein von sevDesk gelesener Text (voucher.supplier.name), nicht " +
-              "immer der Lieferant des Belegs, und kein Kontakt: Setze supplierId (aus " +
+            `Der ${party.de} ist nur ein von sevDesk gelesener Text (voucher.supplier.name), ` +
+              `nicht immer der ${party.de} des Belegs, und kein Kontakt: Setze supplierId (aus ` +
               "sevdesk_contacts_search) oder supplierName mit sevdesk_voucher_update_draft.",
           )
         : phrase(
-            "The draft has no supplier: set supplierId (from sevdesk_contacts_search) or " +
+            `The draft has no ${party.en}: set supplierId (from sevdesk_contacts_search) or ` +
               "supplierName with sevdesk_voucher_update_draft.",
-            "Der Entwurf hat keinen Lieferanten: Setze supplierId (aus sevdesk_contacts_search) " +
-              "oder supplierName mit sevdesk_voucher_update_draft.",
+            `Der Entwurf hat keinen ${party.deAcc}: Setze supplierId (aus ` +
+              "sevdesk_contacts_search) oder supplierName mit sevdesk_voucher_update_draft.",
           ),
     );
   }

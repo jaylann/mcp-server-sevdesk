@@ -114,11 +114,13 @@ server.
 
 ### Can sevDesk's own receipt recognition fill in a voucher?
 
-Yes, for receipt PDFs of expenses. `sevdesk_voucher_recognize_receipt` sends the file to sevDesk's
-receipt recognition (Belegerkennung), which creates a voucher draft and fills in date, number,
-sums and a supplier text within seconds. Those values are unchecked, and the draft has no tax rule
-and no booking account yet: the assistant completes it with the normal draft update before it can
-be finalized ([Let sevDesk read the receipt](guides/receipts.md#let-sevdesk-read-the-receipt)).
+Yes, for expense and revenue receipts. `sevdesk_voucher_recognize_receipt` sends the file to
+sevDesk's receipt recognition (Belegerkennung), which creates a voucher draft and fills in date,
+number, sums and a supplier text within seconds. Those values are unchecked, and the positions and
+tax rates can be wrong even when the total is right (a receipt with two rates came back as one
+position). The draft has no tax rule and no booking account yet: the assistant completes it with
+the normal draft update before it can be finalized
+([Let sevDesk read the receipt](guides/receipts.md#let-sevdesk-read-the-receipt)).
 
 ### Can it export to DATEV?
 

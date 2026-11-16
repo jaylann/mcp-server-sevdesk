@@ -104,31 +104,38 @@ file: for an e-invoice the XML is the record to retain.
 > Let sevDesk read Belege/2026-11/hetzner-R-88231.pdf and draft the voucher.
 
 [`sevdesk_voucher_recognize_receipt`](../tools.md#sevdesk_voucher_recognize_receipt) (`write`, no
-confirmation) sends a receipt PDF to sevDesk's own receipt recognition (Belegerkennung). sevDesk
-creates a draft expense voucher with the file attached at once and fills in the date, the
-Belegnummer, the sums, a supplier text and the positions within seconds. The tool waits up to 15
-seconds and then lists what sevDesk filled in and what is still missing.
+confirmation) sends a receipt to sevDesk's own receipt recognition (Belegerkennung). sevDesk
+creates a draft voucher with the file attached at once, an expense unless you say it is revenue,
+and fills in the date, the Belegnummer, the sums, a supplier text and the positions within
+seconds. The tool waits up to 15 seconds and then lists what sevDesk filled in and what is still
+missing.
 
 Nothing sevDesk filled in has been checked, and the draft is never complete:
+
+- The positions and tax rates can be wrong even when the total is right: a test receipt with
+  19 % and 7 % came back as one position at 7 %. Enter a receipt with several tax rates again as
+  one position per rate.
 
 - The tax rule and the booking account of every position stay empty, so
   [`sevdesk_voucher_finalize`](../tools.md#sevdesk_voucher_finalize) refuses the draft until
   [`sevdesk_voucher_update_draft`](../tools.md#sevdesk_voucher_update_draft) sets them: the tax
   rule and the positions with their booking accounts, chosen
   [as above](#pick-the-booking-account-and-tax-rule).
-- The supplier is only a text sevDesk read, not always the receipt's supplier, and never a
-  contact. Set the contact or the right name in the same update.
+- The supplier (the customer, for revenue) is only a text sevDesk read, not always the receipt's,
+  and never a contact. Set the contact or the right name in the same update.
 - Compare the date, the number and the amounts with the receipt.
 
 The draft exists as soon as the file is sent, also when the recognition finds nothing. The tool
 then says so and names the draft, to complete or to delete with
-[`sevdesk_voucher_delete_draft`](../tools.md#sevdesk_voucher_delete_draft). Every call makes
-another draft, so send each receipt once. Duplicates can only be looked for after the recognition:
-the result names vouchers with the same date, gross amount and Belegnummer.
+[`sevdesk_voucher_delete_draft`](../tools.md#sevdesk_voucher_delete_draft). sevDesk does not
+notice a file it has seen before: every call makes another draft, so send each receipt once.
+Duplicates can only be looked for after the recognition: the result names vouchers with the same
+date, gross amount and Belegnummer.
 
-It takes PDFs of expense receipts only; a photo or a revenue voucher goes through
-`sevdesk_voucher_create_draft`. When you know the details anyway, `sevdesk_voucher_create_draft`
-is the more direct way: it checks everything before anything is saved.
+It takes PDF, PNG and JPEG files. How well the recognition reads a photo is unmeasured (a tiny
+test image gave a draft with nothing filled in), so expect to enter the details of a photo
+yourself. When you know the details anyway, `sevdesk_voucher_create_draft` is the more direct
+way: it checks everything before anything is saved.
 
 ## Correct a draft
 

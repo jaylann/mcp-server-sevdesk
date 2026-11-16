@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/receipts.md sha256:eb7cb6cae53c -->
+<!-- translated-from: docs/guides/receipts.md sha256:38ee50631fe3 -->
 
 # Belege und Eingangsrechnungen
 
@@ -110,31 +110,38 @@ E-Rechnung ist das XML der Beleg, den du aufbewahren musst.
 > Lass sevDesk den Beleg Belege/2026-11/hetzner-R-88231.pdf lesen und den Beleg anlegen.
 
 [`sevdesk_voucher_recognize_receipt`](../tools.md#sevdesk_voucher_recognize_receipt) (`write`,
-ohne Bestätigung) schickt ein Beleg-PDF an sevDesks eigene Belegerkennung. sevDesk legt sofort
-einen Belegentwurf (Ausgabe) mit der Datei als Anhang an und füllt binnen Sekunden Belegdatum,
-Belegnummer, Summen, einen Lieferantentext und die Positionen aus. Das Werkzeug wartet bis zu 15
-Sekunden und nennt dann, was sevDesk ausgefüllt hat und was noch fehlt.
+ohne Bestätigung) schickt eine Belegdatei an sevDesks eigene Belegerkennung. sevDesk legt sofort
+einen Belegentwurf mit der Datei als Anhang an, eine Ausgabe, außer du sagst, dass es eine
+Einnahme ist, und füllt binnen Sekunden Belegdatum, Belegnummer, Summen, einen Lieferantentext und
+die Positionen aus. Das Werkzeug wartet bis zu 15 Sekunden und nennt dann, was sevDesk ausgefüllt
+hat und was noch fehlt.
 
 Nichts davon ist geprüft, und vollständig ist der Entwurf nie:
+
+- Positionen und Steuersätze können falsch sein, auch wenn die Summe stimmt: Ein Testbeleg mit
+  19 % und 7 % kam als eine Position zu 7 % zurück. Erfasse einen Beleg mit mehreren Steuersätzen
+  neu, mit einer Position je Satz.
 
 - Steuerregel und Buchungskonto jeder Position bleiben leer. Deshalb lehnt
   [`sevdesk_voucher_finalize`](../tools.md#sevdesk_voucher_finalize) den Entwurf ab, bis
   [`sevdesk_voucher_update_draft`](../tools.md#sevdesk_voucher_update_draft) sie setzt: die
   Steuerregel und die Positionen mit ihren Buchungskonten, gewählt
   [wie oben](#buchungskonto-und-steuerregel-wählen).
-- Der Lieferant ist nur ein Text, den sevDesk gelesen hat, nicht immer der Lieferant des Belegs
-  und nie ein Kontakt. Setze den Kontakt oder den richtigen Namen in derselben Änderung.
+- Der Lieferant (bei einer Einnahme der Kunde) ist nur ein Text, den sevDesk gelesen hat, nicht
+  immer der des Belegs und nie ein Kontakt. Setze den Kontakt oder den richtigen Namen in
+  derselben Änderung.
 - Vergleiche Datum, Nummer und Beträge mit dem Beleg.
 
 Der Entwurf entsteht, sobald die Datei gesendet ist, auch wenn die Erkennung nichts findet. Dann
 sagt das Werkzeug das und nennt den Entwurf, zum Vervollständigen oder zum Löschen mit
-[`sevdesk_voucher_delete_draft`](../tools.md#sevdesk_voucher_delete_draft). Jeder Aufruf legt
-einen weiteren Entwurf an, schicke also jeden Beleg nur einmal. Nach Dubletten lässt sich erst nach
-der Erkennung suchen: Das Ergebnis nennt Belege mit demselben Datum, demselben Bruttobetrag und
-derselben Belegnummer.
+[`sevdesk_voucher_delete_draft`](../tools.md#sevdesk_voucher_delete_draft). sevDesk bemerkt eine
+schon gesendete Datei nicht: Jeder Aufruf legt einen weiteren Entwurf an, schicke also jeden Beleg
+nur einmal. Nach Dubletten lässt sich erst nach der Erkennung suchen: Das Ergebnis nennt Belege mit
+demselben Datum, demselben Bruttobetrag und derselben Belegnummer.
 
-Es nimmt nur PDFs von Ausgabenbelegen; ein Foto oder ein Einnahmenbeleg geht über
-`sevdesk_voucher_create_draft`. Wenn du die Angaben ohnehin kennst, ist
+Es nimmt PDF-, PNG- und JPEG-Dateien. Wie gut die Erkennung ein Foto liest, ist nicht gemessen
+(ein winziges Testbild ergab einen Entwurf ohne ausgefüllte Angaben); rechne also damit, die
+Angaben eines Fotos selbst einzutragen. Wenn du die Angaben ohnehin kennst, ist
 `sevdesk_voucher_create_draft` der direktere Weg: Es prüft alles, bevor etwas gespeichert wird.
 
 ## Einen Entwurf korrigieren

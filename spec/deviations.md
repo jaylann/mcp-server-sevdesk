@@ -990,7 +990,7 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   the `advanced` toolset or behind a lookup until a recording confirms its shape. `uncertain`
   endpoints are not used by default tools: receipts go through `uploadTempFile` and `saveVoucher`
   (D-011, D-026); the recorded `createVoucherFromFile` is used only by
-  `sevdesk_voucher_recognize_receipt`, for expense receipt PDFs (D-103). `GET /TextTemplate`,
+  `sevdesk_voucher_recognize_receipt` (D-103). `GET /TextTemplate`,
   `/PartUnity` and `/Document`
   have no curated tool; the generic read `sevdesk_api_get` (advanced toolset, off by default)
   reads them without a schema of its own: it returns the raw `objects` sanitized as untrusted
@@ -3650,40 +3650,63 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   `"0"`, `supplierName` (a text, but not the PDF's supplier line, and no supplier contact) and
   `resultDisdar`; `taxRule` stayed null. It added one position: `taxRate` 19, `sum` 100, net
   `"0"`, the three sums, and `accountDatev` **null**.
+
+  Recorded 2026-11-17 (generated test files, all drafts deleted again):
+  - `creditDebit` `D` works: a draft (status 50, `voucherType` VOU) with `creditDebit` `D`, which
+    the recognition filled in with net 200, tax 38, gross 238 and one position at 19 %; `taxRule`
+    null.
+  - A PNG (1x1, `image/png`, part `voucher`) is accepted and makes a draft; nothing was
+    recognised from it (sums 0, no position after 8 s). JPEG and real photos are unmeasured.
+  - For four PDFs the sums were there at the second read, about one second after the upload (the
+    read right after the POST still had 0). Scans and long PDFs are unmeasured.
+  - **Several tax rates are recognised wrongly:** a receipt with 100.00 net at 19 % and 50.00
+    net at 7 % (gross 172.50) came back as ONE position at 7 % with net 161.21, tax 11.29, gross
+    172.50. The gross total was right, the split was not.
+  - **sevDesk does not deduplicate:** the same file sent twice made a second draft with the same
+    recognised values, without a refusal or a reference to the first.
+
 - **Sources:** [lippoliv/paperlessngx-to-sevdesk](https://github.com/lippoliv/paperlessngx-to-sevdesk)
   (`src/main.py`); recorded 2026-11-16, trial account, Update 2.0 (probe
-  `write-voucher-from-file`, opt-in).
+  `write-voucher-from-file`, opt-in); recorded 2026-11-17, trial account, Update 2.0 (one-off
+  check by the orchestrator, run tag `MCP-E2E 20261117-0035-y3q6`).
 - **Impact:** Recognition can start a voucher draft (#96), but the result is incomplete: no tax
   rule, no booking account, an unreliable supplier. A tool must poll the draft until the sums
   appear (bounded, a few seconds), show which fields came from sevDesk, and complete tax rule and
   account through the normal update with ReceiptGuidance before anything is finalized. The
   draft exists even if recognition fails, so the tool must name it for cleanup.
 - **Handling:** `sevdesk_voucher_recognize_receipt` (`write`;
-  `src/domain/drafts/voucher-recognition.ts`) sends an expense receipt PDF once (multipart,
-  `creditDebit` `C`, part `voucher`, never retried), reads the draft at once and then after
-  waits of 2, 2, 2, 3, 3 and 3 s (15 s at most, three times the recorded 5 s) until `sumGross`
-  is not 0, and reads the positions. Its result lists the fields sevDesk filled in
-  (`recognition.filledIn`, unchecked), what is missing (`taxRule`, `bookingAccount`, `number`,
-  `supplierContact`) and, in trusted notes that never quote recognised text, how to complete the
-  draft with `sevdesk_voucher_update_draft` (`taxRuleId`, positions with `accountDatevId`,
-  checked against the ReceiptGuidance) or delete it. Without sums after 15 s it says so and names
-  the draft. An answer that does not name the new voucher is an error that says a draft probably
-  exists and must be looked for, not created again; a failure after that names the draft as
-  created. Duplicates are looked for after the recognition: other expense vouchers with the same
-  date, gross total and recognised Belegnummer (the supplier text is not compared), reported, not
-  refused. `sevdesk_voucher_finalize` refuses the draft until both the tax rule and every booking
-  account are set (`storedRule`, `storedPositionsFor`). Only what was recorded is offered: no
-  revenue vouchers (`D`), no images.
+  `src/domain/drafts/voucher-recognition.ts`) sends a receipt once (multipart, `creditDebit` `C`
+  or, with `kind: revenue`, `D`, part `voucher` with the sniffed MIME type, never retried),
+  reads the draft at once and then after waits of 1, 1, 2, 2, 3, 3 and 3 s (15 s at most, three
+  times the slowest recorded 5 s) until `sumGross` is not 0, and reads the positions. It takes
+  the file kinds of a manual receipt (PDF, PNG, JPEG): sevDesk accepted the PNG, and a photo that
+  is not recognised still gives a draft the tool names for completing; for an image the preview
+  and the result say that its recognition is unmeasured. The result lists the fields sevDesk
+  filled in (`recognition.filledIn`, unchecked), what is missing (`taxRule`, `bookingAccount`,
+  `number`, `supplierContact`) and, in trusted notes that never quote recognised text, that
+  positions and tax rates can be wrong even when the total is right (a receipt with several
+  rates has to be entered again as one position per rate) and how to complete the draft with
+  `sevdesk_voucher_update_draft` (`taxRuleId`, positions with `accountDatevId`, checked against
+  the ReceiptGuidance) or delete it. Without sums after 15 s it says so and names the draft. An
+  answer that does not name the new voucher is an error that says a draft probably exists and
+  must be looked for, not created again; a failure after that names the draft as created.
+  Because sevDesk does not deduplicate, the tool's own scan after the recognition is the only
+  guard: other vouchers of the same direction with the same date, gross total and recognised
+  Belegnummer (the supplier text is not compared), reported, not refused.
+  `sevdesk_voucher_finalize` refuses the draft, expense or revenue, until both the tax rule and
+  every booking account are set (`storedRule`, `storedPositionsFor`).
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("runs the opt-in probes only when
   named…": the multipart request, the placeholders, the recognised fields, `taxRule` and
   `accountDatev` null). The tool: `test/unit/tools/vouchers/recognize-receipt.test.ts` (the
-  multipart body sent once; recognised at once, after waits, and not within the bound; a partial
-  recognition; duplicates; an unreadable answer; a refused upload; a cancelled wait and a failed
-  read naming the draft; recognised text kept out of summary and notes). The safety net:
+  multipart body sent once; a revenue receipt with `D`; a PNG with its MIME type and the image
+  note; recognised at once, after waits, and not within the bound; a partial recognition; the
+  several-rates note; duplicates; an unreadable answer; a refused upload; a cancelled wait and a
+  failed read naming the draft; recognised text kept out of summary and notes). The safety net:
   `test/regressions/recognised-voucher-draft.test.ts` (the finalize refuses a draft shaped like
   the recorded one without a tax rule or a booking account, and accepts it once both are set;
-  the normal update completes it). Fixtures `test/fixtures/vouchers/voucher-from-file-*.json`,
-  `voucher-positions-from-file.json`.
+  the normal update completes it, replaces the wrongly split 7 % position with one position per
+  rate, and completes a recognised revenue draft that is then accepted). Fixtures
+  `test/fixtures/vouchers/voucher-from-file-*.json`, `voucher-positions-from-file.json`.
 
 ### D-107: Order factories copy the order; a confirmation marks the offer accepted
 

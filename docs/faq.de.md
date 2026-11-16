@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:8ab7db0f2ece -->
+<!-- translated-from: docs/faq.md sha256:e0be90174b30 -->
 
 # Häufige Fragen
 
@@ -126,11 +126,12 @@ auf deinem Server hoch.
 
 ### Kann sevDesks eigene Belegerkennung einen Beleg ausfüllen?
 
-Ja, für Beleg-PDFs von Ausgaben. `sevdesk_voucher_recognize_receipt` schickt die Datei an sevDesks
-Belegerkennung, die einen Belegentwurf anlegt und binnen Sekunden Datum, Nummer, Summen und einen
-Lieferantentext ausfüllt. Diese Werte sind ungeprüft, und der Entwurf hat noch keine Steuerregel
-und kein Buchungskonto: Der Assistent vervollständigt ihn mit der normalen Entwurfsänderung,
-bevor er sich fertigstellen lässt
+Ja, für Ausgaben- und Einnahmenbelege. `sevdesk_voucher_recognize_receipt` schickt die Datei an
+sevDesks Belegerkennung, die einen Belegentwurf anlegt und binnen Sekunden Datum, Nummer, Summen
+und einen Lieferantentext ausfüllt. Diese Werte sind ungeprüft, und Positionen und Steuersätze
+können falsch sein, auch wenn die Summe stimmt (ein Beleg mit zwei Steuersätzen kam als eine
+Position zurück). Der Entwurf hat noch keine Steuerregel und kein Buchungskonto: Der Assistent
+vervollständigt ihn mit der normalen Entwurfsänderung, bevor er sich fertigstellen lässt
 ([sevDesk den Beleg lesen lassen](guides/receipts.de.md#sevdesk-den-beleg-lesen-lassen)).
 
 ### Kann es nach DATEV exportieren?
