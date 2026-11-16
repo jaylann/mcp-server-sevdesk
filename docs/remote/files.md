@@ -146,5 +146,5 @@ An agent that can drive your signed-in browser could upload or download on its o
 approve in the inbox. A downloaded file is whatever sevDesk returned; open it like any document
 from your bookkeeping. On a plain-http `localhost` setup, other local web servers receive the
 session cookie too. How links, uploads, downloads and storage are hardened is in
-[security/remote.md](../security/remote.md#files); the design is
+[Security in remote mode](../security/remote.md#files); the design is
 [ADR 0008](../adr/0008-file-transfer-over-http.md).

@@ -1,4 +1,4 @@
-<!-- translated-from: docs/remote/approvals.md sha256:5181d654ee7b -->
+<!-- translated-from: docs/remote/approvals.md sha256:e9b1eb2eb0b8 -->
 
 # Das Freigabe-Postfach
 
@@ -82,6 +82,6 @@ anderen Kontos nicht aus dem Speicher des Servers verdrängen ([Grenzen](operati
   das Sitzungs-Cookie ([Schnellstart](../remote.de.md#schnellstart-bearer-modus-mit-docker)).
 - Ausstehende Freigaben enden, wenn der Server neu startet; das Modell fragt dann einfach erneut.
 
-Die Seite der Bedrohungen steht in [security/remote.de.md](../security/remote.de.md#grenzen-des-postfachs), was eine
-Freigabe garantiert, in [security/confirmation.de.md](../security/confirmation.de.md); der Entwurf
+Die Seite der Bedrohungen steht unter [Sicherheit im Fernzugriff](../security/remote.de.md#grenzen-des-postfachs), was eine
+Freigabe garantiert, unter [Bestätigung durch einen Menschen](../security/confirmation.de.md); der Entwurf
 ist [ADR 0007](../adr/0007-approval-inbox-over-http.de.md).

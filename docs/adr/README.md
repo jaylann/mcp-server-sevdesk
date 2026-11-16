@@ -2,7 +2,7 @@
 
 An ADR records one significant decision: the situation, what we chose, what it costs, and what we
 rejected. They explain _why_ the code looks the way it does. The overall design is in
-[architecture.md](../architecture.md).
+[Architecture](../architecture.md).
 
 | ADR                                                           | Title                                                             | Status                                                                                                                                                             | Date       |
 | ------------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |

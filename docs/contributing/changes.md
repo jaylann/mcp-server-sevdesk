@@ -1,12 +1,12 @@
 # Making changes
 
 How to add a tool, change a page, add a prompt, and keep a change inside the public contract. It
-is for contributors who have the repository set up ([CONTRIBUTING.md](../../CONTRIBUTING.md#setup));
+is for contributors who have the repository set up ([Contributing](../../CONTRIBUTING.md#setup));
 how to test a change is in [Testing](testing.md).
 
 ## Before you start
 
-Read [docs/architecture.md](../architecture.md) first: it explains the layers (tools → domain →
+Read [Architecture](../architecture.md) first: it explains the layers (tools → domain →
 sevDesk client), the module map and the lifecycle of a tool call. Tools never call HTTP directly.
 
 Hand-written zod schemas are the source of truth for sevDesk payloads, because the official
@@ -77,7 +77,7 @@ call sevDesk.
 
 From 1.0 the public surface (tool names, arguments, outputs, toolsets, tiers, prompts, variables,
 commands, routes, resources, audit-log fields, the extension's setting keys) is a contract; the
-full list and the deprecation policy are in [docs/compatibility.md](../compatibility.md). To stay
+full list and the deprecation policy are in [Compatibility](../compatibility.md). To stay
 within it:
 
 - Add freely: new tools, optional arguments, output fields, variables.

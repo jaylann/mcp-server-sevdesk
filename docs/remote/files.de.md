@@ -1,4 +1,4 @@
-<!-- translated-from: docs/remote/files.md sha256:4f279c18d8c6 -->
+<!-- translated-from: docs/remote/files.md sha256:e6ce7542d66e -->
 
 # Dateien: Uploads und Download-Links
 
@@ -165,5 +165,4 @@ Ein Agent, der deinen angemeldeten Browser steuern kann, könnte selbst hoch- od
 so wie er im Postfach freigeben könnte. Eine heruntergeladene Datei ist das, was sevDesk geliefert
 hat; öffne sie wie jedes Dokument aus deiner Buchhaltung. Bei einer Einrichtung mit einfachem http
 auf `localhost` erhalten auch andere lokale Webserver das Sitzungs-Cookie. Wie Links, Uploads,
-Downloads und die Speicherung gehärtet sind, steht in
-[security/remote.de.md](../security/remote.de.md#dateien); der Entwurf ist [ADR 0008](../adr/0008-file-transfer-over-http.de.md).
+Downloads und die Speicherung gehärtet sind, steht unter [Sicherheit im Fernzugriff](../security/remote.de.md#dateien); der Entwurf ist [ADR 0008](../adr/0008-file-transfer-over-http.de.md).

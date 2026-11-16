@@ -1,4 +1,4 @@
-<!-- translated-from: docs/architecture/safety.md sha256:b04c071ae204 -->
+<!-- translated-from: docs/architecture/safety.md sha256:f274d5295872 -->
 
 # Sicherheitsmodell
 
@@ -184,5 +184,5 @@ ab:
 - **OAuth:** Jeder Benutzer fügt es auf der Zustimmungsseite ein; es wird mit `GET /SevClient`
   geprüft, in die Tokens dieses Benutzers versiegelt und bei jeder Erneuerung erneut geprüft.
 
-Das Bedrohungsmodell steht in [SECURITY.de.md](../../SECURITY.de.md); die Ablage des Tokens auf
-deinem eigenen Rechner wird unter [Lokale Nutzung](../security/local.de.md) untersucht.
+Das Bedrohungsmodell steht in der [Sicherheitsrichtlinie](../../SECURITY.de.md); die Ablage des Tokens auf
+deinem eigenen Rechner wird unter [Sicherheit bei lokaler Nutzung](../security/local.de.md) untersucht.

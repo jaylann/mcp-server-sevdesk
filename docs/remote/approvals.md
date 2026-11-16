@@ -73,6 +73,6 @@ cannot push another account's approvals out of the server's memory
   ([Quick start](../remote.md#quick-start-bearer-mode-with-docker)).
 - Pending approvals end when the server restarts; the model then simply asks again.
 
-The threat side is in [security/remote.md](../security/remote.md#limits-of-the-inbox), what an
-approval guarantees in [security/confirmation.md](../security/confirmation.md); the design is
+The threat side is in [Security in remote mode](../security/remote.md#limits-of-the-inbox), what an
+approval guarantees in [Human confirmation](../security/confirmation.md); the design is
 [ADR 0007](../adr/0007-approval-inbox-over-http.md).

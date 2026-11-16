@@ -1,4 +1,4 @@
-<!-- translated-from: docs/permissions.md sha256:a903125adcc1 -->
+<!-- translated-from: docs/permissions.md sha256:8405988d460f -->
 
 # Berechtigungen und Bestätigung
 
@@ -8,8 +8,7 @@ Testumgebung, jeder Schreibvorgang ändert also deine echte Buchhaltung. Deshalb
 seine eigenen minimalen Rechte mit: Berechtigungsstufen, die du wählst, eine Bestätigung durch
 einen Menschen für jeden bindenden Schritt, Probeläufe und ein lokales Audit-Log. Diese Seite
 erklärt, wie du jedes davon verwendest; die Garantien hinter den Bestätigungen stehen unter
-[Bestätigung durch einen Menschen](security/confirmation.de.md), das Bedrohungsmodell in
-[SECURITY.de.md](../SECURITY.de.md).
+[Bestätigung durch einen Menschen](security/confirmation.de.md), das Bedrohungsmodell in der [Sicherheitsrichtlinie](../SECURITY.de.md).
 
 ## Stufen
 
@@ -52,7 +51,7 @@ Die Stufe wird bei jedem Aufruf erneut durchgesetzt und im HTTP-Client, der eine
 sevDesk-Endpunkt oberhalb der Stufe des aufrufenden Werkzeugs ablehnt
 ([Sicherheitsmodell](architecture/safety.de.md#durchsetzung-an-drei-stellen)). Im Fernzugriff mit OAuth bekommt jede Verbindung
 die Stufen, die auf der Zustimmungsseite angehakt wurden, höchstens aber die aus `SEVDESK_ALLOW`
-([remote.de.md](remote.de.md#stufen-je-zugang)).
+([Fernzugriff (HTTP)](remote.de.md#stufen-je-zugang)).
 
 ## Wie ein Schreibvorgang abläuft
 

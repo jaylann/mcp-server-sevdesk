@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:43a8e89e2326 -->
+<!-- translated-from: docs/faq.md sha256:82927922c84c -->
 
 # Häufige Fragen
 
@@ -53,7 +53,7 @@ Buchhaltungsdaten enthalten personenbezogene Daten deiner Kunden; prüfe daher d
 deines Anbieters zur Auftragsverarbeitung, bevor du ein echtes Konto verbindest.
 
 Das Projekt betreibt keinen Dienst und erhebt keine Telemetrie. Einzelheiten:
-[PRIVACY.de.md](../PRIVACY.de.md).
+[Datenschutz](../PRIVACY.de.md).
 
 ### Kann die KI ohne mich Rechnungen fertigstellen oder versenden?
 
@@ -174,7 +174,7 @@ Endpunkte für den Lagerbestand.
   [Formulare für Issues](https://github.com/jaylann/mcp-server-sevdesk/issues/new/choose). Gib
   die Version des Servers an (`npx -y mcp-server-sevdesk --version`), deinen Client und den
   Fehlertext, nie dein Token oder echte Kundendaten.
-- **Sicherheitslücken:** melde sie vertraulich, wie in [SECURITY.de.md](../SECURITY.de.md)
+- **Sicherheitslücken:** melde sie vertraulich, wie in der [Sicherheitsrichtlinie](../SECURITY.de.md)
   beschrieben.
 - **Dein sevDesk-Konto** (Tarife, Tokens, Daten in sevDesk): der Support von sevDesk.
 - **Steuerfragen:** deine Steuerberatung.

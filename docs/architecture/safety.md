@@ -165,5 +165,5 @@ and a 401 is final. Where it comes from depends on the mode:
 - **OAuth:** each user pastes it on the consent page; it is checked with `GET /SevClient`, sealed
   into that user's tokens and checked again on every refresh.
 
-The threat model is in [SECURITY.md](../../SECURITY.md); token storage on your own machine is
+The threat model is in the [Security policy](../../SECURITY.md); token storage on your own machine is
 analysed in [Local security](../security/local.md).

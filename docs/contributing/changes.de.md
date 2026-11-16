@@ -1,15 +1,15 @@
-<!-- translated-from: docs/contributing/changes.md sha256:69d9851613aa -->
+<!-- translated-from: docs/contributing/changes.md sha256:bdf1c426e028 -->
 
 # Änderungen vornehmen
 
 Wie du ein Werkzeug hinzufügst, eine Seite änderst, einen Prompt hinzufügst und eine Änderung
 innerhalb des öffentlichen Vertrags hältst. Die Seite ist für Mitwirkende, die das Repository
-eingerichtet haben ([CONTRIBUTING.de.md](../../CONTRIBUTING.de.md#einrichtung)); wie du eine
+eingerichtet haben ([Mitwirken](../../CONTRIBUTING.de.md#einrichtung)); wie du eine
 Änderung testest, steht unter [Testen](testing.de.md).
 
 ## Bevor du anfängst
 
-Lies zuerst [docs/architecture.de.md](../architecture.de.md): Dort stehen die Schichten (Werkzeuge
+Lies zuerst [Architektur](../architecture.de.md): Dort stehen die Schichten (Werkzeuge
 → Domäne → sevDesk-Client), die Modulübersicht und der Lebenszyklus eines Werkzeugaufrufs.
 Werkzeuge rufen HTTP nie direkt auf.
 
@@ -86,7 +86,7 @@ rufen sevDesk nie auf.
 Ab 1.0 ist die öffentliche Oberfläche ein Vertrag (Werkzeugnamen, Argumente, Ausgaben,
 Werkzeuggruppen, Stufen, Prompts, Variablen, Befehle, Routen, Ressourcen, Felder des Audit-Logs,
 die Einstellungsschlüssel der Erweiterung); die vollständige Liste und die Regeln für Abkündigungen
-stehen in [docs/compatibility.de.md](../compatibility.de.md). So bleibst du darin:
+stehen auf der Seite [Kompatibilität](../compatibility.de.md). So bleibst du darin:
 
 - Frei hinzufügen: neue Werkzeuge, optionale Argumente, Ausgabefelder, Variablen.
 - Zum Umbenennen oder Entfernen folge den

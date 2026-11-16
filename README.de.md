@@ -1,4 +1,4 @@
-<!-- translated-from: README.md sha256:25e3e934e5ce -->
+<!-- translated-from: README.md sha256:6e8228289e25 -->
 
 <img src="https://raw.githubusercontent.com/jaylann/mcp-server-sevdesk/main/assets/icon.svg" alt="" width="96" height="96" align="right">
 
@@ -60,7 +60,7 @@ Node.js 22.12 oder neuer.
   ```
 
 - **Cursor, VS Code, Windsurf, Codex, Zed und andere** starten `npx -y mcp-server-sevdesk` mit dem
-  Token in der Umgebung; [docs/clients.de.md](docs/clients.de.md) nennt für jeden die genaue Datei.
+  Token in der Umgebung; [Clients](docs/clients.de.md) nennt für jeden die genaue Datei.
 - **claude.ai und die mobilen Claude-Apps** verbinden sich mit einem Server, den du im
   [Fernzugriff](#fernzugriff) selbst betreibst.
 
@@ -157,7 +157,7 @@ E-Rechnungen mit. Installation und Einrichtung: [Das Plugin](docs/clients/claude
   [Dateien](docs/remote/files.de.md) · [Betrieb](docs/remote/operations.de.md) ·
   [Fehlersuche](docs/remote/troubleshooting.de.md)
 - **Sicherheit:** [Richtlinie](SECURITY.de.md) · [Bestätigung](docs/security/confirmation.de.md) ·
-  [Lokal](docs/security/local.de.md) · [Fernzugriff](docs/security/remote.de.md) ·
+  [Lokal](docs/security/local.de.md) · [Sicherheit im Fernzugriff](docs/security/remote.de.md) ·
   [Lieferkette](docs/security/supply-chain.de.md) · [Datenschutz](PRIVACY.de.md)
 - **Projekt:** [Architektur](docs/architecture.de.md) · [Absicherung](docs/architecture/safety.de.md) ·
   [Transporte](docs/architecture/transports.de.md) ·
@@ -171,8 +171,8 @@ Das [Changelog](CHANGELOG.md) listet jedes Release.
 
 ## Mitwirken
 
-Beiträge sind willkommen. Beginne mit [CONTRIBUTING.de.md](CONTRIBUTING.de.md), und melde
-Sicherheitslücken bitte vertraulich, wie in [SECURITY.de.md](SECURITY.de.md) beschrieben.
+Beiträge sind willkommen. Beginne mit [Mitwirken](CONTRIBUTING.de.md), und melde
+Sicherheitslücken bitte vertraulich, wie in der [Sicherheitsrichtlinie](SECURITY.de.md) beschrieben.
 
 ## Lizenz
 

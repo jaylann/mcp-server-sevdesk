@@ -154,4 +154,4 @@ docker buildx imagetools inspect ghcr.io/jaylann/mcp-server-sevdesk:<version> --
 
 Then pin the digest you verified (`ghcr.io/jaylann/mcp-server-sevdesk@sha256:…`) in your
 deployment. How the release pipeline produces these is in
-[security/supply-chain.md](../security/supply-chain.md).
+[Supply chain](../security/supply-chain.md).

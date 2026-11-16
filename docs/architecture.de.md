@@ -1,4 +1,4 @@
-<!-- translated-from: docs/architecture.md sha256:b7a71862d0df -->
+<!-- translated-from: docs/architecture.md sha256:c4dbc15ff516 -->
 
 # Architektur
 
@@ -13,7 +13,7 @@ loslassen können. Die Begründungen der größeren Entscheidungen stehen in den
 > Schreibvorgänge für Belege, Zuordnung und Steuerauswertungen, M5 Fernzugriff über HTTP und M6
 > Veröffentlichung (die Claude-Desktop-Erweiterung, Prompts, lokale Profile und der Schlüsselbund
 > des Betriebssystems, die Dateiübertragung im Fernzugriff und der generische Lesezugriff). Was 1.0
-> stabil hält, legt [compatibility.de.md](compatibility.de.md) fest.
+> stabil hält, legt die Seite [Kompatibilität](compatibility.de.md) fest.
 
 Die Einzelheiten haben eigene Seiten:
 
@@ -144,25 +144,19 @@ Postfach.
 ```mermaid
 sequenceDiagram
   participant C as MCP-Client
-  participant T as Transport<br/>stdio oder HTTP
-  participant D as Dispatcher
-  participant H as Werkzeug-Handler
-  participant S as Domäne
+  participant D as Server<br/>Transport · Dispatcher
+  participant H as Werkzeug<br/>Handler · Domäne
   participant K as sevDesk-Client
   participant A as sevDesk-API
-  C->>T: tools/call
-  T->>D: Anfrage
+  C->>D: tools/call
   Note over D: validieren · Stufe prüfen<br/>bestätigen · Probelauf
   D->>H: Argumente
-  H->>S: Domänenaufruf
-  S->>K: Anfrage
+  H->>K: Anfrage
   K->>A: HTTPS
   A-->>K: Antwort
-  K-->>S: entpackt, geparst
-  S-->>H: normalisiertes DTO
-  H-->>D: JSON-Text<br/>+ structuredContent
-  D-->>T: Ergebnis
-  T-->>C: Ergebnis
+  K-->>H: entpackt, geparst
+  H-->>D: DTO als JSON-Text
+  D-->>C: Ergebnis
 ```
 
 1. **Registrierung (beim Start; über HTTP bei jeder Anfrage).** Die Registry wählt Werkzeuge nach

@@ -1,4 +1,4 @@
-<!-- translated-from: CONTRIBUTING.md sha256:5691b06e9513 -->
+<!-- translated-from: CONTRIBUTING.md sha256:f273b73aea6c -->
 
 # Mitwirken an mcp-server-sevdesk
 
@@ -69,7 +69,7 @@ Token des Bots erzeugt.
 ## Fehler und Sicherheitslücken melden
 
 Nutze die Issue-Formulare für Fehler und Feature-Wünsche. Melde Schwachstellen vertraulich, siehe
-[SECURITY.de.md](SECURITY.de.md).
+[Sicherheitsrichtlinie](SECURITY.de.md).
 
 ## Lizenz
 

@@ -7,8 +7,8 @@ one server. There is no hosted instance: you run the server yourself, on your ow
 a platform such as Fly.io. For one person on one computer, stdio stays the simpler choice.
 
 This page explains the concepts and gets a first server running; [Where next](#where-next) lists
-the details. The design is in [architecture/transports.md](architecture/transports.md), the threat
-model in [security/remote.md](security/remote.md).
+the details. The design is in [Transports](architecture/transports.md), the threat
+model in [Security in remote mode](security/remote.md).
 
 ## Concepts
 
@@ -45,7 +45,7 @@ In OAuth mode only the sevDesk accounts in `SEVDESK_OAUTH_ACCOUNTS` can connect.
 id with [`account-id`](remote/operations.md#commands); a refused user sees their own account id on
 the consent page. `SEVDESK_OAUTH_ACCOUNTS=any` lets anyone with a sevDesk token use your server,
 and startup logs a warning: you would then process other people's accounting data (see
-[PRIVACY.md](../PRIVACY.md)).
+[Privacy](../PRIVACY.md)).
 
 Clients are limited too: `SEVDESK_OAUTH_CLIENTS` lists the hosts that may serve a client's
 metadata document (default `claude.ai`), checked before anything is fetched. Otherwise an attacker

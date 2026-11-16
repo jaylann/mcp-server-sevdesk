@@ -1,4 +1,4 @@
-<!-- translated-from: docs/architecture/transports.md sha256:85196cbe1d86 -->
+<!-- translated-from: docs/architecture/transports.md sha256:15578f39e65d -->
 
 # Transporte
 
@@ -11,7 +11,7 @@ richtet sich an Mitwirkende und Reviewer; Betreiber beginnen mit [Fernzugriff](.
 - **stdio** (Standard): für lokale Clients wie Claude Desktop, Claude Code, Cursor oder VS Code.
 - **Streamable HTTP** (`--http`, `src/http/`): für entfernte Clients wie benutzerdefinierte
   Connectoren in claude.ai. Der Server ist zum Selbstbetreiben gedacht; eine öffentliche gehostete
-  Instanz gibt es nicht. Die Anleitung für Betreiber ist [remote.de.md](../remote.de.md), die
+  Instanz gibt es nicht. Die Anleitung für Betreiber ist [Fernzugriff (HTTP)](../remote.de.md), die
   Entscheidungen sind [ADR 0006](../adr/0006-built-in-authorization-server-and-grant-store.de.md)
   und [ADR 0007](../adr/0007-approval-inbox-over-http.de.md).
 

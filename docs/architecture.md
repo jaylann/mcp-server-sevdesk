@@ -9,7 +9,7 @@ the bigger decisions is in the [architecture decision records](adr/README.md).
 > coverage, M3 document lifecycle, M4 receipt and e-invoice intake, voucher writes, reconciliation
 > and tax reports, M5 remote HTTP, and M6 launch (the Claude Desktop extension, prompts, local
 > profiles and the OS keychain, remote file transfer and the generic read). What 1.0 keeps stable
-> is defined in [compatibility.md](compatibility.md).
+> is defined in [Compatibility](compatibility.md).
 
 The details have their own pages:
 
@@ -131,25 +131,19 @@ sign-in.
 ```mermaid
 sequenceDiagram
   participant C as MCP client
-  participant T as Transport<br/>stdio or HTTP
-  participant D as Dispatcher
-  participant H as Tool handler
-  participant S as Domain
+  participant D as Server<br/>transport · dispatcher
+  participant H as Tool<br/>handler · domain
   participant K as sevDesk client
   participant A as sevDesk API
-  C->>T: tools/call
-  T->>D: request
+  C->>D: tools/call
   Note over D: validate · tier check<br/>confirm · dry-run
   D->>H: arguments
-  H->>S: domain call
-  S->>K: request
+  H->>K: request
   K->>A: HTTPS
   A-->>K: response
-  K-->>S: unwrapped, parsed
-  S-->>H: normalized DTO
-  H-->>D: JSON text<br/>+ structuredContent
-  D-->>T: result
-  T-->>C: result
+  K-->>H: unwrapped, parsed
+  H-->>D: DTO as JSON text
+  D-->>C: result
 ```
 
 1. **Registration (at startup; over HTTP for each request).** The registry selects tools by

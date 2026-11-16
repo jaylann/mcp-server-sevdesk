@@ -9,7 +9,7 @@ operators start with [Remote mode](../remote.md).
 - **stdio** (default): for local clients such as Claude Desktop, Claude Code, Cursor or VS Code.
 - **Streamable HTTP** (`--http`, `src/http/`): for remote clients such as claude.ai custom
   connectors. It is for self-hosting; there is no public hosted instance. The operator's guide is
-  [remote.md](../remote.md), the decisions are
+  [Remote mode (HTTP)](../remote.md), the decisions are
   [ADR 0006](../adr/0006-built-in-authorization-server-and-grant-store.md) and
   [ADR 0007](../adr/0007-approval-inbox-over-http.md).
 

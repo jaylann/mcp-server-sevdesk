@@ -1,10 +1,10 @@
-<!-- translated-from: docs/adr/README.md sha256:68cc95828759 -->
+<!-- translated-from: docs/adr/README.md sha256:e7c50bf7fd93 -->
 
 # Architekturentscheidungen
 
 Ein ADR (Architecture Decision Record) hält eine wichtige Entscheidung fest: die Ausgangslage, was
 wir gewählt haben, was es kostet und was wir verworfen haben. ADRs erklären, _warum_ der Code so
-aussieht, wie er aussieht. Den Gesamtentwurf beschreibt [architecture.de.md](../architecture.de.md).
+aussieht, wie er aussieht. Den Gesamtentwurf beschreibt die Seite [Architektur](../architecture.de.md).
 
 | ADR                                                              | Titel                                                                              | Status                                                                                                                                                                                  | Datum      |
 | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |

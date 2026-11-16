@@ -1,4 +1,4 @@
-<!-- translated-from: docs/remote.md sha256:423d7e895429 -->
+<!-- translated-from: docs/remote.md sha256:8acf2a9b4837 -->
 
 # Fernzugriff (HTTP)
 
@@ -11,8 +11,7 @@ einer Plattform wie Fly.io. Für eine Person an einem Rechner bleibt stdio die e
 
 Diese Seite erklärt die Konzepte und bringt einen ersten Server zum Laufen;
 [Weiterlesen](#weiterlesen) führt zu den Einzelheiten. Der Entwurf steht in
-[architecture/transports.de.md](architecture/transports.de.md), das Bedrohungsmodell in
-[security/remote.de.md](security/remote.de.md).
+[Transporte](architecture/transports.de.md), das Bedrohungsmodell unter [Sicherheit im Fernzugriff](security/remote.de.md).
 
 ## Konzepte
 
@@ -50,7 +49,7 @@ Im OAuth-Modus können sich nur die sevDesk-Konten in `SEVDESK_OAUTH_ACCOUNTS` v
 Konto-ID findest du mit [`account-id`](remote/operations.de.md#befehle); ein abgelehnter Benutzer
 sieht seine eigene Konto-ID auf der Zustimmungsseite. `SEVDESK_OAUTH_ACCOUNTS=any` lässt jeden mit
 einem sevDesk-Token deinen Server nutzen, und der Start protokolliert eine Warnung: Du würdest dann
-die Buchhaltungsdaten anderer Leute verarbeiten (siehe [PRIVACY.de.md](../PRIVACY.de.md)).
+die Buchhaltungsdaten anderer Leute verarbeiten (siehe [Datenschutz](../PRIVACY.de.md)).
 
 Auch Clients sind beschränkt: `SEVDESK_OAUTH_CLIENTS` führt die Hosts auf, die das
 Metadaten-Dokument eines Clients liefern dürfen (Standard `claude.ai`), geprüft, bevor etwas

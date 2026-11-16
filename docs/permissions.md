@@ -5,7 +5,7 @@ read-only tokens and no expiry. sevDesk also has no sandbox, so every write chan
 books. The server therefore brings its own least privilege: permission tiers you choose, a human
 confirmation for every binding step, dry runs, and a local audit log. This page explains how to
 use each of them; the guarantees behind confirmations are in
-[Human confirmation](security/confirmation.md), the threat model in [SECURITY.md](../SECURITY.md).
+[Human confirmation](security/confirmation.md), the threat model in the [Security policy](../SECURITY.md).
 
 ## Tiers
 
@@ -44,7 +44,7 @@ and `external` once you trust the drafts and your client shows confirmations
 The tier is enforced again on every call and in the HTTP client, which refuses a request to a
 sevDesk endpoint above the calling tool's tier ([Safety model](architecture/safety.md#enforcement-in-three-places)). In OAuth remote
 mode each connection gets the tiers ticked on the consent page, capped by `SEVDESK_ALLOW`
-([remote.md](remote.md#tiers-per-grant)).
+([Remote mode (HTTP)](remote.md#tiers-per-grant)).
 
 ## How a write runs
 

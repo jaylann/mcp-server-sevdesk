@@ -62,7 +62,7 @@ its private key as the Actions secret `RP_APP_KEY` and its App ID as the Actions
 ## Reporting bugs and security issues
 
 Use the issue forms for bugs and feature requests. Report vulnerabilities privately, see
-[SECURITY.md](SECURITY.md).
+[Security policy](SECURITY.md).
 
 ## License
 

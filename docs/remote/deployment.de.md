@@ -1,4 +1,4 @@
-<!-- translated-from: docs/remote/deployment.md sha256:15ca2233026d -->
+<!-- translated-from: docs/remote/deployment.md sha256:e228c96329d2 -->
 
 # Bereitstellung
 
@@ -164,4 +164,4 @@ docker buildx imagetools inspect ghcr.io/jaylann/mcp-server-sevdesk:<version> --
 
 Lege dann den geprüften Digest (`ghcr.io/jaylann/mcp-server-sevdesk@sha256:…`) in deiner
 Bereitstellung fest. Wie die Release-Pipeline sie erzeugt, steht in
-[security/supply-chain.de.md](../security/supply-chain.de.md).
+[Lieferkette](../security/supply-chain.de.md).

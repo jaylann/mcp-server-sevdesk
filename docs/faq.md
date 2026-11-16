@@ -46,7 +46,7 @@ contacts and bank transactions are then part of your conversation, under that pr
 Accounting data contains personal data of your customers, so check your provider's
 data-processing terms before you connect a live account.
 
-The project runs no service and collects no telemetry. Details: [PRIVACY.md](../PRIVACY.md).
+The project runs no service and collects no telemetry. Details: [Privacy](../PRIVACY.md).
 
 ### Can the AI finalize or send invoices without me?
 
@@ -155,7 +155,7 @@ and `sevdesk_part_get` show `stock` and `stockEnabled`, and `sevdesk_part_create
 - **Bugs and feature requests:** the [issue forms](https://github.com/jaylann/mcp-server-sevdesk/issues/new/choose).
   Include the server version (`npx -y mcp-server-sevdesk --version`), your client and the error
   text, never your token or real customer data.
-- **Security issues:** report them privately, as described in [SECURITY.md](../SECURITY.md).
+- **Security issues:** report them privately, as described in the [Security policy](../SECURITY.md).
 - **Your sevDesk account** (plans, tokens, data in sevDesk): sevDesk's own support.
 - **Tax questions:** your Steuerberater.
 

@@ -54,7 +54,7 @@ except for the Claude Desktop extension, Node.js 22.12 or later.
   ```
 
 - **Cursor, VS Code, Windsurf, Codex, Zed and others** start `npx -y mcp-server-sevdesk` with the
-  token in the environment; [docs/clients.md](docs/clients.md) has the exact file for each.
+  token in the environment; [Clients](docs/clients.md) has the exact file for each.
 - **claude.ai and the Claude mobile apps** connect to a server you host in
   [remote mode](#remote-mode).
 
@@ -159,8 +159,8 @@ The [changelog](CHANGELOG.md) lists every release.
 
 ## Contributing
 
-Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), and please report
-security issues privately as described in [SECURITY.md](SECURITY.md).
+Contributions are welcome. Start with [Contributing](CONTRIBUTING.md), and please report
+security issues privately as described in the [Security policy](SECURITY.md).
 
 ## License
 
