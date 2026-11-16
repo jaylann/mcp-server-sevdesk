@@ -38,8 +38,10 @@ Decisions: [docs/adr/](docs/adr/).
 - **Pages** (approval, inbox, sign-in, consent, upload) are built on `src/pages/`: markup only
   through the `markup` template tag (it escapes every value), texts in both catalogs
   (`src/pages/text/en.ts` and `de.ts`), no script, no `style=""`, nothing loaded from outside
-  `/assets/`. Look at a change with `pnpm pages:preview`
-  ([ADR 0010](docs/adr/0010-server-pages-in-two-languages.md)).
+  `/assets/`. Look at a change with `pnpm pages:preview` (or `pages:watch`), check it with
+  `pnpm pages:shots`, and try the approval flow with `pnpm approvals:dev`; the browser runs need
+  an unsandboxed shell ([ADR 0010](docs/adr/0010-server-pages-in-two-languages.md),
+  [Making changes](docs/contributing/changes.md#changing-a-page)).
 - **Previews of `commit` and `external` tools** exist in English and German: build both with
   `bothPreviews` from the same data (`src/domain/preview-text.ts`), same facts and warnings in
   the same order. After a change, review the German wording in the snapshot of
