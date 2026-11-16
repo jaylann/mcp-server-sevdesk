@@ -74,7 +74,8 @@ Der Entwurf kann eine Kostenstelle deines Kontos tragen, angegeben mit ihrer ID,
 Namen; [`sevdesk_reference_lookup`](../tools.md#sevdesk_reference_lookup) mit der Art
 `cost_centres` listet sie auf. Ein Name oder eine Nummer, die das Konto nicht kennt oder die zu
 mehreren Kostenstellen passt, wird abgelehnt, bevor etwas gespeichert wird. Eine Änderung ohne
-Kostenstelle behält die gespeicherte; entfernen lässt sie sich wieder in sevDesk.
+Kostenstelle behält die gespeicherte; `removeCostCentre` nimmt sie wieder vom Entwurf, und die
+Vorschau nennt die entfernte.
 
 ### Aus einem Angebot oder einer Auftragsbestätigung
 

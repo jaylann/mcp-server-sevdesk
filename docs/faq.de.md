@@ -184,8 +184,9 @@ unbekannter Name oder einer, der zu mehreren Kostenstellen passt, wird abgelehnt
 gespeichert wird. `sevdesk_invoices_list` und `sevdesk_vouchers_list` filtern nach Kostenstelle
 („die Ausgaben dieses Monats auf der Kostenstelle München“), die Abrufwerkzeuge zeigen sie, und die
 Freigabe beim Fertigstellen nennt sie. Aufträge nehmen keine: sevDesk nimmt eine Kostenstelle am
-Auftrag an, speichert sie aber nicht. Eine Änderung ohne `costCentre` behält die gespeicherte; eine
-Kostenstelle von einem Dokument entfernen und die Kostenstellen selbst verwalten geht in sevDesk.
+Auftrag an, speichert sie aber nicht. Eine Änderung ohne `costCentre` behält die gespeicherte, und
+`removeCostCentre: true` nimmt sie mit den Änderungswerkzeugen für Rechnungen und Belege von einem
+Entwurf. Die Kostenstellen selbst verwaltest du in sevDesk.
 
 ## Hilfe
 

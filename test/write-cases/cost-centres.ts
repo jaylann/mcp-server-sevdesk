@@ -59,6 +59,13 @@ export const COST_CENTRES_CASES: readonly WriteToolCase[] = [
     writes: [{ method: "POST", path: "/Voucher/Factory/saveVoucher" }],
   },
   {
+    label: "remove the cost centre of a draft voucher",
+    tool: voucherUpdateDraftTool,
+    args: { id: 2101, removeCostCentre: true },
+    routes: voucherOnCentre,
+    writes: [{ method: "POST", path: "/Voucher/Factory/saveVoucher" }],
+  },
+  {
     label: "finalize a draft invoice on a cost centre",
     tool: finalizeInvoice,
     args: { id: 1001 },

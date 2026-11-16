@@ -23,11 +23,14 @@ import { SevdeskError } from "../../sevdesk/errors.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { statusDto } from "../common.js";
 import {
-  chooseCostCentre,
   type CostCentreArg,
+  costCentreChange,
   costCentreInput,
   costCentreLabel,
   costCentreRef,
+  costCentreUpdate,
+  costCentreUpdateInputShape,
+  costCentreUpdatePayload,
   resolveCostCentre,
 } from "../cost-centres.js";
 import type { CountryReadOptions } from "../country-codes.js";
@@ -172,10 +175,7 @@ export const invoiceUpdateInputShape = {
   footText: footTextInput,
   contactPersonId: contactPersonIdInput,
   ...addressInputShape,
-  costCentre: costCentreInput.describe(
-    "New Kostenstelle: id, number or name (see sevdesk_reference_lookup kind=cost_centres). " +
-      "Leave out to keep the stored one; removing it is not supported here.",
-  ),
+  ...costCentreUpdateInputShape,
 };
 
 export interface InvoiceCreateArgs extends CreateArgs {
@@ -200,6 +200,7 @@ export interface InvoiceUpdateArgs extends UpdateArgs {
   readonly headText?: string | undefined;
   readonly footText?: string | undefined;
   readonly costCentre?: CostCentreArg | undefined;
+  readonly removeCostCentre?: boolean | undefined;
 }
 
 /** What `execute` needs: the exact body the preview describes. */
@@ -308,10 +309,7 @@ export async function prepareInvoiceUpdate(
   const current = await loadCurrentInvoice(client, args.id, signal);
   const doc = current.document;
   checkUpdatable(doc);
-  const centre =
-    args.costCentre === undefined
-      ? undefined
-      : await chooseCostCentre(client, args.costCentre, doc.costCentre?.id, signal);
+  const centre = await costCentreUpdate(client, args, doc.costCentre?.id, signal);
 
   const basics = await resolveUpdateBasics(
     client,
@@ -376,10 +374,7 @@ export async function prepareInvoiceUpdate(
           : { address: addressBlock(basics.address), ...structuredAddress(basics.address) }),
         customerInternalNote: doc.customerInternalNote,
         paymentMethod: storedRef(doc.paymentMethod, "PaymentMethod"),
-        costCentre:
-          centre === undefined
-            ? storedRef(doc.costCentre, "CostCentre")
-            : costCentreRef(centre.centre.id),
+        costCentre: costCentreUpdatePayload(centre, doc.costCentre?.id),
         origin:
           doc.origin === undefined
             ? undefined
@@ -458,12 +453,7 @@ export async function prepareInvoiceUpdate(
     );
   if (basics.currencyChanged) log.value("currency", "Currency", doc.currency, basics.currency);
   if (centre !== undefined) {
-    log.value(
-      "cost centre",
-      "Cost centre (Kostenstelle)",
-      centre.stored === undefined ? undefined : costCentreLabel(centre.stored),
-      costCentreLabel(centre.centre),
-    );
+    log.value("cost centre", "Cost centre (Kostenstelle)", ...costCentreChange(centre));
   }
   if (basics.positions !== undefined) {
     log.note(

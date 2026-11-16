@@ -1364,7 +1364,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
               "type": "string",
             },
           ],
-          "description": "Kostenstelle: its id (number), or its number or name (text, case and accents ignored); see sevdesk_reference_lookup kind=cost_centres. An unknown or ambiguous one is refused. Removing a cost centre is not supported here.",
+          "description": "Kostenstelle: its id (number), or its number or name (text, case and accents ignored); see sevdesk_reference_lookup kind=cost_centres. An unknown or ambiguous one is refused.",
         },
         "currency": {
           "description": "ISO 4217 code; default EUR or the source invoice's currency.",
@@ -2058,7 +2058,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
               "type": "string",
             },
           ],
-          "description": "Kostenstelle: its id (number), or its number or name (text, case and accents ignored); see sevdesk_reference_lookup kind=cost_centres. An unknown or ambiguous one is refused. Removing a cost centre is not supported here.",
+          "description": "Kostenstelle: its id (number), or its number or name (text, case and accents ignored); see sevdesk_reference_lookup kind=cost_centres. An unknown or ambiguous one is refused.",
         },
         "currency": {
           "description": "ISO 4217 currency code (Währung); default EUR.",
@@ -2618,7 +2618,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
               "type": "string",
             },
           ],
-          "description": "New Kostenstelle: id, number or name (see sevdesk_reference_lookup kind=cost_centres). Leave out to keep the stored one; removing it is not supported here.",
+          "description": "New Kostenstelle: id, number or name (see sevdesk_reference_lookup kind=cost_centres). Leave out to keep the stored one.",
         },
         "currency": {
           "description": "ISO 4217 currency code (Währung); default EUR.",
@@ -2735,6 +2735,10 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
             "gross",
           ],
           "type": "string",
+        },
+        "removeCostCentre": {
+          "description": "true removes the stored Kostenstelle from the draft. Not together with costCentre.",
+          "type": "boolean",
         },
         "taxRuleId": {
           "description": "New tax rule (Steuerregel) id; see sevdesk_reference_lookup kind=tax_rules.",
@@ -4592,7 +4596,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
               "type": "string",
             },
           ],
-          "description": "Kostenstelle: its id (number), or its number or name (text, case and accents ignored); see sevdesk_reference_lookup kind=cost_centres. An unknown or ambiguous one is refused. Removing a cost centre is not supported here.",
+          "description": "Kostenstelle: its id (number), or its number or name (text, case and accents ignored); see sevdesk_reference_lookup kind=cost_centres. An unknown or ambiguous one is refused.",
         },
         "currency": {
           "description": "ISO 4217 currency, e.g. USD; default EUR. Non-EUR requires exchangeRate or foreignCurrencyDeadline.",
@@ -4905,7 +4909,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
               "type": "string",
             },
           ],
-          "description": "New Kostenstelle: id, number or name (see sevdesk_reference_lookup kind=cost_centres). Leave out to keep the stored one; removing it is not supported here.",
+          "description": "New Kostenstelle: id, number or name (see sevdesk_reference_lookup kind=cost_centres). Leave out to keep the stored one.",
         },
         "currency": {
           "description": "Target currency; default the stored currency. A currency change needs ALL positions in that currency. Pass "EUR" to convert back without a rate.",
@@ -5002,6 +5006,10 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "maxItems": 50,
           "minItems": 1,
           "type": "array",
+        },
+        "removeCostCentre": {
+          "description": "true removes the stored Kostenstelle from the draft. Not together with costCentre.",
+          "type": "boolean",
         },
         "supplierId": {
           "description": "Lieferant (supplier; the customer of a revenue voucher) as a contact id from sevdesk_contacts_search. Pass supplierId or supplierName.",
@@ -5713,7 +5721,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
               "type": "string",
             },
           ],
-          "description": "Kostenstelle: its id (number), or its number or name (text, case and accents ignored); see sevdesk_reference_lookup kind=cost_centres. An unknown or ambiguous one is refused. Removing a cost centre is not supported here.",
+          "description": "Kostenstelle: its id (number), or its number or name (text, case and accents ignored); see sevdesk_reference_lookup kind=cost_centres. An unknown or ambiguous one is refused.",
         },
         "currency": {
           "description": "ISO 4217 code; default EUR or the source invoice's currency.",
@@ -6135,7 +6143,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
               "type": "string",
             },
           ],
-          "description": "Kostenstelle: its id (number), or its number or name (text, case and accents ignored); see sevdesk_reference_lookup kind=cost_centres. An unknown or ambiguous one is refused. Removing a cost centre is not supported here.",
+          "description": "Kostenstelle: its id (number), or its number or name (text, case and accents ignored); see sevdesk_reference_lookup kind=cost_centres. An unknown or ambiguous one is refused.",
         },
         "currency": {
           "description": "ISO 4217 currency code (Währung); default EUR.",
@@ -6513,7 +6521,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
               "type": "string",
             },
           ],
-          "description": "New Kostenstelle: id, number or name (see sevdesk_reference_lookup kind=cost_centres). Leave out to keep the stored one; removing it is not supported here.",
+          "description": "New Kostenstelle: id, number or name (see sevdesk_reference_lookup kind=cost_centres). Leave out to keep the stored one.",
         },
         "currency": {
           "description": "ISO 4217 currency code (Währung); default EUR.",
@@ -6630,6 +6638,10 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
             "gross",
           ],
           "type": "string",
+        },
+        "removeCostCentre": {
+          "description": "true removes the stored Kostenstelle from the draft. Not together with costCentre.",
+          "type": "boolean",
         },
         "taxRuleId": {
           "description": "New tax rule (Steuerregel) id; see sevdesk_reference_lookup kind=tax_rules.",
@@ -8176,7 +8188,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
               "type": "string",
             },
           ],
-          "description": "Kostenstelle: its id (number), or its number or name (text, case and accents ignored); see sevdesk_reference_lookup kind=cost_centres. An unknown or ambiguous one is refused. Removing a cost centre is not supported here.",
+          "description": "Kostenstelle: its id (number), or its number or name (text, case and accents ignored); see sevdesk_reference_lookup kind=cost_centres. An unknown or ambiguous one is refused.",
         },
         "currency": {
           "description": "ISO 4217 currency, e.g. USD; default EUR. Non-EUR requires exchangeRate or foreignCurrencyDeadline.",
@@ -8360,7 +8372,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
               "type": "string",
             },
           ],
-          "description": "New Kostenstelle: id, number or name (see sevdesk_reference_lookup kind=cost_centres). Leave out to keep the stored one; removing it is not supported here.",
+          "description": "New Kostenstelle: id, number or name (see sevdesk_reference_lookup kind=cost_centres). Leave out to keep the stored one.",
         },
         "currency": {
           "description": "Target currency; default the stored currency. A currency change needs ALL positions in that currency. Pass "EUR" to convert back without a rate.",
@@ -8457,6 +8469,10 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "maxItems": 50,
           "minItems": 1,
           "type": "array",
+        },
+        "removeCostCentre": {
+          "description": "true removes the stored Kostenstelle from the draft. Not together with costCentre.",
+          "type": "boolean",
         },
         "supplierId": {
           "description": "Lieferant (supplier; the customer of a revenue voucher) as a contact id from sevdesk_contacts_search. Pass supplierId or supplierName.",

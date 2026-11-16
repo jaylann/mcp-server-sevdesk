@@ -22,11 +22,12 @@ import type { SevdeskClient } from "../../sevdesk/types.js";
 import type { TaxRegime } from "../account-settings.js";
 import { cleanText, currencyCode } from "../common.js";
 import {
-  chooseCostCentre,
   type CostCentreArg,
+  costCentreChange,
   costCentreFacts,
-  costCentreLabel,
   costCentreRef,
+  costCentreUpdate,
+  costCentreUpdatePayload,
   resolveCostCentre,
 } from "../cost-centres.js";
 import { compare, format } from "../money.js";
@@ -411,10 +412,7 @@ export async function prepareVoucherUpdate(
     args.file === undefined ? undefined : await readReceiptFile(options.files, args.file);
   const stored = await loadStoredVoucher(client, args.id, signal);
   const kind = checkDraft(stored, "changed");
-  const centre =
-    args.costCentre === undefined
-      ? undefined
-      : await chooseCostCentre(client, args.costCentre, stored.record.costCentre?.id, signal);
+  const centre = await costCentreUpdate(client, args, stored.record.costCentre?.id, signal);
   const oldCurrency = currencyCode(stored.record.currency);
   const currency = resolveVoucherCurrency(args.currency ?? oldCurrency, args);
   const convertsCurrency = oldCurrency !== currency.currency;
@@ -497,7 +495,10 @@ export async function prepareVoucherUpdate(
           taxRuleId: rule.id,
         }),
         ...currencyPayload(currency),
-        ...(centre === undefined ? {} : { costCentre: costCentreRef(centre.centre.id) }),
+        // Kept as carried over unless the call sets or removes it.
+        ...(centre === undefined
+          ? {}
+          : { costCentre: costCentreUpdatePayload(centre, stored.record.costCentre?.id) }),
       },
       voucherPosSave:
         positions === undefined
@@ -573,8 +574,7 @@ export async function prepareVoucherUpdate(
       log.value(
         text("cost centre", "Kostenstelle"),
         text("Cost centre (Kostenstelle)", "Kostenstelle"),
-        centre.stored === undefined ? undefined : costCentreLabel(centre.stored, lang),
-        costCentreLabel(centre.centre, lang),
+        ...costCentreChange(centre, lang),
       );
     }
     if (mode !== storedMode)

@@ -15,8 +15,9 @@
  * - `GET /Invoice` and `GET /Voucher` filter by `costCentre[id]` + `costCentre[objectName]`; the
  *   rows carry their `costCentre`, so every row is checked again here. `costCentre=<id>` alone
  *   answers 422. The credit-note list filter was not measured and is not offered.
- * - Not recorded: how a cost centre is removed from a document. An update that leaves it out
- *   keeps it, so this server offers no way to clear it.
+ * - Recorded 2026-11-17: an update with the id and `costCentre: null` removes the cost centre
+ *   (invoices, vouchers, credit notes); the invoice and voucher updates offer it as
+ *   `removeCostCentre`.
  *
  * Numbers and names are untrusted text: they go into DTOs and preview values through `cleanText`
  * and never into summaries or error messages.
@@ -186,8 +187,7 @@ export const costCentreInput = costCentreValue
   .optional()
   .describe(
     "Kostenstelle: its id (number), or its number or name (text, case and accents ignored); " +
-      "see sevdesk_reference_lookup kind=cost_centres. An unknown or ambiguous one is refused. " +
-      "Removing a cost centre is not supported here.",
+      "see sevdesk_reference_lookup kind=cost_centres. An unknown or ambiguous one is refused.",
   );
 
 /**
@@ -278,6 +278,87 @@ export async function chooseCostCentre(
 /** The payload reference of a cost centre. */
 export function costCentreRef(id: number): { id: number; objectName: "CostCentre" } {
   return { id, objectName: "CostCentre" };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Updates: set, remove or keep
+// ---------------------------------------------------------------------------------------------
+
+/** The cost-centre arguments of `sevdesk_invoice_update_draft` and `sevdesk_voucher_update_draft`. */
+export const costCentreUpdateInputShape = {
+  costCentre: costCentreValue
+    .optional()
+    .describe(
+      "New Kostenstelle: id, number or name (see sevdesk_reference_lookup kind=cost_centres). " +
+        "Leave out to keep the stored one.",
+    ),
+  removeCostCentre: z
+    .boolean()
+    .optional()
+    .describe("true removes the stored Kostenstelle from the draft. Not together with costCentre."),
+};
+
+/** What an update does with the cost centre. */
+export interface CostCentreUpdate {
+  /** The cost centre the draft gets; `null` removes the stored one. */
+  readonly next: CostCentre | null;
+  /** The stored cost centre as listed (`{id}` alone when the list lacks it); none if unset. */
+  readonly stored?: CostCentre | undefined;
+}
+
+/**
+ * The cost-centre change an update asks for, or `undefined` to keep the stored one (no request).
+ * `costCentre` is resolved like {@link resolveCostCentre}; `removeCostCentre: true` removes it,
+ * which `costCentre: null` does (recorded 2026-11-17, spec/deviations.md D-092). Both together are
+ * refused.
+ */
+export async function costCentreUpdate(
+  client: SevdeskClient,
+  args: {
+    readonly costCentre?: CostCentreArg | undefined;
+    readonly removeCostCentre?: boolean | undefined;
+  },
+  storedId: number | undefined,
+  signal?: AbortSignal,
+): Promise<CostCentreUpdate | undefined> {
+  const remove = args.removeCostCentre === true;
+  if (remove && args.costCentre !== undefined) {
+    throw validation("Pass either costCentre (a new one) or removeCostCentre, not both.");
+  }
+  if (args.costCentre !== undefined) {
+    const choice = await chooseCostCentre(client, args.costCentre, storedId, signal);
+    return { next: choice.centre, stored: choice.stored };
+  }
+  if (!remove) return undefined;
+  return {
+    next: null,
+    stored: storedId === undefined ? undefined : await describeCostCentre(client, storedId, signal),
+  };
+}
+
+/**
+ * The `costCentre` of an update body: the stored reference kept (`undefined` when there is none),
+ * the new one, or `null` to remove it.
+ */
+export function costCentreUpdatePayload(
+  update: CostCentreUpdate | undefined,
+  storedId: number | undefined,
+): { id: number; objectName: "CostCentre" } | null | undefined {
+  if (update === undefined) return storedId === undefined ? undefined : costCentreRef(storedId);
+  return update.next === null ? null : costCentreRef(update.next.id);
+}
+
+/**
+ * Before and after of a cost-centre change for a preview's change log; both `undefined` when a
+ * removal finds none stored (nothing visible changes).
+ */
+export function costCentreChange(
+  update: CostCentreUpdate,
+  lang: PreviewLanguage = "en",
+): readonly [string | undefined, string | undefined] {
+  const before = update.stored === undefined ? undefined : costCentreLabel(update.stored, lang);
+  if (update.next !== null) return [before, costCentreLabel(update.next, lang)];
+  return [before, before === undefined ? undefined : lang === "de" ? "entfernt" : "removed"];
 }
 
 // ---------------------------------------------------------------------------------------------

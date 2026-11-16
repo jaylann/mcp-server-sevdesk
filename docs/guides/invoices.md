@@ -68,7 +68,7 @@ The draft can carry a cost centre (Kostenstelle) of your account, named by its i
 [`sevdesk_reference_lookup`](../tools.md#sevdesk_reference_lookup) with kind `cost_centres` lists
 them. A name or number the account does not have, or one that fits several cost centres, is
 refused before anything is saved. An update that does not name a cost centre keeps the stored one;
-removing it again is done in sevDesk.
+`removeCostCentre` takes it off the draft again, and the preview names the one removed.
 
 ### From an offer or order confirmation
 

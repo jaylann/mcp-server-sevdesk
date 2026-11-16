@@ -7,10 +7,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   chooseCostCentre,
+  costCentreChange,
   costCentreFacts,
   costCentreFilterQuery,
   costCentreLabel,
   costCentreOf,
+  costCentreUpdate,
+  costCentreUpdatePayload,
   describeCostCentre,
   inCostCentre,
   listCostCentres,
@@ -139,6 +142,54 @@ describe("chooseCostCentre", () => {
       stored: undefined,
     });
     expect(client.callsTo("/CostCentre")).toHaveLength(3);
+  });
+});
+
+describe("costCentreUpdate (set, remove or keep)", () => {
+  it("keeps the stored one without a request when nothing is asked", async () => {
+    const client = recorded();
+    expect(await costCentreUpdate(client, {}, first.id)).toBeUndefined();
+    expect(await costCentreUpdate(client, { removeCostCentre: false }, first.id)).toBeUndefined();
+    expect(client.calls).toEqual([]);
+    expect(costCentreUpdatePayload(undefined, first.id)).toEqual({
+      id: first.id,
+      objectName: "CostCentre",
+    });
+    expect(costCentreUpdatePayload(undefined, undefined)).toBeUndefined();
+  });
+
+  it("removes: the payload is null and the change names the removed one", async () => {
+    const update = await costCentreUpdate(recorded(), { removeCostCentre: true }, first.id);
+    expect(update).toEqual({ next: null, stored: first });
+    if (update === undefined) throw new Error("expected an update");
+    expect(costCentreUpdatePayload(update, first.id)).toBeNull();
+    expect(costCentreChange(update)).toEqual(["M62573C Mustername 1 (id 344964)", "removed"]);
+    expect(costCentreChange(update, "de")).toEqual([
+      "M62573C Mustername 1 (ID 344964)",
+      "entfernt",
+    ]);
+  });
+
+  it("removing from a document without one changes nothing visible and reads nothing", async () => {
+    const client = recorded();
+    const update = await costCentreUpdate(client, { removeCostCentre: true }, undefined);
+    expect(update).toEqual({ next: null, stored: undefined });
+    if (update === undefined) throw new Error("expected an update");
+    expect(costCentreChange(update)).toEqual([undefined, undefined]);
+    expect(client.calls).toEqual([]);
+  });
+
+  it("sets a new one and refuses both arguments together", async () => {
+    const update = await costCentreUpdate(recorded(), { costCentre: "MCP1" }, undefined);
+    expect(update).toEqual({ next: third, stored: undefined });
+    if (update === undefined) throw new Error("expected an update");
+    expect(costCentreUpdatePayload(update, undefined)).toEqual({
+      id: third.id,
+      objectName: "CostCentre",
+    });
+    await expect(
+      costCentreUpdate(recorded(), { costCentre: 1, removeCostCentre: true }, first.id),
+    ).rejects.toMatchObject({ kind: "validation" });
   });
 });
 

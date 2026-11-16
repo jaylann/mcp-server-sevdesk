@@ -108,7 +108,8 @@ const invoiceDocumentSchema = z
     ...structuredAddressShape,
     customerInternalNote: z.string().optional(),
     paymentMethod: ref("PaymentMethod").optional(),
-    costCentre: ref("CostCentre").optional(),
+    // null removes a stored cost centre on an update (recorded 2026-11-17, D-092).
+    costCentre: ref("CostCentre").nullable().optional(),
     origin: z.strictObject({ id, objectName: z.string().min(1) }).optional(),
     propertyIsEInvoice: z.boolean().optional(),
   })

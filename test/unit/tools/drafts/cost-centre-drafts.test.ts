@@ -179,6 +179,65 @@ describe("sevdesk_invoice_update_draft with costCentre", () => {
     expect(client.callsTo("/CostCentre")).toEqual([]);
   });
 
+  it("sends no costCentre key when none is stored and none is asked for", async () => {
+    const client = new FakeSevdeskClient(invoiceUpdateRoutes);
+    const plan = await prepareWrite(tool, { id: 2102, header: "Rechnung Projekt X" }, client);
+    expect(plan.state.body.invoice).not.toHaveProperty("costCentre");
+  });
+
+  it("removes the stored cost centre with removeCostCentre: costCentre null (D-092)", async () => {
+    const client = new FakeSevdeskClient(
+      withRoutes(
+        invoiceUpdateRoutes,
+        storedInvoice({ costCentre: storedCostCentre(first.id) }),
+        costCentresRoute,
+      ),
+    );
+    const { plan } = await executeWrite(tool, { id: 2102, removeCostCentre: true }, client);
+    expect(plan.state.body.invoice.costCentre).toBeNull();
+    expect(client.writes()[0]?.body).toMatchObject({ invoice: { id: 2102, costCentre: null } });
+    expect(plan.preview.action).toBe(
+      "Update draft invoice 2102 for Musterfirma GmbH (contact 1001): change cost centre.",
+    );
+    expect(plan.preview.facts).toContainEqual({
+      label: "Cost centre (Kostenstelle)",
+      value: "M62573C Mustername 1 (id 344964) → removed",
+    });
+  });
+
+  it("treats removeCostCentre: false like leaving it out", async () => {
+    const client = new FakeSevdeskClient(
+      withRoutes(invoiceUpdateRoutes, storedInvoice({ costCentre: storedCostCentre(first.id) })),
+    );
+    const plan = await prepareWrite(
+      tool,
+      { id: 2102, header: "X", removeCostCentre: false },
+      client,
+    );
+    expect(plan.state.body.invoice.costCentre).toEqual({ id: first.id, objectName: "CostCentre" });
+    expect(client.callsTo("/CostCentre")).toEqual([]);
+  });
+
+  it("refuses costCentre and removeCostCentre together, before any write", async () => {
+    const client = new FakeSevdeskClient(withRoutes(invoiceUpdateRoutes, costCentresRoute));
+    await expect(
+      prepareWrite(tool, { id: 2102, costCentre: "MCP1", removeCostCentre: true }, client),
+    ).rejects.toMatchObject({
+      kind: "validation",
+      message: "Pass either costCentre (a new one) or removeCostCentre, not both.",
+    });
+    expect(client.callsTo("/CostCentre")).toEqual([]);
+    expect(client.writes()).toEqual([]);
+  });
+
+  it("names no change when it removes from a draft without a cost centre", async () => {
+    const client = new FakeSevdeskClient(withRoutes(invoiceUpdateRoutes, costCentresRoute));
+    const plan = await prepareWrite(tool, { id: 2102, removeCostCentre: true }, client);
+    expect(plan.preview.action).toMatch(/change nothing visible\.$/);
+    expect(plan.state.body.invoice.costCentre).toBeNull();
+    expect(client.callsTo("/CostCentre")).toEqual([]);
+  });
+
   it("names no change when the same cost centre is given again", async () => {
     const client = new FakeSevdeskClient(
       withRoutes(
@@ -297,6 +356,38 @@ describe("sevdesk_voucher_update_draft with costCentre", () => {
       voucher: { costCentre: { id: first.id, objectName: "CostCentre" } },
     });
     expect(fake.callsTo("/CostCentre")).toEqual([]);
+  });
+
+  it("sends no costCentre key when none is stored and none is asked for", async () => {
+    const fake = client();
+    await executeWrite(tool, { id: 2101, number: "ER-2026-0816" }, fake);
+    const body = fake.writes()[0]?.body as { voucher: Record<string, unknown> };
+    expect(body.voucher).not.toHaveProperty("costCentre");
+  });
+
+  it("removes the stored cost centre and shows which one, in both languages", async () => {
+    const fake = client(draftRow({ costCentre: storedCostCentre(first.id) }), [costCentresRoute]);
+    const { plan } = await executeWrite(tool, { id: 2101, removeCostCentre: true }, fake);
+    expect(fake.writes()[0]?.body).toMatchObject({ voucher: { id: 2101, costCentre: null } });
+    expect(plan.preview.facts).toContainEqual({
+      label: "Cost centre (Kostenstelle)",
+      value: "M62573C Mustername 1 (id 344964) → removed",
+    });
+    expect(plan.previewDe?.facts).toContainEqual({
+      label: "Kostenstelle",
+      value: "M62573C Mustername 1 (ID 344964) → entfernt",
+    });
+  });
+
+  it("refuses costCentre and removeCostCentre together", async () => {
+    const message = (
+      await refusal(tool, { id: 2101, costCentre: 1, removeCostCentre: true }, [
+        costCentresRoute,
+        voucherRoute(draftRow()),
+        positionsRoute(2101, [positionRow()]),
+      ])
+    ).message;
+    expect(message).toBe("Pass either costCentre (a new one) or removeCostCentre, not both.");
   });
 
   it("refuses an unknown cost centre without writing", async () => {

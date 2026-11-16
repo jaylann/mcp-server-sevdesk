@@ -166,8 +166,9 @@ account's cost centres. An unknown name, or one that fits several cost centres, 
 anything is saved. `sevdesk_invoices_list` and `sevdesk_vouchers_list` filter by cost centre
 ("this month's expenses on cost centre Munich"), the get tools show it, and the finalize approval
 lists it. Orders take none: sevDesk accepts a cost centre on an order but does not keep it. An
-update without `costCentre` keeps the stored one; removing a cost centre from a document and
-managing the cost centres themselves are done in sevDesk.
+update without `costCentre` keeps the stored one, and `removeCostCentre: true` on the invoice
+and voucher update tools takes it off a draft. Managing the cost centres themselves is done in
+sevDesk.
 
 ## Support
 

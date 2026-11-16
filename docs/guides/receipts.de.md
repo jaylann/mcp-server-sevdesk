@@ -84,7 +84,8 @@ hochgeladen und angehängt. Der Beleg bleibt ein Entwurf: Gebucht ist noch nicht
 Ein Beleg kann eine Kostenstelle tragen, angegeben mit ihrer ID, Nummer oder ihrem Namen
 ([`sevdesk_reference_lookup`](../tools.md#sevdesk_reference_lookup), Art `cost_centres`); eine
 unbekannte oder mehrdeutige wird abgelehnt. `sevdesk_vouchers_list` filtert danach, und die
-Freigabe beim Fertigstellen zeigt sie.
+Freigabe beim Fertigstellen zeigt sie. `sevdesk_voucher_update_draft` mit `removeCostCentre` nimmt
+sie von einem Entwurf.
 
 Fremdwährungen funktionieren mit einem Wechselkurs oder einem Kursdatum, aber solche Entwürfe lassen
 sich über den Server nicht fertigstellen. Die Regeln für das Ändern stehen in der

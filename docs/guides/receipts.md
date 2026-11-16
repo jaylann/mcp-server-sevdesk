@@ -79,7 +79,7 @@ draft: nothing is booked yet.
 A voucher can carry a cost centre (Kostenstelle), named by its id, number or name
 ([`sevdesk_reference_lookup`](../tools.md#sevdesk_reference_lookup), kind `cost_centres`); an
 unknown or ambiguous one is refused. `sevdesk_vouchers_list` filters by it, and the finalize
-approval shows it.
+approval shows it. `sevdesk_voucher_update_draft` with `removeCostCentre` takes it off a draft.
 
 Foreign currencies work with an exchange rate or a rate date, but such drafts cannot be finalized
 through the server. The rules for updating them are in the
