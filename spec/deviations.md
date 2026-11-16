@@ -2262,9 +2262,11 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   templates. It does not refuse enshrined documents; the preview warns that sevDesk may refuse.
   To draft, it accepts only open documents without payments that are not enshrined. The preview
   of a reset to open says that every payment is unlinked without a counter-booking, that
-  transactions sevDesk created for payments on offline accounts are deleted (recorded, D-071;
-  cash registers were not measured, so the preview asks to check them), and that sevDesk refuses
-  when a payment transaction is enshrined (fix in this PR). Code 170 is not checked locally.
+  transactions sevDesk created for payments on offline accounts are deleted (recorded, D-071)
+  while a cash register keeps them and books a counter-entry dated at the reset (recorded,
+  D-095), and that sevDesk refuses when a payment transaction is enshrined. That refusal (400
+  "Already enshrined by transaction", recorded, D-098; 422 "… by payment", sevdesk-rs) becomes
+  our own explanation (`resetDocument`). Code 170 is not checked locally.
   Vouchers follow the same rules (`sevdesk_voucher_reset`, with the voucher status codes).
   `sevdesk_transaction_reset` undoes a transaction's bookings by resetting each document it paid
   to open, and its preview names the other payments each reset removes as well
@@ -2707,23 +2709,24 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   `write-voucher-reset`, `write-transaction-create`, in both write runs); recorded 2026-11-16,
   trial account, Update 2.0 (probes `write-cash-register-transaction`,
   `write-check-account-factories`).
-- **Impact:** The payment preview says that sevDesk creates a new transaction on offline and cash
-  accounts (`src/domain/lifecycle/payments.ts`). The reset preview says that such transactions on
-  offline accounts are deleted and asks to check cash registers (D-060). For cash registers that
-  is now known to be wrong: sevDesk keeps the transaction and books a counter-entry (D-095); the
-  preview and `transaction-status.ts`, which today say "deleted" for offline and cash accounts
-  alike, still have to change (open for the #88 slice). `sevdesk_transaction_reset` names such a
-  transaction as deleted. No tool
-  creates transactions: bank reconciliation works on imported (online) accounts, and
-  `sevdesk_reconcile_suggest` says that offline and cash accounts get their transactions from
-  bookings.
+- **Impact:** The payment preview says that sevDesk creates a new transaction on offline accounts
+  and a cash book entry on cash registers (`src/domain/lifecycle/payments.ts`). The reset
+  previews say that such transactions on offline (clearing) accounts are deleted and that a cash
+  register keeps them and books a counter-entry (D-095, D-060); `sevdesk_transaction_reset` names
+  a deleted transaction as deleted. `sevdesk_transaction_create` (#88) sends
+  `POST /CheckAccountTransaction` only for file-import accounts and refuses offline accounts, cash
+  registers and bank-connected accounts before anything is sent, naming the payment tools that
+  book on the document instead. `sevdesk_reconcile_suggest` says that offline and cash accounts
+  get their transactions from bookings.
 - **Test:** `test/unit/domain/lifecycle/payments.test.ts` ("warns that sevDesk creates a
   transaction on offline and cash accounts"),
   `test/unit/domain/reconciliation/transaction-status.test.ts` ("warns that sevDesk deletes
   transactions it created on offline and cash accounts"),
   `test/unit/tools/banking/transaction-reset.test.ts` ("reports a transaction sevDesk deleted with
-  the reset"). The 422 needs no test: no tool sends `POST /CheckAccountTransaction`; the live M4
-  scenario creates its transaction on a file-import account (`test/live/lifecycle.test.ts`).
+  the reset"). The 422: `test/regressions/manual-transactions.test.ts` ("a transaction is never
+  created on a cash register, offline or bank-connected account"),
+  `test/unit/domain/reconciliation/manual-transactions.test.ts` (`assertManualEntryAccount`); the
+  live M4 scenario creates its transaction on a file-import account (`test/live/lifecycle.test.ts`).
   Live: probes `write-offline-booking-transaction`, `write-voucher-reset`,
   `write-transaction-create`, `write-cash-register-transaction` (cash registers; the simulated
   register in `test/unit/scripts/gaps-banking-probes.test.ts` replays its answers).
@@ -3403,12 +3406,26 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Impact:** A cash sale or expense is recorded through `bookAmount` on a document, never with
   `POST /CheckAccountTransaction` (the tools of #88 must refuse cash registers before sending).
   Undoing a cash payment leaves two rows in the cash book: previews of a reset on a register must
-  say that sevDesk books a counter-entry dated today, not that the row disappears. Today's reset
-  preview (D-060, D-071) still asks the user to check cash registers; it can state this once a
-  tool of #88 changes it.
+  say that sevDesk books a counter-entry dated today, not that the row disappears. Handling
+  (#88): a cash sale or expense is booked with the existing payment tools
+  (`sevdesk_voucher_book_payment`, `sevdesk_invoice_book_payment`) on the register without a
+  transaction, and their preview says that sevDesk adds a cash book entry that an undo keeps
+  (`checkPaymentAccount`); `sevdesk_cash_position` shows the register's balance from
+  `getBalanceAtDate`. `sevdesk_transaction_create` refuses a cash register before anything is
+  sent and names those tools. The reset previews (`sevdesk_{invoice,credit_note,voucher}_reset`,
+  `sevdesk_transaction_reset`, `transaction-status.ts`) say that a register keeps the row and
+  books a counter-entry dated the day of the reset; only clearing (offline) accounts delete it.
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("answers the banking questions as
   recorded…": the simulated register books the recorded counter-entries and the balance returns
-  to 500). Handling: pending, the cash tools of #88.
+  to 500); `test/unit/tools/banking/cash-register.test.ts` (a cash sale of 23.80 and a cash
+  expense of 11.90 booked with `sevdesk_voucher_book_payment`, the recorded bodies without a
+  transaction, `sevdesk_cash_position` at 511.90; the reset preview; the register refused by
+  `sevdesk_transaction_create`); `test/unit/domain/reconciliation/transaction-status.test.ts`
+  ("says that a cash register keeps the row and books a counter-entry (D-095)");
+  `test/unit/tools/lifecycle/reset.test.ts` ("resets a paid invoice to open and says its payments
+  are unlinked"); `test/unit/domain/lifecycle/payments.test.ts` ("says that a payment on a cash
+  register becomes a cash book entry that an undo keeps (D-095)");
+  `test/regressions/manual-transactions.test.ts` (no transaction is created on a register).
 
 ### D-096: Deleting a transaction is a soft delete and works only at status 100
 
@@ -3434,10 +3451,23 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   missing row; it must refuse rows that are not at status 100 (and name the reset or "back to
   unbooked" step for private rows), and a read by id must not mistake a row with `deletedAt` for
   a live one. Lists and balances need no filtering of their own: sevDesk already leaves the rows
-  out.
+  out. Handling (#88): `sevdesk_transaction_delete` (tier `commit`) deletes only unbooked rows of
+  a file-import account (the only kind deleting was recorded on), refuses private, booked,
+  enshrined and deleted rows and the rows of cash registers, clearing and bank-connected accounts
+  before anything is sent, and confirms the delete by `deletedAt` on the read-back; a row that
+  reads back live, or not at all, is an error with the row as a completed write. The transaction
+  DTO marks such a row (`deleted`, `deletedOn`), `sevdesk_transaction_get` reports it as deleted
+  without reading its log, every tool that books, changes, locks or links a transaction refuses
+  it (`assertTransactionNotDeleted`), `sevdesk_reconcile_suggest` skips it, and the read-back of
+  `sevdesk_transaction_reset` reports it as `transactionDeleted`.
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("answers the banking questions as
-  recorded…": the soft delete, the 409 texts, the cleanup of private and booked rows). Handling:
-  pending, the delete tool of #88. Live: probes `write-transaction-delete`,
+  recorded…": the soft delete, the 409 texts, the cleanup of private and booked rows);
+  `test/unit/domain/reconciliation/manual-transactions.test.ts` ("confirms the soft delete by
+  deletedAt on the read-back (D-096)", "never takes a live read-back or a missing row for a
+  deletion", the refusals of `planTransactionDelete`); `test/unit/tools/banking/transaction-delete.test.ts`;
+  `test/unit/tools/banking/transaction-get.test.ts` ("reports a deleted row as deleted, never as a
+  live one"); `test/regressions/manual-transactions.test.ts` ("a soft-deleted row is reported as
+  deleted and never as live"). Live: probes `write-transaction-delete`,
   `read-transaction-soft-delete`.
 
 ### D-097: Check accounts come only from two factories, and `DELETE` archives them
@@ -3521,11 +3551,24 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Impact:** An enshrine tool (#88) is `commit`, irreversible, and only offered for rows at 200
   or higher; its preview says that the row can no longer be changed, deleted or reset and that
   the document it pays can no longer be reset to open. A reset of a document whose payment is
-  enshrined must expect 400 as well as 422.
+  enshrined must expect 400 as well as 422. Handling (#88): `sevdesk_transaction_enshrine` (tier
+  `commit`, `destructiveHint`, preview marked irreversible in English and German) refuses rows
+  below 200, enshrined and deleted rows before anything is sent, names the documents from the
+  booking log, says that the documents themselves are not enshrined, warns that the rest of a
+  partly linked row may not be bookable afterwards (locking at 200, 300 and 350 rests on the
+  spec), and confirms `enshrined` on the read-back. `resetDocument` (`lifecycle/actions.ts`)
+  turns sevDesk's 400 "Already enshrined by transaction" and 422 "Already enshrined by payment"
+  into our own explanation (`SevdeskError.explained`, shown by the error rendering without
+  sevDesk's text), for the document reset tools and `sevdesk_transaction_reset` alike.
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("runs the opt-in probes only when
   named…": the recorded refusal texts and statuses; only the probe's own transaction is ever
-  enshrined), `test/unit/scripts/probes.test.ts` (one enshrine call site, opt-in). Handling:
-  pending, the enshrine tool of #88 and the reset preview (D-060).
+  enshrined), `test/unit/scripts/probes.test.ts` (one enshrine call site, opt-in);
+  `test/unit/domain/reconciliation/manual-transactions.test.ts` (`planTransactionEnshrine` and
+  `executeTransactionEnshrine`); `test/unit/tools/banking/transaction-enshrine.test.ts`;
+  `test/regressions/manual-transactions.test.ts` ("no enshrine below status 200");
+  `test/unit/tools/lifecycle/reset.test.ts` ("explains sevDesk's 400 refusal when a payment
+  transaction is enshrined", the same for 422); `test/unit/tools/tool-errors.test.ts` ("shows our
+  own explanation of a known sevDesk refusal, without sevDesk's text").
 
 ### D-099: Private-transaction rules did not mark hand-made transactions
 

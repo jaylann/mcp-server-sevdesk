@@ -13,14 +13,20 @@
  * documents it paid are reset to open (`PUT /{Invoice|CreditNote|Voucher}/{id}/resetToOpen`),
  * which removes ALL payments of each document, not only this transaction's (D-060): other linked
  * transactions return to unbooked, transactions sevDesk created for bookings without one are
- * deleted (D-071). {@link planTransactionReset} lists that collateral from each document's paid
+ * deleted on offline accounts (D-071) and kept with a counter-entry dated at the reset on a cash
+ * register (D-095). {@link planTransactionReset} lists that collateral from each document's paid
  * amount against this transaction's log entries, and refuses enshrined documents and
  * transactions.
  */
 import { z } from "zod";
 
 import type { SevdeskClient } from "../../sevdesk/types.js";
-import { getBankAccount, getTransaction, type TransactionDto } from "../banking.js";
+import {
+  assertTransactionNotDeleted,
+  getBankAccount,
+  getTransaction,
+  type TransactionDto,
+} from "../banking.js";
 import type { CountryReadOptions } from "../country-codes.js";
 import {
   documentRef,
@@ -79,6 +85,7 @@ export function statusPayload(target: "private" | "created"): TransactionStatusP
 export function assertMarkablePrivate(
   transaction: TransactionDto,
 ): "Privatentnahme" | "Privateinlage" {
+  assertTransactionNotDeleted(transaction);
   const ref = `Bank transaction ${String(transaction.id)}`;
   if (transaction.enshrined) {
     refuse(`${ref} is enshrined (festgeschrieben) and cannot be changed anymore.`);
@@ -166,11 +173,15 @@ export async function planTransactionReset(
     `Bank transaction ${String(transactionId)} does not exist; find it with ` +
       "sevdesk_transactions_list.",
   );
+  assertTransactionNotDeleted(transaction);
   const ref = `Bank transaction ${String(transaction.id)}`;
   if (transaction.enshrined) {
+    // sevDesk refuses resetToOpen on a document such a transaction pays (recorded: HTTP 400,
+    // D-098; sevdesk-rs measured 422 for invoices, D-060).
     refuse(
-      `${ref} is enshrined (festgeschrieben); sevDesk keeps its bookings (resetToOpen answers ` +
-        '422 "Already enshrined by payment"), so nothing can be undone.',
+      `${ref} is enshrined (festgeschrieben): sevDesk keeps its bookings for good and refuses ` +
+        "to reset the documents it pays to open, so nothing can be undone. A correction needs a " +
+        "new document (for an invoice a cancellation or a credit note).",
     );
   }
   const status = transaction.status?.code;
@@ -356,16 +367,18 @@ function resetWarnings(
         "loses all its bookings and goes back to unbooked (status 100). Other bank " +
         "transactions booked on these documents (listed per document) lose only those " +
         "bookings: one that still pays other documents goes back to partly linked (200), one " +
-        "without any left to unbooked (100). Transactions sevDesk created for payments booked " +
-        "without one are deleted instead.",
+        "without any left to unbooked (100). Transactions sevDesk created itself for payments " +
+        "booked without one are deleted instead on clearing (offline) accounts; on a cash " +
+        "register sevDesk keeps them and books a counter-entry dated the day of the reset.",
       "sevDesk kann einen einzelnen Umsatz nicht lösen: Jedes Dokument wird auf offen " +
         "zurückgesetzt, und das entfernt ALLE darauf gebuchten Zahlungen, nicht nur die dieses " +
         "Umsatzes. Dieser Umsatz verliert alle seine Buchungen und gilt wieder als ungebucht " +
         "(Status 100). Andere Kontoumsätze, die auf diese Dokumente gebucht sind (je Dokument " +
         "aufgeführt), verlieren nur diese Buchungen: Bezahlt ein solcher Umsatz noch andere " +
         "Dokumente, gilt er danach als teilweise verknüpft (200), sonst als ungebucht (100). " +
-        "Umsätze, die sevDesk für Zahlungen ohne Umsatz selbst angelegt hat, werden stattdessen " +
-        "gelöscht.",
+        "Umsätze, die sevDesk für Zahlungen ohne Umsatz selbst angelegt hat, werden auf " +
+        "Verrechnungskonten (offline) stattdessen gelöscht; auf einer Kasse bleiben sie stehen, " +
+        "und sevDesk bucht eine Gegenbuchung mit dem Datum des Zurücksetzens.",
     ),
   ];
   for (const { doc, otherPayments: other, otherTransactions } of documents) {
@@ -408,15 +421,31 @@ function resetWarnings(
       );
     }
   }
-  if (accountType === "clearing" || accountType === "cash") {
+  if (accountType === "clearing") {
+    // Recorded on an offline account (D-071).
     warnings.push(
       phrase(
-        "This transaction is on an offline or cash account, where sevDesk creates " +
+        "This transaction is on a clearing (offline) account, where sevDesk creates " +
           "transactions when a payment is booked without one; such a transaction is deleted by " +
           "the reset, not set back to unbooked.",
-        "Dieser Umsatz liegt auf einem Offline- oder Kassenkonto, auf dem sevDesk Umsätze " +
+        "Dieser Umsatz liegt auf einem Verrechnungskonto (offline), auf dem sevDesk Umsätze " +
           "selbst anlegt, wenn eine Zahlung ohne Umsatz gebucht wird; ein solcher Umsatz wird " +
           "beim Zurücksetzen gelöscht und nicht auf ungebucht gesetzt.",
+      ),
+    );
+  }
+  if (accountType === "cash") {
+    // Recorded on the trial's register (D-095): the row stays, and a counter-entry with the
+    // negated amount is booked at the moment of the reset.
+    warnings.push(
+      phrase(
+        "This transaction is on a cash register (Kasse): the reset does not delete it. sevDesk " +
+          "keeps it and books a counter-entry with the opposite amount, dated the day of the " +
+          "reset, so the cash book shows both entries and the balance returns.",
+        "Dieser Umsatz liegt auf einer Kasse: Das Zurücksetzen löscht ihn nicht. sevDesk lässt " +
+          "ihn stehen und bucht eine Gegenbuchung mit dem umgekehrten Betrag und dem Datum des " +
+          "Zurücksetzens; das Kassenbuch zeigt dann beide Einträge, und der Bestand ist wieder " +
+          "der alte.",
       ),
     );
   }

@@ -159,7 +159,9 @@ describe("sevdesk_transaction_reset", () => {
     });
     expect(plan.preview.facts).toContainEqual({
       label: "This transaction after the reset",
-      value: "unbooked (status 100), or deleted if sevDesk created it for a booking",
+      value:
+        "unbooked (status 100); if sevDesk created it for a booking: deleted on a clearing " +
+        "account, kept with a counter-entry on a cash register",
     });
     expect(plan.preview.facts.find((f) => f.label.startsWith("Document 1"))?.value).toContain(
       "; also unlinks bank transactions 5302 (58.33 EUR)",
@@ -171,7 +173,8 @@ describe("sevdesk_transaction_reset", () => {
     expect(plan.previewDe.facts).toContainEqual({
       label: "Dieser Umsatz nach dem Zurücksetzen",
       value:
-        "ungebucht (Status 100) oder gelöscht, falls sevDesk ihn für eine Buchung angelegt hat",
+        "ungebucht (Status 100); falls sevDesk ihn für eine Buchung angelegt hat: auf einem " +
+        "Verrechnungskonto gelöscht, auf einer Kasse mit Gegenbuchung erhalten",
     });
     expect(plan.previewDe.facts.find((f) => f.label.startsWith("Dokument 1"))?.value).toContain(
       "; löst auch die Kontoumsätze 5302 (58,33 EUR)",

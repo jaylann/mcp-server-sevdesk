@@ -552,6 +552,28 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
       "type": "string",
     },
   },
+  "sevdesk_transaction_create": {
+    "/properties/result/properties/bookings/items/properties/document/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/result/properties/transaction/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_transaction_delete": {
+    "/properties/result/properties/transaction/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
+  "sevdesk_transaction_enshrine": {
+    "/properties/result/properties/transaction/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+  },
   "sevdesk_transaction_get": {
     "/properties/assignments/items/properties/document/properties/status/properties/key": {
       "description": "Accepted status filter key; absent when no filter accepts this code.",
@@ -4148,6 +4170,178 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     },
     "name": "sevdesk_transaction_book",
     "title": "Book a sevDesk bank transaction to documents",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Enter a sevDesk bank transaction by hand",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "allocations": {
+          "description": "Documents to book the new transaction to right away, in this order (as in sevdesk_transaction_book).",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "amount": {
+                "description": "Share of the transaction for this document, positive, e.g. "119.00"; defaults to the smaller of its open amount and what is left of the transaction.",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "id": {
+                "description": "Document id (not its number).",
+                "exclusiveMinimum": 0,
+                "type": "integer",
+              },
+              "kind": {
+                "description": "invoice, credit_note or voucher.",
+                "enum": [
+                  "invoice",
+                  "credit_note",
+                  "voucher",
+                ],
+                "type": "string",
+              },
+              "paymentType": {
+                "description": "payment (default: full or partial). cash_discount (Skonto) / bank_fees: less than open, the rest is written off. other_difference: settles with more or less. reminder_charges (invoices): more than open.",
+                "enum": [
+                  "payment",
+                  "cash_discount",
+                  "bank_fees",
+                  "other_difference",
+                  "reminder_charges",
+                ],
+                "type": "string",
+              },
+            },
+            "required": [
+              "kind",
+              "id",
+            ],
+            "type": "object",
+          },
+          "maxItems": 10,
+          "minItems": 1,
+          "type": "array",
+        },
+        "amount": {
+          "description": "Amount, positive, in the account's currency, e.g. "23.80"; direction gives the sign.",
+          "type": [
+            "string",
+            "number",
+          ],
+        },
+        "checkAccountId": {
+          "description": "File-import account (fileImport true in sevdesk_bank_accounts_list).",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
+        "counterparty": {
+          "description": "Payer or payee (Auftraggeber/Empfänger).",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
+        "date": {
+          "description": "Value date (Wertstellung), YYYY-MM-DD; defaults to today (Berlin).",
+          "type": "string",
+        },
+        "direction": {
+          "description": "in: money received (Eingang); out: money paid (Ausgang).",
+          "enum": [
+            "in",
+            "out",
+          ],
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "purpose": {
+          "description": "Verwendungszweck, e.g. the invoice number.",
+          "maxLength": 500,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "checkAccountId",
+        "amount",
+        "direction",
+        "counterparty",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_transaction_create",
+    "title": "Enter a sevDesk bank transaction by hand",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Delete a sevDesk bank transaction",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Bank transaction (Umsatz) id, from sevdesk_transactions_list.",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_transaction_delete",
+    "title": "Delete a sevDesk bank transaction",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Enshrine a sevDesk bank transaction",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Bank transaction (Umsatz) id, from sevdesk_transactions_list.",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_transaction_enshrine",
+    "title": "Enshrine a sevDesk bank transaction",
   },
   {
     "annotations": {

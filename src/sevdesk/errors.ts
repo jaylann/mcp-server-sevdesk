@@ -58,6 +58,13 @@ export interface SevdeskErrorInit {
    * API change or a bug. Default false.
    */
   readonly expectedLimit?: boolean;
+  /**
+   * `validation` with a status only: `message` explains a refusal sevDesk is known to give, in
+   * our own words (e.g. a reset refused because a payment is locked), so error rendering shows
+   * it instead of the generic advice. Set it only on a message written here, never on one that
+   * carries upstream text. Default false.
+   */
+  readonly explained?: boolean;
 }
 
 /** A sevDesk record a write created or changed (same shape as the tools' `SevdeskObjectRef`). */
@@ -78,6 +85,8 @@ export class SevdeskError extends Error {
   readonly completedWrites: readonly CompletedWrite[];
   /** See {@link SevdeskErrorInit.expectedLimit}. */
   readonly expectedLimit: boolean;
+  /** See {@link SevdeskErrorInit.explained}. */
+  readonly explained: boolean;
 
   constructor(init: SevdeskErrorInit) {
     super(init.message, init.cause === undefined ? undefined : { cause: init.cause });
@@ -90,6 +99,7 @@ export class SevdeskError extends Error {
     this.path = init.path;
     this.completedWrites = Object.freeze([...(init.completedWrites ?? [])]);
     this.expectedLimit = init.expectedLimit ?? false;
+    this.explained = init.explained ?? false;
   }
 
   /** Whether a GET may be retried after this error (writes are never retried). */
@@ -115,6 +125,7 @@ export function withCompletedWrites(
     ...(error.upstreamMessage === undefined ? {} : { upstreamMessage: error.upstreamMessage }),
     ...(error.method === undefined ? {} : { method: error.method }),
     ...(error.path === undefined ? {} : { path: error.path }),
+    ...(error.explained ? { explained: true } : {}),
     cause: error,
     completedWrites: [...error.completedWrites, ...completedWrites],
   });

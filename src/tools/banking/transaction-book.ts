@@ -34,11 +34,13 @@ import {
 } from "../../domain/preview-text.js";
 import {
   type AllocationPlan,
+  type AllocationRequest,
   documentBookingType,
   executeAllocation,
   MAX_ALLOCATIONS,
   planAllocation,
   type PlannedAllocation,
+  type PlannedAllocations,
 } from "../../domain/reconciliation/allocate.js";
 import {
   readTransactionLog,
@@ -46,7 +48,7 @@ import {
 } from "../../domain/reconciliation/transaction-log.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import { defineWriteTool } from "../define-tool.js";
-import { ACCOUNT_BOOKINGS, type ToolContext } from "../types.js";
+import { ACCOUNT_BOOKINGS, type SevdeskObjectRef, type ToolContext } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 import {
   COMMIT_ANNOTATIONS,
@@ -74,7 +76,7 @@ const BOOKING_TYPE_TEXT: Readonly<Record<BookingType, Phrase>> = {
 };
 
 /** How to undo the booking: the consequence every allocation shares. */
-const UNDO_WARNING = phrase(
+export const UNDO_WARNING = phrase(
   "Each document's status changes (shown per allocation). To undo, use " +
     "sevdesk_transaction_reset, which resets these documents to open and so removes all their " +
     "payments.",
@@ -120,7 +122,8 @@ const BOOK_TEXT = {
   },
 } as const;
 
-const bookingSchema = z.object({
+/** One booking in a result: the document read back, the share and how it was booked. */
+export const bookingSchema = z.object({
   document: documentSummarySchema.describe("The document as read back after the booking."),
   amount: moneySchema.describe("Share of the transaction booked to it (positive)."),
   paymentType: z
@@ -128,6 +131,31 @@ const bookingSchema = z.object({
     .describe(
       "How it was booked, as the paymentType input names it: payment (full or partial), " +
         "cash_discount, bank_fees, other_difference, reminder_charges.",
+    ),
+});
+
+/** One requested allocation (a document and optionally its share and payment type). */
+export const allocationInput = z.strictObject({
+  kind: z.enum(DOCUMENT_KINDS).describe("invoice, credit_note or voucher."),
+  id: z
+    .number()
+    .int()
+    .positive()
+    .max(Number.MAX_SAFE_INTEGER)
+    .describe("Document id (not its number)."),
+  amount: amountInput({ allowZero: false })
+    .optional()
+    .describe(
+      'Share of the transaction for this document, positive, e.g. "119.00"; defaults ' +
+        "to the smaller of its open amount and what is left of the transaction.",
+    ),
+  paymentType: z
+    .enum(PAYMENT_TYPES)
+    .optional()
+    .describe(
+      "payment (default: full or partial). cash_discount (Skonto) / bank_fees: less than " +
+        "open, the rest is written off. other_difference: settles with more or less. " +
+        "reminder_charges (invoices): more than open.",
     ),
 });
 
@@ -145,15 +173,79 @@ const output = z.object({
     ),
 });
 
+/** One planned booking as the state of a booking tool keeps it. */
+export interface PlannedBooking {
+  readonly kind: PaymentKind;
+  readonly id: number;
+  readonly payload: PaymentPlan["payload"];
+  readonly amount: PaymentPlan["amount"];
+  readonly bookingType: BookingType;
+}
+
 interface BookState {
-  readonly allocations: readonly {
-    readonly kind: PaymentKind;
-    readonly id: number;
-    readonly payload: PaymentPlan["payload"];
-    readonly amount: PaymentPlan["amount"];
-    readonly bookingType: BookingType;
-  }[];
+  readonly allocations: readonly PlannedBooking[];
   readonly remainingAfter: string;
+}
+
+/** The planned bookings of an allocation plan, as a booking tool's state keeps them. */
+export function plannedBookings(planned: PlannedAllocations): PlannedBooking[] {
+  return planned.allocations.map(({ doc, plan: payment }) => ({
+    kind: doc.kind,
+    id: doc.id,
+    payload: payment.payload,
+    amount: payment.amount,
+    bookingType: payment.bookingType,
+  }));
+}
+
+/** The allocations' arguments as the planner takes them. */
+export function allocationRequests(
+  allocations: readonly z.output<typeof allocationInput>[],
+): AllocationRequest[] {
+  return allocations.map((allocation) => ({
+    kind: kindOfArg(allocation.kind),
+    id: allocation.id,
+    amount: allocation.amount,
+    paymentType: allocation.paymentType,
+  }));
+}
+
+/** Locks of the documents the allocations book (see `WriteToolDefinition.locks`). */
+export function allocationLocks(
+  allocations: readonly z.output<typeof allocationInput>[],
+): SevdeskObjectRef[] {
+  return allocations.map((allocation) => ({
+    objectName: KINDS[kindOfArg(allocation.kind)].objectName,
+    id: String(allocation.id),
+  }));
+}
+
+/**
+ * Reads back every booked document after the bookings (a failed read is rethrown with `changed`
+ * as completed writes) and returns them as result bookings.
+ */
+export async function readBackBookings(
+  ctx: ToolContext,
+  allocations: readonly PlannedBooking[],
+  changed: readonly SevdeskObjectRef[],
+): Promise<z.output<typeof bookingSchema>[]> {
+  const bookings = [];
+  for (const allocation of allocations) {
+    const doc = await readBackOrReport(
+      () =>
+        readLifecycleDocument(ctx.client, allocation.kind, allocation.id, {
+          signal: ctx.signal,
+          cacheOwner: ctx.config,
+        }),
+      changed,
+    );
+    bookings.push({
+      document: documentSummary(doc),
+      amount: allocation.amount,
+      paymentType: paymentTypeOf(allocation.bookingType),
+    });
+  }
+  return bookings;
 }
 
 export const transactionBookTool = defineWriteTool({
@@ -177,31 +269,7 @@ export const transactionBookTool = defineWriteTool({
   input: z.strictObject({
     id: transactionIdInput,
     allocations: z
-      .array(
-        z.strictObject({
-          kind: z.enum(DOCUMENT_KINDS).describe("invoice, credit_note or voucher."),
-          id: z
-            .number()
-            .int()
-            .positive()
-            .max(Number.MAX_SAFE_INTEGER)
-            .describe("Document id (not its number)."),
-          amount: amountInput({ allowZero: false })
-            .optional()
-            .describe(
-              'Share of the transaction for this document, positive, e.g. "119.00"; defaults ' +
-                "to the smaller of its open amount and what is left of the transaction.",
-            ),
-          paymentType: z
-            .enum(PAYMENT_TYPES)
-            .optional()
-            .describe(
-              "payment (default: full or partial). cash_discount (Skonto) / bank_fees: less than " +
-                "open, the rest is written off. other_difference: settles with more or less. " +
-                "reminder_charges (invoices): more than open.",
-            ),
-        }),
-      )
+      .array(allocationInput)
       .min(1)
       .max(MAX_ALLOCATIONS)
       .describe("Documents to book the transaction to, in this order."),
@@ -212,31 +280,15 @@ export const transactionBookTool = defineWriteTool({
   locks: (args) => [
     ACCOUNT_BOOKINGS,
     { objectName: "CheckAccountTransaction", id: String(args.id) },
-    ...args.allocations.map((allocation) => ({
-      objectName: KINDS[kindOfArg(allocation.kind)].objectName,
-      id: String(allocation.id),
-    })),
+    ...allocationLocks(args.allocations),
   ],
   prepare: async (args, ctx) => {
-    const plan = await planAllocation(
-      ctx.client,
-      args.id,
-      args.allocations.map((allocation) => ({
-        kind: kindOfArg(allocation.kind),
-        id: allocation.id,
-        amount: allocation.amount,
-        paymentType: allocation.paymentType,
-      })),
-      { signal: ctx.signal, cacheOwner: ctx.config },
-    );
+    const plan = await planAllocation(ctx.client, args.id, allocationRequests(args.allocations), {
+      signal: ctx.signal,
+      cacheOwner: ctx.config,
+    });
     const state: BookState = {
-      allocations: plan.allocations.map(({ doc, plan: payment }) => ({
-        kind: doc.kind,
-        id: doc.id,
-        payload: payment.payload,
-        amount: payment.amount,
-        bookingType: payment.bookingType,
-      })),
+      allocations: plannedBookings(plan),
       remainingAfter: plan.remainingAfter,
     };
     const warnings = [...plan.warnings, UNDO_WARNING];
@@ -254,22 +306,7 @@ export const transactionBookTool = defineWriteTool({
     const { state } = plan;
     const changed = await executeAllocation(ctx.client, args.id, state.allocations, ctx.signal);
     const transaction = await readBackTransaction(ctx, args.id, changed);
-    const bookings = [];
-    for (const allocation of state.allocations) {
-      const doc = await readBackOrReport(
-        () =>
-          readLifecycleDocument(ctx.client, allocation.kind, allocation.id, {
-            signal: ctx.signal,
-            cacheOwner: ctx.config,
-          }),
-        changed,
-      );
-      bookings.push({
-        document: documentSummary(doc),
-        amount: allocation.amount,
-        paymentType: paymentTypeOf(allocation.bookingType),
-      });
-    }
+    const bookings = await readBackBookings(ctx, state.allocations, changed);
     const after = await remainingAfterBooking(ctx, transaction, state.remainingAfter);
     return {
       data: {
@@ -293,7 +330,7 @@ export const transactionBookTool = defineWriteTool({
  * planned value with a trusted note when the log cannot be read or does not tell (the bookings
  * are done, so a failing read must not fail the call).
  */
-async function remainingAfterBooking(
+export async function remainingAfterBooking(
   ctx: ToolContext,
   transaction: TransactionDto,
   planned: string,
@@ -346,11 +383,26 @@ function statusAfter(allocation: PlannedAllocation, lang: PreviewLanguage): stri
 function bookFacts(plan: AllocationPlan, lang: PreviewLanguage): Fact[] {
   const t = BOOK_TEXT[lang];
   const currency = plan.transaction.amount.currency;
-  const facts: Fact[] = [
+  return [
     ...transactionFacts(plan.transaction, lang),
     { label: t.before, value: formatMoney(money(plan.remainingBefore, currency), lang) },
     { label: t.date, value: dateText(plan.bookingDate, lang) },
+    ...allocationFacts(plan, currency, lang),
   ];
+}
+
+/**
+ * One fact per planned allocation (the document by id in the trusted label; its number, the
+ * share, the booking type, its open amount, its status before and after, the party in the value),
+ * then what stays unassigned on the transaction.
+ */
+export function allocationFacts(
+  plan: PlannedAllocations,
+  currency: string,
+  lang: PreviewLanguage,
+): Fact[] {
+  const t = BOOK_TEXT[lang];
+  const facts: Fact[] = [];
   plan.allocations.forEach((allocation, index) => {
     const { doc, plan: payment } = allocation;
     const documentType = documentBookingType(payment);

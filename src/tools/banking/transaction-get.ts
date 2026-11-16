@@ -93,6 +93,16 @@ export const transactionGetTool = defineTool({
   handler: async (args, ctx) => {
     const details = await getTransactionDetails(ctx.client, args.id, ctx.signal);
     const { transaction } = details;
+    if (transaction.deleted === true) {
+      // sevDesk keeps a deleted row readable by id (soft delete, D-096); it is not a live one.
+      const on = transaction.deletedOn === undefined ? "" : ` on ${transaction.deletedOn}`;
+      return {
+        data: { transaction, assignments: [], remainingUnknown: "the transaction was deleted" },
+        summary:
+          `Bank transaction ${String(transaction.id)} was deleted${on}: sevDesk keeps a deleted ` +
+          "row readable by id, but it is in no list or balance and cannot be booked.",
+      };
+    }
     const log = await readTransactionLog(ctx.client, transaction.id, ctx.signal);
     const remaining = remainingAmount(transaction, log);
     const currency = transaction.amount.currency;

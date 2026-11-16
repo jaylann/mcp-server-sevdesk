@@ -64,21 +64,82 @@ describe("sevdesk_invoice_reset (spec resetToOpen/resetToDraft; behaviour per se
       "Jede auf dieser Rechnung gebuchte Zahlung wird zurückgenommen",
     );
     expect(plan.previewDe.warnings[1]).toBe(
-      "sevDesk lehnt das Zurücksetzen ab, wenn einer der Zahlungsumsätze festgeschrieben ist.",
+      "sevDesk lehnt das Zurücksetzen ab, wenn einer der Zahlungsumsätze festgeschrieben ist; " +
+        "dann ändert sich nichts.",
     );
     expect(plan.preview.warnings[0]).toContain(
       "linked bank transactions are unlinked from it and return to unbooked (status 100), or to " +
         "partly linked (status 200) while they still pay other documents",
     );
-    // D-071 measured an offline account only; cash registers are not claimed.
+    // D-071 measured an offline account; D-095 the cash register, which keeps the row and books
+    // a counter-entry dated at the reset.
     expect(plan.preview.warnings[0]).toContain(
-      "Transactions sevDesk created itself for payments on offline accounts are deleted " +
-        "(recorded); cash registers (Kasse) were not measured, so check them afterwards.",
+      "Transactions sevDesk created itself for payments on clearing (offline) accounts are " +
+        "deleted (recorded). On a cash register (Kasse) such a transaction stays: sevDesk books " +
+        "a counter-entry with the opposite amount, dated the day of the reset (recorded).",
     );
+    expect(plan.previewDe.warnings[0]).toContain(
+      "Auf einer Kasse bleibt ein solcher Umsatz stehen: sevDesk bucht eine Gegenbuchung mit dem " +
+        "umgekehrten Betrag und dem Datum des Zurücksetzens.",
+    );
+    expect(plan.preview.warnings.join(" ")).not.toContain("were not measured");
     expect(plan.preview.irreversible).toBe(false);
     expect(output.data["invoice"]).toMatchObject({ status: { code: 200 } });
     expect(output.summary).toBe("Invoice 1001 reset to open: status Open / due (200).");
     expect(output.affected).toEqual([{ objectName: "Invoice", id: "1001" }]);
+  });
+
+  it.each([
+    // Recorded on a voucher (D-098): HTTP 400; sevdesk-rs measured 422 code 322 on invoices (D-060).
+    [400, "Already enshrined by transaction"],
+    [422, "Already enshrined by payment"],
+  ])(
+    "explains sevDesk's %d refusal when a payment transaction is enshrined",
+    async (status, upstream) => {
+      const failure = new SevdeskError({
+        kind: "validation",
+        status,
+        message: `sevDesk rejected the request: validation error (HTTP ${String(status)}).`,
+        upstreamMessage: upstream,
+      });
+      const staged = new StagedClient(
+        [documentRoute("invoice", paid)],
+        [{ method: "PUT", path: "/Invoice/1001/resetToOpen", response: { error: failure } }],
+      );
+      const error = await executeWrite(tool, { id: 1001, to: "open" }, staged).catch(
+        (e: unknown) => e,
+      );
+      expect(error).toBeInstanceOf(SevdeskError);
+      expect(error).toMatchObject({
+        kind: "validation",
+        status,
+        explained: true,
+        message:
+          "Invoice 1001 cannot be reset to open: a bank transaction that pays it is enshrined " +
+          "(festgeschrieben), and sevDesk keeps the payments of such a transaction for good. " +
+          "Nothing was changed. Correct it with a cancellation (sevdesk_invoice_cancel) or a " +
+          "credit note instead.",
+      });
+      // sevDesk's own wording stays out of our explanation.
+      expect((error as SevdeskError).upstreamMessage).toBeUndefined();
+    },
+  );
+
+  it("leaves other refusals of a reset as they are", async () => {
+    const failure = new SevdeskError({
+      kind: "validation",
+      status: 422,
+      message: "sevDesk rejected the request: validation error (HTTP 422).",
+      upstreamMessage: "Something else",
+    });
+    const staged = new StagedClient(
+      [documentRoute("invoice", paid)],
+      [{ method: "PUT", path: "/Invoice/1001/resetToOpen", response: { error: failure } }],
+    );
+    const error = await executeWrite(tool, { id: 1001, to: "open" }, staged).catch(
+      (e: unknown) => e,
+    );
+    expect(error).toBe(failure);
   });
 
   it("allows resetting an enshrined paid invoice to open, with a warning", async () => {

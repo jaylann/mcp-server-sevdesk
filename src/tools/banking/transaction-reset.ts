@@ -50,8 +50,8 @@ const output = z.object({
     .boolean()
     .optional()
     .describe(
-      "True when the transaction no longer exists after the reset: sevDesk deletes transactions " +
-        "it created itself for a payment booked without one.",
+      "True when the transaction no longer exists after the reset: on clearing (offline) " +
+        "accounts sevDesk deletes transactions it created itself for a payment booked without one.",
     ),
   documents: z.array(documentSummarySchema).describe("The documents reset to open, read back."),
 });
@@ -126,9 +126,12 @@ export const transactionResetTool = defineWriteTool({
 
     // The documents reset, this transaction, and the other transactions the resets unlinked.
     const changed = await executeTransactionReset(ctx.client, args.id, state.documents, ctx.signal);
+    // Gone (not found) or kept only as a deleted row (soft delete, D-096): either way sevDesk
+    // deleted it, and a deleted row is never shown as a live one.
     const transaction = await readBackOrReport(async () => {
       try {
-        return await getTransaction(ctx.client, args.id, ctx.signal);
+        const row = await getTransaction(ctx.client, args.id, ctx.signal);
+        return row.deleted === true ? undefined : row;
       } catch (error) {
         if (error instanceof SevdeskError && error.kind === "not_found") return undefined;
         throw error;
@@ -192,7 +195,9 @@ const RESET_TEXT = {
     seeLog: "see the booking log",
     unlinks: (list: string) => `; also unlinks bank transactions ${list}`,
     after: "This transaction after the reset",
-    afterValue: "unbooked (status 100), or deleted if sevDesk created it for a booking",
+    afterValue:
+      "unbooked (status 100); if sevDesk created it for a booking: deleted on a clearing " +
+      "account, kept with a counter-entry on a cash register",
     changed: "Other bank transactions changed",
     partly: "partly linked 200",
     unbooked: "unbooked 100",
@@ -207,7 +212,8 @@ const RESET_TEXT = {
     unlinks: (list: string) => `; löst auch die Kontoumsätze ${list}`,
     after: "Dieser Umsatz nach dem Zurücksetzen",
     afterValue:
-      "ungebucht (Status 100) oder gelöscht, falls sevDesk ihn für eine Buchung angelegt hat",
+      "ungebucht (Status 100); falls sevDesk ihn für eine Buchung angelegt hat: auf einem " +
+      "Verrechnungskonto gelöscht, auf einer Kasse mit Gegenbuchung erhalten",
     changed: "Weitere geänderte Kontoumsätze",
     partly: "teilweise verknüpft 200",
     unbooked: "ungebucht 100",

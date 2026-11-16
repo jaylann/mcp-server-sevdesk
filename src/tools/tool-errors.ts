@@ -73,9 +73,10 @@ export function cancelledResult(context: ToolErrorContext): CallToolResult {
 
 /**
  * Trusted, actionable text for a {@link SevdeskError}. The error's own `message` is trusted by
- * contract and shown where it carries the reason (local validation, `not_found`, `blocked`);
- * sevDesk's own message (`upstreamMessage`) is shown only for validation errors sevDesk returned,
- * sanitized and fenced as untrusted data.
+ * contract and shown where it carries the reason (local validation, `not_found`, `blocked`, and a
+ * known sevDesk refusal the domain layer explained, `explained`); sevDesk's own message
+ * (`upstreamMessage`) is shown only for other validation errors sevDesk returned, sanitized and
+ * fenced as untrusted data.
  */
 export function describeSevdeskError(error: SevdeskError, context: ToolErrorContext): string {
   const status = error.status === undefined ? "" : ` (HTTP ${error.status})`;
@@ -99,6 +100,9 @@ export function describeSevdeskError(error: SevdeskError, context: ToolErrorCont
           `${sentence(details)} Fix the arguments and call the tool again.`
         );
       }
+      // A refusal sevDesk is known to give, explained in our own words by the domain layer
+      // (`SevdeskError.explained`): the explanation says what to do instead.
+      if (error.explained) return `sevDesk refused the request${status}: ${sentence(details)}`;
       const text =
         `sevDesk rejected the request as invalid${status}. Check the arguments against the tool ` +
         "description, fix what sevDesk complains about and try again; repeating the same call " +

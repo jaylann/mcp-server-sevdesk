@@ -107,6 +107,28 @@ describe("describeSevdeskError", () => {
     );
   });
 
+  it("shows our own explanation of a known sevDesk refusal, without sevDesk's text", () => {
+    const explained = error({
+      kind: "validation",
+      status: 400,
+      message:
+        "Voucher 2001 cannot be reset to open: a bank transaction that pays it is enshrined.",
+      explained: true,
+    });
+
+    expect(describeSevdeskError(explained, context("commit"))).toBe(
+      "sevDesk refused the request (HTTP 400): Voucher 2001 cannot be reset to open: a bank " +
+        "transaction that pays it is enshrined.",
+    );
+    // The flag survives the completed writes of a multi-step call.
+    expect(withCompletedWrites(explained, [{ objectName: "Voucher", id: "1" }]).explained).toBe(
+      true,
+    );
+    // Without the flag, a message on an error sevDesk returned stays hidden (generic advice).
+    const plain = error({ kind: "validation", status: 400, message: explained.message });
+    expect(describeSevdeskError(plain, context("commit"))).not.toContain("Voucher 2001");
+  });
+
   it("explains local validation errors (no HTTP status) and says nothing was sent", () => {
     const local = captureSevdeskError(() => toSevdeskDate("2026-02-30"));
 

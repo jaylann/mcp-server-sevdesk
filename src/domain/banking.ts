@@ -14,7 +14,7 @@
  */
 import { z } from "zod";
 
-import { toUnixSeconds } from "../sevdesk/dates.js";
+import { toBerlinDate, toUnixSeconds } from "../sevdesk/dates.js";
 import { expectSingle } from "../sevdesk/envelope.js";
 import { SevdeskError } from "../sevdesk/errors.js";
 import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
@@ -140,6 +140,12 @@ const transactionRecordSchema = z.object({
   checkAccount: zOptionalRef,
   status: zNullableInt,
   enshrined: zText,
+  /**
+   * Set when the row was deleted: `DELETE /CheckAccountTransaction/{id}` is a soft delete, and the
+   * row stays readable by id with this timestamp (recorded, spec/deviations.md D-096). The spec
+   * does not declare the key.
+   */
+  deletedAt: zText,
 });
 
 type TransactionRecord = z.output<typeof transactionRecordSchema>;
@@ -223,6 +229,17 @@ export const transactionDtoSchema = z.object({
   counterparty: z.string().optional().describe("Payee or payer (Empfänger/Auftraggeber)."),
   purpose: z.string().optional().describe("Verwendungszweck as sent by the bank."),
   enshrined: z.boolean().describe("Festgeschrieben: locked, can no longer be changed."),
+  deleted: z
+    .boolean()
+    .optional()
+    .describe(
+      "True only for a deleted row: sevDesk keeps it readable by id, but it is in no list or " +
+        "balance and can no longer be booked, changed or locked.",
+    ),
+  deletedOn: z
+    .string()
+    .optional()
+    .describe("Day the row was deleted, YYYY-MM-DD (Berlin), when sevDesk reports it readably."),
 });
 
 export type TransactionDto = z.output<typeof transactionDtoSchema>;
@@ -307,6 +324,36 @@ function toTransactionDto(
     counterparty: cleanText(record.payeePayerName, NAME_MAX),
     purpose: cleanText(record.paymtPurpose, PURPOSE_MAX),
     enshrined: record.enshrined !== undefined,
+    deleted: record.deletedAt === undefined ? undefined : true,
+    deletedOn: deletionDay(record.deletedAt),
+  });
+}
+
+/** The Berlin day of a `deletedAt` timestamp; `undefined` when absent or not a readable date. */
+function deletionDay(deletedAt: string | undefined): string | undefined {
+  if (deletedAt === undefined) return undefined;
+  try {
+    return toBerlinDate(deletedAt);
+  } catch {
+    // The row is deleted all the same (`deleted`); only its day is unknown.
+    return undefined;
+  }
+}
+
+/**
+ * Refuses a deleted (soft-deleted) transaction with a trusted `validation` error: sevDesk keeps it
+ * readable by id (D-096), so a read by id alone does not show that it is gone. Every tool that
+ * books, changes, locks or deletes a transaction calls this first.
+ */
+export function assertTransactionNotDeleted(transaction: TransactionDto): void {
+  if (transaction.deleted !== true) return;
+  const on = transaction.deletedOn === undefined ? "" : ` on ${transaction.deletedOn}`;
+  throw new SevdeskError({
+    kind: "validation",
+    message:
+      `Bank transaction ${String(transaction.id)} was deleted${on}: sevDesk keeps a deleted row ` +
+      "readable by id, but it is in no list or balance and can no longer be booked, changed or " +
+      "locked. Find the live rows with sevdesk_transactions_list.",
   });
 }
 

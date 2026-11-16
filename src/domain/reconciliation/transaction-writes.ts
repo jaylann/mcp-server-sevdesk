@@ -1,9 +1,10 @@
 /**
- * The requests that change a bank transaction's own state, sent from `execute` of
- * `sevdesk_transaction_mark_private` and `sevdesk_transaction_reset` with the client scoped to
- * the tool's tier. Checks, plans and the payload are in `transaction-status.ts`; the paths are
- * built only here, so the tool layer never talks to the client itself (review 2026-11, round 3).
- * Every request changes data: sent once, never retried.
+ * The requests that create a bank transaction or change its own state, sent from `execute` of
+ * `sevdesk_transaction_mark_private`, `sevdesk_transaction_reset`, `sevdesk_transaction_create`,
+ * `sevdesk_transaction_delete` and `sevdesk_transaction_enshrine` with the client scoped to the
+ * tool's tier. Checks, plans and payloads are in `transaction-status.ts` and
+ * `manual-transactions.ts`; the paths are built only here, so the tool layer never talks to the
+ * client itself (review 2026-11, round 3). Every request changes data: sent once, never retried.
  */
 import { SevdeskError, withCompletedWrites } from "../../sevdesk/errors.js";
 import { sevdeskPath } from "../../sevdesk/paths.js";
@@ -11,7 +12,58 @@ import type { SevdeskClient } from "../../sevdesk/types.js";
 import { resetDocument } from "../lifecycle/actions.js";
 import type { PaymentKind } from "../lifecycle/documents.js";
 import { type ChangedRecord, documentObject, transactionObject } from "./allocate.js";
+import type { TransactionCreatePayload } from "./manual-transactions.js";
 import type { TransactionStatusPayload } from "./transaction-status.js";
+
+/**
+ * Creates a transaction: `POST /CheckAccountTransaction` with a body from
+ * `transactionCreatePayload` (accepted on file-import accounts only, D-071, D-095). Returns
+ * sevDesk's answer, unread: `createdTransactionId` reads the new id from it.
+ */
+export async function createTransaction(
+  client: SevdeskClient,
+  payload: TransactionCreatePayload,
+  signal?: AbortSignal,
+): Promise<unknown> {
+  return client.request({
+    method: "POST",
+    path: "/CheckAccountTransaction",
+    body: payload,
+    ...(signal === undefined ? {} : { signal }),
+  });
+}
+
+/**
+ * Deletes a transaction: `DELETE /CheckAccountTransaction/{id}`, no body. A soft delete: the row
+ * stays readable by id with `deletedAt` set (D-096), so the caller confirms it by reading back.
+ */
+export async function deleteTransaction(
+  client: SevdeskClient,
+  transactionId: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  await client.request({
+    method: "DELETE",
+    path: sevdeskPath("CheckAccountTransaction", transactionId),
+    ...(signal === undefined ? {} : { signal }),
+  });
+}
+
+/**
+ * Enshrines (festschreiben) a transaction for good: `PUT /CheckAccountTransaction/{id}/enshrine`,
+ * no body; sevDesk answers `{objects: null}` (D-098), so the caller reads back `enshrined`.
+ */
+export async function enshrineTransaction(
+  client: SevdeskClient,
+  transactionId: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  await client.request({
+    method: "PUT",
+    path: sevdeskPath("CheckAccountTransaction", transactionId, "enshrine"),
+    ...(signal === undefined ? {} : { signal }),
+  });
+}
 
 /**
  * Sets a transaction's status: `PUT /CheckAccountTransaction/{id}` with a body from

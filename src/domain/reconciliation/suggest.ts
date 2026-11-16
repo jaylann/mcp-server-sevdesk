@@ -435,6 +435,7 @@ export function skipReason(
   remaining: RemainingAmount,
 ): string | undefined {
   const status = transaction.status?.code;
+  if (transaction.deleted === true) return "It was deleted and cannot be booked.";
   if (transaction.enshrined) {
     return "It is enshrined (festgeschrieben) and cannot be booked anymore.";
   }

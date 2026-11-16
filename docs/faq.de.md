@@ -134,6 +134,17 @@ angeboten. Es schreibt die Dokumente nie fest und braucht die DATEV-Einstellunge
 [`sevdesk_csv_export`](tools.md#sevdesk_csv_export) speichert die CSV-Exporte von sevDesk, zum
 Beispiel für Excel.
 
+### Kann es Bareinnahmen (Kasse) erfassen und Kontoumsätze von Hand eintragen?
+
+Ja. Ein Barverkauf oder eine Barausgabe ist eine Zahlung, die auf der Rechnung oder dem Beleg gegen
+die Kasse gebucht wird, ohne Kontoumsatz: sevDesk trägt den Eintrag dann selbst ins Kassenbuch ein,
+und [`sevdesk_cash_position`](tools.md#sevdesk_cash_position) zeigt den neuen Bestand. Auf einer
+Kasse oder einem Verrechnungskonto nimmt sevDesk keine von Hand erfassten Umsätze an. Auf einem
+Dateiimport-Konto trägt [`sevdesk_transaction_create`](tools.md#sevdesk_transaction_create) einen
+Umsatz von Hand ein und kann ihn im selben Schritt einem Dokument zuordnen. Beides sind
+`commit`-Werkzeuge, die du bestätigst; Einzelheiten stehen in
+[Bank und Kasse](guides/banking.de.md).
+
 ### Wie weit kann ich mich auf die Umsatzsteuer-Auswertung und die Gewinn- und Verlustrechnung verlassen?
 
 Sie sind Schätzungen zum Prüfen, die der Server aus deinen Dokumenten berechnet; sie sind weder die

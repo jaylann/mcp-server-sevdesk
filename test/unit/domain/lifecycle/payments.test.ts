@@ -312,6 +312,38 @@ describe("checkPaymentAccount", () => {
     expect(unknown?.de).toContain("bei einem Konto anderen Typs kann sevDesk ablehnen");
   });
 
+  it("says that a payment on a cash register becomes a cash book entry that an undo keeps (D-095)", () => {
+    const warnings = checkPaymentAccount(
+      invoiceDoc(),
+      account({ id: 4003, name: "Kasse", type: "cash" }),
+      false,
+    );
+    expect(english(warnings)).toEqual([
+      "sevDesk records this payment as a new entry in the cash book (Kassenbuch) of cash " +
+        "register 4003, and the register's balance changes by it. Undoing the payment later " +
+        "does not remove that entry: sevDesk books a counter-entry dated the day of the undo.",
+    ]);
+    expect(warnings[0]?.de).toBe(
+      "sevDesk trägt diese Zahlung als neuen Eintrag in das Kassenbuch der Kasse 4003 ein, und " +
+        "der Kassenbestand ändert sich entsprechend. Wird die Zahlung später rückgängig gemacht, " +
+        "bleibt dieser Eintrag stehen: sevDesk bucht eine Gegenbuchung mit dem Datum des " +
+        "Rückgängigmachens.",
+    );
+  });
+
+  it("points a file-import account without a transaction to entering the row by hand", () => {
+    expect(
+      refusal(() =>
+        checkPaymentAccount(invoiceDoc(), account({ fileImport: true, importType: "CSV" }), false),
+      ),
+    ).toBe(
+      "Check account 4002 is a bank account fed by imports (online); sevDesk needs the imported " +
+        "transaction to link. Find it with sevdesk_transactions_list (status created) and pass " +
+        "transactionId; a payment not imported yet can be entered with " +
+        "sevdesk_transaction_create, which can book it on the document in the same step.",
+    );
+  });
+
   it("refuses archived accounts and other currencies", () => {
     expect(
       refusal(() =>
