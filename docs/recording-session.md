@@ -26,10 +26,13 @@ on a free 14-day trial account**, with three tools. This page is the maintainer'
   (`SEVDESK_LIVE_MAX_EXISTING_RECORDS` changes the limit). They enable the `write` and `commit`
   tiers. The `external` tier (e-mail) is enabled only when you pass an address of your own
   (`pnpm probe --probe-email`, `SEVDESK_LIVE_EMAIL_TO` for `test:live`), and then exactly one
-  e-mail goes to that address, never to a contact. Nothing is enshrined except one tagged
-  transaction by the opt-in probe `write-transaction-enshrine`. Exports: the DATEV CSV job of the
-  M4 probe and scenario (it starts a job; never with `enshrineDocuments`), the invoice and voucher
-  ZIPs of the gap probes, and the DATEV XML job of the opt-in probe `write-export-datev-xml`.
+  e-mail goes to that address, never to a contact. Nothing is enshrined, with one exception: the
+  opt-in probe `write-transaction-enshrine` enshrines one tagged transaction it created itself
+  (irreversible, trial account only). Exports: the DATEV CSV job of the M4 probe and scenario (it
+  starts a job; never with `enshrineDocuments`), the invoice and voucher ZIPs of the gap probes
+  (they change no document, D-101), and the DATEV XML job of the opt-in probe
+  `write-export-datev-xml`. The opt-in probe `write-voucher-from-file` sends one generated receipt
+  to `createVoucherFromFile`; the draft voucher it creates stays on the account.
 - Everything written is named after a run tag such as `MCP-E2E 20261120-1432-k3f9` and listed in a
   cleanup list (end of the probe report, end of the `test:live` log).
 - Recordings and reports are scrubbed (`scripts/lib/scrub.ts`): names, e-mails, phones,
@@ -147,7 +150,11 @@ Notes:
 
 The M4 probes and the M4 lifecycle scenario cover vouchers, bank transactions, the DATEV export
 and e-invoices. They need company data and a DATEV configuration first; preparation, runs, what
-they create and what to commit are on their own page: [M4 runs](recording-session/m4.md).
+they create and what to commit are on their own page: [M4 runs](recording-session/m4.md). The
+gap probes of 2026-11-16 (cash and clearing accounts, deleting and enshrining transactions,
+private-transaction rules, receipt hashes, ZIP exports, the DATEV XML job, receipt recognition)
+run from the same page:
+[gap probes](recording-session/m4.md#gap-probes-banking-exports-receipt-recognition).
 
 ## 3b. M5 remote check (about 60 to 90 minutes)
 

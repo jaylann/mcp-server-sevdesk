@@ -110,11 +110,21 @@ async function postTransaction(
   return { id, result };
 }
 
-/** `status …` of a transaction, `gone`, or the refusal. */
+/** How {@link transactionStatus} marks a row whose `deletedAt` is set (a soft delete, D-096). */
+const SOFT_DELETED = "soft-deleted (deletedAt set)";
+
+/** `status …` of a transaction (plus {@link SOFT_DELETED}), `gone`, or the refusal. */
 async function transactionStatus(ctx: ProbeContext, id: number): Promise<string> {
   const result = await ctx.http.get(`/CheckAccountTransaction/${id}`);
   if (isGone(result)) return "gone";
-  return result.ok ? `status ${str(firstRow(result.objects), "status")}` : outcomeOf(result);
+  if (!result.ok) return outcomeOf(result);
+  const row = firstRow(result.objects);
+  return `status ${str(row, "status")}${str(row, "deletedAt") === "" ? "" : `, ${SOFT_DELETED}`}`;
+}
+
+/** Whether a note of {@link transactionStatus} or {@link deleteTransaction} ends deleted. */
+function endsDeleted(note: string): boolean {
+  return note.endsWith("gone") || note.endsWith(SOFT_DELETED);
 }
 
 /** `DELETE /CheckAccountTransaction/{id}` (commit: it changes the account), then its state. */
@@ -123,7 +133,9 @@ async function deleteTransaction(ctx: ProbeContext, id: number): Promise<string>
     tier: "commit",
   });
   const after = await transactionStatus(ctx, id);
-  if (after === "gone") data(ctx).mark("CheckAccountTransaction", id, "deleted by the probe");
+  if (endsDeleted(after)) {
+    data(ctx).mark("CheckAccountTransaction", id, "deleted by the probe (soft delete)");
+  }
   return `DELETE ${outcomeOf(deleted)}${deleted.ok ? `, answer ${shapeOf(deleted.objects)}` : ""}; afterwards ${after}`;
 }
 
@@ -155,6 +167,24 @@ async function balance(ctx: ProbeContext, accountId: number): Promise<string> {
   return typeof result.objects === "string" || typeof result.objects === "number"
     ? String(result.objects)
     : shapeOf(result.objects);
+}
+
+/**
+ * The exact sum of decimal amount strings as sevDesk sends them (`"-11.9"`, `"500"`), in cents
+ * with BigInt, rendered like `511.90`; `not summable` when one has more than two decimals or is
+ * not a number.
+ */
+export function centsText(amounts: readonly string[]): string {
+  let cents = 0n;
+  for (const amount of amounts) {
+    const match = /^(-?)(\d+)(?:\.(\d{1,2}))?$/.exec(amount.trim());
+    if (match === null) return "not summable";
+    const value = BigInt(match[2] ?? "0") * 100n + BigInt((match[3] ?? "").padEnd(2, "0"));
+    cents += match[1] === "-" ? -value : value;
+  }
+  const negative = cents < 0n;
+  const absolute = negative ? -cents : cents;
+  return `${negative ? "-" : ""}${String(absolute / 100n)}.${String(absolute % 100n).padStart(2, "0")}`;
 }
 
 /** Creates a tagged contact of its own (not the run's shared one) and registers it. */
@@ -613,7 +643,7 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
     mode: "write",
     question:
       "On the account's cash register (Kasse, type register): is POST /CheckAccountTransaction refused (with which status and message), and if it is accepted, can the row be deleted again? Do a tagged open revenue voucher booked +23.80 and an expense voucher booked −11.90 on the register without a transaction create a transaction each (amount sign, status, dates), how does getBalanceAtDate move, and does resetToOpen on the vouchers delete those transactions again (D-071 left cash registers unmeasured)?",
-    deviations: ["D-071", "D-060", "NEW"],
+    deviations: ["D-071", "D-060", "D-095"],
     async run(ctx) {
       const register = await cashRegister(ctx);
       if (register === undefined) {
@@ -678,12 +708,13 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
         const reset = await ctx.http.write("PUT", `/Voucher/${booking.voucher}/resetToOpen`, {
           tier: "commit",
         });
-        const left = (await transactionsOf(ctx, register)).filter((row) =>
-          before.has(str(row, "id")),
-        );
+        const after = await transactionsOf(ctx, register);
+        const left = after.filter((row) => before.has(str(row, "id")));
+        // On a register the reset books a counter-entry instead of deleting (D-095).
+        const added = after.filter((row) => !before.has(str(row, "id")));
         if (reset.ok) data(ctx).mark("Voucher", booking.voucher, "open voucher (payment reset)");
         lines.push(
-          `resetToOpen on the ${booking.label} voucher ${booking.voucher}: ${outcomeOf(reset)}; register transactions ${before.size} → ${left.length}`,
+          `resetToOpen on the ${booking.label} voucher ${booking.voucher}: ${outcomeOf(reset)}; register transactions kept ${left.length} of ${before.size}, new ${added.map(describeTransaction).join(", ") || "none"}`,
         );
       }
       lines.push(
@@ -702,7 +733,7 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
     mode: "write",
     question:
       "Does POST /CheckAccount/Factory/clearingAccount create a tagged clearing account without an accountingNumber (else with 3320), and how does it read back (type, importType, accountingNumber)? Does it take a hand-made transaction? What does PUT /CheckAccount/{id} with a new name answer and change? Does DELETE /CheckAccount/{id} delete the empty clearing account, and what does it do to a second tagged file-import account that holds one transaction (refused, or the transaction gone too)? Can a cash register be created at all (POST /CheckAccount with type register)?",
-    deviations: ["NEW", "D-024", "D-071"],
+    deviations: ["D-097", "D-024", "D-071"],
     async run(ctx) {
       const tag = data(ctx).tag;
       const lines: string[] = [];
@@ -843,7 +874,7 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
     mode: "write",
     question:
       "On the tagged file-import account: does DELETE /CheckAccountTransaction/{id} delete an unbooked row (status 100), a private one (300) and a booked one (400, linked to a tagged open voucher with bookAmount), with which answer shape or refusal? If the booked row is deleted, what happens to the voucher's payment? Booked rows still there are unlinked with resetToOpen on the voucher and deleted then.",
-    deviations: ["NEW", "D-071", "D-076"],
+    deviations: ["D-096", "D-071", "D-076"],
     async run(ctx) {
       const imported = await importAccount(ctx);
       if (imported.id === undefined) return inconclusive(imported.note);
@@ -865,9 +896,14 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
         lines.push(`private: ${outcomeOf(privateRow.result)}`);
       } else {
         const marked = await setTransactionStatus(ctx, privateRow.id, 300);
-        lines.push(
-          `private ${privateRow.id} (status 300 ${outcomeOf(marked)}, now ${await transactionStatus(ctx, privateRow.id)}): ${await deleteTransaction(ctx, privateRow.id)}`,
-        );
+        const deletion = await deleteTransaction(ctx, privateRow.id);
+        let note = `private ${privateRow.id} (status 300 ${outcomeOf(marked)}, now ${await transactionStatus(ctx, privateRow.id)}): ${deletion}`;
+        if (!endsDeleted(deletion)) {
+          // Only status 100 can be deleted (D-096): back to 100 first.
+          const back = await setTransactionStatus(ctx, privateRow.id, 100);
+          note += `; cleanup: status 100 ${outcomeOf(back)}, ${await deleteTransaction(ctx, privateRow.id)}`;
+        }
+        lines.push(note);
       }
 
       const voucher = await createVoucher(ctx, { label: "delete booked", status: 100, gross: 15 });
@@ -894,7 +930,7 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
         const deletion = await deleteTransaction(ctx, booked.id);
         const voucherAfter = await ctx.read.byId("Voucher", voucher.id);
         let note = `booked ${booked.id} (bookAmount ${outcomeOf(payment)}, then ${status}): ${deletion}; voucher ${voucher.id} afterwards ${voucherState(voucherAfter)}`;
-        if (!deletion.endsWith("gone")) {
+        if (!endsDeleted(deletion)) {
           const reset = await ctx.http.write("PUT", `/Voucher/${voucher.id}/resetToOpen`, {
             tier: "commit",
           });
@@ -916,7 +952,7 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
     mode: "write",
     question:
       "What do GET and POST /PrivateTransactionRule and DELETE /PrivateTransactionRule/{id} answer? With two tagged rules (counterpartName only, paymentPurpose only) and five tagged open transactions on the file-import account (exact counterpart, counterpart that contains the rule's text, exact purpose, purpose that contains it, neither): which transactions turn private (300) when the rules are created, does a matching transaction created afterwards turn private, and does deleting the rules set them back? Every rule is deleted and every private transaction set back to 100 at the end.",
-    deviations: ["NEW", "D-076", "D-024"],
+    deviations: ["D-099", "D-076", "D-024"],
     async run(ctx) {
       const tag = data(ctx).tag;
       const imported = await importAccount(ctx);
@@ -1032,7 +1068,7 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
     mode: "write",
     question:
       "For a generated receipt PDF: does the uploadTempFile answer's contentHash equal the SHA-256, MD5 or SHA-1 of the uploaded bytes, does a second upload of the same bytes get the same token and hash, does the draft voucher saved with it carry a hash, and does GET /Document/{id} (the voucher's document) and its list row carry a contentHash equal to one of them? Does GET /Document/{id}/download give the same bytes back, and does deleting the draft voucher delete its Document? (Hashes are compared, never shown.)",
-    deviations: ["NEW", "D-011", "D-024", "D-026"],
+    deviations: ["D-100", "D-011", "D-024", "D-026"],
     async run(ctx) {
       const bytes = await receiptPdf(ctx, "hash");
       const hashes = hashesOf(bytes);
@@ -1098,8 +1134,8 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
     title: "GET /Export/invoiceZip: answer, filters, entry names, side effects",
     mode: "write",
     question:
-      "What does GET /Export/invoiceZip answer with sevQuery (modelName Invoice, objectName SevQuery, limit, filter[contact], filter[startDate]/[endDate] as Unix seconds), without download (JSON with base64 content?) and with download=true (raw ZIP?), what are the ZIP's entry names (as patterns) and sizes, are drafts included, and does it change any invoice, above all a draft (status, sendDate, sendType, enshrined, as getPdf without preventSendBy does, D-023)? First a check with limit 1 and a contact without invoices: when that exports anything, the filters are ignored and the probe stops.",
-    deviations: ["D-012", "D-023", "NEW"],
+      "What does GET /Export/invoiceZip answer with sevQuery (modelName Invoice, objectName SevQuery, limit, filter[contact], filter[startDate]/[endDate] as Unix seconds), without download (JSON with base64 content?) and with download=true (raw ZIP?), what are the ZIP's entry names (as patterns) and sizes, are drafts included, and does it change any invoice, above all a draft (status, sendDate, sendType, enshrined, as getPdf without preventSendBy does, D-023)? First a check with download=true, limit 1 and a contact without invoices (the JSON form answers content null, D-101): when that exports anything, the filters are ignored and the probe stops.",
+    deviations: ["D-012", "D-023", "D-101"],
     async run(ctx) {
       const contact = await ownContact(ctx, "ZIP");
       if (typeof contact === "string") return inconclusive(`Could not prepare: ${contact}.`);
@@ -1110,7 +1146,10 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
       };
       const filter = { "contact/id": contact, "contact/objectName": "Contact", ...window };
       const before = await snapshot(ctx, "/Invoice");
-      const check = await zipExport(ctx, "/Export/invoiceZip", sevQuery("Invoice", 1, filter));
+      const check = await zipExport(ctx, "/Export/invoiceZip", {
+        download: "true",
+        ...sevQuery("Invoice", 1, filter),
+      });
       lines.push(`Filter check (contact without invoices, limit 1): ${check.note}`);
       if (check.entries !== undefined && check.entries > 0) {
         return {
@@ -1157,8 +1196,8 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
     title: "GET /Export/voucherZip: answer, filters, entry names, side effects",
     mode: "write",
     question:
-      "What does GET /Export/voucherZip answer with sevQuery (modelName Voucher, limit, filter[startDate]/[endDate] as Unix seconds, filter[startAmount]/[endAmount]), without download and with download=true, which entries does the ZIP hold for a tagged draft and a tagged open voucher with a receipt (names as patterns, sizes), and does it change any voucher (status, enshrined, update)? First a check with limit 1 and a window in January 2000: when that exports anything, the filters are ignored and the probe stops.",
-    deviations: ["D-012", "D-023", "NEW"],
+      "What does GET /Export/voucherZip answer with sevQuery (modelName Voucher, limit, filter[startDate]/[endDate] as Unix seconds, filter[startAmount]/[endAmount]), without download and with download=true, which entries does the ZIP hold for a tagged draft and a tagged open voucher with a receipt (names as patterns, sizes), and does it change any voucher (status, enshrined, update)? First a check with download=true, limit 1 and a window in January 2000: when that exports anything, the filters are ignored and the probe stops.",
+    deviations: ["D-012", "D-023", "D-101"],
     async run(ctx) {
       const lines: string[] = [];
       const before = await snapshot(ctx, "/Voucher");
@@ -1166,7 +1205,10 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
         startDate: berlinMidnight("2000-01-01"),
         endDate: berlinMidnight("2000-02-01") - 1,
       };
-      const check = await zipExport(ctx, "/Export/voucherZip", sevQuery("Voucher", 1, old));
+      const check = await zipExport(ctx, "/Export/voucherZip", {
+        download: "true",
+        ...sevQuery("Voucher", 1, old),
+      });
       lines.push(`Filter check (January 2000, limit 1): ${check.note}`);
       if (check.entries !== undefined && check.entries > 0) {
         return {
@@ -1215,7 +1257,7 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
     optIn: true,
     question:
       "Opt-in and irreversible in part (the voucher sevDesk creates stays on the trial account; it can be deleted only while it is a draft): what does POST /Voucher/Factory/createVoucherFromFile answer for a generated tagged receipt PDF sent as multipart (field creditDebit C, file part voucher, as lippoliv/paperlessngx-to-sevdesk does; once more with the file part named file after a 4xx)? Does it create a draft voucher or only a suggestion, which fields does sevDesk fill (supplier, date, Belegnummer, sums, positions, document), and how long does the recognition take (polled every few seconds)?",
-    deviations: ["D-024", "NEW"],
+    deviations: ["D-024", "D-103"],
     async run(ctx) {
       const tag = data(ctx).tag;
       const number = `${slug(tag)}-R1`;
@@ -1328,7 +1370,7 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
     optIn: true,
     question:
       "Opt-in and irreversible (sevDesk may mark the exported documents as exported, which cannot be undone): does POST /Export/createDatevXmlZipExportJob?startDate&endDate (Unix seconds, last 31 days)&scope=EX (no enshrine flag; the spec has none for this job) start a job, do the progress and jobDownloadInfo answers match the CSV job (D-077), which host does the link name, what does the ZIP hold (entry names as patterns, sizes, a receipt image of a tagged open voucher with a receipt), does any invoice or voucher change (status, enshrined, update, any other key), and does a second job with includeExportedDocuments=false export fewer entries (documents marked as exported)?",
-    deviations: ["D-023", "D-077", "NEW"],
+    deviations: ["D-023", "D-077", "D-102"],
     async run(ctx) {
       const lines: string[] = [];
       const voucher = await voucherWithReceipt(ctx, {
@@ -1376,7 +1418,7 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
     optIn: true,
     question:
       "Opt-in and irreversible (festschreiben): on ONE tagged transaction of −20 the probe creates on the file-import account, is PUT /CheckAccountTransaction/{id}/enshrine refused at status 100 (which message)? After booking a tagged open voucher (gross 20) on it (status 400), what does enshrine answer, what changes on the transaction and the voucher, is a second enshrine accepted (idempotent, D-059), and can the transaction still be deleted, set back to 100, booked with a second voucher, or reset through resetToOpen on the voucher (D-060: code 322)? Without a booking it enshrines the transaction as private (300) instead. No other record is enshrined.",
-    deviations: ["D-059", "D-060", "D-071", "NEW"],
+    deviations: ["D-059", "D-060", "D-071", "D-098"],
     async run(ctx) {
       const imported = await importAccount(ctx);
       if (imported.id === undefined) return inconclusive(imported.note);
@@ -1495,7 +1537,7 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
     mode: "read",
     question:
       "Which fields of GET /CheckAccount tell a file-import account (type online, importType CSV/MT940) from a real online bank account (bankServer, autoSyncTransactions, lastSync) and from offline accounts, clearing accounts and cash registers? Per kind the values of type, importType, bankServer, autoSyncTransactions, lastSync, autoMapTransactions, baseAccount, defaultAccount and status (codes and flags only), and the keys of a row.",
-    deviations: ["NEW", "D-071"],
+    deviations: ["D-097", "D-071"],
     async run(ctx) {
       const page = await ctx.read.page("/CheckAccount", undefined, 100);
       if (!page.result.ok)
@@ -1523,12 +1565,53 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
     },
   },
   {
+    id: "read-transaction-soft-delete",
+    title: "Soft-deleted transactions and archived accounts in lists and balances",
+    mode: "read",
+    question:
+      "DELETE /CheckAccountTransaction/{id} only sets deletedAt (D-096) and DELETE /CheckAccount/{id} only archives (status 0, D-097). Does GET /CheckAccountTransaction (without a filter, and per active account) still list rows with deletedAt set, does it list rows of accounts GET /CheckAccount no longer shows, and does getBalanceAtDate(today) of an active account count its soft-deleted rows (sum of all listed amounts against the sum without them)? (Ids, statuses and counts only.)",
+    deviations: ["D-096", "D-097"],
+    async run(ctx) {
+      const accounts = await ctx.read.page("/CheckAccount", undefined, 100);
+      if (!accounts.result.ok) {
+        return { verdict: "observed", finding: `Refused: ${outcomeOf(accounts.result)}.` };
+      }
+      const active = new Set(accounts.rows.map((row) => str(row, "id")));
+      const all = await ctx.read.page("/CheckAccountTransaction", undefined, 1000);
+      if (!all.result.ok) {
+        return { verdict: "observed", finding: `Refused: ${outcomeOf(all.result)}.` };
+      }
+      const deletedOf = (rows: readonly Row[]) =>
+        rows.filter((row) => str(row, "deletedAt") !== "");
+      const deleted = deletedOf(all.rows);
+      const orphaned = all.rows.filter((row) => !active.has(String(refId(row, "checkAccount"))));
+      const lines = [
+        `GET /CheckAccountTransaction without a filter: ${all.rows.length} rows (total ${String(all.total)}), ` +
+          `${deleted.length} with deletedAt (${deleted.map((row) => `${str(row, "id")} status ${str(row, "status")}`).join(", ") || "none"}), ` +
+          `${orphaned.length} of accounts not in GET /CheckAccount`,
+      ];
+      for (const id of [...active].slice(0, 10)) {
+        const rows = await transactionsOf(ctx, Number(id));
+        const gone = deletedOf(rows);
+        const sum = (items: readonly Row[]) => centsText(items.map((row) => str(row, "amount")));
+        const kept = rows.filter((row) => str(row, "deletedAt") === "");
+        lines.push(
+          `account ${id}: ${rows.length} rows, ${gone.length} with deletedAt; sum of all ${sum(rows)}, without the deleted ${sum(kept)}; getBalanceAtDate ${await balance(ctx, Number(id))}`,
+        );
+      }
+      return {
+        verdict: "observed",
+        finding: `${lines.join(". ")}.`,
+      };
+    },
+  },
+  {
     id: "read-document-hash",
     title: "contentHash of existing documents against their downloaded bytes",
     mode: "read",
     question:
       "For up to three rows of GET /Document: does contentHash equal the SHA-256, MD5 or SHA-1 of the bytes GET /Document/{id}/download returns, and which other keys of the row mention a hash? (Hashes are compared, never shown; the files are not kept.)",
-    deviations: ["NEW", "D-024"],
+    deviations: ["D-100", "D-024"],
     async run(ctx) {
       const page = await ctx.read.page("/Document", undefined, 100);
       if (!page.result.ok)

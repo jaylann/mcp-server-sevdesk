@@ -11,6 +11,7 @@ import {
 } from "../../../scripts/lib/probes/core.js";
 import {
   accountField,
+  centsText,
   entryPattern,
   GAPS_BANKING_PROBES,
   hashesOf,
@@ -91,20 +92,25 @@ function base64(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString("base64");
 }
 
-/** A simulated trial account with what the gap probes touch. */
+/**
+ * A simulated trial account with what the gap probes touch. Its answers follow the recording of
+ * 2026-11-16 (D-095–D-103): refusal texts, soft deletes (`deletedAt`), archived accounts, the
+ * counter-entry a reset books on a cash register, the ZIP exports' `content: null` JSON form,
+ * recognition that fills a draft voucher after a moment. Where nothing was recorded (whether
+ * lists show soft-deleted rows) the simulation picks one answer and no test depends on it.
+ */
 function gapsAccount(
   settings: {
     /** No cash register on the account. */
     noRegister?: boolean;
-    /** clearingAccount refuses a request without accountingNumber. */
-    clearingNeedsNumber?: boolean;
-    /** The ZIP exports ignore every filter. */
+    /** Synthetic (safety test, not recorded): the ZIP exports ignore every filter. */
     zipIgnoresFilter?: boolean;
-    /** The invoice ZIP marks the drafts it touches as sent (like getPdf without preventSendBy). */
+    /** Synthetic (safety test, not recorded): the invoice ZIP marks drafts as sent. */
     zipMarksSent?: boolean;
   } = {},
 ) {
-  let nextId = 1000;
+  // Far from the digits PERSONAL looks for, so a generated id never matches it.
+  let nextId = 30_000;
   const ref = (objectName: string, id: number | string) => ({ id: String(id), objectName });
   const accounts = new Map<number, Rec>([
     [6333721, { id: "6333721", objectName: "CheckAccount", type: "offline", status: "100" }],
@@ -146,7 +152,27 @@ function gapsAccount(
       },
     ],
   ]);
-  const documents = new Map<number, { row: Rec; bytes: Uint8Array }>();
+  // A document sevDesk rendered when an invoice was finalized: listed, contentHash null (D-100).
+  const rendered = new TextEncoder().encode("%PDF-1.7 rendered invoice");
+  const documents = new Map<number, { row: Rec; bytes: Uint8Array; listed: boolean }>([
+    [
+      7001,
+      {
+        row: {
+          id: "7001",
+          objectName: "Document",
+          filename: "Rechnung Huber.pdf",
+          extension: "pdf",
+          mimeType: "application/pdf",
+          filesize: String(rendered.length),
+          status: "100",
+          contentHash: null,
+        },
+        bytes: rendered,
+        listed: true,
+      },
+    ],
+  ]);
   const uploads = new Map<string, Uint8Array>();
   const rules = new Map<number, Rec>();
   /** transaction id → voucher id it pays. */
@@ -154,37 +180,27 @@ function gapsAccount(
   /** transaction id → voucher whose booking created it. */
   const createdBy = new Map<number, number>();
   const recognition = new Map<number, number>();
-  let xmlExcludesExported = false;
 
-  const applyRules = (row: Rec) => {
-    for (const rule of rules.values()) {
-      const counterpart = rule["counterpartName"];
-      const purpose = rule["paymentPurpose"];
-      if (
-        row["status"] === "100" &&
-        ((counterpart !== undefined && row["payeePayerName"] === counterpart) ||
-          (purpose !== undefined && row["paymtPurpose"] === purpose))
-      ) {
-        row["status"] = "300";
-      }
-    }
-  };
   const onAccount = (accountId: number) =>
     [...transactions.values()].filter(
       (row) => (row["checkAccount"] as Rec)["id"] === String(accountId),
     );
+  const softDelete = (row: Rec) => {
+    row["deletedAt"] = "2026-11-20T10:00:00+01:00";
+  };
   const zipAnswer = (query: Readonly<Record<string, unknown>>, names: string[], kind: string) => {
-    if (names.length === 0) refused(400, `Es wurden keine ${kind} gefunden`);
-    const zip = makeZip(names);
-    if (query["download"] === "true") return new RawAnswer(zip, "application/zip");
-    return {
-      objects: {
-        filename: `${kind}_20.11.26 Huber.zip`,
-        mimetype: "application/zip",
-        base64Encoded: true,
-        content: base64(zip),
-      },
-    };
+    // The JSON form never carries the file (D-101); only download=true does.
+    if (query["download"] !== "true") {
+      return {
+        objects: {
+          filename: `${kind}_20.11.26.zip`,
+          mimetype: "application/zip",
+          base64Encoded: true,
+          content: null,
+        },
+      };
+    }
+    return new RawAnswer(makeZip(names), "application/zip; charset=UTF-8'");
   };
 
   const handler = (call: ScriptedCall): unknown => {
@@ -216,8 +232,15 @@ function gapsAccount(
     }
     // --- accounts ---------------------------------------------------------------------------
     if (path === "/CheckAccount") {
-      if (method === "POST") refused(400, "Creating check accounts this way is not supported");
-      return { total: String(accounts.size), objects: [...accounts.values()] };
+      if (method === "POST") {
+        refused(
+          400,
+          "Use the factory endpoint fileImportAccount or clearingAccount to create new CheckAccounts",
+        );
+      }
+      // Archived accounts (status 0) are not listed (D-097).
+      const active = [...accounts.values()].filter((row) => row["status"] !== "0");
+      return { total: String(active.length), objects: active };
     }
     if (path === "/CheckAccount/Factory/fileImportAccount") {
       const accountId = nextId++;
@@ -233,9 +256,6 @@ function gapsAccount(
       return { objects: accounts.get(accountId) };
     }
     if (path === "/CheckAccount/Factory/clearingAccount") {
-      if (settings.clearingNeedsNumber === true && body["accountingNumber"] === undefined) {
-        refused(422, "accountingNumber is required");
-      }
       const accountId = nextId++;
       accounts.set(accountId, {
         id: String(accountId),
@@ -244,7 +264,7 @@ function gapsAccount(
         type: "offline",
         importType: null,
         accountingNumber:
-          typeof body["accountingNumber"] === "number" ? String(body["accountingNumber"]) : "3320",
+          typeof body["accountingNumber"] === "number" ? String(body["accountingNumber"]) : "1803",
         status: "100",
       });
       return { objects: accounts.get(accountId) };
@@ -263,8 +283,9 @@ function gapsAccount(
         return { objects: row };
       }
       if (method === "DELETE") {
-        if (onAccount(id).length > 0) refused(409, "The account still has transactions");
-        accounts.delete(id);
+        // Archives the account and soft-deletes its transactions (D-097).
+        if (row !== undefined) row["status"] = "0";
+        for (const transaction of onAccount(id)) softDelete(transaction);
         return { objects: [null] };
       }
       return { objects: row === undefined ? [] : [row] };
@@ -286,47 +307,65 @@ function gapsAccount(
         amount: String(body["amount"]),
         status: "100",
         enshrined: null,
+        deletedAt: null,
         checkAccount: ref("CheckAccount", Number((body["checkAccount"] as Rec)["id"])),
       };
-      applyRules(row);
       transactions.set(transactionId, row);
       return { objects: row };
     }
     if (/^\/CheckAccountTransaction\/\d+\/enshrine$/.test(path)) {
       const row = transactions.get(id);
       if (row === undefined) refused(404, "not found");
-      if (row["status"] === "100")
-        refused(422, "Enshrining is only possible for linked transactions");
-      row["enshrined"] = "2026-11-20T10:00:00+01:00";
+      if (row["status"] === "100") {
+        refused(
+          422,
+          "Cannot enshrine transaction with status created (100). At least status linked (200) is required.",
+        );
+      }
+      row["enshrined"] ??= "2026-11-20T10:00:00+01:00";
       return { objects: null };
     }
     if (/^\/CheckAccountTransaction\/\d+$/.test(path)) {
       const row = transactions.get(id);
+      if (row === undefined) return { objects: [] };
       if (method === "PUT") {
-        if (row?.["enshrined"] !== null) refused(422, "The transaction is enshrined");
+        if (row["enshrined"] !== null) {
+          refused(
+            422,
+            "Cannot set or change property 'enshrined'. Please use the dedicated endpoint instead.",
+          );
+        }
         row["status"] = String(body["status"]);
         return { objects: row };
       }
       if (method === "DELETE") {
-        if (row?.["enshrined"] !== null || row["status"] === "400") {
-          refused(409, "Booked or enshrined transactions cannot be deleted");
+        if (row["status"] !== "100") {
+          refused(
+            409,
+            `CheckAccountTransaction can only be deleted in status 100 but is status ${String(row["status"])}`,
+          );
         }
-        transactions.delete(id);
+        softDelete(row);
         return { objects: [null] };
       }
-      return { objects: row === undefined ? [] : [row] };
+      return { objects: [row] };
     }
     if (path === "/CheckAccountTransaction") {
-      const rows = onAccount(Number(query["checkAccount[id]"]));
+      const filter = query["checkAccount[id]"];
+      const rows = filter === undefined ? [...transactions.values()] : onAccount(Number(filter));
       return { total: String(rows.length), objects: rows };
     }
-    // --- private transaction rules ----------------------------------------------------------
+    // --- private transaction rules (hand-made rows never turned private, D-099) -------------
     if (path === "/PrivateTransactionRule") {
       if (method === "POST") {
         const ruleId = nextId++;
-        const row: Rec = { ...body, id: String(ruleId), objectName: "PrivateTransactionRule" };
+        const row: Rec = {
+          id: String(ruleId),
+          objectName: "PrivateTransactionRule",
+          paymentPurpose: body["paymentPurpose"] ?? null,
+          counterpartName: body["counterpartName"] ?? null,
+        };
         rules.set(ruleId, row);
-        for (const transaction of transactions.values()) applyRules(transaction);
         return { objects: row };
       }
       return { objects: [...rules.values()] };
@@ -339,7 +378,8 @@ function gapsAccount(
     if (path === "/Voucher/Factory/uploadTempFile") {
       const bytes = formFiles.get(call.form ?? new FormData())?.get("file");
       if (bytes === undefined) refused(400, "no file");
-      const token = `${createHash("md5").update(bytes).digest("hex")}.pdf`;
+      // A new token per upload, even for the same bytes; the hash follows the bytes (D-100).
+      const token = `${createHash("md5").update(String(nextId++)).digest("hex")}.pdf`;
       uploads.set(token, bytes);
       return {
         objects: {
@@ -357,14 +397,18 @@ function gapsAccount(
       const files = formFiles.get(call.form ?? new FormData());
       if (files?.get("voucher") === undefined) refused(400, "No file given");
       const voucherId = nextId++;
+      // A draft at once, with placeholders until the recognition fills it (D-103).
       vouchers.set(voucherId, {
         id: String(voucherId),
         objectName: "Voucher",
         status: "50",
         creditDebit: call.form?.get("creditDebit"),
-        supplierName: "",
+        voucherDate: "2026-11-20T09:59:02+01:00",
+        supplierName: null,
         sumGross: "0",
+        showNet: "1",
         description: null,
+        taxRule: null,
         document: ref("Document", nextId++),
       });
       recognition.set(voucherId, 0);
@@ -389,6 +433,7 @@ function gapsAccount(
       };
       const token = body["filename"];
       if (typeof token === "string") {
+        // The receipt's Document: status 50, no mimeType, SHA-256 hash, not listed (D-100).
         const documentId = nextId++;
         const bytes = uploads.get(token) ?? new Uint8Array();
         documents.set(documentId, {
@@ -397,11 +442,13 @@ function gapsAccount(
             objectName: "Document",
             filename: "Huber Beleg.pdf",
             extension: "pdf",
-            mimeType: "application/pdf",
+            mimeType: null,
+            status: "50",
             filesize: String(bytes.length),
             contentHash: createHash("sha256").update(bytes).digest("hex"),
           },
           bytes,
+          listed: false,
         });
         record["document"] = ref("Document", documentId);
       }
@@ -414,8 +461,9 @@ function gapsAccount(
       const account = Number((body["checkAccount"] as Rec)["id"]);
       if (linked !== undefined) {
         const transaction = transactions.get(Number(linked))!;
-        if (transaction["enshrined"] !== null) refused(422, "The transaction is enshrined");
-        if (transaction["status"] === "400") refused(422, "The transaction is already booked");
+        if (transaction["enshrined"] !== null || transaction["status"] === "400") {
+          refused(422, "Voucher is not bookable with given payment information");
+        }
         transaction["status"] = "400";
         links.set(Number(linked), id);
       } else {
@@ -426,7 +474,8 @@ function gapsAccount(
           amount: String(body["amount"]),
           status: "400",
           enshrined: null,
-          payeePayerName: null,
+          deletedAt: null,
+          payeePayerName: "Huber Bau GmbH",
           paymtPurpose: "Beleg",
           valueDate: `${TODAY}T12:00:00+01:00`,
           entryDate: `${TODAY}T12:00:00+01:00`,
@@ -441,7 +490,7 @@ function gapsAccount(
       for (const [transactionId, voucherId] of links) {
         if (voucherId !== id) continue;
         if (transactions.get(transactionId)?.["enshrined"] !== null) {
-          refused(422, "Already enshrined by payment");
+          refused(400, "Already enshrined by transaction");
         }
       }
       for (const [transactionId, voucherId] of [...links]) {
@@ -450,7 +499,24 @@ function gapsAccount(
         links.delete(transactionId);
       }
       for (const [transactionId, voucherId] of [...createdBy]) {
-        if (voucherId === id) transactions.delete(transactionId);
+        if (voucherId !== id) continue;
+        const created = transactions.get(transactionId)!;
+        const account = accounts.get(Number((created["checkAccount"] as Rec)["id"]));
+        createdBy.delete(transactionId);
+        if (account?.["type"] !== "register") {
+          transactions.delete(transactionId);
+          continue;
+        }
+        // On a cash register the reset books a counter-entry at the reset's time (D-095).
+        const counterId = nextId++;
+        transactions.set(counterId, {
+          ...created,
+          id: String(counterId),
+          amount: String(-Number(created["amount"])),
+          payeePayerName: null,
+          valueDate: "2026-11-20T10:30:00+01:00",
+          entryDate: "2026-11-20T10:30:00+01:00",
+        });
       }
       Object.assign(vouchers.get(id)!, { status: "100", paidAmount: 0 });
       return { objects: vouchers.get(id) };
@@ -460,18 +526,25 @@ function gapsAccount(
       if (method === "DELETE") {
         if (record?.["status"] !== "50") refused(409, "Only drafts can be deleted");
         vouchers.delete(id);
+        // The receipt's Document goes with the draft (D-100).
+        const documentId = Number((record["document"] as Rec | undefined)?.["id"]);
+        documents.delete(documentId);
         return { objects: [null] };
       }
       const reads = recognition.get(id);
       if (record !== undefined && reads !== undefined) {
         recognition.set(id, reads + 1);
         if (reads + 1 >= 2) {
+          // Recorded: the supplier text is not the PDF's first line, and no tax rule is set.
           Object.assign(record, {
-            supplierName: `${TAG} Lieferant GmbH`,
-            sumGross: "119.00",
-            sumNet: "100.00",
+            supplierName: "Lieferant GmbH",
+            sumGross: "119",
+            sumNet: "100",
+            sumTax: "19",
+            showNet: "0",
             voucherDate: `${TODAY}T00:00:00+01:00`,
             description: `${TAG.replace(/[^A-Za-z0-9-]+/g, "-")}-R1`,
+            resultDisdar: "recognised",
           });
         }
       }
@@ -488,9 +561,9 @@ function gapsAccount(
                 id: "77",
                 objectName: "VoucherPos",
                 voucher: ref("Voucher", voucherId),
-                sumGross: "119.00",
+                sumGross: "119",
                 taxRate: "19",
-                accountDatev: ref("AccountDatev", 4266),
+                accountDatev: null,
               },
             ],
           }
@@ -513,7 +586,7 @@ function gapsAccount(
       return { objects: document === undefined ? [] : [document.row] };
     }
     if (path === "/Document") {
-      const rows = [...documents.values()].map((item) => item.row);
+      const rows = [...documents.values()].filter((item) => item.listed).map((item) => item.row);
       return { total: String(rows.length), objects: rows };
     }
     // --- invoices ---------------------------------------------------------------------------
@@ -553,10 +626,14 @@ function gapsAccount(
           Object.assign(row, { sendDate: "2026-11-20T10:05:00+01:00", sendType: "VPDF" });
         }
       }
+      // Drafts are exported too, labelled "(Entwurf)" instead of a number (D-101).
       const names = matching
-        .filter((row) => row["status"] !== "100")
         .slice(0, Number(query["sevQuery[limit]"]))
-        .map((row) => `Rechnung_RE-1042_${String(row["id"])}_Huber Bau GmbH.pdf`);
+        .map((row) =>
+          row["status"] === "100"
+            ? `2026-11-20_Rechnung(Entwurf)__${createHash("md5").update(String(row["id"])).digest("hex")}.pdf`
+            : `2026-11-20_Rechnung_RE-1042_Huber Bau GmbH.pdf`,
+        );
       return zipAnswer(query, names, "Rechnungen");
     }
     if (path === "/Export/voucherZip") {
@@ -575,8 +652,7 @@ function gapsAccount(
     }
     if (path === "/Export/createDatevXmlZipExportJob") {
       if (method === "GET") refused(500, "Function was called with wrong HTTP Type");
-      xmlExcludesExported = query["includeExportedDocuments"] === false;
-      for (const voucher of vouchers.values()) voucher["update"] = "2026-11-20T11:00:00+01:00";
+      // Recorded: no document changed, and includeExportedDocuments=false changed nothing.
       return { objects: "0a0e1eff-9590-1bea-1195-a3cfc04364cc" };
     }
     if (path === "/Progress/generateDownloadHash") {
@@ -599,14 +675,14 @@ function gapsAccount(
     return { total: "0", objects: [] };
   };
 
+  // Recorded: a ZIP of two inner ZIPs named DATEV_…, the same for both jobs (D-102).
   const download = vi.fn(() =>
     Promise.resolve(
       new Response(
-        makeZip(
-          xmlExcludesExported
-            ? ["document.xml"]
-            : ["document.xml", "Huber Bau GmbH 5621913.pdf", "RE-1042_Huber.xml"],
-        ),
+        makeZip([
+          "DATEV_Belegbilder_Huber_5621913_20261020_bis_20261120.zip",
+          "DATEV_Buchungsdaten_5621913_20261020_bis_20261120.zip",
+        ]),
         { headers: { "content-type": "binary/octet-stream" } },
       ),
     ),
@@ -751,8 +827,8 @@ describe("gap probes on a simulated trial account", () => {
     }
   });
 
-  it("answers the banking questions: register, factories, deletes, rules", async () => {
-    const account = gapsAccount({ clearingNeedsNumber: true });
+  it("answers the banking questions as recorded: register, factories, deletes, rules", async () => {
+    const account = gapsAccount();
     const report = await run(account);
     const cash = finding(report, "write-cash-register-transaction");
     expect(cash).toMatch(
@@ -764,35 +840,57 @@ describe("gap probes on a simulated trial account", () => {
     expect(cash).toMatch(
       /cash expense .*new register transactions \d+ \(amount -11\.9, status 400/,
     );
-    expect(cash).toMatch(/register transactions 2 → 1.*register transactions 1 → 0/);
+    // D-095: the reset keeps the booking and books a counter-entry at the reset's time.
+    expect(cash).toMatch(
+      /cash sale voucher \d+: ok; register transactions kept 2 of 2, new \d+ \(amount -23\.8, status 400/,
+    );
+    expect(cash).toMatch(/cash expense voucher \d+: ok; .*new \d+ \(amount 11\.9, status 400/);
     expect(cash).toMatch(
       /before the bookings 500\.00, after them 511\.90, after the resets 500\.00/,
     );
 
     const factories = finding(report, "write-check-account-factories");
-    expect(factories).toMatch(/clearingAccount without accountingNumber: refused \(422/);
-    expect(factories).toMatch(/clearingAccount with accountingNumber 3320: \d+, .*type="offline"/);
+    expect(factories).toMatch(
+      /clearingAccount without accountingNumber: \d+, .*type="offline".*accountingNumber "1803"/,
+    );
     expect(factories).toMatch(/POST \/CheckAccountTransaction on it: refused \(422/);
     expect(factories).toMatch(/changed: name, update/);
-    expect(factories).toMatch(/DELETE of the empty clearing account: ok.*afterwards gone/);
+    // D-097: DELETE archives the account (status 0) and soft-deletes its transactions.
+    expect(factories).toMatch(/DELETE of the empty clearing account: ok.*still there \(status 0\)/);
     expect(factories).toMatch(
-      /holding transaction \d+: refused \(409.*account still there.*DELETE of the then empty account ok, gone/,
+      /holding transaction \d+: ok; account still there, transaction status 100, soft-deleted/,
     );
-    expect(factories).toMatch(/POST \/CheckAccount with type register: refused \(400/);
+    expect(factories).toMatch(
+      /POST \/CheckAccount with type register: refused \(400: Use the factory endpoint/,
+    );
 
+    // D-096: a soft delete, and only at status 100.
     const deletes = finding(report, "write-transaction-delete");
-    expect(deletes).toMatch(/unbooked \d+: DELETE ok, answer a list of 1; afterwards gone/);
-    expect(deletes).toMatch(/private \d+ \(status 300 ok, now status 300\): DELETE ok/);
+    expect(deletes).toMatch(
+      /unbooked \d+: DELETE ok, answer a list of 1; afterwards status 100, soft-deleted/,
+    );
+    expect(deletes).toMatch(
+      /private \d+ \(status 300 ok, now status 300\): DELETE refused \(409: CheckAccountTransaction can only be deleted in status 100 but is status 300\).*cleanup: status 100 ok, DELETE ok/,
+    );
     expect(deletes).toMatch(
       /then status 400\): DELETE refused \(409.*cleanup: resetToOpen ok, transaction status 100, DELETE ok/,
     );
 
+    // D-099: rules never turned a hand-made row private.
     const rules = finding(report, "write-private-transaction-rule");
     expect(rules).toMatch(
-      /after creating the rules: exact counterpart status 300, counterpart containing it status 100, exact purpose status 300, purpose containing it status 100, neither status 100/,
+      /after creating the rules: exact counterpart status 100, counterpart containing it status 100, exact purpose status 100, purpose containing it status 100, neither status 100/,
     );
-    expect(rules).toMatch(/created after the rules \(exact counterpart\): status 300/);
-    expect(rules).toMatch(/cleanup back to 100: \d+ ok, \d+ ok, \d+ ok/);
+    expect(rules).toMatch(/created after the rules \(exact counterpart\): status 100/);
+    expect(rules).toMatch(/cleanup back to 100: nothing private/);
+
+    // The follow-up for D-096/D-097: counts only, the simulation lists soft-deleted rows.
+    const soft = finding(report, "read-transaction-soft-delete");
+    expect(soft).toMatch(
+      /without a filter: \d+ rows \(total \d+\), 4 with deletedAt \(\d+ status 100(, \d+ status 100){3}\), 1 of accounts not in GET \/CheckAccount/,
+    );
+    // Bookings and counter-entries cancel out on the register.
+    expect(soft).toMatch(/account 6333723: 4 rows, 0 with deletedAt; sum of all 0\.00/);
 
     const kinds = finding(report, "read-check-account-kinds");
     expect(kinds).toMatch(/type="register"/);
@@ -805,13 +903,15 @@ describe("gap probes on a simulated trial account", () => {
     const report = await run(account);
     const hash = finding(report, "write-receipt-hash");
     expect(hash).toMatch(/upload \(\d+ bytes\): contentHash is the SHA-256 of the uploaded bytes/);
-    expect(hash).toMatch(/same bytes again: token the same, contentHash the same/);
-    expect(hash).toMatch(/GET \/Document\/\d+: contentHash is the SHA-256 of the uploaded bytes/);
-    expect(hash).toMatch(/download: \d+ bytes, the uploaded bytes/);
-    expect(hash).toMatch(/DELETE of the draft voucher ok; its Document afterwards still there/);
-    expect(finding(report, "read-document-hash")).toMatch(
-      /contentHash is the SHA-256 of the downloaded bytes/,
+    expect(hash).toMatch(/same bytes again: token a new one, contentHash the same/);
+    expect(hash).toMatch(
+      /GET \/Document\/\d+: contentHash is the SHA-256 of the uploaded bytes; .*mimeType none/,
     );
+    expect(hash).toMatch(/in GET \/Document: not among the first 1000 rows/);
+    expect(hash).toMatch(/download: \d+ bytes, the uploaded bytes/);
+    expect(hash).toMatch(/DELETE of the draft voucher ok; its Document afterwards gone/);
+    // Documents sevDesk rendered carry no hash.
+    expect(finding(report, "read-document-hash")).toMatch(/contentHash is null/);
     expect(renderReport(report)).not.toMatch(/[0-9a-f]{64}/);
   });
 
@@ -819,16 +919,19 @@ describe("gap probes on a simulated trial account", () => {
     const account = gapsAccount();
     const report = await run(account);
     const invoices = finding(report, "write-export-invoice-zip");
-    expect(invoices).toMatch(/Filter check .*refused \(400/);
+    // D-101: the check runs on the raw form, the JSON form has no content, drafts are exported.
+    expect(invoices).toMatch(/Filter check .*: raw body, .*with 0 entries/);
     expect(invoices).toMatch(
-      /Without download: JSON .*filename "Rechnungen_##\.##\.## <5>\.zip".*a ZIP of \d+ bytes with 1 entries \(1 pdf\): Rechnung_RE-####_####_<5> <3> <4>\.pdf/,
+      /Without download: JSON .*filename "Rechnungen_##\.##\.##\.zip", mimetype application\/zip, base64Encoded true, content null/,
     );
-    expect(invoices).toMatch(/With download=true: raw body, Content-Type application\/zip/);
+    expect(invoices).toMatch(
+      /With download=true: raw body, Content-Type application\/zip; charset=UTF-8': a ZIP of \d+ bytes with 2 entries \(2 pdf\): ####-##-##_Rechnung\(<7>\)__<32 hex>\.pdf .*####-##-##_Rechnung_RE-####_<5> <3> <4>\.pdf/,
+    );
     expect(invoices).toMatch(/Draft \d+ afterwards: unchanged/);
     expect(invoices).toMatch(/all invoices: none of \d+ changed/);
     const vouchers = finding(report, "write-export-voucher-zip");
-    expect(vouchers).toMatch(/Filter check \(January 2000, limit 1\): refused \(400/);
-    expect(vouchers).toMatch(/with 2 entries/);
+    expect(vouchers).toMatch(/Filter check \(January 2000, limit 1\): raw body, .*with 0 entries/);
+    expect(vouchers).toMatch(/With download=true: .*with 2 entries/);
     expect(vouchers).toMatch(/All vouchers afterwards: none of \d+ changed/);
     // The raw ZIP never reaches the evidence beyond its signature.
     const evidence = JSON.stringify(report.results.flatMap((result) => result.evidence));
@@ -873,16 +976,22 @@ describe("gap probes on a simulated trial account", () => {
       [...account.transactions.values()].filter((row) => row["enshrined"] !== null),
     ).toHaveLength(1);
     const enshrine = finding(report, "write-transaction-enshrine");
-    expect(enshrine).toMatch(/enshrine at status 100: refused \(422: Enshrining is only possible/);
-    expect(enshrine).toMatch(/enshrine at status 400: ok/);
-    expect(enshrine).toMatch(/transaction changed: enshrined null → 9999-99-99T99:99:99\+99:99/);
-    expect(enshrine).toMatch(/second enshrine: ok/);
-    expect(enshrine).toMatch(/PUT status 100: refused \(422/);
-    expect(enshrine).toMatch(/booking a second voucher \d+ on it: refused \(422/);
+    // D-098, as recorded.
     expect(enshrine).toMatch(
-      /resetToOpen on voucher \d+: refused \(422: Already enshrined by payment/,
+      /enshrine at status 100: refused \(422: Cannot enshrine transaction with status created \(100\)/,
     );
-    expect(enshrine).toMatch(/DELETE: DELETE refused \(409/);
+    expect(enshrine).toMatch(/enshrine at status 400: ok, answer null/);
+    expect(enshrine).toMatch(/transaction changed: enshrined null → 9999-99-99T99:99:99\+99:99/);
+    expect(enshrine).toMatch(/voucher \d+ changed: nothing/);
+    expect(enshrine).toMatch(/second enshrine: ok/);
+    expect(enshrine).toMatch(/PUT status 100: refused \(422: Cannot set or change property/);
+    expect(enshrine).toMatch(
+      /booking a second voucher \d+ on it: refused \(422: Voucher is not bookable/,
+    );
+    expect(enshrine).toMatch(
+      /resetToOpen on voucher \d+: refused \(400: Already enshrined by transaction/,
+    );
+    expect(enshrine).toMatch(/DELETE: DELETE refused \(409: .*but is status 400/);
 
     // XML job: a POST without enshrine flags; the download only through the export transport.
     const xml = account.client.calls.filter((call) => call.path.includes("DatevXml"));
@@ -896,19 +1005,29 @@ describe("gap probes on a simulated trial account", () => {
     expect(datev).toMatch(
       /link host sevexport-filestorage-workload-prod\.s3\.eu-central-1\.amazonaws\.com/,
     );
-    expect(datev).toMatch(/Entries: 3 → 1 \(fewer: the first job marked documents as exported\)/);
-    expect(datev).toMatch(/vouchers: \d+ of \d+ changed: \d+: update /);
+    // D-102: two inner ZIPs, nothing changed, the second job exports the same.
+    expect(datev).toMatch(/a ZIP of \d+ bytes with 2 entries \(2 zip\): DATEV_/);
+    expect(datev).toMatch(
+      /Invoices afterwards: none of \d+ changed; vouchers: none of \d+ changed/,
+    );
+    expect(datev).toMatch(/Entries: 2 → 2 \(the same: nothing visibly marked\)/);
 
     // Recognition: multipart with creditDebit C and the file part `voucher`.
     const upload = account.client.calls.find((call) => call.path.endsWith("createVoucherFromFile"));
     expect(upload?.form?.get("creditDebit")).toBe("C");
     expect(upload?.form?.get("voucher")).toBeInstanceOf(Blob);
     const recognised = finding(report, "write-voucher-from-file");
+    // D-103, as recorded.
+    expect(recognised).toMatch(/answer an object with keys .*\(objectName Voucher\)/);
     expect(recognised).toMatch(/recognised after 2 reads/);
-    expect(recognised).toMatch(/supplierName the PDF's supplier/);
+    expect(recognised).toMatch(/status 50, .*creditDebit C/);
+    expect(recognised).toMatch(/supplierName set, not the PDF's supplier, supplier none/);
     expect(recognised).toMatch(/voucherDate the PDF's date/);
     expect(recognised).toMatch(/description the PDF's Rechnung Nr\./);
-    expect(recognised).toMatch(/positions 1 \(first: sumGross 119\.00/);
+    expect(recognised).toMatch(/sumNet 100, sumTax 19, sumGross 119, taxRule null, document set/);
+    expect(recognised).toMatch(
+      /positions 1 \(first: sumGross 119, taxRate 19, accountDatev null\)/,
+    );
     expect(
       report.created.some(
         (record) => record.objectName === "Voucher" && record.probe === "write-voucher-from-file",
@@ -961,6 +1080,15 @@ describe("gap probe helpers", () => {
     expect(accountField("lastSync", "2026-11-20T10:00:00+01:00")).toBe("date-time");
     expect(accountField("bankServer", null)).toBe("null");
     expect(accountField("name", "Kasse Huber")).toBe("set");
+  });
+
+  it("sums decimal amounts exactly, or says it cannot", () => {
+    expect(centsText(["500", "23.8", "-11.9", "-23.8", "11.9"])).toBe("500.00");
+    expect(centsText(["0.1", "0.2"])).toBe("0.30");
+    expect(centsText(["-0.05"])).toBe("-0.05");
+    expect(centsText([])).toBe("0.00");
+    expect(centsText(["1.005"])).toBe("not summable");
+    expect(centsText(["abc"])).toBe("not summable");
   });
 
   it("builds nested sevQuery filters", () => {
