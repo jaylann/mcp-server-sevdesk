@@ -112,6 +112,14 @@ for e-invoice readiness before you finalize them, and the XML sevDesk generates 
 folder you allow (`SEVDESK_FILE_DIRS`); in remote mode you upload them through a page on your
 server.
 
+### Can sevDesk's own receipt recognition fill in a voucher?
+
+Yes, for receipt PDFs of expenses. `sevdesk_voucher_recognize_receipt` sends the file to sevDesk's
+receipt recognition (Belegerkennung), which creates a voucher draft and fills in date, number,
+sums and a supplier text within seconds. Those values are unchecked, and the draft has no tax rule
+and no booking account yet: the assistant completes it with the normal draft update before it can
+be finalized ([Let sevDesk read the receipt](guides/receipts.md#let-sevdesk-read-the-receipt)).
+
 ### Can it export to DATEV?
 
 Yes. [`sevdesk_datev_export`](tools.md#sevdesk_datev_export) lets sevDesk build the DATEV

@@ -227,6 +227,19 @@ Brutto: 119,00 EUR
 Bisher bezahlt: 0,00 EUR"
 `;
 
+exports[`German previews > draft a voucher with sevDesk's receipt recognition: says the same in German 1`] = `
+"Belegdatei an sevDesks Belegerkennung senden: sevDesk legt sofort einen Belegentwurf (Ausgabe) mit der Datei an und füllt ihn binnen Sekunden aus; bis zu 15 s darauf warten.
+! Der Entwurf entsteht, sobald die Datei gesendet ist, auch wenn die Erkennung nichts findet, und bleibt, bis er vervollständigt oder gelöscht wird (sevdesk_voucher_delete_draft). Jeder Aufruf legt einen weiteren Entwurf an.
+! sevdesk_voucher_finalize lehnt den Entwurf ab, bis sevdesk_voucher_update_draft eine Steuerregel und auf jeder Position ein Buchungskonto gesetzt hat.
+! Dubletten lassen sich erst nach der Erkennung suchen: Das Ergebnis nennt Belege mit demselben Datum, derselben Bruttosumme und Belegnummer.
+(umkehrbar)
+Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
+Belegdatei: Rechnung-0815.pdf (PDF, 77 Bytes, SHA-256 56c2ac043c28d354…)
+Von sevDesk ausgefüllt: Belegdatum, Belegnummer, Summen, ein Lieferantentext, Positionen (ungeprüft)
+Bleibt leer: Steuerregel, Buchungskonten, Lieferantenkontakt
+Status nach dem Speichern: Entwurf (50), noch nicht gebucht"
+`;
+
 exports[`German previews > email an open credit note: says the same in German 1`] = `
 "Gutschrift GU-1001 über sevDesk per E-Mail senden an kunde@example.com.
 ! Die E-Mail geht sofort aus sevDesk an alle aufgeführten Empfänger und lässt sich nicht zurückholen.

@@ -187,11 +187,15 @@ export interface ReceiptFile {
   readonly bytes: Uint8Array;
 }
 
+/** The receipt's bytes as a multipart part with the sniffed MIME type. */
+export function receiptBlob(file: ReceiptFile): Blob {
+  return new Blob([file.bytes.slice()], { type: MIME_TYPES[file.kind] });
+}
+
 /** The multipart body of `uploadTempFile`: one part `file` with the sniffed MIME type. */
 export function uploadForm(file: ReceiptFile): FormData {
   const form = new FormData();
-  const blob = new Blob([file.bytes.slice()], { type: MIME_TYPES[file.kind] });
-  form.append("file", blob, file.name);
+  form.append("file", receiptBlob(file), file.name);
   return form;
 }
 

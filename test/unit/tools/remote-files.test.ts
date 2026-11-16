@@ -26,6 +26,7 @@ import { voucherCreateDraftTool } from "../../../src/tools/vouchers/draft-create
 import { voucherUpdateDraftTool } from "../../../src/tools/vouchers/draft-update.js";
 import { einvoiceParseTool } from "../../../src/tools/vouchers/einvoice-parse.js";
 import { voucherImportEInvoiceTool } from "../../../src/tools/vouchers/import-einvoice.js";
+import { voucherRecognizeReceiptTool } from "../../../src/tools/vouchers/recognize-receipt.js";
 import { allEnabledConfig, TEST_TOKEN } from "../../helpers/config.js";
 import { connectInProcess } from "../../helpers/connect.js";
 import { type FakeRoute, FakeSevdeskClient, testContext } from "../../helpers/fake-client.js";
@@ -43,9 +44,16 @@ import {
   CREATE_READ_ROUTES,
   draftRow,
   PDF_BYTES,
+  positionsRoute,
   readBackRoutes,
+  recognisedPositionRow,
+  recognisedRow,
+  recognitionRoute,
   saveRoute,
   uploadRoute,
+  version2Route,
+  voucherListRoute,
+  voucherRoute,
 } from "./vouchers/routes.js";
 
 const openTransfer = useTransfer();
@@ -67,6 +75,7 @@ const FILE_TOOLS = [
   "sevdesk_upload_request",
   "sevdesk_uploads_list",
   "sevdesk_voucher_import_einvoice",
+  "sevdesk_voucher_recognize_receipt",
 ];
 const DRAFT_ARGS = {
   supplierId: 1001,
@@ -150,6 +159,45 @@ describe("file tools with remote file transfer: registration", () => {
     const off = names(allEnabledConfig({ deployment: filesOffDeployment() }));
     for (const name of FILE_TOOLS) expect(off, name).not.toContain(name);
     expect(names(allEnabledConfig())).not.toContain("sevdesk_upload_request");
+  });
+});
+
+describe("a draft from sevDesk's receipt recognition, from an upload", () => {
+  it.each([
+    { stage: "success", released: true },
+    { stage: "refused", released: false },
+    { stage: "noDocument", released: false },
+  ])("$stage: releases the upload only once sevDesk attached it", async ({ stage, released }) => {
+    const transfer = await openTransfer();
+    const ref = await transfer.upload(PDF_BYTES);
+    const fake = new FakeSevdeskClient([
+      version2Route,
+      stage === "refused"
+        ? {
+            method: "POST",
+            path: "/Voucher/Factory/createVoucherFromFile",
+            response: {
+              error: new SevdeskError({ kind: "validation", status: 415, message: "Rejected." }),
+            },
+          }
+        : recognitionRoute(),
+      voucherRoute(recognisedRow(stage === "noDocument" ? { document: null } : {})),
+      positionsRoute(2301, [recognisedPositionRow()]),
+      voucherListRoute([]),
+    ]);
+    const run = executeWrite(
+      voucherRecognizeReceiptTool(),
+      { file: ref },
+      fake,
+      filesConfig(),
+      transfer.access(),
+    );
+    if (stage === "refused") await expect(run).rejects.toBeInstanceOf(SevdeskError);
+    else await run;
+    const form = fake.writes()[0]?.form;
+    expect(new Uint8Array(await (form?.get("voucher") as Blob).arrayBuffer())).toEqual(PDF_BYTES);
+    const kept = await transfer.store.readUpload(OWNER, ref.slice("upload:".length));
+    expect(kept === undefined).toBe(released);
   });
 });
 

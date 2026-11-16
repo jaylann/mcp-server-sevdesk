@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/receipts.md sha256:1c9abfce6225 -->
+<!-- translated-from: docs/guides/receipts.md sha256:eb7cb6cae53c -->
 
 # Belege und Eingangsrechnungen
 
@@ -17,6 +17,7 @@ bestätigst.
 | [Konto und Steuerregel wählen](#buchungskonto-und-steuerregel-wählen) | [`sevdesk_reference_lookup`](../tools.md#sevdesk_reference_lookup) (`receipt_guidance`)                                                                | `read`            | nein            |
 | [Belegentwurf anlegen](#den-belegentwurf-anlegen)                     | [`sevdesk_voucher_create_draft`](../tools.md#sevdesk_voucher_create_draft)                                                                             | `write`           | nein            |
 | [Oder eine E-Rechnung importieren](#eine-e-rechnung-importieren)      | [`sevdesk_einvoice_parse`](../tools.md#sevdesk_einvoice_parse), [`sevdesk_voucher_import_einvoice`](../tools.md#sevdesk_voucher_import_einvoice)       | `read`, `write`   | nein            |
+| [Oder sevDesk lesen lassen](#sevdesk-den-beleg-lesen-lassen)          | [`sevdesk_voucher_recognize_receipt`](../tools.md#sevdesk_voucher_recognize_receipt)                                                                   | `write`           | nein            |
 | [Entwurf korrigieren](#einen-entwurf-korrigieren)                     | [`sevdesk_voucher_update_draft`](../tools.md#sevdesk_voucher_update_draft), [`sevdesk_voucher_delete_draft`](../tools.md#sevdesk_voucher_delete_draft) | `write`, `commit` | Löschen: **ja** |
 | [Fertigstellen](#fertigstellen)                                       | [`sevdesk_voucher_finalize`](../tools.md#sevdesk_voucher_finalize)                                                                                     | `commit`          | **ja**          |
 | [Zahlung buchen](#die-zahlung-buchen)                                 | [`sevdesk_voucher_book_payment`](../tools.md#sevdesk_voucher_book_payment)                                                                             | `commit`          | **ja**          |
@@ -36,7 +37,8 @@ Die Beleg-Werkzeuge lesen nie von sich aus auf deiner Festplatte:
 - **Über stdio** lesen sie Belegdateien (PDF, PNG, JPEG) und E-Rechnungen (XRechnung-XML, ZUGFeRD-
   oder Factur-X-PDF) nur aus den Ordnern in `SEVDESK_FILE_DIRS`, bis 20 MiB pro Datei
   ([Konfiguration](../configuration.de.md)). Ohne diese Einstellung lässt sich ein Belegentwurf
-  trotzdem anlegen, nur ohne Datei, und die beiden E-Rechnungs-Werkzeuge werden nicht angeboten.
+  trotzdem anlegen, nur ohne Datei, und die beiden E-Rechnungs-Werkzeuge und die Belegerkennung
+  werden nicht angeboten.
 - **Auf einem entfernten Server** lädst du die Datei in deinem Browser hoch: Der Assistent ruft
   [`sevdesk_upload_request`](../tools.md#sevdesk_upload_request) auf, gibt dir einen Link und
   reicht den Upload weiter, sobald du sagst, dass du fertig bist. Auf eine Seite passen bis zu 10
@@ -102,6 +104,38 @@ Buchungskonto gibst du vor, eines für alle Steuersätze oder eines je Satz. Das
 oder Aufschlüsselungen der Umsatzsteuer ab, auf die es sich nicht verlassen kann, und Kombinationen
 aus Konto und Steuerregel, die sevDesk ablehnen würde. Bewahre die Originaldatei auf: Bei einer
 E-Rechnung ist das XML der Beleg, den du aufbewahren musst.
+
+## sevDesk den Beleg lesen lassen
+
+> Lass sevDesk den Beleg Belege/2026-11/hetzner-R-88231.pdf lesen und den Beleg anlegen.
+
+[`sevdesk_voucher_recognize_receipt`](../tools.md#sevdesk_voucher_recognize_receipt) (`write`,
+ohne Bestätigung) schickt ein Beleg-PDF an sevDesks eigene Belegerkennung. sevDesk legt sofort
+einen Belegentwurf (Ausgabe) mit der Datei als Anhang an und füllt binnen Sekunden Belegdatum,
+Belegnummer, Summen, einen Lieferantentext und die Positionen aus. Das Werkzeug wartet bis zu 15
+Sekunden und nennt dann, was sevDesk ausgefüllt hat und was noch fehlt.
+
+Nichts davon ist geprüft, und vollständig ist der Entwurf nie:
+
+- Steuerregel und Buchungskonto jeder Position bleiben leer. Deshalb lehnt
+  [`sevdesk_voucher_finalize`](../tools.md#sevdesk_voucher_finalize) den Entwurf ab, bis
+  [`sevdesk_voucher_update_draft`](../tools.md#sevdesk_voucher_update_draft) sie setzt: die
+  Steuerregel und die Positionen mit ihren Buchungskonten, gewählt
+  [wie oben](#buchungskonto-und-steuerregel-wählen).
+- Der Lieferant ist nur ein Text, den sevDesk gelesen hat, nicht immer der Lieferant des Belegs
+  und nie ein Kontakt. Setze den Kontakt oder den richtigen Namen in derselben Änderung.
+- Vergleiche Datum, Nummer und Beträge mit dem Beleg.
+
+Der Entwurf entsteht, sobald die Datei gesendet ist, auch wenn die Erkennung nichts findet. Dann
+sagt das Werkzeug das und nennt den Entwurf, zum Vervollständigen oder zum Löschen mit
+[`sevdesk_voucher_delete_draft`](../tools.md#sevdesk_voucher_delete_draft). Jeder Aufruf legt
+einen weiteren Entwurf an, schicke also jeden Beleg nur einmal. Nach Dubletten lässt sich erst nach
+der Erkennung suchen: Das Ergebnis nennt Belege mit demselben Datum, demselben Bruttobetrag und
+derselben Belegnummer.
+
+Es nimmt nur PDFs von Ausgabenbelegen; ein Foto oder ein Einnahmenbeleg geht über
+`sevdesk_voucher_create_draft`. Wenn du die Angaben ohnehin kennst, ist
+`sevdesk_voucher_create_draft` der direktere Weg: Es prüft alles, bevor etwas gespeichert wird.
 
 ## Einen Entwurf korrigieren
 

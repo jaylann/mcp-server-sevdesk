@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:82927922c84c -->
+<!-- translated-from: docs/faq.md sha256:8ab7db0f2ece -->
 
 # Häufige Fragen
 
@@ -123,6 +123,15 @@ Fertigstellen auf E-Rechnungs-Tauglichkeit prüfen, und das XML, das sevDesk erz
 abrufen ([Bereit für die E-Rechnung](guides/invoices.de.md#bereit-für-die-e-rechnung)). Über stdio kommen die Dateien aus
 einem Ordner, den du erlaubst (`SEVDESK_FILE_DIRS`); im Fernzugriff lädst du sie über eine Seite
 auf deinem Server hoch.
+
+### Kann sevDesks eigene Belegerkennung einen Beleg ausfüllen?
+
+Ja, für Beleg-PDFs von Ausgaben. `sevdesk_voucher_recognize_receipt` schickt die Datei an sevDesks
+Belegerkennung, die einen Belegentwurf anlegt und binnen Sekunden Datum, Nummer, Summen und einen
+Lieferantentext ausfüllt. Diese Werte sind ungeprüft, und der Entwurf hat noch keine Steuerregel
+und kein Buchungskonto: Der Assistent vervollständigt ihn mit der normalen Entwurfsänderung,
+bevor er sich fertigstellen lässt
+([sevDesk den Beleg lesen lassen](guides/receipts.de.md#sevdesk-den-beleg-lesen-lassen)).
 
 ### Kann es nach DATEV exportieren?
 

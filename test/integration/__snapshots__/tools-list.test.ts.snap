@@ -9976,5 +9976,36 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
     "name": "sevdesk_voucher_receipt_save",
     "title": "Save a voucher's receipt file",
   },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Draft a voucher with sevDesk's receipt recognition",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "file": {
+          "description": "The receipt as a PDF (Belegbild, up to 20 MB) inside SEVDESK_FILE_DIRS, absolute or relative to one of those folders, or on a remote server the uploadId from sevdesk_upload_request. sevDesk reads it and attaches it to the new draft.",
+          "maxLength": 1000,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "file",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_voucher_recognize_receipt",
+    "title": "Draft a voucher with sevDesk's receipt recognition",
+  },
 ]
 `;

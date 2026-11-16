@@ -928,7 +928,7 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   | `GET /PartUnity`                                                                       | alternative units of parts, with their own price and factor (`sevdesk_api_get`)                                    | known    |
   | `GET /Document`, document download                                                     | attached documents and receipts (metadata through `sevdesk_api_get`, files through `sevdesk_voucher_receipt_save`) | recorded |
   | `GET /SevSequence/Factory/getByType`                                                   | next document number (see D-027); `sevdesk_api_get` refuses it                                                     | known    |
-  | `POST /Voucher/Factory/createVoucherFromFile`                                          | voucher draft from a file, filled in by sevDesk's recognition (D-103; no tool uses it)                             | recorded |
+  | `POST /Voucher/Factory/createVoucherFromFile`                                          | voucher draft from a file, filled in by sevDesk's recognition (D-103; `sevdesk_voucher_recognize_receipt`)         | recorded |
 
   Recorded shapes: `GET /AccountDatev` rows have 28 keys (`number`, `name`, `accountDatevCategory`,
   `accountCategory`, …), scalars as strings, and GET by id answers one row; the list ignores every
@@ -989,8 +989,9 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 - **Impact:** Each undocumented endpoint gets a hand-written schema, a smoke test, and lives in
   the `advanced` toolset or behind a lookup until a recording confirms its shape. `uncertain`
   endpoints are not used by default tools: receipts go through `uploadTempFile` and `saveVoucher`
-  (D-011, D-026); `createVoucherFromFile` is recorded now, but no tool uses it until #96 does
-  (D-103). `GET /TextTemplate`, `/PartUnity` and `/Document`
+  (D-011, D-026); the recorded `createVoucherFromFile` is used only by
+  `sevdesk_voucher_recognize_receipt`, for expense receipt PDFs (D-103). `GET /TextTemplate`,
+  `/PartUnity` and `/Document`
   have no curated tool; the generic read `sevdesk_api_get` (advanced toolset, off by default)
   reads them without a schema of its own: it returns the raw `objects` sanitized as untrusted
   text, drops binary fields and `sevClient` echoes, and always sends `limit`, `offset` and
@@ -1009,7 +1010,8 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   recorded answers in `test/fixtures/recorded/2026-11-10/advanced/` against them, the ignored
   `limit` included); the receipt download: `test/unit/tools/vouchers/receipt-save.test.ts`. `/SevSequence/Factory/getByType`: no tool uses it, and `sevdesk_api_get` refuses it
   (`test/unit/sevdesk/paths.test.ts`, `genericGetRefusal`). `/CostCentre` and
-  `DELETE /TagRelation/{tagRelationId}`: D-091 and D-089.
+  `DELETE /TagRelation/{tagRelationId}`: D-091 and D-089. `createVoucherFromFile`:
+  `test/unit/tools/vouchers/recognize-receipt.test.ts` (D-103).
 
 ### D-025: PDF rendering returns one base64 `pdf` since 2026-04-07
 
@@ -3656,9 +3658,32 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   appear (bounded, a few seconds), show which fields came from sevDesk, and complete tax rule and
   account through the normal update with ReceiptGuidance before anything is finalized. The
   draft exists even if recognition fails, so the tool must name it for cleanup.
+- **Handling:** `sevdesk_voucher_recognize_receipt` (`write`;
+  `src/domain/drafts/voucher-recognition.ts`) sends an expense receipt PDF once (multipart,
+  `creditDebit` `C`, part `voucher`, never retried), reads the draft at once and then after
+  waits of 2, 2, 2, 3, 3 and 3 s (15 s at most, three times the recorded 5 s) until `sumGross`
+  is not 0, and reads the positions. Its result lists the fields sevDesk filled in
+  (`recognition.filledIn`, unchecked), what is missing (`taxRule`, `bookingAccount`, `number`,
+  `supplierContact`) and, in trusted notes that never quote recognised text, how to complete the
+  draft with `sevdesk_voucher_update_draft` (`taxRuleId`, positions with `accountDatevId`,
+  checked against the ReceiptGuidance) or delete it. Without sums after 15 s it says so and names
+  the draft. An answer that does not name the new voucher is an error that says a draft probably
+  exists and must be looked for, not created again; a failure after that names the draft as
+  created. Duplicates are looked for after the recognition: other expense vouchers with the same
+  date, gross total and recognised Belegnummer (the supplier text is not compared), reported, not
+  refused. `sevdesk_voucher_finalize` refuses the draft until both the tax rule and every booking
+  account are set (`storedRule`, `storedPositionsFor`). Only what was recorded is offered: no
+  revenue vouchers (`D`), no images.
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("runs the opt-in probes only when
   named…": the multipart request, the placeholders, the recognised fields, `taxRule` and
-  `accountDatev` null). Handling: pending, the recognition option of #96.
+  `accountDatev` null). The tool: `test/unit/tools/vouchers/recognize-receipt.test.ts` (the
+  multipart body sent once; recognised at once, after waits, and not within the bound; a partial
+  recognition; duplicates; an unreadable answer; a refused upload; a cancelled wait and a failed
+  read naming the draft; recognised text kept out of summary and notes). The safety net:
+  `test/regressions/recognised-voucher-draft.test.ts` (the finalize refuses a draft shaped like
+  the recorded one without a tax rule or a booking account, and accepts it once both are set;
+  the normal update completes it). Fixtures `test/fixtures/vouchers/voucher-from-file-*.json`,
+  `voucher-positions-from-file.json`.
 
 ### D-107: Order factories copy the order; a confirmation marks the offer accepted
 

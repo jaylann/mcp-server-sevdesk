@@ -15,8 +15,13 @@ import {
   positionsRoute,
   readBackRoutes,
   receiptFolder,
+  recognisedPositionRow,
+  recognisedRow,
+  recognitionRoute,
   saveRoute,
   uploadRoute,
+  version2Route,
+  voucherListRoute,
   voucherRoute,
   writeRoute,
 } from "../unit/tools/vouchers/routes.js";
@@ -177,6 +182,24 @@ export const VOUCHERS_CASES: readonly WriteToolCase[] = [
         config: { fileDirs: [dir] },
         undo: () => rm(dir, { recursive: true, force: true }),
       };
+    },
+  },
+  {
+    // Recognised on the first read, so the registered tool (real timer) never waits here.
+    label: "draft a voucher with sevDesk's receipt recognition",
+    tool: tool("sevdesk_voucher_recognize_receipt"),
+    args: { file: "Rechnung-0815.pdf" },
+    routes: [
+      version2Route,
+      recognitionRoute(),
+      voucherRoute(recognisedRow()),
+      positionsRoute(2301, [recognisedPositionRow()]),
+      voucherListRoute([recognisedRow()]),
+    ],
+    writes: [{ method: "POST", path: "/Voucher/Factory/createVoucherFromFile" }],
+    setup: async () => {
+      const folder = await receiptFolder();
+      return { config: { fileDirs: [folder.dir] }, undo: folder.undo };
     },
   },
   {

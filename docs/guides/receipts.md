@@ -14,6 +14,7 @@ tool, the [tier](../permissions.md#tiers) and whether you confirm.
 | [Pick account and tax rule](#pick-the-booking-account-and-tax-rule) | [`sevdesk_reference_lookup`](../tools.md#sevdesk_reference_lookup) (`receipt_guidance`)                                                                | `read`            | no              |
 | [Create the voucher draft](#create-the-voucher-draft)               | [`sevdesk_voucher_create_draft`](../tools.md#sevdesk_voucher_create_draft)                                                                             | `write`           | no              |
 | [Or import an e-invoice](#import-an-e-invoice)                      | [`sevdesk_einvoice_parse`](../tools.md#sevdesk_einvoice_parse), [`sevdesk_voucher_import_einvoice`](../tools.md#sevdesk_voucher_import_einvoice)       | `read`, `write`   | no              |
+| [Or let sevDesk read the receipt](#let-sevdesk-read-the-receipt)    | [`sevdesk_voucher_recognize_receipt`](../tools.md#sevdesk_voucher_recognize_receipt)                                                                   | `write`           | no              |
 | [Correct the draft](#correct-a-draft)                               | [`sevdesk_voucher_update_draft`](../tools.md#sevdesk_voucher_update_draft), [`sevdesk_voucher_delete_draft`](../tools.md#sevdesk_voucher_delete_draft) | `write`, `commit` | delete: **yes** |
 | [Finalize](#finalize)                                               | [`sevdesk_voucher_finalize`](../tools.md#sevdesk_voucher_finalize)                                                                                     | `commit`          | **yes**         |
 | [Book the payment](#book-the-payment)                               | [`sevdesk_voucher_book_payment`](../tools.md#sevdesk_voucher_book_payment)                                                                             | `commit`          | **yes**         |
@@ -33,7 +34,8 @@ The voucher tools never read your disk on their own:
 - **Over stdio** they read receipts (PDF, PNG, JPEG) and e-invoices (XRechnung XML, ZUGFeRD or
   Factur-X PDF) only from the folders in `SEVDESK_FILE_DIRS`, up to 20 MiB per file
   ([Configuration](../configuration.md)). Without that setting a voucher draft can still be
-  created, just without a file, and the two e-invoice tools are not offered.
+  created, just without a file, and the two e-invoice tools and the receipt recognition are not
+  offered.
 - **On a remote server** you upload the file in your browser: the assistant calls
   [`sevdesk_upload_request`](../tools.md#sevdesk_upload_request), gives you a link, and passes the
   upload on once you say it is done. Up to 10 files fit on one page; see
@@ -96,6 +98,37 @@ confirmation) creates the draft voucher from the e-invoice with the original fil
 supply the booking account, one for all rates or one per rate. It refuses sums or VAT breakdowns
 it cannot rely on and account and tax rule combinations sevDesk would reject. Keep the original
 file: for an e-invoice the XML is the record to retain.
+
+## Let sevDesk read the receipt
+
+> Let sevDesk read Belege/2026-11/hetzner-R-88231.pdf and draft the voucher.
+
+[`sevdesk_voucher_recognize_receipt`](../tools.md#sevdesk_voucher_recognize_receipt) (`write`, no
+confirmation) sends a receipt PDF to sevDesk's own receipt recognition (Belegerkennung). sevDesk
+creates a draft expense voucher with the file attached at once and fills in the date, the
+Belegnummer, the sums, a supplier text and the positions within seconds. The tool waits up to 15
+seconds and then lists what sevDesk filled in and what is still missing.
+
+Nothing sevDesk filled in has been checked, and the draft is never complete:
+
+- The tax rule and the booking account of every position stay empty, so
+  [`sevdesk_voucher_finalize`](../tools.md#sevdesk_voucher_finalize) refuses the draft until
+  [`sevdesk_voucher_update_draft`](../tools.md#sevdesk_voucher_update_draft) sets them: the tax
+  rule and the positions with their booking accounts, chosen
+  [as above](#pick-the-booking-account-and-tax-rule).
+- The supplier is only a text sevDesk read, not always the receipt's supplier, and never a
+  contact. Set the contact or the right name in the same update.
+- Compare the date, the number and the amounts with the receipt.
+
+The draft exists as soon as the file is sent, also when the recognition finds nothing. The tool
+then says so and names the draft, to complete or to delete with
+[`sevdesk_voucher_delete_draft`](../tools.md#sevdesk_voucher_delete_draft). Every call makes
+another draft, so send each receipt once. Duplicates can only be looked for after the recognition:
+the result names vouchers with the same date, gross amount and Belegnummer.
+
+It takes PDFs of expense receipts only; a photo or a revenue voucher goes through
+`sevdesk_voucher_create_draft`. When you know the details anyway, `sevdesk_voucher_create_draft`
+is the more direct way: it checks everything before anything is saved.
 
 ## Correct a draft
 

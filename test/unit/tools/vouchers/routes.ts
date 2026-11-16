@@ -125,6 +125,38 @@ export const uploadRoute: FakeRoute = {
   response: { fixture: "vouchers/upload-temp-file.json" },
 };
 
+/**
+ * Draft 2301 as `createVoucherFromFile` answers it: status 50, placeholders (the moment of
+ * creation as date, sums 0, no supplier, no number, no tax rule), a document (D-103).
+ */
+export function createdFromFileRow(overrides: Row = {}): Row {
+  const objects = (loadFixture("vouchers/voucher-from-file-created.json").body as { objects: Row })
+    .objects;
+  return { ...structuredClone(objects), ...overrides };
+}
+
+/**
+ * Draft 2301 after sevDesk's recognition (D-103): date, number RE-2026-0042, sums 100/19/119 and a
+ * supplier text, but no supplier contact and no tax rule.
+ */
+export function recognisedRow(overrides: Row = {}): Row {
+  return { ...firstRow("vouchers/voucher-from-file-recognised.json"), ...overrides };
+}
+
+/** The position 3301 the recognition added to draft 2301: 19 %, gross 119, no booking account. */
+export function recognisedPositionRow(overrides: Row = {}): Row {
+  return { ...firstRow("vouchers/voucher-positions-from-file.json"), ...overrides };
+}
+
+/** `POST /Voucher/Factory/createVoucherFromFile` answering `row` (default: new draft 2301). */
+export function recognitionRoute(row: Row = createdFromFileRow()): FakeRoute {
+  return {
+    method: "POST",
+    path: "/Voucher/Factory/createVoucherFromFile",
+    response: { body: { objects: row } },
+  };
+}
+
 /** A data-changing route answering a fixture of `test/fixtures/vouchers/`. */
 export function writeRoute(method: HttpMethod, path: string, fixture: string): FakeRoute {
   return { method, path, response: { fixture: `vouchers/${fixture}` } };

@@ -1,4 +1,4 @@
-<!-- translated-from: docs/remote/files.md sha256:e6ce7542d66e -->
+<!-- translated-from: docs/remote/files.md sha256:30dc38d24505 -->
 
 # Dateien: Uploads und Download-Links
 
@@ -21,12 +21,13 @@ anderen Weg: Sie gehen per MCP an den Client.)
    ausgeschrieben; höchstens 100 Zeichen; die Endung aus dem Inhalt).
 4. Du sagst dem Modell, dass der Upload erledigt ist. Es übergibt die erhaltene `uploadId`
    (`upload:<id>`) als `file` an `sevdesk_voucher_create_draft`, `sevdesk_voucher_update_draft`,
-   `sevdesk_einvoice_parse` oder `sevdesk_voucher_import_einvoice`. Nur die Verbindung, die den
-   Upload angefordert hat, kann ihn nutzen.
+   `sevdesk_voucher_recognize_receipt`, `sevdesk_einvoice_parse` oder
+   `sevdesk_voucher_import_einvoice`. Nur die Verbindung, die den Upload angefordert hat, kann ihn
+   nutzen.
 
-Sobald das Erstellen, Ändern oder Importieren gelingt und das Zurücklesen aus sevDesk einen Anhang
-bestätigt, gibt der Server den Upload frei und löscht seine gespeicherte Datei; der Platz ist
-sofort wieder verfügbar. Das Auslesen einer E-Rechnung, Probeläufe, fehlgeschlagene Aufrufe und ein
+Sobald das Erstellen, Ändern, Erkennen oder Importieren gelingt und das Zurücklesen aus sevDesk
+einen Anhang bestätigt, gibt der Server den Upload frei und löscht seine gespeicherte Datei; der
+Platz ist sofort wieder verfügbar. Das Auslesen einer E-Rechnung, Probeläufe, fehlgeschlagene Aufrufe und ein
 fehlender oder unklarer Anhang im zurückgelesenen Beleg behalten den Upload bis zum Ablauf für einen
 weiteren Versuch. Beim Ändern muss sich die Anhang-ID gegenüber dem unmittelbar vor dem Speichern
 geprüften Stand ändern (oder erstmals ein Anhang vorliegen, wenn vorher ausdrücklich keiner
@@ -153,11 +154,11 @@ Durchgänge über denselben Link.
 `SEVDESK_HTTP_FILES=off` entfernt `sevdesk_upload_request`, `sevdesk_uploads_list` und die Seiten.
 Im OAuth-Modus werden dann die Werkzeuge nicht angeboten, die eine Datei zum Lesen oder einen Ort
 zum Speichern brauchen (`sevdesk_einvoice_parse`, `sevdesk_voucher_import_einvoice`,
-`sevdesk_document_save`, `sevdesk_voucher_receipt_save`, `sevdesk_csv_export`,
-`sevdesk_datev_export`), und das Argument `file` der Belegentwurf-Werkzeuge wird abgelehnt; der
-Bearer-Modus nutzt weiterhin `SEVDESK_FILE_DIRS` und `SEVDESK_OUTPUT_DIR`, wenn sie gesetzt sind.
-Die PDF- und XML-Werkzeuge und die `sevdesk://`-Ressourcen sind nicht betroffen: Ein Client liest
-Dokumentdateien über sie per MCP.
+`sevdesk_voucher_recognize_receipt`, `sevdesk_document_save`, `sevdesk_voucher_receipt_save`,
+`sevdesk_csv_export`, `sevdesk_datev_export`), und das Argument `file` der
+Belegentwurf-Werkzeuge wird abgelehnt; der Bearer-Modus nutzt weiterhin `SEVDESK_FILE_DIRS` und
+`SEVDESK_OUTPUT_DIR`, wenn sie gesetzt sind. Die PDF- und XML-Werkzeuge und die
+`sevdesk://`-Ressourcen sind nicht betroffen: Ein Client liest Dokumentdateien über sie per MCP.
 
 ## Grenzen des Entwurfs
 

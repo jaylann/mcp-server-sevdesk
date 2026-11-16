@@ -253,6 +253,18 @@ export const voucherImportInputShape = {
     ),
 };
 
+/**
+ * Input fields of `sevdesk_voucher_recognize_receipt` (without `dryRun`): only the file, which
+ * goes through the same file resolver and checks as the receipt of a manual draft.
+ */
+export const voucherRecognitionInputShape = {
+  file: fileInput.describe(
+    "The receipt as a PDF (Belegbild, up to 20 MB) inside SEVDESK_FILE_DIRS, absolute or " +
+      "relative to one of those folders, or on a remote server the uploadId from " +
+      "sevdesk_upload_request. sevDesk reads it and attaches it to the new draft.",
+  ),
+};
+
 export interface VoucherImportArgs extends ExchangeArgs {
   readonly file: string;
   readonly accountDatevId?: number | undefined;
