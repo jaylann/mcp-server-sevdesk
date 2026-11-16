@@ -36,7 +36,13 @@ const FILE_READERS = [
   "sevdesk_voucher_import_einvoice",
   "sevdesk_voucher_update_draft",
   "sevdesk_einvoice_parse",
+  "sevdesk_receipt_folder_check",
 ];
+/**
+ * The reviewed readers of a whole folder (`FileAccess.scanFolder`, `scanConfinedFolder`): only
+ * local folders, so they are offered only with `SEVDESK_FILE_DIRS`, never for uploads alone.
+ */
+const FOLDER_READERS = ["sevdesk_receipt_folder_check"];
 /** The reviewed tools that open an upload page (a ticket in the transfer store). */
 const UPLOAD_OPENERS = ["sevdesk_upload_request"];
 
@@ -119,6 +125,27 @@ describe("tool metadata", () => {
       expect(tool?.available?.(allEnabledConfig({ deployment: filesDeployment() })), name).toBe(
         true,
       );
+    }
+  });
+
+  it("offers the tools that read a whole folder only with local folders", () => {
+    for (const name of FOLDER_READERS) {
+      const tool = ALL_TOOLS.find((candidate) => candidate.name === name);
+      expect(tool?.localEffects, name).toBe("reads-files");
+      expect(tool?.tier, name).toBe("read");
+      expect(tool?.available?.(allEnabledConfig()), name).toBe(false);
+      expect(tool?.available?.(allEnabledConfig({ outputDir: "/out" })), name).toBe(false);
+      // Uploads carry single files: remote file transfer alone does not offer a folder reader.
+      expect(tool?.available?.(allEnabledConfig({ deployment: filesDeployment() })), name).toBe(
+        false,
+      );
+      expect(tool?.available?.(allEnabledConfig({ fileDirs: ["/in"] })), name).toBe(true);
+      expect(
+        tool?.available?.(
+          allEnabledConfig({ fileDirs: ["/in"], deployment: filesDeployment("bearer") }),
+        ),
+        name,
+      ).toBe(true);
     }
   });
 

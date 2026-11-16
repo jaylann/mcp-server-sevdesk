@@ -2,9 +2,8 @@
  * Check `duplicates` of `sevdesk_records_audit`: vouchers booked twice, and drafts stuck for weeks.
  *
  * What it reads: the vouchers (Belege) dated from {@link NUMBER_LOOKBACK_DAYS} days before the
- * period to its end, drafts included (`supplier-bills.ts`), and the invoice and credit note drafts
- * dated in the period. No positions. To confirm possible duplicates it reads the receipt checksum
- * of at most {@link MAX_RECEIPT_HASH_VOUCHERS} vouchers (two reads each, see below).
+ * period to its end, drafts included, each with its receipt file's checksum (`supplier-bills.ts`),
+ * and the invoice and credit note drafts dated in the period. No positions, no read by id.
  *
  * The rules. Two vouchers are compared only when they have the same supplier (`supplierKey`: the
  * contact, else the supplier name; a voucher with neither is not compared) and the same direction
@@ -19,11 +18,11 @@
  *   `src/domain/drafts/duplicates.ts`), dated at most {@link AMOUNT_WINDOW_DAYS} days apart, and not
  *   told apart by two different numbers. A gross of 0 doubles nothing and is not compared.
  * - **Same receipt file** (`voucher_receipt_twice`): a same-amount pair whose receipt files have
- *   the same SHA-256 checksum. The checksum costs two reads per voucher (`GET /Voucher/{id}` for
- *   the attached document, `GET /Document/{id}` for its `contentHash`), so it is read only for the
- *   vouchers of same-amount pairs, at most {@link MAX_RECEIPT_HASH_VOUCHERS} of them, in the order
- *   of the pairs' dates, and never after the time budget. Different checksums prove nothing (the
- *   same paper scanned twice gives two files), so the pair then stays a `check`.
+ *   the same SHA-256 checksum. The voucher list carries it: asked to embed the attached document
+ *   (`embed=document`), sevDesk sends its `contentHash` in every row (spec/deviations.md D-100
+ *   (PR #104), recorded 2026-11-17), so no voucher is read by id. Different checksums, or a receipt
+ *   without one, prove nothing (the same paper scanned twice gives two files), so the pair then
+ *   stays a `check`.
  * - Booked means any status but draft (open, transferred, partially paid, paid). A pair of a
  *   draft and a booked voucher is `draft_repeats_voucher`; two drafts are not paired (they are
  *   reported as stuck when old enough).
@@ -39,12 +38,10 @@
  * created. Their drafts are checked for being stuck, since an unsent invoice is revenue not billed.
  */
 import { berlinDateOf } from "../../../sevdesk/dates.js";
-import { SevdeskError } from "../../../sevdesk/errors.js";
-import { fetchVoucherReceiptHash } from "../../document-files.js";
 import { sameGross } from "../../drafts/duplicates.js";
 import { compare, isZero, negate } from "../../money.js";
 import { type DocumentHeader, listDocumentHeaders } from "../positions-scan.js";
-import { daysBetween, deadlineReached, plural, shiftDays, throwIfAborted } from "../shared.js";
+import { daysBetween, plural, shiftDays } from "../shared.js";
 import {
   type AuditCheckContext,
   type AuditCheckResult,
@@ -62,8 +59,6 @@ export const AMOUNT_WINDOW_DAYS = 5;
 const NUMBER_LOOKBACK_DAYS = 31;
 /** A draft created this many days before today or earlier counts as stuck. */
 export const STUCK_DRAFT_DAYS = 21;
-/** Vouchers whose receipt checksum is read to confirm same-amount pairs (two reads each). */
-export const MAX_RECEIPT_HASH_VOUCHERS = 40;
 
 export const DUPLICATE_FINDING_CODES = [
   "voucher_number_twice",
@@ -278,54 +273,10 @@ function findPairs(
   };
 }
 
-// ---------------------------------------------------------------------------------------------
-// Receipt checksums
-// ---------------------------------------------------------------------------------------------
-
-interface HashReads {
-  readonly hashes: ReadonlyMap<number, string | undefined>;
-  /** Vouchers of same-amount pairs whose checksum was not read (cap or time budget). */
-  readonly notRead: number;
-  readonly failed: number;
-  readonly timedOut: boolean;
-}
-
-/** Reads the receipt checksums of the vouchers of `pairs`, bounded (see the module doc). */
-async function readReceiptHashes(
-  context: AuditCheckContext,
-  pairs: readonly VoucherPair[],
-): Promise<HashReads> {
-  const ids: number[] = [];
-  for (const pair of pairs) {
-    for (const header of [pair.first, pair.second]) {
-      if (!ids.includes(header.id)) ids.push(header.id);
-    }
-  }
-  const cap = MAX_RECEIPT_HASH_VOUCHERS;
-  const hashes = new Map<number, string | undefined>();
-  let failed = 0;
-  let timedOut = false;
-  for (const id of ids.slice(0, cap)) {
-    throwIfAborted(context.options.signal);
-    if (deadlineReached(context.options.deadline)) {
-      timedOut = true;
-      break;
-    }
-    try {
-      hashes.set(id, await fetchVoucherReceiptHash(context.client, id, context.options.signal));
-    } catch (error) {
-      // A receipt that cannot be read leaves its pair a `check`; cancellation still stops.
-      if (!(error instanceof SevdeskError) || error.kind === "aborted") throw error;
-      failed += 1;
-      hashes.set(id, undefined);
-    }
-  }
-  return { hashes, notRead: ids.length - hashes.size, failed, timedOut };
-}
-
-function sameReceipt(pair: VoucherPair, hashes: ReadonlyMap<number, string | undefined>): boolean {
-  const a = hashes.get(pair.first.id);
-  return a !== undefined && a === hashes.get(pair.second.id);
+/** Both vouchers carry a receipt file with the same SHA-256 checksum (from the listing). */
+function sameReceipt(pair: VoucherPair): boolean {
+  const a = pair.first.receipt?.hash;
+  return a !== undefined && a === pair.second.receipt?.hash;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -351,6 +302,7 @@ async function runDuplicatesCheck(context: AuditCheckContext): Promise<AuditChec
     context,
     shiftDays(period.from, -NUMBER_LOOKBACK_DAYS),
     period.to,
+    { receipts: true },
   );
   const sales = await listDocumentHeaders(
     context.client,
@@ -370,10 +322,6 @@ async function runDuplicatesCheck(context: AuditCheckContext): Promise<AuditChec
   const amountPairs = pairs.filter(
     (pair) => pair.rule === "amount" && !isDraft(pair.first) && !isDraft(pair.second),
   );
-  const reads =
-    amountPairs.length === 0
-      ? { hashes: new Map<number, string | undefined>(), notRead: 0, failed: 0, timedOut: false }
-      : await readReceiptHashes(context, amountPairs);
 
   // One draft per document and code: a voucher in two pairs of the same kind is listed once.
   const drafts: FindingDraft[] = [];
@@ -389,7 +337,7 @@ async function runDuplicatesCheck(context: AuditCheckContext): Promise<AuditChec
     drafts.push({ code, text: TEXTS[code], contact: contact ?? contactOf(header), header });
   };
   for (const pair of pairs) {
-    const code = codeOf(pair, sameReceipt(pair, reads.hashes));
+    const code = codeOf(pair, sameReceipt(pair));
     push(code, pair.first, pair.contact);
     push(code, pair.second, pair.contact);
   }
@@ -412,21 +360,21 @@ async function runDuplicatesCheck(context: AuditCheckContext): Promise<AuditChec
       "invoices are checked for stuck drafts only.",
   ];
   if (amountPairs.length > 0) {
-    const read = reads.hashes.size;
-    let text =
-      `Receipt files were compared by SHA-256 checksum for ${plural(read, "voucher")} of ` +
-      "same-amount pairs (two reads each)";
-    if (reads.timedOut) {
-      text +=
-        `; the time budget stopped it, ${plural(reads.notRead, "voucher")} not compared ` +
-        "(those pairs stay possible duplicates)";
-    } else if (reads.notRead > 0) {
-      text +=
-        `; the scan was cut at ${String(MAX_RECEIPT_HASH_VOUCHERS)} vouchers, ` +
-        `${plural(reads.notRead, "voucher")} not compared (those pairs stay possible duplicates)`;
+    const vouchersOfPairs = new Map<number, DocumentHeader>();
+    for (const pair of amountPairs) {
+      vouchersOfPairs.set(pair.first.id, pair.first);
+      vouchersOfPairs.set(pair.second.id, pair.second);
     }
-    if (reads.failed > 0) {
-      text += `; the receipt of ${plural(reads.failed, "voucher")} could not be read`;
+    const withoutHash = [...vouchersOfPairs.values()].filter(
+      (header) => header.receipt?.hash === undefined,
+    ).length;
+    let text =
+      `The receipt files of ${plural(vouchersOfPairs.size, "voucher")} of same-amount pairs ` +
+      "were compared by the SHA-256 checksum sevDesk lists with each voucher";
+    if (withoutHash > 0) {
+      text +=
+        `; ${plural(withoutHash, "voucher")} without a receipt file or without a checksum ` +
+        "could not be compared (those pairs stay possible duplicates)";
     }
     notes.push(`${text}.`);
   }
@@ -451,7 +399,6 @@ async function runDuplicatesCheck(context: AuditCheckContext): Promise<AuditChec
       documentsChecked: inScope,
       documentsLeftOut: 0,
       truncated,
-      ...(reads.timedOut ? { timeBudgetReached: true } : {}),
       // This check looks at the drafts, so they are not "excluded" here.
       excluded: {
         ...excludedOf(vouchers.listed.excluded),

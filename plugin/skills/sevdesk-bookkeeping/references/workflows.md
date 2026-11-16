@@ -150,11 +150,17 @@ no pre-returns.
    amounts it cannot place. `basis` is accrual (Soll, the default) or cash (Ist): use the one the
    account files with. It is an estimate to check, not a filing.
    [tax-rules.md](tax-rules.md) explains which tax rule lands in which field.
-3. Spot checks with `sevdesk_voucher_get` / `sevdesk_invoice_get` for flagged documents; fix
+3. Audits for the same period (`sevdesk_records_audit`, hints, not tax advice): `check: vat`
+   (tax rule against where the supplier or customer is established), `check: reverse_charge` (the
+   §13b base by rule; matches Kz 46/47, 84/85, 60 and 21), `check: duplicates` (input VAT counted
+   twice) and `check: recurring_gaps` (missing bills, input VAT not claimed). With
+   `SEVDESK_FILE_DIRS`: `sevdesk_receipt_folder_check` on the folder with the period's receipts
+   (files no voucher carries were probably never booked; a hint, not proof).
+4. Spot checks with `sevdesk_voucher_get` / `sevdesk_invoice_get` for flagged documents; fix
    drafts, reset (`commit`) or cancel finalized documents as needed. Never delete booked ones.
-4. Intra-EU supplies and EU B2B services also go into the Zusammenfassende Meldung (ZM, due on
+5. Intra-EU supplies and EU B2B services also go into the Zusammenfassende Meldung (ZM, due on
    the 25th day after the month or quarter); compare its totals with the summary.
-5. After filing, the period should not change any more: enshrine the documents
+6. After filing, the period should not change any more: enshrine the documents
    (`sevdesk_invoice_enshrine`, `sevdesk_voucher_enshrine`, `sevdesk_credit_note_enshrine`;
    `commit`, irreversible) if the user wants that, see [gobd.md](gobd.md).
 
@@ -163,6 +169,9 @@ no pre-returns.
 1. `sevdesk_changed_since` with the first day of the month: what was added or changed.
 2. "Reconcile the bank" until no transaction of the month is unbooked.
 3. Missing receipts: unbooked outgoing transactions without a voucher → ask the user for them.
+   `sevdesk_records_audit` with `check: duplicates` (vouchers booked twice, stuck drafts) and
+   `check: recurring_gaps` (a regular supplier without a bill this month); with
+   `SEVDESK_FILE_DIRS`, `sevdesk_receipt_folder_check` on the user's receipt folder.
 4. Receivables: `sevdesk_receivables_aging`; reminders for overdue invoices with
    `sevdesk_invoice_create_reminder` (`write`, then finalize/send as for invoices).
 5. Payables: `sevdesk_payables_aging`; liquidity: `sevdesk_cash_position` with `outlookDays`.

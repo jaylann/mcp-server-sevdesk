@@ -8281,6 +8281,65 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
 ]
 `;
 
+exports[`tools/list > SEVDESK_FILE_DIRS set (adds the receipt folder check) 1`] = `
+[
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Check a receipt folder against sevDesk",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "folder": {
+          "description": "The folder: an absolute path inside one of the SEVDESK_FILE_DIRS folders, or a path relative to one of them, e.g. 2026/03. Default: every SEVDESK_FILE_DIRS folder.",
+          "maxLength": 1024,
+          "minLength": 1,
+          "type": "string",
+        },
+        "from": {
+          "description": "First day, YYYY-MM-DD (instead of year).",
+          "type": "string",
+        },
+        "month": {
+          "description": "Month 1–12 (with year).",
+          "maximum": 12,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "quarter": {
+          "description": "Quarter 1–4 (with year).",
+          "maximum": 4,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "subfolders": {
+          "description": "Also read subfolders, up to 3 levels deep. Default false.",
+          "type": "boolean",
+        },
+        "to": {
+          "description": "Last day, YYYY-MM-DD (instead of year).",
+          "type": "string",
+        },
+        "year": {
+          "description": "Calendar year; alone for the whole year, or with month or quarter.",
+          "maximum": 2100,
+          "minimum": 2000,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_receipt_folder_check",
+    "title": "Check a receipt folder against sevDesk",
+  },
+]
+`;
+
 exports[`tools/list > SEVDESK_OUTPUT_DIR set (adds the file-writing save tool) 1`] = `
 [
   {

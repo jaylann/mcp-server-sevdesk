@@ -55,9 +55,9 @@ const monthEndClose = definePrompt({
   title: "Month-end close (Monatsabschluss)",
   description:
     "Close a month in sevDesk: what changed, unbooked bank transactions and missing receipts, " +
-    "drafts, overdue invoices, payables and liquidity, the VAT pre-check, profit and the " +
-    "hand-over to the Steuerberater. Steps the configuration does not allow are named, not " +
-    "worked around. Not tax advice.",
+    "drafts, double bookings and missing bills, overdue invoices, payables and liquidity, the " +
+    "VAT pre-check, profit and the hand-over to the Steuerberater. Steps the configuration " +
+    "does not allow are named, not worked around. Not tax advice.",
   args: z.object({
     month: z
       .string()
@@ -114,6 +114,23 @@ const monthEndClose = definePrompt({
       fallback: "Checking for draft invoices",
     },
     {
+      text: ({ period }) =>
+        `\`sevdesk_records_audit\` with \`check: "duplicates"\` and ${periodArguments(period)}: ` +
+        "vouchers booked twice and drafts left open for weeks. Then `check: " +
+        '"recurring_gaps"`: suppliers that bill every month (software, phone, rent) without a ' +
+        "bill this month, which usually means a missing receipt. Findings are hints: go " +
+        "through them with me.",
+      tools: ["sevdesk_records_audit"],
+    },
+    {
+      text: ({ period }) =>
+        "If I keep the receipts in a folder this server reads: " +
+        `\`sevdesk_receipt_folder_check\` with that folder (ask me which one) and ` +
+        `${periodArguments(period)}. Files that match no voucher were probably never booked; ` +
+        "no match is a hint, not proof (a scan or photo of the same receipt is another file).",
+      tools: ["sevdesk_receipt_folder_check"],
+    },
+    {
       text:
         "Receivables: `sevdesk_receivables_aging` for open and overdue invoices and the largest " +
         "debtors.",
@@ -142,6 +159,14 @@ const monthEndClose = definePrompt({
     },
     {
       text: ({ period }) =>
+        `\`sevdesk_records_audit\` with \`check: "vat"\` and ${periodArguments(period)}: ` +
+        "documents whose tax rule does not fit where the supplier or customer is established. " +
+        'Then `check: "reverse_charge"`: the § 13b base by tax rule, to compare with the ' +
+        "summary.",
+      tools: ["sevdesk_records_audit"],
+    },
+    {
+      text: ({ period }) =>
         `Numbers: \`sevdesk_profit_and_loss\` with ${periodArguments(period)}, and ` +
         "`sevdesk_records_summarize` for the month's invoices and vouchers (e.g. " +
         '`groupBy: "contact"`) to spot outliers.',
@@ -165,7 +190,7 @@ const monthEndClose = definePrompt({
     {
       text:
         "Finish with a short summary: what is done, what is still open (unbooked transactions, " +
-        "missing receipts, drafts, overdue invoices) and what I have to decide.",
+        "missing receipts, drafts, audit findings, overdue invoices) and what I have to decide.",
       tools: [],
     },
   ],
@@ -398,8 +423,9 @@ const vatPrecheck = definePrompt({
   title: "VAT pre-check (UStVA-Vorprüfung)",
   description:
     "Check a month or quarter in sevDesk before the Umsatzsteuer-Voranmeldung (UStVA): " +
-    "unbooked transactions and drafts, the VAT summary with its Kennzahlen, spot checks and the " +
-    "Zusammenfassende Meldung. The server does not file anything. Not tax advice.",
+    "unbooked transactions and drafts, the VAT summary with its Kennzahlen, audits of the VAT " +
+    "treatment, the § 13b base and double bookings, spot checks and the Zusammenfassende " +
+    "Meldung. The server does not file anything. Not tax advice.",
   args: z.object({
     period: z
       .string()
@@ -462,6 +488,30 @@ const vatPrecheck = definePrompt({
         "country and the amounts it cannot place. Use the `basis` the account files with: " +
         "accrual (Soll, the default) or cash (Ist). It is an estimate to check, not a filing.",
       tools: ["sevdesk_vat_summary"],
+    },
+    {
+      text: ({ period }) =>
+        `\`sevdesk_records_audit\` with \`check: "vat"\` and ${periodArguments(period)}: ` +
+        "documents whose tax rule does not fit where the supplier or customer is established " +
+        "(foreign VAT deducted, reverse charge missing, EU VAT ids). Then `check: " +
+        '"reverse_charge"`: the § 13b base by tax rule; its sums match the summary\'s Kz 46/47, ' +
+        "84/85, 60 and 21. Findings are hints: check each with me.",
+      tools: ["sevdesk_records_audit"],
+    },
+    {
+      text:
+        '`sevdesk_records_audit` with `check: "duplicates"` for the same period: a voucher ' +
+        'booked twice counts its input VAT twice. `check: "recurring_gaps"`: a missing monthly ' +
+        "bill usually means input VAT not claimed.",
+      tools: ["sevdesk_records_audit"],
+    },
+    {
+      text: ({ period }) =>
+        "If the period's receipts are in a folder this server reads: " +
+        `\`sevdesk_receipt_folder_check\` with that folder (ask me which one) and ` +
+        `${periodArguments(period)}. A receipt never booked is input VAT not claimed; no match ` +
+        "is a hint, not proof (a scan or photo of the same receipt is another file).",
+      tools: ["sevdesk_receipt_folder_check"],
     },
     {
       text: "Spot-check flagged receipts with `sevdesk_voucher_get`.",

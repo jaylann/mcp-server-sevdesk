@@ -1,4 +1,4 @@
-<!-- translated-from: docs/remote/files.md sha256:e6ce7542d66e -->
+<!-- translated-from: docs/remote/files.md sha256:22814b0bdaff -->
 
 # Dateien: Uploads und Download-Links
 
@@ -33,6 +33,11 @@ gepr체ften Stand 채ndern (oder erstmals ein Anhang vorliegen, wenn vorher ausdr�
 vorhanden war); bei gleicher ID oder unbekanntem vorherigem Stand bleibt der Upload bis zum Ablauf
 verf체gbar. Um eine erfolgreich angeh채ngte Datei nach der Freigabe ihres Uploads erneut zu
 verwenden, fordere einen neuen Upload an.
+
+Einen ganzen Ordner mit Belegen mit den Belegen in sevDesk zu vergleichen
+(`sevdesk_receipt_folder_check`), geht auf einem entfernten Server nicht: Das liest einen lokalen
+Ordner, und ein Upload bringt einzelne Dateien. Im Bearer-Modus mit `SEVDESK_FILE_DIRS` wird es
+f체r die Ordner auf dem Server angeboten.
 
 ## Mehrere Dateien auf einer Seite
 

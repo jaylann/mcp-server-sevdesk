@@ -9,7 +9,6 @@ import { describe, expect, it } from "vitest";
 import {
   AMOUNT_WINDOW_DAYS,
   DUPLICATE_FINDING_CODES,
-  MAX_RECEIPT_HASH_VOUCHERS,
   numberKey,
   STUCK_DRAFT_DAYS,
 } from "../../../../../src/domain/reports/audit/duplicates-check.js";
@@ -19,7 +18,6 @@ import {
   runAudit,
 } from "../../../../../src/domain/reports/audit/registry.js";
 import { resolvePeriod } from "../../../../../src/domain/reports/vat.js";
-import { SevdeskError } from "../../../../../src/sevdesk/errors.js";
 import { type FakeRoute, FakeSevdeskClient, loadFixture } from "../../../../helpers/fake-client.js";
 import {
   creditNoteDoc,
@@ -307,7 +305,58 @@ const VOUCHERS: readonly (VoucherSpec & { readonly expect: string })[] = [
   { id: 139, date: "2025-12-12", gross: "60.00", supplier: 3018, number: "D-1", expect: "none" },
 ];
 
-const VOUCHER_DOCS = VOUCHERS.map(voucher);
+const DOCUMENT_TEMPLATE = (() => {
+  const body = loadFixture("recorded/2026-11-10/advanced/documents.json").body as {
+    objects: Raw[];
+  };
+  const row = body.objects[0];
+  if (row === undefined) throw new Error("document fixture is empty");
+  return row;
+})();
+
+/**
+ * The receipt checksum of each voucher of a booked same-amount pair, as `GET /Voucher` with
+ * `embed=document` sends it in the row: `null` for a file without one, `undefined` for a voucher
+ * without a receipt. Vouchers not named here have no receipt either.
+ */
+const HASHES: Readonly<Record<number, string | null | undefined>> = {
+  106: HASH_A,
+  107: HASH_B,
+  108: HASH_A.toUpperCase(),
+  109: HASH_A,
+  132: HASH_A,
+  133: null,
+  113: undefined,
+  114: undefined,
+};
+
+/**
+ * `doc` with its receipt as the voucher list sends it: the whole document when `embedded` (the
+ * recorded `GET /Document` row with the checksum), else only the reference.
+ */
+function withReceipt(
+  doc: ScenarioDocument,
+  hashes: Readonly<Record<number, string | null | undefined>>,
+  embedded = true,
+): ScenarioDocument {
+  const id = Number(doc.row["id"]);
+  const hash = hashes[id];
+  if (!(id in hashes) || hash === undefined) return { ...doc, row: { ...doc.row, document: null } };
+  const documentId = String(5000 + id);
+  const document = embedded
+    ? {
+        ...structuredClone(DOCUMENT_TEMPLATE),
+        id: documentId,
+        object: null,
+        baseObject: null,
+        status: "50",
+        contentHash: hash,
+      }
+    : { id: documentId, objectName: "Document" };
+  return { ...doc, row: { ...doc.row, document } };
+}
+
+const VOUCHER_DOCS = VOUCHERS.map(voucher).map((doc) => withReceipt(doc, HASHES));
 
 /** Sales: one stuck invoice draft, one recent credit note draft, one issued invoice. */
 const INVOICES: readonly ScenarioDocument[] = [
@@ -336,74 +385,8 @@ const CREDIT_NOTES: readonly ScenarioDocument[] = [
   },
 ];
 
-const DOCUMENT_TEMPLATE = (() => {
-  const body = loadFixture("recorded/2026-11-10/advanced/documents.json").body as {
-    objects: Raw[];
-  };
-  const row = body.objects[0];
-  if (row === undefined) throw new Error("document fixture is empty");
-  return row;
-})();
-
-/**
- * `GET /Voucher/{id}` with the attached document and `GET /Document/{id}` with its checksum, for
- * every voucher of a booked same-amount pair. `undefined` hash: the voucher has no receipt.
- */
-function receiptRoutes(
-  hashes: Readonly<Record<number, string | null | undefined>>,
-  docs: readonly ScenarioDocument[] = VOUCHER_DOCS,
-): FakeRoute[] {
-  return Object.entries(hashes).flatMap(([id, hash]): FakeRoute[] => {
-    const row = docs.find((doc) => doc.row["id"] === id)?.row;
-    if (row === undefined) throw new Error(`no voucher ${id} in the scenario`);
-    const documentId = String(5000 + Number(id));
-    if (hash === undefined) {
-      return [
-        { path: `/Voucher/${id}`, response: { body: { objects: [{ ...row, document: null }] } } },
-      ];
-    }
-    return [
-      {
-        path: `/Voucher/${id}`,
-        response: {
-          body: { objects: [{ ...row, document: { id: documentId, objectName: "Document" } }] },
-        },
-      },
-      {
-        path: `/Document/${documentId}`,
-        response: {
-          body: {
-            objects: [
-              {
-                ...structuredClone(DOCUMENT_TEMPLATE),
-                id: documentId,
-                baseObject: { id, objectName: "Voucher" },
-                contentHash: hash,
-              },
-            ],
-          },
-        },
-      },
-    ];
-  });
-}
-
-const HASHES = {
-  106: HASH_A,
-  107: HASH_B,
-  108: HASH_A.toUpperCase(),
-  109: HASH_A,
-  132: HASH_A,
-  133: null,
-  113: undefined,
-  114: undefined,
-};
-
-function routes(extra: readonly FakeRoute[] = receiptRoutes(HASHES)): FakeRoute[] {
-  return [
-    ...scenarioRoutes({ vouchers: VOUCHER_DOCS, invoices: INVOICES, creditNotes: CREDIT_NOTES }),
-    ...extra,
-  ];
+function routes(vouchers: readonly ScenarioDocument[] = VOUCHER_DOCS): FakeRoute[] {
+  return scenarioRoutes({ vouchers, invoices: INVOICES, creditNotes: CREDIT_NOTES });
 }
 
 async function audit(client: FakeSevdeskClient, options = {}): Promise<AuditResult> {
@@ -465,82 +448,36 @@ describe("check duplicates", () => {
     expect(byName?.net).toBeDefined();
   });
 
-  it("reads receipt checksums only for the vouchers of booked same-amount pairs", async () => {
+  it("takes the receipt checksums from the voucher list, without a read by id", async () => {
     const client = new FakeSevdeskClient(routes());
     const result = await audit(client);
-    const voucherReads = client.calls
-      .filter((call) => /^\/Voucher\/\d+$/.test(call.path))
-      .map((call) => Number(call.path.split("/")[2]))
-      .sort((a, b) => a - b);
+    const lists = client.calls.filter((call) => call.path === "/Voucher");
 
-    expect(voucherReads).toEqual([106, 107, 108, 109, 113, 114, 132, 133]);
-    expect(client.calls.filter((call) => call.path.startsWith("/Document/"))).toHaveLength(6);
+    expect(lists.length).toBeGreaterThan(0);
+    for (const call of lists) {
+      expect(call.query).toMatchObject({ embed: "document", voucherType: "VOU", limit: 1000 });
+    }
+    expect(client.calls.filter((call) => /^\/(Voucher|Document)\/\d+/.test(call.path))).toEqual([]);
+    // Same-amount pairs: 106/107, 108/109, 132/133, 113/114; 133 has no checksum, 113 and 114
+    // no receipt file.
     expect(result.notes.join(" ")).toContain(
-      "Receipt files were compared by SHA-256 checksum for 8 vouchers",
+      "The receipt files of 8 vouchers of same-amount pairs were compared by the SHA-256 " +
+        "checksum sevDesk lists with each voucher; 3 vouchers without a receipt file or without " +
+        "a checksum could not be compared",
     );
     for (const call of client.calls) expect(call.method).toBe("GET");
   });
 
-  it("stops comparing receipts at the cap and says so", async () => {
-    // More same-amount pairs than the cap allows, each with an unknown receipt.
-    const count = MAX_RECEIPT_HASH_VOUCHERS / 2 + 3;
-    const pairs = Array.from({ length: count }, (_, index) => [
-      voucher({
-        id: 7000 + index * 2,
-        date: "2026-02-02",
-        gross: "9.99",
-        supplier: 6000 + index,
-        number: null,
-      }),
-      voucher({
-        id: 7001 + index * 2,
-        date: "2026-02-03",
-        gross: "9.99",
-        supplier: 6000 + index,
-        number: null,
-      }),
-    ]).flat();
-    const noReceipts = Object.fromEntries(pairs.map((doc) => [Number(doc.row["id"]), undefined]));
-    const client = new FakeSevdeskClient([
-      ...scenarioRoutes({ vouchers: pairs }),
-      ...receiptRoutes(noReceipts, pairs),
-    ]);
-    const result = await audit(client);
+  it("keeps a pair a possible duplicate when the list row carries only the reference", async () => {
+    // A row without the embedded document (no `embed`, or sevDesk ignored it) has no checksum.
+    const plain = VOUCHERS.map(voucher).map((doc) => withReceipt(doc, HASHES, false));
+    const result = await audit(new FakeSevdeskClient(routes(plain)));
 
-    expect(client.calls.filter((call) => /^\/Voucher\/\d+$/.test(call.path))).toHaveLength(
-      MAX_RECEIPT_HASH_VOUCHERS,
-    );
-    expect(result.notes.join(" ")).toContain(
-      `the scan was cut at ${String(MAX_RECEIPT_HASH_VOUCHERS)} vouchers, 6 vouchers not compared`,
-    );
-    expect(result.findings.every((finding) => finding.code === "voucher_amount_twice")).toBe(true);
-    expect(result.findings).toHaveLength(count);
-  });
-
-  it("stops comparing receipts at the time budget", async () => {
-    let now = 0;
-    const client = new FakeSevdeskClient(routes());
-    const result = await audit(client, {
-      deadline: { at: 1, now: () => now++ },
-    });
-
-    expect(client.calls.filter((call) => /^\/Voucher\/\d+$/.test(call.path))).toHaveLength(1);
-    expect(result.coverage.timeBudgetReached).toBe(true);
-    expect(result.notes.join(" ")).toContain("the time budget stopped it");
-    // 108/109 could not be confirmed: they stay a possible duplicate.
     expect(codesById(result).get(108)).toEqual(["voucher_amount_twice"]);
-  });
-
-  it("keeps a pair a possible duplicate when a receipt cannot be read", async () => {
-    const failing: FakeRoute = {
-      path: "/Voucher/108",
-      response: { error: new SevdeskError({ kind: "not_found", message: "gone" }) },
-    };
-    const client = new FakeSevdeskClient(routes([failing, ...receiptRoutes(HASHES)]));
-    const result = await audit(client);
-
     expect(codesById(result).get(109)).toEqual(["voucher_amount_twice"]);
-    expect(result.notes.join(" ")).toContain("the receipt of 1 voucher could not be read");
+    expect(result.notes.join(" ")).toContain(
+      "8 vouchers without a receipt file or without a checksum",
+    );
   });
 
   it("states its rules, coverage and the vouchers it could not compare", async () => {

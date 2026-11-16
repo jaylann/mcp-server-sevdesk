@@ -167,6 +167,16 @@ export const READ_CASES: readonly LiveCase[] = [
     label: `sevdesk_records_audit (${check})`,
     args: () => ({ check, year: NOW.getFullYear(), month: NOW.getMonth() + 1 }),
   })),
+  // #92: the receipt folder check, on the temporary SEVDESK_FILE_DIRS folder (registered only
+  // with it); reads the voucher list with the documents embedded.
+  {
+    tool: "sevdesk_receipt_folder_check",
+    args: (_ids, files) => ({
+      folder: files.fileDir,
+      year: NOW.getFullYear(),
+      month: NOW.getMonth() + 1,
+    }),
+  },
   { tool: "sevdesk_csv_export", args: () => ({ subject: "invoices" }) },
   // M6: the generic read (advanced toolset), on an undocumented endpoint no other tool reads.
   { tool: "sevdesk_api_get", args: () => ({ path: "/TextTemplate", limit: 5 }) },

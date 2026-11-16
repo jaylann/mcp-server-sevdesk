@@ -87,3 +87,6 @@ separat = "separat"
 suche = "suche"
 # The informal address of the German page texts, which their tests quote.
 deine = "deine"
+# German words in the receipt folder check's statement of what a match proves (matchingDe).
+Foto = "Foto"
+Programm = "Programm"

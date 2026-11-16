@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:f1967a9c4e30 -->
+<!-- translated-from: docs/faq.md sha256:a8c3db81f6fb -->
 
 # Häufige Fragen
 
@@ -150,6 +150,16 @@ welche Lieferanten jeden Monat, jedes Quartal oder jedes Jahr abrechnen, und nen
 ohne Rechnung, meist ein verlorener Beleg. Beide lesen nur deine Daten und ändern nichts. Was sie
 melden und was sie bewusst auslassen, steht unter
 [Auswertungen und Exporte](guides/evaluations.de.md#prüfungen).
+
+### Erkennt es, welche Belege in meinem Ordner nie gebucht wurden?
+
+Ja, wenn der Server diesen Ordner lesen darf (`SEVDESK_FILE_DIRS`, nicht auf einem entfernten
+Server). `sevdesk_receipt_folder_check` vergleicht die SHA-256-Prüfsummen der PDF-, PNG-, JPEG-
+und XML-Dateien im Ordner mit denen der Belegdateien an deinen Belegen, für einen Monat, ein
+Quartal oder ein Jahr. Eine Datei, die kein Beleg trägt, wurde wohl nie gebucht; das ist ein
+Hinweis, kein Beweis, denn derselbe Beleg als andere Datei (ein Scan, ein Foto aus der App) hat
+eine andere Prüfsumme. Die Prüfung holt keinen Dateiinhalt ins Gespräch und lädt nichts hoch
+([Auswertungen und Exporte](guides/evaluations.de.md#belege-im-ordner-die-nie-gebucht-wurden)).
 
 ### Unterstützt es sevDesk in Österreich?
 

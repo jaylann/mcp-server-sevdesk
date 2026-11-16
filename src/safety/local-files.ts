@@ -25,6 +25,10 @@
  * - the content must start like one of the allowed kinds (PDF, PNG, JPEG, XML): a renamed binary
  *   or a text file with a `.pdf` name is refused before anything is uploaded.
  *
+ * The folder scan (`./local-folder.ts`) locates its folder with the same path check
+ * ({@link locateConfinedFolders}; the configured folder itself is a valid target there) and opens
+ * every file with the same checks ({@link openChecked}), so there is one confinement, not two.
+ *
  * Error messages are trusted text: they never contain file content and name the requested file
  * only by its sanitized base name.
  */
@@ -72,57 +76,35 @@ export async function readConfinedFile(
   requested: string,
   options: ReadConfinedFileOptions,
 ): Promise<ConfinedFile> {
-  if (fileDirs.length === 0) {
-    throw refusal(
-      "Reading local files is off: SEVDESK_FILE_DIRS is not set (in the Claude Desktop " +
-        "extension: the setting Receipt folder). The user can list the folders that hold " +
-        "receipts and e-invoices in the MCP client configuration and restart the server",
-    );
+  const shown = displayName(requested, "file");
+  const roots = await checkedRoots(fileDirs, requested, "file", shown);
+  const target = await locate(roots, requested, shown, "file");
+  const opened = await openChecked(
+    target,
+    roots.map((root) => root.real),
+    options.maxBytes,
+  );
+  if (!opened.ok) {
+    switch (opened.reason) {
+      case "unopenable":
+        throw refusal(`${shown} cannot be opened (missing, not readable, or a symbolic link)`);
+      case "not_regular":
+        throw refusal(`${shown} is not a regular file`);
+      case "changed":
+        throw refusal(`${shown} changed while it was being read; try again`);
+      case "too_large":
+        throw refusal(
+          `${shown} has ${String(opened.size)} bytes; the limit is ${String(options.maxBytes)} ` +
+            "bytes",
+        );
+      default: {
+        const unreachable: never = opened.reason;
+        throw new Error(`readConfinedFile: unknown reason ${String(unreachable)}.`);
+      }
+    }
   }
-  const shown = displayName(requested);
-  if (requested.trim() === "" || requested.includes("\0")) {
-    throw refusal("The file path is empty or invalid");
-  }
-  if (findHiddenCharacters(requested, { allowNewlines: false }).length > 0) {
-    throw refusal(`The file path for ${shown} contains invisible or control characters`);
-  }
-
-  if (NETWORK_OR_DEVICE_PATH.test(requested.trim())) {
-    throw refusal(
-      `${shown} is a network or device path; only files inside SEVDESK_FILE_DIRS can be read`,
-    );
-  }
-
-  const roots = await realDirectories(fileDirs);
-  if (roots.length === 0) {
-    throw refusal(
-      "None of the folders in SEVDESK_FILE_DIRS exists; the user has to create them or fix the " +
-        "setting",
-    );
-  }
-
-  const target = await locate(roots, requested, shown);
-  let handle: FileHandle;
+  const { handle } = opened;
   try {
-    handle = await open(target.real, constants.O_RDONLY | NO_FOLLOW | NON_BLOCK);
-  } catch {
-    throw refusal(`${shown} cannot be opened (missing, not readable, or a symbolic link)`);
-  }
-  try {
-    const info = await handle.stat();
-    if (!info.isFile()) throw refusal(`${shown} is not a regular file`);
-    if (info.ino !== target.ino || info.dev !== target.dev) {
-      throw refusal(`${shown} changed while it was being read; try again`);
-    }
-    const inRoots = (path: string): boolean => roots.some((root) => isInside(root.real, path));
-    if (!(await openedInside(handle, target.real, info, inRoots))) {
-      throw refusal(`${shown} changed while it was being read; try again`);
-    }
-    if (info.size > options.maxBytes) {
-      throw refusal(
-        `${shown} has ${String(info.size)} bytes; the limit is ${String(options.maxBytes)} bytes`,
-      );
-    }
     const bytes = await readAtMost(handle, options.maxBytes);
     const kind = sniffKind(bytes);
     if (kind === undefined || !options.kinds.includes(kind)) {
@@ -137,6 +119,154 @@ export async function readConfinedFile(
   }
 }
 
+/** A path inside the configured folders as the path check saw it (real path and inode). */
+export interface Located {
+  readonly real: string;
+  readonly dev: number;
+  readonly ino: number;
+}
+
+/** The folders a scan reads, located under the rules in the module doc. */
+export interface ConfinedFolders {
+  /** The folders to scan, in order, each once. */
+  readonly folders: readonly Located[];
+  /** Real paths of all configured folders that exist: every file read must stay inside one. */
+  readonly roots: readonly string[];
+}
+
+/**
+ * Locates the folder a scan reads: `requested` (absolute, or relative to one of the configured
+ * folders, tried in order) under the same rules as a file (lexical containment first, then the
+ * real path; "missing" and "outside" answer alike), except that the target must be a folder and
+ * may be a configured folder itself. Without `requested`, every configured folder that exists is
+ * scanned. Throws the same local `validation` refusals as {@link readConfinedFile}.
+ */
+export async function locateConfinedFolders(
+  fileDirs: readonly string[],
+  requested: string | undefined,
+): Promise<ConfinedFolders> {
+  if (requested === undefined) {
+    const roots = await checkedRoots(fileDirs, undefined, "folder", "");
+    const folders: Located[] = [];
+    for (const root of roots) {
+      if (folders.some((folder) => folder.real === root.real)) continue;
+      const info = await stat(root.real);
+      folders.push({ real: root.real, dev: info.dev, ino: info.ino });
+    }
+    return { folders, roots: folders.map((folder) => folder.real) };
+  }
+  const shown = displayName(requested, "folder");
+  const roots = await checkedRoots(fileDirs, requested, "folder", shown);
+  const folder = await locate(roots, requested, shown, "folder");
+  return { folders: [folder], roots: [...new Set(roots.map((root) => root.real))] };
+}
+
+/** Whether `path` is one of `roots` or lies inside one (all real, absolute paths). */
+export function insideRoots(roots: readonly string[], path: string): boolean {
+  return roots.some((root) => root === path || isInside(root, path));
+}
+
+/** Why {@link openChecked} did not hand out a file. */
+export type OpenRefusal = "unopenable" | "not_regular" | "changed" | "too_large";
+
+/** What {@link openChecked} found: an open handle the caller must close, or why not. */
+export type OpenOutcome =
+  | {
+      readonly ok: true;
+      readonly handle: FileHandle;
+      readonly size: number;
+      /** Last modification, milliseconds since the epoch. */
+      readonly modifiedMs: number;
+    }
+  | { readonly ok: false; readonly reason: OpenRefusal; readonly size?: number | undefined };
+
+/**
+ * Opens `target` read-only, without following a symbolic link and without blocking, and checks on
+ * the open handle that it is a regular file, the same inode the path check saw, still inside
+ * `roots` ({@link openedInside}) and at most `maxBytes`. On success the caller owns the handle and
+ * must close it; otherwise the handle is closed here and the reason returned.
+ */
+export async function openChecked(
+  target: Located,
+  roots: readonly string[],
+  maxBytes: number,
+): Promise<OpenOutcome> {
+  let handle: FileHandle;
+  try {
+    handle = await open(target.real, constants.O_RDONLY | NO_FOLLOW | NON_BLOCK);
+  } catch {
+    return { ok: false, reason: "unopenable" };
+  }
+  let outcome: OpenOutcome;
+  try {
+    outcome = await checkOpened(handle, target, roots, maxBytes);
+  } catch (error) {
+    await handle.close();
+    throw error;
+  }
+  if (!outcome.ok) await handle.close();
+  return outcome;
+}
+
+async function checkOpened(
+  handle: FileHandle,
+  target: Located,
+  roots: readonly string[],
+  maxBytes: number,
+): Promise<OpenOutcome> {
+  const info = await handle.stat();
+  if (!info.isFile()) return { ok: false, reason: "not_regular" };
+  if (info.ino !== target.ino || info.dev !== target.dev) return { ok: false, reason: "changed" };
+  const inside = (path: string): boolean => roots.some((root) => isInside(root, path));
+  if (!(await openedInside(handle, target.real, info, inside))) {
+    return { ok: false, reason: "changed" };
+  }
+  if (info.size > maxBytes) return { ok: false, reason: "too_large", size: info.size };
+  return { ok: true, handle, size: info.size, modifiedMs: info.mtimeMs };
+}
+
+type TargetKind = "file" | "folder";
+
+/**
+ * The checks before any file system call on `requested` (see the module doc), then the configured
+ * folders that exist. `requested` is `undefined` when a scan reads every configured folder.
+ */
+async function checkedRoots(
+  fileDirs: readonly string[],
+  requested: string | undefined,
+  kind: TargetKind,
+  shown: string,
+): Promise<Root[]> {
+  if (fileDirs.length === 0) {
+    throw refusal(
+      "Reading local files is off: SEVDESK_FILE_DIRS is not set (in the Claude Desktop " +
+        "extension: the setting Receipt folder). The user can list the folders that hold " +
+        "receipts and e-invoices in the MCP client configuration and restart the server",
+    );
+  }
+  if (requested !== undefined) {
+    if (requested.trim() === "" || requested.includes("\0")) {
+      throw refusal(`The ${kind} path is empty or invalid`);
+    }
+    if (findHiddenCharacters(requested, { allowNewlines: false }).length > 0) {
+      throw refusal(`The ${kind} path for ${shown} contains invisible or control characters`);
+    }
+    if (NETWORK_OR_DEVICE_PATH.test(requested.trim())) {
+      throw refusal(
+        `${shown} is a network or device path; only ${kind}s inside SEVDESK_FILE_DIRS can be read`,
+      );
+    }
+  }
+  const roots = await realDirectories(fileDirs);
+  if (roots.length === 0) {
+    throw refusal(
+      "None of the folders in SEVDESK_FILE_DIRS exists; the user has to create them or fix the " +
+        "setting",
+    );
+  }
+  return roots;
+}
+
 /** Recognizes a file kind by its first bytes; `undefined` when none matches. */
 export function sniffKind(bytes: Uint8Array): LocalFileKind | undefined {
   if (startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return "png";
@@ -148,12 +278,6 @@ export function sniffKind(bytes: Uint8Array): LocalFileKind | undefined {
   while (offset < bytes.length && isXmlSpace(bytes[offset])) offset += 1;
   if (bytes[offset] === 0x3c /* < */) return "xml";
   return undefined;
-}
-
-interface Located {
-  readonly real: string;
-  readonly dev: number;
-  readonly ino: number;
 }
 
 /** A configured directory as written (resolved) and as its real path. */
@@ -175,14 +299,27 @@ async function realDirectories(fileDirs: readonly string[]): Promise<Root[]> {
   return roots;
 }
 
-async function locate(roots: readonly Root[], requested: string, shown: string): Promise<Located> {
+/**
+ * Finds `requested` inside `roots`: a file strictly inside a folder, or a folder (a configured
+ * folder itself included). Lexical containment first, then the real path.
+ */
+async function locate(
+  roots: readonly Root[],
+  requested: string,
+  shown: string,
+  kind: TargetKind,
+): Promise<Located> {
   const bounds = roots.flatMap((root) => [root.configured, root.real]);
+  const within =
+    kind === "file"
+      ? isInside
+      : (root: string, path: string): boolean => root === path || isInside(root, path);
   // Lexical containment first: nothing outside the folders is ever handed to the file system.
   const candidates = isAbsolute(requested)
-    ? [resolve(requested)].filter((path) => bounds.some((bound) => isInside(bound, path)))
+    ? [resolve(requested)].filter((path) => bounds.some((bound) => within(bound, path)))
     : bounds
         .map((bound) => resolve(bound, requested))
-        .filter((path, index) => isInside(bounds[index] ?? "", path));
+        .filter((path, index) => within(bounds[index] ?? "", path));
   for (const candidate of candidates) {
     let real: string;
     try {
@@ -190,14 +327,16 @@ async function locate(roots: readonly Root[], requested: string, shown: string):
     } catch {
       continue;
     }
-    if (!roots.some((root) => isInside(root.real, real))) continue;
+    if (!roots.some((root) => within(root.real, real))) continue;
     const info = await stat(real);
-    if (!info.isFile()) throw refusal(`${shown} is not a regular file`);
+    if (kind === "file" ? !info.isFile() : !info.isDirectory()) {
+      throw refusal(`${shown} is not a ${kind === "file" ? "regular file" : "folder"}`);
+    }
     return { real, dev: info.dev, ino: info.ino };
   }
   // One message for "missing" and "outside": no existence oracle for files elsewhere.
   throw refusal(
-    `${shown} is not a readable file inside the folders listed in SEVDESK_FILE_DIRS (it is ` +
+    `${shown} is not a readable ${kind} inside the folders listed in SEVDESK_FILE_DIRS (it is ` +
       "missing, outside them, or reached through a symbolic link that leads outside). Pass an " +
       "absolute path or a path relative to one of those folders",
   );
@@ -254,10 +393,10 @@ function isXmlSpace(byte: number | undefined): boolean {
   return byte === 0x20 || byte === 0x09 || byte === 0x0a || byte === 0x0d;
 }
 
-/** The requested file's base name for messages, sanitized and quoted. */
-function displayName(requested: string): string {
+/** The requested file's or folder's base name for messages, sanitized and quoted. */
+function displayName(requested: string, kind: TargetKind): string {
   const name = sanitizeUntrusted(basename(requested.replaceAll("\\", "/")), 80);
-  return name === "" ? "The file" : `The file ${JSON.stringify(name)}`;
+  return name === "" ? `The ${kind}` : `The ${kind} ${JSON.stringify(name)}`;
 }
 
 function refusal(reason: string): SevdeskError {

@@ -42,6 +42,7 @@ import type { QueryValue, SevdeskClient } from "../../sevdesk/types.js";
 import { cleanText, documentDateFilter } from "../common.js";
 import { parseContactRecord, toContactDto } from "../contacts.js";
 import { mapCreditNoteDetail } from "../credit-notes.js";
+import { voucherReceiptOf, type VoucherReceiptRef } from "../document-files.js";
 import { listDocumentPositions, type PositionRecord, splitTotals } from "../document-positions.js";
 import { mapInvoiceDetail } from "../invoices.js";
 import {
@@ -182,6 +183,11 @@ export interface DocumentHeader {
   readonly gross: Decimal | undefined;
   /** Day the document was created in sevDesk (Europe/Berlin), YYYY-MM-DD, when sevDesk says. */
   readonly createdAt?: string | undefined;
+  /**
+   * Vouchers: the attached receipt file, when the row names one; its checksum only when the
+   * listing embedded the document (`HeaderListParams.voucherReceipts`).
+   */
+  readonly receipt?: VoucherReceiptRef | undefined;
   readonly excluded?: ExclusionReason | undefined;
 }
 
@@ -385,6 +391,7 @@ function voucherHeader(raw: unknown): DocumentHeader {
     eur: eurTotals(foreign ? dto.totalsEur : totals),
     gross: moneyDecimal(dto.totals.gross),
     createdAt: dto.createdAt,
+    receipt: voucherReceiptOf(raw),
     excluded:
       dto.type === "recurring"
         ? "recurring_template"
@@ -436,6 +443,11 @@ export interface HeaderListParams {
   readonly today?: string | undefined;
   /** Also return the drafts (still counted in `excluded`), for the checks that look at them. */
   readonly keepDrafts?: boolean | undefined;
+  /**
+   * List vouchers with their receipt document embedded (`embed=document`), so each header's
+   * `receipt` carries the file's SHA-256 without a request per voucher (D-100, PR #104).
+   */
+  readonly voucherReceipts?: boolean | undefined;
 }
 
 export interface HeaderList {
@@ -480,12 +492,14 @@ export async function listDocumentHeaders(
       truncated = true;
       break;
     }
+    const embed =
+      kind === "voucher" && params.voucherReceipts === true ? { embed: "document" } : {};
     const scan = await scanPages(
       async (offset, limit) => {
         const page = await readPage(
           client,
           source.path,
-          { ...source.query, ...dates.query },
+          { ...source.query, ...embed, ...dates.query },
           { limit, offset },
           (raw) => source.map(raw, today),
           options.signal,
