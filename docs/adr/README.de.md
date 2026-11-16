@@ -1,4 +1,4 @@
-<!-- translated-from: docs/adr/README.md sha256:e7c50bf7fd93 -->
+<!-- translated-from: docs/adr/README.md sha256:b64d779da7f1 -->
 
 # Architekturentscheidungen
 
@@ -18,6 +18,7 @@ aussieht, wie er aussieht. Den Gesamtentwurf beschreibt die Seite [Architektur](
 | [0008](0008-file-transfer-over-http.de.md)                       | Dateiübertragung über HTTP                                                         | Angenommen; Seiten geändert durch [0010](0010-server-pages-in-two-languages.de.md)                                                                                                      | 2026-11-09 |
 | [0009](0009-local-profiles-and-os-keychain.de.md)                | Lokale Profile und der Schlüsselbund des Betriebssystems                           | Angenommen                                                                                                                                                                              | 2026-11-09 |
 | [0010](0010-server-pages-in-two-languages.de.md)                 | Die Seiten des Servers: ein Design, zwei Sprachen, Vorschauen auf Deutsch          | Vorgeschlagen                                                                                                                                                                           | 2026-11-10 |
+| [0011](0011-approvals-workspace.de.md)                           | Ein Arbeitsplatz für Freigaben, mit Entscheidungen über mehrere Anfragen           | Vorgeschlagen                                                                                                                                                                           | 2026-11-16 |
 
 ## Ein neues ADR schreiben
 
