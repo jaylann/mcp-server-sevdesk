@@ -125,7 +125,7 @@ lock.
   (IPv6: its /64 network) may have 8 in progress, 32 with `SEVDESK_OAUTH_ACCOUNTS=any`, where many
   users share the addresses of claude.ai. One sevDesk account may have 8 `/mcp` requests in
   progress, across all its connections and addresses. More get 429 with `Retry-After: 1`. Of the
-  64, 8 are kept for token refresh, sign-in, the approvals inbox and the file pages, so those stay
+  64, 8 are kept for token refresh, sign-in, the approval inbox and the file pages, so those stay
   reachable while `/mcp` is busy; `/mcp` itself answers 503 once its 56 are taken, which seven
   accounts at their limit can cause. A request may take 120 seconds; the tax reports
   (`sevdesk_vat_summary`, `sevdesk_profit_and_loss`) stop reading after 90 seconds and return

@@ -80,8 +80,8 @@ or to create the file again.
 **"No space for the file" (507), or the model reports that the limit is reached.** The account's
 uploads and links fill its quarter of `SEVDESK_HTTP_FILES_MAX_MB`, the accounts together fill the
 space, or the account has reached `SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT` (default 10). Successful
-attachments release uploads immediately. For a count limit, wait until the next account expiry
-named in the refusal or raise that count setting; for space, wait for files to expire or raise
+attachments release uploads immediately. For a count limit, wait until the account's next file
+expires (the refusal says when) or raise that count setting; for space, wait for files to expire or raise
 `SEVDESK_HTTP_FILES_MAX_MB`. "Server busy" (503) means two other uploads are arriving right now,
 "Upload in progress" (503) that another upload of the same account is; try again in a moment
 ([Limits and lifetimes](files.md#limits-and-lifetimes)).

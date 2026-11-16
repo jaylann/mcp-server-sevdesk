@@ -31,12 +31,14 @@ again after its upload was released, request a new upload.
 
 ## Several files on one page
 
-Pass optional `count` (1–10, default 1) to `sevdesk_upload_request`. For `count > 1`, it returns
-`batchId`, `count` and one page URL instead of `uploadId`. Select multiple files and submit once.
+`sevdesk_upload_request` takes an optional `count` (1–10, default 1). With `count` above 1 it
+returns a `batchId`, the `count` and one page URL instead of an `uploadId`, and the user selects
+all the files on that page and sends them at once.
 The model then calls `sevdesk_uploads_list` with `batchId`: each slot has an `uploadId` and status;
 uploaded slots also have their cleaned name, kind, size, SHA-256 and individual expiry. The model
-matches these names to the intended drafts, using only slots with status `uploaded`. Duplicate
-cleaned names remain separate files; clarify the intended match if size and SHA-256 are not enough.
+matches these names to the intended drafts, using only slots with status `uploaded`. Two files
+with the same cleaned name stay separate; when size and SHA-256 cannot tell them apart, the model
+asks the user which is which.
 The lookup is read-only and visible only to the connection that requested the batch.
 
 - The whole batch reserves one record per file up front. If it cannot fit the remaining account or
