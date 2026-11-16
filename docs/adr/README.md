@@ -16,6 +16,7 @@ rejected. They explain _why_ the code looks the way it does. The overall design 
 | [0008](0008-file-transfer-over-http.md)                       | File transfer over HTTP                                           | Accepted; pages amended by [0010](0010-server-pages-in-two-languages.md)                                                                                           | 2026-11-09 |
 | [0009](0009-local-profiles-and-os-keychain.md)                | Local profiles and the OS keychain                                | Accepted                                                                                                                                                           | 2026-11-09 |
 | [0010](0010-server-pages-in-two-languages.md)                 | The server's pages: one design, two languages, previews in German | Proposed                                                                                                                                                           | 2026-11-10 |
+| [0011](0011-approvals-workspace.md)                           | One approvals workspace, with decisions on several requests       | Proposed                                                                                                                                                           | 2026-11-16 |
 
 ## Writing a new ADR
 
