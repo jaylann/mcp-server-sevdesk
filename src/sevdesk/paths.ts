@@ -182,14 +182,24 @@ function innerSideEffect(path: string): string | undefined {
  * - `commit`: steps that make a document legally binding or are hard to undo: `sendBy` (mark as
  *   sent, finalizes a draft), `bookAmount` (book a payment), `enshrine` (festschreiben, GoBD,
  *   irreversible), `cancelInvoice` (Storno), `resetToDraft` / `resetToOpen`, `changeParameter`
- *   (changes a finalized document's parameters);
+ *   (changes a finalized document's parameters), `createContractNoteFromOrder` (makes an order
+ *   confirmation and sets the source offer to accepted, status 500, even a draft one: D-107;
+ *   `createPackingListFromOrder` leaves its source alone and stays `write`);
  * - `external`: steps that reach third parties: `sendViaEmail`, `sendByWithRender` (renders and
  *   marks as sent, used for letters).
  *
- * Besides the table, a change to one bank transaction itself (`PUT`/`DELETE
- * /CheckAccountTransaction/{id}`: marking it private, setting its status back) and a
- * `Voucher/Factory/saveVoucher` whose body is not a draft (status ≠ 50: the voucher's finalize)
- * need `commit` (see {@link minimumWriteTier}): they change what is booked.
+ * Besides the table, these need `commit` too (see {@link minimumWriteTier}), because they change
+ * what is booked or make something binding that the table cannot name by its endpoint:
+ * - a request to the bank transactions themselves: `/CheckAccountTransaction` (creating one,
+ *   {@link TRANSACTION_COLLECTION}) and `/CheckAccountTransaction/{id}` (marking it private,
+ *   setting its status back, deleting it), not their sub-resources;
+ * - a `Voucher/Factory/saveVoucher` whose body is not a draft (status ≠ 50: the voucher's
+ *   finalize, {@link savesOpenVoucher});
+ * - a request to one document record (`/Invoice/{id}`, `/Order/{id}`, `/CreditNote/{id}`,
+ *   `/Voucher/{id}`) whose body sets its status, and on an invoice its type or schedule
+ *   ({@link setsBindingRecordField}: accepting an offer, D-108; a recurring template, D-111);
+ * - an `Invoice/Factory/saveInvoice` that may save a recurring invoice template
+ *   ({@link maySaveTemplate}, D-111, D-112).
  */
 const ENDPOINT_TIERS: Readonly<Record<string, WriteTier>> = {
   sendby: "commit",
@@ -199,6 +209,7 @@ const ENDPOINT_TIERS: Readonly<Record<string, WriteTier>> = {
   resettodraft: "commit",
   resettoopen: "commit",
   changeparameter: "commit",
+  createcontractnotefromorder: "commit",
   sendviaemail: "external",
   sendbywithrender: "external",
 };
@@ -214,10 +225,22 @@ function listedTier(name: string): WriteTier | undefined {
 /**
  * The lowest tier that may make a request that changes data (the caller decides that it does,
  * see `resolveGetSafety`): the endpoint's entry in the tier table, `commit` for a `getPdf` that
- * marks the document as sent (same effect as `sendBy`) and for DATEV exports with an `enshrine`
- * flag, otherwise `write` (this includes a next-number GET that reserves the number: a draft tool
- * reserves the number it saves the draft with). The client refuses a request whose declared tier
- * does not cover it (`tierCovers`), so a `write` tool can never finalize, book, cancel or send.
+ * marks the document as sent (same effect as `sendBy`), for DATEV exports with an `enshrine`
+ * flag and for the requests listed under {@link ENDPOINT_TIERS} by path and body (bank
+ * transactions, a voucher save that is not a draft, a document record's status, a recurring
+ * template), otherwise `write` (this includes a next-number GET that reserves the number: a draft
+ * tool reserves the number it saves the draft with). The client refuses a request whose declared
+ * tier does not cover it (`tierCovers`), so a `write` tool can never finalize, book, cancel,
+ * accept an offer, create a bank transaction, save a recurring template or send.
+ *
+ * It sees path, query and body, not the HTTP method. Both callers (the HTTP client and
+ * `tierScopedClient`) ask only for requests that change data, so a rule by path covers every
+ * such method: `/CheckAccountTransaction` is also the list path, but a list `GET` never gets
+ * here. A rule by body leaves a request without a body (a `DELETE`) at the tier of its path, so
+ * deleting a document or a contact needs `write` here; the tools that delete them declare
+ * `commit` themselves (`sevdesk_voucher_delete_draft`), while the probes still delete their own
+ * test records with `write`.
+ *
  * A listed endpoint or `getPdf` before the last path segment (`/Invoice/1/sendBy/2`, see
  * {@link resolveGetSafety}) raises the minimum to its tier as well.
  */
@@ -243,8 +266,10 @@ function endpointTier(
   const listed = listedTier(endpoint);
   if (listed !== undefined) return listed;
   if (endpoint === "getpdf" || enshrineFlagSet(query)) return "commit";
-  if (TRANSACTION_RECORD.test(path)) return "commit";
+  if (TRANSACTION_RECORD.test(path) || TRANSACTION_COLLECTION.test(path)) return "commit";
   if (endpoint === "savevoucher" && savesOpenVoucher(body)) return "commit";
+  if (endpoint === "saveinvoice" && maySaveTemplate(body)) return "commit";
+  if (setsBindingRecordField(path, body)) return "commit";
   return "write";
 }
 
@@ -267,6 +292,94 @@ const VOUCHER_DRAFT_STATUS = 50;
 
 /** `/CheckAccountTransaction/{id}` exactly (case-insensitive), not its sub-resources. */
 const TRANSACTION_RECORD = /^\/checkaccounttransaction\/[^/]+$/i;
+
+/**
+ * `/CheckAccountTransaction` itself (case-insensitive): a request that changes data there creates
+ * a bank transaction (`POST`; the list `GET` never reaches {@link minimumWriteTier}). A new row
+ * changes the account's balance and what can be booked against it, and it is not simply taken
+ * back: a delete only sets `deletedAt` and works only while the row is unbooked (status 100,
+ * D-096), and once a payment is booked on it and it is enshrined, neither the row nor that
+ * payment can change again (D-098).
+ */
+const TRANSACTION_COLLECTION = /^\/checkaccounttransaction$/i;
+
+/**
+ * Whether a `saveInvoice` body may save a recurring invoice template (`invoiceType` `WKR`,
+ * Abo-Rechnung). A template makes sevDesk issue invoices later on its own, from its start date
+ * and interval (D-111), until it is set to status 50 (D-112), so saving one needs `commit`.
+ *
+ * Only a body whose every `invoice` (any key case) is an object naming its type as text other
+ * than `WKR` (trimmed, any case) keeps `write`; the draft tools always send `RE`. A missing body,
+ * `invoice` or `invoiceType`, or a type that is not text, counts as a template: an update with
+ * the id alone keeps the stored type (ending a template is `saveInvoice` with its id and status
+ * 50, D-112), so such a body cannot be told apart from a template change. An update that names
+ * `RE` with the id of a stored template cannot be seen here either; the invoice draft update
+ * refuses any stored type but `RE` before it sends (`checkUpdatable` in `drafts/invoice.ts`).
+ */
+function maySaveTemplate(body: unknown): boolean {
+  const invoices = isPlainRecord(body) ? ownValues(body, "invoice") : [];
+  if (invoices.length === 0) return true;
+  return invoices.some((invoice) => {
+    if (!isPlainRecord(invoice)) return true;
+    const types = ownValues(invoice, "invoicetype");
+    return (
+      types.length === 0 ||
+      types.some((type) => typeof type !== "string" || type.trim().toUpperCase() === TEMPLATE_TYPE)
+    );
+  });
+}
+
+/** sevDesk's `invoiceType` of a recurring invoice template (Abo-Rechnung). */
+const TEMPLATE_TYPE = "WKR";
+
+/**
+ * One document record, not its sub-resources: `/Invoice/{id}`, `/Order/{id}`, `/CreditNote/{id}`
+ * or `/Voucher/{id}` (case-insensitive). Group 1 is the record's model name.
+ */
+const DOCUMENT_RECORD = /^\/(invoice|order|creditnote|voucher)\/[^/]+$/i;
+
+/**
+ * Whether a request to one document record ({@link DOCUMENT_RECORD}) sets a field that only a
+ * binding step may change:
+ * - `status`, on any of them: written directly it skips `sendBy` and the checks of the lifecycle
+ *   tools. `PUT /Order/{id}` with only a status accepts or rejects an offer, and on a draft offer
+ *   sevDesk renumbers it as well (D-108);
+ * - on an invoice also `invoiceType` and the schedule fields (`account…`: `accountIntervall`,
+ *   `accountStartDate`, `accountEndDate`, `accountNextInvoice`): `PUT /Invoice/{id}` changes a
+ *   recurring template the way `saveInvoice` does (D-111), see {@link maySaveTemplate}.
+ *
+ * Keys are compared in any letter case, own keys only; a key whose value is `undefined` is not
+ * sent and sets nothing. A body that is present but not a plain object cannot be read and counts
+ * as setting one, erring towards the stricter tier like {@link savesOpenVoucher}. No body at all
+ * (a `DELETE`) sets nothing. No shipped tool sends a body to these records: the draft tools save
+ * through the `Factory` endpoints.
+ */
+function setsBindingRecordField(path: string, body: unknown): boolean {
+  const record = DOCUMENT_RECORD.exec(path);
+  if (record === null || body === undefined) return false;
+  if (!isPlainRecord(body)) return true;
+  const invoice = record[1]?.toLowerCase() === "invoice";
+  return Object.entries(body).some(([key, value]) => {
+    if (value === undefined) return false;
+    const name = key.toLowerCase();
+    return name === "status" || (invoice && (name === "invoicetype" || name.startsWith("account")));
+  });
+}
+
+/** Whether `value` is a JSON object: not `null`, not an array. */
+function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The values of `record`'s own keys named `key` in any letter case (`invoice`, `Invoice`), without
+ * `undefined` ones (JSON leaves them out). `key` is lower case.
+ */
+function ownValues(record: Readonly<Record<string, unknown>>, key: string): unknown[] {
+  return Object.entries(record)
+    .filter(([name, value]) => name.toLowerCase() === key && value !== undefined)
+    .map(([, value]) => value);
+}
 
 function enshrineFlagSet(query: Readonly<Record<string, QueryValue>> | undefined): boolean {
   return Object.entries(query ?? {}).some(
@@ -325,8 +438,8 @@ const NEXT_CUSTOMER_NUMBER = "getnextcustomernumber";
  *   (number sequences);
  * - a segment `getPdf`, `getXml`, `render`, `sendByWithRender`, an action of the tier table
  *   (`sendBy`, `bookAmount`, `enshrine`, `cancelInvoice`, `resetToDraft`, `resetToOpen`,
- *   `changeParameter`, `sendViaEmail`), a DATEV export job, or a next-number endpoint
- *   (`getNext…Number`, also when it would only peek), anywhere in the path;
+ *   `changeParameter`, `createContractNoteFromOrder`, `sendViaEmail`), a DATEV export job, or a
+ *   next-number endpoint (`getNext…Number`, also when it would only peek), anywhere in the path;
  * - a segment after the first that starts with a verb that changes data (`save…`, `create…`,
  *   `book…`, `send…`, `delete…`, …; `bookkeepingSystemVersion` is not one: the verb must end at
  *   a word boundary of the camelCase name);
@@ -407,8 +520,8 @@ const FILE_ENDPOINT_REFUSAL =
   "sent).";
 const ACTION_REFUSAL =
   "This endpoint is an action that changes data in sevDesk (marking as sent, booking a " +
-  "payment, enshrining, cancelling, resetting or e-mailing), not a read: use the matching " +
-  "tool, which asks for confirmation where needed.";
+  "payment, enshrining, cancelling, resetting, accepting an offer or e-mailing), not a read: " +
+  "use the matching tool, which asks for confirmation where needed.";
 const NEXT_NUMBER_REFUSAL =
   "Next-number endpoints can reserve the number they return, so sevdesk_api_get never calls " +
   "them: use sevdesk_contacts_next_customer_number for the next customer number; sevDesk " +

@@ -19,9 +19,15 @@ its default and the switches (`SEVDESK_ALLOW`, `SEVDESK_READ_ONLY`, dry run) are
    declares no tier, when `SEVDESK_ALLOW` does not enable that tier, or when the tier is below the
    endpoint's minimum (`minimumWriteTier` in `paths.ts`: `sendBy`, `bookAmount`, `enshrine`,
    `cancelInvoice`, `resetToDraft`, `resetToOpen`, `changeParameter`, a sending `getPdf`, DATEV
-   `enshrine` exports, a `saveVoucher` whose voucher is not a draft (the voucher's finalize) and
-   `PUT`/`DELETE /CheckAccountTransaction/{id}` (private marking, reset) need `commit`;
-   `sendViaEmail` and `sendByWithRender` need `external`).
+   `enshrine` exports, a `saveVoucher` whose voucher is not a draft (the voucher's finalize),
+   `PUT`/`DELETE /CheckAccountTransaction/{id}` (private marking, reset), creating a bank
+   transaction (`POST /CheckAccountTransaction`), a document's status set directly (a `status` in
+   the body of a request to one document record; `PUT /Order/{id}` accepts or rejects an offer
+   this way), `createContractNoteFromOrder` (it accepts the source offer) and saving a recurring
+   invoice template (a `saveInvoice` whose type is `WKR`, missing or not text, or a
+   `PUT /Invoice/{id}` that sets the type or schedule) need `commit`; `sendViaEmail` and
+   `sendByWithRender` need `external`). Why each of these binds:
+   [ADR 0003](../adr/0003-tiers-and-human-confirmation.md).
 
 Write tools never set the tier: their `execute` gets a client that stamps it (`tierScopedClient`,
 which applies the endpoint rule too), their `prepare` one that refuses every write
