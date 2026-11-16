@@ -41,7 +41,6 @@ import {
   costCentreDtoSchema,
   costCentreFilterOutput,
   costCentreFilterOutputShape,
-  inCostCentre,
   listCostCentres,
   resolveCostCentreFilter,
 } from "../cost-centres.js";
@@ -621,19 +620,13 @@ function pageFetcher(
             status: params.status as keyof typeof CREDIT_NOTE_STATUS_FILTERS | undefined,
             contactId: params.contactId,
             tagFilter: filters.tag,
+            costCentreFilter: filters.costCentre,
             limit,
             offset,
           },
           signal,
         );
-        // sevDesk's cost-centre filter on the credit-note list is not measured (D-092), so none
-        // is sent: every row of the range is read and its own cost centre decides here.
-        return {
-          ...page,
-          items: page.items
-            .filter((row) => inCostCentre(filters.costCentre, row.costCentreId))
-            .map(documentRecord),
-        };
+        return { ...page, items: page.items.map(documentRecord) };
       };
     case "vouchers":
       return async (offset, limit) => {
@@ -920,12 +913,6 @@ function documentGroupingNotes(
   const notes: string[] = [];
   const tagNote = tagFilterNote(filters.tag).trim();
   if (tagNote !== "") notes.push(tagNote);
-  if (filters.costCentre !== undefined && params.subject === "credit_notes") {
-    notes.push(
-      "sevDesk's cost-centre filter for credit notes is not measured, so every credit note of " +
-        "the range was read and kept only when it carries the cost centre.",
-    );
-  }
   if (params.groupBy === "tag") {
     notes.push(
       overlap

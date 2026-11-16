@@ -143,7 +143,7 @@ describe("sevdesk_records_summarize: cost centres", () => {
     );
   });
 
-  it("filters credit notes by each row's own cost centre and sends no list filter", async () => {
+  it("filters credit notes with the measured list filter and each row's own cost centre", async () => {
     const { client, report } = await summarize({ subject: "credit_notes", costCentre: third.id }, [
       costCentresRoute,
       rows("/CreditNote", [
@@ -153,18 +153,18 @@ describe("sevdesk_records_summarize: cost centres", () => {
             costCentre: storedCostCentre(third.id),
           },
         ),
+        // sevDesk ignoring the filter: a row without the cost centre comes back too.
         creditNoteDoc({ id: 22, date: "2026-10-02", net: "40", tax: "7.6" }),
       ]),
     ]);
 
-    const query = client.callsTo("/CreditNote")[0]?.query;
-    expect(query).not.toHaveProperty("costCentre[id]");
+    expect(client.callsTo("/CreditNote")[0]?.query).toMatchObject({
+      "costCentre[id]": third.id,
+      "costCentre[objectName]": "CostCentre",
+    });
     expect(report.recordsCounted).toBe(1);
     expect(report.totals.lines[0]?.net).toEqual(eur("20.00"));
-    expect(report.notes).toContain(
-      "sevDesk's cost-centre filter for credit notes is not measured, so every credit note of " +
-        "the range was read and kept only when it carries the cost centre.",
-    );
+    expect(report.costCentreFilter).toEqual(third);
   });
 
   it("says the breakdown is incomplete when the row cap stopped reading", async () => {

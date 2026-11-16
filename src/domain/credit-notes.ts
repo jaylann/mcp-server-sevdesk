@@ -16,6 +16,7 @@ import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
 import { parseUpstream, zId } from "../sevdesk/schema.js";
 import type { QueryValue, SevdeskClient } from "../sevdesk/types.js";
 import { documentDateFilter } from "./common.js";
+import { type CostCentre, costCentreFilterQuery, inCostCentre } from "./cost-centres.js";
 import {
   countryCodeSchema,
   type CountryReadOptions,
@@ -247,15 +248,18 @@ export interface CreditNoteListParams {
   readonly to?: string | undefined;
   /** Only credit notes with this tag (`resolveTagFilter`), re-checked on every row. */
   readonly tagFilter?: TagListFilter | undefined;
+  /** Only credit notes on this cost centre (`resolveCostCentreFilter`), re-checked on every row. */
+  readonly costCentreFilter?: CostCentre | undefined;
   readonly limit: number;
   readonly offset: number;
 }
 
 /**
  * Lists credit notes (`GET /CreditNote`) with sevDesk's filters `status`, `contact[id]`,
- * `creditNoteNumber`, `startDate`/`endDate` (Unix seconds, Berlin days) and the tag. The number is
- * re-checked on every row (`matchesNumber`), the date range and the tag without a scan
- * (`documentDateFilter`, `carriesTag`).
+ * `creditNoteNumber`, `startDate`/`endDate` (Unix seconds, Berlin days), the tag and the cost
+ * centre (`costCentre[id]` + `costCentre[objectName]`, recorded 2026-11-17, D-092). The number is
+ * re-checked on every row (`matchesNumber`), the date range, the tag and the cost centre without
+ * a scan (`documentDateFilter`, `carriesTag`, `inCostCentre`).
  */
 export async function listCreditNotes(
   client: SevdeskClient,
@@ -267,6 +271,7 @@ export async function listCreditNotes(
     embed: EMBED_CONTACT,
     ...dates.query,
     ...tagFilterQuery(params.tagFilter),
+    ...costCentreFilterQuery(params.costCentreFilter),
   };
   if (params.status !== undefined) query["status"] = CREDIT_NOTE_STATUS_FILTERS[params.status];
   if (params.contactId !== undefined) {
@@ -282,7 +287,10 @@ export async function listCreditNotes(
     offset: params.offset,
     map: (raw) => toCreditNoteRow(parseCreditNoteRecord(raw)),
     keep: matchesNumber(params.number),
-    recheck: (row) => dates.contains(row.date) && carriesTag(params.tagFilter, row.id),
+    recheck: (row) =>
+      dates.contains(row.date) &&
+      carriesTag(params.tagFilter, row.id) &&
+      inCostCentre(params.costCentreFilter, row.costCentreId),
     signal,
   });
 }

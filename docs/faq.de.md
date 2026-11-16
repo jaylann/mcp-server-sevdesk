@@ -181,7 +181,8 @@ Ja. `sevdesk_invoice_create_draft`, `sevdesk_invoice_update_draft`,
 ihre Nummer oder ihren Namen als Text, verglichen ohne Rücksicht auf Groß- und Kleinschreibung und Akzente.
 `sevdesk_reference_lookup` mit der Art `cost_centres` listet die Kostenstellen des Kontos. Ein
 unbekannter Name oder einer, der zu mehreren Kostenstellen passt, wird abgelehnt, bevor etwas
-gespeichert wird. `sevdesk_invoices_list` und `sevdesk_vouchers_list` filtern nach Kostenstelle
+gespeichert wird. `sevdesk_invoices_list`, `sevdesk_vouchers_list` und
+`sevdesk_credit_notes_list` filtern nach Kostenstelle
 („die Ausgaben dieses Monats auf der Kostenstelle München“), die Abrufwerkzeuge zeigen sie, und die
 Freigabe beim Fertigstellen nennt sie. Aufträge nehmen keine: sevDesk nimmt eine Kostenstelle am
 Auftrag an, speichert sie aber nicht. Eine Änderung ohne `costCentre` behält die gespeicherte, und

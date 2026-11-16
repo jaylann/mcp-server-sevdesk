@@ -1,8 +1,8 @@
 /**
  * Cost centres (Kostenstellen) of invoices, vouchers and credit notes: lenient parsing of
  * sevDesk's `CostCentre` records, the account's list, the `costCentre` argument of the draft tools
- * (resolved by id, number or name), the `costCentre` filter of the invoice and voucher lists, and
- * the cost-centre fact of the previews and approvals.
+ * (resolved by id, number or name), the `costCentre` filter of the invoice, voucher and credit-note
+ * lists, and the cost-centre fact of the previews and approvals.
  *
  * Recorded 2026-11-16 (spec/deviations.md D-091, D-092):
  * - `GET /CostCentre` (not in the spec) answers rows with `id`, `number` (at most 8 characters),
@@ -14,7 +14,8 @@
  *   it out. `saveOrder` drops it silently: orders never take one here.
  * - `GET /Invoice` and `GET /Voucher` filter by `costCentre[id]` + `costCentre[objectName]`; the
  *   rows carry their `costCentre`, so every row is checked again here. `costCentre=<id>` alone
- *   answers 422. The credit-note list filter was not measured and is not offered.
+ *   answers 422. `GET /CreditNote` does the same, and its rows carry `costCentre` too (recorded
+ *   2026-11-17).
  * - Recorded 2026-11-17: an update with the id and `costCentre: null` removes the cost centre
  *   (invoices, vouchers, credit notes); the invoice and voucher updates offer it as
  *   `removeCostCentre`.
@@ -362,10 +363,13 @@ export function costCentreChange(
 }
 
 // ---------------------------------------------------------------------------------------------
-// The costCentre filter of the invoice and voucher lists
+// The costCentre filter of the document lists and reports
 // ---------------------------------------------------------------------------------------------
 
-/** The `costCentre` argument of `sevdesk_invoices_list` and `sevdesk_vouchers_list`. */
+/**
+ * The `costCentre` argument of `sevdesk_invoices_list`, `sevdesk_vouchers_list`,
+ * `sevdesk_credit_notes_list` and the reports.
+ */
 export const costCentreFilterInputShape = {
   costCentre: costCentreValue
     .optional()

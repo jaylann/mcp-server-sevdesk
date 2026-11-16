@@ -1786,6 +1786,20 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "exclusiveMinimum": 0,
           "type": "integer",
         },
+        "costCentre": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Only documents booked on this Kostenstelle: its id (number), or its number or name (text); see sevdesk_reference_lookup kind=cost_centres.",
+        },
         "detail": {
           "default": "full",
           "description": "Use summary to browse/find; full (default) or the matching get tool for details.",
@@ -6015,6 +6029,20 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "exclusiveMinimum": 0,
           "type": "integer",
         },
+        "costCentre": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Only documents booked on this Kostenstelle: its id (number), or its number or name (text); see sevdesk_reference_lookup kind=cost_centres.",
+        },
         "detail": {
           "default": "full",
           "description": "Use summary to browse/find; full (default) or the matching get tool for details.",
@@ -9073,6 +9101,20 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           "description": "Only credit notes of this contact.",
           "exclusiveMinimum": 0,
           "type": "integer",
+        },
+        "costCentre": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Only documents booked on this Kostenstelle: its id (number), or its number or name (text); see sevdesk_reference_lookup kind=cost_centres.",
         },
         "detail": {
           "default": "full",

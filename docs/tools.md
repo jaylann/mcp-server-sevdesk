@@ -557,19 +557,20 @@ Email a credit note (Gutschrift per E-Mail versenden) through sevDesk: sevDesk s
 
 **List sevDesk credit notes** · tier `read` · read-only, idempotent
 
-List credit notes (Gutschriften) with compact rows: number, status, contact, date, net/tax/gross, booking category (e.g. UNDERACHIEVEMENT = Minderleistung, PROVISION) and the invoice they refer to (sourceInvoiceId). Filter by status (draft = Entwurf, open, partially_paid, paid), contactId, exact credit note number (Gutschriftsnummer), date range and tag (by name). Page with offset = nextOffset while hasMore. Use detail=summary to browse/find. Use sevdesk_credit_note_get for details and positions. The source invoice: sevdesk_invoice_get.
+List credit notes (Gutschriften) with compact rows: number, status, contact, date, net/tax/gross, booking category (e.g. UNDERACHIEVEMENT = Minderleistung, PROVISION) and the invoice they refer to (sourceInvoiceId). Filter by status (draft = Entwurf, open, partially_paid, paid), contactId, exact credit note number (Gutschriftsnummer), date range, tag (by name) and costCentre (Kostenstelle). Page with offset = nextOffset while hasMore. Use detail=summary to browse/find. Use sevdesk_credit_note_get for details and positions. The source invoice: sevdesk_invoice_get.
 
-| Argument    | Type                                            | Required | Description                                                                                         |
-| ----------- | ----------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------- |
-| `detail`    | `summary` \| `full`                             | no       | Use summary to browse/find; full (default) or the matching get tool for details. Default: `"full"`. |
-| `status`    | `draft` \| `open` \| `partially_paid` \| `paid` | no       | draft (100), open (200), partially_paid (750) or paid (1000).                                       |
-| `contactId` | integer                                         | no       | Only credit notes of this contact.                                                                  |
-| `number`    | string                                          | no       | Exact credit note number, e.g. 'GU-1000'.                                                           |
-| `from`      | string                                          | no       | First day to include, YYYY-MM-DD (Berlin time).                                                     |
-| `to`        | string                                          | no       | Last day to include, YYYY-MM-DD (Berlin time).                                                      |
-| `tag`       | string                                          | no       | Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).               |
-| `limit`     | integer                                         | no       | Page size, 1–100. Default: `25`.                                                                    |
-| `offset`    | integer                                         | no       | Rows to skip, for paging: pass the previous result's nextOffset. Default: `0`.                      |
+| Argument     | Type                                            | Required | Description                                                                                                                                |
+| ------------ | ----------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `detail`     | `summary` \| `full`                             | no       | Use summary to browse/find; full (default) or the matching get tool for details. Default: `"full"`.                                        |
+| `status`     | `draft` \| `open` \| `partially_paid` \| `paid` | no       | draft (100), open (200), partially_paid (750) or paid (1000).                                                                              |
+| `contactId`  | integer                                         | no       | Only credit notes of this contact.                                                                                                         |
+| `number`     | string                                          | no       | Exact credit note number, e.g. 'GU-1000'.                                                                                                  |
+| `from`       | string                                          | no       | First day to include, YYYY-MM-DD (Berlin time).                                                                                            |
+| `to`         | string                                          | no       | Last day to include, YYYY-MM-DD (Berlin time).                                                                                             |
+| `tag`        | string                                          | no       | Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).                                                      |
+| `costCentre` | integer \| string                               | no       | Only documents booked on this Kostenstelle: its id (number), or its number or name (text); see sevdesk_reference_lookup kind=cost_centres. |
+| `limit`      | integer                                         | no       | Page size, 1–100. Default: `25`.                                                                                                           |
+| `offset`     | integer                                         | no       | Rows to skip, for paging: pass the previous result's nextOffset. Default: `0`.                                                             |
 
 ## Toolset `orders`
 

@@ -3421,32 +3421,37 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   objectName". An update with the id and `costCentre: null` removes the cost centre: a draft
   invoice (`saveInvoice`), voucher (`saveVoucher`, `status: 50`) and credit note
   (`saveCreditNote`) that had one each answered 2xx and read back with `costCentre` null.
+  `GET /CreditNote` list rows carry `costCentre: {id, objectName}` when the credit note has one
+  (43 rows, 4 with a cost centre; the tested draft's row matched its read by id), and the list
+  honours `costCentre[id]` + `costCentre[objectName]=CostCentre` like the invoice and voucher
+  lists: it answered exactly one row, the draft, carrying that cost centre.
 - **Sources:** spec (`Model_Voucher`, `Model_VoucherUpdate`, `Model_InvoiceResponse`); recorded
   2026-11-16, trial account, Update 2.0 (probes `write-cost-centre-documents`,
   `write-cost-centre-list-filters`); recorded 2026-11-17, trial account, Update 2.0 (one-off check
-  by the orchestrator: `costCentre: null` on updates).
+  by the orchestrator: `costCentre: null` on updates); recorded 2026-11-17, trial account, Update
+  2.0 (one-off check by the orchestrator: credit-note list rows and the credit-note list filter).
 - **Impact:** `costCentre` is an argument of `sevdesk_invoice_create_draft`,
   `sevdesk_invoice_update_draft`, `sevdesk_voucher_create_draft`,
   `sevdesk_voucher_update_draft` and `sevdesk_credit_note_create_draft` only, never of the order
   tools; the strict `saveOrder` body has no such key. An update without it carries the stored
-  one over (D-052, D-054). `sevdesk_invoices_list` and `sevdesk_vouchers_list` filter with both
-  keys and check every row's `costCentre` again, so a filter sevDesk ignored cannot answer the
-  whole list; the credit-note list has no filter (not measured). `sevdesk_invoice_update_draft`
+  one over (D-052, D-054). `sevdesk_invoices_list`, `sevdesk_vouchers_list` and
+  `sevdesk_credit_notes_list` filter with both keys and check every row's `costCentre` again, so
+  a filter sevDesk ignored cannot answer the whole list; credit-note rows show `costCentreId`.
+  `sevdesk_invoice_update_draft`
   and `sevdesk_voucher_update_draft` take `removeCostCentre: true`, which sends
   `costCentre: null` (refused together with `costCentre`); the preview names the cost centre that
   is removed (`costCentreUpdate` in `src/domain/cost-centres.ts`). The credit-note update tool
   does not offer it yet. Not recorded, so not offered: cost centres on voucher positions. The
   reports (#87) treat the cost centre as a property of the whole document:
-  `sevdesk_records_summarize` filters invoices and vouchers with both keys (and the row check);
-  for credit notes it sends no filter and keeps the rows that carry the cost centre;
-  `sevdesk_profit_and_loss` checks every document's head itself. Their breakdown by cost centre
-  has one group per document ("none" without one), so the groups add up to the totals. The
-  credit-note list rows are taken to carry `costCentre` as the read by id does (the recorded list
-  row and read by id of 2026-11-07 have the same keys); a list row with a cost centre set is not
-  recorded.
+  `sevdesk_records_summarize` filters invoices, vouchers and credit notes through these lists
+  (both keys and the row check); `sevdesk_profit_and_loss` checks every document's head itself.
+  Their breakdown by cost centre has one group per document ("none" without one), so the groups
+  add up to the totals.
 - **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("checks costCentre on create and on
   updates with the id, per document kind", "tells honoured list filters from ignored ones, with an
-  untagged control"); `test/regressions/cost-centre-filter-never-unfiltered.test.ts`;
+  untagged control"); `test/regressions/cost-centre-filter-never-unfiltered.test.ts` (per list
+  tool, the credit-note list included: an unknown cost centre is refused before any list request;
+  both keys are sent and rows on another cost centre or none are dropped);
   `test/regressions/order-never-sends-cost-centre.test.ts`;
   `test/unit/tools/drafts/cost-centre-drafts.test.ts` ("keeps the stored cost centre when the
   call leaves it out (D-052, D-054)", "removes the stored cost centre with removeCostCentre:
@@ -3458,11 +3463,11 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   centre is refused before any document list, and only its documents count when every row comes
   back); `test/unit/tools/reports/summarize-tags-cost-centres.test.ts` ("answers this month's
   expenses for one cost centre (issue #87 acceptance)", "groups by cost centre with a none group,
-  and the groups add up to the totals", "filters credit notes by each row's own cost centre and
-  sends no list filter"); `test/unit/domain/reports/pnl-tags-cost-centres.test.ts` ("breaks the
-  result down per cost centre; the groups, none included, add up", "answers through the tool with
-  costCentre by name"). Live: the two probes above; the removal by the 2026-11-17 one-off check
-  (no probe).
+  and the groups add up to the totals", "filters credit notes with the measured list filter and
+  each row's own cost centre"); `test/unit/domain/reports/pnl-tags-cost-centres.test.ts` ("breaks
+  the result down per cost centre; the groups, none included, add up", "answers through the tool
+  with costCentre by name"). Live: the two probes above; the removal, the credit-note list rows
+  and the credit-note list filter by the 2026-11-17 one-off checks (no probe).
 
 ### D-095: On a cash register `resetToOpen` books a counter-entry instead of deleting
 
