@@ -170,6 +170,16 @@ update without `costCentre` keeps the stored one, and `removeCostCentre: true` o
 and voucher update tools takes it off a draft. Managing the cost centres themselves is done in
 sevDesk.
 
+### What did project X cost?
+
+Ask for it: "What did project Website Relaunch cost this year?" or "Show this month's expenses for
+cost centre Munich". `sevdesk_records_summarize` and `sevdesk_profit_and_loss` take a `tag` or a
+`costCentre` and count only those documents; `groupBy` `tag` or `cost_centre` shows every project
+or cost centre side by side. A name the account does not have is refused instead of answered with
+the totals of all documents. A document with several tags counts for each of them, so tag groups
+add up to more than the total, and the answer says so; cost centres, one per document, add up.
+Details: [Reports and exports](guides/evaluations.md#by-project-tag-or-cost-centre).
+
 ## Support
 
 ### Where do I get help?

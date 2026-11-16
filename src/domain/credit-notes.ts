@@ -138,6 +138,11 @@ export const creditNoteRowSchema = z.object({
   header: z.string().optional(),
   sent: sentDtoSchema.optional().describe("Left out when the credit note was not sent."),
   enshrined: z.boolean().optional().describe("Festgeschrieben (locked); only shown when true."),
+  costCentreId: z
+    .number()
+    .int()
+    .optional()
+    .describe("Kostenstelle id; see sevdesk_reference_lookup kind=cost_centres."),
   link: z.string().optional().describe("Opens the credit note in the sevDesk web app."),
 });
 
@@ -158,11 +163,6 @@ export const creditNoteDetailSchema = creditNoteRowSchema
       })
       .optional(),
     contactPersonId: z.number().int().optional(),
-    costCentreId: z
-      .number()
-      .int()
-      .optional()
-      .describe("Kostenstelle id; see sevdesk_reference_lookup kind=cost_centres."),
     internalNote: z.string().optional(),
     headText: z.string().optional(),
     footText: z.string().optional(),
@@ -200,6 +200,7 @@ function toCreditNoteRow(record: CreditNoteRecord): CreditNoteRow {
     header: cleanText(record.header, TEXT_MAX.short),
     sent: sentDto(record),
     enshrined: berlinDate(record.enshrined) === undefined ? undefined : true,
+    costCentreId: record.costCentre?.id,
     link: creditNoteLink(record.id, record.status),
   });
 }
@@ -214,7 +215,6 @@ function toCreditNoteDetail(record: CreditNoteRecord): CreditNoteDetail {
     tax: taxDto(record),
     address: addressDto(record),
     contactPersonId: refId(record.contactPerson, "a credit note's contact person"),
-    costCentreId: record.costCentre?.id,
     internalNote: cleanText(record.customerInternalNote, TEXT_MAX.long),
     headText: cleanText(record.headText, TEXT_MAX.long),
     footText: cleanText(record.footText, TEXT_MAX.long),

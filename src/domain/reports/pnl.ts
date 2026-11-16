@@ -22,12 +22,28 @@
  *
  * `coverage.truncated` is set whenever something was not read: a cap, the time budget of an HTTP
  * deployment (`ReportDeadline`), or a document whose positions could not all be read.
+ *
+ * Tags and cost centres (spec/deviations.md D-088–D-092). `costCentre` and `tag` filter the
+ * documents before their positions are read: both are resolved first (an unknown or ambiguous
+ * one is refused, never answered with the whole account's figures) and every document is checked
+ * here, by the cost centre on its head and by the tag's relations, so no list filter of sevDesk is
+ * relied on. A cost centre belongs to the whole document (one per invoice, credit note or voucher;
+ * cost centres on voucher positions are not read). `groupBy` adds a breakdown of income, expenses
+ * and result per cost centre (a split of the totals, with "none") or per tag (overlapping: a
+ * document with several tags counts in each).
  */
 import { z } from "zod";
 
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { type AccountDatevList, findAccountDatev } from "../accounts-datev.js";
-import { moneySchema } from "../common.js";
+import { compact, moneySchema } from "../common.js";
+import {
+  type CostCentre,
+  type CostCentreArg,
+  costCentreDtoSchema,
+  listCostCentres,
+  resolveCostCentre,
+} from "../cost-centres.js";
 import {
   add,
   compare,
@@ -39,6 +55,13 @@ import {
   subtract,
 } from "../money.js";
 import { taxRuleById } from "../reference-data.js";
+import {
+  type DocumentTags,
+  readDocumentTags,
+  resolveTagDocuments,
+  TAG_READ_MAX,
+  type TagDocuments,
+} from "../tags.js";
 import { importVatAccountIds, isImportVat } from "./import-vat.js";
 import {
   collectPaidDocuments,
@@ -71,6 +94,10 @@ import type { ReportPeriod } from "./vat.js";
 
 export const PNL_BASES = ["cash", "accrual"] as const;
 type PnlBasis = (typeof PNL_BASES)[number];
+
+/** Breakdowns of the result: per cost centre (Kostenstelle) or per tag. */
+export const PNL_GROUPINGS = ["cost_centre", "tag"] as const;
+type PnlGrouping = (typeof PNL_GROUPINGS)[number];
 
 /** Stated in every profit and loss result. */
 export const PNL_CAVEAT =
@@ -124,11 +151,53 @@ const documentRefSchema = z.object({
   number: z.string().optional(),
 });
 
+const tagRefSchema = z.object({
+  id: z.number().int(),
+  name: z.string().optional().describe("Tag name as stored in sevDesk."),
+});
+
+const breakdownSchema = z.object({
+  by: z.enum(PNL_GROUPINGS),
+  overlap: z
+    .boolean()
+    .describe(
+      "True when at least one document counts in several groups (several tags): the groups " +
+        "then add up to more than income, expenses and result and are not a split of them.",
+    ),
+  complete: z
+    .boolean()
+    .describe(
+      "False when the breakdown is incomplete: the figures are truncated, or the account has " +
+        `more than ${TAG_READ_MAX.toLocaleString("en-US")} tag relations, so some documents may ` +
+        "sit in the wrong tag group or in none.",
+    ),
+  groups: z.array(
+    z.object({
+      key: z.string().describe("cost_centre:<id>, tag:<id>, or none (no cost centre or tag)."),
+      costCentre: costCentreDtoSchema.optional(),
+      tag: tagRefSchema.optional(),
+      income: moneySchema.describe("Net income of the group's documents."),
+      expenses: moneySchema.describe("Net expenses of the group's documents (no fixed assets)."),
+      result: moneySchema.describe("income − expenses of the group."),
+      documents: z.number().int(),
+    }),
+  ),
+});
+
 export const profitAndLossSchema = z.object({
   source: z.string().describe("How the numbers were made."),
   caveat: z.string(),
   period: z.object({ from: z.string(), to: z.string(), label: z.string() }),
   basis: z.enum(PNL_BASES).describe("cash (by payment day) or accrual (by document date)."),
+  filters: z
+    .object({
+      costCentre: costCentreDtoSchema
+        .optional()
+        .describe("Only documents on this Kostenstelle (the cost centre of the whole document)."),
+      tag: tagRefSchema.optional().describe("Only documents with this tag."),
+    })
+    .optional()
+    .describe("Present when the figures are limited to a cost centre or a tag."),
   income: z.object({
     total: moneySchema.describe("Net income (Betriebseinnahmen, netto)."),
     byTaxRule: z.array(
@@ -172,6 +241,9 @@ export const profitAndLossSchema = z.object({
       reason: z.string(),
     }),
   ),
+  breakdown: breakdownSchema
+    .optional()
+    .describe("With groupBy: income, expenses and result per cost centre or per tag."),
   coverage: z.object({
     rowsRead: z
       .number()
@@ -241,6 +313,12 @@ export interface ProfitAndLossParams {
    * VAT account by its number in `accounts`; without it only the recorded id is recognized.
    */
   readonly chartOfAccounts?: string | undefined;
+  /** Only documents on this cost centre: id, number or name (`resolveCostCentre`). */
+  readonly costCentre?: CostCentreArg | undefined;
+  /** Only documents with this tag, by name (`resolveTagDocuments`). */
+  readonly tag?: string | undefined;
+  /** A breakdown of income, expenses and result per cost centre or per tag. */
+  readonly groupBy?: PnlGrouping | undefined;
   readonly maxDocuments?: number | undefined;
   readonly maxRows?: number | undefined;
   readonly today?: string | undefined;
@@ -259,6 +337,12 @@ export async function profitAndLoss(
         "use basis accrual.",
     );
   }
+  // Filters first: an unknown or ambiguous one is refused before any document is read.
+  const filter = await resolveFilter(client, params, options.signal);
+  const accept = (header: DocumentHeader): boolean =>
+    (filter.costCentre === undefined || header.costCentreId === filter.costCentre.id) &&
+    (filter.tag === undefined || filter.tag.documents.has(headerKey(header)));
+  const grouping = await groupingSource(client, params.groupBy, options.signal);
   const notes: string[] = [];
   const excluded = { draft: 0, recurring_template: 0, reminder: 0, unknown_direction: 0 };
   let rowsRead: number;
@@ -269,7 +353,7 @@ export async function profitAndLoss(
   if (basis === "accrual") {
     const listed = await listDocumentHeaders(
       client,
-      { from: period.from, to: period.to, maxRows: params.maxRows, today: params.today },
+      { from: period.from, to: period.to, maxRows: params.maxRows, today: params.today, accept },
       options,
     );
     Object.assign(excluded, listed.excluded);
@@ -280,7 +364,9 @@ export async function profitAndLoss(
     // Checked above; narrowed for the compiler.
     const source = params.payments as PaymentsInPeriod;
     // Documents dated shortly before or in the period are listed (cheap: 1,000 per request), so
-    // most paid documents need no request by id; older ones are fetched, up to a cap.
+    // most paid documents need no request by id; older ones are fetched, up to a cap. The filter
+    // applies to the payments' documents (`accept` below), so the listed ones all stay known and
+    // none of them is read again by id.
     const listed = await listDocumentHeaders(
       client,
       {
@@ -299,7 +385,7 @@ export async function profitAndLoss(
     });
     paid = await collectPaidDocuments(client, result, {
       known: new Map(listed.headers.map((header) => [headerKey(header), header])),
-      accept: () => true,
+      accept,
       signal: options.signal,
       today: params.today,
       deadline: options.deadline,
@@ -320,11 +406,11 @@ export async function profitAndLoss(
   });
   const contributions = contributionsOf(scan.documents, paid?.payments ?? new Map());
 
-  const totals = aggregate(
-    contributions,
-    params.accounts,
-    importVatAccountIds({ accounts: params.accounts, chartOfAccounts: params.chartOfAccounts }),
-  );
+  const importVatAccounts = importVatAccountIds({
+    accounts: params.accounts,
+    chartOfAccounts: params.chartOfAccounts,
+  });
+  const totals = aggregate(contributions, params.accounts, importVatAccounts);
   // Three ways of not having read everything; each makes the report truncated.
   const timedOut = scan.timedOut || paid?.timedOut === true;
   const capped =
@@ -334,11 +420,23 @@ export async function profitAndLoss(
   // Split over the positions that were read: amounts may sit on the wrong account (review
   // 2026-11, round 3).
   const incomplete = scan.documents.filter((doc) => !doc.positionsComplete);
-  const truncated = capped || timedOut || incomplete.length > 0;
+  // A tag with more uses than were read: its documents beyond them are not known here.
+  const tagCut = filter.tag !== undefined && !filter.tag.complete;
+  const truncated = capped || timedOut || incomplete.length > 0 || tagCut;
   notes.push(...totals.notes);
   if (capped) {
     notes.push("Reading stopped at a cap: the figures are incomplete. Use a shorter period.");
   }
+  notes.push(...filterNotes(filter, tagCut));
+  const breakdown =
+    params.groupBy === undefined
+      ? undefined
+      : breakdownOf(params.groupBy, contributions, grouping, {
+          accounts: params.accounts,
+          importVatAccounts,
+          truncated,
+        });
+  if (breakdown !== undefined) notes.push(...breakdownNotes(breakdown, grouping));
   notes.push(
     ...incompleteTaxReportNotes({
       timedOut,
@@ -371,6 +469,17 @@ export async function profitAndLoss(
     caveat: PNL_CAVEAT,
     period: { from: period.from, to: period.to, label: period.label },
     basis,
+    ...(filter.costCentre === undefined && filter.tag === undefined
+      ? {}
+      : {
+          filters: compact({
+            costCentre: filter.costCentre,
+            tag:
+              filter.tag === undefined
+                ? undefined
+                : { id: filter.tag.tag.id, name: filter.tag.tag.name },
+          }),
+        }),
     income: totals.income,
     expenses: totals.expenses,
     result: eur(
@@ -379,6 +488,7 @@ export async function profitAndLoss(
     vatFlows: totals.vatFlows,
     assets: totals.assets,
     notOperating: totals.notOperating,
+    ...(breakdown === undefined ? {} : { breakdown }),
     coverage: {
       rowsRead,
       documentsScanned: scan.documents.length,
@@ -407,18 +517,216 @@ export async function profitAndLoss(
   };
 }
 
-/** Trusted one-line summary (counts and the result only). */
+/** Trusted one-line summary (counts, ids and the result only; no names). */
 export function profitAndLossSentence(report: ProfitAndLoss): string {
+  const limits = [
+    report.filters?.costCentre === undefined
+      ? undefined
+      : `cost centre id ${String(report.filters.costCentre.id)}`,
+    report.filters?.tag === undefined ? undefined : `tag id ${String(report.filters.tag.id)}`,
+  ].filter((limit) => limit !== undefined);
+  const filtered = limits.length === 0 ? "" : `, only ${limits.join(" and ")}`;
+  const breakdown =
+    report.breakdown === undefined
+      ? ""
+      : ` Breakdown by ${report.breakdown.by === "tag" ? "tag" : "cost centre"}: ` +
+        plural(report.breakdown.groups.length, "group") +
+        (report.breakdown.overlap ? " (overlapping: they do not add up to the totals)" : "") +
+        `${report.breakdown.complete ? "" : ", incomplete"}.`;
   return (
-    `Profit and loss ${report.period.label} (${report.basis}): income ${report.income.total.amount}, ` +
-    `expenses ${report.expenses.total.amount}, result ${report.result.amount} EUR (net, before ` +
-    `AfA); ${plural(report.coverage.documentsScanned, "document")} scanned.` +
+    `Profit and loss ${report.period.label} (${report.basis}${filtered}): income ` +
+    `${report.income.total.amount}, expenses ${report.expenses.total.amount}, result ` +
+    `${report.result.amount} EUR (net, before AfA); ` +
+    `${plural(report.coverage.documentsScanned, "document")} scanned.${breakdown}` +
     incompleteSuffix(report.coverage)
   );
 }
 
 function eur(value: Decimal): Money {
   return money(value, DEFAULT_CURRENCY);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Cost centres and tags
+// ---------------------------------------------------------------------------------------------
+
+/** The resolved `costCentre` and `tag` filters. */
+interface PnlFilter {
+  readonly costCentre?: CostCentre | undefined;
+  readonly tag?: TagDocuments | undefined;
+}
+
+/**
+ * Resolves the filters before any document is read: an unknown or ambiguous cost centre or tag is
+ * a `validation` error (D-090, D-092), never the figures of the whole account.
+ */
+async function resolveFilter(
+  client: SevdeskClient,
+  params: ProfitAndLossParams,
+  signal: AbortSignal | undefined,
+): Promise<PnlFilter> {
+  const costCentre =
+    params.costCentre === undefined
+      ? undefined
+      : await resolveCostCentre(client, params.costCentre, signal);
+  const tag =
+    params.tag === undefined ? undefined : await resolveTagDocuments(client, params.tag, signal);
+  return { costCentre, tag };
+}
+
+/** What a breakdown needs besides the documents: the tags per document or the cost centres. */
+interface GroupingSource {
+  readonly documentTags?: DocumentTags | undefined;
+  readonly costCentres?: readonly CostCentre[] | undefined;
+}
+
+async function groupingSource(
+  client: SevdeskClient,
+  groupBy: PnlGrouping | undefined,
+  signal: AbortSignal | undefined,
+): Promise<GroupingSource> {
+  switch (groupBy) {
+    case undefined:
+      return {};
+    case "tag":
+      return { documentTags: await readDocumentTags(client, signal) };
+    case "cost_centre":
+      return { costCentres: (await listCostCentres(client, signal)).items };
+    default: {
+      const unknown: never = groupBy;
+      throw new Error(`unknown grouping ${String(unknown)}`);
+    }
+  }
+}
+
+function filterNotes(filter: PnlFilter, tagCut: boolean): string[] {
+  const notes: string[] = [];
+  if (filter.costCentre !== undefined) {
+    notes.push(
+      "Only documents on the cost centre in filters.costCentre count: the cost centre of the " +
+        "whole document (sevDesk keeps one per invoice, credit note or voucher); cost centres on " +
+        "single voucher positions are not read.",
+    );
+  }
+  if (filter.tag !== undefined) {
+    notes.push("Only documents with the tag in filters.tag count.");
+  }
+  if (tagCut) {
+    notes.push(
+      `The tag has more than ${TAG_READ_MAX.toLocaleString("en-US")} uses: documents beyond the ` +
+        "first ones are not known here and were left out, so the figures are incomplete.",
+    );
+  }
+  return notes;
+}
+
+type Breakdown = z.output<typeof breakdownSchema>;
+type BreakdownGroup = Breakdown["groups"][number];
+
+/**
+ * Income, expenses and result per cost centre or per tag: each group's contributions run through
+ * the same {@link aggregate} as the whole report, so a cost-centre breakdown (one group per
+ * document, "none" included) adds up to the totals exactly; tag groups overlap when a document has
+ * several tags.
+ */
+function breakdownOf(
+  by: PnlGrouping,
+  contributions: readonly Contribution[],
+  source: GroupingSource,
+  context: {
+    readonly accounts: AccountDatevList | undefined;
+    readonly importVatAccounts: ReadonlySet<number>;
+    readonly truncated: boolean;
+  },
+): Breakdown {
+  const parts = new Map<string, Contribution[]>();
+  let overlap = false;
+  for (const contribution of contributions) {
+    const keys = groupKeysOf(by, contribution.document.header, source);
+    if (keys.length > 1) overlap = true;
+    for (const key of keys) {
+      const part = parts.get(key) ?? [];
+      part.push(contribution);
+      parts.set(key, part);
+    }
+  }
+  const groups = [...parts].map(([key, part]): BreakdownGroup => {
+    const sums = aggregate(part, context.accounts, context.importVatAccounts);
+    const income = decimal(sums.income.total.amount);
+    const expenses = decimal(sums.expenses.total.amount);
+    return {
+      key,
+      ...groupLabel(by, key, source),
+      income: eur(income),
+      expenses: eur(expenses),
+      result: eur(subtract(income, expenses)),
+      documents: new Set(part.map((entry) => headerKey(entry.document.header))).size,
+    };
+  });
+  groups.sort(
+    (a, b) =>
+      Number(a.key === "none") - Number(b.key === "none") ||
+      compare(b.expenses.amount, a.expenses.amount) ||
+      compare(b.income.amount, a.income.amount) ||
+      a.key.localeCompare(b.key),
+  );
+  return {
+    by,
+    overlap,
+    complete: !context.truncated && source.documentTags?.complete !== false,
+    groups,
+  };
+}
+
+/** The groups a document counts in: its cost centre, or each of its tags; `none` without. */
+function groupKeysOf(by: PnlGrouping, header: DocumentHeader, source: GroupingSource): string[] {
+  if (by === "cost_centre") {
+    return [header.costCentreId === undefined ? "none" : `cost_centre:${header.costCentreId}`];
+  }
+  const ids = source.documentTags?.byDocument.get(headerKey(header)) ?? [];
+  return ids.length === 0 ? ["none"] : ids.map((id) => `tag:${id}`);
+}
+
+function groupLabel(
+  by: PnlGrouping,
+  key: string,
+  source: GroupingSource,
+): Pick<BreakdownGroup, "costCentre" | "tag"> {
+  const match = /:(\d+)$/.exec(key);
+  if (match?.[1] === undefined) return {};
+  const id = Number(match[1]);
+  if (by === "cost_centre") {
+    return { costCentre: source.costCentres?.find((centre) => centre.id === id) ?? { id } };
+  }
+  return { tag: compact({ id, name: source.documentTags?.tags.get(id)?.name }) };
+}
+
+function breakdownNotes(breakdown: Breakdown, source: GroupingSource): string[] {
+  const notes: string[] = [];
+  if (breakdown.by === "cost_centre") {
+    notes.push(
+      "Breakdown by the cost centre (Kostenstelle) of the whole document: one per document, so " +
+        "the groups add up to income, expenses and result; documents without one are in the " +
+        "group none.",
+    );
+  } else {
+    notes.push(
+      breakdown.overlap
+        ? "Breakdown by tag: a document with several tags counts in each of its tag groups, so " +
+            "the groups add up to more than income, expenses and result (breakdown.overlap). " +
+            "Documents without a tag are in the group none."
+        : "Breakdown by tag: no document here has more than one tag, so the groups add up to " +
+            "the totals. Documents without a tag are in the group none.",
+    );
+  }
+  if (source.documentTags?.complete === false) {
+    notes.push(
+      `The account has more than ${TAG_READ_MAX.toLocaleString("en-US")} tag relations; only ` +
+        "the first ones were read, so some documents may be missing from their tag groups or " +
+        "sit in none: the breakdown is incomplete.",
+    );
+  }
+  return notes;
 }
 
 // ---------------------------------------------------------------------------------------------

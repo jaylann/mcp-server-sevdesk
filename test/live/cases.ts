@@ -132,6 +132,12 @@ export const READ_CASES: readonly LiveCase[] = [
     label: `sevdesk_records_summarize (${subject})`,
     args: () => ({ subject }),
   })),
+  // #87: the breakdowns by tag (all of the account's tag relations) and by cost centre.
+  ...(["tag", "cost_centre"] as const).map((groupBy) => ({
+    tool: "sevdesk_records_summarize",
+    label: `sevdesk_records_summarize (vouchers by ${groupBy})`,
+    args: () => ({ subject: "vouchers", groupBy }),
+  })),
   // Local files: registered only with SEVDESK_OUTPUT_DIR / SEVDESK_FILE_DIRS (the read-only run
   // sets both to temporary folders); a tool that is not listed is skipped.
   {
@@ -163,6 +169,16 @@ export const READ_CASES: readonly LiveCase[] = [
     args: () => ({ year: NOW.getFullYear(), month: NOW.getMonth() + 1 }),
   },
   { tool: "sevdesk_profit_and_loss", args: () => ({ year: NOW.getFullYear() }) },
+  {
+    tool: "sevdesk_profit_and_loss",
+    label: "sevdesk_profit_and_loss (by cost centre)",
+    args: () => ({
+      year: NOW.getFullYear(),
+      month: NOW.getMonth() + 1,
+      basis: "accrual",
+      groupBy: "cost_centre",
+    }),
+  },
   { tool: "sevdesk_csv_export", args: () => ({ subject: "invoices" }) },
   // M6: the generic read (advanced toolset), on an undocumented endpoint no other tool reads.
   { tool: "sevdesk_api_get", args: () => ({ path: "/TextTemplate", limit: 5 }) },

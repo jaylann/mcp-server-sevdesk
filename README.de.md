@@ -88,7 +88,9 @@ Rechnungen, Gutschriften, Aufträge und Belege können Tags tragen (Projekte, Ku
 `sevdesk_tags_list` zeigt jeden Tag mit seinen Verwendungen, die vier Listenwerkzeuge filtern nach
 Tag, und `sevdesk_document_tag` (Stufe `write`) fügt einem Dokument einen Tag hinzu oder entfernt
 ihn. Rechnungs-, Beleg- und Gutschriftsentwürfe nehmen eine Kostenstelle mit ID, Nummer oder Namen
-an, und die Rechnungs- und Belegliste filtern danach.
+an, und die Rechnungs- und Belegliste filtern danach. Die Summen und die Gewinn- und
+Verlustrechnung filtern und gruppieren nach Tag und nach Kostenstelle („Was hat Projekt X
+gekostet?“).
 
 Die Umsatzsteuer-Auswertung ist deutlich als Schätzung gekennzeichnet (Soll- oder
 Istversteuerung). Jedes Schreibwerkzeug akzeptiert `dryRun: true` und gibt dann nur genau das

@@ -188,6 +188,18 @@ Auftrag an, speichert sie aber nicht. Eine Änderung ohne `costCentre` behält d
 `removeCostCentre: true` nimmt sie mit den Änderungswerkzeugen für Rechnungen und Belege von einem
 Entwurf. Die Kostenstellen selbst verwaltest du in sevDesk.
 
+### Was hat Projekt X gekostet?
+
+Frag danach: „Was hat das Projekt Website-Relaunch dieses Jahr gekostet?“ oder „Zeig die Ausgaben
+dieses Monats auf der Kostenstelle München“. `sevdesk_records_summarize` und
+`sevdesk_profit_and_loss` nehmen einen `tag` oder eine `costCentre` und zählen nur diese
+Dokumente; `groupBy` `tag` oder `cost_centre` zeigt alle Projekte oder Kostenstellen
+nebeneinander. Ein Name, den das Konto nicht hat, wird abgelehnt, statt mit den Summen aller
+Dokumente beantwortet zu werden. Ein Dokument mit mehreren Tags zählt für jeden davon, deshalb
+ergeben die Tag-Gruppen zusammen mehr als die Gesamtsumme, und die Antwort sagt es; Kostenstellen,
+eine je Dokument, gehen in der Summe auf. Mehr dazu:
+[Auswertungen und Exporte](guides/evaluations.de.md#nach-projekt-tag-oder-kostenstelle).
+
 ## Hilfe
 
 ### Wo bekomme ich Hilfe?

@@ -3868,8 +3868,30 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           ],
           "type": "string",
         },
+        "costCentre": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Only documents booked on this Kostenstelle: its id (number), or its number or name (text); see sevdesk_reference_lookup kind=cost_centres.",
+        },
         "from": {
           "description": "First day, YYYY-MM-DD (instead of year).",
+          "type": "string",
+        },
+        "groupBy": {
+          "description": "Adds income, expenses and result per cost_centre (Kostenstelle; the groups add up) or per tag (a document with several tags counts in each).",
+          "enum": [
+            "cost_centre",
+            "tag",
+          ],
           "type": "string",
         },
         "month": {
@@ -3883,6 +3905,12 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "maximum": 4,
           "minimum": 1,
           "type": "integer",
+        },
+        "tag": {
+          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
         },
         "to": {
           "description": "Last day, YYYY-MM-DD (instead of year).",
@@ -4007,13 +4035,27 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "exclusiveMinimum": 0,
           "type": "integer",
         },
+        "costCentre": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Only documents booked on this Kostenstelle: its id (number), or its number or name (text); see sevdesk_reference_lookup kind=cost_centres.",
+        },
         "from": {
           "description": "First day to include, YYYY-MM-DD (Berlin time).",
           "type": "string",
         },
         "groupBy": {
           "default": "none",
-          "description": "none, month, quarter, status, contact (customer/supplier; not for transactions) or account (transactions only).",
+          "description": "none, month, quarter, status, contact (customer/supplier; not for transactions), account (transactions only), tag (a document with several tags counts in each; see groupsOverlap) or cost_centre (Kostenstelle of the document).",
           "enum": [
             "none",
             "month",
@@ -4021,6 +4063,8 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
             "status",
             "contact",
             "account",
+            "tag",
+            "cost_centre",
           ],
           "type": "string",
         },
@@ -4076,6 +4120,12 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
             "vouchers",
             "transactions",
           ],
+          "type": "string",
+        },
+        "tag": {
+          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+          "maxLength": 255,
+          "minLength": 1,
           "type": "string",
         },
         "to": {
@@ -7662,8 +7712,30 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           ],
           "type": "string",
         },
+        "costCentre": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Only documents booked on this Kostenstelle: its id (number), or its number or name (text); see sevdesk_reference_lookup kind=cost_centres.",
+        },
         "from": {
           "description": "First day, YYYY-MM-DD (instead of year).",
+          "type": "string",
+        },
+        "groupBy": {
+          "description": "Adds income, expenses and result per cost_centre (Kostenstelle; the groups add up) or per tag (a document with several tags counts in each).",
+          "enum": [
+            "cost_centre",
+            "tag",
+          ],
           "type": "string",
         },
         "month": {
@@ -7677,6 +7749,12 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "maximum": 4,
           "minimum": 1,
           "type": "integer",
+        },
+        "tag": {
+          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
         },
         "to": {
           "description": "Last day, YYYY-MM-DD (instead of year).",
@@ -7801,13 +7879,27 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "exclusiveMinimum": 0,
           "type": "integer",
         },
+        "costCentre": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Only documents booked on this Kostenstelle: its id (number), or its number or name (text); see sevdesk_reference_lookup kind=cost_centres.",
+        },
         "from": {
           "description": "First day to include, YYYY-MM-DD (Berlin time).",
           "type": "string",
         },
         "groupBy": {
           "default": "none",
-          "description": "none, month, quarter, status, contact (customer/supplier; not for transactions) or account (transactions only).",
+          "description": "none, month, quarter, status, contact (customer/supplier; not for transactions), account (transactions only), tag (a document with several tags counts in each; see groupsOverlap) or cost_centre (Kostenstelle of the document).",
           "enum": [
             "none",
             "month",
@@ -7815,6 +7907,8 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
             "status",
             "contact",
             "account",
+            "tag",
+            "cost_centre",
           ],
           "type": "string",
         },
@@ -7870,6 +7964,12 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
             "vouchers",
             "transactions",
           ],
+          "type": "string",
+        },
+        "tag": {
+          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+          "maxLength": 255,
+          "minLength": 1,
           "type": "string",
         },
         "to": {
@@ -9509,8 +9609,30 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           ],
           "type": "string",
         },
+        "costCentre": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Only documents booked on this Kostenstelle: its id (number), or its number or name (text); see sevdesk_reference_lookup kind=cost_centres.",
+        },
         "from": {
           "description": "First day, YYYY-MM-DD (instead of year).",
+          "type": "string",
+        },
+        "groupBy": {
+          "description": "Adds income, expenses and result per cost_centre (Kostenstelle; the groups add up) or per tag (a document with several tags counts in each).",
+          "enum": [
+            "cost_centre",
+            "tag",
+          ],
           "type": "string",
         },
         "month": {
@@ -9524,6 +9646,12 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           "maximum": 4,
           "minimum": 1,
           "type": "integer",
+        },
+        "tag": {
+          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
         },
         "to": {
           "description": "Last day, YYYY-MM-DD (instead of year).",
@@ -9648,13 +9776,27 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           "exclusiveMinimum": 0,
           "type": "integer",
         },
+        "costCentre": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer",
+            },
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Only documents booked on this Kostenstelle: its id (number), or its number or name (text); see sevdesk_reference_lookup kind=cost_centres.",
+        },
         "from": {
           "description": "First day to include, YYYY-MM-DD (Berlin time).",
           "type": "string",
         },
         "groupBy": {
           "default": "none",
-          "description": "none, month, quarter, status, contact (customer/supplier; not for transactions) or account (transactions only).",
+          "description": "none, month, quarter, status, contact (customer/supplier; not for transactions), account (transactions only), tag (a document with several tags counts in each; see groupsOverlap) or cost_centre (Kostenstelle of the document).",
           "enum": [
             "none",
             "month",
@@ -9662,6 +9804,8 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
             "status",
             "contact",
             "account",
+            "tag",
+            "cost_centre",
           ],
           "type": "string",
         },
@@ -9717,6 +9861,12 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
             "vouchers",
             "transactions",
           ],
+          "type": "string",
+        },
+        "tag": {
+          "description": "Only documents with this tag (name, case and accents ignored; see sevdesk_tags_list).",
+          "maxLength": 255,
+          "minLength": 1,
           "type": "string",
         },
         "to": {
