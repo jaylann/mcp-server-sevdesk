@@ -14,15 +14,15 @@ or a team to one server instead, see [remote mode](remote.md).
 - **Its API token.** In sevDesk, open Settings → Users, select that user and copy its API token
   (32 characters, digits and `a`–`f`). Treat it like a password.
 - **Node.js 22.12 or later**, which provides `npx`. Check with `node --version`. Claude Desktop
-  users can skip Node.js with the [extension](clients.md#the-extension).
+  users can skip Node.js with the [extension](clients/claude-desktop.md#the-extension).
 - **An MCP client**, for example Claude Desktop, Claude Code, Cursor or VS Code. The
-  [client guide](clients.md) has the exact format for each.
+  [client pages](clients.md#client-pages) have the exact format for each.
 
 ## 1. Add the server to your client
 
 Your client starts the server with `npx -y mcp-server-sevdesk` and passes the token in its
 environment. Most clients take this JSON (the file name differs per client, see
-[Clients](clients.md)):
+[Clients](clients.md#client-pages)):
 
 ```json
 {
@@ -113,14 +113,17 @@ Better options:
 - **Profiles** keep several accounts or setups in one file, each with its token source, and pick
   one with `SEVDESK_PROFILE`.
 
-Details: [Configuration](configuration.md#keep-the-token-in-the-os-keychain). If a token may have
-leaked, reset it in sevDesk; the old one stops working at once.
+Details: [Profiles and keychain](configuration/profiles.md). If a token may have leaked, reset it
+in sevDesk; the old one stops working at once.
 
 ## Next steps
 
 - [Clients](clients.md): the setup for your client, and which clients show confirmations.
 - [Permissions](permissions.md): tiers, confirmations, dry runs and the audit log.
-- [Configuration](configuration.md): every setting, toolsets, profiles and the command line.
+- Guides for [invoices](guides/invoices.md), [receipts](guides/receipts.md) and
+  [reports](guides/evaluations.md): everyday bookkeeping with the assistant.
+- [Configuration](configuration.md): every setting, toolsets, limits and the command line.
 - [Tool reference](tools.md): every tool and prompt with its arguments.
 - [Remote mode](remote.md): host the server for claude.ai, the mobile apps or a team.
+- [Troubleshooting](troubleshooting.md): when the server does not start or a tool fails.
 - [FAQ](faq.md): data and privacy, Update 2.0, e-invoices, DATEV.

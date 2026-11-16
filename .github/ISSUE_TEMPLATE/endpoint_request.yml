@@ -65,5 +65,5 @@ body:
     attributes:
       label: Contribution
       options:
-        - label: I would like to implement this (see "Adding a tool" in CONTRIBUTING.md).
+        - label: I would like to implement this (see "Adding a tool" in docs/contributing/changes.md).
         - label: I can record scrubbed fixtures from my own sevDesk account.

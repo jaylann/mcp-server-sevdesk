@@ -1,7 +1,9 @@
 # AGENTS.md — guidance for AI coding agents
 
 This file is for AI agents (Claude Code, Codex, Cursor, …) working in this repository. Human
-contributors: see [CONTRIBUTING.md](CONTRIBUTING.md); everything there applies to agents too.
+contributors: see [CONTRIBUTING.md](CONTRIBUTING.md) and the pages it links
+([Making changes](docs/contributing/changes.md), [Testing](docs/contributing/testing.md));
+everything there applies to agents too.
 
 ## Project
 

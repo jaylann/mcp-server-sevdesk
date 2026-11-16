@@ -191,7 +191,7 @@ export function localNameProblem(value: string, what: string): string | undefine
 
 /**
  * Reads and validates configuration from environment variables. Throws {@link ConfigError}
- * listing every problem. See README "Configuration" for the variables.
+ * listing every problem. See docs/configuration.md for the variables.
  */
 export function loadConfig(env: Env, deps: LoadConfigDeps = {}): Config {
   const readFile = deps.readFile ?? defaultReadFile;
