@@ -39,6 +39,10 @@ import {
   assertChanges,
   ChangeLog,
   draftPreview,
+  logContactPersonChange,
+  logPricingChanges,
+  logRecipientChanges,
+  logTextChanges,
   numberLabel,
   positionCount,
   ref,
@@ -385,55 +389,15 @@ export async function prepareOrderUpdate(
   );
 
   const log = new ChangeLog();
-  if (basics.contactChanged) {
-    log.value(
-      "contact",
-      "Customer",
-      `contact ${doc.contact?.id ?? "none"}`,
-      `contact ${basics.contact.contact.id}`,
-    );
-  }
-  if (basics.address !== undefined) {
-    log.value("address", "Address", basics.addressBefore, addressText(basics.address));
-  }
+  logRecipientChanges(log, doc, basics);
   log.value("date", "Date", storedDate, date);
-  if (basics.contactPersonChanged) {
-    log.value(
-      "contact person",
-      "Contact person",
-      doc.contactPerson === undefined ? undefined : `user ${doc.contactPerson.id}`,
-      `${basics.contactPerson.name ?? "user"} (user ${basics.contactPerson.id})`,
-    );
-  }
-  if (args.header !== undefined) log.value("title", "Title", doc.header, args.header);
-  if (args.headText !== undefined) log.note("intro text", "Intro text", "replaced");
-  if (args.footText !== undefined) log.note("closing text", "Closing text", "replaced");
+  logContactPersonChange(log, doc, basics);
+  logTextChanges(log, doc.header, args);
   if (args.paymentTerms !== undefined)
     log.value("payment terms", "Payment terms", doc.paymentTerms, args.paymentTerms);
   if (args.deliveryTerms !== undefined)
     log.value("delivery terms", "Delivery terms", doc.deliveryTerms, args.deliveryTerms);
-  if (basics.modeChanged) {
-    log.value(
-      "price mode",
-      "Prices entered as",
-      basics.mode === "net" ? "gross" : "net",
-      basics.mode,
-    );
-  }
-  if (basics.taxChanged)
-    log.note(
-      "tax",
-      "Tax",
-      `${taxText(basics.rule, basics.tax)}; text: ${basics.tax.taxText ?? "(none)"}`,
-    );
-  if (basics.currencyChanged) log.value("currency", "Currency", doc.currency, basics.currency);
-  if (basics.positions !== undefined) {
-    log.note(
-      "positions",
-      "Positions",
-      `replace ${positionCount(current.positions.length)} with ${positionCount(basics.positions.length)}`,
-    );
-  }
+  logPricingChanges(log, doc, basics, current.positions.length);
 
   const typeName = orderTypeLabel(code);
   const customer = customerText(basics.contact.contact.displayName, basics.contact.contact.id);

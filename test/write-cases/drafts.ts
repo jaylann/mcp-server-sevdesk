@@ -1,4 +1,5 @@
 import { creditNoteCreateDraftTool } from "../../src/tools/credit-notes/draft-create.js";
+import { creditNoteUpdateDraftTool } from "../../src/tools/credit-notes/draft-update.js";
 import { invoiceCreateDraftTool } from "../../src/tools/invoices/draft-create.js";
 import { invoiceUpdateDraftTool } from "../../src/tools/invoices/draft-update.js";
 import { orderCreateDraftTool } from "../../src/tools/orders/draft-create.js";
@@ -7,6 +8,7 @@ import type { WriteToolCase } from "../helpers/write-cases.js";
 import {
   creditNoteCreateArgs,
   creditNoteCreateRoutes,
+  creditNoteUpdateRoutes,
   invoiceCreateArgs,
   invoiceCreateRoutes,
   invoiceUpdateRoutes,
@@ -48,6 +50,17 @@ export const DRAFTS_CASES: readonly WriteToolCase[] = [
       { method: "GET", path: "/CreditNote/Factory/getNextCreditNoteNumber" },
       { method: "POST", path: "/CreditNote/Factory/saveCreditNote" },
     ],
+  },
+  {
+    label: "update a draft credit note",
+    tool: creditNoteUpdateDraftTool,
+    args: {
+      id: 2202,
+      header: "Gutschrift Reklamation 17",
+      positions: [{ name: "Preisnachlass", quantity: 2, unitPrice: 25, taxRate: 19 }],
+    },
+    routes: creditNoteUpdateRoutes,
+    writes: [{ method: "POST", path: "/CreditNote/Factory/saveCreditNote" }],
   },
   {
     label: "create a draft offer",

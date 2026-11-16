@@ -25,11 +25,15 @@ import { statusDto } from "../common.js";
 import type { CountryReadOptions } from "../country-codes.js";
 import { getInvoice, type InvoiceDetails } from "../invoices.js";
 import { documentTypeByCode } from "../reference-data.js";
-import { berlinDay, type CurrentInvoice, loadCurrentInvoice } from "./current.js";
+import { berlinDay, loadCurrentInvoice } from "./current.js";
 import {
   assertChanges,
   ChangeLog,
   draftPreview,
+  logContactPersonChange,
+  logPricingChanges,
+  logRecipientChanges,
+  logTextChanges,
   numberLabel,
   positionCount,
   ref,
@@ -38,6 +42,7 @@ import {
   storedTotalText,
   structuredAddress,
   taxText,
+  updatedAddressFields,
 } from "./document.js";
 import { duplicateWarning, findDuplicates } from "./duplicates.js";
 import {
@@ -87,12 +92,11 @@ import {
 import { readBack, readBackNotes } from "./read-back.js";
 import { addressInputShape } from "./recipient.js";
 import {
-  addressBlock,
   type CreateArgs,
   type DraftCallOptions,
   resolveCreateBasics,
   resolveUpdateBasics,
-  type StoredAddress,
+  structuredStoredAddress,
   type UpdateArgs,
 } from "./shared.js";
 import { DEFAULT_TAX_RULE_ID, type RuleScope, SALES_TAX_RULE_IDS } from "./tax.js";
@@ -291,7 +295,7 @@ export async function prepareInvoiceUpdate(
   const basics = await resolveUpdateBasics(
     client,
     doc,
-    invoiceStoredAddress(doc),
+    structuredStoredAddress(doc),
     current.positions,
     args,
     {
@@ -339,16 +343,7 @@ export async function prepareInvoiceUpdate(
         currency: basics.currency,
         showNet: basics.mode === "net",
         ...basics.tax,
-        ...(basics.address === undefined
-          ? {
-              address: doc.address,
-              addressName: doc.addressName,
-              addressStreet: doc.addressStreet,
-              addressZip: doc.addressZip,
-              addressCity: doc.addressCity,
-              addressCountry: storedRef(doc.addressCountry, "StaticCountry"),
-            }
-          : { address: addressBlock(basics.address), ...structuredAddress(basics.address) }),
+        ...updatedAddressFields(doc, basics.address),
         customerInternalNote: doc.customerInternalNote,
         paymentMethod: storedRef(doc.paymentMethod, "PaymentMethod"),
         costCentre: storedRef(doc.costCentre, "CostCentre"),
@@ -373,17 +368,7 @@ export async function prepareInvoiceUpdate(
   );
 
   const log = new ChangeLog();
-  if (basics.contactChanged) {
-    log.value(
-      "contact",
-      "Customer",
-      `contact ${doc.contact?.id ?? "none"}`,
-      `contact ${basics.contact.contact.id}`,
-    );
-  }
-  if (basics.address !== undefined) {
-    log.value("address", "Address", basics.addressBefore, addressText(basics.address));
-  }
+  logRecipientChanges(log, doc, basics);
   log.value("date", "Invoice date", storedDate, date);
   log.value(
     "delivery date",
@@ -403,39 +388,9 @@ export async function prepareInvoiceUpdate(
         : `${doc.timeToPay} days`
       : `${args.timeToPay} days`,
   );
-  if (basics.contactPersonChanged) {
-    log.value(
-      "contact person",
-      "Contact person",
-      doc.contactPerson === undefined ? undefined : `user ${doc.contactPerson.id}`,
-      `${basics.contactPerson.name ?? "user"} (user ${basics.contactPerson.id})`,
-    );
-  }
-  if (args.header !== undefined) log.value("title", "Title", doc.header, args.header);
-  if (args.headText !== undefined) log.note("intro text", "Intro text", "replaced");
-  if (args.footText !== undefined) log.note("closing text", "Closing text", "replaced");
-  if (basics.modeChanged) {
-    log.value(
-      "price mode",
-      "Prices entered as",
-      basics.mode === "net" ? "gross" : "net",
-      basics.mode,
-    );
-  }
-  if (basics.taxChanged)
-    log.note(
-      "tax",
-      "Tax",
-      `${taxText(basics.rule, basics.tax)}; text: ${basics.tax.taxText ?? "(none)"}`,
-    );
-  if (basics.currencyChanged) log.value("currency", "Currency", doc.currency, basics.currency);
-  if (basics.positions !== undefined) {
-    log.note(
-      "positions",
-      "Positions",
-      `replace ${positionCount(current.positions.length)} with ${positionCount(basics.positions.length)}`,
-    );
-  }
+  logContactPersonChange(log, doc, basics);
+  logTextChanges(log, doc.header, args);
+  logPricingChanges(log, doc, basics, current.positions.length);
 
   const customer = customerText(basics.contact.contact.displayName, basics.contact.contact.id);
   const facts: PreviewFact[] = [
@@ -499,32 +454,6 @@ export async function executeInvoiceDraft(
     { noun: "invoice", finalizeTool: FINALIZE_TOOL, expected: state.expected },
   );
   return { id, details, notes };
-}
-
-/**
- * The stored address of an invoice: its structured fields when any is set (drafts saved through
- * the API), else the free-text `address` (web-app drafts), else none.
- */
-function invoiceStoredAddress(doc: CurrentInvoice): StoredAddress {
-  const countryId = doc.addressCountry?.id;
-  const parts = {
-    name: doc.addressName,
-    street: doc.addressStreet,
-    zip: doc.addressZip,
-    city: doc.addressCity,
-  };
-  if (Object.values(parts).some((part) => part !== undefined)) {
-    const place = [parts.zip, parts.city].filter((part) => part !== undefined).join(" ");
-    return {
-      base: { kind: "parts", parts: { ...parts, countryId } },
-      lines: [parts.name, parts.street, place],
-      countryId,
-    };
-  }
-  if (doc.address !== undefined) {
-    return { base: { kind: "text", countryId }, lines: [doc.address], countryId };
-  }
-  return { base: { kind: "none" }, lines: [], countryId };
 }
 
 /** Only regular draft invoices that are not enshrined can be updated here. */

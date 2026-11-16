@@ -259,6 +259,42 @@ export interface StoredAddress {
   readonly countryId?: number | undefined;
 }
 
+/** The stored address fields of an invoice or credit note (structured parts and free text). */
+export interface StoredAddressFields {
+  readonly address?: string | undefined;
+  readonly addressName?: string | undefined;
+  readonly addressStreet?: string | undefined;
+  readonly addressZip?: string | undefined;
+  readonly addressCity?: string | undefined;
+  readonly addressCountry?: { readonly id: number } | undefined;
+}
+
+/**
+ * The stored address of an invoice or credit note: its structured fields when any is set (drafts
+ * saved through the API), else the free-text `address` (web-app drafts), else none.
+ */
+export function structuredStoredAddress(doc: StoredAddressFields): StoredAddress {
+  const countryId = doc.addressCountry?.id;
+  const parts = {
+    name: doc.addressName,
+    street: doc.addressStreet,
+    zip: doc.addressZip,
+    city: doc.addressCity,
+  };
+  if (Object.values(parts).some((part) => part !== undefined)) {
+    const place = [parts.zip, parts.city].filter((part) => part !== undefined).join(" ");
+    return {
+      base: { kind: "parts", parts: { ...parts, countryId } },
+      lines: [parts.name, parts.street, place],
+      countryId,
+    };
+  }
+  if (doc.address !== undefined) {
+    return { base: { kind: "text", countryId }, lines: [doc.address], countryId };
+  }
+  return { base: { kind: "none" }, lines: [], countryId };
+}
+
 export interface UpdateArgs extends AddressInput {
   readonly contactId?: number | undefined;
   readonly contactPersonId?: number | undefined;
@@ -314,7 +350,7 @@ export async function resolveUpdateBasics(
   storedAddress: StoredAddress,
   storedPositions: readonly PositionRecord[],
   args: UpdateArgs,
-  tax: Omit<TaxOptions, "defaultRuleId" | "smallBusiness" | "keepDefault">,
+  tax: Omit<TaxOptions, "defaultRuleId" | "keepDefault">,
   options: DraftCallOptions,
 ): Promise<UpdateBasics> {
   const { signal } = options;
@@ -331,13 +367,15 @@ export async function resolveUpdateBasics(
   }
 
   const regime = await accountRegime(client, options);
+  const special = regime === "small_business" ? tax.smallBusiness : undefined;
+  const scope = special?.scope ?? tax.scope;
   const storedRule =
     stored.taxRule === undefined
       ? ruleForLegacyTaxType(stored.taxType)
       : taxRuleById(stored.taxRule.id);
   const named = args.taxRuleId === undefined ? undefined : taxRuleById(args.taxRuleId);
-  if (named !== undefined) checkTaxRuleRegime(named, regime, tax.scope, tax.regimeMessage);
-  const rule = args.taxRuleId === undefined ? storedRule : taxRuleFor(args.taxRuleId, tax.scope);
+  if (named !== undefined) checkTaxRuleRegime(named, regime, scope, tax.regimeMessage);
+  const rule = args.taxRuleId === undefined ? storedRule : taxRuleFor(args.taxRuleId, scope);
   const taxChanged = args.taxRuleId !== undefined || args.taxText !== undefined;
   if (rule === undefined && (args.positions !== undefined || taxChanged)) {
     throw new SevdeskError({
@@ -425,6 +463,9 @@ export async function resolveUpdateBasics(
     warnings: [
       ...(regime === undefined && (taxChanged || positions !== undefined)
         ? [UNKNOWN_REGIME_WARNING]
+        : []),
+      ...(special?.warning !== undefined && (taxChanged || positions !== undefined)
+        ? [special.warning]
         : []),
       ...(args.taxRuleId === undefined &&
       rule !== undefined &&

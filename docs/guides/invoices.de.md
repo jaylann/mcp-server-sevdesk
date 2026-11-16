@@ -205,8 +205,16 @@ Stornorechnung schickst du dem Kunden mit `sevdesk_invoice_send_email`.
 
 Für eine bezahlte oder teilweise bezahlte Rechnung legt
 [`sevdesk_credit_note_create_from_invoice`](../tools.md#sevdesk_credit_note_create_from_invoice)
-(`write`, ohne Bestätigung) einen Gutschriftsentwurf mit allen ihren Positionen an, den der Assistent
-danach anpassen kann. Fertiggestellt wird er mit
+(`write`, ohne Bestätigung) einen Gutschriftsentwurf mit allen ihren Positionen an.
+
+> Lass in dieser Gutschrift nur die falsche Position stehen und schreib dafür 40 EUR netto gut.
+
+[`sevdesk_credit_note_update_draft`](../tools.md#sevdesk_credit_note_update_draft) (`write`, ohne
+Bestätigung) passt den Entwurf an wie die Änderung einer Rechnung: Er ändert nur die Felder, die du
+nennst, und neue Positionen ersetzen alle gespeicherten. Die Gutschrift behält ihre Nummer und die
+Rechnung, die sie mindert; ihre Positionen dürfen nur die Steuersätze dieser Rechnung haben, und
+Kontakt und Währung bleiben die der Rechnung. Ändern lassen sich nur Entwürfe. Fertiggestellt wird
+die Gutschrift mit
 [`sevdesk_credit_note_finalize`](../tools.md#sevdesk_credit_note_finalize) oder per E-Mail versendet
 mit [`sevdesk_credit_note_send_email`](../tools.md#sevdesk_credit_note_send_email), und eine
 Erstattung buchst du mit
