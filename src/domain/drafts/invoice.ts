@@ -123,9 +123,17 @@ import {
   type UpdateArgs,
 } from "./shared.js";
 import { DEFAULT_TAX_RULE_ID, type RuleScope, SALES_TAX_RULE_IDS } from "./tax.js";
+import {
+  footTextTemplateInput,
+  headTextTemplateInput,
+  resolveTemplateTexts,
+  type TextArgs,
+} from "./template-texts.js";
 
 const INVOICE_SCOPE: RuleScope = { allowedRuleIds: SALES_TAX_RULE_IDS, documents: "invoices" };
 const DEFAULT_HEADER = "Rechnung";
+/** The text template type (`objectType`) of invoices (recorded, D-115). */
+const INVOICE_TEXT_TYPE = "RE";
 const FINALIZE_TOOL = "sevdesk_invoice_finalize";
 
 const timeToPayInput = z
@@ -157,6 +165,8 @@ export const invoiceCreateInputShape = {
   header: headerInput.describe('Document title (Betreff); default "Rechnung".'),
   headText: headTextInput,
   footText: footTextInput,
+  headTextTemplate: headTextTemplateInput,
+  footTextTemplate: footTextTemplateInput,
   discount: discountInput.optional(),
   contactPersonId: contactPersonIdInput,
   ...addressInputShape,
@@ -189,32 +199,30 @@ export const invoiceUpdateInputShape = {
   header: headerInput,
   headText: headTextInput,
   footText: footTextInput,
+  headTextTemplate: headTextTemplateInput,
+  footTextTemplate: footTextTemplateInput,
   discount: discountUpdateInput,
   contactPersonId: contactPersonIdInput,
   ...addressInputShape,
 };
 
-export interface InvoiceCreateArgs extends CreateArgs {
+export interface InvoiceCreateArgs extends CreateArgs, TextArgs {
   readonly positions: readonly PositionInput[];
   readonly date?: string | undefined;
   readonly deliveryDate?: string | undefined;
   readonly deliveryDateUntil?: string | undefined;
   readonly timeToPay?: number | undefined;
   readonly header?: string | undefined;
-  readonly headText?: string | undefined;
-  readonly footText?: string | undefined;
   readonly discount?: DiscountInput | undefined;
 }
 
-export interface InvoiceUpdateArgs extends UpdateArgs {
+export interface InvoiceUpdateArgs extends UpdateArgs, TextArgs {
   readonly id: number;
   readonly date?: string | undefined;
   readonly deliveryDate?: string | undefined;
   readonly deliveryDateUntil?: string | undefined;
   readonly timeToPay?: number | undefined;
   readonly header?: string | undefined;
-  readonly headText?: string | undefined;
-  readonly footText?: string | undefined;
   /** A new document discount, `null` to remove the stored one, left out to keep it. */
   readonly discount?: DiscountInput | null | undefined;
 }
@@ -245,6 +253,7 @@ export async function prepareInvoiceCreate(
   const date = args.date ?? todayInBerlin();
   const delivery = resolveDeliveryPeriod(date, args.deliveryDate, args.deliveryDateUntil, true);
   const discount = args.discount === undefined ? undefined : resolveDiscount(args.discount);
+  const texts = await resolveTemplateTexts(client, args, INVOICE_TEXT_TYPE, signal);
   const basics = await resolveCreateBasics(
     client,
     args,
@@ -271,8 +280,8 @@ export async function prepareInvoiceCreate(
         deliveryDate: wireTimestamp(delivery.from),
         deliveryDateUntil: delivery.until === undefined ? undefined : wireTimestamp(delivery.until),
         header,
-        headText: args.headText,
-        footText: args.footText,
+        headText: texts.headText,
+        footText: texts.footText,
         timeToPay: args.timeToPay,
         discount: 0,
         currency,
@@ -297,6 +306,7 @@ export async function prepareInvoiceCreate(
     ...(args.timeToPay === undefined ? [] : [fact("Payment term", `${args.timeToPay} days`)]),
     fact("Contact person", `${contactPerson.name} (user ${contactPerson.id})`),
     fact("Title", header),
+    ...texts.facts,
     fact("Prices entered as", mode),
     fact("Tax", taxText(basics.rule, basics.tax)),
     fact("Tax text", basics.tax.taxText),
@@ -331,6 +341,7 @@ export async function prepareInvoiceUpdate(
   const current = await loadCurrentInvoice(client, args.id, signal);
   const doc = current.document;
   checkUpdatable(doc);
+  const texts = await resolveTemplateTexts(client, args, INVOICE_TEXT_TYPE, signal);
   const discounts = await readDocumentDiscounts(client, "invoice", doc.id, signal);
   const change = planDiscountChange(args.discount, discounts, `Invoice ${doc.id}`);
 
@@ -386,8 +397,8 @@ export async function prepareInvoiceUpdate(
         deliveryDate: wireTimestamp(delivery.from),
         deliveryDateUntil: delivery.until === undefined ? undefined : wireTimestamp(delivery.until),
         header: args.header ?? doc.header,
-        headText: args.headText ?? doc.headText,
-        footText: args.footText ?? doc.footText,
+        headText: texts.headText ?? doc.headText,
+        footText: texts.footText ?? doc.footText,
         timeToPay: args.timeToPay ?? doc.timeToPay,
         discount: wireNumber(doc.discount ?? "0", "the stored cash discount (Skonto)"),
         discountTime: doc.discountTime,
@@ -441,7 +452,7 @@ export async function prepareInvoiceUpdate(
       : `${args.timeToPay} days`,
   );
   logContactPersonChange(log, doc, basics);
-  logTextChanges(log, doc.header, args);
+  logTextChanges(log, doc.header, { ...args, ...texts });
   logPricingChanges(log, doc, basics, current.positions.length);
   const keptDiscount = logDiscountChange(log, change, discounts.rows, basics.currency);
 
@@ -463,6 +474,7 @@ export async function prepareInvoiceUpdate(
     fact("Invoice", `${doc.id} (${numberLabel(doc.invoiceNumber)}, draft)`),
     fact("Customer", customer),
     ...log.facts,
+    ...texts.facts,
     ...(basics.positions === undefined
       ? []
       : positionFacts(basics.positions, basics.mode, basics.currency)),

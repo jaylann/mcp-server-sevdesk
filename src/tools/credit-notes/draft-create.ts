@@ -27,8 +27,8 @@ export const creditNoteCreateDraftTool = defineWriteTool({
     "invoice's currency), the contact's invoice address, the account's only user as contact " +
     "person, tax rule 1 (11 on a Kleinunternehmer account). discount: a discount on the " +
     "whole credit note (Rabatt, percent or a fixed net amount). dryRun previews without saving. " +
-    "After: sevdesk_credit_note_update_draft to change it, sevdesk_credit_note_pdf, " +
-    "sevdesk_credit_note_finalize.",
+    "After: sevdesk_credit_note_update_draft to change it, sevdesk_document_set_layout for " +
+    "language, template or letterhead, sevdesk_credit_note_pdf, sevdesk_credit_note_finalize.",
   toolset: "credit-notes",
   tier: "write",
   annotations: {

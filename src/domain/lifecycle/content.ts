@@ -18,10 +18,17 @@
  * are left out, so the facts (and the preview hash) change only when the document does. What the
  * facts cannot show without further reads is named in {@link DocumentContent.notShown}, a fixed
  * sentence per kind.
+ *
+ * A draft's layout (language, template, letterhead) is not in the record (D-113): for invoices,
+ * orders and credit notes it is read with `render` without reload, one more request per approval
+ * (its answer carries the PDF as base64, dropped at once), listed after the printed content and
+ * bound with it, so a layout changed between the question and the approval asks again. Finalized
+ * documents keep the "not shown" sentence that names the layout.
  */
 import { z } from "zod";
 
 import { canonicalJson, sha256Hex } from "../../safety/hashing.js";
+import { SevdeskError } from "../../sevdesk/errors.js";
 import {
   parseUpstream,
   zBool01,
@@ -32,7 +39,7 @@ import {
   zText,
 } from "../../sevdesk/schema.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
-import { moneyFromUpstream, splitTotals, trimmedText } from "../common.js";
+import { cleanText, moneyFromUpstream, splitTotals, trimmedText } from "../common.js";
 import type { CreditNoteDetail } from "../credit-notes.js";
 import {
   type DiscountRow,
@@ -42,6 +49,14 @@ import {
   severalDiscountsWarning,
 } from "../document-discounts.js";
 import type { InvoiceDetail } from "../invoices.js";
+import {
+  currentChoiceName,
+  currentLanguage,
+  type DocumentLayout,
+  languageText,
+  layoutValues,
+  readDocumentLayout,
+} from "../layouts.js";
 import { isDecimal, isZero, type Money } from "../money.js";
 import type { OrderDetail } from "../orders.js";
 import { type ChildRows, listChildRows } from "../paging.js";
@@ -53,7 +68,7 @@ import {
   type PreviewLanguage,
 } from "../preview-text.js";
 import type { VoucherDetailDto } from "../vouchers.js";
-import { KINDS, type LifecycleDocument, type LifecycleKind } from "./documents.js";
+import { KINDS, type LifecycleDocument, type LifecycleKind, STATUS } from "./documents.js";
 import { documentFacts, type Fact, formatMoney } from "./preview.js";
 
 /**
@@ -125,6 +140,7 @@ function documentBinding(
   doc: LifecycleDocument,
   positions: ChildRows<unknown>,
   discounts: readonly unknown[] | undefined,
+  layout: LayoutRead | undefined,
 ): string {
   return sha256Hex(
     canonicalJson({
@@ -132,16 +148,50 @@ function documentBinding(
       record: doc.raw,
       positions,
       ...(discounts === undefined ? {} : { discounts }),
+      ...(layout === undefined
+        ? {}
+        : { layout: layout.read ? layoutValues(layout.layout) : "unreadable" }),
     }),
   );
 }
 
+/** The layout of a draft for an approval, or why it is not shown. */
+type LayoutRead =
+  { readonly read: true; readonly layout: DocumentLayout } | { readonly read: false };
+
+/**
+ * The layout of an invoice, order or credit note draft (`render` without reload, a call that
+ * changes nothing, D-113), or `undefined` for vouchers, recurring invoice templates and finalized
+ * documents (their layout is set and was approved when they were finalized; reading it would cost
+ * a request on every send and enshrine). A failure of the read is shown as a warning and bound as
+ * "unreadable" instead of failing the approval: no `write` tool can change the layout
+ * (`changeParameter` needs `commit`), so nothing written unseen hides behind it. A cancelled call
+ * stays cancelled, and a read this server's own guard blocks (`blocked`, which says nothing about
+ * sevDesk, e.g. after the render lost its place among the reading POSTs) fails the approval.
+ */
+async function readApprovalLayout(
+  client: SevdeskClient,
+  doc: LifecycleDocument,
+  signal: AbortSignal | undefined,
+): Promise<LayoutRead | undefined> {
+  if (doc.kind === "voucher" || doc.status !== STATUS.draft) return undefined;
+  if (doc.kind === "invoice" && doc.typeCode === "WKR") return undefined;
+  try {
+    return { read: true, layout: await readDocumentLayout(client, doc.kind, doc.id, signal) };
+  } catch (error) {
+    if (error instanceof SevdeskError && error.kind !== "aborted" && error.kind !== "blocked") {
+      return { read: false };
+    }
+    throw error;
+  }
+}
+
 /**
  * Reads the positions of `doc` and, for an invoice, credit note or order, its document discounts
- * (`getDiscounts`; two requests in parallel, the record itself came with `readLifecycleDocument`)
- * and returns the binding and the content facts built from the same data. A record, position or
- * discount row that does not fit is an `unexpected_response` error: nothing is approved on
- * content this server could not read.
+ * (`getDiscounts`), and for a draft of these its layout (`render` without reload): requests in
+ * parallel, the record itself came with `readLifecycleDocument`. Returns the binding and the
+ * content facts built from the same data. A record, position or discount row that does not fit
+ * is an `unexpected_response` error: nothing is approved on content this server could not read.
  */
 export async function readDocumentContent(
   client: SevdeskClient,
@@ -156,7 +206,7 @@ export async function readDocumentContent(
   const kind = doc.kind;
   // The rows as sevDesk sent them (full texts), checked against their parent like every
   // position read.
-  const [positions, discounts] = await Promise.all([
+  const [positions, discounts, layout] = await Promise.all([
     listChildRows(
       client,
       path,
@@ -165,8 +215,9 @@ export async function readDocumentContent(
       signal,
     ),
     kind === "voucher" ? undefined : readDocumentDiscounts(client, kind, doc.id, signal),
+    readApprovalLayout(client, doc, signal),
   ]);
-  const binding = documentBinding(doc, positions, discounts?.raw);
+  const binding = documentBinding(doc, positions, discounts?.raw, layout);
   if (discounts === undefined) {
     // A voucher: it has no document discounts.
     const rows = positions.rows.map((row) =>
@@ -193,17 +244,72 @@ export async function readDocumentContent(
         (a.positionNumber ?? Number.MAX_SAFE_INTEGER) -
           (b.positionNumber ?? Number.MAX_SAFE_INTEGER) || a.id - b.id,
     );
+  const pdfTool = `${KINDS[doc.kind].toolPrefix}_pdf`;
   const several = severalDiscountsWarning(discounts.rows.length);
+  const notes = [
+    // Several discounts: sevDesk's totals do not count all of them (D-116), so the total shown
+    // may not be what the rows listed suggest.
+    ...(several === undefined ? [] : [several]),
+    ...(layout?.read === false ? [layoutUnreadable(pdfTool)] : []),
+  ];
   return content(
     binding,
     (lang) => documentFacts(doc, lang, addressFacts(record, TEXT[lang])),
-    (lang) => salesFacts(doc, record, rows, positions.complete, discounts.rows, lang),
-    NOT_SHOWN[doc.kind],
-    // Several discounts: sevDesk's totals do not count all of them (D-116), so the total shown
-    // may not be what the rows listed suggest.
-    several === undefined ? [] : [several],
+    (lang) => [
+      ...salesFacts(doc, record, rows, positions.complete, discounts.rows, lang),
+      ...(layout?.read === true ? layoutFacts(layout.layout, lang) : []),
+    ],
+    layout?.read === true ? notShownWithLayout(pdfTool) : NOT_SHOWN[doc.kind],
+    notes,
     discounts.rows.length,
   );
+}
+
+/** A draft whose layout `render` could not read (see `readApprovalLayout`). */
+function layoutUnreadable(pdfTool: string): Phrase {
+  return phrase(
+    "The layout (language, template, letterhead) could not be read from sevDesk, so it is not " +
+      `shown here. Check it with ${pdfTool} before you approve.`,
+    "Das Layout (Sprache, Vorlage, Briefpapier) ließ sich nicht aus sevDesk lesen und wird hier " +
+      `nicht gezeigt. Prüfe es vor der Freigabe mit ${pdfTool}.`,
+  );
+}
+
+/**
+ * The language, template and letterhead of a draft, last among the printed facts. The language
+ * by its trusted name when it is one of `LANGUAGES`, else as sevDesk stores it; template and
+ * letterhead by the name sevDesk lists for them (untrusted) and their id, or "none chosen" when
+ * sevDesk lists the option without a value (orders and credit notes leave the letterhead empty,
+ * D-140). Options sevDesk does not list are left out.
+ */
+function layoutFacts(layout: DocumentLayout, lang: PreviewLanguage): Fact[] {
+  const t = TEXT[lang];
+  const facts: Fact[] = [];
+  const language = currentLanguage(layout.language);
+  push(
+    facts,
+    t.language,
+    language === undefined ? cleanText(layout.language?.value, 100) : languageText(language, lang),
+  );
+  for (const [key, label] of [
+    ["template", t.template],
+    ["letterpaper", t.letterpaper],
+  ] as const) {
+    const parameter = layout[key];
+    if (parameter === undefined) continue;
+    const id = cleanText(parameter.value, 200);
+    const name = currentChoiceName(parameter);
+    push(
+      facts,
+      label,
+      id === undefined
+        ? t.noneChosen
+        : name === undefined
+          ? `${t.id} ${id}`
+          : `${name} (${t.id} ${id})`,
+    );
+  }
+  return facts;
 }
 
 function content(
@@ -344,6 +450,10 @@ const TEXT = {
     receipt: "Receipt file (Belegdatei)",
     receiptYes: "attached (its content is not shown here)",
     receiptNo: "none attached",
+    language: "Language (Sprache)",
+    template: "Template (Vorlage)",
+    letterpaper: "Letterhead (Briefpapier)",
+    noneChosen: "none chosen (sevDesk's standard)",
   },
   de: {
     address: "Anschrift auf dem Dokument",
@@ -380,6 +490,10 @@ const TEXT = {
     receipt: "Belegdatei",
     receiptYes: "angehängt (ihr Inhalt wird hier nicht gezeigt)",
     receiptNo: "keine angehängt",
+    language: "Sprache",
+    template: "Vorlage",
+    letterpaper: "Briefpapier",
+    noneChosen: "nicht gewählt (Standard von sevDesk)",
   },
 } as const;
 
@@ -404,6 +518,20 @@ function salesNotShown(pdfTool: string): Phrase {
       "gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und " +
       `verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfe bei Bedarf ` +
       `${pdfTool}.`,
+  );
+}
+
+/** What the facts of a draft leave out when its layout was read and is listed. */
+function notShownWithLayout(pdfTool: string): Phrase {
+  return phrase(
+    "The facts list the stored texts, the address, the positions and the layout (language, " +
+      "template, letterhead). Not shown: the contact person (Ansprechpartner), the country of " +
+      "the address, the units and linked articles of the positions, and the other print " +
+      `options of the PDF (such as a payment QR code). Check ${pdfTool} if they matter.`,
+    "Die Angaben nennen die gespeicherten Texte, die Anschrift, die Positionen und das Layout " +
+      "(Sprache, Vorlage, Briefpapier). Nicht gezeigt werden: der Ansprechpartner, das Land der " +
+      "Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie die übrigen " +
+      `Druckoptionen des PDF (etwa ein QR-Code zur Zahlung). Prüfe bei Bedarf ${pdfTool}.`,
   );
 }
 

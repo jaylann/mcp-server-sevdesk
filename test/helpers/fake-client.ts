@@ -20,6 +20,7 @@ import { localFileAccess } from "../../src/safety/file-sources.js";
 import { parseTotal, readEnvelope } from "../../src/sevdesk/envelope.js";
 import { SevdeskError } from "../../src/sevdesk/errors.js";
 import { assertSafePath, resolveGetSafety } from "../../src/sevdesk/paths.js";
+import { isReadingPost } from "../../src/sevdesk/read-posts.js";
 import type {
   CollectedList,
   HttpMethod,
@@ -264,9 +265,12 @@ export class FakeSevdeskClient implements SevdeskClient {
     });
   }
 
-  /** Recorded calls that change data (any non-GET, or a GET declared as a side effect). */
+  /**
+   * Recorded calls that change data: any non-GET but a reading POST (`isReadingPost`, as the real
+   * client counts it), or a GET declared or recognized as a side effect.
+   */
   writes(): RecordedCall[] {
-    return this.calls.filter((call) => call.method !== "GET" || call.sideEffect);
+    return this.calls.filter(changedData);
   }
 
   private route(
@@ -308,6 +312,18 @@ export class FakeSevdeskClient implements SevdeskClient {
     }
     return { objects: envelope.objects, total: envelope.total };
   }
+}
+
+/** Whether a recorded call changed data (see {@link FakeSevdeskClient.writes}). */
+export function changedData(call: RecordedCall): boolean {
+  if (call.method === "GET") return call.sideEffect;
+  return !isReadingPost({
+    method: call.method,
+    path: call.path,
+    query: call.query,
+    body: call.body,
+    ...(call.form === undefined ? {} : { form: call.form }),
+  });
 }
 
 function checkRequest(path: string, signal: AbortSignal | undefined): void {

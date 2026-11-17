@@ -157,6 +157,7 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 | [D-114](#d-114-docserver-layout-lists-sit-under-objects-and-carry-large-base64-fields)             | DocServer layout lists sit under `objects` and carry large base64 fields               | Open                  |
 | [D-115](#d-115-post-and-delete-texttemplate-create-and-delete-text-templates)                      | `POST` and `DELETE /TextTemplate` create and delete text templates                     | Open                  |
 | [D-116](#d-116-document-discounts-discountsave-takes-a-list-getdiscounts-reads-them)               | Document discounts: `discountSave` takes a list; `getDiscounts` reads them             | Open                  |
+| [D-140](#d-140-languages-invoices-store-en-orders-and-credit-notes-the-locale-or-german)           | Languages: invoices store `en`, orders and credit notes the locale or German           | Open                  |
 
 ## Entries
 
@@ -924,7 +925,8 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   | `DELETE /Voucher/{voucherId}`                                                          | deleting draft vouchers (the spec has only GET and PUT; D-074)                                                     | recorded |
   | `GET`, `POST /CostCentre`, `GET`, `DELETE /CostCentre/{costCentreId}`                  | cost centres of documents (D-091)                                                                                  | recorded |
   | `DELETE /TagRelation/{tagRelationId}`                                                  | removing one tag from one document (D-089)                                                                         | recorded |
-  | `GET /TextTemplate`                                                                    | head and foot texts (read through `sevdesk_api_get`)                                                               | recorded |
+  | `GET /TextTemplate`                                                                    | head and foot texts of drafts by name and the `text_templates` lookup (D-115); also through `sevdesk_api_get`      | recorded |
+  | `POST /Order/{orderId}/render`, `POST /CreditNote/{creditNoteId}/render`               | reading the layout of an order or credit note with `{forceReload: false}` (D-113)                                  | recorded |
   | `GET /PartUnity`                                                                       | alternative units of parts, with their own price and factor (`sevdesk_api_get`)                                    | known    |
   | `GET /Document`, document download                                                     | attached documents and receipts (metadata through `sevdesk_api_get`, files through `sevdesk_voucher_receipt_save`) | recorded |
   | `GET /SevSequence/Factory/getByType`                                                   | next document number (see D-027); `sevdesk_api_get` refuses it                                                     | known    |
@@ -4078,16 +4080,33 @@ pdf}}}`. `parameters` lists 15 print options with their current `value`, `values
     `sumBlock`; `letterpaper` without a value), credit notes 15 (`printSwissPaymentSlip`, no
     `printCustomerNumber`).
   - The trial has one letterpaper; the template list is in D-114.
+  - Checked on 2026-11-17: `POST /Order/{id}/render` and `POST /CreditNote/{id}/render` (not in
+    the spec) with `{forceReload: false}` answer `{docId, pdf, parameters}` at the top level, also
+    on a draft without a preview, and leave the record unchanged; so does the invoice render on a
+    finalized invoice. On one order draft a render was enough for a later `changeParameter`. An
+    empty `letterpaper` value (`""`) on orders and credit notes means none was chosen. The
+    language values differ per kind (D-140).
 - **Sources:** spec (`updateInvoiceTemplate`, `updateOrderTemplate`, `updateCreditNoteTemplate`,
   `Model_ChangeLayout`, `Model_ChangeLayoutResponse`, `invoiceRender`); recorded 2026-11-16, trial
-  account, Update 2.0 (probes `write-change-parameter-draft`, `write-change-parameter-read-back`).
-- **Impact:** On a draft `changeParameter` changes no booking state, so it can be `write` tier
-  there; the HTTP client still requires `commit` for the endpoint (`src/sevdesk/paths.ts`). For
-  orders and credit notes the tool first fetches a `getPdf` preview (`preventSendBy=true`, which
-  leaves a draft a draft, B1). Since the record does not show the layout, the finalize preview
-  reads it from `metaData.parameters` (a call that changes nothing, or `render`) and never shows
-  the base64 `pdf`. (#94)
-- **Test:** pending: the #94 tools. Live: probes `write-change-parameter-draft`,
+  account, Update 2.0 (probes `write-change-parameter-draft`, `write-change-parameter-read-back`);
+  recorded 2026-11-17, trial account, Update 2.0 (one-off checks by the orchestrator).
+- **Impact:** `sevdesk_document_set_layout` sets language, template and letterhead of drafts only,
+  one `changeParameter` per key, never retried, and reads the layout back. It is a `commit` tool,
+  because the HTTP client keeps requiring `commit` for the endpoint (`src/sevdesk/paths.ts`): the
+  same request changes finalized documents. For orders and credit notes it first fetches a
+  `getPdf` preview (`preventSendBy=true`, which leaves a draft a draft, B1), the step recorded on
+  both kinds. Since the record does not show the layout, the tool and the finalize and send
+  previews of drafts read it with `render` `{forceReload: false}`, which the client treats as a
+  read (`src/sevdesk/read-posts.ts`: allowed in read-only mode and dry runs, never retried), and
+  never show the base64 `pdf`. An empty letterpaper is shown as "none chosen". (#94)
+- **Test:** `test/unit/tools/documents/layout-tool.test.ts` ("sends one changeParameter per key,
+  in order, as commit, the language in the locale form", "names what was set when a later request
+  fails, and never repeats one", "shows an empty letterhead as none chosen");
+  `test/regressions/layout-getpdf-prevent-send.test.ts`;
+  `test/regressions/approval-binds-document-layout.test.ts`; `test/unit/sevdesk/read-posts.test.ts`
+  ("never retries the render read", "still blocks a forced re-render in read-only mode before
+  sending"); `test/unit/domain/layouts.test.ts` ("reads render's top-level parameters and
+  changeParameter's metaData alike"). Live: probes `write-change-parameter-draft`,
   `write-change-parameter-read-back` (`test/unit/scripts/gaps-documents-probes.test.ts`, "reads
   changeParameter choices back from metaData and render, and finds the order form").
 
@@ -4110,13 +4129,23 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
 - **Sources:** spec (`getLetterpapersWithThumb`, `getTemplates`); recorded 2026-11-16, trial
   account, Update 2.0 (probe `read-docserver-layouts`; `pnpm fixtures:record`,
   `test/fixtures/recorded/2026-11-16/layouts/letterpapers.json`).
-- **Impact:** A layout lookup reads the lists with `type`, keeps only `id`, `name`,
-  `translationCode`, `type`, `default` and `sevClient`, and drops `pdf`, `img`, `html` and
-  `structure` before anything reaches the model; it needs a body cap well above the 1 MiB of
-  `sevdesk_api_get`, which keeps refusing `DocServer` (D-024). (#94)
+- **Impact:** `sevdesk_reference_lookup` (`letterpapers`, `templates` with `documentType`) and
+  `sevdesk_document_set_layout` read the lists (templates of one `type` only) through a capped
+  download (16 MiB, `LAYOUT_LIST_MAX_BYTES` in `src/domain/layouts.ts`), keep only id, name, the
+  default flag, `isCustom`, `premium`, `type` and whether `sevClient` is `"0"`, and drop `pdf`,
+  `img`, `html` and `structure` before anything reaches the model. `default` is read as a boolean
+  or a number. Both lists are sent without `limit`, an exception to the explicit-limit rule: the
+  recorded untyped template call sent none and got all 147 rows, past sevDesk's usual cut at
+  100, and the byte cap bounds the answer instead. `sevdesk_api_get` keeps its 1 MiB cap and keeps
+  refusing `DocServer` (D-024). (#94)
 - **Test:** `test/contract/recorded-gaps-documents.test.ts` ("answers result and letterpapers
   under objects, with the thumbnails scrubbed", "is what read-docserver-layouts describes, without
-  any base64"); the lookup: pending, #94.
+  any base64", "reads through the letterhead list parser: id, name and flags, no PDF or
+  thumbnail"); `test/unit/domain/layouts.test.ts` ("reads `default` as a boolean or a number, as
+  recorded (D-114)", "refuses a list larger than the cap without reading it, as an expected
+  limit", and without `limit`: "reads letterheads as id, name and flags, without the PDF or the
+  thumbnail", "reads the %s templates with type %s and keeps that type only");
+  `test/unit/tools/meta/reference-lookup-layouts.test.ts`.
 
 ### D-115: `POST` and `DELETE /TextTemplate` create and delete text templates
 
@@ -4128,12 +4157,27 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   `create`, `update`, `name`, `text`, `objectType`, `textType`, `sevClient`, `main` `"0"`,
   `category`); GET by id answers the same keys, and the `textType=HEAD` filter lists it.
   `DELETE /TextTemplate/{id}` answers `{objects: [null]}`, then GET answers 404.
+  - Checked on 2026-11-17: `POST /TextTemplate` does not validate `objectType`. The rows recorded
+    on 2026-11-10 (D-024) have `objectType` `RE`, `AN`, `MA`, `PAYMENT_CONFIRMATION` and `ALL`;
+    none is `AB`, `LI` or a credit note's.
 - **Sources:** recorded 2026-11-16, trial account, Update 2.0 (probe
-  `write-text-template-create-delete`).
-- **Impact:** Text templates can be created and chosen by name; the lookup reads them with
-  `textType` and `objectType`. (#94)
-- **Test:** pending: the #94 tools. Live: probe `write-text-template-create-delete`
-  (`test/unit/scripts/gaps-documents-probes.test.ts`, "creates and deletes a text template").
+  `write-text-template-create-delete`); recorded 2026-11-17, trial account, Update 2.0 (one-off
+  checks by the orchestrator).
+- **Impact:** Text templates are chosen by name, not created or deleted (no tool does that). The
+  invoice and order draft tools take `headTextTemplate` and `footTextTemplate`: invoices resolve
+  against `RE` rows, every order type (offer, order confirmation, delivery note) against `AN`
+  rows, since no `AB` or `LI` rows were seen and a stored `objectType` proves nothing about where
+  sevDesk uses a row; credit notes are not offered. An unknown or ambiguous name is refused, and the text is fenced in the
+  preview. The lookup (`text_templates`) and the drafts read them with one `GET /TextTemplate`
+  with an explicit `limit` of 1000, which sevDesk ignores (D-024). (#94)
+- **Test:** `test/unit/domain/text-templates.test.ts` ("reads every text template with one
+  request and an explicit limit", "finds the template of the place and type by name, in any
+  case"); `test/unit/tools/drafts/template-texts.test.ts` ("create: an order confirmation takes the
+  AN texts too (no AB rows exist)", "refuses an ambiguous name", "is offered by the invoice and
+  order draft tools, not the credit note ones"); `test/unit/tools/meta/reference-lookup-layouts.test.ts`
+  ("lists every text template, the text cut, with one request and an explicit limit"). Live:
+  probe `write-text-template-create-delete` (`test/unit/scripts/gaps-documents-probes.test.ts`,
+  "creates and deletes a text template").
 
 ### D-116: Document discounts: `discountSave` takes a list; `getDiscounts` reads them
 
@@ -4216,3 +4260,31 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   flag"), `test/unit/tools/orders/create-confirmation.test.ts` ("shows
   and binds the offer's document discounts in both languages (review of #112, L5)"). Live: probes
   `write-document-discount`, `read-order-get-discounts`.
+
+### D-140: Languages: invoices store `en`, orders and credit notes the locale or German
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `Model_ChangeLayout` takes `language` as a string without a list of values;
+  `invoiceRender` declares `parameters` with the choices (`values`) and the current `value`.
+- **Actual behavior:** Recorded on 2026-11-16 and checked on 2026-11-17 on drafts:
+  - The `language` parameter lists the same eight choices on invoices, orders and credit notes,
+    each with a `translationCode` `SEVDOC_LANG_<XX>_<YY>`: `de_DE`, `de_AT`, `de_CH`, `en_US`,
+    `es_ES`, `fr_FR`, `it_IT`, `el_GR`. All three kinds accept the locale form.
+  - Invoices store `en` for `en_US` and `de` for `de_DE` (the other six as sent) and refuse a
+    value they do not know with 500.
+  - Orders and credit notes store the locale form, and store `de_DE` for a value they do not
+    know, without an error.
+- **Sources:** spec (`Model_ChangeLayout`, `invoiceRender`); recorded 2026-11-16, trial account,
+  Update 2.0 (probe `write-change-parameter-read-back`); recorded 2026-11-17, trial account,
+  Update 2.0 (one-off checks by the orchestrator).
+- **Impact:** `sevdesk_document_set_layout` takes only the eight languages, sends them in the
+  locale form and checks them against the choices the document lists before sending. A stored
+  value is read through the choice that lists it, by its translation code, so `en` and `en_US`
+  are the same language in the preview and in the approval binding. Since orders and credit notes
+  fall back to German silently, the tool compares the language read back with the one sent and
+  reports a difference as a failure that names the stored language. (#94)
+- **Test:** `test/unit/domain/layouts.test.ts` ("offers the eight sevDesk lists, in the locale
+  form", "reads an invoice's stored en and an order's en_US as the same language");
+  `test/unit/tools/documents/layout-tool.test.ts` ("takes the eight languages sevDesk lists, and
+  nothing unknown", "refuses a language the document does not list, naming the ones it does",
+  "fails when sevDesk stores German instead of the language sent (D-140)").

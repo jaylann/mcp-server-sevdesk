@@ -1,10 +1,12 @@
 import { z } from "zod";
 
-import { compact } from "../../domain/common.js";
+import { cleanText, compact } from "../../domain/common.js";
 import {
   customFieldSettingDtoSchema,
   listCustomFieldSettings,
 } from "../../domain/contact-custom-fields.js";
+import { listLetterpapers, listTemplates } from "../../domain/layouts.js";
+import type { SalesKind } from "../../domain/lifecycle/documents.js";
 import { loadReceiptGuidance, RECEIPT_TYPES } from "../../domain/receipt-guidance.js";
 import {
   CONTACT_CATEGORIES,
@@ -17,6 +19,7 @@ import {
   STATUS_OBJECT_TYPES,
   TAX_RULES,
 } from "../../domain/reference-data.js";
+import { listTextTemplates } from "../../domain/text-templates.js";
 import { listUsers, userDtoSchema } from "../../domain/users.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import { defineTool } from "../define-tool.js";
@@ -32,6 +35,9 @@ const LOOKUP_KINDS = [
   "units",
   "payment_methods",
   "receipt_guidance",
+  "letterpapers",
+  "templates",
+  "text_templates",
   "contact_custom_fields",
 ] as const;
 type LookupKind = (typeof LOOKUP_KINDS)[number];
@@ -46,6 +52,29 @@ const GUIDANCE_ONLY_ARGS = [
   "limit",
   "offset",
 ] as const;
+
+/** The document types of kinds `templates` and `text_templates`. */
+const DOCUMENT_TYPE_ARGS = ["invoice", "order", "credit_note"] as const;
+type DocumentTypeArg = (typeof DOCUMENT_TYPE_ARGS)[number];
+
+const DOCUMENT_TYPE_KINDS: Readonly<Record<DocumentTypeArg, SalesKind>> = {
+  invoice: "invoice",
+  order: "order",
+  credit_note: "creditNote",
+};
+
+/**
+ * The text template type (`objectType`) the draft tools resolve each document type against:
+ * invoices `RE`, orders `AN` (the only order type text templates carry, D-115). Credit notes have
+ * no known type and are refused.
+ */
+const TEXT_TEMPLATE_TYPES: Readonly<Record<Exclude<DocumentTypeArg, "credit_note">, string>> = {
+  invoice: "RE",
+  order: "AN",
+};
+
+/** Characters of a text template's text the lookup shows. */
+const TEXT_TEMPLATE_PREVIEW = 1000;
 
 const taxRuleItem = z.object({
   id: z.number().int(),
@@ -129,6 +158,40 @@ const receiptGuidanceItem = z.object({
     .describe("Tax rules this account allows, each with its allowed tax rates."),
 });
 
+const letterpaperItem = z.object({
+  id: z.string().describe("Pass as letterpaper to sevdesk_document_set_layout."),
+  name: z.string().optional(),
+  default: z.boolean().describe("The account's default letterhead."),
+  custom: z.boolean().optional().describe("An own upload (sevDesk's isCustom)."),
+  stock: z.boolean().describe("One of sevDesk's own entries."),
+});
+
+const templateItem = z.object({
+  id: z.string().describe("Pass as template to sevdesk_document_set_layout."),
+  name: z.string().optional(),
+  type: z.string().optional().describe("sevDesk's document type: Invoice, Order or Creditnote."),
+  default: z.boolean().describe("The default template of this document type."),
+  custom: z.boolean().optional().describe("An own template (sevDesk's isCustom)."),
+  premium: z.boolean().optional(),
+  stock: z.boolean().describe("One of sevDesk's own templates."),
+});
+
+const textTemplateItem = z.object({
+  id: z.number().int(),
+  name: z.string().optional().describe("Pass as headTextTemplate or footTextTemplate."),
+  textType: z.string().optional().describe("HEAD (Kopftext), FOOT (Fußtext), TEXT (e-mail)."),
+  documentType: z
+    .string()
+    .optional()
+    .describe("sevDesk's objectType: RE invoice, AN offer, MA reminder, ALL, …"),
+  category: z.string().optional().describe("DOCUMENT or MAIL."),
+  default: z.boolean().describe("The default text of its type (sevDesk's main)."),
+  text: z
+    .string()
+    .optional()
+    .describe(`The text, up to ${String(TEXT_TEMPLATE_PREVIEW)} chars.`),
+});
+
 const output = z.object({
   kind: z.enum(LOOKUP_KINDS),
   source: z
@@ -162,6 +225,9 @@ const output = z.object({
     .array(receiptGuidanceItem)
     .optional()
     .describe("Kind receipt_guidance: one page of accounts, filtered."),
+  letterpapers: z.array(letterpaperItem).optional(),
+  templates: z.array(templateItem).optional(),
+  textTemplates: z.array(textTemplateItem).optional(),
   matched: z
     .number()
     .int()
@@ -189,9 +255,11 @@ export const referenceLookupTool = defineTool({
     "units (Einheiten), payment_methods (Zahlungsarten) and receipt_guidance (Kontierungshilfe: " +
     "which booking account (accountDatev) allows which tax rules and tax rates for expense or " +
     "revenue receipts (Belege); filter with accountNumber, taxRuleId and receiptType, paged " +
-    "with limit/offset) and contact_custom_fields (the custom contact fields, Zusatzfelder, " +
-    "defined in the sevDesk web app; their ids go into customFields of the contact tools). Use " +
-    "query to filter by a case-insensitive substring of names, codes or ids.",
+    "with limit/offset), letterpapers (Briefpapiere), templates (Vorlagen, with documentType), " +
+    "text_templates (Textvorlagen: head and foot texts, documentType optional) and " +
+    "contact_custom_fields (the custom contact fields, Zusatzfelder, defined in the sevDesk web " +
+    "app; their ids go into customFields of the contact tools). Use query to filter by a " +
+    "case-insensitive substring of names, codes or ids.",
   toolset: "meta",
   tier: "read",
   annotations: {
@@ -241,10 +309,20 @@ export const referenceLookupTool = defineTool({
       .min(0)
       .optional()
       .describe("receipt_guidance only: entries to skip; pass the previous nextOffset."),
+    documentType: z
+      .enum(DOCUMENT_TYPE_ARGS)
+      .optional()
+      .describe("templates (required) and text_templates: invoice, order or credit_note."),
   }),
   output,
   handler: async (args, ctx) => {
     if (args.kind === "receipt_guidance") {
+      if (args.documentType !== undefined) {
+        throw new SevdeskError({
+          kind: "validation",
+          message: "documentType only applies to kind=templates and kind=text_templates.",
+        });
+      }
       const data = await lookupReceiptGuidance(args, ctx);
       return { data, summary: receiptGuidanceSummary(data) };
     }
@@ -255,16 +333,103 @@ export const referenceLookupTool = defineTool({
         message: `${misplaced.join(", ")} only apply to kind=receipt_guidance; leave them out for kind=${args.kind}.`,
       });
     }
+    if (args.kind === "templates" || args.kind === "text_templates") {
+      const data = await lookupLayout(args.kind, args.documentType, args.query, ctx);
+      return { data, summary: lookupSummary(data, args.kind, args.query) };
+    }
+    if (args.documentType !== undefined) {
+      throw new SevdeskError({
+        kind: "validation",
+        message: `documentType only applies to kind=templates and kind=text_templates; leave it out for kind=${args.kind}.`,
+      });
+    }
     const data = await lookup(args.kind, args.query, ctx);
-    const filtered = args.query === undefined ? "" : " matching the query";
-    return {
-      data,
-      summary:
-        `${data.returned} of ${data.total} ${args.kind.replaceAll("_", " ")}${filtered}` +
-        `${data.truncated ? " (sevDesk has more than could be fetched)" : ""}.`,
-    };
+    return { data, summary: lookupSummary(data, args.kind, args.query) };
   },
 });
+
+/** "3 of 21 templates matching the query." for the unpaged kinds. */
+function lookupSummary(data: LookupOutput, kind: LookupKind, query: string | undefined): string {
+  const filtered = query === undefined ? "" : " matching the query";
+  return (
+    `${data.returned} of ${data.total} ${kind.replaceAll("_", " ")}${filtered}` +
+    `${data.truncated ? " (sevDesk has more than could be fetched)" : ""}.`
+  );
+}
+
+/**
+ * Kinds `templates` (one document type, required) and `text_templates` (all, or those of one
+ * document type). Base64 thumbnails, PDFs and HTML never leave `listTemplates`; a text template's
+ * text is cut to {@link TEXT_TEMPLATE_PREVIEW} characters.
+ */
+async function lookupLayout(
+  kind: "templates" | "text_templates",
+  documentType: DocumentTypeArg | undefined,
+  query: string | undefined,
+  ctx: ToolContext,
+): Promise<LookupOutput> {
+  const keep = matcher(query);
+  if (kind === "templates") {
+    if (documentType === undefined) {
+      throw new SevdeskError({
+        kind: "validation",
+        message: "kind=templates needs documentType (invoice, order or credit_note).",
+      });
+    }
+    const list = await listTemplates(ctx.client, DOCUMENT_TYPE_KINDS[documentType], ctx.signal);
+    const templates = list
+      .filter((item) => keep(item.id, item.name, item.type))
+      .map((item) =>
+        compact({
+          id: item.id,
+          name: item.name,
+          type: item.type,
+          default: item.isDefault,
+          custom: item.custom,
+          premium: item.premium,
+          stock: item.stock,
+        }),
+      );
+    return { ...counts(kind, "sevdesk", list.length, templates.length), templates };
+  }
+  if (documentType === "credit_note") {
+    throw new SevdeskError({
+      kind: "validation",
+      message:
+        "Text templates of credit notes are not offered: their type code in sevDesk is not " +
+        "known yet. Leave documentType out to list every text template.",
+    });
+  }
+  const type = documentType === undefined ? undefined : TEXT_TEMPLATE_TYPES[documentType];
+  const list = await listTextTemplates(ctx.client, ctx.signal);
+  const textTemplates = list.items
+    .filter(
+      (item) =>
+        (type === undefined || item.objectType === type) &&
+        keep(item.id, item.name, item.textType, item.objectType, item.category),
+    )
+    .map((item) =>
+      compact({
+        id: item.id,
+        name: item.name,
+        textType: item.textType,
+        documentType: item.objectType,
+        category: item.category,
+        default: item.isDefault,
+        text: cleanText(item.text, TEXT_TEMPLATE_PREVIEW),
+      }),
+    );
+  return {
+    kind,
+    source: "sevdesk",
+    total: list.total,
+    returned: textTemplates.length,
+    truncated: list.truncated,
+    hasMore: false,
+    limit: null,
+    textTemplates,
+  };
+}
 
 type LookupArgs = z.output<typeof referenceLookupTool.input>;
 
@@ -340,12 +505,27 @@ function receiptGuidanceSummary(data: LookupOutput): string {
 }
 
 async function lookup(
-  kind: Exclude<LookupKind, "receipt_guidance">,
+  kind: Exclude<LookupKind, "receipt_guidance" | "templates" | "text_templates">,
   query: string | undefined,
   ctx: ToolContext,
 ): Promise<LookupOutput> {
   const keep = matcher(query);
   switch (kind) {
+    case "letterpapers": {
+      const list = await listLetterpapers(ctx.client, ctx.signal);
+      const letterpapers = list
+        .filter((item) => keep(item.id, item.name))
+        .map((item) =>
+          compact({
+            id: item.id,
+            name: item.name,
+            default: item.isDefault,
+            custom: item.custom,
+            stock: item.stock,
+          }),
+        );
+      return { ...counts(kind, "sevdesk", list.length, letterpapers.length), letterpapers };
+    }
     case "tax_rules": {
       const items = TAX_RULES.map((rule) => ({
         id: rule.id,

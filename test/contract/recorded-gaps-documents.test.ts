@@ -4,10 +4,9 @@
  * (`scripts/lib/probes/gaps-documents-probes.ts`, spec/deviations.md D-107–D-116).
  *
  * The recurring templates run through the production invoice parser, the order discounts through
- * the document discount reader (`document-discounts.ts`). No production code reads the letterpaper
- * list yet, so its recorded shape is pinned here and fed to the probe that described it, as
- * `undocumented-endpoints.test.ts` does for D-024; the slice that adds a tool for it replaces this
- * check with its parser.
+ * the document discount reader (`document-discounts.ts`), the letterpaper list through the
+ * layout list parser (`layouts.ts`, `listLetterpapers`); its recorded shape is also pinned and
+ * fed to the probe that described it.
  *
  * Not recorded: `GET /DocServer/getTemplatesWithThumb` (3.2 MB even scrubbed; D-114 describes
  * it) and `GET /Order` (an older session holds the order list).
@@ -19,6 +18,7 @@ import { runProbes } from "../../scripts/lib/probes/runner.js";
 import { createScrubber, FAKE_PDF_BASE64 } from "../../scripts/lib/scrub.js";
 import { documentDiscountDto, readDocumentDiscounts } from "../../src/domain/document-discounts.js";
 import { mapInvoiceDetail } from "../../src/domain/invoices.js";
+import { listLetterpapers } from "../../src/domain/layouts.js";
 import { TEST_TOKEN } from "../helpers/config.js";
 import { FakeSevdeskClient, loadFixture } from "../helpers/fake-client.js";
 import { ScriptedClient, type ScriptedHandler } from "../unit/scripts/scripted-client.js";
@@ -178,6 +178,33 @@ describe("GET /DocServer/getLetterpapersWithThumb (D-114)", () => {
       /GET \/DocServer\/getLetterpapersWithThumb: application\/json, rows objects\.letterpapers, 1 row\(s\) \(0 default, 1 with sevClient "0", 0 other\); keys: id: string, pdf: string, sevClient: string, name: string, default: number, isCustom: boolean, img: string/,
     );
     expect(JSON.stringify(result)).not.toMatch(/[A-Za-z0-9+/]{200,}/);
+  });
+
+  it("reads through the letterhead list parser: id, name and flags, no PDF or thumbnail", async () => {
+    const fake = new FakeSevdeskClient([
+      {
+        path: "/DocServer/getLetterpapersWithThumb",
+        response: {
+          bytes: new TextEncoder().encode(JSON.stringify(body(file))),
+          contentType: "application/json",
+        },
+      },
+    ]);
+
+    const letterpapers = await listLetterpapers(fake);
+
+    expect(letterpapers).toEqual([
+      {
+        id: "Muster-Text 9",
+        name: "Musterfirma 3 GmbH",
+        isDefault: false,
+        custom: false,
+        stock: true,
+        type: undefined,
+        premium: undefined,
+      },
+    ]);
+    expect(JSON.stringify(letterpapers)).not.toContain("JVBERi0");
   });
 });
 

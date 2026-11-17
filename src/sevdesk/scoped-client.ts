@@ -7,20 +7,23 @@
  *   data and refuses requests to endpoints above that tier (`minimumWriteTier`); the HTTP client
  *   checks both again, plus the configuration.
  *
- * "Changes data" means what the HTTP client means: any non-GET, and GETs that
+ * "Changes data" means what the HTTP client means: any non-GET except the reading POSTs of
+ * `read-posts.ts` (`render` without reload of an invoice, order or credit note), and GETs that
  * `resolveGetSafety` classifies as side effects (a `getPdf` without `preventSendBy`,
  * `sendByWithRender`, DATEV `enshrine` flags, a next-number GET without `useNextNumber=false`,
- * which reserves the number) or that declare `sideEffect`.
+ * which reserves the number) or that declare `sideEffect`. These wrappers serialize a body to
+ * classify it but do not send it; the HTTP client classifies again the one text it sends.
  */
 import { tierCovers, type WriteTier } from "../safety/tiers.js";
 import { SevdeskError } from "./errors.js";
 import { minimumWriteTier, resolveGetSafety } from "./paths.js";
+import { isReadingPost } from "./read-posts.js";
 import type { SevdeskClient, SevdeskRequest } from "./types.js";
 
 /** Whether `request` changes data in sevDesk (same rule as the HTTP client). */
 export function changesData(request: SevdeskRequest): boolean {
   if (request.method !== "GET") {
-    return true;
+    return !isReadingPost(request);
   }
   return resolveGetSafety(request.path, request.query, request.sideEffect === true).sideEffect;
 }

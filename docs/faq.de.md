@@ -127,6 +127,16 @@ die gegen sevDesk geprüft sind. Welchen Rabatt ein Entwurf auch trägt, die Fre
 bevor du fertigstellst oder versendest, und eine Rechnung aus einem Angebot übernimmt dessen
 Rabatt.
 
+### Kann es eine englische Rechnung schreiben oder anderes Briefpapier nehmen?
+
+Ja, auf Entwürfen von Rechnungen, Aufträgen und Gutschriften: `sevdesk_document_set_layout` setzt
+die Sprache (acht, darunter Englisch), die Vorlage und das Briefpapier
+([Eine englische Rechnung auf anderem Briefpapier](guides/invoices.de.md#eine-englische-rechnung-auf-anderem-briefpapier)).
+Es braucht die Stufe `commit` und deine Bestätigung, weil sevDesk mit derselben Anfrage auch
+fertige Dokumente ändert. Kopf- und Fußtexte können über ihren Namen aus deinen Textvorlagen
+kommen; Textvorlagen anlegen oder löschen bleibt in sevDesk. Die Freigabe vor dem Fertigstellen
+oder Versenden eines Entwurfs zeigt Sprache, Vorlage und Briefpapier.
+
 ### Kann es mit E-Rechnungen umgehen?
 
 Ja, in beide Richtungen. Empfangene XRechnungen (UBL und CII) und ZUGFeRD-/Factur-X-Dateien werden

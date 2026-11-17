@@ -78,14 +78,16 @@ describe("sevdesk_invoice_send_email (spec request body; community record shapes
         },
       }),
     ]);
-    // Record, country, positions and document discounts, the email, the read-back.
-    expect(client.calls.map(({ method }) => method)).toEqual([
-      "GET",
-      "GET",
-      "GET",
-      "GET",
-      "POST",
-      "GET",
+    // Record, country, positions and document discounts, the draft's layout (render without
+    // reload, a reading POST), the email, the read-back.
+    expect(client.calls.map(({ method, path }) => `${method} ${path}`)).toEqual([
+      "GET /Invoice/1001",
+      "GET /StaticCountry",
+      "GET /InvoicePos",
+      "GET /Invoice/1001/getDiscounts",
+      "POST /Invoice/1001/render",
+      "POST /Invoice/1001/sendViaEmail",
+      "GET /Invoice/1001",
     ]);
     expect(output.data["invoice"]).toMatchObject({ status: { code: 200 }, sent: { via: "email" } });
     expect(output.data["email"]).toEqual({
@@ -119,10 +121,16 @@ describe("sevdesk_invoice_send_email (spec request body; community record shapes
     const to = plan.preview.facts.findIndex((fact) => fact.label === "To");
     expect(plan.preview.facts[to - 1]?.label).toBe("Paid so far");
     expect(plan.preview.facts[to + 7]?.label).toBe("Title on the document (Betreff)");
-    expect(plan.preview.facts.at(-1)).toEqual({
-      label: "Foot text (Fußtext)",
-      value: "Bitte überweisen Sie den Betrag innerhalb von 14 Tagen.",
-    });
+    // The foot text, then the draft's layout (D-113).
+    expect(plan.preview.facts.slice(-4)).toEqual([
+      {
+        label: "Foot text (Fußtext)",
+        value: "Bitte überweisen Sie den Betrag innerhalb von 14 Tagen.",
+      },
+      { label: "Language (Sprache)", value: "German (Germany), de_DE" },
+      { label: "Template (Vorlage)", value: "Standard (id tpl-standard)" },
+      { label: "Letterhead (Briefpapier)", value: "Briefpapier 1 (id lp-1)" },
+    ]);
     expect(plan.preview.facts.slice(to, to + 7)).toEqual([
       { label: "To", value: "kunde@example.com" },
       { label: "Cc", value: "a@example.com" },
@@ -151,9 +159,10 @@ describe("sevdesk_invoice_send_email (spec request body; community record shapes
       "Die Rechnung ist ein Entwurf: Der Versand stellt sie fertig (Entwurf → offen), sevDesk " +
         "vergibt ihre endgültige Nummer, und sie wird rechtlich bindend. Schreibt das Konto " +
         "Dokumente beim Abschließen automatisch fest, wird sie dabei auch festgeschrieben.",
-      "Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht " +
-        "gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und " +
-        "verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfe bei Bedarf " +
+      "Die Angaben nennen die gespeicherten Texte, die Anschrift, die Positionen und das Layout " +
+        "(Sprache, Vorlage, Briefpapier). Nicht gezeigt werden: der Ansprechpartner, das Land " +
+        "der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie die übrigen " +
+        "Druckoptionen des PDF (etwa ein QR-Code zur Zahlung). Prüfe bei Bedarf " +
         "sevdesk_invoice_pdf.",
     ]);
     expect(plan.previewDe.irreversible).toBe(true);
@@ -163,9 +172,10 @@ describe("sevdesk_invoice_send_email (spec request body; community record shapes
       "The invoice is a draft: sending finalizes it (draft → open), sevDesk assigns its final " +
         "number and it becomes legally binding. If the account enshrines documents on " +
         "completion, it is also enshrined (festgeschrieben).",
-      "The facts list the stored texts, the address and the positions. Not shown: the contact " +
-        "person (Ansprechpartner), the country of the address, the units and linked articles " +
-        "of the positions, and the layout of the PDF. Check sevdesk_invoice_pdf if they matter.",
+      "The facts list the stored texts, the address, the positions and the layout (language, " +
+        "template, letterhead). Not shown: the contact person (Ansprechpartner), the country of " +
+        "the address, the units and linked articles of the positions, and the other print " +
+        "options of the PDF (such as a payment QR code). Check sevdesk_invoice_pdf if they matter.",
     ]);
   });
 

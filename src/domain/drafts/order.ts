@@ -124,8 +124,19 @@ import {
   type UpdateArgs,
 } from "./shared.js";
 import { DEFAULT_TAX_RULE_ID, type RuleScope, SALES_TAX_RULE_IDS } from "./tax.js";
+import {
+  footTextTemplateInput,
+  headTextTemplateInput,
+  resolveTemplateTexts,
+  type TextArgs,
+} from "./template-texts.js";
 
 const ORDER_SCOPE: RuleScope = { allowedRuleIds: SALES_TAX_RULE_IDS, documents: "orders" };
+/**
+ * The text template type (`objectType`) of every order type: `AN`, the only order type the
+ * account's text templates carry (recorded 2026-11-17, D-115); no `AB` or `LI` rows exist.
+ */
+const ORDER_TEXT_TYPE = "AN";
 const FINALIZE_TOOL = "sevdesk_order_finalize";
 const ORDER_TYPE_NAMES = Object.keys(ORDER_TYPE_FILTERS) as [OrderTypeFilter, ...OrderTypeFilter[]];
 type OrderTypeCode = (typeof ORDER_TYPE_FILTERS)[OrderTypeFilter];
@@ -159,6 +170,8 @@ export const orderCreateInputShape = {
   ),
   headText: headTextInput,
   footText: footTextInput,
+  headTextTemplate: headTextTemplateInput,
+  footTextTemplate: footTextTemplateInput,
   paymentTerms: termsText("Zahlungsbedingungen"),
   deliveryTerms: termsText("Lieferbedingungen"),
   discount: discountInput.optional(),
@@ -190,6 +203,8 @@ export const orderUpdateInputShape = {
   header: headerInput,
   headText: headTextInput,
   footText: footTextInput,
+  headTextTemplate: headTextTemplateInput,
+  footTextTemplate: footTextTemplateInput,
   paymentTerms: termsText("Zahlungsbedingungen"),
   deliveryTerms: termsText("Lieferbedingungen"),
   discount: discountUpdateInput,
@@ -197,24 +212,20 @@ export const orderUpdateInputShape = {
   ...addressInputShape,
 };
 
-export interface OrderCreateArgs extends CreateArgs {
+export interface OrderCreateArgs extends CreateArgs, TextArgs {
   readonly type: OrderTypeFilter;
   readonly positions: readonly PositionInput[];
   readonly date?: string | undefined;
   readonly header?: string | undefined;
-  readonly headText?: string | undefined;
-  readonly footText?: string | undefined;
   readonly paymentTerms?: string | undefined;
   readonly deliveryTerms?: string | undefined;
   readonly discount?: DiscountInput | undefined;
 }
 
-export interface OrderUpdateArgs extends UpdateArgs {
+export interface OrderUpdateArgs extends UpdateArgs, TextArgs {
   readonly id: number;
   readonly date?: string | undefined;
   readonly header?: string | undefined;
-  readonly headText?: string | undefined;
-  readonly footText?: string | undefined;
   readonly paymentTerms?: string | undefined;
   readonly deliveryTerms?: string | undefined;
   /** A new document discount, `null` to remove the stored one, left out to keep it. */
@@ -251,6 +262,7 @@ export async function prepareOrderCreate(
   const typeName = orderTypeLabel(code);
   const date = args.date ?? todayInBerlin();
   const discount = args.discount === undefined ? undefined : resolveDiscount(args.discount);
+  const texts = await resolveTemplateTexts(client, args, ORDER_TEXT_TYPE, signal);
   const basics = await resolveCreateBasics(
     client,
     args,
@@ -284,8 +296,8 @@ export async function prepareOrderCreate(
         contactPerson: ref(contactPerson.id, "SevUser"),
         orderDate: wireDocumentDate(date),
         header,
-        headText: args.headText,
-        footText: args.footText,
+        headText: texts.headText,
+        footText: texts.footText,
         currency,
         showNet: mode === "net",
         ...basics.tax,
@@ -311,6 +323,7 @@ export async function prepareOrderCreate(
     fact("Date", date),
     fact("Contact person", `${contactPerson.name} (user ${contactPerson.id})`),
     fact("Title", header),
+    ...texts.facts,
     ...(args.paymentTerms === undefined ? [] : [fact("Payment terms", args.paymentTerms)]),
     ...(args.deliveryTerms === undefined ? [] : [fact("Delivery terms", args.deliveryTerms)]),
     fact("Prices entered as", mode),
@@ -345,6 +358,7 @@ export async function prepareOrderUpdate(
   const current = await loadCurrentOrder(client, args.id, signal);
   const doc = current.document;
   const code = checkUpdatable(doc);
+  const texts = await resolveTemplateTexts(client, args, ORDER_TEXT_TYPE, signal);
   const discounts = await readDocumentDiscounts(client, "order", doc.id, signal);
   const change = planDiscountChange(args.discount, discounts, `Order ${doc.id}`);
   const basics = await resolveUpdateBasics(
@@ -392,8 +406,8 @@ export async function prepareOrderUpdate(
         contactPerson: ref(basics.contactPerson.id, "SevUser"),
         orderDate: wireDocumentDate(date),
         header,
-        headText: args.headText ?? doc.headText,
-        footText: args.footText ?? doc.footText,
+        headText: texts.headText ?? doc.headText,
+        footText: texts.footText ?? doc.footText,
         currency: basics.currency,
         showNet: basics.mode === "net",
         ...basics.tax,
@@ -428,7 +442,7 @@ export async function prepareOrderUpdate(
   logRecipientChanges(log, doc, basics);
   log.value("date", "Date", storedDate, date);
   logContactPersonChange(log, doc, basics);
-  logTextChanges(log, doc.header, args);
+  logTextChanges(log, doc.header, { ...args, ...texts });
   if (args.paymentTerms !== undefined)
     log.value("payment terms", "Payment terms", doc.paymentTerms, args.paymentTerms);
   if (args.deliveryTerms !== undefined)
@@ -442,6 +456,7 @@ export async function prepareOrderUpdate(
     fact("Order", `${doc.id} (${typeName}, ${numberLabel(doc.orderNumber)}, draft)`),
     fact("Customer", customer),
     ...log.facts,
+    ...texts.facts,
     ...(basics.positions === undefined
       ? []
       : positionFacts(basics.positions, basics.mode, basics.currency)),

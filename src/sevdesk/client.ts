@@ -4,11 +4,13 @@
  * {@link SevdeskClient} interface this module implements.
  *
  * Safety invariants:
- * - Requests that change data (any non-GET, GETs marked `sideEffect`, and the state-changing GET
- *   endpoints recognized by `resolveGetSafety`) are refused before any network activity unless
- *   writes are enabled: not read-only, not dry-run, the request's declared `tier` allowed, and
- *   that tier covers the endpoint's minimum tier (`minimumWriteTier`: e.g. `sendBy` needs
- *   `commit`, `sendViaEmail` needs `external`), so a write tool cannot finalize or send.
+ * - Requests that change data (any non-GET but the reading POSTs of `read-posts.ts`, GETs marked
+ *   `sideEffect`, and the state-changing GET endpoints recognized by `resolveGetSafety`) are
+ *   refused before any network activity unless writes are enabled: not read-only, not dry-run,
+ *   the request's declared `tier` allowed, and that tier covers the endpoint's minimum tier
+ *   (`minimumWriteTier`: e.g. `sendBy` needs `commit`, `sendViaEmail` needs `external`), so a
+ *   write tool cannot finalize or send. A JSON body is serialized once, and both rules judge the
+ *   text that is sent.
  * - A `getPdf` read always carries the literal `preventSendBy=true`, so a preview never marks a
  *   document as sent.
  * - Only side-effect-free GETs are retried. A retried POST can create a second invoice.
@@ -28,6 +30,7 @@ import {
 } from "./errors.js";
 import { createPacer, type Pacer, realSleep, type Sleep } from "./pacing.js";
 import { assertSafePath, minimumWriteTier, resolveGetSafety } from "./paths.js";
+import { isReadingPostText } from "./read-posts.js";
 import type {
   CollectedList,
   ListAllOptions,
@@ -278,18 +281,25 @@ export function createSevdeskClient(
       throw localError(context, "A GET request cannot have a body.");
     }
 
+    // The body is serialized once, first: the rules below judge that very text, and it is what
+    // goes out, so a `toJSON` or a getter cannot make the sent body differ from the checked one.
+    const bodyText = hasBody ? serializeJson(request.body, context) : undefined;
+    const sentBody: unknown = bodyText === undefined ? undefined : JSON.parse(bodyText);
+
     // GETs are classified by endpoint too, so a forgotten `sideEffect` flag cannot send an
-    // invoice; a getPdf read gets `preventSendBy=true` here.
+    // invoice; a getPdf read gets `preventSendBy=true` here. Of the other methods only the
+    // reading POSTs of `read-posts.ts` count as reads.
     const safety =
       method === "GET"
         ? resolveGetSafety(path, request.query, request.sideEffect === true)
         : undefined;
-    const changesData = safety === undefined || safety.sideEffect;
+    const changesData =
+      safety === undefined ? !isReadingPostText(request, bodyText) : safety.sideEffect;
     if (changesData) {
       const reason = writeBlockReason(
         config,
         request.tier,
-        minimumWriteTier(path, request.query, request.body, request.form),
+        minimumWriteTier(path, request.query, sentBody, request.form),
       );
       if (reason !== undefined) {
         const effect = safety?.sideEffect === true ? ` (${safety.effect})` : "";
@@ -313,9 +323,9 @@ export function createSevdeskClient(
       Accept: accept,
     });
     let body: string | FormData | undefined;
-    if (hasBody) {
+    if (bodyText !== undefined) {
       headers.set("Content-Type", "application/json");
-      body = serializeJson(request.body, context);
+      body = bodyText;
     } else if (request.form !== undefined) {
       body = request.form;
     }
@@ -327,7 +337,8 @@ export function createSevdeskClient(
       headers,
       body,
       signal: request.signal,
-      retryable: !changesData,
+      // Only GETs: a POST or PUT is never sent twice, also a reading one.
+      retryable: method === "GET" && !changesData,
       context,
       timeoutMs: config.timeoutMs,
     };

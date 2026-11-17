@@ -17,6 +17,7 @@ import { TIERS } from "../../../src/safety/tiers.js";
 import { writeBlockReason } from "../../../src/sevdesk/client.js";
 import { SevdeskError } from "../../../src/sevdesk/errors.js";
 import { minimumWriteTier } from "../../../src/sevdesk/paths.js";
+import { isReadingPost } from "../../../src/sevdesk/read-posts.js";
 import { changesData } from "../../../src/sevdesk/scoped-client.js";
 import type { SevdeskClient, SevdeskRequest } from "../../../src/sevdesk/types.js";
 
@@ -161,8 +162,22 @@ export class ScriptedClient implements SevdeskClient {
     throw new Error("ScriptedClient.listAll is not used by the scripts");
   }
 
-  /** Calls that change data. */
+  /** Calls that change data: every non-GET but a reading POST (`render` without reload, D-113). */
   writes(): ScriptedCall[] {
-    return this.calls.filter((call) => call.method !== "GET");
+    return this.calls.filter((call) => call.method !== "GET" && !isReadingCall(call));
   }
+}
+
+/** Whether `call` is a reading POST as the real client classifies it (`read-posts.ts`). */
+function isReadingCall(call: ScriptedCall): boolean {
+  return (
+    call.method === "POST" &&
+    Object.keys(call.query).length === 0 &&
+    isReadingPost({
+      method: "POST",
+      path: call.path,
+      body: call.body,
+      ...(call.form === undefined ? {} : { form: call.form }),
+    })
+  );
 }

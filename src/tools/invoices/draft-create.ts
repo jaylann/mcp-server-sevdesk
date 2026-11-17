@@ -23,9 +23,11 @@ export const invoiceCreateDraftTool = defineWriteTool({
     "0/7/19 %), 11 for Kleinunternehmer (0 %). Rules that do not fit the account and rates the " +
     "rule does not allow are refused before anything is sent; the preview warns about a " +
     "possible duplicate. discount: a discount on the whole invoice (Rabatt, percent or a fixed " +
-    "net amount). dryRun previews without saving. Before: " +
-    "sevdesk_contacts_search for contactId. After: sevdesk_invoice_update_draft to change it, " +
-    "sevdesk_invoice_pdf to look at it, sevdesk_invoice_finalize to make it binding.",
+    "net amount). headTextTemplate, footTextTemplate: a text template's text, by name. dryRun " +
+    "previews without saving. Before: sevdesk_contacts_search for contactId. After: " +
+    "sevdesk_invoice_update_draft to change it, sevdesk_document_set_layout for language, " +
+    "template or letterhead, sevdesk_invoice_pdf to look at it, sevdesk_invoice_finalize to " +
+    "make it binding.",
   toolset: "invoices",
   tier: "write",
   annotations: {
