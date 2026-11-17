@@ -3430,14 +3430,17 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   (probes `write-tag-relation-remove`, `write-tag-update-delete`); recorded 2026-11-16, trial
   account, Update 2.0 (one-off check by the orchestrator, run tag `MCP-E2E 20261116-2308-evj7`).
 - **Impact:** #87 removes one tag from one document with `DELETE /TagRelation/{id}` (D-024) and
-  says in the preview when that removes the tag altogether; a rename must check for an existing
-  name itself.
+  says in the preview when that removes the tag altogether; it counts the tag's uses from its
+  relations, every row checked again, so a tag filter sevDesk ignored cannot hide a last use. A
+  rename must check for an existing name itself.
 - **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("tags documents of every kind, reuses
   a tag by name and removes one relation"); `test/unit/tools/documents/tag-tool.test.ts` ("removes
   the document's relation and keeps the tag when others use it", "warns that removing the last use
-  deletes the tag (D-089)", "finds the tag by a spelling with other accents and case (cafe →
-  Café)", "uses the exact spelling among accent variants and refuses when none matches exactly").
-  Live: the two probes above.
+  deletes the tag (D-089)", "still warns of the last use when sevDesk ignores the tag filter of the
+  count (D-089)", "says when a tag's uses were counted only up to the cap", "refuses when an
+  ignored filter leaves the uses uncounted and this may be the last", "finds the tag by a spelling
+  with other accents and case (cafe → Café)", "uses the exact spelling among accent variants and
+  refuses when none matches exactly"). Live: the two probes above.
 
 ### D-090: Document lists filter by tag only with `tags[0][id]`; `tag[id]` is ignored
 

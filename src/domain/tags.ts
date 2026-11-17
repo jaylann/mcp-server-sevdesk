@@ -283,29 +283,31 @@ export function pickTag(found: TagMatches, name: string): TagRecord | undefined 
   );
 }
 
+/** How many documents carry a tag; see {@link countTagUses}. */
+export interface TagUses {
+  readonly count: number;
+  /** False when more than {@link TAG_READ_MAX} relations had to be read: `count` is a lower bound. */
+  readonly complete: boolean;
+}
+
 /**
- * How many documents carry a tag: `total` of one `GET /TagRelation` page filtered by the tag, when
- * every row of it belongs to the tag; otherwise the relations are read and counted here (up to
- * {@link TAG_READ_MAX}, then a lower bound).
+ * Counts a tag's relations (`GET /TagRelation` filtered by the tag) with `listChildRows`: every
+ * row of the first 1,000 is checked to belong to the tag, so a filter sevDesk ignored cannot pass
+ * off the account's relation count as the tag's and hide that a removal takes its last use.
  */
 export async function countTagUses(
   client: SevdeskClient,
   tagId: number,
   signal?: AbortSignal,
-): Promise<number> {
-  const withSignal = signal === undefined ? {} : { signal };
-  const query = tagRelationQuery(tagId);
-  const page = await client.list("/TagRelation", query, { limit: 1, ...withSignal });
-  const rows = page.items.map(parseTagRelation);
-  if (page.total !== undefined && rows.every((row) => row.tagId === tagId)) return page.total;
+): Promise<TagUses> {
   const uses = await listChildRows(
     client,
     "/TagRelation",
-    query,
+    tagRelationQuery(tagId),
     { parse: parseTagRelation, belongs: (row) => row.tagId === tagId },
     signal,
   );
-  return uses.rows.length;
+  return { count: uses.rows.length, complete: uses.complete };
 }
 
 /**

@@ -424,6 +424,62 @@ describe("sevdesk_document_tag: remove", () => {
     );
   });
 
+  /** `count` relations of tags other than 7001, on vouchers. */
+  function otherRelations(count: number): Record<string, unknown>[] {
+    return Array.from({ length: count }, (_, index) =>
+      relationRow(9000 + index, 7002 + (index % 5), "Voucher", 2000 + index),
+    );
+  }
+
+  it("still warns of the last use when sevDesk ignores the tag filter of the count (D-089)", async () => {
+    // An ignored filter answers the account's relations; the first one is this tag's.
+    const fake = client([
+      INVOICE,
+      tagsRoute(TAGS),
+      carries,
+      tagUsesRoute(7001, [relationRow(8101, 7001, "Invoice", 1001), ...otherRelations(39)]),
+      DELETE,
+    ]);
+    const { plan, output } = await executeWrite(tool, remove, fake);
+    expect(plan.preview.facts).toContainEqual({ label: "Tag uses", value: "1 document" });
+    expect(plan.preview.warnings).toEqual([
+      "This document is the tag's only use: sevDesk deletes the tag itself when its last use is " +
+        "removed. Tagging a document with this name again creates a new tag.",
+    ]);
+    expect(output.data.tagDeleted).toBe(true);
+  });
+
+  it("says when a tag's uses were counted only up to the cap", async () => {
+    const uses = Array.from({ length: 10_001 }, (_, index) =>
+      relationRow(8101 + index, 7001, "Invoice", 1001 + index),
+    );
+    const fake = client([INVOICE, tagsRoute(TAGS), carries, tagUsesRoute(7001, uses), DELETE]);
+    const { plan, output } = await executeWrite(tool, remove, fake);
+    expect(plan.preview.facts).toContainEqual({
+      label: "Tag uses",
+      value: "at least 10000 documents",
+    });
+    expect(plan.preview.warnings).toEqual([]);
+    expect(output.data.tagDeleted).toBe(false);
+  });
+
+  it("refuses when an ignored filter leaves the uses uncounted and this may be the last", async () => {
+    const fake = client([
+      INVOICE,
+      tagsRoute(TAGS),
+      carries,
+      tagUsesRoute(7001, [relationRow(8101, 7001, "Invoice", 1001), ...otherRelations(10_000)]),
+    ]);
+    await expect(prepareWrite(tool, remove, fake)).rejects.toMatchObject({
+      kind: "validation",
+      message:
+        "The tag's uses could not all be counted (more than 10,000 tag uses were read), so this " +
+        "server cannot tell whether this is its last use, which would delete the tag; it does " +
+        "not remove it.",
+    });
+    expect(fake.writes()).toEqual([]);
+  });
+
   it("refuses when the document does not carry the tag, or no tag has the name", async () => {
     const notCarried = client([
       INVOICE,

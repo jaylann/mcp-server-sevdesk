@@ -250,14 +250,23 @@ async function planRemove(
     );
   }
   const uses = await countTagUses(client, tag.id, signal);
-  const lastUse = uses <= 1;
+  if (!uses.complete && uses.count <= 1) {
+    // Only when sevDesk ignored the tag filter on an account with more relations than were read.
+    throw validation(
+      `The tag's uses could not all be counted (more than ${TAG_READ_MAX.toLocaleString("en-US")} ` +
+        "tag uses were read), so this server cannot tell whether this is its last use, which " +
+        "would delete the tag; it does not remove it.",
+    );
+  }
+  const lastUse = uses.count <= 1;
+  const counted = `${String(uses.count)} document${uses.count === 1 ? "" : "s"}`;
   return {
     preview: {
       action: `Remove the tag ${tag.name} from ${documentTitle(doc)}.`,
       facts: [
         ...documentFacts(doc),
         { label: "Tag", value: `${tag.name} (id ${String(tag.id)})` },
-        { label: "Tag uses", value: `${String(uses)} document${uses === 1 ? "" : "s"}` },
+        { label: "Tag uses", value: uses.complete ? counted : `at least ${counted}` },
       ],
       warnings: lastUse
         ? [
