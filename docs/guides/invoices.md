@@ -322,9 +322,9 @@ positions, schedule and automatic generation, and
 [`sevdesk_invoice_reactivate_recurring`](../tools.md#sevdesk_invoice_reactivate_recurring)
 (`commit`, **you confirm**) starts it again. Its preview says what happens then: with automatic
 generation on, sevDesk generates drafts again, the first at once if the next run is today; with it
-off, reactivating alone generates nothing. Reactivating is refused while the next run lies before
-today, because sevDesk would catch up the missed periods at once: give the template a new start
-date first.
+off, reactivating alone generates nothing. With it on, reactivating is refused while the next run
+lies before today, because sevDesk would catch up the missed periods at once: give the template a
+new start date first.
 
 > [!WARNING]
 > A template with **automatic sending** on is only ended through this server: ending stops the

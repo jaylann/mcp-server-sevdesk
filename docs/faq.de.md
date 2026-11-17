@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:MARKER_TBD -->
+<!-- translated-from: docs/faq.md sha256:85134c861f8e -->
 
 # Häufige Fragen
 

@@ -3846,7 +3846,10 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   minimal body (the id and only what changes, never `invoiceType` or `status`), and `null`
   removes the end date. Since a new start clears `accountLastInvoice`, whether a template has run
   is decided by the invoices that name it as `origin`: a new start must lie after today and after
-  the period of the newest of them, else sevDesk would bill a period again. (#91)
+  the period of the newest of them, else sevDesk would bill a period again. A template made in the
+  web app (an interval this server does not offer, a run time other than 00:00) can still be
+  ended and changed: its interval is shown as stored, its later runs are not computed, and no
+  preview names midnight as its run time. (#91)
 - **Test:** `test/contract/recorded-gaps-documents.test.ts` ("carries the schedule fields the
   parser does not read yet", "reads through the invoice parser: interval as sent, next run as a
   Berlin date", "reads through the template reader: interval, start, next run and end as
@@ -3860,7 +3863,13 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   total than was sent"); the update tool: `test/unit/domain/recurring/payload.test.ts` ("never
   sends a type, a status or the next run"), `test/unit/tools/invoices/recurring-update.test.ts`
   ("a new interval: accountIntervall alone, the next run stays", "an end date alone, and null to
-  remove one", "a new start date moves the next run too", S91B_D111_TESTS).
+  remove one", "a new start date moves the next run too", "a new start after the newest period
+  the template generated (found by origin)", "schedule {"startDate":"2026-11-16"}", "schedule
+  {"startDate":"2026-11-17"}", "a template made in the web app: its interval and run time as
+  stored"), `test/unit/domain/invoices.test.ts` ("reads a template's switches with the settings
+  embed (D-132)"), `test/unit/tools/invoices/recurring-status.test.ts` ("ends a template made in
+  the web app (an interval this server does not offer)", "a template made in the web app: runs at
+  its stored time, the later runs not listed").
 
 ### D-112: Recurring templates: status 50 ends, status 200 blocks `DELETE`, lists hide them
 
@@ -3906,7 +3915,10 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   one), `test/unit/domain/recurring/payload.test.ts` ("saves with the recorded status of a new
   template (D-112)", "sends status 50 or the save status as text, and nothing else"),
   `test/unit/tools/invoices/recurring-status.test.ts` ("sends status 50 and nothing else",
-  "refuses a next run in the past").
+  "previews what ends and what stays, in English and German", "previews that sevDesk generates
+  drafts again (generation on), with the run dates", "says that a next run today is due at once",
+  "with generation off: reactivating alone generates nothing, also with a past next run",
+  "refuses a next run in the past", "refuses no next run with generation on").
 
 ### D-113: `changeParameter` answers the layout in `metaData`; orders need a preview first
 
@@ -4064,14 +4076,33 @@ object: {id: <template id>, objectName: "Invoice"}}`.
   and the server never calls `activateAutoSending`. It reads both back with
   `embed=propertyAutoGenerateRecurringInvoice,autoSendConfiguration` and notes every difference.
   Reads expose automatic generation as on, off or unrecorded, and automatic sending as a boolean
-  with its `sendType`, never the configuration's ids or texts. (#91)
+  with its `sendType`, never the configuration's ids or texts: `sevdesk_invoice_get` reads a
+  template once more with the embed, and `sevdesk_invoices_list` adds it to `embed=contact` for
+  `type: recurring` (that combination is not recorded). The update tool sends `true` or `false`
+  in a `saveInvoice` update (`autoGenerate`) and compares the switch read back. Switching it on
+  with a next run before today is refused unless the same call sets a new start (sevDesk would
+  catch up); with a next run today the preview says the first draft comes at once. The update
+  and reactivate tools refuse a template with automatic sending on, or whose settings sevDesk
+  did not return, since this server cannot preview the e-mails; the end tool is allowed and says
+  that it stops them. (#91)
 - **Test:** `test/unit/domain/recurring/payload.test.ts` ("sends automatic generation only as
   true, or not at all (D-132)", "never sends autoSendConfiguration: this server does not switch
   on automatic sending"), `test/unit/domain/recurring/schedule.test.ts` ("reads automatic
   generation stored as %j", "reads automatic sending as on only when sevDesk returns a
   configuration, with its sendType", "leaves the settings out of a record read without the
   embed"), `test/unit/tools/invoices/recurring-create.test.ts` ("automatic generation (D-132)",
-  "compares automatic generation and sending as stored with what was sent (D-132)").
+  "compares automatic generation and sending as stored with what was sent (D-132)"),
+  `test/unit/domain/invoices.test.ts` ("reads a template's switches with the settings embed
+  (D-132)"), `test/unit/tools/invoices/list.test.ts` (the embed for `type: recurring`),
+  `test/unit/tools/invoices/recurring-update.test.ts` ("switches automatic generation off, and
+  says what that means", "switches automatic generation on for a next run after today", "switches
+  it on for a next run today: the first draft comes at once", "switches it on for a past next run
+  only together with a new start", "switching generation on with a next run before today, naming
+  the catch-up", "a template with automatic sending on, or whose settings sevDesk did not
+  return", "checks the switch read back after changing it"),
+  `test/unit/tools/invoices/recurring-status.test.ts` ("ends a template with automatic sending
+  on, saying that it stops the e-mails", "refuses automatic sending on", "refuses settings sevDesk
+  did not return", "refuses a generation value whose meaning is not recorded").
 
 ### D-135: `saveInvoice` keeps the price of a position sent by its id, without an error
 

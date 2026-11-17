@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/invoices.md sha256:MARKER_TBD -->
+<!-- translated-from: docs/guides/invoices.md sha256:3c4857cd3292 -->
 
 # Rechnungen: vom Entwurf bis zur Zahlung
 
@@ -349,9 +349,9 @@ storniert. Die Vorlage behält Positionen, Zeitplan und automatische Generierung
 [`sevdesk_invoice_reactivate_recurring`](../tools.md#sevdesk_invoice_reactivate_recurring)
 (`commit`, **du bestätigst**) startet sie wieder. Ihre Vorschau sagt, was dann geschieht: Bei
 eingeschalteter automatischer Generierung erzeugt sevDesk wieder Entwürfe, den ersten sofort, wenn
-die nächste Ausführung heute ist; ist sie aus, erzeugt das Aktivieren allein nichts. Das Aktivieren
-wird abgelehnt, solange die nächste Ausführung vor heute liegt, weil sevDesk dann die versäumten
-Zeiträume auf einmal nachholen würde: Gib der Vorlage zuerst ein neues Startdatum.
+die nächste Ausführung heute ist; ist sie aus, erzeugt das Aktivieren allein nichts. Ist sie an,
+wird das Aktivieren abgelehnt, solange die nächste Ausführung vor heute liegt, weil sevDesk dann
+die versäumten Zeiträume auf einmal nachholen würde: Gib der Vorlage zuerst ein neues Startdatum.
 
 > [!WARNING]
 > Eine Vorlage mit eingeschaltetem **automatischem Versenden** wird über diesen Server nur beendet:
