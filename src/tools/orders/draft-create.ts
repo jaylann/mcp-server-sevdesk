@@ -26,8 +26,9 @@ export const orderCreateDraftTool = defineWriteTool({
     "discount: a discount on the whole order (Rabatt, percent or a fixed net amount). " +
     "headTextTemplate, footTextTemplate: a text template's text, by name. " +
     "dryRun previews without saving. Before: " +
-    "sevdesk_contacts_search. After: sevdesk_order_update_draft, sevdesk_order_pdf, " +
-    "sevdesk_order_finalize, sevdesk_invoice_create_from_order.",
+    "sevdesk_contacts_search. After: sevdesk_order_update_draft, sevdesk_document_set_layout " +
+    "for language, template or letterhead, sevdesk_order_pdf, sevdesk_order_finalize, " +
+    "sevdesk_invoice_create_from_order.",
   toolset: "orders",
   tier: "write",
   annotations: {
