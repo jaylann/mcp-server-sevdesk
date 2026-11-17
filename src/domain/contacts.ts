@@ -171,21 +171,26 @@ export function contactKind(record: ContactRecord): ContactKind {
   return trimmedText(record.name) === undefined ? "person" : "organisation";
 }
 
+/** The organisation name or the person's full name, sanitized; undefined for an unnamed one. */
+function contactName(record: ContactRecord): string | undefined {
+  const nameParts =
+    contactKind(record) === "organisation"
+      ? [record.name]
+      : [record.academicTitle, record.surename, record.name2, record.familyname];
+  const name = joinPresent(nameParts, " ");
+  return name === undefined ? undefined : sanitizeUntrusted(name, NAME_MAX);
+}
+
 /** Maps a parsed contact to the compact DTO. */
 export function toContactDto(record: ContactRecord): ContactDto {
   const kind = contactKind(record);
-  const nameParts =
-    kind === "organisation"
-      ? [record.name]
-      : [record.academicTitle, record.surename, record.name2, record.familyname];
-  const displayName = joinPresent(nameParts, " ") ?? `(unnamed contact ${record.id})`;
   const category =
     record.category === undefined ? undefined : contactCategoryById(record.category.id);
 
   return compact({
     id: record.id,
     kind,
-    displayName: sanitizeUntrusted(displayName, NAME_MAX),
+    displayName: contactName(record) ?? `(unnamed contact ${record.id})`,
     customerNumber: cleanText(record.customerNumber, FIELD_MAX),
     category:
       record.category === undefined
@@ -305,6 +310,38 @@ export async function searchContacts(
   });
   const { received, total } = page.window;
   return { items, received, total, ...page.state };
+}
+
+/** @public What {@link listContactNames} returns. */
+export interface ContactNames {
+  /** Sanitized, trimmed display names without duplicates; unnamed contacts are left out. */
+  readonly names: readonly string[];
+  /** False when sevDesk may hold more matching contacts than this one page. */
+  readonly complete: boolean;
+}
+
+/**
+ * The display names of one page of contacts (`GET /Contact` with `depth=1`, from the start), e.g.
+ * for argument suggestions. `query` is sevDesk's `name` filter, as in {@link searchContacts}.
+ */
+export async function listContactNames(
+  client: SevdeskClient,
+  params: { readonly query?: string | undefined; readonly limit: number },
+  signal?: AbortSignal,
+): Promise<ContactNames> {
+  const query: Record<string, QueryValue> = { depth: "1" };
+  if (params.query !== undefined) query["name"] = params.query;
+  const page = await readPage(
+    client,
+    "/Contact",
+    query,
+    { limit: params.limit, offset: 0 },
+    (raw) => trimmedText(contactName(parseContactRecord(raw))),
+    signal,
+  );
+  // Names made only of invisible characters are empty once sanitized: left out with the others.
+  const names = page.items.filter((name): name is string => name !== undefined);
+  return { names: [...new Set(names)], complete: !page.state.hasMore };
 }
 
 export interface ContactDetails {

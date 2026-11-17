@@ -5,6 +5,13 @@
   "description": "Safety-first MCP server for sevDesk accounting: invoices, receipts, banking, reports. Unofficial.",
   "version": "1.6.0",
   "websiteUrl": "https://sevdeskmcp.lanfermann.dev",
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/jaylann/mcp-server-sevdesk/main/mcpb/icon.png",
+      "mimeType": "image/png",
+      "sizes": ["512x512"]
+    }
+  ],
   "repository": {
     "url": "https://github.com/jaylann/mcp-server-sevdesk",
     "source": "github"
@@ -91,6 +98,14 @@
           "name": "SEVDESK_OUTPUT_DIR",
           "description": "Folder where PDFs, e-invoice XML, CSV and DATEV exports may be saved. Unset: the file-saving tools are not offered.",
           "format": "string",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SEVDESK_VIES_CHECK",
+          "description": "Set to 1 or true to let sevdesk_vat_id_check ask the European Commission's VIES service whether a VAT ID is valid; this sends the VAT ID to ec.europa.eu. Unset, 0 or false (the default): only the format is checked.",
+          "format": "boolean",
+          "default": "false",
           "isRequired": false,
           "isSecret": false
         }
@@ -183,6 +198,14 @@
           "name": "SEVDESK_OUTPUT_DIR",
           "description": "Folder inside the container (mount it, writable) where PDFs, e-invoice XML, CSV and DATEV exports may be saved. Unset: the file-saving tools are not offered.",
           "format": "string",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "SEVDESK_VIES_CHECK",
+          "description": "Set to 1 or true to let sevdesk_vat_id_check ask the European Commission's VIES service whether a VAT ID is valid; this sends the VAT ID to ec.europa.eu. Unset, 0 or false (the default): only the format is checked.",
+          "format": "boolean",
+          "default": "false",
           "isRequired": false,
           "isSecret": false
         }

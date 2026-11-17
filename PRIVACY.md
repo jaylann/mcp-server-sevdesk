@@ -6,7 +6,7 @@ collects **no telemetry**.
 - **Data flow.** The server sends its requests to the sevDesk API
   (`https://my.sevdesk.de/api/v1`, or the `SEVDESK_BASE_URL` you set) with your token, and returns
   results to the MCP client you connected (for example Claude Desktop). What your client or model
-  provider does with that data is governed by their terms. It contacts no other host, with three
+  provider does with that data is governed by their terms. It contacts no other host, with four
   exceptions:
   - **DATEV export.** `sevdesk_datev_export` (`write` tier) downloads the finished ZIP from
     sevDesk's export storage on Amazon S3
@@ -20,6 +20,15 @@ collects **no telemetry**.
     request carries the link, including its query, and no sevDesk token, cookie or credential; the
     host sees the server's IP address and the time. Other hosts, IP addresses and non-public
     addresses are refused, also as redirect targets.
+  - **VAT-ID check with VIES, only if you switch it on.** With `SEVDESK_VIES_CHECK=1` (off by
+    default; "Check VAT IDs with VIES" in the Claude Desktop extension), `sevdesk_vat_id_check`
+    asks the European Commission's VIES service (`https://ec.europa.eu/taxation_customs/vies/`)
+    whether a VAT ID is valid. The request carries the VAT ID you check (country prefix and
+    number) and nothing else: no sevDesk token, no name, no VAT ID of your own; the Commission
+    sees the server's IP address and the time, and VIES asks the issuing member state. Only a
+    number in a valid format is sent, redirects are not followed, and the server logs neither the
+    number nor the answer. With the setting off, the check only looks at the format and sends
+    nothing; the tax-rule helper (`sevdesk_tax_rule_suggest`) never contacts VIES.
   - **Client metadata in remote mode with OAuth**: see "Third parties" under
     [Remote mode](#remote-mode).
 - **Confirmation page.** With `SEVDESK_CONFIRM=browser` (local use) the preview of an action is

@@ -1,0 +1,14 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /Order/{order}/getDiscounts?limit=n (recording session 2026-11-16)",
+    "date": "2026-11-16",
+    "systemVersion": "2.0",
+    "note": "Personal and company data replaced by scripts/lib/scrub.ts; keys, nulls and scalar types as recorded. A recorded single page (has total). Document-level discounts of an order (#89, #94); empty unless the order has one."
+  },
+  "status": 200,
+  "body": {
+    "objects": [],
+    "total": null
+  }
+}

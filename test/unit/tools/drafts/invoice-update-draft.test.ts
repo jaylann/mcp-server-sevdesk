@@ -440,6 +440,13 @@ describe("sevdesk_invoice_update_draft (community shapes, fake data)", () => {
         { invoiceType: "MA" },
         "Invoice 2102 is a reminder invoice (MA); this tool only changes regular invoices (RE). Edit it in sevDesk.",
       ],
+      // A new template has status 100 like a draft (D-112), and its update would go out as RE
+      // through saveInvoice, which the client lets a write tool send: the type check is the guard.
+      [
+        "a recurring invoice template",
+        { invoiceType: "WKR" },
+        "Invoice 2102 is a recurring invoice (WKR); this tool only changes regular invoices (RE). Edit it in sevDesk.",
+      ],
       [
         "an unknown invoice type",
         { invoiceType: "XX" },

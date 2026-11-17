@@ -69,6 +69,7 @@ shown, because it may be the secret itself, pasted into the wrong variable.
 | --------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `SEVDESK_TOOLSETS`          | `default` | The [toolsets](#toolsets) to load: a list of `meta`, `contacts`, `invoices`, `credit-notes`, `orders`, `vouchers`, `banking`, `parts`, `reports`, `advanced`, or `default` (everything except `advanced`) or `all`. `meta` is always loaded. |
 | `SEVDESK_STRUCTURED_OUTPUT` | `auto`    | `auto`, `on` or `off`: whether tools declare an output schema and return typed `structuredContent` next to the JSON text. See [Structured output](#structured-output).                                                                       |
+| `SEVDESK_VIES_CHECK`        | `0`       | `1` or `true` lets `sevdesk_vat_id_check` ask the European Commission's VIES service whether a VAT ID is valid, which sends the VAT ID to `ec.europa.eu` ([Privacy](../PRIVACY.md)). Unset, `0` or `false`: only its format is checked.      |
 
 ### Files and the audit log
 
@@ -151,7 +152,7 @@ fewer toolsets makes the tool list shorter, which helps models choose and saves 
 | `vouchers`     | Vouchers (Belege): list, get, drafts with the receipt attached, e-invoice parsing and import, the lifecycle.                                               |
 | `banking`      | Bank accounts and transactions, reconciliation suggestions, booking transactions against documents, private transactions.                                  |
 | `parts`        | Parts (Artikel) including stock: list, get, create, update.                                                                                                |
-| `reports`      | Summaries, receivables and payables aging, cash position, changes since a date, VAT summary, profit and loss, CSV and DATEV exports.                       |
+| `reports`      | Summaries, aging, cash position, changes since a date, VAT summary, profit and loss, tax-rule helper, VAT-ID check, CSV and DATEV exports.                 |
 | `advanced`     | `sevdesk_api_get`, a read-only GET of any sevDesk endpoint. Off by default.                                                                                |
 
 Every tool, with its toolset, tier and arguments, is listed in the [tool reference](tools.md).

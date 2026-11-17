@@ -1,4 +1,4 @@
-<!-- translated-from: PRIVACY.md sha256:55227034cc3b -->
+<!-- translated-from: PRIVACY.md sha256:80ea1885bfa8 -->
 
 # Datenschutz
 
@@ -9,7 +9,7 @@ erhebt **keine Telemetrie**.
   (`https://my.sevdesk.de/api/v1`, oder die von dir gesetzte `SEVDESK_BASE_URL`), mit deinem
   Token, und gibt Ergebnisse an den MCP-Client zurück, den du verbunden hast (zum Beispiel
   Claude Desktop). Was dein Client oder dein Modellanbieter mit diesen Daten tut, regeln deren
-  Bedingungen. Einen anderen Host kontaktiert er nicht, mit drei Ausnahmen:
+  Bedingungen. Einen anderen Host kontaktiert er nicht, mit vier Ausnahmen:
   - **DATEV-Export.** `sevdesk_datev_export` (Stufe `write`) lädt das fertige ZIP aus dem
     Export-Speicher von sevDesk bei Amazon S3
     (`sevexport-filestorage-workload-prod.s3.eu-central-1.amazonaws.com`), über den vorsignierten
@@ -23,6 +23,17 @@ erhebt **keine Telemetrie**.
     kein Cookie und keine Zugangsdaten; der Host sieht die IP-Adresse des Servers und den
     Zeitpunkt. Andere Hosts, IP-Adressen und nicht öffentliche Adressen werden abgelehnt, auch als
     Ziel einer Weiterleitung.
+  - **Prüfung der USt-IdNr. bei VIES, nur wenn du sie einschaltest.** Mit `SEVDESK_VIES_CHECK=1`
+    (standardmäßig aus; „Check VAT IDs with VIES“ in der Claude-Desktop-Erweiterung) fragt
+    `sevdesk_vat_id_check` beim VIES-Dienst der Europäischen Kommission
+    (`https://ec.europa.eu/taxation_customs/vies/`), ob eine USt-IdNr. gültig ist. Die Anfrage
+    enthält die geprüfte USt-IdNr. (Länderkennung und Nummer) und sonst nichts: kein
+    sevDesk-Token, keinen Namen, keine eigene USt-IdNr.; die Kommission sieht die IP-Adresse des
+    Servers und den Zeitpunkt, und VIES fragt beim ausgebenden Mitgliedstaat nach. Gesendet wird
+    nur eine Nummer in gültigem Format, Weiterleitungen werden nicht verfolgt, und der Server
+    protokolliert weder die Nummer noch die Antwort. Ist die Einstellung aus, prüft er nur das
+    Format und sendet nichts; die Steuerregel-Hilfe (`sevdesk_tax_rule_suggest`) fragt nie bei
+    VIES an.
   - **Client-Metadaten im Fernzugriff mit OAuth**: siehe „Dritte“ unter
     [Fernzugriff](#fernzugriff).
 - **Freigabeseite.** Mit `SEVDESK_CONFIRM=browser` (lokale Nutzung) wird die Vorschau einer Aktion

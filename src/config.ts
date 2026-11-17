@@ -101,6 +101,12 @@ export interface Settings {
    * request is made.
    */
   readonly fileUrlHosts: readonly string[];
+  /**
+   * `SEVDESK_VIES_CHECK` (default off): `sevdesk_vat_id_check` may ask the European Commission's
+   * VIES service about a VAT ID, which sends the number to `ec.europa.eu`
+   * (`src/sevdesk/vies-request.ts`).
+   */
+  readonly viesCheck: boolean;
   readonly userAgent: string;
 }
 
@@ -234,6 +240,7 @@ export const KNOWN_SETTINGS: readonly string[] = [
   "SEVDESK_OUTPUT_DIR",
   "SEVDESK_FILE_DIRS",
   "SEVDESK_FILE_URL_HOSTS",
+  "SEVDESK_VIES_CHECK",
   // Secrets (`readSecret`): the value, or the file that holds it.
   ...SECRET_SETTINGS,
   ...SECRET_SETTINGS.map(secretFileSetting),
@@ -414,6 +421,7 @@ export function readSettings(env: Env, problems: string[]): Settings {
     outputDir: nonEmpty(env["SEVDESK_OUTPUT_DIR"]),
     fileDirs: readAbsolutePaths(env, "SEVDESK_FILE_DIRS", problems),
     fileUrlHosts: readFileUrlHosts(env, problems),
+    viesCheck: readFlag(env, "SEVDESK_VIES_CHECK", problems),
     userAgent: `${PACKAGE_NAME}/${VERSION} (+https://github.com/jaylann/mcp-server-sevdesk)`,
   };
   problems.push(...checkSettingNames(env).problems);

@@ -1,0 +1,26 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /DocServer/getLetterpapersWithThumb (recording session 2026-11-16)",
+    "date": "2026-11-16",
+    "systemVersion": "2.0",
+    "note": "Personal and company data replaced by scripts/lib/scrub.ts; keys, nulls and scalar types as recorded. Letterheads for changeParameter (#94); the scrubber replaces PDFs and thumbnails."
+  },
+  "status": 200,
+  "body": {
+    "objects": {
+      "result": 1,
+      "letterpapers": [
+        {
+          "id": "Muster-Text 9",
+          "pdf": "JVBERi0xLjQKJSBzY3J1YmJlZCBieSBzY3JpcHRzL2xpYi9zY3J1Yi50cwoxIDAgb2JqIDw8IC9UeXBlIC9DYXRhbG9nID4+IGVuZG9iagp0cmFpbGVyIDw8IC9Sb290IDEgMCBSID4+CiUlRU9GCg==",
+          "sevClient": "0",
+          "name": "Musterfirma 3 GmbH",
+          "default": 0,
+          "isCustom": false,
+          "img": "Muster-Text 10"
+        }
+      ]
+    }
+  }
+}

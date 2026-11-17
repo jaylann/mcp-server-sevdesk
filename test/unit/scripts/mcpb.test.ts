@@ -177,6 +177,7 @@ describe("settings as Claude Desktop passes them", () => {
       SEVDESK_FILE_URL_HOSTS: "",
       SEVDESK_OUTPUT_DIR: "",
       SEVDESK_AUDIT_LOG: "",
+      SEVDESK_VIES_CHECK: "false",
     });
     const loaded = loadConfig(config?.env ?? {});
     expect(loaded).toMatchObject({
@@ -204,6 +205,7 @@ describe("settings as Claude Desktop passes them", () => {
       file_url_hosts: "portal.example.com, *.files.example.net",
       output_dir: "/home/user/Exports",
       audit_log: "/home/user/Audit logs/sevdesk.jsonl",
+      vies_check: true,
     });
     const loaded = loadConfig(config?.env ?? {});
     expect(loaded).toMatchObject({
@@ -214,6 +216,7 @@ describe("settings as Claude Desktop passes them", () => {
       fileUrlHosts: ["portal.example.com", "*.files.example.net"],
       outputDir: "/home/user/Exports",
       auditLogPath: "/home/user/Audit logs/sevdesk.jsonl",
+      viesCheck: true,
     });
     expect([...loaded.allowedTiers].sort()).toEqual(["commit", "read", "write"]);
     expect([...loaded.toolsets].sort()).toEqual(["invoices", "meta", "vouchers"]);
@@ -313,6 +316,7 @@ describe("manifestProblems", () => {
       "user_config.file_url_hosts is never passed to the server.",
       "user_config.output_dir is never passed to the server.",
       "user_config.audit_log is never passed to the server.",
+      "user_config.vies_check is never passed to the server.",
     ]);
   });
 });

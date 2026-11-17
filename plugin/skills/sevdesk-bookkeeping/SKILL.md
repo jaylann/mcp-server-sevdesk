@@ -45,6 +45,8 @@ every write is real, and finalized or enshrined records cannot simply be deleted
 | -------------------------------------------- | ------------------------------------------------------------------- |
 | know the account setup, tiers, regime        | `sevdesk_account_info`                                              |
 | find a tax rule or booking account           | `sevdesk_reference_lookup` (`kind: tax_rules` / `receipt_guidance`) |
+| choose the tax rule for an invoice           | `sevdesk_tax_rule_suggest`                                          |
+| check a customer's VAT ID (USt-IdNr.)        | `sevdesk_vat_id_check`                                              |
 | find a customer or supplier                  | `sevdesk_contacts_search`                                           |
 | file a receipt (Beleg)                       | `sevdesk_voucher_create_draft` (see workflows)                      |
 | check or import an e-invoice                 | `sevdesk_einvoice_parse`, then `sevdesk_voucher_import_einvoice`    |
