@@ -111,6 +111,16 @@ only on net prices with a single tax rate and not on e-invoices, the cases verif
 Whatever discount a draft carries is shown in the approval before you finalize or send it, and an
 invoice made from an offer takes over the offer's discount.
 
+### Can it write an English invoice or use another letterhead?
+
+Yes, on drafts of invoices, orders and credit notes: `sevdesk_document_set_layout` sets the
+language (eight, among them English), the template (Vorlage) and the letterhead (Briefpapier)
+([An English invoice on another letterhead](guides/invoices.md#an-english-invoice-on-another-letterhead)).
+It needs the `commit` tier and your confirmation, because sevDesk uses the same request to change
+finalized documents. Head and foot texts can come from your text templates (Textvorlagen) by name;
+creating or deleting text templates stays in sevDesk. The approval before you finalize or send a
+draft shows its language, template and letterhead.
+
 ### Can it handle e-invoices (E-Rechnung)?
 
 Yes, both directions. Received XRechnung (UBL and CII) and ZUGFeRD / Factur-X files are parsed

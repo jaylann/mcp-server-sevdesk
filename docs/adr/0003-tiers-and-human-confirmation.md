@@ -124,6 +124,20 @@ asset flag, whether a file is attached). Before this (review 2026-11, round 3) t
 showed number, customer, dates and totals only: the binding stopped an edit made after the human
 was asked, but a foot text changed before the human was asked was approved unseen.
 
+**The layout of a document (#94).** sevDesk sets a document's language, template and letterhead
+with `changeParameter`, which the client keeps at `commit` because the same request changes a
+finalized document. Setting them is therefore one `commit` tool for drafts of all three kinds
+(`sevdesk_document_set_layout`, with `kind`), asked like any binding step, and not a `write` tool
+with an exception in the client: a tier that depends on the document's status would need a read
+before every request and could be wrong between the read and the write. The layout is not in the
+record. It is read with `POST /{Invoice|Order|CreditNote}/{id}/render` and exactly
+`{forceReload: false}`, the one POST the client treats as a read (`src/sevdesk/read-posts.ts`:
+allowed in `prepare`, read-only mode and dry runs, never retried). For drafts, finalize and send
+list language, template and letterhead among the facts and add them to the `binding`, so a layout
+changed after the human was asked makes the server ask again, and the fixed warning names the
+other print options instead of the layout; a layout that cannot be read is named in a warning and
+bound as unreadable. This costs one more request per `prepare` of a draft.
+
 `enshrine` always carries an "irreversible (GoBD)" warning.
 
 **No confirmation flag.** Tools have no `confirm` argument that acts as a gate.

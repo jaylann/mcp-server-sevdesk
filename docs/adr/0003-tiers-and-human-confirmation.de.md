@@ -143,6 +143,22 @@ Vorschauen nur Nummer, Kunde, Daten und Summen: Die Bindung stoppte eine Änderu
 Frage an den Menschen gemacht wurde, aber ein Fußtext, der vor der Frage geändert wurde, wurde
 ungesehen freigegeben.
 
+**Das Layout eines Dokuments (#94).** sevDesk setzt Sprache, Vorlage und Briefpapier eines
+Dokuments mit `changeParameter`, das der Client auf `commit` hält, weil dieselbe Anfrage auch ein
+fertiges Dokument ändert. Sie zu setzen ist deshalb ein `commit`-Werkzeug für Entwürfe aller drei
+Arten (`sevdesk_document_set_layout`, mit `kind`), das wie jeder verbindliche Schritt fragt, und
+kein `write`-Werkzeug mit einer Ausnahme im Client: Eine Stufe, die vom Status des Dokuments
+abhängt, bräuchte vor jeder Anfrage einen Lesevorgang und könnte zwischen Lesen und Schreiben falsch
+sein. Das Layout steht nicht im Datensatz. Gelesen wird es mit
+`POST /{Invoice|Order|CreditNote}/{id}/render` und genau `{forceReload: false}`, dem einzigen POST,
+den der Client als Lesevorgang behandelt (`src/sevdesk/read-posts.ts`: erlaubt in `prepare`, im
+Nur-Lesen-Modus und im Probelauf, nie wiederholt). Bei Entwürfen führen Fertigstellen und Versenden
+Sprache, Vorlage und Briefpapier unter den Angaben auf und nehmen sie in das `binding` auf, sodass
+ein Layout, das nach der Frage an den Menschen geändert wurde, eine neue Frage auslöst, und die
+feste Warnung nennt statt des Layouts die übrigen Druckoptionen; ein Layout, das sich nicht lesen
+lässt, nennt eine Warnung, und es wird als unlesbar gebunden. Das kostet eine Anfrage mehr je
+`prepare` eines Entwurfs.
+
 `enshrine` trägt immer eine Warnung „irreversible (GoBD)“.
 
 **Kein Bestätigungsflag.** Werkzeuge haben kein `confirm`-Argument, das als Sperre wirkt.
