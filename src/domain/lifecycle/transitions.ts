@@ -22,6 +22,7 @@ import {
   type LifecycleDocument,
   type PaymentKind,
   type SalesKind,
+  STATUS,
   statusOf,
 } from "./documents.js";
 
@@ -205,6 +206,158 @@ export function assertEnshrinable(doc: LifecycleDocument<PaymentKind>): void {
   if (doc.status < codes.open) {
     refuse(`${ref} has ${statusText(doc)}; only open or later documents can be enshrined.`);
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Offers (Angebote): accept, reject, reopen; confirmations and delivery notes made from orders
+// ---------------------------------------------------------------------------------------------
+
+/** The offer statuses (spec tag `Order`): sent, and the customer's answers rejected and accepted. */
+const ORDER_STATUS = { sent: 200, rejected: 300, accepted: 500 } as const;
+
+export const OFFER_STATUS_ACTIONS = ["accept", "reject", "reopen"] as const;
+export type OfferStatusAction = (typeof OFFER_STATUS_ACTIONS)[number];
+
+/** The status an offer status action sets. */
+export type OfferStatusTarget = (typeof ORDER_STATUS)[keyof typeof ORDER_STATUS];
+
+const OFFER_TARGETS: Readonly<Record<OfferStatusAction, OfferStatusTarget>> = {
+  accept: ORDER_STATUS.accepted,
+  reject: ORDER_STATUS.rejected,
+  reopen: ORDER_STATUS.sent,
+};
+
+/** "order confirmation (AB)": a trusted name of an order type for refusals. */
+function orderTypeText(doc: LifecycleDocument<"order">): string {
+  switch (doc.typeCode) {
+    case "AN":
+      return "an offer (Angebot, AN)";
+    case "AB":
+      return "an order confirmation (Auftragsbestätigung, AB)";
+    case "LI":
+      return "a delivery note (Lieferschein, LI)";
+    default:
+      return "an order of another type";
+  }
+}
+
+/** Refuses an order draft that a status change would renumber (spec/deviations.md D-108). */
+function refuseOfferDraft(doc: LifecycleDocument<"order">, what: string): void {
+  if (doc.status !== STATUS.draft) return;
+  refuse(
+    `${documentRef(doc, true)} is a draft offer that was never sent, so ${what}. Send it first ` +
+      "(sevdesk_order_finalize, or sevdesk_order_send_email).",
+  );
+}
+
+/**
+ * Accept (500), reject (300) or reopen (back to sent 200) an offer with `PUT /Order/{id}` and a
+ * body of only `{status}` (D-108). Offers (AN) only, never drafts: on a draft the same request also
+ * renumbers the offer. Accept and reject only from sent (200); reopen only from accepted or
+ * rejected, which is the recorded way back. Returns the status to set.
+ */
+export function assertOfferStatusChange(
+  doc: LifecycleDocument<"order">,
+  action: OfferStatusAction,
+): OfferStatusTarget {
+  const ref = documentRef(doc, true);
+  if (doc.typeCode !== "AN") {
+    refuse(
+      `${ref} is ${orderTypeText(doc)}; only offers (AN) are accepted, rejected or reopened. ` +
+        "A confirmation is made from an accepted offer with sevdesk_order_create_confirmation.",
+    );
+  }
+  refuseOfferDraft(doc, "sevDesk would also renumber it on a status change");
+  const target = OFFER_TARGETS[action];
+  if (doc.status === target) {
+    refuse(`${ref} already has ${statusText(doc)}; there is nothing to change.`);
+  }
+  if (action === "reopen") {
+    if (doc.status !== ORDER_STATUS.accepted && doc.status !== ORDER_STATUS.rejected) {
+      refuse(`${ref} has ${statusText(doc)}; only accepted or rejected offers are reopened.`);
+    }
+    return target;
+  }
+  if (doc.status === ORDER_STATUS.accepted || doc.status === ORDER_STATUS.rejected) {
+    refuse(
+      `${ref} has ${statusText(doc)}. Reopen it first (sevdesk_order_set_offer_status with ` +
+        `action "reopen", back to sent 200), then ${action} it.`,
+    );
+  }
+  if (doc.status !== ORDER_STATUS.sent) {
+    refuse(`${ref} has ${statusText(doc)}; only sent offers (status 200) are ${action}ed.`);
+  }
+  return target;
+}
+
+/**
+ * The sources `createContractNoteFromOrder` may turn into an order confirmation (D-107): an offer
+ * (AN) that was sent (200; sevDesk marks it accepted, 500) or is accepted already (500, stays).
+ * Refused: drafts (sevDesk would accept an offer the customer never received), rejected offers
+ * (sevDesk would silently turn the rejection into an acceptance: reopening is its own confirmed
+ * step), every other status and every other order type. Returns whether the offer becomes
+ * accepted by the request.
+ */
+export function assertConfirmable(doc: LifecycleDocument<"order">): { readonly accepts: boolean } {
+  const ref = documentRef(doc, true);
+  if (doc.typeCode !== "AN") {
+    refuse(
+      `${ref} is ${orderTypeText(doc)}; order confirmations are created from offers (AN) only.`,
+    );
+  }
+  refuseOfferDraft(doc, "a confirmation would accept an offer the customer never received");
+  if (doc.status === ORDER_STATUS.rejected) {
+    refuse(
+      `${ref} was rejected (status 300), and sevDesk would silently mark it as accepted when a ` +
+        "confirmation is created from it. If the customer accepted after all, reopen it first " +
+        '(sevdesk_order_set_offer_status with action "reopen", back to sent 200), then create ' +
+        "the confirmation.",
+    );
+  }
+  if (doc.status === ORDER_STATUS.sent) return { accepts: true };
+  if (doc.status === ORDER_STATUS.accepted) return { accepts: false };
+  return refuse(
+    `${ref} has ${statusText(doc)}; order confirmations are created from sent (200) or accepted ` +
+      "(500) offers only.",
+  );
+}
+
+/**
+ * The sources `createPackingListFromOrder` may turn into a delivery note (D-107): an offer that
+ * was sent or accepted (200, 500), and an order confirmation that is a draft, sent or accepted
+ * (100, 200, 500; sevDesk shows a sent confirmation as 500). sevDesk leaves the source alone,
+ * whatever its status (recorded from sent and draft offers and from confirmations; the owner chose
+ * to allow accepted offers too, 2026-11-17). Refused: offer drafts (sevDesk accepts them, but
+ * nothing was offered to the customer yet, so there is nothing to deliver on), rejected offers,
+ * delivery notes and every other status.
+ */
+export function assertDeliveryNoteSource(doc: LifecycleDocument<"order">): void {
+  const ref = documentRef(doc, true);
+  if (doc.typeCode === "AN") {
+    refuseOfferDraft(doc, "nothing was offered to the customer yet to deliver on");
+    if (doc.status === ORDER_STATUS.sent || doc.status === ORDER_STATUS.accepted) return;
+    refuse(
+      `${ref} has ${statusText(doc)}; delivery notes are created from sent or accepted offers ` +
+        "(200, 500) or from order confirmations.",
+    );
+  }
+  if (doc.typeCode === "AB") {
+    if (
+      doc.status === STATUS.draft ||
+      doc.status === ORDER_STATUS.sent ||
+      doc.status === ORDER_STATUS.accepted
+    ) {
+      return;
+    }
+    refuse(
+      `${ref} has ${statusText(doc)}; delivery notes are created from order confirmations that ` +
+        "are drafts, sent or accepted (100, 200, 500).",
+    );
+  }
+  refuse(
+    `${ref} is ${orderTypeText(doc)}; delivery notes are created from offers (AN) and order ` +
+      "confirmations (AB) only.",
+  );
 }
 
 export const RESET_TARGETS = ["draft", "open"] as const;

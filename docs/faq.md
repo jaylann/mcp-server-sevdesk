@@ -168,6 +168,14 @@ skill follow German law, and the server is tested only against German accounts. 
 an Austrian account, but nothing is verified there. Support for Austria is tracked for a later 1.x
 release.
 
+### Can it handle offers, order confirmations and delivery notes?
+
+Yes. Besides drafting offers (Angebote), it records the customer's answer (accepted or rejected,
+`commit`), creates the order confirmation from an offer (`commit`, because sevDesk marks the offer
+as accepted in that step) and a delivery note from a confirmation (`write`), and then the invoice
+from the order ([Invoices](guides/invoices.md#offers-accept-confirm-deliver)). There is no special
+filter for stale offers; ask for sent offers in a date range.
+
 ### Can it send letters by post?
 
 Not in 1.0. Documents can be sent by email (`external` tier), and finalizing records how a document

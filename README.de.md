@@ -1,4 +1,4 @@
-<!-- translated-from: README.md sha256:1c8371e40798 -->
+<!-- translated-from: README.md sha256:9e730a9ed0cc -->
 
 <!-- Nur die Breite: mit einer Höhe dazu zeichnet GitHub einen getönten Kasten hinter das Bild. -->
 <p align="center"><img src="https://raw.githubusercontent.com/jaylann/mcp-server-sevdesk/main/assets/logo.svg" alt="" width="96"></p>
@@ -71,8 +71,8 @@ freischalten, zuerst im Probelauf, und das Token sicher aufbewahren.
 
 ## Was er kann
 
-81 Werkzeuge in 10 Werkzeuggruppen. Die 42 Lesewerkzeuge füllen die erste Spalte; mit den
-Schreibstufen kommen 39 weitere Werkzeuge hinzu, die Daten anlegen und ändern.
+84 Werkzeuge in 10 Werkzeuggruppen. Die 42 Lesewerkzeuge füllen die erste Spalte; mit den
+Schreibstufen kommen 42 weitere Werkzeuge hinzu, die Daten anlegen und ändern.
 
 | Bereich                                | Lesen                                                                                                                                                                                                                                                                                                                 | Schreiben (`write`, `commit`, `external`)                                                                                                                                                                                                                    |
 | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

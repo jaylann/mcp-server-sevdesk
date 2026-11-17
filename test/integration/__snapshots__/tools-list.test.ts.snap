@@ -394,6 +394,36 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
       "type": "integer",
     },
   },
+  "sevdesk_order_create_confirmation": {
+    "/properties/result/properties/order/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/order/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/result/properties/order/properties/type/properties/key": {
+      "description": "Accepted type input/filter key; absent for unknown codes.",
+      "type": "string",
+    },
+  },
+  "sevdesk_order_create_delivery_note": {
+    "/properties/result/properties/order/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/order/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/result/properties/order/properties/type/properties/key": {
+      "description": "Accepted type input/filter key; absent for unknown codes.",
+      "type": "string",
+    },
+  },
   "sevdesk_order_create_draft": {
     "/properties/result/properties/order/properties/address/properties/country": {
       "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
@@ -444,6 +474,21 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
     },
   },
   "sevdesk_order_send_email": {
+    "/properties/result/properties/order/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/order/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/result/properties/order/properties/type/properties/key": {
+      "description": "Accepted type input/filter key; absent for unknown codes.",
+      "type": "string",
+    },
+  },
+  "sevdesk_order_set_offer_status": {
     "/properties/result/properties/order/properties/address/properties/country": {
       "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
       "pattern": "^[A-Z]{2}$",
@@ -2817,6 +2862,76 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
   },
   {
     "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create an order confirmation from a sevDesk offer",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "allowDuplicate": {
+          "default": false,
+          "description": "Create it even though an order confirmation from this order exists already.",
+          "type": "boolean",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "orderId": {
+          "description": "The offer's order id (not its number), e.g. from sevdesk_orders_list.",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "orderId",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_order_create_confirmation",
+    "title": "Create an order confirmation from a sevDesk offer",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create a delivery note from a sevDesk order",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "allowDuplicate": {
+          "default": false,
+          "description": "Create it even though a delivery note draft from this order exists already.",
+          "type": "boolean",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "orderId": {
+          "description": "The offer's or order confirmation's order id (not its number), e.g. from sevdesk_orders_list.",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "orderId",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_order_create_delivery_note",
+    "title": "Create a delivery note from a sevDesk order",
+  },
+  {
+    "annotations": {
       "destructiveHint": false,
       "idempotentHint": false,
       "openWorldHint": false,
@@ -3174,6 +3289,46 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     },
     "name": "sevdesk_order_send_email",
     "title": "Email a sevDesk order",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Accept, reject or reopen a sevDesk offer",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "description": "accept: the customer accepted (sent → accepted 500). reject: the customer declined (sent → rejected 300). reopen: back to sent (200) from accepted or rejected.",
+          "enum": [
+            "accept",
+            "reject",
+            "reopen",
+          ],
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Order id (not the order number), e.g. from sevdesk_orders_list.",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+        "action",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_order_set_offer_status",
+    "title": "Accept, reject or reopen a sevDesk offer",
   },
   {
     "annotations": {
@@ -6646,6 +6801,41 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
     },
     "name": "sevdesk_invoices_list",
     "title": "List sevDesk invoices",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create a delivery note from a sevDesk order",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "allowDuplicate": {
+          "default": false,
+          "description": "Create it even though a delivery note draft from this order exists already.",
+          "type": "boolean",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "orderId": {
+          "description": "The offer's or order confirmation's order id (not its number), e.g. from sevdesk_orders_list.",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "orderId",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_order_create_delivery_note",
+    "title": "Create a delivery note from a sevDesk order",
   },
   {
     "annotations": {

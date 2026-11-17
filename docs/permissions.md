@@ -18,6 +18,10 @@ Every tool belongs to exactly one tier. Reads and writes never share a tool.
 | `commit`   | Finalize, book payments, book bank transactions, mark transactions as private, cancel (Storno), enshrine (festschreiben, GoBD), reset, delete voucher drafts. Legally binding or hard to undo.         | **yes**      |
 | `external` | Send invoices, credit notes and orders by email. Reaches third parties.                                                                                                                                | **yes**      |
 
+Orders follow the same line: an offer's delivery note is a `write` draft, while accepting or
+rejecting an offer is `commit`, and so is creating its order confirmation, because sevDesk marks
+the offer as accepted in the same step.
+
 Choose the tiers with `SEVDESK_ALLOW`, for example `SEVDESK_ALLOW=write` or
 `SEVDESK_ALLOW=write,commit`; `all` enables every tier. `SEVDESK_READ_ONLY=1` turns everything but
 `read` off, whatever `SEVDESK_ALLOW` says. The [tool reference](tools.md) lists the tier of every

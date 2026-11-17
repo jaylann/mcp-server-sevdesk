@@ -1,4 +1,4 @@
-<!-- translated-from: docs/permissions.md sha256:05405562e442 -->
+<!-- translated-from: docs/permissions.md sha256:3199b36c06b7 -->
 
 # Berechtigungen und Bestätigung
 
@@ -20,6 +20,10 @@ Jedes Werkzeug gehört zu genau einer Stufe. Lesen und Schreiben teilen sich nie
 | `write`    | Kontakte, Artikel, Entwürfe von Rechnungen, Gutschriften, Aufträgen und Belegen, Mahnungen, der DATEV-Export, Belegarchive. Umkehrbar oder harmlos.                                                                                      | nein        |
 | `commit`   | Fertigstellen, Zahlungen buchen, Kontoumsätze zuordnen, Umsätze als privat markieren, stornieren, festschreiben (GoBD), zurücksetzen, Belegentwürfe löschen. Rechtlich bindend oder schwer rückgängig zu machen.                         | **ja**      |
 | `external` | Rechnungen, Gutschriften und Aufträge per E-Mail versenden. Erreicht Dritte.                                                                                                                                                             | **ja**      |
+
+Für Aufträge gilt dieselbe Linie: Ein Lieferschein zu einem Angebot ist ein `write`-Entwurf, ein
+Angebot anzunehmen oder abzulehnen dagegen `commit`, ebenso seine Auftragsbestätigung anzulegen,
+weil sevDesk das Angebot dabei als angenommen markiert.
 
 Die Stufen wählst du mit `SEVDESK_ALLOW`, zum Beispiel `SEVDESK_ALLOW=write` oder
 `SEVDESK_ALLOW=write,commit`; `all` aktiviert alle Stufen. `SEVDESK_READ_ONLY=1` schaltet alles

@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/invoices.md sha256:13c2e28e36d2 -->
+<!-- translated-from: docs/guides/invoices.md sha256:fdfda06b037b -->
 
 # Rechnungen: vom Entwurf bis zur Zahlung
 
@@ -86,6 +86,50 @@ deshalb abgelehnt wird der Entwurf nie.
 
 Eine Position kann einen Artikel aus [`sevdesk_parts_list`](../tools.md#sevdesk_parts_list)
 verknüpfen, Bezeichnung und Preis kommen aber trotzdem aus der Position.
+
+### Angebote: annehmen, bestätigen, liefern
+
+Bevor ein Angebot abgerechnet wird, kann der Assistent die Antwort des Kunden festhalten und die
+Dokumente anlegen, die darauf folgen:
+
+> Die Musterfirma hat das Angebot AN-1042 telefonisch angenommen. Markier es als angenommen.
+
+> Das Angebot AN-1043 haben sie abgelehnt.
+
+[`sevdesk_order_set_offer_status`](../tools.md#sevdesk_order_set_offer_status) (`commit`, **du
+bestätigst**) markiert ein versendetes Angebot als angenommen oder abgelehnt oder setzt ein
+angenommenes oder abgelehntes Angebot wieder auf versendet (`reopen`). Es ändert nur den Status und
+sendet dem Kunden nichts. Angebotsentwürfe verweigert das Werkzeug (versende sie zuerst: sevDesk
+würde einen Entwurf neu nummerieren), ebenso Auftragsbestätigungen und Lieferscheine.
+
+> Erstell die Auftragsbestätigung zu AN-1042.
+
+[`sevdesk_order_create_confirmation`](../tools.md#sevdesk_order_create_confirmation) (`commit`,
+**du bestätigst**) legt einen Entwurf einer Auftragsbestätigung (AB) mit Kontakt, Texten und
+Positionen des Angebots an; die Vorschau führt sie auf. sevDesk markiert das Angebot dabei als
+angenommen, deshalb bestätigst du diesen Schritt. Es arbeitet nur mit versendeten und angenommenen
+Angeboten: Einen Entwurf verweigert es (er würde ein Angebot annehmen, das der Kunde nie bekommen
+hat), und ein abgelehntes Angebot muss zuerst wieder geöffnet werden. So ist aus einer Ablehnung
+eine Annahme zu machen immer ein eigener Schritt.
+
+> Erstell einen Lieferschein zu AB-1007.
+
+[`sevdesk_order_create_delivery_note`](../tools.md#sevdesk_order_create_delivery_note) (`write`,
+ohne Bestätigung) legt einen Lieferschein-Entwurf (LI) aus einer Auftragsbestätigung (Entwurf,
+versendet oder angenommen) oder aus einem versendeten oder angenommenen Angebot an und lässt die
+Vorlage unverändert. Angebotsentwürfe und abgelehnte Angebote verweigert es.
+
+Das Werkzeug für Auftragsbestätigungen verweigert eine zweite aus demselben Angebot, außer du willst
+ausdrücklich eine. Das Werkzeug für Lieferscheine verweigert nur, solange ein früherer Lieferschein
+aus demselben Auftrag noch ein Entwurf ist, denn ein weiterer Lieferschein kann eine Teillieferung
+sein; fertiggestellte nennt seine Vorschau. Fertiggestellt wird der neue Entwurf mit
+[`sevdesk_order_finalize`](../tools.md#sevdesk_order_finalize). Beide Vorschauen führen auch Rabatte
+und Aufschläge auf das ganze Dokument der Vorlage auf; ob sevDesk sie übernimmt, ist nicht geprüft,
+also vergleiche die Summen des neuen Entwurfs, bevor du ihn fertigstellst. sevDesk gibt dem neuen
+Dokument die nächste Nummer seines Nummernkreises, ohne den Zähler weiterzuschalten; es kann also
+eine Nummer tragen, die eine andere Auftragsbestätigung oder ein anderer Lieferschein schon hat. Das
+Ergebnis nennt solche, die es findet. Offene Angebote findest du mit einer Frage nach versendeten
+Angeboten in einem Zeitraum ([`sevdesk_orders_list`](../tools.md#sevdesk_orders_list)).
 
 ### Aus einem Angebot oder einer Auftragsbestätigung
 
