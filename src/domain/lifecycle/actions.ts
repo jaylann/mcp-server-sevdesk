@@ -8,7 +8,8 @@
  *
  * Every request here changes data, so the client sends it once and never retries it. None of
  * these functions reads the document back: what a failed read-back means for the caller (the
- * write happened) is the tool's to report.
+ * write happened) is the tool's to report. The exception is `deleteDocument`: sevDesk's answer
+ * says nothing, so the plain GET that tells whether the document is gone is part of the delete.
  */
 import { z } from "zod";
 
@@ -190,5 +191,62 @@ export async function cancelInvoice(
   } catch (error) {
     if (error instanceof SevdeskError) return undefined;
     throw error;
+  }
+}
+
+/**
+ * Deletes a draft: `DELETE /{Invoice|CreditNote|Order}/{id}`, no body, sent once. sevDesk answers
+ * `{objects: [null]}` for a draft, which is ignored, and 409 for any other status (recorded,
+ * spec/deviations.md D-109, D-074); that 409 becomes a trusted message that nothing was deleted.
+ *
+ * The answer tells nothing, so a plain GET of the record afterwards does, as for vouchers
+ * (`executeVoucherDelete`): `true` when sevDesk no longer finds the document, `false` when it
+ * still returns one. Nothing is mapped, so only sevDesk's answer decides. Any other failure of
+ * that GET, a {@link SevdeskError} or not, is thrown as a {@link SevdeskError} with the deletion
+ * as a completed write: the DELETE was accepted, and nobody must send it again.
+ */
+export async function deleteDocument(
+  client: SevdeskClient,
+  kind: SalesKind,
+  id: number,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const { objectName, noun, toolPrefix } = KINDS[kind];
+  const path = sevdeskPath(objectName, id);
+  const withSignal = signal === undefined ? {} : { signal };
+  const what = `${noun} ${String(id)}`;
+  try {
+    await client.request({ method: "DELETE", path, ...withSignal });
+  } catch (error) {
+    if (error instanceof SevdeskError && error.status === 409) {
+      throw new SevdeskError({
+        kind: error.kind,
+        status: 409,
+        message:
+          `sevDesk refused to delete ${what}: only drafts (status 100) can be deleted, and it is ` +
+          "no longer one (probably finalized in the meantime). Nothing was deleted; check it " +
+          `with ${toolPrefix}_get.`,
+        ...(error.upstreamMessage === undefined ? {} : { upstreamMessage: error.upstreamMessage }),
+        cause: error,
+      });
+    }
+    throw error;
+  }
+  try {
+    expectSingle(await client.request({ method: "GET", path, ...withSignal }), what);
+    return false;
+  } catch (error) {
+    if (error instanceof SevdeskError && error.kind === "not_found") return true;
+    const failed = `sevDesk accepted the deletion of ${what}, but the check afterwards failed`;
+    const advice = `Do not delete again; check with ${toolPrefix}_get.`;
+    throw new SevdeskError({
+      kind: error instanceof SevdeskError ? error.kind : "unexpected_response",
+      message:
+        error instanceof SevdeskError
+          ? `${failed}: ${error.message} ${advice}`
+          : `${failed}. ${advice}`,
+      cause: error,
+      completedWrites: [{ objectName, id: String(id) }],
+    });
   }
 }

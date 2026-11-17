@@ -270,8 +270,8 @@ export function storedRule(stored: StoredVoucher, fix: string): TaxRule {
 
 /**
  * The stored positions as checked positions under `rule`: each needs an Update 2.0 booking account
- * (a legacy position with only an `accountingType` cannot be checked, D-045) and a rate the rule
- * allows.
+ * (a legacy position with only an `accountingType` cannot be checked, D-045; a position from
+ * sevDesk's receipt recognition has none at all, D-103) and a rate the rule allows.
  */
 export function storedPositionsFor(
   stored: StoredVoucher,
@@ -289,8 +289,9 @@ export function storedPositionsFor(
     if (account === undefined) {
       refuse(
         `Position ${String(index + 1)} of voucher ${String(stored.record.id)} has no Update 2.0 ` +
-          "booking account (accountDatev, only a legacy accountingType). Replace the positions " +
-          "with sevdesk_voucher_update_draft (positions).",
+          "booking account (accountDatev): sevDesk's receipt recognition leaves it empty, and " +
+          "legacy positions have only an accountingType. Replace the positions with " +
+          "sevdesk_voucher_update_draft (positions, each with accountDatevId).",
       );
     }
     return { accountDatevId: account.id, taxRateNumber: exactRate(rates[index] ?? "0", index) };

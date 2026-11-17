@@ -99,6 +99,7 @@ import {
   draftPositionInput,
   MAX_POSITIONS,
   type PositionInput,
+  type PositionPayload,
   positionPayload,
   wireNumber,
 } from "./positions.js";
@@ -116,13 +117,20 @@ import { readBack, readBackNotes } from "./read-back.js";
 import { addressInputShape } from "./recipient.js";
 import {
   type CreateArgs,
+  type CreateBasics,
   type DraftCallOptions,
   resolveCreateBasics,
   resolveUpdateBasics,
   structuredStoredAddress,
+  type TaxOptions,
   type UpdateArgs,
 } from "./shared.js";
-import { DEFAULT_TAX_RULE_ID, type RuleScope, SALES_TAX_RULE_IDS } from "./tax.js";
+import {
+  DEFAULT_TAX_RULE_ID,
+  type DocumentTaxFields,
+  type RuleScope,
+  SALES_TAX_RULE_IDS,
+} from "./tax.js";
 import {
   footTextTemplateInput,
   headTextTemplateInput,
@@ -135,6 +143,68 @@ const DEFAULT_HEADER = "Rechnung";
 /** The text template type (`objectType`) of invoices (recorded, D-115). */
 const INVOICE_TEXT_TYPE = "RE";
 const FINALIZE_TOOL = "sevdesk_invoice_finalize";
+
+/**
+ * How a new invoice resolves its tax rule: the sales rules of invoices, rule 1 by default (rule 11
+ * on a Kleinunternehmer account). Shared with recurring invoice templates (`../recurring/`), which
+ * become invoices and must pass the same checks.
+ */
+export const INVOICE_TAX_OPTIONS: TaxOptions = {
+  scope: INVOICE_SCOPE,
+  defaultRuleId: DEFAULT_TAX_RULE_ID,
+};
+
+/** What {@link newInvoiceContent} reads from the arguments of a create call. */
+export interface InvoiceContentArgs {
+  readonly contactId: number;
+  readonly timeToPay?: number | undefined;
+  readonly header?: string | undefined;
+  readonly headText?: string | undefined;
+  readonly footText?: string | undefined;
+}
+
+/** The document fields of {@link newInvoiceContent}. */
+export type NewInvoiceContent = {
+  readonly contact: { readonly id: number; readonly objectName: "Contact" };
+  readonly contactPerson: { readonly id: number; readonly objectName: "SevUser" };
+  readonly header: string;
+  readonly headText: string | undefined;
+  readonly footText: string | undefined;
+  readonly timeToPay: number | undefined;
+  readonly discount: 0;
+  readonly currency: string;
+  readonly showNet: boolean;
+} & DocumentTaxFields &
+  ReturnType<typeof structuredAddress>;
+
+/**
+ * The fields a new invoice prints, without type, status and dates: customer and contact person,
+ * title (default "Rechnung"), texts, payment term, prices, tax and the address. Shared with
+ * recurring invoice templates (`../recurring/`), so a template carries exactly what a draft would.
+ */
+export function newInvoiceContent(
+  args: InvoiceContentArgs,
+  basics: CreateBasics,
+): NewInvoiceContent {
+  return {
+    contact: ref(args.contactId, "Contact"),
+    contactPerson: ref(basics.contactPerson.id, "SevUser"),
+    header: args.header ?? DEFAULT_HEADER,
+    headText: args.headText,
+    footText: args.footText,
+    timeToPay: args.timeToPay,
+    discount: 0,
+    currency: basics.currency,
+    showNet: basics.mode === "net",
+    ...basics.tax,
+    ...structuredAddress(basics.address),
+  };
+}
+
+/** The positions of a new invoice (or template) as `invoicePosSave`, in the order given. */
+export function newInvoicePositions(basics: CreateBasics): PositionPayload[] {
+  return basics.positions.map((position, index) => positionPayload(position, index, "InvoicePos"));
+}
 
 const timeToPayInput = z
   .number()
@@ -254,18 +324,19 @@ export async function prepareInvoiceCreate(
   const delivery = resolveDeliveryPeriod(date, args.deliveryDate, args.deliveryDateUntil, true);
   const discount = args.discount === undefined ? undefined : resolveDiscount(args.discount);
   const texts = await resolveTemplateTexts(client, args, INVOICE_TEXT_TYPE, signal);
-  const basics = await resolveCreateBasics(
-    client,
-    args,
-    { scope: INVOICE_SCOPE, defaultRuleId: DEFAULT_TAX_RULE_ID },
-    options,
-  );
+  const basics = await resolveCreateBasics(client, args, INVOICE_TAX_OPTIONS, options);
   const { contact, contactPerson, address, currency, mode } = basics;
+  // With the document discount, which `basics.expected` leaves out.
   const expected = createTotals(basics.positions, mode, discount, currency);
   const duplicateQuery = { contactId: args.contactId, date, gross: expected.gross, currency };
   const duplicates = await findDuplicates(client, { kind: "invoice" }, duplicateQuery, signal);
 
-  const header = args.header ?? DEFAULT_HEADER;
+  // The texts as resolved, a text template's included.
+  const content = newInvoiceContent(
+    { ...args, headText: texts.headText, footText: texts.footText },
+    basics,
+  );
+  const header = content.header;
   const body = strictBody(
     saveInvoiceBodySchema,
     {
@@ -274,24 +345,12 @@ export async function prepareInvoiceCreate(
         mapAll: true,
         invoiceType: "RE",
         status: 100,
-        contact: ref(args.contactId, "Contact"),
-        contactPerson: ref(contactPerson.id, "SevUser"),
         invoiceDate: wireDocumentDate(date),
         deliveryDate: wireTimestamp(delivery.from),
         deliveryDateUntil: delivery.until === undefined ? undefined : wireTimestamp(delivery.until),
-        header,
-        headText: texts.headText,
-        footText: texts.footText,
-        timeToPay: args.timeToPay,
-        discount: 0,
-        currency,
-        showNet: mode === "net",
-        ...basics.tax,
-        ...structuredAddress(address),
+        ...content,
       },
-      invoicePosSave: basics.positions.map((position, index) =>
-        positionPayload(position, index, "InvoicePos"),
-      ),
+      invoicePosSave: newInvoicePositions(basics),
       invoicePosDelete: null,
       ...createDiscountBody(discount),
     },
@@ -556,7 +615,11 @@ async function storedCountryCode(
   return codes.get(countryId);
 }
 
-/** Only regular draft invoices that are not enshrined can be updated here. */
+/**
+ * Only regular draft invoices that are not enshrined can be updated here. The type is checked
+ * before the status, so a recurring template (WKR) at any status is pointed to its own tool
+ * instead of being told to reset it to a draft, which the reset tool refuses for templates.
+ */
 function checkUpdatable(doc: {
   readonly id: number;
   readonly status: number;
@@ -569,6 +632,20 @@ function checkUpdatable(doc: {
       message: `Invoice ${doc.id} is enshrined (festgeschrieben) and can no longer be changed.`,
     });
   }
+  const type = doc.invoiceType?.trim().toUpperCase() ?? "RE";
+  if (type !== "RE") {
+    const known = documentTypeByCode("invoice", type);
+    const instead =
+      type === "WKR"
+        ? "Change a recurring invoice template with sevdesk_invoice_update_recurring."
+        : "Edit it in sevDesk.";
+    throw new SevdeskError({
+      kind: "validation",
+      message:
+        `Invoice ${doc.id} is ${known === undefined ? "not a regular invoice" : `a ${known.label.toLowerCase()} (${known.code})`}; ` +
+        `this tool only changes regular invoices (RE). ${instead}`,
+    });
+  }
   if (doc.status !== 100) {
     throw new SevdeskError({
       kind: "validation",
@@ -576,16 +653,6 @@ function checkUpdatable(doc: {
         `Invoice ${doc.id} is not a draft (status: ${statusDto("invoice", doc.status).label}); ` +
         'only drafts can be changed. Reset it to a draft first with sevdesk_invoice_reset (to: "draft") ' +
         "or cancel it with sevdesk_invoice_cancel.",
-    });
-  }
-  const type = doc.invoiceType?.trim().toUpperCase() ?? "RE";
-  if (type !== "RE") {
-    const known = documentTypeByCode("invoice", type);
-    throw new SevdeskError({
-      kind: "validation",
-      message:
-        `Invoice ${doc.id} is ${known === undefined ? "not a regular invoice" : `a ${known.label.toLowerCase()} (${known.code})`}; ` +
-        "this tool only changes regular invoices (RE). Edit it in sevDesk.",
     });
   }
 }

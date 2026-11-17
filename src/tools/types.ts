@@ -115,6 +115,17 @@ export const ACCOUNT_VOUCHER_DRAFTS: SevdeskObjectRef = {
 };
 
 /**
+ * A lock key for creating recurring invoice templates (Abo-Rechnungen) in an account: the preview
+ * warns when the customer has a template with the same total already, then the template is saved.
+ * Two identical creations at once would both miss each other, and two templates bill the customer
+ * twice on every run.
+ */
+export const ACCOUNT_RECURRING_INVOICES: SevdeskObjectRef = {
+  objectName: "RecurringInvoices",
+  id: "account",
+};
+
+/**
  * A handler's successful result. `data` must match the tool's output schema; `summary` is one
  * short, trusted sentence (no upstream text) shown before the JSON.
  */

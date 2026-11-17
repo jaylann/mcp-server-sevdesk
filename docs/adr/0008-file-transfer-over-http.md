@@ -186,8 +186,9 @@ of at most 64 characters ending in `.pdf`, `.png`, `.jpg`, `.jpeg` or `.xml`, el
 `download.<ext>`: a capability link may carry its token in the path, and the name is shown and
 stored in sevDesk. Messages, previews and results show nothing else of a link, and the audit log
 records a link argument as its scheme and host only (`https://host/…?[redacted]`). The tools that
-take a file declare `openWorldHint: true` (their tiers stay), and `sevdesk_einvoice_parse` and
-`sevdesk_voucher_import_einvoice` are offered with link hosts alone too.
+take a file declare `openWorldHint: true` (their tiers stay), and `sevdesk_einvoice_parse`,
+`sevdesk_voucher_import_einvoice` and `sevdesk_voucher_recognize_receipt` are offered with link
+hosts alone too.
 `sevdesk_receipt_folder_check` takes no file and never a link, only a folder inside
 `SEVDESK_FILE_DIRS`, so it stays closed-world (`openWorldHint: false`), and link hosts alone
 (`SEVDESK_FILE_URL_HOSTS`) do not offer it; `test/integration/metadata-lint.test.ts` checks both.

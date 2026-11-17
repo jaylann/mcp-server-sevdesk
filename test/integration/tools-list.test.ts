@@ -116,6 +116,7 @@ describe("tools/list", () => {
       "sevdesk_uploads_list",
       "sevdesk_voucher_import_einvoice",
       "sevdesk_voucher_receipt_save",
+      "sevdesk_voucher_recognize_receipt",
     ];
     const stdio = (await surface(allEnabledConfig())).map((tool) => tool.name);
     const tools = await surface(filesConfig());

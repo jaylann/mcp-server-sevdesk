@@ -695,6 +695,18 @@ describe("minimumWriteTier reads the query and the form", () => {
       "write",
     );
   });
+
+  it("leaves the receipt recognition with its form at write (D-103)", () => {
+    // sevdesk_voucher_recognize_receipt is a write tool: its multipart form (creditDebit and the
+    // file in the part `voucher`) only ever makes a draft. A rule that treats every unreadable form
+    // as binding must not block it.
+    const recognition = new FormData();
+    recognition.append("creditDebit", "C");
+    recognition.append("voucher", new Blob(["%PDF-1.7"], { type: "application/pdf" }), "r.pdf");
+    const path = "/Voucher/Factory/createVoucherFromFile";
+    expect(minimumWriteTier(path, undefined, undefined, recognition)).toBe("write");
+    expect(minimumWriteTier(path, undefined, undefined, form())).toBe("write");
+  });
 });
 
 describe("minimumWriteTier reads the body as it is sent", () => {

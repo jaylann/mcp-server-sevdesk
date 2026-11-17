@@ -282,6 +282,28 @@ export const voucherImportInputShape = {
     ),
 };
 
+/**
+ * Input fields of `sevdesk_voucher_recognize_receipt` (without `dryRun`): the file, which goes
+ * through the same file resolver and checks as the receipt of a manual draft, its `fileSha256`,
+ * and the direction.
+ */
+export const voucherRecognitionInputShape = {
+  file: fileInput.describe(
+    "The receipt (Belegbild: PDF, PNG or JPEG, up to 20 MB) inside SEVDESK_FILE_DIRS, absolute " +
+      "or relative to one of those folders, or on a remote server the uploadId from " +
+      "sevdesk_upload_request, or an https link to a host in SEVDESK_FILE_URL_HOSTS. sevDesk " +
+      "reads it and attaches it to the new draft; how well it reads images is unmeasured.",
+  ),
+  fileSha256: fileSha256Input,
+  kind: z
+    .enum(VOUCHER_KINDS)
+    .optional()
+    .describe(
+      "expense (Ausgabe, default: a receipt or supplier invoice, money out) or revenue " +
+        "(Einnahme, money in).",
+    ),
+};
+
 export interface VoucherImportArgs extends ExchangeArgs {
   readonly file: string;
   readonly fileSha256?: string | undefined;

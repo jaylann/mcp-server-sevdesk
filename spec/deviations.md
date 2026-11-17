@@ -157,6 +157,8 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 | [D-114](#d-114-docserver-layout-lists-sit-under-objects-and-carry-large-base64-fields)             | DocServer layout lists sit under `objects` and carry large base64 fields               | Open                  |
 | [D-115](#d-115-post-and-delete-texttemplate-create-and-delete-text-templates)                      | `POST` and `DELETE /TextTemplate` create and delete text templates                     | Open                  |
 | [D-116](#d-116-document-discounts-discountsave-takes-a-list-getdiscounts-reads-them)               | Document discounts: `discountSave` takes a list; `getDiscounts` reads them             | Open                  |
+| [D-132](#d-132-recurring-templates-generation-and-auto-sending-are-switches-read-by-embed)         | Recurring templates: generation and auto-sending are switches read by `embed`          | Open                  |
+| [D-135](#d-135-saveinvoice-keeps-the-price-of-a-position-sent-by-its-id-without-an-error)          | `saveInvoice` keeps the price of a position sent by its id, without an error           | Open                  |
 | [D-140](#d-140-languages-invoices-store-en-orders-and-credit-notes-the-locale-or-german)           | Languages: invoices store `en`, orders and credit notes the locale or German           | Open                  |
 
 ## Entries
@@ -921,7 +923,7 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   | `GET /SevClient`                                                                       | the account's taxation regime, chart of accounts, company data and DATEV settings (D-067)                          | recorded |
   | `GET /Order/Factory/getNextOrderNumber`, `/CreditNote/Factory/getNextCreditNoteNumber` | the next order and credit note numbers (D-066)                                                                     | recorded |
   | `GET /CheckAccountTransactionLog`                                                      | what a bank transaction was booked against, and how much (D-057)                                                   | recorded |
-  | `DELETE /Invoice/{invoiceId}`                                                          | deleting a draft invoice (no tool uses it)                                                                         | recorded |
+  | `DELETE /Invoice/{invoiceId}`                                                          | deleting draft invoices (`sevdesk_document_delete_draft`; D-109)                                                   | recorded |
   | `DELETE /Voucher/{voucherId}`                                                          | deleting draft vouchers (the spec has only GET and PUT; D-074)                                                     | recorded |
   | `GET`, `POST /CostCentre`, `GET`, `DELETE /CostCentre/{costCentreId}`                  | cost centres of documents (D-091)                                                                                  | recorded |
   | `DELETE /TagRelation/{tagRelationId}`                                                  | removing one tag from one document (D-089)                                                                         | recorded |
@@ -930,7 +932,7 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   | `GET /PartUnity`                                                                       | alternative units of parts, with their own price and factor (`sevdesk_api_get`)                                    | known    |
   | `GET /Document`, document download                                                     | attached documents and receipts (metadata through `sevdesk_api_get`, files through `sevdesk_voucher_receipt_save`) | recorded |
   | `GET /SevSequence/Factory/getByType`                                                   | next document number (see D-027); `sevdesk_api_get` refuses it                                                     | known    |
-  | `POST /Voucher/Factory/createVoucherFromFile`                                          | voucher draft from a file, filled in by sevDesk's recognition (D-103; no tool uses it)                             | recorded |
+  | `POST /Voucher/Factory/createVoucherFromFile`                                          | voucher draft from a file, filled in by sevDesk's recognition (D-103; `sevdesk_voucher_recognize_receipt`)         | recorded |
 
   Recorded shapes: `GET /AccountDatev` rows have 28 keys (`number`, `name`, `accountDatevCategory`,
   `accountCategory`, …), scalars as strings, and GET by id answers one row; the list ignores every
@@ -991,8 +993,9 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 - **Impact:** Each undocumented endpoint gets a hand-written schema, a smoke test, and lives in
   the `advanced` toolset or behind a lookup until a recording confirms its shape. `uncertain`
   endpoints are not used by default tools: receipts go through `uploadTempFile` and `saveVoucher`
-  (D-011, D-026); `createVoucherFromFile` is recorded now, but no tool uses it until #96 does
-  (D-103). `GET /TextTemplate`, `/PartUnity` and `/Document`
+  (D-011, D-026); the recorded `createVoucherFromFile` is used only by
+  `sevdesk_voucher_recognize_receipt` (D-103). `GET /TextTemplate`,
+  `/PartUnity` and `/Document`
   have no curated tool; the generic read `sevdesk_api_get` (advanced toolset, off by default)
   reads them without a schema of its own: it returns the raw `objects` sanitized as untrusted
   text, drops binary fields and `sevClient` echoes, and always sends `limit`, `offset` and
@@ -1011,7 +1014,8 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   recorded answers in `test/fixtures/recorded/2026-11-10/advanced/` against them, the ignored
   `limit` included); the receipt download: `test/unit/tools/vouchers/receipt-save.test.ts`. `/SevSequence/Factory/getByType`: no tool uses it, and `sevdesk_api_get` refuses it
   (`test/unit/sevdesk/paths.test.ts`, `genericGetRefusal`). `/CostCentre` and
-  `DELETE /TagRelation/{tagRelationId}`: D-091 and D-089.
+  `DELETE /TagRelation/{tagRelationId}`: D-091 and D-089. `createVoucherFromFile`:
+  `test/unit/tools/vouchers/recognize-receipt.test.ts` (D-103).
 
 ### D-025: PDF rendering returns one base64 `pdf` since 2026-04-07
 
@@ -2489,9 +2493,10 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 
   Recorded 2026-11-16 (offers and credit notes alike): after `useNextNumber=true` the peek shows
   the following number; saving a draft with the reserved number does not move the counter again;
-  after that draft is deleted (D-109), the peek shows the **reserved number again**. A number
-  reserved for a draft that is then deleted is handed out once more, so deleting a numbered draft
-  leaves no gap. Saving or deleting a draft with a peeked number moves nothing.
+  after that draft is deleted (D-109), the peek shows the **reserved number again**. The number
+  reserved last, held by a draft that is then deleted, is handed out once more, so deleting that
+  draft leaves no gap. Whether a number from further back comes back once later numbers were
+  reserved was not recorded. Saving or deleting a draft with a peeked number moves nothing.
 
 - **Sources:** recorded 2026-11-07, trial account, Update 2.0 (probe `write-next-order-number`:
   two peeks, the same number); manual check (lead) of `useNextNumber=true`, the credit note and
@@ -2507,14 +2512,19 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   `write` tier ("it reserves the next document number"): it is refused in read-only and dry-run
   mode, needs the calling tool's tier and is never retried. Only `useNextNumber` false is a read
   (recorded); an absent flag is treated as reserving because it was never measured, except on the
-  documented `getNextCustomerNumber` (fix in this PR).
+  documented `getNextCustomerNumber` (fix in this PR). The preview of
+  `sevdesk_document_delete_draft` says no more than was recorded: a numbered order or credit note
+  draft's number comes back only if it was the last one handed out, otherwise the range keeps a
+  gap (D-109).
 - **Test:** `test/unit/sevdesk/paths.test.ts`, `test/unit/sevdesk/client.test.ts`,
   `test/unit/sevdesk/scoped-client.test.ts` (side-effect classification),
-  `test/unit/domain/drafts/numbering.test.ts`, `test/unit/tools/drafts/numbering.test.ts`. Live:
-  probe `write-next-order-number`, and the opt-in probe `write-reserved-number-delete-draft`
-  (it consumes a number of each sequence; the catalog test in `test/unit/scripts/probes.test.ts`
-  allows `useNextNumber=true` only there); the delete tools of #90 pin the "number is handed out
-  again" note when they come.
+  `test/unit/domain/drafts/numbering.test.ts`, `test/unit/tools/drafts/numbering.test.ts`;
+  `test/unit/tools/documents/delete-draft.test.ts` ("says that the number of a numbered … draft
+  comes back only if it was the last (D-066)") and the German preview in
+  `test/integration/__snapshots__/write-previews-de.test.ts.snap` ("delete a numbered credit note
+  draft"). Live: probe `write-next-order-number`, and the opt-in probe
+  `write-reserved-number-delete-draft` (it consumes a number of each sequence; the catalog test in
+  `test/unit/scripts/probes.test.ts` allows `useNextNumber=true` only there).
 
 ### D-067: `GET /SevClient` tells the taxation regime, and sevDesk checks it only when finalizing
 
@@ -2822,10 +2832,13 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   (`prepareVoucherDelete` in `src/domain/drafts/voucher-finalize.ts`), sends the DELETE once,
   ignores its answer and confirms with a GET that the voucher is gone (`executeVoucherDelete`). A
   409 (the voucher was finalized in the meantime) becomes a trusted message that nothing was
-  deleted. The preview warns that an attached receipt file may stay.
+  deleted. The preview warns that an attached receipt file may stay. `sevdesk_document_delete_draft`
+  does the same for invoice, order and credit note drafts (D-109).
 - **Test:** `test/unit/tools/vouchers/finalize-delete.test.ts` ("deletes a draft and confirms it is
   gone", "explains sevDesk's 409 for a voucher that is no draft anymore", "refuses an open
-  voucher", "warns that an attached receipt may stay"). Live: probe `write-voucher-delete`.
+  voucher", "warns that an attached receipt may stay"); for invoices, orders and credit notes
+  `test/unit/tools/documents/delete-draft.test.ts` and `test/regressions/delete-only-drafts.test.ts`
+  (D-109). Live: probe `write-voucher-delete`.
 
 ### D-075: A `FULL_PAYMENT` must use the whole linked transaction; type `N` splits it
 
@@ -3879,17 +3892,82 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   `"0"`, `supplierName` (a text, but not the PDF's supplier line, and no supplier contact) and
   `resultDisdar`; `taxRule` stayed null. It added one position: `taxRate` 19, `sum` 100, net
   `"0"`, the three sums, and `accountDatev` **null**.
+
+  Recorded 2026-11-17 (generated test files, all drafts deleted again):
+  - `creditDebit` `D` works: a draft (status 50, `voucherType` VOU) with `creditDebit` `D`, which
+    the recognition filled in with net 200, tax 38, gross 238 and one position at 19 %; `taxRule`
+    null.
+  - A PNG (1x1, `image/png`, part `voucher`) is accepted and makes a draft; nothing was
+    recognised from it (sums 0, no position after 8 s). JPEG and real photos are unmeasured.
+  - For four PDFs the sums were there at the second read, about one second after the upload (the
+    read right after the POST still had 0). Scans and long PDFs are unmeasured.
+  - **Several tax rates are recognised wrongly:** a receipt with 100.00 net at 19 % and 50.00
+    net at 7 % (gross 172.50) came back as ONE position at 7 % with net 161.21, tax 11.29, gross
+    172.50. The gross total was right, the split was not.
+  - **sevDesk does not deduplicate:** the same file sent twice made a second draft with the same
+    recognised values, without a refusal or a reference to the first.
+
 - **Sources:** [lippoliv/paperlessngx-to-sevdesk](https://github.com/lippoliv/paperlessngx-to-sevdesk)
   (`src/main.py`); recorded 2026-11-16, trial account, Update 2.0 (probe
-  `write-voucher-from-file`, opt-in).
+  `write-voucher-from-file`, opt-in); recorded 2026-11-17, trial account, Update 2.0 (one-off
+  check by the orchestrator, run tag `MCP-E2E 20261117-0035-y3q6`).
 - **Impact:** Recognition can start a voucher draft (#96), but the result is incomplete: no tax
   rule, no booking account, an unreliable supplier. A tool must poll the draft until the sums
   appear (bounded, a few seconds), show which fields came from sevDesk, and complete tax rule and
   account through the normal update with ReceiptGuidance before anything is finalized. The
   draft exists even if recognition fails, so the tool must name it for cleanup.
+- **Handling:** `sevdesk_voucher_recognize_receipt` (`write`;
+  `src/domain/drafts/voucher-recognition.ts`) sends a receipt once (multipart, `creditDebit` `C`
+  or, with `kind: revenue`, `D`, part `voucher` with the sniffed MIME type, never retried),
+  reads the draft at once and then after waits of 1, 1, 2, 2, 3, 3 and 3 s (15 s at most, three
+  times the slowest recorded 5 s) until `sumGross` is not 0, and reads the positions. The file
+  comes through the shared resolver like any receipt (a path, an upload or an allowed https link);
+  the preview shows its full SHA-256, and `fileSha256` refuses other bytes on the real call before
+  anything is sent, since the draft it makes cannot be taken back. It takes the file kinds of a
+  manual receipt (PDF, PNG, JPEG): sevDesk accepted the PNG, and a photo that is not recognised
+  still gives a draft the tool names for completing; for an image the preview and the result say
+  that its recognition is unmeasured. The result lists the fields sevDesk filled in
+  (`recognition.filledIn`, unchecked), what is missing (`taxRule`, `bookingAccount`,
+  `number`, `supplierContact`) and, in trusted notes that never quote recognised text, that
+  positions and tax rates can be wrong even when the total is right (a receipt with several
+  rates has to be entered again as one position per rate) and how to complete the draft with
+  `sevdesk_voucher_update_draft` (`taxRuleId`, positions with `accountDatevId`, checked against
+  the ReceiptGuidance) or delete it. Without sums after 15 s it says so and names the draft. An
+  answer that does not name the new voucher is an error that says a draft probably exists and
+  must be looked for, not created again; a failure after that names the draft as created. The
+  answer already names the attached receipt (`document`), so a remote upload is released right
+  then, not after the read-back: a read that fails afterwards cannot leave an upload id that a
+  retry turns into a second draft.
+  Because sevDesk does not deduplicate, the tool's own scan after the recognition is the only
+  guard: other vouchers of the same direction with the same date, gross total and recognised
+  Belegnummer (the supplier text is not compared), reported, not refused. It reads one page of
+  up to 1,000 vouchers; when sevDesk has more, when it failed, or when there was no recognised
+  date and total to compare, the result says that the check was partial or did not run.
+  The receipt of such a draft has a Document with `contentHash` null (D-100, recorded
+  2026-11-17 for a PDF and a PNG), so `sevdesk_receipt_folder_check` cannot match it (it counts
+  it under `coverage.vouchers.withoutChecksum`) and the audit's same-receipt rule
+  (`voucher_receipt_twice`) cannot see it; the audit's `duplicates` check still pairs two such
+  drafts by direction, document number and gross amount across suppliers (`draft_twice`, or
+  `draft_repeats_voucher` against a booked voucher). The preview says so.
+  `sevdesk_voucher_finalize` refuses the draft, expense or revenue, until both the tax rule and
+  every booking account are set (`storedRule`, `storedPositionsFor`).
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("runs the opt-in probes only when
   named…": the multipart request, the placeholders, the recognised fields, `taxRule` and
-  `accountDatev` null). Handling: pending, the recognition option of #96.
+  `accountDatev` null). The tool: `test/unit/tools/vouchers/recognize-receipt.test.ts` (the
+  multipart body sent once; a revenue receipt with `D`; a PNG with its MIME type and the image
+  note; a receipt from a link; `fileSha256` matching and refusing other bytes; recognised at
+  once, after waits, and not within the bound; a partial recognition; the several-rates note;
+  duplicates, a partial scan, a page without a count and a skipped scan; an unreadable answer; a
+  refused upload; a cancelled wait and a failed read naming the draft; recognised text kept out
+  of summary and notes). The upload release: `test/unit/tools/remote-files.test.ts` (released
+  from the answer also when the read fails, kept when neither the answer nor the read-back
+  shows the receipt). The tier: `test/unit/sevdesk/paths.test.ts` (the multipart POST stays
+  `write`). The safety net:
+  `test/regressions/recognised-voucher-draft.test.ts` (the finalize refuses a draft shaped like
+  the recorded one without a tax rule or a booking account, and accepts it once both are set;
+  the normal update completes it, replaces the wrongly split 7 % position with one position per
+  rate, and completes a recognised revenue draft that is then accepted). Fixtures
+  `test/fixtures/vouchers/voucher-from-file-*.json`, `voucher-positions-from-file.json`.
 
 ### D-107: Order factories copy the order; a confirmation marks the offer accepted
 
@@ -3998,15 +4076,33 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   and without a number) the DELETE answers `{objects: [null]}`, after which GET answers 404, as for
   vouchers (D-074) and invoices (D-024). A sent offer (200) is refused with 409 "Order can only be
   deleted in status 100 but is status 200" and stays. A finalized credit note was not at hand.
-  Deleting a draft saved with a peeked number does not move the counter; deleting one saved with
-  a reserved number gives that number back (D-066).
+  Deleting a draft saved with a peeked number does not move the counter; deleting the one saved
+  with the number reserved last gives that number back (D-066).
 - **Sources:** spec (`deleteOrder`, `deletecreditNote`); recorded 2026-11-16, trial account,
   Update 2.0 (probe `write-delete-draft-order-credit-note`).
 - **Impact:** The draft delete tool refuses anything but status 100 before sending, reads back
-  with a GET to confirm, and turns a 409 into a trusted message that nothing was deleted. (#90)
-- **Test:** pending: the #90 tools. Live: probe `write-delete-draft-order-credit-note`
-  (`test/unit/scripts/gaps-documents-probes.test.ts`, "deletes drafts, records the refusal of
-  non-drafts, and follows the counters").
+  with a plain GET to confirm, and turns a 409 into a trusted message that nothing was deleted
+  (`deleteDocument` in `src/domain/lifecycle/actions.ts`). The GET maps nothing: an answer means
+  the document is still there, a 404 or an empty answer that it is gone, and any other failure is
+  reported with the deletion as a completed write. A draft can hold a number that was issued,
+  since open invoices and credit notes can be reset to draft. So the preview of a numbered order
+  or credit note draft says the number comes back only if it was the last one handed out, and the
+  preview of an invoice draft with a number warns that deleting it leaves a gap if the number was
+  issued (more strongly when sevDesk records it as sent) and that an issued invoice is cancelled
+  instead. A warning, not a refusal: the record does not tell whether the number was issued.
+  Where sevDesk enshrines on finalizing, an enshrined invoice refuses `resetToDraft` and deletion
+  (D-023, D-059), so the gap cannot arise there. (#90)
+- **Test:** `test/unit/tools/documents/delete-draft.test.ts` ("deletes a … draft and confirms
+  with a GET that it is gone", "says so when sevDesk still returns … after the DELETE", "reports
+  the deletion as done when the read-back …", "explains sevDesk's 409 for a document that is no
+  draft anymore", "says that the number of a numbered … draft comes back only if it was the last
+  (D-066)", "an invoice draft with a number …"), the German previews in
+  `test/integration/__snapshots__/write-previews-de.test.ts.snap` ("delete a numbered credit note
+  draft", "delete an invoice draft that has a number and was sent"),
+  `test/regressions/delete-only-drafts.test.ts` (no DELETE for a non-draft or a template),
+  `test/unit/domain/lifecycle/transitions.test.ts` (`assertDeletable`). Live: probe
+  `write-delete-draft-order-credit-note` (`test/unit/scripts/gaps-documents-probes.test.ts`,
+  "deletes drafts, records the refusal of non-drafts, and follows the counters").
 
 ### D-110: `saveCreditNote` with an id updates a draft; `creditNotePosDelete` is a list
 
@@ -4056,21 +4152,101 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
     `PUT /Invoice/{id}` (not in the spec; D-024).
   - `invoiceDate` does not drive the schedule, and the `recurring…` fields are dropped silently
     (D-003).
-  - What sevDesk generates on the run date is pending: the template left by
-    `write-recurring-template-due` (start 2026-11-15) is read by `read-recurring-generated` on
-    2026-11-17.
+  - Recorded on 2026-11-17, updates through `saveInvoice` with
+    `invoice: {id, objectName, mapAll, …}` and only the named fields: such a minimal body keeps
+    type `WKR`, contact, header, status, schedule and positions (with no position keys, with
+    `invoicePosSave: []` and `invoicePosDelete: null`, or both `null`). `accountIntervall` alone is
+    stored and moves neither `accountStartDate` nor `accountNextInvoice`. `accountEndDate` alone is
+    stored and moves nothing else; `accountEndDate: null` removes it, an empty string is refused
+    with 500 "No date part in '' found.". A new `accountStartDate` moves both start and next run
+    (for a template that has run, see below). A header alone is stored.
+  - On a run date (recorded 2026-11-17): whether sevDesk generates anything is decided by
+    automatic generation (D-132), not by the status (D-112). With it on and a run due, sevDesk
+    created within about a minute (30–40 s
+    observed) an invoice of type `RE` at status 100 (a draft) with `origin` the template,
+    `sendDate` `null`, not enshrined and `sendType` copied (`"0"` from a template made through the
+    API, `null` from one made in the web app). Its `invoiceDate` is the moment of generation,
+    `deliveryDate` the run date and `deliveryDateUntil` the run date plus the interval minus one
+    day. The head text gets the line "Berechnung für den Zeitraum vom 17.11.2026 bis zum
+    16.12.2026", the placeholder `[%Rechnungsnummer%]` in the header becomes "Rechnung Nr. …", and
+    positions, foot text and address are copied. The template then has `accountNextInvoice` one
+    interval later, `accountLastInvoice` the moment of generation, and status 100.
+  - All four forms this server sends are understood: `P0Y1M0W` (1 month), `P0Y3M0W` (3 months),
+    `P0Y6M0W` (6 months), `P1Y0M0W` (1 year).
+  - The number of a generated draft is provisional: five generated drafts all showed RE-1065;
+    finalized with `sendBy` they got RE-1065, RE-1066, RE-1067 and so on, and the header followed.
+    Generated drafts go through the lifecycle tools like any draft.
+  - A start date three months in the past, generation on: sevDesk caught up one period a minute,
+    four drafts (17.08.–16.09., 17.09.–16.10., 17.10.–16.11., 17.11.–16.12.), then set the next
+    run to 17.12.2026.
+  - A new start date on a template that had already run moved start and next run to it and
+    cleared `accountLastInvoice`; with a start that was due, sevDesk generated a second draft for a
+    period it had already billed.
+  - The web app's own template: monthly is stored as `P0Y1M`, 7 days as `P0Y0M1W`;
+    `accountStartDate` and `accountNextInvoice` carry the time of day
+    (`2026-11-17T11:08:32+01:00`); `sendType` is `null` and `invoiceNumber` `""`. The web app
+    sends `accountNextInvoice` together with `accountStartDate`, `taxType: "default"` and
+    `taxRule` 1. Its form offers 7 and 14 days, monthly, 2 months, quarterly, half-yearly, yearly
+    and 2 to 5 years (the stored forms of the others are not recorded), and "Nachfällig" (in
+    arrears): the property `propertyIsDeferred`, read with `embed=propertyIsDeferred` (`null`
+    without the tick). For the period it shows, the form asks
+    `POST /Invoice/Factory/calculateInvoicingRange` with `{startDate, interval, isDeferred}`.
+  - Invoices generated from a template are listed by `GET /Invoice` with `origin[id]`,
+    `origin[objectName]=Invoice` and `showAll=true`: the listing returned exactly the invoices
+    generated from that template (confirmed 2026-11-17). Each carries `deliveryDate` (its run
+    date) and `deliveryDateUntil` (the last day of its period).
+  - What sevDesk does when a template reaches its end date (whether it stops, and whether
+    removing the end date later restarts it with a catch-up) is not recorded.
 - **Sources:** spec (`Model_Invoice`, `Model_InvoiceResponse`); recorded 2026-11-16, trial
   account, Update 2.0 (probes `write-recurring-template-create`, `write-recurring-interval-formats`,
   `write-recurring-schedule-fields`, `write-recurring-template-due`;
-  `test/fixtures/recorded/2026-11-16/invoices/recurring-templates.json`).
+  `test/fixtures/recorded/2026-11-16/invoices/recurring-templates.json`); recorded 2026-11-17,
+  trial account, Update 2.0 (a template made in the web app by the account owner, a browser
+  export of that session, and one-off checks by the orchestrator).
 - **Impact:** A recurring template is created with `invoiceType: "WKR"`, a validated
-  `accountIntervall` (the server checks the ISO-8601 form itself, since sevDesk does not) and
-  `accountStartDate`, optionally `accountEndDate`; never `accountNextInvoice` or `recurring…`.
-  Reads show interval, next run, start and end date; the invoice parser reads `accountIntervall`
-  and `accountNextInvoice` today and needs `accountStartDate` and `accountEndDate`. (#91)
+  `accountIntervall` (the server checks the ISO-8601 form itself, since sevDesk does not: one of
+  `P0Y1M0W`, `P0Y3M0W`, `P0Y6M0W`, `P1Y0M0W`) and `accountStartDate`, optionally
+  `accountEndDate`; never `accountNextInvoice` or `recurring…`, and never `propertyIsDeferred`.
+  A start date in the past is refused (sevDesk would catch up). Reads show interval (any
+  ISO-8601 duration, the four intervals in every spelling, others described), next run, start,
+  end and last run as Berlin days: `sevdesk_invoice_get` and the rows of `sevdesk_invoices_list`
+  carry the stored schedule of a template (`readStoredSchedule`). A template is changed with a
+  minimal body (the id and only what changes, never `invoiceType` or `status`), and `null`
+  removes the end date. Since a new start clears `accountLastInvoice`, whether a template has run
+  is decided by the invoices that name it as `origin`: a new start must lie after today and after
+  the period of the newest of them, else sevDesk would bill a period again. Their origin is
+  re-checked locally all the same (D-015), and one without either delivery date refuses the new
+  start, since its period cannot be told. An update that removes an end date, or moves it past a
+  next run before today, on an active template with automatic generation on is refused unless it
+  sets a new start: with the end date out of the way, nothing recorded keeps sevDesk from catching
+  up (the end date's own effect is not recorded). A template made in the web app (an interval this
+  server does not offer, a run time other than 00:00) can still be ended and changed: its interval
+  is shown as stored, its later runs are not computed, no preview names midnight as its run time,
+  and a next run today is said to come at its stored time. (#91)
 - **Test:** `test/contract/recorded-gaps-documents.test.ts` ("carries the schedule fields the
   parser does not read yet", "reads through the invoice parser: interval as sent, next run as a
-  Berlin date"); the create tool: pending, #91.
+  Berlin date", "reads through the template reader: interval, start, next run and end as
+  stored (D-111)", "shows the schedule in sevdesk_invoices_list rows of templates"); the create
+  tool: `test/unit/domain/recurring/payload.test.ts` (never `accountNextInvoice` or `recurring…`,
+  always `WKR`), `test/unit/domain/recurring/schedule.test.ts` ("refuses a start in the past:
+  sevDesk catches up one missed period a minute (D-111)", "reads a template made in the web app:
+  P0Y1M, dates with a time of day, the settings", "describes another duration … instead of
+  failing"), `test/unit/tools/invoices/recurring-create.test.ts` ("prepares a WKR body with the
+  schedule and reads only (D-111)", "says where sevDesk stored another schedule, type, status or
+  total than was sent"); the update tool: `test/unit/domain/recurring/payload.test.ts` ("never
+  sends a type, a status or the next run"), `test/unit/tools/invoices/recurring-update.test.ts`
+  ("a new interval: accountIntervall alone, the next run stays", "an end date alone, and null to
+  remove one", "a new start date moves the next run too", "a new start after the newest period
+  the template generated (found by origin)", "schedule {"startDate":"2026-11-16"}", "schedule
+  {"startDate":"2026-11-17"}", "a template made in the web app: its interval and run time as
+  stored", "a new start when a generated invoice has no delivery date: its period cannot be
+  told", "an end date change that lets a past next run happen (catch-up, D-111)", "switches it on
+  for a next run today at a later stored time: names that time"),
+  `test/unit/domain/invoices.test.ts` ("reads a template's switches with the settings embed
+  (D-132)"), `test/unit/tools/invoices/recurring-status.test.ts` ("ends a template made in the web
+  app (an interval this server does not offer)", "a template made in the web app: runs at its
+  stored time, the later runs not listed", "names the stored run time of a next run today that is
+  later than now (web app)").
 
 ### D-112: Recurring templates: status 50 ends, status 200 blocks `DELETE`, lists hide them
 
@@ -4080,20 +4256,53 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Actual behavior:** Recorded on 2026-11-16:
   - A new template has status 100. `saveInvoice` with its id and `status: "50"` deactivates it,
     `status: "100"` sets it back; `status: "200"` is accepted too and keeps the schedule.
+  - Status 100 is what the web app's "Speichern und aktivieren" stores, shown there as "Aktiv"
+    (recorded 2026-11-17). The status does not decide generation: templates at 100 and at 200, due
+    on 2026-11-15 and 2026-11-17, generated nothing in 36 hours while automatic generation was off
+    (D-132).
+  - An ended template (status 50) with automatic generation on and a run due generated nothing in
+    two minutes; set back to status 100, it generated a draft within the next minute (recorded
+    2026-11-17).
   - `DELETE /Invoice/{id}` deletes a template at status 100 and at 50 (`{objects: [null]}`, then
     404), but refuses one at 200 with 409 "Invoice can only be deleted in status 100 but is status
     200"; such a template has to be set to 50 or 100 first.
   - The default `GET /Invoice` leaves templates out; `showWkr=all` and `invoiceType=WKR` list
     them (only templates), `showAll=true` too. A template has no number and no `sendDate`.
-  - Whether status 100 or only 200 makes sevDesk generate invoices is pending (D-111).
+  - Status 50 keeps every schedule field as it was, `accountNextInvoice` included, so an ended
+    template's next run is no run that will happen. An update of other fields at status 50 is
+    accepted; status back to 100 keeps the schedule unchanged (recorded 2026-11-17).
 - **Sources:** spec (Invoice tag, status table and filters); recorded 2026-11-16, trial account,
   Update 2.0 (probes `write-recurring-template-update-end`, `write-recurring-schedule-fields`,
-  `write-recurring-template-create`).
-- **Impact:** Ending a template is `saveInvoice` with its id and status 50, previewed; deleting
-  is allowed only at 50 or 100. The lifecycle tools keep refusing templates
-  (`refuseTemplate`). (#91)
+  `write-recurring-template-create`); recorded 2026-11-17, trial account, Update 2.0 (a template
+  made in the web app by the account owner, a browser export of that session, and one-off checks
+  by the orchestrator).
+- **Impact:** A new template is saved with status 100. Ending a template is `saveInvoice` with its
+  id and `status: "50"` alone (`sevdesk_invoice_end_recurring`): it generates nothing afterwards,
+  even with automatic generation on, and keeps that switch. Reactivating sends the save status
+  (`sevdesk_invoice_reactivate_recurring`); with automatic generation on, a due run generates
+  within a minute, which its preview says, and a next run before today is refused (sevDesk would
+  catch up). Reads mark a template at 50 as ended. sevDesk deletes a template only at 50 or 100;
+  deleting one is left to the web app. The lifecycle tools keep refusing templates
+  (`refuseTemplate`); invoices generated from one are not refused because of it.
+  `sevdesk_document_delete_draft` refuses templates at every status, 100 and 50 included
+  (`assertDeletable`): a template is no draft, and it is ended with
+  `sevdesk_invoice_end_recurring`. (#91)
 - **Test:** `test/contract/recorded-gaps-documents.test.ts` ("lists only templates, active ones
-  (status 200) included, with total and paging"); the end tool: pending, #91.
+  (status 200) included, with total and paging", "marks an ended template's schedule"),
+  `test/regressions/recurring-template-guards.test.ts` (no tool finalizes, sends, books, cancels,
+  enshrines, resets, updates, sets the layout of, deletes, reminds of or credits a template, or
+  books a bank transaction to it, at status 100, 200 or 50, nor after the template tools changed
+  and ended it; an invoice generated from a template is not refused as one),
+  `test/unit/domain/recurring/payload.test.ts` ("saves with the recorded status of a new template
+  (D-112)", "sends status 50 or the save status as text, and nothing else"),
+  `test/unit/domain/lifecycle/transitions.test.ts` (`assertDeletable`, "refuses recurring invoice
+  templates, active or not"), `test/regressions/delete-only-drafts.test.ts` ("refuses an active
+  recurring template / a recurring template at status 100 / a deactivated recurring template
+  without a write"), `test/unit/tools/invoices/recurring-status.test.ts` ("sends status 50 and
+  nothing else", "previews what ends and what stays, in English and German", "previews that
+  sevDesk generates drafts again (generation on), with the run dates", "says that a next run today
+  is due at once", "with generation off: reactivating alone generates nothing, also with a past
+  next run", "refuses a next run in the past", "refuses no next run with generation on").
 
 ### D-113: `changeParameter` answers the layout in `metaData`; orders need a preview first
 
@@ -4285,7 +4494,13 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   another currency than EUR, and on an e-invoice. What a partial or advance invoice from an order does with its discount is
   not checked either; the from-order preview says so. The replacement was checked on an invoice;
   orders and credit notes send the same discount keys. The read-back still says when sevDesk
-  stored something other than what was sent.
+  stored something other than what was sent. `sevdesk_invoice_update_recurring` reads a recurring
+  template's discounts with the same reader and never sends discount keys: the totals of new
+  positions count a kept single net discount as the invoice draft update does (`updateTotals`),
+  and otherwise the preview says that sevDesk computes them. Not recorded: whether sevDesk keeps a
+  discount when every position is replaced (the preview says so and the read-back compares the
+  discounts with the ones before), `getDiscounts` on a template (only on drafts), and whether the
+  invoices a template generates carry its discount.
 - **Test:** `test/contract/recorded-gaps-documents.test.ts` ("answers an empty list with total
   null for an order without discounts", "reads through the document discount reader: no rows,
   nothing shown or bound"), `test/unit/domain/drafts/discount.test.ts` ("gives the recorded sums
@@ -4300,8 +4515,115 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   German when the document has several discounts"), `test/unit/domain/document-discounts.test.ts`
   (the shared reader and row text; "refuses a row with no discount flag", "… no percentage
   flag"), `test/unit/tools/orders/create-confirmation.test.ts` ("shows
-  and binds the offer's document discounts in both languages (review of #112, L5)"). Live: probes
-  `write-document-discount`, `read-order-get-discounts`.
+  and binds the offer's document discounts in both languages (review of #112, L5)"),
+  `test/unit/tools/invoices/recurring-update.test.ts` ("a discount on the whole template (D-116;
+  review of #124, M2)"). Live: probes `write-document-discount`, `read-order-get-discounts`.
+
+### D-132: Recurring templates: generation and auto-sending are switches read by `embed`
+
+- **Status:** Open. **Evidence:** recorded.
+- **Spec says:** Nothing: `propertyAutoGenerateRecurringInvoice`, `autoSendConfiguration`,
+  `POST /Invoice/{id}/activateAutoSending` and `POST /Invoice/{id}/deactivateAutoSending` are not
+  in the spec (D-024).
+- **Actual behavior:** Recorded on 2026-11-17:
+  - Automatic generation ("Automatische Generierung" in the web app) is the property
+    `propertyAutoGenerateRecurringInvoice`, off by default ("deaktiviert"). It is not in the plain
+    `GET /Invoice/{id}`; `embed=propertyAutoGenerateRecurringInvoice` adds it, by id and on every
+    row of `GET /Invoice?invoiceType=WKR`: `null` when it was never set, `""` after it was switched
+    off, `"1"` when on. Off, sevDesk generates nothing (the web app offers a "Rechnung erzeugen"
+    button instead); on, see D-111. Combined with the contact,
+    `embed=contact,propertyAutoGenerateRecurringInvoice,autoSendConfiguration` on
+    `GET /Invoice?invoiceType=WKR` returned the contact and both settings on every row (14 of 14).
+  - It is set with `invoice.propertyAutoGenerateRecurringInvoice: true` in a creating
+    `saveInvoice` (reads `"1"`), in a `saveInvoice` update (`true` reads `"1"`, `false` reads
+    `""`) and with `PUT /Invoice/{id}`. A `PUT` with the string `"0"` stores `"0"`, whose meaning
+    is not recorded. `false` in a creating `saveInvoice` is not recorded.
+  - Automatic sending ("Automatisches Versenden") is `autoSendConfiguration`, read with
+    `embed=autoSendConfiguration`: `null` on every template made through the API. The web app
+    switches it on with `POST /Invoice/{id}/activateAutoSending`, body `{sendType: "VM",
+timeValue: "P0D", timeValueIsDate: false, textTemplate: {id, objectName: "TextTemplate"}}`,
+    and off with `POST /Invoice/{id}/deactivateAutoSending` (no body; the public API accepted it
+    with the API token, and the embed read `null` afterwards). The web app calls
+    `deactivateAutoSending` right after it creates a template. When on, the embed reads `{id,
+objectName: "AutoSendConfiguration", sendDate: null, sendIntervalAfterCreation: "P0D",
+sendType: "VM", status: "HEAD", textTemplate: {id, objectName: "TextTemplate"}, sevClient,
+object: {id: <template id>, objectName: "Invoice"}}`.
+  - With both switches on, sevDesk generated the invoice 35 seconds after generation was switched
+    on and about a minute later finalized it (status 200, number RE-1068), e-mailed it with the
+    PDF attached (`sendType: "VM"`, `sendDate` 11:47:03) and enshrined it (11:47:04); the e-mail
+    arrived at 11:47. Nobody sees such an invoice before the customer does, and it cannot be
+    changed afterwards.
+- **Sources:** recorded 2026-11-17, trial account, Update 2.0 (a template made in the web app by
+  the account owner, a browser export of that session, and one-off checks by the orchestrator).
+- **Impact:** The create tool sends `propertyAutoGenerateRecurringInvoice: true` (on by default)
+  or leaves it out for off (it then reads `null`); never `false`, `"0"` or `autoSendConfiguration`,
+  and the server never calls `activateAutoSending`. It reads both back with
+  `embed=propertyAutoGenerateRecurringInvoice,autoSendConfiguration` and notes every difference.
+  Reads expose automatic generation as on, off or unrecorded, and automatic sending as a boolean
+  with its `sendType`, never the configuration's ids or texts: `sevdesk_invoice_get` reads a
+  template once more with the embed, and `sevdesk_invoices_list` adds it to `embed=contact` for
+  `type: recurring` (recorded on every row). The update tool sends `true` or `false` in a
+  `saveInvoice` update (`autoGenerate`) and compares the switch read back. Switching it on with a
+  next run before today is refused unless the same call sets a new start (sevDesk would catch
+  up); with a next run today the preview says the first draft comes at once, or at the stored run
+  time of a template made in the web app. The update
+  and reactivate tools refuse a template with automatic sending on, or whose settings sevDesk
+  did not return, since this server cannot preview the e-mails; the end tool is allowed and says
+  that it stops them. (#91)
+- **Test:** `test/unit/domain/recurring/payload.test.ts` ("sends automatic generation only as
+  true, or not at all (D-132)", "never sends autoSendConfiguration: this server does not switch
+  on automatic sending"), `test/unit/domain/recurring/schedule.test.ts` ("reads automatic
+  generation stored as %j", "reads automatic sending as on only when sevDesk returns a
+  configuration, with its sendType", "leaves the settings out of a record read without the
+  embed"), `test/unit/tools/invoices/recurring-create.test.ts` ("automatic generation (D-132)",
+  "compares automatic generation and sending as stored with what was sent (D-132)"),
+  `test/unit/domain/invoices.test.ts` ("reads a template's switches with the settings embed
+  (D-132)"), `test/unit/tools/invoices/list.test.ts` ("asks sevDesk to show recurring templates
+  and reminders when that type is requested": the combined embed for `type: recurring`),
+  `test/unit/tools/invoices/recurring-update.test.ts` ("switches automatic generation off, and
+  says what that means", "switches automatic generation on for a next run after today", "switches
+  it on for a next run today: the first draft comes at once", "switches it on for a past next run
+  only together with a new start", "switching generation on with a next run before today, naming
+  the catch-up", "a template with automatic sending on, or whose settings sevDesk did not
+  return", "checks the switch read back after changing it"),
+  `test/unit/tools/invoices/recurring-status.test.ts` ("ends a template with automatic sending
+  on, saying that it stops the e-mails", "refuses automatic sending on", "refuses settings sevDesk
+  did not return", "refuses a generation value whose meaning is not recorded").
+
+### D-135: `saveInvoice` keeps the price of a position sent by its id, without an error
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** The `InvoicePos` tag says a document and its positions are changed through the
+  save factory with the ids and `mapAll`; nothing says a field of a stored position cannot be
+  changed that way.
+- **Actual behavior:** Recorded on 2026-11-17 on recurring invoice templates (WKR), each with its
+  id in one `saveInvoice`:
+  - Position A sent by its id with only a new price (`{id, objectName: "InvoicePos", mapAll:
+true, price: 200}`) in `invoicePosSave`, a new position C in `invoicePosSave` and position B
+    in `invoicePosDelete`: C was added, B deleted and the sums recalculated, but A kept its old
+    price.
+  - A position sent by its id with all its fields (`quantity: 2`, a new `name`, `unity`,
+    `taxRate: 19`, `price: 333`; stored price 300): name and quantity were stored, the price
+    stayed 300, and the sums followed the old price (net 650 = 2 × 300 + 40 + 10).
+  - Neither request got an error. So the price of a stored position is not changed in place in
+    the forms tried, while other fields are.
+  - Full replacement works: both stored rows in `invoicePosDelete` and three new rows in
+    `invoicePosSave` left exactly the three new rows, each with the template as parent
+    (`invoice.id`); the old rows answer 404 by id, and the sums are right (net 350, gross 416.50
+    for 300 + 40 + 10 at 19 %).
+- **Sources:** spec (tag `InvoicePos`, `createInvoiceByFactory`); recorded 2026-11-17, trial
+  account, Update 2.0 (one-off checks by the orchestrator).
+- **Impact:** Positions are never changed by id: whole replacement is the only recorded way to
+  change a price. A change replaces all of them in one request (every stored row in
+  `invoicePosDelete`, the new rows without ids in `invoicePosSave`), as the invoice draft update
+  does (D-054), and `sevdesk_invoice_update_recurring` compares each stored position (name,
+  quantity, unit price, tax rate) and the gross total with what was sent afterwards, so a change
+  sevDesk ignored becomes a note. (#91)
+- **Test:** `test/unit/domain/recurring/payload.test.ts` ("replaces positions as a whole: new rows
+  to save, stored rows to delete": the schema has no place for a position with an id),
+  `test/unit/tools/invoices/recurring-update.test.ts` ("positions replace every stored one in one
+  request, never by id", "notices a position change sevDesk ignored", "compares name, quantity
+  and tax rate of every position read back").
 
 ### D-140: Languages: invoices store `en`, orders and credit notes the locale or German
 

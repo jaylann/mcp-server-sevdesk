@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:82499bb08ad8 -->
+<!-- translated-from: docs/faq.md sha256:182ca29899c0 -->
 
 # Häufige Fragen
 
@@ -147,6 +147,16 @@ abrufen ([Bereit für die E-Rechnung](guides/invoices.de.md#bereit-für-die-e-re
 einem Ordner, den du erlaubst (`SEVDESK_FILE_DIRS`); im Fernzugriff lädst du sie über eine Seite
 auf deinem Server hoch.
 
+### Kann sevDesks eigene Belegerkennung einen Beleg ausfüllen?
+
+Ja, für Ausgaben- und Einnahmenbelege. `sevdesk_voucher_recognize_receipt` schickt die Datei an
+sevDesks Belegerkennung, die einen Belegentwurf anlegt und binnen Sekunden Datum, Nummer, Summen
+und einen Lieferantentext ausfüllt. Diese Werte sind ungeprüft, und Positionen und Steuersätze
+können falsch sein, auch wenn die Summe stimmt (ein Beleg mit zwei Steuersätzen kam als eine
+Position zurück). Der Entwurf hat noch keine Steuerregel und kein Buchungskonto: Der Assistent
+vervollständigt ihn mit der normalen Entwurfsänderung, bevor er sich fertigstellen lässt
+([sevDesk den Beleg lesen lassen](guides/receipts.de.md#sevdesk-den-beleg-lesen-lassen)).
+
 ### Kann es nach DATEV exportieren?
 
 Ja. [`sevdesk_datev_export`](tools.md#sevdesk_datev_export) lässt sevDesk den
@@ -204,6 +214,25 @@ Nicht in 1.0. Steuerregeln, die Umsatzsteuer-Auswertung (Kennzahlen der UStVA), 
 E-Rechnungen und der Buchhaltungs-Skill folgen deutschem Recht, und der Server ist nur mit
 deutschen Konten getestet. Lesen kann mit einem österreichischen Konto funktionieren, aber dort ist
 nichts überprüft. Unterstützung für Österreich ist für ein späteres 1.x-Release vorgesehen.
+
+### Kann es Abo-Rechnungen einrichten?
+
+Ja. [`sevdesk_invoice_create_recurring`](tools.md#sevdesk_invoice_create_recurring) (Stufe
+`commit`, du bestätigst) speichert eine Vorlage für wiederkehrende Rechnungen, monatlich, vierteljährlich,
+halbjährlich oder jährlich, mit eingeschalteter automatischer Generierung, außer du willst sie aus
+([Abo-Rechnungen](guides/invoices.de.md#abo-rechnungen)). sevDesk erzeugt daraus dann an jedem
+Ausführungstag selbst einen Rechnungsentwurf, innerhalb etwa einer Minute: nicht fertiggestellt,
+nicht versendet, mit einer vorläufigen Nummer, die beim Fertigstellen endgültig wird. Du prüfst
+jeden Entwurf und stellst ihn mit den üblichen Rechnungswerkzeugen fertig und versendest ihn. Das
+automatische Versenden von sevDesk, das jede erzeugte Rechnung fertigstellen, per E-Mail versenden
+und festschreiben würde, bevor jemand sie sieht, schaltet der Server nie ein.
+[`sevdesk_invoice_update_recurring`](tools.md#sevdesk_invoice_update_recurring) ändert eine Vorlage
+(auch ihre automatische Generierung),
+[`sevdesk_invoice_end_recurring`](tools.md#sevdesk_invoice_end_recurring) beendet eine und
+[`sevdesk_invoice_reactivate_recurring`](tools.md#sevdesk_invoice_reactivate_recurring) startet sie
+wieder, jeweils Stufe `commit` mit deiner Bestätigung. Eine Vorlage mit eingeschaltetem
+automatischem Versenden wird hier nur beendet; Ändern oder Aktivieren bleibt der sevDesk-Web-App
+überlassen. Löschen lässt sich eine Vorlage nur in der sevDesk-Web-App.
 
 ### Kann es mit Angeboten, Auftragsbestätigungen und Lieferscheinen umgehen?
 

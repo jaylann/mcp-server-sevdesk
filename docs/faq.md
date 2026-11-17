@@ -133,6 +133,16 @@ for e-invoice readiness before you finalize them, and the XML sevDesk generates 
 folder you allow (`SEVDESK_FILE_DIRS`); in remote mode you upload them through a page on your
 server.
 
+### Can sevDesk's own receipt recognition fill in a voucher?
+
+Yes, for expense and revenue receipts. `sevdesk_voucher_recognize_receipt` sends the file to
+sevDesk's receipt recognition (Belegerkennung), which creates a voucher draft and fills in date,
+number, sums and a supplier text within seconds. Those values are unchecked, and the positions and
+tax rates can be wrong even when the total is right (a receipt with two rates came back as one
+position). The draft has no tax rule and no booking account yet: the assistant completes it with
+the normal draft update before it can be finalized
+([Let sevDesk read the receipt](guides/receipts.md#let-sevdesk-read-the-receipt)).
+
 ### Can it export to DATEV?
 
 Yes. [`sevdesk_datev_export`](tools.md#sevdesk_datev_export) lets sevDesk build the DATEV
@@ -186,6 +196,24 @@ Not in 1.0. Tax rules, the VAT summary (UStVA boxes), the e-invoice checks and t
 skill follow German law, and the server is tested only against German accounts. Reads may work on
 an Austrian account, but nothing is verified there. Support for Austria is tracked for a later 1.x
 release.
+
+### Can it set up recurring invoices (Abo-Rechnungen)?
+
+Yes. [`sevdesk_invoice_create_recurring`](tools.md#sevdesk_invoice_create_recurring) (`commit`
+tier, you confirm) saves a recurring invoice template, monthly, quarterly, half-yearly or yearly,
+with automatic generation on unless you ask for it off
+([Recurring](guides/invoices.md#recurring)). sevDesk then creates a draft invoice from it on every
+run date by itself, within about a minute: not finalized, not sent, with a provisional number that
+becomes final when the draft is finalized. You check each draft and finalize and send it with the
+usual invoice tools. The server never switches on sevDesk's automatic sending, which would finalize,
+e-mail and enshrine every generated invoice before anyone sees it.
+[`sevdesk_invoice_update_recurring`](tools.md#sevdesk_invoice_update_recurring) changes a template
+(also its automatic generation),
+[`sevdesk_invoice_end_recurring`](tools.md#sevdesk_invoice_end_recurring) ends one and
+[`sevdesk_invoice_reactivate_recurring`](tools.md#sevdesk_invoice_reactivate_recurring) starts it
+again, each `commit` tier with your confirmation. A template with automatic sending on is only
+ended here; changing or reactivating it is left to the sevDesk web app. A template is deleted only
+in the sevDesk web app.
 
 ### Can it handle offers, order confirmations and delivery notes?
 
