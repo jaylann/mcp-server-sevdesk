@@ -18,6 +18,12 @@ import { checkVatIdFormat } from "../../../../src/domain/vat/vat-id.js";
 const AT_VAT = checkVatIdFormat("ATU12345678");
 const DE_VAT = checkVatIdFormat("DE123456789");
 const BAD_VAT = checkVatIdFormat("ATU1234");
+const XI_VAT = checkVatIdFormat("XI123456789");
+const FR_VAT = checkVatIdFormat("FRXX123456789");
+const ES_VAT = checkVatIdFormat("ESX1234567X");
+
+/** The exception for a part of the state outside the EU VAT area: export or not taxable here. */
+const outside = (supply: SupplyKind): number => (supply === "goods" ? 2 : 17);
 
 function facts(
   regime: TaxRegime | undefined,
@@ -44,19 +50,19 @@ const REGULAR: readonly {
   readonly note?: string;
   readonly basis: string;
 }[] = [
-  // Domestic (Inland)
+  // Domestic (Inland); Heligoland and Büsingen are outside it
   ...SUPPLY_KINDS.map((supply) => ({
     label: `domestic business ${supply}`,
     facts: facts("regular", "DE", "business", supply, DE_VAT),
     suggestions: [1],
-    exceptions: [4, 5],
+    exceptions: [4, 5, outside(supply)],
     basis: "§ 1 Abs. 1 Nr. 1",
   })),
   ...SUPPLY_KINDS.map((supply) => ({
     label: `domestic consumer ${supply}`,
     facts: facts("regular", "DE", "consumer", supply),
     suggestions: [1],
-    exceptions: [4],
+    exceptions: [4, outside(supply)],
     basis: "§ 12 UStG",
   })),
   // Intra-EU B2B: goods (innergemeinschaftliche Lieferung) and services (§ 13b / reverse charge)
@@ -225,7 +231,7 @@ describe("decideSalesTaxRule: unknown regime", () => {
     const decision = decideSalesTaxRule(facts(undefined, "DE", "business", "goods"));
     expect(decision.decided).toBe(false);
     expect(decision.suggestions.map((outcome) => outcome.taxRuleId)).toEqual([1]);
-    expect(decision.exceptions.map((outcome) => outcome.taxRuleId)).toEqual([4, 5, 11]);
+    expect(decision.exceptions.map((outcome) => outcome.taxRuleId)).toEqual([4, 5, 2, 11]);
     expect(decision.warnings[0]).toContain("regular VAT is assumed");
   });
 });
@@ -281,12 +287,171 @@ describe("decideSalesTaxRule: rates and notes", () => {
     expect(DISCLAIMER.de).toMatch(/^Keine Steuerberatung/);
   });
 
-  it("knows where a country is", () => {
-    expect(customerAreaOf("de")).toBe("germany");
-    expect(customerAreaOf("AT")).toBe("eu");
-    expect(customerAreaOf("GR")).toBe("eu");
-    expect(customerAreaOf("CH")).toBe("non_eu");
-    expect(customerAreaOf("GB")).toBe("non_eu");
+  it("knows where a customer is for VAT", () => {
+    const area = (country: string, supply: SupplyKind = "goods", vatId?: VatId) =>
+      customerAreaOf({ country, supply, vatId });
+    expect(area("de")).toBe("germany");
+    expect(area("AT")).toBe("eu");
+    expect(area("GR")).toBe("eu");
+    expect(area("CH")).toBe("non_eu");
+    expect(area("GB")).toBe("non_eu");
+    // Monaco counts as France.
+    expect(area("mc")).toBe("eu");
+    expect(area("MC", "services")).toBe("eu");
+    // Northern Ireland: the EU for goods, outside it for services.
+    expect(area("XI")).toBe("eu");
+    expect(area("xi", "services")).toBe("non_eu");
+    expect(area("XI", "digital_services")).toBe("non_eu");
+    expect(area("GB", "goods", XI_VAT)).toBe("eu");
+    expect(area("GB", "services", XI_VAT)).toBe("non_eu");
+    expect(area("GB", "goods", checkVatIdFormat("XI12345"))).toBe("non_eu");
+    // Places outside the EU VAT area under their own code.
+    expect(area("AX")).toBe("non_eu");
+    expect(area("GP")).toBe("non_eu");
+  });
+});
+
+type VatId = ReturnType<typeof checkVatIdFormat> | undefined;
+
+const ruleIds = (outcomes: readonly { readonly taxRuleId: number }[]): number[] =>
+  outcomes.map((outcome) => outcome.taxRuleId);
+
+describe("decideSalesTaxRule: Northern Ireland (Windsor Framework)", () => {
+  it("makes goods to a business with an XI VAT ID an intra-Community supply, not an export", () => {
+    for (const country of ["GB", "XI"]) {
+      const decision = decideSalesTaxRule(facts("regular", country, "business", "goods", XI_VAT));
+      expect(decision.decided, country).toBe(true);
+      expect(ruleIds(decision.suggestions), country).toEqual([3]);
+      expect(decision.suggestions[0]?.reason, country).toContain("Northern Ireland");
+      expect(decision.warnings, country).toEqual([]);
+      expect(decision.notes, country).toContainEqual(expect.stringContaining("Windsor Framework"));
+    }
+  });
+
+  it("asks for the XI VAT ID and treats goods to a consumer as a distance sale", () => {
+    const missing = decideSalesTaxRule(facts("regular", "XI", "business", "goods"));
+    expect(ruleIds(missing.suggestions)).toEqual([1]);
+    expect(ruleIds(missing.exceptions)).toEqual([3]);
+    expect(missing.warnings).toContainEqual(expect.stringContaining("Ask the customer"));
+    const consumer = decideSalesTaxRule(facts("regular", "XI", "consumer", "goods"));
+    expect(consumer.decided).toBe(false);
+    expect(ruleIds(consumer.suggestions)).toEqual([18, 1]);
+    expect(consumer.suggestions[0]?.rate).toBeUndefined();
+    expect(consumer.suggestions[0]?.rateNote).toContain(
+      "The standard rate of Northern Ireland is not in this server's verified table",
+    );
+  });
+
+  it("keeps services outside the EU, also with an XI VAT ID", () => {
+    const business = decideSalesTaxRule(facts("regular", "XI", "business", "services", XI_VAT));
+    expect(ruleIds(business.suggestions)).toEqual([17]);
+    expect(business.notes).toContainEqual(expect.stringContaining("Windsor Framework"));
+    const viaGb = decideSalesTaxRule(facts("regular", "GB", "business", "services", XI_VAT));
+    expect(ruleIds(viaGb.suggestions)).toEqual([17]);
+    expect(viaGb.warnings).toEqual([]);
+    const consumer = decideSalesTaxRule(facts("regular", "XI", "consumer", "digital_services"));
+    expect(ruleIds(consumer.suggestions)).toEqual([17]);
+  });
+
+  it("gives goods to another GB customer the Northern Ireland case as an exception", () => {
+    const business = decideSalesTaxRule(facts("regular", "GB", "business", "goods"));
+    expect(ruleIds(business.suggestions)).toEqual([2]);
+    expect(ruleIds(business.exceptions)).toEqual([1, 3]);
+    expect(business.exceptions[1]?.when).toContain("Northern Ireland (XI…)");
+    expect(business.notes).toContainEqual(expect.stringContaining("Windsor Framework"));
+    const consumer = decideSalesTaxRule(facts("regular", "GB", "consumer", "goods"));
+    expect(ruleIds(consumer.exceptions)).toEqual([1, 18]);
+    expect(consumer.exceptions[1]?.when).toContain("the goods go to Northern Ireland");
+    const services = decideSalesTaxRule(facts("regular", "GB", "business", "services"));
+    expect(services.notes.join(" ")).not.toContain("Windsor");
+  });
+
+  it("names a VAT ID of another state for a customer in Northern Ireland", () => {
+    const decision = decideSalesTaxRule(facts("regular", "XI", "business", "goods", AT_VAT));
+    expect(decision.warnings).toContainEqual(
+      expect.stringContaining("issued by Austria, but the customer is in Northern Ireland"),
+    );
+  });
+
+  it("expects rule 3 on a draft for goods to Northern Ireland", () => {
+    const customer = {
+      regime: "regular" as const,
+      country: "GB",
+      customerType: "business" as const,
+      vatId: XI_VAT,
+    };
+    expect([...expectedSalesRuleIds(customer)].sort((a, b) => a - b)).toEqual([3, 17]);
+    expect(taxRuleMismatchWarning(2, customer)).toContain(
+      "(a business in Northern Ireland with a VAT ID): 3 for goods, 17 for services and " +
+        "digital services.",
+    );
+  });
+});
+
+describe("decideSalesTaxRule: Monaco counts as France", () => {
+  it("takes French VAT IDs and the French rate, and says why", () => {
+    const goods = decideSalesTaxRule(facts("regular", "MC", "business", "goods", FR_VAT));
+    expect(ruleIds(goods.suggestions)).toEqual([3]);
+    expect(goods.warnings).toEqual([]);
+    expect(goods.notes).toContainEqual(expect.stringContaining("Monaco counts as France"));
+    const services = decideSalesTaxRule(facts("regular", "MC", "business", "services", FR_VAT));
+    expect(ruleIds(services.suggestions)).toEqual([21]);
+    const digital = decideSalesTaxRule(facts("regular", "MC", "consumer", "digital_services"));
+    expect(digital.suggestions[0]).toMatchObject({ taxRuleId: 19, rate: "20" });
+    expect(digital.suggestions[0]?.reason).toContain("consumer in Monaco");
+    expect(digital.suggestions[0]?.reason).toContain("the VAT of France applies");
+    expect(
+      taxRuleMismatchWarning(2, {
+        regime: "regular",
+        country: "MC",
+        customerType: "business",
+        vatId: FR_VAT,
+      }),
+    ).toContain("(a business in Monaco with a VAT ID): 3 for goods, 21 for services");
+  });
+});
+
+describe("decideSalesTaxRule: parts of member states outside the EU VAT area", () => {
+  it.each([
+    ["ES", "the Canary Islands, Ceuta or Melilla"],
+    ["IT", "Livigno, Campione d'Italia"],
+    ["GR", "Mount Athos"],
+    ["DE", "Heligoland or Büsingen am Hochrhein"],
+  ])("%s: export for goods, not taxable here for services, as exceptions", (country, places) => {
+    for (const supply of SUPPLY_KINDS) {
+      for (const customerType of ["business", "consumer"] as const) {
+        const decision = decideSalesTaxRule(facts("regular", country, customerType, supply));
+        const last = decision.exceptions.at(-1);
+        expect(last?.taxRuleId, `${supply} ${customerType}`).toBe(outside(supply));
+        expect(last?.when, `${supply} ${customerType}`).toContain(places);
+        expect(last?.legalBasis, `${supply} ${customerType}`).toContain("MwStSystRL");
+      }
+    }
+  });
+
+  it("keeps the usual rule as the suggestion and hints at the exception on a draft", () => {
+    const decision = decideSalesTaxRule(facts("regular", "ES", "business", "goods", ES_VAT));
+    expect(decision.decided).toBe(true);
+    expect(ruleIds(decision.suggestions)).toEqual([3]);
+    expect(ruleIds(decision.exceptions)).toEqual([2]);
+    const services = decideSalesTaxRule(facts("regular", "ES", "consumer", "services"));
+    expect(ruleIds(services.exceptions)).toEqual([20, 17]);
+    expect(services.exceptions[1]?.when).toContain("§ 3a Abs. 4 UStG");
+    expect(
+      taxRuleMismatchWarning(2, {
+        regime: "regular",
+        country: "ES",
+        customerType: "business",
+        vatId: ES_VAT,
+      }),
+    ).toContain("It can still be right in a special case");
+  });
+
+  it("adds nothing for a state whose outside places have their own code", () => {
+    const france = decideSalesTaxRule(facts("regular", "FR", "business", "goods", FR_VAT));
+    expect(france.exceptions).toEqual([]);
+    const austria = decideSalesTaxRule(facts("regular", "AT", "consumer", "digital_services"));
+    expect(austria.exceptions).toEqual([]);
   });
 });
 

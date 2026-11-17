@@ -13,6 +13,13 @@
  * character of a Dutch number is "B". Ireland's second format is written "9999999WI" (seven
  * digits and two letters). Check digits are not verified: a wrong digit passes as a valid format.
  *
+ * **Northern Ireland (XI).** Under the Windsor Framework (Art. 8 of the Protocol on
+ * Ireland/Northern Ireland) Northern Ireland follows the EU VAT rules for goods, and its traders
+ * use their UK VAT number with the prefix XI, which VIES checks like a member state's. The format
+ * is that of UK VAT numbers: 9 digits, 12 digits (a branch), or GD or HA and 3 digits (government
+ * departments, health authorities). Such a number is reported with `country` XI, which is not an
+ * ISO 3166-1 code but the code VAT law uses for Northern Ireland.
+ *
  * Normalization is the e-invoice reader's (`normalizeVatId`): spaces, dots and dashes removed,
  * upper case. Only a number made of the characters a VAT ID can contain is ever echoed back.
  */
@@ -66,7 +73,14 @@ const VAT_ID_FORMATS: Readonly<Record<string, VatIdFormat>> = {
   SE: { pattern: /^\d{12}$/, description: "SE and 12 digits" },
   SI: { pattern: /^\d{8}$/, description: "SI and 8 digits" },
   SK: { pattern: /^\d{10}$/, description: "SK and 10 digits" },
+  XI: {
+    pattern: /^(?:\d{9}|\d{12}|GD\d{3}|HA\d{3})$/,
+    description: "XI and 9 or 12 digits, or XIGD or XIHA and 3 digits",
+  },
 };
+
+/** Who issues the numbers with a prefix that is not a member state's but that VIES checks. */
+const NORTHERN_IRELAND = { code: "XI", name: "Northern Ireland" } as const;
 
 /** What a VAT ID may consist of at all: a two-letter prefix and up to 14 more characters. */
 const SAFE_VAT_ID = /^[A-Z]{2}[A-Z0-9+*]{1,14}$/;
@@ -78,23 +92,27 @@ export const vatIdFormatSchema = z.object({
   status: z
     .enum(VAT_ID_FORMAT_STATUSES)
     .describe(
-      "valid_format: fits the format of its member state (not proof that it exists); " +
-        "invalid_format: an EU prefix with the wrong characters; not_eu: no EU member state's " +
-        "prefix (e.g. CHE, GB, XI); unreadable: not a VAT ID at all.",
+      "valid_format: fits the format of its member state, or of Northern Ireland (XI) (not " +
+        "proof that it exists); invalid_format: such a prefix with the wrong characters; not_eu: " +
+        "no EU member state's prefix (e.g. CHE, GB); unreadable: not a VAT ID at all.",
     ),
   vatId: z
     .string()
     .optional()
     .describe("Normalized: no spaces, dots or dashes, upper case. Absent when unreadable."),
-  country: z.string().optional().describe("ISO 3166-1 alpha-2 of the issuing state (GR for EL)."),
+  country: z
+    .string()
+    .optional()
+    .describe("ISO 3166-1 alpha-2 of the issuing state (GR for EL); XI for Northern Ireland."),
   countryName: z.string().optional(),
   expectedFormat: z.string().optional().describe("The format of that member state's VAT IDs."),
 });
 export type VatIdFormatCheck = z.output<typeof vatIdFormatSchema>;
 
 /**
- * Checks the format of `value` as an EU VAT ID (see the module doc). Pure; never throws for any
- * input. Greek numbers must start with EL: a GR prefix is reported as `invalid_format`.
+ * Checks the format of `value` as an EU VAT ID, or one of Northern Ireland (see the module doc).
+ * Pure; never throws for any input. Greek numbers must start with EL: a GR prefix is reported as
+ * `invalid_format`.
  */
 export function checkVatIdFormat(value: string): VatIdFormatCheck {
   const vatId = normalizeVatId(value);
@@ -110,14 +128,16 @@ export function checkVatIdFormat(value: string): VatIdFormatCheck {
       expectedFormat: "EL and 9 digits (Greek VAT IDs start with EL, not GR)",
     };
   }
-  const state = euMemberStateByVatPrefix(prefix);
+  const issuer =
+    euMemberStateByVatPrefix(prefix) ??
+    (prefix === NORTHERN_IRELAND.code ? NORTHERN_IRELAND : undefined);
   const format = VAT_ID_FORMATS[prefix];
-  if (state === undefined || format === undefined) return { status: "not_eu", vatId };
+  if (issuer === undefined || format === undefined) return { status: "not_eu", vatId };
   return {
     status: format.pattern.test(vatId.slice(2)) ? "valid_format" : "invalid_format",
     vatId,
-    country: state.code,
-    countryName: state.name,
+    country: issuer.code,
+    countryName: issuer.name,
     expectedFormat: format.description,
   };
 }

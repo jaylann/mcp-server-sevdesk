@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/invoices.md sha256:c382fc958106 -->
+<!-- translated-from: docs/guides/invoices.md sha256:fca318374fe7 -->
 
 # Rechnungen: vom Entwurf bis zur Zahlung
 
@@ -74,7 +74,10 @@ oder Leistungen erbringst. Es nennt die Regel, den Steuersatz (bei One-Stop-Shop
 Regelsteuersatz des Kundenlandes), den Hinweis, den die Rechnung tragen muss (etwa
 „Steuerschuldnerschaft des Leistungsempfängers“), und die Rechtsgrundlage. Entscheidet eine
 Schwelle oder eine besondere Art von Leistung, nennt es jede Möglichkeit mit ihrer Bedingung,
-statt zu raten. Es ist keine Steuerberatung.
+statt zu raten. Nordirland folgt bei Waren den Regeln der EU (gib das Land `XI` oder die
+XI-USt-IdNr. des Kunden an), Monaco gilt als Frankreich, und Gebiete von Mitgliedstaaten außerhalb
+des Mehrwertsteuergebiets der EU, etwa die Kanarischen Inseln, kommen als Ausnahmen. Es ist keine
+Steuerberatung.
 [`sevdesk_vat_id_check`](../tools.md#sevdesk_vat_id_check) (`read`) prüft das Format einer
 USt-IdNr.; beim VIES-Dienst der Europäischen Kommission fragt es nur nach, wenn der Betreiber des
 Servers das eingeschaltet hat (`SEVDESK_VIES_CHECK`, siehe [Datenschutz](../../PRIVACY.de.md)).

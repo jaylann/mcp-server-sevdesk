@@ -538,11 +538,11 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
   },
   "sevdesk_tax_rule_suggest": {
     "/properties/customer/properties/country": {
-      "description": "ISO 3166-1 alpha-2 code of the customer's country.",
+      "description": "ISO 3166-1 alpha-2 code of the customer's country; XI for Northern Ireland.",
       "type": "string",
     },
     "/properties/vatId/properties/country": {
-      "description": "ISO 3166-1 alpha-2 of the issuing state (GR for EL).",
+      "description": "ISO 3166-1 alpha-2 of the issuing state (GR for EL); XI for Northern Ireland.",
       "type": "string",
     },
   },
@@ -597,7 +597,7 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
   },
   "sevdesk_vat_id_check": {
     "/properties/format/properties/country": {
-      "description": "ISO 3166-1 alpha-2 of the issuing state (GR for EL).",
+      "description": "ISO 3166-1 alpha-2 of the issuing state (GR for EL); XI for Northern Ireland.",
       "type": "string",
     },
   },
@@ -4052,7 +4052,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "integer",
         },
         "country": {
-          "description": "Customer's country, ISO 3166-1 alpha-2 (e.g. AT, CH); overrides the contact's.",
+          "description": "Customer's country, ISO 3166-1 alpha-2 (e.g. AT, CH; XI for Northern Ireland); overrides the contact's.",
           "pattern": "^[A-Za-z]{2}$",
           "type": "string",
         },
@@ -7708,7 +7708,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "integer",
         },
         "country": {
-          "description": "Customer's country, ISO 3166-1 alpha-2 (e.g. AT, CH); overrides the contact's.",
+          "description": "Customer's country, ISO 3166-1 alpha-2 (e.g. AT, CH; XI for Northern Ireland); overrides the contact's.",
           "pattern": "^[A-Za-z]{2}$",
           "type": "string",
         },
@@ -9520,7 +9520,7 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           "type": "integer",
         },
         "country": {
-          "description": "Customer's country, ISO 3166-1 alpha-2 (e.g. AT, CH); overrides the contact's.",
+          "description": "Customer's country, ISO 3166-1 alpha-2 (e.g. AT, CH; XI for Northern Ireland); overrides the contact's.",
           "pattern": "^[A-Za-z]{2}$",
           "type": "string",
         },

@@ -19,7 +19,6 @@ import type { ContactDto } from "../contacts.js";
 import type { CountryReadOptions } from "../country-codes.js";
 import { invoiceAddressOf, loadContact } from "../drafts/recipient.js";
 import { taxRuleById } from "../reference-data.js";
-import { euMemberState } from "./eu.js";
 import {
   CUSTOMER_AREAS,
   CUSTOMER_TYPES,
@@ -27,6 +26,7 @@ import {
   type CustomerType,
   decideSalesTaxRule,
   DISCLAIMER,
+  placeName,
   type RuleOutcome,
   SUPPLY_KINDS,
   type SupplyKind,
@@ -72,10 +72,20 @@ type TypeSource = (typeof TYPE_SOURCES)[number];
 export const taxRuleSuggestionSchema = z.object({
   customer: z.object({
     contactId: z.number().int().optional(),
-    country: z.string().describe("ISO 3166-1 alpha-2 code of the customer's country."),
-    countryName: z.string().optional().describe("For EU member states."),
+    country: z
+      .string()
+      .describe("ISO 3166-1 alpha-2 code of the customer's country; XI for Northern Ireland."),
+    countryName: z
+      .string()
+      .optional()
+      .describe("For EU member states, Monaco and Northern Ireland."),
     countryFrom: z.enum(["input", "contact_address"]),
-    area: z.enum(CUSTOMER_AREAS).describe("germany, eu (another member state) or non_eu."),
+    area: z
+      .enum(CUSTOMER_AREAS)
+      .describe(
+        "germany, eu (another member state) or non_eu, for VAT on this supply: Monaco counts " +
+          "as France, Northern Ireland as eu for goods and non_eu for services.",
+      ),
     type: z.enum(CUSTOMER_TYPES).describe("business (B2B) or consumer (B2C)."),
     typeFrom: z
       .enum(TYPE_SOURCES)
@@ -108,7 +118,7 @@ export type TaxRuleSuggestion = z.output<typeof taxRuleSuggestionSchema>;
 export interface TaxRuleHelperInput {
   readonly supply: SupplyKind;
   readonly contactId?: number | undefined;
-  /** ISO 3166-1 alpha-2 (any case); EL is read as Greece. */
+  /** ISO 3166-1 alpha-2 (any case); EL is read as Greece, XI is Northern Ireland. */
   readonly country?: string | undefined;
   readonly customerType?: CustomerType | undefined;
   readonly vatId?: string | undefined;
@@ -162,14 +172,13 @@ export async function suggestTaxRule(
     supply: input.supply,
   });
 
-  const countryName = euMemberState(country)?.name;
   return taxRuleSuggestionSchema.parse({
     customer: compact({
       contactId: contact?.contact.id,
       country,
-      countryName,
+      countryName: placeName(country),
       countryFrom: input.country === undefined ? "contact_address" : "input",
-      area: customerAreaOf(country),
+      area: customerAreaOf({ country, vatId, supply: input.supply }),
       type: typed.type,
       typeFrom: typed.from,
     }),

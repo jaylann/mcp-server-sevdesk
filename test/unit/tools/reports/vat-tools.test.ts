@@ -228,13 +228,13 @@ describe("sevdesk_tax_rule_suggest", () => {
         rate: "19",
       }),
     ]);
-    expect(data.exceptions.map((outcome) => outcome.taxRuleId)).toEqual([4, 5]);
+    expect(data.exceptions.map((outcome) => outcome.taxRuleId)).toEqual([4, 5, 17]);
     expect(data.vatId).toMatchObject({ status: "valid_format", country: "DE" });
     expect(data.disclaimer.en).toContain("Not tax advice");
     expect(data.disclaimer.de).toContain("Keine Steuerberatung");
     expect(summary).toBe(
       "Tax rule 1 (Umsatzsteuerpflichtige Umsätze) for services to a business in Germany. " +
-        "2 exception(s). Not tax advice.",
+        "3 exception(s). Not tax advice.",
     );
     expect(client.writes()).toEqual([]);
   });
@@ -303,6 +303,33 @@ describe("sevdesk_tax_rule_suggest", () => {
     });
     expect(overridden.data.customer).toMatchObject({ country: "AT", countryFrom: "input" });
     expect(overridden.data.suggestions[0]?.taxRuleId).toBe(3);
+  });
+
+  it("treats Northern Ireland as the EU for goods and outside it for services", async () => {
+    // The review's case: an XI VAT ID with GB (sevDesk's country for Northern Ireland) or XI.
+    for (const country of ["GB", "XI"]) {
+      const goods = await suggest({
+        supply: "goods",
+        country,
+        customerType: "business",
+        vatId: "XI123456789",
+      });
+      expect(goods.data.customer, country).toMatchObject({ country, area: "eu" });
+      expect(
+        goods.data.suggestions.map((outcome) => outcome.taxRuleId),
+        country,
+      ).toEqual([3]);
+      expect(goods.data.vatId, country).toMatchObject({ status: "valid_format", country: "XI" });
+      expect(goods.data.warnings, country).toEqual([]);
+    }
+    const services = await suggest({ supply: "services", country: "xi", vatId: "XI123456789" });
+    expect(services.data.customer).toMatchObject({
+      country: "XI",
+      countryName: "Northern Ireland",
+      area: "non_eu",
+      type: "business",
+    });
+    expect(services.data.suggestions.map((outcome) => outcome.taxRuleId)).toEqual([17]);
   });
 
   it("uses rule 11 on a Kleinunternehmer account and says when the regime is unknown", async () => {
@@ -377,6 +404,18 @@ describe("sevdesk_vat_id_check", () => {
       message:
         "VIES confirms the VAT ID as valid on 2026-11-16. Keep this result with the invoice.",
     });
+  });
+
+  it("asks VIES about a number of Northern Ireland (XI)", async () => {
+    const watched = watchVies(jsonResponse({ valid: true, requestDate: "2026-11-16+01:00" }));
+    const { data, summary } = await checkId("XI 123 456 789", VIES_ON);
+    expect(JSON.parse(String(watched.requests[0]?.body))).toEqual({
+      countryCode: "XI",
+      vatNumber: "123456789",
+    });
+    expect(data.format).toMatchObject({ status: "valid_format", country: "XI" });
+    expect(data.vies.status).toBe("valid");
+    expect(summary).toContain("The VAT ID fits the format of Northern Ireland.");
   });
 
   it("reports an invalid number and an unavailable service", async () => {

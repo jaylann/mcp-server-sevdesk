@@ -68,8 +68,8 @@ export async function checkVatId(value: string, options: VatIdCheckOptions): Pro
       vies: {
         status: options.vies ? "not_sent" : "off",
         message: options.vies
-          ? "Not sent to VIES: only a VAT ID in the valid format of an EU member state is checked " +
-            "there."
+          ? "Not sent to VIES: only a VAT ID in the valid format of an EU member state or of " +
+            "Northern Ireland (XI) is checked there."
           : "The live VIES check is off on this server; only the format was checked.",
       },
       notes: formatNotes(format.status),
@@ -127,8 +127,8 @@ function formatNotes(status: VatIdCheck["format"]["status"]): string[] {
       return ["Check the number with the customer: it does not fit its member state's format."];
     case "not_eu":
       return [
-        "Only VAT IDs of the 27 EU member states are checked (Greece: EL). Numbers of other " +
-          "countries (e.g. CHE for Switzerland, GB, or XI for Northern Ireland) are not.",
+        "Only VAT IDs of the 27 EU member states (Greece: EL) and of Northern Ireland (XI) are " +
+          "checked. Numbers of other countries (e.g. CHE for Switzerland, or GB) are not.",
       ];
     case "unreadable":
       return ["Pass the VAT ID with its two-letter prefix, e.g. ATU12345678."];

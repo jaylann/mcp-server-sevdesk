@@ -103,10 +103,26 @@ describe("checkVatIdFormat", () => {
     expect(greek.expectedFormat).toContain("start with EL");
   });
 
+  it("knows the numbers of Northern Ireland (XI), which VIES checks", () => {
+    for (const value of ["XI123456789", "XI 123 4567 89 001", "XIGD123", "xiha567"]) {
+      expect(checkVatIdFormat(value), value).toMatchObject({
+        status: "valid_format",
+        country: "XI",
+        countryName: "Northern Ireland",
+      });
+    }
+    for (const value of ["XI12345678", "XI1234567890", "XIGD12", "XIAB123"]) {
+      expect(checkVatIdFormat(value), value).toMatchObject({
+        status: "invalid_format",
+        country: "XI",
+      });
+    }
+    expect(checkVatIdFormat("XI123456789").expectedFormat).toContain("XIGD or XIHA");
+  });
+
   it("tells numbers of other countries apart from unreadable values", () => {
     expect(checkVatIdFormat("CHE123456789")).toEqual({ status: "not_eu", vatId: "CHE123456789" });
-    expect(checkVatIdFormat("GB123456789")).toMatchObject({ status: "not_eu" });
-    expect(checkVatIdFormat("XI123456789")).toMatchObject({ status: "not_eu" });
+    expect(checkVatIdFormat("GB123456789")).toEqual({ status: "not_eu", vatId: "GB123456789" });
     for (const value of ["", "   ", "123456789", "D", "DE", "DE12345678901234567", "<b>DE1</b>"]) {
       expect(checkVatIdFormat(value), value).toEqual({ status: "unreadable" });
     }

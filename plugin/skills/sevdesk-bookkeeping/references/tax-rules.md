@@ -81,6 +81,12 @@ part of the document amount (sevDesk's rule names say "0% (19%)").
   One-Stop-Shop (18–20; quarterly OSS return to the BZSt within one month after the quarter).
 - **Exports outside the EU:** goods 2, tax-free with proof of export (§ 4 Nr. 1 Buchst. a, § 6
   UStG, §§ 8 ff. UStDV); B2B services taxable abroad usually 17.
+- **Places apart from their country code:** Northern Ireland follows the EU rules for goods
+  (Windsor Framework): goods to a business with an XI VAT ID are 3, to consumers a distance sale;
+  its services count as outside the EU (17). sevDesk lists no Northern Ireland, so pass country
+  `XI`, or the XI VAT ID with GB. Monaco counts as France (§ 1 Abs. 2a UStG). The Canary Islands,
+  Ceuta, Melilla, Heligoland, Büsingen, Livigno, Campione d'Italia and Mount Athos are outside the
+  EU VAT area (Art. 6 MwStSystRL): goods 2, services to businesses and electronic services 17.
 - **Buying within the EU:** goods 8 (acquisition VAT under § 1a, deductible under § 15 Abs. 1
   Satz 1 Nr. 3), services 14.
 

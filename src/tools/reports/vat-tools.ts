@@ -67,7 +67,10 @@ export const taxRuleSuggestTool = defineTool({
       .trim()
       .regex(/^[A-Za-z]{2}$/, "expected an ISO 3166-1 alpha-2 code such as AT")
       .optional()
-      .describe("Customer's country, ISO 3166-1 alpha-2 (e.g. AT, CH); overrides the contact's."),
+      .describe(
+        "Customer's country, ISO 3166-1 alpha-2 (e.g. AT, CH; XI for Northern Ireland); " +
+          "overrides the contact's.",
+      ),
     customerType: z
       .enum(CUSTOMER_TYPES)
       .optional()
@@ -91,7 +94,8 @@ export const vatIdCheckTool = defineTool({
   description:
     "Check an EU VAT ID (USt-IdNr., Umsatzsteuer-Identifikationsnummer), e.g. before an " +
     "intra-EU invoice with Reverse Charge or an innergemeinschaftliche Lieferung: offline, " +
-    "whether it fits the format of the member state its prefix names (all 27; EL for Greece). " +
+    "whether it fits the format of the member state its prefix names (all 27; EL for Greece; " +
+    "XI for Northern Ireland). " +
     "When the server's operator enabled the live check (SEVDESK_VIES_CHECK, off by default), " +
     "it also asks the European Commission's VIES service whether the number is valid today, " +
     "sending only the VAT ID to ec.europa.eu; otherwise nothing leaves the server. A valid " +

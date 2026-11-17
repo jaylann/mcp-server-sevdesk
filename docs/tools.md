@@ -1133,7 +1133,7 @@ Suggest the sevDesk tax rule (Steuerregel) for an outgoing invoice (Rechnung) fr
 | -------------- | ------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `supply`       | `goods` \| `services` \| `digital_services` | yes      | goods (Lieferung), services (sonstige Leistung) or digital_services (telecommunication, broadcasting, electronically supplied services, §3a Abs. 5 UStG). |
 | `contactId`    | integer                                     | no       | The customer's contact: its invoice-address country, VAT ID and kind are used.                                                                            |
-| `country`      | string                                      | no       | Customer's country, ISO 3166-1 alpha-2 (e.g. AT, CH); overrides the contact's.                                                                            |
+| `country`      | string                                      | no       | Customer's country, ISO 3166-1 alpha-2 (e.g. AT, CH; XI for Northern Ireland); overrides the contact's.                                                   |
 | `customerType` | `business` \| `consumer`                    | no       | business (B2B) or consumer (B2C); overrides what the contact suggests.                                                                                    |
 | `vatId`        | string                                      | no       | Customer's VAT ID; overrides the contact's.                                                                                                               |
 
@@ -1141,7 +1141,7 @@ Suggest the sevDesk tax rule (Steuerregel) for an outgoing invoice (Rechnung) fr
 
 **Check a VAT ID** · tier `read` · read-only, idempotent, reaches third parties
 
-Check an EU VAT ID (USt-IdNr., Umsatzsteuer-Identifikationsnummer), e.g. before an intra-EU invoice with Reverse Charge or an innergemeinschaftliche Lieferung: offline, whether it fits the format of the member state its prefix names (all 27; EL for Greece). When the server's operator enabled the live check (SEVDESK_VIES_CHECK, off by default), it also asks the European Commission's VIES service whether the number is valid today, sending only the VAT ID to ec.europa.eu; otherwise nothing leaves the server. A valid format is not proof that the number exists. Read only. See also sevdesk_tax_rule_suggest.
+Check an EU VAT ID (USt-IdNr., Umsatzsteuer-Identifikationsnummer), e.g. before an intra-EU invoice with Reverse Charge or an innergemeinschaftliche Lieferung: offline, whether it fits the format of the member state its prefix names (all 27; EL for Greece; XI for Northern Ireland). When the server's operator enabled the live check (SEVDESK_VIES_CHECK, off by default), it also asks the European Commission's VIES service whether the number is valid today, sending only the VAT ID to ec.europa.eu; otherwise nothing leaves the server. A valid format is not proof that the number exists. Read only. See also sevdesk_tax_rule_suggest.
 
 | Argument | Type   | Required | Description                                                                         |
 | -------- | ------ | -------- | ----------------------------------------------------------------------------------- |

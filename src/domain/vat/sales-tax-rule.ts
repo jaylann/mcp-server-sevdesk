@@ -21,6 +21,21 @@
  * - **the Kleinunternehmer thresholds** (§ 19 UStG) and the **Soll/Ist choice**, which sevDesk's
  *   API does not expose and which changes when VAT is due, not the rule: notes.
  *
+ * Places VAT law treats apart from their ISO code ({@link customerAreaOf}):
+ *
+ * - **Monaco** (MC) counts as France (§ 1 Abs. 2a Satz 2 UStG, Art. 7 MwStSystRL): its
+ *   businesses have French VAT IDs, and where the VAT of the customer's state applies, it is
+ *   France's;
+ * - **Northern Ireland** follows the EU VAT rules for goods and the UK's for services (Windsor
+ *   Framework, Art. 8 of the Protocol on Ireland/Northern Ireland). A customer is there with
+ *   country XI (the code VAT law uses; sevDesk's country list has none), or with country GB and a
+ *   VAT ID of Northern Ireland (XI…); for other GB customers the goods case is an exception;
+ * - **parts of member states outside the EU VAT area** under their state's own ISO code (Art. 6
+ *   MwStSystRL, for Germany § 1 Abs. 2 Satz 1 UStG: the Canary Islands, Ceuta, Melilla,
+ *   Heligoland, Büsingen, Livigno, Campione d'Italia, Mount Athos): an exception, rule 2 for goods
+ *   and 17 for services. Places outside it with their own code (Åland AX, the French overseas
+ *   departments, Greenland, …) are simply outside the EU.
+ *
  * Assumes, as sevDesk's tax rules do, a business established in Germany, and for goods that they
  * are shipped from Germany to the customer's country. An unknown regime is treated as regular VAT
  * with a warning, and rule 11 becomes an exception.
@@ -52,7 +67,7 @@ export type CustomerArea = (typeof CUSTOMER_AREAS)[number];
 export interface SaleFacts {
   /** The account's regime; undefined when it could not be read. */
   readonly regime: TaxRegime | undefined;
-  /** The customer's country, ISO 3166-1 alpha-2, upper case. */
+  /** The customer's country, ISO 3166-1 alpha-2, upper case; XI for Northern Ireland. */
   readonly country: string;
   readonly customerType: CustomerType;
   /** The customer's VAT ID, format-checked; undefined when none is known. */
@@ -114,11 +129,64 @@ export const DISCLAIMER = {
     "Steuerberatung.",
 } as const;
 
-/** Where `country` (ISO alpha-2, any case) is, seen from Germany. */
-export function customerAreaOf(country: string): CustomerArea {
-  const code = country.trim().toUpperCase();
+/** What decides where the customer is for VAT: its country, its VAT ID and what is sold. */
+export type CustomerPlace = Pick<SaleFacts, "country" | "vatId" | "supply">;
+
+/**
+ * Where the customer is for VAT on its supply, seen from Germany (`country` in any case): Monaco
+ * counts as France, Northern Ireland as the EU for goods and outside it for services (see the
+ * module doc).
+ */
+export function customerAreaOf(place: CustomerPlace): CustomerArea {
+  if (inNorthernIreland(place)) return place.supply === "goods" ? "eu" : "non_eu";
+  const code = vatCountryOf(place.country);
   if (code === "DE") return "germany";
   return euMemberState(code) === undefined ? "non_eu" : "eu";
+}
+
+/**
+ * The English name of `country` (any case) for an EU member state, Monaco or Northern Ireland
+ * (XI); undefined for any other country.
+ */
+export function placeName(country: string): string | undefined {
+  const code = country.trim().toUpperCase();
+  return euMemberState(code)?.name ?? OTHER_PLACE_NAMES[code];
+}
+
+/** The code VAT law uses for Northern Ireland (the prefix of its VAT IDs). */
+const NORTHERN_IRELAND = "XI";
+
+/** Names of the places with a VAT treatment of their own that are not member states. */
+const OTHER_PLACE_NAMES: Readonly<Record<string, string>> = {
+  MC: "Monaco",
+  [NORTHERN_IRELAND]: "Northern Ireland",
+};
+
+/** The country whose VAT a customer in `country` (any case) comes under: France for Monaco. */
+function vatCountryOf(country: string): string {
+  const code = country.trim().toUpperCase();
+  return code === "MC" ? "FR" : code;
+}
+
+/** Whether the customer is in Northern Ireland: country XI, or GB with a VAT ID of Northern Ireland. */
+function inNorthernIreland(place: Pick<SaleFacts, "country" | "vatId">): boolean {
+  const code = place.country.trim().toUpperCase();
+  if (code === NORTHERN_IRELAND) return true;
+  return (
+    code === "GB" &&
+    place.vatId?.status === "valid_format" &&
+    place.vatId.country === NORTHERN_IRELAND
+  );
+}
+
+/** The member state (or XI) whose VAT rules the customer's place follows: FR for Monaco. */
+function vatPlaceOf(place: Pick<SaleFacts, "country" | "vatId">): string {
+  return inNorthernIreland(place) ? NORTHERN_IRELAND : vatCountryOf(place.country);
+}
+
+/** Where the customer is, for the texts: Monaco, Northern Ireland, a member state or the code. */
+function customerPlaceName(place: Pick<SaleFacts, "country" | "vatId">): string {
+  return inNorthernIreland(place) ? countryName(NORTHERN_IRELAND) : countryName(place.country);
 }
 
 /** How the standard rate of a member state is looked up (tests pass a table without a rate). */
@@ -179,15 +247,105 @@ function withoutRoutine(candidate: Candidate): RuleOutcome {
 // ---------------------------------------------------------------------------------------------
 
 function regular(facts: SaleFacts, rateOf: StandardRateOf): CandidateDecision {
-  const area = customerAreaOf(facts.country);
-  switch (area) {
+  const decision = byArea(facts, rateOf);
+  const outside = outsideVatAreaException(facts);
+  return {
+    ...decision,
+    exceptions: outside === undefined ? decision.exceptions : [...decision.exceptions, outside],
+    notes: [...decision.notes, ...placeNotes(facts)],
+  };
+}
+
+function byArea(facts: SaleFacts, rateOf: StandardRateOf): CandidateDecision {
+  switch (customerAreaOf(facts)) {
     case "germany":
       return domestic(facts);
     case "eu":
       return facts.customerType === "business" ? euBusiness(facts) : euConsumer(facts, rateOf);
     case "non_eu":
-      return nonEu(facts);
+      return nonEu(facts, rateOf);
   }
+}
+
+/** Notes on a place VAT law treats apart from its ISO code (Monaco, Northern Ireland). */
+function placeNotes(facts: SaleFacts): string[] {
+  const code = facts.country.trim().toUpperCase();
+  if (code === "MC") return [MONACO_NOTE];
+  if (inNorthernIreland(facts) || (code === "GB" && facts.supply === "goods")) {
+    return [NORTHERN_IRELAND_NOTE];
+  }
+  return [];
+}
+
+/**
+ * Parts of member states outside the EU VAT area under the state's own ISO code (Art. 6
+ * MwStSystRL), with what to name them and the legal basis to add.
+ */
+const OUTSIDE_VAT_AREA: Readonly<
+  Record<string, { readonly places: string; readonly legalBasis: string }>
+> = {
+  DE: {
+    places: "Heligoland or Büsingen am Hochrhein",
+    legalBasis: "§ 1 Abs. 2 Satz 1 UStG; Art. 6 MwStSystRL",
+  },
+  ES: { places: "the Canary Islands, Ceuta or Melilla", legalBasis: "Art. 6 MwStSystRL" },
+  GR: { places: "Mount Athos", legalBasis: "Art. 6 MwStSystRL" },
+  IT: {
+    places: "Livigno, Campione d'Italia or the Italian waters of Lake Lugano",
+    legalBasis: "Art. 6 MwStSystRL",
+  },
+};
+
+/**
+ * The exception for a customer in a part of its member state that lies outside the EU VAT area:
+ * goods go there as an export (rule 2), services are taxed there (rule 17). Not routine: a draft
+ * with such a rule still gets the hint, which says it can be right in a special case.
+ */
+function outsideVatAreaException(facts: SaleFacts): Candidate | undefined {
+  const territory = OUTSIDE_VAT_AREA[facts.country.trim().toUpperCase()];
+  if (territory === undefined) return undefined;
+  const { places, legalBasis } = territory;
+  if (facts.supply === "goods") {
+    return {
+      ...exportOf(
+        `Goods shipped to ${places}, which lie outside the EU VAT area: a tax-exempt export ` +
+          "(Ausfuhr).",
+        `§ 4 Nr. 1 Buchst. a, § 6 UStG; ${legalBasis}`,
+      ),
+      when: `the goods go to ${places}`,
+    };
+  }
+  if (facts.customerType === "business") {
+    return {
+      ...notTaxableHere(
+        `A service to a business established in ${places}, outside the EU VAT area: the place ` +
+          "of supply is there (§ 3a Abs. 2 UStG), so it is not taxable in Germany.",
+        `§ 3a Abs. 2 UStG; ${legalBasis}`,
+      ),
+      when: `the customer is established in ${places}`,
+    };
+  }
+  if (facts.supply === "digital_services") {
+    return {
+      ...notTaxableHere(
+        "Telecommunication, broadcasting and electronic services to a consumer living in " +
+          `${places}, outside the EU VAT area, are taxed there (§ 3a Abs. 5 UStG): not taxable ` +
+          "in Germany.",
+        `§ 3a Abs. 5 UStG; ${legalBasis}`,
+      ),
+      when: `the customer lives in ${places}`,
+    };
+  }
+  return {
+    ...notTaxableHere(
+      `A catalogue service of § 3a Abs. 4 UStG to a consumer living in ${places}, outside the ` +
+        "EU VAT area, is taxed where the consumer lives: not taxable in Germany.",
+      `§ 3a Abs. 4 UStG; ${legalBasis}`,
+    ),
+    when:
+      `the customer lives in ${places} and the service is one of § 3a Abs. 4 UStG (e.g. ` +
+      "consulting, advertising or data processing)",
+  };
 }
 
 function domestic(facts: SaleFacts): CandidateDecision {
@@ -213,7 +371,7 @@ function domestic(facts: SaleFacts): CandidateDecision {
 }
 
 function euBusiness(facts: SaleFacts): CandidateDecision {
-  const name = countryName(facts.country);
+  const name = customerPlaceName(facts);
   if (facts.supply === "goods") {
     const missing = missingVatIdReason(facts);
     if (missing === undefined) {
@@ -284,8 +442,10 @@ function euBusiness(facts: SaleFacts): CandidateDecision {
 }
 
 function euConsumer(facts: SaleFacts, rateOf: StandardRateOf): CandidateDecision {
-  const name = countryName(facts.country);
-  const destination = destinationRate(facts.country, rateOf);
+  const name = customerPlaceName(facts);
+  const vatPlace = vatPlaceOf(facts);
+  const vatName = countryName(vatPlace);
+  const destination = destinationRate(vatPlace, rateOf);
   switch (facts.supply) {
     case "goods":
       return {
@@ -297,7 +457,7 @@ function euConsumer(facts: SaleFacts, rateOf: StandardRateOf): CandidateDecision
             legalBasis: "§ 3c Abs. 1 and 4 UStG; § 18j UStG (One-Stop-Shop)",
             reason:
               `A distance sale of goods to a consumer in ${name}: above the EU threshold the VAT ` +
-              `of ${name} applies, declared through the One-Stop-Shop.`,
+              `of ${vatName} applies, declared through the One-Stop-Shop.`,
             when: OVER_THRESHOLD,
           },
           german(
@@ -321,7 +481,7 @@ function euConsumer(facts: SaleFacts, rateOf: StandardRateOf): CandidateDecision
             legalBasis: "§ 3a Abs. 5 UStG; § 18j UStG (One-Stop-Shop)",
             reason:
               `Telecommunication, broadcasting or electronic services to a consumer in ${name}: ` +
-              `above the EU threshold the VAT of ${name} applies, declared through the ` +
+              `above the EU threshold the VAT of ${vatName} applies, declared through the ` +
               "One-Stop-Shop.",
             when: OVER_THRESHOLD,
           },
@@ -348,7 +508,7 @@ function euConsumer(facts: SaleFacts, rateOf: StandardRateOf): CandidateDecision
             taxRuleId: 20,
             ...destination,
             legalBasis: "§ 3a Abs. 3, § 3b UStG; § 18j UStG (One-Stop-Shop)",
-            reason: `A service whose place of supply is in ${name}: the VAT of ${name} applies.`,
+            reason: `A service whose place of supply is in ${name}: the VAT of ${vatName} applies.`,
             when:
               `the service has a special place of supply in ${name} (§ 3a Abs. 3, § 3b UStG), ` +
               "e.g. work on land there, admission to an event there, passenger transport there, " +
@@ -361,20 +521,14 @@ function euConsumer(facts: SaleFacts, rateOf: StandardRateOf): CandidateDecision
   }
 }
 
-function nonEu(facts: SaleFacts): CandidateDecision {
+function nonEu(facts: SaleFacts, rateOf: StandardRateOf): CandidateDecision {
   if (facts.supply === "goods") {
+    const toNorthernIreland = northernIrelandGoods(facts, rateOf);
     return decided(
-      {
-        taxRuleId: 2,
-        rate: "0",
-        invoiceNote: {
-          de: "Steuerfreie Ausfuhrlieferung",
-          en: "Tax-exempt export delivery",
-          required: true,
-        },
-        legalBasis: "§ 4 Nr. 1 Buchst. a, § 6 UStG; §§ 8 to 17 UStDV (proof of export)",
-        reason: "Goods shipped to a customer outside the EU: a tax-exempt export (Ausfuhr).",
-      },
+      exportOf(
+        "Goods shipped to a customer outside the EU: a tax-exempt export (Ausfuhr).",
+        "§ 4 Nr. 1 Buchst. a, § 6 UStG; §§ 8 to 17 UStDV (proof of export)",
+      ),
       [
         german(
           "Goods that stay in the EU, or an export that cannot be proven, are taxable in " +
@@ -382,6 +536,7 @@ function nonEu(facts: SaleFacts): CandidateDecision {
           "§ 1 Abs. 1 Nr. 1, § 3 Abs. 6 UStG",
           "the goods do not leave the EU, or the export cannot be proven",
         ),
+        ...(toNorthernIreland === undefined ? [] : [toNorthernIreland]),
       ],
       [
         EXPORT_NOTE,
@@ -437,12 +592,48 @@ function nonEu(facts: SaleFacts): CandidateDecision {
   };
 }
 
+/**
+ * For goods to a GB customer, the case that they go to Northern Ireland, which follows the EU
+ * rules for goods: an intra-Community supply to a business with an XI VAT ID (rule 3), a distance
+ * sale to a consumer (rule 18 above the threshold; below it rule 1, the export exception's case).
+ */
+function northernIrelandGoods(facts: SaleFacts, rateOf: StandardRateOf): Candidate | undefined {
+  if (facts.country.trim().toUpperCase() !== "GB") return undefined;
+  if (facts.customerType === "business") {
+    return {
+      taxRuleId: 3,
+      rate: "0",
+      invoiceNote: INTRA_EU_SUPPLY_NOTE,
+      legalBasis: `§ 4 Nr. 1 Buchst. b, § 6a UStG; ${WINDSOR_FRAMEWORK}`,
+      reason:
+        "Goods shipped to a business in Northern Ireland, which follows the EU VAT rules for " +
+        "goods: a tax-exempt intra-Community supply, not an export.",
+      when:
+        "the goods go to Northern Ireland and the customer gives you a valid VAT ID of Northern " +
+        "Ireland (XI…)",
+    };
+  }
+  return {
+    taxRuleId: 18,
+    ...destinationRate(NORTHERN_IRELAND, rateOf),
+    legalBasis: `§ 3c Abs. 1 and 4 UStG; § 18j UStG (One-Stop-Shop); ${WINDSOR_FRAMEWORK}`,
+    reason:
+      "A distance sale of goods to a consumer in Northern Ireland, which follows the EU VAT " +
+      "rules for goods: above the EU threshold the VAT of Northern Ireland applies, declared " +
+      "through the One-Stop-Shop.",
+    when:
+      "the goods go to Northern Ireland and your distance sales of goods and digital services to " +
+      "consumers in other EU states (Northern Ireland included) exceed 10,000 € net; below that, " +
+      "German VAT applies (rule 1)",
+  };
+}
+
 // ---------------------------------------------------------------------------------------------
 // Kleinunternehmer (§ 19 UStG)
 // ---------------------------------------------------------------------------------------------
 
 function smallBusiness(facts: SaleFacts): CandidateDecision {
-  const area = customerAreaOf(facts.country);
+  const area = customerAreaOf(facts);
   const notes: string[] = [SMALL_BUSINESS_THRESHOLD_NOTE];
   if (area === "eu" && facts.customerType === "business") {
     notes.push(
@@ -504,6 +695,21 @@ function german(reason: string, legalBasis: string, when?: string): Candidate {
   };
 }
 
+/** Rule 2, a tax-exempt export. */
+function exportOf(reason: string, legalBasis: string): Candidate {
+  return {
+    taxRuleId: 2,
+    rate: "0",
+    invoiceNote: {
+      de: "Steuerfreie Ausfuhrlieferung",
+      en: "Tax-exempt export delivery",
+      required: true,
+    },
+    legalBasis,
+    reason,
+  };
+}
+
 /** Rule 17, not taxable in Germany. */
 function notTaxableHere(reason: string, legalBasis: string): Candidate {
   return {
@@ -527,13 +733,16 @@ function decided(
   return { decided: true, suggestions: [suggestion], exceptions, notes, warnings: [] };
 }
 
-/** The standard rate of the customer's member state for a One-Stop-Shop outcome. */
+/**
+ * The standard rate of the member state whose VAT applies (`vatPlace`, from {@link vatPlaceOf})
+ * for a One-Stop-Shop outcome. Northern Ireland's is not in the verified table, so it has none.
+ */
 function destinationRate(
-  country: string,
+  vatPlace: string,
   rateOf: StandardRateOf,
 ): { readonly rate: string | undefined; readonly rateNote: string } {
-  const state = euMemberState(country);
-  const name = state?.name ?? country;
+  const state = euMemberState(vatPlace);
+  const name = countryName(vatPlace);
   const rate = state === undefined ? undefined : rateOf(state);
   if (rate === undefined) {
     return {
@@ -552,7 +761,7 @@ function destinationRate(
 }
 
 function countryName(country: string): string {
-  return euMemberState(country)?.name ?? country.toUpperCase();
+  return placeName(country) ?? country.trim().toUpperCase();
 }
 
 const INTRA_EU_SUPPLY_NOTE: InvoiceNote = {
@@ -671,6 +880,20 @@ const NON_EU_BUSINESS_NOTE =
   "(Abschnitt 3a.2 Abs. 11 UStAE). The customer's country may charge its own VAT (reverse " +
   "charge or registration).";
 
+const WINDSOR_FRAMEWORK = "Art. 8 Protocol on Ireland/Northern Ireland (Windsor Framework)";
+
+const NORTHERN_IRELAND_NOTE =
+  "Northern Ireland follows the EU VAT rules for goods and the UK's for services (Windsor " +
+  "Framework, Art. 8 of the Protocol on Ireland/Northern Ireland). Goods that go there are not " +
+  "an export but an intra-Community supply to a business with an XI VAT ID (rule 3, also in the " +
+  "Zusammenfassende Meldung; without one, German VAT) or a distance sale to a consumer. Services " +
+  "count as supplied outside the EU. Pass country XI, or the customer's XI VAT ID with GB.";
+
+const MONACO_NOTE =
+  "Monaco counts as France for VAT (§ 1 Abs. 2a Satz 2 UStG, Art. 7 MwStSystRL): businesses " +
+  "there have French VAT IDs (FR…), and where the VAT of the customer's state applies, it is " +
+  "France's.";
+
 const NON_EU_LOCAL_VAT_NOTE =
   "The customer's country may require you to register for its own VAT or GST on such sales " +
   "(e.g. Switzerland, Norway, the United Kingdom).";
@@ -704,7 +927,7 @@ function missingVatIdReason(facts: SaleFacts): string | undefined {
 function vatIdWarnings(facts: SaleFacts): string[] {
   const vatId = facts.vatId;
   if (vatId === undefined) return [];
-  const area = customerAreaOf(facts.country);
+  const area = customerAreaOf(facts);
   const warnings: string[] = [];
   switch (vatId.status) {
     case "unreadable":
@@ -722,10 +945,10 @@ function vatIdWarnings(facts: SaleFacts): string[] {
       );
       break;
     case "valid_format":
-      if (vatId.country !== undefined && vatId.country !== facts.country && area !== "non_eu") {
+      if (vatId.country !== undefined && vatId.country !== vatPlaceOf(facts) && area !== "non_eu") {
         warnings.push(
           `The VAT ID was issued by ${vatId.countryName ?? vatId.country}, but the customer is in ` +
-            `${countryName(facts.country)}: check which applies, the rule follows where the ` +
+            `${customerPlaceName(facts)}: check which applies, the rule follows where the ` +
             "goods go or where the customer is established.",
         );
       }
@@ -805,14 +1028,13 @@ function listText(items: readonly string[]): string {
   return items.length <= 1 ? last : `${items.slice(0, -1).join(", ")} and ${last}`;
 }
 
+/** The customer as the hint names it; where a VAT ID matters, judged for goods. */
 function customerLabel(facts: DraftSaleFacts): string {
-  const where =
-    customerAreaOf(facts.country) === "germany" ? "Germany" : countryName(facts.country);
   const vatId =
     facts.vatId?.status === "valid_format"
       ? " with a VAT ID"
-      : facts.customerType === "business" && customerAreaOf(facts.country) === "eu"
+      : facts.customerType === "business" && customerAreaOf({ ...facts, supply: "goods" }) === "eu"
         ? " without a VAT ID in a valid format"
         : "";
-  return `a ${facts.customerType} in ${where}${vatId}`;
+  return `a ${facts.customerType} in ${customerPlaceName(facts)}${vatId}`;
 }
