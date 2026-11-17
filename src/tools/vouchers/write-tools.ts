@@ -8,15 +8,18 @@ import { voucherDeleteDraftTool } from "./draft-delete.js";
 import { voucherUpdateDraftTool } from "./draft-update.js";
 import { voucherFinalizeTool } from "./finalize.js";
 import { voucherImportEInvoiceTool } from "./import-einvoice.js";
+import { voucherRecognizeReceiptTool } from "./recognize-receipt.js";
 
 /**
  * Voucher (Beleg) write tools, M4 (m4-vouchers): drafts with receipt upload, the e-invoice import
- * (with the e-invoice module's planner), finalize, delete, and the lifecycle actions shared with
- * invoices and credit notes (book payment, reset, enshrine).
+ * (with the e-invoice module's planner), drafts from sevDesk's receipt recognition (#96),
+ * finalize, delete, and the lifecycle actions shared with invoices and credit notes (book
+ * payment, reset, enshrine).
  */
 export const VOUCHER_WRITE_TOOLS: readonly AnyToolDefinition[] = [
   voucherCreateDraftTool,
   voucherImportEInvoiceTool(planVoucherFromEInvoice),
+  voucherRecognizeReceiptTool(),
   voucherUpdateDraftTool,
   voucherDeleteDraftTool,
   voucherFinalizeTool,

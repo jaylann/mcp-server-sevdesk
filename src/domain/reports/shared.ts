@@ -189,6 +189,22 @@ export function plural(count: number, singular: string, pluralForm = `${singular
   return `${count} ${count === 1 ? singular : pluralForm}`;
 }
 
+/**
+ * The trusted "only cost centre id 7 and tag id 3" of a report's one-line summary when its figures
+ * are limited to a cost centre or a tag, so a client that shows only the sentence never presents
+ * them as the whole account's; "" without such a filter. Ids only: names are untrusted text.
+ */
+export function filterLimits(limits: {
+  readonly costCentreId?: number | undefined;
+  readonly tagId?: number | undefined;
+}): string {
+  const parts = [
+    limits.costCentreId === undefined ? undefined : `cost centre id ${String(limits.costCentreId)}`,
+    limits.tagId === undefined ? undefined : `tag id ${String(limits.tagId)}`,
+  ].filter((part) => part !== undefined);
+  return parts.length === 0 ? "" : `only ${parts.join(" and ")}`;
+}
+
 // ---------------------------------------------------------------------------------------------
 // Tax reports (VAT summary, profit and loss): wording for incomplete reads
 // ---------------------------------------------------------------------------------------------

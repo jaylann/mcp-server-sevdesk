@@ -2,6 +2,12 @@ import { z } from "zod";
 
 import { dateRangeInputShape } from "../../domain/common.js";
 import {
+  costCentreFilterInputShape,
+  costCentreFilterOutput,
+  costCentreFilterOutputShape,
+  resolveCostCentreFilter,
+} from "../../domain/cost-centres.js";
+import {
   documentListData,
   documentListSummary,
   localFilterOutputShape,
@@ -20,6 +26,13 @@ import {
   listDetailInputShape,
 } from "../../domain/list-summary.js";
 import { pageOutputShape, pagingInputShape } from "../../domain/paging.js";
+import {
+  resolveTagFilter,
+  tagFilterInputShape,
+  tagFilterNote,
+  tagFilterOutput,
+  tagFilterOutputShape,
+} from "../../domain/tags.js";
 import { defineTool } from "../define-tool.js";
 
 const STATUS_KEYS = Object.keys(INVOICE_STATUS_FILTERS) as [
@@ -32,6 +45,8 @@ const output = z.object({
   items: z.array(z.union([invoiceRowSchema, invoiceSummarySchema])),
   ...pageOutputShape,
   ...localFilterOutputShape,
+  ...tagFilterOutputShape,
+  ...costCentreFilterOutputShape,
 });
 
 /** `sevdesk_invoices_list`: find invoices by status, type, contact, number, date or overdue. */
@@ -44,9 +59,10 @@ export const invoicesListTool = defineTool({
     "= offen, partially_paid, paid = bezahlt), type (invoice RE, advance AR Abschlagsrechnung, " +
     "partial TR, final ER, cancellation SR Stornorechnung, reminder MA Mahnung, recurring WKR), " +
     "contactId, exact number (Rechnungsnummer), date range, overdueOnly (open/partially paid " +
-    "past the due date, überfällig). overdueOnly, type and number are checked here too (up to " +
+    "past the due date, überfällig), tag (by name), costCentre (Kostenstelle). overdueOnly, type and number are checked here too (up to " +
     "1,000 rows scanned per call; total left out, filteredLocally set). A cancelled " +
-    "invoice keeps status paid; its SR invoice has cancelsInvoiceId. Page with offset = " +
+    "invoice keeps status paid; its SR invoice has cancelsInvoiceId. Rows of recurring " +
+    "templates (type recurring) carry their schedule (next run, end). Page with offset = " +
     "nextOffset while hasMore. Use detail=summary to browse/find. Use sevdesk_invoice_get for positions, tax and payment terms.",
   toolset: "invoices",
   tier: "read",
@@ -85,22 +101,33 @@ export const invoicesListTool = defineTool({
       .boolean()
       .default(false)
       .describe("Only open/partially paid invoices past their due date (Berlin time)."),
+    ...tagFilterInputShape,
+    ...costCentreFilterInputShape,
     ...pagingInputShape({ limit: 25, max: 100 }),
   }),
   output,
   handler: async (args, ctx) => {
-    const result = await listInvoices(ctx.client, args, ctx.signal);
+    const costCentreFilter = await resolveCostCentreFilter(ctx.client, args.costCentre, ctx.signal);
+    const tagFilter = await resolveTagFilter(ctx.client, args.tag, "invoice", ctx.signal);
+    const result = await listInvoices(
+      ctx.client,
+      { ...args, tagFilter, costCentreFilter },
+      ctx.signal,
+    );
     return {
       data: {
         ...documentListData(result, args),
         items: args.detail === "summary" ? result.items.map(invoiceSummary) : [...result.items],
+        ...tagFilterOutput(tagFilter),
+        ...costCentreFilterOutput(costCentreFilter),
       },
-      summary: documentListSummary(
-        "Invoices",
-        args.overdueOnly ? "overdue invoices" : "matching invoices",
-        result,
-        args,
-      ),
+      summary:
+        documentListSummary(
+          "Invoices",
+          args.overdueOnly ? "overdue invoices" : "matching invoices",
+          result,
+          args,
+        ) + tagFilterNote(tagFilter),
     };
   },
 });

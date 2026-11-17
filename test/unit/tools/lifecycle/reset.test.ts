@@ -216,3 +216,17 @@ describe("sevdesk_credit_note_reset", () => {
     expect(draft.plan.previewDe.warnings[1]).toContain("stelle stattdessen ein neues Dokument aus");
   });
 });
+
+describe("the reset descriptions", () => {
+  it.each(["invoice", "creditNote", "voucher"] as const)(
+    "name the cash-register exception to 'no counter-booking' (%s, D-095)",
+    (kind) => {
+      const { description } = resetTool(kind);
+      expect(description).toContain(
+        "(bank transactions return to unbooked with no counter-booking; on a cash register " +
+          "(Kasse) sevDesk books a counter-entry instead)",
+      );
+      expect(description).not.toContain("; no counter-booking)");
+    },
+  );
+});

@@ -1,0 +1,81 @@
+{
+  "_provenance": {
+    "date": "2026-11-16",
+    "systemVersion": "2.0",
+    "source": "spec",
+    "ref": "spec/deviations.md D-103 (POST /Voucher/Factory/createVoucherFromFile, not in the spec, D-024)",
+    "note": "The answer of createVoucherFromFile (probe `write-voucher-from-file`, 2026-11-16): the new voucher in `objects`, a draft (status 50) at once with placeholders: `voucherDate` the moment of creation, `supplierName` and `description` null, sums \"0\", `showNet` \"1\", `taxType` \"default\", `taxRule` null, `inSource` set, a `document`, plus `propertyCreationOrigin` and `propertyIsBookkeepingV1` (both null) and the account's `sevClient` (shortened here to its reference). Key set of voucher-2101-draft.json; ids and values fake."
+  },
+  "status": 201,
+  "body": {
+    "objects": {
+      "id": "2301",
+      "objectName": "Voucher",
+      "additionalInformation": null,
+      "create": "2026-11-16T09:59:02+01:00",
+      "update": "2026-11-16T09:59:02+01:00",
+      "sevClient": {
+        "id": "9001",
+        "objectName": "SevClient"
+      },
+      "createUser": {
+        "id": "9101",
+        "objectName": "SevUser"
+      },
+      "voucherDate": "2026-11-16T09:59:02+01:00",
+      "supplier": null,
+      "supplierName": null,
+      "description": null,
+      "resultDisdar": null,
+      "payDate": null,
+      "status": "50",
+      "currency": "EUR",
+      "sumNet": "0",
+      "sumTax": "0",
+      "sumGross": "0",
+      "sumNetAccounting": "0",
+      "sumTaxAccounting": "0",
+      "sumGrossAccounting": "0",
+      "showNet": "1",
+      "paidAmount": 0,
+      "taxType": "default",
+      "creditDebit": "C",
+      "hidden": "0",
+      "voucherType": "VOU",
+      "recurringIntervall": null,
+      "recurringInterval": null,
+      "recurringStartDate": null,
+      "recurringNextVoucher": null,
+      "recurringLastVoucher": null,
+      "recurringEndDate": null,
+      "enshrined": null,
+      "sendType": null,
+      "inSource": "1",
+      "iban": null,
+      "accountingSpecialCase": null,
+      "paymentDeadline": null,
+      "tip": "0",
+      "mileageRate": "0",
+      "selectedForPaymentFile": "0",
+      "supplierNameAtSave": null,
+      "taxmaroStockAccount": null,
+      "vatNumber": null,
+      "deliveryDate": null,
+      "deliveryDateUntil": null,
+      "sumDiscountNet": "0",
+      "sumDiscountGross": "0",
+      "sumNetForeignCurrency": "0",
+      "sumTaxForeignCurrency": "0",
+      "sumGrossForeignCurrency": "0",
+      "sumDiscountNetForeignCurrency": "0",
+      "sumDiscountGrossForeignCurrency": "0",
+      "taxRule": null,
+      "propertyCreationOrigin": null,
+      "propertyIsBookkeepingV1": null,
+      "document": {
+        "id": "7301",
+        "objectName": "Document"
+      }
+    }
+  }
+}

@@ -2,6 +2,12 @@ import { z } from "zod";
 
 import { dateRangeInputShape } from "../../domain/common.js";
 import {
+  costCentreFilterInputShape,
+  costCentreFilterOutput,
+  costCentreFilterOutputShape,
+  resolveCostCentreFilter,
+} from "../../domain/cost-centres.js";
+import {
   CREDIT_NOTE_STATUS_FILTERS,
   creditNoteRowSchema,
   type CreditNoteStatusFilter,
@@ -18,6 +24,13 @@ import {
   listDetailInputShape,
 } from "../../domain/list-summary.js";
 import { pageOutputShape, pagingInputShape } from "../../domain/paging.js";
+import {
+  resolveTagFilter,
+  tagFilterInputShape,
+  tagFilterNote,
+  tagFilterOutput,
+  tagFilterOutputShape,
+} from "../../domain/tags.js";
 import { defineTool } from "../define-tool.js";
 
 const STATUS_KEYS = Object.keys(CREDIT_NOTE_STATUS_FILTERS) as [
@@ -29,6 +42,8 @@ const output = z.object({
   items: z.array(z.union([creditNoteRowSchema, creditNoteSummarySchema])),
   ...pageOutputShape,
   ...localFilterOutputShape,
+  ...tagFilterOutputShape,
+  ...costCentreFilterOutputShape,
 });
 
 /** `sevdesk_credit_notes_list`: find credit notes by status, contact, number or date. */
@@ -39,8 +54,8 @@ export const creditNotesListTool = defineTool({
     "List credit notes (Gutschriften) with compact rows: number, status, contact, date, " +
     "net/tax/gross, booking category (e.g. UNDERACHIEVEMENT = Minderleistung, PROVISION) and " +
     "the invoice they refer to (sourceInvoiceId). Filter by status (draft = Entwurf, open, " +
-    "partially_paid, paid), contactId, exact credit note number (Gutschriftsnummer) and date " +
-    "range. Page with offset = nextOffset while hasMore. Use detail=summary to browse/find. Use sevdesk_credit_note_get for details and positions. " +
+    "partially_paid, paid), contactId, exact credit note number (Gutschriftsnummer), date " +
+    "range, tag (by name) and costCentre (Kostenstelle). Page with offset = nextOffset while hasMore. Use detail=summary to browse/find. Use sevdesk_credit_note_get for details and positions. " +
     "The source invoice: sevdesk_invoice_get.",
   toolset: "credit-notes",
   tier: "read",
@@ -71,17 +86,29 @@ export const creditNotesListTool = defineTool({
       .optional()
       .describe("Exact credit note number, e.g. 'GU-1000'."),
     ...dateRangeInputShape,
+    ...tagFilterInputShape,
+    ...costCentreFilterInputShape,
     ...pagingInputShape({ limit: 25, max: 100 }),
   }),
   output,
   handler: async (args, ctx) => {
-    const result = await listCreditNotes(ctx.client, args, ctx.signal);
+    const costCentreFilter = await resolveCostCentreFilter(ctx.client, args.costCentre, ctx.signal);
+    const tagFilter = await resolveTagFilter(ctx.client, args.tag, "credit_note", ctx.signal);
+    const result = await listCreditNotes(
+      ctx.client,
+      { ...args, tagFilter, costCentreFilter },
+      ctx.signal,
+    );
     return {
       data: {
         ...documentListData(result, args),
         items: args.detail === "summary" ? result.items.map(creditNoteSummary) : [...result.items],
+        ...tagFilterOutput(tagFilter),
+        ...costCentreFilterOutput(costCentreFilter),
       },
-      summary: documentListSummary("Credit notes", "matching credit notes", result, args),
+      summary:
+        documentListSummary("Credit notes", "matching credit notes", result, args) +
+        tagFilterNote(tagFilter),
     };
   },
 });

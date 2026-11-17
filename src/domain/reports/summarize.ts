@@ -1,7 +1,17 @@
 /**
  * `sevdesk_records_summarize`: one aggregate over invoices, credit notes, vouchers or bank
- * transactions, optionally grouped by month, quarter, status, contact or account. Instead of
- * paging through hundreds of rows, the model gets counts and exact sums per currency.
+ * transactions, optionally grouped by month, quarter, status, contact, account, tag or cost centre
+ * (Kostenstelle). Instead of paging through hundreds of rows, the model gets counts and exact sums
+ * per currency.
+ *
+ * Tags and cost centres (spec/deviations.md D-088–D-092). The `tag` and `costCentre` filters are
+ * resolved before any list is read, so an unknown or ambiguous name is refused instead of
+ * answered with unfiltered totals; the lists then filter as the list tools do and re-check every
+ * row. A document can carry several tags, so tag groups overlap (`groupsOverlap`) and do not add
+ * up to the totals; the tags come from the account's relations, read once up to a cap, and a cut
+ * read makes the breakdown incomplete (`groupsComplete: false`). A cost centre belongs to the whole
+ * document (one per invoice, credit note or voucher; cost centres on voucher positions are not
+ * read), so cost-centre groups, with "none" for documents without one, add up to the totals.
  *
  * Records come from the domain list functions (the same parsing and filters as the list tools),
  * read page by page up to {@link REPORT_SCAN_MAX} rows. Date ranges are handled by those
@@ -25,6 +35,15 @@ import {
   type transactionDtoSchema,
 } from "../banking.js";
 import { compact, statusDtoSchema, toUnixRange } from "../common.js";
+import {
+  type CostCentre,
+  type CostCentreArg,
+  costCentreDtoSchema,
+  costCentreFilterOutput,
+  costCentreFilterOutputShape,
+  listCostCentres,
+  resolveCostCentreFilter,
+} from "../cost-centres.js";
 import { CREDIT_NOTE_STATUS_FILTERS, listCreditNotes } from "../credit-notes.js";
 import {
   INVOICE_STATUS_FILTERS,
@@ -34,9 +53,24 @@ import {
   listInvoices,
 } from "../invoices.js";
 import { compare, DEFAULT_CURRENCY, isZero, type Money } from "../money.js";
+import {
+  type DocumentTags,
+  readDocumentTags,
+  resolveTagFilter,
+  TAG_OBJECT_NAMES,
+  TAG_READ_MAX,
+  tagDocumentKey,
+  type TagDocumentKind,
+  tagFilterNote,
+  tagFilterOutput,
+  tagFilterOutputShape,
+  type TagListFilter,
+  tagNamesCutNote,
+} from "../tags.js";
 import { listVouchers, VOUCHER_KINDS, VOUCHER_STATUS_KEYS, type VoucherKind } from "../vouchers.js";
 import {
   coverageOutputShape,
+  filterLimits,
   invalidReportRequest,
   monthOf,
   plural,
@@ -72,8 +106,13 @@ export const SUMMARY_GROUPINGS = [
   "status",
   "contact",
   "account",
+  "tag",
+  "cost_centre",
 ] as const;
 type SummaryGrouping = (typeof SUMMARY_GROUPINGS)[number];
+
+/** Groupings that can put one record into several groups or need a lookup of their own. */
+type DocumentGrouping = "tag" | "cost_centre";
 
 /** Every status key of every subject (each subject accepts its own subset, checked at run time). */
 export const SUMMARY_STATUS_KEYS = [
@@ -125,6 +164,13 @@ const NON_DOCUMENT_INVOICE_TYPES: Readonly<Record<string, InvoiceTypeFilter>> = 
   MA: "reminder",
 };
 
+/** The tag document kind of each document subject (transactions carry no tags). */
+const TAG_KINDS: Readonly<Partial<Record<SummarySubject, TagDocumentKind>>> = {
+  invoices: "invoice",
+  credit_notes: "credit_note",
+  vouchers: "voucher",
+};
+
 /** Status code of a draft per subject (Entwurf); transactions have none. */
 const DRAFT_CODES: Readonly<Partial<Record<SummarySubject, number>>> = {
   invoices: INVOICE_STATUS_FILTERS.draft,
@@ -146,7 +192,8 @@ const groupSchema = z.object({
     .string()
     .describe(
       "YYYY-MM (month), YYYY-Qn (quarter), the status code, contact:<id>, name:<supplier " +
-        "name> (vouchers without a contact), account:<id>, or no_date/no_status/none.",
+        "name> (vouchers without a contact), account:<id>, tag:<id>, cost_centre:<id>, or " +
+        "no_date/no_status/none (none: no contact, account, tag or cost centre).",
     ),
   status: statusDtoSchema.optional(),
   contact: partySchema.optional().describe("Customer or supplier of the group (contact groups)."),
@@ -154,6 +201,13 @@ const groupSchema = z.object({
     .object({ id: z.number().int(), name: z.string().optional() })
     .optional()
     .describe("Payment account (Zahlungskonto) of the group (account groups)."),
+  tag: z
+    .object({ id: z.number().int(), name: z.string().optional() })
+    .optional()
+    .describe("The tag of the group (tag groups)."),
+  costCentre: costCentreDtoSchema
+    .optional()
+    .describe("The Kostenstelle of the group (cost_centre groups)."),
   count: z.number().int(),
   lines: z.array(totalsLineSchema).describe("Totals per currency (and kind for vouchers)."),
 });
@@ -189,6 +243,24 @@ export const summaryReportSchema = z.object({
     .int()
     .optional()
     .describe("Groups left out beyond maxGroups (their records are still in totals)."),
+  groupsOverlap: z
+    .boolean()
+    .optional()
+    .describe(
+      "groupBy tag or cost_centre: true when at least one record counts in several groups (a " +
+        "document with several tags), so the groups add up to more than totals and are not a " +
+        "split of them; false when every record is in exactly one group.",
+    ),
+  groupsComplete: z
+    .boolean()
+    .optional()
+    .describe(
+      "groupBy tag or cost_centre: false when the breakdown is incomplete (the row cap " +
+        `stopped reading, or the account has more than ${TAG_READ_MAX.toLocaleString("en-US")} ` +
+        "tag relations, so some documents may sit in the wrong tag group or in none).",
+    ),
+  ...tagFilterOutputShape,
+  ...costCentreFilterOutputShape,
   ...coverageOutputShape,
 });
 
@@ -207,6 +279,8 @@ interface SummaryRecord {
   readonly party:
     { readonly id?: number | undefined; readonly name?: string | undefined } | undefined;
   readonly account: { readonly id: number; readonly name?: string | undefined } | undefined;
+  /** The document's cost centre (Kostenstelle); transactions have none. */
+  readonly costCentreId?: number | undefined;
   readonly kind: LineKind | undefined;
   readonly amounts: DocumentAmounts | undefined;
   readonly flow: Money | undefined;
@@ -234,6 +308,7 @@ function documentRecord(row: {
   readonly totals: DocumentSums;
   readonly totalsEur?: DocumentSums | undefined;
   readonly type?: { readonly code: string } | undefined;
+  readonly costCentreId?: number | undefined;
 }): SummaryRecord {
   return {
     id: row.id,
@@ -241,6 +316,7 @@ function documentRecord(row: {
     status: row.status,
     party: row.contact,
     account: undefined,
+    costCentreId: row.costCentreId,
     kind: undefined,
     amounts: { currency: row.currency, ...row.totals, eur: row.totalsEur },
     flow: undefined,
@@ -287,6 +363,10 @@ export interface SummaryParams {
   readonly invoiceType?: InvoiceTypeFilter | undefined;
   /** Transactions only: the payment account. */
   readonly checkAccountId?: number | undefined;
+  /** Documents only: a tag name (`resolveTagFilter`). */
+  readonly tag?: string | undefined;
+  /** Documents only: a cost centre by id, number or name (`resolveCostCentreFilter`). */
+  readonly costCentre?: CostCentreArg | undefined;
   readonly maxGroups: number;
   /** Row cap; defaults to {@link REPORT_SCAN_MAX} (lower values for tests). */
   readonly maxRecords?: number | undefined;
@@ -304,7 +384,10 @@ export async function summarizeRecords(
   checkParams(params);
   const { signal } = options;
   const subject = SUBJECTS[params.subject];
-  const fetchPage = pageFetcher(client, params, signal);
+  // Filters first: an unknown or ambiguous tag or cost centre is refused before any list read.
+  const filters = await resolveFilters(client, params, signal);
+  const context = await groupingContext(client, params.groupBy, signal);
+  const fetchPage = pageFetcher(client, params, filters, signal);
   const scan = await scanPages(fetchPage, {
     max: params.maxRecords ?? REPORT_SCAN_MAX,
     noun: subject.noun,
@@ -316,25 +399,37 @@ export async function summarizeRecords(
 
   const totals = newTotals(params.subject);
   const groups = new Map<string, GroupState>();
+  let overlap = false;
   for (const record of counted) {
     addRecord(totals, record);
     if (params.groupBy === "none") continue;
-    const key = groupKey(params.groupBy, record);
-    let group = groups.get(key);
-    if (group === undefined) {
-      group = { key, record, totals: newTotals(params.subject) };
-      groups.set(key, group);
+    const keys = groupKeys(params.groupBy, params.subject, record, context);
+    if (keys.length > 1) overlap = true;
+    for (const key of keys) {
+      let group = groups.get(key);
+      if (group === undefined) {
+        group = { key, record, totals: newTotals(params.subject) };
+        groups.set(key, group);
+      }
+      addRecord(group.totals, record);
     }
-    addRecord(group.totals, record);
   }
 
   const ordered = orderGroups(params.groupBy, [...groups.values()]);
-  const shown = ordered.slice(0, params.maxGroups).map((group) => toGroup(params.groupBy, group));
+  const shown = ordered
+    .slice(0, params.maxGroups)
+    .map((group) => toGroup(params.groupBy, group, context));
   const dates = counted
     .map((record) => record.date)
     .filter((date): date is string => date !== undefined)
     .sort();
   const totalLines = totals.lineList();
+  const breakdown = isDocumentGrouping(params.groupBy)
+    ? {
+        groupsOverlap: overlap,
+        groupsComplete: !scan.truncated && context.documentTags?.complete !== false,
+      }
+    : {};
 
   return {
     source: REPORT_SOURCE,
@@ -362,17 +457,28 @@ export async function summarizeRecords(
     totals: { count: counted.length, lines: totalLines },
     groups: shown,
     ...(ordered.length > shown.length ? { groupsOmitted: ordered.length - shown.length } : {}),
-    notes: summaryNotes(params, counted, templates, totalLines, {
-      leftOut: scan.scanned - scan.items.length,
-      truncated: scan.truncated,
-      max: params.maxRecords ?? REPORT_SCAN_MAX,
-    }),
+    ...breakdown,
+    ...tagFilterOutput(filters.tag),
+    ...costCentreFilterOutput(filters.costCentre),
+    notes: [
+      ...summaryNotes(params, counted, templates, totalLines, {
+        leftOut: scan.scanned - scan.items.length,
+        truncated: scan.truncated,
+        max: params.maxRecords ?? REPORT_SCAN_MAX,
+      }),
+      ...documentGroupingNotes(params, filters, context, overlap),
+    ],
   };
 }
 
-/** Trusted one-line summary of a report: counts only. */
+/** Trusted one-line summary of a report: counts, and the ids a tag or cost-centre filter names. */
 export function summaryReportSentence(report: SummaryReport): string {
   const subject = SUBJECTS[report.subject];
+  const limits = filterLimits({
+    costCentreId: report.costCentreFilter?.id,
+    tagId: report.tagFilter?.tagId,
+  });
+  const title = limits === "" ? subject.title : `${subject.title} (${limits})`;
   const currencies = new Set(report.totals.lines.map((line) => line.currency)).size;
   const grouped =
     report.groupBy === "none"
@@ -382,10 +488,21 @@ export function summaryReportSentence(report: SummaryReport): string {
   const truncated = report.truncated
     ? ` Stopped at the cap of ${report.recordsScanned} rows read: totals are incomplete.`
     : "";
+  const overlap =
+    report.groupsOverlap === true
+      ? " Groups overlap (a document with several tags counts in each): they do not add up to " +
+        "the totals."
+      : "";
+  const incomplete =
+    report.groupsComplete === false && !report.truncated ? " The breakdown is incomplete." : "";
   return (
-    `${subject.title}: ${report.recordsCounted} counted in ${plural(currencies, "currency", "currencies")}` +
-    `${grouped}; ${report.recordsScanned} sevDesk rows read.${truncated}`
+    `${title}: ${report.recordsCounted} counted in ${plural(currencies, "currency", "currencies")}` +
+    `${grouped}; ${report.recordsScanned} sevDesk rows read.${truncated}${overlap}${incomplete}`
   );
+}
+
+function isDocumentGrouping(groupBy: SummaryGrouping): groupBy is DocumentGrouping {
+  return groupBy === "tag" || groupBy === "cost_centre";
 }
 
 function checkParams(params: SummaryParams): void {
@@ -418,14 +535,69 @@ function checkParams(params: SummaryParams): void {
   if (params.groupBy === "account" && subject !== "transactions") {
     throw invalidReportRequest("groupBy account applies to transactions only.");
   }
+  if (subject === "transactions") {
+    if (params.tag !== undefined || params.groupBy === "tag") {
+      throw invalidReportRequest(
+        "transactions carry no tags; summarize invoices, credit notes or vouchers by tag.",
+      );
+    }
+    if (params.costCentre !== undefined || params.groupBy === "cost_centre") {
+      throw invalidReportRequest(
+        "transactions have no cost centre; summarize invoices, credit notes or vouchers by " +
+          "cost centre.",
+      );
+    }
+  }
+}
+
+/** The resolved `tag` and `costCentre` filters. */
+interface ResolvedFilters {
+  readonly tag?: TagListFilter | undefined;
+  readonly costCentre?: CostCentre | undefined;
+}
+
+/**
+ * Resolves the tag and cost-centre filters before anything is listed: an unknown or ambiguous
+ * name is a `validation` error (D-090, D-092), never a summary of every document.
+ */
+async function resolveFilters(
+  client: SevdeskClient,
+  params: SummaryParams,
+  signal: AbortSignal | undefined,
+): Promise<ResolvedFilters> {
+  const kind = TAG_KINDS[params.subject];
+  const tag =
+    kind === undefined ? undefined : await resolveTagFilter(client, params.tag, kind, signal);
+  const costCentre = await resolveCostCentreFilter(client, params.costCentre, signal);
+  return { tag, costCentre };
+}
+
+/** What a tag or cost-centre breakdown needs besides the records. */
+interface GroupingContext {
+  readonly documentTags?: DocumentTags | undefined;
+  readonly costCentres?: readonly CostCentre[] | undefined;
+}
+
+async function groupingContext(
+  client: SevdeskClient,
+  groupBy: SummaryGrouping,
+  signal: AbortSignal | undefined,
+): Promise<GroupingContext> {
+  if (groupBy === "tag") return { documentTags: await readDocumentTags(client, signal) };
+  if (groupBy === "cost_centre") {
+    return { costCentres: (await listCostCentres(client, signal)).items };
+  }
+  return {};
 }
 
 function pageFetcher(
   client: SevdeskClient,
   params: SummaryParams,
+  filters: ResolvedFilters,
   signal: AbortSignal | undefined,
 ): (offset: number, limit: number) => Promise<ScanPage<SummaryRecord>> {
-  // The domain lists send the range to sevDesk and re-check every row's date themselves.
+  // The domain lists send the range to sevDesk and re-check every row's date themselves, and so
+  // the tag and the cost centre where they have the filter.
   const range = { from: params.from, to: params.to };
   switch (params.subject) {
     case "invoices":
@@ -437,6 +609,8 @@ function pageFetcher(
             status: params.status as keyof typeof INVOICE_STATUS_FILTERS | undefined,
             type: params.invoiceType,
             contactId: params.contactId,
+            tagFilter: filters.tag,
+            costCentreFilter: filters.costCentre,
             limit,
             offset,
           },
@@ -452,6 +626,8 @@ function pageFetcher(
             ...range,
             status: params.status as keyof typeof CREDIT_NOTE_STATUS_FILTERS | undefined,
             contactId: params.contactId,
+            tagFilter: filters.tag,
+            costCentreFilter: filters.costCentre,
             limit,
             offset,
           },
@@ -470,6 +646,8 @@ function pageFetcher(
             supplierId: params.contactId,
             // Recurring vouchers (RV) are templates; their generated vouchers are the records.
             type: "normal",
+            tagFilter: filters.tag,
+            costCentreFilter: filters.costCentre,
             limit,
             offset,
           },
@@ -482,6 +660,7 @@ function pageFetcher(
             status: row.status,
             party: row.supplier,
             account: undefined,
+            costCentreId: row.costCentreId,
             kind: row.kind ?? "unknown",
             amounts: {
               currency: row.currency,
@@ -566,7 +745,36 @@ function addRecord(totals: Totals, record: SummaryRecord): void {
   if (record.amounts !== undefined) totals.add(record.amounts, record.kind);
 }
 
-function groupKey(groupBy: Exclude<SummaryGrouping, "none">, record: SummaryRecord): string {
+/**
+ * The groups a record counts in: one key, or for tags one per tag the document carries (`none`
+ * without a tag).
+ */
+function groupKeys(
+  groupBy: Exclude<SummaryGrouping, "none">,
+  subject: SummarySubject,
+  record: SummaryRecord,
+  context: GroupingContext,
+): string[] {
+  switch (groupBy) {
+    case "tag": {
+      const kind = TAG_KINDS[subject];
+      const ids =
+        kind === undefined || record.id === undefined
+          ? undefined
+          : context.documentTags?.byDocument.get(tagDocumentKey(TAG_OBJECT_NAMES[kind], record.id));
+      return ids === undefined || ids.length === 0 ? ["none"] : ids.map((id) => `tag:${id}`);
+    }
+    case "cost_centre":
+      return [record.costCentreId === undefined ? "none" : `cost_centre:${record.costCentreId}`];
+    default:
+      return [groupKey(groupBy, record)];
+  }
+}
+
+function groupKey(
+  groupBy: Exclude<SummaryGrouping, "none" | DocumentGrouping>,
+  record: SummaryRecord,
+): string {
   switch (groupBy) {
     case "month":
       return record.date === undefined ? "no_date" : monthOf(record.date);
@@ -593,7 +801,8 @@ function orderGroups(groupBy: SummaryGrouping, groups: GroupState[]): GroupState
       return (a.record.status?.code ?? 0) - (b.record.status?.code ?? 0);
     }
     if (groupBy === "account") return (a.record.account?.id ?? 0) - (b.record.account?.id ?? 0);
-    if (groupBy === "contact" && a.totals instanceof DocumentTotals) {
+    const byAmount = groupBy === "contact" || isDocumentGrouping(groupBy);
+    if (byAmount && a.totals instanceof DocumentTotals) {
       const amountOrder = compareDescending(a.totals, b.totals as DocumentTotals);
       if (amountOrder !== 0) return amountOrder;
       if (a.totals.count !== b.totals.count) return b.totals.count - a.totals.count;
@@ -607,7 +816,11 @@ function compareDescending(a: DocumentTotals, b: DocumentTotals): number {
   return compare(b.eurGrossForOrdering(), a.eurGrossForOrdering());
 }
 
-function toGroup(groupBy: SummaryGrouping, group: GroupState): SummaryGroup {
+function toGroup(
+  groupBy: SummaryGrouping,
+  group: GroupState,
+  context: GroupingContext,
+): SummaryGroup {
   const { record } = group;
   const label: Partial<SummaryGroup> = {};
   if (groupBy === "status" && record.status !== undefined) label.status = record.status;
@@ -617,7 +830,20 @@ function toGroup(groupBy: SummaryGrouping, group: GroupState): SummaryGroup {
   if (groupBy === "account" && record.account !== undefined) {
     label.account = compact({ id: record.account.id, name: record.account.name });
   }
+  const id = idOfKey(group.key);
+  if (groupBy === "tag" && id !== undefined) {
+    label.tag = compact({ id, name: context.documentTags?.tags.get(id)?.name });
+  }
+  if (groupBy === "cost_centre" && id !== undefined) {
+    label.costCentre = context.costCentres?.find((centre) => centre.id === id) ?? { id };
+  }
   return { key: group.key, ...label, count: group.totals.count, lines: group.totals.lineList() };
+}
+
+/** The id of a `tag:<id>` or `cost_centre:<id>` key; `undefined` for `none`. */
+function idOfKey(key: string): number | undefined {
+  const match = /^(?:tag|cost_centre):(\d+)$/.exec(key);
+  return match?.[1] === undefined ? undefined : Number(match[1]);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -677,8 +903,47 @@ function summaryNotes(
   if (scan.leftOut > 0) {
     notes.push(
       `${plural(scan.leftOut, "row")} sevDesk returned did not pass the filters re-checked after ` +
-        "reading (date range, voucher type, transaction status) and were left out; " +
-        "recordsScanned counts them.",
+        "reading (date range, voucher type, transaction status, tag, cost centre) and were left " +
+        "out; recordsScanned counts them.",
+    );
+  }
+  return notes;
+}
+
+/** What the tag and cost-centre filters and groupings mean for the numbers. */
+function documentGroupingNotes(
+  params: SummaryParams,
+  filters: ResolvedFilters,
+  context: GroupingContext,
+  overlap: boolean,
+): string[] {
+  const notes: string[] = [];
+  const tagNote = tagFilterNote(filters.tag).trim();
+  if (tagNote !== "") notes.push(tagNote);
+  if (params.groupBy === "tag") {
+    notes.push(
+      overlap
+        ? "Grouped by tag: a document with several tags counts in each of its tag groups, so " +
+            "the groups add up to more than the totals (groupsOverlap). Documents without a " +
+            "tag are in the group none."
+        : "Grouped by tag: no counted document has more than one tag here, so the groups add " +
+            "up to the totals. Documents without a tag are in the group none.",
+    );
+    if (context.documentTags?.complete === false) {
+      notes.push(
+        `The account has more than ${TAG_READ_MAX.toLocaleString("en-US")} tag relations; only ` +
+          "the first ones were read, so some documents may be missing from their tag groups or " +
+          "sit in none: the breakdown is incomplete (groupsComplete false).",
+      );
+    }
+    const namesCut = tagNamesCutNote(context.documentTags);
+    if (namesCut !== undefined) notes.push(namesCut);
+  }
+  if (params.groupBy === "cost_centre") {
+    notes.push(
+      "Grouped by the cost centre (Kostenstelle) of the whole document: sevDesk keeps one per " +
+        "document, so the groups add up to the totals; documents without one are in the group " +
+        "none. Cost centres on single voucher positions are not read.",
     );
   }
   return notes;

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { transactionResetTool as tool } from "../../../../src/tools/banking/transaction-reset.js";
+import { toolErrorResult } from "../../../../src/tools/tool-errors.js";
+import { testConfig } from "../../../helpers/config.js";
 import type { FakeRoute } from "../../../helpers/fake-client.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import {
@@ -257,6 +259,62 @@ describe("sevdesk_transaction_reset", () => {
       { objectName: "Invoice", id: "1001" },
       { objectName: "CheckAccountTransaction", id: "5201" },
     ]);
+  });
+
+  it("does not claim nothing changed when a later document's payment is enshrined", async () => {
+    // Invoice 1002 is also paid by bank transaction 5302, which is enshrined: sevDesk resets
+    // invoice 1001, then refuses 1002 (recorded on a voucher as HTTP 400, D-098).
+    const reads = [
+      transactionRoute(SPLIT),
+      accountRoute(accountRow(4002)),
+      logRoute(5201, SPLIT_LOG),
+      invoiceRoute(paidInvoice(1001, "119")),
+      invoiceRoute({ ...paidInvoice(1002, "238"), sumGross: "238" }),
+      listRoute("/CheckAccountTransactionLog", [
+        ...SPLIT_LOG,
+        logEntry(7003, 5302, "Invoice", 1002, 119),
+      ]),
+    ];
+    const enshrined = (): FakeRoute["response"] => ({
+      error: new SevdeskError({
+        kind: "validation",
+        status: 400,
+        message: "sevDesk rejected the request: validation error (HTTP 400).",
+        upstreamMessage: "Already enshrined by transaction",
+      }),
+    });
+    const rendered = async (client: StagedClient): Promise<string> => {
+      const error = await executeWrite(tool, { id: 5201 }, client).catch((e: unknown) => e);
+      const [block] = toolErrorResult(error, {
+        toolName: tool.name,
+        tier: tool.tier,
+        config: testConfig(),
+      }).content;
+      return block?.type === "text" ? block.text : "";
+    };
+
+    const later = await rendered(
+      new StagedClient(reads, [
+        put("/Invoice/1001/resetToOpen"),
+        put("/Invoice/1002/resetToOpen", enshrined()),
+      ]),
+    );
+    expect(later).toBe(
+      "sevDesk refused the request (HTTP 400): Invoice 1002 cannot be reset to open: a bank " +
+        "transaction that pays it is enshrined (festgeschrieben), and sevDesk keeps the payments " +
+        "of such a transaction for good. Correct it with a cancellation (sevdesk_invoice_cancel) " +
+        "or a credit note instead.\nBefore this failed, the call had already created or changed: " +
+        "Invoice 1001, CheckAccountTransaction 5201. Do not repeat the call; fix or finish it " +
+        "with the matching update tool.",
+    );
+
+    // Refused at the first document, nothing was reset, and the text may say so.
+    const first = await rendered(
+      new StagedClient(reads, [put("/Invoice/1001/resetToOpen", enshrined())]),
+    );
+    expect(first).toContain("Invoice 1001 cannot be reset to open");
+    expect(first).toContain("Nothing was changed.");
+    expect(first).not.toContain("Before this failed");
   });
 
   it("passes a failure of the first reset on unchanged", async () => {

@@ -122,6 +122,8 @@ export const READ_CASES: readonly LiveCase[] = [
   { tool: "sevdesk_private_transaction_rules_list", args: () => ({}) },
   { tool: "sevdesk_parts_list", args: () => ({}) },
   { tool: "sevdesk_part_get", args: byId("part") },
+  // #87: tags with their uses (TagRelation counts).
+  { tool: "sevdesk_tags_list", args: () => ({}) },
   { tool: "sevdesk_cash_position", args: () => ({}) },
   { tool: "sevdesk_changed_since", args: () => ({ since: SINCE }) },
   { tool: "sevdesk_payables_aging", args: () => ({}) },
@@ -130,6 +132,12 @@ export const READ_CASES: readonly LiveCase[] = [
     tool: "sevdesk_records_summarize",
     label: `sevdesk_records_summarize (${subject})`,
     args: () => ({ subject }),
+  })),
+  // #87: the breakdowns by tag (all of the account's tag relations) and by cost centre.
+  ...(["tag", "cost_centre"] as const).map((groupBy) => ({
+    tool: "sevdesk_records_summarize",
+    label: `sevdesk_records_summarize (vouchers by ${groupBy})`,
+    args: () => ({ subject: "vouchers", groupBy }),
   })),
   // Local files: registered only with SEVDESK_OUTPUT_DIR / SEVDESK_FILE_DIRS (the read-only run
   // sets both to temporary folders); a tool that is not listed is skipped.
@@ -162,6 +170,47 @@ export const READ_CASES: readonly LiveCase[] = [
     args: () => ({ year: NOW.getFullYear(), month: NOW.getMonth() + 1 }),
   },
   { tool: "sevdesk_profit_and_loss", args: () => ({ year: NOW.getFullYear() }) },
+  {
+    tool: "sevdesk_profit_and_loss",
+    label: "sevdesk_profit_and_loss (by cost centre)",
+    args: () => ({
+      year: NOW.getFullYear(),
+      month: NOW.getMonth() + 1,
+      basis: "accrual",
+      groupBy: "cost_centre",
+    }),
+  },
+  // The tax-rule helper reads the regime (and the contact); the VAT-ID check stays offline here,
+  // because the live run never sets SEVDESK_VIES_CHECK.
+  {
+    tool: "sevdesk_tax_rule_suggest",
+    args: () => ({ supply: "services", country: "AT", customerType: "business" }),
+  },
+  {
+    tool: "sevdesk_tax_rule_suggest",
+    label: "sevdesk_tax_rule_suggest (contact)",
+    args: (ids) =>
+      ids.contact === undefined ? undefined : { supply: "goods", contactId: ids.contact },
+    // The first listed contact may have no address with a country; that refusal is valid too.
+    acceptError: /has no address with a country/,
+  },
+  { tool: "sevdesk_vat_id_check", args: () => ({ vatId: "DE123456789" }) },
+  // #92: account audits, one case per check (the current month keeps the reads short).
+  ...(["vat", "reverse_charge", "duplicates", "recurring_gaps"] as const).map((check) => ({
+    tool: "sevdesk_records_audit",
+    label: `sevdesk_records_audit (${check})`,
+    args: () => ({ check, year: NOW.getFullYear(), month: NOW.getMonth() + 1 }),
+  })),
+  // #92: the receipt folder check, on the temporary SEVDESK_FILE_DIRS folder (registered only
+  // with it); reads the voucher list with the documents embedded.
+  {
+    tool: "sevdesk_receipt_folder_check",
+    args: (_ids, files) => ({
+      folder: files.fileDir,
+      year: NOW.getFullYear(),
+      month: NOW.getMonth() + 1,
+    }),
+  },
   { tool: "sevdesk_csv_export", args: () => ({ subject: "invoices" }) },
   // M6: the generic read (advanced toolset), on an undocumented endpoint no other tool reads.
   { tool: "sevdesk_api_get", args: () => ({ path: "/TextTemplate", limit: 5 }) },

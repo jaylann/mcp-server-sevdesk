@@ -6,7 +6,8 @@
 import { z } from "zod";
 
 import { PROMPTS } from "../src/prompts/catalog.js";
-import type { PromptDefinition } from "../src/prompts/types.js";
+import { COMPLETION_HINTS, COMPLETION_TOOLS } from "../src/prompts/completions.js";
+import type { CompletionKind, PromptDefinition } from "../src/prompts/types.js";
 import { requiresConfirmation, TIER_DESCRIPTIONS, TIERS } from "../src/safety/tiers.js";
 import { ALL_TOOLS } from "../src/tools/index.js";
 import { JSON_SCHEMA_OPTIONS } from "../src/tools/json-schema.js";
@@ -19,11 +20,14 @@ interface JsonSchemaProperty {
   readonly enum?: readonly unknown[];
   readonly default?: unknown;
   readonly items?: JsonSchemaProperty;
+  readonly anyOf?: readonly JsonSchemaProperty[];
   readonly minimum?: number;
   readonly maximum?: number;
 }
 
 function typeOf(property: JsonSchemaProperty): string {
+  // A union such as the cost centre argument (an id or a text).
+  if (property.anyOf !== undefined) return property.anyOf.map(typeOf).join(" \\| ");
   if (property.enum !== undefined) {
     return property.enum.map((value) => `\`${String(value)}\``).join(" \\| ");
   }
@@ -96,9 +100,25 @@ function argumentTable(prompt: PromptDefinition): string {
   const required = new Set(schema.required ?? []);
   const rows = entries.map(
     ([name, property]) =>
-      `| \`${name}\` | ${required.has(name) ? "yes" : "no"} | ${cell(property.description ?? "")} |`,
+      `| \`${name}\` | ${required.has(name) ? "yes" : "no"} | ${cell(property.description ?? "")} | ` +
+      `${suggestionText(prompt.completions[name])} |`,
   );
-  return ["| Argument | Required | Description |", "|---|---|---|", ...rows, ""].join("\n");
+  return [
+    "| Argument | Required | Description | Suggestions |",
+    "|---|---|---|---|",
+    ...rows,
+    "",
+  ].join("\n");
+}
+
+/** "contact names (with `sevdesk_contacts_search`)", or "—" for an argument not completed. */
+function suggestionText(kind: CompletionKind | undefined): string {
+  if (kind === undefined) return "—";
+  const tools: Partial<Record<CompletionKind, string>> = COMPLETION_TOOLS;
+  const tool = tools[kind];
+  return tool === undefined
+    ? COMPLETION_HINTS[kind]
+    : `${COMPLETION_HINTS[kind]} (with \`${tool}\`)`;
 }
 
 /** The "Prompts" section: every shipped prompt, sorted by name. */
@@ -110,8 +130,10 @@ function promptSection(prompts: readonly PromptDefinition[]): string[] {
     "Ready-made bookkeeping workflows (MCP prompts). Clients offer them by name, e.g. Claude " +
       "Code as `/mcp__sevdesk__month_end_close` for a server named `sevdesk`. A prompt is listed " +
       "only when the tools it needs are enabled; a step whose tools are not enabled is replaced " +
-      "by a note naming the setting that enables it. Prompts only produce text: they never call " +
-      "sevDesk.",
+      "by a note naming the setting that enables it. Prompts only produce text: rendering one " +
+      "never calls sevDesk. Clients that support argument completion suggest the values under " +
+      "Suggestions while you type; contact and account names are read from the account " +
+      "(read-only, cached for a minute) and only when the named tool is enabled.",
     "",
   ];
   for (const prompt of [...prompts].sort((a, b) => a.name.localeCompare(b.name))) {

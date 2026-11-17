@@ -16,11 +16,17 @@ import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
 import { parseUpstream, zId } from "../sevdesk/schema.js";
 import type { QueryValue, SevdeskClient } from "../sevdesk/types.js";
 import { documentDateFilter } from "./common.js";
+import { type CostCentre, costCentreFilterQuery, inCostCentre } from "./cost-centres.js";
 import {
   countryCodeSchema,
   type CountryReadOptions,
   withDocumentCountry,
 } from "./country-codes.js";
+import {
+  type DocumentDiscount,
+  documentDiscountDto,
+  readDocumentDiscounts,
+} from "./document-discounts.js";
 import {
   addressDto,
   berlinDate,
@@ -53,6 +59,7 @@ import {
 } from "./document-positions.js";
 import { BOOKING_CATEGORY_NAMES, CREDIT_NOTE_STATUS_FILTERS, keyForCode } from "./filter-keys.js";
 import { creditNoteLink } from "./links.js";
+import { carriesTag, tagFilterQuery, type TagListFilter } from "./tags.js";
 
 export { CREDIT_NOTE_STATUS_FILTERS } from "./filter-keys.js";
 
@@ -97,6 +104,7 @@ const creditNoteRecordSchema = z.object({
   origin: zOptionalRef,
   payDate: zDateValue,
   enshrined: zDateValue,
+  costCentre: zOptionalRef,
 });
 
 type CreditNoteRecord = z.output<typeof creditNoteRecordSchema>;
@@ -136,6 +144,11 @@ export const creditNoteRowSchema = z.object({
   header: z.string().optional(),
   sent: sentDtoSchema.optional().describe("Left out when the credit note was not sent."),
   enshrined: z.boolean().optional().describe("Festgeschrieben (locked); only shown when true."),
+  costCentreId: z
+    .number()
+    .int()
+    .optional()
+    .describe("Kostenstelle id; see sevdesk_reference_lookup kind=cost_centres."),
   link: z.string().optional().describe("Opens the credit note in the sevDesk web app."),
 });
 
@@ -193,6 +206,7 @@ function toCreditNoteRow(record: CreditNoteRecord): CreditNoteRow {
     header: cleanText(record.header, TEXT_MAX.short),
     sent: sentDto(record),
     enshrined: berlinDate(record.enshrined) === undefined ? undefined : true,
+    costCentreId: record.costCentre?.id,
     link: creditNoteLink(record.id, record.status),
   });
 }
@@ -237,14 +251,20 @@ export interface CreditNoteListParams {
   readonly number?: string | undefined;
   readonly from?: string | undefined;
   readonly to?: string | undefined;
+  /** Only credit notes with this tag (`resolveTagFilter`), re-checked on every row. */
+  readonly tagFilter?: TagListFilter | undefined;
+  /** Only credit notes on this cost centre (`resolveCostCentreFilter`), re-checked on every row. */
+  readonly costCentreFilter?: CostCentre | undefined;
   readonly limit: number;
   readonly offset: number;
 }
 
 /**
  * Lists credit notes (`GET /CreditNote`) with sevDesk's filters `status`, `contact[id]`,
- * `creditNoteNumber` and `startDate`/`endDate` (Unix seconds, Berlin days). The number is
- * re-checked on every row (`matchesNumber`).
+ * `creditNoteNumber`, `startDate`/`endDate` (Unix seconds, Berlin days), the tag and the cost
+ * centre (`costCentre[id]` + `costCentre[objectName]`, recorded 2026-11-17, D-092). The number is
+ * re-checked on every row (`matchesNumber`), the date range, the tag and the cost centre without
+ * a scan (`documentDateFilter`, `carriesTag`, `inCostCentre`).
  */
 export async function listCreditNotes(
   client: SevdeskClient,
@@ -252,7 +272,12 @@ export async function listCreditNotes(
   signal?: AbortSignal,
 ): Promise<DocumentListResult<CreditNoteRow>> {
   const dates = documentDateFilter(params);
-  const query: Record<string, QueryValue> = { embed: EMBED_CONTACT, ...dates.query };
+  const query: Record<string, QueryValue> = {
+    embed: EMBED_CONTACT,
+    ...dates.query,
+    ...tagFilterQuery(params.tagFilter),
+    ...costCentreFilterQuery(params.costCentreFilter),
+  };
   if (params.status !== undefined) query["status"] = CREDIT_NOTE_STATUS_FILTERS[params.status];
   if (params.contactId !== undefined) {
     query["contact[id]"] = toSevdeskId(params.contactId);
@@ -267,7 +292,10 @@ export async function listCreditNotes(
     offset: params.offset,
     map: (raw) => toCreditNoteRow(parseCreditNoteRecord(raw)),
     keep: matchesNumber(params.number),
-    recheck: (row) => dates.contains(row.date),
+    recheck: (row) =>
+      dates.contains(row.date) &&
+      carriesTag(params.tagFilter, row.id) &&
+      inCostCentre(params.costCentreFilter, row.costCentreId),
     signal,
   });
 }
@@ -276,21 +304,25 @@ export interface CreditNoteDetails {
   readonly creditNote: CreditNoteDetail;
   readonly positions: readonly PositionDto[];
   readonly positionsComplete: boolean;
+  /** The document discount, when asked for (`withDiscount`) and the credit note has one. */
+  readonly discount?: DocumentDiscount | undefined;
 }
 
 /**
  * One credit note (`GET /CreditNote/{id}`, contact embedded) with its positions
  * (`GET /CreditNotePos?creditNote[id]=…&creditNote[objectName]=CreditNote`) and unit names.
+ * `withDiscount` also reads its document discounts (`GET /CreditNote/{id}/getDiscounts`, see
+ * `document-discounts.ts`).
  */
 export async function getCreditNote(
   client: SevdeskClient,
   creditNoteId: number,
-  options: CountryReadOptions,
+  options: CountryReadOptions & { readonly withDiscount?: boolean | undefined },
 ): Promise<CreditNoteDetails> {
   const { signal, cacheOwner } = options;
   const id = toSevdeskId(creditNoteId);
   const withSignal = signal === undefined ? {} : { signal };
-  const [payload, positions, unitNames] = await Promise.all([
+  const [payload, positions, unitNames, discounts] = await Promise.all([
     client.request({
       method: "GET",
       path: sevdeskPath("CreditNote", id),
@@ -309,6 +341,9 @@ export async function getCreditNote(
       signal,
     ),
     loadUnitNames(client, signal),
+    options.withDiscount === true
+      ? readDocumentDiscounts(client, "creditNote", id, signal)
+      : Promise.resolve(undefined),
   ]);
   const record = parseCreditNoteRecord(expectSingle(payload, `credit note ${id}`));
   const creditNote = await withDocumentCountry(toCreditNoteDetail(record), client, {
@@ -316,9 +351,14 @@ export async function getCreditNote(
     cacheOwner,
   });
   const context = { currency: creditNote.currency, showNet: record.showNet, unitNames };
+  const discount =
+    discounts === undefined
+      ? undefined
+      : documentDiscountDto(discounts.rows, record, creditNote.currency);
   return {
     creditNote,
     positions: positions.rows.map((row) => toPositionDto(row, context)),
     positionsComplete: positions.complete,
+    ...(discount === undefined ? {} : { discount }),
   };
 }

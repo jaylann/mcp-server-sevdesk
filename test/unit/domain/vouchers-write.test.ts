@@ -606,6 +606,13 @@ describe("e-invoice import mapping", () => {
       plan.state,
       undefined,
     );
-    expect(result.receipt).toEqual({ name: "rechnung.xml", kind: "xml", bytes: 10, pages: 1 });
+    expect(result.receipt).toEqual({
+      name: "rechnung.xml",
+      kind: "xml",
+      bytes: 10,
+      // SHA-256 of "<Invoice/>".
+      sha256: "b8dbbfb2620e9346480364a8d935a0ff2038ce9bac7738f5ec58f22e639d2607",
+      pages: 1,
+    });
   });
 });

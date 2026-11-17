@@ -51,6 +51,7 @@ import {
   resultText,
   writeHarness,
 } from "../helpers/write-flow.js";
+import { noDiscountsRoute } from "../unit/tools/lifecycle/helpers.js";
 
 closeWriteHarnessesAfterEach();
 
@@ -231,6 +232,8 @@ describe("concurrent invoices from one order", () => {
           query: { "invoice[id]": 1101, "invoice[objectName]": "Invoice" },
           response: { fixture: "masterdata/invoice-positions-1101.json" },
         },
+        // The order's and the new invoice's discounts on the whole document: none.
+        noDiscountsRoute,
       ],
     });
     stateful(fake, (req) => {
@@ -430,10 +433,15 @@ describe("check-then-write tools declare the records they check", () => {
     expect(tool.locks?.(args as never), tool.name).toEqual(expected);
   });
 
-  it("runs the two tools that create voucher drafts one at a time per account", () => {
+  it("runs the tools that create voucher drafts one at a time per account", () => {
     // Both refuse a voucher that exists already (same supplier, number, date, gross) and then
-    // create the draft; two identical calls at once both passed that refusal.
-    for (const name of ["sevdesk_voucher_create_draft", "sevdesk_voucher_import_einvoice"]) {
+    // create the draft; two identical calls at once both passed that refusal. The recognition
+    // draft scans for duplicates after it is created, which must see a draft made just before.
+    for (const name of [
+      "sevdesk_voucher_create_draft",
+      "sevdesk_voucher_import_einvoice",
+      "sevdesk_voucher_recognize_receipt",
+    ]) {
       const tool = ALL_TOOLS.find((candidate) => candidate.name === name) as
         AnyWriteToolDefinition | undefined;
       expect(tool?.locks?.({}), name).toEqual([ACCOUNT_VOUCHER_DRAFTS]);

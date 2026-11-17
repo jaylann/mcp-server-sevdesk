@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import type { BankAccountDto } from "../../../../src/domain/banking.js";
+import { type BankAccountDto, MAX_SCAN_ROWS } from "../../../../src/domain/banking.js";
 import { bookingTimestamp } from "../../../../src/domain/lifecycle/payments.js";
 import { inLanguage } from "../../../../src/domain/preview-text.js";
 import {
@@ -204,6 +204,45 @@ describe("planTransactionCreate", () => {
         "Verwendungszweck (Kontoumsatz 5401, 5402). Ist es dieselbe Zahlung, lege sie nicht " +
         "noch einmal an.",
     );
+  });
+
+  it("says the scan may not have reached that day when it stopped at its row cap", async () => {
+    // More rows than the scan searches, none of them dated that day.
+    const rows = Array.from({ length: MAX_SCAN_ROWS + 1 }, (_, index) =>
+      row({ id: String(10_000 + index), valueDate: "2026-11-10T12:00:00+01:00" }),
+    );
+    const client = createClient(IMPORT, rows);
+    const plan = await planTransactionCreate(client, INPUT);
+    expect(plan.duplicates).toEqual([]);
+    expect(inLanguage(plan.warnings, "en")).toContain(
+      "Account 4004 has more rows than the duplicate check searches (5000), so rows dated " +
+        "2026-11-16 may not have been checked; check it with sevdesk_transactions_list before " +
+        "confirming.",
+    );
+    expect(inLanguage(plan.warnings, "de")).toContain(
+      "Das Konto 4004 hat mehr Umsätze, als die Prüfung auf Doppelte durchsucht (5000); Umsätze " +
+        "vom 16.11.2026 wurden daher womöglich nicht geprüft. Prüfe es vor der Bestätigung mit " +
+        "sevdesk_transactions_list.",
+    );
+    // Not the claim that the day itself has more rows: the scan never saw that day.
+    expect(inLanguage(plan.warnings, "en").join(" ")).not.toContain("more rows on that day");
+    // Every page asked with an explicit limit, and the scan stopped at the cap.
+    const limits = client.callsTo("/CheckAccountTransaction").map((call) => call.query["limit"]);
+    expect(limits.every((limit) => typeof limit === "number" && limit <= 1000)).toBe(true);
+    expect(limits.reduce<number>((sum, limit) => sum + Number(limit), 0)).toBe(MAX_SCAN_ROWS);
+  });
+
+  it("says when that day has more rows than the duplicate check reads", async () => {
+    const rows = Array.from({ length: 101 }, (_, index) =>
+      row({ id: String(10_000 + index), paymtPurpose: `Beleg ${String(index)}` }),
+    );
+    const plan = await planTransactionCreate(createClient(IMPORT, rows), INPUT);
+    expect(plan.duplicates).toEqual([]);
+    expect(inLanguage(plan.warnings, "en")).toContain(
+      "The account has more rows on that day than were checked for duplicates; check it with " +
+        "sevdesk_transactions_list before confirming.",
+    );
+    expect(inLanguage(plan.warnings, "en").join(" ")).not.toContain("duplicate check searches");
   });
 
   it("says what the new row changes", async () => {

@@ -4,11 +4,13 @@
  * {@link SevdeskClient} interface this module implements.
  *
  * Safety invariants:
- * - Requests that change data (any non-GET, GETs marked `sideEffect`, and the state-changing GET
- *   endpoints recognized by `resolveGetSafety`) are refused before any network activity unless
- *   writes are enabled: not read-only, not dry-run, the request's declared `tier` allowed, and
- *   that tier covers the endpoint's minimum tier (`minimumWriteTier`: e.g. `sendBy` needs
- *   `commit`, `sendViaEmail` needs `external`), so a write tool cannot finalize or send.
+ * - Requests that change data (any non-GET but the reading POSTs of `read-posts.ts`, GETs marked
+ *   `sideEffect`, and the state-changing GET endpoints recognized by `resolveGetSafety`) are
+ *   refused before any network activity unless writes are enabled: not read-only, not dry-run,
+ *   the request's declared `tier` allowed, and that tier covers the endpoint's minimum tier
+ *   (`minimumWriteTier`: e.g. `sendBy` needs `commit`, `sendViaEmail` needs `external`), so a
+ *   write tool cannot finalize or send. A JSON body is serialized once, and both rules judge the
+ *   text that is sent.
  * - A `getPdf` read always carries the literal `preventSendBy=true`, so a preview never marks a
  *   document as sent.
  * - Only side-effect-free GETs are retried. A retried POST can create a second invoice.
@@ -28,6 +30,7 @@ import {
 } from "./errors.js";
 import { createPacer, type Pacer, realSleep, type Sleep } from "./pacing.js";
 import { assertSafePath, minimumWriteTier, resolveGetSafety } from "./paths.js";
+import { isReadingPostText } from "./read-posts.js";
 import type {
   CollectedList,
   ListAllOptions,
@@ -204,6 +207,21 @@ interface Prepared {
   /** Only side-effect-free GETs. */
   readonly retryable: boolean;
   readonly context: ErrorContext;
+  /** Time for one attempt: the configured `timeoutMs`, or a download's own budget. */
+  readonly timeoutMs: number;
+}
+
+/** The longest time one request may be given ({@link requestTimeoutMs}): 10 minutes. */
+export const MAX_REQUEST_TIMEOUT_MS = 600_000;
+
+/**
+ * The time one attempt of a `download` gets: the request's own `timeoutMs` when it asks for one,
+ * never less than the configured time and never more than {@link MAX_REQUEST_TIMEOUT_MS};
+ * otherwise the configured time.
+ */
+export function requestTimeoutMs(configured: number, requested: number | undefined): number {
+  if (requested === undefined || !Number.isFinite(requested)) return configured;
+  return Math.max(configured, Math.min(Math.round(requested), MAX_REQUEST_TIMEOUT_MS));
 }
 
 /**
@@ -263,18 +281,25 @@ export function createSevdeskClient(
       throw localError(context, "A GET request cannot have a body.");
     }
 
+    // The body is serialized once, first: the rules below judge that very text, and it is what
+    // goes out, so a `toJSON` or a getter cannot make the sent body differ from the checked one.
+    const bodyText = hasBody ? serializeJson(request.body, context) : undefined;
+    const sentBody: unknown = bodyText === undefined ? undefined : JSON.parse(bodyText);
+
     // GETs are classified by endpoint too, so a forgotten `sideEffect` flag cannot send an
-    // invoice; a getPdf read gets `preventSendBy=true` here.
+    // invoice; a getPdf read gets `preventSendBy=true` here. Of the other methods only the
+    // reading POSTs of `read-posts.ts` count as reads.
     const safety =
       method === "GET"
         ? resolveGetSafety(path, request.query, request.sideEffect === true)
         : undefined;
-    const changesData = safety === undefined || safety.sideEffect;
+    const changesData =
+      safety === undefined ? !isReadingPostText(request, bodyText) : safety.sideEffect;
     if (changesData) {
       const reason = writeBlockReason(
         config,
         request.tier,
-        minimumWriteTier(path, request.query, request.body),
+        minimumWriteTier(path, request.query, sentBody, request.form),
       );
       if (reason !== undefined) {
         const effect = safety?.sideEffect === true ? ` (${safety.effect})` : "";
@@ -298,9 +323,9 @@ export function createSevdeskClient(
       Accept: accept,
     });
     let body: string | FormData | undefined;
-    if (hasBody) {
+    if (bodyText !== undefined) {
       headers.set("Content-Type", "application/json");
-      body = serializeJson(request.body, context);
+      body = bodyText;
     } else if (request.form !== undefined) {
       body = request.form;
     }
@@ -312,17 +337,27 @@ export function createSevdeskClient(
       headers,
       body,
       signal: request.signal,
-      retryable: !changesData,
+      // Only GETs: a POST or PUT is never sent twice, also a reading one.
+      retryable: method === "GET" && !changesData,
       context,
+      timeoutMs: config.timeoutMs,
     };
   }
 
+  /**
+   * Sends `request`; `timeoutMs` (only `download` passes one) replaces the configured time per
+   * attempt, see {@link requestTimeoutMs}.
+   */
   async function send<T>(
     request: SevdeskRequest,
     accept: string,
     readSuccess: (response: Response, context: ErrorContext) => Promise<T>,
+    timeoutMs?: number,
   ): Promise<T> {
-    const prepared = prepare(request, accept);
+    const prepared = {
+      ...prepare(request, accept),
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
+    };
     for (let attempt = 1; ; attempt += 1) {
       const outcome = await attemptOnce(prepared, attempt, readSuccess);
       if (outcome.ok) return outcome.value;
@@ -366,7 +401,7 @@ export function createSevdeskClient(
       throw cancellationError(context, callerSignal, cause);
     }
 
-    const timeoutSignal = AbortSignal.timeout(config.timeoutMs);
+    const timeoutSignal = AbortSignal.timeout(prepared.timeoutMs);
     const signal =
       callerSignal === undefined ? timeoutSignal : AbortSignal.any([callerSignal, timeoutSignal]);
     const started = now();
@@ -412,8 +447,10 @@ export function createSevdeskClient(
           new SevdeskError({
             kind: "timeout",
             message:
-              `sevDesk did not answer within ${config.timeoutMs} ms. ` +
-              "Raise SEVDESK_TIMEOUT_MS if this persists.",
+              `sevDesk did not answer within ${prepared.timeoutMs} ms. ` +
+              (prepared.timeoutMs === config.timeoutMs
+                ? "Raise SEVDESK_TIMEOUT_MS if this persists."
+                : "This request has its own, longer time limit; ask for less at once."),
             method,
             path,
             cause,
@@ -523,17 +560,22 @@ export function createSevdeskClient(
     listAll,
     async download(request) {
       const maxBytes = request.maxBytes ?? DEFAULT_MAX_DOWNLOAD_BYTES;
-      return send(request, "*/*", async (response, context) => ({
-        body: await readCappedBody(response, maxBytes, (received) =>
-          unexpectedResponse(
-            response.status,
-            "",
-            context,
-            `the body is larger than ${String(maxBytes)} bytes (stopped after ${String(received)}).`,
+      return send(
+        request,
+        "*/*",
+        async (response, context) => ({
+          body: await readCappedBody(response, maxBytes, (received) =>
+            unexpectedResponse(
+              response.status,
+              "",
+              context,
+              `the body is larger than ${String(maxBytes)} bytes (stopped after ${String(received)}).`,
+            ),
           ),
-        ),
-        contentType: response.headers.get("content-type") ?? undefined,
-      }));
+          contentType: response.headers.get("content-type") ?? undefined,
+        }),
+        requestTimeoutMs(config.timeoutMs, request.timeoutMs),
+      );
     },
   };
 }

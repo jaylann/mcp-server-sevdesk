@@ -1,20 +1,34 @@
 /**
  * Input fields and the output schema shared by `sevdesk_contact_create` and
- * `sevdesk_contact_update`. Text is trimmed; empty strings are rejected, so a write never clears
- * a field by accident (clearing is not supported).
+ * `sevdesk_contact_update`. Text is trimmed and empty strings are rejected, so a text field is
+ * never cleared, by accident or on purpose. What an update may take away is named explicitly in
+ * its `remove` argument ({@link removeInput}): one address, one communication way, one custom
+ * field value, or the link to the organisation a person belongs to.
  */
 import { z } from "zod";
 
+import {
+  customFieldDtoSchema,
+  type DisplayedCustomFields,
+  SETTING_NAME_MAX,
+  VALUE_MAX as CUSTOM_FIELD_VALUE_MAX,
+} from "../../domain/contact-custom-fields.js";
 import {
   addressDtoSchema,
   communicationWayDtoSchema,
   type ContactDetails,
   contactDtoSchema,
 } from "../../domain/contacts.js";
+import { REMOVE_KINDS } from "../../domain/contacts-delete.js";
 import { CONTACT_CATEGORY_KEYS } from "../../domain/reference-data.js";
 
 function textInput(max: number) {
   return z.string().trim().min(1).max(max);
+}
+
+/** A sevDesk id argument (contact, address, communication way); add `.describe(...)`. */
+export function recordIdInput() {
+  return z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 }
 
 /** USt-IdNr.: spaces removed, upper case, two-letter country prefix (EL for Greece). */
@@ -38,7 +52,59 @@ export const contactFieldsShape = {
   buyerReference: textInput(100)
     .optional()
     .describe("Leitweg-ID / buyer reference for e-invoices (XRechnung) to public bodies."),
+  parentOrganisationId: recordIdInput()
+    .optional()
+    .describe(
+      "Persons only: the id of the organisation contact this person belongs to as contact " +
+        "person (Ansprechpartner). Must be an organisation.",
+    ),
 };
+
+/** The `remove` argument of `sevdesk_contact_update`: what to take off the contact. */
+export const removeInput = z
+  .array(
+    z.strictObject({
+      kind: z
+        .enum(REMOVE_KINDS)
+        .describe(
+          "address, email, phone, mobile, website or customField (one entry or custom field " +
+            "value of the contact), or parentOrganisation (the person's link to its organisation).",
+        ),
+      id: recordIdInput().describe(
+        "The entry's id from sevdesk_contact_get (for customField the value's id in " +
+          "customFields); for parentOrganisation the organisation's id.",
+      ),
+    }),
+  )
+  .min(1)
+  .max(25);
+
+/** A custom field named by the model: its setting id or its name (exactly one). */
+export const customFieldRefShape = {
+  settingId: recordIdInput()
+    .optional()
+    .describe("The field's id from sevdesk_reference_lookup kind=contact_custom_fields."),
+  name: textInput(SETTING_NAME_MAX)
+    .optional()
+    .describe("Or the field's name; refused when no field or more than one has it."),
+};
+
+/** The `customFields` argument of create and update: values by field (Zusatzfelder). */
+export const customFieldsInput = z
+  .array(
+    z.strictObject({
+      ...customFieldRefShape,
+      value: textInput(CUSTOM_FIELD_VALUE_MAX).describe(
+        `The value to store, at most ${String(CUSTOM_FIELD_VALUE_MAX)} characters (sevDesk's limit).`,
+      ),
+    }),
+  )
+  .min(1)
+  .max(20)
+  .describe(
+    "Custom field values (Zusatzfelder), each {settingId or name, value}. Fields are defined in " +
+      "the sevDesk web app; sevdesk_reference_lookup kind=contact_custom_fields lists them.",
+  );
 
 /** The contact category argument. */
 export const categoryInput = z
@@ -91,17 +157,51 @@ export const contactWriteOutput = z.object({
   communicationWaysComplete: z
     .boolean()
     .describe("False when sevDesk had more rows than could be read: communicationWays is partial."),
+  customFields: z
+    .array(customFieldDtoSchema)
+    .optional()
+    .describe("Custom field values (Zusatzfelder) read back; only when this call changed some."),
+  customFieldsComplete: z
+    .boolean()
+    .optional()
+    .describe(
+      "Only when this call changed custom fields: false when sevDesk had more values than could " +
+        "be read (customFields is partial), or when they could not be read back at all " +
+        "(customFields is left out; see the summary).",
+    ),
 });
 
 export type ContactWriteOutput = z.output<typeof contactWriteOutput>;
 
-/** The read-back contact as tool output. */
-export function contactWriteData(details: ContactDetails): ContactWriteOutput {
+/**
+ * The read-back contact as tool output, with its custom fields when the write read them back. A
+ * failed read-back leaves `customFields` out and sets `customFieldsComplete: false`.
+ */
+export function contactWriteData(
+  details: ContactDetails,
+  customFields: DisplayedCustomFields | undefined,
+): ContactWriteOutput {
   return {
     contact: details.contact,
     addresses: [...details.addresses],
     addressesComplete: details.addressesComplete,
     communicationWays: [...details.communicationWays],
     communicationWaysComplete: details.communicationWaysComplete,
+    ...(customFields === undefined
+      ? {}
+      : customFields.readable
+        ? { customFields: [...customFields.rows], customFieldsComplete: customFields.complete }
+        : { customFieldsComplete: false }),
   };
+}
+
+/**
+ * Appended to a write's summary when the custom fields it changed could not be read back: the
+ * writes went through, only the read afterwards failed.
+ */
+export function customFieldReadBackNote(customFields: DisplayedCustomFields | undefined): string {
+  return customFields?.readable === false
+    ? " Its custom field values could not be read back after the write; sevdesk_contact_get " +
+        "shows them."
+    : "";
 }

@@ -28,6 +28,11 @@ import {
   withDocumentCountry,
 } from "./country-codes.js";
 import {
+  type DocumentDiscount,
+  documentDiscountDto,
+  readDocumentDiscounts,
+} from "./document-discounts.js";
+import {
   addressDto,
   allOf,
   berlinDate,
@@ -63,6 +68,7 @@ import {
 import { keyForCode, ORDER_STATUS_FILTERS, ORDER_TYPE_FILTERS } from "./filter-keys.js";
 import { creditNoteLink, invoiceLink, orderLink } from "./links.js";
 import { documentTypeByCode } from "./reference-data.js";
+import { carriesTag, tagFilterQuery, type TagListFilter } from "./tags.js";
 
 export { ORDER_STATUS_FILTERS, ORDER_TYPE_FILTERS } from "./filter-keys.js";
 
@@ -283,15 +289,18 @@ export interface OrderListParams {
   readonly number?: string | undefined;
   readonly from?: string | undefined;
   readonly to?: string | undefined;
+  /** Only orders with this tag (`resolveTagFilter`), re-checked on every row. */
+  readonly tagFilter?: TagListFilter | undefined;
   readonly limit: number;
   readonly offset: number;
 }
 
 /**
  * Lists orders (`GET /Order`) with sevDesk's filters `status`, `orderType`, `contact[id]`,
- * `orderNumber` and `startDate`/`endDate` (Unix seconds, Berlin days). The number and the type are
- * re-checked on every row (`matchesNumber`), since sevDesk ignores filters it does not understand
- * (spec/deviations.md D-035); the date range is re-checked without a scan (`documentDateFilter`).
+ * `orderNumber`, `startDate`/`endDate` (Unix seconds, Berlin days) and the tag. The number and the
+ * type are re-checked on every row (`matchesNumber`), since sevDesk ignores filters it does not
+ * understand (spec/deviations.md D-035); the date range and the tag are re-checked without a scan
+ * (`documentDateFilter`, `carriesTag`).
  */
 export async function listOrders(
   client: SevdeskClient,
@@ -299,7 +308,11 @@ export async function listOrders(
   signal?: AbortSignal,
 ): Promise<DocumentListResult<OrderRow>> {
   const dates = documentDateFilter(params);
-  const query: Record<string, QueryValue> = { embed: EMBED_CONTACT, ...dates.query };
+  const query: Record<string, QueryValue> = {
+    embed: EMBED_CONTACT,
+    ...dates.query,
+    ...tagFilterQuery(params.tagFilter),
+  };
   if (params.status !== undefined) query["status"] = ORDER_STATUS_FILTERS[params.status];
   const type = params.type === undefined ? undefined : ORDER_TYPE_FILTERS[params.type];
   if (type !== undefined) query["orderType"] = type;
@@ -319,7 +332,7 @@ export async function listOrders(
       matchesNumber(params.number),
       type === undefined ? undefined : (row: OrderRow) => row.type.code === type,
     ),
-    recheck: (row) => dates.contains(row.date),
+    recheck: (row) => dates.contains(row.date) && carriesTag(params.tagFilter, row.id),
     signal,
   });
 }
@@ -330,21 +343,25 @@ export interface OrderDetails {
   readonly positionsComplete: boolean;
   /** `undefined` when sevDesk could not provide them (request failed or unknown shape). */
   readonly related: readonly RelatedDocument[] | undefined;
+  /** The document discount, when asked for (`withDiscount`) and the order has one. */
+  readonly discount?: DocumentDiscount | undefined;
 }
 
 /**
  * One order (`GET /Order/{id}`, contact embedded) with its positions
  * (`GET /OrderPos?order[id]=…&order[objectName]=Order`), unit names and related documents.
+ * `withDiscount` also reads its document discounts (`GET /Order/{id}/getDiscounts`, see
+ * `document-discounts.ts`).
  */
 export async function getOrder(
   client: SevdeskClient,
   orderId: number,
-  options: CountryReadOptions,
+  options: CountryReadOptions & { readonly withDiscount?: boolean | undefined },
 ): Promise<OrderDetails> {
   const { signal, cacheOwner } = options;
   const id = toSevdeskId(orderId);
   const withSignal = signal === undefined ? {} : { signal };
-  const [payload, positions, unitNames, related] = await Promise.all([
+  const [payload, positions, unitNames, related, discounts] = await Promise.all([
     client.request({
       method: "GET",
       path: sevdeskPath("Order", id),
@@ -359,15 +376,23 @@ export async function getOrder(
     ),
     loadUnitNames(client, signal),
     loadRelatedDocuments(client, id, signal),
+    options.withDiscount === true
+      ? readDocumentDiscounts(client, "order", id, signal)
+      : Promise.resolve(undefined),
   ]);
   const record = parseOrderRecord(expectSingle(payload, `order ${id}`));
   const order = await withDocumentCountry(toOrderDetail(record), client, { signal, cacheOwner });
   const context = { currency: order.currency, showNet: record.showNet, unitNames };
+  const discount =
+    discounts === undefined
+      ? undefined
+      : documentDiscountDto(discounts.rows, record, order.currency);
   return {
     order,
     positions: positions.rows.map((row) => toPositionDto(row, context)),
     positionsComplete: positions.complete,
     related,
+    ...(discount === undefined ? {} : { discount }),
   };
 }
 

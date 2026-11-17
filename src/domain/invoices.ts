@@ -17,11 +17,17 @@ import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
 import { parseUpstream } from "../sevdesk/schema.js";
 import type { QueryValue, SevdeskClient } from "../sevdesk/types.js";
 import { documentDateFilter, moneyFromUpstream, moneySchema } from "./common.js";
+import { type CostCentre, costCentreFilterQuery, inCostCentre } from "./cost-centres.js";
 import {
   countryCodeSchema,
   type CountryReadOptions,
   withDocumentCountry,
 } from "./country-codes.js";
+import {
+  type DocumentDiscount,
+  documentDiscountDto,
+  readDocumentDiscounts,
+} from "./document-discounts.js";
 import {
   addDays,
   addressDto,
@@ -61,7 +67,14 @@ import {
 import { INVOICE_STATUS_FILTERS, INVOICE_TYPE_FILTERS, keyForCode } from "./filter-keys.js";
 import { invoiceLink } from "./links.js";
 import { DEFAULT_CURRENCY } from "./money.js";
+import {
+  readStoredSchedule,
+  type StoredSchedule,
+  storedScheduleSchema,
+  TEMPLATE_SETTINGS_EMBED,
+} from "./recurring/schedule.js";
 import { documentTypeByCode } from "./reference-data.js";
+import { carriesTag, tagFilterQuery, type TagListFilter } from "./tags.js";
 
 export { INVOICE_STATUS_FILTERS, INVOICE_TYPE_FILTERS } from "./filter-keys.js";
 
@@ -151,6 +164,11 @@ export const invoiceRowSchema = z.object({
         "invoice itself keeps status 1000 (paid) in sevDesk's API.",
     ),
   header: z.string().optional().describe("Document title (Betreff)."),
+  costCentreId: z
+    .number()
+    .int()
+    .optional()
+    .describe("Kostenstelle id; see sevdesk_reference_lookup kind=cost_centres."),
   eInvoice: z
     .boolean()
     .optional()
@@ -163,6 +181,12 @@ export const invoiceRowSchema = z.object({
     .optional()
     .describe("Festgeschrieben: locked for changes (GoBD); only shown when true."),
   link: z.string().optional().describe("Opens the invoice in the sevDesk web app."),
+  schedule: storedScheduleSchema
+    .optional()
+    .describe(
+      "Recurring invoice templates (type WKR) only: interval, start, next run, end, last run, " +
+        "automatic generation and automatic sending as sevDesk stores them.",
+    ),
 });
 
 export type InvoiceRow = z.output<typeof invoiceRowSchema>;
@@ -214,7 +238,6 @@ export const invoiceDetailSchema = invoiceRowSchema
       .optional()
       .describe("Recurring invoice (Abo-Rechnung) schedule, when set."),
     contactPersonId: z.number().int().optional().describe("SevUser responsible for the invoice."),
-    costCentreId: z.number().int().optional().describe("Kostenstelle."),
     internalNote: z.string().optional().describe("Internal note (not printed)."),
     headText: z.string().optional().describe("Intro text (may contain HTML)."),
     footText: z.string().optional().describe("Closing text (may contain HTML)."),
@@ -265,6 +288,7 @@ function toInvoiceRow(record: InvoiceRecord, today: string): InvoiceRow {
     cancelsInvoiceId:
       typeCode === "SR" && record.origin?.objectName === "Invoice" ? record.origin.id : undefined,
     header: cleanText(record.header, TEXT_MAX.short),
+    costCentreId: record.costCentre?.id,
     eInvoice: record.propertyIsEInvoice,
     sent: sentDto(record),
     enshrined: berlinDate(record.enshrined) === undefined ? undefined : true,
@@ -307,7 +331,6 @@ function toInvoiceDetail(record: InvoiceRecord, today: string): InvoiceDetail {
     reminder: Object.keys(reminder).length === 0 ? undefined : reminder,
     recurring: Object.keys(recurring).length === 0 ? undefined : recurring,
     contactPersonId: refId(record.contactPerson, "an invoice's contact person"),
-    costCentreId: record.costCentre?.id,
     internalNote: cleanText(record.customerInternalNote, TEXT_MAX.long),
     headText: cleanText(record.headText, TEXT_MAX.long),
     footText: cleanText(record.footText, TEXT_MAX.long),
@@ -322,7 +345,15 @@ function toInvoiceDetail(record: InvoiceRecord, today: string): InvoiceDetail {
  * `YYYY-MM-DD` for `overdue`. Throws `unexpected_response` for a record that does not fit.
  */
 export function mapInvoiceDetail(raw: unknown, today: string): InvoiceDetail {
-  return toInvoiceDetail(parseInvoiceRecord(raw), today);
+  return withSchedule(toInvoiceDetail(parseInvoiceRecord(raw), today), raw);
+}
+
+/**
+ * A recurring template's row with the schedule sevDesk stores (`recurring/schedule.ts`, D-111):
+ * the invoice parser reads only the interval and the next run. Other rows stay as they are.
+ */
+function withSchedule<T extends InvoiceRow>(row: T, raw: unknown): T {
+  return row.type.code === "WKR" ? { ...row, schedule: readStoredSchedule(raw) } : row;
 }
 
 /** The value unless it is a zero decimal (sevDesk sends "0" for "no Skonto", "no fee"). */
@@ -347,6 +378,10 @@ export interface InvoiceListParams {
   readonly to?: string | undefined;
   /** Open/partially paid with a due date before today; filtered here (see the tool). */
   readonly overdueOnly?: boolean | undefined;
+  /** Only invoices with this tag (`resolveTagFilter`), re-checked on every row. */
+  readonly tagFilter?: TagListFilter | undefined;
+  /** Only invoices on this cost centre (`resolveCostCentreFilter`), re-checked on every row. */
+  readonly costCentreFilter?: CostCentre | undefined;
   readonly limit: number;
   readonly offset: number;
   /** Berlin `YYYY-MM-DD` used for "today" (tests); defaults to the current date. */
@@ -359,8 +394,8 @@ export interface InvoiceListParams {
  * here (see `listDocuments`): the overdue filter, whose server-side form (`delinquent`) the web
  * app only uses together with `status=200` and `notPartiallyPaid`, and exact re-checks of the
  * number (see {@link matchesNumber}) and the type, which sevDesk would ignore silently if it did
- * not understand them (spec/deviations.md D-015, D-035). The date range is re-checked without a
- * scan (see `documentDateFilter`).
+ * not understand them (spec/deviations.md D-015, D-035). The date range, the tag and the cost
+ * centre are re-checked without a scan (see `documentDateFilter`, `carriesTag`, `inCostCentre`).
  */
 export async function listInvoices(
   client: SevdeskClient,
@@ -368,9 +403,17 @@ export async function listInvoices(
   signal?: AbortSignal,
 ): Promise<DocumentListResult<InvoiceRow>> {
   const dates = documentDateFilter(params);
-  const query: Record<string, QueryValue> = { embed: EMBED_CONTACT, ...dates.query };
-  if (params.status !== undefined) query["status"] = INVOICE_STATUS_FILTERS[params.status];
   const type = params.type === undefined ? undefined : INVOICE_TYPE_FILTERS[params.type];
+  // Rows of templates carry automatic generation and sending only with this embed (D-132);
+  // other lists keep the plain contact embed.
+  const embed = type === "WKR" ? `${EMBED_CONTACT},${TEMPLATE_SETTINGS_EMBED}` : EMBED_CONTACT;
+  const query: Record<string, QueryValue> = {
+    embed,
+    ...dates.query,
+    ...tagFilterQuery(params.tagFilter),
+    ...costCentreFilterQuery(params.costCentreFilter),
+  };
+  if (params.status !== undefined) query["status"] = INVOICE_STATUS_FILTERS[params.status];
   if (type !== undefined) query["invoiceType"] = type;
   // The Invoice tag's filter table lists `showWkr=all` ("Retrieve all recurring invoices") and
   // `showMa=all` ("… payment reminders"), which suggests sevDesk hides recurring templates and
@@ -391,15 +434,37 @@ export async function listInvoices(
     query,
     limit: params.limit,
     offset: params.offset,
-    map: (raw) => toInvoiceRow(parseInvoiceRecord(raw), today),
+    map: (raw) => withSchedule(toInvoiceRow(parseInvoiceRecord(raw), today), raw),
     keep: allOf(
       params.overdueOnly === true ? (row: InvoiceRow) => row.overdue === true : undefined,
       matchesNumber(params.number),
       type === undefined ? undefined : (row: InvoiceRow) => row.type.code === type,
     ),
-    recheck: (row) => dates.contains(row.date),
+    recheck: (row) =>
+      dates.contains(row.date) &&
+      carriesTag(params.tagFilter, row.id) &&
+      inCostCentre(params.costCentreFilter, row.costCentreId),
     signal,
   });
+}
+
+/**
+ * The stored schedule of recurring template `invoiceId` with automatic generation and sending
+ * (`GET /Invoice/{id}?embed=…`, D-132): one read, never a write.
+ */
+export async function readTemplateSchedule(
+  client: SevdeskClient,
+  invoiceId: number,
+  signal: AbortSignal | undefined,
+): Promise<StoredSchedule> {
+  const id = toSevdeskId(invoiceId);
+  const payload = await client.request({
+    method: "GET",
+    path: sevdeskPath("Invoice", id),
+    query: { embed: TEMPLATE_SETTINGS_EMBED },
+    ...(signal === undefined ? {} : { signal }),
+  });
+  return readStoredSchedule(expectSingle(payload, `invoice ${id}`));
 }
 
 export interface InvoiceDetails {
@@ -407,22 +472,30 @@ export interface InvoiceDetails {
   readonly positions: readonly z.output<typeof positionDtoSchema>[];
   /** False when sevDesk had more position rows than could be read. */
   readonly positionsComplete: boolean;
+  /** The document discount, when asked for (`withDiscount`) and the invoice has one. */
+  readonly discount?: DocumentDiscount | undefined;
 }
 
 /**
  * One invoice (`GET /Invoice/{id}`, contact embedded) with its positions
  * (`GET /InvoicePos?invoice[id]=…&invoice[objectName]=Invoice`) and unit names (`GET /Unity`).
+ * `withDiscount` also reads its document discounts (`GET /Invoice/{id}/getDiscounts`, see
+ * `document-discounts.ts`): the get and draft tools show them, the other readers of an invoice
+ * do not need them and skip the request.
  */
 export async function getInvoice(
   client: SevdeskClient,
   invoiceId: number,
-  options: CountryReadOptions & { readonly today?: string | undefined },
+  options: CountryReadOptions & {
+    readonly today?: string | undefined;
+    readonly withDiscount?: boolean | undefined;
+  },
 ): Promise<InvoiceDetails> {
   const { signal, cacheOwner } = options;
   const today = options.today ?? berlinDateOf(Date.now());
   const id = toSevdeskId(invoiceId);
   const withSignal = signal === undefined ? {} : { signal };
-  const [payload, positions, unitNames] = await Promise.all([
+  const [payload, positions, unitNames, discounts] = await Promise.all([
     client.request({
       method: "GET",
       path: sevdeskPath("Invoice", id),
@@ -441,16 +514,28 @@ export async function getInvoice(
       signal,
     ),
     loadUnitNames(client, signal),
+    options.withDiscount === true
+      ? readDocumentDiscounts(client, "invoice", id, signal)
+      : Promise.resolve(undefined),
   ]);
-  const record = parseInvoiceRecord(expectSingle(payload, `invoice ${id}`));
-  const invoice = await withDocumentCountry(toInvoiceDetail(record, today), client, {
-    signal,
-    cacheOwner,
-  });
+  const raw = expectSingle(payload, `invoice ${id}`);
+  const record = parseInvoiceRecord(raw);
+  const detail = toInvoiceDetail(record, today);
+  // A template's settings come only with their own embed, read when it is one (D-132).
+  const withTemplate =
+    detail.type.code === "WKR"
+      ? { ...detail, schedule: await readTemplateSchedule(client, invoiceId, signal) }
+      : detail;
+  const invoice = await withDocumentCountry(withTemplate, client, { signal, cacheOwner });
   const context = { currency: invoice.currency, showNet: record.showNet, unitNames };
+  const discount =
+    discounts === undefined
+      ? undefined
+      : documentDiscountDto(discounts.rows, record, invoice.currency);
   return {
     invoice,
     positions: positions.rows.map((row) => toPositionDto(row, context)),
     positionsComplete: positions.complete,
+    ...(discount === undefined ? {} : { discount }),
   };
 }

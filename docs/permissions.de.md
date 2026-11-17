@@ -1,4 +1,4 @@
-<!-- translated-from: docs/permissions.md sha256:d6c1b2cd99fb -->
+<!-- translated-from: docs/permissions.md sha256:e16660136a10 -->
 
 # Berechtigungen und Bestätigung
 
@@ -14,12 +14,16 @@ erklärt, wie du jedes davon verwendest; die Garantien hinter den Bestätigungen
 
 Jedes Werkzeug gehört zu genau einer Stufe. Lesen und Schreiben teilen sich nie ein Werkzeug.
 
-| Stufe      | Was sie erlaubt                                                                                                                                                                                                                          | Bestätigung |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| `read`     | Auflisten, abrufen, suchen, Auswertungen, PDF-Vorschauen (die ein Dokument nie als versendet markieren), E-Rechnungen auslesen, Dokumentdateien und CSV-Exporte in `SEVDESK_OUTPUT_DIR` speichern (oder als Download-Link). Immer aktiv. | nein        |
-| `write`    | Kontakte, Artikel, Zahlungskonten, Entwürfe von Rechnungen, Gutschriften, Aufträgen und Belegen, Mahnungen, der DATEV-Export. Umkehrbar oder harmlos.                                                                                    | nein        |
-| `commit`   | Fertigstellen, Zahlungen buchen, Kontoumsätze erfassen, zuordnen, löschen, festschreiben, privat markieren (auch per Regel), stornieren, festschreiben (GoBD), zurücksetzen, Belegentwürfe löschen. Bindend oder schwer umkehrbar.       | **ja**      |
-| `external` | Rechnungen, Gutschriften und Aufträge per E-Mail versenden. Erreicht Dritte.                                                                                                                                                             | **ja**      |
+| Stufe      | Was sie erlaubt                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Bestätigung |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| `read`     | Auflisten, abrufen, suchen, Auswertungen, PDF-Vorschauen (die ein Dokument nie als versendet markieren), E-Rechnungen auslesen, Dokumentdateien und CSV-Exporte in `SEVDESK_OUTPUT_DIR` speichern (oder als Download-Link). Immer aktiv.                                                                                                                                                                                                                         | nein        |
+| `write`    | Kontakte (auch einzelne Adressen oder Kommunikationswege entfernen), Artikel, Zahlungskonten, Entwürfe von Rechnungen, Gutschriften, Aufträgen und Belegen, Mahnungen, der DATEV-Export, Belegarchive. Umkehrbar oder harmlos.                                                                                                                                                                                                                                   | nein        |
+| `commit`   | Fertigstellen, Zahlungen buchen; Kontoumsätze erfassen, zuordnen, löschen und privat markieren, auch per Regel; stornieren, zurücksetzen, Entwürfe und Kontakte löschen (eine Organisation mit ihren Ansprechpartnern), Sprache, Vorlage und Briefpapier eines Entwurfs setzen (die Anfrage, die sevDesk dafür nutzt, ändert auch fertige Dokumente), Abo-Rechnungen; Dokumente und Kontoumsätze festschreiben (GoBD). Bindend oder schwer rückgängig zu machen. | **ja**      |
+| `external` | Rechnungen, Gutschriften und Aufträge per E-Mail versenden. Erreicht Dritte.                                                                                                                                                                                                                                                                                                                                                                                     | **ja**      |
+
+Für Aufträge gilt dieselbe Linie: Ein Lieferschein zu einem Angebot ist ein `write`-Entwurf, ein
+Angebot anzunehmen oder abzulehnen dagegen `commit`, ebenso seine Auftragsbestätigung anzulegen,
+weil sevDesk das Angebot dabei als angenommen markiert.
 
 Die Stufen wählst du mit `SEVDESK_ALLOW`, zum Beispiel `SEVDESK_ALLOW=write` oder
 `SEVDESK_ALLOW=write,commit`; `all` aktiviert alle Stufen. `SEVDESK_READ_ONLY=1` schaltet alles

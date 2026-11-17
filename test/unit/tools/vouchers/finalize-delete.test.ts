@@ -442,6 +442,8 @@ describe("sevdesk_voucher_delete_draft", () => {
         "is no longer one (probably finalized in the meantime). Nothing was deleted; check it " +
         "with sevdesk_voucher_get.",
     );
+    // Our own sentence, so the model sees it instead of the generic advice.
+    expect(error.explained).toBe(true);
     expect(error.upstreamMessage).toContain("only be deleted in status 50");
     expect(error.completedWrites).toEqual([]);
   });

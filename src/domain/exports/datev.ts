@@ -24,6 +24,13 @@
  * `GET /SevClient` carries them as `accountantNumber`, `accountantClientNumber` and
  * `accountingYearBegin` (`null` when not set). An exported invoice and voucher read back unchanged
  * (no visible "exported" mark).
+ *
+ * The XML format (`POST /Export/createDatevXmlZipExportJob`, recorded 2026-11-16, D-102) runs the
+ * same way: the same query form (`scope` takes only E and X there), job id, progress, download
+ * info and S3 host. Its file, `BITTE-ENTPACKEN_Belegbilder_…zip`, is a ZIP of inner
+ * `DATEV_…zip` files with the documents as XML and their receipt images (5.6 MB for one month of
+ * the trial). It has no enshrine flag, and nothing was marked as exported: a second job with
+ * `includeExportedDocuments=false` exported the same entries, so that flag is never sent.
  */
 import { z } from "zod";
 
@@ -68,8 +75,20 @@ export function scopeParameter(keys: readonly DatevScopeKey[]): string {
     .join("");
 }
 
-/** Path of the job start (POST). */
+/**
+ * The two DATEV formats: `csv` the booking batch (Buchungsstapel, EXTF CSV files, optionally with
+ * document images), `xml` the documents as DATEV XML with their receipt images (Belegbilder).
+ */
+export const DATEV_FORMATS = ["csv", "xml"] as const;
+export type DatevFormat = (typeof DATEV_FORMATS)[number];
+
+/** The scope keys the XML job takes (spec `exportDatevXML`: E and X only). */
+export const XML_SCOPE_KEYS: readonly DatevScopeKey[] = ["earnings", "expenditure"];
+
+/** Path of the CSV job start (POST). */
 export const DATEV_JOB_PATH = "/Export/createDatevCsvZipExportJob";
+/** Path of the XML job start (POST, like the CSV job). */
+export const DATEV_XML_JOB_PATH = "/Export/createDatevXmlZipExportJob";
 export const DATEV_HASH_PATH = "/Progress/generateDownloadHash";
 export const DATEV_PROGRESS_PATH = "/Progress/getProgress";
 export const DATEV_DOWNLOAD_INFO_PATH = "/ExportJob/jobDownloadInfo";
@@ -91,9 +110,12 @@ export interface DatevExportConfig {
   readonly accountingYearBegin?: string | undefined;
   /** Readable names of the settings that are missing; empty when the export can run. */
   readonly missing: readonly string[];
+  /** The account's `SevClient` id (the path of `updateExportConfig`), when readable. */
+  readonly clientId?: number | undefined;
 }
 
 const exportConfigSchema = z.object({
+  id: z.coerce.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional().catch(undefined),
   accountantNumber: zText.catch(undefined),
   accountantClientNumber: zText.catch(undefined),
   accountingYearBegin: z.unknown().optional(),
@@ -134,7 +156,13 @@ export async function readDatevExportConfig(
     accountantClientNumber === undefined ? "client number (Mandantennummer)" : undefined,
     yearBegin === undefined ? "start of the fiscal year (Wirtschaftsjahresbeginn)" : undefined,
   ].filter((name): name is string => name !== undefined);
-  return { accountantNumber, accountantClientNumber, accountingYearBegin: yearBegin, missing };
+  return {
+    accountantNumber,
+    accountantClientNumber,
+    accountingYearBegin: yearBegin,
+    missing,
+    clientId: record.id,
+  };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -146,24 +174,47 @@ export interface DatevJobParams {
   readonly from: string;
   readonly to: string;
   readonly scope: readonly DatevScopeKey[];
-  /** Only paid documents whose pay date lies in the period (sevDesk's `exportByPaydate`). */
+  /**
+   * Only paid documents whose pay date lies in the period (sevDesk's `exportByPaydate`). CSV only:
+   * the XML job was recorded without it (D-102), so it is never sent there.
+   */
   readonly exportByPaydate?: boolean | undefined;
+  /** CSV only (the XML export always holds the receipt images). */
   readonly includeDocumentImages?: boolean | undefined;
+  /** Default `csv`. */
+  readonly format?: DatevFormat | undefined;
+}
+
+/** The job start path of a format. */
+export function datevJobPath(format: DatevFormat = "csv"): string {
+  switch (format) {
+    case "csv":
+      return DATEV_JOB_PATH;
+    case "xml":
+      return DATEV_XML_JOB_PATH;
+  }
 }
 
 /**
- * The query of the job start. Built from a fixed list of keys, so `enshrineDocuments` (or any
- * other flag) can never be sent; booleans go out as `true`/`false` like the spec's examples.
+ * The query of the job start. Built from a fixed list of keys, so `enshrineDocuments`,
+ * `includeExportedDocuments` (or any other flag) can never be sent; booleans go out as
+ * `true`/`false` like the spec's examples. The XML job gets the recorded keys only (period and a
+ * scope of E/X, D-102): no `exportByPaydate`, no image flag, and no `includeEnshrined` either,
+ * whose default the spec leaves open.
  */
 export function datevJobQuery(params: DatevJobParams): Record<string, string | number> {
+  const xml = params.format === "xml";
+  const scope = xml ? params.scope.filter((key) => XML_SCOPE_KEYS.includes(key)) : params.scope;
   return {
     startDate: toUnixSeconds(params.from, "start"),
     endDate: toUnixSeconds(params.to, "end"),
-    scope: scopeParameter(params.scope),
-    ...(params.exportByPaydate === undefined
+    scope: scopeParameter(scope),
+    ...(xml || params.exportByPaydate === undefined
       ? {}
       : { exportByPaydate: params.exportByPaydate ? "true" : "false" }),
-    includeDocumentImages: params.includeDocumentImages === true ? "true" : "false",
+    ...(xml
+      ? {}
+      : { includeDocumentImages: params.includeDocumentImages === true ? "true" : "false" }),
   };
 }
 
@@ -178,7 +229,7 @@ export async function startDatevExportJob(
 ): Promise<string> {
   const payload = await client.request({
     method: "POST",
-    path: DATEV_JOB_PATH,
+    path: datevJobPath(params.format),
     query: datevJobQuery(params),
     ...(signal === undefined ? {} : { signal }),
   });
@@ -445,9 +496,10 @@ export function looksLikeZip(bytes: Uint8Array): boolean {
   );
 }
 
-/** Our own file name of an export: `DATEV_<from>_<to>_<scope>.zip`. */
+/** Our own file name of an export: `DATEV_<from>_<to>_<scope>.zip` (`DATEV-XML_…` for XML). */
 export function datevFilename(params: DatevJobParams): string {
-  return `DATEV_${params.from}_${params.to}_${scopeParameter(params.scope)}.zip`;
+  const prefix = params.format === "xml" ? "DATEV-XML" : "DATEV";
+  return `${prefix}_${params.from}_${params.to}_${scopeParameter(params.scope)}.zip`;
 }
 
 const MAX_FILENAME = 150;
