@@ -5,6 +5,13 @@
   "description": "Safety-first MCP server for sevDesk accounting: invoices, receipts, banking, reports. Unofficial.",
   "version": "1.6.0",
   "websiteUrl": "https://sevdeskmcp.lanfermann.dev",
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/jaylann/mcp-server-sevdesk/main/mcpb/icon.png",
+      "mimeType": "image/png",
+      "sizes": ["512x512"]
+    }
+  ],
   "repository": {
     "url": "https://github.com/jaylann/mcp-server-sevdesk",
     "source": "github"

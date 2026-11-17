@@ -1,4 +1,4 @@
-<!-- translated-from: README.md sha256:70e7f0c2102f -->
+<!-- translated-from: README.md sha256:616cb8f33591 -->
 
 <!-- Nur die Breite: mit einer Höhe dazu zeichnet GitHub einen getönten Kasten hinter das Bild. -->
 <p align="center"><img src="https://raw.githubusercontent.com/jaylann/mcp-server-sevdesk/main/assets/logo.svg" alt="" width="96"></p>
@@ -109,6 +109,11 @@ deaktivierte Stufe, Werkzeuggruppe oder einen fehlenden Ordner brauchen, werden 
 Einstellung aufgeführt, die sie freischaltet. Prompts erzeugen nur Text für den Assistenten: Jede
 Änderung läuft weiter über die Werkzeuge, zuerst im Probelauf und mit deiner Bestätigung für
 bindende Schritte. Keine Steuerberatung.
+
+Clients, die Argumente vervollständigen können, schlagen beim Tippen Werte vor: Monate und
+Quartale, die jüngsten zuerst, und die Namen deiner Kontakte und Zahlungskonten. Die Namen kommen
+aus sevDesk (nur lesend, eine Minute zwischengespeichert) und nur, wenn die Werkzeuge für Kontakte
+oder Bankkonten aktiviert sind.
 
 ## Berechtigungen und Konfiguration
 

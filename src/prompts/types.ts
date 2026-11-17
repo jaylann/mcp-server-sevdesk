@@ -1,9 +1,21 @@
 /**
  * Types of the MCP prompts (`src/prompts/catalog.ts`): ready-made bookkeeping workflows a user
- * picks in the client (e.g. `/mcp__sevdesk__month_end_close` in Claude Code). A prompt only
- * renders text: its handler never calls sevDesk.
+ * picks in the client (e.g. `/mcp__sevdesk__month_end_close` in Claude Code).
+ *
+ * Invariant: a prompt only renders text. Its handler (`prompts/get`) never calls sevDesk. The
+ * only reads behind prompts are the suggestions for some of their arguments
+ * (`completion/complete`, see `completions.ts`): contact and payment account names, read-only,
+ * with an explicit `limit`, cached briefly per account, and only when the read tool behind them is
+ * registered.
  */
 import type { z } from "zod";
+
+/**
+ * @public What `completion/complete` suggests for a prompt argument (`completions.ts`): recent
+ * months (`YYYY-MM`), recent months and quarters (`YYYY-Qn`), contact names, or payment account
+ * names.
+ */
+export type CompletionKind = "month" | "period" | "contact" | "checkAccount";
 
 /**
  * @public Clock-derived values a prompt renders with; injectable through the `now` of the
@@ -58,6 +70,12 @@ export interface PromptSpec<Args extends PromptArgsSchema, Values> {
    * ones with InvalidParams; unknown keys are dropped, never echoed.
    */
   readonly args: Args;
+  /**
+   * What clients may suggest while the user types an argument, by argument name. Data only:
+   * `registerPrompts` attaches the completers of one server instance (and so of one account), so
+   * no client or account reaches the shared catalog.
+   */
+  readonly completions?: { readonly [Key in keyof z.output<Args>]?: CompletionKind };
   /** The prompt is listed only when every requirement is met by the registered tools. */
   readonly requires: readonly ToolRequirement[];
   /** Derives the render values (dates, labels) from the validated arguments. */
@@ -88,6 +106,8 @@ export interface PromptDefinition {
   readonly title: string;
   readonly description: string;
   readonly args: PromptArgsSchema;
+  /** See {@link PromptSpec.completions}; empty when no argument is completed. */
+  readonly completions: Readonly<Partial<Record<string, CompletionKind>>>;
   readonly requires: readonly ToolRequirement[];
   readonly steps: readonly PromptStepInfo[];
   /**
@@ -106,6 +126,7 @@ export function definePrompt<Args extends PromptArgsSchema, Values>(
     title: spec.title,
     description: spec.description,
     args: spec.args,
+    completions: spec.completions ?? {},
     requires: spec.requires,
     steps: spec.steps.map(({ tools, fallback }) =>
       fallback === undefined ? { tools } : { tools, fallback },

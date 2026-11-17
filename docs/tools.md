@@ -1179,7 +1179,7 @@ Last resort: a read-only GET of a sevDesk API endpoint that no other tool covers
 
 ## Prompts
 
-Ready-made bookkeeping workflows (MCP prompts). Clients offer them by name, e.g. Claude Code as `/mcp__sevdesk__month_end_close` for a server named `sevdesk`. A prompt is listed only when the tools it needs are enabled; a step whose tools are not enabled is replaced by a note naming the setting that enables it. Prompts only produce text: they never call sevDesk.
+Ready-made bookkeeping workflows (MCP prompts). Clients offer them by name, e.g. Claude Code as `/mcp__sevdesk__month_end_close` for a server named `sevdesk`. A prompt is listed only when the tools it needs are enabled; a step whose tools are not enabled is replaced by a note naming the setting that enables it. Prompts only produce text: rendering one never calls sevDesk. Clients that support argument completion suggest the values under Suggestions while you type; contact and account names are read from the account (read-only, cached for a minute) and only when the named tool is enabled.
 
 ### `bank_reconciliation`
 
@@ -1187,10 +1187,10 @@ Ready-made bookkeeping workflows (MCP prompts). Clients offer them by name, e.g.
 
 Match unbooked bank transactions in sevDesk to invoices, credit notes and receipts: suggestions with reasons, then each booking the user confirms with a dry run first; private withdrawals and deposits, costs without a receipt and wrong bookings. Not tax advice.
 
-| Argument       | Required | Description                                                                              |
-| -------------- | -------- | ---------------------------------------------------------------------------------------- |
-| `checkAccount` | no       | Payment account reference (name or id, up to 200 characters). Default: no account scope. |
-| `month`        | no       | Month to reconcile, YYYY-MM (2000–2099). Default: no date scope.                         |
+| Argument       | Required | Description                                                                              | Suggestions                                               |
+| -------------- | -------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `checkAccount` | no       | Payment account reference (name or id, up to 200 characters). Default: no account scope. | payment account names (with `sevdesk_bank_accounts_list`) |
+| `month`        | no       | Month to reconcile, YYYY-MM (2000–2099). Default: no date scope.                         | recent months                                             |
 
 ### `dunning_run`
 
@@ -1198,10 +1198,10 @@ Match unbooked bank transactions in sevDesk to invoices, credit notes and receip
 
 Find overdue invoices in sevDesk, rule out payments that are not booked yet, and prepare payment reminders (Mahnungen) for the ones the user picks, with a dry run first. Without the write tier it only lists the overdue invoices. Not tax advice.
 
-| Argument         | Required | Description                                                                             |
-| ---------------- | -------- | --------------------------------------------------------------------------------------- |
-| `contact`        | no       | Customer reference (name or id, up to 200 characters). Default: all customers.          |
-| `minDaysOverdue` | no       | Minimum days overdue (inclusive, 0–3650, as 1–4 digits). Default: all overdue invoices. |
+| Argument         | Required | Description                                                                             | Suggestions                                    |
+| ---------------- | -------- | --------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `contact`        | no       | Customer reference (name or id, up to 200 characters). Default: all customers.          | contact names (with `sevdesk_contacts_search`) |
+| `minDaysOverdue` | no       | Minimum days overdue (inclusive, 0–3650, as 1–4 digits). Default: all overdue invoices. | —                                              |
 
 ### `month_end_close`
 
@@ -1209,9 +1209,9 @@ Find overdue invoices in sevDesk, rule out payments that are not booked yet, and
 
 Close a month in sevDesk: what changed, unbooked bank transactions and missing receipts, drafts, overdue invoices, payables and liquidity, the VAT pre-check, profit and the hand-over to the Steuerberater. Steps the configuration does not allow are named, not worked around. Not tax advice.
 
-| Argument | Required | Description                                                          |
-| -------- | -------- | -------------------------------------------------------------------- |
-| `month`  | no       | Month to close, YYYY-MM (e.g. 2026-10). Default: the previous month. |
+| Argument | Required | Description                                                          | Suggestions   |
+| -------- | -------- | -------------------------------------------------------------------- | ------------- |
+| `month`  | no       | Month to close, YYYY-MM (e.g. 2026-10). Default: the previous month. | recent months |
 
 ### `receipt_intake`
 
@@ -1219,9 +1219,9 @@ Close a month in sevDesk: what changed, unbooked bank transactions and missing r
 
 File a receipt or supplier invoice in sevDesk, or import an e-invoice (E-Rechnung: XRechnung, ZUGFeRD): duplicate check, booking account and tax rule, the voucher draft with a dry run first, then finalizing and the payment. Not tax advice.
 
-| Argument | Required | Description                                                                                                                                                |
-| -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `file`   | no       | The receipt or e-invoice file, as the voucher tools take it (a path inside SEVDESK_FILE_DIRS, or an upload reference). Default: the assistant asks for it. |
+| Argument | Required | Description                                                                                                                                                | Suggestions |
+| -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| `file`   | no       | The receipt or e-invoice file, as the voucher tools take it (a path inside SEVDESK_FILE_DIRS, or an upload reference). Default: the assistant asks for it. | —           |
 
 ### `vat_precheck`
 
@@ -1229,6 +1229,6 @@ File a receipt or supplier invoice in sevDesk, or import an e-invoice (E-Rechnun
 
 Check a month or quarter in sevDesk before the Umsatzsteuer-Voranmeldung (UStVA): unbooked transactions and drafts, the VAT summary with its Kennzahlen, spot checks and the Zusammenfassende Meldung. The server does not file anything. Not tax advice.
 
-| Argument | Required | Description                                                                                    |
-| -------- | -------- | ---------------------------------------------------------------------------------------------- |
-| `period` | no       | Month (YYYY-MM, e.g. 2026-10) or quarter (YYYY-Qn, e.g. 2026-Q3). Default: the previous month. |
+| Argument | Required | Description                                                                                    | Suggestions                |
+| -------- | -------- | ---------------------------------------------------------------------------------------------- | -------------------------- |
+| `period` | no       | Month (YYYY-MM, e.g. 2026-10) or quarter (YYYY-Qn, e.g. 2026-Q3). Default: the previous month. | recent months and quarters |
