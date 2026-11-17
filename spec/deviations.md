@@ -3146,10 +3146,14 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   the contacts of that parent. `PUT` answers the contact as one object.
 - **Sources:** spec (`Model_Contact`, `Model_ContactUpdate`, `getContacts`); recorded 2026-11-16,
   trial account, Update 2.0 (probes `write-contact-parent`, `write-contact-parent-invalid`).
-- **Impact:** No tool sets `parent` yet. #86 must refuse a parent that is not an organisation and
-  a contact that is not a person itself (sevDesk would store both), read a missing `parent` key as
-  "no organisation", list contact persons with the `parent[id]` filter (and filter again locally,
-  D-035), and clear with `parent: null`.
+- **Impact:** `sevdesk_contact_create` and `sevdesk_contact_update` set `parent` from
+  `parentOrganisationId` and refuse, before anything is sent, a parent that does not exist or is a
+  person, the contact itself as parent and a parent on an organisation (sevDesk would store all of
+  them). A missing `parent` key reads as "no organisation" (`parentOrganisationId` absent).
+  `remove` kind `parentOrganisation` sends `PUT` with `parent: null`, after checking that the
+  contact belongs to that organisation. `sevdesk_contact_delete` lists the contacts whose parent
+  the contact is with the `parent[id]` filter and filters again locally (D-035), for persons too,
+  since sevDesk stores a person as parent.
 - **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("follows parent through create, set,
   change and clear and checks the parent filter", "reports wrong-sided parents as stored, as
   recorded, and a refusal with its message (D-083)"); its simulated account behaves as recorded.
@@ -3193,8 +3197,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   read). It reads them for a person too, since sevDesk stores a person as parent (D-083), and
   says that sevDesk may delete them with it (not measured). The approval is bound to the ids of
   those persons, so a person added in between asks again. Afterwards it reads each person back and
-  says so when one is still there or could not be checked. A 404 on the DELETE counts as "already gone". Removing an address or way says when it
-  removes the billing address or the main entry, since sevDesk elects no new one; when the same
+  says so when one is still there or could not be checked. A 404 on the DELETE counts as "already
+  gone". Removing an address or way says when it removes the billing address or the main entry,
+  since sevDesk elects no new one; when the same
   update gives a new value for that very entry, a new billing address or main entry is added
   instead of rewriting another one.
 - **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("deletes contacts, addresses and
@@ -3227,8 +3232,11 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Impact:** The client already turns a 2xx body with an `error` member and no `objects` into an
   `unexpected_response` error with status 200 and sevDesk's message as `upstreamMessage`
   (`readJsonEnvelope` in `src/sevdesk/client.ts`), so such a refusal never passes as a successful
-  delete. #86 and #87 must report it as "sevDesk refused: the record is still referenced", read
-  the record back to confirm it still exists, and never retry.
+  delete. `sevdesk_contact_delete` sends the `DELETE` once (never retried), reads the contact back
+  and, while it is still there, reports `stillReferenced` with a note in its own words (sevDesk's
+  text never reaches the result); when a contact person reads back as gone after the refusal, it
+  no longer says that nothing was deleted. The cost-centre half stays for #87: its delete must
+  report the refusal the same way.
 - **Test:** `test/unit/sevdesk/client.test.ts` ("treats objects null next to an error as
   unexpected_response", "keeps sevDesk's error text from a 2xx error body as the upstream message
   only"); `test/unit/scripts/gaps-contacts-probes.test.ts` ("deletes contacts, addresses and
@@ -3236,7 +3244,8 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   use"); `test/regressions/contact-delete-referenced.test.ts` ("is reported as a refusal in our
   words, not as a deletion, and never retried", through the real client);
   `test/unit/tools/masterdata/contact-delete.test.ts` ("reports sevDesk's refusal of a referenced
-  contact in its own words (D-085)"). Live: probes `write-contact-delete-referenced`,
+  contact in its own words (D-085)", "does not claim nothing was deleted when a contact person is
+  gone after a refusal"). Live: probes `write-contact-delete-referenced`,
   `write-cost-centre-delete`.
 
 ### D-086: Custom contact fields: 30-character names, no contact embed, cascading deletes
