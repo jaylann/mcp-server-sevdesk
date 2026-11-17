@@ -127,13 +127,36 @@ const SCHEDULE_DATES: readonly string[] = [
   "accountLastInvoice",
 ];
 
+/** A day as YYYY-MM-DD in Berlin winter time (every date of these tests falls in winter). */
+const berlinDay = (ms: number): string => new Date(ms + 3_600_000).toISOString().slice(0, 10);
+
+/**
+ * A schedule date as sevDesk stores it (recorded 2026-11-16, D-111: an ISO date-time at 00:00
+ * Berlin), from Unix seconds, an ISO date-time or `dd.mm.yyyy`; `null` for anything else.
+ */
+function storedScheduleDate(value: unknown): string | null {
+  let day: string | undefined;
+  if (typeof value === "number") day = berlinDay(value * 1000);
+  if (typeof value === "string") {
+    const german = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(value);
+    if (german !== null) day = `${german[3] ?? ""}-${german[2] ?? ""}-${german[1] ?? ""}`;
+    else if (!Number.isNaN(Date.parse(value))) day = berlinDay(Date.parse(value));
+  }
+  return day === undefined ? null : `${day}T00:00:00+01:00`;
+}
+
 /**
  * A simulated trial account for these probes. Where the 2026-11-16 run recorded a behaviour, it
- * follows it (orders need a number, templates store no schedule date on create, changeParameter
- * answers `{metaData}` and leaves the record alone, order and credit note changeParameter answer
- * 500 "Syntax error"); the rest are assumptions for the probes' logic (marked synthetic): a
- * saveInvoice update stores schedule dates, changeParameter on orders and credit notes works after
- * a getPdf preview, only the language en_US is known.
+ * follows it: orders need a number; a draft offer takes a status through `PUT /Order/{id}` and
+ * gets another number of its range (D-108); DELETE removes drafts only, and recurring templates
+ * at status 100 or 50 but not 200 (409, D-109, D-112); deleting a draft saved with the number just
+ * reserved gives that number back (D-066); a template stores `accountStartDate` (and with it
+ * `accountNextInvoice`) and `accountEndDate` on create, on a `saveInvoice` update and on
+ * `PUT /Invoice/{id}`, but not `accountNextInvoice` alone (D-111); changeParameter answers
+ * `{metaData}` and leaves the record alone; order and credit note changeParameter answer 500
+ * "Syntax error". The rest are assumptions for the probes' logic (marked synthetic):
+ * changeParameter on orders and credit notes works after a getPdf preview, only the language
+ * en_US is known, the renumbering of a draft offer leaves the counter alone.
  */
 function gapsAccount(settings: AccountSettings = {}) {
   let nextId = 500;
@@ -142,6 +165,8 @@ function gapsAccount(settings: AccountSettings = {}) {
   const discounts: Rec[] = [];
   const textTemplates = new Map<string, Rec>();
   const counters: Record<string, number> = { AN: 1000, AB: 1000, LI: 1000, CN: 1000 };
+  /** The number each range reserved last (`useNextNumber=true`), until its draft is deleted. */
+  const reserved: Record<string, string | undefined> = {};
   /** Documents that had a getPdf preview (synthetic: changeParameter on orders needs one). */
   const previewed = new Set<string>();
   /** The layout choices per document, kept apart from the record. */
@@ -161,6 +186,26 @@ function gapsAccount(settings: AccountSettings = {}) {
     docs.set(`Invoice/${idOf(invoice["id"])}`, invoice);
 
   const nextNumber = (range: string) => `${PREFIX[range] ?? range}-${counters[range] ?? 0}`;
+
+  /** The schedule dates a template keeps from a create or update body (D-111). */
+  function applySchedule(doc: Rec, fields: Rec): void {
+    if (settings.ignoreScheduleDates === true) return;
+    const start = storedScheduleDate(fields["accountStartDate"]);
+    if (start !== null) Object.assign(doc, { accountStartDate: start, accountNextInvoice: start });
+    const end = storedScheduleDate(fields["accountEndDate"]);
+    if (end !== null) doc["accountEndDate"] = end;
+  }
+
+  /** Deleting a draft saved with the number its range reserved last gives it back (D-066). */
+  function giveBackNumber(kind: string, doc: Rec): void {
+    const range =
+      kind === "Order" ? String(doc["orderType"]) : kind === "CreditNote" ? "CN" : undefined;
+    if (range === undefined || reserved[range] === undefined) return;
+    if (doc[NUMBER_KEY[kind as Kind]] !== reserved[range]) return;
+    counters[range] = (counters[range] ?? 0) - 1;
+    reserved[range] = undefined;
+  }
+
   const ofDoc = (rows: readonly Rec[], kind: string, id: unknown, key: string) =>
     rows.filter((row) => {
       const target = row[key] as Rec | undefined;
@@ -212,19 +257,19 @@ function gapsAccount(settings: AccountSettings = {}) {
       ) {
         refuse(422, "Must set contact");
       }
-      const keepDates = found["invoiceType"] === "WKR" && settings.ignoreScheduleDates !== true;
       for (const [field, value] of Object.entries(header)) {
         if (["id", "objectName", "mapAll"].includes(field)) continue;
-        if (SCHEDULE_DATES.includes(field) && !keepDates) continue;
-        found[field] = SCHEDULE_DATES.includes(field) ? String(value) : value;
+        if (SCHEDULE_DATES.includes(field) || field.startsWith("recurring")) continue;
+        found[field] = value;
       }
+      if (found["invoiceType"] === "WKR") applySchedule(found, header);
       if (header["status"] !== undefined) found["status"] = idOf(header["status"]);
       doc = found;
     } else {
       if (kind === "Order" && (header["orderNumber"] ?? "") === "") refuse(400, "Bad Request");
       const id = String(nextId++);
-      // Recorded 2026-11-16: a WKR template keeps any accountIntervall string and stores no
-      // schedule date and no recurring* field on create.
+      // Recorded 2026-11-16: a WKR template keeps any accountIntervall string, drops the
+      // recurring* fields and keeps only the schedule dates of D-111.
       const kept = Object.fromEntries(
         Object.entries(header).filter(
           ([field]) => !SCHEDULE_DATES.includes(field) && !field.startsWith("recurring"),
@@ -244,6 +289,7 @@ function gapsAccount(settings: AccountSettings = {}) {
         [NUMBER_KEY[kind]]: header[NUMBER_KEY[kind]] ?? null,
         create: "2026-11-20T10:00:00+01:00",
       };
+      if (header["invoiceType"] === "WKR") applySchedule(doc, header);
       docs.set(`${kind}/${id}`, doc);
     }
     const deleted = body[`${key}PosDelete`];
@@ -344,7 +390,10 @@ function gapsAccount(settings: AccountSettings = {}) {
           : undefined;
     if (next !== undefined) {
       const number = nextNumber(next);
-      if (query["useNextNumber"] === "true") counters[next] = (counters[next] ?? 0) + 1;
+      if (query["useNextNumber"] === "true") {
+        counters[next] = (counters[next] ?? 0) + 1;
+        reserved[next] = number;
+      }
       return { objects: number };
     }
     const saved = /^\/(Invoice|CreditNote|Order)\/Factory\/save\1$/.exec(path);
@@ -440,8 +489,21 @@ function gapsAccount(settings: AccountSettings = {}) {
     if (method === "PUT" && putOrder !== null) {
       const doc = docs.get(`Order/${putOrder[1] ?? ""}`);
       if (doc === undefined) return refuse(404, "not found");
-      if (doc["status"] === "100") refuse(400, "A draft cannot change its status");
+      // Recorded 2026-11-16 (D-108): a draft takes the status too and is renumbered
+      // ("AN-0007" → "AN-0008"); the counter is left alone (synthetic).
+      if (doc["status"] === "100") {
+        const range = String(doc["orderType"]);
+        doc["orderNumber"] = `${PREFIX[range] ?? range}-${(counters[range] ?? 0) + 1}`;
+      }
       doc["status"] = String(body["status"]);
+      return { objects: doc };
+    }
+    const putInvoice = /^\/Invoice\/(\d+)$/.exec(path);
+    if (method === "PUT" && putInvoice !== null) {
+      const doc = docs.get(`Invoice/${putInvoice[1] ?? ""}`);
+      if (doc === undefined) return refuse(404, "not found");
+      // Recorded 2026-11-16 (D-111): PUT stores a template's schedule dates as saveInvoice does.
+      if (doc["invoiceType"] === "WKR") applySchedule(doc, body);
       return { objects: doc };
     }
     const byId = /^\/(Invoice|Order|CreditNote|TextTemplate)\/(\d+)$/.exec(path);
@@ -451,11 +513,17 @@ function gapsAccount(settings: AccountSettings = {}) {
       if (doc === undefined) return refuse(404, "not found");
       if (method === "GET") return { objects: [doc] };
       if (method === "DELETE") {
-        if (doc["status"] !== "100" && doc["invoiceType"] !== "WKR" && store !== undefined) {
-          refuse(409, `${byId[1] ?? ""} can only be deleted in status 100`);
+        // Recorded 2026-11-16: drafts only (D-109); templates at 100 and 50, never at 200 (D-112).
+        const status = String(doc["status"]);
+        const deletable = status === "100" || (doc["invoiceType"] === "WKR" && status === "50");
+        if (store !== undefined && !deletable) {
+          refuse(409, `${byId[1] ?? ""} can only be deleted in status 100 but is status ${status}`);
         }
         if (store === undefined) textTemplates.delete(byId[2] ?? "");
-        else docs.delete(store);
+        else {
+          docs.delete(store);
+          giveBackNumber(byId[1] ?? "", doc);
+        }
         return { objects: [null] };
       }
       return refuse(400, "not simulated");
@@ -583,7 +651,7 @@ describe("gaps-documents probes on a simulated trial account", () => {
     expect(contract).not.toContain(`${TAG} head`);
   });
 
-  it("sets offer statuses, sets them back, and records the refusal on a draft", async () => {
+  it("sets offer statuses, sets them back, and records the renumbering of a draft", async () => {
     const { client } = gapsAccount();
     const { finding } = await run(client, { only: ["write-order-status-accept-reject"] });
     const text = finding("write-order-status-accept-reject");
@@ -591,7 +659,10 @@ describe("gaps-documents probes on a simulated trial account", () => {
     expect(text).toMatch(/PUT \{status: 500\} ok .*status 200 → 500; changed: nothing else/);
     expect(text).toMatch(/PUT \{status: 200\} ok .*status 500 → 200/);
     expect(text).toMatch(/status 200 → 300/);
-    expect(text).toMatch(/draft offer → 500 .*refused \(400: A draft cannot change its status\)/);
+    // D-108: a draft offer takes the status as well and gets another number of its range.
+    expect(text).toMatch(
+      /draft offer → 500 \(order \d+\): PUT \{status: 500\} ok .*status 100 → 500; changed: orderNumber: "([^"]+)" → "(?!\1")[^"]+"/,
+    );
     const puts = client
       .writes()
       .filter((call) => call.method === "PUT" && /^\/Order\/\d+$/.test(call.path));
@@ -610,14 +681,22 @@ describe("gaps-documents probes on a simulated trial account", () => {
     );
     expect(text).toMatch(/Credit note draft \d+ without a number: DELETE ok.*gone/);
     expect(text).toMatch(
-      /Sent offer \d+: DELETE refused \(409: Order can only be deleted in status 100\).*still there \(status 200\)/,
+      /Sent offer \d+: DELETE refused \(409: Order can only be deleted in status 100 but is status 200\).*still there \(status 200\)/,
     );
     expect(text).toMatch(/No finalized credit note of this run at hand/);
     const reserved = finding("write-reserved-number-delete-draft");
     expect(reserved).toMatch(
       /AN: reserved \S+; next AN number \S+ → \S+ \(moved\) after reserving/,
     );
-    expect(reserved).toMatch(/the reserved number stays used: a gap.*CN: reserved/);
+    // D-066: deleting the draft hands the reserved number out again, in both ranges.
+    for (const range of ["AN", "CN"]) {
+      expect(reserved).toMatch(
+        new RegExp(
+          `${range}: reserved ([^;\\s]+);.*?after deleting the next is \\1: sevDesk hands the reserved number out again`,
+        ),
+      );
+    }
+    expect(reserved).not.toMatch(/a gap/);
     expect(report.results.find((r) => r.id === "write-reserved-number-delete-draft")?.status).toBe(
       "observed",
     );
@@ -715,15 +794,12 @@ describe("gaps-documents probes on a simulated trial account", () => {
     expect(ended).toMatch(/Deactivate: saveInvoice \{status: 50\} ok → status 50/);
     expect(ended).toMatch(/Back to 100 \(saveInvoice\): ok → status 100/);
     expect(ended).toMatch(/Second template \d+: .*DELETE at status 50: DELETE ok.*gone/);
-    // The simulated account stores schedule dates only through an update with the id.
+    // D-111: accountStartDate stores the schedule on create, so the first input is kept.
     const due = finding("write-recurring-template-due");
     expect(due).toMatch(
-      /^Kept template (\d+), update ok: status 100.*stored dates: accountNextInvoice, accountStartDate \(made with: update with the id: accountStartDate \+ accountNextInvoice \(Unix seconds\), run 2026-11-19\)/,
+      /^Kept template (\d+): status 100.*accountNextInvoice 2026-11-19T00:00:00\+01:00, accountStartDate 2026-11-19T00:00:00\+01:00.*stored dates: accountNextInvoice, accountStartDate \(made with: accountStartDate as Unix seconds, run 2026-11-19\)/,
     );
-    expect(due).toMatch(
-      /Tried before: accountStartDate as Unix seconds, run 2026-11-19: no start or next-run date stored \(deleted\)/,
-    );
-    expect(due).toMatch(/Run read-recurring-generated tomorrow/);
+    expect(due).toMatch(/Run read-recurring-generated tomorrow\. Tried before: nothing\.$/);
     const saves = client
       .writes()
       .filter((call) => call.path === "/Invoice/Factory/saveInvoice")
@@ -733,7 +809,7 @@ describe("gaps-documents probes on a simulated trial account", () => {
     ).toBe(true);
   });
 
-  it("finds invoices generated from tagged templates, by origin and by header", async () => {
+  it("finds invoices generated from tagged templates, by origin and by header, each once", async () => {
     const template = {
       id: "900",
       objectName: "Invoice",
@@ -757,20 +833,30 @@ describe("gaps-documents probes on a simulated trial account", () => {
       origin: { id: "900", objectName: "Invoice" },
     };
     const copy = { ...generated, id: "902", origin: null, status: "100", sendDate: null };
-    const { client } = gapsAccount({ invoices: [template, generated, copy] });
+    // A second template of the same run shares the header (`<tag> Abo`).
+    const other = { ...template, id: "903" };
+    const fromOther = { ...copy, id: "904", origin: { id: "903", objectName: "Invoice" } };
+    const { client } = gapsAccount({ invoices: [template, generated, copy, other, fromOther] });
     const { finding } = await run(client, {
       allowWrites: false,
       only: ["read-recurring-generated"],
     });
     const text = finding("read-recurring-generated");
-    expect(text).toMatch(/^1 tagged template\(s\), 2 generated invoice\(s\) found\./);
+    // 901, 902 and 904, each counted once although both templates match 902 by header.
+    expect(text).toMatch(/^2 tagged template\(s\), 3 generated invoice\(s\) found\./);
     expect(text).toMatch(
       /in the default list: false; accountIntervall P0Y1M0W, accountNextInvoice 1797462000/,
     );
-    expect(text).toMatch(
+    const [first = "", second = ""] = text.split("Template 903 ");
+    expect(first).toMatch(
       /generated with this origin: 901: type RE, status 200, number \S+, invoiceDate 2026-11-21.*sendType VM, origin 900/,
     );
-    expect(text).toMatch(/same header, no origin link: 902: type RE, status 100/);
+    // A row linked to the other template is not listed as a header match of this one.
+    expect(first).toMatch(/same header, not linked to a tagged template: 902: type RE, status 100/);
+    expect(first).not.toContain("904:");
+    expect(second).toMatch(/generated with this origin: 904: type RE, .*origin 903/);
+    expect(second).toMatch(/same header, not linked to a tagged template: 902: /);
+    expect(second).not.toContain("901:");
     expect(text).not.toContain("RE-1044");
     expect(client.writes()).toEqual([]);
   });
@@ -813,19 +899,41 @@ describe("gaps-documents probes on a simulated trial account", () => {
 
   it("finds which input stores a template's schedule and deletes every probe template", async () => {
     const { client, docs } = gapsAccount();
-    const { finding } = await run(client, { only: ["write-recurring-schedule-fields"] });
+    const { finding, report } = await run(client, { only: ["write-recurring-schedule-fields"] });
     const text = finding("write-recurring-schedule-fields");
-    expect(text).toMatch(
-      /^A schedule date was stored by: update with the id: accountStartDate \+ accountNextInvoice \(Unix seconds\) \(accountNextInvoice, accountStartDate\)\. Run date asked for: 2026-12-20/,
+    // D-111: accountStartDate and accountEndDate are stored, accountNextInvoice alone is not.
+    const [storedBy = ""] = text.split(". Run date asked for: 2026-12-20");
+    expect(storedBy).toMatch(
+      /^A schedule date was stored by: accountStartDate as Unix seconds \(accountNextInvoice, accountStartDate\); accountStartDate as ISO \(accountNextInvoice, accountStartDate\); accountStartDate as dd\.mm\.yyyy/,
     );
+    expect(storedBy).toMatch(/accountEndDate as dd\.mm\.yyyy \(accountEndDate\)/);
+    expect(storedBy).not.toMatch(/accountNextInvoice as ISO|invoiceDate/);
     expect(text).toMatch(
-      /accountStartDate as ISO: template \d+: status 100.*stored dates: none; deleted/,
+      /accountStartDate as ISO: template \d+: status 100.*accountStartDate 2026-12-20T00:00:00\+01:00.*stored dates: accountNextInvoice, accountStartDate; deleted/,
     );
-    expect(text).toMatch(/PUT \/Invoice\/\{id\}: .*update refused \(400: not simulated\)/);
+    expect(text).toMatch(/accountNextInvoice as ISO: template \d+: .*stored dates: none; deleted/);
     expect(text).toMatch(
-      /status 200 \(starting the subscription\?\): template \d+, update ok: status 200/,
+      /PUT \/Invoice\/\{id\}: accountStartDate \+ accountNextInvoice \(Unix seconds\): template \d+, update ok: status 100.*stored dates: accountNextInvoice, accountStartDate; deleted/,
+    );
+    // D-112: sevDesk refuses to delete the template at 200; the probe ends it and deletes it.
+    expect(text).toMatch(
+      /status 200 \(starting the subscription\?\): template (\d+), update ok: status 200.*; DELETE refused \(409: Invoice can only be deleted in status 100 but is status 200\); GET afterwards still there \(status 200\); cleanup: saveInvoice \{status: 50\} ok → status 50; DELETE again: gone\.$/,
     );
     expect([...docs.keys()].filter((key) => key.startsWith("Invoice/"))).toEqual([]);
+    expect(report.created.filter((record) => record.objectName === "Invoice")).toHaveLength(12);
+    for (const record of report.created.filter((item) => item.objectName === "Invoice")) {
+      expect(record.state, String(record.id)).toBe("deleted by the probe");
+    }
+    // Status 50 goes out between the refused DELETE and the second one.
+    const active = Number(
+      /status 200 \(starting the subscription\?\): template (\d+)/.exec(text)?.[1],
+    );
+    const steps = client.writes().flatMap((call) => {
+      const invoice = (call.body as Rec | undefined)?.["invoice"] as Rec | undefined;
+      if (call.path === `/Invoice/${active}`) return [call.method];
+      return invoice?.["id"] === active ? [`saveInvoice status ${String(invoice["status"])}`] : [];
+    });
+    expect(steps).toEqual(["saveInvoice status 200", "DELETE", "saveInvoice status 50", "DELETE"]);
     const creates = client
       .writes()
       .filter((call) => call.path === "/Invoice/Factory/saveInvoice")

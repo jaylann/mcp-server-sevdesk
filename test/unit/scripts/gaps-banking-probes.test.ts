@@ -34,7 +34,12 @@ const TAG = "MCP-E2E 20261120-1000-abcd";
 const TODAY = "2026-11-20";
 const EXPORT_LINK =
   "https://sevexport-filestorage-workload-prod.s3.eu-central-1.amazonaws.com/542277/job/zip/BITTE-ENTPACKEN_5621913_99998.zip?X-Amz-Signature=deadbeefsecret";
-const OPT_IN = ["write-export-datev-xml", "write-transaction-enshrine", "write-voucher-from-file"];
+const OPT_IN = [
+  "write-cash-register-transaction",
+  "write-export-datev-xml",
+  "write-transaction-enshrine",
+  "write-voucher-from-file",
+];
 const PERSONAL = /Huber|5621913|deadbeefsecret|X-Amz|1042/;
 
 type Rec = Record<string, unknown>;
@@ -745,7 +750,7 @@ afterEach(() => {
 });
 
 describe("gap probe catalog", () => {
-  it("registers every probe once, keeps exactly the three irreversible ones opt-in", () => {
+  it("registers every probe once, keeps exactly the four irreversible ones opt-in", () => {
     const ids = ALL_PROBES.map((probe) => probe.id);
     for (const probe of GAPS_BANKING_PROBES) {
       expect(
@@ -763,7 +768,7 @@ describe("gap probe catalog", () => {
     const writes = GAPS_BANKING_PROBES.filter((probe) => probe.mode === "write").map(
       (probe) => probe.id,
     );
-    expect(writes.slice(-3).sort()).toEqual(OPT_IN);
+    expect(writes.slice(-OPT_IN.length).sort()).toEqual(OPT_IN);
     expect(writes.at(-1)).toBe("write-transaction-enshrine");
   });
 
@@ -795,6 +800,10 @@ describe("gap probes on a simulated trial account", () => {
     expect(
       calls.some((call) => /enshrine|createDatevXml|createVoucherFromFile/.test(call.path)),
     ).toBe(false);
+    // Nothing is booked on the cash register (6333723): its rows would stay in the cash book.
+    expect(
+      account.client.writes().filter((call) => JSON.stringify(call.body ?? {}).includes("6333723")),
+    ).toEqual([]);
     for (const call of account.client.writes()) {
       expect(call.tier, `${call.method} ${call.path}`).toMatch(/^(write|commit)$/);
       if (/bookAmount|resetTo|^\/CheckAccountTransaction(\/\d+)?$/.test(call.path)) {
@@ -829,7 +838,10 @@ describe("gap probes on a simulated trial account", () => {
 
   it("answers the banking questions as recorded: register, factories, deletes, rules", async () => {
     const account = gapsAccount();
-    const report = await run(account);
+    const report = await run(account, [
+      ...ALL_IDS.filter((id) => !OPT_IN.includes(id)),
+      "write-cash-register-transaction",
+    ]);
     const cash = finding(report, "write-cash-register-transaction");
     expect(cash).toMatch(
       /POST \/CheckAccountTransaction on register 6333723: refused \(422: You can only create/,
@@ -847,6 +859,24 @@ describe("gap probes on a simulated trial account", () => {
     expect(cash).toMatch(/cash expense voucher \d+: ok; .*new \d+ \(amount 11\.9, status 400/);
     expect(cash).toMatch(
       /before the bookings 500\.00, after them 511\.90, after the resets 500\.00/,
+    );
+    // The two bookings and the two counter-entries stay in the cash book, and the list says so.
+    const cashRows = report.created.filter(
+      (record) =>
+        record.probe === "write-cash-register-transaction" &&
+        record.objectName === "CheckAccountTransaction",
+    );
+    expect(cashRows.map((record) => record.state)).toEqual([
+      expect.stringMatching(/^permanent cash-book entry \(cash sale of voucher \d+\)$/),
+      expect.stringMatching(/^permanent cash-book entry \(cash expense of voucher \d+\)$/),
+      expect.stringMatching(/^permanent cash-book entry \(counter-entry of the reset of voucher/),
+      expect.stringMatching(/^permanent cash-book entry \(counter-entry of the reset of voucher/),
+    ]);
+    const registerRows = [...account.transactions.values()].filter(
+      (row) => (row["checkAccount"] as Rec | undefined)?.["id"] === "6333723",
+    );
+    expect(cashRows.map((record) => String(record.id)).sort()).toEqual(
+      registerRows.map((row) => String(row["id"])).sort(),
     );
 
     const factories = finding(report, "write-check-account-factories");

@@ -8,9 +8,13 @@
  * - Everything a probe creates carries the run tag (names, purposes, counterparties, voucher texts)
  *   and is registered for the cleanup list; the probes delete what they can (rules, accounts,
  *   transactions, draft vouchers) and say so in the list.
- * - Three probes are opt-in (`--only`) because they cannot be undone: enshrining ONE transaction
- *   the probe created itself, the DATEV XML export job (it may mark documents as exported), and
- *   `createVoucherFromFile`. Nothing else is enshrined and nothing is e-mailed.
+ * - Four probes are opt-in (`--only`) and run last because they cannot be undone: the cash-register
+ *   probe (sevDesk keeps every row `bookAmount` books on the Kasse, and `resetToOpen` adds a
+ *   counter-entry instead of deleting it, D-095, D-096), enshrining ONE transaction the probe
+ *   created itself, the DATEV XML export job (it may mark documents as exported), and
+ *   `createVoucherFromFile`. No other enshrine request is sent and nothing is e-mailed; the one
+ *   invoice `write-export-invoice-zip` finalizes is enshrined by the trial account itself, which
+ *   enshrines invoices when they are finalized (D-023, D-059).
  * - The ZIP exports are sent as side-effect GETs (`write` tier), since nobody has recorded whether
  *   they mark documents as sent the way `getPdf` without `preventSendBy` does. They first check
  *   with `limit` 1 and filters that should match nothing that sevDesk honours the filters, and
@@ -157,6 +161,20 @@ async function cashRegister(ctx: ProbeContext): Promise<number | undefined> {
   );
   const id = Number(row?.["id"]);
   return Number.isSafeInteger(id) && id > 0 ? id : undefined;
+}
+
+/**
+ * Lists rows sevDesk booked on the cash register in the cleanup list. They stay in the cash book:
+ * they are booked at status 400, only rows at 100 can be deleted (D-096), and a reset adds a
+ * counter-entry instead of deleting the row (D-095).
+ */
+function registerCashRows(ctx: ProbeContext, rows: readonly Row[], how: string): void {
+  for (const row of rows) {
+    const id = Number(row["id"]);
+    if (Number.isSafeInteger(id) && id > 0) {
+      data(ctx).register("CheckAccountTransaction", id, `permanent cash-book entry (${how})`);
+    }
+  }
 }
 
 /** The balance sevDesk reports for today (`getBalanceAtDate`), or the refusal. */
@@ -638,96 +656,6 @@ function enshrineOwnTransaction(ctx: ProbeContext, id: number): Promise<HttpResu
 // ---------------------------------------------------------------------------------------------
 
 export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
-  {
-    id: "write-cash-register-transaction",
-    title: "Cash register: hand-made transaction, cash sale and cash expense through bookAmount",
-    mode: "write",
-    question:
-      "On the account's cash register (Kasse, type register): is POST /CheckAccountTransaction refused (with which status and message), and if it is accepted, can the row be deleted again? Do a tagged open revenue voucher booked +23.80 and an expense voucher booked −11.90 on the register without a transaction create a transaction each (amount sign, status, dates), how does getBalanceAtDate move, and does resetToOpen on the vouchers delete those transactions again (D-071 left cash registers unmeasured)?",
-    deviations: ["D-071", "D-060", "D-095"],
-    async run(ctx) {
-      const register = await cashRegister(ctx);
-      if (register === undefined) {
-        return inconclusive(
-          "No active cash register (type register): create a Kasse with a positive opening balance in the web app first.",
-        );
-      }
-      const lines: string[] = [];
-      const posted = await postTransaction(ctx, register, { amount: 10, purpose: "Kasse POST" });
-      if (posted.id === undefined) {
-        lines.push(
-          `POST /CheckAccountTransaction on register ${register}: ${outcomeOf(posted.result)}`,
-        );
-      } else {
-        const row = await ctx.read.byId("CheckAccountTransaction", posted.id);
-        lines.push(
-          `POST /CheckAccountTransaction on register ${register}: accepted, ${describeTransaction(row)}; ${await deleteTransaction(ctx, posted.id)}`,
-        );
-      }
-      const balanceBefore = await balance(ctx, register);
-      const bookings: { voucher: number; amount: number; label: string }[] = [];
-      for (const item of [
-        { kind: "revenue", gross: 23.8, amount: 23.8, label: "cash sale" },
-        { kind: "expense", gross: 11.9, amount: -11.9, label: "cash expense" },
-      ] as const) {
-        const created = await createVoucher(ctx, {
-          label: item.label,
-          kind: item.kind,
-          status: 100,
-          gross: item.gross,
-        });
-        if (created.id === undefined) {
-          lines.push(`${item.label}: ${voucherFailure(created)}`);
-          continue;
-        }
-        const before = new Set((await transactionsOf(ctx, register)).map((row) => str(row, "id")));
-        const booked = await bookVoucher(ctx, created.id, {
-          checkAccount: register,
-          amount: item.amount,
-          date: berlinNoon(ctx.today),
-          type: "FULL_PAYMENT",
-        });
-        const made = (await transactionsOf(ctx, register)).filter(
-          (row) => !before.has(str(row, "id")),
-        );
-        if (booked.ok) {
-          bookings.push({ voucher: created.id, amount: item.amount, label: item.label });
-          data(ctx).mark("Voucher", created.id, "open voucher, paid in cash (resettable)");
-        }
-        const voucher = await ctx.read.byId("Voucher", created.id);
-        lines.push(
-          `${item.label} (voucher ${created.id}, ${item.amount} FULL_PAYMENT): ${outcomeOf(booked)}; voucher ${voucherState(voucher)}; ` +
-            `new register transactions ${made.map(describeTransaction).join(", ") || "none"}` +
-            (made[0] === undefined
-              ? ""
-              : ` (payeePayerName ${made[0]["payeePayerName"] === null ? "null" : "set"}, paymtPurpose ${made[0]["paymtPurpose"] === null ? "null" : "set"})`),
-        );
-      }
-      const balanceBooked = await balance(ctx, register);
-      for (const booking of bookings) {
-        const before = new Set((await transactionsOf(ctx, register)).map((row) => str(row, "id")));
-        const reset = await ctx.http.write("PUT", `/Voucher/${booking.voucher}/resetToOpen`, {
-          tier: "commit",
-        });
-        const after = await transactionsOf(ctx, register);
-        const left = after.filter((row) => before.has(str(row, "id")));
-        // On a register the reset books a counter-entry instead of deleting (D-095).
-        const added = after.filter((row) => !before.has(str(row, "id")));
-        if (reset.ok) data(ctx).mark("Voucher", booking.voucher, "open voucher (payment reset)");
-        lines.push(
-          `resetToOpen on the ${booking.label} voucher ${booking.voucher}: ${outcomeOf(reset)}; register transactions kept ${left.length} of ${before.size}, new ${added.map(describeTransaction).join(", ") || "none"}`,
-        );
-      }
-      lines.push(
-        `getBalanceAtDate(today): before the bookings ${balanceBefore}, after them ${balanceBooked}, after the resets ${await balance(ctx, register)}`,
-      );
-      return {
-        verdict: "observed",
-        finding: `Register ${register}. ${lines.join(". ")}.`,
-        deviations: { "D-071": "informs", "D-060": "informs" },
-      };
-    },
-  },
   {
     id: "write-check-account-factories",
     title: "Clearing account, PUT and DELETE of accounts, creating a cash register",
@@ -1248,6 +1176,100 @@ export const GAPS_BANKING_PROBES: readonly ProbeDefinition[] = [
         verdict: "observed",
         finding: `${lines.join(". ")}.`,
         deviations: { "D-023": "informs", "D-012": "informs" },
+      };
+    },
+  },
+  {
+    id: "write-cash-register-transaction",
+    title:
+      "Cash register: hand-made transaction, cash sale and cash expense through bookAmount (irreversible)",
+    mode: "write",
+    optIn: true,
+    question:
+      "Opt-in and irreversible (the cash book keeps what this books: bookAmount on the Kasse books rows at status 400, resetToOpen adds counter-entries instead of deleting them, D-095, and only rows at status 100 can be deleted, D-096): on the account's cash register (Kasse, type register), is POST /CheckAccountTransaction refused (with which status and message), and if it is accepted, can the row be deleted again? Do a tagged open revenue voucher booked +23.80 and an expense voucher booked −11.90 on the register without a transaction create a transaction each (amount sign, status, dates), how does getBalanceAtDate move, and does resetToOpen on the vouchers delete those transactions again (D-071 left cash registers unmeasured)?",
+    deviations: ["D-071", "D-060", "D-095"],
+    async run(ctx) {
+      const register = await cashRegister(ctx);
+      if (register === undefined) {
+        return inconclusive(
+          "No active cash register (type register): create a Kasse with a positive opening balance in the web app first.",
+        );
+      }
+      const lines: string[] = [];
+      const posted = await postTransaction(ctx, register, { amount: 10, purpose: "Kasse POST" });
+      if (posted.id === undefined) {
+        lines.push(
+          `POST /CheckAccountTransaction on register ${register}: ${outcomeOf(posted.result)}`,
+        );
+      } else {
+        const row = await ctx.read.byId("CheckAccountTransaction", posted.id);
+        lines.push(
+          `POST /CheckAccountTransaction on register ${register}: accepted, ${describeTransaction(row)}; ${await deleteTransaction(ctx, posted.id)}`,
+        );
+      }
+      const balanceBefore = await balance(ctx, register);
+      const bookings: { voucher: number; amount: number; label: string }[] = [];
+      for (const item of [
+        { kind: "revenue", gross: 23.8, amount: 23.8, label: "cash sale" },
+        { kind: "expense", gross: 11.9, amount: -11.9, label: "cash expense" },
+      ] as const) {
+        const created = await createVoucher(ctx, {
+          label: item.label,
+          kind: item.kind,
+          status: 100,
+          gross: item.gross,
+        });
+        if (created.id === undefined) {
+          lines.push(`${item.label}: ${voucherFailure(created)}`);
+          continue;
+        }
+        const before = new Set((await transactionsOf(ctx, register)).map((row) => str(row, "id")));
+        const booked = await bookVoucher(ctx, created.id, {
+          checkAccount: register,
+          amount: item.amount,
+          date: berlinNoon(ctx.today),
+          type: "FULL_PAYMENT",
+        });
+        const made = (await transactionsOf(ctx, register)).filter(
+          (row) => !before.has(str(row, "id")),
+        );
+        registerCashRows(ctx, made, `${item.label} of voucher ${created.id}`);
+        if (booked.ok) {
+          bookings.push({ voucher: created.id, amount: item.amount, label: item.label });
+          data(ctx).mark("Voucher", created.id, "open voucher, paid in cash (resettable)");
+        }
+        const voucher = await ctx.read.byId("Voucher", created.id);
+        lines.push(
+          `${item.label} (voucher ${created.id}, ${item.amount} FULL_PAYMENT): ${outcomeOf(booked)}; voucher ${voucherState(voucher)}; ` +
+            `new register transactions ${made.map(describeTransaction).join(", ") || "none"}` +
+            (made[0] === undefined
+              ? ""
+              : ` (payeePayerName ${made[0]["payeePayerName"] === null ? "null" : "set"}, paymtPurpose ${made[0]["paymtPurpose"] === null ? "null" : "set"})`),
+        );
+      }
+      const balanceBooked = await balance(ctx, register);
+      for (const booking of bookings) {
+        const before = new Set((await transactionsOf(ctx, register)).map((row) => str(row, "id")));
+        const reset = await ctx.http.write("PUT", `/Voucher/${booking.voucher}/resetToOpen`, {
+          tier: "commit",
+        });
+        const after = await transactionsOf(ctx, register);
+        const left = after.filter((row) => before.has(str(row, "id")));
+        // On a register the reset books a counter-entry instead of deleting (D-095).
+        const added = after.filter((row) => !before.has(str(row, "id")));
+        registerCashRows(ctx, added, `counter-entry of the reset of voucher ${booking.voucher}`);
+        if (reset.ok) data(ctx).mark("Voucher", booking.voucher, "open voucher (payment reset)");
+        lines.push(
+          `resetToOpen on the ${booking.label} voucher ${booking.voucher}: ${outcomeOf(reset)}; register transactions kept ${left.length} of ${before.size}, new ${added.map(describeTransaction).join(", ") || "none"}`,
+        );
+      }
+      lines.push(
+        `getBalanceAtDate(today): before the bookings ${balanceBefore}, after them ${balanceBooked}, after the resets ${await balance(ctx, register)}`,
+      );
+      return {
+        verdict: "observed",
+        finding: `Register ${register}. ${lines.join(". ")}.`,
+        deviations: { "D-071": "informs", "D-060": "informs" },
       };
     },
   },
