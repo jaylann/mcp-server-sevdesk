@@ -8,7 +8,8 @@
  *   checks both again, plus the configuration.
  *
  * "Changes data" means what the HTTP client means: any non-GET except the reading POSTs of
- * `read-posts.ts` (an invoice `render` without reload), and GETs that `resolveGetSafety`
+ * `read-posts.ts` (`render` without reload of an invoice, order or credit note), and GETs that
+ * `resolveGetSafety`
  * classifies as side effects (a `getPdf` without `preventSendBy`, `sendByWithRender`, DATEV
  * `enshrine` flags, a next-number GET without `useNextNumber=false`, which reserves the number)
  * or that declare `sideEffect`.

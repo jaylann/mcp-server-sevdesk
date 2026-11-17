@@ -30,6 +30,15 @@ const render = (path: string, body: unknown = { forceReload: false }): SevdeskRe
   body,
 });
 
+/** Reads as `{forceReload: false}` key by key, but `JSON.stringify` sends a reload. */
+const reloadInDisguise: unknown = Object.create(
+  { toJSON: () => ({ forceReload: true }) },
+  { forceReload: { value: false, enumerable: true } },
+);
+
+const cyclic: Record<string, unknown> = { forceReload: false };
+cyclic["self"] = cyclic;
+
 describe("isReadingPost", () => {
   it.each(["/Invoice/1001/render", "/Order/3002/render", "/CreditNote/2001/render"])(
     "counts %s with {forceReload: false} as a read",
@@ -49,6 +58,9 @@ describe("isReadingPost", () => {
     ["forceReload as a string", render("/Invoice/1/render", { forceReload: "false" })],
     ["an extra key", render("/Invoice/1/render", { forceReload: false, key: "language" })],
     ["a list body", render("/Invoice/1/render", [{ forceReload: false }])],
+    ["a body whose toJSON sends a reload", render("/Invoice/1/render", reloadInDisguise)],
+    ["a body without a JSON text", render("/Invoice/1/render", cyclic)],
+    ["the body as JSON text", render("/Invoice/1/render", '{"forceReload":false}')],
     ["a query", { ...render("/Invoice/1/render"), query: { forceReload: 1 } }],
     ["a form", { method: "POST", path: "/Invoice/1/render", form: new FormData() }],
     ["a PUT", { ...render("/Invoice/1/render"), method: "PUT" }],
@@ -98,6 +110,9 @@ describe("the client and the scoped clients", () => {
 
     await expect(
       client.request(render("/Invoice/1001/render", { forceReload: true })),
+    ).rejects.toMatchObject({ kind: "blocked" });
+    await expect(
+      client.request(render("/Invoice/1001/render", reloadInDisguise)),
     ).rejects.toMatchObject({ kind: "blocked" });
     expect(fake.requests).toHaveLength(0);
   });

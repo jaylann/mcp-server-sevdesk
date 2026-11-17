@@ -15,8 +15,8 @@
  *   document's layout without changing it; the finalize approval shows the layout of a draft
  *   with it.
  *
- * The path must match exactly, case included (the form this server builds); any other body (a
- * missing or true `forceReload`, extra keys), a query or a form keeps the request a write. A
+ * The path must match exactly, case included (the form this server builds); any other body as
+ * sent (a missing or true `forceReload`, extra keys), a query or a form keeps the request a write. A
  * reading POST is still never retried (only GETs are, see `client.ts`).
  */
 import type { SevdeskRequest } from "./types.js";
@@ -34,16 +34,25 @@ export function isReadingPost(
   return isNoReloadBody(request.body);
 }
 
-/** Exactly `{forceReload: false}`: one own key, the boolean `false`. */
+/** The JSON text of {@link RENDER_WITHOUT_RELOAD}, the only body a reading render sends. */
+const NO_RELOAD_TEXT = '{"forceReload":false}';
+
+/**
+ * Whether `body` goes out as exactly `{"forceReload":false}`. It reads the body as the client
+ * sends it (`JSON.stringify`), not the object, so a `toJSON` or an inherited key cannot make the
+ * sent text differ from what was checked. A body without a JSON text (none, a cycle, a `BigInt`)
+ * is no reading body.
+ */
 function isNoReloadBody(body: unknown): boolean {
-  if (typeof body !== "object" || body === null || Array.isArray(body)) return false;
-  const keys = Object.keys(body);
-  return (
-    keys.length === 1 &&
-    keys[0] === "forceReload" &&
-    (body as { forceReload?: unknown }).forceReload === false
-  );
+  try {
+    return stringify(body) === NO_RELOAD_TEXT;
+  } catch {
+    return false;
+  }
 }
+
+/** `JSON.stringify`, typed as it behaves: `undefined`, a function or a symbol has no JSON text. */
+const stringify: (value: unknown) => string | undefined = JSON.stringify;
 
 /** The body of the reading render request (see the module doc). */
 export const RENDER_WITHOUT_RELOAD: { readonly forceReload: false } = Object.freeze({
