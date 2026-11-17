@@ -440,6 +440,32 @@ describe("receipt folder check", () => {
     expect(receiptFolderSentence(result)).toContain("The folder was cut");
   });
 
+  it("counts unmatched files changed after the vouchers read in a note, keeping their code", async () => {
+    const after = shiftDays(Q1.to, RECEIPT_MARGIN_DAYS + 1);
+    // Changed on the last day read: inside the range, not counted.
+    const edge = file("edge.pdf", H.missing, shiftDays(Q1.to, RECEIPT_MARGIN_DAYS));
+    const files = [
+      file("late-1.pdf", hash("8"), after),
+      file("late-2.pdf", hash("9"), "2026-11-03"),
+      edge,
+      file("a-booked.pdf", H.booked, "2026-11-03"),
+    ];
+    const result = await check(new FakeSevdeskClient(routes()), scanOf(files));
+
+    expect(filesOf(result, "receipt_file_not_booked")).toEqual([
+      ["late-1.pdf", "late-2.pdf", "edge.pdf"],
+    ]);
+    expect(result.notes).toContainEqual(
+      `2 files not found were last changed after ${result.coverage.vouchers.to}, the last ` +
+        "voucher date read: they may hold receipts of a later period, whose vouchers were not " +
+        "read (the change date is a weak hint, not the receipt date). Check such files with the " +
+        "period they belong to, or keep each period's receipts in a folder of their own.",
+    );
+
+    const inRange = await check(new FakeSevdeskClient(routes()), scanOf([edge]));
+    expect(inRange.notes.join(" ")).not.toContain("last changed after");
+  });
+
   it("counts the files of findings beyond the cap in the summary", async () => {
     // 120 files each booked twice (one warning per checksum) push the one unbooked file's
     // finding past the 100 listed.

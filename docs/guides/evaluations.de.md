@@ -256,7 +256,10 @@ kam) hat eine andere Prüfsumme, und ein Beleg mit einem Datum außerhalb des ge
 wird nicht verglichen. Beträge, Daten und Lieferanten werden nicht verglichen, denn dafür müsste
 der Inhalt der Datei gelesen werden. Zwei schwache Hinweise helfen: der Tag der letzten Änderung
 der Datei (`modified`, nicht das Belegdatum) und Belege, deren Belegnummer im Dateinamen steht
-(`possibleVouchers`). Um eine fehlende Datei zu buchen, lege mit
+(`possibleVouchers`). Eine Datei ohne Treffer, die erst nach dem gelesenen Zeitraum zuletzt
+geändert wurde, bleibt `receipt_file_not_booked`, denn ein Beleg des Zeitraums kann spät
+gespeichert worden sein; ein Hinweis zählt solche Dateien, die zu einem späteren Zeitraum gehören
+können. Um eine fehlende Datei zu buchen, lege mit
 [`sevdesk_voucher_create_draft`](../tools.md#sevdesk_voucher_create_draft) einen Entwurf mit der
 Datei als `file` an (braucht `write`).
 

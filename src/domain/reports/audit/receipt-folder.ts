@@ -34,7 +34,10 @@
  * content (no PDF parsing, no OCR) the check does not know them. Two weak hints, labelled as such:
  * - the day of the file's last modification (`modified`): when it was saved or copied, not the
  *   receipt date. It only decides `receipt_file_before_period`: a file saved before the range of
- *   vouchers read cannot hold a receipt from inside it, unless its date was set back by hand;
+ *   vouchers read cannot hold a receipt from inside it, unless its date was set back by hand. A
+ *   file saved after the range may still hold a receipt from inside it, so such unmatched files
+ *   stay `receipt_file_not_booked` and are only counted in a note (they may belong to a later
+ *   period);
  * - `possibleVouchers`: vouchers whose document number (at least {@link MIN_HINT_NUMBER_LENGTH}
  *   characters with a digit, compared like the duplicates check) appears in the file's name; the
  *   receipt may be booked from another file (a scan, a photo);
@@ -657,6 +660,10 @@ export async function runReceiptFolderCheck(
   const beforePeriod: FileWithHints[] = [];
   const matched: ReceiptFolderResult["matched"] = [];
   let filesMatched = 0;
+  // Unmatched files changed after the range read: only counted in a note. Unlike a file saved
+  // before the range, a late save says nothing (a receipt of the period downloaded today), so
+  // they keep their code.
+  let changedAfterRange = 0;
   for (const [hash, files] of groups) {
     const carriers = vouchers.byHash.get(hash) ?? [];
     if (carriers.length === 0) {
@@ -667,8 +674,13 @@ export async function runReceiptFolderCheck(
           hints: numberHints(file.path, vouchers.all),
           sameSize: sizeHints(file, vouchers.unhashed),
         };
-        if (berlinDateOf(file.modifiedMs) < range.from) beforePeriod.push(entry);
-        else notBooked.push(entry);
+        const modified = berlinDateOf(file.modifiedMs);
+        if (modified < range.from) {
+          beforePeriod.push(entry);
+          continue;
+        }
+        notBooked.push(entry);
+        if (modified > range.to) changedAfterRange += 1;
       }
       continue;
     }
@@ -748,7 +760,7 @@ export async function runReceiptFolderCheck(
         truncated: vouchers.truncated,
       },
     },
-    notes: notesOf(params, range, vouchers, findingsOmitted),
+    notes: notesOf(params, range, vouchers, { findingsOmitted, changedAfterRange }),
   });
 }
 
@@ -772,9 +784,14 @@ function notesOf(
   params: ReceiptFolderParams,
   range: { readonly from: string; readonly to: string },
   vouchers: VoucherReceipts,
-  findingsOmitted: number,
+  counts: {
+    readonly findingsOmitted: number;
+    /** Files not found that were last changed after the range read. */
+    readonly changedAfterRange: number;
+  },
 ): string[] {
   const { folder } = params;
+  const { findingsOmitted, changedAfterRange } = counts;
   const notes: string[] = [];
   if (folder.files.length === 0) {
     notes.push(
@@ -789,6 +806,16 @@ function notesOf(
       `Vouchers dated ${range.from} to ${range.to} were compared (the period and ` +
         `${String(RECEIPT_MARGIN_DAYS)} days before and after it, drafts included). A receipt ` +
         "booked under a voucher dated outside that range counts as not found.",
+    );
+  }
+  if (changedAfterRange > 0) {
+    notes.push(
+      `${plural(changedAfterRange, "file")} not found ${changedAfterRange === 1 ? "was" : "were"} ` +
+        `last changed after ${range.to}, the last voucher date read: ` +
+        `${changedAfterRange === 1 ? "it" : "they"} may hold receipts of a later period, whose ` +
+        "vouchers were not read (the change date is a weak hint, not the receipt date). Check " +
+        "such files with the period they belong to, or keep each period's receipts in a folder " +
+        "of their own.",
     );
   }
   const cut = new Set(folder.cut);

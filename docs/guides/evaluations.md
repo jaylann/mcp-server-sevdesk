@@ -238,9 +238,12 @@ or another program, a receipt that reached sevDesk by e-mail or through its app)
 checksum, and a voucher dated outside the range read is not compared. Amounts, dates and
 suppliers are not compared, since that would need the file's content. Two weak hints help: the
 day the file was last changed (`modified`, not the receipt date), and vouchers whose document
-number appears in the file name (`possibleVouchers`). To book a file that is missing, create a
-draft with [`sevdesk_voucher_create_draft`](../tools.md#sevdesk_voucher_create_draft) and the
-file as `file` (needs `write`).
+number appears in the file name (`possibleVouchers`). An unmatched file last changed after the
+range read stays `receipt_file_not_booked`, since a receipt of the period may have been saved
+late; a note counts such files, which may belong to a later period. To book a file that is
+missing, create a draft with
+[`sevdesk_voucher_create_draft`](../tools.md#sevdesk_voucher_create_draft) and the file as `file`
+(needs `write`).
 
 Not every receipt in sevDesk has a checksum: one that sevDesk's recognition created from an
 uploaded file has none, so no file can ever match it. The result counts such receipts in the range
