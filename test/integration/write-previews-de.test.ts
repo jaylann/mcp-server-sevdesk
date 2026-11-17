@@ -41,11 +41,13 @@ const ENGLISH_WORDS =
 const ENGLISH_TERMS = /\b(?:account|contact|draft|open|paid|booked|unbooked|linked|status)\b/;
 
 /**
- * The polite form. Our German addresses the reader with du; a capitalized "Ihre" or "Sie" (also
- * after a colon) reads as "your" or "you" on the approval page. Fact values (sevDesk's data, such
- * as a document's header text) are not checked.
+ * Possessives and datives of the polite form. Our German addresses the reader with du; a
+ * capitalized "Ihre" or "Ihnen" (at a sentence start or after a colon, where German capitalizes
+ * anyway) reads as "your" or "to you" on the approval page: write "die" or "deren" instead. A
+ * sentence-initial "Sie" is left to the review, since its verb shows whom it means ("Sie behält"
+ * is the template). Fact values (sevDesk's data, such as a document's header text) are not checked.
  */
-const POLITE_FORM = /\b(?:Sie|Ihnen|Ihre?[mnrs]?)\b/;
+const POLITE_FORM = /\b(?:Ihnen|Ihre?[mnrs]?)\b/;
 
 /** The first English word left in `text`, if any. */
 function english(text: string): string | undefined {
