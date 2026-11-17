@@ -106,21 +106,49 @@ describe("probe catalog", () => {
 
   it("never probes irreversible endpoints, and e-mails only from the e-mail probe", () => {
     // Every probe module (`*-probes.ts`), including the M4 ones. Export jobs may be probed (they
-    // only start a job), but never with an enshrine flag.
+    // only start a job), but never with an enshrine flag. The one exception: the opt-in probe
+    // write-transaction-enshrine enshrines a transaction it created itself, through exactly one
+    // call site in gaps-banking-probes.ts.
     const directory = new URL("../../../scripts/lib/probes/", import.meta.url);
     const files = readdirSync(directory).filter((file) => file.endsWith("-probes.ts"));
     expect(files).toEqual(expect.arrayContaining(["read-probes.ts", "write-probes.ts"]));
-    const source = files.map((file) => readFileSync(new URL(file, directory), "utf8")).join("\n");
-    expect(source).not.toMatch(
-      /\/enshrine|sendByWithRender|enshrine(?:Documents)?: (?:true|1|"1"|"true")|useNextNumber: "true"/,
+    const sources = new Map(
+      files.map((file) => [file, readFileSync(new URL(file, directory), "utf8")] as const),
     );
+    const allowed = "`/CheckAccountTransaction/${id}/enshrine`";
+    // The same path in prose (`{id}`, no `$`): questions and comments, never a request.
+    const documented = "/CheckAccountTransaction/{id}/enshrine";
+    const gaps = sources.get("gaps-banking-probes.ts") ?? "";
+    expect(gaps.split(allowed)).toHaveLength(2);
+    expect(gaps.match(/enshrineOwnTransaction\(/g)).toHaveLength(4);
+    expect(ALL_PROBES.find((probe) => probe.id === "write-transaction-enshrine")?.optIn).toBe(true);
+    const source = [...sources]
+      .map(([file, text]) =>
+        file === "gaps-banking-probes.ts"
+          ? text.replace(allowed, "").replaceAll(documented, "")
+          : text,
+      )
+      .join("\n");
+    expect(source).not.toMatch(
+      /\/enshrine|sendByWithRender|enshrine(?:Documents)?: (?:true|1|"1"|"true")/,
+    );
+    // Reserving a document number (D-066) consumes a number of the trial's sequence: only the
+    // opt-in probe write-reserved-number-delete-draft does it, through one helper.
+    for (const [file, text] of sources) {
+      expect(text.match(/useNextNumber: (?!"false")/g) ?? [], file).toHaveLength(
+        file === "gaps-documents-probes.ts" ? 1 : 0,
+      );
+    }
+    expect(sources.get("gaps-documents-probes.ts")).toMatch(/useNextNumber: "true"/);
+    expect(
+      ALL_PROBES.find((probe) => probe.id === "write-reserved-number-delete-draft"),
+    ).toMatchObject({ mode: "write", optIn: true });
     expect(source.match(/sendViaEmail`/g)).toHaveLength(1);
     expect(source.match(/tier: "external"/g)).toHaveLength(1);
     expect(
       ALL_PROBES.filter((probe) => probe.sendsEmail === true).map((probe) => probe.id),
     ).toEqual(["write-send-email-shape"]);
-    expect(NOT_PROBED.map((check) => check.what).join("\n")).toMatch(/createDatevXmlZipExportJob/);
-    expect(NOT_PROBED.map((check) => check.what).join("\n")).toMatch(/useNextNumber=true/);
+    expect(NOT_PROBED.map((check) => check.what).join("\n")).toMatch(/enshrineDocuments/);
   });
 
   it("orders write probes before read probes", () => {

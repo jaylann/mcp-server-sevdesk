@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/evaluations.md sha256:41ecf838ebae -->
+<!-- translated-from: docs/guides/evaluations.md sha256:e9cc624635a9 -->
 
 # Auswertungen und Exporte
 
@@ -115,7 +115,9 @@ jedes Ergebnis sagt das auf Englisch und Deutsch. Das Werkzeug ändert nichts.
 
 Die Prüfung vergleicht die Steuerregel jedes Dokuments damit, wo die Gegenseite ansässig ist,
 soweit sevDesk es weiß: die USt-IdNr. des Kontakts und die Länder seiner Adressen. Eine deutsche
-USt-IdNr. oder eine deutsche Adresse gilt als in Deutschland registriert oder ansässig. Dokumente
+USt-IdNr. oder eine deutsche Adresse gilt als in Deutschland registriert oder ansässig, und Monaco
+zählt als Frankreich. Bei Verkäufen zählt die USt-IdNr. eines Kunden nur im gültigen Format ihres
+Staats, so wie [`sevdesk_vat_id_check`](../tools.md#sevdesk_vat_id_check) sie prüft. Dokumente
 werden nach Belegdatum ausgewählt; Verkäufe werden an Rechnungen geprüft.
 
 | Code                                                                            | Bedeutet                                                                                                                           |
@@ -127,7 +129,7 @@ werden nach Belegdatum ausgewählt; Verkäufe werden an Rechnungen geprüft.
 | `eu_reverse_charge_for_non_eu_supplier`, `acquisition_from_non_eu_supplier`     | Regel 14 oder 8 bei einem Lieferanten außerhalb der EU                                                                             |
 | `eu_supplier_under_rule_12`                                                     | Eine Leistung aus einem anderen EU-Staat unter Regel 12 statt 14                                                                   |
 | `german_vat_to_eu_business`                                                     | Deutsche Umsatzsteuer auf einer Rechnung an einen Kunden mit USt-IdNr. eines anderen EU-Staats                                     |
-| `intra_eu_supply_without_eu_vat_id`, `eu_service_without_eu_vat_id`             | Regel 3 oder 21 ohne USt-IdNr. des Kunden aus einem anderen EU-Staat                                                               |
+| `intra_eu_supply_without_eu_vat_id`, `eu_service_without_eu_vat_id`             | Regel 3 oder 21 ohne gültige USt-IdNr. des Kunden aus einem anderen EU-Staat                                                       |
 
 Bewusst nicht gemeldet: ein ausländischer Lieferant mit deutscher USt-IdNr. oder deutscher Adresse
 (er darf deutsche Umsatzsteuer berechnen), ein Lieferant mit nur deutschen Daten, der keine
@@ -143,9 +145,13 @@ Die Prüfung summiert die Bemessungsgrundlage nach § 13b des Zeitraums je Steue
 (Regeln 12, 13 und 14, bei denen du die Steuer als Leistungsempfänger schuldest, mit der
 geschuldeten Steuer und dem Teil, den du als Vorsteuer wieder abziehst) und ausgestellt (Regel 5,
 Kz 60; Regel 21, Kz 21). Jede Summe nennt ihre UStVA-Kennzahlen und listet die Belege dahinter. Sie
-nutzt dieselben Steuerzeitpunkte wie `sevdesk_vat_summary`, die Summen stimmen also mit deren Kz
-46/47, 84/85, 67, 60 und 21 überein. Sie meldet Regel 13 (ohne Vorsteuerabzug) bei einem Konto mit
-Regelbesteuerung (`reverse_charge_without_deduction`).
+nutzt dieselben Steuerzeitpunkte wie `sevdesk_vat_summary`, die Bemessungsgrundlagen stimmen also
+mit deren Kz 46, 84, 60 und 21 überein. Die Steuerbeträge (Kz 47, 85, 67) können um einen Cent
+abweichen, weil die Prüfung je Steuerregel rundet und die Auswertung je Formularzeile (Kz 84/85
+fassen die Regeln 12 und 13 zusammen). Sie meldet Regel 13 (ohne Vorsteuerabzug) bei einem Konto mit
+Regelbesteuerung (`reverse_charge_without_deduction`) und die Regeln 12 und 14 (mit
+Vorsteuerabzug) bei einem Kleinunternehmer-Konto, das die Steuer schuldet, sie aber nicht abziehen
+darf (`reverse_charge_deduction_on_small_business`).
 
 ### Doppelt gebuchte Belege und liegen gebliebene Entwürfe (`duplicates`)
 

@@ -16,15 +16,20 @@
  * `current.ts`), the stored number unchanged, and either no position changes
  * (`invoicePosSave`/`invoicePosDelete` null) or all stored positions deleted and the new ones
  * saved in the same request, so a failure cannot leave half the positions behind.
+ *
+ * Both previews add a hint (never a refusal) when the tax rule is not one a sale to the customer
+ * usually takes (`src/domain/vat/sales-tax-rule.ts`); an update judges it again only when it
+ * changes the rule, the contact or the address.
  */
 import { z } from "zod";
 
 import { SevdeskError } from "../../sevdesk/errors.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { statusDto } from "../common.js";
-import type { CountryReadOptions } from "../country-codes.js";
+import { type CountryReadOptions, loadCountryCodes } from "../country-codes.js";
 import { getInvoice, type InvoiceDetails } from "../invoices.js";
 import { documentTypeByCode } from "../reference-data.js";
+import { invoiceTaxRuleHint } from "../vat/tax-rule-helper.js";
 import { berlinDay, type CurrentInvoice, loadCurrentInvoice } from "./current.js";
 import {
   assertChanges,
@@ -266,12 +271,18 @@ export async function prepareInvoiceCreate(
     ...positionFacts(basics.positions, mode, currency),
     fact("Total (expected)", totalsText(expected, currency)),
   ];
+  const taxHint = invoiceTaxRuleHint(
+    basics.rule.id,
+    basics.regime,
+    contact.contact,
+    address.countryCode,
+  );
   const preview = draftPreview(
     `Create a draft invoice (Rechnungsentwurf) for ` +
       `${customerText(contact.contact.displayName, args.contactId)} with ` +
       `${positionCount(basics.positions.length)}, gross ${moneyText(expected.gross, currency)}.`,
     facts,
-    [duplicateWarning("invoice", duplicates, duplicateQuery), ...basics.warnings],
+    [duplicateWarning("invoice", duplicates, duplicateQuery), ...basics.warnings, taxHint],
   );
   return { preview, state: { body, expected } };
 }
@@ -437,6 +448,19 @@ export async function prepareInvoiceUpdate(
     );
   }
 
+  // The tax rule is judged again only when the call changes what it depends on.
+  const taxHint =
+    basics.rule !== undefined &&
+    (args.taxRuleId !== undefined || basics.contactChanged || basics.address !== undefined)
+      ? invoiceTaxRuleHint(
+          basics.rule.id,
+          basics.regime,
+          basics.contact.contact,
+          basics.address?.countryCode ??
+            (await storedCountryCode(client, doc.addressCountry?.id, options)),
+        )
+      : undefined;
+
   const customer = customerText(basics.contact.contact.displayName, basics.contact.contact.id);
   const facts: PreviewFact[] = [
     fact("Invoice", `${doc.id} (${numberLabel(doc.invoiceNumber)}, draft)`),
@@ -452,7 +476,7 @@ export async function prepareInvoiceUpdate(
   const preview = draftPreview(
     `Update draft invoice ${doc.id} for ${customer}: change ${log.changed.join(", ") || "nothing visible"}.`,
     facts,
-    basics.warnings,
+    [...basics.warnings, taxHint],
   );
   return { preview, state: { body, invoiceId: doc.id, expected } };
 }
@@ -499,6 +523,20 @@ export async function executeInvoiceDraft(
     { noun: "invoice", finalizeTool: FINALIZE_TOOL, expected: state.expected },
   );
   return { id, details, notes };
+}
+
+/** The ISO code of the stored address's country (cached country list); undefined when unknown. */
+async function storedCountryCode(
+  client: SevdeskClient,
+  countryId: number | undefined,
+  options: DraftCallOptions,
+): Promise<string | undefined> {
+  if (countryId === undefined) return undefined;
+  const codes = await loadCountryCodes(client, {
+    cacheOwner: options.cacheOwner,
+    signal: options.signal,
+  });
+  return codes.get(countryId);
 }
 
 /**

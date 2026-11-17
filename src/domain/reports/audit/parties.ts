@@ -16,54 +16,30 @@
  * - **Abroad**: a VAT id of another state or an address outside Germany. Where abroad comes from
  *   the VAT id prefix when there is one (EL is Greece, XI Northern Ireland, EU a business from
  *   outside the EU in the non-Union OSS scheme), else from the address countries when they agree.
+ *   The member states are those of the shared table (`src/domain/vat/eu.ts`); Monaco counts as
+ *   France, as in the tax-rule helper (§ 1 Abs. 2a Satz 2 UStG).
  * - A contact with neither is not judged; one with both is judged only where the German data
  *   settles the question (the checks say which).
  * - A contact with an address whose country cannot be resolved (the country table could not be
  *   read, or it lacks the id) is marked `countriesUnknown`: that address might be German, so the
  *   checks do not judge where it is established.
+ * - When a list stops at its cap, what sevDesk holds is incomplete: contacts beyond the contact
+ *   list's cap are unknown, and beyond the address list's cap any contact may lack addresses. More
+ *   data can only add a German or a foreign location, so the checks keep what such a contact's
+ *   data already settles and do not judge what its missing data could change.
  *
  * A VAT id must look like one (two letters, then at least one digit), so text such as "keine"
- * typed into the field is not read as a country.
+ * typed into the field is not read as a country. Where a party is established, the prefix decides
+ * whether the number is in its state's format or not; whether a customer's VAT id allows an
+ * intra-EU sale is a stricter question ({@link customerVatIdOf}).
  */
 import type { SevdeskClient } from "../../../sevdesk/types.js";
 import { listContactAddressLocations, searchContacts } from "../../contacts.js";
 import { loadCountryCodes } from "../../country-codes.js";
+import { euMemberStateByVatPrefix, isEuMemberState, vatCountryOf } from "../../vat/eu.js";
+import { checkVatIdFormat, type VatIdFormatCheck } from "../../vat/vat-id.js";
 import { normalizeVatId } from "../positions-scan.js";
 import { REPORT_SCAN_MAX, type ReportRunOptions, scanPages } from "../shared.js";
-
-/**
- * ISO 3166-1 alpha-2 codes of the 27 EU member states (2026). #93 adds one shared table of the
- * member states (`src/domain/vat/eu.ts`); this list moves there once both are merged.
- */
-const EU_COUNTRIES: ReadonlySet<string> = new Set([
-  "AT",
-  "BE",
-  "BG",
-  "CY",
-  "CZ",
-  "DE",
-  "DK",
-  "EE",
-  "ES",
-  "FI",
-  "FR",
-  "GR",
-  "HR",
-  "HU",
-  "IE",
-  "IT",
-  "LT",
-  "LU",
-  "LV",
-  "MT",
-  "NL",
-  "PL",
-  "PT",
-  "RO",
-  "SE",
-  "SI",
-  "SK",
-]);
 
 /** Where a party established abroad is: the EU, Northern Ireland (EU rules for goods only), outside. */
 export type PartyArea = "eu" | "northern_ireland" | "non_eu";
@@ -74,14 +50,62 @@ type VatIdArea = "germany" | PartyArea;
 /** The country part of a VAT id: two letters followed by at least one digit. */
 const VAT_ID_SHAPE = /^([A-Z]{2})[A-Z0-9+*]*\d[A-Z0-9+*]*$/;
 
-/** The area a normalized VAT id belongs to; `undefined` when it does not look like a VAT id. */
+/** The prefix of Northern Ireland's VAT ids (EU rules for goods, Windsor Framework). */
+const NORTHERN_IRELAND = "XI";
+
+/**
+ * The area a normalized VAT id belongs to; `undefined` when it does not look like a VAT id. Only
+ * the prefix counts: EL is Greece, and so is GR, which Greek numbers should not carry (they are
+ * in the wrong format, see {@link customerVatIdOf}) but which never means outside the EU.
+ */
 export function vatIdArea(vatId: string | undefined): VatIdArea | undefined {
   const prefix = vatId === undefined ? undefined : VAT_ID_SHAPE.exec(vatId)?.[1];
   if (prefix === undefined) return undefined;
   if (prefix === "DE") return "germany";
-  if (prefix === "XI") return "northern_ireland";
-  // Greece's VAT ids start with EL; its ISO code is GR.
-  return EU_COUNTRIES.has(prefix === "EL" ? "GR" : prefix) ? "eu" : "non_eu";
+  if (prefix === NORTHERN_IRELAND) return "northern_ireland";
+  if (prefix === "GR") return "eu";
+  return euMemberStateByVatPrefix(prefix) === undefined ? "non_eu" : "eu";
+}
+
+/**
+ * What a customer's VAT id shows for a sale, judged as the tax-rule helper judges it (only a
+ * number in the valid format of a member state, or of Northern Ireland, shows one):
+ * `eu` a valid VAT id of another member state, `northern_ireland` a valid XI number, `germany` a
+ * valid German one, `wrong_format` such a prefix (GR included) with the wrong characters,
+ * `non_eu` another country's number, `unreadable` no VAT id at all, `none` nothing stored.
+ */
+export type CustomerVatId =
+  "none" | "germany" | "eu" | "northern_ireland" | "wrong_format" | "non_eu" | "unreadable";
+
+/**
+ * Classifies a normalized VAT id with the shared format check (`checkVatIdFormat`). A trailing EX
+ * (the EU small-business scheme, see {@link PartyLocation.smallBusinessScheme}) is not part of
+ * any state's format: the number is checked without it.
+ */
+export function customerVatIdOf(vatId: string | undefined): CustomerVatId {
+  if (vatId === undefined) return "none";
+  const check = formatCheck(vatId);
+  switch (check.status) {
+    case "valid_format":
+      if (check.country === "DE") return "germany";
+      return check.country === NORTHERN_IRELAND ? "northern_ireland" : "eu";
+    case "invalid_format":
+      return "wrong_format";
+    case "not_eu":
+    case "unreadable": {
+      // Too long for the check, or another country's number: the prefix still tells which.
+      const area = vatIdArea(vatId);
+      if (area === undefined) return "unreadable";
+      return area === "non_eu" ? "non_eu" : "wrong_format";
+    }
+  }
+}
+
+function formatCheck(vatId: string): VatIdFormatCheck {
+  const check = checkVatIdFormat(vatId);
+  if (check.status === "valid_format" || !vatId.endsWith("EX")) return check;
+  const withoutSuffix = checkVatIdFormat(vatId.slice(0, -2));
+  return withoutSuffix.status === "valid_format" ? withoutSuffix : check;
 }
 
 /** What the audit knows about one contact. */
@@ -129,8 +153,9 @@ export function locate(facts: Pick<PartyFacts, "vatId" | "countries">): PartyLoc
 
 function areaOfCountries(countries: readonly string[]): PartyArea | undefined {
   if (countries.length === 0) return undefined;
-  if (countries.every((country) => EU_COUNTRIES.has(country))) return "eu";
-  if (countries.every((country) => !EU_COUNTRIES.has(country))) return "non_eu";
+  const inEu = (country: string): boolean => isEuMemberState(vatCountryOf(country));
+  if (countries.every(inEu)) return "eu";
+  if (!countries.some(inEu)) return "non_eu";
   return undefined;
 }
 
@@ -147,10 +172,14 @@ export interface PartyDirectory {
   readonly coverage: {
     readonly read: number;
     readonly addressesRead: number;
-    /** A cap stopped one of the two lists: contacts beyond it are unknown. */
+    /** A cap stopped one of the two lists (see the two below). */
     readonly truncated: boolean;
+    /** The contact list stopped at its cap: contacts beyond it are not in `parties`. */
+    readonly contactsTruncated: boolean;
+    /** The address list stopped at its cap: any contact in `parties` may lack addresses. */
+    readonly addressesTruncated: boolean;
   };
-  /** True when addresses had countries but the country table could not be read. */
+  /** True when addresses or documents had countries but the country table could not be read. */
   readonly countriesUnread: boolean;
 }
 
@@ -159,6 +188,11 @@ export interface PartyDirectoryOptions extends ReportRunOptions {
   readonly cacheOwner: object;
   /** Rows per list; defaults to {@link REPORT_SCAN_MAX}. */
   readonly maxRows?: number | undefined;
+  /**
+   * The documents to judge carry address countries of their own (invoices): read the country
+   * table for them even when no contact address has a country.
+   */
+  readonly documentsHaveCountries?: boolean | undefined;
 }
 
 /** Reads the contact and address lists once each; see the module doc. */
@@ -185,7 +219,9 @@ export async function loadPartyDirectory(
     },
     { ...run, max, noun: "contact addresses" },
   );
-  const withCountry = addresses.items.some((address) => address.countryId !== undefined);
+  const withCountry =
+    options.documentsHaveCountries === true ||
+    addresses.items.some((address) => address.countryId !== undefined);
   const countryCodes = withCountry
     ? await loadCountryCodes(client, { cacheOwner: options.cacheOwner, signal: options.signal })
     : new Map<number, string>();
@@ -220,6 +256,8 @@ export async function loadPartyDirectory(
       read: contacts.scanned,
       addressesRead: addresses.scanned,
       truncated: contacts.truncated || addresses.truncated,
+      contactsTruncated: contacts.truncated,
+      addressesTruncated: addresses.truncated,
     },
     countriesUnread: withCountry && countryCodes.size === 0,
   };

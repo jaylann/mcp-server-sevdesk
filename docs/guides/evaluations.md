@@ -108,8 +108,10 @@ nothing.
 
 The check compares each document's tax rule with where the other side is established, as far as
 sevDesk knows it: the contact's VAT ID and the countries of its addresses. A German VAT ID or a
-German address counts as registered or established in Germany. Documents are taken by document
-date; sales are checked on invoices.
+German address counts as registered or established in Germany, and Monaco counts as France. On
+sales, a customer's VAT ID counts only in the valid format of its state, as
+[`sevdesk_vat_id_check`](../tools.md#sevdesk_vat_id_check) checks it. Documents are taken by
+document date; sales are checked on invoices.
 
 | Code                                                                            | Means                                                                                                       |
 | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
@@ -120,7 +122,7 @@ date; sales are checked on invoices.
 | `eu_reverse_charge_for_non_eu_supplier`, `acquisition_from_non_eu_supplier`     | Rule 14 or 8 for a supplier outside the EU                                                                  |
 | `eu_supplier_under_rule_12`                                                     | A service from another EU state under rule 12 instead of 14                                                 |
 | `german_vat_to_eu_business`                                                     | German VAT on an invoice to a customer with a VAT ID of another EU state                                    |
-| `intra_eu_supply_without_eu_vat_id`, `eu_service_without_eu_vat_id`             | Rule 3 or 21 without the customer's VAT ID of another EU state                                              |
+| `intra_eu_supply_without_eu_vat_id`, `eu_service_without_eu_vat_id`             | Rule 3 or 21 without a valid VAT ID of the customer from another EU state                                   |
 
 Not flagged on purpose: a foreign supplier with a German VAT ID or a German address (it may charge
 German VAT), a supplier with only German data that charges no VAT (for example a Kleinunternehmer),
@@ -133,9 +135,12 @@ judged (`coverage.notJudged`), so complete the contact to have them checked.
 The check sums the §13b base of the period by tax rule: received (rules 12, 13 and 14, where you
 owe the VAT as recipient, with the tax owed and the part deducted again as input VAT) and issued
 (rule 5, Kz 60; rule 21, Kz 21). Each sum names its UStVA Kennzahlen and lists the documents
-behind it. It uses the same tax points as `sevdesk_vat_summary`, so the sums match its Kz 46/47,
-84/85, 67, 60 and 21. It flags rule 13 (no input VAT deduction) on an account with regular
-taxation (`reverse_charge_without_deduction`).
+behind it. It uses the same tax points as `sevdesk_vat_summary`, so the bases match its Kz 46, 84,
+60 and 21. The tax amounts (Kz 47, 85, 67) can differ by a cent, because the check rounds per tax
+rule and the summary per form line (Kz 84/85 combine rules 12 and 13). It flags rule 13 (no input VAT deduction) on an account with regular
+taxation (`reverse_charge_without_deduction`), and rules 12 and 14 (with deduction) on a
+Kleinunternehmer account, which owes the tax but may not deduct it
+(`reverse_charge_deduction_on_small_business`).
 
 ### Vouchers booked twice and stuck drafts (`duplicates`)
 

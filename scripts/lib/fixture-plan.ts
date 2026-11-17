@@ -430,6 +430,32 @@ export function recordPlan(today: string): readonly RecordEntry[] {
       note: "Shape on Update 2.0 (D-036 was observed on 1.0).",
     },
 
+    // --- order discounts, recurring templates, layouts (issues #89, #91, #94) --------------
+    {
+      file: "orders/order-discounts.json",
+      mirrors: [],
+      path: "/Order/{order}/getDiscounts",
+      list: true,
+      requires: ["order"],
+      note: "Document-level discounts of an order (#89, #94); empty unless the order has one.",
+    },
+    {
+      file: "invoices/recurring-templates.json",
+      mirrors: [],
+      path: "/Invoice",
+      query: { showWkr: "all" },
+      list: true,
+      note: "Recurring invoice templates (WKR) with their schedule fields (D-014, D-049, #91).",
+    },
+    {
+      file: "layouts/letterpapers.json",
+      mirrors: [],
+      path: "/DocServer/getLetterpapersWithThumb",
+      note: "Letterheads for changeParameter (#94); the scrubber replaces PDFs and thumbnails.",
+    },
+    // GET /DocServer/getTemplatesWithThumb is not recorded: 147 stock templates with their HTML
+    // and thumbnails came to 3.2 MB even scrubbed; spec/deviations.md D-114 describes the shape.
+
     // --- document files (non-drafts only) -------------------------------------------------
     {
       file: "documents/invoice-pdf.json",
@@ -554,6 +580,15 @@ export function recordPlan(today: string): readonly RecordEntry[] {
       list: true,
       note: "Without filter: the log entries of the whole account (D-057, paging).",
     },
+    // Gap probes (#88): the rules that mark transactions private. The ZIP exports (#95) are not
+    // recorded: they may change documents and answer files, not JSON records.
+    {
+      file: "banking/private-transaction-rules.json",
+      mirrors: [],
+      path: "/PrivateTransactionRule",
+      list: true,
+      note: "Rules for marking transactions private (empty unless a rule exists; the probe deletes its own).",
+    },
 
     // --- parts ----------------------------------------------------------------------------
     {
@@ -574,6 +609,43 @@ export function recordPlan(today: string): readonly RecordEntry[] {
       mirrors: ["parts/part-stock-6002.json"],
       path: "/Part/{part}/getStock",
       requires: ["part"],
+    },
+
+    // --- tags, cost centres, custom contact fields (#86, #87) ------------------------------
+    {
+      file: "tags/tags-list.json",
+      mirrors: [],
+      path: "/Tag",
+      list: true,
+      note: "Tags of documents (#87): whether a row carries a usage count; probe read-tag-lists.",
+    },
+    {
+      file: "tags/tag-relations.json",
+      mirrors: [],
+      path: "/TagRelation",
+      list: true,
+      note: "Which document each tag is on (#87): tag and object references.",
+    },
+    {
+      file: "cost-centres/cost-centres-list.json",
+      mirrors: [],
+      path: "/CostCentre",
+      list: true,
+      note: "Cost centres (#87); undocumented GET (D-024), probe read-cost-centre-list.",
+    },
+    {
+      file: "contacts/custom-field-settings.json",
+      mirrors: [],
+      path: "/ContactCustomFieldSetting",
+      list: true,
+      note: "Custom contact field definitions (#86).",
+    },
+    {
+      file: "contacts/custom-fields.json",
+      mirrors: [],
+      path: "/ContactCustomField",
+      list: true,
+      note: "Custom contact field values (#86): contact and setting references.",
     },
   ];
 }

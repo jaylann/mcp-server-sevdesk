@@ -7,6 +7,7 @@ import {
   REVERSE_CHARGE_FINDING_CODES,
 } from "../../../../../src/domain/reports/audit/reverse-charge-check.js";
 import { resolvePeriod, vatSummary } from "../../../../../src/domain/reports/vat.js";
+import { SevdeskError } from "../../../../../src/sevdesk/errors.js";
 import { type FakeRoute, FakeSevdeskClient } from "../../../../helpers/fake-client.js";
 import {
   creditNoteDoc,
@@ -194,6 +195,30 @@ describe("check reverse_charge", () => {
     expect(box("21")?.base).toEqual(issued(21)?.base);
   });
 
+  it("can differ from the summary's Kz 85 by a cent: it rounds per rule, the summary per line", async () => {
+    const cents = scenarioRoutes({
+      vouchers: [
+        purchase(5401, 12, "2026-02-10", "0.03", CONTACTS.usSaas.id),
+        purchase(5402, 13, "2026-02-10", "0.03", CONTACTS.german.id),
+      ],
+    });
+    const { result } = await audit([regularAccount, ...cents]);
+    const summary = await vatSummary(new FakeSevdeskClient(cents), {
+      period: Q1,
+      settings: REGULAR,
+      today: TODAY,
+    });
+    const line = summary.boxes.find((entry) => entry.kz === "84");
+    const received = (id: number) =>
+      result.reverseCharge?.received.find((rule) => rule.taxRule.id === id);
+
+    // The bases add up exactly; 19 % of 0.03 is 0.0057 per rule, of 0.06 is 0.0114 per line.
+    expect(line?.base?.amount).toBe("0.06");
+    expect([received(12)?.base.amount, received(13)?.base.amount]).toEqual(["0.03", "0.03"]);
+    expect([received(12)?.tax?.amount, received(13)?.tax?.amount]).toEqual(["0.01", "0.01"]);
+    expect(line?.tax?.amount).toBe("0.01");
+  });
+
   it("lists the documents behind each sum with tax point, contact, amounts and link", async () => {
     const { result } = await audit([regularAccount, ...routes()]);
     const rule12 = result.reverseCharge?.received.find((rule) => rule.taxRule.id === 12);
@@ -246,10 +271,46 @@ describe("check reverse_charge", () => {
     expect(REVERSE_CHARGE_FINDING_CODES).toContain(result.findings[0]?.code);
   });
 
-  it("does not flag rule 13 on a Kleinunternehmer account", async () => {
+  it("flags rules 12 and 14, not 13, on a Kleinunternehmer account", async () => {
     const { result } = await audit([smallBusinessAccount, ...routes()]);
-    expect(result.findings).toEqual([]);
+
     expect(result.regime).toBe("small_business");
+    expect(
+      result.findings.map((finding) => [
+        finding.code,
+        finding.severity,
+        finding.contact?.id,
+        finding.records.map((record) => record.id),
+      ]),
+    ).toEqual([
+      [
+        "reverse_charge_deduction_on_small_business",
+        "warning",
+        CONTACTS.irishSaas.id,
+        [5101, 5106],
+      ],
+      ["reverse_charge_deduction_on_small_business", "warning", CONTACTS.usSaas.id, [5102]],
+    ]);
+    const finding = result.findings[0];
+    expect(finding?.titleDe).toBe("§ 13b mit Vorsteuerabzug bei Kleinunternehmerregelung");
+    expect(finding?.reason).toContain("§ 19 Abs. 1 UStG");
+    expect(finding?.action).toContain("rule 13");
+    expect(REVERSE_CHARGE_FINDING_CODES).toContain(finding?.code);
+  });
+
+  it("compares no rule with the regime when the settings cannot be read", async () => {
+    const { result } = await audit([
+      {
+        path: "/SevClient",
+        response: { error: new SevdeskError({ kind: "server", message: "Simulated." }) },
+      },
+      ...routes(),
+    ]);
+
+    expect(result.findings).toEqual([]);
+    expect(result.notes.join(" ")).toContain(
+      "rules 12, 13 and 14 were not compared with the account's regime",
+    );
   });
 
   it("counts what it read and explains the tax point", async () => {

@@ -1,4 +1,4 @@
-<!-- translated-from: SECURITY.md sha256:ddcf79b759dc -->
+<!-- translated-from: SECURITY.md sha256:e9536cff9cfa -->
 
 # Sicherheitsrichtlinie
 
@@ -58,8 +58,11 @@ Dieser Server steht zwischen einem KI-Modell und einem sevDesk-Konto. Der Entwur
    von `SEVDESK_FILE_DIRS` und schreiben nur neue Dateien innerhalb von `SEVDESK_OUTPUT_DIR`; ohne
    diese Einstellungen greift kein Werkzeug auf lokale Dateien zu. Empfangene E-Rechnungen und PDFs
    werden als feindliche Eingaben mit Grenzen für Größe und Aufwand gelesen, und der DATEV-Export
-   wird von genau einem Host ohne Zugangsdaten geholt.
-   ([Lokale Dateien](docs/security/local.de.md#lokale-dateien))
+   wird von genau einem Host ohne Zugangsdaten geholt. Ein Beleg von einem https-Link wird nur von
+   den Hosts in `SEVDESK_FILE_URL_HOSTS` (standardmäßig keine) geladen, nur von öffentlichen
+   Adressen und ohne Zugangsdaten.
+   ([Lokale Dateien](docs/security/local.de.md#lokale-dateien),
+   [Dateien von einem Link](docs/security/local.de.md#dateien-von-einem-link))
 6. **Der Fernzugriff fügt eine Netzwerkgrenze hinzu.** Der HTTP-Transport startet nicht ohne
    Authentifizierung, lauscht standardmäßig auf 127.0.0.1 (jede andere Adresse braucht eine
    konfigurierte öffentliche URL) und prüft Host und Origin. Im OAuth-Modus ist er standardmäßig
