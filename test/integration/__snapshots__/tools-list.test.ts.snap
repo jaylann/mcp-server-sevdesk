@@ -46,6 +46,11 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
       "pattern": "^[A-Z]{2}$",
       "type": "string",
     },
+    "/properties/result/properties/removed/items/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
   },
   "sevdesk_contacts_search": {
     "/properties/hasMore": {
@@ -1007,6 +1012,11 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "minLength": 1,
           "type": "string",
         },
+        "parentOrganisationId": {
+          "description": "Persons only: the id of the organisation contact this person belongs to as contact person (Ansprechpartner). Must be an organisation.",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
         "phone": {
           "description": "Phone number (Telefon).",
           "maxLength": 50,
@@ -1047,6 +1057,36 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     },
     "name": "sevdesk_contact_create",
     "title": "Create a sevDesk contact",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Delete a sevDesk contact",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Contact id, e.g. from sevdesk_contacts_search.",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_contact_delete",
+    "title": "Delete a sevDesk contact",
   },
   {
     "annotations": {
@@ -1153,12 +1193,50 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "minLength": 1,
           "type": "string",
         },
+        "parentOrganisationId": {
+          "description": "Persons only: the id of the organisation contact this person belongs to as contact person (Ansprechpartner). Must be an organisation.",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
         "phone": {
           "description": "Phone number (Telefon).",
           "maxLength": 50,
           "minLength": 3,
           "pattern": "^[0-9+()/.\\- ]+$",
           "type": "string",
+        },
+        "remove": {
+          "description": "Entries to take off this contact, each {kind, id}. Removed after the other changes. When an entry removed is the one a change would apply to (the billing address, the main e-mail, phone or website), a new one is added instead.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "description": "The entry's id from sevdesk_contact_get; for parentOrganisation the organisation's id.",
+                "exclusiveMinimum": 0,
+                "type": "integer",
+              },
+              "kind": {
+                "description": "address, email, phone, mobile or website (one entry of the contact), or parentOrganisation (the person's link to its organisation).",
+                "enum": [
+                  "address",
+                  "email",
+                  "phone",
+                  "mobile",
+                  "website",
+                  "parentOrganisation",
+                ],
+                "type": "string",
+              },
+            },
+            "required": [
+              "kind",
+              "id",
+            ],
+            "type": "object",
+          },
+          "maxItems": 25,
+          "minItems": 1,
+          "type": "array",
         },
         "street": {
           "description": "Street and house number (Straße).",
@@ -5504,6 +5582,11 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "minLength": 1,
           "type": "string",
         },
+        "parentOrganisationId": {
+          "description": "Persons only: the id of the organisation contact this person belongs to as contact person (Ansprechpartner). Must be an organisation.",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
         "phone": {
           "description": "Phone number (Telefon).",
           "maxLength": 50,
@@ -5650,12 +5733,50 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "minLength": 1,
           "type": "string",
         },
+        "parentOrganisationId": {
+          "description": "Persons only: the id of the organisation contact this person belongs to as contact person (Ansprechpartner). Must be an organisation.",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
         "phone": {
           "description": "Phone number (Telefon).",
           "maxLength": 50,
           "minLength": 3,
           "pattern": "^[0-9+()/.\\- ]+$",
           "type": "string",
+        },
+        "remove": {
+          "description": "Entries to take off this contact, each {kind, id}. Removed after the other changes. When an entry removed is the one a change would apply to (the billing address, the main e-mail, phone or website), a new one is added instead.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "description": "The entry's id from sevdesk_contact_get; for parentOrganisation the organisation's id.",
+                "exclusiveMinimum": 0,
+                "type": "integer",
+              },
+              "kind": {
+                "description": "address, email, phone, mobile or website (one entry of the contact), or parentOrganisation (the person's link to its organisation).",
+                "enum": [
+                  "address",
+                  "email",
+                  "phone",
+                  "mobile",
+                  "website",
+                  "parentOrganisation",
+                ],
+                "type": "string",
+              },
+            },
+            "required": [
+              "kind",
+              "id",
+            ],
+            "type": "object",
+          },
+          "maxItems": 25,
+          "minItems": 1,
+          "type": "array",
         },
         "street": {
           "description": "Street and house number (Straße).",

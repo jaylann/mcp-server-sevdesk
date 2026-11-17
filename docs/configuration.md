@@ -150,7 +150,7 @@ fewer toolsets makes the tool list shorter, which helps models choose and saves 
 | Toolset        | Covers                                                                                                                                                     |
 | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `meta`         | Account overview, reference data (tax rules, booking accounts, units, countries, …), saving document files, upload requests in remote mode. Always loaded. |
-| `contacts`     | Customers and suppliers: search, get, create, update, next customer number.                                                                                |
+| `contacts`     | Customers and suppliers: search, get, create, update, delete, next customer number.                                                                        |
 | `invoices`     | Invoices (Rechnungen): list, get, drafts, invoices from orders, reminders (Mahnungen), the lifecycle, PDF, e-invoice XML and readiness check.              |
 | `credit-notes` | Credit notes (Gutschriften): list, get, drafts, credit notes from invoices, the lifecycle, PDF.                                                            |
 | `orders`       | Orders (Angebote, Auftragsbestätigungen, Lieferscheine): list, get, drafts, finalize, send, PDF.                                                           |

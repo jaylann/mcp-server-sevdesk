@@ -1,7 +1,9 @@
 /**
  * Input fields and the output schema shared by `sevdesk_contact_create` and
- * `sevdesk_contact_update`. Text is trimmed; empty strings are rejected, so a write never clears
- * a field by accident (clearing is not supported).
+ * `sevdesk_contact_update`. Text is trimmed and empty strings are rejected, so a text field is
+ * never cleared, by accident or on purpose. What an update may take away is named explicitly in
+ * its `remove` argument ({@link removeInput}): one address, one communication way, or the link to
+ * the organisation a person belongs to.
  */
 import { z } from "zod";
 
@@ -11,10 +13,16 @@ import {
   type ContactDetails,
   contactDtoSchema,
 } from "../../domain/contacts.js";
+import { REMOVE_KINDS } from "../../domain/contacts-delete.js";
 import { CONTACT_CATEGORY_KEYS } from "../../domain/reference-data.js";
 
 function textInput(max: number) {
   return z.string().trim().min(1).max(max);
+}
+
+/** A sevDesk id argument (contact, address, communication way); add `.describe(...)`. */
+export function recordIdInput() {
+  return z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 }
 
 /** USt-IdNr.: spaces removed, upper case, two-letter country prefix (EL for Greece). */
@@ -38,7 +46,31 @@ export const contactFieldsShape = {
   buyerReference: textInput(100)
     .optional()
     .describe("Leitweg-ID / buyer reference for e-invoices (XRechnung) to public bodies."),
+  parentOrganisationId: recordIdInput()
+    .optional()
+    .describe(
+      "Persons only: the id of the organisation contact this person belongs to as contact " +
+        "person (Ansprechpartner). Must be an organisation.",
+    ),
 };
+
+/** The `remove` argument of `sevdesk_contact_update`: what to take off the contact. */
+export const removeInput = z
+  .array(
+    z.strictObject({
+      kind: z
+        .enum(REMOVE_KINDS)
+        .describe(
+          "address, email, phone, mobile or website (one entry of the contact), or " +
+            "parentOrganisation (the person's link to its organisation).",
+        ),
+      id: recordIdInput().describe(
+        "The entry's id from sevdesk_contact_get; for parentOrganisation the organisation's id.",
+      ),
+    }),
+  )
+  .min(1)
+  .max(25);
 
 /** The contact category argument. */
 export const categoryInput = z
