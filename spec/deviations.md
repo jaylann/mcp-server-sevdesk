@@ -3424,8 +3424,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   set it back to 100 (D-060). Every transaction carries `deletedAt` and `restoredAt` (null
   unless deleted), keys the spec does not declare. Lists and balances leave soft-deleted rows
   out: after the run, the unfiltered `GET /CheckAccountTransaction` (53 rows, total 53) held no
-  row with `deletedAt`, and on all seven active accounts `getBalanceAtDate` equalled the sum of
-  the listed rows. A soft-deleted row stays readable only by id.
+  row with `deletedAt`, and on each of the seven active accounts listed then (the six of the
+  banking run and the file-import account of `write-transaction-enshrine`) `getBalanceAtDate`
+  equalled the sum of the listed rows. A soft-deleted row stays readable only by id.
 - **Sources:** spec (`deleteCheckAccountTransaction`); recorded 2026-11-16, trial account,
   Update 2.0 (probes `write-transaction-delete`, `write-check-account-factories`,
   `read-transaction-soft-delete`).
@@ -3458,8 +3459,10 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
     `name` and `update`.
   - `DELETE /CheckAccount/{id}` answers 2xx `{objects: [null]}` and **archives** the account:
     `GET /CheckAccount/{id}` still answers it with `status` `"0"`, and `GET /CheckAccount` leaves
-    it out (6 accounts listed after the run, all at 100). An account that still holds a
-    transaction is archived just as well, and its transaction gets `deletedAt` (D-096). The
+    it out (`read-check-account-kinds` listed 6 accounts right after the banking run, all at 100;
+    `read-transaction-soft-delete` and the fixture's `total` count 7, after
+    `write-transaction-enshrine` had made its own file-import account). An account that still
+    holds a transaction is archived just as well, and its transaction gets `deletedAt` (D-096). The
     unfiltered `GET /CheckAccountTransaction` lists no row of an archived account
     (`read-transaction-soft-delete`, 53 rows, none outside the active accounts).
   - Rows carry `autoMapTransaction` (singular), not the spec's `autoMapTransactions`. A
@@ -3743,7 +3746,7 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   `test/regressions/offer-status-and-confirmation.test.ts` ("refuses to accept/reject/reopen a
   draft offer", "builds and sends only {status}"). Live: probe `write-order-status-accept-reject`
   (`test/unit/scripts/gaps-documents-probes.test.ts`, "sets offer statuses, sets them back, and
-  records the refusal on a draft").
+  records the renumbering of a draft").
 
 ### D-109: `DELETE /Order` and `DELETE /CreditNote` delete only drafts
 
