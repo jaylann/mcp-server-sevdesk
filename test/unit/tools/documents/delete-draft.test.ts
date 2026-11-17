@@ -9,12 +9,14 @@ import { testConfig } from "../../../helpers/config.js";
 import { withCountryRoute } from "../../../helpers/country-route.js";
 import { type FakeRoute, FakeSevdeskClient } from "../../../helpers/fake-client.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
+import { discountRow, discountsRoute } from "../drafts/routes.js";
 import {
   creditNoteRow,
   documentRoute,
   invoiceRow,
   orderRow,
   positionRoutes,
+  renderRoute,
   type Row,
   StagedClient,
   writeRoute,
@@ -93,6 +95,7 @@ function readsOnly(c: Case, row: Row): FakeSevdeskClient {
 }
 
 const [INVOICE, CREDIT_NOTE, ORDER] = DRAFTS as [Case, Case, Case];
+const INVOICE_ARGS = { kind: "invoice", id: 1001 };
 
 describe("sevdesk_document_delete_draft", () => {
   it("is a commit tool in the meta toolset: destructive, idempotent, closed world", () => {
@@ -162,19 +165,101 @@ describe("sevdesk_document_delete_draft", () => {
   });
 
   it.each([CREDIT_NOTE, ORDER])(
-    "says that the number of a numbered $arg draft is handed out again (D-066)",
+    "says that the number of a numbered $arg draft comes back only if it was the last (D-066)",
     async (c) => {
       const plan = await prepareWrite(tool, { kind: c.arg, id: idOf(c.row) }, readsOnly(c, c.row));
+      expect(plan.preview.warnings).toHaveLength(2);
       expect(plan.preview.warnings[1]).toBe(
-        "The draft's number is not used up: sevDesk gives it to the next document of the " +
-          "number range, so the range keeps no gap.",
+        "If the draft's number is the last one sevDesk handed out in its number range, sevDesk " +
+          "gives it to the next document again; otherwise the number stays unused and the range " +
+          "has a gap.",
       );
       expect(plan.previewDe.warnings[1]).toBe(
-        "Die Nummer des Entwurfs ist nicht verbraucht: sevDesk vergibt sie an das nächste " +
-          "Dokument des Nummernkreises, der Nummernkreis bleibt also lückenlos.",
+        "Ist die Nummer des Entwurfs die zuletzt vergebene seines Nummernkreises, vergibt sevDesk " +
+          "sie an das nächste Dokument erneut; sonst bleibt die Nummer unbenutzt und der " +
+          "Nummernkreis hat eine Lücke.",
       );
     },
   );
+
+  describe("an invoice draft with a number (it may have been issued and reset to draft)", () => {
+    const numbered = { status: "100", invoiceNumber: "RE-1012", sendDate: null, sendType: null };
+
+    it("warns that deleting it leaves a gap if the number was issued", async () => {
+      const row = invoiceRow(numbered);
+      const plan = await prepareWrite(tool, INVOICE_ARGS, readsOnly(INVOICE, row));
+      expect(plan.preview.warnings).toEqual([
+        "The draft and all its positions are deleted from sevDesk; this cannot be undone.",
+        "This invoice draft already has a number. If that number was issued (for example, the " +
+          "invoice was finalized and later reset to draft), deleting the draft leaves a gap in " +
+          "the invoice number range. An issued invoice is cancelled, not deleted: finalize it " +
+          "again and cancel it with sevdesk_invoice_cancel (Storno).",
+      ]);
+      expect(plan.previewDe.warnings).toEqual([
+        "Der Entwurf und alle seine Positionen werden aus sevDesk gelöscht; das lässt sich nicht " +
+          "rückgängig machen.",
+        "Dieser Rechnungsentwurf hat bereits eine Nummer. Wurde sie schon vergeben (etwa weil " +
+          "die Rechnung fertiggestellt und später auf Entwurf zurückgesetzt wurde), hinterlässt " +
+          "das Löschen eine Lücke im Nummernkreis der Rechnungen. Eine ausgestellte Rechnung " +
+          "wird nicht gelöscht, sondern storniert: Stelle sie erneut fertig und storniere sie " +
+          "mit sevdesk_invoice_cancel (Storno).",
+      ]);
+      // The number itself is among the facts, not in the warning.
+      expect(plan.preview.facts[0]).toEqual({
+        label: "Invoice (Rechnung)",
+        value: "RE-1012 (id 1001)",
+      });
+    });
+
+    it("says more when sevDesk records it as sent, with the send date", async () => {
+      const row = invoiceRow({
+        ...numbered,
+        sendDate: "2026-10-22T00:00:00+02:00",
+        sendType: "VM",
+      });
+      const plan = await prepareWrite(tool, INVOICE_ARGS, readsOnly(INVOICE, row));
+      expect(plan.preview.warnings[1]).toBe(
+        "This invoice draft has a number, and sevDesk records it as sent on 2026-10-22: the " +
+          "customer has probably received it under that number. Deleting it leaves a gap in the " +
+          "invoice number range and removes an invoice the customer holds. An issued invoice is " +
+          "cancelled, not deleted: finalize it again and cancel it with sevdesk_invoice_cancel " +
+          "(Storno).",
+      );
+      expect(plan.previewDe.warnings[1]).toBe(
+        "Dieser Rechnungsentwurf hat eine Nummer, und sevDesk führt ihn als versendet (am " +
+          "22.10.2026): Der Kunde hat die Rechnung wahrscheinlich unter dieser Nummer erhalten. " +
+          "Das Löschen hinterlässt eine Lücke im Nummernkreis der Rechnungen und entfernt eine " +
+          "Rechnung, die beim Kunden liegt. Eine ausgestellte Rechnung wird nicht gelöscht, " +
+          "sondern storniert: Stelle sie erneut fertig und storniere sie mit " +
+          "sevdesk_invoice_cancel (Storno).",
+      );
+    });
+
+    it("leaves the date out when only the send type says it was sent", async () => {
+      const row = invoiceRow({ ...numbered, sendType: "VPDF" });
+      const plan = await prepareWrite(tool, INVOICE_ARGS, readsOnly(INVOICE, row));
+      expect(plan.preview.warnings[1]).toMatch(
+        /^This invoice draft has a number, and sevDesk records it as sent: /,
+      );
+      expect(plan.previewDe.warnings[1]).toMatch(
+        /^Dieser Rechnungsentwurf hat eine Nummer, und sevDesk führt ihn als versendet: /,
+      );
+    });
+
+    it("still deletes it after the approval: a warning, not a refusal", async () => {
+      const row = invoiceRow({
+        ...numbered,
+        sendDate: "2026-10-22T00:00:00+02:00",
+        sendType: "VM",
+      });
+      const fake = staged({ ...INVOICE, row });
+      const { output } = await executeWrite(tool, INVOICE_ARGS, fake);
+      expect(fake.writes().map((call) => [call.method, call.path])).toEqual([
+        ["DELETE", "/Invoice/1001"],
+      ]);
+      expect(output.data.deleted).toBe(true);
+    });
+  });
 
   it("leaves the number note out for a credit note draft without a number", async () => {
     const row = creditNoteRow({ status: "100", creditNoteNumber: null });
@@ -186,7 +271,7 @@ describe("sevdesk_document_delete_draft", () => {
     expect(plan.preview.warnings).toHaveLength(1);
   });
 
-  it("binds the approval to the stored record and its positions", async () => {
+  it("binds the approval to the stored record, its positions, discounts and layout", async () => {
     const id = 1001;
     const args = { kind: "invoice", id };
     const position = {
@@ -197,14 +282,30 @@ describe("sevdesk_document_delete_draft", () => {
       quantity: "1",
       price: "100",
     };
-    const withRows = (row: Row, rows: readonly Row[]): FakeSevdeskClient =>
+    // `extra` routes come first, so they replace the defaults of `positionRoutes`.
+    const withRows = (
+      row: Row,
+      rows: readonly Row[],
+      extra: readonly FakeRoute[] = [],
+    ): FakeSevdeskClient =>
       new FakeSevdeskClient(
         withCountryRoute([
           documentRoute("invoice", row),
+          ...extra,
           ...positionRoutes({ "/InvoicePos": rows }),
         ]),
       );
-    const base = await prepareWrite(tool, args, withRows(INVOICE.row, [position]));
+    const fake = withRows(INVOICE.row, [position]);
+    const base = await prepareWrite(tool, args, fake);
+    // The binding read the discounts and, for a draft, the layout (`render` without reload, a
+    // reading POST: no write).
+    expect(fake.calls.map((call) => [call.method, call.path])).toEqual(
+      expect.arrayContaining([
+        ["GET", "/Invoice/1001/getDiscounts"],
+        ["POST", "/Invoice/1001/render"],
+      ]),
+    );
+    expect(fake.writes()).toEqual([]);
     const same = await prepareWrite(tool, args, withRows(INVOICE.row, [position]));
     const editedText = await prepareWrite(
       tool,
@@ -216,14 +317,38 @@ describe("sevdesk_document_delete_draft", () => {
       args,
       withRows(INVOICE.row, [{ ...position, price: "200" }]),
     );
+    const addedDiscount = await prepareWrite(
+      tool,
+      args,
+      withRows(
+        INVOICE.row,
+        [position],
+        [discountsRoute("Invoice", id, [discountRow("Invoice", id)])],
+      ),
+    );
+    const otherLanguage = await prepareWrite(
+      tool,
+      args,
+      withRows(INVOICE.row, [position], [renderRoute("invoice", { language: "en" })]),
+    );
     expect(same.binding).toBe(base.binding);
     expect(editedText.binding).not.toBe(base.binding);
     expect(editedPosition.binding).not.toBe(base.binding);
+    expect(addedDiscount.binding).not.toBe(base.binding);
+    expect(otherLanguage.binding).not.toBe(base.binding);
   });
 
-  it("says so when sevDesk still returns the document after the DELETE", async () => {
-    const fake = staged(ORDER, documentRoute("order", ORDER.row));
+  it.each([
+    ["the full record", ORDER.row],
+    // The read-back is a plain GET: a record this server could not map still counts as there.
+    ["a record this server could not map", { id: "3002", objectName: "Order", status: "bogus" }],
+  ])("says so when sevDesk still returns %s after the DELETE", async (_label, row) => {
+    const fake = staged(ORDER, { path: ORDER.path, response: { body: { objects: [row] } } });
     const { output } = await executeWrite(tool, { kind: "order", id: 3002 }, fake);
+    expect(fake.after.calls.map((call) => [call.method, call.path, call.query])).toEqual([
+      ["DELETE", ORDER.path, {}],
+      ["GET", ORDER.path, {}],
+    ]);
     expect(output.data.deleted).toBe(false);
     expect(output.data.notes).toEqual([
       "sevDesk accepted the deletion, but still returns order 3002. Check it with " +
@@ -232,6 +357,12 @@ describe("sevdesk_document_delete_draft", () => {
     expect(output.summary).toBe(
       "Asked sevDesk to delete order 3002; it is still there. See notes.",
     );
+  });
+
+  it("counts an empty answer to the read-back as gone", async () => {
+    const fake = staged(ORDER, { path: ORDER.path, response: { body: { objects: [] } } });
+    const { output } = await executeWrite(tool, { kind: "order", id: 3002 }, fake);
+    expect(output.data.deleted).toBe(true);
   });
 
   it("reports the deletion as done when the read-back fails", async () => {
@@ -247,6 +378,46 @@ describe("sevdesk_document_delete_draft", () => {
       "sevDesk accepted the deletion of credit note 2001, but the check afterwards failed: " +
         "Down. Do not delete again; check with sevdesk_credit_note_get.",
     );
+    expect(error.completedWrites).toEqual([{ objectName: "CreditNote", id: "2001" }]);
+  });
+
+  it("reports the deletion as done when the read-back answer is unreadable", async () => {
+    const fake = staged(CREDIT_NOTE, {
+      path: CREDIT_NOTE.path,
+      response: { body: { objects: "not a record" } },
+    });
+    const error = (await executeWrite(tool, { kind: "credit_note", id: 2001 }, fake).catch(
+      (caught: unknown) => caught,
+    )) as SevdeskError;
+    expect(error).toBeInstanceOf(SevdeskError);
+    expect(error.kind).toBe("unexpected_response");
+    expect(error.message).toBe(
+      "sevDesk accepted the deletion of credit note 2001, but the check afterwards failed: " +
+        "sevDesk returned an unexpected format: expected one credit note 2001. Do not delete " +
+        "again; check with sevdesk_credit_note_get.",
+    );
+    expect(error.completedWrites).toEqual([{ objectName: "CreditNote", id: "2001" }]);
+  });
+
+  it("reports the deletion as done when the read-back throws something else", async () => {
+    const body = {
+      // A failure that is no SevdeskError, thrown while the answer is read.
+      get objects(): never {
+        throw new TypeError("Cannot read the answer.");
+      },
+    };
+    const fake = staged(CREDIT_NOTE, { path: CREDIT_NOTE.path, response: { body } });
+    const error = (await executeWrite(tool, { kind: "credit_note", id: 2001 }, fake).catch(
+      (caught: unknown) => caught,
+    )) as SevdeskError;
+    expect(error).toBeInstanceOf(SevdeskError);
+    expect(error.kind).toBe("unexpected_response");
+    // Its text is not ours, so it stays out of the message.
+    expect(error.message).toBe(
+      "sevDesk accepted the deletion of credit note 2001, but the check afterwards failed. Do " +
+        "not delete again; check with sevdesk_credit_note_get.",
+    );
+    expect(error.cause).toBeInstanceOf(TypeError);
     expect(error.completedWrites).toEqual([{ objectName: "CreditNote", id: "2001" }]);
   });
 

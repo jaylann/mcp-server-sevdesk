@@ -49,6 +49,7 @@ Handel = "Handel"
 ist = "ist"
 Oktober = "Oktober"
 Paket = "Paket"
+Branche = "Branche"
 vor = "vor"
 # Deliberately mangled objectName in the error-rendering sanitizer test.
 SYSTE = "SYSTE"
@@ -86,5 +87,12 @@ passt = "passt"
 separat = "separat"
 suche = "suche"
 Ende = "Ende"
+# The German name of a document language (src/domain/layouts.ts) and sevDesk's label for it.
+Spanisch = "Spanisch"
+spanisch = "spanisch"
+Exporte = "Exporte"
 # The informal address of the German page texts, which their tests quote.
 deine = "deine"
+# German words in the receipt folder check's statement of what a match proves (matchingDe).
+Foto = "Foto"
+Programm = "Programm"

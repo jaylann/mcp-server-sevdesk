@@ -5,13 +5,34 @@
  * since two identical documents can be legitimate.
  *
  * It uses the list operations of the M2 domain with sevDesk's own filters (contact, date range,
- * type) and compares totals exactly. Only ids go into the warning; numbers are upstream text.
+ * type) and compares totals exactly ({@link sameGross}, which the `duplicates` audit check uses as
+ * well). Only ids go into the warning; numbers are upstream text.
  */
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { listCreditNotes } from "../credit-notes.js";
 import { listInvoices } from "../invoices.js";
-import { compare } from "../money.js";
+import { compare, type DecimalLike } from "../money.js";
 import { listOrders, type OrderTypeFilter } from "../orders.js";
+
+/** A gross total in a document's own currency; `undefined` when the document has none. */
+export interface GrossAmount {
+  readonly currency: string;
+  readonly gross: DecimalLike | undefined;
+}
+
+/**
+ * Whether two documents have the same gross total: the same currency and exactly the same amount
+ * (decimal comparison, so `"10.5"` equals `"10.50"`). A missing total never matches; `0` is an
+ * amount like any other.
+ */
+export function sameGross(a: GrossAmount, b: GrossAmount): boolean {
+  return (
+    a.currency === b.currency &&
+    a.gross !== undefined &&
+    b.gross !== undefined &&
+    compare(a.gross, b.gross) === 0
+  );
+}
 
 /** Rows checked per document type; a contact rarely has more documents on one day. */
 const DUPLICATE_SCAN_LIMIT = 25;
@@ -57,11 +78,11 @@ export async function findDuplicates(
     rows = (await listOrders(client, { ...common, type: target.orderType }, signal)).items;
   }
   return rows
-    .filter(
-      (row) =>
-        row.currency === query.currency &&
-        row.totals.gross !== undefined &&
-        compare(row.totals.gross.amount, query.gross) === 0,
+    .filter((row) =>
+      sameGross(
+        { currency: row.currency, gross: row.totals.gross?.amount },
+        { currency: query.currency, gross: query.gross },
+      ),
     )
     .map((row) => row.id)
     .sort((a, b) => a - b);

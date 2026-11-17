@@ -6,7 +6,8 @@
  * 100 and 50 (D-112), and a refusal that depends on sevDesk alone would leave the safety of a
  * GoBD-relevant record to an upstream check. So the tool refuses every non-draft, every template
  * and every kind whose toolset is off before any data-changing request, and binds the approval to
- * the stored draft: an edit between the preview and the approval asks the human again.
+ * the stored draft (record, positions, document discounts, layout): an edit between the preview
+ * and the approval asks the human again.
  */
 import { describe, expect, it } from "vitest";
 
@@ -19,12 +20,15 @@ import {
   writeHarness,
   writesOf,
 } from "../helpers/write-flow.js";
+import { discountRow } from "../unit/tools/drafts/routes.js";
 import {
   creditNoteRow,
   documentRoute,
   invoiceRow,
+  layoutObjects,
   orderRow,
   positionRoutes,
+  renderRoute,
   type Row,
   writeRoute,
 } from "../unit/tools/lifecycle/helpers.js";
@@ -111,6 +115,49 @@ describe("the draft delete never sends a DELETE for a non-draft", () => {
         answer: (params) => {
           // While the human reads the first prompt, the draft is edited.
           if (prompts.length === 1) row["footText"] = "Andere Bankverbindung.";
+          return approve(params);
+        },
+      },
+    });
+    await client.callTool({ name: "sevdesk_document_delete_draft", arguments: ARGS.invoice });
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]?.message).toMatch(/^The record changed after you were asked/);
+    expect(writesOf(fake)).toEqual([{ method: "DELETE", path: PATHS.invoice }]);
+  });
+
+  // The binding also covers the document discounts and a draft's layout (`readDocumentContent`).
+  it.each([
+    [
+      "a discount is added",
+      (discounts: Row[]): void => {
+        discounts.push(discountRow("Invoice", 1001, { text: "Andere Bankverbindung" }));
+      },
+    ],
+    [
+      "the language changes",
+      (_discounts: Row[], layout: Row): void => {
+        Object.assign(layout, layoutObjects({ language: "en" }));
+      },
+    ],
+  ] as const)("asks again when %s after the human was asked", async (_label, edit) => {
+    const row = invoiceRow({ status: "100", invoiceNumber: null });
+    // Read at request time, so the edits below change what sevDesk answers.
+    const discounts: Row[] = [];
+    const layout: Row = layoutObjects();
+    const { client, fake, prompts } = await writeHarness({
+      tools: [documentDeleteDraftTool],
+      routes: [
+        documentRoute("invoice", row),
+        { path: "/Invoice/1001/getDiscounts", response: { body: { objects: discounts } } },
+        renderRoute("invoice", {}, layout),
+        ...positionRoutes(),
+        writeRoute("DELETE", PATHS.invoice, "document-delete.json"),
+      ],
+      connect: {
+        era: "modern",
+        transport: "http",
+        answer: (params) => {
+          if (prompts.length === 1) edit(discounts, layout);
           return approve(params);
         },
       },

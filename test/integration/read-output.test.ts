@@ -43,6 +43,10 @@ describe.each(["modern", "legacy"] as const)("%s read result text", (era) => {
         { path: "/InvoicePos", response: { fixture: "invoices/invoice-positions-1001.json" } },
         { path: "/Invoice", response: { fixture: "invoices/invoices-list.json" } },
         { path: "/Unity", response: { fixture: "meta/units.json" } },
+        {
+          path: "/Invoice/1001/getDiscounts",
+          response: { fixture: "recorded/2026-11-16/orders/order-discounts.json" },
+        },
       ]),
     );
     const client = await connectInProcess({ client: fake }, { era });

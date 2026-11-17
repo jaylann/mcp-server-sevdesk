@@ -1,0 +1,112 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /CreditNote/{creditNote} of a credit note made by POST /CreditNote/Factory/createFromInvoice (recording session 2026-11-16, probe write-credit-note-update-draft)",
+    "date": "2026-11-16",
+    "systemVersion": "2.0",
+    "note": "Keys, nulls and scalar types as recorded for the draft from an invoice (origin and refSrcInvoice both the invoice, deliveryDate and creditNoteDate with a time, discountTime null); all values fake: underachievement of invoice 1001 for contact 1001, number GU-1003, two positions (credit-note-positions-2202.json), head and foot text, internal note."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "2202",
+        "objectName": "CreditNote",
+        "additionalInformation": null,
+        "creditNoteNumber": "GU-1003",
+        "contact": {
+          "id": "1001",
+          "objectName": "Contact"
+        },
+        "create": "2026-11-02T10:15:00+01:00",
+        "update": "2026-11-02T10:15:00+01:00",
+        "creditNoteDate": "2026-11-02T10:15:00+01:00",
+        "header": "Gutschrift zu RE-1001",
+        "headText": "Wir schreiben Ihnen gut:",
+        "footText": "Der Betrag wird verrechnet.",
+        "timeToPay": null,
+        "discountTime": null,
+        "discount": "0",
+        "addressName": "Musterfirma GmbH, Buchhaltung",
+        "addressStreet": "Musterstraße 1",
+        "addressZip": "12345",
+        "addressCity": "Musterstadt",
+        "addressCountry": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "payDate": null,
+        "createUser": {
+          "id": "7001",
+          "objectName": "SevUser"
+        },
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "deliveryDate": "2026-11-02T10:15:00+01:00",
+        "status": "100",
+        "smallSettlement": "0",
+        "contactPerson": {
+          "id": "7001",
+          "objectName": "SevUser"
+        },
+        "taxRate": "0",
+        "taxText": null,
+        "addressParentName": null,
+        "taxType": null,
+        "sendDate": null,
+        "origin": {
+          "id": "1001",
+          "objectName": "Invoice"
+        },
+        "creditNoteType": "CN",
+        "accountIntervall": null,
+        "accountLastCreditNote": null,
+        "accountNextCreditNote": null,
+        "reminderTotal": null,
+        "reminderDebit": null,
+        "reminderDeadline": null,
+        "reminderCharge": null,
+        "addressParentName2": null,
+        "addressName2": null,
+        "addressGender": null,
+        "accountEndDate": null,
+        "address": null,
+        "currency": "EUR",
+        "sumNet": "40",
+        "sumTax": "7.6",
+        "sumGross": "47.6",
+        "sumDiscounts": "0",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountsForeignCurrency": "0",
+        "sumNetAccounting": "40",
+        "sumTaxAccounting": "7.6",
+        "sumGrossAccounting": "47.6",
+        "customerInternalNote": "Reklamation 17",
+        "taxNumber": null,
+        "vatNumber": null,
+        "showNet": "1",
+        "enshrined": null,
+        "sendType": "0",
+        "bookingCategory": "UNDERACHIEVEMENT",
+        "deliveryDateUntil": null,
+        "refSrcInvoice": {
+          "id": "1001",
+          "objectName": "Invoice"
+        },
+        "isTransferred": "0",
+        "sumDiscountNet": "0",
+        "sumDiscountGross": "0",
+        "sumDiscountNetForeignCurrency": "0",
+        "sumDiscountGrossForeignCurrency": "0",
+        "taxRule": {
+          "id": "1",
+          "objectName": "TaxRule"
+        }
+      }
+    ]
+  }
+}

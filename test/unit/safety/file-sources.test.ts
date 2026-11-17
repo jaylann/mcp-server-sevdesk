@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -11,6 +11,7 @@ import { localFileAccess, remoteFileAccess } from "../../../src/safety/file-sour
 import { createTransferStore } from "../../../src/safety/transfer-store.js";
 import { SevdeskError } from "../../../src/sevdesk/errors.js";
 import { testConfig } from "../../helpers/config.js";
+import { fakeLinks, LINK, LINK_HOST } from "../../helpers/links.js";
 import {
   FILES_ORIGIN,
   filesConfig,
@@ -112,6 +113,72 @@ describe("localFileAccess: reading", () => {
     const error = await refusal(() => files.requestUpload("receipt"));
     expect(error.message).toContain("SEVDESK_HTTP_FILES");
   });
+});
+
+describe("file access: https links", () => {
+  it("downloads a link from an allowed host instead of reading a path, and keeps nothing", async () => {
+    const links = fakeLinks();
+    const config = { fileDirs: [], outputDir: undefined, fileUrlHosts: [LINK_HOST] };
+    const files = localFileAccess(config, links.reader);
+
+    expect(files.canRead).toBe(true);
+    expect(await files.read(LINK, RECEIPT)).toMatchObject({
+      name: "Rechnung-4711.pdf",
+      source: "url",
+      host: LINK_HOST,
+    });
+    files.release(LINK);
+    expect(await files.read(LINK, RECEIPT)).toMatchObject({ source: "url" });
+    expect(links.requests).toHaveLength(2);
+    // Without hosts the folders decide what can be read: nothing here.
+    expect(localFileAccess({ fileDirs: [], outputDir: undefined }).canRead).toBe(false);
+  });
+
+  it("refuses links naming the setting when no host is allowed, without any request", async () => {
+    const dir = await tempDir();
+    const links = fakeLinks({ hosts: [] });
+    const local = localFileAccess({ fileDirs: [dir], outputDir: undefined }, links.reader);
+    const transfer = await openTransfer();
+    const remote = remoteFileAccess(filesConfig(), transfer.store, OWNER, links.reader);
+
+    for (const files of [local, remote]) {
+      const error = await refusal(files.read(LINK, RECEIPT));
+      expect(error.message).toContain("SEVDESK_FILE_URL_HOSTS is not set");
+      expect(error.message).not.toContain("SIGNATURE");
+    }
+    expect(links.resolved).toEqual([]);
+    expect(links.requests).toEqual([]);
+  });
+
+  it("sends a link to the reader over HTTP too, before uploads and paths", async () => {
+    const transfer = await openTransfer();
+    const links = fakeLinks();
+    const files = remoteFileAccess(
+      filesConfig({ fileUrlHosts: [LINK_HOST] }),
+      transfer.store,
+      OWNER,
+      links.reader,
+    );
+
+    expect(await files.read(LINK, EINVOICE)).toMatchObject({ kind: "pdf", source: "url" });
+    const ref = await transfer.upload(PDF);
+    expect(await files.read(ref, RECEIPT)).toMatchObject({ source: "upload" });
+    expect(links.requests).toHaveLength(1);
+  });
+
+  it.runIf(POSIX)(
+    "reads a local file whose name starts like a link when passed as ./…",
+    async () => {
+      const dir = await tempDir();
+      await mkdir(join(dir, "https:"));
+      await writeFile(join(dir, "https:", "x.pdf"), PDF);
+      const links = fakeLinks();
+      const files = localFileAccess({ fileDirs: [dir], outputDir: undefined }, links.reader);
+
+      expect(await files.read("./https://x.pdf", RECEIPT)).toMatchObject({ source: "local" });
+      expect(links.requests).toEqual([]);
+    },
+  );
 });
 
 describe("localFileAccess: delivering", () => {

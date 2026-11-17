@@ -27,6 +27,7 @@ import { SevdeskError } from "../../sevdesk/errors.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { statusDto } from "../common.js";
 import type { CountryReadOptions } from "../country-codes.js";
+import { readDocumentDiscounts } from "../document-discounts.js";
 import {
   getOrder,
   ORDER_TYPE_FILTERS,
@@ -36,16 +37,34 @@ import {
 import { documentTypeByCode } from "../reference-data.js";
 import { berlinDay, loadCurrentOrder } from "./current.js";
 import {
+  createDiscountBody,
+  createTotals,
+  type DiscountInput,
+  discountInput,
+  discountReadBackNote,
+  discountText,
+  discountUpdateInput,
+  type DraftDiscount,
+  planDiscountChange,
+  resolveDiscount,
+  updateTotals,
+} from "./discount.js";
+import {
   assertChanges,
   ChangeLog,
   draftPreview,
+  logContactPersonChange,
+  logDiscountChange,
+  logPricingChanges,
+  logRecipientChanges,
+  logTextChanges,
   numberLabel,
   positionCount,
   ref,
   storedNumber,
   storedRef,
-  storedTotalText,
   taxText,
+  updateTotalFact,
 } from "./document.js";
 import { duplicateWarning, findDuplicates } from "./duplicates.js";
 import {
@@ -79,7 +98,6 @@ import {
 } from "./payloads.js";
 import {
   type Amounts,
-  expectedTotals,
   MAX_POSITIONS,
   orderPositionInput,
   type PositionInput,
@@ -106,8 +124,19 @@ import {
   type UpdateArgs,
 } from "./shared.js";
 import { DEFAULT_TAX_RULE_ID, type RuleScope, SALES_TAX_RULE_IDS } from "./tax.js";
+import {
+  footTextTemplateInput,
+  headTextTemplateInput,
+  resolveTemplateTexts,
+  type TextArgs,
+} from "./template-texts.js";
 
 const ORDER_SCOPE: RuleScope = { allowedRuleIds: SALES_TAX_RULE_IDS, documents: "orders" };
+/**
+ * The text template type (`objectType`) of every order type: `AN`, the only order type the
+ * account's text templates carry (recorded 2026-11-17, D-115); no `AB` or `LI` rows exist.
+ */
+const ORDER_TEXT_TYPE = "AN";
 const FINALIZE_TOOL = "sevdesk_order_finalize";
 const ORDER_TYPE_NAMES = Object.keys(ORDER_TYPE_FILTERS) as [OrderTypeFilter, ...OrderTypeFilter[]];
 type OrderTypeCode = (typeof ORDER_TYPE_FILTERS)[OrderTypeFilter];
@@ -141,8 +170,11 @@ export const orderCreateInputShape = {
   ),
   headText: headTextInput,
   footText: footTextInput,
+  headTextTemplate: headTextTemplateInput,
+  footTextTemplate: footTextTemplateInput,
   paymentTerms: termsText("Zahlungsbedingungen"),
   deliveryTerms: termsText("Lieferbedingungen"),
+  discount: discountInput.optional(),
   contactPersonId: contactPersonIdInput,
   ...addressInputShape,
 };
@@ -171,31 +203,33 @@ export const orderUpdateInputShape = {
   header: headerInput,
   headText: headTextInput,
   footText: footTextInput,
+  headTextTemplate: headTextTemplateInput,
+  footTextTemplate: footTextTemplateInput,
   paymentTerms: termsText("Zahlungsbedingungen"),
   deliveryTerms: termsText("Lieferbedingungen"),
+  discount: discountUpdateInput,
   contactPersonId: contactPersonIdInput,
   ...addressInputShape,
 };
 
-export interface OrderCreateArgs extends CreateArgs {
+export interface OrderCreateArgs extends CreateArgs, TextArgs {
   readonly type: OrderTypeFilter;
   readonly positions: readonly PositionInput[];
   readonly date?: string | undefined;
   readonly header?: string | undefined;
-  readonly headText?: string | undefined;
-  readonly footText?: string | undefined;
   readonly paymentTerms?: string | undefined;
   readonly deliveryTerms?: string | undefined;
+  readonly discount?: DiscountInput | undefined;
 }
 
-export interface OrderUpdateArgs extends UpdateArgs {
+export interface OrderUpdateArgs extends UpdateArgs, TextArgs {
   readonly id: number;
   readonly date?: string | undefined;
   readonly header?: string | undefined;
-  readonly headText?: string | undefined;
-  readonly footText?: string | undefined;
   readonly paymentTerms?: string | undefined;
   readonly deliveryTerms?: string | undefined;
+  /** A new document discount, `null` to remove the stored one, left out to keep it. */
+  readonly discount?: DiscountInput | null | undefined;
 }
 
 export interface OrderDraftState {
@@ -203,6 +237,8 @@ export interface OrderDraftState {
   readonly body: SaveOrderBody;
   readonly orderId?: number | undefined;
   readonly expected?: Amounts | undefined;
+  /** The discount the call sent (`null`: removed), checked in the read-back. */
+  readonly discount?: DraftDiscount | null | undefined;
   /** Create only: the number range to reserve from and the number the preview showed. */
   readonly numbering?: { readonly range: NumberRange; readonly peeked: string } | undefined;
 }
@@ -225,13 +261,16 @@ export async function prepareOrderCreate(
   const code = ORDER_TYPE_FILTERS[args.type];
   const typeName = orderTypeLabel(code);
   const date = args.date ?? todayInBerlin();
+  const discount = args.discount === undefined ? undefined : resolveDiscount(args.discount);
+  const texts = await resolveTemplateTexts(client, args, ORDER_TEXT_TYPE, signal);
   const basics = await resolveCreateBasics(
     client,
     args,
     { scope: ORDER_SCOPE, defaultRuleId: DEFAULT_TAX_RULE_ID },
     options,
   );
-  const { contact, contactPerson, address, currency, expected, mode } = basics;
+  const { contact, contactPerson, address, currency, mode } = basics;
+  const expected = createTotals(basics.positions, mode, discount, currency);
   const duplicateQuery = { contactId: args.contactId, date, gross: expected.gross, currency };
   const duplicates = await findDuplicates(
     client,
@@ -257,8 +296,8 @@ export async function prepareOrderCreate(
         contactPerson: ref(contactPerson.id, "SevUser"),
         orderDate: wireDocumentDate(date),
         header,
-        headText: args.headText,
-        footText: args.footText,
+        headText: texts.headText,
+        footText: texts.footText,
         currency,
         showNet: mode === "net",
         ...basics.tax,
@@ -271,6 +310,7 @@ export async function prepareOrderCreate(
         positionPayload(position, index, "OrderPos"),
       ),
       orderPosDelete: null,
+      ...createDiscountBody(discount),
     },
     "order",
   );
@@ -283,12 +323,14 @@ export async function prepareOrderCreate(
     fact("Date", date),
     fact("Contact person", `${contactPerson.name} (user ${contactPerson.id})`),
     fact("Title", header),
+    ...texts.facts,
     ...(args.paymentTerms === undefined ? [] : [fact("Payment terms", args.paymentTerms)]),
     ...(args.deliveryTerms === undefined ? [] : [fact("Delivery terms", args.deliveryTerms)]),
     fact("Prices entered as", mode),
     fact("Tax", taxText(basics.rule, basics.tax)),
     fact("Tax text", basics.tax.taxText),
     ...positionFacts(basics.positions, mode, currency),
+    ...(discount === undefined ? [] : [fact("Discount", discountText(discount, currency))]),
     fact("Total (expected)", totalsText(expected, currency)),
   ];
   const preview = draftPreview(
@@ -302,7 +344,7 @@ export async function prepareOrderCreate(
       ...basics.warnings,
     ],
   );
-  return { preview, state: { body, expected, numbering: { range, peeked } } };
+  return { preview, state: { body, expected, numbering: { range, peeked }, discount } };
 }
 
 /** Prepares an update of a draft order; its stored number is kept (never reserved anew). */
@@ -316,6 +358,9 @@ export async function prepareOrderUpdate(
   const current = await loadCurrentOrder(client, args.id, signal);
   const doc = current.document;
   const code = checkUpdatable(doc);
+  const texts = await resolveTemplateTexts(client, args, ORDER_TEXT_TYPE, signal);
+  const discounts = await readDocumentDiscounts(client, "order", doc.id, signal);
+  const change = planDiscountChange(args.discount, discounts, `Order ${doc.id}`);
   const basics = await resolveUpdateBasics(
     client,
     doc,
@@ -334,8 +379,16 @@ export async function prepareOrderUpdate(
   );
   const storedDate = berlinDay(doc.orderDate);
   const date = args.date ?? storedDate ?? todayInBerlin();
-  const expected =
-    basics.positions === undefined ? undefined : expectedTotals(basics.positions, basics.mode);
+  const totals = updateTotals({
+    change,
+    positions: basics.positions,
+    storedPositions: current.positions,
+    mode: basics.mode,
+    currency: basics.currency,
+    currencyChanged: basics.currencyChanged,
+    stored: doc,
+  });
+  const expected = totals.expected;
   const header = args.header ?? doc.header ?? orderTypeLabel(code);
 
   const body = strictBody(
@@ -353,8 +406,8 @@ export async function prepareOrderUpdate(
         contactPerson: ref(basics.contactPerson.id, "SevUser"),
         orderDate: wireDocumentDate(date),
         header,
-        headText: args.headText ?? doc.headText,
-        footText: args.footText ?? doc.footText,
+        headText: texts.headText ?? doc.headText,
+        footText: texts.footText ?? doc.footText,
         currency: basics.currency,
         showNet: basics.mode === "net",
         ...basics.tax,
@@ -380,60 +433,22 @@ export async function prepareOrderUpdate(
         basics.positions === undefined || current.positions.length === 0
           ? null
           : current.positions.map((row) => ref(row.id, "OrderPos")),
+      ...change.body,
     },
     "order",
   );
 
   const log = new ChangeLog();
-  if (basics.contactChanged) {
-    log.value(
-      "contact",
-      "Customer",
-      `contact ${doc.contact?.id ?? "none"}`,
-      `contact ${basics.contact.contact.id}`,
-    );
-  }
-  if (basics.address !== undefined) {
-    log.value("address", "Address", basics.addressBefore, addressText(basics.address));
-  }
+  logRecipientChanges(log, doc, basics);
   log.value("date", "Date", storedDate, date);
-  if (basics.contactPersonChanged) {
-    log.value(
-      "contact person",
-      "Contact person",
-      doc.contactPerson === undefined ? undefined : `user ${doc.contactPerson.id}`,
-      `${basics.contactPerson.name ?? "user"} (user ${basics.contactPerson.id})`,
-    );
-  }
-  if (args.header !== undefined) log.value("title", "Title", doc.header, args.header);
-  if (args.headText !== undefined) log.note("intro text", "Intro text", "replaced");
-  if (args.footText !== undefined) log.note("closing text", "Closing text", "replaced");
+  logContactPersonChange(log, doc, basics);
+  logTextChanges(log, doc.header, { ...args, ...texts });
   if (args.paymentTerms !== undefined)
     log.value("payment terms", "Payment terms", doc.paymentTerms, args.paymentTerms);
   if (args.deliveryTerms !== undefined)
     log.value("delivery terms", "Delivery terms", doc.deliveryTerms, args.deliveryTerms);
-  if (basics.modeChanged) {
-    log.value(
-      "price mode",
-      "Prices entered as",
-      basics.mode === "net" ? "gross" : "net",
-      basics.mode,
-    );
-  }
-  if (basics.taxChanged)
-    log.note(
-      "tax",
-      "Tax",
-      `${taxText(basics.rule, basics.tax)}; text: ${basics.tax.taxText ?? "(none)"}`,
-    );
-  if (basics.currencyChanged) log.value("currency", "Currency", doc.currency, basics.currency);
-  if (basics.positions !== undefined) {
-    log.note(
-      "positions",
-      "Positions",
-      `replace ${positionCount(current.positions.length)} with ${positionCount(basics.positions.length)}`,
-    );
-  }
+  logPricingChanges(log, doc, basics, current.positions.length);
+  const keptDiscount = logDiscountChange(log, change, discounts.rows, basics.currency);
 
   const typeName = orderTypeLabel(code);
   const customer = customerText(basics.contact.contact.displayName, basics.contact.contact.id);
@@ -441,19 +456,22 @@ export async function prepareOrderUpdate(
     fact("Order", `${doc.id} (${typeName}, ${numberLabel(doc.orderNumber)}, draft)`),
     fact("Customer", customer),
     ...log.facts,
+    ...texts.facts,
     ...(basics.positions === undefined
       ? []
       : positionFacts(basics.positions, basics.mode, basics.currency)),
-    expected === undefined
-      ? fact("Total (unchanged)", storedTotalText(doc))
-      : fact("Total (expected)", totalsText(expected, basics.currency)),
+    ...keptDiscount,
+    updateTotalFact(totals, doc, basics.currency),
   ];
   const preview = draftPreview(
     `Update draft ${typeName} ${doc.id} for ${customer}: change ${log.changed.join(", ") || "nothing visible"}.`,
     facts,
-    basics.warnings,
+    [...basics.warnings, totals.warning],
   );
-  return { preview, state: { body, orderId: doc.id, expected } };
+  return {
+    preview,
+    state: { body, orderId: doc.id, expected, discount: change.planned },
+  };
 }
 
 export interface OrderDraftResult {
@@ -510,13 +528,16 @@ export async function executeOrderDraft(
       completedWrites: [saved],
     });
   }
-  const details = await readBack(saved, () => getOrder(client, id, { signal, cacheOwner }));
+  const details = await readBack(saved, () =>
+    getOrder(client, id, { signal, cacheOwner, withDiscount: true }),
+  );
   const changed =
     numbering === undefined || reserved === undefined
       ? undefined
       : changedNumberNote("order", numbering.peeked, reserved);
   const stored =
     reserved === undefined ? undefined : storedNumberNote("order", reserved, details.order.number);
+  const discountNote = discountReadBackNote(state.discount, details.discount, "order");
   const notes = [
     ...(changed === undefined ? [] : [changed]),
     ...(stored === undefined ? [] : [stored]),
@@ -529,6 +550,7 @@ export async function executeOrderDraft(
       },
       { noun: "order", finalizeTool: FINALIZE_TOOL, expected: state.expected },
     ),
+    ...(discountNote === undefined ? [] : [discountNote]),
   ];
   return { id, details, notes };
 }

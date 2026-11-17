@@ -1,4 +1,4 @@
-<!-- translated-from: docs/adr/0008-file-transfer-over-http.md sha256:9deefd865adc -->
+<!-- translated-from: docs/adr/0008-file-transfer-over-http.md sha256:a40720b9fa24 -->
 
 # ADR 0008: Dateiübertragung über HTTP
 
@@ -6,7 +6,8 @@
   [ADR 0010](0010-server-pages-in-two-languages.de.md); Freigabe von Uploads und einstellbare
   Anzahl geändert am 2026-11-12 ([#35](https://github.com/jaylann/mcp-server-sevdesk/issues/35));
   Stapel-Uploads geändert am 2026-11-12
-  ([#34](https://github.com/jaylann/mcp-server-sevdesk/issues/34))
+  ([#34](https://github.com/jaylann/mcp-server-sevdesk/issues/34)); Dateien von einem https-Link
+  geändert am 2026-11-16 ([#96](https://github.com/jaylann/mcp-server-sevdesk/issues/96))
 - **Datum:** 2026-11-09
 - **Ändert:** [ADR 0007](0007-approval-inbox-over-http.de.md) (seine Browser-Sitzung öffnet jetzt
   auch die Seiten zum Hoch- und Herunterladen)
@@ -180,6 +181,56 @@ Datei bekommt ihre eigene Laufzeit. Metadaten eines Stapels gibt es nur, solange
 Platz ein lebendes Ticket oder eine Datei hat, was die Metadaten über die Obergrenze der Einträge
 begrenzt; abgeschlossene oder vollständig abgelaufene Stapel werden unbekannt.
 
+**Dateien von einem https-Link (2026-11-16, #96).** Belege liegen oft schon unter einer URL (in
+einem Lieferantenportal, hinter einem Download-Link, in einem Cloud-Speicher), und sie nur
+herunterzuladen, um sie wieder hochzuladen, kostet den Benutzer einen Umweg über den Browser. Das
+Argument `file` nimmt deshalb auch einen https-Link an, in jedem Modus, auch über stdio, wenn der
+Betreiber Hosts in `SEVDESK_FILE_URL_HOSTS` einträgt (standardmäßig leer: Jeder Link wird vor jeder
+Netzwerkanfrage abgelehnt, mit dem Namen der Einstellung). Das Argument bleibt eine Zeichenkette,
+die dritte Form neben einem Pfad und `upload:<id>` (alles, was wie eine URL beginnt, ist ein Link;
+eine lokale Datei mit so einem Namen wird als `./https:…` übergeben); die Schemas bleiben also
+statisch und `tools/list` stabil, wie oben. Der Link kommt vom Modell; der Download ist deshalb so
+eingegrenzt wie der Abruf der Client-Metadaten im OAuth-Modus, dessen Schutz für beide nach
+`src/safety/public-address.ts` und `src/safety/pinned-https.ts` umgezogen ist: nur https, der
+Standardport, keine Benutzerangaben, ein Hostname auf der Liste (genau, oder `*.example.com` für
+dessen Subdomains), je Download einmal aufgelöst und nur zu öffentlichen Adressen, die Verbindung
+an die geprüfte Adresse gebunden; keine Cookies, Zugangsdaten oder sevDesk-Token; nur 200,
+unkomprimiert, ein Inhaltstyp, der zum Inhalt passt (an den Headern geprüft, bevor der Body gelesen
+wird), keine Webseite, wo XML erwartet wird, die Größengrenze des Aufrufers (20 MiB) an
+`Content-Length` und während der Übertragung, 60 Sekunden insgesamt, zwei Downloads gleichzeitig
+je Konto und vier im Prozess. **Weiterleitungen werden verfolgt**, höchstens drei, jedes Ziel nach
+denselben Regeln geprüft samt Liste; ein Host behält innerhalb eines Downloads die Adresse seiner
+ersten Auflösung. Cloud-Speicher und Portale geben Links aus, die weiterleiten (zu einem Speicher-
+oder CDN-Host), und sie abzulehnen, machte die Funktion für sie nutzlos; die Liste begrenzt
+trotzdem jeden Host, den eine Anfrage erreicht, und eine Weiterleitung daneben wird abgelehnt, ohne
+das Ziel zu nennen. **Nichts wird behalten**: Die Bytes leben im Werkzeugaufruf, wie die einer
+lokalen Datei; es gibt für `FileAccess.release` also nichts freizugeben, und der echte Aufruf lädt
+die Datei nach einem Probelauf erneut. Die Vorschauen jeder Datei zeigen deren vollständige
+SHA-256 als eigene Angabe (die eines Links auch den Host), die Ergebnisse ergänzen `sha256` (für
+jede Quelle) und `downloadedFrom`. Der Name der Datei ist das letzte Pfadsegment des Links nur,
+wenn es ein Dateiname von höchstens 64 Zeichen ist, der auf `.pdf`, `.png`, `.jpg`, `.jpeg` oder
+`.xml` endet, sonst `download.<ext>`: Ein Link als Berechtigung kann sein Token im Pfad tragen, und
+der Name wird gezeigt und in sevDesk gespeichert. Meldungen, Vorschauen und Ergebnisse zeigen
+nichts weiter von einem Link, und das Audit-Log hält ein Link-Argument nur mit Schema und Host fest
+(`https://host/…?[redacted]`). Die Werkzeuge, die eine Datei nehmen, erklären
+`openWorldHint: true` (ihre Stufen bleiben), und `sevdesk_einvoice_parse` und
+`sevdesk_voucher_import_einvoice` werden auch allein mit Link-Hosts angeboten.
+`sevdesk_receipt_folder_check` nimmt keine Datei und nie einen Link, nur einen Ordner innerhalb von
+`SEVDESK_FILE_DIRS`; es bleibt daher geschlossen (`openWorldHint: false`), und Link-Hosts allein
+(`SEVDESK_FILE_URL_HOSTS`) bieten es nicht an. `test/integration/metadata-lint.test.ts` prüft
+beides.
+
+**Den echten Aufruf an die geprüften Bytes binden (2026-11-17, Review von #101).** Ein Probelauf
+und der echte Aufruf lesen die Datei getrennt: Ein Link wird erneut heruntergeladen, ein Upload
+oder eine lokale Datei kann dazwischen ersetzt werden, und der echte Aufruf kann so andere Bytes
+anhängen als die Vorschau, die ein Mensch geprüft hat. Jedes Werkzeug, das `file` nimmt, nimmt
+deshalb auch ein optionales `fileSha256` (64 Hexadezimalzeichen, Groß- oder Kleinschreibung). Ist
+es angegeben, berechnet der Aufruf die SHA-256 der Bytes, die er verwenden will, im Probelauf wie
+im echten Aufruf, und lehnt ab, bevor etwas sevDesk erreicht, wenn sie abweicht; die Meldung nennt
+beide Hashes gekürzt und nichts von der Datei oder ihrer Referenz. Die vollständige SHA-256 kommt
+aus der Vorschau des Probelaufs (oder aus `file.sha256` von `sevdesk_einvoice_parse`). Ohne
+`fileSha256` ändert sich nichts.
+
 ## Folgen
 
 - Vorteil: claude.ai und die Claude-Apps können Belegdateien anhängen, E-Rechnungen importieren und
@@ -214,6 +265,15 @@ begrenzt; abgeschlossene oder vollständig abgelaufene Stapel werden unbekannt.
 - Nachteil: Mit `SEVDESK_OAUTH_ACCOUNTS=any` hält der Server kurz die Belegdateien und Exporte
   anderer Leute, und wenige Konten zusammen (3 mit dem Standard im Speicher, 4 mit 256 MiB auf der
   Platte) können den Platz für alle füllen, bis ihre Dateien ablaufen (der Start warnt).
+- Vorteil (Links): Ein Beleg, der schon online liegt, braucht keinen Umweg über den Browser, und
+  dasselbe Argument funktioniert über stdio und HTTP.
+- Nachteil (Links): Der Server erreicht auf Wunsch des Modells Hosts außerhalb von sevDesk. Die
+  Liste begrenzt sie, aber ein Host darauf, der Dateien ausliefert, die jeder hochladen kann (eine
+  geteilte Speicher-Domain, besonders unter `*.`), lässt das Modell eine solche Datei anhängen.
+  Langsame Downloads lassen andere bis zu einer Minute warten: zwei je Konto, im OAuth-Modus
+  können zwei Konten zusammen also trotzdem die vier Plätze des Prozesses füllen.
+- Nachteil (Links): Der echte Aufruf lädt die Datei erneut; ohne `fileSha256` kann er andere Bytes
+  anhängen, als der Probelauf gezeigt hat.
 
 ## Erwogene Alternativen
 
@@ -238,3 +298,10 @@ begrenzt; abgeschlossene oder vollständig abgelaufene Stapel werden unbekannt.
 - **Ein Serverordner je Konto im OAuth-Modus.** Verworfen: Die Dateien wären trotzdem auf dem Server,
   nicht beim Benutzer, und die Platte bräuchte ihre eigene Bereinigung und ihr eigenes
   Zugriffsmodell.
+- **`file: {url}`, ein Objekt** (die erste Skizze im Issue). Aus dem Grund des eigenen Felds
+  `uploadId` verworfen: eine Union in jedem Dateiargument; das Schema ist so eindeutig wie
+  `upload:`.
+- **Links ohne Weiterleitungen.** Verworfen: Die meisten Speicher-Links leiten weiter; jeden Schritt
+  nach denselben Regeln zu prüfen, hält die Zusage.
+- **Jeder Host, nur durch die Prüfung auf öffentliche Adressen geschützt.** Verworfen: Der Server
+  würde laden, wohin eine Prompt Injection ihn schickt, und das Modell hängte an, was es dort fand.

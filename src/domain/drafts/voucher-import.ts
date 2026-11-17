@@ -351,9 +351,9 @@ export type VoucherSuggestionPlanner = (
 
 /**
  * Prepares `sevdesk_voucher_import_einvoice`: reads the file through `options.files` (PDF or
- * XML, from `SEVDESK_FILE_DIRS` or an upload), parses it, asks the planner for the suggestion,
- * refuses what cannot be imported, resolves the tax rule against the account's regime and runs
- * the full create path with the file attached.
+ * XML, from `SEVDESK_FILE_DIRS`, an upload or an allowed https link), parses it, asks the planner
+ * for the suggestion, refuses what cannot be imported, resolves the tax rule against the
+ * account's regime and runs the full create path with the file attached.
  */
 export async function prepareVoucherImport(
   client: SevdeskClient,
@@ -361,7 +361,10 @@ export async function prepareVoucherImport(
   options: VoucherCallOptions,
   planner: VoucherSuggestionPlanner,
 ): Promise<VoucherSavePlan> {
-  const file = await readReceiptFile(options.files, args.file, EINVOICE_FILE_KINDS);
+  const file = await readReceiptFile(options, args.file, {
+    kinds: EINVOICE_FILE_KINDS,
+    sha256: args.fileSha256,
+  });
   const parsed = await parseEInvoice(file.bytes, { fileName: file.name });
   const suggestion = await planner(parsed, {
     client,

@@ -1,5 +1,6 @@
 import type { AnyToolDefinition } from "../types.js";
 import { ORDER_DRAFT_TOOLS } from "./draft-tools.js";
+import { ORDER_FOLLOW_UP_TOOLS } from "./follow-up-tools.js";
 import { orderGetTool } from "./get.js";
 import { ORDER_LIFECYCLE_TOOLS } from "./lifecycle-tools.js";
 import { ordersListTool } from "./list.js";
@@ -10,4 +11,5 @@ export const ORDER_TOOLS: readonly AnyToolDefinition[] = [
   orderGetTool,
   ...ORDER_DRAFT_TOOLS,
   ...ORDER_LIFECYCLE_TOOLS,
+  ...ORDER_FOLLOW_UP_TOOLS,
 ];

@@ -3,7 +3,8 @@
  * (Apache-2.0, `test/fixtures/einvoice/kosit/`) and a stand-in for the e-invoice module's planner
  * (its contract: one suggested position per VAT breakdown row, blocking and warning texts).
  */
-import { copyFile, mkdtemp, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { copyFile, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,10 +16,12 @@ import type { VoucherSuggestion } from "../../../../src/domain/drafts/voucher-im
 import type { ParsedEInvoice } from "../../../../src/domain/einvoice/model.js";
 import { planVoucherFromEInvoice } from "../../../../src/domain/einvoice/voucher-suggestion.js";
 import { money } from "../../../../src/domain/money.js";
+import { localFileAccess } from "../../../../src/safety/file-sources.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { voucherImportEInvoiceTool } from "../../../../src/tools/vouchers/import-einvoice.js";
 import { testConfig } from "../../../helpers/config.js";
 import { FakeSevdeskClient } from "../../../helpers/fake-client.js";
+import { fakeLinks, LINK, LINK_HOST, served } from "../../../helpers/links.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import {
   accountsRoute,
@@ -97,13 +100,85 @@ function client(): FakeSevdeskClient {
 }
 
 describe("sevdesk_voucher_import_einvoice", () => {
-  it("is offered only when SEVDESK_FILE_DIRS is set", () => {
+  it("is offered only when SEVDESK_FILE_DIRS or SEVDESK_FILE_URL_HOSTS is set", () => {
     const tool = voucherImportEInvoiceTool(planner().plan);
     expect(tool.tier).toBe("write");
     expect(tool.localEffects).toBe("reads-files");
+    expect(tool.annotations.openWorldHint).toBe(true);
     expect(tool.available?.(testConfig())).toBe(false);
     expect(tool.available?.(testConfig({ fileDirs: ["/tmp/belege"] }))).toBe(true);
+    expect(tool.available?.(testConfig({ fileUrlHosts: [LINK_HOST] }))).toBe(true);
     expect(tool.description.length).toBeLessThanOrEqual(1000);
+  });
+
+  it("imports an XRechnung downloaded from an allowed link", async () => {
+    const xml = await readFile(SAMPLE);
+    const links = fakeLinks({ respond: () => served(xml, { "content-type": "application/xml" }) });
+    const files = localFileAccess(
+      { fileDirs: [], outputDir: undefined, fileUrlHosts: [LINK_HOST] },
+      links.reader,
+    );
+    const stand = planner();
+    const fake = client();
+    const { plan, output } = await executeWrite(
+      voucherImportEInvoiceTool(stand.plan),
+      { file: LINK, accountDatevId: 4266 },
+      fake,
+      { fileUrlHosts: [LINK_HOST] },
+      files,
+    );
+
+    const digest = createHash("sha256").update(xml).digest("hex");
+    expect(stand.calls[0]?.number).toBe("123456XX");
+    expect(plan.preview.facts).toContainEqual({ label: "SHA-256", value: digest });
+    expect(plan.preview.facts).toContainEqual({
+      label: "Downloaded from",
+      value: `https://${LINK_HOST}`,
+    });
+    expect(JSON.stringify(plan.preview)).not.toContain("SIGNATURE-7f3a");
+    expect((fake.writes()[0]?.form?.get("file") as File).name).toBe("Rechnung-4711.xml");
+    expect(output.data.receipt).toMatchObject({
+      kind: "xml",
+      sha256: digest,
+      downloadedFrom: `https://${LINK_HOST}`,
+    });
+  });
+
+  it("imports the file only when it has the SHA-256 of fileSha256", async () => {
+    const dir = await sampleFolder();
+    const digest = createHash("sha256")
+      .update(await readFile(SAMPLE))
+      .digest("hex");
+    const tool = voucherImportEInvoiceTool(planner().plan);
+    const config = { fileDirs: [dir] };
+
+    const fake = client();
+    await executeWrite(
+      tool,
+      { file: "xrechnung.xml", accountDatevId: 4266, fileSha256: digest },
+      fake,
+      config,
+    );
+    expect(fake.writes().map((write) => write.path)).toEqual([
+      "/Voucher/Factory/uploadTempFile",
+      "/Voucher/Factory/saveVoucher",
+    ]);
+
+    const stand = planner();
+    const refused = client();
+    const error = await executeWrite(
+      voucherImportEInvoiceTool(stand.plan),
+      { file: "xrechnung.xml", accountDatevId: 4266, fileSha256: "a".repeat(64) },
+      refused,
+      config,
+    ).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(SevdeskError);
+    expect((error as SevdeskError).message).toContain(
+      `The file's SHA-256 (${digest.slice(0, 12)}…) differs from fileSha256 (aaaaaaaaaaaa…)`,
+    );
+    // Refused before the file is parsed or anything is asked of sevDesk.
+    expect(stand.calls).toEqual([]);
+    expect(refused.calls).toEqual([]);
   });
 
   it("imports the XRechnung as a draft with one net position per VAT rate and attaches it", async () => {

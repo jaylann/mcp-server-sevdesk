@@ -9,6 +9,7 @@
  * grant's sealed tokens (`tokens.ts`); the grant store keeps non-secret metadata only.
  */
 import type { IdentityLookup } from "../../accounts/types.js";
+import type { Resolver } from "../../safety/public-address.js";
 import type { Tier } from "../../safety/tiers.js";
 import type { ServerKeys } from "../keys.js";
 import type { GrantStore, HttpLog, OAuthModule, OAuthSettings } from "../types.js";
@@ -18,7 +19,6 @@ import { openGrantStore, type StateDirError } from "./grant-store.js";
 import { metadataRoutes } from "./metadata.js";
 import { disallowedReason } from "./policy.js";
 import { revokeRoute } from "./revoke.js";
-import type { Resolver } from "./ssrf.js";
 import { tokenRoute } from "./token.js";
 import { createOAuthAuthenticator } from "./verifier.js";
 

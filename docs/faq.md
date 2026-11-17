@@ -39,9 +39,11 @@ create it for a dedicated sevDesk user.
 ### Where does my data go?
 
 The server runs on your computer (or on your own server in remote mode) and talks only to the
-sevDesk API. There are two exceptions: the DATEV export, which sevDesk delivers as a download from
-its own storage (on Amazon S3), and a remote server in OAuth mode, which fetches a connecting
-client's metadata document from the client's host. Results go to your MCP client, and from there to your model provider: invoices,
+sevDesk API. There are three exceptions: the DATEV export, which sevDesk delivers as a download
+from its own storage (on Amazon S3), the VAT-ID check with VIES, the European Commission's
+service, only if you switch it on with `SEVDESK_VIES_CHECK`, and a remote server in OAuth mode,
+which fetches a connecting client's metadata document from the client's host. Results go to your
+MCP client, and from there to your model provider: invoices,
 contacts and bank transactions are then part of your conversation, under that provider's terms.
 Accounting data contains personal data of your customers, so check your provider's
 data-processing terms before you connect a live account.
@@ -102,6 +104,25 @@ new documents default to the small-business tax rule without VAT, and tax rules 
 refused before anything is saved, because sevDesk would not finalize such documents.
 `sevdesk_account_info` tells the assistant which regime applies.
 
+### Can it give a discount on the whole invoice?
+
+Yes, on invoice, offer, order confirmation and credit note drafts: a percentage of the net total or
+a fixed net amount in EUR, with its text, set, replaced or removed with the draft tools
+([A discount on the whole invoice](guides/invoices.md#a-discount-on-the-whole-invoice)). For now
+only on net prices with a single tax rate and not on e-invoices, the cases verified against sevDesk.
+Whatever discount a draft carries is shown in the approval before you finalize or send it, and an
+invoice made from an offer takes over the offer's discount.
+
+### Can it write an English invoice or use another letterhead?
+
+Yes, on drafts of invoices, orders and credit notes: `sevdesk_document_set_layout` sets the
+language (eight, among them English), the template (Vorlage) and the letterhead (Briefpapier)
+([An English invoice on another letterhead](guides/invoices.md#an-english-invoice-on-another-letterhead)).
+It needs the `commit` tier and your confirmation, because sevDesk uses the same request to change
+finalized documents. Head and foot texts can come from your text templates (Textvorlagen) by name;
+creating or deleting text templates stays in sevDesk. The approval before you finalize or send a
+draft shows its language, template and letterhead.
+
 ### Can it handle e-invoices (E-Rechnung)?
 
 Yes, both directions. Received XRechnung (UBL and CII) and ZUGFeRD / Factur-X files are parsed
@@ -118,14 +139,46 @@ Yes. [`sevdesk_datev_export`](tools.md#sevdesk_datev_export) lets sevDesk build 
 Buchungsstapel (CSV files in a ZIP) for a month, quarter, year or date range, saved in your output
 folder or offered as a download link in remote mode. It never enshrines (festschreiben) the
 documents and needs the DATEV settings in sevDesk (Beraternummer, Mandantennummer, start of the
-fiscal year). [`sevdesk_csv_export`](tools.md#sevdesk_csv_export) saves sevDesk's CSV exports, for
+fiscal year), which [`sevdesk_datev_settings_update`](tools.md#sevdesk_datev_settings_update) sets
+after you confirm. With `format: "xml"` it exports the documents as DATEV XML with their receipt
+images instead. [`sevdesk_csv_export`](tools.md#sevdesk_csv_export) saves sevDesk's CSV exports, for
 example for Excel.
+
+### Can I get all invoice or receipt PDFs at once, for the tax adviser or a tax audit?
+
+Yes. [`sevdesk_archive_export`](tools.md#sevdesk_archive_export) lets sevDesk put the invoice PDFs
+or the voucher receipts of a period into one ZIP, at most 500 documents by default (up to 1,000)
+and 100 MiB per file, and changes nothing on the documents. sevDesk includes drafts (the result counts them so you can take
+them out) and leaves out vouchers without a receipt file. A large archive takes minutes; a shorter
+period is the remedy. Details: [Reports and exports](guides/evaluations.md#invoice-and-receipt-archive).
 
 ### How far can I rely on the VAT summary and the profit and loss?
 
 They are estimates for checking, computed by the server from your documents; they are not
 sevDesk's own reports and not a filing. Each result says what it left out. What they cover and
 what they leave to you is in [Reports and exports](guides/evaluations.md#how-far-you-can-rely-on-them).
+
+### Can it find receipts booked twice or bills that are missing?
+
+Yes, as hints. `sevdesk_records_audit` with `check: duplicates` looks for vouchers booked twice
+(the same supplier and document number, the same receipt file, or the same amount within a few
+days) and for drafts left open for three weeks or more; `check: recurring_gaps` learns which
+suppliers bill every month, quarter or year and names the periods without a bill, which usually
+means a lost receipt. Both read your records only and change nothing. What they flag and what they
+leave out on purpose is in [Reports and exports](guides/evaluations.md#audits).
+
+### Can it tell which receipts in my folder were never booked?
+
+Yes, when the server may read that folder (`SEVDESK_FILE_DIRS`: not on a remote server with
+OAuth; in bearer mode only for folders on the server). `sevdesk_receipt_folder_check` compares
+the SHA-256 checksums of the PDF, PNG, JPEG and XML files in the folder with those of the receipt
+files attached to your vouchers, for a month, quarter or year. A file no voucher carries was
+probably never booked; it is a hint, not proof, because the
+same receipt as another file (a scan, a photo from the app) has another checksum, and a receipt
+that sevDesk's recognition created from an upload has no checksum at all (the result counts those
+and names any of the same size as a weak hint). The check reads no file content into the
+conversation and uploads nothing
+([Reports and exports](guides/evaluations.md#receipts-in-a-folder-that-were-never-booked)).
 
 ### Does it support sevDesk in Austria?
 
@@ -146,6 +199,14 @@ usual invoice tools. The server never switches on sevDesk's automatic sending, w
 e-mail and enshrine every generated invoice before anyone sees it. Changing or ending a template is
 done in the sevDesk web app for now.
 
+### Can it handle offers, order confirmations and delivery notes?
+
+Yes. Besides drafting offers (Angebote), it records the customer's answer (accepted or rejected,
+`commit`), creates the order confirmation from an offer (`commit`, because sevDesk marks the offer
+as accepted in that step) and a delivery note from a confirmation (`write`), and then the invoice
+from the order ([Invoices](guides/invoices.md#offers-accept-confirm-deliver)). There is no special
+filter for stale offers; ask for sent offers in a date range.
+
 ### Can it send letters by post?
 
 Not in 1.0. Documents can be sent by email (`external` tier), and finalizing records how a document
@@ -156,6 +217,16 @@ was sent (for example by post), but the server does not use sevDesk's letter ser
 Yes. `sevdesk_part_get` reports the current stock when stock tracking is on, `sevdesk_parts_list`
 and `sevdesk_part_get` show `stock` and `stockEnabled`, and `sevdesk_part_create` and
 `sevdesk_part_update` set them. The sevDesk API has no other stock endpoints.
+
+### Does it handle custom contact fields (Zusatzfelder)?
+
+Yes, their values. `sevdesk_contact_get` shows a contact's custom fields with their names,
+`sevdesk_contact_create` and `sevdesk_contact_update` set them (`customFields`, by the field's id
+or name), `sevdesk_contact_update` removes a value (`remove` with kind `customField`), and
+`sevdesk_contacts_search` finds contacts by a value (`customField`; the whole value, any case).
+`sevdesk_reference_lookup` with kind `contact_custom_fields` lists the fields of your account.
+The fields themselves are defined in the sevDesk web app: deleting a field there deletes its value
+on every contact, so the server never creates, renames or deletes one.
 
 ## Support
 
