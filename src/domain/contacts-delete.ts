@@ -387,8 +387,8 @@ interface DeletePreview {
  * {@link LISTED_PERSONS}): an organisation's, which sevDesk deletes with it too, or those stored
  * under a person, which it may delete (not measured), and that this cannot be undone. Refuses a
  * contact that does not exist, and one whose contact persons cannot all be read (a partial list
- * would hide what goes). Whether documents still reference the contact only sevDesk knows, and it refuses that
- * itself (see {@link executeContactDelete}).
+ * would hide what goes). Whether documents still reference the contact only sevDesk knows, and it
+ * refuses that itself (see {@link executeContactDelete}).
  */
 export async function prepareContactDelete(
   client: SevdeskClient,

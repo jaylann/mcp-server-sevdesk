@@ -491,9 +491,9 @@ export interface ContactUpdateState {
  * each type (added when missing), then what `remove` takes off. The entry a change applies to is
  * chosen from the contact as read; when `remove` takes that very entry off, a new one is added (a
  * new billing address, a new main entry) instead, so a change never moves to another entry
- * because of a removal. Fields that were not given are never touched. Throws a `validation` SevdeskError when the change is impossible (names of the other
- * contact kind, customer number taken, a parent that is no organisation, an id of another contact)
- * or empty.
+ * because of a removal. Fields that were not given are never touched. Throws a `validation`
+ * SevdeskError when the change is impossible (names of the other contact kind, customer number
+ * taken, a parent that is no organisation, an id of another contact) or empty.
  */
 export async function planContactUpdate(
   client: SevdeskClient,
