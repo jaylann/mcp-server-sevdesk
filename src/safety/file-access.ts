@@ -25,7 +25,8 @@ import type { UploadBatchState, UploadPurpose } from "./transfer-types.js";
 /** A file a tool read: from a local folder, from an upload, or downloaded from an https link. */
 export interface InputFile {
   /**
-   * Base name as given by the file system or the uploader, or taken from the link's path.
+   * Base name as given by the file system or the uploader; for a link its last path segment when
+   * that is a short file name, else `download.<ext>` (`linkFileName` in `./url-files.ts`).
    * Untrusted: sanitize before display.
    */
   readonly name: string;
@@ -34,7 +35,7 @@ export interface InputFile {
   readonly source: "local" | "upload" | "url";
   /**
    * `source: "url"` only: the host the file was downloaded from, one of `SEVDESK_FILE_URL_HOSTS`
-   * (where a redirect led, the last one). Never the path or query of the link.
+   * (where a redirect led, the last one). Never the rest of the link.
    */
   readonly host?: string | undefined;
 }
@@ -188,15 +189,17 @@ export function isUrlRef(ref: string): boolean {
 }
 
 /**
- * `ref` as a log may hold it: a link without its user info, query and fragment (a signed link
- * carries its signature there), anything else unchanged.
+ * `ref` as a log may hold it: a link as its scheme and host only, `https://host/…?[redacted]`
+ * (a signed link carries its signature in the query, a capability link its token in the path,
+ * and user info is a password), anything else unchanged.
  */
 export function loggableFileRef(ref: string): string {
   if (!isUrlRef(ref)) return ref;
   // The user info ends at the last `@` before the path, as URL parsers read it.
-  const match = /^([^:]+:\/\/)(?:[^/?#]*@)?([^?#]*)([?#][\s\S]*)?$/.exec(ref);
-  const [, scheme = "", rest = "", tail] = match ?? [];
-  return `${scheme}${rest}${tail === undefined ? "" : "?[redacted]"}`;
+  const match = /^([^:]+:\/\/)(?:[^/?#]*@)?([^/?#]*)([^?#]*)([?#][\s\S]*)?$/.exec(ref);
+  const [, scheme = "", host = "", path = "", tail] = match ?? [];
+  const shownPath = path === "" || path === "/" ? path : "/…";
+  return `${scheme}${host}${shownPath}${tail === undefined ? "" : "?[redacted]"}`;
 }
 
 /** Whether remote file transfer is on for this deployment. */

@@ -11,14 +11,17 @@
  *   `Host` and `Connection`).
  * - Redirects and errors are never followed or read: any status but 200 resolves at once with the
  *   headers and an empty body; the caller decides.
+ * - A caller's `checkHeaders` sees the headers of a 200 before its body is read and can refuse it
+ *   (an answer that cannot be what the caller wants is never downloaded).
  * - The body is capped: a declared `Content-Length` over the cap, and a body that grows past it,
  *   reject with the caller's `tooLarge` error. The TLS handshake and the whole request have their
  *   own timeouts; a signal cancels the request.
  * - Only the headers the caller names are kept, in an object without a prototype: header names
  *   come from the remote host and must never become arbitrary property names.
  *
- * Rejections other than `tooLarge` are plain errors whose messages may name addresses or carry
- * text from the network: callers map them to their own trusted text and never show them.
+ * Rejections other than the caller's own (`tooLarge`, `checkHeaders`) are plain errors whose
+ * messages may name addresses or carry text from the network: callers map them to their own
+ * trusted text and never show them.
  */
 import { request as httpsRequest } from "node:https";
 import type { LookupFunction } from "node:net";
@@ -61,6 +64,13 @@ export interface PinnedGetOptions {
   readonly maxBytes: number;
   /** The error a body over the limit rejects with (trusted text of the caller). */
   readonly tooLarge: () => Error;
+  /**
+   * Checks the headers of a 200 (those in {@link readHeaders}) before its body is read: an error
+   * it returns rejects the request at once, without reading the body. Optional; without it every
+   * 200 is read up to the limit.
+   */
+  readonly checkHeaders?:
+    ((headers: Readonly<Record<string, string | undefined>>) => Error | undefined) | undefined;
   /** Until the TLS handshake completes. */
   readonly connectTimeoutMs: number;
   /** Until the whole body is read. */
@@ -145,6 +155,12 @@ export function createPinnedGet(options: PinnedGetOptions): PinnedGet {
           // Redirects and errors are not followed or read.
           response.destroy();
           finish(undefined, { status, headers, body: Buffer.alloc(0) });
+          return;
+        }
+        const refused = options.checkHeaders?.(headers);
+        if (refused !== undefined) {
+          response.destroy();
+          finish(refused);
           return;
         }
         if (Number(headers["content-length"] ?? "0") > maxBytes) {

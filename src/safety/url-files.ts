@@ -18,16 +18,20 @@
  *   `Authorization` header or the sevDesk token;
  * - status 200 only, no compressed body, a content type that fits a PDF, PNG, JPEG or XML file (or
  *   a generic one such as `application/octet-stream`) and agrees with the content, at most the
- *   caller's size limit (on `Content-Length` before the body is read, and while it streams); the
- *   kind is recognized by content like a local file's (`sniffKind`);
+ *   caller's size limit; encoding, type and `Content-Length` are checked before the body is read,
+ *   the size again while it streams. The kind is recognized by content like a local file's
+ *   (`sniffKind`), and an "XML" body that is a web page (`<!doctype html`, `<html`) is refused;
  * - {@link TIMEOUT_MS} for the whole download including redirects, {@link RESOLVE_TIMEOUT_MS} per
- *   resolution, and the tool call's cancellation; at most {@link MAX_ACTIVE_DOWNLOADS} downloads at
- *   once in the process, since each holds up to the size limit in memory.
+ *   resolution, and the tool call's cancellation, checked again before every hop; at most
+ *   {@link MAX_ACCOUNT_DOWNLOADS} downloads at once per account and {@link MAX_ACTIVE_DOWNLOADS} in
+ *   the process, since each holds up to the size limit in memory.
  *
- * Nothing is kept: the bytes live in the tool call only, so there is nothing to release. Messages
- * are trusted text: they name the setting and the allowed hosts (the operator's configuration),
- * never the link, its path or query (a signed link carries its signature there), a redirect
- * target, an address, or anything the remote host sent.
+ * Nothing is kept: the bytes live in the tool call only, so there is nothing to release. The
+ * file's name is the link's last path segment only when that is a short file name
+ * ({@link linkFileName}); otherwise `download.<ext>`. Messages are trusted text: they name the
+ * setting and the allowed hosts (the operator's configuration), never the link, its path or query
+ * (a signed link carries its signature there), a redirect target, an address, or anything the
+ * remote host sent.
  */
 import { isIP } from "node:net";
 
@@ -53,27 +57,41 @@ const CONNECT_TIMEOUT_MS = 10_000;
 const RESOLVE_TIMEOUT_MS = 5_000;
 /** Downloads at once in this process; another one is refused until one finishes. */
 const MAX_ACTIVE_DOWNLOADS = 4;
+/**
+ * Downloads at once for one account, within {@link MAX_ACTIVE_DOWNLOADS}: in HTTP mode one account
+ * cannot hold every slot of the process for a whole {@link TIMEOUT_MS}.
+ */
+const MAX_ACCOUNT_DOWNLOADS = 2;
 /** Largest body when a request names no limit (the callers pass theirs: 20 MiB today). */
 const DEFAULT_MAX_BYTES = 20 * 1024 * 1024;
 /** Most allowed hosts a message lists. */
 const MAX_HOSTS_SHOWN = 10;
+/** Longest last path segment (decoded) that is taken as the file's name ({@link linkFileName}). */
+const MAX_LINK_NAME_LENGTH = 64;
+/** How much of an "XML" body is searched for the start of a web page ({@link isWebPage}). */
+const PAGE_SNIFF_BYTES = 4_096;
 
 const REDIRECT_STATUSES: ReadonlySet<number> = new Set([301, 302, 303, 307, 308]);
 const READ_HEADERS = ["content-type", "content-length", "content-encoding", "location"];
 const ACCEPT = "application/pdf, image/png, image/jpeg, application/xml, text/xml;q=0.9, */*;q=0.1";
 const USER_AGENT = "mcp-server-sevdesk (file download)";
+/** The extensions a last path segment must end in to be taken as the file's name. */
+const FILE_EXTENSION = /\.(?:pdf|png|jpe?g|xml)$/i;
 
 /** Declared content types that name one kind. */
-const TYPE_KINDS: Readonly<Record<string, LocalFileKind>> = {
-  "application/pdf": "pdf",
-  "application/x-pdf": "pdf",
-  "image/png": "png",
-  "image/jpeg": "jpeg",
-  "image/jpg": "jpeg",
-  "image/pjpeg": "jpeg",
-  "application/xml": "xml",
-  "text/xml": "xml",
-};
+const TYPE_KINDS: ReadonlyMap<string, LocalFileKind> = new Map([
+  ["application/pdf", "pdf"],
+  ["application/x-pdf", "pdf"],
+  ["image/png", "png"],
+  ["image/jpeg", "jpeg"],
+  ["image/jpg", "jpeg"],
+  ["image/pjpeg", "jpeg"],
+  ["application/xml", "xml"],
+  ["text/xml", "xml"],
+]);
+
+/** `+xml` content types that are web pages, never a file this server reads. */
+const PAGE_TYPES: ReadonlySet<string> = new Set(["application/xhtml+xml"]);
 
 /** Declared content types that say nothing about the kind: the content decides. */
 const GENERIC_TYPES: ReadonlySet<string> = new Set([
@@ -90,6 +108,11 @@ export type UrlFileReader = (ref: string, options: ReadFileOptions) => Promise<I
 export interface UrlFileReaderOptions {
   /** `SEVDESK_FILE_URL_HOSTS`: exact host names or `*.example.com`. Empty: every link is refused. */
   readonly hosts: readonly string[];
+  /**
+   * The account the downloads count against (`RequestPrincipal.accountScope`) for
+   * {@link MAX_ACCOUNT_DOWNLOADS}. Default `"local"`: over stdio there is only one.
+   */
+  readonly account?: string | undefined;
   /** Tests: the resolver (default: the system's) and the transport (default: {@link createLinkGet}). */
   readonly resolve?: Resolver | undefined;
   readonly get?: PinnedGet | undefined;
@@ -106,8 +129,15 @@ export interface LinkGetOptions {
   readonly totalTimeoutMs?: number | undefined;
 }
 
-/** Downloads running in this process (see {@link MAX_ACTIVE_DOWNLOADS}). */
+/**
+ * Downloads running in this process (see {@link MAX_ACTIVE_DOWNLOADS}), and per account (see
+ * {@link MAX_ACCOUNT_DOWNLOADS}; an account without running downloads has no entry).
+ */
 let activeDownloads = 0;
+const accountDownloads = new Map<string, number>();
+
+/** Why an answer is not read as a file: its headers, or a body that is a web page. */
+type AnswerProblem = "compressed" | "content-type" | "page";
 
 /** The body was larger than the limit (raised by the transport, mapped to a refusal here). */
 class TooLargeError extends Error {
@@ -117,7 +147,18 @@ class TooLargeError extends Error {
   }
 }
 
-/** The transport of a download: {@link createPinnedGet} with the headers and limits above. */
+/** The transport refused an answer on its headers (mapped to a refusal here). */
+class UnwantedAnswerError extends Error {
+  constructor(readonly problem: AnswerProblem) {
+    super(problem);
+    this.name = "UnwantedAnswerError";
+  }
+}
+
+/**
+ * The transport of a download: {@link createPinnedGet} with the headers and limits above. It
+ * refuses a compressed answer or one of a content type no file has before reading its body.
+ */
 export function createLinkGet(options: LinkGetOptions = {}): PinnedGet {
   return createPinnedGet({
     accept: ACCEPT,
@@ -125,6 +166,10 @@ export function createLinkGet(options: LinkGetOptions = {}): PinnedGet {
     readHeaders: READ_HEADERS,
     maxBytes: DEFAULT_MAX_BYTES,
     tooLarge: () => new TooLargeError(),
+    checkHeaders: (headers) => {
+      const problem = headerProblem(headers);
+      return problem === undefined ? undefined : new UnwantedAnswerError(problem);
+    },
     connectTimeoutMs: options.connectTimeoutMs ?? CONNECT_TIMEOUT_MS,
     totalTimeoutMs: options.totalTimeoutMs ?? TIMEOUT_MS,
     port: options.port,
@@ -144,6 +189,7 @@ export function isAllowedHost(host: string, hosts: readonly string[]): boolean {
 /** A reader for the links of `options.hosts` under the rules of the module comment. */
 export function createUrlFileReader(options: UrlFileReaderOptions): UrlFileReader {
   const { hosts } = options;
+  const account = options.account ?? "local";
   const resolve = options.resolve ?? systemResolver;
   const get = options.get ?? createLinkGet();
   const timeoutMs = options.timeoutMs ?? TIMEOUT_MS;
@@ -167,6 +213,10 @@ export function createUrlFileReader(options: UrlFileReaderOptions): UrlFileReade
     const addresses = new Map<string, ResolvedAddress>();
     let url = first;
     for (let redirects = 0; ; redirects += 1) {
+      // A cancellation or the deadline that came during the previous hop ends the download here,
+      // before another resolution or request.
+      const stop = stopped();
+      if (stop !== undefined) throw stop;
       let address = addresses.get(url.hostname);
       if (address === undefined) {
         try {
@@ -189,6 +239,7 @@ export function createUrlFileReader(options: UrlFileReaderOptions): UrlFileReade
         });
       } catch (error) {
         if (error instanceof TooLargeError) throw tooLarge(read.maxBytes);
+        if (error instanceof UnwantedAnswerError) throw answerRefusal(error.problem, read);
         throw stopped() ?? networkRefusal(error);
       }
       if (!REDIRECT_STATUSES.has(response.status)) return fileFrom(url, response, read);
@@ -212,16 +263,27 @@ export function createUrlFileReader(options: UrlFileReaderOptions): UrlFileReade
     }
     const url = parseLink(ref);
     checkLink(url, hosts, "The link");
+    const running = accountDownloads.get(account) ?? 0;
+    if (running >= MAX_ACCOUNT_DOWNLOADS) {
+      throw refusal(
+        `${String(MAX_ACCOUNT_DOWNLOADS)} downloads from links are already running for this ` +
+          "account; wait until they finish, then try again",
+      );
+    }
     if (activeDownloads >= MAX_ACTIVE_DOWNLOADS) {
       throw refusal(
         "Too many downloads from links are running on this server at once; try again in a moment",
       );
     }
     activeDownloads += 1;
+    accountDownloads.set(account, running + 1);
     try {
       return await download(url, read);
     } finally {
       activeDownloads -= 1;
+      const left = (accountDownloads.get(account) ?? 1) - 1;
+      if (left > 0) accountDownloads.set(account, left);
+      else accountDownloads.delete(account);
     }
   };
 }
@@ -290,23 +352,17 @@ function fileFrom(url: URL, response: PinnedGetResponse, read: ReadFileOptions):
       `The link answered with HTTP ${String(response.status)}${statusHint(response.status)}`,
     );
   }
-  const encoding = response.headers["content-encoding"]?.trim().toLowerCase();
-  if (encoding !== undefined && encoding !== "" && encoding !== "identity") {
-    throw refusal("The link answered with a compressed body; only uncompressed files are read");
-  }
-  const declared = declaredKind(response.headers["content-type"]);
-  if (declared === undefined) {
-    throw refusal(
-      `The link did not answer with a ${kindList(read.kinds)} file but with another content ` +
-        "type (a sign-in or error page looks like this). Check that the link downloads the file " +
-        "itself",
-    );
-  }
+  // The real transport checked the headers before reading the body already; any other is checked
+  // here, the same way.
+  const problem = headerProblem(response.headers);
+  if (problem !== undefined) throw answerRefusal(problem, read);
+  const declared = declaredKind(response.headers["content-type"]) ?? "generic";
   const declaredLength = Number(response.headers["content-length"] ?? "0");
   if (declaredLength > read.maxBytes || response.body.length > read.maxBytes) {
     throw tooLarge(read.maxBytes);
   }
   const kind = sniffKind(response.body);
+  if (kind === "xml" && isWebPage(response.body)) throw answerRefusal("page", read);
   if (kind === undefined || !read.kinds.includes(kind)) {
     throw refusal(
       `The file at the link is not an accepted file type (accepted: ${kindList(read.kinds)}; ` +
@@ -326,37 +382,99 @@ function fileFrom(url: URL, response: PinnedGetResponse, read: ReadFileOptions):
   };
 }
 
-/** The kind a `Content-Type` names, `generic` when it names none, `undefined` when it does not fit. */
-function declaredKind(header: string | undefined): LocalFileKind | "generic" | undefined {
-  const type = (header ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
-  if (type === "" || GENERIC_TYPES.has(type)) return "generic";
-  const kind = TYPE_KINDS[type];
-  if (kind !== undefined) return kind;
-  return /^application\/[a-z0-9.+-]+\+xml$/.test(type) ? "xml" : undefined;
+/**
+ * What the headers of a 200 rule out before its body is read: a compressed body, or a content type
+ * that fits none of the kinds (`undefined`: nothing). Run by the transport and again on the answer.
+ */
+function headerProblem(
+  headers: Readonly<Record<string, string | undefined>>,
+): "compressed" | "content-type" | undefined {
+  const encoding = headers["content-encoding"]?.trim().toLowerCase();
+  if (encoding !== undefined && encoding !== "" && encoding !== "identity") return "compressed";
+  return declaredKind(headers["content-type"]) === undefined ? "content-type" : undefined;
 }
 
 /**
- * The name a downloaded file is uploaded under: the last segment of the link's path, decoded and
- * cleaned to `[A-Za-z0-9._-]`, at most 80 characters, with the extension of the kind its content
- * shows (`download.pdf` when nothing usable is left). Never used as a path.
+ * The kind a `Content-Type` names, `generic` when it names none (missing, or a download type such
+ * as `application/octet-stream`), `undefined` when it does not fit any. `application/*+xml` counts
+ * as XML (e-invoices come as such), except the web page types of {@link PAGE_TYPES}.
+ */
+function declaredKind(header: string | undefined): LocalFileKind | "generic" | undefined {
+  const type = (header ?? "").split(";")[0]?.trim().toLowerCase() ?? "";
+  if (type === "" || GENERIC_TYPES.has(type)) return "generic";
+  const kind = TYPE_KINDS.get(type);
+  if (kind !== undefined) return kind;
+  return /^application\/[a-z0-9.+-]+\+xml$/.test(type) && !PAGE_TYPES.has(type) ? "xml" : undefined;
+}
+
+/**
+ * Whether an "XML" body (`sniffKind` calls anything that starts with `<` so) is a web page: after
+ * a byte order mark, white space, comments and processing instructions (an XML declaration) it
+ * starts with `<!doctype html` or `<html`. A sign-in or error page served with a generic or no
+ * content type would otherwise reach the e-invoice parser and fail there without a useful hint.
+ */
+function isWebPage(bytes: Uint8Array): boolean {
+  // The decoder drops a UTF-8 byte order mark.
+  let rest = new TextDecoder("utf-8").decode(bytes.subarray(0, PAGE_SNIFF_BYTES)).trimStart();
+  while (rest.startsWith("<!--") || rest.startsWith("<?")) {
+    const close = rest.startsWith("<!--") ? "-->" : "?>";
+    const end = rest.indexOf(close);
+    if (end === -1) return false;
+    rest = rest.slice(end + close.length).trimStart();
+  }
+  return /^<!doctype\s+html\b/i.test(rest) || /^<html(?:[\s/>]|$)/i.test(rest);
+}
+
+/**
+ * The name a downloaded file is shown and uploaded under (sevDesk keeps it with the receipt):
+ * the link's last path segment only when it already is a file name, decoded at most
+ * {@link MAX_LINK_NAME_LENGTH} characters and ending in .pdf, .png, .jpg, .jpeg or .xml. Any other
+ * segment may be the token of a capability link (`https://portal.example.com/dl/9fK2…`), so the
+ * file is called `download.<ext>` then. The name is cleaned to `[A-Za-z0-9._-]` and gets the
+ * extension of the kind its content shows. Never used as a path.
  */
 function linkFileName(url: URL, kind: LocalFileKind): string {
   const extension = kind === "jpeg" ? "jpg" : kind;
+  const fallback = `download.${extension}`;
   const segment = url.pathname.split("/").pop() ?? "";
-  let decoded = segment;
+  let decoded: string;
   try {
     decoded = decodeURIComponent(segment);
   } catch {
-    // A broken escape stays as it is and is cleaned below.
+    // A broken escape is no file name.
+    return fallback;
   }
+  if (decoded.length > MAX_LINK_NAME_LENGTH || !FILE_EXTENSION.test(decoded)) return fallback;
   const stem = decoded
-    .replace(/\.(?:pdf|png|jpe?g|xml)$/i, "")
+    .replace(FILE_EXTENSION, "")
     .replace(/[^A-Za-z0-9._-]+/g, "_")
     .replace(/\.{2,}/g, ".")
     .replace(/^[._-]+/, "")
-    .slice(0, 80)
     .replace(/[._-]+$/, "");
-  return `${stem === "" ? "download" : stem}.${extension}`;
+  return stem === "" ? fallback : `${stem}.${extension}`;
+}
+
+/** The refusal of an answer that is not a file (trusted text: nothing of the answer is in it). */
+function answerRefusal(problem: AnswerProblem, read: ReadFileOptions): SevdeskError {
+  switch (problem) {
+    case "compressed":
+      return refusal("The link answered with a compressed body; only uncompressed files are read");
+    case "content-type":
+      return refusal(
+        `The link did not answer with a ${kindList(read.kinds)} file but with another content ` +
+          "type (a sign-in or error page looks like this). Check that the link downloads the " +
+          "file itself",
+      );
+    case "page":
+      return refusal(
+        `The link did not answer with a ${kindList(read.kinds)} file but with a web page (a ` +
+          "sign-in or error page looks like this). Check that the link downloads the file itself",
+      );
+    default: {
+      const unknown: never = problem;
+      return unknown;
+    }
+  }
 }
 
 /** What a status usually means for a download link (trusted text; the status is a number). */
@@ -401,8 +519,13 @@ function tooLarge(maxBytes: number): SevdeskError {
   return refusal(`The file at the link is larger than the limit here of ${String(maxBytes)} bytes`);
 }
 
-/** `promise`, or a rejection after `ms` or when `signal` aborts. */
+/** `promise`, or a rejection after `ms` or when `signal` aborts (at once when it already has). */
 function bounded<T>(promise: Promise<T>, ms: number, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) {
+    // Its abort event has fired already and never fires again. The answer no longer matters.
+    void promise.catch(() => undefined);
+    return Promise.reject(new Error("aborted"));
+  }
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
       reject(new Error("timeout"));

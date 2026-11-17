@@ -288,10 +288,11 @@ function toLine(event: AuditEvent, at: Date, secrets: readonly string[]): Record
 }
 
 /**
- * Deep copy with every string redacted (secrets, upload ids, and the user info, query and
- * fragment of a link argument such as `file: "https://…"`, where a signed link carries its
- * signature), its hidden characters escaped (kept visible instead of stripped, so the log shows
- * what was sent) and capped with an explicit marker; non-JSON values become their type name.
+ * Deep copy with every string redacted (secrets, upload ids, and everything but the scheme and
+ * host of a string that starts like a link, such as `file: "https://…"`: a signed link carries
+ * its signature in the query, a capability link its token in the path), its hidden characters
+ * escaped (kept visible instead of stripped, so the log shows what was sent) and capped with an
+ * explicit marker; non-JSON values become their type name.
  */
 function cleanValue(value: unknown, secrets: readonly string[]): unknown {
   if (typeof value === "string") {

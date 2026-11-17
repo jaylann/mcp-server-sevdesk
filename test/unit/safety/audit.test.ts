@@ -147,7 +147,7 @@ describe("audit log", () => {
     expect(text).toContain("[REDACTED]");
   });
 
-  it("logs a link argument without its user info, query and fragment, other texts as they are", async () => {
+  it("logs a link argument as its scheme and host only, other texts as they are", async () => {
     const path = join(await tempDir(), "audit.jsonl");
     const log = createAuditLog({ path, secrets: [TEST_TOKEN] });
 
@@ -157,7 +157,10 @@ describe("audit log", () => {
         tier: "write",
         args: {
           file: "https://belege.example.com/portal/RE-4711.pdf?X-Amz-Signature=SIGNATURE-7f3a#p=1",
+          capability: "https://portal.example.com/dl/9fK2CAPABILITY-TOKEN",
           other: "https://u:SECRET-PW@belege.example.com/a@b/RE.pdf",
+          origin: "https://belege.example.com",
+          root: "https://belege.example.com/",
           note: "see https://example.com/?sig=kept-in-prose",
         },
       }),
@@ -165,11 +168,16 @@ describe("audit log", () => {
 
     const text = await readFile(path, "utf8");
     expect(text).not.toContain("SIGNATURE-7f3a");
+    expect(text).not.toContain("CAPABILITY-TOKEN");
     expect(text).not.toContain("SECRET-PW");
+    expect(text).not.toContain("RE-4711");
     const args = (await lines(path))[0]?.["args"] as Record<string, unknown>;
     expect(args).toEqual({
-      file: "https://belege.example.com/portal/RE-4711.pdf?[redacted]",
-      other: "https://belege.example.com/a@b/RE.pdf",
+      file: "https://belege.example.com/…?[redacted]",
+      capability: "https://portal.example.com/…",
+      other: "https://belege.example.com/…",
+      origin: "https://belege.example.com",
+      root: "https://belege.example.com/",
       note: "see https://example.com/?sig=kept-in-prose",
     });
   });

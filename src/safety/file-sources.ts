@@ -59,16 +59,23 @@ export type RemoteFileConfig = LocalFileConfig & Pick<Config, "deployment">;
 
 const NOTHING_SENT = "Nothing was sent to sevDesk.";
 
-/** The reader of `config`'s allowed hosts with the system resolver and the real transport. */
-function linkReader(config: LocalFileConfig): UrlFileReader {
-  return createUrlFileReader({ hosts: config.fileUrlHosts ?? [] });
+/**
+ * The reader of `config`'s allowed hosts with the system resolver and the real transport. Its
+ * downloads count against `principal`'s account (`RequestPrincipal.accountScope`, for the
+ * per-account download limit); without one, against the single local account of stdio.
+ */
+export function linkReader(config: LocalFileConfig, principal?: RequestPrincipal): UrlFileReader {
+  return createUrlFileReader({
+    hosts: config.fileUrlHosts ?? [],
+    account: principal?.accountScope,
+  });
 }
 
 /**
  * File access over the local folders only: `SEVDESK_FILE_DIRS` for reading, `SEVDESK_OUTPUT_DIR`
- * for delivering, and links to the hosts in `SEVDESK_FILE_URL_HOSTS` (read by `links`; tests pass
- * one with a fake resolver and transport). With none set, every read and delivery is refused with
- * a message naming the setting.
+ * for delivering, and links to the hosts in `SEVDESK_FILE_URL_HOSTS` (read by `links`: over HTTP
+ * the request principal's {@link linkReader}; tests pass one with a fake resolver and transport).
+ * With none set, every read and delivery is refused with a message naming the setting.
  */
 export function localFileAccess(
   config: LocalFileConfig,
@@ -125,7 +132,7 @@ export function remoteFileAccess(
   config: RemoteFileConfig,
   store: TransferStore,
   principal: RequestPrincipal,
-  links: UrlFileReader = linkReader(config),
+  links: UrlFileReader = linkReader(config, principal),
 ): FileAccess {
   const { deployment } = config;
   if (deployment.kind !== "http" || deployment.files === undefined) {

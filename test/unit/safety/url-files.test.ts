@@ -264,7 +264,7 @@ describe("createUrlFileReader: the answer", () => {
   it("accepts generic and missing content types and recognizes the kind by content", async () => {
     for (const headers of [{}, { "content-type": "application/octet-stream" }]) {
       const file = await fakeLinks({ respond: () => served(PNG, headers) }).reader(
-        "https://belege.example.com/scan",
+        "https://belege.example.com/scan.jpg",
         RECEIPT,
       );
       expect(file).toMatchObject({ kind: "png", name: "scan.png" });
@@ -288,6 +288,43 @@ describe("createUrlFileReader: the answer", () => {
     expect(message).toContain("did not answer with a PDF, XML file but with another content type");
     expect(message).not.toContain(type);
     expect(message).not.toContain("expired");
+  });
+
+  it("refuses an XHTML page although its content type ends in +xml", async () => {
+    const links = fakeLinks({
+      respond: () =>
+        served('<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"/>', {
+          "content-type": "application/xhtml+xml; charset=utf-8",
+        }),
+    });
+    const message = await refusal(links.reader(LINK, EINVOICE));
+    expect(message).toContain("did not answer with a PDF, XML file but with another content type");
+  });
+
+  it.each([
+    ["a doctype", "<!DOCTYPE html><html><body>Anmelden</body></html>"],
+    ["an html element", "<html lang=de><body>Sign in</body></html>"],
+    ["a byte order mark and white space", "﻿ \n\t<HTML>"],
+    ["a declaration and a comment", '<?xml version="1.0"?>\n<!-- portal -->\n<!doctype HTML>'],
+  ])("refuses a web page with %s, served as XML or without a type", async (_name, body) => {
+    for (const type of ["application/octet-stream", "text/xml", undefined]) {
+      const links = fakeLinks({
+        respond: () => served(body, type === undefined ? {} : { "content-type": type }),
+      });
+      expect(await refusal(links.reader(LINK, EINVOICE))).toContain(
+        "did not answer with a PDF, XML file but with a web page (a sign-in or error page",
+      );
+      expect(await refusal(links.reader(LINK, RECEIPT))).toContain(
+        "did not answer with a PDF, PNG, JPEG file but with a web page",
+      );
+    }
+  });
+
+  it("reads an e-invoice that starts with a byte order mark, a declaration and a comment", async () => {
+    const body =
+      '﻿<?xml version="1.0" encoding="UTF-8"?>\n<!-- <html> -->\n<rsm:CrossIndustryInvoice/>';
+    const links = fakeLinks({ respond: () => served(body, { "content-type": "application/xml" }) });
+    await expect(links.reader(LINK, EINVOICE)).resolves.toMatchObject({ kind: "xml" });
   });
 
   it("refuses content that does not match the declared type or the accepted kinds", async () => {
@@ -378,29 +415,111 @@ describe("createUrlFileReader: the answer", () => {
     await expect(pending).rejects.toMatchObject({ kind: "aborted" });
   });
 
-  it("runs at most four downloads at once and frees the slot afterwards", async () => {
-    const release: (() => void)[] = [];
-    const reader = createUrlFileReader({
-      hosts: [LINK_HOST],
-      resolve: () => Promise.resolve([PUBLIC]),
-      get: () =>
-        new Promise((resolve) => {
-          release.push(() => {
-            resolve(served(LINK_PDF));
-          });
-        }),
-    });
-    const running = Array.from({ length: 4 }, () => reader(LINK, RECEIPT));
-    await expect.poll(() => release.length).toBe(4);
+  describe("a cancellation or the deadline during a redirect", () => {
+    const CDN = "cdn.example.net";
+    const options = {
+      hosts: [LINK_HOST, CDN],
+      addresses: { [LINK_HOST]: [PUBLIC], [CDN]: [{ address: "8.8.4.4", family: 4 as const }] },
+    };
 
-    expect(await refusal(reader(LINK, RECEIPT))).toContain("Too many downloads from links");
+    it("stops before the next hop when the call is cancelled", async () => {
+      const controller = new AbortController();
+      const links = fakeLinks({
+        ...options,
+        respond: (request) => {
+          if (request.hostname !== LINK_HOST) return served(LINK_PDF);
+          controller.abort();
+          return redirect(`https://${CDN}/final.pdf`);
+        },
+      });
+      await expect(
+        links.reader(LINK, { ...RECEIPT, signal: controller.signal }),
+      ).rejects.toMatchObject({ kind: "aborted" });
+      expect(links.resolved).toEqual([LINK_HOST]);
+      expect(links.requests).toHaveLength(1);
+    });
+
+    it("stops before the next hop when the deadline has passed", async () => {
+      const links = fakeLinks({
+        ...options,
+        timeoutMs: 20,
+        respond: async (request) => {
+          if (request.hostname !== LINK_HOST) return served(LINK_PDF);
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          return redirect(`https://${CDN}/final.pdf`);
+        },
+      });
+      expect(await refusal(links.reader(LINK, RECEIPT))).toContain(
+        "did not finish within 0.02 seconds",
+      );
+      expect(links.resolved).toEqual([LINK_HOST]);
+      expect(links.requests).toHaveLength(1);
+    });
+  });
+
+  it("runs at most two downloads per account and four in all, and frees the slots", async () => {
+    const release: (() => void)[] = [];
+    const readerOf = (account?: string) =>
+      createUrlFileReader({
+        hosts: [LINK_HOST],
+        account,
+        resolve: () => Promise.resolve([PUBLIC]),
+        get: () =>
+          new Promise((resolve) => {
+            release.push(() => {
+              resolve(served(LINK_PDF));
+            });
+          }),
+      });
+    const first = readerOf("account-1");
+    const second = readerOf("account-2");
+    // Without an account the downloads count against the one local account of stdio.
+    const local = readerOf();
+
+    const running = [first(LINK, RECEIPT), first(LINK, RECEIPT)];
+    await expect.poll(() => release.length).toBe(2);
+    expect(await refusal(first(LINK, RECEIPT))).toContain(
+      "2 downloads from links are already running for this account",
+    );
+
+    running.push(local(LINK, RECEIPT), local(LINK, RECEIPT));
+    await expect.poll(() => release.length).toBe(4);
+    expect(await refusal(local(LINK, RECEIPT))).toContain("already running for this account");
+    // Another account still has room of its own, but the process is full.
+    expect(await refusal(second(LINK, RECEIPT))).toContain(
+      "Too many downloads from links are running on this server at once",
+    );
 
     for (const done of release.splice(0)) done();
     await Promise.all(running);
-    const again = reader(LINK, RECEIPT);
-    await expect.poll(() => release.length).toBe(1);
-    release[0]?.();
-    await expect(again).resolves.toMatchObject({ kind: "pdf" });
+    const again = [first(LINK, RECEIPT), first(LINK, RECEIPT)];
+    await expect.poll(() => release.length).toBe(2);
+    for (const done of release.splice(0)) done();
+    await expect(Promise.all(again)).resolves.toHaveLength(2);
+  });
+});
+
+describe("createUrlFileReader: the file's name", () => {
+  const name = async (path: string): Promise<string> =>
+    (await fakeLinks().reader(`https://${LINK_HOST}${path}?sig=SIGNATURE-7f3a`, RECEIPT)).name;
+
+  it("is the last path segment when it is a short file name, with the content's extension", async () => {
+    expect(await name("/portal/Rechnung-4711.pdf")).toBe("Rechnung-4711.pdf");
+    expect(await name("/portal/Rechnung-4711.PDF")).toBe("Rechnung-4711.pdf");
+    expect(await name("/x/Beleg%20M%C3%A4rz.jpeg")).toBe("Beleg_M_rz.pdf");
+    const longest = `${"R".repeat(60)}.pdf`;
+    expect(await name(`/x/${longest}`)).toBe(longest);
+  });
+
+  it.each([
+    ["a capability token without an extension", "/dl/9fK2xQzLmN4pRtV8wY1aB3cD5eF7gH9jK0Qz"],
+    ["a segment longer than 64 characters", `/x/${"R".repeat(61)}.pdf`],
+    ["an 80-character segment", `/portal/Rechnung_${"0".repeat(67)}.pdf`],
+    ["a broken escape", "/x/Beleg%E4.pdf"],
+    ["an extension alone", "/x/.pdf"],
+    ["no segment", "/"],
+  ])("is download.<ext> for %s", async (_name, path) => {
+    expect(await name(path)).toBe("download.pdf");
   });
 });
 
@@ -500,6 +619,24 @@ describe("createLinkGet (real TLS on 127.0.0.1)", () => {
     expect(await refusal(reader(port, { totalTimeoutMs: 150 })(link, RECEIPT))).toContain(
       "could not be downloaded from the link",
     );
+  });
+
+  it("refuses a page or a compressed answer on its headers, before reading the body", async () => {
+    // Both bodies never end: only a refusal on the headers comes back before the deadline.
+    const page = await tlsServer((_request, response) => {
+      response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      response.write("<html>");
+    });
+    expect(await refusal(reader(page.port, { totalTimeoutMs: 3_000 })(link, RECEIPT))).toContain(
+      "did not answer with a PDF, PNG, JPEG file but with another content type",
+    );
+    const compressed = await tlsServer((_request, response) => {
+      response.writeHead(200, { "Content-Type": "application/pdf", "Content-Encoding": "gzip" });
+      response.write("%PDF-1.7\n");
+    });
+    expect(
+      await refusal(reader(compressed.port, { totalTimeoutMs: 3_000 })(link, RECEIPT)),
+    ).toContain("compressed body");
   });
 
   it("does not follow a redirect itself; the reader checks the target", async () => {
