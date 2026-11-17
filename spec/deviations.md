@@ -3257,9 +3257,10 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
     answers 400 "Property 'value' is too long. Maximum for this property is 100".
   - One value per setting and contact: a second `POST /ContactCustomField` for the same contact
     and setting answers 400 "Bad Request", and a read by contact shows one value.
-  - Deleting a contact deletes its values: after `DELETE /Contact/{id}`, `GET
-/ContactCustomField/{valueId}` answers 404 ("No Model_ContactCustomField with the id … was
-    found"), and the setting's `getReferenceCount` drops to the values other contacts still have.
+  - Deleting a contact deletes its values: after `DELETE /Contact/{id}`,
+    `GET /ContactCustomField/{valueId}` answers 404 ("No Model_ContactCustomField with the id …
+    was found"), and the setting's `getReferenceCount` drops to the values other contacts still
+    have.
   - `findContactsByCustomFieldValue` finds persons as well as organisations, and ignores `limit`
     and `offset`: with two matches, `limit=1` and `limit=1&offset=1` both answered both contacts.
   - Not measured: a length limit on `description`; whether `/ContactCustomField` answers on every
