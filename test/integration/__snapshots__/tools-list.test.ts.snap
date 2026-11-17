@@ -327,6 +327,21 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
       "type": "string",
     },
   },
+  "sevdesk_invoice_create_recurring": {
+    "/properties/result/properties/invoice/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/invoice/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/result/properties/invoice/properties/type/properties/key": {
+      "description": "Accepted type input/filter key; absent for unknown codes.",
+      "type": "string",
+    },
+  },
   "sevdesk_invoice_create_reminder": {
     "/properties/result/properties/reminder/properties/address/properties/country": {
       "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
@@ -2878,6 +2893,203 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     },
     "name": "sevdesk_invoice_create_from_order",
     "title": "Create an invoice from a sevDesk order",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create a recurring invoice template",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "addressCity": {
+          "description": "City (Ort).",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressCountry": {
+          "description": "ISO 3166-1 alpha-2 country code of the address, e.g. DE, AT, CH; default: the country of the address it changes, else DE.",
+          "pattern": "^[A-Za-z]{2}$",
+          "type": "string",
+        },
+        "addressName": {
+          "description": "Recipient name as printed. Address fields replace the matching parts of the contact's invoice address (new drafts) or of the stored address (updates); the rest is kept.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressStreet": {
+          "description": "Street and number.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "addressZip": {
+          "description": "Postcode (PLZ).",
+          "maxLength": 20,
+          "minLength": 1,
+          "type": "string",
+        },
+        "autoGenerate": {
+          "default": true,
+          "description": "Automatische Generierung. true: sevDesk creates a draft invoice from the template on every run date by itself, within about a minute; the drafts are neither finalized nor sent. false: sevDesk creates nothing until someone switches it on in the sevDesk web app or clicks "Rechnung erzeugen" there.",
+          "type": "boolean",
+        },
+        "contactId": {
+          "description": "Customer contact id (Kontakt), from sevdesk_contacts_search.",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
+        "contactPersonId": {
+          "description": "sevDesk user (SevUser) shown as contact person (Ansprechpartner). Required only when the account has several users: sevdesk_reference_lookup kind=users lists them.",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "endDate": {
+          "description": "No invoice after this date (Enddatum), YYYY-MM-DD, at most 10 years after startDate; leave out to run until the template is ended.",
+          "type": "string",
+        },
+        "footText": {
+          "description": "Closing text below the positions (Fußtext); simple HTML allowed.",
+          "maxLength": 10000,
+          "type": "string",
+        },
+        "headText": {
+          "description": "Intro text above the positions (Kopftext); simple HTML allowed.",
+          "maxLength": 10000,
+          "type": "string",
+        },
+        "header": {
+          "description": "Title (Betreff) of every invoice; default "Rechnung".",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "interval": {
+          "description": "How often sevDesk creates an invoice: monthly, quarterly (every 3 months), half_yearly (every 6 months) or yearly.",
+          "enum": [
+            "monthly",
+            "quarterly",
+            "half_yearly",
+            "yearly",
+          ],
+          "type": "string",
+        },
+        "positions": {
+          "description": "Positionen of every invoice, in printed order; prices per priceMode.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "discountPercent": {
+                "description": "Rabatt on this position in percent, more than 0 and at most 100.",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "name": {
+                "description": "Article or service name (Bezeichnung) as printed.",
+                "maxLength": 250,
+                "minLength": 1,
+                "type": "string",
+              },
+              "partId": {
+                "description": "Inventory part (Artikel, see sevdesk_parts_list) to link. Name and price still come from this position; sevDesk does not fill them in.",
+                "exclusiveMinimum": 0,
+                "type": "integer",
+              },
+              "quantity": {
+                "description": "Menge, greater than 0, up to 4 decimals, e.g. 2 or "1.5".",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "taxRate": {
+                "description": "Umsatzsteuersatz in percent, e.g. 19, 7 or 0; must be allowed by the tax rule. May be left out only when the rule allows a single rate (e.g. 0 for rule 11).",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+              "text": {
+                "description": "Description printed below the name (Positionstext); line breaks allowed.",
+                "maxLength": 5000,
+                "type": "string",
+              },
+              "unitId": {
+                "description": "Einheit (Unity id, see sevdesk_reference_lookup kind=units); default 1 = Stk.",
+                "exclusiveMinimum": 0,
+                "type": "integer",
+              },
+              "unitPrice": {
+                "description": "Einzelpreis per unit in the document currency, net or gross as the document's priceMode says; up to 4 decimals, e.g. "49.90"; negative for a deduction line.",
+                "type": [
+                  "string",
+                  "number",
+                ],
+              },
+            },
+            "required": [
+              "name",
+              "quantity",
+              "unitPrice",
+            ],
+            "type": "object",
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "type": "array",
+        },
+        "priceMode": {
+          "description": "Whether position unit prices are net (netto, the default for new drafts) or gross (brutto). Sets sevDesk's showNet.",
+          "enum": [
+            "net",
+            "gross",
+          ],
+          "type": "string",
+        },
+        "startDate": {
+          "description": "Date of the first invoice, YYYY-MM-DD: today or later, at most a year ahead, on day 1–28 of a month. Later runs fall on the same day of the month.",
+          "type": "string",
+        },
+        "taxRuleId": {
+          "description": "Tax rule (Steuerregel) id: 1 taxable domestic revenue (default), 2 exports, 3 intra-EU supplies, 4 tax-exempt §4, 5 reverse charge §13b, 11 Kleinunternehmer §19, 17 not taxable in Germany, 18–20 One-Stop-Shop, 21 reverse charge for EU services. Details: sevdesk_reference_lookup kind=tax_rules.",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
+        "taxText": {
+          "description": "Tax note printed on the document; default: the tax rule's German name.",
+          "maxLength": 250,
+          "minLength": 1,
+          "type": "string",
+        },
+        "timeToPay": {
+          "description": "Zahlungsziel in days, e.g. 14.",
+          "maximum": 3650,
+          "minimum": 0,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "contactId",
+        "interval",
+        "startDate",
+        "positions",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_invoice_create_recurring",
+    "title": "Create a recurring invoice template",
   },
   {
     "annotations": {

@@ -19,6 +19,7 @@ import { createScrubber, FAKE_PDF_BASE64 } from "../../scripts/lib/scrub.js";
 import { documentDiscountDto, readDocumentDiscounts } from "../../src/domain/document-discounts.js";
 import { mapInvoiceDetail } from "../../src/domain/invoices.js";
 import { listLetterpapers } from "../../src/domain/layouts.js";
+import { readStoredSchedule, scheduleDifferences } from "../../src/domain/recurring/schedule.js";
 import { TEST_TOKEN } from "../helpers/config.js";
 import { FakeSevdeskClient, loadFixture } from "../helpers/fake-client.js";
 import { ScriptedClient, type ScriptedHandler } from "../unit/scripts/scripted-client.js";
@@ -119,6 +120,45 @@ describe("GET /Invoice?showWkr=all: recurring templates (D-111, D-112, D-049)", 
       expect.arrayContaining(["P0Y1M0W", "monthly", "1 month"]),
     );
     expect(parsed.some(({ detail }) => detail.recurring?.nextInvoice === "2026-11-15")).toBe(true);
+  });
+
+  it("reads through the template reader: interval, start, next run and end as stored (D-111)", () => {
+    const schedules = rows(file).map((row) => readStoredSchedule(row));
+    for (const [index, schedule] of schedules.entries()) {
+      const row = rows(file)[index] ?? {};
+      expect(schedule.interval).toBe(row["accountIntervall"] ?? undefined);
+      // sevDesk sets the next run from the start date (D-111), so the reader sees them equal.
+      expect(schedule.nextRun).toBe(schedule.startDate);
+      expect(schedule.endDate).toBeUndefined();
+      expect(schedule.lastRun).toBeUndefined();
+    }
+    // The form this server sends is read as its interval; text sevDesk accepted is kept as is.
+    // The list was read without the settings embed, so automatic generation and sending are left
+    // out rather than guessed (D-132).
+    expect(schedules).toContainEqual({
+      interval: "P0Y1M0W",
+      intervalKey: "monthly",
+      every: "every 1 month",
+      startDate: "2026-11-15",
+      nextRun: "2026-11-15",
+    });
+    expect(schedules).toContainEqual({ interval: "monthly" });
+    expect(schedules).toContainEqual({ interval: "1 month" });
+    // The recorded template that starts on 2026-12-16 is what this server asks for with that
+    // start, monthly: the comparison after a save finds nothing to note.
+    const sent = schedules.find((schedule) => schedule.startDate === "2026-12-16");
+    expect(sent).toBeDefined();
+    expect(
+      scheduleDifferences(
+        {
+          interval: "monthly",
+          startDate: "2026-12-16",
+          wire: "P0Y1M0W",
+          runDay: 16,
+        },
+        sent ?? {},
+      ),
+    ).toEqual([]);
   });
 
   it("is what read-recurring-generated reads: tagged templates, none in the default list", async () => {

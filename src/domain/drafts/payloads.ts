@@ -41,7 +41,10 @@ const germanDate = z.string().regex(/^\d{2}\.\d{2}\.\d{4}$/);
 const timestamp = z.number().int().nonnegative();
 const decimalString = z.string().regex(/^-?\d+(\.\d+)?$/);
 
-function positionSchema<N extends "InvoicePos" | "CreditNotePos" | "OrderPos">(objectName: N) {
+/** A new position of `objectName` (also used by recurring invoice templates, `../recurring/`). */
+export function positionSchema<N extends "InvoicePos" | "CreditNotePos" | "OrderPos">(
+  objectName: N,
+) {
   return z.strictObject({
     objectName: z.literal(objectName),
     mapAll: z.literal(true),
@@ -125,10 +128,39 @@ const structuredAddressShape = {
   addressCountry: ref("StaticCountry").optional(),
 };
 
-function oneTaxSetting(value: { taxRule?: unknown; taxType?: unknown }): boolean {
+/** Refinement of every document schema: exactly one of `taxRule` / `taxType` (see {@link TAX_MESSAGE}). */
+export function oneTaxSetting(value: { taxRule?: unknown; taxType?: unknown }): boolean {
   return (value.taxRule === undefined) !== (value.taxType === undefined);
 }
-const TAX_MESSAGE = "a document carries either taxRule (Update 2.0) or taxType (Update 1.0)";
+export const TAX_MESSAGE = "a document carries either taxRule (Update 2.0) or taxType (Update 1.0)";
+
+/**
+ * The fields of an invoice after its identity, type and status: recipient, dates, texts, terms,
+ * prices, tax and address. Shared with recurring invoice templates (`../recurring/payload.ts`),
+ * which are invoices of another type and status.
+ */
+export const invoiceContentShape = {
+  contact: ref("Contact"),
+  contactPerson: ref("SevUser"),
+  invoiceDate: germanDate,
+  deliveryDate: timestamp.optional(),
+  deliveryDateUntil: timestamp.optional(),
+  header: z.string().min(1).optional(),
+  headText: z.string().optional(),
+  footText: z.string().optional(),
+  timeToPay: z.number().int().min(0).optional(),
+  discount: z.number().min(0).max(100),
+  discountTime: z.number().int().min(0).optional(),
+  currency: z.string().length(3),
+  showNet: z.boolean(),
+  ...taxShape,
+  ...structuredAddressShape,
+  customerInternalNote: z.string().optional(),
+  paymentMethod: ref("PaymentMethod").optional(),
+  costCentre: ref("CostCentre").optional(),
+  origin: z.strictObject({ id, objectName: z.string().min(1) }).optional(),
+  propertyIsEInvoice: z.boolean().optional(),
+};
 
 const invoiceDocumentSchema = z
   .strictObject({
@@ -138,26 +170,7 @@ const invoiceDocumentSchema = z
     invoiceNumber: z.string().min(1).optional(),
     invoiceType: z.literal("RE"),
     status: z.literal(100),
-    contact: ref("Contact"),
-    contactPerson: ref("SevUser"),
-    invoiceDate: germanDate,
-    deliveryDate: timestamp.optional(),
-    deliveryDateUntil: timestamp.optional(),
-    header: z.string().min(1).optional(),
-    headText: z.string().optional(),
-    footText: z.string().optional(),
-    timeToPay: z.number().int().min(0).optional(),
-    discount: z.number().min(0).max(100),
-    discountTime: z.number().int().min(0).optional(),
-    currency: z.string().length(3),
-    showNet: z.boolean(),
-    ...taxShape,
-    ...structuredAddressShape,
-    customerInternalNote: z.string().optional(),
-    paymentMethod: ref("PaymentMethod").optional(),
-    costCentre: ref("CostCentre").optional(),
-    origin: z.strictObject({ id, objectName: z.string().min(1) }).optional(),
-    propertyIsEInvoice: z.boolean().optional(),
+    ...invoiceContentShape,
   })
   .refine(oneTaxSetting, TAX_MESSAGE);
 

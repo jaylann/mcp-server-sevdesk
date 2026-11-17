@@ -5,12 +5,14 @@ import { INVOICE_EINVOICE_TOOLS } from "./einvoice-tools.js";
 import { invoiceGetTool } from "./get.js";
 import { INVOICE_LIFECYCLE_TOOLS } from "./lifecycle-tools.js";
 import { invoicesListTool } from "./list.js";
+import { invoiceCreateRecurringTool } from "./recurring-create.js";
 
 /** Tools of the `invoices` toolset (Rechnungen). */
 export const INVOICE_TOOLS: readonly AnyToolDefinition[] = [
   invoicesListTool,
   invoiceGetTool,
   ...INVOICE_DRAFT_TOOLS,
+  invoiceCreateRecurringTool,
   ...INVOICE_LIFECYCLE_TOOLS,
   ...INVOICE_DERIVED_TOOLS,
   ...INVOICE_EINVOICE_TOOLS,

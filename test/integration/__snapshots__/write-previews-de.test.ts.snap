@@ -239,6 +239,31 @@ Summe (erwartet): netto 100,00 EUR, USt. 19,00 EUR, brutto 119,00 EUR
 Status nach dem Speichern: Entwurf (50), noch nicht gebucht"
 `;
 
+exports[`German previews > create a recurring invoice template: says the same in German 1`] = `
+"Abo-Rechnung (Vorlage für wiederkehrende Rechnungen) für Musterfirma GmbH (Kontakt 1001) anlegen: 65,45 EUR brutto je Rechnung, monatlich ab 01.12.2026, bis sie beendet wird.
+! Die automatische Generierung ist an: An jedem Ausführungstag erzeugt sevDesk etwa eine Minute nach 0 Uhr (Berliner Zeit) selbst einen Rechnungsentwurf aus dieser Vorlage, mit diesen Positionen und Texten und einer Zeile im Kopftext, die den Abrechnungszeitraum nennt (vom Ausführungstag bis zum Tag vor der nächsten Ausführung). sevDesk stellt den Entwurf weder fertig noch versendet ihn, und seine Nummer ist vorläufig (mehrere Entwürfe können dieselbe Nummer zeigen, bis jeder fertiggestellt ist): Jeden Entwurf muss noch jemand fertigstellen und versenden.
+! Dieser Server schaltet das automatische Versenden nie ein. Schaltet es jemand in der sevDesk-Web-App für die Vorlage ein, stellt sevDesk jede erzeugte Rechnung etwa zwei Minuten nach der Ausführungszeit mit ihrer endgültigen Nummer fertig, schickt sie mit dem PDF per E-Mail an den Kunden und schreibt sie fest, bevor jemand sie gesehen hat.
+! Ändern, pausieren oder beenden lässt sich die Vorlage vorerst nur in der sevDesk-Web-App (Abo-Rechnungen); dort wird auch die automatische Generierung ein- oder ausgeschaltet. Dieser Server hat dafür noch kein Werkzeug.
+(umkehrbar)
+Kunde: Musterfirma GmbH (Kontakt 1001)
+Anschrift auf den Rechnungen: Musterfirma GmbH, Buchhaltung, Musterstraße 1, 12345 Musterstadt, Deutschland
+Intervall: monatlich, jeden Monat am 1. (P0Y1M0W)
+Erste Ausführung: 01.12.2026
+Folgende Ausführungen: 01.01.2027, 01.02.2027, 01.03.2027
+Ende: keines (die Vorlage läuft, bis sie beendet wird)
+Automatische Generierung: an (sevDesk erzeugt an jedem Ausführungstag einen Rechnungsentwurf)
+Ansprechpartner: Erika Musterfrau (Benutzer 2001)
+Betreff: Rechnung
+Preise eingegeben als: netto
+Steuerregel: 1 Umsatzsteuerpflichtige Umsätze
+Steuerhinweis: Umsatzsteuerpflichtige Umsätze
+Position 1: Beratung: 3 × 10,00 EUR netto, 19 % USt. → netto 30,00 EUR
+Position 2: Paket: 1 × 25,00 EUR netto, 19 % USt. → netto 25,00 EUR
+Text: Zweite Zeile
+und eine dritte
+Summe je Rechnung: netto 55,00 EUR, USt. 10,45 EUR, brutto 65,45 EUR"
+`;
+
 exports[`German previews > create an order confirmation from a sent offer: says the same in German 1`] = `
 "Aus dem Angebot AN-1001 eine Auftragsbestätigung (AB) als Entwurf erstellen; sevDesk markiert das Angebot dabei als angenommen (versendet 200 → angenommen 500).
 ! sevDesk markiert das Angebot in derselben Anfrage als angenommen (Status 500): Das ist der bindende Schritt dieser Aktion. War das nicht gewollt, setze das Angebot mit sevdesk_order_set_offer_status (Aktion „reopen“) zurück.

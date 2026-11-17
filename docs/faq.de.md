@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:f7d08e56236d -->
+<!-- translated-from: docs/faq.md sha256:c17a3544adf8 -->
 
 # Häufige Fragen
 
@@ -204,6 +204,20 @@ Nicht in 1.0. Steuerregeln, die Umsatzsteuer-Auswertung (Kennzahlen der UStVA), 
 E-Rechnungen und der Buchhaltungs-Skill folgen deutschem Recht, und der Server ist nur mit
 deutschen Konten getestet. Lesen kann mit einem österreichischen Konto funktionieren, aber dort ist
 nichts überprüft. Unterstützung für Österreich ist für ein späteres 1.x-Release vorgesehen.
+
+### Kann es Abo-Rechnungen einrichten?
+
+Es kann eine anlegen.
+[`sevdesk_invoice_create_recurring`](tools.md#sevdesk_invoice_create_recurring) (Stufe `commit`, du
+bestätigst) speichert eine Vorlage für wiederkehrende Rechnungen, monatlich, vierteljährlich,
+halbjährlich oder jährlich, mit eingeschalteter automatischer Generierung, außer du willst sie aus
+([Abo-Rechnungen](guides/invoices.de.md#abo-rechnungen)). sevDesk erzeugt daraus dann an jedem
+Ausführungstag selbst einen Rechnungsentwurf, innerhalb etwa einer Minute: nicht fertiggestellt,
+nicht versendet, mit einer vorläufigen Nummer, die beim Fertigstellen endgültig wird. Du prüfst
+jeden Entwurf und stellst ihn mit den üblichen Rechnungswerkzeugen fertig und versendest ihn. Das
+automatische Versenden von sevDesk, das jede erzeugte Rechnung fertigstellen, per E-Mail versenden
+und festschreiben würde, bevor jemand sie sieht, schaltet der Server nie ein. Ändern oder beenden
+lässt sich eine Vorlage vorerst nur in der sevDesk-Web-App.
 
 ### Kann es mit Angeboten, Auftragsbestätigungen und Lieferscheinen umgehen?
 
