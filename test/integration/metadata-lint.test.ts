@@ -133,7 +133,8 @@ describe("tool metadata", () => {
   });
 
   it("marks every file reader as open world: its file may be downloaded from a link", () => {
-    for (const name of FILE_READERS) {
+    // A folder reader takes no file, only a folder inside SEVDESK_FILE_DIRS (checked below).
+    for (const name of FILE_READERS.filter((reader) => !FOLDER_READERS.includes(reader))) {
       const tool = ALL_TOOLS.find((candidate) => candidate.name === name);
       expect(tool?.annotations.openWorldHint, name).toBe(true);
     }
@@ -144,6 +145,13 @@ describe("tool metadata", () => {
       const tool = ALL_TOOLS.find((candidate) => candidate.name === name);
       expect(tool?.localEffects, name).toBe("reads-files");
       expect(tool?.tier, name).toBe("read");
+      // `scanFolder` reads local folders only, never a link: it stays closed-world, and link
+      // hosts alone do not offer it.
+      expect(tool?.annotations.openWorldHint, name).toBe(false);
+      expect(
+        tool?.available?.(allEnabledConfig({ fileUrlHosts: ["belege.example.com"] })),
+        name,
+      ).toBe(false);
       expect(tool?.available?.(allEnabledConfig()), name).toBe(false);
       expect(tool?.available?.(allEnabledConfig({ outputDir: "/out" })), name).toBe(false);
       // Uploads carry single files: remote file transfer alone does not offer a folder reader.
