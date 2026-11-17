@@ -3,10 +3,10 @@
  * competitor-gap issues on documents (#89, #91, #94), next to the probe runs of that day
  * (`scripts/lib/probes/gaps-documents-probes.ts`, spec/deviations.md D-107–D-116).
  *
- * The recurring templates run through the production invoice parser. No production code reads
- * the letterpaper list or order discounts yet, so their recorded shapes are pinned here and fed
- * to the probes that described them, as `undocumented-endpoints.test.ts` does for D-024; the
- * slices that add tools for them replace these checks with their parsers.
+ * The recurring templates run through the production invoice parser, the order discounts through
+ * the document discount reader (`document-discounts.ts`), the letterpaper list through the
+ * layout list parser (`layouts.ts`, `listLetterpapers`); its recorded shape is also pinned and
+ * fed to the probe that described it.
  *
  * Not recorded: `GET /DocServer/getTemplatesWithThumb` (3.2 MB even scrubbed; D-114 describes
  * it) and `GET /Order` (an older session holds the order list).
@@ -16,9 +16,13 @@ import { describe, expect, it } from "vitest";
 import { GAPS_DOCUMENTS_PROBES } from "../../scripts/lib/probes/gaps-documents-probes.js";
 import { runProbes } from "../../scripts/lib/probes/runner.js";
 import { createScrubber, FAKE_PDF_BASE64 } from "../../scripts/lib/scrub.js";
+import { documentDiscountDto, readDocumentDiscounts } from "../../src/domain/document-discounts.js";
 import { mapInvoiceDetail } from "../../src/domain/invoices.js";
+import { listLetterpapers } from "../../src/domain/layouts.js";
+import { readStoredSchedule, scheduleDifferences } from "../../src/domain/recurring/schedule.js";
+import { invoicesListTool } from "../../src/tools/invoices/list.js";
 import { TEST_TOKEN } from "../helpers/config.js";
-import { loadFixture } from "../helpers/fake-client.js";
+import { FakeSevdeskClient, loadFixture, testContext } from "../helpers/fake-client.js";
 import { ScriptedClient, type ScriptedHandler } from "../unit/scripts/scripted-client.js";
 
 /** Every recorded file of this session that this test covers (below `test/fixtures/`). */
@@ -119,6 +123,80 @@ describe("GET /Invoice?showWkr=all: recurring templates (D-111, D-112, D-049)", 
     expect(parsed.some(({ detail }) => detail.recurring?.nextInvoice === "2026-11-15")).toBe(true);
   });
 
+  it("reads through the template reader: interval, start, next run and end as stored (D-111)", () => {
+    const schedules = rows(file).map((row) => readStoredSchedule(row));
+    for (const [index, schedule] of schedules.entries()) {
+      const row = rows(file)[index] ?? {};
+      expect(schedule.interval).toBe(row["accountIntervall"] ?? undefined);
+      // sevDesk sets the next run from the start date (D-111), so the reader sees them equal.
+      expect(schedule.nextRun).toBe(schedule.startDate);
+      expect(schedule.endDate).toBeUndefined();
+      expect(schedule.lastRun).toBeUndefined();
+    }
+    // The form this server sends is read as its interval; text sevDesk accepted is kept as is.
+    // The list was read without the settings embed, so automatic generation and sending are left
+    // out rather than guessed (D-132).
+    expect(schedules).toContainEqual({
+      interval: "P0Y1M0W",
+      intervalKey: "monthly",
+      every: "every 1 month",
+      startDate: "2026-11-15",
+      nextRun: "2026-11-15",
+    });
+    expect(schedules).toContainEqual({ interval: "monthly" });
+    expect(schedules).toContainEqual({ interval: "1 month" });
+    // The recorded template that starts on 2026-12-16 is what this server asks for with that
+    // start, monthly: the comparison after a save finds nothing to note.
+    const sent = schedules.find((schedule) => schedule.startDate === "2026-12-16");
+    expect(sent).toBeDefined();
+    expect(
+      scheduleDifferences(
+        {
+          interval: "monthly",
+          startDate: "2026-12-16",
+          wire: "P0Y1M0W",
+          runDay: 16,
+        },
+        sent ?? {},
+      ),
+    ).toEqual([]);
+  });
+
+  it("shows the schedule in sevdesk_invoices_list rows of templates (D-111, D-112)", async () => {
+    const client = new FakeSevdeskClient([{ path: "/Invoice", response: { fixture: file } }]);
+    const { data } = await invoicesListTool.handler(
+      invoicesListTool.input.parse({ type: "recurring", limit: 100 }),
+      testContext(client),
+    );
+    expect(data.items.length).toBeGreaterThan(0);
+    for (const item of data.items) {
+      // The fake answers every page with the same rows: match them by id.
+      const row = rows(file).find((candidate) => String(candidate["id"]) === String(item.id));
+      expect(item).toHaveProperty("schedule", readStoredSchedule(row ?? {}));
+    }
+    expect(
+      data.items.map((item) => ("schedule" in item ? item.schedule : undefined)),
+    ).toContainEqual({
+      interval: "P0Y1M0W",
+      intervalKey: "monthly",
+      every: "every 1 month",
+      startDate: "2026-11-15",
+      nextRun: "2026-11-15",
+    });
+    // A regular invoice gets no schedule.
+    const invoice = loadFixture("invoices/invoice-1001.json").body as { objects: unknown[] };
+    expect(mapInvoiceDetail(invoice.objects[0], "2026-11-16")).not.toHaveProperty("schedule");
+  });
+
+  it("marks an ended template's schedule (status 50 keeps the next run, recorded 2026-11-17)", () => {
+    const [row] = rows(file);
+    const detail = mapInvoiceDetail({ ...row, status: "50" }, "2026-11-16");
+    expect(detail.schedule?.ended).toBe(true);
+    expect(
+      mapInvoiceDetail({ ...row, status: "100" }, "2026-11-16").schedule?.ended,
+    ).toBeUndefined();
+  });
+
   it("is what read-recurring-generated reads: tagged templates, none in the default list", async () => {
     const templates = rows(file).map((row) => ({
       ...row,
@@ -177,6 +255,33 @@ describe("GET /DocServer/getLetterpapersWithThumb (D-114)", () => {
     );
     expect(JSON.stringify(result)).not.toMatch(/[A-Za-z0-9+/]{200,}/);
   });
+
+  it("reads through the letterhead list parser: id, name and flags, no PDF or thumbnail", async () => {
+    const fake = new FakeSevdeskClient([
+      {
+        path: "/DocServer/getLetterpapersWithThumb",
+        response: {
+          bytes: new TextEncoder().encode(JSON.stringify(body(file))),
+          contentType: "application/json",
+        },
+      },
+    ]);
+
+    const letterpapers = await listLetterpapers(fake);
+
+    expect(letterpapers).toEqual([
+      {
+        id: "Muster-Text 9",
+        name: "Musterfirma 3 GmbH",
+        isDefault: false,
+        custom: false,
+        stock: true,
+        type: undefined,
+        premium: undefined,
+      },
+    ]);
+    expect(JSON.stringify(letterpapers)).not.toContain("JVBERi0");
+  });
 });
 
 describe("GET /Order/{id}/getDiscounts (D-116)", () => {
@@ -184,6 +289,23 @@ describe("GET /Order/{id}/getDiscounts (D-116)", () => {
 
   it("answers an empty list with total null for an order without discounts", () => {
     expect(body(file)).toEqual({ objects: [], total: null });
+  });
+
+  it("reads through the document discount reader: no rows, nothing shown or bound", async () => {
+    const client = new FakeSevdeskClient([
+      { path: "/Order/31710400/getDiscounts", response: { fixture: file } },
+    ]);
+    const stored = await readDocumentDiscounts(client, "order", 31710400);
+    expect(stored).toEqual({ raw: [], rows: [] });
+    expect(documentDiscountDto(stored.rows, {}, "EUR")).toBeUndefined();
+    // One page with an explicit limit, as recorded (`?limit=n`).
+    expect(client.calls).toEqual([
+      expect.objectContaining({
+        operation: "list",
+        path: "/Order/31710400/getDiscounts",
+        query: { limit: 1000, offset: 0, countAll: true },
+      }),
+    ]);
   });
 
   it("makes read-order-get-discounts inconclusive, naming the empty answer", async () => {

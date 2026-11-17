@@ -677,14 +677,19 @@ export function createTestData(options: {
         taxRate: 19,
         ...position,
       }));
+      const body = {
+        [RESPONSE_KEY[kind]]: header,
+        [POSITION_KEY[kind]]: positions,
+        [POSITION_KEY[kind].replace("Save", "Delete")]: null,
+        ...documentOptions.body,
+      };
+      // A recurring invoice template (WKR) is a commit step (D-111); every other probe document is
+      // a draft (status 100), which a write tool may save. The client refuses a body that needs
+      // more than the tier declared here.
+      const template = kind === "Invoice" && header["invoiceType"] === "WKR";
       const result = await http.write("POST", SAVE_PATH[kind], {
-        tier: "write",
-        body: {
-          [RESPONSE_KEY[kind]]: header,
-          [POSITION_KEY[kind]]: positions,
-          [POSITION_KEY[kind].replace("Save", "Delete")]: null,
-          ...documentOptions.body,
-        },
+        tier: template ? "commit" : "write",
+        body,
       });
       const id = createdId(result.objects, RESPONSE_KEY[kind]);
       if (id !== undefined) register(kind, id, "draft (deletable in the web app)");

@@ -166,6 +166,41 @@ describe("sevdesk_reference_lookup", () => {
     expect(withDefault.result.data).toMatchObject({ total: 1200, truncated: true });
   });
 
+  it("lists the account's custom contact fields with limit 1000, GET only (D-086)", async () => {
+    const { client, result } = await lookup({ kind: "contact_custom_fields" }, [
+      {
+        path: "/ContactCustomFieldSetting",
+        response: { fixture: "recorded/2026-11-16/contacts/custom-field-settings.json" },
+      },
+    ]);
+    expect(client.calls).toHaveLength(1);
+    expect(client.calls[0]).toMatchObject({
+      method: "GET",
+      path: "/ContactCustomFieldSetting",
+      query: { limit: 1000 },
+    });
+    expect(result.data).toMatchObject({
+      kind: "contact_custom_fields",
+      source: "sevdesk",
+      total: 1,
+      returned: 1,
+      truncated: false,
+    });
+    expect(result.data.contactCustomFields).toEqual([{ id: 19498, name: "Mustername 4" }]);
+
+    const filtered = await lookup({ kind: "contact_custom_fields", query: "kunden" }, [
+      {
+        path: "/ContactCustomFieldSetting",
+        response: { fixture: "contacts/custom-field-settings.json" },
+      },
+    ]);
+    expect(filtered.result.data.contactCustomFields).toEqual([
+      { id: 19498, name: "Kundennr extern" },
+      { id: 19499, name: "Branche", description: "Branche des Kunden" },
+    ]);
+    expect(filtered.result.summary).toBe("2 of 4 contact custom fields matching the query.");
+  });
+
   it("flags lists sevDesk could not return completely", async () => {
     const { result } = await lookup({ kind: "units" }, [
       {

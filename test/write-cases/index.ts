@@ -5,6 +5,8 @@ import { COST_CENTRES_CASES } from "./cost-centres.js";
 import { DRAFTS_CASES } from "./drafts.js";
 import { LIFECYCLE_CASES } from "./lifecycle.js";
 import { MASTERDATA_CASES } from "./masterdata.js";
+import { ORDERS_CASES } from "./orders.js";
+import { RECURRING_CASES } from "./recurring.js";
 import { REPORTS_CASES } from "./reports.js";
 import { TAGS_CASES } from "./tags.js";
 import { VOUCHERS_CASES } from "./vouchers.js";
@@ -14,9 +16,11 @@ export const WRITE_TOOL_CASES: readonly WriteToolCase[] = [
   ...DRAFTS_CASES,
   ...LIFECYCLE_CASES,
   ...MASTERDATA_CASES,
+  ...ORDERS_CASES,
   ...VOUCHERS_CASES,
   ...BANKING_CASES,
   ...REPORTS_CASES,
+  ...RECURRING_CASES,
   ...TAGS_CASES,
   ...COST_CENTRES_CASES,
 ].map((testCase) => ({ ...testCase, routes: withCountryRoute(testCase.routes) }));

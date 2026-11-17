@@ -1,13 +1,15 @@
 /**
  * The binding requests of the lifecycle tools: one function per sevDesk endpoint that finalizes,
- * emails, enshrines, resets, cancels or pays a document. The tools check and preview first
- * (`transitions.ts`, `payments.ts`, `email.ts`) and call these from `execute` with the client
+ * emails, enshrines, resets, cancels or pays a document, or accepts or rejects an offer. The
+ * tools check and preview first (`transitions.ts`, `payments.ts`, `email.ts`) and call these
+ * from `execute` with the client
  * scoped to their tier; the paths and the request shapes are built only here, so the tool layer
  * never talks to the client itself (review 2026-11, round 3).
  *
  * Every request here changes data, so the client sends it once and never retries it. None of
  * these functions reads the document back: what a failed read-back means for the caller (the
- * write happened) is the tool's to report.
+ * write happened) is the tool's to report. The exception is `deleteDocument`: sevDesk's answer
+ * says nothing, so the plain GET that tells whether the document is gone is part of the delete.
  */
 import { z } from "zod";
 
@@ -20,7 +22,7 @@ import { SEND_TYPE_CODES, type SentVia } from "../document-positions.js";
 import { KINDS, type PaymentKind, type SalesKind } from "./documents.js";
 import type { SendEmailPayload } from "./email.js";
 import type { BookAmountPayload } from "./payments.js";
-import type { ResetTarget } from "./transitions.js";
+import type { OfferStatusTarget, ResetTarget } from "./transitions.js";
 
 /** Outgoing `sendBy` body (strict: sevDesk ignores unknown fields silently, D-003). */
 const sendByPayloadSchema = z.strictObject({
@@ -129,6 +131,39 @@ export async function bookPayment(
   });
 }
 
+/**
+ * The `PUT /Order/{id}` body of an offer status change: the status and nothing else (strict:
+ * sevDesk would take any other field of `Model_OrderUpdate` along, D-003, D-108).
+ */
+const orderStatusPayloadSchema = z.strictObject({
+  status: z.union([z.literal(200), z.literal(300), z.literal(500)]),
+});
+
+export type OrderStatusPayload = z.output<typeof orderStatusPayloadSchema>;
+
+/** The body that sets an offer to sent (200), rejected (300) or accepted (500). */
+export function orderStatusPayload(status: OfferStatusTarget): OrderStatusPayload {
+  return orderStatusPayloadSchema.parse({ status });
+}
+
+/**
+ * Sets an offer's status: `PUT /Order/{id}` with `{status}` only (D-108). The answer is the order;
+ * the caller reads it back itself.
+ */
+export async function setOrderStatus(
+  client: SevdeskClient,
+  id: number,
+  payload: OrderStatusPayload,
+  signal?: AbortSignal,
+): Promise<void> {
+  await client.request({
+    method: "PUT",
+    path: sevdeskPath("Order", id),
+    body: orderStatusPayloadSchema.parse(payload),
+    ...(signal === undefined ? {} : { signal }),
+  });
+}
+
 const createdSchema = z.object({ id: zId });
 
 /**
@@ -156,5 +191,62 @@ export async function cancelInvoice(
   } catch (error) {
     if (error instanceof SevdeskError) return undefined;
     throw error;
+  }
+}
+
+/**
+ * Deletes a draft: `DELETE /{Invoice|CreditNote|Order}/{id}`, no body, sent once. sevDesk answers
+ * `{objects: [null]}` for a draft, which is ignored, and 409 for any other status (recorded,
+ * spec/deviations.md D-109, D-074); that 409 becomes a trusted message that nothing was deleted.
+ *
+ * The answer tells nothing, so a plain GET of the record afterwards does, as for vouchers
+ * (`executeVoucherDelete`): `true` when sevDesk no longer finds the document, `false` when it
+ * still returns one. Nothing is mapped, so only sevDesk's answer decides. Any other failure of
+ * that GET, a {@link SevdeskError} or not, is thrown as a {@link SevdeskError} with the deletion
+ * as a completed write: the DELETE was accepted, and nobody must send it again.
+ */
+export async function deleteDocument(
+  client: SevdeskClient,
+  kind: SalesKind,
+  id: number,
+  signal?: AbortSignal,
+): Promise<boolean> {
+  const { objectName, noun, toolPrefix } = KINDS[kind];
+  const path = sevdeskPath(objectName, id);
+  const withSignal = signal === undefined ? {} : { signal };
+  const what = `${noun} ${String(id)}`;
+  try {
+    await client.request({ method: "DELETE", path, ...withSignal });
+  } catch (error) {
+    if (error instanceof SevdeskError && error.status === 409) {
+      throw new SevdeskError({
+        kind: error.kind,
+        status: 409,
+        message:
+          `sevDesk refused to delete ${what}: only drafts (status 100) can be deleted, and it is ` +
+          "no longer one (probably finalized in the meantime). Nothing was deleted; check it " +
+          `with ${toolPrefix}_get.`,
+        ...(error.upstreamMessage === undefined ? {} : { upstreamMessage: error.upstreamMessage }),
+        cause: error,
+      });
+    }
+    throw error;
+  }
+  try {
+    expectSingle(await client.request({ method: "GET", path, ...withSignal }), what);
+    return false;
+  } catch (error) {
+    if (error instanceof SevdeskError && error.kind === "not_found") return true;
+    const failed = `sevDesk accepted the deletion of ${what}, but the check afterwards failed`;
+    const advice = `Do not delete again; check with ${toolPrefix}_get.`;
+    throw new SevdeskError({
+      kind: error instanceof SevdeskError ? error.kind : "unexpected_response",
+      message:
+        error instanceof SevdeskError
+          ? `${failed}: ${error.message} ${advice}`
+          : `${failed}. ${advice}`,
+      cause: error,
+      completedWrites: [{ objectName, id: String(id) }],
+    });
   }
 }

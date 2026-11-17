@@ -186,13 +186,22 @@ export interface ReceiptFile {
   readonly name: string;
   readonly kind: LocalFileKind;
   readonly bytes: Uint8Array;
+  /**
+   * Set when the file was downloaded from an https link: the host it came from (one of
+   * `SEVDESK_FILE_URL_HOSTS`, trusted). Never the link's path or query.
+   */
+  readonly host?: string | undefined;
+}
+
+/** The receipt's bytes as a multipart part with the sniffed MIME type. */
+export function receiptBlob(file: ReceiptFile): Blob {
+  return new Blob([file.bytes.slice()], { type: MIME_TYPES[file.kind] });
 }
 
 /** The multipart body of `uploadTempFile`: one part `file` with the sniffed MIME type. */
 export function uploadForm(file: ReceiptFile): FormData {
   const form = new FormData();
-  const blob = new Blob([file.bytes.slice()], { type: MIME_TYPES[file.kind] });
-  form.append("file", blob, file.name);
+  form.append("file", receiptBlob(file), file.name);
   return form;
 }
 

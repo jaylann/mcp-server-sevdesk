@@ -23,7 +23,7 @@ import {
   loadFixture,
   testContext,
 } from "../../../helpers/fake-client.js";
-import { invoiceRow, type Row } from "../lifecycle/helpers.js";
+import { invoiceRow, noDiscountsRoute, type Row } from "../lifecycle/helpers.js";
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-07T12:00:00+01:00") });
@@ -57,6 +57,7 @@ function invoiceRoutes(fields: Row): FakeRoute[] {
       response: { fixture: "invoices/invoice-positions-1001.json" },
     },
     unitsRoute,
+    noDiscountsRoute,
     costCentresRoute,
   ]);
 }
@@ -72,6 +73,7 @@ function creditNoteRoutes(fields: Row): FakeRoute[] {
       response: { fixture: "credit-notes/credit-note-positions-2001.json" },
     },
     unitsRoute,
+    noDiscountsRoute,
     costCentresRoute,
   ]);
 }
