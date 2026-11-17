@@ -11,8 +11,12 @@
  * (expense or revenue). A pair is reported in the period of its later voucher (by date, then id),
  * so consecutive audits do not report it twice.
  * - **Same document number** (`voucher_number_twice`): both carry the same number (sevDesk's
- *   description field, compared without case, spaces and `-_/.#`). Only a number with a digit
- *   counts: "Miete" or "Telefon" typed as the description is a text, not a number. Two vouchers
+ *   description field, compared without case, spaces and `-_/.#`), dated at most
+ *   {@link NUMBER_WINDOW_DAYS} days apart. Only a number with a digit counts: "Miete" or "Telefon"
+ *   typed as the description is a text, not a number. The window keeps out a description
+ *   repeated on every monthly bill ("Miete 2026", a contract or customer number): those bills
+ *   lie about four weeks apart, while the same invoice booked twice is dated the same day or,
+ *   booked once more by its payment, within a two-week payment term. Two vouchers
  *   whose amounts cancel each other out (+x and −x) are a reversal, not a duplicate.
  * - **Same amount within a few days** (`voucher_amount_twice`): the same gross amount in the same
  *   currency (`sameGross`, the comparison of the draft duplicate warning in
@@ -25,8 +29,14 @@
  *   of the pairs' dates, and never after the time budget. Different checksums prove nothing (the
  *   same paper scanned twice gives two files), so the pair then stays a `check`.
  * - Booked means any status but draft (open, transferred, partially paid, paid). A pair of a
- *   draft and a booked voucher is `draft_repeats_voucher`; two drafts are not paired (they are
- *   reported as stuck when old enough).
+ *   draft and a booked voucher is `draft_repeats_voucher`, a pair of two drafts `draft_twice`.
+ * - **Drafts across suppliers**: a pair that involves a draft is also found without comparing
+ *   the supplier: the same direction, the same document number (with a digit, at most
+ *   {@link NUMBER_WINDOW_DAYS} days apart) and the same gross amount (not 0). sevDesk's receipt
+ *   recognition (`Voucher/Factory/createVoucherFromFile`) fills in the PDF's date, invoice number
+ *   and sums, but names no supplier contact and a supplier name that is not the PDF's supplier
+ *   (recorded 2026-11-16, spec/deviations.md D-103 on main): the same PDF reaching sevDesk twice
+ *   gives two drafts, or a draft next to the booked voucher, under different suppliers or none.
  * - **Stuck drafts** (`voucher_draft_stuck`, `sales_draft_stuck`): a voucher, invoice or credit
  *   note dated in the period that is still a draft and was created at least
  *   {@link STUCK_DRAFT_DAYS} days before today (sevDesk's `create` date; the document date when
@@ -37,6 +47,10 @@
  * issued twice is corrected with a cancellation invoice (which a pair rule would have to match
  * up), and an invoice created twice through this server is already warned about when the draft is
  * created. Their drafts are checked for being stuck, since an unsent invoice is revenue not billed.
+ * To find them, every invoice and credit note dated in the period is listed (one request per
+ * 1,000) and the drafts are picked out here: `GET /Invoice` and `GET /CreditNote` declare a
+ * `status` filter, but no recording shows that `status=100` returns only drafts, so it is not
+ * sent.
  */
 import { berlinDateOf } from "../../../sevdesk/dates.js";
 import { SevdeskError } from "../../../sevdesk/errors.js";
@@ -58,6 +72,11 @@ import { contactOf, inPeriod, listVoucherRows, supplierKey } from "./supplier-bi
 
 /** Two vouchers with the same amount count as a possible duplicate up to this many days apart. */
 export const AMOUNT_WINDOW_DAYS = 5;
+/**
+ * Two vouchers with the same document number count as booked twice up to this many days apart:
+ * more than a two-week payment term, less than the four weeks between two monthly bills.
+ */
+export const NUMBER_WINDOW_DAYS = 21;
 /** How far before the period vouchers are read to find the earlier one of a pair. */
 const NUMBER_LOOKBACK_DAYS = 31;
 /** A draft created this many days before today or earlier counts as stuck. */
@@ -70,6 +89,7 @@ export const DUPLICATE_FINDING_CODES = [
   "voucher_receipt_twice",
   "voucher_amount_twice",
   "draft_repeats_voucher",
+  "draft_twice",
   "voucher_draft_stuck",
   "sales_draft_stuck",
 ] as const;
@@ -86,7 +106,8 @@ const TEXTS: Readonly<Record<DuplicateFindingCode, FindingText>> = {
     title: "Voucher booked twice: same supplier and document number",
     titleDe: "Beleg doppelt gebucht: gleicher Lieferant und gleiche Belegnummer",
     reason:
-      "Booked vouchers of the same supplier and direction carry the same document number. A " +
+      "Booked vouchers of the same supplier and direction, dated at most " +
+      `${String(NUMBER_WINDOW_DAYS)} days apart, carry the same document number. A ` +
       "supplier issues each invoice number once (§ 14 Abs. 4 Satz 1 Nr. 4 UStG), so the same " +
       "invoice is probably booked twice and its amount and VAT counted twice. Where the amounts " +
       "differ, one may be a corrected invoice that replaced the other.",
@@ -121,13 +142,30 @@ const TEXTS: Readonly<Record<DuplicateFindingCode, FindingText>> = {
     title: "Draft repeats a booked voucher",
     titleDe: "Entwurf wiederholt einen gebuchten Beleg",
     reason:
-      "A draft voucher has the same supplier and document number as a booked voucher, or the " +
-      `same supplier and gross amount within ${String(AMOUNT_WINDOW_DAYS)} days. Usually the ` +
-      "same receipt reached sevDesk twice (upload, e-mail inbox); booking the draft would count " +
-      "it twice.",
+      "A draft voucher carries the same document number as a booked voucher, at most " +
+      `${String(NUMBER_WINDOW_DAYS)} days apart, and either the same supplier or the same ` +
+      "gross amount (under another supplier or none: sevDesk's receipt recognition does not " +
+      "name the supplier's contact); or it has the same supplier and gross amount within " +
+      `${String(AMOUNT_WINDOW_DAYS)} days. Usually the same receipt reached sevDesk twice ` +
+      "(upload, e-mail inbox, receipt recognition); booking the draft would count it twice.",
     action:
       "Compare the draft with the booked voucher; if it is the same receipt, delete the draft " +
       "instead of booking it.",
+  },
+  draft_twice: {
+    severity: "check",
+    title: "Draft repeats another draft",
+    titleDe: "Entwurf wiederholt einen anderen Entwurf",
+    reason:
+      "Two draft vouchers of the same direction carry the same document number, at most " +
+      `${String(NUMBER_WINDOW_DAYS)} days apart, and either the same supplier or the same ` +
+      "gross amount (whatever supplier sevDesk's receipt recognition named); or they have the " +
+      `same supplier and gross amount within ${String(AMOUNT_WINDOW_DAYS)} days. Usually the ` +
+      "same receipt reached sevDesk twice (upload, e-mail inbox, receipt recognition); booking " +
+      "both would count it twice.",
+    action:
+      "Compare the drafts with the receipt; if they are the same receipt, delete one and book " +
+      "the other.",
   },
   voucher_draft_stuck: {
     severity: "check",
@@ -168,7 +206,8 @@ export function numberKey(number: string | undefined): string | undefined {
   return /\d/.test(key) ? key : undefined;
 }
 
-type PairRule = "number" | "amount";
+/** How a pair was found: per supplier by number or amount, or across suppliers (drafts). */
+type PairRule = "number" | "amount" | "number_and_amount";
 
 interface VoucherPair {
   readonly rule: PairRule;
@@ -192,6 +231,22 @@ function reverses(a: DocumentHeader, b: DocumentHeader): boolean {
   );
 }
 
+/** Whether both are dated and at most `days` days apart. */
+function within(a: DocumentHeader, b: DocumentHeader, days: number): boolean {
+  return (
+    a.date !== undefined && b.date !== undefined && Math.abs(daysBetween(a.date, b.date)) <= days
+  );
+}
+
+/** `[earlier, later]` by date, then id. */
+function ordered(a: DocumentHeader, b: DocumentHeader): [DocumentHeader, DocumentHeader] {
+  return byDateThenId(a, b) <= 0 ? [a, b] : [b, a];
+}
+
+function pairKey(pair: VoucherPair): string {
+  return `${String(pair.first.id)}|${String(pair.second.id)}`;
+}
+
 /** The pairs among the vouchers of one supplier and direction, sorted by date. */
 function pairsOf(
   vouchers: readonly DocumentHeader[],
@@ -200,13 +255,11 @@ function pairsOf(
   const pairs: VoucherPair[] = [];
   const seen = new Set<string>();
   const add = (rule: PairRule, a: DocumentHeader, b: DocumentHeader): void => {
-    // Two drafts are not a duplicate booking (stuck drafts are reported on their own).
-    if (isDraft(a) && isDraft(b)) return;
-    const [first, second] = byDateThenId(a, b) <= 0 ? [a, b] : [b, a];
-    const key = `${String(first.id)}|${String(second.id)}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    pairs.push({ rule, first, second, contact });
+    const [first, second] = ordered(a, b);
+    const pair = { rule, first, second, contact };
+    if (seen.has(pairKey(pair))) return;
+    seen.add(pairKey(pair));
+    pairs.push(pair);
   };
 
   const byNumber = new Map<string, DocumentHeader[]>();
@@ -221,6 +274,7 @@ function pairsOf(
         const a = same[i];
         const b = same[j];
         if (a === undefined || b === undefined || reverses(a, b)) continue;
+        if (!within(a, b, NUMBER_WINDOW_DAYS)) continue;
         add("number", a, b);
       }
     }
@@ -272,10 +326,59 @@ function findPairs(
       if (inPeriod(context, pair.second.date)) pairs.push(pair);
     }
   }
+  // A pair already found per supplier keeps its rule and contact.
+  const seen = new Set(pairs.map(pairKey));
+  for (const pair of draftPairsAcrossSuppliers(vouchers)) {
+    if (seen.has(pairKey(pair)) || !inPeriod(context, pair.second.date)) continue;
+    seen.add(pairKey(pair));
+    pairs.push(pair);
+  }
   return {
     pairs: pairs.sort((x, y) => byDateThenId(x.second, y.second)),
     withoutSupplier,
   };
+}
+
+/**
+ * The pairs that involve a draft, found without comparing the supplier (see the module doc): the
+ * same direction, the same document number at most {@link NUMBER_WINDOW_DAYS} days apart and the
+ * same gross amount, not 0. Vouchers without any supplier take part.
+ */
+function draftPairsAcrossSuppliers(vouchers: readonly DocumentHeader[]): VoucherPair[] {
+  const byNumber = new Map<string, DocumentHeader[]>();
+  for (const voucher of vouchers) {
+    const key = numberKey(voucher.number);
+    if (key === undefined || voucher.gross === undefined || isZero(voucher.gross)) continue;
+    const group = `${key}|${voucher.direction ?? "unknown"}`;
+    byNumber.set(group, [...(byNumber.get(group) ?? []), voucher]);
+  }
+  const pairs: VoucherPair[] = [];
+  for (const same of byNumber.values()) {
+    if (!same.some(isDraft)) continue;
+    const sorted = [...same].sort(byDateThenId);
+    for (let i = 0; i < sorted.length; i += 1) {
+      for (let j = i + 1; j < sorted.length; j += 1) {
+        const a = sorted[i];
+        const b = sorted[j];
+        if (a === undefined || b === undefined || (!isDraft(a) && !isDraft(b))) continue;
+        if (!sameGross(a, b) || !within(a, b, NUMBER_WINDOW_DAYS)) continue;
+        const [first, second] = ordered(a, b);
+        pairs.push({ rule: "number_and_amount", first, second, contact: pairContact(a, b) });
+      }
+    }
+  }
+  return pairs;
+}
+
+/**
+ * The contact a pair across suppliers is listed under: one with a contact id first (the booked
+ * voucher's before a draft's), else the first known by name.
+ */
+function pairContact(a: DocumentHeader, b: DocumentHeader): AuditContact | undefined {
+  const rank = (header: DocumentHeader): number =>
+    (header.contact?.id === undefined ? 2 : 0) + (isDraft(header) ? 1 : 0);
+  const [best, other] = rank(a) <= rank(b) ? [a, b] : [b, a];
+  return contactOf(best) ?? contactOf(other);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -333,6 +436,7 @@ function sameReceipt(pair: VoucherPair, hashes: ReadonlyMap<number, string | und
 // ---------------------------------------------------------------------------------------------
 
 function codeOf(pair: VoucherPair, confirmed: boolean): DuplicateFindingCode {
+  if (isDraft(pair.first) && isDraft(pair.second)) return "draft_twice";
   if (isDraft(pair.first) || isDraft(pair.second)) return "draft_repeats_voucher";
   if (pair.rule === "number") return "voucher_number_twice";
   return confirmed ? "voucher_receipt_twice" : "voucher_amount_twice";
@@ -404,11 +508,14 @@ async function runDuplicatesCheck(context: AuditCheckContext): Promise<AuditChec
     all.filter((header) => inPeriod(context, header.date)).length + sales.drafts.length;
   const truncated = vouchers.listed.truncated || sales.truncated;
   const notes: string[] = [
-    `Vouchers are compared per supplier and direction: the same document number (with a digit), ` +
-      `or the same gross amount at most ${String(AMOUNT_WINDOW_DAYS)} days apart. Vouchers ` +
-      `dated up to ${String(NUMBER_LOOKBACK_DAYS)} days before the period were read; a pair ` +
-      "counts in the period of its later voucher. Drafts count as stuck " +
-      `${String(STUCK_DRAFT_DAYS)} days after they were created (as of ${today}). Sales ` +
+    `Vouchers are compared per supplier and direction: the same document number (with a digit) ` +
+      `at most ${String(NUMBER_WINDOW_DAYS)} days apart, or the same gross amount at most ` +
+      `${String(AMOUNT_WINDOW_DAYS)} days apart. A pair that involves a draft is also found ` +
+      "across suppliers, by the same number and gross amount. Vouchers dated up to " +
+      `${String(NUMBER_LOOKBACK_DAYS)} days before the period were read; a pair counts in the ` +
+      "period of its later voucher. Drafts count as stuck " +
+      `${String(STUCK_DRAFT_DAYS)} days after they were created (as of ${today}); every invoice ` +
+      "and credit note dated in the period was listed to find their drafts. Sales " +
       "invoices are checked for stuck drafts only.",
   ];
   if (amountPairs.length > 0) {
@@ -433,7 +540,7 @@ async function runDuplicatesCheck(context: AuditCheckContext): Promise<AuditChec
   if (withoutSupplier > 0) {
     notes.push(
       `${plural(withoutSupplier, "voucher")} in the period without a supplier (no contact, no ` +
-        "supplier name) could not be compared.",
+        "supplier name) could be compared only in pairs with a draft, by number and gross amount.",
     );
   }
   if (truncated) {
@@ -471,7 +578,8 @@ export const duplicatesCheck = {
   summary:
     "vouchers booked twice (same supplier and document number, the same receipt file, or the " +
     `same amount within ${String(AMOUNT_WINDOW_DAYS)} days), drafts that repeat a booked ` +
-    `voucher, and voucher, invoice and credit note drafts open for ${String(STUCK_DRAFT_DAYS)} ` +
+    `voucher or another draft (also across suppliers), and voucher, invoice and credit note ` +
+    `drafts open for ${String(STUCK_DRAFT_DAYS)} ` +
     "days or more",
   codes: DUPLICATE_FINDING_CODES,
   run: runDuplicatesCheck,

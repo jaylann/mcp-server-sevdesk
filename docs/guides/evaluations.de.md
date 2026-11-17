@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/evaluations.md sha256:64e2a09c4ce1 -->
+<!-- translated-from: docs/guides/evaluations.md sha256:e7179dea629a -->
 
 # Auswertungen und Exporte
 
@@ -151,25 +151,35 @@ Regelbesteuerung (`reverse_charge_without_deduction`).
 
 Die Prüfung vergleicht die Belege jedes Lieferanten, Ausgaben und Einnahmen getrennt. Lieferant
 ist der Kontakt des Belegs oder, wenn er keinen hat, der Lieferantenname auf dem Beleg; ein Beleg
-ohne beides wird nicht verglichen, die Hinweise zählen ihn. Ein Paar zählt im Zeitraum seines
-späteren Belegs; für den früheren werden Belege bis 31 Tage vor dem Zeitraum gelesen.
+ohne beides wird nicht verglichen, die Hinweise zählen ihn. Ein Paar mit einem Entwurf wird auch
+über Lieferanten hinweg gefunden, an derselben Nummer und demselben Bruttobetrag: Die
+Belegerkennung von sevDesk füllt Rechnungsnummer und Betrag eines Belegs aus, aber nicht den
+Kontakt des Lieferanten, also kann dieselbe PDF, die zweimal in sevDesk ankommt, unter zwei
+Lieferanten oder unter keinem stehen. Ein Paar zählt im Zeitraum seines späteren Belegs; für den
+früheren werden Belege bis 31 Tage vor dem Zeitraum gelesen.
 
-| Code                    | Bedeutet                                                                                                                                                                                    |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `voucher_number_twice`  | Gebuchte Belege mit derselben Belegnummer (`warning`). Groß- und Kleinschreibung, Leerzeichen und `-_/.#` zählen nicht; eine Nummer braucht eine Ziffer, „Miete“ als Beschreibung ist keine |
-| `voucher_receipt_twice` | Ein Paar mit gleichem Betrag, dessen Belegdateien dieselbe SHA-256-Prüfsumme haben: dieselbe Datei zweimal hochgeladen (`warning`)                                                          |
-| `voucher_amount_twice`  | Gebuchte Belege mit demselben Bruttobetrag und derselben Währung, höchstens 5 Tage auseinander, nicht durch zwei verschiedene Nummern unterschieden (`check`)                               |
-| `draft_repeats_voucher` | Ein Entwurf mit derselben Nummer wie ein gebuchter Beleg oder demselben Betrag innerhalb von 5 Tagen (`check`): lieber löschen als buchen                                                   |
-| `voucher_draft_stuck`   | Ein Beleg mit Datum im Zeitraum, der 21 Tage oder länger nach dem Anlegen in sevDesk noch ein Entwurf ist (`check`)                                                                         |
-| `sales_draft_stuck`     | Dasselbe für eine Rechnung oder Gutschrift: Der Kunde hat noch keine Rechnung (`check`)                                                                                                     |
+| Code                    | Bedeutet                                                                                                                                                                                                                                                               |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `voucher_number_twice`  | Gebuchte Belege mit derselben Belegnummer, höchstens 21 Tage auseinander (`warning`). Groß- und Kleinschreibung, Leerzeichen und `-_/.#` zählen nicht; eine Nummer braucht eine Ziffer, „Miete“ als Beschreibung ist keine                                             |
+| `voucher_receipt_twice` | Ein Paar mit gleichem Betrag, dessen Belegdateien dieselbe SHA-256-Prüfsumme haben: dieselbe Datei zweimal hochgeladen (`warning`)                                                                                                                                     |
+| `voucher_amount_twice`  | Gebuchte Belege mit demselben Bruttobetrag und derselben Währung, höchstens 5 Tage auseinander, nicht durch zwei verschiedene Nummern unterschieden (`check`)                                                                                                          |
+| `draft_repeats_voucher` | Ein Entwurf mit derselben Nummer wie ein gebuchter Beleg, höchstens 21 Tage auseinander, und demselben Lieferanten oder demselben Betrag (bei jedem Lieferanten); oder mit demselben Lieferanten und Betrag innerhalb von 5 Tagen (`check`): lieber löschen als buchen |
+| `draft_twice`           | Zwei Entwürfe, nach denselben Regeln gepaart (`check`): meist derselbe Beleg zweimal hochgeladen; einen buchen, den anderen löschen                                                                                                                                    |
+| `voucher_draft_stuck`   | Ein Beleg mit Datum im Zeitraum, der 21 Tage oder länger nach dem Anlegen in sevDesk noch ein Entwurf ist (`check`)                                                                                                                                                    |
+| `sales_draft_stuck`     | Dasselbe für eine Rechnung oder Gutschrift: Der Kunde hat noch keine Rechnung (`check`)                                                                                                                                                                                |
 
 Bewusst nicht gemeldet: Einkäufe mit gleichem Betrag im Abstand einer Woche, zwei Belege mit
-verschiedenen Nummern, ein Beleg und seine Stornierung (+x und −x), dieselbe Nummer von einem
-anderen Lieferanten oder in der anderen Richtung, ein Bruttobetrag von 0, zwei Entwürfe (jeder wird
-gemeldet, sobald er liegen geblieben ist) und ein Entwurf, der vor weniger als 21 Tagen angelegt
-wurde, wie alt sein Belegdatum auch ist. Ausgangsrechnungen werden nur auf liegen gebliebene
-Entwürfe geprüft: Ihre Nummern kommen aus dem Nummernkreis von sevDesk, und eine doppelt gestellte
-Rechnung wird mit einer Stornorechnung berichtigt.
+verschiedenen Nummern, dieselbe Nummer auf Belegen, die mehr als 21 Tage auseinanderliegen (eine
+Beschreibung wie „Miete 2026“ auf jeder Monatsrechnung), ein Beleg und seine Stornierung (+x und
+−x), dieselbe Nummer von einem anderen Lieferanten oder in der anderen Richtung zwischen gebuchten
+Belegen, Entwürfe verschiedener Lieferanten mit anderem Betrag oder ohne Nummer, ein Bruttobetrag
+von 0 und ein Entwurf, der vor weniger als 21 Tagen angelegt wurde, wie alt sein Belegdatum auch
+ist. Ausgangsrechnungen werden nur auf liegen gebliebene Entwürfe geprüft: Ihre Nummern kommen aus
+dem Nummernkreis von sevDesk, und eine doppelt gestellte Rechnung wird mit einer Stornorechnung
+berichtigt. Um diese Entwürfe zu finden, listet die Prüfung jede Rechnung und Gutschrift mit Datum
+im Zeitraum (ein Abruf je 1.000): Die Listen von sevDesk haben laut Spezifikation einen
+Statusfilter, aber keine Aufzeichnung zeigt, dass er nur Entwürfe liefert, deshalb wird er nicht
+genutzt.
 
 Um ein Paar mit gleichem Betrag zu bestätigen, liest die Prüfung die Prüfsumme der Belegdateien
 seiner Belege (zwei Abrufe je Beleg), für höchstens 40 Belege; die Hinweise sagen, wenn sie dort

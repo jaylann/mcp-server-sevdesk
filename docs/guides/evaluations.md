@@ -141,24 +141,32 @@ taxation (`reverse_charge_without_deduction`).
 
 The check compares the vouchers (Belege) of each supplier, expenses and revenue apart. The
 supplier is the voucher's contact, or the supplier name on the voucher when it has no contact; a
-voucher with neither is not compared and the notes count it. A pair counts in the period of its
-later voucher; vouchers up to 31 days before the period are read for the earlier one.
+voucher with neither is not compared and the notes count it. A pair that involves a draft is also
+found across suppliers, by the same number and gross amount: sevDesk's receipt recognition fills
+in a receipt's invoice number and amount, but not the supplier's contact, so the same PDF reaching
+sevDesk twice can stand under two suppliers or none. A pair counts in the period of its later
+voucher; vouchers up to 31 days before the period are read for the earlier one.
 
-| Code                    | Means                                                                                                                                                                    |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `voucher_number_twice`  | Booked vouchers with the same document number (`warning`). Case, spaces and `-_/.#` do not count; a number needs a digit, so "Miete" typed as the description is not one |
-| `voucher_receipt_twice` | A same-amount pair whose receipt files have the same SHA-256 checksum: the same file uploaded twice (`warning`)                                                          |
-| `voucher_amount_twice`  | Booked vouchers with the same gross amount and currency, at most 5 days apart, not told apart by two different numbers (`check`)                                         |
-| `draft_repeats_voucher` | A draft with the same number as a booked voucher, or the same amount within 5 days (`check`): delete it rather than book it                                              |
-| `voucher_draft_stuck`   | A voucher dated in the period that is still a draft 21 days or more after it was created in sevDesk (`check`)                                                            |
-| `sales_draft_stuck`     | The same for an invoice or credit note: the customer has not been billed (`check`)                                                                                       |
+| Code                    | Means                                                                                                                                                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `voucher_number_twice`  | Booked vouchers with the same document number, at most 21 days apart (`warning`). Case, spaces and `-_/.#` do not count; a number needs a digit, so "Miete" typed as the description is not one                          |
+| `voucher_receipt_twice` | A same-amount pair whose receipt files have the same SHA-256 checksum: the same file uploaded twice (`warning`)                                                                                                          |
+| `voucher_amount_twice`  | Booked vouchers with the same gross amount and currency, at most 5 days apart, not told apart by two different numbers (`check`)                                                                                         |
+| `draft_repeats_voucher` | A draft with the same number as a booked voucher, at most 21 days apart, and the same supplier or the same amount (any supplier); or the same supplier and amount within 5 days (`check`): delete it rather than book it |
+| `draft_twice`           | Two drafts paired by the same rules (`check`): usually the same receipt uploaded twice; book one, delete the other                                                                                                       |
+| `voucher_draft_stuck`   | A voucher dated in the period that is still a draft 21 days or more after it was created in sevDesk (`check`)                                                                                                            |
+| `sales_draft_stuck`     | The same for an invoice or credit note: the customer has not been billed (`check`)                                                                                                                                       |
 
 Not flagged on purpose: purchases of the same amount a week apart, two receipts with different
-numbers, a voucher and its reversal (+x and −x), the same number from another supplier or in the
-other direction, a gross amount of 0, two drafts (each is reported once it is stuck), and a draft
-created less than 21 days ago, however old its document date. Sales invoices are checked for
-stuck drafts only: their numbers come from sevDesk's own number range, and an invoice issued twice
-is corrected with a cancellation invoice.
+numbers, the same number on vouchers more than 21 days apart (a description such as "Miete 2026"
+repeated on every monthly bill), a voucher and its reversal (+x and −x), the same number from
+another supplier or in the other direction between booked vouchers, drafts under different
+suppliers with another amount or without a number, a gross amount of 0, and a draft created less
+than 21 days ago, however old its document date. Sales invoices are checked for stuck drafts only:
+their numbers come from sevDesk's own number range, and an invoice issued twice is corrected with
+a cancellation invoice. To find those drafts the check lists every invoice and credit note dated in
+the period (one request per 1,000): sevDesk's lists declare a status filter, but no recording shows
+that it returns only drafts, so it is not used.
 
 To confirm a same-amount pair the check reads the receipt checksum of its vouchers (two reads per
 voucher), for at most 40 vouchers; the notes say when it stopped there. Different checksums prove

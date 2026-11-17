@@ -2,7 +2,8 @@
  * Check `duplicates`: a quarter (2026-Q1) of vouchers and sales drafts with known positives and
  * known negatives, among them the false-positive cases the rules name (weekly purchases of the
  * same amount, two receipts told apart by their numbers, "Miete" typed as the description, a
- * reversal, another supplier or direction, two drafts, a recent draft, a zero amount).
+ * description with a year repeated on monthly bills, a reversal, another supplier or direction,
+ * drafts across suppliers with another amount or no number, a recent draft, a zero amount).
  */
 import { describe, expect, it } from "vitest";
 
@@ -89,7 +90,7 @@ function voucher(spec: VoucherSpec): ScenarioDocument {
 
 /** What the check must make of each voucher: a finding code or `none`. */
 const VOUCHERS: readonly (VoucherSpec & { readonly expect: string })[] = [
-  // Same number, spelled differently, different amounts: booked twice.
+  // Same number, spelled differently, different amounts, two weeks apart: booked twice.
   {
     id: 101,
     date: "2026-02-03",
@@ -100,7 +101,7 @@ const VOUCHERS: readonly (VoucherSpec & { readonly expect: string })[] = [
   },
   {
     id: 102,
-    date: "2026-03-10",
+    date: "2026-02-17",
     gross: "120.00",
     supplier: 3001,
     number: "re 2026 0042",
@@ -109,7 +110,7 @@ const VOUCHERS: readonly (VoucherSpec & { readonly expect: string })[] = [
   // The earlier one in December (read through the lookback), the later one in the period.
   {
     id: 104,
-    date: "2025-12-20",
+    date: "2025-12-28",
     gross: "50.00",
     supplier: 3009,
     number: "INV-7",
@@ -185,7 +186,7 @@ const VOUCHERS: readonly (VoucherSpec & { readonly expect: string })[] = [
   },
   {
     id: 111,
-    date: "2026-03-21",
+    date: "2026-01-21",
     gross: "33.00",
     supplier: 3004,
     number: "Q 33",
@@ -240,6 +241,69 @@ const VOUCHERS: readonly (VoucherSpec & { readonly expect: string })[] = [
     number: null,
     expect: "voucher_amount_twice",
   },
+  // The same PDF twice as drafts, once without the contact and with the name sevDesk's receipt
+  // recognition made up: paired across suppliers by number and gross.
+  {
+    id: 150,
+    date: "2026-03-16",
+    gross: "238.00",
+    supplier: 3021,
+    number: "RE-555",
+    draft: true,
+    createdOn: "2026-04-14",
+    expect: "draft_twice",
+  },
+  {
+    id: 151,
+    date: "2026-03-16",
+    gross: "238.00",
+    supplier: null,
+    supplierName: "Seite 1 von 2",
+    number: "RE 555",
+    draft: true,
+    createdOn: "2026-04-14",
+    expect: "draft_twice",
+  },
+  // Two drafts under two different contacts.
+  {
+    id: 152,
+    date: "2026-03-18",
+    gross: "61.88",
+    supplier: 3022,
+    number: "AB-77",
+    draft: true,
+    createdOn: "2026-04-16",
+    expect: "draft_twice",
+  },
+  {
+    id: 153,
+    date: "2026-03-18",
+    gross: "61.88",
+    supplier: 3023,
+    number: "ab77",
+    draft: true,
+    createdOn: "2026-04-16",
+    expect: "draft_twice",
+  },
+  // A booked voucher and a recognised draft of the same receipt without any supplier.
+  {
+    id: 154,
+    date: "2026-03-02",
+    gross: "99.00",
+    supplier: 3024,
+    number: "INV-9001",
+    expect: "draft_repeats_voucher",
+  },
+  {
+    id: 155,
+    date: "2026-03-02",
+    gross: "99.00",
+    supplier: null,
+    number: "INV 9001",
+    draft: true,
+    createdOn: "2026-04-12",
+    expect: "draft_repeats_voucher",
+  },
 
   // Negatives. Weekly purchases of the same amount (7 days apart).
   { id: 115, date: "2026-01-05", gross: "25.00", supplier: 3007, number: null, expect: "none" },
@@ -267,7 +331,7 @@ const VOUCHERS: readonly (VoucherSpec & { readonly expect: string })[] = [
     kind: "D",
     expect: "none",
   },
-  // Two recent drafts of the same amount: not paired, not stuck.
+  // Two recent drafts of the same amount, told apart by their numbers: not paired, not stuck.
   {
     id: 127,
     date: "2026-03-20",
@@ -296,6 +360,65 @@ const VOUCHERS: readonly (VoucherSpec & { readonly expect: string })[] = [
     createdOn: "2026-04-10",
     expect: "none",
   },
+  // "Miete 2026" on every monthly rent voucher, the same amount, March's still a draft: the
+  // bills lie four weeks apart, so the year is a description, not a number booked twice.
+  {
+    id: 160,
+    date: "2026-01-01",
+    gross: "850.00",
+    supplier: 3029,
+    number: "Miete 2026",
+    expect: "none",
+  },
+  {
+    id: 161,
+    date: "2026-02-01",
+    gross: "850.00",
+    supplier: 3029,
+    number: "Miete 2026",
+    expect: "none",
+  },
+  {
+    id: 162,
+    date: "2026-03-01",
+    gross: "850.00",
+    supplier: 3029,
+    number: "Miete 2026",
+    draft: true,
+    createdOn: "2026-04-10",
+    expect: "none",
+  },
+  // A draft and a booked voucher with the same number under two suppliers, another amount.
+  {
+    id: 163,
+    date: "2026-03-20",
+    gross: "50.00",
+    supplier: 3025,
+    number: "INV-9002",
+    draft: true,
+    createdOn: "2026-04-10",
+    expect: "none",
+  },
+  {
+    id: 164,
+    date: "2026-03-20",
+    gross: "51.00",
+    supplier: 3026,
+    number: "INV-9002",
+    expect: "none",
+  },
+  // The same amount under two suppliers, no number.
+  {
+    id: 165,
+    date: "2026-03-22",
+    gross: "70.00",
+    supplier: 3027,
+    number: null,
+    draft: true,
+    createdOn: "2026-04-10",
+    expect: "none",
+  },
+  { id: 166, date: "2026-03-22", gross: "70.00", supplier: 3028, number: null, expect: "none" },
   // A gross of 0 twice on one day doubles nothing.
   { id: 134, date: "2026-02-25", gross: "0", supplier: 3017, number: null, expect: "none" },
   { id: 135, date: "2026-02-25", gross: "0", supplier: 3017, number: null, expect: "none" },
@@ -549,7 +672,12 @@ describe("check duplicates", () => {
 
     expect(notes).toContain(`at most ${String(AMOUNT_WINDOW_DAYS)} days apart`);
     expect(notes).toContain(`${String(STUCK_DRAFT_DAYS)} days after they were created`);
-    expect(notes).toContain("2 vouchers in the period without a supplier");
+    expect(notes).toContain("the same document number (with a digit) at most 21 days apart");
+    expect(notes).toContain("every invoice and credit note dated in the period was listed");
+    expect(notes).toContain(
+      "3 vouchers in the period without a supplier (no contact, no supplier name) could be " +
+        "compared only in pairs with a draft",
+    );
     const inPeriod = VOUCHERS.filter((spec) => spec.date >= "2026-01-01").length;
     expect(result.coverage).toMatchObject({
       documentsInScope: inPeriod + 2,
@@ -571,6 +699,28 @@ describe("check duplicates", () => {
 
     expect(result.coverage.truncated).toBe(true);
     expect(result.notes.join(" ")).toContain("The scan was cut");
+  });
+
+  it("pairs drafts across suppliers by number and gross, as checks under a contact with an id", async () => {
+    const result = await audit(new FakeSevdeskClient(routes()));
+    const across = result.findings
+      .filter((finding) => [3021, 3022, 3024].includes(finding.contact?.id ?? 0))
+      .map((finding) => [
+        finding.code,
+        finding.severity,
+        finding.contact?.id,
+        finding.records.map((record) => record.id),
+      ]);
+
+    expect(across).toEqual([
+      ["draft_repeats_voucher", "check", 3024, [154, 155]],
+      ["draft_twice", "check", 3021, [150, 151]],
+      ["draft_twice", "check", 3022, [152, 153]],
+    ]);
+    expect(result.findings.find((finding) => finding.code === "draft_twice")).toMatchObject({
+      title: "Draft repeats another draft",
+      titleDe: "Entwurf wiederholt einen anderen Entwurf",
+    });
   });
 
   it("documents its codes", () => {
