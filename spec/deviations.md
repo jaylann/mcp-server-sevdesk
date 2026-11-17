@@ -3910,13 +3910,18 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   download (16 MiB, `LAYOUT_LIST_MAX_BYTES` in `src/domain/layouts.ts`), keep only id, name, the
   default flag, `isCustom`, `premium`, `type` and whether `sevClient` is `"0"`, and drop `pdf`,
   `img`, `html` and `structure` before anything reaches the model. `default` is read as a boolean
-  or a number. `sevdesk_api_get` keeps its 1 MiB cap and keeps refusing `DocServer` (D-024). (#94)
+  or a number. Both lists are sent without `limit`, an exception to the explicit-limit rule: the
+  recorded untyped template call sent none and got all 147 rows, past sevDesk's usual cut at
+  100, and the byte cap bounds the answer instead. `sevdesk_api_get` keeps its 1 MiB cap and keeps
+  refusing `DocServer` (D-024). (#94)
 - **Test:** `test/contract/recorded-gaps-documents.test.ts` ("answers result and letterpapers
   under objects, with the thumbnails scrubbed", "is what read-docserver-layouts describes, without
   any base64", "reads through the letterhead list parser: id, name and flags, no PDF or
   thumbnail"); `test/unit/domain/layouts.test.ts` ("reads `default` as a boolean or a number, as
   recorded (D-114)", "refuses a list larger than the cap without reading it, as an expected
-  limit"); `test/unit/tools/meta/reference-lookup-layouts.test.ts`.
+  limit", and without `limit`: "reads letterheads as id, name and flags, without the PDF or the
+  thumbnail", "reads the %s templates with type %s and keeps that type only");
+  `test/unit/tools/meta/reference-lookup-layouts.test.ts`.
 
 ### D-115: `POST` and `DELETE /TextTemplate` create and delete text templates
 

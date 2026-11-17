@@ -177,6 +177,8 @@ describe("the DocServer lists", () => {
         path: "/DocServer/getLetterpapersWithThumb",
       }),
     ]);
+    // No `limit` on purpose: the recorded call sent none and got every row (D-114).
+    expect(fake.calls[0]?.query ?? {}).toEqual({});
   });
 
   it.each([
@@ -196,6 +198,7 @@ describe("the DocServer lists", () => {
 
       const templates = await listTemplates(fake, kind);
 
+      // The type only, no `limit` (D-114: the recorded call without one got all 147 rows).
       expect(fake.calls[0]?.query).toEqual({ type });
       expect(templates.map((template) => template.id)).toEqual(
         type === "Invoice" ? ["tpl-standard", "other", "untyped"] : ["tpl-standard", "untyped"],
