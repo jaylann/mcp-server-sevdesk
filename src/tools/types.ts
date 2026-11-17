@@ -170,7 +170,7 @@ export type ToolOutputSchema = z.ZodObject;
 /** The configuration slice that decides which tools a server registers. */
 export type ToolSelectionConfig = Pick<
   Config,
-  "toolsets" | "allowedTiers" | "outputDir" | "fileDirs" | "deployment"
+  "toolsets" | "allowedTiers" | "outputDir" | "fileDirs" | "fileUrlHosts" | "deployment"
 >;
 
 /**
@@ -178,9 +178,11 @@ export type ToolSelectionConfig = Pick<
  *
  * Effects of a tool outside sevDesk, on files (see `ToolDefinitionBase.localEffects`). All go only
  * through `ToolContext.files` ({@link FileAccess}, `src/safety/file-sources.ts`).
- * - `"reads-files"`: reads files: inside `SEVDESK_FILE_DIRS` (`readConfinedFile`) or, over HTTP
- *   with file transfer, the caller's own uploads. Reading changes nothing, so a `read` tool with
- *   this flag stays `readOnlyHint: true`.
+ * - `"reads-files"`: reads files: inside `SEVDESK_FILE_DIRS` (`readConfinedFile`), over HTTP
+ *   with file transfer the caller's own uploads, or downloaded from an https link to a host in
+ *   `SEVDESK_FILE_URL_HOSTS` (`src/safety/url-files.ts`). Reading changes nothing, so a `read`
+ *   tool with this flag stays `readOnlyHint: true`; a download reaches a host outside sevDesk,
+ *   so these tools declare `openWorldHint: true`.
  * - `"writes-files"`: hands files out: new files inside `SEVDESK_OUTPUT_DIR` (`writeNewFile`,
  *   never overwriting) or, over HTTP with file transfer, download links of the caller's account.
  *   A `read` tool with this flag changes nothing in sevDesk but does modify its environment, so

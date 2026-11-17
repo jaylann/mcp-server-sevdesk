@@ -26,7 +26,8 @@ every write is real, and finalized or enshrined records cannot simply be deleted
 4. **Respect the tiers.** `read` (default), `write` (drafts, reversible), `commit` (legally
    binding: finalize, book, cancel, enshrine, reset), `external` (emails third parties). Tools
    above the enabled tiers are not offered at all. If one is missing, tell the user which tier
-   (`SEVDESK_ALLOW`) or setting (`SEVDESK_FILE_DIRS`, `SEVDESK_OUTPUT_DIR`) enables it; never
+   (`SEVDESK_ALLOW`) or setting (`SEVDESK_FILE_DIRS`, `SEVDESK_FILE_URL_HOSTS`,
+   `SEVDESK_OUTPUT_DIR`) enables it; never
    work around it with another tool.
 5. **Humans confirm binding steps.** `commit` and `external` tools ask the user in a confirmation
    prompt (or an approval page). If the user declines, do not retry unless they ask. A
@@ -44,6 +45,8 @@ every write is real, and finalized or enshrined records cannot simply be deleted
 | -------------------------------------------- | ------------------------------------------------------------------- |
 | know the account setup, tiers, regime        | `sevdesk_account_info`                                              |
 | find a tax rule or booking account           | `sevdesk_reference_lookup` (`kind: tax_rules` / `receipt_guidance`) |
+| choose the tax rule for an invoice           | `sevdesk_tax_rule_suggest`                                          |
+| check a customer's VAT ID (USt-IdNr.)        | `sevdesk_vat_id_check`                                              |
 | find a customer or supplier                  | `sevdesk_contacts_search`                                           |
 | file a receipt (Beleg)                       | `sevdesk_voucher_create_draft` (see workflows)                      |
 | check or import an e-invoice                 | `sevdesk_einvoice_parse`, then `sevdesk_voucher_import_einvoice`    |
@@ -51,24 +54,31 @@ every write is real, and finalized or enshrined records cannot simply be deleted
 | match transactions to documents              | `sevdesk_reconcile_suggest`, then `sevdesk_transaction_book`        |
 | mark a private withdrawal or deposit         | `sevdesk_transaction_mark_private`                                  |
 | VAT for a month or quarter                   | `sevdesk_vat_summary`                                               |
+| find wrong VAT treatment, the §13b base      | `sevdesk_records_audit` (`check: vat` / `reverse_charge`)           |
+| find double bookings, stuck drafts           | `sevdesk_records_audit` (`check: duplicates`)                       |
+| find missing bills of regular suppliers      | `sevdesk_records_audit` (`check: recurring_gaps`)                   |
+| find receipt files in a folder never booked  | `sevdesk_receipt_folder_check` (needs `SEVDESK_FILE_DIRS`)          |
 | profit, EÜR                                  | `sevdesk_profit_and_loss`                                           |
 | revenue or costs grouped by month, contact … | `sevdesk_records_summarize`                                         |
 | open receivables or payables                 | `sevdesk_receivables_aging`, `sevdesk_payables_aging`               |
 | liquidity                                    | `sevdesk_cash_position`                                             |
 | hand data to the tax advisor                 | `sevdesk_datev_export`, `sevdesk_csv_export`                        |
+| follow up on open offers                     | `sevdesk_orders_list` (`type: offer`, `status: sent`)               |
 | write an invoice                             | `sevdesk_invoice_create_draft`, then `sevdesk_invoice_finalize`     |
 | check an invoice as e-invoice                | `sevdesk_invoice_einvoice_preflight`                                |
 
 The main workflows are also MCP prompts of the server (in Claude Code `/mcp__sevdesk__<name>`):
-`month_end_close`, `receipt_intake`, `dunning_run`, `vat_precheck`, `bank_reconciliation`.
+`month_end_close`, `receipt_intake`, `dunning_run`, `vat_precheck`, `bank_reconciliation`,
+`missing_receipts`, `year_end_handoff`, `offer_follow_up`.
 
 ## Reference files
 
 Read only what the task needs:
 
 - [references/workflows.md](references/workflows.md): step-by-step tool sequences for filing a
-  receipt, importing an e-invoice, reconciling the bank, the VAT pre-check before the UStVA, month
-  end and year end, with tiers and confirmation points.
+  receipt, importing an e-invoice, reconciling the bank, finding missing receipts, the VAT
+  pre-check before the UStVA, month end, the year-end handoff and following up on offers, with
+  tiers and confirmation points.
 - [references/tax-rules.md](references/tax-rules.md): sevDesk tax rules (Steuerregeln) 1–22 and
   the business cases they belong to: regular taxation, §19 Kleinunternehmer, §13b reverse charge,
   intra-EU supplies and acquisitions, OSS, exports.

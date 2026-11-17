@@ -42,9 +42,55 @@
    carries the calling tool's tier (stamped by the framework, never by the tool), and the client
    refuses it when that tier is not enabled or is below the endpoint's minimum: `sendBy`,
    `bookAmount`, `enshrine`, `cancelInvoice`, `resetToDraft`, `resetToOpen`, `changeParameter`,
-   a sending `getPdf` and DATEV exports with `enshrine` need `commit`; `sendViaEmail` and
-   `sendByWithRender` need `external`; everything else needs `write`. So a `write` tool cannot
-   finalize, book, cancel or send, even by mistake.
+   `createContractNoteFromOrder`, a sending `getPdf`, DATEV exports with `enshrine`, a
+   `saveVoucher` whose voucher is not a draft, a change to the bank transactions themselves
+   (`/CheckAccountTransaction` and `/CheckAccountTransaction/{id}`), a request to one document
+   record (`/Invoice/{id}`, `/Order/{id}`, `/CreditNote/{id}`, `/Voucher/{id}`) that sets its
+   status (on an invoice also its type or schedule), a `saveInvoice`, `saveOrder` or
+   `saveCreditNote` that saves a status other than the draft status 100 and a `saveInvoice` that
+   may save a recurring template need `commit`; `sendViaEmail` and `sendByWithRender` need
+   `external`; everything else needs `write`. So a `write` tool cannot finalize, book, cancel or
+   send, even by mistake.
+
+**Binding requests the endpoint name does not show** (added 2026-11-16, from the recordings of
+D-095 to D-112). Three requests look like ordinary saves but bind or are hard to undo, so the
+client requires `commit` for them by path, query, body and form (`src/sevdesk/paths.ts`) before
+any tool sends them:
+
+- **Creating a bank transaction** (`POST /CheckAccountTransaction`). A new row changes the
+  account's balance and what can be booked against it. It is not simply taken back: a delete only
+  marks it deleted and works only while it is unbooked (D-096), and once a payment is booked on it
+  and it is enshrined, neither the row nor that payment can change (D-098). The rule matches the
+  path alone; the client asks only about requests that change data, so the list `GET` of the same
+  path is not affected.
+- **Accepting or rejecting an offer.** `PUT /Order/{id}` with a `status` does it, and on a draft
+  offer sevDesk renumbers it as well (D-108); `createContractNoteFromOrder` sets the source offer
+  to accepted, even an unsent draft (D-107). A status written directly skips `sendBy` and the
+  lifecycle tools' checks on every document type, so the rule covers a `status` in the body of any
+  document record, and a status other than the draft status 100 in the document of a
+  `saveInvoice`, `saveOrder` or `saveCreditNote` (`saveOrder` with an offer's id and status 500
+  accepts it the same way). The draft tools always save status 100, and the draft updates refuse
+  a stored status other than 100 before they send, which covers the case the client cannot see
+  (100 with the id of a document that is no longer a draft). A body that is present but cannot be
+  read counts as setting one; a request without a body (a `DELETE`) keeps the tier of its path.
+  `createPackingListFromOrder` leaves its source alone and stays `write`.
+- **Saving a recurring invoice template** (`saveInvoice` with `invoiceType` `WKR`). sevDesk issues
+  invoices from it later on its own (D-111, D-112). Only a save that names its type as text other
+  than `WKR` stays `write`: an update that sends the id without a type keeps the stored one (ending
+  a template is such an update), so a missing or unreadable type counts as a template. The draft
+  tools always send `RE`, and the invoice draft update refuses any stored type but `RE` before it
+  sends, which covers the case the client cannot see (`RE` with the id of a stored template).
+  `PUT /Invoice/{id}` changes a template as well (D-111), so on an invoice record a body that sets
+  `invoiceType` or a schedule field (`account…`) needs `commit` too.
+
+These rules read what is sent: the body as JSON text (so a `toJSON` method counts, and a key whose
+value is `undefined` does not), and the query keys of the same names, compared the way sevDesk's
+PHP backend reads them (`Status`, `status[0]`; on a save, `invoice[status]` and every other key
+under the document's name). A multipart form to a document record or a save cannot be read and
+counts as binding. No shipped tool sends a query or a form to these endpoints.
+
+Deleting a document or a contact is not raised by the client: it does not see the HTTP method, and
+the tools that delete declare `commit` themselves (`sevdesk_voucher_delete_draft`).
 
 **Human confirmation for `commit` and `external`**, configured with `SEVDESK_CONFIRM`:
 
@@ -181,6 +227,9 @@ text, and all four MCP tool annotations declared explicitly on every tool.
   shown by name (contact person, country, units) is named in a warning instead.
 - Bad: after a timeout on a write the outcome is unknown. The tool reports this and tells the user
   how to check, instead of retrying.
+- Bad: a `write` tool that updates an invoice through `saveInvoice` has to send its type (`RE`). An
+  update with the id alone needs `commit`, because the client cannot tell it from a change of a
+  recurring template.
 
 ## Alternatives considered
 
