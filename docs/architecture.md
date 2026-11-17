@@ -199,10 +199,13 @@ Arguments can be completed (`completion/complete`). The catalog only names a kin
 (month, period, contact, payment account); `registerPrompts` attaches the completers of one server
 instance to a copy of the argument's schema, because the SDK's `completable` marks a schema for
 good and the catalog's schemas are shared by every account. Months and quarters come from the
-clock. Contact and account names (`completions.ts`) come from one read-only list request with an
-explicit limit, only when `sevdesk_contacts_search` or `sevdesk_bank_accounts_list` is
-registered, and are cached for a minute per account `Config` (over HTTP every request is a new
-instance). Every suggestion passes the argument's own check before it is offered, and a chosen one
+clock. Contact and account names (`completions.ts`) come from one list request per kind, plus a
+name search (limit 100) per typed name when the account has more contacts than one read returns,
+always read-only and with an explicit limit. They are read only when `sevdesk_contacts_search` or
+`sevdesk_bank_accounts_list` is registered, and cached for a minute per account `Config` (over
+HTTP every request is a new instance). A failed read suggests nothing for a few seconds instead of
+being sent again on every keystroke, and a search is stopped when the HTTP request waiting for it
+ends early. Every suggestion passes the argument's own check before it is offered, and a chosen one
 is validated and fenced like a typed one. The SDK declares the `completions` capability only when a
 listed prompt has an argument this instance completes.
 

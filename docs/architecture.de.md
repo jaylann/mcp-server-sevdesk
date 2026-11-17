@@ -1,4 +1,4 @@
-<!-- translated-from: docs/architecture.md sha256:c6fc6133b2ee -->
+<!-- translated-from: docs/architecture.md sha256:054c5833586e -->
 
 # Architektur
 
@@ -220,9 +220,13 @@ eine Art (Monat, Zeitraum, Kontakt, Zahlungskonto); `registerPrompts` hängt die
 einer Serverinstanz an eine Kopie des Argumentschemas, weil `completable` aus dem SDK ein Schema
 dauerhaft markiert und die Schemas des Katalogs von allen Konten geteilt werden. Monate und
 Quartale ergeben sich aus der Uhr. Namen von Kontakten und Konten (`completions.ts`) kommen aus
-einer nur lesenden Listenabfrage mit ausdrücklichem Limit, nur wenn `sevdesk_contacts_search`
-oder `sevdesk_bank_accounts_list` registriert ist, und werden eine Minute je `Config` eines
-Kontos zwischengespeichert (über HTTP ist jede Anfrage eine neue Instanz). Jeder Vorschlag
+einer Listenabfrage je Art, dazu einer Namenssuche (Limit 100) je getipptem Namen, wenn das Konto
+mehr Kontakte hat, als eine Abfrage liefert, immer nur lesend und mit ausdrücklichem Limit.
+Gelesen werden sie nur, wenn `sevdesk_contacts_search` oder `sevdesk_bank_accounts_list`
+registriert ist, und eine Minute je `Config` eines Kontos zwischengespeichert (über HTTP ist jede
+Anfrage eine neue Instanz). Ein fehlgeschlagener Lesevorgang schlägt einige Sekunden lang nichts
+vor, statt bei jedem Tastendruck erneut gesendet zu werden, und eine Suche wird abgebrochen, wenn
+die HTTP-Anfrage, die auf sie wartet, vorzeitig endet. Jeder Vorschlag
 besteht die Prüfung seines Arguments, bevor er angeboten wird, und ein gewählter wird wie ein
 getippter geprüft und eingefasst. Die Fähigkeit `completions` meldet das SDK nur, wenn ein
 gelisteter Prompt ein Argument hat, das diese Instanz vervollständigt.
