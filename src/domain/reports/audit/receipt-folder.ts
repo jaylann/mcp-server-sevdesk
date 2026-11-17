@@ -17,7 +17,9 @@
  * account, Update 2.0; PDF and PNG alike). Such receipts cannot be compared. The result counts
  * them (`coverage.vouchers.withoutChecksum`, `withoutChecksum` with a note in English and German),
  * and while there are any, `receipt_file_not_booked` says "no receipt with this checksum" instead
- * of presenting the file as unbooked.
+ * of presenting the file as unbooked. Rows that name the receipt without embedding its document
+ * (should sevDesk ignore `embed`) count among them and separately (`coverage.vouchers.notEmbedded`,
+ * with a note), so a listing without checksums is not mistaken for receipts without one.
  *
  * The findings, one per checksum (one for all files nothing matched):
  * - `receipt_file_not_booked`: no voucher read carries the file;
@@ -373,6 +375,14 @@ const coverageSchema = z.object({
             "from an uploaded file, files sevDesk rendered itself, or a list row without the " +
             "embedded document): no local file can match them.",
         ),
+      notEmbedded: z
+        .number()
+        .int()
+        .describe(
+          "Of those, list rows that named the receipt without embedding its document although " +
+            "the listing asked for it (embed=document): their checksum was not read at all, " +
+            "which says nothing about the receipt itself.",
+        ),
       truncated: z.boolean().describe("True when the voucher listing stopped at its cap."),
     })
     .describe("The vouchers compared."),
@@ -443,6 +453,11 @@ interface VoucherReceipts {
   readonly rowsRead: number;
   readonly withReceipt: number;
   readonly withoutChecksum: number;
+  /**
+   * Of those, rows that carried only the receipt's reference, not the embedded document: sevDesk
+   * did not embed it, so the checksum is unknown rather than absent.
+   */
+  readonly notEmbedded: number;
   /** The vouchers whose receipt has no checksum (no file can match them), by date. */
   readonly unhashed: readonly DocumentHeader[];
   readonly truncated: boolean;
@@ -487,6 +502,7 @@ async function readVoucherReceipts(
     rowsRead: listed.rowsRead,
     withReceipt,
     withoutChecksum: unhashed.length,
+    notEmbedded: unhashed.filter((header) => header.receipt?.embedded === false).length,
     unhashed,
     truncated: listed.truncated,
   };
@@ -498,6 +514,7 @@ const NO_VOUCHERS: VoucherReceipts = {
   rowsRead: 0,
   withReceipt: 0,
   withoutChecksum: 0,
+  notEmbedded: 0,
   unhashed: [],
   truncated: false,
 };
@@ -757,6 +774,7 @@ export async function runReceiptFolderCheck(
         read: vouchers.rowsRead,
         withReceipt: vouchers.withReceipt,
         withoutChecksum: vouchers.withoutChecksum,
+        notEmbedded: vouchers.notEmbedded,
         truncated: vouchers.truncated,
       },
     },
@@ -856,6 +874,17 @@ function notesOf(
   if (vouchers.withoutChecksum > 0) {
     // The same statement as `withoutChecksum.note`, which also carries the German one.
     notes.push(withoutChecksumNote(vouchers.withoutChecksum).note);
+  }
+  const { notEmbedded } = vouchers;
+  if (notEmbedded > 0) {
+    const one = notEmbedded === 1;
+    notes.push(
+      `${plural(notEmbedded, "voucher row")} named ${one ? "its" : "their"} receipt without ` +
+        "embedding the document, although the listing asked for it (embed=document): " +
+        `${one ? "its" : "their"} checksum was not read, and ${one ? "it counts" : "they count"} ` +
+        "among the receipts without a checksum. When this concerns most receipts, sevDesk did " +
+        "not embed the documents and this check cannot match files.",
+    );
   }
   if (vouchers.truncated) {
     notes.push(

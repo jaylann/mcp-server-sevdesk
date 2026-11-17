@@ -287,6 +287,7 @@ describe("receipt folder check", () => {
       read: VOUCHERS.length,
       withReceipt: 7,
       withoutChecksum: 1,
+      notEmbedded: 0,
       truncated: false,
     });
     const notes = result.notes.join(" ");
@@ -368,6 +369,36 @@ describe("receipt folder check", () => {
     expect(result.coverage.vouchers.withoutChecksum).toBe(5);
     expect(result.withoutChecksum?.receipts).toBe(5);
     expect(receiptFolderResultSchema.parse(result)).toEqual(result);
+  });
+
+  it("tells receipts sevDesk did not embed apart from receipts without a checksum", async () => {
+    // As if sevDesk ignored embed=document: every row names its receipt by reference only.
+    const plain = VOUCHERS.map((doc) => {
+      const document = doc.row["document"];
+      if (typeof document !== "object" || document === null || !("id" in document)) return doc;
+      return {
+        ...doc,
+        row: { ...doc.row, document: { id: document.id, objectName: "Document" } },
+      };
+    });
+    const result = await check(new FakeSevdeskClient(scenarioRoutes({ vouchers: plain })));
+
+    expect(result.coverage.vouchers).toMatchObject({
+      withReceipt: 7,
+      withoutChecksum: 7,
+      notEmbedded: 7,
+    });
+    expect(result.matched).toEqual([]);
+    expect(result.notes).toContainEqual(
+      "7 voucher rows named their receipt without embedding the document, although the listing " +
+        "asked for it (embed=document): their checksum was not read, and they count among the " +
+        "receipts without a checksum. When this concerns most receipts, sevDesk did not embed " +
+        "the documents and this check cannot match files.",
+    );
+    // Embedded receipts without a checksum are not counted as such.
+    const embedded = await check(new FakeSevdeskClient(routes()));
+    expect(embedded.coverage.vouchers.notEmbedded).toBe(0);
+    expect(embedded.notes.join(" ")).not.toContain("without embedding");
   });
 
   it("says plainly what a match and a missing match prove, in English and German", async () => {

@@ -478,7 +478,12 @@ describe("check duplicates", () => {
 
     expect(codesById(result).get(108)).toEqual(["voucher_amount_twice"]);
     expect(codesById(result).get(109)).toEqual(["voucher_amount_twice"]);
-    expect(result.notes.join(" ")).toContain("6 vouchers have a receipt file without a checksum");
+    // Told apart from receipts sevDesk stores without a checksum.
+    expect(result.notes.join(" ")).toContain(
+      "the list rows of 6 vouchers named the receipt file without embedding it " +
+        "(embed=document), so its checksum was not read and their pairs stay possible duplicates",
+    );
+    expect(result.notes.join(" ")).not.toContain("without a checksum");
     expect(result.notes.join(" ")).toContain("2 vouchers without a receipt file");
   });
 

@@ -368,10 +368,13 @@ async function runDuplicatesCheck(context: AuditCheckContext): Promise<AuditChec
     const candidates = [...vouchersOfPairs.values()];
     const withoutReceipt = candidates.filter((header) => header.receipt === undefined).length;
     // A receipt sevDesk stores no checksum for (e.g. one its recognition created from an upload,
-    // recorded 2026-11-17) can never confirm `voucher_receipt_twice`.
-    const withoutHash = candidates.filter(
+    // recorded 2026-11-17) can never confirm `voucher_receipt_twice`; neither can a row that
+    // named the receipt without embedding it, whose checksum is unknown rather than absent.
+    const unhashed = candidates.filter(
       (header) => header.receipt !== undefined && header.receipt.hash === undefined,
-    ).length;
+    );
+    const notEmbedded = unhashed.filter((header) => header.receipt?.embedded === false).length;
+    const withoutHash = unhashed.length - notEmbedded;
     let text =
       `The receipt files of ${plural(vouchersOfPairs.size, "voucher")} of same-amount pairs ` +
       "were compared by the SHA-256 checksum sevDesk lists with each voucher";
@@ -381,6 +384,12 @@ async function runDuplicatesCheck(context: AuditCheckContext): Promise<AuditChec
         "file without a checksum (sevDesk stores none for some receipts, for example those its " +
         "recognition created from an upload), so the same file cannot be confirmed for their " +
         "pairs, which stay possible duplicates";
+    }
+    if (notEmbedded > 0) {
+      text +=
+        `; the list rows of ${plural(notEmbedded, "voucher")} named the receipt file without ` +
+        "embedding it (embed=document), so its checksum was not read and their pairs stay " +
+        "possible duplicates";
     }
     if (withoutReceipt > 0) {
       text +=
