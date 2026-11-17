@@ -42,6 +42,7 @@ import type { QueryValue, SevdeskClient } from "../../sevdesk/types.js";
 import { cleanText, documentDateFilter } from "../common.js";
 import { parseContactRecord, toContactDto } from "../contacts.js";
 import { mapCreditNoteDetail } from "../credit-notes.js";
+import { voucherReceiptOf, type VoucherReceiptRef } from "../document-files.js";
 import { listDocumentPositions, type PositionRecord, splitTotals } from "../document-positions.js";
 import { mapInvoiceDetail } from "../invoices.js";
 import {
@@ -75,7 +76,7 @@ import {
 /** Most documents whose positions one report reads; more are reported as truncated. */
 export const MAX_SCAN_DOCUMENTS = 1_500;
 /** Most document rows (headers) one report lists across invoices, credit notes and vouchers. */
-const MAX_HEADER_ROWS = 10_000;
+export const MAX_HEADER_ROWS = 10_000;
 /** Position reads in flight at once (the client paces them anyway). */
 const POSITION_CONCURRENCY = 4;
 const NUMBER_MAX = 100;
@@ -182,6 +183,13 @@ export interface DocumentHeader {
   readonly gross: Decimal | undefined;
   /** The document's cost centre (Kostenstelle, D-092): one per document, none on orders. */
   readonly costCentreId?: number | undefined;
+  /** Day the document was created in sevDesk (Europe/Berlin), YYYY-MM-DD, when sevDesk says. */
+  readonly createdAt?: string | undefined;
+  /**
+   * Vouchers: the attached receipt file, when the row names one; its checksum only when the
+   * listing embedded the document (`HeaderListParams.voucherReceipts`).
+   */
+  readonly receipt?: VoucherReceiptRef | undefined;
   readonly excluded?: ExclusionReason | undefined;
 }
 
@@ -308,6 +316,7 @@ function invoiceHeader(raw: unknown, today: string): DocumentHeader {
     eur: eurTotals(foreign ? dto.totalsEur : dto.totals),
     gross: moneyDecimal(dto.totals.gross),
     costCentreId: dto.costCentreId,
+    createdAt: dto.createdAt,
     excluded:
       type === "WKR" || dto.status.code === 50
         ? "recurring_template"
@@ -358,6 +367,7 @@ function creditNoteHeader(raw: unknown): DocumentHeader {
     eur: eurTotals(foreign ? dto.totalsEur : dto.totals),
     gross: moneyDecimal(dto.totals.gross),
     costCentreId: dto.costCentreId,
+    createdAt: dto.createdAt,
     excluded: dto.status.code === CREDIT_NOTE_DRAFT ? "draft" : undefined,
   };
 }
@@ -385,6 +395,8 @@ function voucherHeader(raw: unknown): DocumentHeader {
     eur: eurTotals(foreign ? dto.totalsEur : totals),
     gross: moneyDecimal(dto.totals.gross),
     costCentreId: dto.costCentreId,
+    createdAt: dto.createdAt,
+    receipt: voucherReceiptOf(raw),
     excluded:
       dto.type === "recurring"
         ? "recurring_template"
@@ -439,11 +451,20 @@ export interface HeaderListParams {
   readonly accept?: ((header: DocumentHeader) => boolean) | undefined;
   /** Berlin `YYYY-MM-DD` for the invoice mapper's `overdue` (irrelevant here); tests pin it. */
   readonly today?: string | undefined;
+  /** Also return the drafts (still counted in `excluded`), for the checks that look at them. */
+  readonly keepDrafts?: boolean | undefined;
+  /**
+   * List vouchers with their receipt document embedded (`embed=document`), so each header's
+   * `receipt` carries the file's SHA-256 without a request per voucher (spec/deviations.md D-100).
+   */
+  readonly voucherReceipts?: boolean | undefined;
 }
 
 export interface HeaderList {
   /** Documents that count, sorted by date, kind and id (kinds interleaved). */
   readonly headers: readonly DocumentHeader[];
+  /** With `keepDrafts`: the drafts, sorted like `headers`; otherwise empty. */
+  readonly drafts: readonly DocumentHeader[];
   /** Listed documents left out, by reason. */
   readonly excluded: Readonly<Record<ExclusionReason, number>>;
   /** sevDesk rows read. */
@@ -472,6 +493,7 @@ export async function listDocumentHeaders(
     unknown_direction: 0,
   };
   const headers: DocumentHeader[] = [];
+  const drafts: DocumentHeader[] = [];
   let rowsRead = 0;
   let truncated = false;
   for (const kind of params.kinds ?? SCAN_DOCUMENT_KINDS) {
@@ -480,12 +502,14 @@ export async function listDocumentHeaders(
       truncated = true;
       break;
     }
+    const embed =
+      kind === "voucher" && params.voucherReceipts === true ? { embed: "document" } : {};
     const scan = await scanPages(
       async (offset, limit) => {
         const page = await readPage(
           client,
           source.path,
-          { ...source.query, ...dates.query },
+          { ...source.query, ...embed, ...dates.query },
           { limit, offset },
           (raw) => source.map(raw, today),
           options.signal,
@@ -512,9 +536,16 @@ export async function listDocumentHeaders(
       if (params.accept !== undefined && !params.accept(header)) continue;
       if (header.excluded === undefined) headers.push(header);
       else excluded[header.excluded] += 1;
+      if (header.excluded === "draft" && params.keepDrafts === true) drafts.push(header);
     }
   }
-  return { headers: sortHeaders(headers), excluded, rowsRead, truncated };
+  return {
+    headers: sortHeaders(headers),
+    drafts: sortHeaders(drafts),
+    excluded,
+    rowsRead,
+    truncated,
+  };
 }
 
 /**

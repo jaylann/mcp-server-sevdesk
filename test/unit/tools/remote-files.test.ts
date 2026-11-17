@@ -4,6 +4,7 @@
  * folder behaviour is tested next to each tool; the transfer store and the file accesses in
  * `test/unit/safety/`.
  */
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
@@ -26,6 +27,7 @@ import { voucherCreateDraftTool } from "../../../src/tools/vouchers/draft-create
 import { voucherUpdateDraftTool } from "../../../src/tools/vouchers/draft-update.js";
 import { einvoiceParseTool } from "../../../src/tools/vouchers/einvoice-parse.js";
 import { voucherImportEInvoiceTool } from "../../../src/tools/vouchers/import-einvoice.js";
+import { voucherRecognizeReceiptTool } from "../../../src/tools/vouchers/recognize-receipt.js";
 import { allEnabledConfig, TEST_TOKEN } from "../../helpers/config.js";
 import { connectInProcess } from "../../helpers/connect.js";
 import { type FakeRoute, FakeSevdeskClient, testContext } from "../../helpers/fake-client.js";
@@ -41,11 +43,19 @@ import { executeWrite, prepareWrite } from "../../helpers/write-tools.js";
 import { DATEV_ROUTES, DATEV_ZIP, zipFetch } from "../../write-cases/reports.js";
 import {
   CREATE_READ_ROUTES,
+  createdFromFileRow,
   draftRow,
   PDF_BYTES,
+  positionsRoute,
   readBackRoutes,
+  recognisedPositionRow,
+  recognisedRow,
+  recognitionRoute,
   saveRoute,
   uploadRoute,
+  version2Route,
+  voucherListRoute,
+  voucherRoute,
 } from "./vouchers/routes.js";
 
 const openTransfer = useTransfer();
@@ -67,6 +77,7 @@ const FILE_TOOLS = [
   "sevdesk_upload_request",
   "sevdesk_uploads_list",
   "sevdesk_voucher_import_einvoice",
+  "sevdesk_voucher_recognize_receipt",
 ];
 const DRAFT_ARGS = {
   supplierId: 1001,
@@ -150,6 +161,98 @@ describe("file tools with remote file transfer: registration", () => {
     const off = names(allEnabledConfig({ deployment: filesOffDeployment() }));
     for (const name of FILE_TOOLS) expect(off, name).not.toContain(name);
     expect(names(allEnabledConfig())).not.toContain("sevdesk_upload_request");
+  });
+});
+
+describe("a draft from sevDesk's receipt recognition, from an upload", () => {
+  // The answer to the upload already carries the receipt (D-103): an upload it shows attached is
+  // released at once, so a read that fails afterwards cannot leave an upload id that a retry turns
+  // into a second draft. Without the receipt in the answer, the read-back decides.
+  it.each([
+    { stage: "attached", answer: "document", readBack: "ok", released: true },
+    {
+      stage: "read fails after an attached answer",
+      answer: "document",
+      readBack: "fails",
+      released: true,
+    },
+    { stage: "attached per read-back only", answer: "none", readBack: "ok", released: true },
+    { stage: "attached nowhere", answer: "none", readBack: "noDocument", released: false },
+    {
+      stage: "read fails, answer without receipt",
+      answer: "none",
+      readBack: "fails",
+      released: false,
+    },
+    { stage: "upload refused", answer: "refused", readBack: "ok", released: false },
+  ] as const)("$stage: released $released", async ({ answer, readBack, released }) => {
+    const transfer = await openTransfer();
+    const ref = await transfer.upload(PDF_BYTES);
+    const fake = new FakeSevdeskClient([
+      version2Route,
+      answer === "refused"
+        ? {
+            method: "POST",
+            path: "/Voucher/Factory/createVoucherFromFile",
+            response: {
+              error: new SevdeskError({ kind: "validation", status: 415, message: "Rejected." }),
+            },
+          }
+        : recognitionRoute(createdFromFileRow(answer === "none" ? { document: null } : {})),
+      readBack === "fails"
+        ? {
+            path: "/Voucher/2301",
+            response: { error: new SevdeskError({ kind: "server", status: 500, message: "x" }) },
+          }
+        : voucherRoute(recognisedRow(readBack === "noDocument" ? { document: null } : {})),
+      positionsRoute(2301, [recognisedPositionRow()]),
+      voucherListRoute([]),
+    ]);
+    const run = executeWrite(
+      voucherRecognizeReceiptTool(),
+      { file: ref },
+      fake,
+      filesConfig(),
+      transfer.access(),
+    );
+    if (answer === "refused") {
+      await expect(run).rejects.toBeInstanceOf(SevdeskError);
+    } else if (readBack === "fails") {
+      const error = await run.catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(SevdeskError);
+      // The draft exists: the error names it as a completed write.
+      expect((error as SevdeskError).completedWrites).toEqual([
+        { objectName: "Voucher", id: "2301" },
+      ]);
+    } else {
+      await run;
+    }
+    expect(fake.writes()).toHaveLength(1);
+    const form = fake.writes()[0]?.form;
+    expect(new Uint8Array(await (form?.get("voucher") as Blob).arrayBuffer())).toEqual(PDF_BYTES);
+    const kept = await transfer.store.readUpload(OWNER, ref.slice("upload:".length));
+    expect(kept === undefined).toBe(released);
+  });
+
+  it("refuses an upload with other bytes than fileSha256 before any request, and keeps it", async () => {
+    const transfer = await openTransfer();
+    const ref = await transfer.upload(PDF_BYTES);
+    const digest = createHash("sha256").update(PDF_BYTES).digest("hex");
+    const fake = new FakeSevdeskClient([version2Route, recognitionRoute()]);
+    const error = await executeWrite(
+      voucherRecognizeReceiptTool(),
+      { file: ref, fileSha256: "c".repeat(64) },
+      fake,
+      filesConfig(),
+      transfer.access(),
+    ).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(SevdeskError);
+    expect((error as SevdeskError).message).toContain(
+      `The file's SHA-256 (${digest.slice(0, 12)}…) differs from fileSha256 (cccccccccccc…)`,
+    );
+    expect((error as SevdeskError).message).not.toContain(ref.slice("upload:".length));
+    expect(fake.calls).toEqual([]);
+    expect(transfer.store.usage().records).toBe(1);
   });
 });
 
@@ -338,10 +441,52 @@ describe("receipts and e-invoices from uploads", () => {
     expect(part.name).toBe("Rechnung-0815.pdf");
     expect(part.type).toBe("application/pdf");
     expect(new Uint8Array(await part.arrayBuffer())).toEqual(PDF_BYTES);
-    const fact = plan.preview.facts.find((f) => f.label === "Receipt file (Belegbild)")?.value;
-    expect(fact).toMatch(/^Rechnung-0815\.pdf \(PDF, \d+ bytes, SHA-256 [0-9a-f]{16}…\)$/);
+    const at = plan.preview.facts.findIndex((f) => f.label === "Receipt file (Belegbild)");
+    expect(plan.preview.facts.slice(at, at + 2)).toEqual([
+      {
+        label: "Receipt file (Belegbild)",
+        value: `Rechnung-0815.pdf (PDF, ${String(PDF_BYTES.length)} bytes)`,
+      },
+      { label: "SHA-256", value: createHash("sha256").update(PDF_BYTES).digest("hex") },
+    ]);
     expect(output.data.receipt).toMatchObject({ name: "Rechnung-0815.pdf", kind: "pdf" });
     expect(JSON.stringify([plan.preview, output])).not.toContain(ref.slice("upload:".length));
+  });
+
+  it("attaches an upload only when it has the SHA-256 of fileSha256, and keeps it otherwise", async () => {
+    const transfer = await openTransfer();
+    const ref = await transfer.upload(PDF_BYTES, { name: "Rechnung-0815.pdf" });
+    const digest = createHash("sha256").update(PDF_BYTES).digest("hex");
+
+    const refused = voucherClient();
+    const error = await executeWrite(
+      voucherCreateDraftTool,
+      { ...DRAFT_ARGS, file: ref, fileSha256: "c".repeat(64) },
+      refused,
+      filesConfig(),
+      transfer.access(),
+    ).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(SevdeskError);
+    expect((error as SevdeskError).message).toContain(
+      `The file's SHA-256 (${digest.slice(0, 12)}…) differs from fileSha256 (cccccccccccc…)`,
+    );
+    expect((error as SevdeskError).message).not.toContain(ref.slice("upload:".length));
+    expect(refused.calls).toEqual([]);
+    // Nothing was attached, so the upload stays for the next try.
+    expect(transfer.store.usage().records).toBe(1);
+
+    const fake = voucherClient();
+    await executeWrite(
+      voucherCreateDraftTool,
+      { ...DRAFT_ARGS, file: ref, fileSha256: digest },
+      fake,
+      filesConfig(),
+      transfer.access(),
+    );
+    expect(fake.writes().map((call) => call.path)).toEqual([
+      "/Voucher/Factory/uploadTempFile",
+      "/Voucher/Factory/saveVoucher",
+    ]);
   });
 
   it("refuses another grant's upload and a wrong kind before any request", async () => {
@@ -397,7 +542,8 @@ describe("receipts and e-invoices from uploads", () => {
 
   it("parses an uploaded e-invoice", async () => {
     const transfer = await openTransfer();
-    const ref = await transfer.upload(await readFile(CII), {
+    const bytes = await readFile(CII);
+    const ref = await transfer.upload(bytes, {
       name: "RE-2026-0001.xml",
       kind: "xml",
       purpose: "einvoice",
@@ -417,7 +563,11 @@ describe("receipts and e-invoices from uploads", () => {
       files: transfer.access(),
     });
 
-    expect(result.data.file).toEqual({ name: "RE-2026-0001.xml", kind: "xml" });
+    expect(result.data.file).toEqual({
+      name: "RE-2026-0001.xml",
+      kind: "xml",
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    });
     expect(result.data.invoice.number).toBe("RE-2026-0001");
     expect(client.writes()).toEqual([]);
     expect(transfer.store.usage().records).toBe(1);

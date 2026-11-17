@@ -24,21 +24,23 @@ describe("docs/tools.md prompt section", () => {
         "`sevdesk_transactions_list` and `sevdesk_reconcile_suggest`",
     );
     expect(docs).toContain("**VAT pre-check (UStVA-Vorprüfung)** · needs `sevdesk_vat_summary`");
+    expect(docs).toContain("| Argument | Required | Description | Suggestions |");
     expect(docs).toContain(
-      "| `month` | no | Month to close, YYYY-MM (e.g. 2026-10). Default: the previous month. |",
+      "| `month` | no | Month to close, YYYY-MM (e.g. 2026-10). Default: the previous month. | recent months |",
     );
     expect(docs).toContain(
-      "| `contact` | no | Customer reference (name or id, up to 200 characters). Default: all customers. |",
+      "| `contact` | no | Customer reference (name or id, up to 200 characters). Default: all customers. | contact names (with `sevdesk_contacts_search`) |",
     );
     expect(docs).toContain(
-      "| `minDaysOverdue` | no | Minimum days overdue (inclusive, 0–3650, as 1–4 digits). Default: all overdue invoices. |",
+      "| `minDaysOverdue` | no | Minimum days overdue (inclusive, 0–3650, as 1–4 digits). Default: all overdue invoices. | — |",
     );
     expect(docs).toContain(
-      "| `checkAccount` | no | Payment account reference (name or id, up to 200 characters). Default: no account scope. |",
+      "| `checkAccount` | no | Payment account reference (name or id, up to 200 characters). Default: no account scope. | payment account names (with `sevdesk_bank_accounts_list`) |",
     );
     expect(docs).toContain(
-      "| `month` | no | Month to reconcile, YYYY-MM (2000–2099). Default: no date scope. |",
+      "| `month` | no | Month to reconcile, YYYY-MM (2000–2099). Default: no date scope. | recent months |",
     );
+    expect(docs).toContain("| recent months and quarters |");
   });
 
   it("leaves the section out without prompts", () => {

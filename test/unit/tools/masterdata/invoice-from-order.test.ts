@@ -5,6 +5,7 @@ import { invoiceFromOrderTool as tool } from "../../../../src/tools/invoices/fro
 import { withCountryRoute } from "../../../helpers/country-route.js";
 import { type FakeRoute, FakeSevdeskClient, loadFixture } from "../../../helpers/fake-client.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
+import { discountRow, discountsRoute } from "../drafts/routes.js";
 import {
   changingAfter,
   directContext,
@@ -44,7 +45,15 @@ const table: (readonly [string, FakeRoute])[] = [
       response: { fixture: "masterdata/invoice-from-order-1101.json" },
     },
   ],
+  // Discounts on the whole document: none on the order, none on the new invoice (D-116).
+  ["orderDiscounts", discountsRoute("Order", 3002, [])],
+  ["invoiceDiscounts", discountsRoute("Invoice", 1101, [])],
 ];
+
+/** A `getDiscounts` answer with `rows` (recorded shape: `total: null`). */
+function discounts(rows: readonly Record<string, unknown>[]): FakeRoute["response"] {
+  return { body: { objects: rows, total: null } };
+}
 
 function routes(overrides: Partial<Record<string, FakeRoute["response"]>> = {}): FakeRoute[] {
   return withCountryRoute([
@@ -423,5 +432,136 @@ describe("sevdesk_invoice_create_from_order", () => {
     );
     const { output } = await executeWrite(tool, { orderId: 3002 }, client);
     expect(output.data.invoice.type.code).toBe("ER");
+    expect(output.data).not.toHaveProperty("discount");
+  });
+});
+
+/**
+ * sevDesk copies the order's discount on the whole document into the invoice (D-116, checked
+ * 2026-11-17: a sent offer of 200.00 with 10 % gave an invoice draft with the same row and the
+ * same sums, 90 % of the net). The preview shows the order's discounts and what they deduct, the
+ * read-back the invoice's.
+ */
+describe("sevdesk_invoice_create_from_order with a discount on the whole order", () => {
+  /** The discount sums sevDesk stores with 10 % of 100.00 net at 19 % (recorded 2026-11-16). */
+  const sums = { sumDiscountNet: "-10", sumDiscountGross: "-11.9" };
+
+  function withDiscounts(
+    orderRows: readonly Record<string, unknown>[],
+    invoiceRows: readonly Record<string, unknown>[],
+  ): FakeRoute[] {
+    return routes({
+      order: order(sums),
+      orderDiscounts: discounts(orderRows),
+      readBack: createdInvoice(sums),
+      invoiceDiscounts: discounts(invoiceRows),
+    });
+  }
+
+  it("previews the order's discount and what it deducts, and says the invoice takes it over", async () => {
+    const client = new FakeSevdeskClient(
+      withDiscounts([discountRow("Order", 3002)], [discountRow("Invoice", 1101)]),
+    );
+    const plan = await prepareWrite(tool, { orderId: 3002 }, client);
+
+    expect(client.callsTo("/Order/3002/getDiscounts")).toHaveLength(1);
+    const labels = plan.preview.facts.map((fact) => fact.label);
+    expect(labels.slice(labels.indexOf("Order gross"), labels.indexOf("Creates"))).toEqual([
+      "Order gross",
+      "Order discount",
+      "Order discounts deduct",
+    ]);
+    expect(plan.preview.facts).toContainEqual({
+      label: "Order discount",
+      value: '10 % of the net total ("Rabatt")',
+    });
+    expect(plan.preview.facts).toContainEqual({
+      label: "Order discounts deduct",
+      value: "net -10.00 EUR, gross -11.90 EUR",
+    });
+    expect(plan.preview.warnings).toContain(
+      "The order has a discount on the whole document, and sevDesk copies it into the invoice; " +
+        "the order totals shown already include it.",
+    );
+    expect(client.writes()).toEqual([]);
+  });
+
+  it("returns the invoice's discount after the create and counts it in the summary", async () => {
+    const client = new FakeSevdeskClient(
+      withDiscounts([discountRow("Order", 3002)], [discountRow("Invoice", 1101, { id: "9002" })]),
+    );
+    const { output } = await executeWrite(tool, { orderId: 3002 }, client);
+
+    expect(client.callsTo("/Invoice/1101/getDiscounts")).toHaveLength(1);
+    expect(output.data.discount).toEqual({
+      items: [{ id: 9002, kind: "percent", value: "10", basis: "net", text: "Rabatt" }],
+      net: { amount: "-10.00", currency: "EUR" },
+      gross: { amount: "-11.90", currency: "EUR" },
+    });
+    expect(output.summary).toBe(
+      "Created invoice draft 1101 (RE) from order 3002, with 1 discount on the whole document; " +
+        "finalize it with sevdesk_invoice_finalize.",
+    );
+  });
+
+  it("names a fixed amount with its currency, and none on a document in another currency", async () => {
+    const fixed = [discountRow("Order", 3002, { percentage: "0", value: "5" })];
+    const euro = await prepareWrite(
+      tool,
+      { orderId: 3002 },
+      new FakeSevdeskClient(withDiscounts(fixed, [])),
+    );
+    expect(euro.preview.facts).toContainEqual({
+      label: "Order discount",
+      value: '5.00 EUR net ("Rabatt")',
+    });
+
+    const francs = await prepareWrite(
+      tool,
+      { orderId: 3002 },
+      new FakeSevdeskClient(
+        routes({ order: order({ ...sums, currency: "CHF" }), orderDiscounts: discounts(fixed) }),
+      ),
+    );
+    expect(francs.preview.facts).toContainEqual({
+      label: "Order discount",
+      value: '5.00 net (fixed amount) ("Rabatt")',
+    });
+  });
+
+  it("says that a partial or advance invoice's handling of the discount is not verified", async () => {
+    const client = new FakeSevdeskClient(
+      routes({
+        order: order(sums),
+        orderDiscounts: discounts([discountRow("Order", 3002)]),
+      }),
+    );
+    const plan = await prepareWrite(tool, { orderId: 3002, mode: "partial", amount: 50 }, client);
+    expect(plan.preview.warnings).toContain(
+      "The order has a discount on the whole document. sevDesk copies it into an invoice for the " +
+        "whole order; what it does with it in a partial or advance invoice is not verified, so " +
+        "check the draft's total with sevdesk_invoice_get before finalizing.",
+    );
+  });
+
+  it("warns in the preview and the summary when there are several discounts", async () => {
+    const two = (kind: "Order" | "Invoice", id: number) => [
+      discountRow(kind, id, { percentage: "0", value: "5" }),
+      discountRow(kind, id, { id: "9002", value: "3" }),
+    ];
+    const client = new FakeSevdeskClient(withDiscounts(two("Order", 3002), two("Invoice", 1101)));
+    const { plan, output } = await executeWrite(tool, { orderId: 3002 }, client);
+
+    const several =
+      "This document has 2 discounts on the whole document, and sevDesk's totals may count only " +
+      "one of them (in a check, only the newest), so the total may not be what the listed " +
+      "discounts suggest. Check the total in sevDesk.";
+    expect(plan.preview.facts.map((fact) => fact.label)).toEqual(
+      expect.arrayContaining(["Order discount 1", "Order discount 2", "Order discounts deduct"]),
+    );
+    expect(plan.preview.warnings).toContain(several);
+    expect(output.data.discount?.warning).toBe(several);
+    expect(output.summary).toContain(`with 2 discounts on the whole document; `);
+    expect(output.summary.endsWith(several)).toBe(true);
   });
 });

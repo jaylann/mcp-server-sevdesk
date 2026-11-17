@@ -18,16 +18,29 @@ client asks for as `sevdesk://` resources are a different path: they go to the c
    characters; the extension from the content).
 4. You tell the model the upload is done. It passes the `uploadId` it got (`upload:<id>`) as
    `file` to `sevdesk_voucher_create_draft`, `sevdesk_voucher_update_draft`,
-   `sevdesk_einvoice_parse` or `sevdesk_voucher_import_einvoice`. Only the connection that asked
-   for the upload can use it.
+   `sevdesk_voucher_recognize_receipt`, `sevdesk_einvoice_parse` or
+   `sevdesk_voucher_import_einvoice`. Only the connection that asked for the upload can use it.
 
-Once a create, update or import succeeds and sevDesk's read-back confirms an attachment, the server
-releases the upload and deletes its stored file, freeing the slot immediately. Parsing, dry runs,
-failed calls and a missing or uncertain attachment in the read-back keep the upload until expiry
-for another attempt. On an update, the attachment ID must change from the state checked immediately
-before saving (or follow an explicitly absent attachment); if it stays the same or the previous
-state is unknown, the upload remains available until expiry. To use a successfully attached file
-again after its upload was released, request a new upload.
+Once a create, update, recognition or import succeeds and sevDesk's read-back confirms an
+attachment, the server releases the upload and deletes its stored file, freeing the slot
+immediately. Parsing, dry runs, failed calls and a missing or uncertain attachment in the read-back
+keep the upload until expiry for another attempt. A recognition is the exception: sevDesk's answer
+to the upload already names the attached receipt, and the draft exists from then on, so the upload
+is released at once, also when reading the draft back fails afterwards (sending it again would
+make a second draft). On an update, the attachment ID must change from the state checked
+immediately before saving (or follow an explicitly absent attachment); if it stays the same or the
+previous state is unknown, the upload remains available until expiry. To use a successfully
+attached file again after its upload was released, request a new upload.
+
+A receipt that is already online (a supplier portal, a storage link) needs no upload when the
+operator lists its host in `SEVDESK_FILE_URL_HOSTS`: the model passes the https link as `file`,
+and the server downloads it during the call and keeps nothing
+([Files from a link](../configuration.md#files-from-a-link)).
+
+Comparing a whole folder of receipts with the vouchers in sevDesk
+(`sevdesk_receipt_folder_check`) is not available on a remote server with OAuth: it reads a local
+folder, and an upload or a link carries single files. In bearer mode with `SEVDESK_FILE_DIRS` it is
+offered for the folders on the server.
 
 ## Several files on one page
 
@@ -56,8 +69,8 @@ With `count` absent or `1`, the single-file result and workflow are unchanged.
 
 ## Downloading
 
-`sevdesk_document_save`, `sevdesk_voucher_receipt_save`, `sevdesk_csv_export` and
-`sevdesk_datev_export` return a download link, `<public URL>/files/<id>`, instead of a file path.
+`sevdesk_document_save`, `sevdesk_voucher_receipt_save`, `sevdesk_csv_export`,
+`sevdesk_archive_export` and `sevdesk_datev_export` return a download link, `<public URL>/files/<id>`, instead of a file path.
 The server fetched the file from sevDesk during the tool call; opening the link sends nothing to
 sevDesk. The browser saves the file as a download; it is never displayed on the server's page.
 
@@ -103,9 +116,10 @@ the requesting account, never another account's timestamps; transfers still bein
 fixed expiry yet, and the refusal says so when none is known. To allow more simultaneous records,
 raise `SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT`; this does not change any byte quota.
 
-Download links count against the same space as uploads, so a large DATEV export may not fit (with
-64 MiB in memory, one account has 20 MiB). The tool then says that sevDesk has started the export,
-and you download it in sevDesk instead; or raise `SEVDESK_HTTP_FILES_MAX_MB`, best with a state
+Download links count against the same space as uploads, so a large DATEV export or document
+archive may not fit (with 64 MiB in memory, one account has 20 MiB). For the DATEV export the tool
+then says that sevDesk has started the export, and you download it in sevDesk instead; a document
+archive you export in shorter periods; or raise `SEVDESK_HTTP_FILES_MAX_MB`, best with a state
 directory, so the files go to disk.
 
 ## Memory
@@ -134,8 +148,9 @@ link.
 
 `SEVDESK_HTTP_FILES=off` removes `sevdesk_upload_request`, `sevdesk_uploads_list` and the pages. In
 OAuth mode the tools that need a file to read or a place to save one are not offered then
-(`sevdesk_einvoice_parse`, `sevdesk_voucher_import_einvoice`, `sevdesk_document_save`,
-`sevdesk_voucher_receipt_save`, `sevdesk_csv_export`, `sevdesk_datev_export`), and the `file`
+(`sevdesk_einvoice_parse`, `sevdesk_voucher_import_einvoice`,
+`sevdesk_voucher_recognize_receipt`, `sevdesk_document_save`, `sevdesk_voucher_receipt_save`,
+`sevdesk_csv_export`, `sevdesk_archive_export`, `sevdesk_datev_export`), and the `file`
 argument of the voucher draft tools is refused; bearer mode still uses `SEVDESK_FILE_DIRS` and
 `SEVDESK_OUTPUT_DIR` if they are set. The PDF and XML tools and the `sevdesk://` resources are not
 affected: a client reads document files through them over MCP.

@@ -238,8 +238,15 @@ describe("sevdesk_invoices_list (community: recorded Invoice shape, fake data)",
   it("asks sevDesk to show recurring templates and reminders when that type is requested", async () => {
     // showWkr=all / showMa=all from the Invoice tag's filter table; whether sevDesk hides them
     // by default is unverified, the local type re-check keeps the result exact either way.
-    const recurring = await list({ type: "recurring" });
-    expect(recurring.client.calls[0]?.query).toMatchObject({ invoiceType: "WKR", showWkr: "all" });
+    // Templates are listed with their automatic generation and sending as well (D-132).
+    const recurring = await list({ type: "recurring" }, [
+      { path: "/Invoice", response: { fixture: "invoices/invoices-list.json" } },
+    ]);
+    expect(recurring.client.calls[0]?.query).toMatchObject({
+      invoiceType: "WKR",
+      showWkr: "all",
+      embed: "contact,propertyAutoGenerateRecurringInvoice,autoSendConfiguration",
+    });
     expect(recurring.client.calls[0]?.query).not.toHaveProperty("showMa");
 
     const reminder = await list({ type: "reminder" });

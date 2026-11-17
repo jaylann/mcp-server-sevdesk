@@ -18,7 +18,9 @@
  *   tag's relations name (D-035).
  *
  * Tag names are untrusted text: they go into DTOs through `cleanText` and never into summaries
- * or error messages.
+ * or error messages. Names are matched, and sent back to sevDesk, as sevDesk stores them
+ * ({@link TagRecord.storedName}): the cleaned form drops invisible characters, truncates and
+ * stands in a placeholder for a tag without a name, so sevDesk would not know it.
  */
 import { z } from "zod";
 
@@ -72,10 +74,16 @@ const tagRelationRecordSchema = z.object({
   object: zRef(),
 });
 
-/** A tag as read from sevDesk; `name` is cleaned untrusted text. */
+/** A tag as read from sevDesk. */
 export interface TagRecord {
   readonly id: number;
+  /** The name for output: cleaned untrusted text, or a placeholder when the tag has none. */
   readonly name: string;
+  /**
+   * The name exactly as sevDesk stores it ("" when it has none): what names are matched against
+   * and what is sent back to sevDesk. Untrusted and uncleaned, so never shown.
+   */
+  readonly storedName: string;
 }
 
 /** One use of a tag: the tag on one document. */
@@ -91,6 +99,7 @@ function parseTag(raw: unknown): TagRecord {
   return {
     id: record.id,
     name: cleanText(record.name, TAG_NAME_MAX) ?? `(unnamed tag ${record.id})`,
+    storedName: record.name ?? "",
   };
 }
 
@@ -189,9 +198,17 @@ export async function listTags(
 // Lookups
 // ---------------------------------------------------------------------------------------------
 
-/** The tags whose name equals a given one, ignoring case and accents. */
+/** The account's tags as compared with one name; see {@link findTagsByName}. */
 export interface TagMatches {
+  /** The tags whose stored name equals the name, ignoring case and accents ({@link foldName}). */
   readonly matches: readonly TagRecord[];
+  /**
+   * Tags that do not match but whose name differs only in what {@link looseFoldName} also
+   * ignores: sevDesk may treat them as the same name, which is not measured. A hint, never a pick.
+   */
+  readonly similar: readonly TagRecord[];
+  /** Every tag read, by id: tells after a write whether sevDesk used a tag that existed. */
+  readonly known: ReadonlyMap<number, TagRecord>;
   /** False when the account has more tags than {@link TAG_READ_MAX}: some were not compared. */
   readonly complete: boolean;
 }
@@ -206,11 +223,25 @@ function foldName(name: string): string {
   return name.trim().normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase();
 }
 
-function sameName(a: string, b: string): boolean {
-  return foldName(a) === foldName(b);
+/** Letters NFKD keeps whole that collations commonly spell out (`utf8mb4_unicode_ci`: ß = ss). */
+const SPELLED_OUT: Readonly<Record<string, string>> = { ß: "ss", æ: "ae", œ: "oe", ø: "o" };
+
+/**
+ * A looser comparison than {@link foldName}, only to warn that sevDesk may reuse a tag: it also
+ * drops the invisible characters `cleanText` drops (zero-width spaces, bidi marks, soft hyphens),
+ * collapses runs of white space and spells out ß, æ, œ and ø. Database collations commonly ignore
+ * these differences, but whether sevDesk does is not measured (D-088).
+ */
+function looseFoldName(name: string): string {
+  return foldName(name.replace(/[\p{Cf}\p{Default_Ignorable_Code_Point}]/gu, ""))
+    .replace(/\s+/gu, " ")
+    .replace(/[ßæœø]/gu, (letter) => SPELLED_OUT[letter] ?? letter);
 }
 
-/** Reads the account's tags (up to {@link TAG_READ_MAX}) and keeps those named `name`. */
+/**
+ * Reads the account's tags (up to {@link TAG_READ_MAX}) and compares their stored names with
+ * `name`. A tag without a name matches none.
+ */
 export async function findTagsByName(
   client: SevdeskClient,
   name: string,
@@ -221,8 +252,20 @@ export async function findTagsByName(
     pageSize: TAG_PAGE_SIZE,
     ...(signal === undefined ? {} : { signal }),
   });
-  const matches = all.items.map(parseTag).filter((tag) => sameName(tag.name, name));
-  return { matches, complete: !all.truncated };
+  const tags = all.items.map(parseTag);
+  const named = tags.filter((tag) => tag.storedName !== "");
+  const folded = foldName(name);
+  const loose = looseFoldName(name);
+  const matches = named.filter((tag) => foldName(tag.storedName) === folded);
+  const similar = named.filter(
+    (tag) => foldName(tag.storedName) !== folded && looseFoldName(tag.storedName) === loose,
+  );
+  return {
+    matches,
+    similar,
+    known: new Map(tags.map((tag) => [tag.id, tag])),
+    complete: !all.truncated,
+  };
 }
 
 /**
@@ -233,7 +276,7 @@ export async function findTagsByName(
  */
 export function pickTag(found: TagMatches, name: string): TagRecord | undefined {
   if (found.matches.length <= 1) return found.matches[0];
-  const exact = found.matches.filter((tag) => tag.name === name.trim());
+  const exact = found.matches.filter((tag) => tag.storedName.trim() === name.trim());
   if (exact.length === 1) return exact[0];
   throw validation(
     "Several tags have this name (compared ignoring case and accents). Give one of them a " +
@@ -241,29 +284,31 @@ export function pickTag(found: TagMatches, name: string): TagRecord | undefined 
   );
 }
 
+/** How many documents carry a tag; see {@link countTagUses}. */
+export interface TagUses {
+  readonly count: number;
+  /** False when more than {@link TAG_READ_MAX} relations had to be read: `count` is a lower bound. */
+  readonly complete: boolean;
+}
+
 /**
- * How many documents carry a tag: `total` of one `GET /TagRelation` page filtered by the tag, when
- * every row of it belongs to the tag; otherwise the relations are read and counted here (up to
- * {@link TAG_READ_MAX}, then a lower bound).
+ * Counts a tag's relations (`GET /TagRelation` filtered by the tag) with `listChildRows`: every
+ * row of the first 1,000 is checked to belong to the tag, so a filter sevDesk ignored cannot pass
+ * off the account's relation count as the tag's and hide that a removal takes its last use.
  */
 export async function countTagUses(
   client: SevdeskClient,
   tagId: number,
   signal?: AbortSignal,
-): Promise<number> {
-  const withSignal = signal === undefined ? {} : { signal };
-  const query = tagRelationQuery(tagId);
-  const page = await client.list("/TagRelation", query, { limit: 1, ...withSignal });
-  const rows = page.items.map(parseTagRelation);
-  if (page.total !== undefined && rows.every((row) => row.tagId === tagId)) return page.total;
+): Promise<TagUses> {
   const uses = await listChildRows(
     client,
     "/TagRelation",
-    query,
+    tagRelationQuery(tagId),
     { parse: parseTagRelation, belongs: (row) => row.tagId === tagId },
     signal,
   );
-  return uses.rows.length;
+  return { count: uses.rows.length, complete: uses.complete };
 }
 
 /**

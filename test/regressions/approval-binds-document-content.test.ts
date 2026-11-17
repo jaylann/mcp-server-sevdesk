@@ -25,6 +25,7 @@
 import { describe, expect, it } from "vitest";
 
 import { previewHash } from "../../src/safety/hashing.js";
+import { SevdeskError } from "../../src/sevdesk/errors.js";
 import { invoiceUpdateDraftTool } from "../../src/tools/invoices/draft-update.js";
 import { bookPaymentTool } from "../../src/tools/lifecycle/book-payment.js";
 import { enshrineTool } from "../../src/tools/lifecycle/enshrine.js";
@@ -283,6 +284,73 @@ describe("approval binds the document content", () => {
     expect(voucherBefore.preview.facts).not.toContainEqual(shown);
     expect(voucher.binding).not.toBe(voucherBefore.binding);
   });
+
+  it("shows the id alone with a warning when the cost centres cannot be read (#87)", async () => {
+    const centre = storedCostCentre(RECORDED_CENTRES.third.id);
+    const failing: FakeRoute = {
+      path: "/CostCentre",
+      response: { error: new SevdeskError({ kind: "auth", status: 403, message: "Refused." }) },
+    };
+    const warning =
+      "The number and name of the cost centre could not be read from sevDesk, so only its id is " +
+      "shown. Check them in sevDesk before you approve.";
+    const warningDe =
+      "Nummer und Name der Kostenstelle ließen sich nicht aus sevDesk lesen; gezeigt wird nur " +
+      "ihre ID. Prüfe sie vor der Freigabe in sevDesk.";
+    const idOnly = { label: "Cost centre (Kostenstelle)", value: "id 344959" };
+    const idOnlyDe = { label: "Kostenstelle", value: "ID 344959" };
+
+    const unread = await prepareWrite(
+      finalizeTool("invoice"),
+      { id: 1001 },
+      client(draft({ costCentre: centre }), [position()], [failing]),
+    );
+    const read = await prepareWrite(
+      finalizeTool("invoice"),
+      { id: 1001 },
+      client(draft({ costCentre: centre }), [position()], [costCentresRoute]),
+    );
+    expect(unread.preview.facts).toContainEqual(idOnly);
+    expect(unread.previewDe.facts).toContainEqual(idOnlyDe);
+    expect(unread.preview.warnings).toContain(warning);
+    expect(unread.previewDe.warnings).toContain(warningDe);
+    expect(unread.preview.warnings.indexOf(warning)).toBe(
+      unread.previewDe.warnings.indexOf(warningDe),
+    );
+    expect(read.preview.warnings).not.toContain(warning);
+    // The id is in the bound record either way: number and name are display only.
+    expect(unread.binding).toBe(read.binding);
+
+    const voucher = await voucherPlan(draftRow({ costCentre: centre }), [positionRow()], [failing]);
+    expect(voucher.preview.facts).toContainEqual(idOnly);
+    expect(voucher.previewDe.facts).toContainEqual(idOnlyDe);
+    expect(voucher.preview.warnings).toContain(warning);
+    expect(voucher.previewDe.warnings).toContain(warningDe);
+  });
+
+  it.each([
+    ["a cancelled call", "aborted", "Cancelled."],
+    ["a read the server's guard blocks", "blocked", "Blocked before sending."],
+  ] as const)(
+    "stops %s on the cost centres instead of showing the id",
+    async (_l, kind, message) => {
+      const failing: FakeRoute = {
+        path: "/CostCentre",
+        response: { error: new SevdeskError({ kind, message }) },
+      };
+      await expect(
+        prepareWrite(
+          finalizeTool("invoice"),
+          { id: 1001 },
+          client(
+            draft({ costCentre: storedCostCentre(RECORDED_CENTRES.third.id) }),
+            [position()],
+            [failing],
+          ),
+        ),
+      ).rejects.toMatchObject({ kind });
+    },
+  );
 });
 
 function voucherPlan(

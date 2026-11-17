@@ -22,6 +22,7 @@ import type { SevdeskClient } from "../../sevdesk/types.js";
 import type { TaxRegime } from "../account-settings.js";
 import { cleanText, currencyCode } from "../common.js";
 import {
+  COST_CENTRE_FLAGS,
   type CostCentreArg,
   costCentreChange,
   costCentreFacts,
@@ -63,8 +64,9 @@ import {
   kindText,
   loadSupplierName,
   partyLabel,
-  readReceiptFile,
-  receiptText,
+  readOptionalReceipt,
+  receiptFacts,
+  receiptSha256,
   resolveVoucherPositions,
   resolveVoucherRule,
   supplierText,
@@ -192,8 +194,7 @@ export async function prepareVoucherCreate(
 ): Promise<VoucherSavePlan> {
   checkSupplierArgs(args.supplierId, args.supplierName, true);
   resolveVoucherCurrency(args.currency ?? "EUR", args);
-  const file =
-    args.file === undefined ? undefined : await readReceiptFile(options.files, args.file);
+  const file = await readOptionalReceipt(options, args.file, args.fileSha256);
   return prepareVoucherCreateSpec(
     client,
     {
@@ -343,9 +344,7 @@ export async function prepareVoucherCreateSpec(
         text("Total (expected)", "Summe (erwartet)"),
         totalsText(expected, currency.currency, lang),
       ),
-      ...(file === undefined
-        ? []
-        : [fact(text("Receipt file (Belegbild)", "Belegdatei"), receiptText(file, lang))]),
+      ...(file === undefined ? [] : receiptFacts(file, lang)),
       ...((de ? extras.factsDe : extras.facts) ?? extras.facts ?? []),
       fact(
         text("Status after saving", "Status nach dem Speichern"),
@@ -406,13 +405,17 @@ export async function prepareVoucherUpdate(
   options: VoucherCallOptions,
 ): Promise<VoucherSavePlan> {
   const { signal } = options;
-  assertChanges(args, "voucher");
+  const given = assertChanges(args, "voucher", COST_CENTRE_FLAGS);
   checkSupplierArgs(args.supplierId, args.supplierName, false);
-  const file =
-    args.file === undefined ? undefined : await readReceiptFile(options.files, args.file);
+  const file = await readOptionalReceipt(options, args.file, args.fileSha256);
   const stored = await loadStoredVoucher(client, args.id, signal);
   const kind = checkDraft(stored, "changed");
-  const centre = await costCentreUpdate(client, args, stored.record.costCentre?.id, signal);
+  const centre = await costCentreUpdate(
+    client,
+    args,
+    { storedId: stored.record.costCentre?.id, given },
+    signal,
+  );
   const oldCurrency = currencyCode(stored.record.currency);
   const currency = resolveVoucherCurrency(args.currency ?? oldCurrency, args);
   const convertsCurrency = oldCurrency !== currency.currency;
@@ -595,11 +598,7 @@ export async function prepareVoucherUpdate(
       );
     }
     if (file !== undefined)
-      log.note(
-        text("file", "Datei"),
-        text("Receipt file (Belegbild)", "Belegdatei"),
-        `${text("attach", "anhängen:")} ${receiptText(file, lang)}`,
-      );
+      log.noteFacts(text("file", "Datei"), receiptFacts(file, lang, text("attach ", "anhängen: ")));
 
     const warnings =
       args.taxRuleId === undefined
@@ -705,13 +704,18 @@ export interface VoucherSaveResult {
    * confirms a new attachment; mere document presence cannot confirm replacement of a receipt.
    */
   readonly previousDocumentId?: number | null | undefined;
-  /** The uploaded receipt (name, kind, size, pages), when a file was attached. */
+  /**
+   * The uploaded receipt (name, kind, size, SHA-256, pages), when a file was attached; for a file
+   * from a link also the origin it was downloaded from.
+   */
   readonly receipt?:
     | {
         readonly name: string;
         readonly kind: string;
         readonly bytes: number;
+        readonly sha256: string;
         readonly pages?: number;
+        readonly downloadedFrom?: string;
       }
     | undefined;
 }
@@ -789,7 +793,11 @@ export async function executeVoucherSave(
           name: cleanText(state.file.name, 200) ?? "file",
           kind: state.file.kind,
           bytes: state.file.bytes.length,
+          sha256: receiptSha256(state.file),
           ...(uploaded?.pages === undefined ? {} : { pages: uploaded.pages }),
+          ...(state.file.host === undefined
+            ? {}
+            : { downloadedFrom: `https://${state.file.host}` }),
         };
   const notes = readBackNotes(details, state);
   const notesDe = readBackNotes(details, state, "de");

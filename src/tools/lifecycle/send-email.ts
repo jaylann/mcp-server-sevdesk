@@ -251,7 +251,7 @@ export function sendEmailTool(kind: SalesKind) {
       ];
       if (doc.status === STATUS.draft) warnings.push(draftWarning(kind));
       // Consequences first, then what the facts leave out, then notes on this document.
-      warnings.push(content.notShown);
+      warnings.push(content.notShown, ...content.notes);
       if (attachment === "xml" && doc.eInvoice === undefined) {
         warnings.push(
           phrase(

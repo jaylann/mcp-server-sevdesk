@@ -14,6 +14,7 @@ tool, the [tier](../permissions.md#tiers) and whether you confirm.
 | [Pick account and tax rule](#pick-the-booking-account-and-tax-rule) | [`sevdesk_reference_lookup`](../tools.md#sevdesk_reference_lookup) (`receipt_guidance`)                                                                | `read`            | no              |
 | [Create the voucher draft](#create-the-voucher-draft)               | [`sevdesk_voucher_create_draft`](../tools.md#sevdesk_voucher_create_draft)                                                                             | `write`           | no              |
 | [Or import an e-invoice](#import-an-e-invoice)                      | [`sevdesk_einvoice_parse`](../tools.md#sevdesk_einvoice_parse), [`sevdesk_voucher_import_einvoice`](../tools.md#sevdesk_voucher_import_einvoice)       | `read`, `write`   | no              |
+| [Or let sevDesk read the receipt](#let-sevdesk-read-the-receipt)    | [`sevdesk_voucher_recognize_receipt`](../tools.md#sevdesk_voucher_recognize_receipt)                                                                   | `write`           | no              |
 | [Correct the draft](#correct-a-draft)                               | [`sevdesk_voucher_update_draft`](../tools.md#sevdesk_voucher_update_draft), [`sevdesk_voucher_delete_draft`](../tools.md#sevdesk_voucher_delete_draft) | `write`, `commit` | delete: **yes** |
 | [Finalize](#finalize)                                               | [`sevdesk_voucher_finalize`](../tools.md#sevdesk_voucher_finalize)                                                                                     | `commit`          | **yes**         |
 | [Book the payment](#book-the-payment)                               | [`sevdesk_voucher_book_payment`](../tools.md#sevdesk_voucher_book_payment)                                                                             | `commit`          | **yes**         |
@@ -33,11 +34,20 @@ The voucher tools never read your disk on their own:
 - **Over stdio** they read receipts (PDF, PNG, JPEG) and e-invoices (XRechnung XML, ZUGFeRD or
   Factur-X PDF) only from the folders in `SEVDESK_FILE_DIRS`, up to 20 MiB per file
   ([Configuration](../configuration.md)). Without that setting a voucher draft can still be
-  created, just without a file, and the two e-invoice tools are not offered.
+  created, just without a file, and the two e-invoice tools and the receipt recognition are not
+  offered.
 - **On a remote server** you upload the file in your browser: the assistant calls
   [`sevdesk_upload_request`](../tools.md#sevdesk_upload_request), gives you a link, and passes the
   upload on once you say it is done. Up to 10 files fit on one page; see
   [Files over HTTP](../remote/files.md).
+- **From a link**, in either mode, when the hosts it may come from are listed in
+  `SEVDESK_FILE_URL_HOSTS`: give the assistant an https link to the file (a supplier portal's
+  download link, a storage link). The server downloads it for this call only, without signing in
+  anywhere; see [Files from a link](../configuration.md#files-from-a-link).
+
+The dry run's preview shows the file's full SHA-256. The real call reads the file again (a link is
+downloaded again), so the assistant can pass that SHA-256 as `fileSha256`: if the bytes changed in
+between, the call is refused before anything reaches sevDesk.
 
 > File the receipt Belege/2026-11/tankstelle-shell.pdf.
 
@@ -104,6 +114,50 @@ supply the booking account, one for all rates or one per rate. It refuses sums o
 it cannot rely on and account and tax rule combinations sevDesk would reject. Keep the original
 file: for an e-invoice the XML is the record to retain.
 
+## Let sevDesk read the receipt
+
+> Let sevDesk read Belege/2026-11/hetzner-R-88231.pdf and draft the voucher.
+
+[`sevdesk_voucher_recognize_receipt`](../tools.md#sevdesk_voucher_recognize_receipt) (`write`, no
+confirmation) sends a receipt to sevDesk's own receipt recognition (Belegerkennung). sevDesk
+creates a draft voucher with the file attached at once, an expense unless you say it is revenue,
+and fills in the date, the Belegnummer, the sums, a supplier text and the positions within
+seconds. The tool waits up to 15 seconds and then lists what sevDesk filled in and what is still
+missing. Run it as a dry run first and pass the SHA-256 its preview shows as `fileSha256`: the
+real call reads the file again and sends it only when the bytes are the same.
+
+Nothing sevDesk filled in has been checked, and the draft is never complete:
+
+- The positions and tax rates can be wrong even when the total is right: a test receipt with
+  19 % and 7 % came back as one position at 7 %. Enter a receipt with several tax rates again as
+  one position per rate.
+
+- The tax rule and the booking account of every position stay empty, so
+  [`sevdesk_voucher_finalize`](../tools.md#sevdesk_voucher_finalize) refuses the draft until
+  [`sevdesk_voucher_update_draft`](../tools.md#sevdesk_voucher_update_draft) sets them: the tax
+  rule and the positions with their booking accounts, chosen
+  [as above](#pick-the-booking-account-and-tax-rule).
+- The supplier (the customer, for revenue) is only a text sevDesk read, not always the receipt's,
+  and never a contact. Set the contact or the right name in the same update.
+- Compare the date, the number and the amounts with the receipt.
+
+The draft exists as soon as the file is sent, also when the recognition finds nothing. The tool
+then says so and names the draft, to complete or to delete with
+[`sevdesk_voucher_delete_draft`](../tools.md#sevdesk_voucher_delete_draft). sevDesk does not
+notice a file it has seen before: every call makes another draft, so send each receipt once.
+Duplicates can only be looked for after the recognition: the result names vouchers with the same
+date, gross amount and Belegnummer, and says when it could not compare every voucher of that day
+or had nothing to compare. Later checks see such a draft differently: sevDesk stores no checksum
+for a receipt its recognition attached, so
+[`sevdesk_receipt_folder_check`](../tools.md#sevdesk_receipt_folder_check) cannot find it, while
+[`sevdesk_records_audit`](evaluations.md#vouchers-booked-twice-and-stuck-drafts-duplicates) still
+pairs duplicate drafts by number and gross amount.
+
+It takes PDF, PNG and JPEG files. How well the recognition reads a photo is unmeasured (a tiny
+test image gave a draft with nothing filled in), so expect to enter the details of a photo
+yourself. When you know the details anyway, `sevdesk_voucher_create_draft` is the more direct
+way: it checks everything before anything is saved.
+
 ## Correct a draft
 
 > The receipt recognition got the date wrong on voucher 5521. Save the receipt file so we can compare.
@@ -152,6 +206,13 @@ From the bank side, the [`bank_reconciliation`](../tools.md#bank_reconciliation)
 unbooked transactions to vouchers by Belegnummer and amount and books each match you agree to with
 [`sevdesk_transaction_book`](../tools.md#sevdesk_transaction_book) (`commit`). A bank fee with no
 receipt yet gets a voucher first, then the transaction is booked to it.
+
+To find the receipts that are missing in the first place, the
+[`missing_receipts`](../tools.md#missing_receipts) prompt goes through a month or quarter:
+outgoing transactions no voucher explains, suppliers that bill regularly without a bill in the
+period, receipts only on drafts or booked twice and, with `SEVDESK_FILE_DIRS`, the files in your
+receipt folder that no voucher carries. Its findings are hints, not tax advice; a receipt that
+turns up is filed as a voucher draft as above.
 
 ## Enshrine
 

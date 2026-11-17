@@ -13,7 +13,9 @@
  *
  * One document per call: each tag or untag is one request that is never retried, so a call either
  * did everything its preview says or nothing, and the preview can say exactly whether the tag is
- * created or deleted.
+ * created or deleted. Where sevDesk's name comparison is not measured (ß/ss and the like), the
+ * preview says that sevDesk may reuse a similar tag, and the result reports the tag sevDesk
+ * actually used.
  */
 import type { ConfirmationFact, ConfirmationPreview } from "../safety/write-types.js";
 import { expectSingle } from "../sevdesk/envelope.js";
@@ -64,10 +66,10 @@ export type TagChangeState =
   | {
       readonly action: "add";
       readonly object: TagObject;
-      /** The name sent to sevDesk: the existing tag's own spelling, or the new name. */
+      /** The name sent to sevDesk: the existing tag's stored spelling, or the new name. */
       readonly name: string;
-      /** The tag the name reuses; `undefined` when sevDesk creates it. */
-      readonly existingTagId: number | undefined;
+      /** The account's tags as read for the preview: whether sevDesk's answer names one of them. */
+      readonly tags: TagMatches;
     }
   | {
       readonly action: "remove";
@@ -91,7 +93,10 @@ export interface TagChangeResult {
   readonly tagId: number;
   /** The tag's name (cleaned). */
   readonly tagName: string;
-  /** Add: sevDesk created the tag. Remove: the tag went with its last use. */
+  /**
+   * Add: sevDesk created the tag; left out when the account has more tags than were read and
+   * sevDesk used one this server did not see. Remove: the tag went with its last use.
+   */
   readonly tagCreated?: boolean;
   readonly tagDeleted?: boolean;
 }
@@ -153,27 +158,38 @@ async function planAdd(
   }
 
   const shownName = existing?.name ?? display(name);
+  // Only consulted when no tag matches: then sevDesk may still take one of these as the same name.
+  const similar = existing === undefined ? found.similar : [];
   const facts: ConfirmationFact[] = [
     ...documentFacts(doc),
     { label: "Tag", value: shownName },
-    {
-      label: "Tag status",
-      value:
-        existing === undefined
-          ? "new: sevDesk creates it"
-          : `exists (id ${String(existing.id)}), added to this document`,
-    },
+    { label: "Tag status", value: addStatus(existing, similar) },
   ];
+  if (similar.length > 0) {
+    facts.push({
+      label: similar.length === 1 ? "Similar tag" : "Similar tags",
+      value: similarTags(similar),
+    });
+  }
   const warnings: string[] = [];
-  if (existing === undefined) {
+  if (existing !== undefined) {
+    if (existing.storedName.trim() !== name) {
+      warnings.push(
+        "A tag whose name differs only in case or accents exists: sevDesk reuses it, with its " +
+          "own spelling.",
+      );
+    }
+  } else if (similar.length === 0) {
     warnings.push(
       "No tag has this name yet (compared ignoring case and accents, as sevDesk does): sevDesk " +
         "creates the tag.",
     );
-  } else if (existing.name !== name) {
+  } else {
     warnings.push(
-      "A tag whose name differs only in case or accents exists: sevDesk reuses it, with its own " +
-        "spelling.",
+      "No tag has exactly this name (compared ignoring case and accents), but one is spelled " +
+        "similarly (e.g. ß for ss, or with invisible characters). sevDesk may reuse that tag " +
+        "instead of creating one: how it compares such spellings is not measured. The result " +
+        "says which tag was used.",
     );
   }
   return {
@@ -186,11 +202,28 @@ async function planAdd(
     state: {
       action: "add",
       object,
-      // The existing spelling makes sevDesk reuse exactly that tag.
-      name: existing?.name ?? name,
-      existingTagId: existing?.id,
+      // The stored spelling, not the cleaned one, makes sevDesk reuse exactly that tag.
+      name: existing?.storedName ?? name,
+      tags: found,
     },
   };
+}
+
+/** The "Tag status" fact of an add. */
+function addStatus(existing: TagRecord | undefined, similar: readonly TagRecord[]): string {
+  if (existing !== undefined) return `exists (id ${String(existing.id)}), added to this document`;
+  return similar.length === 0
+    ? "new: sevDesk creates it"
+    : "new, unless sevDesk takes a similar tag for it";
+}
+
+/** How many similar tags a preview names; the rest are counted. */
+const SIMILAR_SHOWN = 3;
+
+function similarTags(tags: readonly TagRecord[]): string {
+  const shown = tags.slice(0, SIMILAR_SHOWN).map((tag) => `${tag.name} (id ${String(tag.id)})`);
+  const more = tags.length - shown.length;
+  return more > 0 ? `${shown.join("; ")}; and ${String(more)} more` : shown.join("; ");
 }
 
 async function planRemove(
@@ -217,14 +250,23 @@ async function planRemove(
     );
   }
   const uses = await countTagUses(client, tag.id, signal);
-  const lastUse = uses <= 1;
+  if (!uses.complete && uses.count <= 1) {
+    // Only when sevDesk ignored the tag filter on an account with more relations than were read.
+    throw validation(
+      "The tag's uses could not all be counted (the account has more than " +
+        `${TAG_READ_MAX.toLocaleString("en-US")} tag uses), so this server cannot tell whether ` +
+        "this is its last use, which would delete the tag; it does not remove it.",
+    );
+  }
+  const lastUse = uses.count <= 1;
+  const counted = `${String(uses.count)} document${uses.count === 1 ? "" : "s"}`;
   return {
     preview: {
       action: `Remove the tag ${tag.name} from ${documentTitle(doc)}.`,
       facts: [
         ...documentFacts(doc),
         { label: "Tag", value: `${tag.name} (id ${String(tag.id)})` },
-        { label: "Tag uses", value: `${String(uses)} document${uses === 1 ? "" : "s"}` },
+        { label: "Tag uses", value: uses.complete ? counted : `at least ${counted}` },
       ],
       warnings: lastUse
         ? [
@@ -271,13 +313,14 @@ export async function executeTagChange(
     ...withSignal,
   });
   const relation = parseTagRelation(expectSingle(answer, "tag relation"));
-  return {
-    relationId: relation.id,
-    tagId: relation.tagId,
-    tagName: display(state.name),
-    // Judged from the answer, not the preview: the tag sevDesk actually used.
-    tagCreated: relation.tagId !== state.existingTagId,
-  };
+  const base = { relationId: relation.id, tagId: relation.tagId };
+  // Judged from the answer, not the preview: sevDesk may have reused a tag whose name this
+  // server did not match (its comparison is measured for case and accents only, D-088).
+  const used = state.tags.known.get(relation.tagId);
+  if (used !== undefined) return { ...base, tagName: used.name, tagCreated: false };
+  const tagName = display(state.name);
+  // A tag that was not among those read is new, unless the read stopped at the cap.
+  return state.tags.complete ? { ...base, tagName, tagCreated: true } : { ...base, tagName };
 }
 
 /** A name given as an argument, cleaned like sevDesk text for previews and output. */

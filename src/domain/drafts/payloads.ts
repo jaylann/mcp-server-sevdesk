@@ -7,13 +7,17 @@
  *
  * What the schemas enforce on purpose:
  * - positions go into `invoicePosSave` / `creditNotePosSave` / `orderPosSave` (the spec's
- *   `required` lists name `invoicePos` etc., which do not exist: D-004);
+ *   `required` lists name `invoicePos` etc., which do not exist: D-004); stored positions to
+ *   delete go into `*PosDelete` as a list of refs, never as the spec's single object (D-054,
+ *   D-110);
  * - no derived totals (`sum*`, `priceNet`, `priceGross`, `priceTax`) anywhere (B8);
  * - document numbers only from sevDesk (B4): invoices none on create (`sendBy` assigns it);
  *   orders and credit notes the number reserved from the number range (`numbering.ts`); on
  *   update only the stored one, unchanged;
  * - drafts only (`status: 100`), references as `{id, objectName}`, `mapAll: true` on the document
- *   and every position (spec: "you always need to provide them").
+ *   and every position (spec: "you always need to provide them");
+ * - a document discount only in the recorded form (D-116): `discountSave` as a list of one
+ *   deduction followed by `discountDelete`, both after the position keys, or neither key.
  *
  * Shapes follow sevdesk-rs's invoice and credit note requests (rebuilt from its source; the
  * responses, recorded on Update 2.0 on 2026-10-01, show them accepted) and, for orders, the
@@ -37,7 +41,10 @@ const germanDate = z.string().regex(/^\d{2}\.\d{2}\.\d{4}$/);
 const timestamp = z.number().int().nonnegative();
 const decimalString = z.string().regex(/^-?\d+(\.\d+)?$/);
 
-function positionSchema<N extends "InvoicePos" | "CreditNotePos" | "OrderPos">(objectName: N) {
+/** A new position of `objectName` (also used by recurring invoice templates, `../recurring/`). */
+export function positionSchema<N extends "InvoicePos" | "CreditNotePos" | "OrderPos">(
+  objectName: N,
+) {
   return z.strictObject({
     objectName: z.literal(objectName),
     mapAll: z.literal(true),
@@ -57,6 +64,49 @@ function positionSchema<N extends "InvoicePos" | "CreditNotePos" | "OrderPos">(o
 function deleteSchema<N extends string>(objectName: N) {
   return z.array(ref(objectName)).min(1).nullable();
 }
+
+/**
+ * The document discount keys (D-116, `discount.ts`), sent after the position keys or not at all:
+ * `discountSave` a list of exactly one deduction (or `null` when the update removes the stored
+ * one), `discountDelete` the stored rows as a list of refs (or `null` when there are none).
+ */
+const discountShape = {
+  discountSave: z
+    .array(
+      z.strictObject({
+        objectName: z.literal("Discounts"),
+        mapAll: z.literal(true),
+        discount: z.literal(true),
+        text: z.string().min(1),
+        percentage: z.boolean(),
+        value: z.number().positive(),
+      }),
+    )
+    .length(1)
+    .nullable()
+    .optional(),
+  discountDelete: deleteSchema("Discounts").optional(),
+};
+
+/**
+ * Both discount keys or neither; a percentage of at most 100; a removal (`discountSave: null`)
+ * deletes something; a new document deletes nothing.
+ */
+function discountKeysFit(body: {
+  readonly discountSave?:
+    readonly { readonly percentage: boolean; readonly value: number }[] | null | undefined;
+  readonly discountDelete?: readonly unknown[] | null | undefined;
+  readonly isNew: boolean;
+}): boolean {
+  const { discountSave: save, discountDelete: deleted } = body;
+  if (save === undefined || deleted === undefined) return save === deleted;
+  if (save === null) return deleted !== null && !body.isNew;
+  if (body.isNew && deleted !== null) return false;
+  return save.every((item) => !item.percentage || item.value <= 100);
+}
+const DISCOUNT_MESSAGE =
+  "discountSave and discountDelete go together: one deduction (percent at most 100) or a " +
+  "removal of stored rows, and a new document deletes nothing";
 
 /** Document tax fields (exactly one of `taxRule` / `taxType` is checked by {@link oneTaxSetting}). */
 const taxShape = {
@@ -78,10 +128,39 @@ const structuredAddressShape = {
   addressCountry: ref("StaticCountry").optional(),
 };
 
-function oneTaxSetting(value: { taxRule?: unknown; taxType?: unknown }): boolean {
+/** Refinement of every document schema: exactly one of `taxRule` / `taxType` (see {@link TAX_MESSAGE}). */
+export function oneTaxSetting(value: { taxRule?: unknown; taxType?: unknown }): boolean {
   return (value.taxRule === undefined) !== (value.taxType === undefined);
 }
-const TAX_MESSAGE = "a document carries either taxRule (Update 2.0) or taxType (Update 1.0)";
+export const TAX_MESSAGE = "a document carries either taxRule (Update 2.0) or taxType (Update 1.0)";
+
+/**
+ * The fields of an invoice after its identity, type and status: recipient, dates, texts, terms,
+ * prices, tax and address. Shared with recurring invoice templates (`../recurring/payload.ts`),
+ * which are invoices of another type and status.
+ */
+export const invoiceContentShape = {
+  contact: ref("Contact"),
+  contactPerson: ref("SevUser"),
+  invoiceDate: germanDate,
+  deliveryDate: timestamp.optional(),
+  deliveryDateUntil: timestamp.optional(),
+  header: z.string().min(1).optional(),
+  headText: z.string().optional(),
+  footText: z.string().optional(),
+  timeToPay: z.number().int().min(0).optional(),
+  discount: z.number().min(0).max(100),
+  discountTime: z.number().int().min(0).optional(),
+  currency: z.string().length(3),
+  showNet: z.boolean(),
+  ...taxShape,
+  ...structuredAddressShape,
+  customerInternalNote: z.string().optional(),
+  paymentMethod: ref("PaymentMethod").optional(),
+  costCentre: ref("CostCentre").optional(),
+  origin: z.strictObject({ id, objectName: z.string().min(1) }).optional(),
+  propertyIsEInvoice: z.boolean().optional(),
+};
 
 const invoiceDocumentSchema = z
   .strictObject({
@@ -91,36 +170,25 @@ const invoiceDocumentSchema = z
     invoiceNumber: z.string().min(1).optional(),
     invoiceType: z.literal("RE"),
     status: z.literal(100),
-    contact: ref("Contact"),
-    contactPerson: ref("SevUser"),
-    invoiceDate: germanDate,
-    deliveryDate: timestamp.optional(),
-    deliveryDateUntil: timestamp.optional(),
-    header: z.string().min(1).optional(),
-    headText: z.string().optional(),
-    footText: z.string().optional(),
-    timeToPay: z.number().int().min(0).optional(),
-    discount: z.number().min(0).max(100),
-    discountTime: z.number().int().min(0).optional(),
-    currency: z.string().length(3),
-    showNet: z.boolean(),
-    ...taxShape,
-    ...structuredAddressShape,
-    customerInternalNote: z.string().optional(),
-    paymentMethod: ref("PaymentMethod").optional(),
-    // null removes a stored cost centre on an update (recorded 2026-11-17, D-092).
+    ...invoiceContentShape,
+    // null removes a stored cost centre on an update (recorded 2026-11-17, D-092). Recurring
+    // templates keep the shared shape, which refuses null.
     costCentre: ref("CostCentre").nullable().optional(),
-    origin: z.strictObject({ id, objectName: z.string().min(1) }).optional(),
-    propertyIsEInvoice: z.boolean().optional(),
   })
   .refine(oneTaxSetting, TAX_MESSAGE);
 
 /** `POST /Invoice/Factory/saveInvoice` (create, or update with `invoice.id`). */
-export const saveInvoiceBodySchema = z.strictObject({
-  invoice: invoiceDocumentSchema,
-  invoicePosSave: z.array(positionSchema("InvoicePos")).min(1).nullable(),
-  invoicePosDelete: deleteSchema("InvoicePos"),
-});
+export const saveInvoiceBodySchema = z
+  .strictObject({
+    invoice: invoiceDocumentSchema,
+    invoicePosSave: z.array(positionSchema("InvoicePos")).min(1).nullable(),
+    invoicePosDelete: deleteSchema("InvoicePos"),
+    ...discountShape,
+  })
+  .refine(
+    (body) => discountKeysFit({ ...body, isNew: body.invoice.id === undefined }),
+    DISCOUNT_MESSAGE,
+  );
 export type SaveInvoiceBody = z.output<typeof saveInvoiceBodySchema>;
 
 /** Booking categories this server writes (ACCOUNTING_TYPE is not supported on Update 2.0). */
@@ -133,9 +201,10 @@ export const CREDIT_NOTE_BOOKING_CATEGORIES = [
 
 const creditNoteDocumentSchema = z
   .strictObject({
+    id: id.optional(),
     objectName: z.literal("CreditNote"),
     mapAll: z.literal(true),
-    creditNoteNumber: z.string().min(1),
+    creditNoteNumber: z.string().min(1).optional(),
     creditNoteType: z.literal("CN"),
     status: z.literal(100),
     contact: ref("Contact"),
@@ -143,26 +212,54 @@ const creditNoteDocumentSchema = z
     creditNoteDate: germanDate,
     deliveryDate: timestamp,
     deliveryDateUntil: timestamp.optional(),
-    header: z.string().min(1),
+    header: z.string().min(1).optional(),
     headText: z.string().optional(),
     footText: z.string().optional(),
-    discount: z.literal(0),
+    discount: z.number().min(0).max(100),
+    discountTime: z.number().int().min(0).optional(),
     currency: z.string().length(3),
     showNet: z.boolean(),
     ...taxShape,
     bookingCategory: z.enum(CREDIT_NOTE_BOOKING_CATEGORIES),
     refSrcInvoice: ref("Invoice").optional(),
     ...structuredAddressShape,
-    costCentre: ref("CostCentre").optional(),
+    customerInternalNote: z.string().optional(),
+    paymentMethod: ref("PaymentMethod").optional(),
+    // null removes a stored cost centre on an update (recorded 2026-11-17, D-092).
+    costCentre: ref("CostCentre").nullable().optional(),
+    origin: z.strictObject({ id, objectName: z.string().min(1) }).optional(),
   })
-  .refine(oneTaxSetting, TAX_MESSAGE);
+  .refine(oneTaxSetting, TAX_MESSAGE)
+  // A new credit note carries the number reserved for it (without one, `sendBy` fails: see
+  // credit-note.ts); an update keeps whatever the draft has stored, also none.
+  .refine(
+    (doc) => doc.id !== undefined || doc.creditNoteNumber !== undefined,
+    "a new credit note carries its reserved number",
+  );
 
-/** `POST /CreditNote/Factory/saveCreditNote` (create only). */
-export const saveCreditNoteBodySchema = z.strictObject({
-  creditNote: creditNoteDocumentSchema,
-  creditNotePosSave: z.array(positionSchema("CreditNotePos")).min(1),
-  creditNotePosDelete: z.null(),
-});
+/**
+ * `POST /CreditNote/Factory/saveCreditNote` (create, or update with `creditNote.id`; recorded
+ * 2026-11-16, spec/deviations.md D-110). `creditNotePosDelete` is a list of refs or `null`: the
+ * spec's single `{id, objectName}` object is refused with HTTP 400. An update that keeps the
+ * positions sends `creditNotePosSave: []` with `creditNotePosDelete: null`, the recorded shape.
+ */
+export const saveCreditNoteBodySchema = z
+  .strictObject({
+    creditNote: creditNoteDocumentSchema,
+    creditNotePosSave: z.array(positionSchema("CreditNotePos")),
+    creditNotePosDelete: deleteSchema("CreditNotePos"),
+    ...discountShape,
+  })
+  .refine(
+    (body) =>
+      body.creditNote.id !== undefined ||
+      (body.creditNotePosSave.length > 0 && body.creditNotePosDelete === null),
+    "a new credit note has positions and nothing to delete",
+  )
+  .refine(
+    (body) => discountKeysFit({ ...body, isNew: body.creditNote.id === undefined }),
+    DISCOUNT_MESSAGE,
+  );
 export type SaveCreditNoteBody = z.output<typeof saveCreditNoteBodySchema>;
 
 const orderDocumentSchema = z
@@ -193,11 +290,17 @@ const orderDocumentSchema = z
   .refine(oneTaxSetting, TAX_MESSAGE);
 
 /** `POST /Order/Factory/saveOrder` (create, or update with `order.id`). */
-export const saveOrderBodySchema = z.strictObject({
-  order: orderDocumentSchema,
-  orderPosSave: z.array(positionSchema("OrderPos")).min(1).nullable(),
-  orderPosDelete: deleteSchema("OrderPos"),
-});
+export const saveOrderBodySchema = z
+  .strictObject({
+    order: orderDocumentSchema,
+    orderPosSave: z.array(positionSchema("OrderPos")).min(1).nullable(),
+    orderPosDelete: deleteSchema("OrderPos"),
+    ...discountShape,
+  })
+  .refine(
+    (body) => discountKeysFit({ ...body, isNew: body.order.id === undefined }),
+    DISCOUNT_MESSAGE,
+  );
 export type SaveOrderBody = z.output<typeof saveOrderBodySchema>;
 
 /**

@@ -1,0 +1,108 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /Invoice?showWkr=all (recording session 2026-11-16), template 139574590 of test/fixtures/recorded/2026-11-16/invoices/recurring-templates.json",
+    "date": "2026-11-17",
+    "systemVersion": "2.0",
+    "note": "Every key, null and scalar type of the recorded template row; values changed to what sevdesk_invoice_create_recurring sends in its tests: id 2301, contact 1001 and user 2001, the structured address of contact 1001, title Rechnung, no payment term, monthly (P0Y1M0W) from 2026-12-01 (accountStartDate and accountNextInvoice as sevDesk reads them back, D-111), sums of 3 x 10 + 1 x 25 net at 19 %. Values fake."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "2301",
+        "objectName": "Invoice",
+        "additionalInformation": null,
+        "invoiceNumber": null,
+        "contact": {
+          "id": "1001",
+          "objectName": "Contact"
+        },
+        "create": "2026-11-17T10:00:00+01:00",
+        "update": "2026-11-17T10:00:00+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "invoiceDate": "2026-12-01T00:00:00+01:00",
+        "header": "Rechnung",
+        "headText": null,
+        "footText": null,
+        "timeToPay": null,
+        "discountTime": null,
+        "discount": "0",
+        "addressName": "Musterfirma GmbH, Buchhaltung",
+        "addressStreet": "Musterstraße 1",
+        "addressZip": "12345",
+        "addressCity": "Musterstadt",
+        "addressCountry": {
+          "id": "1",
+          "objectName": "StaticCountry"
+        },
+        "payDate": null,
+        "createUser": {
+          "id": "2001",
+          "objectName": "SevUser"
+        },
+        "deliveryDate": "2026-12-01T00:00:00+01:00",
+        "status": "100",
+        "smallSettlement": "0",
+        "contactPerson": {
+          "id": "2001",
+          "objectName": "SevUser"
+        },
+        "taxRate": "0",
+        "taxText": "Umsatzsteuerpflichtige Umsätze",
+        "dunningLevel": null,
+        "addressParentName": null,
+        "taxType": null,
+        "sendDate": null,
+        "invoiceType": "WKR",
+        "accountIntervall": "P0Y1M0W",
+        "accountLastInvoice": null,
+        "accountNextInvoice": "2026-12-01T00:00:00+01:00",
+        "reminderTotal": null,
+        "reminderDebit": null,
+        "reminderDeadline": null,
+        "reminderCharge": "0",
+        "addressParentName2": null,
+        "addressName2": null,
+        "addressGender": null,
+        "accountStartDate": "2026-12-01T00:00:00+01:00",
+        "accountEndDate": null,
+        "address": null,
+        "currency": "EUR",
+        "sumNet": "55",
+        "sumTax": "10.45",
+        "sumGross": "65.45",
+        "sumDiscounts": "0",
+        "sumNetForeignCurrency": "0",
+        "sumTaxForeignCurrency": "0",
+        "sumGrossForeignCurrency": "0",
+        "sumDiscountsForeignCurrency": "0",
+        "sumNetAccounting": "55",
+        "sumTaxAccounting": "10.45",
+        "sumGrossAccounting": "65.45",
+        "paidAmount": 0,
+        "customerInternalNote": null,
+        "einvoiceReference": null,
+        "sepaMandateReference": null,
+        "sepaCreditorId": null,
+        "sepaPayerIban": null,
+        "showNet": "1",
+        "enshrined": null,
+        "sendType": "0",
+        "deliveryDateUntil": null,
+        "sendPaymentReceivedNotificationDate": null,
+        "sumDiscountNet": "0",
+        "sumDiscountGross": "0",
+        "sumDiscountNetForeignCurrency": "0",
+        "sumDiscountGrossForeignCurrency": "0",
+        "taxRule": {
+          "id": "1",
+          "objectName": "TaxRule"
+        }
+      }
+    ]
+  }
+}

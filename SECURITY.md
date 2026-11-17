@@ -49,8 +49,10 @@ This server sits between an AI model and a sevDesk account. The design assumes:
    to read or write arbitrary files. Tools read only inside `SEVDESK_FILE_DIRS` and write only new
    files inside `SEVDESK_OUTPUT_DIR`; without these settings, no tool touches local files.
    Received e-invoices and PDFs are parsed as hostile input with size and work limits, and the
-   DATEV export is fetched from exactly one host without credentials.
-   ([Local files](docs/security/local.md#local-files))
+   DATEV export is fetched from exactly one host without credentials. A receipt from an https
+   link is downloaded only from the hosts in `SEVDESK_FILE_URL_HOSTS` (none by default), only from
+   public addresses and without credentials.
+   ([Local files](docs/security/local.md#local-files), [Files from a link](docs/security/local.md#files-from-a-link))
 6. **Remote mode adds a network boundary.** The HTTP transport refuses to start without
    authentication, binds 127.0.0.1 by default (any other address needs a configured public URL),
    and validates Host and Origin. In OAuth mode it is single-tenant by default (only listed sevDesk

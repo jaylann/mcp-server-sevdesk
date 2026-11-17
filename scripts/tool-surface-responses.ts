@@ -66,6 +66,8 @@ export async function captureResponses(
   const fake = new FakeSevdeskClient([
     recorded("/Invoice/138793718", "2026-11-07/invoices/invoice-by-id"),
     recorded("/InvoicePos", "2026-11-07/invoices/invoice-positions"),
+    // The recorded answer for a document without discounts (an order's; D-116).
+    recorded("/Invoice/138793718/getDiscounts", "2026-11-16/orders/order-discounts"),
     recorded("/Unity", "2026-11-07/meta/units"),
     recorded("/StaticCountry", "2026-11-07/meta/static-countries"),
     recorded("/Invoice", "2026-11-07/invoices/invoices-list", 100),

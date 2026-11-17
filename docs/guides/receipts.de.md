@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/receipts.md sha256:1c9abfce6225 -->
+<!-- translated-from: docs/guides/receipts.md sha256:51db7a394939 -->
 
 # Belege und Eingangsrechnungen
 
@@ -17,6 +17,7 @@ bestätigst.
 | [Konto und Steuerregel wählen](#buchungskonto-und-steuerregel-wählen) | [`sevdesk_reference_lookup`](../tools.md#sevdesk_reference_lookup) (`receipt_guidance`)                                                                | `read`            | nein            |
 | [Belegentwurf anlegen](#den-belegentwurf-anlegen)                     | [`sevdesk_voucher_create_draft`](../tools.md#sevdesk_voucher_create_draft)                                                                             | `write`           | nein            |
 | [Oder eine E-Rechnung importieren](#eine-e-rechnung-importieren)      | [`sevdesk_einvoice_parse`](../tools.md#sevdesk_einvoice_parse), [`sevdesk_voucher_import_einvoice`](../tools.md#sevdesk_voucher_import_einvoice)       | `read`, `write`   | nein            |
+| [Oder sevDesk lesen lassen](#sevdesk-den-beleg-lesen-lassen)          | [`sevdesk_voucher_recognize_receipt`](../tools.md#sevdesk_voucher_recognize_receipt)                                                                   | `write`           | nein            |
 | [Entwurf korrigieren](#einen-entwurf-korrigieren)                     | [`sevdesk_voucher_update_draft`](../tools.md#sevdesk_voucher_update_draft), [`sevdesk_voucher_delete_draft`](../tools.md#sevdesk_voucher_delete_draft) | `write`, `commit` | Löschen: **ja** |
 | [Fertigstellen](#fertigstellen)                                       | [`sevdesk_voucher_finalize`](../tools.md#sevdesk_voucher_finalize)                                                                                     | `commit`          | **ja**          |
 | [Zahlung buchen](#die-zahlung-buchen)                                 | [`sevdesk_voucher_book_payment`](../tools.md#sevdesk_voucher_book_payment)                                                                             | `commit`          | **ja**          |
@@ -36,11 +37,22 @@ Die Beleg-Werkzeuge lesen nie von sich aus auf deiner Festplatte:
 - **Über stdio** lesen sie Belegdateien (PDF, PNG, JPEG) und E-Rechnungen (XRechnung-XML, ZUGFeRD-
   oder Factur-X-PDF) nur aus den Ordnern in `SEVDESK_FILE_DIRS`, bis 20 MiB pro Datei
   ([Konfiguration](../configuration.de.md)). Ohne diese Einstellung lässt sich ein Belegentwurf
-  trotzdem anlegen, nur ohne Datei, und die beiden E-Rechnungs-Werkzeuge werden nicht angeboten.
+  trotzdem anlegen, nur ohne Datei, und die beiden E-Rechnungs-Werkzeuge und die Belegerkennung
+  werden nicht angeboten.
 - **Auf einem entfernten Server** lädst du die Datei in deinem Browser hoch: Der Assistent ruft
   [`sevdesk_upload_request`](../tools.md#sevdesk_upload_request) auf, gibt dir einen Link und
   reicht den Upload weiter, sobald du sagst, dass du fertig bist. Auf eine Seite passen bis zu 10
   Dateien; siehe [Dateien über HTTP](../remote/files.de.md).
+- **Von einem Link**, in beiden Modi, wenn die Hosts, von denen er kommen darf, in
+  `SEVDESK_FILE_URL_HOSTS` stehen: Gib dem Assistenten einen https-Link zur Datei (den
+  Download-Link eines Lieferantenportals, einen Speicher-Link). Der Server lädt sie nur für diesen
+  Aufruf herunter, ohne sich irgendwo anzumelden; siehe
+  [Dateien von einem Link](../configuration.de.md#dateien-von-einem-link).
+
+Die Vorschau des Probelaufs zeigt die vollständige SHA-256 der Datei. Der echte Aufruf liest die
+Datei erneut (ein Link wird erneut heruntergeladen); der Assistent kann diese SHA-256 deshalb als
+`fileSha256` übergeben: Haben sich die Bytes dazwischen geändert, wird der Aufruf abgelehnt, bevor
+etwas sevDesk erreicht.
 
 > Erfasse den Beleg Belege/2026-11/tankstelle-shell.pdf.
 
@@ -111,6 +123,53 @@ oder Aufschlüsselungen der Umsatzsteuer ab, auf die es sich nicht verlassen kan
 aus Konto und Steuerregel, die sevDesk ablehnen würde. Bewahre die Originaldatei auf: Bei einer
 E-Rechnung ist das XML der Beleg, den du aufbewahren musst.
 
+## sevDesk den Beleg lesen lassen
+
+> Lass sevDesk den Beleg Belege/2026-11/hetzner-R-88231.pdf lesen und den Beleg anlegen.
+
+[`sevdesk_voucher_recognize_receipt`](../tools.md#sevdesk_voucher_recognize_receipt) (`write`,
+ohne Bestätigung) schickt eine Belegdatei an sevDesks eigene Belegerkennung. sevDesk legt sofort
+einen Belegentwurf mit der Datei als Anhang an, eine Ausgabe, außer du sagst, dass es eine
+Einnahme ist, und füllt binnen Sekunden Belegdatum, Belegnummer, Summen, einen Lieferantentext und
+die Positionen aus. Das Werkzeug wartet bis zu 15 Sekunden und nennt dann, was sevDesk ausgefüllt
+hat und was noch fehlt. Lass es zuerst als Probelauf laufen und übergib die SHA-256 aus seiner
+Vorschau als `fileSha256`: Der echte Aufruf liest die Datei erneut und sendet sie nur, wenn die
+Bytes dieselben sind.
+
+Nichts davon ist geprüft, und vollständig ist der Entwurf nie:
+
+- Positionen und Steuersätze können falsch sein, auch wenn die Summe stimmt: Ein Testbeleg mit
+  19 % und 7 % kam als eine Position zu 7 % zurück. Erfasse einen Beleg mit mehreren Steuersätzen
+  neu, mit einer Position je Satz.
+
+- Steuerregel und Buchungskonto jeder Position bleiben leer. Deshalb lehnt
+  [`sevdesk_voucher_finalize`](../tools.md#sevdesk_voucher_finalize) den Entwurf ab, bis
+  [`sevdesk_voucher_update_draft`](../tools.md#sevdesk_voucher_update_draft) sie setzt: die
+  Steuerregel und die Positionen mit ihren Buchungskonten, gewählt
+  [wie oben](#buchungskonto-und-steuerregel-wählen).
+- Der Lieferant (bei einer Einnahme der Kunde) ist nur ein Text, den sevDesk gelesen hat, nicht
+  immer der des Belegs und nie ein Kontakt. Setze den Kontakt oder den richtigen Namen in
+  derselben Änderung.
+- Vergleiche Datum, Nummer und Beträge mit dem Beleg.
+
+Der Entwurf entsteht, sobald die Datei gesendet ist, auch wenn die Erkennung nichts findet. Dann
+sagt das Werkzeug das und nennt den Entwurf, zum Vervollständigen oder zum Löschen mit
+[`sevdesk_voucher_delete_draft`](../tools.md#sevdesk_voucher_delete_draft). sevDesk bemerkt eine
+schon gesendete Datei nicht: Jeder Aufruf legt einen weiteren Entwurf an, schicke also jeden Beleg
+nur einmal. Nach Dubletten lässt sich erst nach der Erkennung suchen: Das Ergebnis nennt Belege mit
+demselben Datum, demselben Bruttobetrag und derselben Belegnummer und sagt, wenn es nicht jeden
+Beleg dieses Tages vergleichen konnte oder nichts zu vergleichen hatte. Spätere Prüfungen sehen
+einen solchen Entwurf anders: sevDesk speichert für eine Belegdatei, die seine Erkennung angehängt
+hat, keine Prüfsumme, daher findet
+[`sevdesk_receipt_folder_check`](../tools.md#sevdesk_receipt_folder_check) sie nicht, während
+[`sevdesk_records_audit`](evaluations.de.md#doppelt-gebuchte-belege-und-liegen-gebliebene-entwürfe-duplicates)
+doppelte Entwürfe weiterhin an Nummer und Bruttobetrag erkennt.
+
+Es nimmt PDF-, PNG- und JPEG-Dateien. Wie gut die Erkennung ein Foto liest, ist nicht gemessen
+(ein winziges Testbild ergab einen Entwurf ohne ausgefüllte Angaben); rechne also damit, die
+Angaben eines Fotos selbst einzutragen. Wenn du die Angaben ohnehin kennst, ist
+`sevdesk_voucher_create_draft` der direktere Weg: Es prüft alles, bevor etwas gespeichert wird.
+
 ## Einen Entwurf korrigieren
 
 > Die Belegerkennung hat bei Beleg 5521 das Datum falsch gelesen. Speicher die Belegdatei, damit wir vergleichen können.
@@ -164,6 +223,13 @@ nicht gebuchte Kontoumsätze über Belegnummer und Betrag den Belegen zu und buc
 der du zustimmst, mit [`sevdesk_transaction_book`](../tools.md#sevdesk_transaction_book)
 (`commit`). Eine Bankgebühr, zu der es noch keinen Beleg gibt, bekommt zuerst einen Beleg, dann
 wird der Umsatz darauf gebucht.
+
+Um die Belege zu finden, die überhaupt fehlen, geht der Prompt
+[`missing_receipts`](../tools.md#missing_receipts) einen Monat oder ein Quartal durch: ausgehende
+Umsätze, die kein Beleg erklärt, Lieferanten, die regelmäßig abrechnen und im Zeitraum keine
+Rechnung haben, Belege nur im Entwurf oder doppelt gebucht und, mit `SEVDESK_FILE_DIRS`, die Dateien
+in deinem Belegordner, die an keinem Beleg hängen. Seine Befunde sind Hinweise, keine
+Steuerberatung; ein Beleg, der auftaucht, wird wie oben als Belegentwurf erfasst.
 
 ## Festschreiben
 

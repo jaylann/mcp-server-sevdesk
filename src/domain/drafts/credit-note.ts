@@ -22,26 +22,80 @@
  * - `ROYALTY_ASSIGNED` / `ROYALTY_UNASSIGNED`: requirements unrecorded; sales rules are allowed
  *   and the preview says so;
  * - `ACCOUNTING_TYPE` is not supported on Update 2.0 and not offered.
+ *
+ * Update (recorded 2026-11-16, spec/deviations.md D-110): the same factory with the draft's id
+ * updates it in place, like `saveInvoice` (D-054). The body carries every writable field this
+ * server knows over from the stored draft (`current.ts`): the stored number unchanged (never
+ * reserved anew), the booking category, `refSrcInvoice` and `origin` (a credit note made by
+ * `createFromInvoice` kept both, its type and its number through an update). Positions are kept
+ * (`creditNotePosSave: []`, `creditNotePosDelete: null`, the recorded shape) or replaced as a
+ * whole: every stored row in `creditNotePosDelete` as a list of refs (a single object is refused
+ * with 400) and the new ones in `creditNotePosSave`, in one request. Not sent, since no recorded
+ * credit note has them set and sevDesk keeps what an update leaves out: `timeToPay`,
+ * `propertyIsEInvoice`, `refSrcVoucher`. `costCentre` is sent only when the call sets one
+ * (`costCentre`) or removes it (`removeCostCentre`: `null`, recorded 2026-11-17); otherwise it is
+ * left out and sevDesk keeps the stored one (D-092). The booking category and the source invoice
+ * cannot be changed here (that is a new credit note); the source invoice's rules are checked
+ * again when the update changes what they depend on (see `prepareCreditNoteUpdate`).
  */
 import { z } from "zod";
 
 import { SevdeskError } from "../../sevdesk/errors.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
+import { statusDto } from "../common.js";
 import {
+  COST_CENTRE_FLAGS,
   type CostCentreArg,
+  costCentreChange,
   costCentreInput,
   costCentreLabel,
   costCentreRef,
+  costCentreUpdate,
+  costCentreUpdateInputShape,
+  costCentreUpdatePayload,
   resolveCostCentre,
 } from "../cost-centres.js";
 import type { CountryReadOptions } from "../country-codes.js";
 import { type CreditNoteDetails, getCreditNote } from "../credit-notes.js";
 import { checkInvoiceCreditable, findCreditNotesForInvoice } from "../derived-documents.js";
+import { readDocumentDiscounts } from "../document-discounts.js";
 import { BOOKING_CATEGORY_NAMES } from "../filter-keys.js";
 import { getInvoice, type InvoiceDetails } from "../invoices.js";
 import { compare, toDecimalString } from "../money.js";
 import { taxRuleById } from "../reference-data.js";
-import { draftPreview, positionCount, ref, structuredAddress, taxText } from "./document.js";
+import { berlinDay, type CurrentCreditNote, loadCurrentCreditNote } from "./current.js";
+import {
+  createDiscountBody,
+  createTotals,
+  type DiscountInput,
+  discountInput,
+  discountReadBackNote,
+  discountText,
+  discountUpdateInput,
+  type DraftDiscount,
+  planDiscountChange,
+  resolveDiscount,
+  updateTotals,
+} from "./discount.js";
+import {
+  assertChanges,
+  ChangeLog,
+  draftPreview,
+  logContactPersonChange,
+  logDiscountChange,
+  logPricingChanges,
+  logRecipientChanges,
+  logTextChanges,
+  numberLabel,
+  positionCount,
+  ref,
+  storedNumber,
+  storedRef,
+  structuredAddress,
+  taxText,
+  updatedAddressFields,
+  updateTotalFact,
+} from "./document.js";
 import { duplicateWarning, findDuplicates } from "./duplicates.js";
 import {
   contactIdInput,
@@ -86,6 +140,7 @@ import {
   MAX_POSITIONS,
   type PositionInput,
   positionPayload,
+  wireNumber,
 } from "./positions.js";
 import {
   addressText,
@@ -103,7 +158,10 @@ import {
   type CreateArgs,
   type DraftCallOptions,
   resolveCreateBasics,
+  resolveUpdateBasics,
+  structuredStoredAddress,
   type TaxOptions,
+  type UpdateArgs,
 } from "./shared.js";
 import {
   DEFAULT_TAX_RULE_ID,
@@ -114,6 +172,9 @@ import {
 
 /** Readable booking categories → sevDesk's `bookingCategory`. */
 export type BookingCategoryName = keyof typeof BOOKING_CATEGORY_NAMES;
+
+/** A booking category this server writes. */
+type CreditNoteCategory = (typeof CREDIT_NOTE_BOOKING_CATEGORIES)[number];
 
 /** Tax rule of provision credit notes (Vorsteuerabziehbare Aufwendungen; measured, see above). */
 const PROVISION_TAX_RULE_ID = 9;
@@ -136,6 +197,12 @@ const NUMBERLESS_CREDIT_NOTE =
   "sevdesk_credit_note_create_draft, which reserves a number, or set a number in the sevDesk " +
   "web app.";
 const FINALIZE_TOOL = "sevdesk_credit_note_finalize";
+
+const positionsInput = z
+  .array(draftPositionInput)
+  .min(1)
+  .max(MAX_POSITIONS)
+  .describe("Positionen in printed order; prices per priceMode.");
 
 /** Input fields of `sevdesk_credit_note_create_draft` (without `dryRun`). */
 export const creditNoteCreateInputShape = {
@@ -163,11 +230,7 @@ export const creditNoteCreateInputShape = {
       "underachievement only: create it even though a credit note for the source invoice " +
         "exists (e.g. a second partial refund). Default false.",
     ),
-  positions: z
-    .array(draftPositionInput)
-    .min(1)
-    .max(MAX_POSITIONS)
-    .describe("Positionen in printed order; prices per priceMode."),
+  positions: positionsInput,
   date: documentDateInput.describe("Gutschriftsdatum, YYYY-MM-DD; default today (Europe/Berlin)."),
   deliveryDate: deliveryDateInput,
   deliveryDateUntil: deliveryDateUntilInput,
@@ -182,6 +245,7 @@ export const creditNoteCreateInputShape = {
   header: headerInput.describe('Document title (Betreff); default "Gutschrift".'),
   headText: headTextInput,
   footText: footTextInput,
+  discount: discountInput.optional(),
   contactPersonId: contactPersonIdInput,
   ...addressInputShape,
   costCentre: costCentreInput,
@@ -198,15 +262,71 @@ export interface CreditNoteCreateArgs extends CreateArgs {
   readonly header?: string | undefined;
   readonly headText?: string | undefined;
   readonly footText?: string | undefined;
+  readonly discount?: DiscountInput | undefined;
   readonly costCentre?: CostCentreArg | undefined;
 }
 
+/** Input fields of `sevdesk_credit_note_update_draft` (without `dryRun`). */
+export const creditNoteUpdateInputShape = {
+  id: z
+    .number()
+    .int()
+    .positive()
+    .max(Number.MAX_SAFE_INTEGER)
+    .describe("Id of the draft credit note (not its number), e.g. from sevdesk_credit_notes_list."),
+  positions: positionsInput
+    .optional()
+    .describe("When given, replaces ALL positions; leave out to keep them."),
+  contactId: contactIdInput.optional(),
+  date: documentDateInput.describe("Gutschriftsdatum, YYYY-MM-DD."),
+  deliveryDate: deliveryDateInput.describe("Liefer-/Leistungsdatum, YYYY-MM-DD."),
+  deliveryDateUntil: deliveryDateUntilInput,
+  priceMode: priceModeInput.describe(
+    "Net or gross unit prices (showNet). Changing it requires positions too.",
+  ),
+  taxRuleId: taxRuleInput.describe(
+    "New tax rule (Steuerregel) id; see sevdesk_reference_lookup kind=tax_rules.",
+  ),
+  taxText: taxTextInput,
+  currency: currencyInput,
+  header: headerInput,
+  headText: headTextInput,
+  footText: footTextInput,
+  discount: discountUpdateInput,
+  contactPersonId: contactPersonIdInput,
+  ...addressInputShape,
+  ...costCentreUpdateInputShape,
+};
+
+export interface CreditNoteUpdateArgs extends UpdateArgs {
+  readonly id: number;
+  readonly date?: string | undefined;
+  readonly deliveryDate?: string | undefined;
+  readonly deliveryDateUntil?: string | undefined;
+  readonly header?: string | undefined;
+  readonly headText?: string | undefined;
+  readonly footText?: string | undefined;
+  /** A new document discount, `null` to remove the stored one, left out to keep it. */
+  readonly discount?: DiscountInput | null | undefined;
+  readonly costCentre?: CostCentreArg | undefined;
+  readonly removeCostCentre?: boolean | undefined;
+}
+
+/** What `execute` needs: the exact body the preview describes. */
 export interface CreditNoteDraftState {
-  /** The body to save; its `creditNoteNumber` is the peeked one, replaced by the reserved. */
+  /**
+   * The body to save. On a create its `creditNoteNumber` is the peeked one, replaced by the
+   * reserved; on an update it is the stored number, sent unchanged.
+   */
   readonly body: SaveCreditNoteBody;
-  readonly expected: Amounts;
-  /** The number the preview showed. */
-  readonly peekedNumber: string;
+  /** Set for updates: the credit note the save must keep (no number is reserved then). */
+  readonly creditNoteId?: number | undefined;
+  /** Expected totals when the call set the positions or the discount. */
+  readonly expected?: Amounts | undefined;
+  /** Create only: the number the preview showed. */
+  readonly peekedNumber?: string | undefined;
+  /** The discount the call sent (`null`: removed), checked in the read-back. */
+  readonly discount?: DraftDiscount | null | undefined;
 }
 
 export interface CreditNoteDraftPlan {
@@ -238,6 +358,7 @@ export async function prepareCreditNoteCreate(
         "credit note that reduces an invoice).",
     });
   }
+  const discount = args.discount === undefined ? undefined : resolveDiscount(args.discount);
   const centre =
     args.costCentre === undefined
       ? undefined
@@ -254,15 +375,9 @@ export async function prepareCreditNoteCreate(
     taxOptions(category, source),
     options,
   );
-  const { contact, contactPerson, address, currency, expected, mode } = basics;
-  if (source !== undefined && source.invoice.currency !== currency) {
-    throw new SevdeskError({
-      kind: "validation",
-      message:
-        `The source invoice ${source.invoice.id} is in ${source.invoice.currency}; the credit ` +
-        "note must use the same currency.",
-    });
-  }
+  const { contact, contactPerson, address, currency, mode } = basics;
+  if (source !== undefined) checkSourceCurrency(source, currency);
+  const expected = createTotals(basics.positions, mode, discount, currency);
   const duplicateQuery = { contactId: args.contactId, date, gross: expected.gross, currency };
   const duplicates = await findDuplicates(client, { kind: "creditNote" }, duplicateQuery, signal);
   const peeked = await peekNextNumber(client, { kind: "creditNote" }, signal);
@@ -298,6 +413,7 @@ export async function prepareCreditNoteCreate(
         positionPayload(position, index, "CreditNotePos"),
       ),
       creditNotePosDelete: null,
+      ...createDiscountBody(discount),
     },
     "credit note",
   );
@@ -308,12 +424,7 @@ export async function prepareCreditNoteCreate(
     fact("Booking category", category),
     ...(source === undefined
       ? []
-      : [
-          fact(
-            "Reduces invoice",
-            `${source.invoice.id}${source.invoice.number === undefined ? "" : ` (${source.invoice.number})`}`,
-          ),
-        ]),
+      : [fact("Reduces invoice", sourceLabel(source.invoice.id, source.invoice.number))]),
     fact("Address", addressText(address)),
     fact("Credit note date", date),
     fact("Delivery date", formatPeriod(delivery)),
@@ -324,12 +435,9 @@ export async function prepareCreditNoteCreate(
     fact("Tax text", basics.tax.taxText),
     ...(centre === undefined ? [] : [fact("Cost centre (Kostenstelle)", costCentreLabel(centre))]),
     ...positionFacts(basics.positions, mode, currency),
+    ...(discount === undefined ? [] : [fact("Discount", discountText(discount, currency))]),
     fact("Total (expected)", totalsText(expected, currency)),
   ];
-  const royaltyWarning = category.startsWith("ROYALTY")
-    ? "sevDesk's requirements for royalty credit notes (tax rule, accounts) are not documented " +
-      "or recorded; check the draft in sevDesk before finalizing."
-    : undefined;
   const preview = draftPreview(
     `Create a draft credit note (Gutschrift, ${category}) for ` +
       `${customerText(contact.contact.displayName, args.contactId)} with ` +
@@ -339,11 +447,191 @@ export async function prepareCreditNoteCreate(
       ...(sourceCheck?.warnings ?? []),
       duplicateWarning("credit note", duplicates, duplicateQuery),
       reservationWarning("credit note", peeked),
-      royaltyWarning,
+      royaltyWarning(category),
       ...basics.warnings,
     ],
   );
-  return { preview, state: { body, expected, peekedNumber: peeked } };
+  return { preview, state: { body, expected, peekedNumber: peeked, discount } };
+}
+
+/**
+ * Prepares an update of a draft credit note: reads the stored draft, refuses anything but a
+ * regular draft (status 100, type CN, a booking category this server writes), merges the call
+ * into it and builds the body and the preview. The stored number is kept (never reserved anew).
+ *
+ * An underachievement credit note that refers to an invoice (`refSrcInvoice`, or `origin` on one
+ * made by `createFromInvoice`) has the source invoice's rules checked again when the call changes
+ * what they depend on: the contact (the invoice must be the contact's), the positions or the tax
+ * rule (only the invoice's rates; a rule that does not fit the account names one that allows
+ * them) and the currency (the invoice's). Whether the invoice is still creditable and whether
+ * other credit notes exist for it were checked when the credit note was created and do not
+ * depend on these fields, so they are not repeated. Reads only.
+ */
+export async function prepareCreditNoteUpdate(
+  client: SevdeskClient,
+  args: CreditNoteUpdateArgs,
+  options: DraftCallOptions,
+): Promise<CreditNoteDraftPlan> {
+  const { signal } = options;
+  const given = assertChanges(args, "credit note", COST_CENTRE_FLAGS);
+  const current = await loadCurrentCreditNote(client, args.id, signal);
+  const doc = current.document;
+  const category = checkUpdatable(doc);
+  const centre = await costCentreUpdate(
+    client,
+    args,
+    { storedId: doc.costCentre?.id, given },
+    signal,
+  );
+  const discounts = await readDocumentDiscounts(client, "creditNote", doc.id, signal);
+  const change = planDiscountChange(args.discount, discounts, `Credit note ${doc.id}`);
+
+  const sourceId = category === "UNDERACHIEVEMENT" ? sourceInvoiceIdOf(doc) : undefined;
+  const contactId = args.contactId ?? doc.contact?.id;
+  const recheck =
+    args.contactId !== undefined ||
+    args.positions !== undefined ||
+    args.taxRuleId !== undefined ||
+    args.currency !== undefined;
+  const source =
+    sourceId !== undefined && contactId !== undefined && recheck
+      ? await loadSourceInvoice(
+          client,
+          sourceId,
+          contactId,
+          `The source invoice ${sourceId} of credit note ${doc.id} does not exist any more, so ` +
+            "the change cannot be checked against it. Check the credit note in sevDesk.",
+          { signal, cacheOwner: options.cacheOwner },
+        )
+      : undefined;
+
+  const basics = await resolveUpdateBasics(
+    client,
+    doc,
+    structuredStoredAddress(doc),
+    current.positions,
+    args,
+    taxOptions(category, source),
+    options,
+  );
+  if (source !== undefined) checkSourceCurrency(source, basics.currency);
+
+  const storedDate = berlinDay(doc.creditNoteDate);
+  const date = args.date ?? storedDate ?? todayInBerlin();
+  const storedDelivery = berlinDay(doc.deliveryDate);
+  const storedUntil = berlinDay(doc.deliveryDateUntil);
+  const delivery = resolveDeliveryPeriod(
+    date,
+    args.deliveryDate ?? storedDelivery ?? date,
+    args.deliveryDateUntil ?? storedUntil,
+    false,
+  );
+  const totals = updateTotals({
+    change,
+    positions: basics.positions,
+    storedPositions: current.positions,
+    mode: basics.mode,
+    currency: basics.currency,
+    currencyChanged: basics.currencyChanged,
+    stored: doc,
+  });
+  const expected = totals.expected;
+
+  const body = strictBody(
+    saveCreditNoteBodySchema,
+    {
+      creditNote: {
+        id: doc.id,
+        objectName: "CreditNote",
+        mapAll: true,
+        creditNoteNumber: storedNumber(doc.creditNoteNumber),
+        creditNoteType: "CN",
+        status: 100,
+        contact: ref(basics.contact.contact.id, "Contact"),
+        contactPerson: ref(basics.contactPerson.id, "SevUser"),
+        creditNoteDate: wireDocumentDate(date),
+        deliveryDate: wireTimestamp(delivery.from),
+        deliveryDateUntil: delivery.until === undefined ? undefined : wireTimestamp(delivery.until),
+        header: args.header ?? doc.header,
+        headText: args.headText ?? doc.headText,
+        footText: args.footText ?? doc.footText,
+        discount: wireNumber(doc.discount ?? "0", "the stored cash discount (Skonto)"),
+        discountTime: doc.discountTime,
+        currency: basics.currency,
+        showNet: basics.mode === "net",
+        ...basics.tax,
+        bookingCategory: category,
+        refSrcInvoice: storedRef(doc.refSrcInvoice, "Invoice"),
+        ...updatedAddressFields(doc, basics.address),
+        customerInternalNote: doc.customerInternalNote,
+        paymentMethod: storedRef(doc.paymentMethod, "PaymentMethod"),
+        // Only when the call sets or removes it: left out, sevDesk keeps the stored one (D-092).
+        costCentre:
+          centre === undefined ? undefined : costCentreUpdatePayload(centre, doc.costCentre?.id),
+        origin:
+          doc.origin === undefined
+            ? undefined
+            : { id: doc.origin.id, objectName: doc.origin.objectName },
+      },
+      creditNotePosSave:
+        basics.positions === undefined
+          ? []
+          : basics.positions.map((position, index) =>
+              positionPayload(position, index, "CreditNotePos"),
+            ),
+      creditNotePosDelete:
+        basics.positions === undefined || current.positions.length === 0
+          ? null
+          : current.positions.map((row) => ref(row.id, "CreditNotePos")),
+      ...change.body,
+    },
+    "credit note",
+  );
+
+  const log = new ChangeLog();
+  logRecipientChanges(log, doc, basics);
+  log.value("date", "Credit note date", storedDate, date);
+  log.value(
+    "delivery date",
+    "Delivery date",
+    storedDelivery === undefined
+      ? undefined
+      : formatPeriod({ from: storedDelivery, until: storedUntil }),
+    formatPeriod(delivery),
+  );
+  logContactPersonChange(log, doc, basics);
+  logTextChanges(log, doc.header, args);
+  logPricingChanges(log, doc, basics, current.positions.length);
+  if (centre !== undefined) {
+    log.value("cost centre", "Cost centre (Kostenstelle)", ...costCentreChange(centre));
+  }
+  const keptDiscount = logDiscountChange(log, change, discounts.rows, basics.currency);
+
+  const customer = customerText(basics.contact.contact.displayName, basics.contact.contact.id);
+  const facts: PreviewFact[] = [
+    fact("Credit note", `${doc.id} (${numberLabel(doc.creditNoteNumber)}, draft)`),
+    fact("Customer", customer),
+    fact("Booking category", category),
+    ...(sourceId === undefined
+      ? []
+      : [fact("Reduces invoice", sourceLabel(sourceId, source?.invoice.number))]),
+    ...log.facts,
+    ...(basics.positions === undefined
+      ? []
+      : positionFacts(basics.positions, basics.mode, basics.currency)),
+    ...keptDiscount,
+    updateTotalFact(totals, doc, basics.currency),
+  ];
+  const preview = draftPreview(
+    `Update draft credit note ${doc.id} for ${customer}: change ` +
+      `${log.changed.join(", ") || "nothing visible"}.`,
+    facts,
+    [royaltyWarning(category), ...basics.warnings, totals.warning],
+  );
+  return {
+    preview,
+    state: { body, creditNoteId: doc.id, expected, discount: change.planned },
+  };
 }
 
 export interface CreditNoteDraftResult {
@@ -353,10 +641,11 @@ export interface CreditNoteDraftResult {
 }
 
 /**
- * Reserves a free credit note number ({@link reserveFreeCreditNoteNumber}: numbers existing
- * credit notes carry are skipped), saves the prepared body with it (one request, never retried)
- * and reads the credit note back. When the save fails, the error names the reserved, now skipped
- * number.
+ * Saves the prepared body (one request, never retried) and reads the credit note back. A create
+ * first reserves a free credit note number ({@link reserveFreeCreditNoteNumber}: numbers existing
+ * credit notes carry are skipped) and saves with it; when the save then fails, the error names
+ * the reserved, now skipped number. An update saves its stored number unchanged and fails loudly
+ * when sevDesk's answer names another credit note.
  */
 export async function executeCreditNoteDraft(
   client: SevdeskClient,
@@ -364,12 +653,21 @@ export async function executeCreditNoteDraft(
   options: CountryReadOptions,
 ): Promise<CreditNoteDraftResult> {
   const { signal, cacheOwner } = options;
-  const reserved = await reserveFreeCreditNoteNumber(client, signal);
-  const body = strictBody(
-    saveCreditNoteBodySchema,
-    { ...state.body, creditNote: { ...state.body.creditNote, creditNoteNumber: reserved.number } },
-    "credit note",
-  );
+  const reserved =
+    state.creditNoteId === undefined
+      ? await reserveFreeCreditNoteNumber(client, signal)
+      : undefined;
+  const body =
+    reserved === undefined
+      ? state.body
+      : strictBody(
+          saveCreditNoteBodySchema,
+          {
+            ...state.body,
+            creditNote: { ...state.body.creditNote, creditNoteNumber: reserved.number },
+          },
+          "credit note",
+        );
   let response: unknown;
   try {
     response = await client.request({
@@ -379,18 +677,32 @@ export async function executeCreditNoteDraft(
       ...(signal === undefined ? {} : { signal }),
     });
   } catch (error) {
-    if (error instanceof SevdeskError) {
+    if (reserved !== undefined && error instanceof SevdeskError) {
       throw reservedNumberError(error, "credit note", reserved.number);
     }
     throw error;
   }
   const id = savedDocumentId(response, "creditNote", "credit note");
-  const details = await readBack({ objectName: "CreditNote", id: String(id) }, () =>
-    getCreditNote(client, id, { signal, cacheOwner }),
+  const saved = { objectName: "CreditNote", id: String(id) };
+  if (state.creditNoteId !== undefined && id !== state.creditNoteId) {
+    throw new SevdeskError({
+      kind: "unexpected_response",
+      message:
+        `sevDesk saved credit note ${id} instead of updating credit note ${state.creditNoteId}. ` +
+        "Check both drafts in sevDesk and delete the extra one there before repeating the call.",
+      completedWrites: [saved],
+    });
+  }
+  const details = await readBack(saved, () =>
+    getCreditNote(client, id, { signal, cacheOwner, withDiscount: true }),
   );
-  const stored = storedNumberNote("credit note", reserved.number, details.creditNote.number);
+  const stored =
+    reserved === undefined
+      ? undefined
+      : storedNumberNote("credit note", reserved.number, details.creditNote.number);
+  const discountNote = discountReadBackNote(state.discount, details.discount, "credit note");
   const notes = [
-    ...numberNotes(state.peekedNumber, reserved),
+    ...(reserved === undefined ? [] : numberNotes(state.peekedNumber ?? reserved.number, reserved)),
     ...(stored === undefined ? [] : [stored]),
     ...readBackNotes(
       {
@@ -406,8 +718,72 @@ export async function executeCreditNoteDraft(
         numberless: NUMBERLESS_CREDIT_NOTE,
       },
     ),
+    ...(discountNote === undefined ? [] : [discountNote]),
   ];
   return { id, details, notes };
+}
+
+/** "1001 (RE-1001)": the source invoice's id and, when known, its (cleaned) number. */
+function sourceLabel(invoiceId: number, number: string | undefined): string {
+  return `${invoiceId}${number === undefined ? "" : ` (${number})`}`;
+}
+
+/** Preview warning for royalty credit notes, whose requirements are not recorded. */
+function royaltyWarning(category: CreditNoteCategory): string | undefined {
+  return category.startsWith("ROYALTY")
+    ? "sevDesk's requirements for royalty credit notes (tax rule, accounts) are not documented " +
+        "or recorded; check the draft in sevDesk before finalizing."
+    : undefined;
+}
+
+/**
+ * The invoice a stored credit note refers to: `refSrcInvoice`, else the `origin` invoice of one
+ * made by `createFromInvoice` (recorded with both; spec/deviations.md D-039, D-110).
+ */
+function sourceInvoiceIdOf(doc: CurrentCreditNote): number | undefined {
+  return (
+    doc.refSrcInvoice?.id ?? (doc.origin?.objectName === "Invoice" ? doc.origin.id : undefined)
+  );
+}
+
+/**
+ * Only regular draft credit notes (status 100, type CN, not enshrined) of a booking category this
+ * server writes can be updated here; returns the category. Messages name no stored text.
+ */
+function checkUpdatable(doc: CurrentCreditNote): CreditNoteCategory {
+  if (berlinDay(doc.enshrined) !== undefined) {
+    throw new SevdeskError({
+      kind: "validation",
+      message: `Credit note ${doc.id} is enshrined (festgeschrieben) and can no longer be changed.`,
+    });
+  }
+  if (doc.status !== 100) {
+    throw new SevdeskError({
+      kind: "validation",
+      message:
+        `Credit note ${doc.id} is not a draft (status: ${statusDto("creditNote", doc.status).label}); ` +
+        'only drafts can be changed. Reset an open one to a draft first with sevdesk_credit_note_reset (to: "draft").',
+    });
+  }
+  if ((doc.creditNoteType?.trim().toUpperCase() ?? "CN") !== "CN") {
+    throw new SevdeskError({
+      kind: "validation",
+      message:
+        `Credit note ${doc.id} is not a regular credit note (type CN); this tool only changes ` +
+        "those. Edit it in sevDesk.",
+    });
+  }
+  const code = doc.bookingCategory?.trim().toUpperCase();
+  const category = CREDIT_NOTE_BOOKING_CATEGORIES.find((known) => known === code);
+  if (category === undefined) {
+    throw new SevdeskError({
+      kind: "validation",
+      message:
+        `Credit note ${doc.id} has a booking category this tool does not write (it writes ` +
+        "underachievement, provision, royalty_assigned and royalty_unassigned). Edit it in sevDesk.",
+    });
+  }
+  return category;
 }
 
 /** Trusted result notes about the reserved number: skipped numbers, a cut scan, a new number. */
@@ -473,32 +849,19 @@ async function checkSourceInvoice(
         "credit note reduces. To credit a whole invoice use sevdesk_credit_note_create_from_invoice.",
     });
   }
-  let source: InvoiceDetails;
-  try {
-    source = await getInvoice(client, args.sourceInvoiceId, { signal, cacheOwner });
-  } catch (error) {
-    if (error instanceof SevdeskError && error.kind === "not_found") {
-      throw new SevdeskError({
-        kind: "validation",
-        message: `Invoice ${args.sourceInvoiceId} does not exist. Find it with sevdesk_invoices_list.`,
-      });
-    }
-    throw error;
-  }
+  const source = await loadSourceInvoice(
+    client,
+    args.sourceInvoiceId,
+    args.contactId,
+    `Invoice ${args.sourceInvoiceId} does not exist. Find it with sevdesk_invoices_list.`,
+    { signal, cacheOwner },
+  );
   const invoice = source.invoice;
-  if (invoice.contact?.id !== args.contactId) {
-    throw new SevdeskError({
-      kind: "validation",
-      message:
-        `Invoice ${invoice.id} belongs to contact ${invoice.contact?.id ?? "(none)"}, not to ` +
-        `contact ${args.contactId}. Use the invoice's contact.`,
-    });
-  }
   const checked = await checkInvoiceCreditable(client, invoice, signal);
 
   const existing = await findCreditNotesForInvoice(
     client,
-    { invoiceId: invoice.id, contactId: invoice.contact.id },
+    { invoiceId: invoice.id, contactId: args.contactId },
     signal,
   );
   const credits = creditNoteList(existing.ids);
@@ -521,6 +884,50 @@ async function checkSourceInvoice(
   return { source, warnings };
 }
 
+/**
+ * Reads the source invoice of an underachievement credit note and checks that it belongs to the
+ * credit note's contact. A missing invoice is a `validation` error with `missing` (trusted text).
+ */
+async function loadSourceInvoice(
+  client: SevdeskClient,
+  invoiceId: number,
+  contactId: number,
+  missing: string,
+  options: CountryReadOptions,
+): Promise<InvoiceDetails> {
+  let source: InvoiceDetails;
+  try {
+    source = await getInvoice(client, invoiceId, options);
+  } catch (error) {
+    if (error instanceof SevdeskError && error.kind === "not_found") {
+      throw new SevdeskError({ kind: "validation", message: missing });
+    }
+    throw error;
+  }
+  const invoice = source.invoice;
+  if (invoice.contact?.id !== contactId) {
+    throw new SevdeskError({
+      kind: "validation",
+      message:
+        `Invoice ${invoice.id} belongs to contact ${invoice.contact?.id ?? "(none)"}, not to ` +
+        `contact ${contactId}. Use the invoice's contact.`,
+    });
+  }
+  return source;
+}
+
+/** Refuses a credit note whose currency differs from its source invoice's. */
+function checkSourceCurrency(source: InvoiceDetails, currency: string): void {
+  if (source.invoice.currency !== currency) {
+    throw new SevdeskError({
+      kind: "validation",
+      message:
+        `The source invoice ${source.invoice.id} is in ${source.invoice.currency}; the credit ` +
+        "note must use the same currency.",
+    });
+  }
+}
+
 /** "credit note 7, credit note 9", at most five, as the master-data tools list them. */
 function creditNoteList(ids: readonly number[]): string {
   const shown = ids.slice(0, 5).map((id) => `credit note ${id}`);
@@ -528,10 +935,7 @@ function creditNoteList(ids: readonly number[]): string {
 }
 
 /** The tax rules and rates a credit note of `category` accepts. */
-function taxOptions(
-  category: (typeof CREDIT_NOTE_BOOKING_CATEGORIES)[number],
-  source: InvoiceDetails | undefined,
-): TaxOptions {
+function taxOptions(category: CreditNoteCategory, source: InvoiceDetails | undefined): TaxOptions {
   if (category === "PROVISION") {
     return {
       scope: { allowedRuleIds: [PROVISION_TAX_RULE_ID], documents: "provision credit notes" },

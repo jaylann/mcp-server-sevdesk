@@ -19,7 +19,7 @@ import { canonicalJson, sha256Hex } from "../../safety/hashing.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import { sevdeskPath } from "../../sevdesk/paths.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
-import { costCentreFacts, describeCostCentre } from "../cost-centres.js";
+import { COST_CENTRE_UNREAD, costCentreFacts, showCostCentre } from "../cost-centres.js";
 import type { CountryReadOptions } from "../country-codes.js";
 import { type LifecycleDocument, readLifecycleDocument, statusOf } from "../lifecycle/documents.js";
 import { documentFacts, documentTitle } from "../lifecycle/preview.js";
@@ -205,10 +205,12 @@ export async function prepareVoucherFinalize(
   const kept = storedPositionsFor(stored, rule, regime);
   const date = stored.dates.voucherDate ?? todayInBerlin();
   const accounts = await checkVoucherAccounts(client, kind, rule, kept, date, options);
+  // Display only (the id is in the bound record): the id alone, with a warning, when the list
+  // cannot be read.
   const centre =
     stored.record.costCentre === undefined
       ? undefined
-      : await describeCostCentre(client, stored.record.costCentre.id, signal);
+      : await showCostCentre(client, stored.record.costCentre.id, signal);
 
   const body = finalizeBody(stored, rule);
   const mode = storedAmountMode(stored.positions);
@@ -239,7 +241,7 @@ export async function prepareVoucherFinalize(
         ? []
         : [fact(t.deadline, dateText(stored.dates.paymentDeadline, lang))]),
       fact(t.rule, taxRuleLabel(rule)),
-      ...costCentreFacts(centre, lang),
+      ...costCentreFacts(centre?.centre, lang),
       ...stored.positions.map((row, index) =>
         positionFact(
           `Position ${String(index + 1)}`,
@@ -291,6 +293,7 @@ export async function prepareVoucherFinalize(
         ]
       : []),
     ...accounts.warnings,
+    ...(centre?.unread === true ? [COST_CENTRE_UNREAD] : []),
   ];
   return {
     ...bothPreviews((lang) => ({

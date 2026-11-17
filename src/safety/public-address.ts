@@ -1,9 +1,11 @@
 /**
- * Server-side request forgery guard for fetching client metadata documents: the `client_id` URL
- * comes from whoever opens `/authorize`, so the server must not be talked into connecting to its
- * own network. The host is resolved exactly once; every address must be public (globally
- * reachable unicast), and the connection then goes to that checked address (`cimd.ts` pins it),
- * so DNS rebinding between the check and the connect is not possible.
+ * Server-side request forgery guard for every request to a host someone else names: the client
+ * metadata documents of OAuth mode (`src/http/oauth/cimd.ts`, the `client_id` URL comes from
+ * whoever opens `/authorize`) and receipt files from an https link (`./url-files.ts`, the link
+ * comes from the model). The server must not be talked into connecting to its own network. The
+ * host is resolved exactly once; every address must be public (globally reachable unicast), and
+ * the connection then goes to that checked address (`./pinned-https.ts` pins it), so DNS rebinding
+ * between the check and the connect is not possible.
  *
  * Refused: the IPv4 special-purpose ranges (this network, private, CGNAT, loopback, link-local,
  * IETF protocol assignments, documentation, benchmarking, 6to4 relay, multicast, reserved,
@@ -80,7 +82,7 @@ export function isPublicAddress(address: string): boolean {
   return !blocked.check(address, "ipv6");
 }
 
-/** Why a host was refused. */
+/** Why a host was refused. Callers map `reason` to their own trusted message. */
 export class SsrfError extends Error {
   readonly reason: "unresolvable" | "blocked_address";
 
@@ -105,17 +107,14 @@ export async function resolvePublicAddress(
   try {
     addresses = await resolve(hostname);
   } catch {
-    throw new SsrfError("unresolvable", "The client's host name could not be resolved.");
+    throw new SsrfError("unresolvable", "The host name could not be resolved.");
   }
   const [first] = addresses;
   if (first === undefined) {
-    throw new SsrfError("unresolvable", "The client's host name has no address.");
+    throw new SsrfError("unresolvable", "The host name has no address.");
   }
   if (!addresses.every((entry) => isPublicAddress(entry.address))) {
-    throw new SsrfError(
-      "blocked_address",
-      "The client's host name resolves to a non-public address.",
-    );
+    throw new SsrfError("blocked_address", "The host name resolves to a non-public address.");
   }
   return addresses.find((entry) => entry.family === 4) ?? first;
 }

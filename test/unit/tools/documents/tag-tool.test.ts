@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import { TAG_OBJECT_NAMES } from "../../../../src/domain/tags.js";
 import type { Tier } from "../../../../src/safety/tiers.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
+import { minimumWriteTier } from "../../../../src/sevdesk/paths.js";
 import { DOCUMENT_TAG_TOOLS } from "../../../../src/tools/documents/index.js";
 import { documentTagTool as tool } from "../../../../src/tools/documents/tag-tool.js";
 import { selectTools } from "../../../../src/tools/registry.js";
@@ -51,6 +53,14 @@ describe("sevdesk_document_tag: metadata and registration", () => {
       },
     });
     expect(tool.locks?.(tool.input.parse(add))).toEqual([ACCOUNT_TAGS]);
+  });
+
+  it("sends requests the endpoint rules allow at the write tier it declares (minimumWriteTier)", () => {
+    for (const objectName of Object.values(TAG_OBJECT_NAMES)) {
+      const body = { name: "Projekt Y", object: { id: 1001, objectName } };
+      expect(minimumWriteTier("/Tag/Factory/create", undefined, body), objectName).toBe("write");
+    }
+    expect(minimumWriteTier("/TagRelation/8101", undefined, undefined)).toBe("write");
   });
 
   it("needs one of the four document toolsets, and the write tier for the write tool", () => {
@@ -226,6 +236,150 @@ describe("sevdesk_document_tag: add", () => {
   });
 });
 
+describe("sevdesk_document_tag: which tag an add uses (stored names, similar spellings)", () => {
+  /** `Tag/Factory/create` answering a relation of tag `tagId` on invoice 1001 (D-088). */
+  function createAnswering(tagId: number): FakeRoute {
+    return {
+      method: "POST",
+      path: "/Tag/Factory/create",
+      response: { body: { objects: relationRow(8101, tagId, "Invoice", 1001) } },
+    };
+  }
+  const SIMILAR =
+    "No tag has exactly this name (compared ignoring case and accents), but one is spelled " +
+    "similarly (e.g. ß for ss, or with invisible characters). sevDesk may reuse that tag " +
+    "instead of creating one: how it compares such spellings is not measured. The result says " +
+    "which tag was used.";
+
+  it("matches the name sevDesk stores and sends it back unchanged (invisible characters, spaces)", async () => {
+    const stored = " Projekt​Y ";
+    const fake = client([
+      INVOICE,
+      tagsRoute([tagRow(7001, stored), tagRow(7002, "Filiale München")]),
+      documentTagRoute(7001, "Invoice", 1001, []),
+      CREATE,
+    ]);
+    const { plan, output } = await executeWrite(tool, { ...add, tag: "projekt​y" }, fake);
+    // Shown cleaned, matched and sent as stored: the cleaned "ProjektY" would be a new tag.
+    expect(plan.preview.action).toBe("Tag invoice RE-1001 with the tag ProjektY.");
+    expect(plan.preview.facts).toContainEqual({
+      label: "Tag status",
+      value: "exists (id 7001), added to this document",
+    });
+    expect(fake.writes()[0]?.body).toEqual({
+      name: stored,
+      object: { id: 1001, objectName: "Invoice" },
+    });
+    expect(output.data).toMatchObject({ tag: { id: 7001, name: "ProjektY" }, tagCreated: false });
+  });
+
+  it("does not take a cleaned name for the stored one, and says sevDesk may reuse that tag", async () => {
+    const fake = client([
+      INVOICE,
+      tagsRoute([tagRow(7001, "Projekt​Y"), tagRow(7002, "Filiale München")]),
+      CREATE,
+    ]);
+    const { plan, output } = await executeWrite(tool, { ...add, tag: "ProjektY" }, fake);
+    expect(plan.preview.facts).toContainEqual({
+      label: "Tag status",
+      value: "new, unless sevDesk takes a similar tag for it",
+    });
+    expect(plan.preview.facts).toContainEqual({
+      label: "Similar tag",
+      value: "ProjektY (id 7001)",
+    });
+    expect(plan.preview.warnings).toEqual([SIMILAR]);
+    expect(fake.writes()[0]?.body).toEqual({
+      name: "ProjektY",
+      object: { id: 1001, objectName: "Invoice" },
+    });
+    // The fixture's answer names tag 7001: sevDesk reused it.
+    expect(output.data).toMatchObject({ tag: { id: 7001, name: "ProjektY" }, tagCreated: false });
+  });
+
+  it("never matches the placeholder of a tag without a name", async () => {
+    const tags = tagsRoute([tagRow(7001, ""), tagRow(7002, "Filiale München")]);
+    const placeholder = "(unnamed tag 7001)";
+    const plan = await prepareWrite(tool, { ...add, tag: placeholder }, client([INVOICE, tags]));
+    expect(plan.preview.facts).toContainEqual({
+      label: "Tag status",
+      value: "new: sevDesk creates it",
+    });
+    await expect(
+      prepareWrite(tool, { ...remove, tag: placeholder }, client([INVOICE, tags])),
+    ).rejects.toThrow("Invoice 1001 does not carry this tag");
+  });
+
+  it("reports the tag sevDesk reused for a similar spelling, not a created one (Großkunde = Grosskunde)", async () => {
+    const fake = client([
+      INVOICE,
+      tagsRoute([tagRow(7001, "Großkunde"), tagRow(7002, "Filiale München")]),
+      CREATE,
+    ]);
+    const { plan, output } = await executeWrite(tool, { ...add, tag: "Grosskunde" }, fake);
+    expect(plan.preview.facts).toContainEqual({
+      label: "Tag status",
+      value: "new, unless sevDesk takes a similar tag for it",
+    });
+    expect(plan.preview.facts).toContainEqual({
+      label: "Similar tag",
+      value: "Großkunde (id 7001)",
+    });
+    expect(plan.preview.warnings).toEqual([SIMILAR]);
+    expect(fake.writes()[0]?.body).toEqual({
+      name: "Grosskunde",
+      object: { id: 1001, objectName: "Invoice" },
+    });
+    expect(output.data).toEqual({
+      action: "added",
+      document: { kind: "invoice", id: 1001 },
+      tag: { id: 7001, name: "Großkunde" },
+      relationId: 8101,
+      tagCreated: false,
+    });
+    expect(output.affected).toEqual([
+      { objectName: "Invoice", id: "1001" },
+      { objectName: "TagRelation", id: "8101" },
+    ]);
+    expect(output.summary).toBe("Tagged invoice 1001 with tag 7001.");
+  });
+
+  it("names up to three similar tags and counts the rest", async () => {
+    const fake = client([
+      INVOICE,
+      tagsRoute([
+        tagRow(7001, "Strasse"),
+        tagRow(7002, "STRASSE"),
+        tagRow(7003, "Stras​se"),
+        tagRow(7004, "strasse"),
+      ]),
+    ]);
+    const plan = await prepareWrite(tool, { ...add, tag: "Straße" }, fake);
+    expect(plan.preview.facts).toContainEqual({
+      label: "Similar tags",
+      value: "Strasse (id 7001); STRASSE (id 7002); Strasse (id 7003); and 1 more",
+    });
+  });
+
+  it("leaves tagCreated out when sevDesk used a tag beyond the tags read", async () => {
+    const others = Array.from({ length: 10_000 }, (_, index) => tagRow(20_000 + index, "Andere"));
+    const fake = client([
+      INVOICE,
+      tagsRoute([tagRow(7001, "Projekt Y"), ...others]),
+      documentTagRoute(7001, "Invoice", 1001, []),
+      createAnswering(99_999),
+    ]);
+    const { output } = await executeWrite(tool, add, fake);
+    expect(output.data).toEqual({
+      action: "added",
+      document: { kind: "invoice", id: 1001 },
+      tag: { id: 99_999, name: "Projekt Y" },
+      relationId: 8101,
+    });
+    expect(output.summary).toBe("Tagged invoice 1001 with tag 99999.");
+  });
+});
+
 describe("sevdesk_document_tag: remove", () => {
   const carries = documentTagRoute(7001, "Invoice", 1001, [
     relationRow(8101, 7001, "Invoice", 1001),
@@ -278,6 +432,62 @@ describe("sevdesk_document_tag: remove", () => {
     expect(output.summary).toBe(
       "Removed tag 7001 from invoice 1001; it was its last use, so sevDesk deleted the tag.",
     );
+  });
+
+  /** `count` relations of tags other than 7001, on vouchers. */
+  function otherRelations(count: number): Record<string, unknown>[] {
+    return Array.from({ length: count }, (_, index) =>
+      relationRow(9000 + index, 7002 + (index % 5), "Voucher", 2000 + index),
+    );
+  }
+
+  it("still warns of the last use when sevDesk ignores the tag filter of the count (D-089)", async () => {
+    // An ignored filter answers the account's relations; the first one is this tag's.
+    const fake = client([
+      INVOICE,
+      tagsRoute(TAGS),
+      carries,
+      tagUsesRoute(7001, [relationRow(8101, 7001, "Invoice", 1001), ...otherRelations(39)]),
+      DELETE,
+    ]);
+    const { plan, output } = await executeWrite(tool, remove, fake);
+    expect(plan.preview.facts).toContainEqual({ label: "Tag uses", value: "1 document" });
+    expect(plan.preview.warnings).toEqual([
+      "This document is the tag's only use: sevDesk deletes the tag itself when its last use is " +
+        "removed. Tagging a document with this name again creates a new tag.",
+    ]);
+    expect(output.data.tagDeleted).toBe(true);
+  });
+
+  it("says when a tag's uses were counted only up to the cap", async () => {
+    const uses = Array.from({ length: 10_001 }, (_, index) =>
+      relationRow(8101 + index, 7001, "Invoice", 1001 + index),
+    );
+    const fake = client([INVOICE, tagsRoute(TAGS), carries, tagUsesRoute(7001, uses), DELETE]);
+    const { plan, output } = await executeWrite(tool, remove, fake);
+    expect(plan.preview.facts).toContainEqual({
+      label: "Tag uses",
+      value: "at least 10000 documents",
+    });
+    expect(plan.preview.warnings).toEqual([]);
+    expect(output.data.tagDeleted).toBe(false);
+  });
+
+  it("refuses when an ignored filter leaves the uses uncounted and this may be the last", async () => {
+    const fake = client([
+      INVOICE,
+      tagsRoute(TAGS),
+      carries,
+      tagUsesRoute(7001, [relationRow(8101, 7001, "Invoice", 1001), ...otherRelations(10_000)]),
+    ]);
+    await expect(prepareWrite(tool, remove, fake)).rejects.toMatchObject({
+      kind: "validation",
+      message:
+        "The tag's uses could not all be counted (the account has more than 10,000 tag uses), so " +
+        "this server cannot tell whether this is its last use, which would delete the tag; it " +
+        "does not remove it.",
+    });
+    expect(fake.writes()).toEqual([]);
   });
 
   it("refuses when the document does not carry the tag, or no tag has the name", async () => {

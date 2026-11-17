@@ -23,6 +23,11 @@ import {
   withDocumentCountry,
 } from "./country-codes.js";
 import {
+  type DocumentDiscount,
+  documentDiscountDto,
+  readDocumentDiscounts,
+} from "./document-discounts.js";
+import {
   addressDto,
   berlinDate,
   cleanText,
@@ -299,21 +304,25 @@ export interface CreditNoteDetails {
   readonly creditNote: CreditNoteDetail;
   readonly positions: readonly PositionDto[];
   readonly positionsComplete: boolean;
+  /** The document discount, when asked for (`withDiscount`) and the credit note has one. */
+  readonly discount?: DocumentDiscount | undefined;
 }
 
 /**
  * One credit note (`GET /CreditNote/{id}`, contact embedded) with its positions
  * (`GET /CreditNotePos?creditNote[id]=…&creditNote[objectName]=CreditNote`) and unit names.
+ * `withDiscount` also reads its document discounts (`GET /CreditNote/{id}/getDiscounts`, see
+ * `document-discounts.ts`).
  */
 export async function getCreditNote(
   client: SevdeskClient,
   creditNoteId: number,
-  options: CountryReadOptions,
+  options: CountryReadOptions & { readonly withDiscount?: boolean | undefined },
 ): Promise<CreditNoteDetails> {
   const { signal, cacheOwner } = options;
   const id = toSevdeskId(creditNoteId);
   const withSignal = signal === undefined ? {} : { signal };
-  const [payload, positions, unitNames] = await Promise.all([
+  const [payload, positions, unitNames, discounts] = await Promise.all([
     client.request({
       method: "GET",
       path: sevdeskPath("CreditNote", id),
@@ -332,6 +341,9 @@ export async function getCreditNote(
       signal,
     ),
     loadUnitNames(client, signal),
+    options.withDiscount === true
+      ? readDocumentDiscounts(client, "creditNote", id, signal)
+      : Promise.resolve(undefined),
   ]);
   const record = parseCreditNoteRecord(expectSingle(payload, `credit note ${id}`));
   const creditNote = await withDocumentCountry(toCreditNoteDetail(record), client, {
@@ -339,9 +351,14 @@ export async function getCreditNote(
     cacheOwner,
   });
   const context = { currency: creditNote.currency, showNet: record.showNet, unitNames };
+  const discount =
+    discounts === undefined
+      ? undefined
+      : documentDiscountDto(discounts.rows, record, creditNote.currency);
   return {
     creditNote,
     positions: positions.rows.map((row) => toPositionDto(row, context)),
     positionsComplete: positions.complete,
+    ...(discount === undefined ? {} : { discount }),
   };
 }

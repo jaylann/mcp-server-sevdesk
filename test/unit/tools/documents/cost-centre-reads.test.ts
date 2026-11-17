@@ -5,6 +5,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { creditNoteGetTool } from "../../../../src/tools/credit-notes/get.js";
 import { creditNotesListTool } from "../../../../src/tools/credit-notes/list.js";
 import { invoiceGetTool } from "../../../../src/tools/invoices/get.js";
@@ -23,7 +24,7 @@ import {
   loadFixture,
   testContext,
 } from "../../../helpers/fake-client.js";
-import { creditNoteRow, invoiceRow, type Row } from "../lifecycle/helpers.js";
+import { creditNoteRow, invoiceRow, noDiscountsRoute, type Row } from "../lifecycle/helpers.js";
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-07T12:00:00+01:00") });
@@ -57,6 +58,7 @@ function invoiceRoutes(fields: Row): FakeRoute[] {
       response: { fixture: "invoices/invoice-positions-1001.json" },
     },
     unitsRoute,
+    noDiscountsRoute,
     costCentresRoute,
   ]);
 }
@@ -72,6 +74,7 @@ function creditNoteRoutes(fields: Row): FakeRoute[] {
       response: { fixture: "credit-notes/credit-note-positions-2001.json" },
     },
     unitsRoute,
+    noDiscountsRoute,
     costCentresRoute,
   ]);
 }
@@ -124,6 +127,39 @@ describe("the get tools show the cost centre", () => {
     const tool = voucherGetTool;
     const result = await tool.handler(tool.input.parse({ id: 2001 }), testContext(client));
     expect(result.data.costCentre).toEqual({ id: 77 });
+  });
+
+  it("shows the id alone when sevDesk refuses the cost-centre list", async () => {
+    const refused: FakeRoute = {
+      path: "/CostCentre",
+      response: { error: new SevdeskError({ kind: "auth", status: 403, message: "Refused." }) },
+    };
+    const routes = invoiceRoutes({ costCentre: storedCostCentre(third.id) }).filter(
+      (route) => route.path !== "/CostCentre",
+    );
+    const client = new FakeSevdeskClient([...routes, refused]);
+    const tool = invoiceGetTool;
+    const result = await tool.handler(tool.input.parse({ id: 1001 }), testContext(client));
+    expect(tool.output.parse(result.data)).toEqual(result.data);
+    expect(result.data.costCentre).toEqual({ id: third.id });
+    expect(client.callsTo("/CostCentre")).toHaveLength(1);
+  });
+
+  it("still fails a cancelled call on the cost-centre list", async () => {
+    const cancelled: FakeRoute = {
+      path: "/CostCentre",
+      response: { error: new SevdeskError({ kind: "aborted", message: "Cancelled." }) },
+    };
+    const routes = voucherRoutes({ costCentre: storedCostCentre(third.id) }).filter(
+      (route) => route.path !== "/CostCentre",
+    );
+    const tool = voucherGetTool;
+    await expect(
+      tool.handler(
+        tool.input.parse({ id: 2001 }),
+        testContext(new FakeSevdeskClient([...routes, cancelled])),
+      ),
+    ).rejects.toMatchObject({ kind: "aborted" });
   });
 
   it("reads no cost centres for a document without one", async () => {

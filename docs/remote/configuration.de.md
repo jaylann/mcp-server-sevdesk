@@ -1,4 +1,4 @@
-<!-- translated-from: docs/remote/configuration.md sha256:f7236be226b7 -->
+<!-- translated-from: docs/remote/configuration.md sha256:f21d66a8854d -->
 
 # Konfigurationsreferenz
 
@@ -68,6 +68,11 @@ diesen Unterschieden:
   Rechner des Clients. Dort kann ein Dateiargument ein Pfad in `SEVDESK_FILE_DIRS` oder ein Upload
   sein, und `SEVDESK_OUTPUT_DIR` hat, wenn gesetzt, Vorrang vor Download-Links: Dateien werden dann
   auf dem Server gespeichert.
+- **`SEVDESK_FILE_URL_HOSTS`**: wirkt in jedem Modus, auch mit OAuth: Es berührt keine Festplatte,
+  und ein Link wird nur von den Hosts geladen, die du einträgst, von öffentlichen Adressen, ohne
+  Zugangsdaten ([Dateien von einem Link](../configuration.de.md#dateien-von-einem-link)). Der
+  Server erreicht diese Hosts dann für jedes verbundene Konto, mit höchstens zwei Downloads
+  gleichzeitig je Konto und vier insgesamt.
 - **`SEVDESK_AUDIT_LOG`**: ein Log für alle Konten; jede Zeile nennt das Konto und den Zugang. Es
   hält außerdem jeden empfangenen Upload, jeden angelegten Download-Link und jeden Download fest. Im
   Image ist das Root-Dateisystem schreibgeschützt; lege es also unter `/data` ab.

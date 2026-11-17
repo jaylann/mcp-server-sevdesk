@@ -4,8 +4,9 @@
  * D-088, D-091). Like `test/contract/undocumented-endpoints.test.ts`, each file is pinned three
  * ways: its recorded keys and scalar types, a read through `sevdesk_api_get`, and a run of the
  * probe that asked the question. The tools #86 and #87 add parse these files with their own
- * schemas and extend this test: the cost centre list goes through `listCostCentres`
- * (`src/domain/cost-centres.ts`).
+ * schemas and extend this test: the custom field settings go through `listCustomFieldSettings`
+ * (`sevdesk_reference_lookup` kind `contact_custom_fields`, the contact tools' `customFields`),
+ * the cost centre list through `listCostCentres` (`src/domain/cost-centres.ts`).
  *
  * Not committed: `contacts/custom-fields.json` (`GET /ContactCustomField`). The recording answered
  * an empty list (the probe had deleted its values), which pins no row shape; the value rows are in
@@ -17,6 +18,7 @@ import { GAPS_CONTACTS_PROBES } from "../../scripts/lib/probes/gaps-contacts-pro
 import { runProbes } from "../../scripts/lib/probes/runner.js";
 import { createScrubber } from "../../scripts/lib/scrub.js";
 import { apiGet } from "../../src/domain/api-get.js";
+import { listCustomFieldSettings } from "../../src/domain/contact-custom-fields.js";
 import { listCostCentres } from "../../src/domain/cost-centres.js";
 import type { Tier } from "../../src/safety/tiers.js";
 import { createSevdeskClient } from "../../src/sevdesk/client.js";
@@ -237,6 +239,22 @@ describe("recorded values the tools will rely on", () => {
     expect(typeof row?.["identifier"]).toBe("string");
     expect(typeof row?.["placeholder"]).toBe("string");
     expect(row?.["description"]).toBeNull();
+  });
+
+  it("the recorded settings list parses through the custom-field parser, one GET with a limit (D-086)", async () => {
+    const body = bodyOf("recorded/2026-11-16/contacts/custom-field-settings.json");
+    const { client, fake } = realClient(jsonResponse(body));
+    const settings = await listCustomFieldSettings(client);
+    expect(fake.requests).toHaveLength(1);
+    expect(fake.requests[0]?.method).toBe("GET");
+    expect(fake.requests[0]?.url.pathname).toBe("/api/v1/ContactCustomFieldSetting");
+    expect(fake.requests[0]?.url.searchParams.get("limit")).toBe("1000");
+    // identifier and placeholder are not taken; a null description is left out.
+    expect(settings).toEqual({
+      items: [{ id: 19498, name: "Mustername 4" }],
+      total: 1,
+      truncated: false,
+    });
   });
 });
 
