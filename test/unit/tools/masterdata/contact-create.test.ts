@@ -514,4 +514,77 @@ describe("sevdesk_contact_create", () => {
       await expect(executeWrite(tool, organisation, client)).rejects.toBe(rejected);
     });
   });
+
+  describe("a person's organisation (parent, D-083)", () => {
+    const person = { firstName: "Erika", lastName: "Musterfrau", parentOrganisationId: 1001 };
+    /** Organisation 1001, person 1002 and no contact 4040, as `GET /Contact/{id}` answers. */
+    const contacts: FakeRoute[] = [
+      { path: "/Contact/1001", response: { fixture: "contacts/contact-1001.json" } },
+      { path: "/Contact/1002", response: { fixture: "contacts/contact-1002.json" } },
+      { path: "/Contact/4040", response: EMPTY },
+    ];
+
+    it("links a new person to its organisation and names it in the preview", async () => {
+      const client = new FakeSevdeskClient([...contacts, ...routes()]);
+      const { plan } = await executeWrite(tool, person, client);
+      expect(plan.preview.facts.slice(0, 3)).toEqual([
+        { label: "Name", value: "Erika Musterfrau" },
+        { label: "Type", value: "person" },
+        { label: "Category", value: "Kunde (customer)" },
+      ]);
+      expect(plan.preview.facts).toContainEqual({
+        label: "Contact person of",
+        value: "Musterfirma GmbH (contact 1001)",
+      });
+      expect(client.writes().map((call) => [call.method, call.path, call.body])).toEqual([
+        [
+          "POST",
+          "/Contact",
+          {
+            surename: "Erika",
+            familyname: "Musterfrau",
+            category: { id: 3, objectName: "Category" },
+            status: 1000,
+            parent: { id: 1001, objectName: "Contact" },
+          },
+        ],
+      ]);
+    });
+
+    it.each([
+      [
+        "a person as organisation",
+        { ...person, parentOrganisationId: 1002 },
+        "Contact 1002 is a person, not an organisation: a person can only belong to an " +
+          "organisation (as its contact person, Ansprechpartner). Use the organisation's contact " +
+          "id as parentOrganisationId.",
+      ],
+      [
+        "a contact that does not exist",
+        { ...person, parentOrganisationId: 4040 },
+        "Contact 4040 does not exist in sevDesk. parentOrganisationId must be the id of an " +
+          "organisation contact; find it with sevdesk_contacts_search.",
+      ],
+      [
+        "an organisation for an organisation",
+        { organisationName: "Tochter GmbH", parentOrganisationId: 1001 },
+        "parentOrganisationId is only for persons (firstName/lastName): an organisation does " +
+          "not belong to another organisation. Leave it out.",
+      ],
+    ])("refuses %s (sevDesk would store it)", async (_label, args, message) => {
+      const client = new FakeSevdeskClient([...contacts, ...routes()]);
+      await expect(prepareWrite(tool, args, client)).rejects.toMatchObject({
+        kind: "validation",
+        message,
+      });
+      expect(client.writes()).toEqual([]);
+    });
+
+    it("locks the organisation, so it cannot be deleted in between", () => {
+      expect(tool.locks?.(tool.input.parse(person))).toEqual([
+        { objectName: "ContactNumbers", id: "account" },
+        { objectName: "Contact", id: "1001" },
+      ]);
+    });
+  });
 });

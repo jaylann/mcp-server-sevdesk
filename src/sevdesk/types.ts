@@ -42,6 +42,13 @@ export interface SevdeskRequest {
    * `unexpected_response`, so a runaway export cannot exhaust memory.
    */
   readonly maxBytes?: number;
+  /**
+   * `download` only: the time for this one request, in ms, when an endpoint is known to take
+   * longer than `SEVDESK_TIMEOUT_MS` (sevDesk renders the document archives on request, D-101).
+   * Never shorter than the configured time, at most 10 minutes (`requestTimeoutMs` in
+   * `client.ts`). `request` and `list` ignore it.
+   */
+  readonly timeoutMs?: number;
 }
 
 export interface ListOptions {

@@ -28,6 +28,11 @@ import {
   withDocumentCountry,
 } from "./country-codes.js";
 import {
+  type DocumentDiscount,
+  documentDiscountDto,
+  readDocumentDiscounts,
+} from "./document-discounts.js";
+import {
   addressDto,
   allOf,
   berlinDate,
@@ -338,21 +343,25 @@ export interface OrderDetails {
   readonly positionsComplete: boolean;
   /** `undefined` when sevDesk could not provide them (request failed or unknown shape). */
   readonly related: readonly RelatedDocument[] | undefined;
+  /** The document discount, when asked for (`withDiscount`) and the order has one. */
+  readonly discount?: DocumentDiscount | undefined;
 }
 
 /**
  * One order (`GET /Order/{id}`, contact embedded) with its positions
  * (`GET /OrderPos?order[id]=…&order[objectName]=Order`), unit names and related documents.
+ * `withDiscount` also reads its document discounts (`GET /Order/{id}/getDiscounts`, see
+ * `document-discounts.ts`).
  */
 export async function getOrder(
   client: SevdeskClient,
   orderId: number,
-  options: CountryReadOptions,
+  options: CountryReadOptions & { readonly withDiscount?: boolean | undefined },
 ): Promise<OrderDetails> {
   const { signal, cacheOwner } = options;
   const id = toSevdeskId(orderId);
   const withSignal = signal === undefined ? {} : { signal };
-  const [payload, positions, unitNames, related] = await Promise.all([
+  const [payload, positions, unitNames, related, discounts] = await Promise.all([
     client.request({
       method: "GET",
       path: sevdeskPath("Order", id),
@@ -367,15 +376,23 @@ export async function getOrder(
     ),
     loadUnitNames(client, signal),
     loadRelatedDocuments(client, id, signal),
+    options.withDiscount === true
+      ? readDocumentDiscounts(client, "order", id, signal)
+      : Promise.resolve(undefined),
   ]);
   const record = parseOrderRecord(expectSingle(payload, `order ${id}`));
   const order = await withDocumentCountry(toOrderDetail(record), client, { signal, cacheOwner });
   const context = { currency: order.currency, showNet: record.showNet, unitNames };
+  const discount =
+    discounts === undefined
+      ? undefined
+      : documentDiscountDto(discounts.rows, record, order.currency);
   return {
     order,
     positions: positions.rows.map((row) => toPositionDto(row, context)),
     positionsComplete: positions.complete,
     related,
+    ...(discount === undefined ? {} : { discount }),
   };
 }
 

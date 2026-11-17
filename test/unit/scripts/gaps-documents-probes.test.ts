@@ -554,6 +554,19 @@ async function run(client: ScriptedClient, overrides: Partial<RunOptions> = {}) 
   return { report, finding };
 }
 
+/**
+ * The probe writes the client lets only a commit tool send: finalizing, a layout change, a
+ * contract note (it accepts the offer), a `PUT` to an order or invoice (every one here sets a
+ * status or a template's schedule) and a `saveInvoice` that is not a regular draft (a template,
+ * or an update without the type).
+ */
+function needsCommit(call: ScriptedCall): boolean {
+  if (/\/(sendBy|changeParameter|createContractNoteFromOrder)$/.test(call.path)) return true;
+  if (call.method === "PUT" && /^\/(Order|Invoice)\/\d+$/.test(call.path)) return true;
+  if (call.path !== "/Invoice/Factory/saveInvoice") return false;
+  return ((call.body as Rec)["invoice"] as Rec)["invoiceType"] !== "RE";
+}
+
 describe("gaps-documents probe catalog", () => {
   it("registers every probe once, with the two opt-in probes marked", () => {
     for (const id of IDS) {
@@ -581,8 +594,7 @@ describe("gaps-documents probes on a simulated trial account", () => {
     expect(report.results.filter((result) => result.status === "error")).toEqual([]);
     const writes = client.writes();
     for (const call of writes) {
-      const commit = call.path.endsWith("/sendBy") || call.path.endsWith("/changeParameter");
-      expect(call.tier, call.path).toBe(commit ? "commit" : "write");
+      expect(call.tier, `${call.method} ${call.path}`).toBe(needsCommit(call) ? "commit" : "write");
       expect(call.path).not.toMatch(/sendViaEmail|enshrine|bookAmount|cancelInvoice/);
     }
     const reserving = client.calls.filter((call) => call.query["useNextNumber"] === "true");

@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/invoices.md sha256:caef58509a6e -->
+<!-- translated-from: docs/guides/invoices.md sha256:5116eed024ed -->
 
 # Rechnungen: vom Entwurf bis zur Zahlung
 
@@ -65,8 +65,116 @@ Steuersatz, der nicht zum Konto passt, wird abgelehnt, bevor etwas gespeichert w
 Vorschau warnt vor einer möglichen Dublette. Hat das Konto mehrere sevDesk-Benutzer, muss der
 Assistent einen als Ansprechpartner angeben.
 
+> Welche Steuerregel nimmt eine Rechnung über Beratung an die Wiener Muster GmbH in Wien?
+
+Für Kunden im Ausland oder einen Verkauf, der kein einfacher Inlandsumsatz ist, schlägt
+[`sevdesk_tax_rule_suggest`](../tools.md#sevdesk_tax_rule_suggest) (`read`) die Steuerregel vor:
+aus dem Land des Kunden, ob er als Unternehmer kauft, seiner USt-IdNr. und ob du Waren lieferst
+oder Leistungen erbringst. Es nennt die Regel, den Steuersatz (bei One-Stop-Shop-Umsätzen den
+Regelsteuersatz des Kundenlandes), den Hinweis, den die Rechnung tragen muss (etwa
+„Steuerschuldnerschaft des Leistungsempfängers“), und die Rechtsgrundlage. Entscheidet eine
+Schwelle oder eine besondere Art von Leistung, nennt es jede Möglichkeit mit ihrer Bedingung,
+statt zu raten. Nordirland folgt bei Waren den Regeln der EU (gib das Land `XI` oder die
+XI-USt-IdNr. des Kunden an), Monaco gilt als Frankreich, und Gebiete von Mitgliedstaaten außerhalb
+des Mehrwertsteuergebiets der EU, etwa die Kanarischen Inseln, kommen als Ausnahmen (Helgoland und
+Büsingen, bei einem Kunden in Deutschland, als Hinweis). Es ist keine Steuerberatung.
+[`sevdesk_vat_id_check`](../tools.md#sevdesk_vat_id_check) (`read`) prüft das Format einer
+USt-IdNr.; beim VIES-Dienst der Europäischen Kommission fragt es nur nach, wenn der Betreiber des
+Servers das eingeschaltet hat (`SEVDESK_VIES_CHECK`, siehe [Datenschutz](../../PRIVACY.de.md)).
+Auch die Vorschau des Entwurfs warnt, wenn die Steuerregel nicht die übliche für den Kunden ist;
+deshalb abgelehnt wird der Entwurf nie.
+
 Eine Position kann einen Artikel aus [`sevdesk_parts_list`](../tools.md#sevdesk_parts_list)
 verknüpfen, Bezeichnung und Preis kommen aber trotzdem aus der Position.
+
+### Ein Rabatt auf die ganze Rechnung
+
+> Gib der Musterfirma 3 % Rabatt auf die ganze Rechnung.
+
+Neben dem Rabatt je Position kann ein Entwurf einen Rabatt auf den Gesamtbetrag tragen: einen
+Prozentsatz vom Nettobetrag oder einen festen Nettobetrag in EUR, mit dem Text, der daneben
+gedruckt wird („Rabatt“, wenn du keinen anderen nennst). Die Vorschau zeigt ihn und die Summe, die
+sich daraus ergibt; das Ergebnis zeigt, was sevDesk abgezogen hat. Angebote, Auftragsbestätigungen
+und Gutschriften nehmen denselben Rabatt. Vorerst setzt der Server ihn nur bei Nettopreisen mit
+einem einzigen Steuersatz und nicht auf einer E-Rechnung: Wie sevDesk die anderen Fälle behandelt,
+ist noch nicht geprüft, und die Werkzeuge sagen das, statt zu raten. Ändert der Assistent den
+Entwurf später, bleibt der Rabatt, solange du ihn nicht ersetzt oder entfernst. Ein Dokument mit
+mehreren Rabatten (sevDesk rechnet dann nur einen davon in die Summen ein) bleibt der Web-App von
+sevDesk überlassen; die Abfragewerkzeuge und die Freigabe weisen darauf hin.
+
+### Eine englische Rechnung auf anderem Briefpapier
+
+> Stell die Rechnung an die Musterfirma auf Englisch und auf unser zweites Briefpapier um.
+
+[`sevdesk_document_set_layout`](../tools.md#sevdesk_document_set_layout) (`commit`, **du
+bestätigst**) setzt Sprache, Vorlage oder Briefpapier eines Entwurfs: Rechnung, Angebot,
+Auftragsbestätigung, Lieferschein oder Gutschrift. Sprachen: Deutsch (Deutschland, Österreich,
+Schweiz), Englisch, Spanisch, Französisch, Italienisch und Griechisch, als `de_DE`, `de_AT`,
+`de_CH`, `en_US`, `es_ES`, `fr_FR`, `it_IT`, `el_GR`. Vorlagen und Briefpapiere nennst du mit ID
+oder Namen; [`sevdesk_reference_lookup`](../tools.md#sevdesk_reference_lookup) listet sie (`kind`
+`templates` mit `documentType`, `letterpapers`). Die Vorschau zeigt die bisherige und die neue
+Auswahl; eine Sprache, Vorlage oder ein Briefpapier, das sevDesk für das Dokument nicht anbietet,
+lehnt der Server ab, bevor etwas gesendet wird. Jede Auswahl geht einzeln an sevDesk, und das
+Ergebnis nennt, was sevDesk gespeichert hat. Die übrigen Druckoptionen (etwa ein QR-Code zur
+Zahlung oder Falzmarken) bleiben, wie sie sind.
+
+Es fragt dich, obwohl es nur Entwürfe ändert, weil der Endpunkt von sevDesk dafür auch ein schon
+versendetes Dokument ändern würde; der Server hält ihn deshalb auf der Stufe `commit`. Die
+Freigaben zum Fertigstellen und Versenden zeigen das Layout noch einmal.
+
+Kopf- und Fußtexte können aus deinen Textvorlagen kommen: Nenn eine als `headTextTemplate` oder
+`footTextTemplate` der Entwurfswerkzeuge. Rechnungen nehmen die Vorlagen für Rechnungen;
+Angebote, Auftragsbestätigungen und Lieferscheine die für Angebote (andere hält sevDesk für
+Aufträge nicht vor); für Gutschriften gibt es das noch nicht.
+
+> Nimm für die Rechnung unsere englische Fußtext-Vorlage.
+
+### Angebote: annehmen, bestätigen, liefern
+
+Bevor ein Angebot abgerechnet wird, kann der Assistent die Antwort des Kunden festhalten und die
+Dokumente anlegen, die darauf folgen:
+
+> Die Musterfirma hat das Angebot AN-1042 telefonisch angenommen. Markier es als angenommen.
+
+> Das Angebot AN-1043 haben sie abgelehnt.
+
+[`sevdesk_order_set_offer_status`](../tools.md#sevdesk_order_set_offer_status) (`commit`, **du
+bestätigst**) markiert ein versendetes Angebot als angenommen oder abgelehnt oder setzt ein
+angenommenes oder abgelehntes Angebot wieder auf versendet (`reopen`). Es ändert nur den Status und
+sendet dem Kunden nichts. Angebotsentwürfe verweigert das Werkzeug (versende sie zuerst: sevDesk
+würde einen Entwurf neu nummerieren), ebenso Auftragsbestätigungen und Lieferscheine.
+
+> Erstell die Auftragsbestätigung zu AN-1042.
+
+[`sevdesk_order_create_confirmation`](../tools.md#sevdesk_order_create_confirmation) (`commit`,
+**du bestätigst**) legt einen Entwurf einer Auftragsbestätigung (AB) mit Kontakt, Texten und
+Positionen des Angebots an; die Vorschau führt sie auf. sevDesk markiert das Angebot dabei als
+angenommen, deshalb bestätigst du diesen Schritt. Es arbeitet nur mit versendeten und angenommenen
+Angeboten: Einen Entwurf verweigert es (er würde ein Angebot annehmen, das der Kunde nie bekommen
+hat), und ein abgelehntes Angebot muss zuerst wieder geöffnet werden. So ist aus einer Ablehnung
+eine Annahme zu machen immer ein eigener Schritt.
+
+> Erstell einen Lieferschein zu AB-1007.
+
+[`sevdesk_order_create_delivery_note`](../tools.md#sevdesk_order_create_delivery_note) (`write`,
+ohne Bestätigung) legt einen Lieferschein-Entwurf (LI) aus einer Auftragsbestätigung (Entwurf,
+versendet oder angenommen) oder aus einem versendeten oder angenommenen Angebot an und lässt die
+Vorlage unverändert. Angebotsentwürfe und abgelehnte Angebote verweigert es.
+
+Das Werkzeug für Auftragsbestätigungen verweigert eine zweite aus demselben Angebot, außer du willst
+ausdrücklich eine. Das Werkzeug für Lieferscheine verweigert nur, solange ein früherer Lieferschein
+aus demselben Auftrag noch ein Entwurf ist, denn ein weiterer Lieferschein kann eine Teillieferung
+sein; fertiggestellte nennt seine Vorschau. Fertiggestellt wird der neue Entwurf mit
+[`sevdesk_order_finalize`](../tools.md#sevdesk_order_finalize). Beide Vorschauen führen auch Rabatte
+und Aufschläge auf das ganze Dokument der Vorlage auf; ob sevDesk sie übernimmt, ist nicht geprüft,
+also vergleiche die Summen des neuen Entwurfs, bevor du ihn fertigstellst. sevDesk gibt dem neuen
+Dokument die nächste Nummer seines Nummernkreises, ohne den Zähler weiterzuschalten; es kann also
+eine Nummer tragen, die eine andere Auftragsbestätigung oder ein anderer Lieferschein schon hat. Das
+Ergebnis nennt solche, die es findet. Offene Angebote findest du mit einer Frage nach versendeten
+Angeboten in einem Zeitraum ([`sevdesk_orders_list`](../tools.md#sevdesk_orders_list)). Der Prompt
+[`offer_follow_up`](../tools.md#offer_follow_up) macht das für Angebote, die älter als eine Zahl von
+Tagen sind (standardmäßig 14), und geht jedes mit dir durch: angenommen oder abgelehnt, die
+Auftragsbestätigung, der Lieferschein, die Rechnung oder eine Nachfrage, die du selbst schickst.
 
 ### Aus einem Angebot oder einer Auftragsbestätigung
 
@@ -78,8 +186,10 @@ verknüpfen, Bezeichnung und Preis kommen aber trotzdem aus der Position.
 Bestätigung) übernimmt die Positionen eines Angebots oder einer Auftragsbestätigung: den ganzen
 Auftrag, eine Teilrechnung oder eine Abschlagsrechnung über einen Prozentsatz oder einen Betrag,
 netto oder brutto. Der Auftrag muss versendet, angenommen oder teilweise abgerechnet sein; Teil- und
-Abschlagsrechnungen brauchen Steuerregel 1 oder 11. Gibt es schon einen Entwurf aus demselben
-Auftrag, lehnt das Werkzeug ab, außer du willst ausdrücklich einen zweiten. Angebote selbst
+Abschlagsrechnungen brauchen Steuerregel 1 oder 11. sevDesk übernimmt auch den Rabatt auf den
+Gesamtbetrag des Auftrags; die Vorschau zeigt ihn, das Ergebnis den der Rechnung. Gibt es schon
+einen Entwurf aus demselben Auftrag, lehnt das Werkzeug ab, außer du willst ausdrücklich einen
+zweiten. Angebote selbst
 entstehen mit [`sevdesk_order_create_draft`](../tools.md#sevdesk_order_create_draft).
 
 ## Den Entwurf prüfen
@@ -88,8 +198,9 @@ entstehen mit [`sevdesk_order_create_draft`](../tools.md#sevdesk_order_create_dr
 
 > Öffne das PDF zu diesem Entwurf.
 
-[`sevdesk_invoice_get`](../tools.md#sevdesk_invoice_get) liefert Positionen, Summen, Steuerregel,
-Adresse und Zahlungsbedingungen; [`sevdesk_invoice_pdf`](../tools.md#sevdesk_invoice_pdf) liefert
+[`sevdesk_invoice_get`](../tools.md#sevdesk_invoice_get) liefert Positionen, einen Rabatt auf den
+Gesamtbetrag, Summen, Steuerregel, Adresse und Zahlungsbedingungen;
+[`sevdesk_invoice_pdf`](../tools.md#sevdesk_invoice_pdf) liefert
 das PDF als Vorschau, die die Rechnung nie als versendet markiert. Beide sind `read`. Um eine Kopie
 auf der Festplatte zu behalten, schreibt
 [`sevdesk_document_save`](../tools.md#sevdesk_document_save) sie nach `SEVDESK_OUTPUT_DIR`
@@ -99,7 +210,8 @@ auf der Festplatte zu behalten, schreibt
 
 [`sevdesk_invoice_update_draft`](../tools.md#sevdesk_invoice_update_draft) (`write`, ohne
 Bestätigung) ändert nur die Felder, die du nennst. Neue Positionen ersetzen alle gespeicherten,
-deshalb übergibt der Assistent die vollständige Liste. Nur Entwürfe lassen sich ändern.
+deshalb übergibt der Assistent die vollständige Liste. Ein neuer Rabatt ersetzt den gespeicherten,
+und „entferne den Rabatt“ löscht ihn. Nur Entwürfe lassen sich ändern.
 
 ### Bereit für die E-Rechnung
 
@@ -125,7 +237,9 @@ macht aus dem Entwurf eine offene Rechnung: sevDesk vergibt die endgültige Numm
 markiert sie als versendet. Beim Kunden kommt nichts an; das Werkzeug hält nur fest, wie du sie
 versendest (standardmäßig PDF-Download, sonst Post, Druck oder E-Mail außerhalb von sevDesk). Bevor
 du freigibst, zeigt die Vorschau, was in der Rechnung steht, so wie sevDesk sie speichert: Adresse,
-Kopf- und Fußtext, jede Position, Bedingungen und Daten.
+Kopf- und Fußtext, jede Position, einen Rabatt auf den Gesamtbetrag, Bedingungen und Daten sowie
+Sprache, Vorlage und Briefpapier. Ändert sich davon etwas, während du entscheidest, wirst du
+erneut gefragt.
 
 > [!WARNING]
 > Mit dem Fertigstellen wird die Rechnung unter ihrer Nummer rechtlich bindend. Danach lässt sie
@@ -205,8 +319,16 @@ Stornorechnung schickst du dem Kunden mit `sevdesk_invoice_send_email`.
 
 Für eine bezahlte oder teilweise bezahlte Rechnung legt
 [`sevdesk_credit_note_create_from_invoice`](../tools.md#sevdesk_credit_note_create_from_invoice)
-(`write`, ohne Bestätigung) einen Gutschriftsentwurf mit allen ihren Positionen an, den der Assistent
-danach anpassen kann. Fertiggestellt wird er mit
+(`write`, ohne Bestätigung) einen Gutschriftsentwurf mit allen ihren Positionen an.
+
+> Lass in dieser Gutschrift nur die falsche Position stehen und schreib dafür 40 EUR netto gut.
+
+[`sevdesk_credit_note_update_draft`](../tools.md#sevdesk_credit_note_update_draft) (`write`, ohne
+Bestätigung) passt den Entwurf so an, wie du eine Rechnung änderst: Er ändert nur die Felder, die du
+nennst, und neue Positionen ersetzen alle gespeicherten. Die Gutschrift behält ihre Nummer und die
+Rechnung, die sie mindert; ihre Positionen dürfen nur die Steuersätze dieser Rechnung haben, und
+Kontakt und Währung bleiben die der Rechnung. Ändern lassen sich nur Entwürfe. Fertiggestellt wird
+die Gutschrift mit
 [`sevdesk_credit_note_finalize`](../tools.md#sevdesk_credit_note_finalize) oder per E-Mail versendet
 mit [`sevdesk_credit_note_send_email`](../tools.md#sevdesk_credit_note_send_email), und eine
 Erstattung buchst du mit
