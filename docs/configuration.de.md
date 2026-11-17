@@ -1,4 +1,4 @@
-<!-- translated-from: docs/configuration.md sha256:62a8fcef2999 -->
+<!-- translated-from: docs/configuration.md sha256:739edea8b7ee -->
 
 # Konfiguration
 
@@ -76,6 +76,12 @@ wird nicht gezeigt, weil es das Geheimnis selbst sein kann, in die falsche Varia
 | `SEVDESK_TOOLSETS`          | `default` | Die [Werkzeuggruppen](#werkzeuggruppen), die geladen werden: eine Liste aus `meta`, `contacts`, `invoices`, `credit-notes`, `orders`, `vouchers`, `banking`, `parts`, `reports`, `advanced` oder `default` (alles außer `advanced`) oder `all`. `meta` wird immer geladen.        |
 | `SEVDESK_STRUCTURED_OUTPUT` | `auto`    | `auto`, `on` oder `off`: ob Werkzeuge ein Ausgabeschema angeben und neben dem JSON-Text typisierten `structuredContent` zurückgeben. Siehe [Strukturierte Ausgabe](#strukturierte-ausgabe).                                                                                       |
 | `SEVDESK_VIES_CHECK`        | `0`       | `1` oder `true` erlaubt `sevdesk_vat_id_check`, beim VIES-Dienst der Europäischen Kommission zu fragen, ob eine USt-IdNr. gültig ist; dabei geht die USt-IdNr. an `ec.europa.eu` ([Datenschutz](../PRIVACY.de.md)). Nicht gesetzt, `0` oder `false`: nur ihr Format wird geprüft. |
+
+Die VIES-Prüfung folgt der veröffentlichten Beschreibung der Schnittstelle durch die Kommission und
+ist noch nicht gegen den echten Dienst getestet. Zwei Dinge sind unbestätigt: ob VIES Nummern aus
+Nordirland (Präfix `XI`) annimmt und wie es meldet, dass es einen Mitgliedstaat nicht erreicht.
+Eine Antwort, die der Server nicht lesen kann, meldet er als „nicht verfügbar“ (`unavailable`), nie
+als ungültige Nummer.
 
 ### Dateien und Audit-Log
 
