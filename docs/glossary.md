@@ -79,15 +79,17 @@ one-line meaning and where each matters. The server's own terms are at the end.
 
 ## Contacts and parts
 
-| German                  | English            | Meaning                                                                            | Where                                                                                     |
-| ----------------------- | ------------------ | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Kontakt                 | contact            | An organisation or person in sevDesk.                                              | `sevdesk_contact_*`, [`sevdesk_contacts_search`](tools.md#sevdesk_contacts_search)        |
-| Kunde, Lieferant        | customer, supplier | The contact's category; also partner and prospect (Interessent).                   | `category` of the contact tools                                                           |
-| Kundennummer            | customer number    | The contact's number; by default the next free one sevDesk assigns.                | [`sevdesk_contacts_next_customer_number`](tools.md#sevdesk_contacts_next_customer_number) |
-| USt-IdNr., Steuernummer | VAT ID, tax number | The contact's tax identifiers; the VAT ID matters for EU and reverse-charge sales. | [`sevdesk_contact_create`](tools.md#sevdesk_contact_create)                               |
-| Artikel (API: Part)     | part               | A product or service with number, price, tax rate and optional stock.              | `sevdesk_part_*`, [`sevdesk_parts_list`](tools.md#sevdesk_parts_list)                     |
-| Artikelnummer           | part number        | The part's unique number.                                                          | [`sevdesk_part_create`](tools.md#sevdesk_part_create)                                     |
-| Lagerbestand            | stock              | The quantity in stock, when stock tracking is on.                                  | [`sevdesk_part_get`](tools.md#sevdesk_part_get)                                           |
+| German                  | English            | Meaning                                                                                                           | Where                                                                                     |
+| ----------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Kontakt                 | contact            | An organisation or person in sevDesk.                                                                             | `sevdesk_contact_*`, [`sevdesk_contacts_search`](tools.md#sevdesk_contacts_search)        |
+| Ansprechpartner         | contact person     | A person contact that belongs to an organisation contact (`parentOrganisationId`); deleted with its organisation. | [`sevdesk_contact_update`](tools.md#sevdesk_contact_update)                               |
+| Kunde, Lieferant        | customer, supplier | The contact's category; also partner and prospect (Interessent).                                                  | `category` of the contact tools                                                           |
+| Kundennummer            | customer number    | The contact's number; by default the next free one sevDesk assigns.                                               | [`sevdesk_contacts_next_customer_number`](tools.md#sevdesk_contacts_next_customer_number) |
+| USt-IdNr., Steuernummer | VAT ID, tax number | The contact's tax identifiers; the VAT ID matters for EU and reverse-charge sales.                                | [`sevdesk_contact_create`](tools.md#sevdesk_contact_create)                               |
+| Zusatzfeld              | custom field       | A contact field the account defines in the sevDesk web app; a contact has one value of it.                        | `customFields` of the contact tools                                                       |
+| Artikel (API: Part)     | part               | A product or service with number, price, tax rate and optional stock.                                             | `sevdesk_part_*`, [`sevdesk_parts_list`](tools.md#sevdesk_parts_list)                     |
+| Artikelnummer           | part number        | The part's unique number.                                                                                         | [`sevdesk_part_create`](tools.md#sevdesk_part_create)                                     |
+| Lagerbestand            | stock              | The quantity in stock, when stock tracking is on.                                                                 | [`sevdesk_part_get`](tools.md#sevdesk_part_get)                                           |
 
 ## Server terms
 

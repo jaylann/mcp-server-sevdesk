@@ -206,6 +206,21 @@ interface Prepared {
   /** Only side-effect-free GETs. */
   readonly retryable: boolean;
   readonly context: ErrorContext;
+  /** Time for one attempt: the configured `timeoutMs`, or a download's own budget. */
+  readonly timeoutMs: number;
+}
+
+/** The longest time one request may be given ({@link requestTimeoutMs}): 10 minutes. */
+export const MAX_REQUEST_TIMEOUT_MS = 600_000;
+
+/**
+ * The time one attempt of a `download` gets: the request's own `timeoutMs` when it asks for one,
+ * never less than the configured time and never more than {@link MAX_REQUEST_TIMEOUT_MS};
+ * otherwise the configured time.
+ */
+export function requestTimeoutMs(configured: number, requested: number | undefined): number {
+  if (requested === undefined || !Number.isFinite(requested)) return configured;
+  return Math.max(configured, Math.min(Math.round(requested), MAX_REQUEST_TIMEOUT_MS));
 }
 
 /**
@@ -277,7 +292,7 @@ export function createSevdeskClient(
       const reason = writeBlockReason(
         config,
         request.tier,
-        minimumWriteTier(path, request.query, request.body),
+        minimumWriteTier(path, request.query, request.body, request.form),
       );
       if (reason !== undefined) {
         const effect = safety?.sideEffect === true ? ` (${safety.effect})` : "";
@@ -318,15 +333,24 @@ export function createSevdeskClient(
       // Only GETs: a POST or PUT is never sent twice, also a reading one.
       retryable: method === "GET" && !changesData,
       context,
+      timeoutMs: config.timeoutMs,
     };
   }
 
+  /**
+   * Sends `request`; `timeoutMs` (only `download` passes one) replaces the configured time per
+   * attempt, see {@link requestTimeoutMs}.
+   */
   async function send<T>(
     request: SevdeskRequest,
     accept: string,
     readSuccess: (response: Response, context: ErrorContext) => Promise<T>,
+    timeoutMs?: number,
   ): Promise<T> {
-    const prepared = prepare(request, accept);
+    const prepared = {
+      ...prepare(request, accept),
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
+    };
     for (let attempt = 1; ; attempt += 1) {
       const outcome = await attemptOnce(prepared, attempt, readSuccess);
       if (outcome.ok) return outcome.value;
@@ -370,7 +394,7 @@ export function createSevdeskClient(
       throw cancellationError(context, callerSignal, cause);
     }
 
-    const timeoutSignal = AbortSignal.timeout(config.timeoutMs);
+    const timeoutSignal = AbortSignal.timeout(prepared.timeoutMs);
     const signal =
       callerSignal === undefined ? timeoutSignal : AbortSignal.any([callerSignal, timeoutSignal]);
     const started = now();
@@ -416,8 +440,10 @@ export function createSevdeskClient(
           new SevdeskError({
             kind: "timeout",
             message:
-              `sevDesk did not answer within ${config.timeoutMs} ms. ` +
-              "Raise SEVDESK_TIMEOUT_MS if this persists.",
+              `sevDesk did not answer within ${prepared.timeoutMs} ms. ` +
+              (prepared.timeoutMs === config.timeoutMs
+                ? "Raise SEVDESK_TIMEOUT_MS if this persists."
+                : "This request has its own, longer time limit; ask for less at once."),
             method,
             path,
             cause,
@@ -527,17 +553,22 @@ export function createSevdeskClient(
     listAll,
     async download(request) {
       const maxBytes = request.maxBytes ?? DEFAULT_MAX_DOWNLOAD_BYTES;
-      return send(request, "*/*", async (response, context) => ({
-        body: await readCappedBody(response, maxBytes, (received) =>
-          unexpectedResponse(
-            response.status,
-            "",
-            context,
-            `the body is larger than ${String(maxBytes)} bytes (stopped after ${String(received)}).`,
+      return send(
+        request,
+        "*/*",
+        async (response, context) => ({
+          body: await readCappedBody(response, maxBytes, (received) =>
+            unexpectedResponse(
+              response.status,
+              "",
+              context,
+              `the body is larger than ${String(maxBytes)} bytes (stopped after ${String(received)}).`,
+            ),
           ),
-        ),
-        contentType: response.headers.get("content-type") ?? undefined,
-      }));
+          contentType: response.headers.get("content-type") ?? undefined,
+        }),
+        requestTimeoutMs(config.timeoutMs, request.timeoutMs),
+      );
     },
   };
 }

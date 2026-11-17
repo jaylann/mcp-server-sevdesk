@@ -82,15 +82,17 @@ jeder Begriff wichtig ist. Die Begriffe des Servers selbst stehen am Ende.
 
 ## Kontakte und Artikel
 
-| Deutsch                 | Englisch           | Bedeutung                                                                                         | Wo                                                                                        |
-| ----------------------- | ------------------ | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Kontakt                 | contact            | Eine Organisation oder Person in sevDesk.                                                         | `sevdesk_contact_*`, [`sevdesk_contacts_search`](tools.md#sevdesk_contacts_search)        |
-| Kunde, Lieferant        | customer, supplier | Die Kategorie des Kontakts; daneben auch Partner und Interessent.                                 | `category` der Kontaktwerkzeuge                                                           |
-| Kundennummer            | customer number    | Die Nummer des Kontakts; standardmäßig die nächste freie, die sevDesk vergibt.                    | [`sevdesk_contacts_next_customer_number`](tools.md#sevdesk_contacts_next_customer_number) |
-| USt-IdNr., Steuernummer | VAT ID, tax number | Die steuerlichen Kennungen des Kontakts; die USt-IdNr. zählt bei EU- und Reverse-Charge-Umsätzen. | [`sevdesk_contact_create`](tools.md#sevdesk_contact_create)                               |
-| Artikel (API: Part)     | part               | Ein Produkt oder eine Dienstleistung mit Nummer, Preis, Steuersatz und optionalem Bestand.        | `sevdesk_part_*`, [`sevdesk_parts_list`](tools.md#sevdesk_parts_list)                     |
-| Artikelnummer           | part number        | Die eindeutige Nummer des Artikels.                                                               | [`sevdesk_part_create`](tools.md#sevdesk_part_create)                                     |
-| Lagerbestand            | stock              | Die Menge auf Lager, wenn die Bestandsführung aktiv ist.                                          | [`sevdesk_part_get`](tools.md#sevdesk_part_get)                                           |
+| Deutsch                 | Englisch           | Bedeutung                                                                                                                      | Wo                                                                                        |
+| ----------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| Kontakt                 | contact            | Eine Organisation oder Person in sevDesk.                                                                                      | `sevdesk_contact_*`, [`sevdesk_contacts_search`](tools.md#sevdesk_contacts_search)        |
+| Ansprechpartner         | contact person     | Ein Personenkontakt, der zu einem Organisationskontakt gehört (`parentOrganisationId`); wird mit seiner Organisation gelöscht. | [`sevdesk_contact_update`](tools.md#sevdesk_contact_update)                               |
+| Kunde, Lieferant        | customer, supplier | Die Kategorie des Kontakts; daneben auch Partner und Interessent.                                                              | `category` der Kontaktwerkzeuge                                                           |
+| Kundennummer            | customer number    | Die Nummer des Kontakts; standardmäßig die nächste freie, die sevDesk vergibt.                                                 | [`sevdesk_contacts_next_customer_number`](tools.md#sevdesk_contacts_next_customer_number) |
+| USt-IdNr., Steuernummer | VAT ID, tax number | Die steuerlichen Kennungen des Kontakts; die USt-IdNr. zählt bei EU- und Reverse-Charge-Umsätzen.                              | [`sevdesk_contact_create`](tools.md#sevdesk_contact_create)                               |
+| Zusatzfeld              | custom field       | Ein Kontaktfeld, das man in der sevDesk-Weboberfläche für das Konto anlegt; ein Kontakt hat höchstens einen Wert davon.        | `customFields` der Kontaktwerkzeuge                                                       |
+| Artikel (API: Part)     | part               | Ein Produkt oder eine Dienstleistung mit Nummer, Preis, Steuersatz und optionalem Bestand.                                     | `sevdesk_part_*`, [`sevdesk_parts_list`](tools.md#sevdesk_parts_list)                     |
+| Artikelnummer           | part number        | Die eindeutige Nummer des Artikels.                                                                                            | [`sevdesk_part_create`](tools.md#sevdesk_part_create)                                     |
+| Lagerbestand            | stock              | Die Menge auf Lager, wenn die Bestandsführung aktiv ist.                                                                       | [`sevdesk_part_get`](tools.md#sevdesk_part_get)                                           |
 
 ## Begriffe des Servers
 

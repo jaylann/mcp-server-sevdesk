@@ -35,8 +35,9 @@ export const creditNoteFromInvoiceTool = defineWriteTool({
     "be voided completely, cancel it instead (sevdesk_invoice_cancel). Refuses when a credit " +
     "note for the invoice exists (allowDuplicate overrides, e.g. a second partial refund). " +
     "Tier write. Afterwards sevDesk's credit note counter is moved past the new draft's " +
-    "number (sevDesk does not do that itself). Then check it with sevdesk_credit_note_get and " +
-    "finalize it with sevdesk_credit_note_finalize.",
+    "number (sevDesk does not do that itself). Then check it with sevdesk_credit_note_get, " +
+    "change it with sevdesk_credit_note_update_draft (e.g. keep only the positions to credit) " +
+    "and finalize it with sevdesk_credit_note_finalize.",
   toolset: "credit-notes",
   tier: "write",
   annotations: {

@@ -1,5 +1,33 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`German previews > accept a sent offer: says the same in German 1`] = `
+"Angebot AN-1001 als angenommen markieren (versendet 200 → angenommen 500).
+! Das Angebot wird als vom Kunden angenommen vermerkt (Status 500); an niemanden wird etwas gesendet. Danach: sevdesk_order_create_confirmation oder sevdesk_invoice_create_from_order. Mit der Aktion „reopen“ lässt es sich zurücksetzen.
+! sevDesk ändert nur den Status des Angebots: Die Anfrage enthält nichts anderes.
+! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfe bei Bedarf sevdesk_order_pdf.
+(umkehrbar)
+Auftrag: AN-1001 (ID 3001)
+Typ: Angebot (AN)
+Status: Versendet (200)
+Kunde: Musterfirma GmbH (Kontakt 1001)
+Anschrift auf dem Dokument: Musterfirma GmbH
+Musterstraße 1
+12345 Musterstadt
+Adressfelder (strukturiert): Musterfirma GmbH
+Datum: 20.09.2026
+Netto: 144,02 EUR
+Umsatzsteuer: 27,36 EUR
+Brutto: 171,38 EUR
+Betreff auf dem Dokument: Angebot AN-1001
+Steuerregel: 1 Umsatzsteuerpflichtige Umsätze
+Steuerhinweis: 0
+Kopftext: <p>Gerne bieten wir Ihnen an:</p>
+Positionen: keine
+Fußtext: <p>Das Angebot ist 30 Tage gültig.</p>
+Zahlungsbedingungen: 14 Tage netto
+Lieferbedingungen: Lieferung frei Haus"
+`;
+
 exports[`German previews > book a bank transaction to an invoice: says the same in German 1`] = `
 "Kontoumsatz 5101 (177,33 EUR) zuordnen zu Rechnung RE-1001: insgesamt 177,33 EUR.
 ! Der Status jedes Dokuments ändert sich (siehe die einzelnen Zuordnungen). Rückgängig machen lässt sich das mit sevdesk_transaction_reset: Das setzt diese Dokumente auf offen zurück und entfernt damit alle ihre Zahlungen.
@@ -190,7 +218,8 @@ Steuerregel: 9 Vorsteuerabziehbare Aufwendungen
 Betragseingabe: brutto
 Position 1: 6815 Bürobedarf (Konto 4266): 119,00 EUR brutto, 19 % USt. → netto 100,00, USt. 19,00, brutto 119,00
 Summe (erwartet): netto 100,00 EUR, USt. 19,00 EUR, brutto 119,00 EUR
-Belegdatei: Rechnung-0815.pdf (PDF, 77 Bytes, SHA-256 56c2ac043c28d354…)
+Belegdatei: Rechnung-0815.pdf (PDF, 77 Bytes)
+SHA-256: 56c2ac043c28d3543275a6f50b593a6beb0b6888ed8159ac02e3e7f4a32ccb26
 Status nach dem Speichern: Entwurf (50), noch nicht gebucht"
 `;
 
@@ -210,6 +239,75 @@ Summe (erwartet): netto 100,00 EUR, USt. 19,00 EUR, brutto 119,00 EUR
 Status nach dem Speichern: Entwurf (50), noch nicht gebucht"
 `;
 
+exports[`German previews > create an order confirmation from a sent offer: says the same in German 1`] = `
+"Aus dem Angebot AN-1001 eine Auftragsbestätigung (AB) als Entwurf erstellen; sevDesk markiert das Angebot dabei als angenommen (versendet 200 → angenommen 500).
+! sevDesk markiert das Angebot in derselben Anfrage als angenommen (Status 500): Das ist der bindende Schritt dieser Aktion. War das nicht gewollt, setze das Angebot mit sevdesk_order_set_offer_status (Aktion „reopen“) zurück.
+! Die Auftragsbestätigung wird als Entwurf mit Kontakt, Texten und Positionen des Angebots erstellt, wie hier aufgeführt; prüfe sie mit sevdesk_order_get und stelle sie mit sevdesk_order_finalize fertig.
+! sevDesk gibt der Auftragsbestätigung die nächste Nummer des AB-Nummernkreises, ohne den Zähler weiterzuschalten; eine andere Auftragsbestätigung kann daher dieselbe Nummer tragen. Das Ergebnis nennt solche, die es findet.
+! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfe bei Bedarf sevdesk_order_pdf.
+(umkehrbar)
+Auftrag: AN-1001 (ID 3001)
+Typ: Angebot (AN)
+Status: Versendet (200)
+Kunde: Musterfirma GmbH (Kontakt 1001)
+Anschrift auf dem Dokument: Musterfirma GmbH
+Musterstraße 1
+12345 Musterstadt
+Adressfelder (strukturiert): Musterfirma GmbH
+Datum: 20.09.2026
+Netto: 144,02 EUR
+Umsatzsteuer: 27,36 EUR
+Brutto: 171,38 EUR
+Wird erstellt: Auftragsbestätigung (AB) als Entwurf
+Betreff auf dem Dokument: Angebot AN-1001
+Steuerregel: 1 Umsatzsteuerpflichtige Umsätze
+Steuerhinweis: 0
+Kopftext: <p>Gerne bieten wir Ihnen an:</p>
+Position 1: Testartikel: 2 × 49,9919 EUR brutto, 19 % USt. → 84,02 EUR netto, 99,98 EUR brutto
+Position 2: Optionale Einweisung: 1 × 119,00 EUR brutto, 19 % USt., optional (nicht in der Summe) → 100,00 EUR netto, 119,00 EUR brutto
+Fußtext: <p>Das Angebot ist 30 Tage gültig.</p>
+Zahlungsbedingungen: 14 Tage netto
+Lieferbedingungen: Lieferung frei Haus"
+`;
+
+exports[`German previews > create an order confirmation from an accepted offer with a document discount: says the same in German 1`] = `
+"Aus dem Angebot AN-1003 eine Auftragsbestätigung (AB) als Entwurf erstellen; das Angebot bleibt angenommen (500).
+! Das Angebot ist bereits angenommen (Status 500) und bleibt es.
+! Die Auftragsbestätigung wird als Entwurf mit Kontakt, Texten und Positionen des Angebots erstellt, wie hier aufgeführt; prüfe sie mit sevdesk_order_get und stelle sie mit sevdesk_order_finalize fertig.
+! sevDesk gibt der Auftragsbestätigung die nächste Nummer des AB-Nummernkreises, ohne den Zähler weiterzuschalten; eine andere Auftragsbestätigung kann daher dieselbe Nummer tragen. Das Ergebnis nennt solche, die es findet.
+! Das Angebot trägt Rabatte oder Aufschläge auf das ganze Dokument (oben aufgeführt). Ob sevDesk sie in die Auftragsbestätigung übernimmt, ist nicht geprüft; vergleiche die Summen des neuen Entwurfs mit sevdesk_order_get, bevor du ihn fertigstellst.
+! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfe bei Bedarf sevdesk_order_pdf.
+! Das Dokument hat 2 Rabatte auf den Gesamtbetrag, und sevDesk rechnet in den Summen womöglich nur einen davon ein (in einer Prüfung nur den neuesten); die Summe ist dann nicht, was die aufgeführten Rabatte erwarten lassen. Prüfe die Summe in sevDesk.
+(umkehrbar)
+Auftrag: AN-1003 (ID 3003)
+Typ: Angebot (AN)
+Status: Angenommen (500)
+Kunde: Musterfirma GmbH (Kontakt 1001)
+Anschrift auf dem Dokument: Musterfirma GmbH
+Musterstraße 1
+12345 Musterstadt
+Adressfelder (strukturiert): Musterfirma GmbH
+Datum: 20.09.2026
+Netto: 144,02 EUR
+Umsatzsteuer: 27,36 EUR
+Brutto: 171,38 EUR
+Wird erstellt: Auftragsbestätigung (AB) als Entwurf
+Betreff auf dem Dokument: Angebot AN-1001
+Steuerregel: 1 Umsatzsteuerpflichtige Umsätze
+Steuerhinweis: 0
+Kopftext: <p>Gerne bieten wir Ihnen an:</p>
+Position 1: Testartikel: 2 × 49,9919 EUR brutto, 19 % USt. → 84,02 EUR netto, 99,98 EUR brutto
+Position 2: Optionale Einweisung: 1 × 119,00 EUR brutto, 19 % USt., optional (nicht in der Summe) → 100,00 EUR netto, 119,00 EUR brutto
+Rabatt auf den Gesamtbetrag 1: 5 % vom Nettobetrag
+Text: Treuerabatt
+Rabatt auf den Gesamtbetrag 2: Aufschlag: 12,50 EUR brutto
+Text: Expresszuschlag
+Rabatte insgesamt: 0,00 EUR netto, 0,00 EUR brutto
+Fußtext: <p>Das Angebot ist 30 Tage gültig.</p>
+Zahlungsbedingungen: 14 Tage netto
+Lieferbedingungen: Lieferung frei Haus"
+`;
+
 exports[`German previews > delete a draft voucher: says the same in German 1`] = `
 "Beleg 2101 (Entwurf) aus sevDesk löschen.
 ! Der Entwurf und alle seine Positionen werden aus sevDesk gelöscht; das lässt sich nicht rückgängig machen.
@@ -225,6 +323,22 @@ Netto: 100,00 EUR
 Umsatzsteuer: 19,00 EUR
 Brutto: 119,00 EUR
 Bisher bezahlt: 0,00 EUR"
+`;
+
+exports[`German previews > delete an organisation with its addresses, communication ways and contact persons: says the same in German 1`] = `
+"Kontakt 1001 (Organisation) und seinen Ansprechpartner aus sevDesk löschen.
+! Der Kontakt, seine 2 Adressen und seine 3 Kommunikationswege werden aus sevDesk gelöscht; das lässt sich nicht rückgängig machen.
+! sevDesk löscht den Ansprechpartner der Organisation mit; das lässt sich ebenfalls nicht rückgängig machen.
+! Auch die Werte von Zusatzfeldern des Kontakts und seines Ansprechpartners werden mitgelöscht.
+(nicht umkehrbar)
+Kontakt: Musterfirma GmbH (ID 1001)
+Kundennummer: K-1001
+Kategorie: Kunde
+Adressen (werden mitgelöscht): 2
+Kommunikationswege (werden mitgelöscht): 3
+Werte von Zusatzfeldern (werden mitgelöscht): 2
+Ansprechpartner (werden mitgelöscht): 1
+Ansprechpartner (wird mitgelöscht): Dr. Max Mustermann (Kontakt 1002)"
 `;
 
 exports[`German previews > email an open credit note: says the same in German 1`] = `
@@ -562,7 +676,8 @@ Wechselkurs: 1 USD = 0,9 EUR
 EUR-Gegenwert (vom Server berechnet): netto 283,37 EUR, USt. 19,84 EUR, brutto 303,21 EUR
 Position 1: 6815 Bürobedarf (Konto 4266): 314,86 USD netto, 7 % USt. → netto 314,86, USt. 22,04, brutto 336,90; E-Rechnung, USt 7 % (S)
 Summe (erwartet): netto 314,86 USD, USt. 22,04 USD, brutto 336,90 USD
-Belegdatei: usd.xml (XML, 9622 Bytes, SHA-256 37f2bafa4fadc060…)
+Belegdatei: usd.xml (XML, 9622 Bytes)
+SHA-256: 37f2bafa4fadc060c079a0111600fa7fee0a0be24249d1467e2d38eda57de076
 Aussteller (aus der E-Rechnung): [Seller name], USt-IdNr. DE123456789
 Summen der E-Rechnung: netto 314,86 USD, USt. 22,04 USD, brutto 336,90 USD
 Grundlage der Steuerregel: Inlandsrechnung mit Umsatzsteuer: Vorsteuerabzug möglich (Regel 9, §15 UStG).
@@ -585,7 +700,8 @@ Steuerregel: 9 Vorsteuerabziehbare Aufwendungen
 Betragseingabe: netto
 Position 1: 6815 Bürobedarf (Konto 4266): 314,86 EUR netto, 7 % USt. → netto 314,86, USt. 22,04, brutto 336,90; E-Rechnung, USt 7 % (S)
 Summe (erwartet): netto 314,86 EUR, USt. 22,04 EUR, brutto 336,90 EUR
-Belegdatei: xrechnung.xml (XML, 9622 Bytes, SHA-256 727b51982a84c9b4…)
+Belegdatei: xrechnung.xml (XML, 9622 Bytes)
+SHA-256: 727b51982a84c9b406599a7384783570910440ed405c9bb6d918b22442636886
 Aussteller (aus der E-Rechnung): [Seller name], USt-IdNr. DE123456789
 Summen der E-Rechnung: netto 314,86 EUR, USt. 22,04 EUR, brutto 336,90 EUR
 Grundlage der Steuerregel: Inlandsrechnung mit Umsatzsteuer: Vorsteuerabzug möglich (Regel 9, §15 UStG).
@@ -654,41 +770,14 @@ Brutto: 298,10 EUR
 Bisher bezahlt: 0,00 EUR"
 `;
 
-exports[`German previews > set language, template and letterhead of a draft invoice: says the same in German 1`] = `
-"Sprache, Vorlage und Briefpapier von Rechnung 1003 (noch ohne Nummer) ändern.
-! Nur das Layout ändert sich: Status, Nummer, Texte und Positionen des Entwurfs bleiben, wie sie sind.
-! Jede Auswahl geht als eigene Anfrage an sevDesk (changeParameter), in der Reihenfolge Sprache, Vorlage, Briefpapier, und keine wird wiederholt. Schlägt eine fehl, bleiben die vorherigen gesetzt, und das Ergebnis nennt sie.
+exports[`German previews > set the DATEV client number: says the same in German 1`] = `
+"DATEV-Exporteinstellungen in sevDesk ändern (gilt für das ganze Konto).
+! Jeder spätere DATEV-Export trägt diese Nummern, und der DATEV-Import der Steuerkanzlei ordnet die Daten danach zu: Falsche Nummern führen dazu, dass die Buchungsdaten beim falschen Mandanten landen oder der Import scheitert.
+! Der Wirtschaftsjahresbeginn bestimmt, wie DATEV-Exporte nach Wirtschaftsjahren getrennt werden.
 (umkehrbar)
-Rechnung: ID 1003, noch ohne Nummer
-Typ: Rechnung (RE)
-Status: Entwurf (100)
-Kunde: Musterfirma GmbH (Kontakt 1001)
-Datum: 01.10.2026
-Fällig am: 15.10.2026
-Netto: 149,02 EUR
-Umsatzsteuer: 28,31 EUR
-Brutto: 177,33 EUR
-Bisher bezahlt: 0,00 EUR
-Sprache: Deutsch (Deutschland), de_DE → Englisch (USA), en_US
-Vorlage: Standard (ID tpl-standard) → Modern (ID tpl-modern)
-Briefpapier: Briefpapier 1 (ID lp-1) → Zweites Briefpapier (ID lp-2)"
-`;
-
-exports[`German previews > set the language of a draft order: says the same in German 1`] = `
-"Sprache von Auftrag 3002 (noch ohne Nummer) ändern.
-! Nur das Layout ändert sich: Status, Nummer, Texte und Positionen des Entwurfs bleiben, wie sie sind.
-! Jede Auswahl geht als eigene Anfrage an sevDesk (changeParameter), in der Reihenfolge Sprache, Vorlage, Briefpapier, und keine wird wiederholt. Schlägt eine fehl, bleiben die vorherigen gesetzt, und das Ergebnis nennt sie.
-! sevDesk nimmt eine Layout-Änderung an diesem Entwurf erst nach einer PDF-Vorschau an; der Server ruft daher zuerst eine ab (getPdf mit preventSendBy=true, der Entwurf bleibt ein Entwurf).
-(umkehrbar)
-Auftrag: ID 3002, noch ohne Nummer
-Typ: Auftragsbestätigung (AB)
-Status: Entwurf (100)
-Kunde: Musterfirma GmbH (Kontakt 1001)
-Datum: 20.09.2026
-Netto: 144,02 EUR
-Umsatzsteuer: 27,36 EUR
-Brutto: 171,38 EUR
-Sprache: Deutsch (Deutschland), de_DE → Englisch (USA), en_US"
+Beraternummer: 1234567 (unverändert)
+Mandantennummer: 12345 → 54321
+Wirtschaftsjahresbeginn: 01.01.2026 (unverändert)"
 `;
 
 exports[`German previews > undo the booking of a bank transaction: says the same in German 1`] = `

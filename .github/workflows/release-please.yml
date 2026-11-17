@@ -434,8 +434,9 @@ jobs:
 
   # Runs once npm has the package, the image passed its smoke test on both platforms and the bundle
   # is attached to the release. Download that public asset to compute its actual checksum; never
-  # put a guessed or previous release's hash into the registry. The MCP Registry pulls the image
-  # anonymously to check its label, so the GHCR package must be public.
+  # put a guessed or previous release's hash into the registry. The icon URL moves from main to
+  # the release tag at the same step. The MCP Registry pulls the image anonymously to check its
+  # label, so the GHCR package must be public.
   publish-registry:
     name: Publish to the MCP Registry
     needs: [release-please, publish-npm, publish-image, image-smoke, publish-mcpb]
@@ -468,7 +469,7 @@ jobs:
       - name: Check that server.json carries the release version (npm and OCI)
         run: node scripts/pin-plugin-version.ts --check "$VERSION" --image "$IMAGE"
 
-      - name: Add the public release bundle to server.json
+      - name: Add the public release bundle to server.json and pin its icon to the tag
         run: |
           mkdir -p build/registry
           bundle="build/registry/mcp-server-sevdesk-$VERSION.mcpb"

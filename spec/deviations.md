@@ -2339,11 +2339,13 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   account, Update 2.0 (probe `write-contact-partial-update`, in both write runs); recorded
   2026-11-16, trial account, Update 2.0 (probe `write-contact-parent`).
 - **Impact:** `sevdesk_contact_update` sends only the fields that change, to the contact, its
-  billing address and its main communication ways (`src/domain/contacts-write.ts`). Nothing can be
-  cleared (empty strings are rejected by the input schema), an update without changes is a
-  validation error, and a person never gets an organisation name or an organisation a first or
-  last name. `sevdesk_part_update` relies on the same reading for `PUT /Part/{partId}`
-  (`src/domain/parts-write.ts`).
+  billing address and its main communication ways (`src/domain/contacts-write.ts`). A text field
+  is never cleared (empty strings are rejected by the input schema); what an update takes away is
+  named in its `remove` argument: the link to a person's organisation (`PUT` with `parent: null`,
+  D-083) and single addresses and communication ways (`DELETE`, D-084, sent after every other
+  change). An update without changes is a validation error, and a person never gets an
+  organisation name or an organisation a first or last name. `sevdesk_part_update` relies on the
+  same reading for `PUT /Part/{partId}` (`src/domain/parts-write.ts`).
 - **Test:** `test/unit/tools/masterdata/contact-update.test.ts` ("changes only the given fields of
   contact, billing address and main entries", "sends no contact PUT when only a communication way
   changes", "refuses an update that changes nothing", "never mixes the kinds of contacts"),
@@ -2566,7 +2568,13 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   export reads the three DATEV settings fresh (`readDatevExportConfig` in
   `src/domain/exports/datev.ts`) and refuses to start without them (D-077). The VAT summary cannot
   learn the Ist/Soll choice, so it takes a `basis` input and defaults to accrual, saying so
-  (`DEFAULT_VAT_BASIS` in `src/domain/reports/vat.ts`).
+  (`DEFAULT_VAT_BASIS` in `src/domain/reports/vat.ts`). `sevdesk_datev_settings_update` (a
+  `commit` tool, `src/domain/exports/datev-settings.ts`) writes the three DATEV settings in the
+  recorded form (JSON numbers, the fiscal-year start as Unix seconds of Berlin midnight), fills the
+  ones not given from the current values (the spec requires all three) and warns when such a kept
+  number lies outside DATEV's range, warns when a given fiscal-year start is more than a year
+  away from today, refuses a call that changes nothing, and reads them back, comparing the
+  numbers by value (a stored `01001` goes out as 1001).
 - **Test:** `test/unit/domain/account-settings.test.ts` (including "takes a single object as well
   as the first row of a list, and lenient scalars", "maps every recorded company key, cleans text
   and compacts the IBAN"), `test/unit/tools/drafts/regime.test.ts`,
@@ -2576,7 +2584,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   sevDesk's DATEV settings are missing"), `test/unit/domain/reports/vat.test.ts` ("fills every
   line from a mixed quarter and estimates Kz 83": the default basis and its note),
   `test/contract/recorded-fixtures-m4.test.ts` ("reads the regime, the chart of accounts and the
-  company fields", "reads the DATEV export configuration the M4 probe set (D-067)"). Live: the
+  company fields", "reads the DATEV export configuration the M4 probe set (D-067)"),
+  `test/unit/domain/exports/datev-settings.test.ts`,
+  `test/unit/tools/reports/datev-settings.test.ts`. Live: the
   write probes on a small-business account (all finalizing probes then fail with the 422 above);
   the draft tools refuse rule-1 drafts there; probes `read-sevclient-keys`,
   `write-export-datev-config`.
@@ -3143,13 +3153,23 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   the contacts of that parent. `PUT` answers the contact as one object.
 - **Sources:** spec (`Model_Contact`, `Model_ContactUpdate`, `getContacts`); recorded 2026-11-16,
   trial account, Update 2.0 (probes `write-contact-parent`, `write-contact-parent-invalid`).
-- **Impact:** No tool sets `parent` yet. #86 must refuse a parent that is not an organisation and
-  a contact that is not a person itself (sevDesk would store both), read a missing `parent` key as
-  "no organisation", list contact persons with the `parent[id]` filter (and filter again locally,
-  D-035), and clear with `parent: null`.
+- **Impact:** `sevdesk_contact_create` and `sevdesk_contact_update` set `parent` from
+  `parentOrganisationId` and refuse, before anything is sent, a parent that does not exist or is a
+  person, the contact itself as parent and a parent on an organisation (sevDesk would store all of
+  them). A missing `parent` key reads as "no organisation" (`parentOrganisationId` absent).
+  `remove` kind `parentOrganisation` sends `PUT` with `parent: null`, after checking that the
+  contact belongs to that organisation. `sevdesk_contact_delete` lists the contacts whose parent
+  the contact is with the `parent[id]` filter and filters again locally (D-035), for persons too,
+  since sevDesk stores a person as parent.
 - **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("follows parent through create, set,
   change and clear and checks the parent filter", "reports wrong-sided parents as stored, as
   recorded, and a refusal with its message (D-083)"); its simulated account behaves as recorded.
+  `test/unit/tools/masterdata/contact-create.test.ts` ("links a new person to its organisation and
+  names it in the preview", "refuses %s (sevDesk would store it)"),
+  `test/unit/tools/masterdata/contact-update.test.ts` ("moves a person to another organisation and
+  names both", "removes the link with parent null and lists it as removed", "refuses %s (sevDesk
+  would store it)"), `test/unit/tools/masterdata/contact-delete.test.ts` ("deletes an organisation
+  and confirms with a read that it is gone (D-084)": the contact persons by the parent filter).
   Live: probes `write-contact-parent`, `write-contact-parent-invalid`.
 
 ### D-084: Deleting a contact deletes its addresses and communication ways
@@ -3166,17 +3186,42 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   address can be deleted while it is the billing address (category 47) and while it is the last
   one; the contact stays. The main e-mail and then the last e-mail can be deleted; the other
   e-mail does not become main (`main` stays `"0"`), so a contact can be left without a main entry
-  of a type. A contact a document references is not deleted (D-085).
+  of a type. A contact a document references is not deleted (D-085). Deleting an organisation
+  also deletes its contact persons (the persons whose `parent` it is): after `DELETE` of an
+  organisation with one such person, neither referenced by a document, answered `[null]`, `GET` of
+  the organisation and of the person both answered 404, and a `DELETE` of the person answered 404.
+  Not measured: an organisation whose contact person a document references (whether the whole
+  delete is refused or only the person stays), and contact persons with addresses or
+  communication ways of their own.
 - **Sources:** spec (`deleteContact`, `deleteContactAddress`, `deleteCommunicationWay`); recorded
   2026-11-16, trial account, Update 2.0 (probes `write-contact-delete`,
   `write-contact-delete-referenced`, `write-contact-address-delete`,
-  `write-communication-way-delete`).
-- **Impact:** No tool deletes yet. #86's contact delete must say in its preview that the
-  addresses and communication ways go too, and treat 404 on a repeated delete as "already gone";
-  removing an address or way must say when it removes the billing address or the main entry, since
-  sevDesk elects no new one.
+  `write-communication-way-delete`); the contact persons: recorded 2026-11-16, trial account,
+  Update 2.0 (one-off check by the orchestrator, run tag `MCP-E2E 20261116-2319-p4jr`).
+- **Impact:** `sevdesk_contact_delete` says in its preview that the addresses and communication
+  ways go too, and for an organisation lists the contact persons that go with it (up to 20 by name
+  and id, the rest counted; it refuses an organisation with more than 100, which it cannot all
+  read). It reads them for a person too, since sevDesk stores a person as parent (D-083), and
+  says that sevDesk may delete them with it (not measured). The approval is bound to the ids of
+  those persons, so a person added in between asks again. Afterwards it reads each person back and
+  says so when one is still there or could not be checked. A 404 on the DELETE counts as "already
+  gone". Removing an address or way says when it removes the billing address or the main entry,
+  since sevDesk elects no new one; when the same
+  update gives a new value for that very entry, a new billing address or main entry is added
+  instead of rewriting another one.
 - **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("deletes contacts, addresses and
-  communication ways and reports what is left"). Live: the four probes above.
+  communication ways and reports what is left"); `test/unit/tools/masterdata/contact-delete.test.ts`
+  ("deletes an organisation with its contact persons and reads every one back (D-084)", "lists up
+  to 20 contact persons by name and binds the approval to all of them", "refuses an organisation
+  whose contact persons cannot all be read", "says so when a contact person is still there or
+  could not be checked", "counts a 404 on the DELETE as already gone (D-084)", "shows, binds and
+  reads back the contacts stored with a person as parent (D-083)");
+  `test/unit/tools/masterdata/contact-update.test.ts` ("removes an address and the main e-mail
+  last and says what is left", "warns when the billing address goes and nothing replaces it",
+  "adds a new billing address when the billing address goes, and leaves the delivery address
+  alone", "adds a new main e-mail when the main one goes, and leaves the other e-mail alone",
+  "counts an entry sevDesk no longer has as already gone"). Live: the four probes above;
+  the contact-person cascade has no probe yet.
 
 ### D-085: Refused deletes of referenced contacts and cost centres arrive as HTTP 200
 
@@ -3194,13 +3239,21 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Impact:** The client already turns a 2xx body with an `error` member and no `objects` into an
   `unexpected_response` error with status 200 and sevDesk's message as `upstreamMessage`
   (`readJsonEnvelope` in `src/sevdesk/client.ts`), so such a refusal never passes as a successful
-  delete. #86 and #87 must report it as "sevDesk refused: the record is still referenced", read
-  the record back to confirm it still exists, and never retry.
+  delete. `sevdesk_contact_delete` sends the `DELETE` once (never retried), reads the contact back
+  and, while it is still there, reports `stillReferenced` with a note in its own words (sevDesk's
+  text never reaches the result); when a contact person reads back as gone after the refusal, it
+  no longer says that nothing was deleted. The cost-centre half stays for #87: its delete must
+  report the refusal the same way.
 - **Test:** `test/unit/sevdesk/client.test.ts` ("treats objects null next to an error as
   unexpected_response", "keeps sevDesk's error text from a 2xx error body as the upstream message
   only"); `test/unit/scripts/gaps-contacts-probes.test.ts` ("deletes contacts, addresses and
   communication ways and reports what is left", "deletes only its own cost centres, unused and in
-  use"). Live: probes `write-contact-delete-referenced`, `write-cost-centre-delete`.
+  use"); `test/regressions/contact-delete-referenced.test.ts` ("is reported as a refusal in our
+  words, not as a deletion, and never retried", through the real client);
+  `test/unit/tools/masterdata/contact-delete.test.ts` ("reports sevDesk's refusal of a referenced
+  contact in its own words (D-085)", "does not claim nothing was deleted when a contact person is
+  gone after a refusal"). Live: probes `write-contact-delete-referenced`,
+  `write-cost-centre-delete`.
 
 ### D-086: Custom contact fields: 30-character names, no contact embed, cascading deletes
 
@@ -3230,22 +3283,59 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
     both (the spec's required `customFieldName` is not needed with an id).
   - `DELETE` of a value or a setting answers `{objects: [null]}`; deleting a setting that a value
     uses succeeds and deletes the value too (no 409).
-  - Not measured: a length limit on `value` and `description` (the probe sent 17 and 21
-    characters).
+  - A `value` has at most 100 characters: `PUT /ContactCustomField/{id}` with 255 characters
+    answers 400 "Property 'value' is too long. Maximum for this property is 100".
+  - One value per setting and contact: a second `POST /ContactCustomField` for the same contact
+    and setting answers 400 "Bad Request", and a read by contact shows one value.
+  - Deleting a contact deletes its values: after `DELETE /Contact/{id}`,
+    `GET /ContactCustomField/{valueId}` answers 404 ("No Model_ContactCustomField with the id …
+    was found"), and the setting's `getReferenceCount` drops to the values other contacts still
+    have.
+  - `findContactsByCustomFieldValue` finds persons as well as organisations, and ignores `limit`
+    and `offset`: with two matches, `limit=1` and `limit=1&offset=1` both answered both contacts.
+  - Not measured: a length limit on `description`; whether `/ContactCustomField` answers on every
+    sevDesk plan (only a trial account was available).
 - **Sources:** spec (`ContactField` operations, `Model_ContactCustomField*`,
   `findContactsByCustomFieldValue`); recorded 2026-11-16, trial account, Update 2.0 (probes
   `write-custom-field-settings`, `write-custom-field-values`; the settings list in
-  `test/fixtures/recorded/2026-11-16/contacts/custom-field-settings.json`).
-- **Impact:** No tool reads or writes custom fields yet. #86 must keep setting names within 30
-  characters, read a contact's values with `GET /ContactCustomField?contact[id]=…` and
-  `embed=contactCustomFieldSetting` (filtered again locally, D-035), search with
-  `customFieldSetting[id]` (exact value, any case), and warn that deleting a setting deletes every
-  value of it.
+  `test/fixtures/recorded/2026-11-16/contacts/custom-field-settings.json`); the value limit, one
+  value per setting, the contact delete and the search paging: recorded 2026-11-17, trial account,
+  Update 2.0 (one-off check by the orchestrator, run tag `MCP-E2E 20261117-0019-efhb`).
+- **Impact:** `src/domain/contact-custom-fields.ts`. `sevdesk_contact_get` reads a contact's
+  values with one more request (`GET /ContactCustomField?contact[id]=…&contact[objectName]=Contact`
+  and `embed=contactCustomFieldSetting`, filtered again locally, D-035) and shows each with the
+  setting id and name; a failed read still returns the contact and says so. `customFields` of
+  `sevdesk_contact_create` and `sevdesk_contact_update` names each field by setting id or name (a
+  name at most 30 characters, matched ignoring case; one that no setting or two settings have is
+  refused before any request; so is a value over 100 characters), `POST`s a value the contact
+  lacks and `PUT`s only `objectName` and `value` of one it has, after the communication ways;
+  `remove` kind `customField` deletes a value last, a 404 counting as already gone. Since a contact
+  holds one value per setting, an update that sets a field and removes its value is refused (the
+  new value would be added before the old one is gone); a contact with two values of one setting is
+  refused for that setting as a defensive branch. `sevdesk_contacts_search` `customField` sends
+  `customFieldSetting[id]` alone (exact value, any case, as the argument says), reads the answer
+  once, cuts it at 1000 contacts with a note, and pages locally. `sevdesk_reference_lookup` kind
+  `contact_custom_fields` lists the settings. Nothing writes a setting: deleting one would delete
+  every value of it, so settings are defined in the sevDesk web app. The delete preview counts the
+  values as deleted with the contact.
 - **Test:** `test/contract/recorded-gaps-contacts.test.ts` (the recorded settings list: keys,
-  scalar types, `identifier` and `placeholder`, through `sevdesk_api_get`);
-  `test/unit/scripts/gaps-contacts-probes.test.ts` ("probes custom fields without putting their
-  values into the report"). Live: probes `write-custom-field-settings`,
-  `write-custom-field-values`.
+  scalar types, `identifier` and `placeholder`, through `sevdesk_api_get` and through
+  `listCustomFieldSettings`); `test/unit/scripts/gaps-contacts-probes.test.ts` ("probes custom
+  fields without putting their values into the report");
+  `test/regressions/custom-field-settings-read-only.test.ts` ("no tool that works with custom
+  fields sends anything but a GET to a setting"); `test/unit/tools/contacts/get.test.ts` ("returns
+  the contact with addresses, communication ways and custom fields, GETs only", "drops other
+  contacts' custom field values and cleans their text (D-035)");
+  `test/unit/tools/masterdata/contact-custom-fields.test.ts` (create and update: values, order,
+  refusals, partial writes, "refuses a value over 100 characters before any request, also past
+  the schema", "refuses to set a field whose value the same update removes (one value per
+  field)"); `test/unit/tools/contacts/search.test.ts` ("resolves the field by name and asks sevDesk
+  with the setting id alone, GETs only", "reads the whole match set once and cuts a huge one at
+  1000, saying so"); `test/unit/tools/masterdata/contact-delete.test.ts` ("says the custom field
+  values go too, and when they could not be read (D-086)"); `test/unit/tools/meta/reference-lookup.test.ts`
+  ("lists the account's custom contact fields with limit 1000, GET only (D-086)"). Live: probes
+  `write-custom-field-settings`, `write-custom-field-values`; the 2026-11-17 facts have no probe
+  yet.
 
 ### D-087: `checkCustomerNumberAvailability` answers a bare boolean and needs a number
 
@@ -3431,8 +3521,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   set it back to 100 (D-060). Every transaction carries `deletedAt` and `restoredAt` (null
   unless deleted), keys the spec does not declare. Lists and balances leave soft-deleted rows
   out: after the run, the unfiltered `GET /CheckAccountTransaction` (53 rows, total 53) held no
-  row with `deletedAt`, and on all seven active accounts `getBalanceAtDate` equalled the sum of
-  the listed rows. A soft-deleted row stays readable only by id.
+  row with `deletedAt`, and on each of the seven active accounts listed then (the six of the
+  banking run and the file-import account of `write-transaction-enshrine`) `getBalanceAtDate`
+  equalled the sum of the listed rows. A soft-deleted row stays readable only by id.
 - **Sources:** spec (`deleteCheckAccountTransaction`); recorded 2026-11-16, trial account,
   Update 2.0 (probes `write-transaction-delete`, `write-check-account-factories`,
   `read-transaction-soft-delete`).
@@ -3465,8 +3556,10 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
     `name` and `update`.
   - `DELETE /CheckAccount/{id}` answers 2xx `{objects: [null]}` and **archives** the account:
     `GET /CheckAccount/{id}` still answers it with `status` `"0"`, and `GET /CheckAccount` leaves
-    it out (6 accounts listed after the run, all at 100). An account that still holds a
-    transaction is archived just as well, and its transaction gets `deletedAt` (D-096). The
+    it out (`read-check-account-kinds` listed 6 accounts right after the banking run, all at 100;
+    `read-transaction-soft-delete` and the fixture's `total` count 7, after
+    `write-transaction-enshrine` had made its own file-import account). An account that still
+    holds a transaction is archived just as well, and its transaction gets `deletedAt` (D-096). The
     unfiltered `GET /CheckAccountTransaction` lists no row of an archived account
     (`read-transaction-soft-delete`, 53 rows, none outside the active accounts).
   - Rows carry `autoMapTransaction` (singular), not the spec's `autoMapTransactions`. A
@@ -3553,6 +3646,7 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Status:** Open. **Evidence:** spec + recorded.
 - **Spec says:** The `uploadTempFile` answer declares `contentHash` without saying what it
   hashes. `GET /Document` is undocumented (D-024); the community model lists `contentHash`.
+  `GET /Voucher` (`getVouchers`) declares no `embed` parameter.
 - **Actual behavior:**
   - For a generated 1,507-byte receipt PDF, `uploadTempFile`'s `contentHash` is the lower-case
     hex SHA-256 of the uploaded bytes (not MD5 or SHA-1). A second upload of the same bytes got a
@@ -3566,16 +3660,35 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   - Documents sevDesk renders itself (the PDF stored when an invoice is finalized, linked to the
     invoice as `baseObject`) are listed, at status 100, with `contentHash` **null**; so were the
     three newest documents of the account.
-- **Sources:** spec (`uploadTempFile`); recorded 2026-11-16, trial account, Update 2.0 (probes
-  `write-receipt-hash`, `read-document-hash`).
-- **Impact:** The receipt check of #92 computes SHA-256 locally and compares it with the
-  `contentHash` of the Document a voucher references (`GET /Document/{id}`), not with
-  `GET /Document` (which leaves receipts of drafts out); a null hash means "unknown", never "no
-  match". A file in a local folder matches a booked receipt by hash only; rendered invoices have
-  no hash to match.
+  - `GET /Voucher?embed=document` puts the whole Document into every list row in place of the
+    `{id, objectName}` reference, `contentHash` included (53 rows, 13 with a document, 12 of them
+    with a hash). It does so on later pages too (`limit=10` with `offset` 0, 10 and 40); more than
+    1,000 vouchers were not tried. Without `embed` a row carries only the reference.
+  - A receipt made by sevDesk's recognition (`Voucher/Factory/createVoucherFromFile`, D-103) gets
+    a Document with `contentHash` **null**, for a PDF and a PNG alike, also when read 12 seconds
+    later, by id and in the embedded list rows. Its `filesize` is the number of bytes sent (1,435
+    for the PDF, 70 for the PNG), `extension` is `pdf` / `png` and `mimeType` null. So only
+    receipts uploaded through `uploadTempFile` + `saveVoucher` carry a checksum.
+- **Sources:** spec (`uploadTempFile`, `getVouchers`); recorded 2026-11-16, trial account, Update
+  2.0 (probes `write-receipt-hash`, `read-document-hash`); recorded 2026-11-17, trial account,
+  Update 2.0 (manual check (lead): `embed=document` on the voucher list and its later pages, two
+  receipts made by `createVoucherFromFile`).
+- **Impact:** The receipt checks of #92 compare SHA-256 checksums with the `contentHash` sevDesk
+  lists with each voucher (`GET /Voucher?embed=document`, one request per 1,000 vouchers, no read
+  by id), not with `GET /Document` (which leaves receipts of drafts out). A null or missing hash
+  means "unknown", never "no match": rendered invoices and receipts made by the recognition have
+  none, so a result counts such receipts and words an unmatched file accordingly, and counts a
+  list row without the embedded document apart. A file matches a receipt by hash only; the same
+  `filesize` and `extension` are a hint, never a match.
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("compares receipt hashes without
   showing them": SHA-256 match, new token per upload, Document gone with the draft, null hashes
-  of rendered documents). Handling: pending, the receipt-folder check of #92.
+  of rendered documents); `test/unit/domain/voucher-receipt-hash.test.ts` (the embedded
+  document's checksum in lower case with size and extension; none for a plain reference, a
+  rendered file or a recognized receipt); `test/unit/domain/reports/audit/receipt-folder.test.ts`
+  (matches by the listed checksum, counts receipts without one and rows without the embedded
+  document, never matches by size); `test/unit/domain/reports/audit/duplicates-check.test.ts`
+  (checksums from the list with `embed=document`, no read by id). Handling: done,
+  `sevdesk_receipt_folder_check` and the `duplicates` check of `sevdesk_records_audit` (#92).
 
 ### D-101: The ZIP exports answer files only with `download=true` and change no document
 
@@ -3601,17 +3714,72 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   - Nothing changed: the draft invoice kept status, `sendDate`, `sendType` and `update`, and no
     invoice (130) or voucher (49) changed any key. Unlike `getPdf` without `preventSendBy`
     (D-023), the export does not mark drafts as sent.
+  - When nothing matches, `download=true` still answers a real ZIP (179 bytes) with one entry,
+    `readme.txt` (62 bytes, "Es wurden keine Dateien hochgeladen, daher ist diese ZIP leer."),
+    for `limit` 1 and 1000, a window in January 2000 and an amount range nothing falls into. (The
+    probes' "JSON with content null" came from their own HTTP layer.)
+  - `startAmount`/`endAmount` take decimals, bounds inclusive: on `voucherZip`, a voucher with a
+    decimal gross amount g was in the archive for g..g and g−0.01..g+0.01, and not for
+    g+0.01..g+0.02 (readme ZIP). `invoiceZip` honours them too: 110 entries for an amount range
+    111 listed invoices fall into, against 130 entries unfiltered for 131 listed.
+  - Entries can be fewer than documents: a voucher archive holds only vouchers with a receipt
+    file (13 entries for 53 listed vouchers in the window, the 13 that had a `document`); both
+    invoice runs held one invoice fewer than the list (130 of 131, 110 of 111).
+  - Duration: sevDesk answers only once the ZIP is rendered. `invoiceZip` took 30 s for 110
+    entries (21 MB), 46 s for 25 entries (6.6 MB, a first call) and 63 s for 130 entries
+    (24.6 MB); `voucherZip` about 1 s for 13 small receipts.
+  - Not measured: the contact filter on `voucherZip` (no voucher with a supplier contact in the
+    window), which invoice the invoice archive leaves out, archives beyond 25 MB, whether
+    sevDesk stops at `sevQuery[limit]` (only an empty archive was asked for, with limits 1 and
+    1000), and whether sevDesk labels other states (a cancellation, say) in the draft label's
+    place: only the draft's label was seen.
 - **Sources:** spec (`exportInvoiceZip`, `exportVoucherZip`); recorded 2026-11-16, trial account,
-  Update 2.0 (probes `write-export-invoice-zip`, `write-export-voucher-zip`).
+  Update 2.0 (probes `write-export-invoice-zip`, `write-export-voucher-zip`); recorded 2026-11-16,
+  trial account, Update 2.0 (one-off checks by the orchestrator).
 - **Impact:** The archive export of #95 asks for `download=true`, parses the media type leniently
   (the stray apostrophe), checks that the body is a ZIP, always sends the filters and an explicit
   `limit`, says that drafts are included (or filters them out), and needs no `commit` tier: it
   changes no document. It stays a side-effect GET with the `write` tier in this repository's
-  client until a tool settles it, since a ZIP of many PDFs is a heavy job on sevDesk's side.
+  client until a tool settles it, since a ZIP of many PDFs is a heavy job on sevDesk's side. The
+  readme-only ZIP is the empty case, a lower entry count is no error, and the default
+  `SEVDESK_TIMEOUT_MS` of 30 s is too short for a month of invoices.
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("exports the ZIPs, describes entries
   as patterns and sees no change to documents": the null JSON content, the raw ZIP with drafts,
-  unchanged documents; "keeps only the signature of a binary body in the evidence"). Handling:
-  pending, the archive export of #95.
+  unchanged documents; "keeps only the signature of a binary body in the evidence");
+  `test/unit/domain/exports/archive.test.ts` ("accepts the recorded raw ZIP with the stray
+  apostrophe and counts entries and drafts", "refuses %s and saves nothing", "is a side effect for
+  the client, and never carries an enshrine flag"), `test/unit/domain/exports/zip.test.ts`,
+  `test/unit/tools/reports/archive-export.test.ts` ("asks once with the write tier, saves the ZIP
+  unchanged and counts entries and drafts": entry names and count read back from the saved file),
+  `test/regressions/export-archives-no-enshrine.test.ts`, `test/unit/sevdesk/paths.test.ts`
+  ("treats the document archive %s as a side effect"), `test/regressions/api-get-side-effects.test.ts`
+  (`/Export/invoiceZip`, `/Export/voucherZip`); for the one-off checks:
+  `test/unit/domain/exports/archive.test.ts` ("treats sevDesk's readme-only ZIP as empty",
+  "never counts the readme next to documents", "sends the invoice amount filter, now recorded",
+  "asks for the archive with a size cap and its own, longer time budget", "turns a timeout into
+  the remedy", "treats %i files for a limit of %i as possibly cut: %s", "asks for a default that
+  fits the time and size budgets at the recorded rates", "never counts another label in the
+  draft's place as a draft: %s"),
+  `test/unit/tools/reports/archive-export.test.ts` ("saves nothing for %s and says no document
+  matched", "treats fewer entries than documents as normal, not as an error", "flags an archive
+  a file short of the limit…"),
+  `test/unit/sevdesk/client.test.ts` ("gives a download its own, longer time budget, and only a
+  download", "bounds a request's own time budget…"). Handling: `sevdesk_archive_export`
+  (`src/tools/reports/archive-export.ts`, `src/domain/exports/archive.ts`), a `write` tool:
+  `download=true`, a fixed query with an explicit `limit` and only the recorded filters (contact
+  for invoices, amounts for both), the media type parsed leniently, the body checked as a
+  readable ZIP, the top-level `readme.txt` never counted and an archive without documents not
+  saved (in our own words), drafts counted from their entry names (`draftEntries`, only the
+  label `(Entwurf)`, so the advice to remove drafts never hits a document with another label), a
+  note that fewer files than documents is normal, a default `limit` of 500 documents (up to 1000;
+  500 invoices fit the time and size budgets at the recorded rates, 1000 do not),
+  `mayBeTruncated` when the files come within 2 % of the limit (an archive cut at the limit can
+  hold fewer files than documents; for vouchers it is no proof of completeness), 100 MiB at most,
+  and its own time budget of 5 minutes
+  (`ARCHIVE_TIMEOUT_MS`, through `SevdeskRequest.timeoutMs`, which only `download` honours,
+  bounded by `requestTimeoutMs` in `src/sevdesk/client.ts`) with a timeout error that names the
+  remedy; `resolveGetSafety` treats both endpoints as side effects (`ARCHIVE_ENDPOINTS` in
+  `src/sevdesk/paths.ts`), and `sevdesk_api_get` refuses them anywhere in a path.
 
 ### D-102: The DATEV XML job works like the CSV job and marks nothing as exported
 
@@ -3628,7 +3796,10 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   `BITTE-ENTPACKEN_Belegbilder_…_bis_….zip`, is a ZIP of two inner ZIPs named `DATEV_…_bis_….zip`
   (5.6 MB and 6.7 KB for one month of the trial). No invoice (130) and no voucher (51) changed
   any key. A second job with `includeExportedDocuments=false` exported the same two entries of
-  almost the same size: nothing was marked as exported in a way this flag reads.
+  almost the same size: nothing was marked as exported in a way this flag reads. Not measured:
+  `exportByPaydate` and `includeEnshrined` on this job (neither was sent). The spec leaves the
+  default of `includeEnshrined` open, so whether an XML export holds enshrined documents is
+  unknown.
 - **Sources:** spec (`exportDatevXML`); recorded 2026-11-16, trial account, Update 2.0 (probe
   `write-export-datev-xml`, opt-in).
 - **Impact:** `sevdesk_datev_export` can offer the XML format (#95) with the same job flow,
@@ -3637,7 +3808,18 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   promise `includeExportedDocuments` has any effect).
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("runs the opt-in probes only when
   named…": a POST without enshrine flags, download only through `downloadPresignedExport`, nested
-  ZIPs, unchanged documents, equal entries). Handling: pending, the XML option of #95.
+  ZIPs, unchanged documents, equal entries); `test/unit/domain/exports/datev.test.ts` ("builds the
+  XML job's query from the recorded keys only: E/X scope, no image or export flags", "starts the
+  XML job with a POST to its own path"), `test/unit/tools/reports/export-tools.test.ts`
+  ("sevdesk_datev_export: format xml", including "refuses exportByPaydate %s with the XML export
+  before sending anything"), `test/regressions/export-archives-no-enshrine.test.ts`
+  ("DATEV XML export"). Handling: `sevdesk_datev_export` takes `format: "xml"` (default `csv`,
+  unchanged): the same job flow, downloader, host allowlist and 100 MiB cap, a POST to
+  `createDatevXmlZipExportJob` with only `startDate`, `endDate` and a scope of E/X
+  (`datevJobQuery`), never `exportByPaydate` (refused with XML before anything is sent),
+  `includeEnshrined` or `includeExportedDocuments`; the preview names the parts the XML export
+  leaves out, does not warn about an "exported" mark, and says, like the result, that whether
+  enshrined documents are included is not recorded.
 
 ### D-103: `createVoucherFromFile` makes a draft that sevDesk fills in within seconds
 
@@ -3689,17 +3871,53 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   - `createPackingListFromOrder` worked from a sent offer, a draft confirmation and a sent one,
     and left the source's status alone. A confirmation marked as sent with `sendBy` read back with
     status 500, not 200.
+  - One-off check of the sources the probes had not tried: `createContractNoteFromOrder` from an
+    offer that is already **accepted** (500) works, gives a draft `AB` with `origin` the offer, and
+    the offer stays at 500. From a **rejected** offer (300) it works too and sets the offer to 500:
+    the request silently turns a rejection into an acceptance. `createPackingListFromOrder` from a
+    **draft** offer (100) works, gives a draft `LI` with `origin` the offer, and leaves the offer at 100.
 - **Sources:** spec (`createContractNoteFromOrder`, `createPackingListFromOrder`,
   `Model_CreatePackingListFromOrder`); recorded 2026-11-16, trial account, Update 2.0 (probes
-  `write-order-contract-note-from-order`, `write-order-packing-list-from-order`).
-- **Impact:** A tool that makes a confirmation must say in its preview that the offer becomes
-  accepted (500), and should refuse a draft offer or say that it accepts an unsent one. The new
-  order's number may equal one sevDesk already handed out; the tool reads the order back and shows
-  its number. The id comes from the answer itself (`createdDocumentId` already accepts a bare
-  record, D-064). (#89)
-- **Test:** pending: the #89 tools. Live: probes `write-order-contract-note-from-order`,
-  `write-order-packing-list-from-order` (their reporting: `test/unit/scripts/gaps-documents-probes.test.ts`,
-  "describes order confirmations and delivery notes against their source").
+  `write-order-contract-note-from-order`, `write-order-packing-list-from-order`); recorded
+  2026-11-16, trial account, Update 2.0 (one-off check by the orchestrator).
+- **Impact:** `sevdesk_order_create_confirmation` (commit tier, because it accepts the offer)
+  takes sent (200) and accepted (500) offers only, and its preview says whether the offer becomes
+  accepted or stays so. It refuses drafts (that would accept an offer the customer never received)
+  and rejected offers (reopening one is its own confirmed step,
+  `sevdesk_order_set_offer_status`, D-108). `sevdesk_order_create_delivery_note` (write tier,
+  the source stays as it is) takes sent and accepted offers and order confirmations that are
+  drafts, sent or accepted; it refuses offer drafts although sevDesk accepts them (nothing was
+  offered to the customer yet to deliver on) and rejected offers. An accepted offer as the source
+  is not recorded; it is allowed because the factory left every recorded source alone, whatever
+  its status (decided 2026-11-17). Both send the order in the query and the body, read the new
+  order back (its id comes from the answer itself, `createdDocumentId`, D-064), check that it is
+  a draft of the expected type that points to the source, and look up other orders of the type
+  with the same number for a trusted note. A failure after the request lists the new order and,
+  for a confirmation, the offer as completed writes. Both refuse a second document from the same
+  source unless `allowDuplicate`; the delivery note refuses only a second draft and names
+  finalized delivery notes from the same source in a warning (a further one can be a partial
+  delivery). Both previews list the source's discounts on the whole document with the rest of its
+  content (the shared reader and facts of D-116, so the confirmation's approval binds them too; a
+  row of another record is refused), warn when there are several, and say that whether the
+  factory copies them has not been checked. (#89)
+- **Test:** `test/unit/tools/orders/create-confirmation.test.ts` ("creates the confirmation with
+  the offer in query and body, and reads both back", "creates one from an accepted offer and says
+  the offer stays accepted", "refuses a draft offer before any request (sevDesk would accept it
+  unsent)", "refuses a rejected offer before any request (sevDesk would accept it silently)",
+  "names another confirmation with the same number", "names the accepted offer too when the
+  confirmation cannot be read back", "shows and binds the offer's document discounts in both
+  languages (review of #112, L5)", "refuses when sevDesk lists another order's discount for the
+  offer (D-116)"), `test/unit/tools/orders/create-delivery-note.test.ts` ("creates the delivery
+  note with the source in query and body, and reads it back", "accepts sent and accepted offers
+  and order confirmations that are drafts, sent or accepted", "refuses offer drafts, rejected
+  offers and other statuses", "names finalized delivery notes from the order without refusing
+  (review of #112, L1)", "shows the order's document discounts (review of #112, L5)"),
+  `test/unit/domain/document-discounts.test.ts`,
+  `test/regressions/offer-status-and-confirmation.test.ts` ("refuses a confirmation from an offer
+  with status 100/300"), `test/integration/order-acceptance-path.test.ts`. Live: probes
+  `write-order-contract-note-from-order`, `write-order-packing-list-from-order` (their reporting:
+  `test/unit/scripts/gaps-documents-probes.test.ts`, "describes order confirmations and delivery
+  notes against their source").
 
 ### D-108: `PUT /Order/{id}` sets an offer's status; on a draft it also renumbered it
 
@@ -3716,12 +3934,18 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
     renumbers a draft that leaves status 100 this way.
 - **Sources:** spec (`updateOrder`, `Model_OrderUpdate`); recorded 2026-11-16, trial account,
   Update 2.0 (probe `write-order-status-accept-reject`).
-- **Impact:** Accepting or rejecting an offer is one `PUT /Order/{id}` with `{status}` only. The
-  tool allows it only from a sent offer (200) and back to 200, and refuses drafts, so the
-  renumbering never happens through it. (#89)
-- **Test:** pending: the #89 tools. Live: probe `write-order-status-accept-reject`
+- **Impact:** Accepting or rejecting an offer is one `PUT /Order/{id}` with `{status}` only
+  (`setOrderStatus`, strict body). `sevdesk_order_set_offer_status` (commit tier) accepts or
+  rejects only a sent offer (200) and reopens only an accepted or rejected one (back to 200); it
+  refuses drafts, so the renumbering never happens through it, and every order that is not an
+  offer. The offer is read back afterwards. (#89)
+- **Test:** `test/unit/tools/orders/offer-status.test.ts` ("accepts a sent offer with a body of
+  only the status, and reads it back", "refuses a draft offer before any request: sevDesk would
+  renumber it", "allows accept and reject only from sent, reopen only from accepted or rejected"),
+  `test/regressions/offer-status-and-confirmation.test.ts` ("refuses to accept/reject/reopen a
+  draft offer", "builds and sends only {status}"). Live: probe `write-order-status-accept-reject`
   (`test/unit/scripts/gaps-documents-probes.test.ts`, "sets offer statuses, sets them back, and
-  records the refusal on a draft").
+  records the renumbering of a draft").
 
 ### D-109: `DELETE /Order` and `DELETE /CreditNote` delete only drafts
 
@@ -4002,14 +4226,21 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   approval. (#94) Built so (`src/domain/drafts/discount.ts`, `src/domain/document-discounts.ts`):
   the draft tools' `discount` argument (percent or a fixed net amount, one per document; `null`
   removes it) reads the stored rows before every update; the get and draft tools return them with
-  sevDesk's `sumDiscountNet`/`sumDiscountGross`; finalize, send and enshrine bind the rows and list
-  them in both languages; `sevdesk_invoice_create_from_order` shows the order's discounts in its
-  preview and the invoice's in its result. A document with several rows is never replaced or
-  removed by the draft tools (the refusal says that sevDesk's totals do not count all of them),
-  and the get tools, the from-order tool and the approvals of finalize, send and enshrine warn
-  about it. Not measured, so a new discount is refused with a reason: on gross prices, on
-  positions with several tax rates, a fixed amount on a document in another currency than EUR,
-  and on an e-invoice. What a partial or advance invoice from an order does with its discount is
+  sevDesk's `sumDiscountNet`/`sumDiscountGross`; finalize, send and enshrine, the order
+  confirmation and the offer status (`sevdesk_order_create_confirmation`,
+  `sevdesk_order_set_offer_status`) bind the rows and list them in both languages, and the
+  delivery note preview lists them (D-107); `sevdesk_invoice_create_from_order` shows the order's
+  discounts in its preview and the invoice's in its result. Every one reads the rows with the same
+  reader and writes each with the same text. The reader refuses a row of another record, a row
+  without a value, and a row whose `discount` or `percentage` flag is missing or unreadable:
+  recorded rows always carry both, and without one whether it deducts or adds, and whether its
+  value is a percentage or an amount, would be a guess. A document with several rows is never
+  replaced or removed by the draft tools (the refusal says that sevDesk's totals do not count all
+  of them), and the get tools, the from-order tool and all of these approvals warn about it. A
+  kept discount is never refused: when the totals cannot be computed with it, the draft update
+  preview says that sevDesk computes them. Not measured, so a new discount is refused with a
+  reason: on gross prices, on positions with several tax rates, a fixed amount on a document in
+  another currency than EUR, and on an e-invoice. What a partial or advance invoice from an order does with its discount is
   not checked either; the from-order preview says so. The replacement was checked on an invoice;
   orders and credit notes send the same discount keys. The read-back still says when sevDesk
   stored something other than what was sent.
@@ -4024,8 +4255,11 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   sevDesk deducted (D-116)"), `test/unit/tools/masterdata/invoice-from-order.test.ts`
   ("sevdesk_invoice_create_from_order with a discount on the whole order"),
   `test/regressions/approval-binds-document-discount.test.ts` (Guard 3: "warns in English and
-  German when the document has several discounts"). Live: probes `write-document-discount`,
-  `read-order-get-discounts`.
+  German when the document has several discounts"), `test/unit/domain/document-discounts.test.ts`
+  (the shared reader and row text; "refuses a row with no discount flag", "… no percentage
+  flag"), `test/unit/tools/orders/create-confirmation.test.ts` ("shows
+  and binds the offer's document discounts in both languages (review of #112, L5)"). Live: probes
+  `write-document-discount`, `read-order-get-discounts`.
 
 ### D-140: Languages: invoices store `en`, orders and credit notes the locale or German
 

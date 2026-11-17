@@ -488,10 +488,10 @@ describe("the document discounts in the content facts (D-116)", () => {
       [discount("CreditNote", 2001, { percentage: "0", value: "12" })],
     );
     expect(valueOf(content.printed("en"), "Discount on the whole document (Rabatt)")).toBe(
-      "12 net (fixed amount)\nText: Treuerabatt",
+      "12.00 net (fixed amount)\nText: Treuerabatt",
     );
     expect(valueOf(content.printed("de"), "Rabatt auf den Gesamtbetrag")).toBe(
-      "12 netto (fester Betrag)\nText: Treuerabatt",
+      "12,00 netto (fester Betrag)\nText: Treuerabatt",
     );
   });
 

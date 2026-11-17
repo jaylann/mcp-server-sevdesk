@@ -471,7 +471,7 @@ export async function resolveUpdateBasics(
       rule !== undefined &&
       regime !== undefined &&
       !rule.regimes.includes(regime)
-        ? [keptRuleWarning(rule, regime)]
+        ? [keptRuleWarning(rule, regime, special?.defaultRuleId)]
         : []),
       ...(rule !== undefined && (taxChanged || positions !== undefined)
         ? taxRuleWarnings(rule, regime)
@@ -481,13 +481,24 @@ export async function resolveUpdateBasics(
   };
 }
 
-/** Warning for a stored tax rule the update keeps although it does not fit the account. */
-function keptRuleWarning(rule: TaxRule, regime: TaxRegime): string {
+/**
+ * Warning for a stored tax rule the update keeps although it does not fit the account. It
+ * suggests `specialDefaultId` when the document type has its own Kleinunternehmer default (a
+ * provision credit note takes rule 10, not 11), else the regime's usual rule.
+ */
+function keptRuleWarning(
+  rule: TaxRule,
+  regime: TaxRegime,
+  specialDefaultId: number | undefined,
+): string {
+  const special = specialDefaultId === undefined ? undefined : taxRuleById(specialDefaultId);
   const fix =
-    regime === "small_business"
-      ? `taxRuleId ${SMALL_BUSINESS_RULE_ID} (Kleinunternehmer, §19 UStG) with 0 % rates`
-      : `taxRuleId ${DEFAULT_TAX_RULE_ID} (Umsatzsteuerpflichtige Umsätze) or another rule for ` +
-        "regular VAT";
+    special !== undefined
+      ? `taxRuleId ${special.id} (${special.nameDe}) with 0 % rates`
+      : regime === "small_business"
+        ? `taxRuleId ${SMALL_BUSINESS_RULE_ID} (Kleinunternehmer, §19 UStG) with 0 % rates`
+        : `taxRuleId ${DEFAULT_TAX_RULE_ID} (Umsatzsteuerpflichtige Umsätze) or another rule for ` +
+          "regular VAT";
   const account =
     regime === "small_business"
       ? "the Kleinunternehmer regulation (§19 UStG)"

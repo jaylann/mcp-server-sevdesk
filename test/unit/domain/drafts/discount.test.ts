@@ -426,6 +426,49 @@ describe("the totals of an update", () => {
     ).toEqual({ net: "180.00", tax: "34.20", gross: "214.20" });
   });
 
+  it("never refuses a kept discount that no longer fits the new positions", () => {
+    // Review of #114, finding 1: new positions that bring the net total to zero, or below a kept
+    // fixed amount, must not refuse an update that leaves the discount alone.
+    const keepFixed = planDiscountChange(
+      undefined,
+      stored(row({ percentage: false, value: "50" })),
+      "Invoice 2102",
+    );
+    const below = totals(keepFixed, discountedDraft, {
+      positions: [{ ...recordedPosition, unitPrice: "40" }],
+    });
+    expect(below).toEqual({
+      expected: undefined,
+      changes: true,
+      warning:
+        "The draft keeps its discount on the whole document. The discount of 50.00 is more than " +
+        "the net total of 40.00. sevDesk computes the new total; check it in the result before " +
+        "finalizing.",
+    });
+
+    const keepPercent = planDiscountChange(undefined, stored(row()), "Invoice 2102");
+    const zero = totals(keepPercent, discountedDraft, {
+      positions: [{ ...recordedPosition, unitPrice: "0" }],
+    });
+    expect(zero.expected).toBeUndefined();
+    expect(zero.warning).toBe(
+      "The draft keeps its discount on the whole document. The net total is 0.00; a discount on " +
+        "the whole document needs a positive total. sevDesk computes the new total; check it in " +
+        "the result before finalizing.",
+    );
+  });
+
+  it("still refuses a new discount that does not fit the new positions", () => {
+    const replace = planDiscountChange({ amount: "50" }, stored(row()), "Invoice 2102");
+    expect(
+      refusal(() =>
+        totals(replace, discountedDraft, {
+          positions: [{ ...recordedPosition, unitPrice: "40" }],
+        }),
+      ).message,
+    ).toBe("The discount of 50.00 is more than the net total of 40.00.");
+  });
+
   it("leaves the total to sevDesk, with a warning, for a kept discount it cannot compute", () => {
     const keep = planDiscountChange(undefined, stored(row(), row({ id: 9002 })), "Invoice 2102");
     const result = totals(keep, discountedDraft, { positions: [recordedPosition] });
@@ -472,8 +515,20 @@ describe("preview and read-back", () => {
         [row(), row({ id: 2, surcharge: true, percentage: false, isNet: false, text: undefined })],
         "EUR",
       ),
-    ).toBe('10 % of the net total ("Rabatt"); surcharge 10 EUR gross');
+    ).toBe('10 % of the net total ("Rabatt"); surcharge (Aufschlag): 10.00 EUR gross');
     expect(storedDiscountText([], "EUR")).toBeUndefined();
+  });
+
+  it("writes a stored and a new fixed amount alike, and names no currency outside EUR", () => {
+    // Review of #114, finding 2: the stored row was "10 EUR net", the new one "10.00 EUR net",
+    // and a CHF draft's stored fixed amount was given a currency the approval leaves out (D-116).
+    const stored = row({ percentage: false, value: "10" });
+    expect(storedDiscountText([stored], "EUR")).toBe('10.00 EUR net ("Rabatt")');
+    expect(discountText({ ...fixed, value: "10" }, "EUR")).toBe('10.00 EUR net ("Rabatt")');
+    expect(storedDiscountText([stored], "CHF")).toBe('10.00 net (fixed amount) ("Rabatt")');
+    expect(storedDiscountText([row({ percentage: false, value: "12.345" })], "EUR")).toBe(
+      '12.345 EUR net ("Rabatt")',
+    );
   });
 
   const item = { id: 9001, kind: "percent" as const, value: "10", basis: "net" as const };

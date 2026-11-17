@@ -25,7 +25,8 @@ import { parseUpstream, zBool01, zId, zOptionalDecimal, zRef, zText } from "../s
 import type { SevdeskClient } from "../sevdesk/types.js";
 import { cleanText, compact, moneySchema, splitTotals } from "./common.js";
 import { TEXT_MAX } from "./document-positions.js";
-import type { Money } from "./money.js";
+import { DEFAULT_CURRENCY, type Money, money } from "./money.js";
+import { numberText, type Phrase, phrase, type PreviewLanguage } from "./preview-text.js";
 
 /** The document kinds that carry discounts. */
 export type DiscountDocumentKind = "invoice" | "creditNote" | "order";
@@ -78,7 +79,8 @@ function unexpected(message: string): SevdeskError {
 
 /**
  * Reads the discounts of one document (`GET /<kind>/{id}/getDiscounts`, one page with an explicit
- * limit). Every row must name this document as its `object` and carry a value; anything else, and
+ * limit). Every row must name this document as its `object` and carry a value and both its
+ * `discount` and `percentage` flags (readable as "0"/"1"); anything else, and
  * a page as long as the limit (the rest would be unknown), is an `unexpected_response` error:
  * nothing is shown, approved or replaced on discounts this server could not read completely.
  */
@@ -107,11 +109,20 @@ export async function readDocumentDiscounts(
         "sevDesk listed a document discount that does not belong to the document or has no value.",
       );
     }
+    // Recorded rows always carry both flags (D-116). Without one, whether the row deducts or
+    // adds, and whether its value is a percentage or an amount, would be a guess.
+    if (row.discount === undefined || row.percentage === undefined) {
+      throw unexpected(
+        "sevDesk listed a document discount without saying whether it is a discount or a " +
+          "surcharge and whether its value is a percentage or an amount. Check the document in " +
+          "sevDesk.",
+      );
+    }
     return {
       id: row.id,
       text: row.text,
-      surcharge: row.discount === false,
-      percentage: row.percentage === true,
+      surcharge: !row.discount,
+      percentage: row.percentage,
       value: row.value,
       isNet: row.isNet,
     };
@@ -194,16 +205,103 @@ export function discountTotals(
 }
 
 /**
- * A trusted warning for a document with `count` discount rows when there are several: sevDesk's
- * totals then do not count all of them (see the module comment). `undefined` for one or none.
+ * The trusted sentence for a document with `count` discount rows when there are several:
+ * sevDesk's totals then do not count all of them (see the module comment). `undefined` for one or
+ * none. The DTO's `warning` is its English half; approvals show both halves.
  */
-function severalDiscountsWarning(count: number): string | undefined {
+export function severalDiscountsWarning(count: number): Phrase | undefined {
   if (count < 2) return undefined;
-  return (
+  return phrase(
     `This document has ${String(count)} discounts on the whole document, and sevDesk's totals ` +
-    "may count only one of them (in a check, only the newest), so the total may not be what the " +
-    "rows suggest. Check it in sevDesk."
+      "may count only one of them (in a check, only the newest), so the total may not be what " +
+      "the listed discounts suggest. Check the total in sevDesk.",
+    `Das Dokument hat ${String(count)} Rabatte auf den Gesamtbetrag, und sevDesk rechnet in den ` +
+      "Summen womöglich nur einen davon ein (in einer Prüfung nur den neuesten); die Summe ist " +
+      "dann nicht, was die aufgeführten Rabatte erwarten lassen. Prüfe die Summe in sevDesk.",
   );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Preview text
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * What {@link discountRowText} reads of a discount: a stored row ({@link DiscountRow} fits), a DTO
+ * item ({@link discountAmountOfItem}) or a new discount a draft tool writes.
+ */
+export interface DiscountAmount {
+  readonly surcharge: boolean;
+  readonly percentage: boolean;
+  /** Exact decimal, e.g. "10" or "50.5". */
+  readonly value: string;
+  /** Net (`true`) or gross (`false`); `undefined` reads as net. */
+  readonly isNet: boolean | undefined;
+}
+
+/** The {@link DiscountAmount} of a DTO item. */
+export function discountAmountOfItem(item: DocumentDiscount["items"][number]): DiscountAmount {
+  return {
+    surcharge: item.surcharge === true,
+    percentage: item.kind === "percent",
+    value: item.value,
+    isNet: item.basis === undefined ? undefined : item.basis === "net",
+  };
+}
+
+const ROW_WORDS: Readonly<
+  Record<
+    PreviewLanguage,
+    {
+      readonly net: string;
+      readonly gross: string;
+      readonly ofNet: string;
+      readonly ofGross: string;
+      readonly fixedAmount: string;
+      readonly surcharge: string;
+    }
+  >
+> = {
+  en: {
+    net: "net",
+    gross: "gross",
+    ofNet: "of the net total",
+    ofGross: "of the gross total",
+    fixedAmount: "fixed amount",
+    surcharge: "surcharge (Aufschlag)",
+  },
+  de: {
+    net: "netto",
+    gross: "brutto",
+    ofNet: "vom Nettobetrag",
+    ofGross: "vom Bruttobetrag",
+    fixedAmount: "fester Betrag",
+    surcharge: "Aufschlag",
+  },
+};
+
+/**
+ * One discount on the whole document as every preview and approval shows it: "10 % of the net
+ * total", "10.00 EUR net", a surcharge marked as such. A fixed amount is shown exactly, with at
+ * least two decimals; on a document in another currency than EUR it gets no currency, "10.00 net
+ * (fixed amount)", because which one sevDesk reads it in is not recorded (D-116). The text printed
+ * with the discount is not part of it: each preview places that untrusted text its own way.
+ */
+export function discountRowText(
+  row: DiscountAmount,
+  currency: string,
+  lang: PreviewLanguage,
+): string {
+  const words = ROW_WORDS[lang];
+  const gross = row.isNet === false;
+  const basis = gross ? words.gross : words.net;
+  // `money` renders the exact value with at least two decimals; only its amount is used here.
+  const fixed = numberText(money(row.value, DEFAULT_CURRENCY).amount, lang);
+  const amount = row.percentage
+    ? `${numberText(row.value, lang)} % ${gross ? words.ofGross : words.ofNet}`
+    : currency === DEFAULT_CURRENCY
+      ? `${fixed} ${currency} ${basis}`
+      : `${fixed} ${basis} (${words.fixedAmount})`;
+  return row.surcharge ? `${words.surcharge}: ${amount}` : amount;
 }
 
 /**
@@ -230,6 +328,6 @@ export function documentDiscountDto(
       }),
     ),
     ...discountTotals(sums, currency),
-    warning: severalDiscountsWarning(rows.length),
+    warning: severalDiscountsWarning(rows.length)?.en,
   });
 }

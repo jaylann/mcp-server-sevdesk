@@ -296,13 +296,12 @@ describe("the approval shows the discount it makes binding", () => {
       const english =
         "This document has 2 discounts on the whole document, and sevDesk's totals may count " +
         "only one of them (in a check, only the newest), so the total may not be what the " +
-        "discounts listed suggest. Check the total in sevDesk before you approve.";
+        "listed discounts suggest. Check the total in sevDesk.";
       expect(several.preview.warnings).toContain(english);
       expect(several.previewDe?.warnings).toContain(
         "Das Dokument hat 2 Rabatte auf den Gesamtbetrag, und sevDesk rechnet in den Summen " +
           "womöglich nur einen davon ein (in einer Prüfung nur den neuesten); die Summe ist dann " +
-          "nicht, was die aufgeführten Rabatte erwarten lassen. Prüfe die Summe vor der Freigabe " +
-          "in sevDesk.",
+          "nicht, was die aufgeführten Rabatte erwarten lassen. Prüfe die Summe in sevDesk.",
       );
       expect(several.previewDe?.warnings).toHaveLength(several.preview.warnings.length);
       expect(several.preview.facts.map((fact) => fact.label)).toEqual(

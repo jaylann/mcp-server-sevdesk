@@ -34,8 +34,10 @@
         "SEVDESK_CONFIRM": "${user_config.confirm}",
         "SEVDESK_TOOLSETS": "${user_config.toolsets}",
         "SEVDESK_FILE_DIRS": "${user_config.file_dir}",
+        "SEVDESK_FILE_URL_HOSTS": "${user_config.file_url_hosts}",
         "SEVDESK_OUTPUT_DIR": "${user_config.output_dir}",
-        "SEVDESK_AUDIT_LOG": "${user_config.audit_log}"
+        "SEVDESK_AUDIT_LOG": "${user_config.audit_log}",
+        "SEVDESK_VIES_CHECK": "${user_config.vies_check}"
       }
     }
   },
@@ -117,6 +119,13 @@
       "required": false,
       "default": ""
     },
+    "file_url_hosts": {
+      "type": "string",
+      "title": "Receipt link hosts",
+      "description": "Comma-separated hosts receipts and e-invoices may be downloaded from when Claude is given an https link, e.g. portal.example.com or *.example.com for its subdomains. Empty: links are refused.",
+      "required": false,
+      "default": ""
+    },
     "output_dir": {
       "type": "directory",
       "title": "Output folder",
@@ -130,6 +139,13 @@
       "description": "Path of a local, append-only JSON Lines log of write calls (previews, confirmations, executions and failures), with secrets redacted. Empty: no audit log. If the file cannot be written, writes are refused.",
       "required": false,
       "default": ""
+    },
+    "vies_check": {
+      "type": "boolean",
+      "title": "Check VAT IDs with VIES",
+      "description": "Let the VAT-ID check ask the European Commission's VIES service whether a customer's VAT ID is valid. This sends the VAT ID to ec.europa.eu. Off: only the format is checked, and the VAT ID is sent nowhere.",
+      "required": false,
+      "default": false
     }
   }
 }

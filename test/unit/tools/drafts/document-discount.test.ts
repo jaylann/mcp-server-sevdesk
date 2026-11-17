@@ -429,6 +429,34 @@ describe("update: keep, replace, remove", () => {
     expect(plan.state.expected).toEqual({ net: "90.00", tax: "17.10", gross: "107.10" });
   });
 
+  it("does not refuse new positions below a kept fixed discount: sevDesk computes the total", async () => {
+    // Review of #114, finding 1: the call leaves the discount alone, so it is not refused.
+    const client = new FakeSevdeskClient(
+      withRoutes(
+        invoiceUpdateRoutes,
+        discountsRoute("Invoice", 2102, [
+          discountRow("Invoice", 2102, { percentage: "0", value: "50" }),
+        ]),
+      ),
+    );
+    const plan = await prepareWrite(
+      invoiceUpdateDraftTool,
+      { id: 2102, positions: [{ name: "Beratung", quantity: 1, unitPrice: 40, taxRate: 19 }] },
+      client,
+    );
+    expect(plan.state.body).not.toHaveProperty("discountSave");
+    expect(plan.state.expected).toBeUndefined();
+    expect(plan.preview.facts).toContainEqual({
+      label: "Discount (unchanged)",
+      value: '50.00 EUR net ("Rabatt")',
+    });
+    expect(plan.preview.warnings).toContain(
+      "The draft keeps its discount on the whole document. The discount of 50.00 is more than " +
+        "the net total of 40.00. sevDesk computes the new total; check it in the result before " +
+        "finalizing.",
+    );
+  });
+
   it("warns and leaves the total to sevDesk for kept discounts it does not compute", async () => {
     const client = new FakeSevdeskClient(
       withRoutes(

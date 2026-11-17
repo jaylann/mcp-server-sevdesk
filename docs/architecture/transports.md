@@ -127,6 +127,13 @@ two implementations (`src/safety/file-sources.ts`):
   `src/http/transfer-routes.ts` and `transfer-pages.ts`. Bearer mode can still use local folders,
   and `SEVDESK_OUTPUT_DIR`, when set, wins over download links.
 
+In both, a file argument that starts like a URL is a link: `src/safety/url-files.ts` downloads it
+during the call from the hosts in `SEVDESK_FILE_URL_HOSTS` (none by default), resolving the host
+once to public addresses only (`src/safety/public-address.ts`, shared with the OAuth client
+metadata fetch) and connecting to the checked address (`src/safety/pinned-https.ts`), following at
+most three redirects that pass the same checks, without credentials, capped; nothing is kept
+([Files from a link](../security/local.md#files-from-a-link)).
+
 The model never sees or sends file bytes, and it cannot put text on the upload page. Operator
 details, limits and lifetimes are in [Files over HTTP](../remote/files.md); the decisions are in
 [ADR 0008](../adr/0008-file-transfer-over-http.md). How tools are kept to this path is in

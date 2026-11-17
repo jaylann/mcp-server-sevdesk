@@ -497,7 +497,12 @@ describe("gap probes (#86, #87) on a simulated trial account", () => {
     expect(report.results).toHaveLength(IDS.length);
     const writes = account.client.writes();
     for (const call of writes) {
-      expect(call.tier, `${call.method} ${call.path}`).toBe("write");
+      // An invoice update with the id and no type needs commit: the client cannot tell it from a
+      // change of a recurring template.
+      const untyped =
+        call.path === "/Invoice/Factory/saveInvoice" &&
+        ((call.body as Rec)["invoice"] as Rec)["invoiceType"] === undefined;
+      expect(call.tier, `${call.method} ${call.path}`).toBe(untyped ? "commit" : "write");
       expect(call.path).not.toMatch(/sendBy|sendVia|enshrine|bookAmount|cancel/);
     }
     // Every DELETE names a record this run created (relations come from the tag factory).

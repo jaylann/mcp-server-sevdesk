@@ -99,6 +99,8 @@ const REFUSED_PATHS = [
   "/SevSequence/Factory/getByType",
   "/Export/createDatevCsvZipExportJob",
   "/Export/createDatevXmlZipExportJob",
+  "/Export/invoiceZip",
+  "/Export/voucherZip",
   "/Export/datevCSV",
   "/Export/invoiceCsv",
   "/ExportJob/jobDownloadInfo",
