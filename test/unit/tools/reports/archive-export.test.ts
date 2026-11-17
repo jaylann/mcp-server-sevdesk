@@ -120,6 +120,10 @@ describe("sevdesk_archive_export: prepare", () => {
     [{ subject: "vouchers", year: 2026, contactId: 1 }, "contactId filters invoices only"],
     [{ subject: "invoices", from: "2026-02-01", to: "2026-01-01" }, "from is after to"],
     [{ subject: "invoices" }, "give either year"],
+    [
+      { subject: "vouchers", year: 2026, minAmount: "500", maxAmount: 100 },
+      "minAmount is above maxAmount",
+    ],
   ])("refuses %j before anything is sent", async (args, text) => {
     const client = new FakeSevdeskClient(ARCHIVE_ROUTES);
     const error = await prepareWrite(archiveExportTool, args, client, {

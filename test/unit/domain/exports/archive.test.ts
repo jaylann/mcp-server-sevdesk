@@ -190,6 +190,11 @@ describe("exportArchive", () => {
     [{ ...INVOICES, limit: 0 }, "limit"],
     [{ ...INVOICES, limit: 1001 }, "limit"],
     [{ ...INVOICES, subject: "vouchers", contactId: 1 } as const, "contactId"],
+    // An inverted range would come back as sevDesk's empty ZIP ("no document matched").
+    [{ ...INVOICES, minAmount: "500", maxAmount: "100" }, "minAmount is above maxAmount"],
+    // Compared as decimals, not as text ("100.1" < "99" as strings) or floats.
+    [{ ...INVOICES, minAmount: "100.1", maxAmount: "99" }, "minAmount is above maxAmount"],
+    [{ ...INVOICES, minAmount: "100.01", maxAmount: "100" }, "minAmount is above maxAmount"],
   ] as const)("refuses invalid arguments locally (%#)", async (params, text) => {
     const client = zipClient("/Export/invoiceZip", RECORDED);
     const error = await exportArchive(tierScopedClient(client, "write"), params).catch(
@@ -198,6 +203,20 @@ describe("exportArchive", () => {
     expect(error).toMatchObject({ kind: "validation" });
     expect((error as Error).message).toContain(text);
     expect(client.calls).toEqual([]);
+  });
+
+  it("accepts a range of one amount: the bounds are inclusive (D-101)", async () => {
+    const client = zipClient("/Export/voucherZip", RECORDED, RECORDED_TYPE);
+    await exportArchive(tierScopedClient(client, "write"), {
+      ...INVOICES,
+      subject: "vouchers",
+      minAmount: "123.4",
+      maxAmount: "123.40",
+    });
+    expect(client.writes()[0]?.query).toMatchObject({
+      "sevQuery[filter][startAmount]": "123.4",
+      "sevQuery[filter][endAmount]": "123.40",
+    });
   });
 
   it("asks for the archive with a size cap and its own, longer time budget", async () => {

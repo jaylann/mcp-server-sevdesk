@@ -41,6 +41,7 @@
 import { toUnixSeconds } from "../../sevdesk/dates.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import type { QueryValue, SevdeskClient } from "../../sevdesk/types.js";
+import { compare } from "../money.js";
 import { looksLikeZip } from "./datev.js";
 import { listZipEntries, type ZipEntry } from "./zip.js";
 
@@ -158,11 +159,19 @@ export function mayBeTruncated(entries: number, limit: number): boolean {
 }
 
 /**
- * Checks the arguments locally (nothing is sent on a mistake): the period, the limit, and that
- * each filter is one recorded for the subject.
+ * Checks the arguments locally (nothing is sent on a mistake): the period, the limit, the amount
+ * range (compared as exact decimals: sevDesk would answer an inverted range with its empty ZIP),
+ * and that each filter is one recorded for the subject.
  */
 export function checkArchiveParams(params: ArchiveParams): void {
   if (params.from > params.to) throw invalid("from is after to.");
+  if (
+    params.minAmount !== undefined &&
+    params.maxAmount !== undefined &&
+    compare(params.minAmount, params.maxAmount) > 0
+  ) {
+    throw invalid("minAmount is above maxAmount.");
+  }
   if (!Number.isInteger(params.limit) || params.limit < 1 || params.limit > MAX_ARCHIVE_DOCUMENTS) {
     throw invalid(`limit must be a whole number from 1 to ${String(MAX_ARCHIVE_DOCUMENTS)}.`);
   }
