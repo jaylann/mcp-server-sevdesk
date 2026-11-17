@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:f698ef2b5da2 -->
+<!-- translated-from: docs/faq.md sha256:PLACEHOLDER -->
 
 # Häufige Fragen
 
@@ -44,9 +44,11 @@ Weil es vollen Zugriff auf das Konto hat, lege es für einen eigenen sevDesk-Ben
 ### Wohin gehen meine Daten?
 
 Der Server läuft auf deinem Rechner (oder im Fernzugriff auf deinem eigenen Server) und spricht nur
-mit der sevDesk-API. Es gibt zwei Ausnahmen: den DATEV-Export, den sevDesk als Download aus seinem
-eigenen Speicher (bei Amazon S3) ausliefert, und einen Server im Fernzugriff mit OAuth, der das
-Metadaten-Dokument eines Clients, der sich verbindet, vom Host dieses Clients abruft. Ergebnisse
+mit der sevDesk-API. Es gibt drei Ausnahmen: den DATEV-Export, den sevDesk als Download aus seinem
+eigenen Speicher (bei Amazon S3) ausliefert, die Prüfung einer USt-IdNr. bei VIES, dem Dienst der
+Europäischen Kommission, nur wenn du sie mit `SEVDESK_VIES_CHECK` einschaltest, und einen Server im
+Fernzugriff mit OAuth, der das Metadaten-Dokument eines Clients, der sich verbindet, vom Host dieses
+Clients abruft. Ergebnisse
 gehen an deinen MCP-Client und von dort an deinen Modellanbieter: Rechnungen, Kontakte und
 Kontoumsätze sind dann Teil deiner Unterhaltung, zu den Bedingungen dieses Anbieters.
 Buchhaltungsdaten enthalten personenbezogene Daten deiner Kunden; prüfe daher die Bedingungen
@@ -114,6 +116,27 @@ Umsatzsteuer, und Steuerregeln für die reguläre Umsatzsteuer werden abgelehnt,
 gespeichert wird, weil sevDesk solche Dokumente nicht fertigstellen würde. `sevdesk_account_info`
 sagt dem Assistenten, welche Regelung gilt.
 
+### Kann es einen Rabatt auf die ganze Rechnung geben?
+
+Ja, auf Entwürfen von Rechnungen, Angeboten, Auftragsbestätigungen und Gutschriften: einen
+Prozentsatz vom Nettobetrag oder einen festen Nettobetrag in EUR, mit seinem Text, gesetzt,
+ersetzt oder entfernt mit den Entwurfswerkzeugen
+([Ein Rabatt auf die ganze Rechnung](guides/invoices.de.md#ein-rabatt-auf-die-ganze-rechnung)).
+Vorerst nur bei Nettopreisen mit einem einzigen Steuersatz und nicht auf E-Rechnungen, den Fällen,
+die gegen sevDesk geprüft sind. Welchen Rabatt ein Entwurf auch trägt, die Freigabe zeigt ihn,
+bevor du fertigstellst oder versendest, und eine Rechnung aus einem Angebot übernimmt dessen
+Rabatt.
+
+### Kann es eine englische Rechnung schreiben oder anderes Briefpapier nehmen?
+
+Ja, auf Entwürfen von Rechnungen, Aufträgen und Gutschriften: `sevdesk_document_set_layout` setzt
+die Sprache (acht, darunter Englisch), die Vorlage und das Briefpapier
+([Eine englische Rechnung auf anderem Briefpapier](guides/invoices.de.md#eine-englische-rechnung-auf-anderem-briefpapier)).
+Es braucht die Stufe `commit` und deine Bestätigung, weil sevDesk mit derselben Anfrage auch
+fertige Dokumente ändert. Kopf- und Fußtexte können über ihren Namen aus deinen Textvorlagen
+kommen; Textvorlagen anlegen oder löschen bleibt in sevDesk. Die Freigabe vor dem Fertigstellen
+oder Versenden eines Entwurfs zeigt Sprache, Vorlage und Briefpapier.
+
 ### Kann es mit E-Rechnungen umgehen?
 
 Ja, in beide Richtungen. Empfangene XRechnungen (UBL und CII) und ZUGFeRD-/Factur-X-Dateien werden
@@ -124,15 +147,36 @@ abrufen ([Bereit für die E-Rechnung](guides/invoices.de.md#bereit-für-die-e-re
 einem Ordner, den du erlaubst (`SEVDESK_FILE_DIRS`); im Fernzugriff lädst du sie über eine Seite
 auf deinem Server hoch.
 
+### Kann sevDesks eigene Belegerkennung einen Beleg ausfüllen?
+
+Ja, für Ausgaben- und Einnahmenbelege. `sevdesk_voucher_recognize_receipt` schickt die Datei an
+sevDesks Belegerkennung, die einen Belegentwurf anlegt und binnen Sekunden Datum, Nummer, Summen
+und einen Lieferantentext ausfüllt. Diese Werte sind ungeprüft, und Positionen und Steuersätze
+können falsch sein, auch wenn die Summe stimmt (ein Beleg mit zwei Steuersätzen kam als eine
+Position zurück). Der Entwurf hat noch keine Steuerregel und kein Buchungskonto: Der Assistent
+vervollständigt ihn mit der normalen Entwurfsänderung, bevor er sich fertigstellen lässt
+([sevDesk den Beleg lesen lassen](guides/receipts.de.md#sevdesk-den-beleg-lesen-lassen)).
+
 ### Kann es nach DATEV exportieren?
 
 Ja. [`sevdesk_datev_export`](tools.md#sevdesk_datev_export) lässt sevDesk den
 DATEV-Buchungsstapel (CSV-Dateien in einem ZIP) für einen Monat, ein Quartal, ein Jahr oder einen
 Zeitraum erstellen, gespeichert in deinem Ausgabeordner oder im Fernzugriff als Download-Link
 angeboten. Es schreibt die Dokumente nie fest und braucht die DATEV-Einstellungen in sevDesk
-(Beraternummer, Mandantennummer, Beginn des Wirtschaftsjahres).
-[`sevdesk_csv_export`](tools.md#sevdesk_csv_export) speichert die CSV-Exporte von sevDesk, zum
-Beispiel für Excel.
+(Beraternummer, Mandantennummer, Beginn des Wirtschaftsjahres), die
+[`sevdesk_datev_settings_update`](tools.md#sevdesk_datev_settings_update) nach deiner Bestätigung
+setzt. Mit `format: "xml"` exportiert es stattdessen die Dokumente als DATEV-XML mit ihren
+Belegbildern. [`sevdesk_csv_export`](tools.md#sevdesk_csv_export) speichert die CSV-Exporte von
+sevDesk, zum Beispiel für Excel.
+
+### Bekomme ich alle Rechnungs- oder Beleg-PDFs auf einmal, für die Steuerberatung oder eine Betriebsprüfung?
+
+Ja. [`sevdesk_archive_export`](tools.md#sevdesk_archive_export) lässt sevDesk die Rechnungs-PDFs
+oder die Belege eines Zeitraums in ein ZIP packen, standardmäßig höchstens 500 Dokumente (bis
+1.000) und 100 MiB pro Datei, und ändert nichts an den Dokumenten. sevDesk nimmt Entwürfe mit (das Ergebnis zählt sie,
+damit du sie herausnehmen kannst) und lässt Belege ohne Belegdatei weg. Ein großes Archiv dauert
+Minuten; die Abhilfe ist ein kürzerer Zeitraum. Mehr dazu:
+[Auswertungen und Exporte](guides/evaluations.de.md#rechnungs--und-belegarchiv).
 
 ### Kann es Bareinnahmen (Kasse) erfassen und Kontoumsätze von Hand eintragen?
 
@@ -152,12 +196,63 @@ Auswertungen von sevDesk noch eine Steuererklärung. Jedes Ergebnis sagt, was es
 Was sie abdecken und was bei dir bleibt, steht unter
 [Auswertungen und Exporte](guides/evaluations.de.md#wie-weit-du-dich-darauf-verlassen-kannst).
 
+### Findet es doppelt gebuchte Belege oder fehlende Rechnungen?
+
+Ja, als Hinweise. `sevdesk_records_audit` mit `check: duplicates` sucht doppelt gebuchte Belege
+(derselbe Lieferant und dieselbe Belegnummer, dieselbe Belegdatei oder derselbe Betrag innerhalb
+weniger Tage) und Entwürfe, die drei Wochen oder länger offen liegen; `check: recurring_gaps` lernt,
+welche Lieferanten jeden Monat, jedes Quartal oder jedes Jahr abrechnen, und nennt die Zeiträume
+ohne Rechnung, meist ein verlorener Beleg. Beide lesen nur deine Daten und ändern nichts. Was sie
+melden und was sie bewusst auslassen, steht unter
+[Auswertungen und Exporte](guides/evaluations.de.md#prüfungen).
+
+### Erkennt es, welche Belege in meinem Ordner nie gebucht wurden?
+
+Ja, wenn der Server diesen Ordner lesen darf (`SEVDESK_FILE_DIRS`: nicht auf einem entfernten
+Server mit OAuth; im Bearer-Modus nur für Ordner auf dem Server). `sevdesk_receipt_folder_check`
+vergleicht die SHA-256-Prüfsummen der PDF-, PNG-, JPEG- und XML-Dateien im Ordner mit denen der
+Belegdateien an deinen Belegen, für einen Monat, ein Quartal oder ein Jahr. Eine Datei, die kein
+Beleg trägt, wurde wohl nie gebucht; das ist ein
+Hinweis, kein Beweis, denn derselbe Beleg als andere Datei (ein Scan, ein Foto aus der App) hat
+eine andere Prüfsumme, und eine Belegdatei, die die Belegerkennung von sevDesk aus einem Upload
+angelegt hat, hat gar keine (das Ergebnis zählt sie und nennt solche derselben Größe als
+schwachen Hinweis). Die Prüfung holt keinen Dateiinhalt ins Gespräch und lädt nichts hoch
+([Auswertungen und Exporte](guides/evaluations.de.md#belege-im-ordner-die-nie-gebucht-wurden)).
+
 ### Unterstützt es sevDesk in Österreich?
 
 Nicht in 1.0. Steuerregeln, die Umsatzsteuer-Auswertung (Kennzahlen der UStVA), die Prüfungen für
 E-Rechnungen und der Buchhaltungs-Skill folgen deutschem Recht, und der Server ist nur mit
 deutschen Konten getestet. Lesen kann mit einem österreichischen Konto funktionieren, aber dort ist
 nichts überprüft. Unterstützung für Österreich ist für ein späteres 1.x-Release vorgesehen.
+
+### Kann es Abo-Rechnungen einrichten?
+
+Ja. [`sevdesk_invoice_create_recurring`](tools.md#sevdesk_invoice_create_recurring) (Stufe
+`commit`, du bestätigst) speichert eine Vorlage für wiederkehrende Rechnungen, monatlich, vierteljährlich,
+halbjährlich oder jährlich, mit eingeschalteter automatischer Generierung, außer du willst sie aus
+([Abo-Rechnungen](guides/invoices.de.md#abo-rechnungen)). sevDesk erzeugt daraus dann an jedem
+Ausführungstag selbst einen Rechnungsentwurf, innerhalb etwa einer Minute: nicht fertiggestellt,
+nicht versendet, mit einer vorläufigen Nummer, die beim Fertigstellen endgültig wird. Du prüfst
+jeden Entwurf und stellst ihn mit den üblichen Rechnungswerkzeugen fertig und versendest ihn. Das
+automatische Versenden von sevDesk, das jede erzeugte Rechnung fertigstellen, per E-Mail versenden
+und festschreiben würde, bevor jemand sie sieht, schaltet der Server nie ein.
+[`sevdesk_invoice_update_recurring`](tools.md#sevdesk_invoice_update_recurring) ändert eine Vorlage
+(auch ihre automatische Generierung),
+[`sevdesk_invoice_end_recurring`](tools.md#sevdesk_invoice_end_recurring) beendet eine und
+[`sevdesk_invoice_reactivate_recurring`](tools.md#sevdesk_invoice_reactivate_recurring) startet sie
+wieder, jeweils Stufe `commit` mit deiner Bestätigung. Eine Vorlage mit eingeschaltetem
+automatischem Versenden wird hier nur beendet; Ändern oder Aktivieren bleibt der sevDesk-Web-App
+überlassen. Löschen lässt sich eine Vorlage nur in der sevDesk-Web-App.
+
+### Kann es mit Angeboten, Auftragsbestätigungen und Lieferscheinen umgehen?
+
+Ja. Neben Angebotsentwürfen hält es die Antwort des Kunden fest (angenommen oder abgelehnt,
+`commit`), legt aus einem Angebot die Auftragsbestätigung an (`commit`, weil sevDesk das Angebot
+dabei als angenommen markiert) und aus einer Auftragsbestätigung einen Lieferschein (`write`) und
+danach die Rechnung aus dem Auftrag ([Rechnungen](guides/invoices.de.md#angebote-annehmen-bestätigen-liefern)).
+Einen eigenen Filter für liegengebliebene Angebote gibt es nicht; frag nach versendeten Angeboten
+in einem Zeitraum.
 
 ### Kann es Briefe per Post versenden?
 
@@ -171,6 +266,58 @@ Ja. `sevdesk_part_get` meldet den aktuellen Bestand, wenn die Bestandsführung a
 `sevdesk_parts_list` und `sevdesk_part_get` zeigen `stock` und `stockEnabled`, und
 `sevdesk_part_create` und `sevdesk_part_update` setzen sie. Die sevDesk-API hat keine weiteren
 Endpunkte für den Lagerbestand.
+
+### Kann es mit Zusatzfeldern von Kontakten umgehen?
+
+Ja, mit ihren Werten. `sevdesk_contact_get` zeigt die Zusatzfelder eines Kontakts mit ihren
+Namen, `sevdesk_contact_create` und `sevdesk_contact_update` setzen sie (`customFields`, über die
+ID oder den Namen des Felds), `sevdesk_contact_update` entfernt einen Wert (`remove` mit kind
+`customField`), und `sevdesk_contacts_search` findet Kontakte über einen Wert (`customField`; der
+ganze Wert, Groß- und Kleinschreibung egal). `sevdesk_reference_lookup` mit kind
+`contact_custom_fields` listet die Felder deines Kontos. Die Felder selbst legst du in der
+sevDesk-Weboberfläche an: Wer dort ein Feld löscht, löscht seinen Wert bei jedem Kontakt, darum
+legt der Server nie ein Feld an, benennt keins um und löscht keins.
+
+### Kann es Dokumente nach Projekt oder Kunde gruppieren (Tags)?
+
+Ja, mit den Tags von sevDesk. `sevdesk_tags_list` listet die Tags und wie viele Rechnungen,
+Gutschriften, Aufträge und Belege jeden tragen. `sevdesk_invoices_list`,
+`sevdesk_credit_notes_list`, `sevdesk_orders_list` und `sevdesk_vouchers_list` nehmen einen
+`tag`-Namen und zeigen nur die Dokumente mit diesem Tag; ein unbekannter Name wird abgelehnt,
+statt alles aufzulisten. `sevdesk_document_tag` (Stufe `write`) fügt einem Dokument einen Tag
+hinzu oder entfernt ihn, ein Dokument pro Aufruf. Tags haben einen Namen, keine Nummer, und
+sevDesk vergleicht Namen ohne Rücksicht auf Groß- und Kleinschreibung und Akzente („Café“ ist
+„cafe“): Ein Name, den sevDesk noch nicht kennt, legt den Tag an, und wer einen Tag von seinem
+letzten Dokument entfernt, löscht ihn in sevDesk; die Vorschau sagt beides.
+
+### Kann es Rechnungen und Belege auf eine Kostenstelle buchen?
+
+Ja. Die Werkzeuge, die Entwürfe von Rechnungen, Belegen und Gutschriften anlegen und ändern
+(`sevdesk_invoice_create_draft`, `sevdesk_invoice_update_draft`, `sevdesk_voucher_create_draft`,
+`sevdesk_voucher_update_draft`, `sevdesk_credit_note_create_draft`,
+`sevdesk_credit_note_update_draft`), nehmen das Argument `costCentre`: die ID der Kostenstelle oder
+ihre Nummer oder ihren Namen als Text, verglichen ohne Rücksicht auf Groß- und Kleinschreibung und
+Akzente. `sevdesk_reference_lookup` mit der Art `cost_centres` listet die Kostenstellen des
+Kontos. Ein unbekannter Name oder einer, der zu mehreren Kostenstellen passt, wird abgelehnt, bevor
+etwas gespeichert wird. `sevdesk_invoices_list`, `sevdesk_vouchers_list` und
+`sevdesk_credit_notes_list` filtern nach Kostenstelle („die Ausgaben dieses Monats auf der
+Kostenstelle München“), die Abrufwerkzeuge zeigen sie, und die Freigabe beim Fertigstellen nennt
+sie. Aufträge nehmen keine: sevDesk nimmt eine Kostenstelle am Auftrag an, speichert sie aber
+nicht. Eine Änderung ohne `costCentre` behält die gespeicherte, und `removeCostCentre: true` nimmt
+sie mit den drei Änderungswerkzeugen von einem Entwurf. Die Kostenstellen selbst verwaltest du in
+sevDesk.
+
+### Was hat Projekt X gekostet?
+
+Frag danach: „Was hat das Projekt Website-Relaunch dieses Jahr gekostet?“ oder „Zeig die Ausgaben
+dieses Monats auf der Kostenstelle München“. `sevdesk_records_summarize` und
+`sevdesk_profit_and_loss` nehmen einen `tag` oder eine `costCentre` und zählen nur diese
+Dokumente; `groupBy` `tag` oder `cost_centre` zeigt alle Projekte oder Kostenstellen
+nebeneinander. Ein Name, den das Konto nicht hat, wird abgelehnt, statt mit den Summen aller
+Dokumente beantwortet zu werden. Ein Dokument mit mehreren Tags zählt für jeden davon, deshalb
+ergeben die Tag-Gruppen zusammen mehr als die Gesamtsumme, und die Antwort sagt es; Kostenstellen,
+eine je Dokument, gehen in der Summe auf. Mehr dazu:
+[Auswertungen und Exporte](guides/evaluations.de.md#nach-projekt-tag-oder-kostenstelle).
 
 ## Hilfe
 

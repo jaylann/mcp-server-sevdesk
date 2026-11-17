@@ -8,30 +8,34 @@
  *   no query, fragment, credentials or dot segments;
  * - its host must be on the `SEVDESK_OAUTH_CLIENTS` allowlist (checked before any network I/O),
  *   which also defends against consent phishing through attacker-hosted documents;
- * - the host is resolved once and every address must be public (`ssrf.ts`); the request goes to
- *   that address with `https.request` (pinned `lookup`, SNI and certificate check for the host
- *   name), never through `fetch`;
+ * - the host is resolved once and every address must be public (`src/safety/public-address.ts`);
+ *   the request goes to that address with `https.request` (`src/safety/pinned-https.ts`: pinned
+ *   `lookup`, SNI and certificate check for the host name), never through `fetch`;
  * - no redirects, 3 s to connect, 5 s in total, `application/json` only, at most 5 KiB;
  * - the document's `client_id` must equal the URL, it lists 1–10 redirect URIs, declares no
  *   client secret and no token endpoint auth method other than `none`.
  *
  * Good documents are cached (LRU of 64, `max-age` clamped to 60 s–24 h); failures never are.
  */
-import { request as httpsRequest } from "node:https";
-import type { LookupFunction } from "node:net";
 import { isIP } from "node:net";
 
 import { z } from "zod";
 
 import { sanitizeUntrusted } from "../../safety/fence.js";
-import type { HttpLog } from "../types.js";
+import {
+  createPinnedGet,
+  type PinnedGet,
+  type PinnedGetRequest,
+  type PinnedGetResponse,
+} from "../../safety/pinned-https.js";
 import {
   type ResolvedAddress,
   resolvePublicAddress,
   type Resolver,
   SsrfError,
   systemResolver,
-} from "./ssrf.js";
+} from "../../safety/public-address.js";
+import type { HttpLog } from "../types.js";
 
 /** Largest metadata document accepted. */
 const MAX_DOCUMENT_BYTES = 5 * 1024;
@@ -79,36 +83,19 @@ export class CimdError extends Error {
   }
 }
 
-/** One HTTPS GET to an already checked address. */
-export interface HttpsGetRequest {
-  /** Host name: sent as `Host` and SNI, and checked against the certificate. */
-  readonly hostname: string;
-  /** Path and nothing else (no query). */
-  readonly path: string;
-  /** The checked address to connect to. */
-  readonly address: ResolvedAddress;
-}
+/** One HTTPS GET to an already checked address; the fetcher sends the path without a query. */
+export type HttpsGetRequest = PinnedGetRequest;
 
 /** The response headers the fetcher looks at; everything else is dropped. */
-const READ_HEADERS = [
-  "content-type",
-  "content-length",
-  "content-encoding",
-  "cache-control",
-] as const;
+const READ_HEADERS = ["content-type", "content-length", "content-encoding", "cache-control"];
 
-export interface HttpsGetResponse {
-  readonly status: number;
-  /** Lower-cased header names. */
-  readonly headers: Readonly<Record<string, string | undefined>>;
-  readonly body: Buffer;
-}
+export type HttpsGetResponse = PinnedGetResponse;
 
 /**
  * Performs one request. Rejects on network errors, timeouts and bodies over
  * {@link MAX_DOCUMENT_BYTES}; never follows redirects.
  */
-export type HttpsGet = (request: HttpsGetRequest) => Promise<HttpsGetResponse>;
+export type HttpsGet = PinnedGet;
 
 export interface HttpsGetOptions {
   readonly connectTimeoutMs?: number;
@@ -119,102 +106,19 @@ export interface HttpsGetOptions {
   readonly ca?: string | Buffer;
 }
 
-/** The production {@link HttpsGet}: `https.request` pinned to the checked address. */
+/** The production {@link HttpsGet}: `createPinnedGet` with the limits of a metadata document. */
 export function createHttpsGet(options: HttpsGetOptions = {}): HttpsGet {
-  const connectTimeout = options.connectTimeoutMs ?? CONNECT_TIMEOUT_MS;
-  const totalTimeout = options.totalTimeoutMs ?? TOTAL_TIMEOUT_MS;
-  const maxBytes = options.maxBytes ?? MAX_DOCUMENT_BYTES;
-  return (target) =>
-    new Promise<HttpsGetResponse>((resolve, reject) => {
-      const pinned: LookupFunction = (_hostname, lookupOptions, callback) => {
-        if (lookupOptions.all === true) {
-          callback(null, [{ address: target.address.address, family: target.address.family }]);
-        } else {
-          callback(null, target.address.address, target.address.family);
-        }
-      };
-      let settled = false;
-      const request = httpsRequest({
-        host: target.hostname,
-        servername: target.hostname,
-        port: options.port ?? 443,
-        path: target.path,
-        method: "GET",
-        headers: { Accept: "application/json", "User-Agent": "mcp-server-sevdesk (CIMD)" },
-        lookup: pinned,
-        agent: false,
-        maxHeaderSize: 16 * 1024,
-        ...(options.ca === undefined ? {} : { ca: options.ca }),
-      });
-      const totalTimer = setTimeout(() => {
-        finish(new Error("timeout"));
-      }, totalTimeout);
-      const connectTimer = setTimeout(() => {
-        finish(new Error("connect timeout"));
-      }, connectTimeout);
-      function finish(error: Error | undefined, response?: HttpsGetResponse): void {
-        if (settled) return;
-        settled = true;
-        clearTimeout(totalTimer);
-        clearTimeout(connectTimer);
-        if (error !== undefined) {
-          request.destroy();
-          reject(error);
-        } else if (response !== undefined) {
-          resolve(response);
-        }
-      }
-      request.once("socket", (socket) => {
-        socket.once("secureConnect", () => {
-          clearTimeout(connectTimer);
-        });
-      });
-      request.once("error", (error) => {
-        finish(error);
-      });
-      request.once("response", (response) => {
-        const status = response.statusCode ?? 0;
-        // Only the headers the fetcher reads, into an object without a prototype: header names
-        // come from the remote host and must never become arbitrary property names.
-        const headers: Record<string, string | undefined> = Object.create(null) as Record<
-          string,
-          string | undefined
-        >;
-        for (const name of READ_HEADERS) {
-          const value = response.headers[name];
-          if (value !== undefined) headers[name] = Array.isArray(value) ? value.join(", ") : value;
-        }
-        if (status !== 200) {
-          // Redirects and errors are not followed or read.
-          response.destroy();
-          finish(undefined, { status, headers, body: Buffer.alloc(0) });
-          return;
-        }
-        if (Number(headers["content-length"] ?? "0") > maxBytes) {
-          response.destroy();
-          finish(new CimdError("too_large", "The client's metadata document is too large."));
-          return;
-        }
-        const chunks: Buffer[] = [];
-        let size = 0;
-        response.on("data", (chunk: Buffer) => {
-          size += chunk.length;
-          if (size > maxBytes) {
-            response.destroy();
-            finish(new CimdError("too_large", "The client's metadata document is too large."));
-            return;
-          }
-          chunks.push(chunk);
-        });
-        response.once("end", () => {
-          finish(undefined, { status, headers, body: Buffer.concat(chunks) });
-        });
-        response.once("error", (error) => {
-          finish(error);
-        });
-      });
-      request.end();
-    });
+  return createPinnedGet({
+    accept: "application/json",
+    userAgent: "mcp-server-sevdesk (CIMD)",
+    readHeaders: READ_HEADERS,
+    maxBytes: options.maxBytes ?? MAX_DOCUMENT_BYTES,
+    tooLarge: () => new CimdError("too_large", "The client's metadata document is too large."),
+    connectTimeoutMs: options.connectTimeoutMs ?? CONNECT_TIMEOUT_MS,
+    totalTimeoutMs: options.totalTimeoutMs ?? TOTAL_TIMEOUT_MS,
+    port: options.port,
+    ca: options.ca,
+  });
 }
 
 /**

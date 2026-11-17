@@ -108,12 +108,30 @@ export const ACCOUNT_CHECK_ACCOUNTS: SevdeskObjectRef = {
 };
 
 /**
+ * A lock key for an account's tags: tagging checks whether a name is new and untagging whether it
+ * removes a tag's last use (which deletes the tag), then writes. Two such calls at once would
+ * each preview what the other changes.
+ */
+export const ACCOUNT_TAGS: SevdeskObjectRef = { objectName: "Tags", id: "account" };
+
+/**
  * A lock key for creating voucher drafts in an account: a new voucher is refused when one with
  * the same supplier, number, date and gross exists already, then it is created. Two identical
  * creations at once both passed that check and left two drafts (review 2026-11, round 3).
  */
 export const ACCOUNT_VOUCHER_DRAFTS: SevdeskObjectRef = {
   objectName: "VoucherDrafts",
+  id: "account",
+};
+
+/**
+ * A lock key for creating recurring invoice templates (Abo-Rechnungen) in an account: the preview
+ * warns when the customer has a template with the same total already, then the template is saved.
+ * Two identical creations at once would both miss each other, and two templates bill the customer
+ * twice on every run.
+ */
+export const ACCOUNT_RECURRING_INVOICES: SevdeskObjectRef = {
+  objectName: "RecurringInvoices",
   id: "account",
 };
 
@@ -180,7 +198,7 @@ export type ToolOutputSchema = z.ZodObject;
 /** The configuration slice that decides which tools a server registers. */
 export type ToolSelectionConfig = Pick<
   Config,
-  "toolsets" | "allowedTiers" | "outputDir" | "fileDirs" | "deployment"
+  "toolsets" | "allowedTiers" | "outputDir" | "fileDirs" | "fileUrlHosts" | "deployment"
 >;
 
 /**
@@ -188,9 +206,11 @@ export type ToolSelectionConfig = Pick<
  *
  * Effects of a tool outside sevDesk, on files (see `ToolDefinitionBase.localEffects`). All go only
  * through `ToolContext.files` ({@link FileAccess}, `src/safety/file-sources.ts`).
- * - `"reads-files"`: reads files: inside `SEVDESK_FILE_DIRS` (`readConfinedFile`) or, over HTTP
- *   with file transfer, the caller's own uploads. Reading changes nothing, so a `read` tool with
- *   this flag stays `readOnlyHint: true`.
+ * - `"reads-files"`: reads files: inside `SEVDESK_FILE_DIRS` (`readConfinedFile`), over HTTP
+ *   with file transfer the caller's own uploads, or downloaded from an https link to a host in
+ *   `SEVDESK_FILE_URL_HOSTS` (`src/safety/url-files.ts`). Reading changes nothing, so a `read`
+ *   tool with this flag stays `readOnlyHint: true`; a download reaches a host outside sevDesk,
+ *   so these tools declare `openWorldHint: true`.
  * - `"writes-files"`: hands files out: new files inside `SEVDESK_OUTPUT_DIR` (`writeNewFile`,
  *   never overwriting) or, over HTTP with file transfer, download links of the caller's account.
  *   A `read` tool with this flag changes nothing in sevDesk but does modify its environment, so

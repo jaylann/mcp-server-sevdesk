@@ -1,4 +1,5 @@
 import { creditNoteCreateDraftTool } from "../../src/tools/credit-notes/draft-create.js";
+import { creditNoteUpdateDraftTool } from "../../src/tools/credit-notes/draft-update.js";
 import { invoiceCreateDraftTool } from "../../src/tools/invoices/draft-create.js";
 import { invoiceUpdateDraftTool } from "../../src/tools/invoices/draft-update.js";
 import { orderCreateDraftTool } from "../../src/tools/orders/draft-create.js";
@@ -7,12 +8,16 @@ import type { WriteToolCase } from "../helpers/write-cases.js";
 import {
   creditNoteCreateArgs,
   creditNoteCreateRoutes,
+  creditNoteUpdateRoutes,
+  discountRow,
+  discountsRoute,
   invoiceCreateArgs,
   invoiceCreateRoutes,
   invoiceUpdateRoutes,
   orderCreateArgs,
   orderCreateRoutes,
   orderUpdateRoutes,
+  withRoutes,
 } from "../unit/tools/drafts/routes.js";
 
 /**
@@ -50,6 +55,17 @@ export const DRAFTS_CASES: readonly WriteToolCase[] = [
     ],
   },
   {
+    label: "update a draft credit note",
+    tool: creditNoteUpdateDraftTool,
+    args: {
+      id: 2202,
+      header: "Gutschrift Reklamation 17",
+      positions: [{ name: "Preisnachlass", quantity: 2, unitPrice: 25, taxRate: 19 }],
+    },
+    routes: creditNoteUpdateRoutes,
+    writes: [{ method: "POST", path: "/CreditNote/Factory/saveCreditNote" }],
+  },
+  {
     label: "create a draft offer",
     tool: orderCreateDraftTool,
     args: { ...orderCreateArgs, date: "2026-11-07" },
@@ -65,5 +81,33 @@ export const DRAFTS_CASES: readonly WriteToolCase[] = [
     args: { id: 3102, paymentTerms: "30 Tage netto" },
     routes: orderUpdateRoutes,
     writes: [{ method: "POST", path: "/Order/Factory/saveOrder" }],
+  },
+  // A discount on the whole document (D-116) goes in the same save request.
+  {
+    label: "create a draft invoice with a discount",
+    tool: invoiceCreateDraftTool,
+    args: { ...invoiceCreateArgs, date: "2026-11-07", discount: { percent: 3 } },
+    routes: invoiceCreateRoutes,
+    writes: [{ method: "POST", path: "/Invoice/Factory/saveInvoice" }],
+  },
+  {
+    label: "replace the discount of a draft offer",
+    tool: orderUpdateDraftTool,
+    args: { id: 3102, discount: { amount: 20, text: "Messerabatt" } },
+    routes: withRoutes(
+      orderUpdateRoutes,
+      discountsRoute("Order", 3102, [discountRow("Order", 3102)]),
+    ),
+    writes: [{ method: "POST", path: "/Order/Factory/saveOrder" }],
+  },
+  {
+    label: "remove the discount of a draft credit note",
+    tool: creditNoteUpdateDraftTool,
+    args: { id: 2202, discount: null },
+    routes: withRoutes(
+      creditNoteUpdateRoutes,
+      discountsRoute("CreditNote", 2202, [discountRow("CreditNote", 2202)]),
+    ),
+    writes: [{ method: "POST", path: "/CreditNote/Factory/saveCreditNote" }],
   },
 ];

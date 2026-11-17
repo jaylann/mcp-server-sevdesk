@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { dateRangeInputShape } from "../../domain/common.js";
+import { costCentreFilterInputShape } from "../../domain/cost-centres.js";
 import { REPORT_SCAN_MAX } from "../../domain/reports/shared.js";
 import {
   INVOICE_TYPE_KEYS,
@@ -11,6 +12,7 @@ import {
   summaryReportSchema,
   summaryReportSentence,
 } from "../../domain/reports/summarize.js";
+import { tagFilterInputShape } from "../../domain/tags.js";
 import { VOUCHER_KINDS } from "../../domain/vouchers.js";
 import { defineTool } from "../define-tool.js";
 
@@ -24,10 +26,11 @@ export const recordsSummarizeTool = defineTool({
     "Auswertung: counts and exact sums of invoices (Rechnungen), credit notes (Gutschriften), " +
     "vouchers (Belege) or bank transactions (Umsätze): net/tax/gross per currency (incoming/" +
     "outgoing for transactions), optionally grouped by month, quarter, status, contact " +
-    "(Kunde/Lieferant) or account. Prefer it over paging list tools for totals such as revenue " +
-    "per month (Umsatz), expenses per supplier or amounts per status. Filters: from/to, " +
-    "status, contactId, kind (vouchers: expense/revenue), invoiceType, checkAccountId " +
-    "(transactions). Templates (recurring RV/WKR) and reminders (MA) are left out unless " +
+    "(Kunde/Lieferant), account, tag (project, branch) or cost_centre (Kostenstelle). Prefer it " +
+    "over paging list tools for totals such as revenue per month (Umsatz), expenses per " +
+    "supplier, per project tag or per cost centre. Filters: from/to, status, contactId, kind " +
+    "(vouchers: expense/revenue), invoiceType, checkAccountId (transactions), tag and " +
+    "costCentre (documents). Templates (recurring RV/WKR) and reminders (MA) are left out unless " +
     `invoiceType asks for them. Reads up to ${REPORT_SCAN_MAX.toLocaleString("en-US")} rows; ` +
     "truncated says if more existed. " +
     "Computed by this server from sevDesk records, not a sevDesk report.",
@@ -47,8 +50,9 @@ export const recordsSummarizeTool = defineTool({
       .enum(SUMMARY_GROUPINGS)
       .default("none")
       .describe(
-        "none, month, quarter, status, contact (customer/supplier; not for transactions) or " +
-          "account (transactions only).",
+        "none, month, quarter, status, contact (customer/supplier; not for transactions), " +
+          "account (transactions only), tag (a document with several tags counts in each; see " +
+          "groupsOverlap) or cost_centre (Kostenstelle of the document).",
       ),
     ...dateRangeInputShape,
     status: z
@@ -77,6 +81,8 @@ export const recordsSummarizeTool = defineTool({
     checkAccountId: id
       .optional()
       .describe("Transactions only: payment account (Zahlungskonto) id."),
+    ...tagFilterInputShape,
+    ...costCentreFilterInputShape,
     maxGroups: z
       .number()
       .int()

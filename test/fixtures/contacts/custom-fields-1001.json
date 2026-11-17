@@ -1,0 +1,56 @@
+{
+  "_provenance": {
+    "source": "spec",
+    "ref": "spec/openapi.yaml#/components/schemas/Model_ContactCustomFieldResponse; spec/deviations.md D-086",
+    "date": "2026-11-17",
+    "systemVersion": "2.0",
+    "note": "GET /ContactCustomField?contact[id]=1001&contact[objectName]=Contact&embed=contactCustomFieldSetting. Shape from the spec model and the probe write-custom-field-values (2026-11-16: contact and setting as {id, objectName}, the embed expands the setting with name, identifier, description, placeholder); the setting row as in recorded/2026-11-16/contacts/custom-field-settings.json. All values fake."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "7001",
+        "objectName": "ContactCustomField",
+        "create": "2026-11-16T22:01:10+01:00",
+        "update": "2026-11-16T22:01:10+01:00",
+        "sevClient": { "id": "9001", "objectName": "SevClient" },
+        "contact": { "id": "1001", "objectName": "Contact" },
+        "contactCustomFieldSetting": {
+          "id": "19498",
+          "objectName": "ContactCustomFieldSetting",
+          "additionalInformation": null,
+          "create": "2026-11-16T21:56:15+01:00",
+          "update": "2026-11-16T21:56:15+01:00",
+          "sevClient": { "id": "9001", "objectName": "SevClient" },
+          "name": "Kundennr extern",
+          "identifier": "kundennr-extern",
+          "description": null,
+          "placeholder": null
+        },
+        "value": "EXT-4711"
+      },
+      {
+        "id": "7002",
+        "objectName": "ContactCustomField",
+        "create": "2026-11-16T22:01:12+01:00",
+        "update": "2026-11-16T22:01:12+01:00",
+        "sevClient": { "id": "9001", "objectName": "SevClient" },
+        "contact": { "id": "1001", "objectName": "Contact" },
+        "contactCustomFieldSetting": {
+          "id": "19499",
+          "objectName": "ContactCustomFieldSetting",
+          "additionalInformation": null,
+          "create": "2026-11-16T21:57:02+01:00",
+          "update": "2026-11-16T21:57:02+01:00",
+          "sevClient": { "id": "9001", "objectName": "SevClient" },
+          "name": "Branche",
+          "identifier": "branche",
+          "description": "Branche des Kunden",
+          "placeholder": null
+        },
+        "value": "Großhandel"
+      }
+    ]
+  }
+}

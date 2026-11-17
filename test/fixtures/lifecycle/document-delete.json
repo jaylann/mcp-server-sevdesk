@@ -1,0 +1,13 @@
+{
+  "_provenance": {
+    "date": "2026-11-16",
+    "systemVersion": "2.0",
+    "source": "spec",
+    "ref": "spec/deviations.md D-109, D-074, D-024 (DELETE /Invoice/{id}, /Order/{id}, /CreditNote/{id})",
+    "note": "DELETE of an invoice, order or credit note draft: 2xx with {objects: [null]}, then GET answers 404 (probes `write-delete-draft-order-credit-note`, `write-recurring-schedule-fields`, `write-delete-draft-invoice`). The tool ignores the body and checks with a GET that the document is gone."
+  },
+  "status": 200,
+  "body": {
+    "objects": [null]
+  }
+}

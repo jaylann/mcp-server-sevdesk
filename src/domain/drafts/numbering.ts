@@ -349,6 +349,8 @@ function withSentence(error: SevdeskError, sentence: string): SevdeskError {
     ...(error.upstreamMessage === undefined ? {} : { upstreamMessage: error.upstreamMessage }),
     ...(error.method === undefined ? {} : { method: error.method }),
     ...(error.path === undefined ? {} : { path: error.path }),
+    // The message stays ours (the explanation plus the sentence), so it is still shown.
+    ...(error.explained ? { explained: true } : {}),
     cause: error,
     completedWrites: error.completedWrites,
   });

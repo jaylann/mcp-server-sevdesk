@@ -25,6 +25,7 @@
 import { describe, expect, it } from "vitest";
 
 import { previewHash } from "../../src/safety/hashing.js";
+import { SevdeskError } from "../../src/sevdesk/errors.js";
 import { invoiceUpdateDraftTool } from "../../src/tools/invoices/draft-update.js";
 import { bookPaymentTool } from "../../src/tools/lifecycle/book-payment.js";
 import { enshrineTool } from "../../src/tools/lifecycle/enshrine.js";
@@ -36,8 +37,9 @@ import type { AnyWriteToolDefinition } from "../../src/tools/types.js";
 import { voucherUpdateDraftTool } from "../../src/tools/vouchers/draft-update.js";
 import { voucherFinalizeTool } from "../../src/tools/vouchers/finalize.js";
 import { approve } from "../helpers/confirm-client.js";
+import { costCentresRoute, RECORDED_CENTRES, storedCostCentre } from "../helpers/cost-centres.js";
 import { withCountryRoute } from "../helpers/country-route.js";
-import { FakeSevdeskClient } from "../helpers/fake-client.js";
+import { type FakeRoute, FakeSevdeskClient } from "../helpers/fake-client.js";
 import {
   closeWriteHarnessesAfterEach,
   resultData,
@@ -97,11 +99,16 @@ function position(overrides: Row = {}): Row {
   };
 }
 
-function client(row: Row, positions: readonly Row[] = [position()]): FakeSevdeskClient {
+function client(
+  row: Row,
+  positions: readonly Row[] = [position()],
+  extra: readonly FakeRoute[] = [],
+): FakeSevdeskClient {
   return new FakeSevdeskClient(
     withCountryRoute([
       documentRoute("invoice", row),
       ...positionRoutes({ "/InvoicePos": positions }),
+      ...extra,
     ]),
   );
 }
@@ -231,19 +238,126 @@ describe("approval binds the document content", () => {
   });
 
   it("binds voucher finalization to what the preview leaves out (wave 2)", async () => {
-    const before = await voucherPlan(draftRow());
-    // The dates are shown since round 3; the cost centre is carried over unseen.
-    const after = await voucherPlan(
-      draftRow({ costCentre: { id: "77", objectName: "CostCentre" } }),
+    // The dates are shown since round 3 and the cost centre since #87; which file is attached
+    // is not shown (only that one is).
+    const before = await voucherPlan(
+      draftRow({ document: { id: "9001", objectName: "Document" } }),
     );
+    const after = await voucherPlan(draftRow({ document: { id: "9002", objectName: "Document" } }));
 
     expect(after.preview).toEqual(before.preview);
     expect(after.binding).toBeDefined();
     expect(after.binding).not.toBe(before.binding);
   });
+
+  it("shows and binds a stored cost centre on finalize, send and voucher finalize (#87)", async () => {
+    const centre = storedCostCentre(RECORDED_CENTRES.third.id);
+    const shown = { label: "Cost centre (Kostenstelle)", value: "MCP1 Mustername 3 (id 344959)" };
+    const shownDe = { label: "Kostenstelle", value: "MCP1 Mustername 3 (ID 344959)" };
+    const tool = finalizeTool("invoice");
+    const plain = await prepareWrite(tool, { id: 1001 }, client(draft()));
+    const withCentre = await prepareWrite(
+      tool,
+      { id: 1001 },
+      client(draft({ costCentre: centre }), [position()], [costCentresRoute]),
+    );
+    expect(plain.preview.facts).not.toContainEqual(shown);
+    expect(withCentre.preview.facts).toContainEqual(shown);
+    expect(withCentre.previewDe.facts).toContainEqual(shownDe);
+    expect(withCentre.binding).not.toBe(plain.binding);
+
+    const send = await prepareWrite(
+      sendEmailTool("invoice"),
+      { id: 1001, to: "kunde@example.com", subject: "Rechnung", text: "Anbei." },
+      client(open({ costCentre: centre }), [position()], [costCentresRoute]),
+    );
+    expect(send.preview.facts).toContainEqual(shown);
+
+    const voucher = await voucherPlan(
+      draftRow({ costCentre: centre }),
+      [positionRow()],
+      [costCentresRoute],
+    );
+    const voucherBefore = await voucherPlan(draftRow());
+    expect(voucher.preview.facts).toContainEqual(shown);
+    expect(voucher.previewDe.facts).toContainEqual(shownDe);
+    expect(voucherBefore.preview.facts).not.toContainEqual(shown);
+    expect(voucher.binding).not.toBe(voucherBefore.binding);
+  });
+
+  it("shows the id alone with a warning when the cost centres cannot be read (#87)", async () => {
+    const centre = storedCostCentre(RECORDED_CENTRES.third.id);
+    const failing: FakeRoute = {
+      path: "/CostCentre",
+      response: { error: new SevdeskError({ kind: "auth", status: 403, message: "Refused." }) },
+    };
+    const warning =
+      "The number and name of the cost centre could not be read from sevDesk, so only its id is " +
+      "shown. Check them in sevDesk before you approve.";
+    const warningDe =
+      "Nummer und Name der Kostenstelle ließen sich nicht aus sevDesk lesen; gezeigt wird nur " +
+      "ihre ID. Prüfe sie vor der Freigabe in sevDesk.";
+    const idOnly = { label: "Cost centre (Kostenstelle)", value: "id 344959" };
+    const idOnlyDe = { label: "Kostenstelle", value: "ID 344959" };
+
+    const unread = await prepareWrite(
+      finalizeTool("invoice"),
+      { id: 1001 },
+      client(draft({ costCentre: centre }), [position()], [failing]),
+    );
+    const read = await prepareWrite(
+      finalizeTool("invoice"),
+      { id: 1001 },
+      client(draft({ costCentre: centre }), [position()], [costCentresRoute]),
+    );
+    expect(unread.preview.facts).toContainEqual(idOnly);
+    expect(unread.previewDe.facts).toContainEqual(idOnlyDe);
+    expect(unread.preview.warnings).toContain(warning);
+    expect(unread.previewDe.warnings).toContain(warningDe);
+    expect(unread.preview.warnings.indexOf(warning)).toBe(
+      unread.previewDe.warnings.indexOf(warningDe),
+    );
+    expect(read.preview.warnings).not.toContain(warning);
+    // The id is in the bound record either way: number and name are display only.
+    expect(unread.binding).toBe(read.binding);
+
+    const voucher = await voucherPlan(draftRow({ costCentre: centre }), [positionRow()], [failing]);
+    expect(voucher.preview.facts).toContainEqual(idOnly);
+    expect(voucher.previewDe.facts).toContainEqual(idOnlyDe);
+    expect(voucher.preview.warnings).toContain(warning);
+    expect(voucher.previewDe.warnings).toContain(warningDe);
+  });
+
+  it.each([
+    ["a cancelled call", "aborted", "Cancelled."],
+    ["a read the server's guard blocks", "blocked", "Blocked before sending."],
+  ] as const)(
+    "stops %s on the cost centres instead of showing the id",
+    async (_l, kind, message) => {
+      const failing: FakeRoute = {
+        path: "/CostCentre",
+        response: { error: new SevdeskError({ kind, message }) },
+      };
+      await expect(
+        prepareWrite(
+          finalizeTool("invoice"),
+          { id: 1001 },
+          client(
+            draft({ costCentre: storedCostCentre(RECORDED_CENTRES.third.id) }),
+            [position()],
+            [failing],
+          ),
+        ),
+      ).rejects.toMatchObject({ kind });
+    },
+  );
 });
 
-function voucherPlan(row: Row, positions: readonly Row[] = [positionRow()]) {
+function voucherPlan(
+  row: Row,
+  positions: readonly Row[] = [positionRow()],
+  extra: readonly FakeRoute[] = [],
+) {
   return prepareWrite(
     voucherFinalizeTool,
     { id: 2101 },
@@ -254,6 +368,7 @@ function voucherPlan(row: Row, positions: readonly Row[] = [positionRow()]) {
       regularRoute,
       guidanceRoute,
       accountsRoute,
+      ...extra,
     ]),
   );
 }

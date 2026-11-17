@@ -66,7 +66,8 @@ const DESCRIPTIONS: Readonly<Record<PaymentKind, string>> = {
     "credit note becomes open again and every booked payout is unlinked (bank transactions " +
     "return to unbooked with no counter-booking; on a cash register (Kasse) sevDesk books a " +
     'counter-entry instead). to "draft" (resetToDraft): an open credit note ' +
-    "without payouts becomes a draft again; not for enshrined (festgeschrieben) credit notes. " +
+    "without payouts becomes a draft again and can be edited (sevdesk_credit_note_update_draft); " +
+    "not for enshrined (festgeschrieben) credit notes. " +
     "For a paid credit note reset to open first, then to draft. Commit tier: asks a human to " +
     "confirm the preview; dryRun only previews.",
   voucher:

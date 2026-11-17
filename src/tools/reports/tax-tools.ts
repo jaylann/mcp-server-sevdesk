@@ -7,9 +7,11 @@ import { z } from "zod";
 
 import { loadAccountSettings } from "../../domain/account-settings.js";
 import { type AccountDatevList, loadAccountsDatev } from "../../domain/accounts-datev.js";
+import { costCentreFilterInputShape } from "../../domain/cost-centres.js";
 import { paymentsInPeriod } from "../../domain/reconciliation/transaction-log.js";
 import {
   PNL_BASES,
+  PNL_GROUPINGS,
   profitAndLoss,
   profitAndLossSchema,
   profitAndLossSentence,
@@ -23,6 +25,7 @@ import {
   vatSummarySchema,
   vatSummarySentence,
 } from "../../domain/reports/vat.js";
+import { tagFilterInputShape } from "../../domain/tags.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import { defineTool } from "../define-tool.js";
 import type { AnyToolDefinition, ToolContext } from "../types.js";
@@ -111,7 +114,9 @@ export const profitAndLossTool = defineTool({
     "paid to or refunded by the Finanzamt). Fixed assets (Anlagegüter) are listed apart, " +
     "without depreciation (AfA). basis: cash (default, Zufluss-/Abflussprinzip: payments sevDesk " +
     "links to documents, by value date) or accrual (by document date). Positions are read one " +
-    `by one (up to ${MAX_SCAN_DOCUMENTS.toLocaleString("en-US")} documents). Call it directly ` +
+    `by one (up to ${MAX_SCAN_DOCUMENTS.toLocaleString("en-US")} documents). costCentre ` +
+    "(Kostenstelle) or tag limit it to those documents (this month's expenses on one cost " +
+    "centre); groupBy breaks it down by either. Call it directly " +
     "with the period: it reads the accounts and payments itself. Computed here from sevDesk " +
     "data: not the Anlage EÜR (which works gross) and not a tax return.",
   toolset: "reports",
@@ -123,6 +128,15 @@ export const profitAndLossTool = defineTool({
       .enum(PNL_BASES)
       .default("cash")
       .describe("cash (by payment day, default) or accrual (by document date)."),
+    ...costCentreFilterInputShape,
+    ...tagFilterInputShape,
+    groupBy: z
+      .enum(PNL_GROUPINGS)
+      .optional()
+      .describe(
+        "Adds income, expenses and result per cost_centre (Kostenstelle; the groups add up) or " +
+          "per tag (a document with several tags counts in each).",
+      ),
   }),
   output: profitAndLossSchema,
   handler: async (args, ctx) => {
@@ -132,7 +146,16 @@ export const profitAndLossTool = defineTool({
     const chartOfAccounts = await loadChartOfAccounts(ctx);
     const report = await profitAndLoss(
       ctx.client,
-      { period, basis: args.basis, payments: paymentsInPeriod, accounts, chartOfAccounts },
+      {
+        period,
+        basis: args.basis,
+        payments: paymentsInPeriod,
+        accounts,
+        chartOfAccounts,
+        costCentre: args.costCentre,
+        tag: args.tag,
+        groupBy: args.groupBy,
+      },
       options,
     );
     return { data: report, summary: profitAndLossSentence(report) };

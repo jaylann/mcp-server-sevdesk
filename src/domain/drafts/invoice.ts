@@ -8,36 +8,77 @@
  * Create body: the request shape of jernoxit/sevdesk-rs (rebuilt from its source; it stores only
  * the response, recorded on Update 2.0 on 2026-10-01, which shows the request was accepted): no
  * number (the recorded draft has `invoiceNumber: null`; sevDesk assigns it at finalization),
- * `discount: 0` (required: "Otherwise provide zero"), `taxRate: 0`, `invoicePosDelete: null` and
- * none of the optional trailing parameters (`discountSave`, `discountDelete`,
- * `takeDefaultAddress`), which that accepted request did not send.
+ * `discount: 0` (required: "Otherwise provide zero"; it is the cash discount, Skonto), `taxRate: 0`,
+ * `invoicePosDelete: null` and none of the optional trailing parameters (`discountSave`,
+ * `discountDelete`, `takeDefaultAddress`), which that accepted request did not send. A discount on
+ * the whole document adds `discountSave` and `discountDelete` after the positions, as recorded
+ * (`discount.ts`, spec/deviations.md D-116).
  *
  * Update body: every writable field the server knows, stored values carried over (see
  * `current.ts`), the stored number unchanged, and either no position changes
  * (`invoicePosSave`/`invoicePosDelete` null) or all stored positions deleted and the new ones
- * saved in the same request, so a failure cannot leave half the positions behind.
+ * saved in the same request, so a failure cannot leave half the positions behind. The stored
+ * document discounts are read first (`getDiscounts`): kept without discount keys, or replaced or
+ * removed through `discountDelete`.
+ *
+ * Both previews add a hint (never a refusal) when the tax rule is not one a sale to the customer
+ * usually takes (`src/domain/vat/sales-tax-rule.ts`); an update judges it again only when it
+ * changes the rule, the contact or the address.
  */
 import { z } from "zod";
 
 import { SevdeskError } from "../../sevdesk/errors.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { statusDto } from "../common.js";
-import type { CountryReadOptions } from "../country-codes.js";
+import {
+  COST_CENTRE_FLAGS,
+  type CostCentreArg,
+  costCentreChange,
+  costCentreInput,
+  costCentreLabel,
+  costCentreRef,
+  costCentreUpdate,
+  costCentreUpdateInputShape,
+  costCentreUpdatePayload,
+  resolveCostCentre,
+} from "../cost-centres.js";
+import { type CountryReadOptions, loadCountryCodes } from "../country-codes.js";
+import { readDocumentDiscounts } from "../document-discounts.js";
 import { getInvoice, type InvoiceDetails } from "../invoices.js";
 import { documentTypeByCode } from "../reference-data.js";
-import { berlinDay, type CurrentInvoice, loadCurrentInvoice } from "./current.js";
+import { invoiceTaxRuleHint } from "../vat/tax-rule-helper.js";
+import { berlinDay, loadCurrentInvoice } from "./current.js";
+import {
+  createDiscountBody,
+  createTotals,
+  type DiscountInput,
+  discountInput,
+  discountReadBackNote,
+  discountText,
+  discountUpdateInput,
+  type DraftDiscount,
+  planDiscountChange,
+  resolveDiscount,
+  updateTotals,
+} from "./discount.js";
 import {
   assertChanges,
   ChangeLog,
   draftPreview,
+  logContactPersonChange,
+  logDiscountChange,
+  logPricingChanges,
+  logRecipientChanges,
+  logTextChanges,
   numberLabel,
   positionCount,
   ref,
   storedNumber,
   storedRef,
-  storedTotalText,
   structuredAddress,
   taxText,
+  updatedAddressFields,
+  updateTotalFact,
 } from "./document.js";
 import { duplicateWarning, findDuplicates } from "./duplicates.js";
 import {
@@ -68,9 +109,9 @@ import {
 import {
   type Amounts,
   draftPositionInput,
-  expectedTotals,
   MAX_POSITIONS,
   type PositionInput,
+  type PositionPayload,
   positionPayload,
   wireNumber,
 } from "./positions.js";
@@ -87,19 +128,95 @@ import {
 import { readBack, readBackNotes } from "./read-back.js";
 import { addressInputShape } from "./recipient.js";
 import {
-  addressBlock,
   type CreateArgs,
+  type CreateBasics,
   type DraftCallOptions,
   resolveCreateBasics,
   resolveUpdateBasics,
-  type StoredAddress,
+  structuredStoredAddress,
+  type TaxOptions,
   type UpdateArgs,
 } from "./shared.js";
-import { DEFAULT_TAX_RULE_ID, type RuleScope, SALES_TAX_RULE_IDS } from "./tax.js";
+import {
+  DEFAULT_TAX_RULE_ID,
+  type DocumentTaxFields,
+  type RuleScope,
+  SALES_TAX_RULE_IDS,
+} from "./tax.js";
+import {
+  footTextTemplateInput,
+  headTextTemplateInput,
+  resolveTemplateTexts,
+  type TextArgs,
+} from "./template-texts.js";
 
 const INVOICE_SCOPE: RuleScope = { allowedRuleIds: SALES_TAX_RULE_IDS, documents: "invoices" };
 const DEFAULT_HEADER = "Rechnung";
+/** The text template type (`objectType`) of invoices (recorded, D-115). */
+const INVOICE_TEXT_TYPE = "RE";
 const FINALIZE_TOOL = "sevdesk_invoice_finalize";
+
+/**
+ * How a new invoice resolves its tax rule: the sales rules of invoices, rule 1 by default (rule 11
+ * on a Kleinunternehmer account). Shared with recurring invoice templates (`../recurring/`), which
+ * become invoices and must pass the same checks.
+ */
+export const INVOICE_TAX_OPTIONS: TaxOptions = {
+  scope: INVOICE_SCOPE,
+  defaultRuleId: DEFAULT_TAX_RULE_ID,
+};
+
+/** What {@link newInvoiceContent} reads from the arguments of a create call. */
+export interface InvoiceContentArgs {
+  readonly contactId: number;
+  readonly timeToPay?: number | undefined;
+  readonly header?: string | undefined;
+  readonly headText?: string | undefined;
+  readonly footText?: string | undefined;
+}
+
+/** The document fields of {@link newInvoiceContent}. */
+export type NewInvoiceContent = {
+  readonly contact: { readonly id: number; readonly objectName: "Contact" };
+  readonly contactPerson: { readonly id: number; readonly objectName: "SevUser" };
+  readonly header: string;
+  readonly headText: string | undefined;
+  readonly footText: string | undefined;
+  readonly timeToPay: number | undefined;
+  readonly discount: 0;
+  readonly currency: string;
+  readonly showNet: boolean;
+} & DocumentTaxFields &
+  ReturnType<typeof structuredAddress>;
+
+/**
+ * The fields a new invoice prints, without type, status and dates: customer and contact person,
+ * title (default "Rechnung"), texts, payment term, prices, tax and the address. Shared with
+ * recurring invoice templates (`../recurring/`), so a template carries exactly what a draft would.
+ */
+export function newInvoiceContent(
+  args: InvoiceContentArgs,
+  basics: CreateBasics,
+): NewInvoiceContent {
+  return {
+    contact: ref(args.contactId, "Contact"),
+    contactPerson: ref(basics.contactPerson.id, "SevUser"),
+    header: args.header ?? DEFAULT_HEADER,
+    headText: args.headText,
+    footText: args.footText,
+    timeToPay: args.timeToPay,
+    discount: 0,
+    currency: basics.currency,
+    showNet: basics.mode === "net",
+    ...basics.tax,
+    ...structuredAddress(basics.address),
+  };
+}
+
+/** The positions of a new invoice (or template) as `invoicePosSave`, in the order given. */
+export function newInvoicePositions(basics: CreateBasics): PositionPayload[] {
+  return basics.positions.map((position, index) => positionPayload(position, index, "InvoicePos"));
+}
 
 const timeToPayInput = z
   .number()
@@ -130,8 +247,12 @@ export const invoiceCreateInputShape = {
   header: headerInput.describe('Document title (Betreff); default "Rechnung".'),
   headText: headTextInput,
   footText: footTextInput,
+  headTextTemplate: headTextTemplateInput,
+  footTextTemplate: footTextTemplateInput,
+  discount: discountInput.optional(),
   contactPersonId: contactPersonIdInput,
   ...addressInputShape,
+  costCentre: costCentreInput,
 };
 
 /** Input fields of `sevdesk_invoice_update_draft` (without `dryRun`). */
@@ -161,30 +282,36 @@ export const invoiceUpdateInputShape = {
   header: headerInput,
   headText: headTextInput,
   footText: footTextInput,
+  headTextTemplate: headTextTemplateInput,
+  footTextTemplate: footTextTemplateInput,
+  discount: discountUpdateInput,
   contactPersonId: contactPersonIdInput,
   ...addressInputShape,
+  ...costCentreUpdateInputShape,
 };
 
-export interface InvoiceCreateArgs extends CreateArgs {
+export interface InvoiceCreateArgs extends CreateArgs, TextArgs {
   readonly positions: readonly PositionInput[];
   readonly date?: string | undefined;
   readonly deliveryDate?: string | undefined;
   readonly deliveryDateUntil?: string | undefined;
   readonly timeToPay?: number | undefined;
   readonly header?: string | undefined;
-  readonly headText?: string | undefined;
-  readonly footText?: string | undefined;
+  readonly discount?: DiscountInput | undefined;
+  readonly costCentre?: CostCentreArg | undefined;
 }
 
-export interface InvoiceUpdateArgs extends UpdateArgs {
+export interface InvoiceUpdateArgs extends UpdateArgs, TextArgs {
   readonly id: number;
   readonly date?: string | undefined;
   readonly deliveryDate?: string | undefined;
   readonly deliveryDateUntil?: string | undefined;
   readonly timeToPay?: number | undefined;
   readonly header?: string | undefined;
-  readonly headText?: string | undefined;
-  readonly footText?: string | undefined;
+  /** A new document discount, `null` to remove the stored one, left out to keep it. */
+  readonly discount?: DiscountInput | null | undefined;
+  readonly costCentre?: CostCentreArg | undefined;
+  readonly removeCostCentre?: boolean | undefined;
 }
 
 /** What `execute` needs: the exact body the preview describes. */
@@ -192,8 +319,10 @@ export interface InvoiceDraftState {
   readonly body: SaveInvoiceBody;
   /** Set for updates: the invoice the save must keep. */
   readonly invoiceId?: number | undefined;
-  /** Expected totals when the call set the positions. */
+  /** Expected totals when the call set the positions or the discount. */
   readonly expected?: Amounts | undefined;
+  /** The discount the call sent (`null`: removed), checked in the read-back. */
+  readonly discount?: DraftDiscount | null | undefined;
 }
 
 export interface InvoiceDraftPlan {
@@ -210,17 +339,25 @@ export async function prepareInvoiceCreate(
   const { signal } = options;
   const date = args.date ?? todayInBerlin();
   const delivery = resolveDeliveryPeriod(date, args.deliveryDate, args.deliveryDateUntil, true);
-  const basics = await resolveCreateBasics(
-    client,
-    args,
-    { scope: INVOICE_SCOPE, defaultRuleId: DEFAULT_TAX_RULE_ID },
-    options,
-  );
-  const { contact, contactPerson, address, currency, expected, mode } = basics;
+  const discount = args.discount === undefined ? undefined : resolveDiscount(args.discount);
+  const centre =
+    args.costCentre === undefined
+      ? undefined
+      : await resolveCostCentre(client, args.costCentre, signal);
+  const texts = await resolveTemplateTexts(client, args, INVOICE_TEXT_TYPE, signal);
+  const basics = await resolveCreateBasics(client, args, INVOICE_TAX_OPTIONS, options);
+  const { contact, contactPerson, address, currency, mode } = basics;
+  // With the document discount, which `basics.expected` leaves out.
+  const expected = createTotals(basics.positions, mode, discount, currency);
   const duplicateQuery = { contactId: args.contactId, date, gross: expected.gross, currency };
   const duplicates = await findDuplicates(client, { kind: "invoice" }, duplicateQuery, signal);
 
-  const header = args.header ?? DEFAULT_HEADER;
+  // The texts as resolved, a text template's included.
+  const content = newInvoiceContent(
+    { ...args, headText: texts.headText, footText: texts.footText },
+    basics,
+  );
+  const header = content.header;
   const body = strictBody(
     saveInvoiceBodySchema,
     {
@@ -229,25 +366,16 @@ export async function prepareInvoiceCreate(
         mapAll: true,
         invoiceType: "RE",
         status: 100,
-        contact: ref(args.contactId, "Contact"),
-        contactPerson: ref(contactPerson.id, "SevUser"),
         invoiceDate: wireDocumentDate(date),
         deliveryDate: wireTimestamp(delivery.from),
         deliveryDateUntil: delivery.until === undefined ? undefined : wireTimestamp(delivery.until),
-        header,
-        headText: args.headText,
-        footText: args.footText,
-        timeToPay: args.timeToPay,
-        discount: 0,
-        currency,
-        showNet: mode === "net",
-        ...basics.tax,
-        ...structuredAddress(address),
+        ...content,
+        // Not part of `newInvoiceContent`: recurring templates do not take a cost centre.
+        costCentre: centre === undefined ? undefined : costCentreRef(centre.id),
       },
-      invoicePosSave: basics.positions.map((position, index) =>
-        positionPayload(position, index, "InvoicePos"),
-      ),
+      invoicePosSave: newInvoicePositions(basics),
       invoicePosDelete: null,
+      ...createDiscountBody(discount),
     },
     "invoice",
   );
@@ -260,20 +388,29 @@ export async function prepareInvoiceCreate(
     ...(args.timeToPay === undefined ? [] : [fact("Payment term", `${args.timeToPay} days`)]),
     fact("Contact person", `${contactPerson.name} (user ${contactPerson.id})`),
     fact("Title", header),
+    ...texts.facts,
     fact("Prices entered as", mode),
     fact("Tax", taxText(basics.rule, basics.tax)),
     fact("Tax text", basics.tax.taxText),
+    ...(centre === undefined ? [] : [fact("Cost centre (Kostenstelle)", costCentreLabel(centre))]),
     ...positionFacts(basics.positions, mode, currency),
+    ...(discount === undefined ? [] : [fact("Discount", discountText(discount, currency))]),
     fact("Total (expected)", totalsText(expected, currency)),
   ];
+  const taxHint = invoiceTaxRuleHint(
+    basics.rule.id,
+    basics.regime,
+    contact.contact,
+    address.countryCode,
+  );
   const preview = draftPreview(
     `Create a draft invoice (Rechnungsentwurf) for ` +
       `${customerText(contact.contact.displayName, args.contactId)} with ` +
       `${positionCount(basics.positions.length)}, gross ${moneyText(expected.gross, currency)}.`,
     facts,
-    [duplicateWarning("invoice", duplicates, duplicateQuery), ...basics.warnings],
+    [duplicateWarning("invoice", duplicates, duplicateQuery), ...basics.warnings, taxHint],
   );
-  return { preview, state: { body, expected } };
+  return { preview, state: { body, expected, discount } };
 }
 
 /** Prepares an update of a draft invoice. */
@@ -283,15 +420,24 @@ export async function prepareInvoiceUpdate(
   options: DraftCallOptions,
 ): Promise<InvoiceDraftPlan> {
   const { signal } = options;
-  assertChanges(args, "invoice");
+  const given = assertChanges(args, "invoice", COST_CENTRE_FLAGS);
   const current = await loadCurrentInvoice(client, args.id, signal);
   const doc = current.document;
   checkUpdatable(doc);
+  const centre = await costCentreUpdate(
+    client,
+    args,
+    { storedId: doc.costCentre?.id, given },
+    signal,
+  );
+  const texts = await resolveTemplateTexts(client, args, INVOICE_TEXT_TYPE, signal);
+  const discounts = await readDocumentDiscounts(client, "invoice", doc.id, signal);
+  const change = planDiscountChange(args.discount, discounts, `Invoice ${doc.id}`);
 
   const basics = await resolveUpdateBasics(
     client,
     doc,
-    invoiceStoredAddress(doc),
+    structuredStoredAddress(doc),
     current.positions,
     args,
     {
@@ -312,8 +458,17 @@ export async function prepareInvoiceUpdate(
     args.deliveryDateUntil ?? storedUntil,
     true,
   );
-  const expected =
-    basics.positions === undefined ? undefined : expectedTotals(basics.positions, basics.mode);
+  const totals = updateTotals({
+    change,
+    positions: basics.positions,
+    storedPositions: current.positions,
+    mode: basics.mode,
+    currency: basics.currency,
+    currencyChanged: basics.currencyChanged,
+    stored: doc,
+    eInvoice: doc.propertyIsEInvoice === true,
+  });
+  const expected = totals.expected;
 
   const body = strictBody(
     saveInvoiceBodySchema,
@@ -331,27 +486,18 @@ export async function prepareInvoiceUpdate(
         deliveryDate: wireTimestamp(delivery.from),
         deliveryDateUntil: delivery.until === undefined ? undefined : wireTimestamp(delivery.until),
         header: args.header ?? doc.header,
-        headText: args.headText ?? doc.headText,
-        footText: args.footText ?? doc.footText,
+        headText: texts.headText ?? doc.headText,
+        footText: texts.footText ?? doc.footText,
         timeToPay: args.timeToPay ?? doc.timeToPay,
         discount: wireNumber(doc.discount ?? "0", "the stored cash discount (Skonto)"),
         discountTime: doc.discountTime,
         currency: basics.currency,
         showNet: basics.mode === "net",
         ...basics.tax,
-        ...(basics.address === undefined
-          ? {
-              address: doc.address,
-              addressName: doc.addressName,
-              addressStreet: doc.addressStreet,
-              addressZip: doc.addressZip,
-              addressCity: doc.addressCity,
-              addressCountry: storedRef(doc.addressCountry, "StaticCountry"),
-            }
-          : { address: addressBlock(basics.address), ...structuredAddress(basics.address) }),
+        ...updatedAddressFields(doc, basics.address),
         customerInternalNote: doc.customerInternalNote,
         paymentMethod: storedRef(doc.paymentMethod, "PaymentMethod"),
-        costCentre: storedRef(doc.costCentre, "CostCentre"),
+        costCentre: costCentreUpdatePayload(centre, doc.costCentre?.id),
         origin:
           doc.origin === undefined
             ? undefined
@@ -368,22 +514,13 @@ export async function prepareInvoiceUpdate(
         basics.positions === undefined || current.positions.length === 0
           ? null
           : current.positions.map((row) => ref(row.id, "InvoicePos")),
+      ...change.body,
     },
     "invoice",
   );
 
   const log = new ChangeLog();
-  if (basics.contactChanged) {
-    log.value(
-      "contact",
-      "Customer",
-      `contact ${doc.contact?.id ?? "none"}`,
-      `contact ${basics.contact.contact.id}`,
-    );
-  }
-  if (basics.address !== undefined) {
-    log.value("address", "Address", basics.addressBefore, addressText(basics.address));
-  }
+  logRecipientChanges(log, doc, basics);
   log.value("date", "Invoice date", storedDate, date);
   log.value(
     "delivery date",
@@ -403,58 +540,48 @@ export async function prepareInvoiceUpdate(
         : `${doc.timeToPay} days`
       : `${args.timeToPay} days`,
   );
-  if (basics.contactPersonChanged) {
-    log.value(
-      "contact person",
-      "Contact person",
-      doc.contactPerson === undefined ? undefined : `user ${doc.contactPerson.id}`,
-      `${basics.contactPerson.name ?? "user"} (user ${basics.contactPerson.id})`,
-    );
+  logContactPersonChange(log, doc, basics);
+  logTextChanges(log, doc.header, { ...args, ...texts });
+  logPricingChanges(log, doc, basics, current.positions.length);
+  if (centre !== undefined) {
+    log.value("cost centre", "Cost centre (Kostenstelle)", ...costCentreChange(centre));
   }
-  if (args.header !== undefined) log.value("title", "Title", doc.header, args.header);
-  if (args.headText !== undefined) log.note("intro text", "Intro text", "replaced");
-  if (args.footText !== undefined) log.note("closing text", "Closing text", "replaced");
-  if (basics.modeChanged) {
-    log.value(
-      "price mode",
-      "Prices entered as",
-      basics.mode === "net" ? "gross" : "net",
-      basics.mode,
-    );
-  }
-  if (basics.taxChanged)
-    log.note(
-      "tax",
-      "Tax",
-      `${taxText(basics.rule, basics.tax)}; text: ${basics.tax.taxText ?? "(none)"}`,
-    );
-  if (basics.currencyChanged) log.value("currency", "Currency", doc.currency, basics.currency);
-  if (basics.positions !== undefined) {
-    log.note(
-      "positions",
-      "Positions",
-      `replace ${positionCount(current.positions.length)} with ${positionCount(basics.positions.length)}`,
-    );
-  }
+  const keptDiscount = logDiscountChange(log, change, discounts.rows, basics.currency);
+
+  // The tax rule is judged again only when the call changes what it depends on.
+  const taxHint =
+    basics.rule !== undefined &&
+    (args.taxRuleId !== undefined || basics.contactChanged || basics.address !== undefined)
+      ? invoiceTaxRuleHint(
+          basics.rule.id,
+          basics.regime,
+          basics.contact.contact,
+          basics.address?.countryCode ??
+            (await storedCountryCode(client, doc.addressCountry?.id, options)),
+        )
+      : undefined;
 
   const customer = customerText(basics.contact.contact.displayName, basics.contact.contact.id);
   const facts: PreviewFact[] = [
     fact("Invoice", `${doc.id} (${numberLabel(doc.invoiceNumber)}, draft)`),
     fact("Customer", customer),
     ...log.facts,
+    ...texts.facts,
     ...(basics.positions === undefined
       ? []
       : positionFacts(basics.positions, basics.mode, basics.currency)),
-    expected === undefined
-      ? fact("Total (unchanged)", storedTotalText(doc))
-      : fact("Total (expected)", totalsText(expected, basics.currency)),
+    ...keptDiscount,
+    updateTotalFact(totals, doc, basics.currency),
   ];
   const preview = draftPreview(
     `Update draft invoice ${doc.id} for ${customer}: change ${log.changed.join(", ") || "nothing visible"}.`,
     facts,
-    basics.warnings,
+    [...basics.warnings, taxHint, totals.warning],
   );
-  return { preview, state: { body, invoiceId: doc.id, expected } };
+  return {
+    preview,
+    state: { body, invoiceId: doc.id, expected, discount: change.planned },
+  };
 }
 
 /** Result of a saved invoice draft: the read-back invoice and trusted notes. */
@@ -488,46 +615,44 @@ export async function executeInvoiceDraft(
       completedWrites: [saved],
     });
   }
-  const details = await readBack(saved, () => getInvoice(client, id, { signal, cacheOwner }));
-  const notes = readBackNotes(
-    {
-      number: details.invoice.number,
-      gross: details.invoice.totals.gross?.amount,
-      currency: details.invoice.currency,
-      positionsComplete: details.positionsComplete,
-    },
-    { noun: "invoice", finalizeTool: FINALIZE_TOOL, expected: state.expected },
+  const details = await readBack(saved, () =>
+    getInvoice(client, id, { signal, cacheOwner, withDiscount: true }),
   );
+  const discountNote = discountReadBackNote(state.discount, details.discount, "invoice");
+  const notes = [
+    ...readBackNotes(
+      {
+        number: details.invoice.number,
+        gross: details.invoice.totals.gross?.amount,
+        currency: details.invoice.currency,
+        positionsComplete: details.positionsComplete,
+      },
+      { noun: "invoice", finalizeTool: FINALIZE_TOOL, expected: state.expected },
+    ),
+    ...(discountNote === undefined ? [] : [discountNote]),
+  ];
   return { id, details, notes };
 }
 
-/**
- * The stored address of an invoice: its structured fields when any is set (drafts saved through
- * the API), else the free-text `address` (web-app drafts), else none.
- */
-function invoiceStoredAddress(doc: CurrentInvoice): StoredAddress {
-  const countryId = doc.addressCountry?.id;
-  const parts = {
-    name: doc.addressName,
-    street: doc.addressStreet,
-    zip: doc.addressZip,
-    city: doc.addressCity,
-  };
-  if (Object.values(parts).some((part) => part !== undefined)) {
-    const place = [parts.zip, parts.city].filter((part) => part !== undefined).join(" ");
-    return {
-      base: { kind: "parts", parts: { ...parts, countryId } },
-      lines: [parts.name, parts.street, place],
-      countryId,
-    };
-  }
-  if (doc.address !== undefined) {
-    return { base: { kind: "text", countryId }, lines: [doc.address], countryId };
-  }
-  return { base: { kind: "none" }, lines: [], countryId };
+/** The ISO code of the stored address's country (cached country list); undefined when unknown. */
+async function storedCountryCode(
+  client: SevdeskClient,
+  countryId: number | undefined,
+  options: DraftCallOptions,
+): Promise<string | undefined> {
+  if (countryId === undefined) return undefined;
+  const codes = await loadCountryCodes(client, {
+    cacheOwner: options.cacheOwner,
+    signal: options.signal,
+  });
+  return codes.get(countryId);
 }
 
-/** Only regular draft invoices that are not enshrined can be updated here. */
+/**
+ * Only regular draft invoices that are not enshrined can be updated here. The type is checked
+ * before the status, so a recurring template (WKR) at any status is pointed to its own tool
+ * instead of being told to reset it to a draft, which the reset tool refuses for templates.
+ */
 function checkUpdatable(doc: {
   readonly id: number;
   readonly status: number;
@@ -540,6 +665,20 @@ function checkUpdatable(doc: {
       message: `Invoice ${doc.id} is enshrined (festgeschrieben) and can no longer be changed.`,
     });
   }
+  const type = doc.invoiceType?.trim().toUpperCase() ?? "RE";
+  if (type !== "RE") {
+    const known = documentTypeByCode("invoice", type);
+    const instead =
+      type === "WKR"
+        ? "Change a recurring invoice template with sevdesk_invoice_update_recurring."
+        : "Edit it in sevDesk.";
+    throw new SevdeskError({
+      kind: "validation",
+      message:
+        `Invoice ${doc.id} is ${known === undefined ? "not a regular invoice" : `a ${known.label.toLowerCase()} (${known.code})`}; ` +
+        `this tool only changes regular invoices (RE). ${instead}`,
+    });
+  }
   if (doc.status !== 100) {
     throw new SevdeskError({
       kind: "validation",
@@ -547,16 +686,6 @@ function checkUpdatable(doc: {
         `Invoice ${doc.id} is not a draft (status: ${statusDto("invoice", doc.status).label}); ` +
         'only drafts can be changed. Reset it to a draft first with sevdesk_invoice_reset (to: "draft") ' +
         "or cancel it with sevdesk_invoice_cancel.",
-    });
-  }
-  const type = doc.invoiceType?.trim().toUpperCase() ?? "RE";
-  if (type !== "RE") {
-    const known = documentTypeByCode("invoice", type);
-    throw new SevdeskError({
-      kind: "validation",
-      message:
-        `Invoice ${doc.id} is ${known === undefined ? "not a regular invoice" : `a ${known.label.toLowerCase()} (${known.code})`}; ` +
-        "this tool only changes regular invoices (RE). Edit it in sevDesk.",
     });
   }
 }

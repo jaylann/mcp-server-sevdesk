@@ -118,6 +118,8 @@ const accountRecordSchema = z.object({
   iban: zText,
   type: zText,
   importType: zText,
+  /** Spec: the data provider (e.g. `FINAPI`), "only set if the account is connected" to one. */
+  bankServer: zText,
   currency: zText,
   defaultAccount: zBool01.optional(),
   status: zNullableInt,
@@ -270,14 +272,19 @@ export function maskIban(iban: string | undefined): string | undefined {
 }
 
 /**
- * A file-import account is told by its `importType` (CSV or MT940) on an `online` account, never
- * by `type` alone: a bank connection is `online` too (D-097).
+ * A file-import account is told by its `importType` (CSV or MT940) on an `online` account without
+ * a `bankServer`, never by `type` alone: a bank connection is `online` too (D-097). How a
+ * connected account reads is not recorded, so one that names a data provider is never taken for a
+ * file-import account, whatever its `importType` says.
  */
 function toAccountDto(record: AccountRecord): BankAccountDto {
   const sevdeskType = cleanText(record.type, 20);
   const currency = currencyCode(record.currency);
+  const unconnected = cleanText(record.bankServer, 40) === undefined;
   const importType =
-    sevdeskType === "online" ? fileImportTypeOf(cleanText(record.importType, 10)) : undefined;
+    sevdeskType === "online" && unconnected
+      ? fileImportTypeOf(cleanText(record.importType, 10))
+      : undefined;
   return compact({
     id: record.id,
     name: accountName(record),
@@ -414,6 +421,27 @@ export async function listBankAccounts(
     archivedHidden: records.length - visible.length,
     complete: accountPageComplete(page.items.length, page.total),
   };
+}
+
+/**
+ * The names of the active check accounts (`GET /CheckAccount`, one request, no balances), e.g. for
+ * argument suggestions. Archived and unnamed accounts are left out; names are sanitized and
+ * without duplicates.
+ */
+export async function listBankAccountNames(
+  client: SevdeskClient,
+  signal?: AbortSignal,
+): Promise<readonly string[]> {
+  const page = await client.list("/CheckAccount", undefined, {
+    limit: ACCOUNT_PAGE_SIZE,
+    ...(signal === undefined ? {} : { signal }),
+  });
+  const names = page.items
+    .map(parseAccount)
+    .filter((record) => record.status !== ARCHIVED_STATUS)
+    .map((record) => cleanText(record.name, NAME_MAX))
+    .filter((name): name is string => name !== undefined);
+  return [...new Set(names)];
 }
 
 /** The balance as an exact decimal string, or `undefined` when sevDesk refused it. */

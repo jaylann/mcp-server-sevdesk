@@ -197,14 +197,39 @@ describe("sevdesk_bank_accounts_list (community: recorded CheckAccount shape, fa
     expect(empty.result.summary).toMatch(/^No payment accounts found\.$/);
   });
 
-  it("tells file-import accounts by importType, never by type alone (D-097)", async () => {
+  it("tells file-import accounts by importType without a bankServer, never by type alone (D-097)", async () => {
     const objects = [
-      { id: "8201", name: "Import CSV", type: "online", importType: "CSV", status: "100" },
-      { id: "8202", name: "Import MT940", type: "online", importType: "MT940", status: "100" },
+      // As recorded: a file-import account reads bankServer null.
+      {
+        id: "8201",
+        name: "Import CSV",
+        type: "online",
+        importType: "CSV",
+        bankServer: null,
+        status: "100",
+      },
+      {
+        id: "8202",
+        name: "Import MT940",
+        type: "online",
+        importType: "MT940",
+        bankServer: "",
+        status: "100",
+      },
       { id: "8203", name: "Bankverbindung", type: "online", importType: null, status: "100" },
       { id: "8204", name: "Unbekannter Import", type: "online", importType: "XML", status: "100" },
       { id: "8205", name: "Verrechnung", type: "offline", importType: "CSV", status: "100" },
       { id: "8206", name: "Kasse", type: "register", status: "100" },
+      // A bank connection (not recorded) that also carried an importType: not a file-import
+      // account, so it is never offered for transactions entered by hand.
+      {
+        id: "8207",
+        name: "FinAPI",
+        type: "online",
+        importType: "CSV",
+        bankServer: "FINAPI",
+        status: "100",
+      },
     ];
     const { result } = await run({ asOf: "2026-06-30" }, [
       { path: "/CheckAccount", response: { body: { objects } } },
@@ -220,6 +245,7 @@ describe("sevdesk_bank_accounts_list (community: recorded CheckAccount shape, fa
       [8204, "bank", false, undefined],
       [8205, "clearing", false, undefined],
       [8206, "cash", false, undefined],
+      [8207, "bank", false, undefined],
     ]);
   });
 

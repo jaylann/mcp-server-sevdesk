@@ -7,7 +7,8 @@
  * the answer on would flood the context and carry file content into the conversation.
  *
  * Guard: only `filename` and `pages` are read from the answer (`readUploadAnswer`); the tool output
- * names the local file, its kind, size and page count. Tested through the real HTTP client.
+ * names the local file, its kind, size, SHA-256 and page count. Tested through the real HTTP
+ * client.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -38,7 +39,7 @@ afterEach(async () => {
 });
 
 describe("B6: the upload preview is stripped", () => {
-  it("keeps only the token, and the output only file name, kind, size and pages", async () => {
+  it("keeps only the token, and the output only file name, kind, size, SHA-256 and pages", async () => {
     expect(JSON.stringify(loadFixture("vouchers/upload-temp-file.json").body)).toContain(
       PREVIEW_MARKER,
     );
@@ -66,6 +67,8 @@ describe("B6: the upload preview is stripped", () => {
       name: "Rechnung-0815.pdf",
       kind: "pdf",
       bytes: expect.any(Number) as number,
+      // Our own digest of the local bytes, not sevDesk's contentHash.
+      sha256: expect.stringMatching(/^[0-9a-f]{64}$/) as string,
       pages: 1,
     });
     expect(everything.length).toBeLessThan(20_000);

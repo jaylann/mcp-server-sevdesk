@@ -25,7 +25,6 @@ import {
   type SessionCookieMinter,
   StateDirError,
 } from "../../src/http/oauth/index.js";
-import type { ResolvedAddress, Resolver } from "../../src/http/oauth/ssrf.js";
 import type {
   GrantStore,
   HttpAuthenticator,
@@ -36,6 +35,7 @@ import type {
   OAuthModule,
   OAuthSettings,
 } from "../../src/http/types.js";
+import type { ResolvedAddress, Resolver } from "../../src/safety/public-address.js";
 import type { Tier } from "../../src/safety/tiers.js";
 
 export const ORIGIN = "https://mcp.example.com";

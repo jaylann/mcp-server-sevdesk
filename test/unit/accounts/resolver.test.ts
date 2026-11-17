@@ -41,6 +41,7 @@ function settings() {
     allowedTiers: new Set<Tier>(["read", "write", "commit"]),
     fileDirs: ["/srv/belege"],
     outputDir: "/srv/out",
+    fileUrlHosts: ["belege.example.com"],
     confirmOpen: true,
     auditLogPath: "/var/log/sevdesk-audit.jsonl",
   });
@@ -121,7 +122,7 @@ describe("OAuth resolver: the account's config", () => {
     ).toThrow(/without a verified grant/);
   });
 
-  it("derives a frozen config: tiers granted ∩ allowed, no file access, no opener, the account", () => {
+  it("derives a frozen config: tiers granted ∩ allowed, no local files, no opener, the account", () => {
     const { resolver } = oauth();
 
     const { config } = resolver.resolve(authInfo("1001", TOKEN_A, ["read", "commit", "external"]));
@@ -129,6 +130,8 @@ describe("OAuth resolver: the account's config", () => {
     expect([...config.allowedTiers]).toEqual(["read", "commit"]);
     expect(config.fileDirs).toEqual([]);
     expect(config.outputDir).toBeUndefined();
+    // Downloads touch no disk and reach only the operator's hosts: they stay on.
+    expect(config.fileUrlHosts).toEqual(["belege.example.com"]);
     expect(config.confirmOpen).toBe(false);
     expect(config.account).toEqual({ id: "1001" });
     expect(config.deployment).toBe(DEPLOYMENT);

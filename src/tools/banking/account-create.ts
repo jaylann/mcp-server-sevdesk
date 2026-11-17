@@ -27,10 +27,10 @@ export const bankAccountCreateTool = defineWriteTool({
     "transactions sevDesk creates when payments are booked on it. A cash register (Kasse) " +
     "cannot be created through the API: set it up in the sevDesk web app. Tier write. An " +
     "account cannot be deleted through the API, only archived, so an active account with the " +
-    "same name is refused. Without accountingNumber the account gets the next free booking " +
-    "account (Buchungskonto) of the 18xx range (SKR04); sevDesk refuses a number in use or not allowed " +
-    "for payment accounts. dryRun previews. Before: sevdesk_bank_accounts_list (fileImport marks " +
-    "file-import accounts).",
+    "same name is refused. Without accountingNumber sevDesk picks the booking account " +
+    "(Buchungskonto) itself (recorded on SKR04: the next free 18xx number); sevDesk refuses a " +
+    "number in use or not allowed for payment accounts. dryRun previews. Before: " +
+    "sevdesk_bank_accounts_list (fileImport marks file-import accounts).",
   toolset: "banking",
   tier: "write",
   annotations: {
@@ -59,8 +59,9 @@ export const bankAccountCreateTool = defineWriteTool({
       .max(ACCOUNTING_NUMBER_MAX)
       .optional()
       .describe(
-        "Booking account (Buchungskonto) number, unused by other payment accounts; default: the " +
-          "next free 18xx number (SKR04). Ask the tax consultant.",
+        "Booking account (Buchungskonto) number, unused by other payment accounts; default: " +
+          "sevDesk picks a free one (recorded on SKR04: the next free 18xx number). Ask the tax " +
+          "consultant.",
       ),
     ...dryRunInputShape,
   }),
