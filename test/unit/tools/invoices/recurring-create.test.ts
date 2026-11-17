@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TEMPLATE_SETTINGS_EMBED } from "../../../../src/domain/recurring/schedule.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
+import { tierScopedClient } from "../../../../src/sevdesk/scoped-client.js";
 import { invoiceCreateRecurringTool as tool } from "../../../../src/tools/invoices/recurring-create.js";
 import { ACCOUNT_RECURRING_INVOICES } from "../../../../src/tools/types.js";
+import { allEnabledConfig } from "../../../helpers/config.js";
 import { type FakeRoute, FakeSevdeskClient } from "../../../helpers/fake-client.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import { notFound, TIMESTAMPS, unknownRegimeRoute, withRoutes } from "../drafts/routes.js";
@@ -724,6 +726,76 @@ describe("sevdesk_invoice_create_recurring", () => {
       }
       expect(tool.input.safeParse({ ...args, interval: undefined }).success).toBe(false);
       expect(tool.input.safeParse({ ...args, startDate: undefined }).success).toBe(false);
+    });
+  });
+
+  describe("a plan whose day ended before the save", () => {
+    /**
+     * Prepares at 23:59 Berlin time on 2026-11-17 and runs `execute` with that plan at 00:01 the
+     * next day, as when midnight passes between the last preparation and the save.
+     */
+    async function saveAfterMidnight(callArgs: Record<string, unknown>) {
+      vi.setSystemTime(new Date("2026-11-17T23:59:00+01:00"));
+      const client = new FakeSevdeskClient(routes);
+      const plan = await prepareWrite(tool, callArgs, client);
+      vi.setSystemTime(new Date("2026-11-18T00:01:00+01:00"));
+      const error = await tool
+        .execute(tool.input.parse(callArgs), plan, {
+          client: tierScopedClient(client, tool.tier),
+          config: allEnabledConfig(),
+          signal: new AbortController().signal,
+          progress: () => Promise.resolve(),
+          files: {} as never,
+        })
+        .then(
+          () => undefined,
+          (thrown: unknown) => thrown,
+        );
+      return { client, plan, error };
+    }
+    const changed =
+      "Nothing was sent: the date in Berlin changed from 2026-11-17 to 2026-11-18 after the " +
+      "preview was made.";
+
+    it("refuses a first run that became due at once, which the preview did not warn of", async () => {
+      const { client, plan, error } = await saveAfterMidnight({ ...args, startDate: "2026-11-18" });
+      expect(plan.preview.warnings).toHaveLength(3);
+      expect(error).toBeInstanceOf(SevdeskError);
+      expect(error).toMatchObject({
+        kind: "validation",
+        message:
+          `${changed} The first run on 2026-11-18 is now today, so sevDesk would create the ` +
+          "first draft within about a minute of the save, which the preview did not say. Call " +
+          "the tool again for a new preview.",
+      });
+      expect(client.writes()).toEqual([]);
+    });
+
+    it("refuses a start that is now in the past, which sevDesk would catch up", async () => {
+      const { client, error } = await saveAfterMidnight({ ...args, startDate: "2026-11-17" });
+      expect(error).toBeInstanceOf(SevdeskError);
+      const { kind, message } = error as SevdeskError;
+      expect(kind).toBe("validation");
+      expect(message.startsWith(changed)).toBe(true);
+      expect(message).toContain(
+        "The start date 2026-11-17 is in the past (today is 2026-11-18 in Berlin).",
+      );
+      expect(message.endsWith("Call the tool again for a new preview.")).toBe(true);
+      expect(client.writes()).toEqual([]);
+    });
+
+    it("saves when the new day changes nothing the preview said", async () => {
+      const later = await saveAfterMidnight(args);
+      expect(later.error).toBeUndefined();
+      expect(later.client.writes()).toHaveLength(1);
+      // Without automatic generation a first run today creates nothing, warned or not.
+      const off = await saveAfterMidnight({
+        ...args,
+        startDate: "2026-11-18",
+        autoGenerate: false,
+      });
+      expect(off.error).toBeUndefined();
+      expect(off.client.writes()).toHaveLength(1);
     });
   });
 

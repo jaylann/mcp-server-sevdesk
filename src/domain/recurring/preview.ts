@@ -29,7 +29,7 @@ import {
   phrase,
   type PreviewLanguage,
 } from "../preview-text.js";
-import { FIRST_RUN_TODAY, RUN_DATE_BEHAVIOUR } from "./run-date.js";
+import { FIRST_RUN_TODAY, firstRunDueAtOnce, RUN_DATE_BEHAVIOUR } from "./run-date.js";
 import { endsOnRun, INTERVALS, runCount, runDates, type Schedule } from "./schedule.js";
 
 /** Runs listed after the first one. */
@@ -351,7 +351,9 @@ function warnings(input: TemplatePreviewInput, lang: PreviewLanguage): string[] 
     // What would turn the drafts into sent invoices: only relevant while sevDesk creates them.
     input.autoGenerate ? RUN_DATE_BEHAVIOUR.autoSending[lang] : undefined,
     HOW_TO_END[lang],
-    input.autoGenerate && schedule.startDate === input.today ? FIRST_RUN_TODAY[lang] : undefined,
+    firstRunDueAtOnce(schedule.startDate, input.autoGenerate, input.today)
+      ? FIRST_RUN_TODAY[lang]
+      : undefined,
     endOnRunWarning(schedule, lang),
     similarWarning(input, lang),
     basics.regime === undefined

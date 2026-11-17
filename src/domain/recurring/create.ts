@@ -55,7 +55,7 @@ import { getInvoice, type InvoiceDetails, listInvoices } from "../invoices.js";
 import { compare } from "../money.js";
 import { type SaveTemplateBody, saveTemplateBodySchema } from "./payload.js";
 import { templatePreviews } from "./preview.js";
-import { TEMPLATE_SAVE_STATUS } from "./run-date.js";
+import { firstRunDueAtOnce, TEMPLATE_SAVE_STATUS } from "./run-date.js";
 import {
   checkSchedule,
   readStoredSchedule,
@@ -126,6 +126,8 @@ export interface RecurringInvoiceState {
   readonly body: SaveTemplateBody;
   readonly schedule: Schedule;
   readonly expected: Amounts;
+  /** Berlin's `YYYY-MM-DD` when the plan was prepared: the day the preview's date notes hold for. */
+  readonly preparedOn: string;
 }
 
 export interface RecurringInvoicePlan {
@@ -197,7 +199,7 @@ export async function prepareRecurringInvoiceCreate(
       similar,
     }),
     binding: sha256Hex(canonicalJson({ kind: "recurring-invoice-template", body })),
-    state: { body, schedule, expected: basics.expected },
+    state: { body, schedule, expected: basics.expected, preparedOn: today },
   };
 }
 
@@ -240,13 +242,15 @@ export interface RecurringInvoiceResult {
 
 /**
  * Sends the prepared body (one request, never retried) and reads the template back. A failing
- * read-back names the saved template as a completed write.
+ * read-back names the saved template as a completed write. Refuses, before sending, a plan whose
+ * schedule no longer matches its preview because the day changed ({@link assertSameDayOutcome}).
  */
 export async function executeRecurringInvoiceCreate(
   client: SevdeskClient,
   state: RecurringInvoiceState,
   options: CountryReadOptions,
 ): Promise<RecurringInvoiceResult> {
+  assertSameDayOutcome(state);
   const { signal, cacheOwner } = options;
   const withSignal = signal === undefined ? {} : { signal };
   const response = await client.request({
@@ -285,6 +289,42 @@ export async function executeRecurringInvoiceCreate(
       ...settingsDifferences(askedOn, schedule),
     ],
   };
+}
+
+/**
+ * Refuses (trusted `validation` error, nothing sent) a plan whose Berlin day ended before the save
+ * when that changes what the approved preview said: a start now in the past, which sevDesk would
+ * catch up at once, or a first run now due at once that the preview did not warn of. The approval
+ * flows prepare the call again after the human's answer and compare the preview, so this covers
+ * the time from that last preparation, with its reads, to the save.
+ */
+function assertSameDayOutcome(state: RecurringInvoiceState): void {
+  const today = todayInBerlin();
+  const { preparedOn, schedule } = state;
+  if (today === preparedOn) return;
+  const refuse = (reason: string, cause?: unknown): never => {
+    throw new SevdeskError({
+      kind: "validation",
+      message:
+        `Nothing was sent: the date in Berlin changed from ${preparedOn} to ${today} after the ` +
+        `preview was made. ${reason} Call the tool again for a new preview.`,
+      cause,
+    });
+  };
+  try {
+    checkSchedule(schedule, today);
+  } catch (error) {
+    if (!(error instanceof SevdeskError)) throw error;
+    refuse(error.message, error);
+  }
+  const on = state.body.invoice.propertyAutoGenerateRecurringInvoice === true;
+  const { startDate } = schedule;
+  if (firstRunDueAtOnce(startDate, on, today) !== firstRunDueAtOnce(startDate, on, preparedOn)) {
+    refuse(
+      `The first run on ${startDate} is now today, so sevDesk would create the first draft ` +
+        "within about a minute of the save, which the preview did not say.",
+    );
+  }
 }
 
 /** What the read-back shows about the record itself: type, status, total, positions. */

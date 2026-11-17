@@ -69,7 +69,19 @@ export const RUN_DATE_BEHAVIOUR: Readonly<Record<RunDateCase, Phrase>> = {
   ),
 };
 
-/** Added when the first run is today and automatic generation is on: the run is due at once. */
+/**
+ * Whether the first run is due at once on `today` (Berlin's `YYYY-MM-DD`): it is today and
+ * automatic generation is on. The preview then carries {@link FIRST_RUN_TODAY}.
+ */
+export function firstRunDueAtOnce(
+  startDate: string,
+  autoGenerate: boolean,
+  today: string,
+): boolean {
+  return autoGenerate && startDate === today;
+}
+
+/** Added when the first run is due at once ({@link firstRunDueAtOnce}). */
 export const FIRST_RUN_TODAY: Phrase = phrase(
   "The first run is today, so it is due at once: sevDesk creates the first draft within about a " +
     "minute of saving the template.",
