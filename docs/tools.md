@@ -1223,9 +1223,9 @@ Close a month in sevDesk: what changed, unbooked bank transactions and missing r
 
 File a receipt or supplier invoice in sevDesk, or import an e-invoice (E-Rechnung: XRechnung, ZUGFeRD): duplicate check, booking account and tax rule, the voucher draft with a dry run first, then finalizing and the payment. Not tax advice.
 
-| Argument | Required | Description                                                                                                                                                | Suggestions |
-| -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| `file`   | no       | The receipt or e-invoice file, as the voucher tools take it (a path inside SEVDESK_FILE_DIRS, or an upload reference). Default: the assistant asks for it. | —           |
+| Argument | Required | Description                                                                                                                                                                                                   | Suggestions |
+| -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| `file`   | no       | The receipt or e-invoice file, as the voucher tools take it (a path inside SEVDESK_FILE_DIRS, an upload reference, or an https link to a host in SEVDESK_FILE_URL_HOSTS). Default: the assistant asks for it. | —           |
 
 ### `vat_precheck`
 
