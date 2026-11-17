@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/evaluations.md sha256:9570fe3b1ee5 -->
+<!-- translated-from: docs/guides/evaluations.md sha256:fd7812e25000 -->
 
 # Auswertungen und Exporte
 
@@ -123,8 +123,11 @@ Die Prüfung vergleicht die Steuerregel jedes Dokuments damit, wo die Gegenseite
 soweit sevDesk es weiß: die USt-IdNr. des Kontakts und die Länder seiner Adressen. Eine deutsche
 USt-IdNr. oder eine deutsche Adresse gilt als in Deutschland registriert oder ansässig, und Monaco
 zählt als Frankreich. Bei Verkäufen zählt die USt-IdNr. eines Kunden nur im gültigen Format ihres
-Staats, so wie [`sevdesk_vat_id_check`](../tools.md#sevdesk_vat_id_check) sie prüft. Dokumente
-werden nach Belegdatum ausgewählt; Verkäufe werden an Rechnungen geprüft.
+Staats, so wie [`sevdesk_vat_id_check`](../tools.md#sevdesk_vat_id_check) sie prüft. Griechische
+USt-IdNrn. beginnen mit EL; eine Nummer, die mit dem Präfix GR gespeichert ist, zählt deshalb als
+USt-IdNr. im falschen Format ihres Staats (der Befund sagt das), nie als eine von außerhalb der EU.
+Dafür, wo ein Lieferant ansässig ist, steht GR weiter für Griechenland. Dokumente werden nach
+Belegdatum ausgewählt; Verkäufe werden an Rechnungen geprüft.
 
 | Code                                                                            | Bedeutet                                                                                                                           |
 | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |

@@ -115,8 +115,10 @@ The check compares each document's tax rule with where the other side is establi
 sevDesk knows it: the contact's VAT ID and the countries of its addresses. A German VAT ID or a
 German address counts as registered or established in Germany, and Monaco counts as France. On
 sales, a customer's VAT ID counts only in the valid format of its state, as
-[`sevdesk_vat_id_check`](../tools.md#sevdesk_vat_id_check) checks it. Documents are taken by
-document date; sales are checked on invoices.
+[`sevdesk_vat_id_check`](../tools.md#sevdesk_vat_id_check) checks it. Greek VAT IDs start with
+EL, so a number stored with the prefix GR counts as a VAT ID in the wrong format for its state
+(the finding says so), never as one from outside the EU; for where a supplier is established, GR
+still means Greece. Documents are taken by document date; sales are checked on invoices.
 
 | Code                                                                            | Means                                                                                                       |
 | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
