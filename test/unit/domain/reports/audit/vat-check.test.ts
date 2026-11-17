@@ -368,6 +368,20 @@ describe("check vat: places and VAT id formats VAT law treats apart", () => {
     const ni = result.findings.find((entry) => entry.contact?.id === northernIreland.id);
     expect(ni?.reason).toContain("a VAT id from Northern Ireland (EU rules for goods only)");
   });
+
+  it("places a customer by the invoice's address country when no contact has an address", async () => {
+    const french: CustomerSpec = { id: 4201, vatNumber: "FR12345678901", country: COUNTRY.FR };
+    const invoices = [sale(21, french, 1, "190", "german_vat_to_eu_business")];
+    const { result } = await audit([
+      regularAccount,
+      ...scenarioRoutes({ invoices }),
+      ...directoryRoutes([{ id: 1, name: "Ohne Adresse", countries: [] }]),
+    ]);
+
+    expectEach(result, invoices);
+    expect(result.findings[0]?.contact?.countries).toEqual(["FR"]);
+    expect(result.coverage.notJudged).toBe(0);
+  });
 });
 
 describe("check vat: incomplete reads", () => {

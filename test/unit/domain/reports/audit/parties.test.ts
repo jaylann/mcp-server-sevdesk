@@ -8,7 +8,7 @@ import {
 } from "../../../../../src/domain/reports/audit/parties.js";
 import { SevdeskError } from "../../../../../src/sevdesk/errors.js";
 import { FakeSevdeskClient } from "../../../../helpers/fake-client.js";
-import { CONTACTS, directoryRoutes } from "./scenario.js";
+import { CONTACTS, COUNTRY, directoryRoutes } from "./scenario.js";
 
 describe("vatIdArea", () => {
   it.each([
@@ -186,5 +186,19 @@ describe("loadPartyDirectory", () => {
     );
     await loadPartyDirectory(client, { cacheOwner: {} });
     expect(client.callsTo("/StaticCountry")).toEqual([]);
+  });
+
+  it("reads the country table for the documents' own countries without any address", async () => {
+    const client = new FakeSevdeskClient(
+      directoryRoutes([{ id: 1, name: "Ohne Adresse", countries: [] }]),
+    );
+    const directory = await loadPartyDirectory(client, {
+      cacheOwner: {},
+      documentsHaveCountries: true,
+    });
+
+    expect(client.callsTo("/StaticCountry")).toHaveLength(1);
+    expect(directory.countryCodes.get(COUNTRY.FR)).toBe("FR");
+    expect(directory.countriesUnread).toBe(false);
   });
 });

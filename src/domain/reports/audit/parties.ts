@@ -171,7 +171,7 @@ export interface PartyDirectory {
     /** A cap stopped one of the two lists: contacts beyond it are unknown. */
     readonly truncated: boolean;
   };
-  /** True when addresses had countries but the country table could not be read. */
+  /** True when addresses or documents had countries but the country table could not be read. */
   readonly countriesUnread: boolean;
 }
 
@@ -180,6 +180,11 @@ export interface PartyDirectoryOptions extends ReportRunOptions {
   readonly cacheOwner: object;
   /** Rows per list; defaults to {@link REPORT_SCAN_MAX}. */
   readonly maxRows?: number | undefined;
+  /**
+   * The documents to judge carry address countries of their own (invoices): read the country
+   * table for them even when no contact address has a country.
+   */
+  readonly documentsHaveCountries?: boolean | undefined;
 }
 
 /** Reads the contact and address lists once each; see the module doc. */
@@ -206,7 +211,9 @@ export async function loadPartyDirectory(
     },
     { ...run, max, noun: "contact addresses" },
   );
-  const withCountry = addresses.items.some((address) => address.countryId !== undefined);
+  const withCountry =
+    options.documentsHaveCountries === true ||
+    addresses.items.some((address) => address.countryId !== undefined);
   const countryCodes = withCountry
     ? await loadCountryCodes(client, { cacheOwner: options.cacheOwner, signal: options.signal })
     : new Map<number, string>();

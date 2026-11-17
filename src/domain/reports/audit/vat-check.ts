@@ -519,6 +519,8 @@ async function runVatCheck(context: AuditCheckContext): Promise<AuditCheckResult
       : await loadPartyDirectory(client, {
           cacheOwner: context.cacheOwner,
           maxRows: limits?.maxContactRows,
+          // An invoice's own address country places the customer even without contact addresses.
+          documentsHaveCountries: candidates.some((header) => header.countryId !== undefined),
           signal: options.signal,
           onProgress: options.onProgress,
         });
