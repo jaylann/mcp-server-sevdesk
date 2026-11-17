@@ -65,8 +65,8 @@ the token safe.
 
 ## What it can do
 
-80 tools across 10 toolsets. The 40 read tools fill the first column; with the write tiers
-enabled, 40 more tools create and change data.
+84 tools across 10 toolsets. The 42 read tools fill the first column; with the write tiers
+enabled, 42 more tools create and change data.
 
 | Area                               | Read                                                                                                                                                                                                               | Write (`write`, `commit`, `external`)                                                                                                                                                                                                                             |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -74,11 +74,18 @@ enabled, 40 more tools create and change data.
 | **Invoices, credit notes, orders** | List and get; PDFs and e-invoice XML as MCP resources; an **e-invoice readiness check** for outgoing invoices                                                                                                      | Drafts, including orders (Angebot, Auftragsbestätigung, Lieferschein), invoices from orders, credit notes from invoices and dunning reminders (Mahnungen). Finalize, book payments, enshrine (festschreiben, irreversible), reset, cancel (Storno). Send by email |
 | **Vouchers (Belege)**              | List and get; **parse received e-invoices** locally (XRechnung UBL/CII, ZUGFeRD/Factur-X)                                                                                                                          | Drafts with the receipt file attached, **imports from an e-invoice**. Finalize, book payments, enshrine, reset, delete drafts                                                                                                                                     |
 | **Banking**                        | Accounts and transactions; **reconciliation suggestions** from the amount, the invoice number in the purpose, the counterparty and splits                                                                          | Book a transaction against one or more documents (split payments, guarded against over-booking), mark it as private (Privatentnahme/-einlage), undo an assignment                                                                                                 |
-| **Reports**                        | Summaries, receivables and payables aging, cash position, changes since a date, a **VAT summary** (UStVA boxes, ZM, OSS), an **EÜR-style profit and loss**, a **tax-rule helper** for sales and a **VAT-ID check** | The **DATEV export** (Buchungsstapel ZIP, never enshrined)                                                                                                                                                                                                        |
+| **Reports**                        | Summaries, receivables and payables aging, cash position, changes since a date, a **VAT summary** (UStVA boxes, ZM, OSS), an **EÜR-style profit and loss**, a **tax-rule helper** for sales and a **VAT-ID check** | The **DATEV export** (Buchungsstapel ZIP or XML with receipt images, never enshrined) and its settings; invoice or voucher **PDF archives** as one ZIP                                                                                                            |
 | **Contacts and parts**             | Search and get, parts with their stock (Lagerbestand)                                                                                                                                                              | Create and update, including a part's `stock` and `stockEnabled`                                                                                                                                                                                                  |
 | **Advanced** (off by default)      | `sevdesk_api_get`: a read-only GET of any sevDesk endpoint no other tool covers, such as text templates. It refuses everything that could change data, return files or start jobs                                  |                                                                                                                                                                                                                                                                   |
 
-The VAT summary is clearly marked as an estimate (accrual or cash basis). Every write tool accepts
+The VAT summary is clearly marked as an estimate (accrual or cash basis). The **audits**
+(`sevdesk_records_audit`) answer "what is wrong?": foreign suppliers and customers whose VAT
+treatment does not fit, the §13b base by tax rule, vouchers booked twice and stuck drafts, and
+missing bills of suppliers that bill every month, quarter or year, each finding with its
+documents, its legal basis and what to check; they are hints, not tax advice. Where the server
+reads a local folder (`SEVDESK_FILE_DIRS`), `sevdesk_receipt_folder_check` compares its receipt
+files with those attached to the vouchers in sevDesk by checksum and names the files probably
+never booked. Every write tool accepts
 `dryRun: true` and then only returns exactly what it would do. Voucher drafts can be in a foreign
 currency, with an exchange rate or a rate date; such drafts cannot be finalized through the server
 ([Receipts](docs/guides/receipts.md)). The full generated reference is

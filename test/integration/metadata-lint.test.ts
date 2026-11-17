@@ -30,13 +30,20 @@ const FILE_WRITERS = [
   "sevdesk_document_save",
   "sevdesk_datev_export",
   "sevdesk_csv_export",
+  "sevdesk_archive_export",
 ];
 const FILE_READERS = [
   "sevdesk_voucher_create_draft",
   "sevdesk_voucher_import_einvoice",
   "sevdesk_voucher_update_draft",
   "sevdesk_einvoice_parse",
+  "sevdesk_receipt_folder_check",
 ];
+/**
+ * The reviewed readers of a whole folder (`FileAccess.scanFolder`, `scanConfinedFolder`): only
+ * local folders, so they are offered only with `SEVDESK_FILE_DIRS`, never for uploads alone.
+ */
+const FOLDER_READERS = ["sevdesk_receipt_folder_check"];
 /** The reviewed tools that open an upload page (a ticket in the transfer store). */
 const UPLOAD_OPENERS = ["sevdesk_upload_request"];
 
@@ -52,6 +59,8 @@ const WITHOUT_LOCKS: Readonly<Record<string, string>> = {
   sevdesk_order_create_draft:
     "creates a new draft; its duplicate check only warns, and the number is reserved by one sevDesk request",
   sevdesk_datev_export: "starts an export job from its arguments; no record is checked before it",
+  sevdesk_archive_export:
+    "asks sevDesk for an archive of PDFs from its arguments; no record is checked and none changes",
 };
 
 const cases = ALL_TOOLS.map((tool): [string, AnyToolDefinition] => [tool.name, tool]);
@@ -127,9 +136,38 @@ describe("tool metadata", () => {
   });
 
   it("marks every file reader as open world: its file may be downloaded from a link", () => {
-    for (const name of FILE_READERS) {
+    // A folder reader takes no file, only a folder inside SEVDESK_FILE_DIRS (checked below).
+    for (const name of FILE_READERS.filter((reader) => !FOLDER_READERS.includes(reader))) {
       const tool = ALL_TOOLS.find((candidate) => candidate.name === name);
       expect(tool?.annotations.openWorldHint, name).toBe(true);
+    }
+  });
+
+  it("offers the tools that read a whole folder only with local folders", () => {
+    for (const name of FOLDER_READERS) {
+      const tool = ALL_TOOLS.find((candidate) => candidate.name === name);
+      expect(tool?.localEffects, name).toBe("reads-files");
+      expect(tool?.tier, name).toBe("read");
+      // `scanFolder` reads local folders only, never a link: it stays closed-world, and link
+      // hosts alone do not offer it.
+      expect(tool?.annotations.openWorldHint, name).toBe(false);
+      expect(
+        tool?.available?.(allEnabledConfig({ fileUrlHosts: ["belege.example.com"] })),
+        name,
+      ).toBe(false);
+      expect(tool?.available?.(allEnabledConfig()), name).toBe(false);
+      expect(tool?.available?.(allEnabledConfig({ outputDir: "/out" })), name).toBe(false);
+      // Uploads carry single files: remote file transfer alone does not offer a folder reader.
+      expect(tool?.available?.(allEnabledConfig({ deployment: filesDeployment() })), name).toBe(
+        false,
+      );
+      expect(tool?.available?.(allEnabledConfig({ fileDirs: ["/in"] })), name).toBe(true);
+      expect(
+        tool?.available?.(
+          allEnabledConfig({ fileDirs: ["/in"], deployment: filesDeployment("bearer") }),
+        ),
+        name,
+      ).toBe(true);
     }
   });
 

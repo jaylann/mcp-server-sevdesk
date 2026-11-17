@@ -54,6 +54,7 @@ import {
   EU_STANDARD_RATES_SOURCE,
   type EuMemberState,
   euMemberState,
+  vatCountryOf,
 } from "./eu.js";
 import type { VatIdFormatCheck } from "./vat-id.js";
 
@@ -182,12 +183,6 @@ const OTHER_PLACE_NAMES: Readonly<Record<string, string>> = {
   MC: "Monaco",
   [NORTHERN_IRELAND]: "Northern Ireland",
 };
-
-/** The country whose VAT a customer in `country` (any case) comes under: France for Monaco. */
-function vatCountryOf(country: string): string {
-  const code = country.trim().toUpperCase();
-  return code === "MC" ? "FR" : code;
-}
 
 /** Whether the customer is in Northern Ireland: country XI, or GB with a VAT ID of Northern Ireland. */
 function inNorthernIreland(place: Pick<SaleFacts, "country" | "vatId">): boolean {

@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:74aff0cf62d2 -->
+<!-- translated-from: docs/faq.md sha256:f7d08e56236d -->
 
 # Häufige Fragen
 
@@ -132,9 +132,20 @@ Ja. [`sevdesk_datev_export`](tools.md#sevdesk_datev_export) lässt sevDesk den
 DATEV-Buchungsstapel (CSV-Dateien in einem ZIP) für einen Monat, ein Quartal, ein Jahr oder einen
 Zeitraum erstellen, gespeichert in deinem Ausgabeordner oder im Fernzugriff als Download-Link
 angeboten. Es schreibt die Dokumente nie fest und braucht die DATEV-Einstellungen in sevDesk
-(Beraternummer, Mandantennummer, Beginn des Wirtschaftsjahres).
-[`sevdesk_csv_export`](tools.md#sevdesk_csv_export) speichert die CSV-Exporte von sevDesk, zum
-Beispiel für Excel.
+(Beraternummer, Mandantennummer, Beginn des Wirtschaftsjahres), die
+[`sevdesk_datev_settings_update`](tools.md#sevdesk_datev_settings_update) nach deiner Bestätigung
+setzt. Mit `format: "xml"` exportiert es stattdessen die Dokumente als DATEV-XML mit ihren
+Belegbildern. [`sevdesk_csv_export`](tools.md#sevdesk_csv_export) speichert die CSV-Exporte von
+sevDesk, zum Beispiel für Excel.
+
+### Bekomme ich alle Rechnungs- oder Beleg-PDFs auf einmal, für die Steuerberatung oder eine Betriebsprüfung?
+
+Ja. [`sevdesk_archive_export`](tools.md#sevdesk_archive_export) lässt sevDesk die Rechnungs-PDFs
+oder die Belege eines Zeitraums in ein ZIP packen, standardmäßig höchstens 500 Dokumente (bis
+1.000) und 100 MiB pro Datei, und ändert nichts an den Dokumenten. sevDesk nimmt Entwürfe mit (das Ergebnis zählt sie,
+damit du sie herausnehmen kannst) und lässt Belege ohne Belegdatei weg. Ein großes Archiv dauert
+Minuten; die Abhilfe ist ein kürzerer Zeitraum. Mehr dazu:
+[Auswertungen und Exporte](guides/evaluations.de.md#rechnungs--und-belegarchiv).
 
 ### Wie weit kann ich mich auf die Umsatzsteuer-Auswertung und die Gewinn- und Verlustrechnung verlassen?
 
@@ -142,6 +153,29 @@ Sie sind Schätzungen zum Prüfen, die der Server aus deinen Dokumenten berechne
 Auswertungen von sevDesk noch eine Steuererklärung. Jedes Ergebnis sagt, was es ausgelassen hat.
 Was sie abdecken und was bei dir bleibt, steht unter
 [Auswertungen und Exporte](guides/evaluations.de.md#wie-weit-du-dich-darauf-verlassen-kannst).
+
+### Findet es doppelt gebuchte Belege oder fehlende Rechnungen?
+
+Ja, als Hinweise. `sevdesk_records_audit` mit `check: duplicates` sucht doppelt gebuchte Belege
+(derselbe Lieferant und dieselbe Belegnummer, dieselbe Belegdatei oder derselbe Betrag innerhalb
+weniger Tage) und Entwürfe, die drei Wochen oder länger offen liegen; `check: recurring_gaps` lernt,
+welche Lieferanten jeden Monat, jedes Quartal oder jedes Jahr abrechnen, und nennt die Zeiträume
+ohne Rechnung, meist ein verlorener Beleg. Beide lesen nur deine Daten und ändern nichts. Was sie
+melden und was sie bewusst auslassen, steht unter
+[Auswertungen und Exporte](guides/evaluations.de.md#prüfungen).
+
+### Erkennt es, welche Belege in meinem Ordner nie gebucht wurden?
+
+Ja, wenn der Server diesen Ordner lesen darf (`SEVDESK_FILE_DIRS`: nicht auf einem entfernten
+Server mit OAuth; im Bearer-Modus nur für Ordner auf dem Server). `sevdesk_receipt_folder_check`
+vergleicht die SHA-256-Prüfsummen der PDF-, PNG-, JPEG- und XML-Dateien im Ordner mit denen der
+Belegdateien an deinen Belegen, für einen Monat, ein Quartal oder ein Jahr. Eine Datei, die kein
+Beleg trägt, wurde wohl nie gebucht; das ist ein
+Hinweis, kein Beweis, denn derselbe Beleg als andere Datei (ein Scan, ein Foto aus der App) hat
+eine andere Prüfsumme, und eine Belegdatei, die die Belegerkennung von sevDesk aus einem Upload
+angelegt hat, hat gar keine (das Ergebnis zählt sie und nennt solche derselben Größe als
+schwachen Hinweis). Die Prüfung holt keinen Dateiinhalt ins Gespräch und lädt nichts hoch
+([Auswertungen und Exporte](guides/evaluations.de.md#belege-im-ordner-die-nie-gebucht-wurden)).
 
 ### Unterstützt es sevDesk in Österreich?
 

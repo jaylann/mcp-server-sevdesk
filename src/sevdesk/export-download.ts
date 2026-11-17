@@ -29,7 +29,10 @@ export const EXPORT_HOSTS: ReadonlySet<string> = new Set([
   "sevexport-filestorage-workload-prod.s3.eu-central-1.amazonaws.com",
 ]);
 
-/** Largest export accepted by default: 100 MiB (a DATEV ZIP with document images can be big). */
+/**
+ * Largest export accepted by default: 100 MiB (a DATEV ZIP with document images can be big; the
+ * XML export with receipt images was 5.6 MB for one month of the trial account, D-102).
+ */
 const MAX_EXPORT_BYTES = 100 * 1024 * 1024;
 /** Default time for the whole download. */
 const EXPORT_DOWNLOAD_TIMEOUT_MS = 120_000;
@@ -135,7 +138,8 @@ export async function downloadPresignedExport(
       failure(
         "unexpected_response",
         `The export is larger than ${String(maxBytes)} bytes (stopped after ${String(received)}); ` +
-          "nothing was saved. Export a shorter period or without document images.",
+          "nothing was saved. Export a shorter period (or, in the CSV format, without document " +
+          "images).",
       ),
     );
     return { bytes, contentType: response.headers.get("content-type") ?? undefined };

@@ -114,6 +114,8 @@ export type GetSafety =
  *   `Export/createDatevXmlZipExportJob`) start a job in sevDesk, and the job may mark the exported
  *   documents as exported (the XML job's `includeExportedDocuments` filter implies such a mark).
  *   They are never retried (a retry would start a second job) and need the `write` tier.
+ * - The document archives (`Export/invoiceZip`, `Export/voucherZip`) render every matching
+ *   document; they changed nothing when recorded (D-101) but are treated like the export jobs.
  * - The next-number endpoints (`…/getNextOrderNumber`, `…/getNextCreditNoteNumber`,
  *   `…/getNextInvoiceNumber`, any `getNext…Number`) reserve the number unless `useNextNumber` is
  *   clearly off: sevDesk returns it and advances the counter (recorded on the trial account,
@@ -150,6 +152,7 @@ export function resolveGetSafety(
 
   if (enshrineFlagSet(query)) return { sideEffect: true, effect: ENSHRINES, query };
   if (EXPORT_JOB_ENDPOINTS.has(endpoint)) return { sideEffect: true, effect: STARTS_EXPORT, query };
+  if (ARCHIVE_ENDPOINTS.has(endpoint)) return { sideEffect: true, effect: RENDERS_ARCHIVE, query };
   if (reservesNumber(endpoint, query)) return { sideEffect: true, effect: RESERVES_NUMBER, query };
 
   return declaredSideEffect
@@ -170,6 +173,7 @@ function innerSideEffect(path: string): string | undefined {
   for (const name of innerSegments(path)) {
     if (name === "getpdf" || name === "sendbywithrender") return MARKS_SENT;
     if (EXPORT_JOB_ENDPOINTS.has(name)) return STARTS_EXPORT;
+    if (ARCHIVE_ENDPOINTS.has(name)) return RENDERS_ARCHIVE;
     if (NEXT_NUMBER_ENDPOINT.test(name) && name !== NEXT_CUSTOMER_NUMBER) return RESERVES_NUMBER;
   }
   return undefined;
@@ -558,6 +562,13 @@ const EXPORT_JOB_ENDPOINTS: ReadonlySet<string> = new Set([
   "createdatevcsvzipexportjob",
   "createdatevxmlzipexportjob",
 ]);
+const RENDERS_ARCHIVE = "it renders an archive of every matching document in sevDesk";
+/**
+ * The document archives `Export/invoiceZip` and `Export/voucherZip`, lower case. They changed no
+ * document when recorded (D-101), but sevDesk renders every PDF of the period: a heavy request
+ * that needs the `write` tier and is never retried.
+ */
+const ARCHIVE_ENDPOINTS: ReadonlySet<string> = new Set(["invoicezip", "voucherzip"]);
 /** `getNextOrderNumber`, `getNextCreditNoteNumber`, `getNextInvoiceNumber`, … (lower case). */
 const NEXT_NUMBER_ENDPOINT = /^getnext[a-z]+number$/;
 /** `Contact/Factory/getNextCustomerNumber`: documented, reads the next customer number only. */
@@ -622,7 +633,8 @@ export function genericGetRefusal(
 const REFUSED_ROOTS: Readonly<Record<string, string>> = {
   export:
     "Export endpoints return files or start export jobs, not JSON records: use " +
-    "sevdesk_csv_export for CSV exports or sevdesk_datev_export for the DATEV export.",
+    "sevdesk_csv_export for CSV exports, sevdesk_archive_export for the invoice or voucher " +
+    "PDF archive, or sevdesk_datev_export for the DATEV export.",
   exportjob:
     "Export jobs and their download links belong to sevdesk_datev_export; sevdesk_api_get " +
     "does not read them.",
@@ -670,7 +682,7 @@ const MUTATING_NAME =
 function segmentRefusal(name: string): string | undefined {
   if (FILE_ENDPOINTS.has(name)) return FILE_ENDPOINT_REFUSAL;
   if (listedTier(name) !== undefined) return ACTION_REFUSAL;
-  if (EXPORT_JOB_ENDPOINTS.has(name)) return REFUSED_ROOTS["export"];
+  if (EXPORT_JOB_ENDPOINTS.has(name) || ARCHIVE_ENDPOINTS.has(name)) return REFUSED_ROOTS["export"];
   if (NEXT_NUMBER_LIKE.test(name)) return NEXT_NUMBER_REFUSAL;
   return undefined;
 }

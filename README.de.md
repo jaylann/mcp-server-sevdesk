@@ -1,4 +1,4 @@
-<!-- translated-from: README.md sha256:b6230a8e5e6f -->
+<!-- translated-from: README.md sha256:9e730a9ed0cc -->
 
 <!-- Nur die Breite: mit einer Höhe dazu zeichnet GitHub einen getönten Kasten hinter das Bild. -->
 <p align="center"><img src="https://raw.githubusercontent.com/jaylann/mcp-server-sevdesk/main/assets/logo.svg" alt="" width="96"></p>
@@ -71,8 +71,8 @@ freischalten, zuerst im Probelauf, und das Token sicher aufbewahren.
 
 ## Was er kann
 
-80 Werkzeuge in 10 Werkzeuggruppen. Die 40 Lesewerkzeuge füllen die erste Spalte; mit den
-Schreibstufen kommen 40 weitere Werkzeuge hinzu, die Daten anlegen und ändern.
+84 Werkzeuge in 10 Werkzeuggruppen. Die 42 Lesewerkzeuge füllen die erste Spalte; mit den
+Schreibstufen kommen 42 weitere Werkzeuge hinzu, die Daten anlegen und ändern.
 
 | Bereich                                | Lesen                                                                                                                                                                                                                                                                                                                 | Schreiben (`write`, `commit`, `external`)                                                                                                                                                                                                                    |
 | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -80,13 +80,21 @@ Schreibstufen kommen 40 weitere Werkzeuge hinzu, die Daten anlegen und ändern.
 | **Rechnungen, Gutschriften, Aufträge** | Auflisten und abrufen; PDFs und E-Rechnungs-XML als MCP-Ressourcen; eine **Prüfung auf E-Rechnungs-Tauglichkeit** für ausgehende Rechnungen                                                                                                                                                                           | Entwürfe, auch von Aufträgen (Angebot, Auftragsbestätigung, Lieferschein), Rechnungen aus Aufträgen, Gutschriften aus Rechnungen und Mahnungen. Fertigstellen, Zahlungen buchen, festschreiben (unumkehrbar), zurücksetzen, stornieren. Per E-Mail versenden |
 | **Belege**                             | Auflisten und abrufen; **empfangene E-Rechnungen** lokal auslesen (XRechnung UBL/CII, ZUGFeRD/Factur-X)                                                                                                                                                                                                               | Entwürfe mit angehängter Belegdatei, **Import aus einer E-Rechnung**. Fertigstellen, Zahlungen buchen, festschreiben, zurücksetzen, Entwürfe löschen                                                                                                         |
 | **Bank**                               | Konten und Umsätze; **Vorschläge für den Bankabgleich** aus Betrag, Rechnungsnummer im Verwendungszweck, Gegenpartei und Aufteilungen                                                                                                                                                                                 | Einen Umsatz einem oder mehreren Dokumenten zuordnen (Teilzahlungen, gegen Überbuchung abgesichert), als privat markieren (Privatentnahme/-einlage), eine Zuordnung aufheben                                                                                 |
-| **Auswertungen**                       | Zusammenfassungen, Altersstruktur offener Forderungen und Verbindlichkeiten, Liquidität, Änderungen seit einem Datum, eine **Umsatzsteuer-Auswertung** (UStVA-Kennzahlen, ZM, OSS), eine **Gewinn- und Verlustrechnung nach Art der EÜR**, eine **Steuerregel-Hilfe** für Verkäufe und eine **Prüfung der USt-IdNr.** | Der **DATEV-Export** (Buchungsstapel als ZIP, schreibt nie fest)                                                                                                                                                                                             |
+| **Auswertungen**                       | Zusammenfassungen, Altersstruktur offener Forderungen und Verbindlichkeiten, Liquidität, Änderungen seit einem Datum, eine **Umsatzsteuer-Auswertung** (UStVA-Kennzahlen, ZM, OSS), eine **Gewinn- und Verlustrechnung nach Art der EÜR**, eine **Steuerregel-Hilfe** für Verkäufe und eine **Prüfung der USt-IdNr.** | Der **DATEV-Export** (Buchungsstapel als ZIP oder XML mit Belegbildern, schreibt nie fest) und seine Einstellungen; Rechnungs- oder Beleg-PDFs als ein **ZIP-Archiv**                                                                                        |
 | **Kontakte und Artikel**               | Suchen und abrufen, Artikel mit ihrem Lagerbestand                                                                                                                                                                                                                                                                    | Anlegen und ändern, auch `stock` und `stockEnabled` eines Artikels                                                                                                                                                                                           |
 | **Advanced** (standardmäßig aus)       | `sevdesk_api_get`: ein reines Lese-GET auf jeden sevDesk-Endpunkt, den kein anderes Werkzeug abdeckt, etwa Textvorlagen. Es lehnt alles ab, was Daten ändern, Dateien liefern oder Hintergrundaufgaben starten könnte                                                                                                 |                                                                                                                                                                                                                                                              |
 
 Die Umsatzsteuer-Auswertung ist deutlich als Schätzung gekennzeichnet (Soll- oder
-Istversteuerung). Jedes Schreibwerkzeug akzeptiert `dryRun: true` und gibt dann nur genau das
-zurück, was es tun würde. Belegentwürfe können in Fremdwährung sein, mit einem Wechselkurs oder
+Istversteuerung). Die **Prüfungen** (`sevdesk_records_audit`) beantworten „Was ist falsch?“:
+ausländische Lieferanten und Kunden, deren Umsatzsteuer-Behandlung nicht passt, die
+Bemessungsgrundlage nach § 13b je Steuerregel, doppelt gebuchte Belege und liegen gebliebene
+Entwürfe sowie fehlende Rechnungen von Lieferanten, die jeden Monat, jedes Quartal oder jedes Jahr
+abrechnen, jeder Befund mit seinen Belegen, seiner Rechtsgrundlage und dem, was zu prüfen ist; es
+sind Hinweise, keine Steuerberatung. Wo der Server einen lokalen Ordner liest
+(`SEVDESK_FILE_DIRS`), vergleicht `sevdesk_receipt_folder_check` dessen Belegdateien anhand der
+Prüfsumme mit denen an den Belegen in sevDesk und nennt die Dateien, die wohl nie gebucht wurden.
+Jedes
+Schreibwerkzeug akzeptiert `dryRun: true` und gibt dann nur genau das zurück, was es tun würde. Belegentwürfe können in Fremdwährung sein, mit einem Wechselkurs oder
 einem Wechselkursdatum; solche Entwürfe lassen sich über den Server nicht fertigstellen
 ([Belege](docs/guides/receipts.de.md)). Die vollständige, generierte Referenz ist
 [docs/tools.md](docs/tools.md).
