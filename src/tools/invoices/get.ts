@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { costCentreOf, costCentreOutput } from "../../domain/cost-centres.js";
 import { documentDiscountSchema } from "../../domain/document-discounts.js";
 import { positionDtoSchema } from "../../domain/document-positions.js";
 import { getInvoice, invoiceDetailSchema } from "../../domain/invoices.js";
@@ -16,6 +17,7 @@ const output = z.object({
   discount: documentDiscountSchema
     .optional()
     .describe("Discount on the whole invoice (Rabatt); left out when there is none."),
+  costCentre: costCentreOutput,
 });
 
 /** `sevdesk_invoice_get`: one invoice with positions, totals, tax rule and terms. */
@@ -57,6 +59,7 @@ export const invoiceGetTool = defineTool({
       withDiscount: true,
     });
     const { invoice, positions, discount } = details;
+    const costCentre = await costCentreOf(ctx.client, invoice.costCentreId, ctx.signal);
     const count = `${positions.length} position${positions.length === 1 ? "" : "s"}`;
     const partial = details.positionsComplete
       ? ""
@@ -67,6 +70,7 @@ export const invoiceGetTool = defineTool({
         positions: [...positions],
         positionsComplete: details.positionsComplete,
         ...(discount === undefined ? {} : { discount }),
+        ...costCentre,
       },
       // Labels come from reference data (or "unknown"), never from sevDesk's text.
       summary:

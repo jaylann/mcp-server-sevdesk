@@ -32,15 +32,29 @@
  * whole: every stored row in `creditNotePosDelete` as a list of refs (a single object is refused
  * with 400) and the new ones in `creditNotePosSave`, in one request. Not sent, since no recorded
  * credit note has them set and sevDesk keeps what an update leaves out: `timeToPay`,
- * `propertyIsEInvoice`, `refSrcVoucher`, `costCentre`. The booking category and the source
- * invoice cannot be changed here (that is a new credit note); the source invoice's rules are
- * checked again when the update changes what they depend on (see `prepareCreditNoteUpdate`).
+ * `propertyIsEInvoice`, `refSrcVoucher`. `costCentre` is sent only when the call sets one
+ * (`costCentre`) or removes it (`removeCostCentre`: `null`, recorded 2026-11-17); otherwise it is
+ * left out and sevDesk keeps the stored one (D-092). The booking category and the source invoice
+ * cannot be changed here (that is a new credit note); the source invoice's rules are checked
+ * again when the update changes what they depend on (see `prepareCreditNoteUpdate`).
  */
 import { z } from "zod";
 
 import { SevdeskError } from "../../sevdesk/errors.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { statusDto } from "../common.js";
+import {
+  COST_CENTRE_FLAGS,
+  type CostCentreArg,
+  costCentreChange,
+  costCentreInput,
+  costCentreLabel,
+  costCentreRef,
+  costCentreUpdate,
+  costCentreUpdateInputShape,
+  costCentreUpdatePayload,
+  resolveCostCentre,
+} from "../cost-centres.js";
 import type { CountryReadOptions } from "../country-codes.js";
 import { type CreditNoteDetails, getCreditNote } from "../credit-notes.js";
 import { checkInvoiceCreditable, findCreditNotesForInvoice } from "../derived-documents.js";
@@ -234,6 +248,7 @@ export const creditNoteCreateInputShape = {
   discount: discountInput.optional(),
   contactPersonId: contactPersonIdInput,
   ...addressInputShape,
+  costCentre: costCentreInput,
 };
 
 export interface CreditNoteCreateArgs extends CreateArgs {
@@ -248,6 +263,7 @@ export interface CreditNoteCreateArgs extends CreateArgs {
   readonly headText?: string | undefined;
   readonly footText?: string | undefined;
   readonly discount?: DiscountInput | undefined;
+  readonly costCentre?: CostCentreArg | undefined;
 }
 
 /** Input fields of `sevdesk_credit_note_update_draft` (without `dryRun`). */
@@ -279,6 +295,7 @@ export const creditNoteUpdateInputShape = {
   discount: discountUpdateInput,
   contactPersonId: contactPersonIdInput,
   ...addressInputShape,
+  ...costCentreUpdateInputShape,
 };
 
 export interface CreditNoteUpdateArgs extends UpdateArgs {
@@ -291,6 +308,8 @@ export interface CreditNoteUpdateArgs extends UpdateArgs {
   readonly footText?: string | undefined;
   /** A new document discount, `null` to remove the stored one, left out to keep it. */
   readonly discount?: DiscountInput | null | undefined;
+  readonly costCentre?: CostCentreArg | undefined;
+  readonly removeCostCentre?: boolean | undefined;
 }
 
 /** What `execute` needs: the exact body the preview describes. */
@@ -340,6 +359,10 @@ export async function prepareCreditNoteCreate(
     });
   }
   const discount = args.discount === undefined ? undefined : resolveDiscount(args.discount);
+  const centre =
+    args.costCentre === undefined
+      ? undefined
+      : await resolveCostCentre(client, args.costCentre, signal);
   const sourceCheck =
     category === "UNDERACHIEVEMENT"
       ? await checkSourceInvoice(client, args, { signal, cacheOwner: options.cacheOwner })
@@ -384,6 +407,7 @@ export async function prepareCreditNoteCreate(
         bookingCategory: category,
         refSrcInvoice: source === undefined ? undefined : ref(source.invoice.id, "Invoice"),
         ...structuredAddress(address),
+        costCentre: centre === undefined ? undefined : costCentreRef(centre.id),
       },
       creditNotePosSave: basics.positions.map((position, index) =>
         positionPayload(position, index, "CreditNotePos"),
@@ -409,6 +433,7 @@ export async function prepareCreditNoteCreate(
     fact("Prices entered as", mode),
     fact("Tax", taxText(basics.rule, basics.tax)),
     fact("Tax text", basics.tax.taxText),
+    ...(centre === undefined ? [] : [fact("Cost centre (Kostenstelle)", costCentreLabel(centre))]),
     ...positionFacts(basics.positions, mode, currency),
     ...(discount === undefined ? [] : [fact("Discount", discountText(discount, currency))]),
     fact("Total (expected)", totalsText(expected, currency)),
@@ -448,10 +473,16 @@ export async function prepareCreditNoteUpdate(
   options: DraftCallOptions,
 ): Promise<CreditNoteDraftPlan> {
   const { signal } = options;
-  assertChanges(args, "credit note");
+  const given = assertChanges(args, "credit note", COST_CENTRE_FLAGS);
   const current = await loadCurrentCreditNote(client, args.id, signal);
   const doc = current.document;
   const category = checkUpdatable(doc);
+  const centre = await costCentreUpdate(
+    client,
+    args,
+    { storedId: doc.costCentre?.id, given },
+    signal,
+  );
   const discounts = await readDocumentDiscounts(client, "creditNote", doc.id, signal);
   const change = planDiscountChange(args.discount, discounts, `Credit note ${doc.id}`);
 
@@ -534,6 +565,9 @@ export async function prepareCreditNoteUpdate(
         ...updatedAddressFields(doc, basics.address),
         customerInternalNote: doc.customerInternalNote,
         paymentMethod: storedRef(doc.paymentMethod, "PaymentMethod"),
+        // Only when the call sets or removes it: left out, sevDesk keeps the stored one (D-092).
+        costCentre:
+          centre === undefined ? undefined : costCentreUpdatePayload(centre, doc.costCentre?.id),
         origin:
           doc.origin === undefined
             ? undefined
@@ -568,6 +602,9 @@ export async function prepareCreditNoteUpdate(
   logContactPersonChange(log, doc, basics);
   logTextChanges(log, doc.header, args);
   logPricingChanges(log, doc, basics, current.positions.length);
+  if (centre !== undefined) {
+    log.value("cost centre", "Cost centre (Kostenstelle)", ...costCentreChange(centre));
+  }
   const keptDiscount = logDiscountChange(log, change, discounts.rows, basics.currency);
 
   const customer = customerText(basics.contact.contact.displayName, basics.contact.contact.id);

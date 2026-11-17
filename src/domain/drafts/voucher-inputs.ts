@@ -6,6 +6,11 @@
 import { z } from "zod";
 
 import { amountInput, isoDateInput } from "../common.js";
+import {
+  type CostCentreArg,
+  costCentreInput,
+  costCentreUpdateInputShape,
+} from "../cost-centres.js";
 import { VOUCHER_KINDS, type VoucherKind } from "../vouchers.js";
 import {
   AMOUNT_MODES,
@@ -149,6 +154,7 @@ export const voucherCreateInputShape = {
   positions: positionsInput,
   file: fileInput.optional(),
   fileSha256: fileSha256Input,
+  costCentre: costCentreInput,
   allowDuplicate: z
     .boolean()
     .optional()
@@ -190,6 +196,7 @@ export const voucherUpdateInputShape = {
         "SEVDESK_FILE_URL_HOSTS).",
     ),
   fileSha256: fileSha256Input,
+  ...costCentreUpdateInputShape,
 };
 
 export interface VoucherCreateArgs extends ExchangeArgs {
@@ -207,6 +214,7 @@ export interface VoucherCreateArgs extends ExchangeArgs {
   readonly positions: readonly VoucherPositionInput[];
   readonly file?: string | undefined;
   readonly fileSha256?: string | undefined;
+  readonly costCentre?: CostCentreArg | undefined;
   readonly allowDuplicate?: boolean | undefined;
 }
 
@@ -225,6 +233,8 @@ export interface VoucherUpdateArgs extends ExchangeArgs {
   readonly positions?: readonly VoucherPositionInput[] | undefined;
   readonly file?: string | undefined;
   readonly fileSha256?: string | undefined;
+  readonly costCentre?: CostCentreArg | undefined;
+  readonly removeCostCentre?: boolean | undefined;
 }
 
 /** Input fields of `sevdesk_voucher_import_einvoice` (without `dryRun`). */

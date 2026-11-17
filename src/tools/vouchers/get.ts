@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { costCentreOf, costCentreOutput } from "../../domain/cost-centres.js";
 import {
   getVoucherDetails,
   voucherDetailDtoSchema,
@@ -13,6 +14,7 @@ const output = z.object({
   positionsComplete: z
     .boolean()
     .describe("False when sevDesk had more rows than could be read: positions is partial."),
+  costCentre: costCentreOutput,
 });
 
 /** `sevdesk_voucher_get`: one voucher with its positions. */
@@ -45,6 +47,7 @@ export const voucherGetTool = defineTool({
   output,
   handler: async (args, ctx) => {
     const details = await getVoucherDetails(ctx.client, args.id, ctx.signal);
+    const costCentre = await costCentreOf(ctx.client, details.voucher.costCentreId, ctx.signal);
     const count = details.positions.length;
     const partial = details.positionsComplete
       ? ""
@@ -54,6 +57,7 @@ export const voucherGetTool = defineTool({
         voucher: details.voucher,
         positions: [...details.positions],
         positionsComplete: details.positionsComplete,
+        ...costCentre,
       },
       summary: `Voucher ${details.voucher.id} with ${count} ${count === 1 ? "position" : "positions"}.${partial}`,
     };

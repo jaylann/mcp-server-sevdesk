@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/evaluations.md sha256:fd7812e25000 -->
+<!-- translated-from: docs/guides/evaluations.md sha256:a8025748f82c -->
 
 # Auswertungen und Exporte
 
@@ -51,6 +51,31 @@ und sagt, wenn es mehr gab. Wiederkehrende Vorlagen und Mahnungen bleiben außen
 danach. Für einzelne Datensätze bleiben die Listenwerkzeuge der Weg, zum Beispiel
 [`sevdesk_invoices_list`](../tools.md#sevdesk_invoices_list).
 
+### Nach Projekt-Tag oder Kostenstelle
+
+> Was hat das Projekt Website-Relaunch dieses Jahr gekostet?
+
+> Zeig die Ausgaben dieses Monats auf der Kostenstelle München.
+
+Rechnungen, Gutschriften und Belege lassen sich auf einen Tag (`tag`, mit Namen) oder eine
+Kostenstelle (`costCentre`, mit ID, Nummer oder Namen) beschränken und nach `tag` oder
+`cost_centre` gruppieren. Ein Name, den das Konto nicht hat, oder einer, der zu mehreren Tags oder
+Kostenstellen passt, wird abgelehnt, bevor etwas gezählt wird: Du bekommst nie die Summen aller
+Dokumente als die eines Projekts ausgegeben.
+
+- **Tags überschneiden sich.** Ein Dokument kann mehrere Tags tragen; es zählt dann in jeder seiner
+  Tag-Gruppen, und die Tag-Gruppen ergeben zusammen mehr als die Gesamtsummen. Das Ergebnis sagt es
+  (`groupsOverlap`).
+- **Kostenstellen teilen auf.** sevDesk führt je Dokument eine Kostenstelle, deshalb ergeben die
+  Kostenstellen-Gruppen zusammen die Gesamtsummen. Kostenstellen einzelner Belegpositionen werden
+  nicht gelesen: Das ganze Dokument zählt für die Kostenstelle im Kopf.
+- **Ohne.** Dokumente ohne Tag oder ohne Kostenstelle bilden eine eigene Gruppe, `none`.
+- **Unvollständiges Lesen.** Die Tags kommen aus den Tag-Zuordnungen des Kontos, gelesen bis
+  10.000. Gibt es mehr, oder stoppt die Zeilengrenze das Lesen, ist die Aufteilung als
+  unvollständig markiert (`groupsComplete: false`), statt Teilsummen als endgültig auszugeben. Die
+  Tag-Namen werden ebenfalls bis 10.000 Tags gelesen; darüber zeigt eine Gruppe nur ihre Tag-ID,
+  und das Ergebnis sagt es.
+
 ## Offene Posten und Liquidität
 
 > Wer schuldet uns Geld, und wie viel ist mehr als 60 Tage überfällig?
@@ -97,6 +122,17 @@ Buchungskonto, das Ergebnis und die Umsatzsteuerströme getrennt davon (vereinna
 gezahlte Vorsteuer, an das Finanzamt gezahlte oder von ihm erstattete Umsatzsteuer). Grundlage ist
 standardmäßig das Zufluss- und Abflussprinzip (der Tag, an dem das Geld floss, aus den Zahlungen,
 die sevDesk mit Dokumenten verknüpft) oder auf Wunsch das Dokumentdatum (periodengerecht).
+
+> Wie hoch war der Gewinn der Kostenstelle München im dritten Quartal?
+
+Mit `costCentre` oder `tag` zählt sie nur die Dokumente auf dieser Kostenstelle oder mit diesem
+Tag, auf beiden Grundlagen; das Ergebnis nennt den Filter (`filters`). `groupBy: "cost_centre"`
+oder `"tag"` ergänzt Einnahmen, Ausgaben und Ergebnis je Kostenstelle oder Tag (`breakdown`). Die
+Kostenstellen-Gruppen ergeben samt `none` die Gesamtsummen; Tag-Gruppen überschneiden sich, wenn
+ein Dokument mehrere Tags trägt, und die Aufteilung sagt es. Die Zahl der Dokumente einer Gruppe
+zählt auch Dokumente ohne Einnahmen oder Ausgaben mit, etwa eine Umsatzsteuerzahlung an das
+Finanzamt; eine Gruppe kann also Dokumente enthalten und keine Einnahmen oder Ausgaben zeigen.
+Unbekannte oder mehrdeutige Namen werden abgelehnt, wie bei den Summen.
 
 ## Prüfungen
 

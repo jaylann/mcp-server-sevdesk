@@ -1,4 +1,4 @@
-<!-- translated-from: README.md sha256:14fab4b5b733 -->
+<!-- translated-from: README.md sha256:6c6f4955377f -->
 
 <!-- Nur die Breite: mit einer Höhe dazu zeichnet GitHub einen getönten Kasten hinter das Bild. -->
 <p align="center"><img src="https://raw.githubusercontent.com/jaylann/mcp-server-sevdesk/main/assets/logo.svg" alt="" width="96"></p>
@@ -87,7 +87,10 @@ Schreibstufen kommen 53 weitere Werkzeuge hinzu, die Daten anlegen und ändern.
 Rechnungen, Gutschriften, Aufträge und Belege können Tags tragen (Projekte, Kunden, Filialen):
 `sevdesk_tags_list` zeigt jeden Tag mit seinen Verwendungen, die vier Listenwerkzeuge filtern nach
 Tag, und `sevdesk_document_tag` (Stufe `write`) fügt einem Dokument einen Tag hinzu oder entfernt
-ihn.
+ihn. Rechnungs-, Beleg- und Gutschriftsentwürfe nehmen eine Kostenstelle mit ID, Nummer oder Namen
+an, und ihre drei Listen filtern danach. Die Summen und die Gewinn- und
+Verlustrechnung filtern und gruppieren nach Tag und nach Kostenstelle („Was hat Projekt X
+gekostet?“).
 
 Die Umsatzsteuer-Auswertung ist deutlich als Schätzung gekennzeichnet (Soll- oder
 Istversteuerung). Die **Prüfungen** (`sevdesk_records_audit`) beantworten „Was ist falsch?“:

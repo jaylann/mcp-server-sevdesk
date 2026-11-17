@@ -1,7 +1,8 @@
 /**
  * Tags (Tags, Schlagworte) of invoices, credit notes, orders and vouchers: lenient parsing of
- * sevDesk's `Tag` and `TagRelation` records, the tag list with usage counts, name lookups and the
- * `tag` filter of the document lists. The tag writes are in `tags-write.ts`.
+ * sevDesk's `Tag` and `TagRelation` records, the tag list with usage counts, name lookups, the
+ * `tag` filter of the document lists and the reports, and the tags of every document for a report
+ * breakdown. The tag writes are in `tags-write.ts`.
  *
  * Recorded 2026-11-16 (spec/deviations.md D-088–D-090):
  * - `GET /Tag` rows carry `id`, `name` and no usage count; a tag is used through `TagRelation`
@@ -380,6 +381,47 @@ export async function resolveTagFilter(
   signal?: AbortSignal,
 ): Promise<TagListFilter | undefined> {
   if (name === undefined) return undefined;
+  const { tag, uses, complete } = await resolveTagUses(client, name, signal);
+  const objectName = TAG_OBJECT_NAMES[kind];
+  const objectIds = new Set(
+    uses.filter((row) => row.objectName === objectName).map((row) => row.objectId),
+  );
+  return { tagId: tag.id, objectIds, complete };
+}
+
+/** A tag a filter names, with the documents of every kind that carry it. */
+export interface TagDocuments {
+  readonly tag: TagRecord;
+  /** {@link tagDocumentKey} of every document the tag's relations name, as far as read. */
+  readonly documents: ReadonlySet<string>;
+  /** False when the tag has more uses than were read: documents beyond them are not known. */
+  readonly complete: boolean;
+}
+
+/**
+ * Resolves a tag name for a report filter that checks documents of several kinds itself: the tag
+ * (see {@link pickTag}) and the keys of all documents it is on. An unknown name is refused with the
+ * same `validation` error as {@link resolveTagFilter}, before any document is read.
+ */
+export async function resolveTagDocuments(
+  client: SevdeskClient,
+  name: string,
+  signal?: AbortSignal,
+): Promise<TagDocuments> {
+  const { tag, uses, complete } = await resolveTagUses(client, name, signal);
+  return {
+    tag,
+    documents: new Set(uses.map((row) => tagDocumentKey(row.objectName, row.objectId))),
+    complete,
+  };
+}
+
+/** The one tag a name means and its relations; an unknown or ambiguous name is refused. */
+async function resolveTagUses(
+  client: SevdeskClient,
+  name: string,
+  signal: AbortSignal | undefined,
+): Promise<{ tag: TagRecord; uses: readonly TagRelation[]; complete: boolean }> {
   const found = await findTagsByName(client, name, signal);
   const tag = pickTag(found, name);
   if (tag === undefined) {
@@ -391,7 +433,6 @@ export async function resolveTagFilter(
             "the first ones has this name; this server cannot filter by it.",
     );
   }
-  const objectName = TAG_OBJECT_NAMES[kind];
   const uses = await listChildRows(
     client,
     "/TagRelation",
@@ -399,10 +440,85 @@ export async function resolveTagFilter(
     { parse: parseTagRelation, belongs: (row) => row.tagId === tag.id },
     signal,
   );
-  const objectIds = new Set(
-    uses.rows.filter((row) => row.objectName === objectName).map((row) => row.objectId),
-  );
-  return { tagId: tag.id, objectIds, complete: uses.complete };
+  return { tag, uses: uses.rows, complete: uses.complete };
+}
+
+// ---------------------------------------------------------------------------------------------
+// The tags of every document (report breakdowns)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The key of a document in {@link DocumentTags} and {@link TagDocuments}: `Invoice:1001`, the
+ * same as the reports' `documentKey`.
+ */
+export function tagDocumentKey(objectName: string, id: number): string {
+  return `${objectName}:${String(id)}`;
+}
+
+/** The tags of every document of the account, read once for a breakdown by tag. */
+export interface DocumentTags {
+  /** Tag ids per {@link tagDocumentKey}, each id once, ascending. */
+  readonly byDocument: ReadonlyMap<string, readonly number[]>;
+  /** The account's tags by id, for the group names (as far as read, see `namesComplete`). */
+  readonly tags: ReadonlyMap<number, TagRecord>;
+  /**
+   * False when the account has more relations than {@link TAG_READ_MAX}: documents whose
+   * relations were not read look untagged, so a breakdown is incomplete.
+   */
+  readonly complete: boolean;
+  /**
+   * False when the account has more tags than {@link TAG_READ_MAX}: groups of the tags beyond
+   * them have an id and no name. Only the labels suffer; grouping is by the relations' tag ids.
+   */
+  readonly namesComplete: boolean;
+}
+
+/**
+ * Reads all tag relations of the account (`GET /TagRelation`, pages of 1,000, up to
+ * {@link TAG_READ_MAX}) and all tags (`GET /Tag`, for the names, up to the same cap) and maps
+ * each document to its tags. A document can carry several tags.
+ */
+export async function readDocumentTags(
+  client: SevdeskClient,
+  signal?: AbortSignal,
+): Promise<DocumentTags> {
+  const options = {
+    max: TAG_READ_MAX,
+    pageSize: TAG_PAGE_SIZE,
+    ...(signal === undefined ? {} : { signal }),
+  };
+  const [tags, relations] = await Promise.all([
+    client.listAll("/Tag", undefined, options),
+    client.listAll("/TagRelation", undefined, options),
+  ]);
+  const byDocument = new Map<string, Set<number>>();
+  for (const raw of relations.items) {
+    const relation = parseTagRelation(raw);
+    const key = tagDocumentKey(relation.objectName, relation.objectId);
+    const ids = byDocument.get(key) ?? new Set<number>();
+    ids.add(relation.tagId);
+    byDocument.set(key, ids);
+  }
+  return {
+    byDocument: new Map(
+      [...byDocument].map(([key, ids]) => [key, [...ids].sort((a, b) => a - b)] as const),
+    ),
+    tags: new Map(tags.items.map(parseTag).map((tag) => [tag.id, tag] as const)),
+    complete: !relations.truncated,
+    namesComplete: !tags.truncated,
+  };
+}
+
+/**
+ * The trusted note of a breakdown by tag when the account's tags were not all read (see
+ * {@link DocumentTags.namesComplete}), or `undefined`.
+ */
+export function tagNamesCutNote(documentTags: DocumentTags | undefined): string | undefined {
+  return documentTags === undefined || documentTags.namesComplete
+    ? undefined
+    : `The account has more than ${TAG_READ_MAX.toLocaleString("en-US")} tags; only the first ` +
+        "ones were read for the names, so the groups of the others show only their tag id. The " +
+        "figures are not affected.";
 }
 
 /** The list query of a tag filter: `tags[0][id]` + `tags[0][objectName]` (D-090). */

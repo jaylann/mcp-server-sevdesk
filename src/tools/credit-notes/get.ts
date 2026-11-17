@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { costCentreOf, costCentreOutput } from "../../domain/cost-centres.js";
 import { creditNoteDetailSchema, getCreditNote } from "../../domain/credit-notes.js";
 import { documentDiscountSchema } from "../../domain/document-discounts.js";
 import { positionDtoSchema } from "../../domain/document-positions.js";
@@ -16,6 +17,7 @@ const output = z.object({
   discount: documentDiscountSchema
     .optional()
     .describe("Discount on the whole credit note (Rabatt); left out when there is none."),
+  costCentre: costCentreOutput,
 });
 
 /** `sevdesk_credit_note_get`: one credit note with positions, totals and tax rule. */
@@ -53,6 +55,7 @@ export const creditNoteGetTool = defineTool({
       withDiscount: true,
     });
     const { creditNote, positions, discount } = details;
+    const costCentre = await costCentreOf(ctx.client, creditNote.costCentreId, ctx.signal);
     const count = `${positions.length} position${positions.length === 1 ? "" : "s"}`;
     const partial = details.positionsComplete
       ? ""
@@ -63,6 +66,7 @@ export const creditNoteGetTool = defineTool({
         positions: [...positions],
         positionsComplete: details.positionsComplete,
         ...(discount === undefined ? {} : { discount }),
+        ...costCentre,
       },
       summary:
         `Credit note ${creditNote.id} (status ${creditNote.status.label}) with ${count}.` +

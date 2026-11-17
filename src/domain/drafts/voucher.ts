@@ -21,6 +21,16 @@ import { parseUpstream, zIntish, zRef, zText } from "../../sevdesk/schema.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import type { TaxRegime } from "../account-settings.js";
 import { cleanText, currencyCode } from "../common.js";
+import {
+  COST_CENTRE_FLAGS,
+  type CostCentreArg,
+  costCentreChange,
+  costCentreFacts,
+  costCentreRef,
+  costCentreUpdate,
+  costCentreUpdatePayload,
+  resolveCostCentre,
+} from "../cost-centres.js";
 import { compare, format } from "../money.js";
 import {
   bothPreviews,
@@ -164,6 +174,8 @@ export interface VoucherCreateSpec extends ExchangeArgs {
   readonly amountMode: AmountMode;
   readonly positions: readonly VoucherPositionInput[];
   readonly allowDuplicate: boolean;
+  /** Kostenstelle (id, number or name); the e-invoice import sets none. */
+  readonly costCentre?: CostCentreArg | undefined;
 }
 
 function refuse(message: string): never {
@@ -201,6 +213,7 @@ export async function prepareVoucherCreate(
       amountMode: args.amountMode ?? "gross",
       positions: args.positions,
       allowDuplicate: args.allowDuplicate === true,
+      costCentre: args.costCentre,
     },
     file,
     options,
@@ -227,6 +240,10 @@ export async function prepareVoucherCreateSpec(
     spec.deliveryDateUntil,
     false,
   );
+  const centre =
+    spec.costCentre === undefined
+      ? undefined
+      : await resolveCostCentre(client, spec.costCentre, signal);
   await assertUpdate2(client, signal, options.cacheOwner);
   const regime = await voucherRegime(client, options);
   const { rule, warnings: ruleWarnings } = resolveVoucherRule(spec.kind, spec.taxRuleId, regime);
@@ -277,6 +294,7 @@ export async function prepareVoucherCreateSpec(
         creditDebit: creditDebitForKind(spec.kind),
         voucherType: "VOU",
         ...currencyPayload(currency),
+        costCentre: centre === undefined ? undefined : costCentreRef(centre.id),
       },
       voucherPosSave: positions.map((position) => positionPayload(position, spec.amountMode)),
       voucherPosDelete: null,
@@ -309,6 +327,7 @@ export async function prepareVoucherCreateSpec(
             ),
           ]),
       fact(text("Tax rule (Steuerregel)", "Steuerregel"), taxRuleLabel(rule)),
+      ...costCentreFacts(centre, lang),
       fact(
         text("Amounts entered as", "Betragseingabe"),
         de ? (spec.amountMode === "net" ? "netto" : "brutto") : spec.amountMode,
@@ -386,11 +405,17 @@ export async function prepareVoucherUpdate(
   options: VoucherCallOptions,
 ): Promise<VoucherSavePlan> {
   const { signal } = options;
-  assertChanges(args, "voucher");
+  const given = assertChanges(args, "voucher", COST_CENTRE_FLAGS);
   checkSupplierArgs(args.supplierId, args.supplierName, false);
   const file = await readOptionalReceipt(options, args.file, args.fileSha256);
   const stored = await loadStoredVoucher(client, args.id, signal);
   const kind = checkDraft(stored, "changed");
+  const centre = await costCentreUpdate(
+    client,
+    args,
+    { storedId: stored.record.costCentre?.id, given },
+    signal,
+  );
   const oldCurrency = currencyCode(stored.record.currency);
   const currency = resolveVoucherCurrency(args.currency ?? oldCurrency, args);
   const convertsCurrency = oldCurrency !== currency.currency;
@@ -473,6 +498,10 @@ export async function prepareVoucherUpdate(
           taxRuleId: rule.id,
         }),
         ...currencyPayload(currency),
+        // Kept as carried over unless the call sets or removes it.
+        ...(centre === undefined
+          ? {}
+          : { costCentre: costCentreUpdatePayload(centre, stored.record.costCentre?.id) }),
       },
       voucherPosSave:
         positions === undefined
@@ -542,6 +571,13 @@ export async function prepareVoucherUpdate(
           ? undefined
           : `${text("tax rule", "Steuerregel")} ${String(record.taxRule.id)}`,
         taxRuleLabel(rule),
+      );
+    }
+    if (centre !== undefined) {
+      log.value(
+        text("cost centre", "Kostenstelle"),
+        text("Cost centre (Kostenstelle)", "Kostenstelle"),
+        ...costCentreChange(centre, lang),
       );
     }
     if (mode !== storedMode)
