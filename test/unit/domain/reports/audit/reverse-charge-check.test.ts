@@ -7,6 +7,7 @@ import {
   REVERSE_CHARGE_FINDING_CODES,
 } from "../../../../../src/domain/reports/audit/reverse-charge-check.js";
 import { resolvePeriod, vatSummary } from "../../../../../src/domain/reports/vat.js";
+import { SevdeskError } from "../../../../../src/sevdesk/errors.js";
 import { type FakeRoute, FakeSevdeskClient } from "../../../../helpers/fake-client.js";
 import {
   creditNoteDoc,
@@ -246,10 +247,46 @@ describe("check reverse_charge", () => {
     expect(REVERSE_CHARGE_FINDING_CODES).toContain(result.findings[0]?.code);
   });
 
-  it("does not flag rule 13 on a Kleinunternehmer account", async () => {
+  it("flags rules 12 and 14, not 13, on a Kleinunternehmer account", async () => {
     const { result } = await audit([smallBusinessAccount, ...routes()]);
-    expect(result.findings).toEqual([]);
+
     expect(result.regime).toBe("small_business");
+    expect(
+      result.findings.map((finding) => [
+        finding.code,
+        finding.severity,
+        finding.contact?.id,
+        finding.records.map((record) => record.id),
+      ]),
+    ).toEqual([
+      [
+        "reverse_charge_deduction_on_small_business",
+        "warning",
+        CONTACTS.irishSaas.id,
+        [5101, 5106],
+      ],
+      ["reverse_charge_deduction_on_small_business", "warning", CONTACTS.usSaas.id, [5102]],
+    ]);
+    const finding = result.findings[0];
+    expect(finding?.titleDe).toBe("§ 13b mit Vorsteuerabzug bei Kleinunternehmerregelung");
+    expect(finding?.reason).toContain("§ 19 Abs. 1 UStG");
+    expect(finding?.action).toContain("rule 13");
+    expect(REVERSE_CHARGE_FINDING_CODES).toContain(finding?.code);
+  });
+
+  it("compares no rule with the regime when the settings cannot be read", async () => {
+    const { result } = await audit([
+      {
+        path: "/SevClient",
+        response: { error: new SevdeskError({ kind: "server", message: "Simulated." }) },
+      },
+      ...routes(),
+    ]);
+
+    expect(result.findings).toEqual([]);
+    expect(result.notes.join(" ")).toContain(
+      "rules 12, 13 and 14 were not compared with the account's regime",
+    );
   });
 
   it("counts what it read and explains the tax point", async () => {

@@ -131,7 +131,9 @@ owe the VAT as recipient, with the tax owed and the part deducted again as input
 (rule 5, Kz 60; rule 21, Kz 21). Each sum names its UStVA Kennzahlen and lists the documents
 behind it. It uses the same tax points as `sevdesk_vat_summary`, so the sums match its Kz 46/47,
 84/85, 67, 60 and 21. It flags rule 13 (no input VAT deduction) on an account with regular
-taxation (`reverse_charge_without_deduction`).
+taxation (`reverse_charge_without_deduction`), and rules 12 and 14 (with deduction) on a
+Kleinunternehmer account, which owes the tax but may not deduct it
+(`reverse_charge_deduction_on_small_business`).
 
 Both checks read the period's documents and, where the rates decide, their positions; `vat` also
 reads the contact and address lists once each. Like the other reports they say what they left out

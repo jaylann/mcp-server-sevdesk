@@ -16,12 +16,17 @@
  * supply. Documents are listed with the VAT summary's margin around the period
  * (`ACCRUAL_MARGIN_DAYS`), so the sums match its Kz 46, 84, 60 and 21 for the same period.
  *
- * Finding: rule 13 (§ 13b without input VAT deduction) on an account with regular taxation, which
- * costs the tax unless deduction is excluded for reasons sevDesk does not know.
+ * Findings, against the account's regime today:
+ * - rule 13 (§ 13b without input VAT deduction) on an account with regular taxation, which costs
+ *   the tax unless deduction is excluded for reasons sevDesk does not know (`check`);
+ * - rules 12 and 14 (with deduction) on a Kleinunternehmer account, which owes the tax but may not
+ *   deduct it (`warning`: wrong unless the account used regular taxation then). Whether sevDesk
+ *   lets a Kleinunternehmer account pick rule 12 or 14 at all is not recorded; if it does not,
+ *   this finding never fires.
  */
 import { z } from "zod";
 
-import { loadAccountSettings, taxRegimeOf } from "../../account-settings.js";
+import { loadAccountSettings, type TaxRegime, taxRegimeOf } from "../../account-settings.js";
 import { moneySchema } from "../../common.js";
 import { add, type Decimal, decimal } from "../../money.js";
 import {
@@ -55,7 +60,11 @@ const ISSUED_RULES: ReadonlySet<number> = new Set([5, 21]);
 /** Documents listed per tax rule (the sums cover all of them). */
 const MAX_SECTION_RECORDS = 50;
 
-export const REVERSE_CHARGE_FINDING_CODES = ["reverse_charge_without_deduction"] as const;
+export const REVERSE_CHARGE_FINDING_CODES = [
+  "reverse_charge_without_deduction",
+  "reverse_charge_deduction_on_small_business",
+] as const;
+type ReverseChargeFindingCode = (typeof REVERSE_CHARGE_FINDING_CODES)[number];
 
 const WITHOUT_DEDUCTION: FindingText = {
   severity: "check",
@@ -72,6 +81,38 @@ const WITHOUT_DEDUCTION: FindingText = {
     "Check whether the purchase is for business use with input VAT deduction; then book it " +
     "under rule 12, or under rule 14 for a service of a business in another EU state.",
 };
+
+const DEDUCTION_ON_SMALL_BUSINESS: FindingText = {
+  severity: "warning",
+  title: "§ 13b with input VAT deduction on a Kleinunternehmer account",
+  titleDe: "§ 13b mit Vorsteuerabzug bei Kleinunternehmerregelung",
+  reason:
+    "Rules 12 and 14 book the tax owed as recipient (§ 13b UStG) and deduct it again as input " +
+    "VAT (§ 15 Abs. 1 Satz 1 Nr. 4 UStG). The account uses the Kleinunternehmer regulation " +
+    "today: a Kleinunternehmer owes that tax too (§ 13b Abs. 5 UStG) but may not deduct input " +
+    "VAT (§ 19 Abs. 1 UStG), so the booking leaves out tax that is due. It is right only for a " +
+    "period in which the account used regular taxation.",
+  action:
+    "Check which regulation the account used when the purchase was made; as a Kleinunternehmer, " +
+    "book it under rule 13 (§ 13b without input VAT deduction).",
+};
+
+/** The finding of each rule on an account of `regime`, if any. */
+function findingFor(
+  rule: number,
+  regime: TaxRegime | undefined,
+): { readonly code: ReverseChargeFindingCode; readonly text: FindingText } | undefined {
+  if (regime === "regular" && rule === 13) {
+    return { code: "reverse_charge_without_deduction", text: WITHOUT_DEDUCTION };
+  }
+  if (regime === "small_business" && (rule === 12 || rule === 14)) {
+    return {
+      code: "reverse_charge_deduction_on_small_business",
+      text: DEDUCTION_ON_SMALL_BUSINESS,
+    };
+  }
+  return undefined;
+}
 
 // ---------------------------------------------------------------------------------------------
 // Output
@@ -247,18 +288,19 @@ async function runReverseChargeCheck(
   }
 
   const section = sectionOf([...sums.values()]);
-  const drafts: FindingDraft[] =
-    regime === "regular"
-      ? (sums.get(13)?.documents ?? []).map((document) => ({
-          code: "reverse_charge_without_deduction",
-          text: WITHOUT_DEDUCTION,
-          contact:
-            document.header.contact === undefined
-              ? undefined
-              : { id: document.header.contact.id, name: document.header.contact.name },
-          header: document.header,
-        }))
-      : [];
+  const drafts: FindingDraft[] = [...sums.values()].flatMap((sum) => {
+    const found = findingFor(sum.rule, regime);
+    if (found === undefined) return [];
+    return sum.documents.map((document) => ({
+      code: found.code,
+      text: found.text,
+      contact:
+        document.header.contact === undefined
+          ? undefined
+          : { id: document.header.contact.id, name: document.header.contact.name },
+      header: document.header,
+    }));
+  });
 
   const incomplete = scan.documents.filter((document) => !document.positionsComplete).length;
   const notes = [
@@ -279,10 +321,10 @@ async function runReverseChargeCheck(
         "state belong to Kz 46/47 instead.",
     );
   }
-  if (settings === undefined && sums.has(13)) {
+  if (settings === undefined && [...RECEIVED_RULES].some((rule) => sums.has(rule))) {
     notes.push(
-      "The account settings could not be read, so rule 13 was not compared with the account's " +
-        "regime.",
+      "The account settings could not be read, so rules 12, 13 and 14 were not compared with " +
+        "the account's regime.",
     );
   }
   if (legacy > 0) {
@@ -407,7 +449,7 @@ export const reverseChargeCheck = {
   summary:
     "the §13b base by tax rule (12, 13, 14 received; 5, 21 issued) with the tax owed, the UStVA " +
     "Kennzahlen and the documents behind each sum, by tax point like sevdesk_vat_summary; flags " +
-    "rule 13 on a regular account",
+    "rule 13 on a regular account and rules 12 and 14 on a Kleinunternehmer account",
   codes: REVERSE_CHARGE_FINDING_CODES,
   run: runReverseChargeCheck,
 };
