@@ -6,6 +6,7 @@
  */
 import { isCompletable } from "@modelcontextprotocol/server";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import { PROMPTS } from "../../../src/prompts/catalog.js";
 import {
@@ -357,6 +358,39 @@ describe("completableArgs", () => {
     expect(args.parse({ contact: "Muster GmbH", note: "dropped" })).toEqual({
       contact: "Muster GmbH",
     });
+  });
+
+  it("keeps the settings, refinements and metadata of the arguments object", () => {
+    const args = z
+      .object({
+        contact: z.string().min(1).max(50).optional(),
+        note: z.string().max(20).optional(),
+      })
+      .strict()
+      .superRefine((value, ctx) => {
+        if (value.note !== undefined && value.contact === undefined) {
+          ctx.addIssue({ code: "custom", message: "A note needs a contact." });
+        }
+      })
+      .describe("Arguments of a test prompt");
+    const strict: PromptDefinition = {
+      ...prompt("dunning_run"),
+      args,
+      completions: { contact: "contact" },
+    };
+    const copy = completableArgs(strict, always);
+
+    expect(isCompletable(copy.shape["contact"]?.unwrap())).toBe(true);
+    expect(isCompletable(args.shape.contact.unwrap())).toBe(false);
+    expect(copy.shape["note"]).toBe(args.shape["note"]);
+    expect(copy.safeParse({ contact: "Muster GmbH", extra: "x" }).success).toBe(false);
+    expect(copy.safeParse({ note: "Bitte mahnen" }).success).toBe(false);
+    expect(copy.safeParse({ contact: "x".repeat(51) }).success).toBe(false);
+    expect(copy.parse({ contact: "Muster GmbH", note: "Bitte mahnen" })).toEqual({
+      contact: "Muster GmbH",
+      note: "Bitte mahnen",
+    });
+    expect(copy.description).toBe("Arguments of a test prompt");
   });
 
   it("returns the catalog schema itself when no argument is completed here", () => {

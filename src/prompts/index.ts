@@ -11,7 +11,6 @@
  * that read the account.
  */
 import { completable, type GetPromptResult, type McpServer } from "@modelcontextprotocol/server";
-import { z } from "zod";
 
 import type { Config } from "../config.js";
 import type { Tier } from "../safety/tiers.js";
@@ -261,30 +260,30 @@ export interface PromptRegistrationOptions {
  * ({@link PromptDefinition.completions}). The SDK's `completable` marks a schema instance for
  * good, and the catalog's schemas are shared by every instance and account, so each completed
  * argument is a fresh copy with the same checks and description; the others stay as they are.
- * Suggestions the argument would refuse are dropped, so every offered value passes the same
- * pattern check as a typed one.
+ * The object itself is copied with `safeExtend`, which keeps its own settings (unknown keys,
+ * refinements over several arguments), and its metadata is carried over. Suggestions the
+ * argument would refuse are dropped, so every offered value passes the same pattern check as a
+ * typed one.
  */
 export function completableArgs(
   prompt: PromptDefinition,
   completers: Completers,
 ): PromptArgsSchema {
   const shape: PromptArgsSchema["shape"] = {};
-  let completed = false;
   for (const [name, argument] of Object.entries(prompt.args.shape)) {
     const kind = prompt.completions[name];
     const complete = kind === undefined ? undefined : completers[kind];
-    if (complete === undefined) {
-      shape[name] = argument;
-      continue;
-    }
+    if (complete === undefined) continue;
     const value = argument.unwrap().clone();
     const copy = completable(value, async (typed) =>
       (await complete(typed)).filter((suggestion) => value.safeParse(suggestion).success),
     ).optional();
     shape[name] = argument.description === undefined ? copy : copy.describe(argument.description);
-    completed = true;
   }
-  return completed ? z.object(shape) : prompt.args;
+  if (Object.keys(shape).length === 0) return prompt.args;
+  const args = prompt.args.safeExtend(shape);
+  const meta = prompt.args.meta();
+  return meta === undefined ? args : args.meta(meta);
 }
 
 /**
