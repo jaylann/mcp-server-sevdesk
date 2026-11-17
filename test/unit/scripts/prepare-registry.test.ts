@@ -47,6 +47,17 @@ const tag = `v${source.version}`;
 const failurePrefix =
   "Could not prepare the registry manifest. Check the version, tag, bundle and output path.";
 const untrustedMarker = "UNTRUSTED_BUNDLE_CONTENT";
+const RAW_FILES = "https://raw.githubusercontent.com/jaylann/mcp-server-sevdesk";
+/** The icons of the source, from `main`. */
+const sourceIcons = z.array(z.record(z.string(), z.unknown())).parse(source["icons"]);
+
+/** The source's icons as a release `ref` serves them. */
+function iconsAt(ref: string): Record<string, unknown>[] {
+  return sourceIcons.map((icon) => ({
+    ...icon,
+    src: String(icon["src"]).replace(`${RAW_FILES}/main/`, `${RAW_FILES}/${ref}/`),
+  }));
+}
 
 function reportedFailure(run: () => void): string {
   try {
@@ -209,6 +220,7 @@ describe("registry manifest for a release bundle", () => {
     const result = registryWithBundle(source, manifest, bundle, source.version, tag);
     expect(result).toEqual({
       ...source,
+      icons: iconsAt(tag),
       packages: [
         ...source.packages,
         {
@@ -244,6 +256,7 @@ describe("registry manifest for a release bundle", () => {
       `v${next}`,
     );
     expect(result).toMatchObject({
+      icons: iconsAt(`v${next}`),
       packages: [
         ...updated.packages,
         {
@@ -318,6 +331,59 @@ describe("registry manifest for a release bundle", () => {
     ]);
     expect(validate(source), JSON.stringify(validate.errors)).toBe(true);
     expect(validate({ ...source, icons: [{ src: "not a uri" }] })).toBe(false);
+  });
+
+  it("pins the icon to the release tag, so the registry keeps the released icon", () => {
+    const result = registryWithBundle(source, manifest, bundle, source.version, tag);
+
+    expect(result["icons"]).toEqual([
+      {
+        src: `https://raw.githubusercontent.com/jaylann/mcp-server-sevdesk/v${source.version}/mcpb/icon.png`,
+        mimeType: "image/png",
+        sizes: sourceIcons[0]?.["sizes"],
+      },
+    ]);
+    expect(validate(result), JSON.stringify(validate.errors)).toBe(true);
+    expect(source.icons).toEqual(sourceIcons);
+  });
+
+  it("keeps icons from elsewhere and a source without icons as they are", () => {
+    const elsewhere = { src: "https://example.com/icon.svg", mimeType: "image/svg+xml" };
+    const result = registryWithBundle(
+      { ...source, icons: [...sourceIcons, elsewhere] },
+      manifest,
+      bundle,
+      source.version,
+      tag,
+    );
+    expect(result["icons"]).toEqual([...iconsAt(tag), elsewhere]);
+
+    const { icons: _icons, ...withoutIcons } = source;
+    expect(
+      registryWithBundle(withoutIcons, manifest, bundle, source.version, tag),
+    ).not.toHaveProperty("icons");
+  });
+
+  it("refuses an icon of this repository already pinned to a ref, and malformed icons", () => {
+    const prepared = registryWithBundle(source, manifest, bundle, source.version, tag);
+    const { packages: _packages, ...pinned } = prepared;
+    expect(() =>
+      registryWithBundle(
+        { ...pinned, packages: source.packages },
+        manifest,
+        bundle,
+        source.version,
+        tag,
+      ),
+    ).toThrow("icons from this repository must point at main");
+    for (const icons of [{}, "icon.png"]) {
+      expect(() =>
+        registryWithBundle({ ...source, icons }, manifest, bundle, source.version, tag),
+      ).toThrow("icons must be a list");
+    }
+    expect(() =>
+      registryWithBundle({ ...source, icons: ["icon.png"] }, manifest, bundle, source.version, tag),
+    ).toThrow("JSON object");
   });
 
   it("has a schema validator that rejects invalid checksums and missing transports", () => {
