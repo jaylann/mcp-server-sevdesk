@@ -12,6 +12,7 @@ function routes(
   overrides: {
     addresses?: FakeRoute["response"];
     contact?: FakeRoute["response"];
+    customFields?: FakeRoute["response"];
   } = {},
 ) {
   return [
@@ -29,7 +30,23 @@ function routes(
       query: contactFilter,
       response: { fixture: "contacts/communication-ways-1001.json" },
     },
+    {
+      path: "/ContactCustomField",
+      query: { ...contactFilter, embed: "contactCustomFieldSetting" },
+      response: overrides.customFields ?? { fixture: "contacts/custom-fields-1001.json" },
+    },
   ] satisfies FakeRoute[];
+}
+
+/** One custom field value row of `contact` for setting 19498, in sevDesk's shape. */
+function valueRow(id: number, contact: number, value: string, name = "Kundennr extern") {
+  return {
+    id: String(id),
+    objectName: "ContactCustomField",
+    contact: { id: String(contact), objectName: "Contact" },
+    contactCustomFieldSetting: { id: "19498", objectName: "ContactCustomFieldSetting", name },
+    value,
+  };
 }
 
 /** `count` address rows of contact 1001 in sevDesk's shape (the fake pages them). */
@@ -64,9 +81,9 @@ describe("sevdesk_contact_get (community: recorded shapes, fake data)", () => {
     });
   });
 
-  it("returns the contact with addresses and communication ways, GETs only", async () => {
+  it("returns the contact with addresses, communication ways and custom fields, GETs only", async () => {
     const { client, result } = await get(1001);
-    expect(client.methods()).toEqual(["GET", "GET", "GET", "GET"]);
+    expect(client.methods()).toEqual(["GET", "GET", "GET", "GET", "GET"]);
     expect(client.callsTo("/ContactAddress")[0]?.query).toMatchObject({
       "contact[id]": 1001,
       "contact[objectName]": "Contact",
@@ -104,8 +121,69 @@ describe("sevdesk_contact_get (community: recorded shapes, fake data)", () => {
     ]);
     expect(result.data.addressesComplete).toBe(true);
     expect(result.data.communicationWaysComplete).toBe(true);
+    // D-086: no contact read shows custom fields; one more read with the setting embedded.
+    expect(client.callsTo("/ContactCustomField")[0]?.query).toMatchObject({
+      "contact[id]": 1001,
+      "contact[objectName]": "Contact",
+      embed: "contactCustomFieldSetting",
+      limit: 1000,
+    });
+    expect(result.data.customFields).toEqual([
+      { id: 7001, settingId: 19498, name: "Kundennr extern", value: "EXT-4711" },
+      { id: 7002, settingId: 19499, name: "Branche", value: "Großhandel" },
+    ]);
+    expect(result.data.customFieldsComplete).toBe(true);
     expect(result.summary).toBe(
-      "Contact 1001 (organisation) with 2 addresses and 3 communication ways.",
+      "Contact 1001 (organisation) with 2 addresses, 3 communication ways and 2 custom field " +
+        "values.",
+    );
+  });
+
+  it("drops other contacts' custom field values and cleans their text (D-035)", async () => {
+    const { result } = await get(
+      1001,
+      routes({
+        customFields: {
+          body: {
+            objects: [valueRow(7101, 1001, "EXT​-1‮", "Kunden​nr"), valueRow(7102, 2002, "fremd")],
+          },
+        },
+      }),
+    );
+    expect(result.data.customFields).toEqual([
+      { id: 7101, settingId: 19498, name: "Kundennr", value: "EXT-1" },
+    ]);
+    expect(result.data.customFieldsComplete).toBe(true);
+  });
+
+  it("still returns the contact when its custom fields cannot be read, and says so", async () => {
+    const error = new SevdeskError({ kind: "server", message: "sevDesk failed.", status: 500 });
+    const { result } = await get(1001, routes({ customFields: { error } }));
+    expect(result.data.contact.id).toBe(1001);
+    expect(result.data.customFields).toEqual([]);
+    expect(result.data.customFieldsComplete).toBe(false);
+    // No "0 custom field values": an unread list is no count.
+    expect(result.summary).toBe(
+      "Contact 1001 (organisation) with 2 addresses and 3 communication ways. Its custom field " +
+        "values could not be read.",
+    );
+  });
+
+  it("does not swallow a cancellation of the custom field read", async () => {
+    const error = new SevdeskError({ kind: "aborted", message: "The request was cancelled." });
+    const client = new FakeSevdeskClient(withCountryRoute(routes({ customFields: { error } })));
+    await expect(tool.handler({ id: 1001 }, testContext(client))).rejects.toBe(error);
+  });
+
+  it("says so when sevDesk had more custom field values than could be read", async () => {
+    const objects = Array.from({ length: 10_001 }, (_, index) =>
+      valueRow(100_000 + index, 1001, `V-${index}`),
+    );
+    const { result } = await get(1001, routes({ customFields: { body: { objects } } }));
+    expect(result.data.customFields).toHaveLength(10_000);
+    expect(result.data.customFieldsComplete).toBe(false);
+    expect(result.summary).toMatch(
+      /Partial: sevDesk had more custom field values than could be read\.$/,
     );
   });
 
@@ -136,8 +214,8 @@ describe("sevdesk_contact_get (community: recorded shapes, fake data)", () => {
     expect(result.data.addressesComplete).toBe(false);
     expect(result.data.communicationWaysComplete).toBe(true);
     expect(result.summary).toBe(
-      "Contact 1001 (organisation) with 10000 addresses and 3 communication ways. " +
-        "Partial: sevDesk had more addresses than could be read.",
+      "Contact 1001 (organisation) with 10000 addresses, 3 communication ways and 2 custom " +
+        "field values. Partial: sevDesk had more addresses than could be read.",
     );
   });
 

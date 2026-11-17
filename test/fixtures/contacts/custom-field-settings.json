@@ -1,0 +1,62 @@
+{
+  "_provenance": {
+    "source": "spec",
+    "ref": "spec/openapi.yaml#/components/schemas/Model_ContactCustomFieldSettingResponse; spec/deviations.md D-086",
+    "date": "2026-11-17",
+    "systemVersion": "2.0",
+    "note": "GET /ContactCustomFieldSetting. Row shape as in recorded/2026-11-16/contacts/custom-field-settings.json (identifier filled by sevDesk, undeclared placeholder). Two settings share the name Projekt, which sevDesk accepts (D-086). All values fake."
+  },
+  "status": 200,
+  "body": {
+    "objects": [
+      {
+        "id": "19498",
+        "objectName": "ContactCustomFieldSetting",
+        "additionalInformation": null,
+        "create": "2026-11-16T21:56:15+01:00",
+        "update": "2026-11-16T21:56:15+01:00",
+        "sevClient": { "id": "9001", "objectName": "SevClient" },
+        "name": "Kundennr extern",
+        "identifier": "kundennr-extern",
+        "description": null,
+        "placeholder": null
+      },
+      {
+        "id": "19499",
+        "objectName": "ContactCustomFieldSetting",
+        "additionalInformation": null,
+        "create": "2026-11-16T21:57:02+01:00",
+        "update": "2026-11-16T21:57:02+01:00",
+        "sevClient": { "id": "9001", "objectName": "SevClient" },
+        "name": "Branche",
+        "identifier": "branche",
+        "description": "Branche des Kunden",
+        "placeholder": null
+      },
+      {
+        "id": "19500",
+        "objectName": "ContactCustomFieldSetting",
+        "additionalInformation": null,
+        "create": "2026-11-16T21:58:40+01:00",
+        "update": "2026-11-16T21:58:40+01:00",
+        "sevClient": { "id": "9001", "objectName": "SevClient" },
+        "name": "Projekt",
+        "identifier": "projekt",
+        "description": null,
+        "placeholder": null
+      },
+      {
+        "id": "19501",
+        "objectName": "ContactCustomFieldSetting",
+        "additionalInformation": null,
+        "create": "2026-11-16T21:59:10+01:00",
+        "update": "2026-11-16T21:59:10+01:00",
+        "sevClient": { "id": "9001", "objectName": "SevClient" },
+        "name": "projekt",
+        "identifier": "projekt-1",
+        "description": null,
+        "placeholder": null
+      }
+    ]
+  }
+}

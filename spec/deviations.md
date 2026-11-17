@@ -3279,22 +3279,59 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
     both (the spec's required `customFieldName` is not needed with an id).
   - `DELETE` of a value or a setting answers `{objects: [null]}`; deleting a setting that a value
     uses succeeds and deletes the value too (no 409).
-  - Not measured: a length limit on `value` and `description` (the probe sent 17 and 21
-    characters).
+  - A `value` has at most 100 characters: `PUT /ContactCustomField/{id}` with 255 characters
+    answers 400 "Property 'value' is too long. Maximum for this property is 100".
+  - One value per setting and contact: a second `POST /ContactCustomField` for the same contact
+    and setting answers 400 "Bad Request", and a read by contact shows one value.
+  - Deleting a contact deletes its values: after `DELETE /Contact/{id}`,
+    `GET /ContactCustomField/{valueId}` answers 404 ("No Model_ContactCustomField with the id …
+    was found"), and the setting's `getReferenceCount` drops to the values other contacts still
+    have.
+  - `findContactsByCustomFieldValue` finds persons as well as organisations, and ignores `limit`
+    and `offset`: with two matches, `limit=1` and `limit=1&offset=1` both answered both contacts.
+  - Not measured: a length limit on `description`; whether `/ContactCustomField` answers on every
+    sevDesk plan (only a trial account was available).
 - **Sources:** spec (`ContactField` operations, `Model_ContactCustomField*`,
   `findContactsByCustomFieldValue`); recorded 2026-11-16, trial account, Update 2.0 (probes
   `write-custom-field-settings`, `write-custom-field-values`; the settings list in
-  `test/fixtures/recorded/2026-11-16/contacts/custom-field-settings.json`).
-- **Impact:** No tool reads or writes custom fields yet. #86 must keep setting names within 30
-  characters, read a contact's values with `GET /ContactCustomField?contact[id]=…` and
-  `embed=contactCustomFieldSetting` (filtered again locally, D-035), search with
-  `customFieldSetting[id]` (exact value, any case), and warn that deleting a setting deletes every
-  value of it.
+  `test/fixtures/recorded/2026-11-16/contacts/custom-field-settings.json`); the value limit, one
+  value per setting, the contact delete and the search paging: recorded 2026-11-17, trial account,
+  Update 2.0 (one-off check by the orchestrator, run tag `MCP-E2E 20261117-0019-efhb`).
+- **Impact:** `src/domain/contact-custom-fields.ts`. `sevdesk_contact_get` reads a contact's
+  values with one more request (`GET /ContactCustomField?contact[id]=…&contact[objectName]=Contact`
+  and `embed=contactCustomFieldSetting`, filtered again locally, D-035) and shows each with the
+  setting id and name; a failed read still returns the contact and says so. `customFields` of
+  `sevdesk_contact_create` and `sevdesk_contact_update` names each field by setting id or name (a
+  name at most 30 characters, matched ignoring case; one that no setting or two settings have is
+  refused before any request; so is a value over 100 characters), `POST`s a value the contact
+  lacks and `PUT`s only `objectName` and `value` of one it has, after the communication ways;
+  `remove` kind `customField` deletes a value last, a 404 counting as already gone. Since a contact
+  holds one value per setting, an update that sets a field and removes its value is refused (the
+  new value would be added before the old one is gone); a contact with two values of one setting is
+  refused for that setting as a defensive branch. `sevdesk_contacts_search` `customField` sends
+  `customFieldSetting[id]` alone (exact value, any case, as the argument says), reads the answer
+  once, cuts it at 1000 contacts with a note, and pages locally. `sevdesk_reference_lookup` kind
+  `contact_custom_fields` lists the settings. Nothing writes a setting: deleting one would delete
+  every value of it, so settings are defined in the sevDesk web app. The delete preview counts the
+  values as deleted with the contact.
 - **Test:** `test/contract/recorded-gaps-contacts.test.ts` (the recorded settings list: keys,
-  scalar types, `identifier` and `placeholder`, through `sevdesk_api_get`);
-  `test/unit/scripts/gaps-contacts-probes.test.ts` ("probes custom fields without putting their
-  values into the report"). Live: probes `write-custom-field-settings`,
-  `write-custom-field-values`.
+  scalar types, `identifier` and `placeholder`, through `sevdesk_api_get` and through
+  `listCustomFieldSettings`); `test/unit/scripts/gaps-contacts-probes.test.ts` ("probes custom
+  fields without putting their values into the report");
+  `test/regressions/custom-field-settings-read-only.test.ts` ("no tool that works with custom
+  fields sends anything but a GET to a setting"); `test/unit/tools/contacts/get.test.ts` ("returns
+  the contact with addresses, communication ways and custom fields, GETs only", "drops other
+  contacts' custom field values and cleans their text (D-035)");
+  `test/unit/tools/masterdata/contact-custom-fields.test.ts` (create and update: values, order,
+  refusals, partial writes, "refuses a value over 100 characters before any request, also past
+  the schema", "refuses to set a field whose value the same update removes (one value per
+  field)"); `test/unit/tools/contacts/search.test.ts` ("resolves the field by name and asks sevDesk
+  with the setting id alone, GETs only", "reads the whole match set once and cuts a huge one at
+  1000, saying so"); `test/unit/tools/masterdata/contact-delete.test.ts` ("says the custom field
+  values go too, and when they could not be read (D-086)"); `test/unit/tools/meta/reference-lookup.test.ts`
+  ("lists the account's custom contact fields with limit 1000, GET only (D-086)"). Live: probes
+  `write-custom-field-settings`, `write-custom-field-values`; the 2026-11-17 facts have no probe
+  yet.
 
 ### D-087: `checkCustomerNumberAvailability` answers a bare boolean and needs a number
 
