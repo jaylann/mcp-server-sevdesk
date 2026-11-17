@@ -118,7 +118,7 @@ describe("sevdesk_bank_account_create", () => {
       "sevDesk refused the request (HTTP 422): sevDesk refused booking account 1803: another " +
         "payment account already uses it, possibly an archived one, which keeps its number and is " +
         "not listed. Nothing was created. Choose another number, or leave accountingNumber out to " +
-        "get the next free number of the 18xx range.",
+        "let sevDesk pick a free one (recorded on SKR04: the next free 18xx number).",
     );
     expect(text).not.toContain("already used");
   });
