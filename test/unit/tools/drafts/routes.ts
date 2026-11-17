@@ -4,6 +4,48 @@
  */
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { type FakeRoute, loadFixture } from "../../../helpers/fake-client.js";
+import { noDiscountsRoute } from "../lifecycle/helpers.js";
+
+export { noDiscountsRoute } from "../lifecycle/helpers.js";
+
+type DiscountKind = "Invoice" | "CreditNote" | "Order";
+
+/**
+ * A stored document discount as `getDiscounts` lists it (recorded 2026-11-16, D-116: every value a
+ * string, the document as `object`): 10 % net by default.
+ */
+export function discountRow(
+  kind: DiscountKind,
+  documentId: number,
+  overrides: Readonly<Record<string, unknown>> = {},
+): Record<string, unknown> {
+  return {
+    id: "9001",
+    objectName: "Discounts",
+    create: "2026-11-16T10:00:00+01:00",
+    update: "2026-11-16T10:00:00+01:00",
+    object: { id: String(documentId), objectName: kind },
+    sevClient: { id: "1", objectName: "SevClient" },
+    text: "Rabatt",
+    discount: "1",
+    percentage: "1",
+    value: "10",
+    isNet: "1",
+    ...overrides,
+  };
+}
+
+/** `GET /<kind>/<id>/getDiscounts` answering `rows` (with the recorded `total: null`). */
+export function discountsRoute(
+  kind: DiscountKind,
+  documentId: number,
+  rows: readonly Record<string, unknown>[],
+): FakeRoute {
+  return {
+    path: `/${kind}/${documentId}/getDiscounts`,
+    response: { body: { objects: rows, total: null } },
+  };
+}
 
 /** Berlin midnight of the dates the tests use, as sevDesk's Unix-second timestamps. */
 export const TIMESTAMPS = {
@@ -158,6 +200,7 @@ export const invoiceCreateRoutes: readonly FakeRoute[] = [
   ...noDuplicatesRoutes,
   saveInvoiceRoute,
   ...invoice2101Routes,
+  noDiscountsRoute,
 ];
 
 export const invoiceUpdateRoutes: readonly FakeRoute[] = [
@@ -169,6 +212,7 @@ export const invoiceUpdateRoutes: readonly FakeRoute[] = [
   countriesRoute,
   unitsRoute,
   saveInvoice2102Route,
+  noDiscountsRoute,
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -263,6 +307,8 @@ export const creditNoteCreateRoutes: readonly FakeRoute[] = [
   ...nextCreditNoteNumberRoutes("GU-1002"),
   saveCreditNoteRoute,
   ...creditNote2201Routes,
+  noDiscountsRoute,
+  // Last: tests replace it with `slice(0, -1)`.
   creditNoteNumbersRoute("GU-1000", "GU-1001", null),
 ];
 
@@ -308,6 +354,7 @@ export const creditNoteUpdateRoutes: readonly FakeRoute[] = [
   unitsRoute,
   ...sourceInvoiceRoutes,
   saveCreditNote2202Route,
+  noDiscountsRoute,
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -389,6 +436,7 @@ export const orderCreateRoutes: readonly FakeRoute[] = [
   ...nextOrderNumberRoutes("AN-1000"),
   saveOrderRoute,
   ...order3101Routes,
+  noDiscountsRoute,
 ];
 
 export const orderUpdateRoutes: readonly FakeRoute[] = [
@@ -400,6 +448,7 @@ export const orderUpdateRoutes: readonly FakeRoute[] = [
   countriesRoute,
   unitsRoute,
   saveOrder3102Route,
+  noDiscountsRoute,
 ];
 
 /** A route that fails like sevDesk's GET-by-id for an unknown id. */

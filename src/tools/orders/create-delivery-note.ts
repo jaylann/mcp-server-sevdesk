@@ -15,8 +15,6 @@ import {
   createOrderFromOrder,
   derivedOrderState,
   findOrdersFrom,
-  orderDiscountFacts,
-  readOrderDiscounts,
 } from "../../domain/order-follow-ups.js";
 import { defineWriteTool } from "../define-tool.js";
 import { documentContent, documentObject } from "../lifecycle/shared.js";
@@ -72,8 +70,8 @@ export const orderCreateDeliveryNoteTool = defineWriteTool({
           "or call again with allowDuplicate: true to create another one.",
       );
     }
+    // The content lists the order's discounts on the whole document (D-116).
     const content = await documentContent(ctx, doc);
-    const discounts = await readOrderDiscounts(ctx.client, doc.id, ctx.signal);
     const warnings = [
       "The delivery note is created as a draft (Entwurf) with the order's contact, texts and " +
         "positions as listed here; sevDesk leaves the order itself unchanged. Check it with " +
@@ -82,7 +80,7 @@ export const orderCreateDeliveryNoteTool = defineWriteTool({
         "counter, so another delivery note may carry the same number; the result names any it " +
         "finds.",
     ];
-    if (discounts.rows.length > 0) {
+    if (content.discountCount > 0) {
       // Only createInvoiceFromOrder was recorded with a discount (it copies it, D-116).
       warnings.push(
         "The order carries discounts or surcharges on the whole document (listed above). " +
@@ -108,7 +106,7 @@ export const orderCreateDeliveryNoteTool = defineWriteTool({
     if (existing.truncated) {
       warnings.push("Not every order could be checked for an earlier delivery note.");
     }
-    warnings.push(content.notShown.en);
+    warnings.push(content.notShown.en, ...content.notes.map((note) => note.en));
     return {
       preview: {
         action:
@@ -118,7 +116,6 @@ export const orderCreateDeliveryNoteTool = defineWriteTool({
           ...content.identity("en"),
           { label: "Creates", value: "delivery note (Lieferschein, LI) as a draft" },
           ...content.printed("en"),
-          ...orderDiscountFacts(discounts, doc.currency, "en"),
         ],
         warnings,
         irreversible: false,

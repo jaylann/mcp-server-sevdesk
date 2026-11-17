@@ -44,29 +44,43 @@ import { statusDto } from "../common.js";
 import type { CountryReadOptions } from "../country-codes.js";
 import { type CreditNoteDetails, getCreditNote } from "../credit-notes.js";
 import { checkInvoiceCreditable, findCreditNotesForInvoice } from "../derived-documents.js";
+import { readDocumentDiscounts } from "../document-discounts.js";
 import { BOOKING_CATEGORY_NAMES } from "../filter-keys.js";
 import { getInvoice, type InvoiceDetails } from "../invoices.js";
 import { compare, toDecimalString } from "../money.js";
 import { taxRuleById } from "../reference-data.js";
 import { berlinDay, type CurrentCreditNote, loadCurrentCreditNote } from "./current.js";
 import {
+  createDiscountBody,
+  createTotals,
+  type DiscountInput,
+  discountInput,
+  discountReadBackNote,
+  discountText,
+  discountUpdateInput,
+  type DraftDiscount,
+  planDiscountChange,
+  resolveDiscount,
+  updateTotals,
+} from "./discount.js";
+import {
   assertChanges,
   ChangeLog,
   draftPreview,
   logContactPersonChange,
+  logDiscountChange,
   logPricingChanges,
   logRecipientChanges,
   logTextChanges,
   numberLabel,
   positionCount,
   ref,
-  storedDiscountWarning,
   storedNumber,
   storedRef,
-  storedTotalText,
   structuredAddress,
   taxText,
   updatedAddressFields,
+  updateTotalFact,
 } from "./document.js";
 import { duplicateWarning, findDuplicates } from "./duplicates.js";
 import {
@@ -109,7 +123,6 @@ import {
 import {
   type Amounts,
   draftPositionInput,
-  expectedTotals,
   MAX_POSITIONS,
   type PositionInput,
   positionPayload,
@@ -218,6 +231,7 @@ export const creditNoteCreateInputShape = {
   header: headerInput.describe('Document title (Betreff); default "Gutschrift".'),
   headText: headTextInput,
   footText: footTextInput,
+  discount: discountInput.optional(),
   contactPersonId: contactPersonIdInput,
   ...addressInputShape,
 };
@@ -233,6 +247,7 @@ export interface CreditNoteCreateArgs extends CreateArgs {
   readonly header?: string | undefined;
   readonly headText?: string | undefined;
   readonly footText?: string | undefined;
+  readonly discount?: DiscountInput | undefined;
 }
 
 /** Input fields of `sevdesk_credit_note_update_draft` (without `dryRun`). */
@@ -261,6 +276,7 @@ export const creditNoteUpdateInputShape = {
   header: headerInput,
   headText: headTextInput,
   footText: footTextInput,
+  discount: discountUpdateInput,
   contactPersonId: contactPersonIdInput,
   ...addressInputShape,
 };
@@ -273,6 +289,8 @@ export interface CreditNoteUpdateArgs extends UpdateArgs {
   readonly header?: string | undefined;
   readonly headText?: string | undefined;
   readonly footText?: string | undefined;
+  /** A new document discount, `null` to remove the stored one, left out to keep it. */
+  readonly discount?: DiscountInput | null | undefined;
 }
 
 /** What `execute` needs: the exact body the preview describes. */
@@ -284,10 +302,12 @@ export interface CreditNoteDraftState {
   readonly body: SaveCreditNoteBody;
   /** Set for updates: the credit note the save must keep (no number is reserved then). */
   readonly creditNoteId?: number | undefined;
-  /** Expected totals when the call set the positions. */
+  /** Expected totals when the call set the positions or the discount. */
   readonly expected?: Amounts | undefined;
   /** Create only: the number the preview showed. */
   readonly peekedNumber?: string | undefined;
+  /** The discount the call sent (`null`: removed), checked in the read-back. */
+  readonly discount?: DraftDiscount | null | undefined;
 }
 
 export interface CreditNoteDraftPlan {
@@ -319,6 +339,7 @@ export async function prepareCreditNoteCreate(
         "credit note that reduces an invoice).",
     });
   }
+  const discount = args.discount === undefined ? undefined : resolveDiscount(args.discount);
   const sourceCheck =
     category === "UNDERACHIEVEMENT"
       ? await checkSourceInvoice(client, args, { signal, cacheOwner: options.cacheOwner })
@@ -331,8 +352,9 @@ export async function prepareCreditNoteCreate(
     taxOptions(category, source),
     options,
   );
-  const { contact, contactPerson, address, currency, expected, mode } = basics;
+  const { contact, contactPerson, address, currency, mode } = basics;
   if (source !== undefined) checkSourceCurrency(source, currency);
+  const expected = createTotals(basics.positions, mode, discount, currency);
   const duplicateQuery = { contactId: args.contactId, date, gross: expected.gross, currency };
   const duplicates = await findDuplicates(client, { kind: "creditNote" }, duplicateQuery, signal);
   const peeked = await peekNextNumber(client, { kind: "creditNote" }, signal);
@@ -367,6 +389,7 @@ export async function prepareCreditNoteCreate(
         positionPayload(position, index, "CreditNotePos"),
       ),
       creditNotePosDelete: null,
+      ...createDiscountBody(discount),
     },
     "credit note",
   );
@@ -387,6 +410,7 @@ export async function prepareCreditNoteCreate(
     fact("Tax", taxText(basics.rule, basics.tax)),
     fact("Tax text", basics.tax.taxText),
     ...positionFacts(basics.positions, mode, currency),
+    ...(discount === undefined ? [] : [fact("Discount", discountText(discount, currency))]),
     fact("Total (expected)", totalsText(expected, currency)),
   ];
   const preview = draftPreview(
@@ -402,7 +426,7 @@ export async function prepareCreditNoteCreate(
       ...basics.warnings,
     ],
   );
-  return { preview, state: { body, expected, peekedNumber: peeked } };
+  return { preview, state: { body, expected, peekedNumber: peeked, discount } };
 }
 
 /**
@@ -428,6 +452,8 @@ export async function prepareCreditNoteUpdate(
   const current = await loadCurrentCreditNote(client, args.id, signal);
   const doc = current.document;
   const category = checkUpdatable(doc);
+  const discounts = await readDocumentDiscounts(client, "creditNote", doc.id, signal);
+  const change = planDiscountChange(args.discount, discounts, `Credit note ${doc.id}`);
 
   const sourceId = category === "UNDERACHIEVEMENT" ? sourceInvoiceIdOf(doc) : undefined;
   const contactId = args.contactId ?? doc.contact?.id;
@@ -469,8 +495,16 @@ export async function prepareCreditNoteUpdate(
     args.deliveryDateUntil ?? storedUntil,
     false,
   );
-  const expected =
-    basics.positions === undefined ? undefined : expectedTotals(basics.positions, basics.mode);
+  const totals = updateTotals({
+    change,
+    positions: basics.positions,
+    storedPositions: current.positions,
+    mode: basics.mode,
+    currency: basics.currency,
+    currencyChanged: basics.currencyChanged,
+    stored: doc,
+  });
+  const expected = totals.expected;
 
   const body = strictBody(
     saveCreditNoteBodySchema,
@@ -515,6 +549,7 @@ export async function prepareCreditNoteUpdate(
         basics.positions === undefined || current.positions.length === 0
           ? null
           : current.positions.map((row) => ref(row.id, "CreditNotePos")),
+      ...change.body,
     },
     "credit note",
   );
@@ -533,6 +568,7 @@ export async function prepareCreditNoteUpdate(
   logContactPersonChange(log, doc, basics);
   logTextChanges(log, doc.header, args);
   logPricingChanges(log, doc, basics, current.positions.length);
+  const keptDiscount = logDiscountChange(log, change, discounts.rows, basics.currency);
 
   const customer = customerText(basics.contact.contact.displayName, basics.contact.contact.id);
   const facts: PreviewFact[] = [
@@ -546,21 +582,19 @@ export async function prepareCreditNoteUpdate(
     ...(basics.positions === undefined
       ? []
       : positionFacts(basics.positions, basics.mode, basics.currency)),
-    expected === undefined
-      ? fact("Total (unchanged)", storedTotalText(doc))
-      : fact("Total (expected)", totalsText(expected, basics.currency)),
+    ...keptDiscount,
+    updateTotalFact(totals, doc, basics.currency),
   ];
   const preview = draftPreview(
     `Update draft credit note ${doc.id} for ${customer}: change ` +
       `${log.changed.join(", ") || "nothing visible"}.`,
     facts,
-    [
-      royaltyWarning(category),
-      ...basics.warnings,
-      storedDiscountWarning(doc.sumDiscounts, basics.positions !== undefined),
-    ],
+    [royaltyWarning(category), ...basics.warnings, totals.warning],
   );
-  return { preview, state: { body, creditNoteId: doc.id, expected } };
+  return {
+    preview,
+    state: { body, creditNoteId: doc.id, expected, discount: change.planned },
+  };
 }
 
 export interface CreditNoteDraftResult {
@@ -622,11 +656,14 @@ export async function executeCreditNoteDraft(
       completedWrites: [saved],
     });
   }
-  const details = await readBack(saved, () => getCreditNote(client, id, { signal, cacheOwner }));
+  const details = await readBack(saved, () =>
+    getCreditNote(client, id, { signal, cacheOwner, withDiscount: true }),
+  );
   const stored =
     reserved === undefined
       ? undefined
       : storedNumberNote("credit note", reserved.number, details.creditNote.number);
+  const discountNote = discountReadBackNote(state.discount, details.discount, "credit note");
   const notes = [
     ...(reserved === undefined ? [] : numberNotes(state.peekedNumber ?? reserved.number, reserved)),
     ...(stored === undefined ? [] : [stored]),
@@ -644,6 +681,7 @@ export async function executeCreditNoteDraft(
         numberless: NUMBERLESS_CREDIT_NOTE,
       },
     ),
+    ...(discountNote === undefined ? [] : [discountNote]),
   ];
   return { id, details, notes };
 }

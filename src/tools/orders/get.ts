@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { documentDiscountSchema } from "../../domain/document-discounts.js";
 import { positionDtoSchema } from "../../domain/document-positions.js";
 import { getOrder, orderDetailSchema, relatedDocumentSchema } from "../../domain/orders.js";
 import { defineTool } from "../define-tool.js";
@@ -12,6 +13,9 @@ const output = z.object({
     .describe(
       "False when sevDesk had more position rows than could be read: positions is partial.",
     ),
+  discount: documentDiscountSchema
+    .optional()
+    .describe("Discount on the whole order (Rabatt); left out when there is none."),
   related: z
     .array(relatedDocumentSchema)
     .optional()
@@ -28,7 +32,8 @@ export const orderGetTool = defineTool({
   description:
     "Get one order by its sevDesk id: an offer (Angebot), order confirmation " +
     "(Auftragsbestätigung) or delivery note (Lieferschein), with its positions (name, quantity, " +
-    "unit, unit price net/gross, tax rate, discount, optional positions), totals (net, " +
+    "unit, unit price net/gross, tax rate, discount, optional positions), a discount on the " +
+    "whole order (Rabatt), totals (net, " +
     "Umsatzsteuer, gross), tax rule, payment and delivery terms, recipient address, the order " +
     "it was created from (origin) and related documents such as the invoices created from it " +
     "(open them with sevdesk_invoice_get). Use it after sevdesk_orders_list.",
@@ -53,8 +58,9 @@ export const orderGetTool = defineTool({
     const details = await getOrder(ctx.client, args.id, {
       signal: ctx.signal,
       cacheOwner: ctx.config,
+      withDiscount: true,
     });
-    const { order, positions, related } = details;
+    const { order, positions, related, discount } = details;
     const count = `${positions.length} position${positions.length === 1 ? "" : "s"}`;
     const partial = details.positionsComplete
       ? ""
@@ -68,12 +74,14 @@ export const orderGetTool = defineTool({
         order,
         positions: [...positions],
         positionsComplete: details.positionsComplete,
+        ...(discount === undefined ? {} : { discount }),
         ...(related === undefined ? {} : { related: [...related] }),
       },
       // Labels come from reference data (or "unknown"), never from sevDesk's text.
       summary:
         `Order ${order.id} (${order.type.label}, status ${order.status.label}) ` +
-        `with ${count}.${partial}${relatedNote}`,
+        `with ${count}.${partial}${relatedNote}` +
+        (discount?.warning === undefined ? "" : ` ${discount.warning}`),
     };
   },
 });

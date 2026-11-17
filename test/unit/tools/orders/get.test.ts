@@ -4,6 +4,7 @@ import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { orderGetTool as tool } from "../../../../src/tools/orders/get.js";
 import { withCountryRoute } from "../../../helpers/country-route.js";
 import { type FakeRoute, FakeSevdeskClient, testContext } from "../../../helpers/fake-client.js";
+import { discountRow, discountsRoute, noDiscountsRoute } from "../drafts/routes.js";
 
 const orderRoute: FakeRoute = {
   path: "/Order/3002",
@@ -23,13 +24,29 @@ const relatedRoute: FakeRoute = {
 };
 const routes = [orderRoute, positionsRoute, unitsRoute, relatedRoute];
 
+/** Calls the tool; the order has no document discount unless `withRoutes` gives one first. */
 async function get(withRoutes: readonly FakeRoute[] = routes) {
-  const client = new FakeSevdeskClient(withCountryRoute(withRoutes));
+  const client = new FakeSevdeskClient(withCountryRoute([...withRoutes, noDiscountsRoute]));
   const result = await tool.handler(tool.input.parse({ id: 3002 }), testContext(client));
   return { client, result };
 }
 
 describe("sevdesk_order_get (community: recorded Order shapes, fake data)", () => {
+  it("shows a discount on the whole order (D-116) and none when there is none", async () => {
+    const without = await get();
+    expect(without.result.data).not.toHaveProperty("discount");
+    expect(without.client.callsTo("/Order/3002/getDiscounts")).toHaveLength(1);
+
+    const { result } = await get([
+      ...routes,
+      discountsRoute("Order", 3002, [discountRow("Order", 3002, { percentage: "0" })]),
+    ]);
+    expect(tool.output.parse(result.data)).toEqual(result.data);
+    expect(result.data.discount?.items).toEqual([
+      { id: 9001, kind: "amount", value: "10", basis: "net", text: "Rabatt" },
+    ]);
+  });
+
   it("is a read tool with explicit annotations", () => {
     expect(tool.tier).toBe("read");
     expect(tool.toolset).toBe("orders");
@@ -178,6 +195,7 @@ describe("sevdesk_order_get (community: recorded Order shapes, fake data)", () =
           ...relatedRoute,
           response: { error: new SevdeskError({ kind: "aborted", message: "cancelled" }) },
         },
+        noDiscountsRoute,
       ]),
     );
     await expect(

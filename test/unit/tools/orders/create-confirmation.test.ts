@@ -425,34 +425,53 @@ describe("sevdesk_order_create_confirmation (D-107)", () => {
     });
   });
 
-  it("shows the offer's document discounts in both languages (review of #112, L5)", async () => {
+  it("shows and binds the offer's document discounts in both languages (review of #112, L5)", async () => {
     const client = staged({
       discounts: [
         discountRow("3001"),
         discountRow("3001", {
           id: "8002",
           discount: "0",
-          text: "Express\nZuschlag",
+          text: "Expresszuschlag",
           percentage: "0",
           value: "12.5",
           isNet: "0",
         }),
-        // Another order's row: not shown.
-        discountRow("3001", { id: "8003", object: { id: "3009", objectName: "Order" } }),
       ],
     });
     const plan = await prepareWrite(tool, { orderId: 3001 }, client);
-    expect(client.calls.find((call) => call.path === "/Order/3001/getDiscounts")?.query).toEqual(
-      expect.objectContaining({ limit: 100 }),
+    // Read once, with the approval content (D-116), not a second time for the preview.
+    const reads = client.calls.filter((call) => call.path === "/Order/3001/getDiscounts");
+    expect(reads).toHaveLength(1);
+    expect(reads[0]?.query).toEqual(expect.objectContaining({ limit: 1000 }));
+    expect(plan.preview.facts).toEqual(
+      expect.arrayContaining([
+        {
+          label: "Discount on the whole document (Rabatt) 1",
+          value: "5 % of the net total\nText: Treuerabatt",
+        },
+        {
+          label: "Discount on the whole document (Rabatt) 2",
+          value: "surcharge (Aufschlag): 12.50 EUR gross\nText: Expresszuschlag",
+        },
+      ]),
     );
-    expect(plan.preview.facts).toContainEqual({
-      label: "Discounts on the whole document (Rabatte, Aufschläge)",
-      value: "5 % discount (net): Treuerabatt\n12.50 EUR surcharge (gross): Express Zuschlag",
-    });
-    expect(plan.previewDe.facts).toContainEqual({
-      label: "Rabatte und Aufschläge auf das ganze Dokument",
-      value: "5 % Rabatt (netto): Treuerabatt\n12,50 EUR Aufschlag (brutto): Express Zuschlag",
-    });
+    expect(plan.previewDe.facts).toEqual(
+      expect.arrayContaining([
+        { label: "Rabatt auf den Gesamtbetrag 1", value: "5 % vom Nettobetrag\nText: Treuerabatt" },
+        {
+          label: "Rabatt auf den Gesamtbetrag 2",
+          value: "Aufschlag: 12,50 EUR brutto\nText: Expresszuschlag",
+        },
+      ]),
+    );
+    // Two rows: sevDesk's totals may count only one of them.
+    expect(plan.preview.warnings.join("\n")).toContain(
+      "This document has 2 discounts on the whole document",
+    );
+    expect(plan.previewDe.warnings.join("\n")).toContain(
+      "Das Dokument hat 2 Rabatte auf den Gesamtbetrag",
+    );
     expect(plan.preview.warnings).toContain(
       "The offer carries discounts or surcharges on the whole document (listed above). Whether " +
         "sevDesk takes them over to the order confirmation has not been checked; compare the " +
@@ -463,11 +482,27 @@ describe("sevdesk_order_create_confirmation (D-107)", () => {
         "sevDesk sie in die Auftragsbestätigung übernimmt, ist nicht geprüft; vergleiche die " +
         "Summen des neuen Entwurfs mit sevdesk_order_get, bevor du ihn fertigstellst.",
     );
-    // Without discounts there is neither the fact nor the warning.
+    // Without discounts there is neither the fact nor the warning, and the approval is bound to
+    // the rows: a discount added after the human was asked asks again.
     const plain = await prepareWrite(tool, { orderId: 3001 }, staged());
     expect(plain.preview.facts.map((fact) => fact.label)).not.toContain(
-      "Discounts on the whole document (Rabatte, Aufschläge)",
+      "Discount on the whole document (Rabatt)",
     );
     expect(plain.preview.warnings.join("\n")).not.toContain("discounts or surcharges");
+    expect(plain.binding).not.toBe(plan.binding);
+  });
+
+  it("refuses when sevDesk lists another order's discount for the offer (D-116)", async () => {
+    // Nothing is approved on discount rows that could not be read cleanly.
+    const client = staged({
+      discounts: [
+        discountRow("3001"),
+        discountRow("3001", { id: "8003", object: { id: "3009", objectName: "Order" } }),
+      ],
+    });
+    const error = await prepareWrite(tool, { orderId: 3001 }, client).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(SevdeskError);
+    expect((error as SevdeskError).kind).toBe("unexpected_response");
+    expect(client.writes()).toEqual([]);
   });
 });

@@ -10,7 +10,10 @@
  *   `{order: {id, objectName: "Order"}, partialType: RE | TR | AR, type: percentage | net | gross,
  *   amount}`; only `order` is required (D-010). Update 2.0 creates advance (AR) and partial (TR)
  *   invoices only with tax rule 1 or 11 (spec section "sevdesk-Update 2.0"). The answer is the new
- *   invoice wrapped in `objects` (D-001); a nested `{invoice: …}` is accepted too.
+ *   invoice wrapped in `objects` (D-001); a nested `{invoice: …}` is accepted too. sevDesk copies
+ *   the order's discount on the whole document into the invoice (D-116, checked 2026-11-17 for a
+ *   whole sent offer: same row, same sums), so the preview shows the order's discounts and the
+ *   read-back the invoice's; for a partial or advance invoice what happens to it is not checked.
  * - `POST /CreditNote/Factory/createFromInvoice`, body `{invoice: {id, objectName: "Invoice"}}`;
  *   the answer is `{creditNote, creditNotePos, discount}` per the spec, and sevdesk-rs
  *   (https://github.com/jernoxit/sevdesk-rs, `tests/number_probe/calls.rs`, live) reads the id
@@ -58,6 +61,11 @@ import type { QueryValue, SevdeskClient } from "../sevdesk/types.js";
 import { cleanText } from "./common.js";
 import { type CountryReadOptions, withDocumentCountry } from "./country-codes.js";
 import { type CreditNoteDetails, getCreditNote } from "./credit-notes.js";
+import {
+  discountAmountOfItem,
+  discountRowText,
+  type DocumentDiscount,
+} from "./document-discounts.js";
 import type { DocumentTotals } from "./document-positions.js";
 import {
   findCreditNotesWithNumber,
@@ -151,8 +159,8 @@ export async function planOrderToInvoice(
 ): Promise<{ preview: ConfirmationPreview; state: OrderToInvoiceState }> {
   const { signal, cacheOwner } = options;
   const orderId = toSevdeskId(input.orderId);
-  const details = await getOrder(client, orderId, { signal, cacheOwner });
-  const { order } = details;
+  const details = await getOrder(client, orderId, { signal, cacheOwner, withDiscount: true });
+  const { order, discount } = details;
   const label = documentLabel("Order", order.id, order.number);
   const ref = `Order ${String(order.id)}`;
 
@@ -235,6 +243,7 @@ export async function planOrderToInvoice(
     { label: "Order", value: `${label} (${order.type.labelDe ?? order.type.label})` },
     ...customerFact(order.contact),
     ...totalsFacts("Order", order.totals, order.currency),
+    ...sourceOrderDiscountFacts(discount, order.currency),
     { label: "Creates", value: MODE_LABELS[input.mode] },
   ];
   if (partial && input.amount !== undefined) {
@@ -273,6 +282,17 @@ export async function planOrderToInvoice(
     warnings.push(
       "sevDesk had more order positions than could be read; the totals shown are sevDesk's.",
     );
+  }
+  if (discount !== undefined) {
+    warnings.push(
+      partial
+        ? "The order has a discount on the whole document. sevDesk copies it into an invoice for " +
+            "the whole order; what it does with it in a partial or advance invoice is not " +
+            "verified, so check the draft's total with sevdesk_invoice_get before finalizing."
+        : "The order has a discount on the whole document, and sevDesk copies it into the " +
+            "invoice; the order totals shown already include it.",
+    );
+    if (discount.warning !== undefined) warnings.push(discount.warning);
   }
   const earlier = (details.related ?? []).filter(
     (doc) => doc.objectName === "Invoice" && doc.status?.code !== 100,
@@ -330,8 +350,9 @@ export async function executeOrderToInvoice(
   });
   const invoiceId = createdDocumentId(answer, "invoice", "the created invoice");
   const created = [{ objectName: "Invoice", id: String(invoiceId) }];
+  // With its discount: sevDesk copies the order's into the invoice (D-116).
   const details = await readBack(
-    () => getInvoice(client, invoiceId, { signal, cacheOwner }),
+    () => getInvoice(client, invoiceId, { signal, cacheOwner, withDiscount: true }),
     created,
   );
   const order = await readQuietly(() => readOrder(client, state.orderId, { signal, cacheOwner }));
@@ -1193,6 +1214,36 @@ function totalsFacts(
   line("net", totals.net);
   line("tax", totals.tax);
   line("gross", totals.gross);
+  return facts;
+}
+
+/**
+ * The source order's discounts on the whole document (`discountRowText`, with the cleaned text in
+ * quotes), one fact each (numbered when there are several), then what they deduct as sevDesk
+ * computed it (negative).
+ */
+function sourceOrderDiscountFacts(
+  discount: DocumentDiscount | undefined,
+  currency: string,
+): ConfirmationFact[] {
+  if (discount === undefined) return [];
+  const several = discount.items.length > 1;
+  const facts: ConfirmationFact[] = discount.items.map((item, index) => {
+    const text = item.text === undefined ? "" : ` ("${item.text}")`;
+    return {
+      label: several ? `Order discount ${String(index + 1)}` : "Order discount",
+      value: `${discountRowText(discountAmountOfItem(item), currency, "en")}${text}`,
+    };
+  });
+  const sums = [
+    discount.net === undefined ? undefined : `net ${discount.net.amount} ${discount.net.currency}`,
+    discount.gross === undefined
+      ? undefined
+      : `gross ${discount.gross.amount} ${discount.gross.currency}`,
+  ].filter((part): part is string => part !== undefined);
+  if (sums.length > 0) {
+    facts.push({ label: "Order discounts deduct", value: sums.join(", ") });
+  }
   return facts;
 }
 

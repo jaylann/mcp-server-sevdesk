@@ -79,6 +79,20 @@ rule is not the usual one for the customer; it never refuses the draft for that.
 A position can link a part (Artikel) from [`sevdesk_parts_list`](../tools.md#sevdesk_parts_list),
 but its name and price still come from the position.
 
+### A discount on the whole invoice
+
+> Give Musterfirma 3 % off the whole invoice.
+
+Besides a discount per position, a draft can carry one discount on the whole document (Rabatt auf
+den Gesamtbetrag): a percentage of the net total or a fixed net amount in EUR, with the text
+printed next to it ("Rabatt" unless you name another). The preview shows it and the total it
+leads to; the result shows what sevDesk deducted. Offers, order confirmations and credit notes take
+the same discount. For now the server sets one only on net prices with a single tax rate, and not
+on an e-invoice: sevDesk's handling of the other cases is not verified yet, and the tools say so
+instead of guessing. Changing the draft later keeps the discount unless you replace it or remove
+it. A document with several discounts (sevDesk's totals then count only one of them) is left to
+the sevDesk web app, and the get tools and the approval warn about it.
+
 ### Offers: accept, confirm, deliver
 
 Before an offer (Angebot) is invoiced, the assistant can record the customer's answer and create
@@ -134,8 +148,10 @@ confirmation, the delivery note, the invoice, or a follow-up message you send yo
 confirmation) copies the positions of an offer (Angebot) or order confirmation
 (Auftragsbestätigung): the whole order, a partial invoice (Teilrechnung) or an advance invoice
 (Abschlagsrechnung) for a percentage or an amount, net or gross. The order must be sent, accepted
-or partially invoiced; partial and advance invoices need tax rule 1 or 11. If a draft from the
-same order already exists, the tool refuses unless you ask for a second one. Offers themselves are
+or partially invoiced; partial and advance invoices need tax rule 1 or 11. sevDesk also copies the
+order's discount on the whole document; the preview shows it, and the result shows the invoice's.
+If a draft from the same order already exists, the tool refuses unless you ask for a second one.
+Offers themselves are
 drafted with [`sevdesk_order_create_draft`](../tools.md#sevdesk_order_create_draft).
 
 ## Check the draft
@@ -144,8 +160,9 @@ drafted with [`sevdesk_order_create_draft`](../tools.md#sevdesk_order_create_dra
 
 > Open the PDF of that draft.
 
-[`sevdesk_invoice_get`](../tools.md#sevdesk_invoice_get) returns positions, totals, tax rule,
-address and payment terms; [`sevdesk_invoice_pdf`](../tools.md#sevdesk_invoice_pdf) returns the
+[`sevdesk_invoice_get`](../tools.md#sevdesk_invoice_get) returns positions, a discount on the whole
+invoice, totals, tax rule, address and payment terms;
+[`sevdesk_invoice_pdf`](../tools.md#sevdesk_invoice_pdf) returns the
 PDF as a preview that never marks the invoice as sent. Both are `read`. To keep a copy on disk,
 [`sevdesk_document_save`](../tools.md#sevdesk_document_save) writes it into `SEVDESK_OUTPUT_DIR`
 ([Configuration](../configuration.md)).
@@ -154,7 +171,8 @@ PDF as a preview that never marks the invoice as sent. Both are `read`. To keep 
 
 [`sevdesk_invoice_update_draft`](../tools.md#sevdesk_invoice_update_draft) (`write`, no
 confirmation) changes only the fields you name. New positions replace all stored positions, so
-the assistant passes the full list. Only drafts can be changed.
+the assistant passes the full list. A new discount replaces the stored one, and "remove the
+discount" deletes it. Only drafts can be changed.
 
 ### E-invoice readiness
 
@@ -178,7 +196,8 @@ tool that fixes each problem. For a finalized invoice it also checks the XML sev
 turns the draft into an open invoice: sevDesk assigns the final number, books it and marks it as
 sent. Nothing reaches the customer; the tool only records how you send it (PDF download by
 default, or post, print, email outside sevDesk). Before you approve, the preview lists what the
-invoice says as sevDesk stores it: address, head and foot text, every position, terms and dates.
+invoice says as sevDesk stores it: address, head and foot text, every position, a discount on the
+whole invoice, terms and dates. If any of it changes while you decide, you are asked again.
 
 > [!WARNING]
 > Finalizing makes the invoice legally binding under its number. Afterwards it can only be reset

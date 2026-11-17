@@ -223,9 +223,11 @@ describe("sevdesk_order_create_delivery_note (D-107)", () => {
       discounts: [discountRow("3002", { percentage: "0", value: "20", isNet: null })],
     });
     const plan = await prepareWrite(tool, { orderId: 3002 }, client);
+    // Read once, with the content the preview lists (D-116).
+    expect(client.calls.filter((call) => call.path === "/Order/3002/getDiscounts")).toHaveLength(1);
     expect(plan.preview.facts).toContainEqual({
-      label: "Discounts on the whole document (Rabatte, Aufschläge)",
-      value: "20.00 EUR discount: Treuerabatt",
+      label: "Discount on the whole document (Rabatt)",
+      value: "20.00 EUR net\nText: Treuerabatt",
     });
     expect(plan.preview.warnings).toContain(
       "The order carries discounts or surcharges on the whole document (listed above). Whether " +

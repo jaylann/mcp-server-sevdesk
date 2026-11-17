@@ -20,7 +20,8 @@ export const invoiceUpdateDraftTool = defineWriteTool({
     "Changing priceMode needs the positions too (stored prices would be re-read), and a new " +
     "tax rule must allow every stored rate and fit the account's VAT regulation (regular or " +
     "Kleinunternehmer). A new contactId also takes that contact's invoice " +
-    "address unless you give an address. Open, paid or enshrined (festgeschrieben) invoices " +
+    "address unless you give an address. discount replaces the discount on the whole invoice " +
+    "(Rabatt); null removes it. Open, paid or enshrined (festgeschrieben) invoices " +
     "cannot be changed: reset an open one to a draft with sevdesk_invoice_reset first. dryRun " +
     "shows the changes without saving. Before: sevdesk_invoice_get. After: sevdesk_invoice_pdf, " +
     "sevdesk_invoice_finalize.",

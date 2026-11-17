@@ -20,7 +20,8 @@ export const orderUpdateDraftTool = defineWriteTool({
     "request (saveOrder with the order's id); leave them out to keep them. Changing priceMode " +
     "needs the positions too, and a new tax rule must allow every stored rate and fit the " +
     "account's VAT regulation (regular or Kleinunternehmer). A new contactId " +
-    "also takes that contact's invoice address unless you give an address. Only drafts can be " +
+    "also takes that contact's invoice address unless you give an address. discount replaces " +
+    "the discount on the whole order (Rabatt); null removes it. Only drafts can be " +
     "changed; for a sent offer create a new draft. dryRun shows the changes without saving. " +
     "Before: sevdesk_order_get. After: sevdesk_order_pdf, sevdesk_order_finalize.",
   toolset: "orders",

@@ -25,7 +25,8 @@ export const creditNoteCreateDraftTool = defineWriteTool({
     "(Lizenzen) are not verified live yet. To credit a whole invoice use " +
     "sevdesk_credit_note_create_from_invoice instead. Defaults: today, net prices, EUR (or the " +
     "invoice's currency), the contact's invoice address, the account's only user as contact " +
-    "person, tax rule 1 (11 on a Kleinunternehmer account). dryRun previews without saving. " +
+    "person, tax rule 1 (11 on a Kleinunternehmer account). discount: a discount on the " +
+    "whole credit note (Rabatt, percent or a fixed net amount). dryRun previews without saving. " +
     "After: sevdesk_credit_note_update_draft to change it, sevdesk_credit_note_pdf, " +
     "sevdesk_credit_note_finalize.",
   toolset: "credit-notes",

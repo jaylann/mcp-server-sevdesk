@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { orderSetOfferStatusTool as tool } from "../../../../src/tools/orders/offer-status.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
-import { sentOffer } from "../../../write-cases/orders.js";
+import { discountRow, discountsOf, sentOffer } from "../../../write-cases/orders.js";
 import { documentRoute, positionRoutes, type Row, StagedClient } from "../lifecycle/helpers.js";
 
 const offer = (overrides: Row): Row => ({ ...sentOffer, ...overrides });
@@ -62,6 +62,29 @@ describe("sevdesk_order_set_offer_status (D-108)", () => {
     expect(output.data).toMatchObject({ order: { id: 3001, status: { code: 500 } } });
     expect(output.summary).toBe("Offer 3001 accepted: status Accepted (500).");
     expect(output.affected).toEqual([{ objectName: "Order", id: "3001" }]);
+  });
+
+  it("lists the offer's discounts and warns in both languages when it has several (D-116)", async () => {
+    const client = new StagedClient(
+      [
+        documentRoute("order", sentOffer),
+        discountsOf("3001", [discountRow("3001"), discountRow("3001", { id: "8002" })]),
+      ],
+      [],
+    );
+    const plan = await prepareWrite(tool, { id: 3001, action: "accept" }, client);
+    expect(plan.preview.facts.map((fact) => fact.label)).toEqual(
+      expect.arrayContaining([
+        "Discount on the whole document (Rabatt) 1",
+        "Discount on the whole document (Rabatt) 2",
+      ]),
+    );
+    expect(plan.preview.warnings.join("\n")).toContain(
+      "This document has 2 discounts on the whole document",
+    );
+    expect(plan.previewDe.warnings.join("\n")).toContain(
+      "Das Dokument hat 2 Rabatte auf den Gesamtbetrag",
+    );
   });
 
   it("rejects a sent offer, and reopens a rejected or accepted one", async () => {

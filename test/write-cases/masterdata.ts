@@ -8,6 +8,7 @@ import { partCreateTool } from "../../src/tools/parts/create.js";
 import { partUpdateTool } from "../../src/tools/parts/update.js";
 import type { FakeRoute } from "../helpers/fake-client.js";
 import type { WriteToolCase } from "../helpers/write-cases.js";
+import { noDiscountsRoute } from "../unit/tools/lifecycle/helpers.js";
 
 const EMPTY: FakeRoute["response"] = { body: { objects: [] } };
 /** sevDesk's answer to a DELETE (recorded 2026-11-16, D-084). */
@@ -282,6 +283,8 @@ export const MASTERDATA_CASES: readonly WriteToolCase[] = [
         "masterdata/invoice-1101.json",
         "masterdata/invoice-positions-1101.json",
       ),
+      // The order's and the new invoice's discounts on the whole document: none (D-116).
+      noDiscountsRoute,
     ],
     writes: [{ method: "POST", path: "/Invoice/Factory/createInvoiceFromOrder" }],
   },

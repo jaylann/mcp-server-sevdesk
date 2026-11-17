@@ -113,9 +113,12 @@ function fakeSevdesk(): { fetch: typeof fetch; calls: string[]; tokens: Set<stri
     if (request.method === "GET" && path === "/Invoice/1001") {
       return Promise.resolve(json({ objects: [invoiceRow()] }));
     }
-    // The approval binding reads the invoice's positions (documentBinding).
+    // The approval binding reads the invoice's positions and document discounts (documentBinding).
     if (request.method === "GET" && path === "/InvoicePos") {
       return Promise.resolve(json({ objects: [], total: 0 }));
+    }
+    if (request.method === "GET" && path === "/Invoice/1001/getDiscounts") {
+      return Promise.resolve(json({ objects: [], total: null }));
     }
     if (request.method === "PUT" && path === "/Invoice/1001/enshrine") {
       return Promise.resolve(json(loadFixture("lifecycle/enshrine.json").body));

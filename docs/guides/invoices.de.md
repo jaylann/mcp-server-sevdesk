@@ -87,6 +87,21 @@ deshalb abgelehnt wird der Entwurf nie.
 Eine Position kann einen Artikel aus [`sevdesk_parts_list`](../tools.md#sevdesk_parts_list)
 verknüpfen, Bezeichnung und Preis kommen aber trotzdem aus der Position.
 
+### Ein Rabatt auf die ganze Rechnung
+
+> Gib der Musterfirma 3 % Rabatt auf die ganze Rechnung.
+
+Neben dem Rabatt je Position kann ein Entwurf einen Rabatt auf den Gesamtbetrag tragen: einen
+Prozentsatz vom Nettobetrag oder einen festen Nettobetrag in EUR, mit dem Text, der daneben
+gedruckt wird („Rabatt“, wenn du keinen anderen nennst). Die Vorschau zeigt ihn und die Summe, die
+sich daraus ergibt; das Ergebnis zeigt, was sevDesk abgezogen hat. Angebote, Auftragsbestätigungen
+und Gutschriften nehmen denselben Rabatt. Vorerst setzt der Server ihn nur bei Nettopreisen mit
+einem einzigen Steuersatz und nicht auf einer E-Rechnung: Wie sevDesk die anderen Fälle behandelt,
+ist noch nicht geprüft, und die Werkzeuge sagen das, statt zu raten. Ändert der Assistent den
+Entwurf später, bleibt der Rabatt, solange du ihn nicht ersetzt oder entfernst. Ein Dokument mit
+mehreren Rabatten (sevDesk rechnet dann nur einen davon in die Summen ein) bleibt der Web-App von
+sevDesk überlassen; die Abfragewerkzeuge und die Freigabe weisen darauf hin.
+
 ### Angebote: annehmen, bestätigen, liefern
 
 Bevor ein Angebot abgerechnet wird, kann der Assistent die Antwort des Kunden festhalten und die
@@ -144,8 +159,10 @@ Auftragsbestätigung, der Lieferschein, die Rechnung oder eine Nachfrage, die du
 Bestätigung) übernimmt die Positionen eines Angebots oder einer Auftragsbestätigung: den ganzen
 Auftrag, eine Teilrechnung oder eine Abschlagsrechnung über einen Prozentsatz oder einen Betrag,
 netto oder brutto. Der Auftrag muss versendet, angenommen oder teilweise abgerechnet sein; Teil- und
-Abschlagsrechnungen brauchen Steuerregel 1 oder 11. Gibt es schon einen Entwurf aus demselben
-Auftrag, lehnt das Werkzeug ab, außer du willst ausdrücklich einen zweiten. Angebote selbst
+Abschlagsrechnungen brauchen Steuerregel 1 oder 11. sevDesk übernimmt auch den Rabatt auf den
+Gesamtbetrag des Auftrags; die Vorschau zeigt ihn, das Ergebnis den der Rechnung. Gibt es schon
+einen Entwurf aus demselben Auftrag, lehnt das Werkzeug ab, außer du willst ausdrücklich einen
+zweiten. Angebote selbst
 entstehen mit [`sevdesk_order_create_draft`](../tools.md#sevdesk_order_create_draft).
 
 ## Den Entwurf prüfen
@@ -154,8 +171,9 @@ entstehen mit [`sevdesk_order_create_draft`](../tools.md#sevdesk_order_create_dr
 
 > Öffne das PDF zu diesem Entwurf.
 
-[`sevdesk_invoice_get`](../tools.md#sevdesk_invoice_get) liefert Positionen, Summen, Steuerregel,
-Adresse und Zahlungsbedingungen; [`sevdesk_invoice_pdf`](../tools.md#sevdesk_invoice_pdf) liefert
+[`sevdesk_invoice_get`](../tools.md#sevdesk_invoice_get) liefert Positionen, einen Rabatt auf den
+Gesamtbetrag, Summen, Steuerregel, Adresse und Zahlungsbedingungen;
+[`sevdesk_invoice_pdf`](../tools.md#sevdesk_invoice_pdf) liefert
 das PDF als Vorschau, die die Rechnung nie als versendet markiert. Beide sind `read`. Um eine Kopie
 auf der Festplatte zu behalten, schreibt
 [`sevdesk_document_save`](../tools.md#sevdesk_document_save) sie nach `SEVDESK_OUTPUT_DIR`
@@ -165,7 +183,8 @@ auf der Festplatte zu behalten, schreibt
 
 [`sevdesk_invoice_update_draft`](../tools.md#sevdesk_invoice_update_draft) (`write`, ohne
 Bestätigung) ändert nur die Felder, die du nennst. Neue Positionen ersetzen alle gespeicherten,
-deshalb übergibt der Assistent die vollständige Liste. Nur Entwürfe lassen sich ändern.
+deshalb übergibt der Assistent die vollständige Liste. Ein neuer Rabatt ersetzt den gespeicherten,
+und „entferne den Rabatt“ löscht ihn. Nur Entwürfe lassen sich ändern.
 
 ### Bereit für die E-Rechnung
 
@@ -191,7 +210,8 @@ macht aus dem Entwurf eine offene Rechnung: sevDesk vergibt die endgültige Numm
 markiert sie als versendet. Beim Kunden kommt nichts an; das Werkzeug hält nur fest, wie du sie
 versendest (standardmäßig PDF-Download, sonst Post, Druck oder E-Mail außerhalb von sevDesk). Bevor
 du freigibst, zeigt die Vorschau, was in der Rechnung steht, so wie sevDesk sie speichert: Adresse,
-Kopf- und Fußtext, jede Position, Bedingungen und Daten.
+Kopf- und Fußtext, jede Position, einen Rabatt auf den Gesamtbetrag, Bedingungen und Daten. Ändert
+sich davon etwas, während du entscheidest, wirst du erneut gefragt.
 
 > [!WARNING]
 > Mit dem Fertigstellen wird die Rechnung unter ihrer Nummer rechtlich bindend. Danach lässt sie

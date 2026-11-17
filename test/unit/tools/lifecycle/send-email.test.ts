@@ -78,7 +78,15 @@ describe("sevdesk_invoice_send_email (spec request body; community record shapes
         },
       }),
     ]);
-    expect(client.calls.map(({ method }) => method)).toEqual(["GET", "GET", "GET", "POST", "GET"]);
+    // Record, country, positions and document discounts, the email, the read-back.
+    expect(client.calls.map(({ method }) => method)).toEqual([
+      "GET",
+      "GET",
+      "GET",
+      "GET",
+      "POST",
+      "GET",
+    ]);
     expect(output.data["invoice"]).toMatchObject({ status: { code: 200 }, sent: { via: "email" } });
     expect(output.data["email"]).toEqual({
       to: "kunde@example.com",

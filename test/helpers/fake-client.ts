@@ -78,7 +78,10 @@ type FakeResponse =
 export interface FakeRoute {
   /** Defaults to GET. */
   readonly method?: HttpMethod;
+  /** The exact path; with {@link pathPattern} only a label for the reader. */
   readonly path: string;
+  /** Matches every path it accepts instead of `path`, e.g. any document's `getDiscounts`. */
+  readonly pathPattern?: RegExp;
   /**
    * Query parameters the request must contain (compared as strings; booleans as `1`/`0`). Other
    * parameters are allowed. List paging parameters are not matched.
@@ -274,7 +277,7 @@ export class FakeSevdeskClient implements SevdeskClient {
     const match = this.routes.find(
       (route) =>
         (route.method ?? "GET") === method &&
-        route.path === path &&
+        (route.pathPattern === undefined ? route.path === path : route.pathPattern.test(path)) &&
         Object.entries(route.query ?? {}).every(
           ([key, expected]) => serialize(query[key]) === serialize(expected),
         ),

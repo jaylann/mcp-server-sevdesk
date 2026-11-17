@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { creditNoteDetailSchema } from "../../domain/credit-notes.js";
+import { documentDiscountSchema } from "../../domain/document-discounts.js";
 import { positionDtoSchema } from "../../domain/document-positions.js";
 import type { CreditNoteDraftResult } from "../../domain/drafts/credit-note.js";
 import type { ToolOutput } from "../types.js";
@@ -12,6 +13,9 @@ export const creditNoteDraftOutput = z.object({
   positionsComplete: z
     .boolean()
     .describe("False when sevDesk had more position rows than could be read back."),
+  discount: documentDiscountSchema
+    .optional()
+    .describe("Discount on the whole credit note (Rabatt) as stored; left out when there is none."),
   notes: z
     .array(z.string())
     .optional()
@@ -25,7 +29,7 @@ export function creditNoteDraftToolOutput(
   result: CreditNoteDraftResult,
   verb: "Created" | "Updated",
 ): ToolOutput<CreditNoteDraftOutput> {
-  const { creditNote, positions, positionsComplete } = result.details;
+  const { creditNote, positions, positionsComplete, discount } = result.details;
   const gross = creditNote.totals.gross;
   const total = gross === undefined ? "" : `, gross ${gross.amount} ${gross.currency}`;
   const count = `${positions.length} position${positions.length === 1 ? "" : "s"}`;
@@ -34,6 +38,7 @@ export function creditNoteDraftToolOutput(
       creditNote,
       positions: [...positions],
       positionsComplete,
+      ...(discount === undefined ? {} : { discount }),
       ...(result.notes.length === 0 ? {} : { notes: [...result.notes] }),
     },
     summary:

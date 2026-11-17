@@ -3,10 +3,11 @@
  * competitor-gap issues on documents (#89, #91, #94), next to the probe runs of that day
  * (`scripts/lib/probes/gaps-documents-probes.ts`, spec/deviations.md D-107–D-116).
  *
- * The recurring templates run through the production invoice parser. No production code reads
- * the letterpaper list or order discounts yet, so their recorded shapes are pinned here and fed
- * to the probes that described them, as `undocumented-endpoints.test.ts` does for D-024; the
- * slices that add tools for them replace these checks with their parsers.
+ * The recurring templates run through the production invoice parser, the order discounts through
+ * the document discount reader (`document-discounts.ts`). No production code reads the letterpaper
+ * list yet, so its recorded shape is pinned here and fed to the probe that described it, as
+ * `undocumented-endpoints.test.ts` does for D-024; the slice that adds a tool for it replaces this
+ * check with its parser.
  *
  * Not recorded: `GET /DocServer/getTemplatesWithThumb` (3.2 MB even scrubbed; D-114 describes
  * it) and `GET /Order` (an older session holds the order list).
@@ -16,9 +17,10 @@ import { describe, expect, it } from "vitest";
 import { GAPS_DOCUMENTS_PROBES } from "../../scripts/lib/probes/gaps-documents-probes.js";
 import { runProbes } from "../../scripts/lib/probes/runner.js";
 import { createScrubber, FAKE_PDF_BASE64 } from "../../scripts/lib/scrub.js";
+import { documentDiscountDto, readDocumentDiscounts } from "../../src/domain/document-discounts.js";
 import { mapInvoiceDetail } from "../../src/domain/invoices.js";
 import { TEST_TOKEN } from "../helpers/config.js";
-import { loadFixture } from "../helpers/fake-client.js";
+import { FakeSevdeskClient, loadFixture } from "../helpers/fake-client.js";
 import { ScriptedClient, type ScriptedHandler } from "../unit/scripts/scripted-client.js";
 
 /** Every recorded file of this session that this test covers (below `test/fixtures/`). */
@@ -184,6 +186,23 @@ describe("GET /Order/{id}/getDiscounts (D-116)", () => {
 
   it("answers an empty list with total null for an order without discounts", () => {
     expect(body(file)).toEqual({ objects: [], total: null });
+  });
+
+  it("reads through the document discount reader: no rows, nothing shown or bound", async () => {
+    const client = new FakeSevdeskClient([
+      { path: "/Order/31710400/getDiscounts", response: { fixture: file } },
+    ]);
+    const stored = await readDocumentDiscounts(client, "order", 31710400);
+    expect(stored).toEqual({ raw: [], rows: [] });
+    expect(documentDiscountDto(stored.rows, {}, "EUR")).toBeUndefined();
+    // One page with an explicit limit, as recorded (`?limit=n`).
+    expect(client.calls).toEqual([
+      expect.objectContaining({
+        operation: "list",
+        path: "/Order/31710400/getDiscounts",
+        query: { limit: 1000, offset: 0, countAll: true },
+      }),
+    ]);
   });
 
   it("makes read-order-get-discounts inconclusive, naming the empty answer", async () => {
