@@ -176,6 +176,12 @@ export const READ_CASES: readonly LiveCase[] = [
     acceptError: /has no address with a country/,
   },
   { tool: "sevdesk_vat_id_check", args: () => ({ vatId: "DE123456789" }) },
+  // #92: account audits, one case per check (the current month keeps the reads short).
+  ...(["vat", "reverse_charge"] as const).map((check) => ({
+    tool: "sevdesk_records_audit",
+    label: `sevdesk_records_audit (${check})`,
+    args: () => ({ check, year: NOW.getFullYear(), month: NOW.getMonth() + 1 }),
+  })),
   { tool: "sevdesk_csv_export", args: () => ({ subject: "invoices" }) },
   // M6: the generic read (advanced toolset), on an undocumented endpoint no other tool reads.
   { tool: "sevdesk_api_get", args: () => ({ path: "/TextTemplate", limit: 5 }) },
