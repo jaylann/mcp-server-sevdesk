@@ -4,15 +4,16 @@
  * `sevdesk_private_transaction_rules_list`, `sevdesk_private_transaction_rule_create` and
  * `sevdesk_private_transaction_rule_delete`.
  *
- * What is recorded (trial account, Update 2.0, spec/deviations.md D-099):
+ * What is recorded (trial account, Update 2.0, spec/deviations.md D-099 and D-130):
  * - `GET /PrivateTransactionRule` with `limit`/`offset` answers `{objects: [...]}`, rows with `id`,
  *   `objectName`, `create`, `update`, `sevClient`, `paymentPurpose` and `counterpartName`; with
- *   `countAll=true` (the client always sends it) it reports `total`, and paging works.
+ *   `countAll=true` (the client always sends it) it reports `total`, and paging works. In which
+ *   order it lists rules is not recorded.
  * - `POST /PrivateTransactionRule` with `objectName` and one of the two texts answers 2xx with the
  *   rule wrapped in `objects`; the text not sent is `null`. It stores a text exactly as sent
- *   (spaces included), cuts one over 255 characters to 255 without notice, accepts a rule with
- *   both texts, stores a second rule with the same text without complaint, and refuses one with
- *   neither (422). `DELETE /PrivateTransactionRule/{id}` answers `{objects: [null]}`.
+ *   (spaces included), cuts one over 255 characters to 255 without notice (D-130), accepts a rule
+ *   with both texts, stores a second rule with the same text without complaint, and refuses one
+ *   with neither (422). `DELETE /PrivateTransactionRule/{id}` answers `{objects: [null]}`.
  * - Two rules (one per text) turned none of five open transactions entered by hand private, not
  *   even one created after them, and deleting them changed nothing. sevDesk most likely applies
  *   rules only when it imports transactions from the bank, which a trial account cannot do. How a
@@ -59,7 +60,7 @@ const RULES_PAGE_SIZE = 1000;
 export const RULE_TEXT_MIN = 4;
 /**
  * Longest rule text accepted here. sevDesk keeps 255 characters and cuts a longer text without
- * notice (D-099); 100 is ample for a name or a purpose and stays clear of that cut.
+ * notice (D-130); 100 is ample for a name or a purpose and stays clear of that cut.
  */
 export const RULE_TEXT_MAX = 100;
 /** Longest rule text shown from sevDesk (untrusted; a rule made elsewhere may be longer). */

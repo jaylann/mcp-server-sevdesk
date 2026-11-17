@@ -158,6 +158,7 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 | [D-115](#d-115-post-and-delete-texttemplate-create-and-delete-text-templates)                      | `POST` and `DELETE /TextTemplate` create and delete text templates                     | Open                  |
 | [D-116](#d-116-document-discounts-discountsave-takes-a-list-getdiscounts-reads-them)               | Document discounts: `discountSave` takes a list; `getDiscounts` reads them             | Open                  |
 | [D-119](#d-119-the-account-factories-refuse-an-accountingnumber-in-use-or-not-allowed-422)         | The account factories refuse an `accountingNumber` in use or not allowed (422)         | Open                  |
+| [D-130](#d-130-privatetransactionrule-cuts-texts-over-255-characters-without-notice)               | `PrivateTransactionRule` cuts texts over 255 characters without notice                 | Open                  |
 
 ## Entries
 
@@ -3598,11 +3599,11 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
     `additionalInformation`, `create`, `update`, `sevClient`, `paymentPurpose`, `counterpartName`;
     the field not sent is `null`; ids were small integers, `951`). It stores a text exactly as
     sent, without trimming (two leading spaces and one trailing kept: 37 characters for a
-    34-character text). 100 and 255 characters are stored in full; 256 and 1,000 characters are
-    accepted with 2xx and **cut to 255 without notice**. A rule with both texts is accepted and
-    stored with both; a second rule with exactly the same `counterpartName` is accepted and stored
-    as a second row (no duplicate check); a rule with neither text is refused with 422 "At least
-    one of the parameters must be set". `DELETE` answers `{objects: [null]}`.
+    34-character text). A text over 255 characters is **cut to 255 without notice** (D-130). A
+    rule with both texts is accepted and stored with both; a second rule with exactly the same
+    `counterpartName` is accepted and stored as a second row (no duplicate check); a rule with
+    neither text is refused with 422 "At least one of the parameters must be set". `DELETE`
+    answers `{objects: [null]}`.
   - Two tagged rules (one per field) turned **none** of five tagged open transactions on a
     file-import account private (exact and partial counterpart, exact and partial purpose,
     neither), nor a matching one created after the rules, and deleting the rules changed nothing.
@@ -3622,8 +3623,8 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   `sevdesk_private_transaction_rule_delete` (both `commit`: a rule makes sevDesk mark imports
   private as `sevdesk_transaction_mark_private` does by hand). Create sends one trimmed text per
   rule (sevDesk would store a rule with both texts, but whether it then needs both or either is
-  not known, so both are refused), at most 100 characters (a longer limit would need the read-back
-  to catch sevDesk's silent cut at 255), refuses texts with fewer than four letters or digits and
+  not known, so both are refused), at most 100 characters (sevDesk cuts a text over 255 without
+  notice, D-130), refuses texts with fewer than four letters or digits and
   a rule whose text equals an existing one's (case and spaces ignored; sevDesk itself would store
   the duplicate), and lists up to ten of at most 500 open transactions
   whose counterparty or purpose contains the text, every time labelled as this server's estimate,
@@ -4078,3 +4079,22 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   sevDesk's 'is invalid' refusal into its own sentence without sevDesk's text", "leaves other
   refusals, and refusals without a booking account, as sevDesk sent them"). Live: the one-off
   checks above; no probe in `pnpm probe` yet.
+
+### D-130: `PrivateTransactionRule` cuts texts over 255 characters without notice
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `CreatePrivateTransactionRule` declares `paymentPurpose` and `counterpartName` as
+  nullable strings without a `maxLength`, and so does the response model. No limit is mentioned.
+- **Actual behavior:** A rule text of 100 or 255 characters is stored in full. Texts of 256 and
+  1,000 characters are accepted with 2xx, without an error or a warning, and stored cut to 255
+  characters.
+- **Sources:** recorded 2026-11-17, trial account, Update 2.0 (one-off checks by the orchestrator,
+  together with those of D-099; the rules were deleted again).
+- **Impact:** A rule cut short is not the rule the user asked for (a shorter text may match other
+  transactions), and nothing says so. `sevdesk_private_transaction_rule_create` (#88) accepts at
+  most 100 characters per text, so it never sends a text that sevDesk would cut. Its read-back
+  also compares the stored text exactly with the text it sent and notes any difference in the
+  result, which would show a cut if that limit were ever raised.
+- **Test:** `test/unit/tools/banking/private-rules.test.ts` ("refuses a text over 100 characters
+  in its arguments", "notes a stored text cut short, as sevDesk cuts texts over 255 characters").
+  Live: the one-off checks above; no probe in `pnpm probe` yet.
