@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/evaluations.md sha256:RECOMPUTE -->
+<!-- translated-from: docs/guides/evaluations.md sha256:a8025748f82c -->
 
 # Auswertungen und Exporte
 
