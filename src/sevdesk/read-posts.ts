@@ -16,38 +16,52 @@
  *   with it.
  *
  * The path must match exactly, case included (the form this server builds); any other body as
- * sent (a missing or true `forceReload`, extra keys), a query or a form keeps the request a write. A
- * reading POST is still never retried (only GETs are, see `client.ts`).
+ * sent (a missing or true `forceReload`, extra keys), a query or a form keeps the request a write.
+ * The body is judged by its JSON text, never by the object: a `toJSON` or an inherited key cannot
+ * make the sent text differ from what was checked. The HTTP client serializes a body once and
+ * passes that very text to {@link isReadingPostText}, so even a getter that answers differently
+ * on a second read cannot. A reading POST is still never retried (only GETs are, see
+ * `client.ts`).
  */
 import type { SevdeskRequest } from "./types.js";
 
 /** `/{Invoice|Order|CreditNote}/{id}/render` with a canonical id. */
 const DOCUMENT_RENDER = /^\/(?:Invoice|Order|CreditNote)\/[1-9]\d*\/render$/;
 
-/** Whether `request` is a POST that only reads (see the module doc). */
-export function isReadingPost(
-  request: Pick<SevdeskRequest, "method" | "path" | "query" | "body" | "form">,
-): boolean {
-  if (request.method !== "POST" || !DOCUMENT_RENDER.test(request.path)) return false;
-  if (request.form !== undefined) return false;
-  if (request.query !== undefined && Object.keys(request.query).length > 0) return false;
-  return isNoReloadBody(request.body);
-}
-
 /** The JSON text of {@link RENDER_WITHOUT_RELOAD}, the only body a reading render sends. */
 const NO_RELOAD_TEXT = '{"forceReload":false}';
 
 /**
- * Whether `body` goes out as exactly `{"forceReload":false}`. It reads the body as the client
- * sends it (`JSON.stringify`), not the object, so a `toJSON` or an inherited key cannot make the
- * sent text differ from what was checked. A body without a JSON text (none, a cycle, a `BigInt`)
- * is no reading body.
+ * Whether `request` is a POST that only reads (see the module doc), its body judged by its JSON
+ * text. For the wrappers that classify a request without sending it; the HTTP client, which
+ * sends it, uses {@link isReadingPostText} with the text it sends.
  */
-function isNoReloadBody(body: unknown): boolean {
+export function isReadingPost(
+  request: Pick<SevdeskRequest, "method" | "path" | "query" | "body" | "form">,
+): boolean {
+  return isReadingPostText(request, jsonText(request.body));
+}
+
+/**
+ * Whether `request` with the JSON body text `bodyText` (`undefined`: no body, or none with a JSON
+ * text) is a POST that only reads: exactly `{"forceReload":false}`.
+ */
+export function isReadingPostText(
+  request: Pick<SevdeskRequest, "method" | "path" | "query" | "form">,
+  bodyText: string | undefined,
+): boolean {
+  if (request.method !== "POST" || !DOCUMENT_RENDER.test(request.path)) return false;
+  if (request.form !== undefined) return false;
+  if (request.query !== undefined && Object.keys(request.query).length > 0) return false;
+  return bodyText === NO_RELOAD_TEXT;
+}
+
+/** The JSON text of `body`, or `undefined` when it has none (none given, a cycle, a `BigInt`). */
+function jsonText(body: unknown): string | undefined {
   try {
-    return stringify(body) === NO_RELOAD_TEXT;
+    return stringify(body);
   } catch {
-    return false;
+    return undefined;
   }
 }
 

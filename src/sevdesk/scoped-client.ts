@@ -9,10 +9,10 @@
  *
  * "Changes data" means what the HTTP client means: any non-GET except the reading POSTs of
  * `read-posts.ts` (`render` without reload of an invoice, order or credit note), and GETs that
- * `resolveGetSafety`
- * classifies as side effects (a `getPdf` without `preventSendBy`, `sendByWithRender`, DATEV
- * `enshrine` flags, a next-number GET without `useNextNumber=false`, which reserves the number)
- * or that declare `sideEffect`.
+ * `resolveGetSafety` classifies as side effects (a `getPdf` without `preventSendBy`,
+ * `sendByWithRender`, DATEV `enshrine` flags, a next-number GET without `useNextNumber=false`,
+ * which reserves the number) or that declare `sideEffect`. These wrappers serialize a body to
+ * classify it but do not send it; the HTTP client classifies again the one text it sends.
  */
 import { tierCovers, type WriteTier } from "../safety/tiers.js";
 import { SevdeskError } from "./errors.js";

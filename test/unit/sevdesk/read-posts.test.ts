@@ -39,6 +39,19 @@ const reloadInDisguise: unknown = Object.create(
 const cyclic: Record<string, unknown> = { forceReload: false };
 cyclic["self"] = cyclic;
 
+/** A body whose `forceReload` getter answers `values` in turn, then the last one; counts reads. */
+function flipping(...values: boolean[]): { body: unknown; reads: () => number } {
+  let reads = 0;
+  const body = {
+    get forceReload(): boolean {
+      const value = values[Math.min(reads, values.length - 1)] ?? false;
+      reads += 1;
+      return value;
+    },
+  };
+  return { body, reads: () => reads };
+}
+
 describe("isReadingPost", () => {
   it.each(["/Invoice/1001/render", "/Order/3002/render", "/CreditNote/2001/render"])(
     "counts %s with {forceReload: false} as a read",
@@ -115,6 +128,25 @@ describe("the client and the scoped clients", () => {
       client.request(render("/Invoice/1001/render", reloadInDisguise)),
     ).rejects.toMatchObject({ kind: "blocked" });
     expect(fake.requests).toHaveLength(0);
+  });
+
+  it("judges and sends one serialization: a getter cannot change the body after the check", async () => {
+    const { client, fake } = realClient(
+      { readOnly: true, allowedTiers: new Set<Tier>(["read"]) },
+      envelope({ docId: "d", pdf: "JVBERi0=", parameters: [] }),
+    );
+    // Reads false, then true: a second serialization would send a reload checked as a read.
+    const reloadLater = flipping(false, true);
+    // Reads true, then false: blocked as the write it was checked as.
+    const reloadFirst = flipping(true, false);
+
+    await client.request(render("/Invoice/1001/render", reloadLater.body));
+    await expect(
+      client.request(render("/Invoice/1001/render", reloadFirst.body)),
+    ).rejects.toMatchObject({ kind: "blocked" });
+
+    expect(reloadLater.reads()).toBe(1);
+    expect(fake.requests.map((request) => request.body)).toEqual(['{"forceReload":false}']);
   });
 
   it("never retries the render read", async () => {
