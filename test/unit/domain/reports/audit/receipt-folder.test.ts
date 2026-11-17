@@ -48,7 +48,12 @@ const DOCUMENT_TEMPLATE = (() => {
   return row;
 })();
 
-/** A voucher row as the list sends it with `embed=document`: `null` hash for a rendered file. */
+/**
+ * A voucher row as the list sends it with `embed=document`: `null` hash for a receipt sevDesk
+ * stores without a checksum (one its recognition created, as recorded 2026-11-17). `file` sets
+ * the document's `filesize` and `extension`; otherwise they are the recorded row's (whose scrubbed
+ * extension is no extension).
+ */
 function voucher(spec: {
   readonly id: number;
   readonly date: string;
@@ -56,6 +61,7 @@ function voucher(spec: {
   readonly draft?: boolean;
   readonly number?: string;
   readonly contactId?: number;
+  readonly file?: { readonly size: string; readonly extension: string };
 }): ScenarioDocument {
   const document =
     spec.hash === undefined
@@ -67,6 +73,9 @@ function voucher(spec: {
           baseObject: null,
           status: "50",
           contentHash: spec.hash,
+          ...(spec.file === undefined
+            ? {}
+            : { filesize: spec.file.size, extension: spec.file.extension, mimeType: null }),
         };
   return {
     row: voucherDoc(
@@ -104,8 +113,20 @@ const VOUCHERS: readonly ScenarioDocument[] = [
 /** Milliseconds of noon UTC on a day. */
 const at = (date: string): number => Date.parse(`${date}T12:00:00Z`);
 
-function file(name: string, sha256: string, modified = "2026-04-01"): FolderFile {
-  return { path: `${FOLDER}/${name}`, kind: "pdf", size: 1234, modifiedMs: at(modified), sha256 };
+function file(
+  name: string,
+  sha256: string,
+  modified = "2026-04-01",
+  extra: Partial<FolderFile> = {},
+): FolderFile {
+  return {
+    path: `${FOLDER}/${name}`,
+    kind: "pdf",
+    size: 1234,
+    modifiedMs: at(modified),
+    sha256,
+    ...extra,
+  };
 }
 
 const FILES: readonly FolderFile[] = [
@@ -207,7 +228,8 @@ describe("receipt folder check", () => {
     });
     const notBooked = result.findings.find((entry) => entry.code === "receipt_file_not_booked");
     expect(notBooked).toMatchObject({ severity: "check", documents: 0, records: [] });
-    expect(notBooked?.titleDe).toBe("Belegdatei nicht in sevDesk gefunden");
+    // Voucher 907's receipt has no checksum, so the file is not presented as unbooked.
+    expect(notBooked?.titleDe).toBe("Kein Beleg in sevDesk mit dieser Prüfsumme");
   });
 
   it("lists every matched file with its vouchers and their status", async () => {
@@ -271,7 +293,80 @@ describe("receipt folder check", () => {
       `Vouchers dated ${result.coverage.vouchers.from} to ${result.coverage.vouchers.to} were ` +
         "compared",
     );
-    expect(notes).toContain("1 voucher receipt in the range had no usable checksum");
+    expect(notes).toContain(
+      "1 receipt attached to vouchers in the range read has no checksum in sevDesk",
+    );
+  });
+
+  it("counts the receipts without a checksum and words the unmatched file accordingly", async () => {
+    const result = await check(new FakeSevdeskClient(routes()));
+    const notBooked = result.findings.find((entry) => entry.code === "receipt_file_not_booked");
+
+    expect(result.withoutChecksum).toMatchObject({ receipts: 1 });
+    expect(result.withoutChecksum?.note).toContain("could not be compared");
+    expect(result.withoutChecksum?.noteDe).toContain(
+      "1 Belegdatei an einem Beleg im gelesenen Zeitraum hat in sevDesk keine Prüfsumme",
+    );
+    expect(result.withoutChecksum?.noteDe).toContain("konnte nicht verglichen werden");
+    expect(notBooked?.title).toBe("No receipt in sevDesk with this checksum");
+    expect(notBooked?.reason).toContain(
+      "1 receipt attached to vouchers in that range carries no checksum on sevDesk's side",
+    );
+    expect(notBooked?.reason).not.toContain("probably not booked");
+  });
+
+  it("keeps the plain wording when every receipt in the range has a checksum", async () => {
+    const hashed = VOUCHERS.filter((doc) => doc.row["id"] !== "907");
+    const result = await check(new FakeSevdeskClient(scenarioRoutes({ vouchers: hashed })));
+    const notBooked = result.findings.find((entry) => entry.code === "receipt_file_not_booked");
+
+    expect(result.withoutChecksum).toBeUndefined();
+    expect(result.coverage.vouchers.withoutChecksum).toBe(0);
+    expect(notBooked?.titleDe).toBe("Belegdatei nicht in sevDesk gefunden");
+    expect(notBooked?.reason).toContain("so this file was probably not booked");
+    expect(receiptFolderSentence(result)).not.toContain("checksum");
+  });
+
+  it("names a receipt without a checksum of the same size and extension as a hint, never a match", async () => {
+    const recognized = (id: number, size: string, extension: string): ScenarioDocument =>
+      voucher({ id, date: "2026-03-02", hash: null, file: { size, extension } });
+    const vouchers = [
+      recognized(931, "1435", "pdf"),
+      recognized(932, "1435", "png"),
+      recognized(933, "999", "pdf"),
+      recognized(934, "70", "jpg"),
+      // A plain reference (no embedded document) knows no size: no hint.
+      {
+        row: voucherDoc(
+          { id: 935, date: "2026-03-03", net: "100", tax: "19", contactId: 3001 },
+          { document: { id: "8935", objectName: "Document" } },
+        ),
+        positions: [],
+      },
+    ];
+    const files = [
+      file("scan.pdf", H.missing, "2026-03-05", { size: 1435 }),
+      file("photo.jpeg", H.old, "2026-03-05", { size: 70, kind: "jpeg" }),
+      file("other.pdf", H.outside, "2026-03-05", { size: 5 }),
+    ];
+    const result = await check(new FakeSevdeskClient(scenarioRoutes({ vouchers })), scanOf(files));
+    const notBooked = result.findings.find((entry) => entry.code === "receipt_file_not_booked");
+    const hints = new Map(
+      notBooked?.files.map((entry) => [
+        entry.path.slice(FOLDER.length + 1),
+        entry.sameSizeVouchers?.map((hint) => hint.id),
+      ]),
+    );
+
+    expect(hints.get("scan.pdf")).toEqual([931]);
+    expect(hints.get("photo.jpeg")).toEqual([934]);
+    expect(hints.get("other.pdf")).toBeUndefined();
+    // Never upgraded to a match.
+    expect(result.matched).toEqual([]);
+    expect(result.coverage).toMatchObject({ filesMatched: 0, filesNotMatched: 3 });
+    expect(result.coverage.vouchers.withoutChecksum).toBe(5);
+    expect(result.withoutChecksum?.receipts).toBe(5);
+    expect(receiptFolderResultSchema.parse(result)).toEqual(result);
   });
 
   it("says plainly what a match and a missing match prove, in English and German", async () => {
@@ -297,8 +392,9 @@ describe("receipt folder check", () => {
     expect(trusted).not.toContain(FOLDER);
     expect(trusted).not.toContain("INV-777777");
     expect(receiptFolderSentence(result)).toBe(
-      "Receipt folder 2026-Q1: 8 files checked, 5 found on a voucher, 1 not found (and 2 older " +
-        "than the vouchers read), 1 only on a draft, 1 booked more than once.",
+      "Receipt folder 2026-Q1: 8 files checked, 5 found on a voucher, 1 not found by checksum " +
+        "(and 2 older than the vouchers read), 1 only on a draft, 1 booked more than once. " +
+        "1 receipt in sevDesk has no checksum and could not be compared.",
     );
   });
 

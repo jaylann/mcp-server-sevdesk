@@ -12,6 +12,13 @@
  * voucher's receipt checksum is the SHA-256 of the bytes uploaded to sevDesk, so a local file
  * matches only the very same bytes. Nothing is read by id, nothing is sent to sevDesk.
  *
+ * Not every receipt has a checksum: one that sevDesk's recognition created from an uploaded file
+ * (`Voucher/Factory/createVoucherFromFile`) has `contentHash` null (recorded 2026-11-17, trial
+ * account, Update 2.0; PDF and PNG alike). Such receipts cannot be compared. The result counts
+ * them (`coverage.vouchers.withoutChecksum`, `withoutChecksum` with a note in English and German),
+ * and while there are any, `receipt_file_not_booked` says "no receipt with this checksum" instead
+ * of presenting the file as unbooked.
+ *
  * The findings, one per checksum (one for all files nothing matched):
  * - `receipt_file_not_booked`: no voucher read carries the file;
  * - `receipt_file_before_period`: the same, but the file was last changed before the vouchers
@@ -29,7 +36,9 @@
  *   vouchers read cannot hold a receipt from inside it, unless its date was set back by hand;
  * - `possibleVouchers`: vouchers whose document number (at least {@link MIN_HINT_NUMBER_LENGTH}
  *   characters with a digit, compared like the duplicates check) appears in the file's name; the
- *   receipt may be booked from another file (a scan, a photo).
+ *   receipt may be booked from another file (a scan, a photo);
+ * - `sameSizeVouchers`: vouchers whose receipt has no checksum but the same size in bytes and the
+ *   same extension as the file (`filesize`, `extension` of the embedded document). Never a match.
  *
  * Local file paths are untrusted text: they appear only as values of their own fields, never in
  * titles, reasons, notes or the summary.
@@ -78,9 +87,10 @@ export const MATCHING =
   "the voucher is booked correctly. No match does not prove that the receipt is missing: the " +
   "same receipt as another file (a scan or photo of the paper, a copy converted or compressed by " +
   "sevDesk or another program, a receipt that reached sevDesk by e-mail or through its mobile " +
-  "app) has another checksum, and vouchers dated outside the range read are not compared. " +
-  "Amounts, dates and suppliers are not compared: that would need the file's content, which " +
-  "this check does not read.";
+  "app) has another checksum, a receipt sevDesk stores without a checksum (for example one its " +
+  "recognition created from an uploaded file) cannot be compared at all, and vouchers dated " +
+  "outside the range read are not compared. Amounts, dates and suppliers are not compared: that " +
+  "would need the file's content, which this check does not read.";
 
 /** Stated in every result (German). */
 export const MATCHING_DE =
@@ -89,9 +99,11 @@ export const MATCHING_DE =
   "nicht, dass der Beleg richtig gebucht ist. Kein Treffer beweist nicht, dass der Beleg fehlt: " +
   "Derselbe Beleg als andere Datei (ein Scan oder Foto des Papiers, eine von sevDesk oder einem " +
   "anderen Programm umgewandelte oder verkleinerte Kopie, ein Beleg, der per E-Mail oder über " +
-  "die sevDesk-App kam) hat eine andere Prüfsumme, und Belege mit einem Datum außerhalb des " +
-  "gelesenen Zeitraums werden nicht verglichen. Beträge, Daten und Lieferanten werden nicht " +
-  "verglichen: Dafür müsste der Inhalt der Datei gelesen werden, und das tut diese Prüfung nicht.";
+  "die sevDesk-App kam) hat eine andere Prüfsumme, eine Belegdatei, die sevDesk ohne Prüfsumme " +
+  "speichert (etwa eine, die seine Belegerkennung aus einer hochgeladenen Datei angelegt hat), " +
+  "lässt sich gar nicht vergleichen, und Belege mit einem Datum außerhalb des gelesenen " +
+  "Zeitraums werden nicht verglichen. Beträge, Daten und Lieferanten werden nicht verglichen: " +
+  "Dafür müsste der Inhalt der Datei gelesen werden, und das tut diese Prüfung nicht.";
 
 export const RECEIPT_FOLDER_FINDING_CODES = [
   "receipt_file_booked_twice",
@@ -166,6 +178,53 @@ const TEXTS: Readonly<Record<ReceiptFolderCode, FindingText>> = {
   },
 };
 
+/**
+ * The words of `receipt_file_not_booked` while `withoutChecksum` receipts in the range read carry
+ * no checksum: the file is then one without a receipt of the same checksum, not an unbooked one,
+ * since it may be one of those receipts.
+ */
+function notBookedText(withoutChecksum: number): FindingText {
+  const base = TEXTS.receipt_file_not_booked;
+  if (withoutChecksum === 0) return base;
+  return {
+    ...base,
+    title: "No receipt in sevDesk with this checksum",
+    titleDe: "Kein Beleg in sevDesk mit dieser Prüfsumme",
+    reason:
+      "No voucher in the range read carries a receipt file with the same SHA-256 checksum. " +
+      `${plural(withoutChecksum, "receipt")} attached to vouchers in that range ` +
+      `${withoutChecksum === 1 ? "carries" : "carry"} no checksum on sevDesk's side (for ` +
+      "example one its recognition created from an uploaded file) and could not be compared: " +
+      `the file may be ${withoutChecksum === 1 ? "that one" : "one of them"} (see ` +
+      "sameSizeVouchers). If it is not, and it is a receipt of the business, its amount and VAT " +
+      "are missing from the books.",
+  };
+}
+
+/** The statement on receipts without a checksum, when there are any (English, German). */
+function withoutChecksumNote(count: number): { note: string; noteDe: string } {
+  const one = count === 1;
+  const de = one
+    ? "1 Belegdatei an einem Beleg im gelesenen Zeitraum hat in sevDesk keine Prüfsumme"
+    : `${String(count)} Belegdateien an Belegen im gelesenen Zeitraum haben in sevDesk keine ` +
+      "Prüfsumme";
+  return {
+    note:
+      `${plural(count, "receipt")} attached to vouchers in the range read ` +
+      `${count === 1 ? "has" : "have"} no checksum in sevDesk (for example one sevDesk's ` +
+      "recognition created from an uploaded file, or a list row without the embedded document) " +
+      `and could not be compared: a file of the folder may be ${count === 1 ? "it" : "one of them"} ` +
+      "although no checksum matched. sameSizeVouchers names those with the same size and " +
+      "extension as a file.",
+    noteDe:
+      `${de} (etwa eine, die die Belegerkennung von sevDesk aus einer hochgeladenen Datei ` +
+      "angelegt hat, oder eine Listenzeile ohne das eingebettete Dokument) und " +
+      `${one ? "konnte" : "konnten"} nicht verglichen werden: Eine Datei des Ordners kann ` +
+      `${one ? "diese" : "eine davon"} sein, obwohl keine Prüfsumme passte. sameSizeVouchers ` +
+      "nennt die mit derselben Größe und Endung wie eine Datei.",
+  };
+}
+
 // ---------------------------------------------------------------------------------------------
 // Output schema
 // ---------------------------------------------------------------------------------------------
@@ -199,6 +258,14 @@ const folderFileSchema = z.object({
     .describe(
       "Weak hint: vouchers whose document number appears in the file name. The receipt may be " +
         "booked from another file (a scan, a photo); check before booking it again.",
+    ),
+  sameSizeVouchers: z
+    .array(voucherHintSchema)
+    .optional()
+    .describe(
+      "Weak hint, never a match: vouchers whose receipt has no checksum in sevDesk but the same " +
+        "size in bytes and the same extension as this file; possibly this file. Open them to " +
+        "check before booking the file again.",
     ),
 });
 
@@ -281,8 +348,9 @@ const coverageSchema = z.object({
         .number()
         .int()
         .describe(
-          "Of those, receipts without a usable checksum (files sevDesk rendered itself, or a " +
-            "list row without the embedded document): no local file can match them.",
+          "Of those, receipts without a usable checksum (receipts sevDesk's recognition created " +
+            "from an uploaded file, files sevDesk rendered itself, or a list row without the " +
+            "embedded document): no local file can match them.",
         ),
       truncated: z.boolean().describe("True when the voucher listing stopped at its cap."),
     })
@@ -295,6 +363,17 @@ export const receiptFolderResultSchema = z.object({
   source: z.string(),
   matching: z.string().describe("What a match and a missing match prove."),
   matchingDe: z.string().describe("The same in German."),
+  withoutChecksum: z
+    .object({
+      receipts: z.number().int().describe("Receipts on vouchers in the range read without one."),
+      note: z.string(),
+      noteDe: z.string().describe("The same in German."),
+    })
+    .optional()
+    .describe(
+      "Present when receipts in sevDesk carry no checksum and could not be compared: a file " +
+        "without a match may be one of them.",
+    ),
   findings: z
     .array(receiptFolderFindingSchema)
     .describe(`Warnings first; at most ${String(MAX_FINDINGS)}.`),
@@ -341,6 +420,8 @@ interface VoucherReceipts {
   readonly rowsRead: number;
   readonly withReceipt: number;
   readonly withoutChecksum: number;
+  /** The vouchers whose receipt has no checksum (no file can match them), by date. */
+  readonly unhashed: readonly DocumentHeader[];
   readonly truncated: boolean;
 }
 
@@ -365,14 +446,14 @@ async function readVoucherReceipts(
   );
   const all = [...listed.headers, ...listed.drafts].sort(byDateThenId);
   const byHash = new Map<string, DocumentHeader[]>();
+  const unhashed: DocumentHeader[] = [];
   let withReceipt = 0;
-  let withoutChecksum = 0;
   for (const header of all) {
     if (header.receipt === undefined) continue;
     withReceipt += 1;
     const { hash } = header.receipt;
     if (hash === undefined) {
-      withoutChecksum += 1;
+      unhashed.push(header);
       continue;
     }
     byHash.set(hash, [...(byHash.get(hash) ?? []), header]);
@@ -382,7 +463,8 @@ async function readVoucherReceipts(
     all,
     rowsRead: listed.rowsRead,
     withReceipt,
-    withoutChecksum,
+    withoutChecksum: unhashed.length,
+    unhashed,
     truncated: listed.truncated,
   };
 }
@@ -393,8 +475,33 @@ const NO_VOUCHERS: VoucherReceipts = {
   rowsRead: 0,
   withReceipt: 0,
   withoutChecksum: 0,
+  unhashed: [],
   truncated: false,
 };
+
+/** A file's extension as sevDesk's `extension` would read it: lower case, `jpeg` as `jpg`. */
+function extensionKey(extension: string): string {
+  const ext = extension.replace(/^\./, "").toLowerCase();
+  return ext === "jpeg" ? "jpg" : ext;
+}
+
+/**
+ * Vouchers whose receipt has no checksum but the size and extension of `file` (weak hint, never a
+ * match): sevDesk's `filesize` is the bytes it received, recorded 2026-11-17.
+ */
+function sizeHints(file: FolderFile, unhashed: readonly DocumentHeader[]): DocumentHeader[] {
+  const extension = extensionKey(extname(file.path));
+  return unhashed
+    .filter((header) => {
+      const receipt = header.receipt;
+      return (
+        receipt?.size === file.size &&
+        receipt.extension !== undefined &&
+        extensionKey(receipt.extension) === extension
+      );
+    })
+    .slice(0, MAX_HINTS);
+}
 
 const isDraft = (header: DocumentHeader): boolean => header.statusCode === VOUCHER_DRAFT;
 
@@ -424,14 +531,17 @@ function voucherRef(header: DocumentHeader): z.output<typeof voucherHintSchema> 
   });
 }
 
-function fileOutput(file: FolderFile, hints: readonly DocumentHeader[] = []): FolderFileOutput {
+function fileOutput(file: FolderFile, entry: Partial<FileWithHints> = {}): FolderFileOutput {
+  const byName = entry.hints ?? [];
+  const bySize = entry.sameSize ?? [];
   return compact({
     path: file.path,
     kind: file.kind,
     bytes: file.size,
     modified: berlinDateOf(file.modifiedMs),
     sha256: file.sha256,
-    possibleVouchers: hints.length === 0 ? undefined : hints.map(voucherRef),
+    possibleVouchers: byName.length === 0 ? undefined : byName.map(voucherRef),
+    sameSizeVouchers: bySize.length === 0 ? undefined : bySize.map(voucherRef),
   });
 }
 
@@ -447,8 +557,8 @@ function finding(
   code: ReceiptFolderCode,
   files: readonly FileWithHints[],
   vouchers: readonly DocumentHeader[],
+  text: FindingText = TEXTS[code],
 ): ReceiptFolderFinding {
-  const text = TEXTS[code];
   const [first] = vouchers;
   // The finding names a contact only when every voucher has the same one; else each record does.
   const suppliers = new Set(vouchers.map((header) => supplierKey(header) ?? "none"));
@@ -473,14 +583,17 @@ function finding(
           }),
     documents: vouchers.length,
     records: vouchers.map((header) => recordOf(header, { withContact: !shared })),
-    files: files.slice(0, MAX_FINDING_FILES).map((entry) => fileOutput(entry.file, entry.hints)),
+    files: files.slice(0, MAX_FINDING_FILES).map((entry) => fileOutput(entry.file, entry)),
     filesOmitted: omitted > 0 ? omitted : undefined,
   });
 }
 
 interface FileWithHints {
   readonly file: FolderFile;
+  /** Vouchers whose number appears in the file name. */
   readonly hints?: readonly DocumentHeader[] | undefined;
+  /** Vouchers whose receipt has no checksum but the file's size and extension. */
+  readonly sameSize?: readonly DocumentHeader[] | undefined;
 }
 
 const SEVERITY_ORDER = { warning: 0, check: 1 } as const;
@@ -516,8 +629,9 @@ export async function runReceiptFolderCheck(
     code: ReceiptFolderCode,
     files: readonly FileWithHints[],
     carriers: readonly DocumentHeader[],
+    text?: FindingText,
   ): void => {
-    findings.push({ code, finding: finding(code, files, carriers) });
+    findings.push({ code, finding: finding(code, files, carriers, text) });
   };
   const notBooked: FileWithHints[] = [];
   const beforePeriod: FileWithHints[] = [];
@@ -527,7 +641,12 @@ export async function runReceiptFolderCheck(
     const carriers = vouchers.byHash.get(hash) ?? [];
     if (carriers.length === 0) {
       for (const file of files) {
-        const entry = { file, hints: numberHints(file.path, vouchers.all) };
+        // Hints only: a file of the same size as a receipt without a checksum is never matched.
+        const entry = {
+          file,
+          hints: numberHints(file.path, vouchers.all),
+          sameSize: sizeHints(file, vouchers.unhashed),
+        };
         if (berlinDateOf(file.modifiedMs) < range.from) beforePeriod.push(entry);
         else notBooked.push(entry);
       }
@@ -548,7 +667,9 @@ export async function runReceiptFolderCheck(
       );
     }
   }
-  if (notBooked.length > 0) add("receipt_file_not_booked", notBooked, []);
+  if (notBooked.length > 0) {
+    add("receipt_file_not_booked", notBooked, [], notBookedText(vouchers.withoutChecksum));
+  }
   if (beforePeriod.length > 0) add("receipt_file_before_period", beforePeriod, []);
   // Warnings first, then by kind; within a kind in scan order (stable sort).
   const order = (code: ReceiptFolderCode): number =>
@@ -565,6 +686,10 @@ export async function runReceiptFolderCheck(
     source: SOURCE,
     matching: MATCHING,
     matchingDe: MATCHING_DE,
+    withoutChecksum:
+      vouchers.withoutChecksum === 0
+        ? undefined
+        : { receipts: vouchers.withoutChecksum, ...withoutChecksumNote(vouchers.withoutChecksum) },
     findings: sorted.slice(0, MAX_FINDINGS),
     findingsOmitted: findingsOmitted > 0 ? findingsOmitted : undefined,
     matched: matched.slice(0, MAX_MATCHED),
@@ -663,11 +788,8 @@ function notesOf(
     );
   }
   if (vouchers.withoutChecksum > 0) {
-    notes.push(
-      `${plural(vouchers.withoutChecksum, "voucher receipt")} in the range had no usable ` +
-        "checksum (a file sevDesk rendered itself, or a list row without the document): no " +
-        "local file can match them.",
-    );
+    // The same statement as `withoutChecksum.note`, which also carries the German one.
+    notes.push(withoutChecksumNote(vouchers.withoutChecksum).note);
   }
   if (vouchers.truncated) {
     notes.push(
@@ -688,10 +810,11 @@ export function receiptFolderSentence(result: ReceiptFolderResult): string {
     result.findings
       .filter((entry) => entry.code === code)
       .reduce((sum, entry) => sum + entry.files.length + (entry.filesOmitted ?? 0), 0);
+  const unhashed = coverage.vouchers.withoutChecksum;
   let text =
     `Receipt folder ${result.period.label}: ${plural(coverage.filesChecked, "file")} checked, ` +
     `${String(coverage.filesMatched)} found on a voucher, ` +
-    `${String(count("receipt_file_not_booked"))} not found`;
+    `${String(count("receipt_file_not_booked"))} not found${unhashed > 0 ? " by checksum" : ""}`;
   const older = count("receipt_file_before_period");
   if (older > 0) text += ` (and ${String(older)} older than the vouchers read)`;
   const drafts = count("receipt_file_only_on_draft");
@@ -699,6 +822,11 @@ export function receiptFolderSentence(result: ReceiptFolderResult): string {
   const twice = count("receipt_file_booked_twice");
   if (twice > 0) text += `, ${String(twice)} booked more than once`;
   text += ".";
+  if (unhashed > 0) {
+    text +=
+      ` ${plural(unhashed, "receipt")} in sevDesk ${unhashed === 1 ? "has" : "have"} no ` +
+      "checksum and could not be compared.";
+  }
   if (coverage.folderCut.length > 0) text += " The folder was cut (see the notes).";
   if (coverage.vouchers.truncated) text += " The voucher listing was cut (see the notes).";
   return text;

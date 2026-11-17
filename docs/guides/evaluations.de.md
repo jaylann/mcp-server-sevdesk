@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/evaluations.md sha256:0d5cf7e13d75 -->
+<!-- translated-from: docs/guides/evaluations.md sha256:b2e723f0a5a0 -->
 
 # Auswertungen und Exporte
 
@@ -174,8 +174,11 @@ Rechnung wird mit einer Stornorechnung berichtigt.
 
 Um ein Paar mit gleichem Betrag zu bestätigen, vergleicht die Prüfung die SHA-256-Prüfsummen der
 Belegdateien seiner Belege, die sevDesk mit der Belegliste schickt (kein zusätzlicher Abruf je
-Beleg). Verschiedene Prüfsummen oder eine Belegdatei ohne Prüfsumme beweisen nichts, denn dasselbe
-Papier zweimal gescannt ergibt zwei Dateien; ein solches Paar bleibt ein `check`.
+Beleg). Für manche Belegdateien speichert sevDesk keine Prüfsumme (eine, die seine Belegerkennung
+aus einer hochgeladenen Datei angelegt hat, hat keine), daher kann `voucher_receipt_twice` nur für
+Belegdateien mit Prüfsumme gefunden werden. Verschiedene Prüfsummen oder eine Belegdatei ohne
+Prüfsumme beweisen nichts, denn dasselbe Papier zweimal gescannt ergibt zwei Dateien; ein solches
+Paar bleibt ein `check`.
 
 ### Fehlende Rechnungen regelmäßiger Lieferanten (`recurring_gaps`)
 
@@ -253,6 +256,14 @@ der Datei (`modified`, nicht das Belegdatum) und Belege, deren Belegnummer im Da
 (`possibleVouchers`). Um eine fehlende Datei zu buchen, lege mit
 [`sevdesk_voucher_create_draft`](../tools.md#sevdesk_voucher_create_draft) einen Entwurf mit der
 Datei als `file` an (braucht `write`).
+
+Nicht jede Belegdatei in sevDesk hat eine Prüfsumme: Eine, die die Belegerkennung von sevDesk aus
+einer hochgeladenen Datei angelegt hat, hat keine, also kann keine Datei je zu ihr passen. Das
+Ergebnis zählt solche Belegdateien im gelesenen Zeitraum (`withoutChecksum`, mit einem Hinweis auf
+Englisch und Deutsch). Solange es welche gibt, wird eine Datei ohne Treffer als Datei ohne Beleg
+mit ihrer Prüfsumme gemeldet, nicht als ungebucht, und eine Belegdatei ohne Prüfsumme mit
+derselben Größe in Bytes und derselben Endung wie die Datei wird als dritter schwacher Hinweis
+genannt (`sameSizeVouchers`), nie als Treffer.
 
 ## Wie weit du dich darauf verlassen kannst
 

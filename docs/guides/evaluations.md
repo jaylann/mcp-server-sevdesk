@@ -162,7 +162,9 @@ stuck drafts only: their numbers come from sevDesk's own number range, and an in
 is corrected with a cancellation invoice.
 
 To confirm a same-amount pair the check compares the SHA-256 checksums of the vouchers' receipt
-files, which sevDesk sends with the voucher list (no extra read per voucher). Different checksums,
+files, which sevDesk sends with the voucher list (no extra read per voucher). sevDesk stores no
+checksum for some receipts (one its recognition created from an uploaded file has none), so
+`voucher_receipt_twice` can only be found for receipts with one. Different checksums,
 or a receipt without one, prove nothing, since the same paper scanned twice gives two files, so
 such a pair stays a `check`.
 
@@ -236,6 +238,13 @@ day the file was last changed (`modified`, not the receipt date), and vouchers w
 number appears in the file name (`possibleVouchers`). To book a file that is missing, create a
 draft with [`sevdesk_voucher_create_draft`](../tools.md#sevdesk_voucher_create_draft) and the
 file as `file` (needs `write`).
+
+Not every receipt in sevDesk has a checksum: one that sevDesk's recognition created from an
+uploaded file has none, so no file can ever match it. The result counts such receipts in the range
+read (`withoutChecksum`, with a note in English and German). While there are any, an unmatched
+file is reported as having no receipt with its checksum, not as unbooked, and a receipt without a
+checksum whose size in bytes and extension equal the file's is named as a third weak hint
+(`sameSizeVouchers`), never as a match.
 
 ## How far you can rely on them
 

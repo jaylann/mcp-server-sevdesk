@@ -458,13 +458,16 @@ describe("check duplicates", () => {
       expect(call.query).toMatchObject({ embed: "document", voucherType: "VOU", limit: 1000 });
     }
     expect(client.calls.filter((call) => /^\/(Voucher|Document)\/\d+/.test(call.path))).toEqual([]);
-    // Same-amount pairs: 106/107, 108/109, 132/133, 113/114; 133 has no checksum, 113 and 114
-    // no receipt file.
+    // Same-amount pairs: 106/107, 108/109, 132/133, 113/114; 133 has a receipt without a
+    // checksum (as a receipt sevDesk's recognition created), 113 and 114 no receipt file.
     expect(result.notes.join(" ")).toContain(
       "The receipt files of 8 vouchers of same-amount pairs were compared by the SHA-256 " +
-        "checksum sevDesk lists with each voucher; 3 vouchers without a receipt file or without " +
-        "a checksum could not be compared",
+        "checksum sevDesk lists with each voucher; 1 voucher has a receipt file without a " +
+        "checksum (sevDesk stores none for some receipts, for example those its recognition " +
+        "created from an upload), so the same file cannot be confirmed for their pairs, which " +
+        "stay possible duplicates; 2 vouchers without a receipt file could not be compared",
     );
+    expect(codesById(result).get(133)).toEqual(["voucher_amount_twice"]);
     for (const call of client.calls) expect(call.method).toBe("GET");
   });
 
@@ -475,9 +478,8 @@ describe("check duplicates", () => {
 
     expect(codesById(result).get(108)).toEqual(["voucher_amount_twice"]);
     expect(codesById(result).get(109)).toEqual(["voucher_amount_twice"]);
-    expect(result.notes.join(" ")).toContain(
-      "8 vouchers without a receipt file or without a checksum",
-    );
+    expect(result.notes.join(" ")).toContain("6 vouchers have a receipt file without a checksum");
+    expect(result.notes.join(" ")).toContain("2 vouchers without a receipt file");
   });
 
   it("states its rules, coverage and the vouchers it could not compare", async () => {

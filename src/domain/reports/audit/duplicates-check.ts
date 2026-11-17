@@ -365,16 +365,27 @@ async function runDuplicatesCheck(context: AuditCheckContext): Promise<AuditChec
       vouchersOfPairs.set(pair.first.id, pair.first);
       vouchersOfPairs.set(pair.second.id, pair.second);
     }
-    const withoutHash = [...vouchersOfPairs.values()].filter(
-      (header) => header.receipt?.hash === undefined,
+    const candidates = [...vouchersOfPairs.values()];
+    const withoutReceipt = candidates.filter((header) => header.receipt === undefined).length;
+    // A receipt sevDesk stores no checksum for (e.g. one its recognition created from an upload,
+    // recorded 2026-11-17) can never confirm `voucher_receipt_twice`.
+    const withoutHash = candidates.filter(
+      (header) => header.receipt !== undefined && header.receipt.hash === undefined,
     ).length;
     let text =
       `The receipt files of ${plural(vouchersOfPairs.size, "voucher")} of same-amount pairs ` +
       "were compared by the SHA-256 checksum sevDesk lists with each voucher";
     if (withoutHash > 0) {
       text +=
-        `; ${plural(withoutHash, "voucher")} without a receipt file or without a checksum ` +
-        "could not be compared (those pairs stay possible duplicates)";
+        `; ${plural(withoutHash, "voucher")} ${withoutHash === 1 ? "has" : "have"} a receipt ` +
+        "file without a checksum (sevDesk stores none for some receipts, for example those its " +
+        "recognition created from an upload), so the same file cannot be confirmed for their " +
+        "pairs, which stay possible duplicates";
+    }
+    if (withoutReceipt > 0) {
+      text +=
+        `; ${plural(withoutReceipt, "voucher")} without a receipt file could not be compared ` +
+        "(those pairs stay possible duplicates)";
     }
     notes.push(`${text}.`);
   }
