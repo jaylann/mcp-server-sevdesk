@@ -45,7 +45,10 @@ const recognitionOutput = voucherDraftOutput.extend({
   possibleDuplicates: z
     .array(z.number().int())
     .optional()
-    .describe("Other vouchers of the same kind with the same date, gross total and Belegnummer."),
+    .describe(
+      "Other vouchers of the same kind with the same date, gross total and Belegnummer. The " +
+        "notes say when the check could not look at every voucher of that day.",
+    ),
 });
 
 type RecognitionOutput = z.output<typeof recognitionOutput>;
@@ -125,7 +128,8 @@ function recognitionToolOutput(result: RecognitionResult): ToolOutput<Recognitio
   const id = String(result.id);
   const gross = voucher.totals.gross;
   const count = `${String(positions.length)} position${positions.length === 1 ? "" : "s"}`;
-  const duplicates = result.duplicates.outcome === "done" ? result.duplicates.ids : [];
+  const scan = result.duplicates;
+  const duplicates = scan.outcome === "done" || scan.outcome === "partial" ? scan.ids : [];
   return {
     data: {
       voucher,

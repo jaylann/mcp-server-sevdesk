@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/receipts.md sha256:a2d206faa832 -->
+<!-- translated-from: docs/guides/receipts.md sha256:a1864c7869b1 -->
 
 # Belege und Eingangsrechnungen
 
@@ -149,7 +149,8 @@ sagt das Werkzeug das und nennt den Entwurf, zum Vervollständigen oder zum Lös
 [`sevdesk_voucher_delete_draft`](../tools.md#sevdesk_voucher_delete_draft). sevDesk bemerkt eine
 schon gesendete Datei nicht: Jeder Aufruf legt einen weiteren Entwurf an, schicke also jeden Beleg
 nur einmal. Nach Dubletten lässt sich erst nach der Erkennung suchen: Das Ergebnis nennt Belege mit
-demselben Datum, demselben Bruttobetrag und derselben Belegnummer.
+demselben Datum, demselben Bruttobetrag und derselben Belegnummer und sagt, wenn es nicht jeden
+Beleg dieses Tages vergleichen konnte oder nichts zu vergleichen hatte.
 
 Es nimmt PDF-, PNG- und JPEG-Dateien. Wie gut die Erkennung ein Foto liest, ist nicht gemessen
 (ein winziges Testbild ergab einen Entwurf ohne ausgefüllte Angaben); rechne also damit, die

@@ -3884,7 +3884,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   must be looked for, not created again; a failure after that names the draft as created.
   Because sevDesk does not deduplicate, the tool's own scan after the recognition is the only
   guard: other vouchers of the same direction with the same date, gross total and recognised
-  Belegnummer (the supplier text is not compared), reported, not refused.
+  Belegnummer (the supplier text is not compared), reported, not refused. It reads one page of
+  up to 1,000 vouchers; when sevDesk has more, when it failed, or when there was no recognised
+  date and total to compare, the result says that the check was partial or did not run.
   `sevdesk_voucher_finalize` refuses the draft, expense or revenue, until both the tax rule and
   every booking account are set (`storedRule`, `storedPositionsFor`).
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("runs the opt-in probes only when
@@ -3893,8 +3895,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   multipart body sent once; a revenue receipt with `D`; a PNG with its MIME type and the image
   note; a receipt from a link; `fileSha256` matching and refusing other bytes; recognised at
   once, after waits, and not within the bound; a partial recognition; the several-rates note;
-  duplicates; an unreadable answer; a refused upload; a cancelled wait and a
-  failed read naming the draft; recognised text kept out of summary and notes). The safety net:
+  duplicates, a partial scan, a page without a count and a skipped scan; an unreadable answer; a
+  refused upload; a cancelled wait and a failed read naming the draft; recognised text kept out
+  of summary and notes). The safety net:
   `test/regressions/recognised-voucher-draft.test.ts` (the finalize refuses a draft shaped like
   the recorded one without a tax rule or a booking account, and accepts it once both are set;
   the normal update completes it, replaces the wrongly split 7 % position with one position per

@@ -139,7 +139,8 @@ then says so and names the draft, to complete or to delete with
 [`sevdesk_voucher_delete_draft`](../tools.md#sevdesk_voucher_delete_draft). sevDesk does not
 notice a file it has seen before: every call makes another draft, so send each receipt once.
 Duplicates can only be looked for after the recognition: the result names vouchers with the same
-date, gross amount and Belegnummer.
+date, gross amount and Belegnummer, and says when it could not compare every voucher of that day
+or had nothing to compare.
 
 It takes PDF, PNG and JPEG files. How well the recognition reads a photo is unmeasured (a tiny
 test image gave a draft with nothing filled in), so expect to enter the details of a photo

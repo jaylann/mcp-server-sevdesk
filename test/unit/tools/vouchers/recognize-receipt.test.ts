@@ -9,7 +9,10 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { RECOGNITION_WAITS_MS } from "../../../../src/domain/drafts/voucher-recognition.js";
+import {
+  DUPLICATE_SCAN_LIMIT,
+  RECOGNITION_WAITS_MS,
+} from "../../../../src/domain/drafts/voucher-recognition.js";
 import { localFileAccess } from "../../../../src/safety/file-sources.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { voucherRecognizeReceiptTool } from "../../../../src/tools/vouchers/recognize-receipt.js";
@@ -511,8 +514,14 @@ describe("sevdesk_voucher_recognize_receipt", () => {
         "with sevdesk_voucher_update_draft.",
     );
     expect(data.notes?.[2]).toContain("Draft 2301 has no tax rule (Steuerregel) and no booking");
+    // No sums, nothing to compare: the result says that no duplicate check ran.
+    expect(data.notes?.[3]).toBe(
+      "No duplicate check ran: the draft has no recognised date and gross total to compare. " +
+        "Look for the receipt with sevdesk_vouchers_list before finalizing.",
+    );
+    expect(data.notesDe?.[3]).toContain("Es lief keine Dublettenprüfung");
     // The "no Belegnummer" note belongs to a recognised draft; here the first note covers it.
-    expect(data.notes).toHaveLength(3);
+    expect(data.notes).toHaveLength(4);
     expect(output.summary).toBe(
       "Created draft voucher 2301, but sevDesk's receipt recognition filled in no sums within " +
         "15 s. See notes.",
@@ -556,12 +565,76 @@ describe("sevdesk_voucher_recognize_receipt", () => {
     const { output } = await executeWrite(tool, { file }, fake, { fileDirs: [dir] });
 
     const [scan] = fake.callsTo("/Voucher");
-    expect(scan?.query).toMatchObject({ creditDebit: "C", descriptionLike: "RE-2026-0042" });
+    expect(scan?.query).toMatchObject({
+      creditDebit: "C",
+      descriptionLike: "RE-2026-0042",
+      limit: DUPLICATE_SCAN_LIMIT,
+      offset: 0,
+    });
+    expect(DUPLICATE_SCAN_LIMIT).toBe(1_000);
     expect(output.data.possibleDuplicates).toEqual([2299]);
     expect(output.data.notes).toContain(
       "Possible duplicate: voucher 2299 has the same date, gross total and Belegnummer. If this " +
         "receipt was filed before, delete draft 2301 with sevdesk_voucher_delete_draft.",
     );
+    // Every voucher of that day was read: no note about a partial check.
+    expect(output.data.notes?.join(" ")).not.toContain("duplicate check");
+  });
+
+  it("says when sevDesk has more vouchers of that day than the duplicate scan reads", async () => {
+    const { dir, file } = await folder();
+    const day = "2026-11-16T00:00:00+01:00";
+    const earlier = draftRow({ id: "2299", description: "RE-2026-0042", voucherDate: day });
+    // sevDesk counts 1,040 vouchers for that filter; one page of them came back.
+    const fake = new FakeSevdeskClient([
+      version2Route,
+      recognitionRoute(),
+      pollingRoute(1).route,
+      positionsRoute(ID, [recognisedPositionRow()]),
+      {
+        path: "/Voucher",
+        response: { body: { objects: [recognisedRow(), earlier], total: 1040 } },
+      },
+    ]);
+    const { output } = await executeWrite(tool, { file }, fake, { fileDirs: [dir] });
+
+    // What it found among the rows it read still counts.
+    expect(output.data.possibleDuplicates).toEqual([2299]);
+    expect(output.data.notes).toContain(
+      "The duplicate check after the recognition read the first 1000 vouchers of that date and " +
+        "kind, and sevDesk has more; the rest were not compared. Look for the receipt with " +
+        "sevdesk_vouchers_list before finalizing.",
+    );
+    expect(output.data.notesDe).toContain(
+      "Die Dublettenprüfung nach der Erkennung hat die ersten 1000 Belege dieses Datums und " +
+        "dieser Art gelesen, und sevDesk hat mehr; die übrigen wurden nicht verglichen. Suche den " +
+        "Beleg vor dem Fertigstellen mit sevdesk_vouchers_list.",
+    );
+  });
+
+  it("takes a page without a count as complete unless it is full", async () => {
+    const { dir, file } = await folder();
+    const day = "2026-11-16T00:00:00+01:00";
+    const others = (count: number): Row[] =>
+      Array.from({ length: count }, (_, index) =>
+        draftRow({ id: String(5000 + index), description: `X-${String(index)}`, voucherDate: day }),
+      );
+    const partialNote = "read the first 1000 vouchers";
+    for (const [rows, partial] of [
+      [[recognisedRow(), ...others(3)], false],
+      [[recognisedRow(), ...others(DUPLICATE_SCAN_LIMIT - 1)], true],
+    ] as const) {
+      const fake = new FakeSevdeskClient([
+        version2Route,
+        recognitionRoute(),
+        pollingRoute(1).route,
+        positionsRoute(ID, [recognisedPositionRow()]),
+        // `total: null`: sevDesk sent no usable count.
+        { path: "/Voucher", response: { body: { objects: rows, total: null } } },
+      ]);
+      const { output } = await executeWrite(tool, { file }, fake, { fileDirs: [dir] });
+      expect(output.data.notes?.some((note) => note.includes(partialNote))).toBe(partial);
+    }
   });
 
   it("still returns the draft when the duplicate scan fails, and says so", async () => {

@@ -79,8 +79,12 @@ export const RECOGNITION_WAITS_MS: readonly number[] = [
 /** The longest total wait for the recognition, ms. */
 export const RECOGNITION_WAIT_MS = RECOGNITION_WAITS_MS.reduce((sum, wait) => sum + wait, 0);
 
-/** Rows checked for possible duplicates after the recognition. */
-const DUPLICATE_SCAN_LIMIT = 25;
+/**
+ * Rows the duplicate scan after the recognition reads: sevDesk's largest page, in one request.
+ * Vouchers of one direction dated the same day rarely come near it (a card statement batch might);
+ * past it the result says the check was partial instead of reading as "no duplicates".
+ */
+export const DUPLICATE_SCAN_LIMIT = 1_000;
 
 /** An abort-aware wait; tests inject one that does not wait. */
 export type RecognitionSleep = (ms: number, signal?: AbortSignal) => Promise<void>;
@@ -246,7 +250,9 @@ export interface RecognitionOptions {
 /** What the duplicate scan after the recognition found. */
 type DuplicateScan =
   | { readonly outcome: "done"; readonly ids: readonly number[] }
-  /** Not recognised: there was nothing to compare. */
+  /** sevDesk has more rows than {@link DUPLICATE_SCAN_LIMIT}: `ids` are the matches among those read. */
+  | { readonly outcome: "partial"; readonly ids: readonly number[] }
+  /** No recognised date and gross total: there was nothing to compare. */
   | { readonly outcome: "skipped" }
   | { readonly outcome: "failed" };
 
@@ -485,7 +491,8 @@ async function readVoucher(
  * Belegnummer, when one was recognised). The supplier is not compared: the recognised supplier
  * text is not reliable (D-103). sevDesk itself makes a second draft from the same file
  * (2026-11-17), so this is the only duplicate guard. A failed scan does not fail the call, since
- * the draft exists already; the notes say that it did not run.
+ * the draft exists already; the notes say that it did not run, or that it read only the first
+ * {@link DUPLICATE_SCAN_LIMIT} rows.
  */
 async function scanDuplicates(
   client: SevdeskClient,
@@ -522,7 +529,12 @@ async function scanDuplicates(
       )
       .map((row) => row.id)
       .sort((a, b) => a - b);
-    return { outcome: "done", ids };
+    // sevDesk reports the count (`countAll`); a page without one counts as partial when it is full.
+    const partial =
+      result.window.total === undefined
+        ? result.window.received >= DUPLICATE_SCAN_LIMIT
+        : result.state.hasMore;
+    return { outcome: partial ? "partial" : "done", ids };
   } catch (error) {
     if (error instanceof SevdeskError) return { outcome: "failed" };
     throw error;
@@ -710,30 +722,7 @@ function recognitionNotes(facts: NoteFacts): Phrase[] {
       ),
     );
   }
-  const scan = facts.duplicates;
-  if (scan.outcome === "done" && scan.ids.length > 0) {
-    const which = scan.ids.map(String).join(", ");
-    const one = scan.ids.length === 1;
-    notes.push(
-      phrase(
-        `Possible duplicate: ${one ? "voucher" : "vouchers"} ${which} ${one ? "has" : "have"} ` +
-          "the same date, gross total and Belegnummer. If this receipt was filed before, delete " +
-          `draft ${id} with sevdesk_voucher_delete_draft.`,
-        `Mögliche Dublette: ${one ? "Beleg" : "Belege"} ${which} ${one ? "hat" : "haben"} ` +
-          "dasselbe Datum, dieselbe Bruttosumme und Belegnummer. Wurde dieser Beleg schon " +
-          `erfasst, lösche Entwurf ${id} mit sevdesk_voucher_delete_draft.`,
-      ),
-    );
-  } else if (scan.outcome === "failed") {
-    notes.push(
-      phrase(
-        "The duplicate check after the recognition could not run; look for the receipt with " +
-          "sevdesk_vouchers_list before finalizing.",
-        "Die Dublettenprüfung nach der Erkennung konnte nicht laufen; suche den Beleg vor dem " +
-          "Fertigstellen mit sevdesk_vouchers_list.",
-      ),
-    );
-  }
+  notes.push(...duplicateNotes(facts.duplicates, id));
   const status = facts.voucher.status;
   if (status !== undefined && status.code !== VOUCHER_DRAFT_STATUS) {
     notes.push(
@@ -762,6 +751,73 @@ function recognitionNotes(facts: NoteFacts): Phrase[] {
         "sevDesk hat mehr Positionen, als ausgelesen werden konnten; positions ist unvollständig.",
       ),
     );
+  }
+  return notes;
+}
+
+/**
+ * The notes of the duplicate scan: the vouchers it found, and, whenever it did not look through
+ * every voucher of that day (partial, skipped, failed), that it did not, so the result never reads
+ * as "no duplicates" when nobody checked.
+ */
+function duplicateNotes(scan: DuplicateScan, draftId: string): Phrase[] {
+  const notes: Phrase[] = [];
+  const ids = scan.outcome === "done" || scan.outcome === "partial" ? scan.ids : [];
+  if (ids.length > 0) {
+    const which = ids.map(String).join(", ");
+    const one = ids.length === 1;
+    notes.push(
+      phrase(
+        `Possible duplicate: ${one ? "voucher" : "vouchers"} ${which} ${one ? "has" : "have"} ` +
+          "the same date, gross total and Belegnummer. If this receipt was filed before, delete " +
+          `draft ${draftId} with sevdesk_voucher_delete_draft.`,
+        `Mögliche Dublette: ${one ? "Beleg" : "Belege"} ${which} ${one ? "hat" : "haben"} ` +
+          "dasselbe Datum, dieselbe Bruttosumme und Belegnummer. Wurde dieser Beleg schon " +
+          `erfasst, lösche Entwurf ${draftId} mit sevdesk_voucher_delete_draft.`,
+      ),
+    );
+  }
+  const rows = String(DUPLICATE_SCAN_LIMIT);
+  switch (scan.outcome) {
+    case "done":
+      break;
+    case "partial":
+      notes.push(
+        phrase(
+          `The duplicate check after the recognition read the first ${rows} vouchers of that ` +
+            "date and kind, and sevDesk has more; the rest were not compared. Look for the " +
+            "receipt with sevdesk_vouchers_list before finalizing.",
+          `Die Dublettenprüfung nach der Erkennung hat die ersten ${rows} Belege dieses Datums ` +
+            "und dieser Art gelesen, und sevDesk hat mehr; die übrigen wurden nicht verglichen. " +
+            "Suche den Beleg vor dem Fertigstellen mit sevdesk_vouchers_list.",
+        ),
+      );
+      break;
+    case "skipped":
+      notes.push(
+        phrase(
+          "No duplicate check ran: the draft has no recognised date and gross total to compare. " +
+            "Look for the receipt with sevdesk_vouchers_list before finalizing.",
+          "Es lief keine Dublettenprüfung: Der Entwurf hat kein erkanntes Datum und keine " +
+            "erkannte Bruttosumme zum Vergleichen. Suche den Beleg vor dem Fertigstellen mit " +
+            "sevdesk_vouchers_list.",
+        ),
+      );
+      break;
+    case "failed":
+      notes.push(
+        phrase(
+          "The duplicate check after the recognition could not run; look for the receipt with " +
+            "sevdesk_vouchers_list before finalizing.",
+          "Die Dublettenprüfung nach der Erkennung konnte nicht laufen; suche den Beleg vor dem " +
+            "Fertigstellen mit sevdesk_vouchers_list.",
+        ),
+      );
+      break;
+    default: {
+      const unknown: never = scan;
+      return unknown;
+    }
   }
   return notes;
 }
