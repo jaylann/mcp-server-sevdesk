@@ -4070,11 +4070,17 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Sources:** spec (Invoice tag, status table and filters); recorded 2026-11-16, trial account,
   Update 2.0 (probes `write-recurring-template-update-end`, `write-recurring-schedule-fields`,
   `write-recurring-template-create`).
-- **Impact:** Ending a template is `saveInvoice` with its id and status 50, previewed; deleting
-  is allowed only at 50 or 100. The lifecycle tools keep refusing templates
-  (`refuseTemplate`). (#91)
+- **Impact:** Ending a template is `saveInvoice` with its id and status 50, previewed; sevDesk
+  deletes a template only at 50 or 100. The lifecycle tools keep refusing templates
+  (`refuseTemplate`). `sevdesk_document_delete_draft` refuses templates at every status, 100 and
+  50 included (`assertDeletable`): a template is no draft, and deleting one belongs to the
+  recurring tools. (#91)
 - **Test:** `test/contract/recorded-gaps-documents.test.ts` ("lists only templates, active ones
-  (status 200) included, with total and paging"); the end tool: pending, #91.
+  (status 200) included, with total and paging"); `test/unit/domain/lifecycle/transitions.test.ts`
+  (`assertDeletable`, "refuses recurring invoice templates, active or not"),
+  `test/regressions/delete-only-drafts.test.ts` ("refuses an active recurring template / a
+  recurring template at status 100 / a deactivated recurring template without a write"); the end
+  tool: pending, #91.
 
 ### D-113: `changeParameter` answers the layout in `metaData`; orders need a preview first
 
