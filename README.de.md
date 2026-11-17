@@ -71,8 +71,8 @@ freischalten, zuerst im Probelauf, und das Token sicher aufbewahren.
 
 ## Was er kann
 
-76 Werkzeuge in 10 Werkzeuggruppen. Die 38 Lesewerkzeuge füllen die erste Spalte; mit den
-Schreibstufen kommen 38 weitere Werkzeuge hinzu, die Daten anlegen und ändern.
+77 Werkzeuge in 10 Werkzeuggruppen. Die 38 Lesewerkzeuge füllen die erste Spalte; mit den
+Schreibstufen kommen 39 weitere Werkzeuge hinzu, die Daten anlegen und ändern.
 
 | Bereich                                | Lesen                                                                                                                                                                                                                                        | Schreiben (`write`, `commit`, `external`)                                                                                                                                                                                                                    |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

@@ -20,6 +20,7 @@ whether you confirm it.
 | [Remind](#remind-overdue-customers)    | [`sevdesk_invoice_create_reminder`](../tools.md#sevdesk_invoice_create_reminder)                                                                                 | `write`           | no              |
 | [Correct](#cancel-or-correct)          | [`sevdesk_invoice_cancel`](../tools.md#sevdesk_invoice_cancel), [`sevdesk_credit_note_create_from_invoice`](../tools.md#sevdesk_credit_note_create_from_invoice) | `commit`, `write` | cancel: **yes** |
 | [Enshrine](#enshrine)                  | [`sevdesk_invoice_enshrine`](../tools.md#sevdesk_invoice_enshrine)                                                                                               | `commit`          | **yes**         |
+| [Bill on a schedule](#recurring)       | [`sevdesk_invoice_create_recurring`](../tools.md#sevdesk_invoice_create_recurring)                                                                               | `commit`          | **yes**         |
 
 ```mermaid
 flowchart TD
@@ -33,8 +34,8 @@ flowchart TD
 
 ## Before you start
 
-- **Tiers.** Drafts need `write`; finalizing, payments, cancelling and enshrining need `commit`;
-  email needs `external`. Set them with `SEVDESK_ALLOW` ([Permissions](../permissions.md#tiers)).
+- **Tiers.** Drafts need `write`; finalizing, payments, cancelling, enshrining and recurring
+  templates need `commit`; email needs `external`. Set them with `SEVDESK_ALLOW` ([Permissions](../permissions.md#tiers)).
 - **Confirmations.** `commit` and `external` calls show you a preview first. Check that your
   client can show it ([Clients](../clients.md#confirmations-by-client)).
 - **Dry runs.** Every step that changes something can run as a [dry run](../permissions.md#dry-run)
@@ -227,6 +228,41 @@ credit note. When to enshrine is a question for you and your Steuerberater.
 > [!WARNING]
 > Enshrining is irreversible. The preview carries an irreversibility warning; approve it only for
 > invoices you are sure about.
+
+## Recurring
+
+> Bill Musterfirma GmbH 500 EUR net for website maintenance every month, starting on 1 January.
+
+[`sevdesk_invoice_create_recurring`](../tools.md#sevdesk_invoice_create_recurring) (`commit`,
+**you confirm**) creates a recurring invoice template (Abo-Rechnung, type WKR) for retainers, rent
+or subscriptions. From its start date on, sevDesk creates an invoice from it on every run date by
+itself; nobody is asked again. Customer, positions, texts, payment term and tax rule work as for a
+draft and pass the same checks; the template is in EUR, and its total must be above zero. The
+schedule has:
+
+- an **interval**: monthly, quarterly, half-yearly or yearly;
+- a **start date**, the first run: today or later, at most a year ahead, on day 1 to 28 of a
+  month. Every later run falls on the same day of the month. Days 29 to 31 are refused, because
+  how sevDesk moves a run into a shorter month is not recorded. A start in the past is refused too:
+  sevDesk might create all the invoices due since then at once;
+- an optional **end date**, at most ten years after the start. Without one, the template runs until
+  it is ended.
+
+The preview shows what every invoice will say: customer and address, each position with its text,
+head and foot text, the total per invoice. It also shows the first run, the next three run dates,
+the end with the number of invoices up to it, and a warning when the customer already has a
+template with the same total. After saving, the assistant reads the template back and says where
+sevDesk stored another schedule than it sent.
+
+> [!WARNING]
+> What sevDesk creates on a run date (a draft, or a finalized invoice with a number, sent to the
+> customer or not) is not confirmed yet, and the preview says so. Check the first invoice a new
+> template creates in sevDesk.
+
+Templates are listed with [`sevdesk_invoices_list`](../tools.md#sevdesk_invoices_list) and type
+`recurring`. Changing, pausing or ending one is done in the sevDesk web app (Abo-Rechnungen) for
+now. The other invoice tools refuse a template: it is never finalized, sent, paid, cancelled,
+changed as a draft or deleted through them.
 
 ## Related
 

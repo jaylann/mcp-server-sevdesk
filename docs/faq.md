@@ -134,6 +134,15 @@ skill follow German law, and the server is tested only against German accounts. 
 an Austrian account, but nothing is verified there. Support for Austria is tracked for a later 1.x
 release.
 
+### Can it set up recurring invoices (Abo-Rechnungen)?
+
+It can create one. [`sevdesk_invoice_create_recurring`](tools.md#sevdesk_invoice_create_recurring)
+(`commit` tier, you confirm) saves a recurring invoice template, monthly, quarterly, half-yearly or
+yearly, from which sevDesk then creates an invoice on every run date by itself
+([Recurring](guides/invoices.md#recurring)). What sevDesk creates on a run date (a draft or a
+finalized invoice) is not confirmed yet, so check the first one. Changing or ending a template is
+done in the sevDesk web app for now.
+
 ### Can it send letters by post?
 
 Not in 1.0. Documents can be sent by email (`external` tier), and finalizing records how a document

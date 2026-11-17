@@ -22,6 +22,7 @@ Kunden Rechnungen stellen. Zu jedem Schritt steht, was du fragst, welches Werkze
 | [Mahnen](#säumige-kunden-mahnen)            | [`sevdesk_invoice_create_reminder`](../tools.md#sevdesk_invoice_create_reminder)                                                                                 | `write`           | nein           |
 | [Korrigieren](#stornieren-oder-korrigieren) | [`sevdesk_invoice_cancel`](../tools.md#sevdesk_invoice_cancel), [`sevdesk_credit_note_create_from_invoice`](../tools.md#sevdesk_credit_note_create_from_invoice) | `commit`, `write` | Storno: **ja** |
 | [Festschreiben](#festschreiben)             | [`sevdesk_invoice_enshrine`](../tools.md#sevdesk_invoice_enshrine)                                                                                               | `commit`          | **ja**         |
+| [Regelmäßig abrechnen](#abo-rechnungen)     | [`sevdesk_invoice_create_recurring`](../tools.md#sevdesk_invoice_create_recurring)                                                                               | `commit`          | **ja**         |
 
 ```mermaid
 flowchart TD
@@ -35,8 +36,8 @@ flowchart TD
 
 ## Bevor du beginnst
 
-- **Stufen.** Entwürfe brauchen `write`; Fertigstellen, Zahlungen, Stornieren und Festschreiben
-  brauchen `commit`; E-Mail braucht `external`. Du setzt sie mit `SEVDESK_ALLOW`
+- **Stufen.** Entwürfe brauchen `write`; Fertigstellen, Zahlungen, Stornieren, Festschreiben und
+  Abo-Rechnungen brauchen `commit`; E-Mail braucht `external`. Du setzt sie mit `SEVDESK_ALLOW`
   ([Berechtigungen](../permissions.de.md#stufen)).
 - **Bestätigungen.** Bei Aufrufen der Stufen `commit` und `external` siehst du zuerst eine
   Vorschau. Prüf, ob dein Client sie anzeigen kann
@@ -243,6 +244,43 @@ Wann du festschreibst, klärst du mit deiner Steuerberatung.
 > [!WARNING]
 > Die Festschreibung ist endgültig. Die Vorschau warnt ausdrücklich davor; gib sie nur für
 > Rechnungen frei, bei denen du dir sicher bist.
+
+## Abo-Rechnungen
+
+> Stell der Musterfirma GmbH ab dem 1. Januar jeden Monat 500 EUR netto für die Website-Wartung in
+> Rechnung.
+
+[`sevdesk_invoice_create_recurring`](../tools.md#sevdesk_invoice_create_recurring) (`commit`, **du
+bestätigst**) legt eine Abo-Rechnung an (Vorlage für wiederkehrende Rechnungen, Typ WKR), etwa für
+Pauschalen, Mieten oder Abonnements. Ab dem Startdatum erzeugt sevDesk an jedem Ausführungstag
+selbst eine Rechnung daraus; niemand wird erneut gefragt. Kunde, Positionen, Texte, Zahlungsziel
+und Steuerregel funktionieren wie beim Entwurf und durchlaufen dieselben Prüfungen; die Vorlage ist
+in EUR, und ihre Summe muss über null liegen. Zum Zeitplan gehören:
+
+- ein **Intervall**: monatlich, vierteljährlich, halbjährlich oder jährlich;
+- ein **Startdatum**, die erste Ausführung: heute oder später, höchstens ein Jahr im Voraus, am 1.
+  bis 28. eines Monats. Jede weitere Ausführung fällt auf denselben Tag des Monats. Der 29. bis 31.
+  wird abgelehnt, weil nicht erfasst ist, wie sevDesk eine Ausführung in einen kürzeren Monat
+  verschiebt. Ein Start in der Vergangenheit wird ebenfalls abgelehnt: sevDesk könnte sonst alle
+  seither fälligen Rechnungen auf einmal erzeugen;
+- ein optionales **Enddatum**, höchstens zehn Jahre nach dem Start. Ohne Enddatum läuft die Vorlage,
+  bis sie beendet wird.
+
+Die Vorschau zeigt, was auf jeder Rechnung stehen wird: Kunde und Anschrift, jede Position mit
+ihrem Text, Kopf- und Fußtext, die Summe je Rechnung. Dazu kommen die erste Ausführung, die nächsten
+drei Ausführungstage, das Ende mit der Zahl der Rechnungen bis dahin und eine Warnung, wenn der
+Kunde schon eine Vorlage mit derselben Summe hat. Nach dem Speichern liest der Assistent die
+Vorlage zurück und sagt, wo sevDesk einen anderen Zeitplan gespeichert hat, als er gesendet hat.
+
+> [!WARNING]
+> Was sevDesk an einem Ausführungstag erzeugt (einen Entwurf oder eine fertiggestellte Rechnung mit
+> Nummer, an den Kunden versendet oder nicht), ist noch nicht bestätigt; die Vorschau sagt das.
+> Prüf die erste Rechnung, die eine neue Vorlage erzeugt, in sevDesk.
+
+Vorlagen listet [`sevdesk_invoices_list`](../tools.md#sevdesk_invoices_list) mit dem Typ
+`recurring`. Ändern, pausieren oder beenden lässt sich eine Vorlage vorerst nur in der
+sevDesk-Web-App (Abo-Rechnungen). Die anderen Rechnungswerkzeuge lehnen eine Vorlage ab: Sie wird
+über sie nie fertiggestellt, versendet, bezahlt, storniert, als Entwurf geändert oder gelöscht.
 
 ## Siehe auch
 

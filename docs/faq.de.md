@@ -148,6 +148,17 @@ E-Rechnungen und der Buchhaltungs-Skill folgen deutschem Recht, und der Server i
 deutschen Konten getestet. Lesen kann mit einem österreichischen Konto funktionieren, aber dort ist
 nichts überprüft. Unterstützung für Österreich ist für ein späteres 1.x-Release vorgesehen.
 
+### Kann es Abo-Rechnungen einrichten?
+
+Es kann eine anlegen.
+[`sevdesk_invoice_create_recurring`](tools.md#sevdesk_invoice_create_recurring) (Stufe `commit`, du
+bestätigst) speichert eine Vorlage für wiederkehrende Rechnungen, monatlich, vierteljährlich,
+halbjährlich oder jährlich, aus der sevDesk dann an jedem Ausführungstag selbst eine Rechnung
+erzeugt ([Abo-Rechnungen](guides/invoices.de.md#abo-rechnungen)). Was sevDesk an einem
+Ausführungstag erzeugt (einen Entwurf oder eine fertiggestellte Rechnung), ist noch nicht
+bestätigt; prüf deshalb die erste. Ändern oder beenden lässt sich eine Vorlage vorerst nur in der
+sevDesk-Web-App.
+
 ### Kann es Briefe per Post versenden?
 
 Nicht in 1.0. Dokumente lassen sich per E-Mail versenden (Stufe `external`), und beim

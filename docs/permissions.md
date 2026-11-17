@@ -15,7 +15,7 @@ Every tool belongs to exactly one tier. Reads and writes never share a tool.
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------ |
 | `read`     | List, get, search, reports, PDF previews (which never mark a document as sent), parsing e-invoices, saving document files and CSV exports into `SEVDESK_OUTPUT_DIR` (or as download links). Always on. | no           |
 | `write`    | Contacts, parts, drafts of invoices, credit notes, orders and vouchers, dunning reminders, the DATEV export. Reversible or harmless.                                                                   | no           |
-| `commit`   | Finalize, book payments, book bank transactions, mark transactions as private, cancel (Storno), enshrine (festschreiben, GoBD), reset, delete drafts. Legally binding or hard to undo.                 | **yes**      |
+| `commit`   | Finalize, book payments, book bank transactions, mark transactions as private, cancel (Storno), enshrine (festschreiben, GoBD), reset, delete drafts, Abo-Rechnungen. Legally binding or hard to undo. | **yes**      |
 | `external` | Send invoices, credit notes and orders by email. Reaches third parties.                                                                                                                                | **yes**      |
 
 Choose the tiers with `SEVDESK_ALLOW`, for example `SEVDESK_ALLOW=write` or

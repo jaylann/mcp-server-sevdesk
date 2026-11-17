@@ -71,6 +71,7 @@ import {
   expectedTotals,
   MAX_POSITIONS,
   type PositionInput,
+  type PositionPayload,
   positionPayload,
   wireNumber,
 } from "./positions.js";
@@ -89,17 +90,86 @@ import { addressInputShape } from "./recipient.js";
 import {
   addressBlock,
   type CreateArgs,
+  type CreateBasics,
   type DraftCallOptions,
   resolveCreateBasics,
   resolveUpdateBasics,
   type StoredAddress,
+  type TaxOptions,
   type UpdateArgs,
 } from "./shared.js";
-import { DEFAULT_TAX_RULE_ID, type RuleScope, SALES_TAX_RULE_IDS } from "./tax.js";
+import {
+  DEFAULT_TAX_RULE_ID,
+  type DocumentTaxFields,
+  type RuleScope,
+  SALES_TAX_RULE_IDS,
+} from "./tax.js";
 
 const INVOICE_SCOPE: RuleScope = { allowedRuleIds: SALES_TAX_RULE_IDS, documents: "invoices" };
 const DEFAULT_HEADER = "Rechnung";
 const FINALIZE_TOOL = "sevdesk_invoice_finalize";
+
+/**
+ * How a new invoice resolves its tax rule: the sales rules of invoices, rule 1 by default (rule 11
+ * on a Kleinunternehmer account). Shared with recurring invoice templates (`../recurring/`), which
+ * become invoices and must pass the same checks.
+ */
+export const INVOICE_TAX_OPTIONS: TaxOptions = {
+  scope: INVOICE_SCOPE,
+  defaultRuleId: DEFAULT_TAX_RULE_ID,
+};
+
+/** What {@link newInvoiceContent} reads from the arguments of a create call. */
+export interface InvoiceContentArgs {
+  readonly contactId: number;
+  readonly timeToPay?: number | undefined;
+  readonly header?: string | undefined;
+  readonly headText?: string | undefined;
+  readonly footText?: string | undefined;
+}
+
+/** The document fields of {@link newInvoiceContent}. */
+export type NewInvoiceContent = {
+  readonly contact: { readonly id: number; readonly objectName: "Contact" };
+  readonly contactPerson: { readonly id: number; readonly objectName: "SevUser" };
+  readonly header: string;
+  readonly headText: string | undefined;
+  readonly footText: string | undefined;
+  readonly timeToPay: number | undefined;
+  readonly discount: 0;
+  readonly currency: string;
+  readonly showNet: boolean;
+} & DocumentTaxFields &
+  ReturnType<typeof structuredAddress>;
+
+/**
+ * The fields a new invoice prints, without type, status and dates: customer and contact person,
+ * title (default "Rechnung"), texts, payment term, prices, tax and the address. Shared with
+ * recurring invoice templates (`../recurring/`), so a template carries exactly what a draft would.
+ */
+export function newInvoiceContent(
+  args: InvoiceContentArgs,
+  basics: CreateBasics,
+): NewInvoiceContent {
+  return {
+    contact: ref(args.contactId, "Contact"),
+    contactPerson: ref(basics.contactPerson.id, "SevUser"),
+    header: args.header ?? DEFAULT_HEADER,
+    headText: args.headText,
+    footText: args.footText,
+    timeToPay: args.timeToPay,
+    discount: 0,
+    currency: basics.currency,
+    showNet: basics.mode === "net",
+    ...basics.tax,
+    ...structuredAddress(basics.address),
+  };
+}
+
+/** The positions of a new invoice (or template) as `invoicePosSave`, in the order given. */
+export function newInvoicePositions(basics: CreateBasics): PositionPayload[] {
+  return basics.positions.map((position, index) => positionPayload(position, index, "InvoicePos"));
+}
 
 const timeToPayInput = z
   .number()
@@ -210,17 +280,13 @@ export async function prepareInvoiceCreate(
   const { signal } = options;
   const date = args.date ?? todayInBerlin();
   const delivery = resolveDeliveryPeriod(date, args.deliveryDate, args.deliveryDateUntil, true);
-  const basics = await resolveCreateBasics(
-    client,
-    args,
-    { scope: INVOICE_SCOPE, defaultRuleId: DEFAULT_TAX_RULE_ID },
-    options,
-  );
+  const basics = await resolveCreateBasics(client, args, INVOICE_TAX_OPTIONS, options);
   const { contact, contactPerson, address, currency, expected, mode } = basics;
   const duplicateQuery = { contactId: args.contactId, date, gross: expected.gross, currency };
   const duplicates = await findDuplicates(client, { kind: "invoice" }, duplicateQuery, signal);
 
-  const header = args.header ?? DEFAULT_HEADER;
+  const content = newInvoiceContent(args, basics);
+  const header = content.header;
   const body = strictBody(
     saveInvoiceBodySchema,
     {
@@ -229,24 +295,12 @@ export async function prepareInvoiceCreate(
         mapAll: true,
         invoiceType: "RE",
         status: 100,
-        contact: ref(args.contactId, "Contact"),
-        contactPerson: ref(contactPerson.id, "SevUser"),
         invoiceDate: wireDocumentDate(date),
         deliveryDate: wireTimestamp(delivery.from),
         deliveryDateUntil: delivery.until === undefined ? undefined : wireTimestamp(delivery.until),
-        header,
-        headText: args.headText,
-        footText: args.footText,
-        timeToPay: args.timeToPay,
-        discount: 0,
-        currency,
-        showNet: mode === "net",
-        ...basics.tax,
-        ...structuredAddress(address),
+        ...content,
       },
-      invoicePosSave: basics.positions.map((position, index) =>
-        positionPayload(position, index, "InvoicePos"),
-      ),
+      invoicePosSave: newInvoicePositions(basics),
       invoicePosDelete: null,
     },
     "invoice",

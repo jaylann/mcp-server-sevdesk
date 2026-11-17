@@ -3793,13 +3793,19 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   `write-recurring-schedule-fields`, `write-recurring-template-due`;
   `test/fixtures/recorded/2026-11-16/invoices/recurring-templates.json`).
 - **Impact:** A recurring template is created with `invoiceType: "WKR"`, a validated
-  `accountIntervall` (the server checks the ISO-8601 form itself, since sevDesk does not) and
-  `accountStartDate`, optionally `accountEndDate`; never `accountNextInvoice` or `recurring…`.
+  `accountIntervall` (the server checks the ISO-8601 form itself, since sevDesk does not: one of
+  `P0Y1M0W`, `P0Y3M0W`, `P0Y6M0W`, `P1Y0M0W`) and `accountStartDate`, optionally
+  `accountEndDate`; never `accountNextInvoice` or `recurring…`.
   Reads show interval, next run, start and end date; the invoice parser reads `accountIntervall`
   and `accountNextInvoice` today and needs `accountStartDate` and `accountEndDate`. (#91)
 - **Test:** `test/contract/recorded-gaps-documents.test.ts` ("carries the schedule fields the
   parser does not read yet", "reads through the invoice parser: interval as sent, next run as a
-  Berlin date"); the create tool: pending, #91.
+  Berlin date", "reads through the template reader: interval, start, next run and end as
+  stored (D-111)"); the create tool: `test/unit/domain/recurring/payload.test.ts` (never
+  `accountNextInvoice` or `recurring…`, always `WKR`), `test/unit/domain/recurring/schedule.test.ts`,
+  `test/unit/tools/invoices/recurring-create.test.ts` ("prepares a WKR body with the schedule and
+  reads only (D-111)", "says where sevDesk stored another schedule, type, status or total than was
+  sent").
 
 ### D-112: Recurring templates: status 50 ends, status 200 blocks `DELETE`, lists hide them
 
@@ -3822,7 +3828,10 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   is allowed only at 50 or 100. The lifecycle tools keep refusing templates
   (`refuseTemplate`). (#91)
 - **Test:** `test/contract/recorded-gaps-documents.test.ts` ("lists only templates, active ones
-  (status 200) included, with total and paging"); the end tool: pending, #91.
+  (status 200) included, with total and paging"), `test/regressions/recurring-template-guards.test.ts`
+  (no tool finalizes, sends, books, cancels, enshrines, resets, updates or deletes a template at
+  status 100, 200 or 50), `test/unit/domain/recurring/payload.test.ts` ("saves with the recorded
+  status of a new template (D-112)"); the end tool: pending, #91.
 
 ### D-113: `changeParameter` answers the layout in `metaData`; orders need a preview first
 
