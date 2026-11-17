@@ -158,6 +158,7 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 | [D-115](#d-115-post-and-delete-texttemplate-create-and-delete-text-templates)                      | `POST` and `DELETE /TextTemplate` create and delete text templates                     | Open                  |
 | [D-116](#d-116-document-discounts-discountsave-takes-a-list-getdiscounts-reads-them)               | Document discounts: `discountSave` takes a list; `getDiscounts` reads them             | Open                  |
 | [D-119](#d-119-the-account-factories-refuse-an-accountingnumber-in-use-or-not-allowed-422)         | The account factories refuse an `accountingNumber` in use or not allowed (422)         | Open                  |
+| [D-130](#d-130-privatetransactionrule-cuts-texts-over-255-characters-without-notice)               | `PrivateTransactionRule` cuts texts over 255 characters without notice                 | Open                  |
 | [D-132](#d-132-recurring-templates-generation-and-auto-sending-are-switches-read-by-embed)         | Recurring templates: generation and auto-sending are switches read by `embed`          | Open                  |
 | [D-135](#d-135-saveinvoice-keeps-the-price-of-a-position-sent-by-its-id-without-an-error)          | `saveInvoice` keeps the price of a position sent by its id, without an error           | Open                  |
 | [D-140](#d-140-languages-invoices-store-en-orders-and-credit-notes-the-locale-or-german)           | Languages: invoices store `en`, orders and credit notes the locale or German           | Open                  |
@@ -3824,25 +3825,59 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   transactions", `POST` creates one (`objectName`, `paymentPurpose`, `counterpartName`, both
   nullable) and answers 201 with the bare model, `DELETE /PrivateTransactionRule/{id}` deletes
   one. When and how a rule is applied is not said.
-- **Actual behavior:** `GET` with `limit`/`offset` answers `{objects: []}` (no `total` without
-  `countAll`). `POST` answers 2xx with the rule wrapped in `objects` (keys `id`, `objectName`,
-  `additionalInformation`, `create`, `update`, `sevClient`, `paymentPurpose`, `counterpartName`;
-  the field not sent is `null`; ids were small integers, `951`). `DELETE` answers
-  `{objects: [null]}`. Two tagged rules (one per field) turned **none** of five tagged open
-  transactions on a file-import account private (exact and partial counterpart, exact and
-  partial purpose, neither), nor a matching one created after the rules, and deleting the rules
-  changed nothing. Rules probably act only when sevDesk imports bank transactions, which a trial
-  cannot do.
+- **Actual behavior:**
+  - `GET` with `limit`/`offset` answers `{objects: [...]}`; without `countAll` no `total` was
+    seen, with `countAll=true` it reports one (0 before, 8 after eight creations), and
+    `limit`/`offset` page properly (two pages of two, no shared id).
+  - `POST` answers 2xx with the rule wrapped in `objects` (keys `id`, `objectName`,
+    `additionalInformation`, `create`, `update`, `sevClient`, `paymentPurpose`, `counterpartName`;
+    the field not sent is `null`; ids were small integers, `951`). It stores a text exactly as
+    sent, without trimming (two leading spaces and one trailing kept: 37 characters for a
+    34-character text). A text over 255 characters is **cut to 255 without notice** (D-130). A
+    rule with both texts is accepted and stored with both; a second rule with exactly the same
+    `counterpartName` is accepted and stored as a second row (no duplicate check); a rule with
+    neither text is refused with 422 "At least one of the parameters must be set". `DELETE`
+    answers `{objects: [null]}`.
+  - Two tagged rules (one per field) turned **none** of five tagged open transactions on a
+    file-import account private (exact and partial counterpart, exact and partial purpose,
+    neither), nor a matching one created after the rules, and deleting the rules changed nothing.
+    Rules probably act only when sevDesk imports bank transactions, which a trial cannot do; so
+    how a rule matches (exact, contains, case, both texts or either) is not known, and whether a
+    CSV file import applies rules cannot be tested through the API.
 - **Sources:** spec (`listPrivateTransactionRules`, `createPrivateTransactionRule`,
   `deletePrivateTransactionRule`); recorded 2026-11-16, trial account, Update 2.0 (probe
-  `write-private-transaction-rule`).
+  `write-private-transaction-rule`); recorded 2026-11-17, trial account, Update 2.0 (one-off
+  checks by the orchestrator: `countAll`, paging, both texts, duplicates, spaces, lengths, no
+  text; eight tagged rules, all deleted again).
 - **Impact:** The rule tools of #88 can list, create and delete rules, but a preview of which
   open transactions a new rule "would match" cannot rely on sevDesk applying it to existing or
   hand-made rows: it must say that sevDesk applies rules to imported transactions, and mark any
-  local matching as an estimate.
+  local matching as an estimate. Handling (#88): `sevdesk_private_transaction_rules_list` (read,
+  explicit `limit`, texts cleaned), `sevdesk_private_transaction_rule_create` and
+  `sevdesk_private_transaction_rule_delete` (both `commit`: a rule makes sevDesk mark imports
+  private as `sevdesk_transaction_mark_private` does by hand). Create sends one trimmed text per
+  rule (sevDesk would store a rule with both texts, but whether it then needs both or either is
+  not known, so both are refused), at most 100 characters (sevDesk cuts a text over 255 without
+  notice, D-130), refuses texts with fewer than four letters or digits and a rule whose text
+  equals an existing one's (case and spaces ignored; sevDesk itself would store the duplicate),
+  and lists up to ten of at most 500 open transactions whose counterparty or purpose contains the
+  text, every time labelled as this server's estimate, never as sevDesk's matching, with the
+  sentence that sevDesk acts on bank imports and could not be tested on a trial account. Both
+  tools confirm the write by reading the rule list back (no read by id is recorded); create
+  compares the stored text exactly with the trimmed text it sent and notes any difference. The
+  order of the list is not recorded, so create looks for the new rule on up to five pages of 1000;
+  on a longer list without it, the result shows the rule as sevDesk answered the POST and notes
+  that its stored text was not checked. The delete preview says that private transactions stay
+  private.
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("answers the banking questions as
-  recorded…": no row turns private, the rules are deleted). Handling: pending, the rule tools of
-  #88. The recorded list was empty, so no fixture was kept.
+  recorded…": no row turns private, the rules are deleted);
+  `test/unit/tools/banking/private-rules.test.ts` (list, refusals, the estimate and its labels,
+  read-backs, also past the first 1000 rules, the trimmed text sent and a stored text with spaces
+  or cut short noted);
+  `test/regressions/private-transaction-rules.test.ts` (no rule without a confirmation, no match
+  stated as fact); `test/regressions/concurrent-check-then-write.test.ts` (two equal creations at
+  once give one rule). The recorded list was empty, so no fixture was kept; the
+  tests build rows with the recorded keys.
 
 ### D-100: A receipt's `contentHash` is the SHA-256 of the file; rendered PDFs have none
 
@@ -4714,6 +4749,25 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   sevDesk's 'is invalid' refusal into its own sentence without sevDesk's text", "leaves other
   refusals, and refusals without a booking account, as sevDesk sent them"). Live: the one-off
   checks above; no probe in `pnpm probe` yet.
+
+### D-130: `PrivateTransactionRule` cuts texts over 255 characters without notice
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** `CreatePrivateTransactionRule` declares `paymentPurpose` and `counterpartName` as
+  nullable strings without a `maxLength`, and so does the response model. No limit is mentioned.
+- **Actual behavior:** A rule text of 100 or 255 characters is stored in full. Texts of 256 and
+  1,000 characters are accepted with 2xx, without an error or a warning, and stored cut to 255
+  characters.
+- **Sources:** recorded 2026-11-17, trial account, Update 2.0 (one-off checks by the orchestrator,
+  together with those of D-099; the rules were deleted again).
+- **Impact:** A rule cut short is not the rule the user asked for (a shorter text may match other
+  transactions), and nothing says so. `sevdesk_private_transaction_rule_create` (#88) accepts at
+  most 100 characters per text, so it never sends a text that sevDesk would cut. Its read-back
+  also compares the stored text exactly with the text it sent and notes any difference in the
+  result, which would show a cut if that limit were ever raised.
+- **Test:** `test/unit/tools/banking/private-rules.test.ts` ("refuses a text over 100 characters
+  in its arguments", "notes a stored text cut short, as sevDesk cuts texts over 255 characters").
+  Live: the one-off checks above; no probe in `pnpm probe` yet.
 
 ### D-132: Recurring templates: generation and auto-sending are switches read by `embed`
 

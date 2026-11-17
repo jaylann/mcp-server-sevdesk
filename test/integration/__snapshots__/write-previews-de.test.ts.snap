@@ -259,6 +259,20 @@ Summe (erwartet): netto 100,00 EUR, USt. 19,00 EUR, brutto 119,00 EUR
 Status nach dem Speichern: Entwurf (50), noch nicht gebucht"
 `;
 
+exports[`German previews > create a private-transaction rule: says the same in German 1`] = `
+"Eine Regel für private Umsätze zum Auftraggeber/Empfänger anlegen: sevDesk soll Kontoumsätze, die es von der Bank importiert, anhand des Textes unten als privat markieren.
+! sevDesk wendet eine Regel selbst an, wenn es Kontoumsätze von der Bank importiert: Ein passender Umsatz wird dann als privat markiert (Privatentnahme bei Ausgängen, Privateinlage bei Eingängen) und zählt weder als Betriebsausgabe noch als Betriebseinnahme. Getestet werden konnte das nicht: Ein Testkonto importiert keine Kontoumsätze.
+! Die aufgeführten Umsätze sind eine Schätzung dieses Servers, nicht sevDesks Abgleich: offene (ungebuchte) Umsätze, deren Auftraggeber/Empfänger den Text enthält, ohne Rücksicht auf Groß- und Kleinschreibung. Wie sevDesk eine Regel abgleicht (ganzer Text, Teil davon, Schreibweise), ist nicht bekannt, und bei der Messung änderte es weder bestehende noch von Hand erfasste Umsätze. Das Anlegen der Regel ändert keinen der aufgeführten Umsätze; sevdesk_transaction_mark_private markiert einen davon als privat.
+! Kapitalgesellschaften (GmbH, UG, AG) kennen keine Privatentnahmen oder Privateinlagen; dort führt eine solche Regel zu falschen Buchungen.
+! Rückgängig: sevdesk_private_transaction_rule_delete. Umsätze, die sevDesk bis dahin als privat markiert hat, bleiben privat (bei der Messung änderte das Löschen von Regeln keinen Umsatz); sevdesk_transaction_reset setzt einen davon zurück.
+(umkehrbar)
+Regel prüft: Auftraggeber/Empfänger
+Text: Netflix
+Geprüfte offene Umsätze: 2 (alle offenen Umsätze)
+Vermutlich gemeint (Schätzung): 1
+Schätzung: Kontoumsatz 5102: 05.01.2026, -12,99 EUR, NETFLIX INTERNATIONAL B.V."
+`;
+
 exports[`German previews > create a recurring invoice template: says the same in German 1`] = `
 "Abo-Rechnung (Vorlage für wiederkehrende Rechnungen) für Musterfirma GmbH (Kontakt 1001) anlegen: 65,45 EUR brutto je Rechnung, monatlich ab 01.12.2026, bis sie beendet wird.
 ! Die automatische Generierung ist an: An jedem Ausführungstag erzeugt sevDesk etwa eine Minute nach 0 Uhr (Berliner Zeit) selbst einen Rechnungsentwurf aus dieser Vorlage, mit diesen Positionen und Texten und einer Zeile im Kopftext, die den Abrechnungszeitraum nennt (vom Ausführungstag bis zum Tag vor der nächsten Ausführung). sevDesk stellt den Entwurf weder fertig noch versendet ihn, und seine Nummer ist vorläufig (mehrere Entwürfe können dieselbe Nummer zeigen, bis jeder fertiggestellt ist): Jeden Entwurf muss noch jemand fertigstellen und versenden.
@@ -385,6 +399,17 @@ Datum: 22.10.2026
 Netto: 20,00 EUR
 Umsatzsteuer: 3,80 EUR
 Brutto: 23,80 EUR"
+`;
+
+exports[`German previews > delete a private-transaction rule: says the same in German 1`] = `
+"Regel für private Umsätze 951 löschen.
+! sevDesk markiert importierte Kontoumsätze danach nicht mehr nach dieser Regel als privat. Wo Regeln wirken, beim Bankimport, ließ sich auf einem Testkonto nicht testen.
+! Bereits als privat markierte Umsätze bleiben privat: Bei der Messung änderte das Löschen einer Regel keinen Umsatz. sevdesk_transaction_reset setzt einen davon auf ungebucht zurück.
+! Rückgängig: die Regel mit sevdesk_private_transaction_rule_create neu anlegen; sie erhält eine neue ID.
+(umkehrbar)
+Regel für private Umsätze: ID 951
+Text zu Auftraggeber/Empfänger: Vermieter Huber
+Angelegt: 09.11.2026"
 `;
 
 exports[`German previews > delete an invoice draft that has a number and was sent: says the same in German 1`] = `

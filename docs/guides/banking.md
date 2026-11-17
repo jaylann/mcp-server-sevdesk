@@ -2,20 +2,23 @@
 
 This guide covers the money on your payment accounts (Zahlungskonten): which account takes what,
 recording a cash sale or expense on the cash register (Kasse), entering a bank transaction by hand,
-booking transactions to documents, and deleting or locking (enshrining) a transaction. Each step
-names what you ask, the tool, the [tier](../permissions.md#tiers) and whether you confirm.
+booking transactions to documents, deleting or locking (enshrining) a transaction, and the rules
+that mark transactions private. Each step names what you ask, the tool, the
+[tier](../permissions.md#tiers) and whether you confirm.
 
 ## Overview
 
-| Step                                                            | Tool                                                                                                                                                   | Tier             | You confirm      |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------- | ---------------- |
-| [See accounts and balances](#which-account-takes-what)          | [`sevdesk_bank_accounts_list`](../tools.md#sevdesk_bank_accounts_list), [`sevdesk_cash_position`](../tools.md#sevdesk_cash_position)                   | `read`           | no               |
-| [Create an account](#which-account-takes-what)                  | [`sevdesk_bank_account_create`](../tools.md#sevdesk_bank_account_create)                                                                               | `write`          | no               |
-| [Record a cash sale or expense](#record-a-cash-sale-or-expense) | [`sevdesk_voucher_book_payment`](../tools.md#sevdesk_voucher_book_payment), [`sevdesk_invoice_book_payment`](../tools.md#sevdesk_invoice_book_payment) | `commit`         | **yes**          |
-| [Enter a transaction by hand](#enter-a-transaction-by-hand)     | [`sevdesk_transaction_create`](../tools.md#sevdesk_transaction_create)                                                                                 | `commit`         | **yes**          |
-| [Book transactions to documents](#book-transactions)            | [`sevdesk_reconcile_suggest`](../tools.md#sevdesk_reconcile_suggest), [`sevdesk_transaction_book`](../tools.md#sevdesk_transaction_book)               | `read`, `commit` | booking: **yes** |
-| [Delete a transaction](#delete-a-transaction)                   | [`sevdesk_transaction_delete`](../tools.md#sevdesk_transaction_delete)                                                                                 | `commit`         | **yes**          |
-| [Enshrine a transaction](#enshrine-a-transaction)               | [`sevdesk_transaction_enshrine`](../tools.md#sevdesk_transaction_enshrine)                                                                             | `commit`         | **yes**          |
+| Step                                                            | Tool                                                                                                                                                                                               | Tier             | You confirm      |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | ---------------- |
+| [See accounts and balances](#which-account-takes-what)          | [`sevdesk_bank_accounts_list`](../tools.md#sevdesk_bank_accounts_list), [`sevdesk_cash_position`](../tools.md#sevdesk_cash_position)                                                               | `read`           | no               |
+| [Create an account](#which-account-takes-what)                  | [`sevdesk_bank_account_create`](../tools.md#sevdesk_bank_account_create)                                                                                                                           | `write`          | no               |
+| [Record a cash sale or expense](#record-a-cash-sale-or-expense) | [`sevdesk_voucher_book_payment`](../tools.md#sevdesk_voucher_book_payment), [`sevdesk_invoice_book_payment`](../tools.md#sevdesk_invoice_book_payment)                                             | `commit`         | **yes**          |
+| [Enter a transaction by hand](#enter-a-transaction-by-hand)     | [`sevdesk_transaction_create`](../tools.md#sevdesk_transaction_create)                                                                                                                             | `commit`         | **yes**          |
+| [Book transactions to documents](#book-transactions)            | [`sevdesk_reconcile_suggest`](../tools.md#sevdesk_reconcile_suggest), [`sevdesk_transaction_book`](../tools.md#sevdesk_transaction_book)                                                           | `read`, `commit` | booking: **yes** |
+| [Delete a transaction](#delete-a-transaction)                   | [`sevdesk_transaction_delete`](../tools.md#sevdesk_transaction_delete)                                                                                                                             | `commit`         | **yes**          |
+| [Enshrine a transaction](#enshrine-a-transaction)               | [`sevdesk_transaction_enshrine`](../tools.md#sevdesk_transaction_enshrine)                                                                                                                         | `commit`         | **yes**          |
+| [See the private-transaction rules](#private-transaction-rules) | [`sevdesk_private_transaction_rules_list`](../tools.md#sevdesk_private_transaction_rules_list)                                                                                                     | `read`           | no               |
+| [Create or delete a rule](#private-transaction-rules)           | [`sevdesk_private_transaction_rule_create`](../tools.md#sevdesk_private_transaction_rule_create), [`sevdesk_private_transaction_rule_delete`](../tools.md#sevdesk_private_transaction_rule_delete) | `commit`         | **yes**          |
 
 The [`bank_reconciliation`](../tools.md#bank_reconciliation) prompt walks through the booking
 steps, with a dry run before each change.
@@ -120,9 +123,51 @@ reset), and the documents it pays can no longer be reset to open, so their payme
 documents themselves are not enshrined by it; their own enshrine tools do that. If a reset meets an
 enshrined payment, the reset tools say so in their own words.
 
+## Private-transaction rules
+
+> Mark the payments to my landlord as private from now on.
+
+sevDesk can mark bank transactions as private (Privatentnahme, Privateinlage) on its own, by a
+rule: a text that a transaction's counterparty (Auftraggeber/Empfänger) or purpose
+(Verwendungszweck) matches.
+[`sevdesk_private_transaction_rules_list`](../tools.md#sevdesk_private_transaction_rules_list)
+(`read`) lists the rules with their texts.
+[`sevdesk_private_transaction_rule_create`](../tools.md#sevdesk_private_transaction_rule_create)
+(`commit`) creates a rule with one text, `counterparty` or `purpose`, and
+[`sevdesk_private_transaction_rule_delete`](../tools.md#sevdesk_private_transaction_rule_delete)
+(`commit`) deletes one. Both are `commit` because a rule does on its own what
+[`sevdesk_transaction_mark_private`](../tools.md#sevdesk_transaction_mark_private) does by hand.
+
+**Where rules act, and what could not be tested.** sevDesk applies a rule when it imports
+transactions from the bank. A trial account imports nothing: there, two rules changed none of the
+existing open transactions, not even one entered by hand after the rules were created, and
+deleting the rules changed nothing either. So how sevDesk matches a rule (the whole text or a part
+of it, upper and lower case), and whether a CSV file import applies rules too, is not known.
+
+**The estimate in the preview.** The create preview lists open transactions that look like what
+the rule is meant for: up to ten of at most 500 open (unbooked) transactions whose counterparty or
+purpose contains the text, ignoring case. It is the server's own estimate, labelled as one, not
+sevDesk's matching, and creating the rule changes none of them. To mark one of them private now,
+use `sevdesk_transaction_mark_private`.
+
+The create tool refuses, before anything is sent:
+
+- a rule with both texts: whether sevDesk then needs both to match or only one was not tested.
+  Create one rule per text if either should mark a transaction private;
+- a text with fewer than four letters or digits: a short text such as "AG" or "dm" occurs in a
+  great many unrelated counterparties and purposes, and a rule marks every import it matches;
+- a text that an existing rule already has (upper and lower case and extra spaces ignored); the
+  refusal names that rule.
+
+Deleting a rule leaves transactions that are already private as they are;
+[`sevdesk_transaction_reset`](../tools.md#sevdesk_transaction_reset) sets one back. A rule cannot be
+changed in place: delete it and create a new one. A corporation (GmbH, UG, AG) has no private
+withdrawals or deposits, so such a rule does not belong in its books.
+
 ## Limits
 
 - Bank-connected accounts could not be tested (a trial account has none): entering and deleting
   their transactions is refused.
-- Renaming and archiving accounts, and the rules that mark recurring private transactions, are
-  not covered yet.
+- Private-transaction rules could not be tested where they act, on bank imports (see
+  [above](#private-transaction-rules)).
+- Renaming and archiving accounts are not covered yet.

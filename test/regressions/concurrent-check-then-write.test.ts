@@ -21,6 +21,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { SevdeskRequest } from "../../src/sevdesk/types.js";
 import { bankAccountCreateTool } from "../../src/tools/banking/account-create.js";
+import { privateRuleCreateTool } from "../../src/tools/banking/private-rules.js";
 import { transactionCreateTool } from "../../src/tools/banking/transaction-create.js";
 import { contactCreateTool } from "../../src/tools/contacts/create.js";
 import { contactUpdateTool } from "../../src/tools/contacts/update.js";
@@ -39,6 +40,7 @@ import {
   ACCOUNT_CONTACT_NUMBERS,
   ACCOUNT_CREDIT_NOTE_NUMBERS,
   ACCOUNT_PART_NUMBERS,
+  ACCOUNT_PRIVATE_TRANSACTION_RULES,
   ACCOUNT_VOUCHER_DRAFTS,
   type AnyWriteToolDefinition,
 } from "../../src/tools/types.js";
@@ -343,6 +345,47 @@ describe("concurrent creations of one payment account", () => {
   });
 });
 
+describe("concurrent creations of one private-transaction rule", () => {
+  it("creates one rule and refuses the second call as equal to it", async () => {
+    const rules: Row[] = [];
+    let posts = 0;
+    const { client, fake } = await writeHarness({ tools: [privateRuleCreateTool], routes: [] });
+    stateful(fake, (req) => {
+      if (req.method === "POST" && req.path === "/PrivateTransactionRule") {
+        posts += 1;
+        const row = {
+          id: String(950 + posts),
+          objectName: "PrivateTransactionRule",
+          counterpartName: (req.body as { counterpartName: string }).counterpartName,
+          paymentPurpose: null,
+        };
+        rules.push(row);
+        return row;
+      }
+      return PASS;
+    });
+    vi.spyOn(fake, "list").mockImplementation(async (path) => {
+      await tick();
+      const rows = path === "/PrivateTransactionRule" ? [...rules] : [];
+      return { items: rows, total: rows.length };
+    });
+    const call = {
+      name: "sevdesk_private_transaction_rule_create",
+      arguments: { counterparty: "Netflix" },
+    };
+
+    const all = await Promise.all([client.callTool(call), client.callTool(call)]);
+
+    const { done, refused } = results(all);
+    expect(done).toHaveLength(1);
+    expect(refused).toHaveLength(1);
+    expect(resultText(refused[0]!)).toContain(
+      "Private-transaction rule 951 already has this counterparty text",
+    );
+    expect(posts).toBe(1);
+  });
+});
+
 describe("check-then-write tools declare the records they check", () => {
   const cases: readonly [AnyWriteToolDefinition, Row, readonly unknown[]][] = [
     [
@@ -377,6 +420,7 @@ describe("check-then-write tools declare the records they check", () => {
       [{ objectName: "Part", id: "6001" }, ACCOUNT_PART_NUMBERS],
     ],
     [bankAccountCreateTool, { kind: "clearing", name: "Verrechnung" }, [ACCOUNT_CHECK_ACCOUNTS]],
+    [privateRuleCreateTool, { counterparty: "Netflix" }, [ACCOUNT_PRIVATE_TRANSACTION_RULES]],
     // The account's rows of the day are checked for a duplicate, then the row is created.
     [
       transactionCreateTool,

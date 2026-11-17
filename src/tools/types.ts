@@ -108,6 +108,16 @@ export const ACCOUNT_CHECK_ACCOUNTS: SevdeskObjectRef = {
 };
 
 /**
+ * The same for private-transaction rules: creating one checks first that no rule has its text,
+ * then creates it; deleting one finds it in the list, then deletes it and reads the list back.
+ * Two creations at once would both pass the check and leave two equal rules.
+ */
+export const ACCOUNT_PRIVATE_TRANSACTION_RULES: SevdeskObjectRef = {
+  objectName: "PrivateTransactionRules",
+  id: "account",
+};
+
+/**
  * A lock key for an account's tags: tagging checks whether a name is new and untagging whether it
  * removes a tag's last use (which deletes the tag), then writes. Two such calls at once would
  * each preview what the other changes.
