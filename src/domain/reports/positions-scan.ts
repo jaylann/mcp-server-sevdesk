@@ -75,7 +75,7 @@ import {
 /** Most documents whose positions one report reads; more are reported as truncated. */
 export const MAX_SCAN_DOCUMENTS = 1_500;
 /** Most document rows (headers) one report lists across invoices, credit notes and vouchers. */
-const MAX_HEADER_ROWS = 10_000;
+export const MAX_HEADER_ROWS = 10_000;
 /** Position reads in flight at once (the client paces them anyway). */
 const POSITION_CONCURRENCY = 4;
 const NUMBER_MAX = 100;
@@ -180,6 +180,8 @@ export interface DocumentHeader {
   readonly eur: EurTotals | undefined;
   /** Gross in the document's currency (for the share a payment settles). */
   readonly gross: Decimal | undefined;
+  /** Day the document was created in sevDesk (Europe/Berlin), YYYY-MM-DD, when sevDesk says. */
+  readonly createdAt?: string | undefined;
   readonly excluded?: ExclusionReason | undefined;
 }
 
@@ -305,6 +307,7 @@ function invoiceHeader(raw: unknown, today: string): DocumentHeader {
     countryId: dto.address?.countryId,
     eur: eurTotals(foreign ? dto.totalsEur : dto.totals),
     gross: moneyDecimal(dto.totals.gross),
+    createdAt: dto.createdAt,
     excluded:
       type === "WKR" || dto.status.code === 50
         ? "recurring_template"
@@ -354,6 +357,7 @@ function creditNoteHeader(raw: unknown): DocumentHeader {
     countryId: dto.address?.countryId,
     eur: eurTotals(foreign ? dto.totalsEur : dto.totals),
     gross: moneyDecimal(dto.totals.gross),
+    createdAt: dto.createdAt,
     excluded: dto.status.code === CREDIT_NOTE_DRAFT ? "draft" : undefined,
   };
 }
@@ -380,6 +384,7 @@ function voucherHeader(raw: unknown): DocumentHeader {
     contact: dto.supplier,
     eur: eurTotals(foreign ? dto.totalsEur : totals),
     gross: moneyDecimal(dto.totals.gross),
+    createdAt: dto.createdAt,
     excluded:
       dto.type === "recurring"
         ? "recurring_template"
@@ -429,11 +434,15 @@ export interface HeaderListParams {
   readonly maxRows?: number | undefined;
   /** Berlin `YYYY-MM-DD` for the invoice mapper's `overdue` (irrelevant here); tests pin it. */
   readonly today?: string | undefined;
+  /** Also return the drafts (still counted in `excluded`), for the checks that look at them. */
+  readonly keepDrafts?: boolean | undefined;
 }
 
 export interface HeaderList {
   /** Documents that count, sorted by date, kind and id (kinds interleaved). */
   readonly headers: readonly DocumentHeader[];
+  /** With `keepDrafts`: the drafts, sorted like `headers`; otherwise empty. */
+  readonly drafts: readonly DocumentHeader[];
   /** Listed documents left out, by reason. */
   readonly excluded: Readonly<Record<ExclusionReason, number>>;
   /** sevDesk rows read. */
@@ -462,6 +471,7 @@ export async function listDocumentHeaders(
     unknown_direction: 0,
   };
   const headers: DocumentHeader[] = [];
+  const drafts: DocumentHeader[] = [];
   let rowsRead = 0;
   let truncated = false;
   for (const kind of params.kinds ?? SCAN_DOCUMENT_KINDS) {
@@ -501,9 +511,16 @@ export async function listDocumentHeaders(
     for (const header of scan.items) {
       if (header.excluded === undefined) headers.push(header);
       else excluded[header.excluded] += 1;
+      if (header.excluded === "draft" && params.keepDrafts === true) drafts.push(header);
     }
   }
-  return { headers: sortHeaders(headers), excluded, rowsRead, truncated };
+  return {
+    headers: sortHeaders(headers),
+    drafts: sortHeaders(drafts),
+    excluded,
+    rowsRead,
+    truncated,
+  };
 }
 
 /**

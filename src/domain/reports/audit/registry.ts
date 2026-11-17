@@ -12,6 +12,7 @@ import type { SevdeskClient } from "../../../sevdesk/types.js";
 import { compact } from "../../common.js";
 import { plural, type ReportRunOptions } from "../shared.js";
 import type { ReportPeriod } from "../vat.js";
+import { duplicatesCheck } from "./duplicates-check.js";
 import {
   AUDIT_CAVEAT,
   AUDIT_CAVEAT_DE,
@@ -22,6 +23,7 @@ import {
   buildFindings,
   MAX_FINDINGS,
 } from "./findings.js";
+import { recurringGapsCheck } from "./recurring-gaps-check.js";
 import {
   reverseChargeCheck,
   type ReverseChargeSection,
@@ -30,7 +32,7 @@ import {
 import { vatCheck } from "./vat-check.js";
 
 /** The checks, in the order the tool lists them. */
-export const AUDIT_CHECK_NAMES = ["vat", "reverse_charge"] as const;
+export const AUDIT_CHECK_NAMES = ["vat", "reverse_charge", "duplicates", "recurring_gaps"] as const;
 export type AuditCheckName = (typeof AUDIT_CHECK_NAMES)[number];
 
 /** Sections a check may add to its result (each check owns its own). */
@@ -52,6 +54,8 @@ export interface AuditCheck {
 export const AUDIT_CHECKS: Readonly<Record<AuditCheckName, AuditCheck>> = {
   vat: vatCheck,
   reverse_charge: reverseChargeCheck,
+  duplicates: duplicatesCheck,
+  recurring_gaps: recurringGapsCheck,
 };
 
 /** Stated in every audit result. */

@@ -65,7 +65,7 @@ function draft(
 
 describe("the check registry", () => {
   it("offers exactly the checks that exist, each with codes and texts", () => {
-    expect(AUDIT_CHECK_NAMES).toEqual(["vat", "reverse_charge"]);
+    expect(AUDIT_CHECK_NAMES).toEqual(["vat", "reverse_charge", "duplicates", "recurring_gaps"]);
     expect(Object.keys(AUDIT_CHECKS).sort()).toEqual([...AUDIT_CHECK_NAMES].sort());
     for (const name of AUDIT_CHECK_NAMES) {
       const check = AUDIT_CHECKS[name];
@@ -118,6 +118,44 @@ describe("buildFindings", () => {
     expect(finding?.records).toHaveLength(MAX_FINDING_RECORDS);
     expect(finding?.recordsOmitted).toBe(3);
     expect(finding?.net).toEqual({ amount: "230.00", currency: "EUR" });
+  });
+
+  it("groups contacts known only by name by that name", () => {
+    const byName = (name: string, id: number): FindingDraft => ({
+      ...draft("a", undefined, id),
+      contact: { name },
+    });
+    const findings = buildFindings("duplicates", [
+      byName("Kiosk", 1),
+      byName("Bäcker", 2),
+      byName("Kiosk", 3),
+    ]);
+
+    expect(findings.map((finding) => [finding.contact?.name, finding.documents])).toEqual([
+      ["Kiosk", 2],
+      ["Bäcker", 1],
+    ]);
+  });
+
+  it("lists context documents once, without sums, and collects the missing months", () => {
+    const gap = (id: number, missing: string): FindingDraft => ({
+      ...draft("monthly_bill_missing", 1, id, CHECK),
+      context: true,
+      missing,
+    });
+    // Bill 2 is after the first gap and before the second.
+    const [finding] = buildFindings("recurring_gaps", [
+      gap(1, "2026-02"),
+      gap(2, "2026-02"),
+      gap(2, "2026-04"),
+      gap(3, "2026-04"),
+    ]);
+
+    expect(finding?.records.map((record) => record.id)).toEqual([1, 2, 3]);
+    expect(finding?.documents).toBe(3);
+    expect(finding?.missing).toEqual(["2026-02", "2026-04"]);
+    expect(finding?.net).toBeUndefined();
+    expect(finding?.tax).toBeUndefined();
   });
 
   it("leaves the sums out when no document has EUR values", () => {

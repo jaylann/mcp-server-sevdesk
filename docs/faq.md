@@ -129,6 +129,15 @@ They are estimates for checking, computed by the server from your documents; the
 sevDesk's own reports and not a filing. Each result says what it left out. What they cover and
 what they leave to you is in [Reports and exports](guides/evaluations.md#how-far-you-can-rely-on-them).
 
+### Can it find receipts booked twice or bills that are missing?
+
+Yes, as hints. `sevdesk_records_audit` with `check: duplicates` looks for vouchers booked twice
+(the same supplier and document number, the same receipt file, or the same amount within a few
+days) and for drafts left open for three weeks or more; `check: recurring_gaps` learns which
+suppliers bill every month, quarter or year and names the periods without a bill, which usually
+means a lost receipt. Both read your records only and change nothing. What they flag and what they
+leave out on purpose is in [Reports and exports](guides/evaluations.md#audits).
+
 ### Does it support sevDesk in Austria?
 
 Not in 1.0. Tax rules, the VAT summary (UStVA boxes), the e-invoice checks and the bookkeeping
