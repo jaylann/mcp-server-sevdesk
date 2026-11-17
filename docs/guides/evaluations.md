@@ -179,8 +179,10 @@ range of amounts (inclusive; for vouchers the gross amount).
 
 - Nothing changes on any document: no status, no send date, nothing enshrined. It needs `write`
   because sevDesk renders every PDF on request.
-- **sevDesk includes drafts.** Their file names carry a label in parentheses and no number; the
-  result counts them (`draftEntries`) and says so. Remove them before you hand the archive on.
+- **sevDesk includes drafts.** Their file names carry "(Entwurf)" and no number; the result
+  counts them (`draftEntries`) and says so. Remove them before you hand the archive on. Only that
+  label counts: whether sevDesk marks other states the same way has not been seen, so take out
+  nothing else on the tool's word.
 - **The archive can hold fewer files than you have documents.** Vouchers without an uploaded
   receipt file are not in it (13 files for 53 vouchers on the test account), and an invoice archive
   held one invoice fewer than the invoice list. This is how sevDesk builds the archive, not an

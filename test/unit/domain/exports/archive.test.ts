@@ -310,9 +310,32 @@ describe("helpers", () => {
   it("recognizes draft entries by the label after the kind", () => {
     expect(isDraftEntry({ name: "2026-10-09_Rechnung(Entwurf)__00112233.pdf" })).toBe(true);
     expect(isDraftEntry({ name: "x/2026-10-09_Beleg(Entwurf)_Kaffee_0022.pdf" })).toBe(true);
+    expect(isDraftEntry({ name: "2026-10-09_Rechnung(ENTWURF)__00112233.pdf" })).toBe(true);
     expect(isDraftEntry({ name: "2026-10-05_Rechnung_RE-1000_0123.pdf" })).toBe(false);
     // A parenthesis in a voucher's description is not a draft label.
     expect(isDraftEntry({ name: "2026-10-05_Beleg_Kaffee (Bio)_0123.pdf" })).toBe(false);
+  });
+
+  it.each([
+    "2026-10-09_Rechnung(Storniert)__00112233.pdf",
+    "2026-10-09_Rechnung(Storno)_RE-1000_00112233.pdf",
+    "2026-10-09_Beleg(Bezahlt)_Kaffee_0022.pdf",
+    "2026-10-09_Rechnung(Entwurf-alt)__00112233.pdf",
+  ])("never counts another label in the draft's place as a draft: %s", (name) => {
+    // Only "(Entwurf)" was recorded; the result advises removing drafts, which must never hit
+    // a document such as a cancellation the tax audit needs.
+    expect(isDraftEntry({ name })).toBe(false);
+  });
+
+  it("counts only the entries labelled as drafts", async () => {
+    const zip = buildZip([
+      { name: "2026-10-09_Rechnung(Entwurf)__0011.pdf", content: pdfBytes("1") },
+      { name: "2026-10-10_Rechnung(Storniert)__0022.pdf", content: pdfBytes("2") },
+    ]);
+    const client = zipClient("/Export/invoiceZip", zip, RECORDED_TYPE);
+    await expect(exportArchive(tierScopedClient(client, "write"), INVOICES)).resolves.toMatchObject(
+      { entries: 2, draftEntries: 1 },
+    );
   });
 
   it("recognizes sevDesk's placeholder only at the top of the ZIP", () => {

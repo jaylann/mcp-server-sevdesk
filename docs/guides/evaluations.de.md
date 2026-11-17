@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/evaluations.md sha256:eeaf961d01e3 -->
+<!-- translated-from: docs/guides/evaluations.md sha256:40fb5b5e0566 -->
 
 # Auswertungen und Exporte
 
@@ -192,9 +192,10 @@ einen Bereich von Beträgen (einschließlich der Grenzen; bei Belegen der Brutto
 
 - An keinem Dokument ändert sich etwas: kein Status, kein Versanddatum, nichts festgeschrieben. Es
   braucht `write`, weil sevDesk auf Anfrage jedes PDF erzeugt.
-- **sevDesk nimmt Entwürfe mit.** Ihre Dateinamen tragen eine Kennzeichnung in Klammern und keine
-  Nummer; das Ergebnis zählt sie (`draftEntries`) und sagt es. Entferne sie, bevor du das Archiv
-  weitergibst.
+- **sevDesk nimmt Entwürfe mit.** Ihre Dateinamen tragen „(Entwurf)“ und keine Nummer; das
+  Ergebnis zählt sie (`draftEntries`) und sagt es. Entferne sie, bevor du das Archiv weitergibst.
+  Nur diese Kennzeichnung zählt: Ob sevDesk andere Zustände genauso markiert, wurde nicht
+  beobachtet, nimm also nichts anderes allein auf das Wort des Werkzeugs heraus.
 - **Das Archiv kann weniger Dateien enthalten, als du Dokumente hast.** Belege ohne hochgeladene
   Belegdatei fehlen darin (13 Dateien für 53 Belege auf dem Testkonto), und ein Rechnungsarchiv
   enthielt eine Rechnung weniger als die Rechnungsliste. So baut sevDesk das Archiv, das ist kein

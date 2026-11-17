@@ -14,8 +14,8 @@
  *   decimal bounds, inclusive; invoices: 110 entries for an amount range 111 listed invoices
  *   fall into). The contact filter on vouchers is not recorded, so it is not offered.
  * - One PDF per document, named `YYYY-MM-DD_Rechnung_<number>_<hash>.pdf`. **Drafts are
- *   included**, with a label in parentheses after the kind and no number
- *   (`YYYY-MM-DD_Rechnung(<label>)__<hash>.pdf`); voucher entries carry date, label, description
+ *   included**, with a seven-letter label in parentheses after the kind and no number
+ *   (`YYYY-MM-DD_Rechnung(Entwurf)__<hash>.pdf`); voucher entries carry date, label, description
  *   and hash the same way. {@link isDraftEntry} counts them, so the tool can say so.
  * - **Fewer entries than documents is normal:** a voucher archive holds only vouchers with a
  *   receipt file (13 entries for 53 listed vouchers), and an invoice archive held one invoice
@@ -135,7 +135,7 @@ export interface DocumentArchive {
   readonly entries: number;
   /** Entries whose name ends in `.pdf`. */
   readonly pdfEntries: number;
-  /** Entries named like drafts ({@link isDraftEntry}). */
+  /** Entries named like drafts, `(Entwurf)` after the kind ({@link isDraftEntry}). */
   readonly draftEntries: number;
 }
 
@@ -273,13 +273,15 @@ function safeType(type: string): string {
 }
 
 /**
- * Whether an entry is named like a draft: after the date and the document kind comes a label in
- * parentheses (`2026-11-16_Rechnung(<label>)__<hash>.pdf`, D-101). sevDesk's label was seven
- * letters, presumably "Entwurf"; any label in that place counts.
+ * Whether an entry is named like a draft: after the date and the document kind comes `(Entwurf)`
+ * (`2026-11-16_Rechnung(Entwurf)__<hash>.pdf`, D-101; case ignored). Only the draft's label was
+ * recorded (seven letters in that place). Whether sevDesk labels other states the same way, such
+ * as a cancellation, is not measured, so another label is not counted: the result tells the user
+ * to take drafts out, and that must never hit a document the tax audit needs.
  */
 export function isDraftEntry(entry: Pick<ZipEntry, "name">): boolean {
   const name = entry.name.split("/").pop() ?? "";
-  return /^\d{4}-\d{2}-\d{2}_[^_()]*\([^()_]{1,40}\)_/.test(name);
+  return /^\d{4}-\d{2}-\d{2}_[^_()]*\(entwurf\)_/i.test(name);
 }
 
 /** File name of a saved archive: `<subject>_<from>_<to>.zip` (ASCII, from our own values). */

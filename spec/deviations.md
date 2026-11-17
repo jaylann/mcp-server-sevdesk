@@ -3618,9 +3618,10 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
     entries (21 MB), 46 s for 25 entries (6.6 MB, a first call) and 63 s for 130 entries
     (24.6 MB); `voucherZip` about 1 s for 13 small receipts.
   - Not measured: the contact filter on `voucherZip` (no voucher with a supplier contact in the
-    window), which invoice the invoice archive leaves out, archives beyond 25 MB, and whether
+    window), which invoice the invoice archive leaves out, archives beyond 25 MB, whether
     sevDesk stops at `sevQuery[limit]` (only an empty archive was asked for, with limits 1 and
-    1000).
+    1000), and whether sevDesk labels other states (a cancellation, say) in the draft label's
+    place: only the draft's label was seen.
 - **Sources:** spec (`exportInvoiceZip`, `exportVoucherZip`); recorded 2026-11-16, trial account,
   Update 2.0 (probes `write-export-invoice-zip`, `write-export-voucher-zip`); recorded 2026-11-16,
   trial account, Update 2.0 (one-off checks by the orchestrator).
@@ -3646,7 +3647,8 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   "never counts the readme next to documents", "sends the invoice amount filter, now recorded",
   "asks for the archive with a size cap and its own, longer time budget", "turns a timeout into
   the remedy", "treats %i files for a limit of %i as possibly cut: %s", "asks for a default that
-  fits the time and size budgets at the recorded rates"),
+  fits the time and size budgets at the recorded rates", "never counts another label in the
+  draft's place as a draft: %s"),
   `test/unit/tools/reports/archive-export.test.ts` ("saves nothing for %s and says no document
   matched", "treats fewer entries than documents as normal, not as an error", "flags an archive
   a file short of the limit…"),
@@ -3656,12 +3658,13 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   `download=true`, a fixed query with an explicit `limit` and only the recorded filters (contact
   for invoices, amounts for both), the media type parsed leniently, the body checked as a
   readable ZIP, the top-level `readme.txt` never counted and an archive without documents not
-  saved (in our own words), drafts counted from their entry names (`draftEntries`), a note that
-  fewer files than documents is normal, a default `limit` of 500 documents (up to 1000; 500
-  invoices fit the time and size budgets at the recorded rates, 1000 do not), `mayBeTruncated`
-  when the files come within 2 % of the limit (an archive cut at the limit can hold fewer files
-  than documents; for vouchers it is no proof of completeness), 100 MiB at most, and its own time
-  budget of 5 minutes
+  saved (in our own words), drafts counted from their entry names (`draftEntries`, only the
+  label `(Entwurf)`, so the advice to remove drafts never hits a document with another label), a
+  note that fewer files than documents is normal, a default `limit` of 500 documents (up to 1000;
+  500 invoices fit the time and size budgets at the recorded rates, 1000 do not),
+  `mayBeTruncated` when the files come within 2 % of the limit (an archive cut at the limit can
+  hold fewer files than documents; for vouchers it is no proof of completeness), 100 MiB at most,
+  and its own time budget of 5 minutes
   (`ARCHIVE_TIMEOUT_MS`, through `SevdeskRequest.timeoutMs`, which only `download` honours,
   bounded by `requestTimeoutMs` in `src/sevdesk/client.ts`) with a timeout error that names the
   remedy; `resolveGetSafety` treats both endpoints as side effects (`ARCHIVE_ENDPOINTS` in

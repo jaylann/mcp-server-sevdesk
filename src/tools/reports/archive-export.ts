@@ -51,7 +51,8 @@ const archiveOutput = z.object({
     .number()
     .int()
     .describe(
-      "Entries named like drafts (sevDesk includes drafts and marks them in the entry name).",
+      'Entries named like drafts: sevDesk includes drafts and names them with "(Entwurf)" ' +
+        "after the document kind.",
     ),
   limit: z.number().int(),
   mayBeTruncated: z
@@ -69,9 +70,13 @@ interface ArchivePlanState {
   readonly label: string;
 }
 
+/**
+ * Only entries labelled `(Entwurf)` count as drafts (`isDraftEntry`): the advice to take them out
+ * must never hit a document with another label, such as a cancellation the tax audit needs.
+ */
 const DRAFTS_INCLUDED =
-  "sevDesk includes drafts in the archive (marked in the entry name, without a number); remove " +
-  "them before handing the archive to the tax adviser.";
+  'sevDesk includes drafts in the archive, named with "(Entwurf)" and without a number; ' +
+  "remove them before handing the archive to the tax adviser.";
 
 /**
  * Why an archive can hold fewer files than the document lists show (recorded, D-101): not an
