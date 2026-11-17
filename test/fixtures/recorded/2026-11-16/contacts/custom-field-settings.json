@@ -1,0 +1,30 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /ContactCustomFieldSetting?limit=n (recording session 2026-11-16)",
+    "date": "2026-11-16",
+    "systemVersion": "2.0",
+    "note": "Personal and company data replaced by scripts/lib/scrub.ts; keys, nulls and scalar types as recorded. A recorded single page (has total). Custom contact field definitions (#86)."
+  },
+  "status": 200,
+  "body": {
+    "total": 1,
+    "objects": [
+      {
+        "id": "19498",
+        "objectName": "ContactCustomFieldSetting",
+        "additionalInformation": null,
+        "create": "2026-11-16T21:56:15+01:00",
+        "update": "2026-11-16T21:56:15+01:00",
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        },
+        "name": "Mustername 4",
+        "identifier": "Muster-Text 1",
+        "description": null,
+        "placeholder": "Muster-Text 2"
+      }
+    ]
+  }
+}
