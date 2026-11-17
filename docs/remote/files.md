@@ -30,9 +30,9 @@ state is unknown, the upload remains available until expiry. To use a successful
 again after its upload was released, request a new upload.
 
 Comparing a whole folder of receipts with the vouchers in sevDesk
-(`sevdesk_receipt_folder_check`) is not available on a remote server: it reads a local folder, and
-an upload carries single files. In bearer mode with `SEVDESK_FILE_DIRS` it is offered for the
-folders on the server.
+(`sevdesk_receipt_folder_check`) is not available on a remote server with OAuth: it reads a local
+folder, and an upload carries single files. In bearer mode with `SEVDESK_FILE_DIRS` it is offered
+for the folders on the server.
 
 ## Several files on one page
 

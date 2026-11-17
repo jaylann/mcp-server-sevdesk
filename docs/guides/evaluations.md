@@ -208,17 +208,19 @@ their positions; `vat` also reads the contact and address lists once each. `dupl
 [`sevdesk_receipt_folder_check`](../tools.md#sevdesk_receipt_folder_check) compares the receipt
 files of a folder on your computer with the receipt files attached to the vouchers in sevDesk. It
 is a tool of its own, because it exists only where the server can read local folders: it is
-offered only with `SEVDESK_FILE_DIRS` ([Configuration](../configuration.md)), and not on a remote
-server, where an upload carries a single file ([Files over HTTP](../remote/files.md)).
+offered only with `SEVDESK_FILE_DIRS` ([Configuration](../configuration.md)), so not on a remote
+server with OAuth, where an upload carries a single file, and in bearer mode only for folders on
+the server ([Files over HTTP](../remote/files.md)).
 
 It reads only inside `SEVDESK_FILE_DIRS`: the folder you name, or all of them, with subfolders up
 to three levels deep only when you ask. It takes PDF, PNG, JPEG and XML files (recognized by their
 content) of up to 20 MB, at most 500 files and 1 GB per call, and computes each file's SHA-256
 checksum. Hidden files, symbolic links and other file types are skipped and counted; when a limit
 is reached the result says that the folder was cut. No file content leaves the server and nothing
-is uploaded: the result holds paths, sizes, modification dates and checksums. sevDesk stores the
-checksum of every uploaded receipt, so the voucher list of the period, 62 days before and after
-it, drafts included, is all the check reads from sevDesk.
+is uploaded: the result holds paths, sizes, modification dates and checksums. sevDesk stores a
+checksum for receipts uploaded through the API's upload (not for those its recognition created),
+and the voucher list carries it, so the voucher list of the period, 62 days before and after it,
+drafts included, is all the check reads from sevDesk.
 
 | Code                         | Means                                                                                        |
 | ---------------------------- | -------------------------------------------------------------------------------------------- |

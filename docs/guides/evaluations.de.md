@@ -223,9 +223,9 @@ hören sie nach etwa 90 Sekunden auf zu lesen: Frag nach einem Monat, wenn ein Q
 [`sevdesk_receipt_folder_check`](../tools.md#sevdesk_receipt_folder_check) vergleicht die
 Belegdateien eines Ordners auf deinem Rechner mit den Belegdateien an den Belegen in sevDesk. Es
 ist ein eigenes Werkzeug, weil es nur dort existiert, wo der Server lokale Ordner lesen kann: Es
-wird nur mit `SEVDESK_FILE_DIRS` angeboten ([Konfiguration](../configuration.de.md)), und nicht
-auf einem entfernten Server, wo ein Upload eine einzelne Datei bringt
-([Dateien über HTTP](../remote/files.de.md)).
+wird nur mit `SEVDESK_FILE_DIRS` angeboten ([Konfiguration](../configuration.de.md)), also nicht
+auf einem entfernten Server mit OAuth, wo ein Upload eine einzelne Datei bringt, und im
+Bearer-Modus nur für Ordner auf dem Server ([Dateien über HTTP](../remote/files.de.md)).
 
 Es liest nur innerhalb von `SEVDESK_FILE_DIRS`: den Ordner, den du nennst, oder alle, Unterordner
 bis drei Ebenen tief nur auf Wunsch. Es nimmt PDF-, PNG-, JPEG- und XML-Dateien (am Inhalt
@@ -233,9 +233,10 @@ erkannt) bis 20 MB, höchstens 500 Dateien und 1 GB je Aufruf, und berechnet die
 jeder Datei. Versteckte Dateien, symbolische Links und andere Dateitypen werden übersprungen und
 gezählt; ist eine Grenze erreicht, sagt das Ergebnis, dass der Ordner abgeschnitten wurde. Kein
 Dateiinhalt verlässt den Server und nichts wird hochgeladen: Das Ergebnis enthält Pfade, Größen,
-Änderungsdaten und Prüfsummen. sevDesk speichert die Prüfsumme jeder hochgeladenen Belegdatei, also
-liest die Prüfung aus sevDesk nur die Belegliste des Zeitraums, 62 Tage davor und danach, Entwürfe
-eingeschlossen.
+Änderungsdaten und Prüfsummen. sevDesk speichert eine Prüfsumme für Belegdateien, die über den
+Upload der API hochgeladen wurden (nicht für die, die seine Belegerkennung angelegt hat), und die
+Belegliste enthält sie; also liest die Prüfung aus sevDesk nur die Belegliste des Zeitraums, 62 Tage
+davor und danach, Entwürfe eingeschlossen.
 
 | Code                         | Bedeutet                                                                                             |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------- |

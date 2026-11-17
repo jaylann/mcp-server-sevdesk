@@ -35,9 +35,9 @@ verfügbar. Um eine erfolgreich angehängte Datei nach der Freigabe ihres Upload
 verwenden, fordere einen neuen Upload an.
 
 Einen ganzen Ordner mit Belegen mit den Belegen in sevDesk zu vergleichen
-(`sevdesk_receipt_folder_check`), geht auf einem entfernten Server nicht: Das liest einen lokalen
-Ordner, und ein Upload bringt einzelne Dateien. Im Bearer-Modus mit `SEVDESK_FILE_DIRS` wird es
-für die Ordner auf dem Server angeboten.
+(`sevdesk_receipt_folder_check`), geht auf einem entfernten Server mit OAuth nicht: Das liest einen
+lokalen Ordner, und ein Upload bringt einzelne Dateien. Im Bearer-Modus mit `SEVDESK_FILE_DIRS`
+wird es für die Ordner auf dem Server angeboten.
 
 ## Mehrere Dateien auf einer Seite
 

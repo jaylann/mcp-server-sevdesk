@@ -153,10 +153,11 @@ melden und was sie bewusst auslassen, steht unter
 
 ### Erkennt es, welche Belege in meinem Ordner nie gebucht wurden?
 
-Ja, wenn der Server diesen Ordner lesen darf (`SEVDESK_FILE_DIRS`, nicht auf einem entfernten
-Server). `sevdesk_receipt_folder_check` vergleicht die SHA-256-Prüfsummen der PDF-, PNG-, JPEG-
-und XML-Dateien im Ordner mit denen der Belegdateien an deinen Belegen, für einen Monat, ein
-Quartal oder ein Jahr. Eine Datei, die kein Beleg trägt, wurde wohl nie gebucht; das ist ein
+Ja, wenn der Server diesen Ordner lesen darf (`SEVDESK_FILE_DIRS`: nicht auf einem entfernten
+Server mit OAuth; im Bearer-Modus nur für Ordner auf dem Server). `sevdesk_receipt_folder_check`
+vergleicht die SHA-256-Prüfsummen der PDF-, PNG-, JPEG- und XML-Dateien im Ordner mit denen der
+Belegdateien an deinen Belegen, für einen Monat, ein Quartal oder ein Jahr. Eine Datei, die kein
+Beleg trägt, wurde wohl nie gebucht; das ist ein
 Hinweis, kein Beweis, denn derselbe Beleg als andere Datei (ein Scan, ein Foto aus der App) hat
 eine andere Prüfsumme, und eine Belegdatei, die die Belegerkennung von sevDesk aus einem Upload
 angelegt hat, hat gar keine (das Ergebnis zählt sie und nennt solche derselben Größe als
