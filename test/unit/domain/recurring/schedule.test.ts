@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   addMonths,
   checkSchedule,
+  endsOnRun,
   INTERVAL_WIRE_FORMS,
   intervalOf,
   INTERVALS,
@@ -191,6 +192,15 @@ describe("run dates", () => {
     expect(runCount(schedule("yearly", "2026-12-01", "2026-12-01"))).toBe(1);
     expect(runCount(schedule("monthly", "2026-12-01", "2036-12-01"))).toBe(121);
     expect(runCount(schedule("monthly", "2026-12-01"))).toBeUndefined();
+  });
+
+  it("tell whether the last run falls on the end date, which sevDesk may skip", () => {
+    expect(endsOnRun(schedule("monthly", "2026-12-01", "2027-03-01"))).toBe(true);
+    expect(endsOnRun(schedule("yearly", "2026-12-01", "2026-12-01"))).toBe(true);
+    expect(endsOnRun(schedule("monthly", "2026-12-01", "2036-12-01"))).toBe(true);
+    expect(endsOnRun(schedule("monthly", "2026-12-01", "2027-02-28"))).toBe(false);
+    expect(endsOnRun(schedule("quarterly", "2026-12-01", "2027-02-01"))).toBe(false);
+    expect(endsOnRun(schedule("monthly", "2026-12-01"))).toBe(false);
   });
 });
 

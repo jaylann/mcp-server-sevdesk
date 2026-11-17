@@ -343,6 +343,43 @@ describe("sevdesk_invoice_create_recurring", () => {
     );
   });
 
+  it("counts a run on the end date as one that may not happen, in both languages", async () => {
+    const fact = (plan: Awaited<ReturnType<typeof prepare>>["plan"], lang: "en" | "de") =>
+      (lang === "de" ? plan.previewDe : plan.preview).facts.find(
+        (f) => f.label === (lang === "de" ? "Ende" : "End"),
+      )?.value;
+    // Monthly from 2026-12-01 to 2027-12-01: the 13th run falls on the end date.
+    const year = await prepare({ ...args, endDate: "2027-12-01" });
+    expect(fact(year.plan, "en")).toBe(
+      "2027-12-01 (12 or 13 runs up to then, the first included: 13 if sevDesk still runs the " +
+        "template on its end date)",
+    );
+    expect(fact(year.plan, "de")).toBe(
+      "01.12.2027 (bis dahin 12 oder 13 Ausführungen, die erste eingeschlossen: 13, wenn " +
+        "sevDesk die Vorlage am Enddatum noch ausführt)",
+    );
+    // The fact and the warning that the run on the end date is not recorded keep their places.
+    expect(year.plan.preview.facts.map((f) => f.label).indexOf("End")).toBe(5);
+    expect(year.plan.previewDe.facts.map((f) => f.label).indexOf("Ende")).toBe(5);
+    expect(year.plan.preview.warnings.at(-1)).toBe(
+      "A run falls on the end date itself (2027-12-01); whether sevDesk still runs the template " +
+        "on its end date is not recorded.",
+    );
+    expect(year.plan.previewDe.warnings.at(-1)).toBe(
+      "Eine Ausführung fällt genau auf das Enddatum (01.12.2027); ob sevDesk die Vorlage am " +
+        "Enddatum selbst noch ausführt, ist nicht erfasst.",
+    );
+    // The end on the start date: the only run is the one on the end date.
+    const single = await prepare({ ...args, endDate: "2026-12-01" });
+    expect(fact(single.plan, "en")).toBe(
+      "2026-12-01 (0 or 1 run up to then: 1 if sevDesk still runs the template on its end date)",
+    );
+    expect(fact(single.plan, "de")).toBe(
+      "01.12.2026 (bis dahin 0 oder 1 Ausführung: 1, wenn sevDesk die Vorlage am Enddatum noch " +
+        "ausführt)",
+    );
+  });
+
   it("says when no run follows the first", async () => {
     const { plan } = await prepare({ ...args, endDate: "2026-12-01" });
     expect(plan.preview.facts.find((f) => f.label === "Following runs")?.value).toBe(

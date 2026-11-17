@@ -157,6 +157,14 @@ export function runCount(schedule: Schedule): number | undefined {
 }
 
 /**
+ * Whether the last run falls on the end date itself. Whether sevDesk still runs a template on its
+ * end date is not recorded, so that run may not happen.
+ */
+export function endsOnRun(schedule: Schedule): boolean {
+  return schedule.endDate !== undefined && runDates(schedule, MAX_RUNS).at(-1) === schedule.endDate;
+}
+
+/**
  * The interval an ISO-8601 duration of years, months, weeks and days stands for, in any spelling
  * (`P1M`, `P0Y1M` as the web app stores it, `P0Y1M0W` as this server sends it, `P0Y12M`); none
  * for another duration (`P0Y2M`, `P14D`) or text that is no duration.

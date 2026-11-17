@@ -30,7 +30,7 @@ import {
   type PreviewLanguage,
 } from "../preview-text.js";
 import { FIRST_RUN_TODAY, RUN_DATE_BEHAVIOUR } from "./run-date.js";
-import { INTERVALS, runCount, runDates, type Schedule } from "./schedule.js";
+import { endsOnRun, INTERVALS, runCount, runDates, type Schedule } from "./schedule.js";
 
 /** Runs listed after the first one. */
 const FOLLOWING_RUNS = 3;
@@ -164,7 +164,11 @@ function intervalText(schedule: Schedule, lang: PreviewLanguage): string {
   return `${label}, ${every} on day ${day} (${wire})`;
 }
 
-/** The end date with the number of runs up to it, or that there is none. */
+/**
+ * The end date with the number of runs up to it, or that there is none. When the last run falls on
+ * the end date, whether sevDesk still makes it is not recorded ({@link endOnRunWarning}), so the
+ * count is given as one fewer or that many.
+ */
 function endText(schedule: Schedule, lang: PreviewLanguage): string {
   const count = runCount(schedule);
   if (schedule.endDate === undefined || count === undefined) {
@@ -172,11 +176,22 @@ function endText(schedule: Schedule, lang: PreviewLanguage): string {
       ? "keines (die Vorlage läuft, bis sie beendet wird)"
       : "none (the template runs until it is ended)";
   }
+  const de = lang === "de";
   const end = dateText(schedule.endDate, lang);
-  const plural = count === 1 ? "" : lang === "de" ? "en" : "s";
-  return lang === "de"
-    ? `${end} (bis dahin ${String(count)} Ausführung${plural}, die erste eingeschlossen)`
-    : `${end} (${String(count)} run${plural} up to then, the first included)`;
+  const plural = count === 1 ? "" : de ? "en" : "s";
+  const runs = `${de ? "Ausführung" : "run"}${plural}`;
+  if (!endsOnRun(schedule)) {
+    return de
+      ? `${end} (bis dahin ${String(count)} ${runs}, die erste eingeschlossen)`
+      : `${end} (${String(count)} ${runs} up to then, the first included)`;
+  }
+  const range = `${String(count - 1)} ${de ? "oder" : "or"} ${String(count)} ${runs}`;
+  const first = count > 1 ? (de ? ", die erste eingeschlossen" : ", the first included") : "";
+  return de
+    ? `${end} (bis dahin ${range}${first}: ${String(count)}, wenn sevDesk die Vorlage am ` +
+        "Enddatum noch ausführt)"
+    : `${end} (${range} up to then${first}: ${String(count)} if sevDesk still runs the ` +
+        "template on its end date)";
 }
 
 function followingRunsText(schedule: Schedule, lang: PreviewLanguage): string {
@@ -315,9 +330,7 @@ function similarWarning(input: TemplatePreviewInput, lang: PreviewLanguage): str
 
 function endOnRunWarning(schedule: Schedule, lang: PreviewLanguage): string | undefined {
   const { endDate } = schedule;
-  if (endDate === undefined) return undefined;
-  const runs = runDates(schedule, Number.MAX_SAFE_INTEGER);
-  if (runs.at(-1) !== endDate) return undefined;
+  if (endDate === undefined || !endsOnRun(schedule)) return undefined;
   const end = dateText(endDate, lang);
   return lang === "de"
     ? `Eine Ausführung fällt genau auf das Enddatum (${end}); ob sevDesk die Vorlage am ` +
