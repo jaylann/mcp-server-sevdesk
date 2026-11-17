@@ -282,6 +282,8 @@ function accountingNumberRefusal(
     ...(error.exceptionUuid === undefined ? {} : { exceptionUuid: error.exceptionUuid }),
     ...(error.method === undefined ? {} : { method: error.method }),
     ...(error.path === undefined ? {} : { path: error.path }),
+    // Our own sentence for a known refusal: shown instead of the generic advice.
+    explained: true,
     cause: error,
     completedWrites: error.completedWrites,
   });

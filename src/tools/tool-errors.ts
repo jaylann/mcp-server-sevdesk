@@ -43,7 +43,7 @@ export function toolErrorResult(error: unknown, context: ToolErrorContext): Call
     const completed = completedWritesLine(error);
     const text = describeSevdeskError(error, context);
     return errorResult(
-      completed === undefined ? text : `${withoutNothingSent(text)}\n${completed}`,
+      completed === undefined ? text : `${withoutNothingDone(text)}\n${completed}`,
     );
   }
   if (isAbortError(error)) {
@@ -73,9 +73,10 @@ export function cancelledResult(context: ToolErrorContext): CallToolResult {
 
 /**
  * Trusted, actionable text for a {@link SevdeskError}. The error's own `message` is trusted by
- * contract and shown where it carries the reason (local validation, `not_found`, `blocked`);
- * sevDesk's own message (`upstreamMessage`) is shown only for validation errors sevDesk returned,
- * sanitized and fenced as untrusted data.
+ * contract and shown where it carries the reason (local validation, `not_found`, `blocked`, and a
+ * known sevDesk refusal the domain layer explained, `explained`); sevDesk's own message
+ * (`upstreamMessage`) is shown only for other validation errors sevDesk returned, sanitized and
+ * fenced as untrusted data.
  */
 export function describeSevdeskError(error: SevdeskError, context: ToolErrorContext): string {
   const status = error.status === undefined ? "" : ` (HTTP ${error.status})`;
@@ -99,6 +100,9 @@ export function describeSevdeskError(error: SevdeskError, context: ToolErrorCont
           `${sentence(details)} Fix the arguments and call the tool again.`
         );
       }
+      // A refusal sevDesk is known to give, explained in our own words by the domain layer
+      // (`SevdeskError.explained`): the explanation says what to do instead.
+      if (error.explained) return `sevDesk refused the request${status}: ${sentence(details)}`;
       const text =
         `sevDesk rejected the request as invalid${status}. Check the arguments against the tool ` +
         "description, fix what sevDesk complains about and try again; repeating the same call " +
@@ -322,13 +326,15 @@ function completedWritesLine(error: SevdeskError): string | undefined {
 }
 
 /**
- * Removes "nothing was sent" claims from a description: with completed writes they would only be
- * true of the failed step, and read as if the whole call changed nothing.
+ * Removes "nothing was sent" and "Nothing was changed." claims from a description: with completed
+ * writes they would only be true of the failed step (an explained refusal says so of the one
+ * request sevDesk refused, `lockedPaymentRefusal`), and read as if the whole call changed nothing.
  */
-function withoutNothingSent(text: string): string {
+function withoutNothingDone(text: string): string {
   return text
     .replace(/ \(nothing was sent\)/gi, "")
     .replace(/\s*nothing was sent(?: to sevDesk)?\./gi, "")
+    .replace(/\s*Nothing was changed\./g, "")
     .replace(
       /The request was refused before it was sent to sevDesk/g,
       "The last step was refused before it was sent to sevDesk",

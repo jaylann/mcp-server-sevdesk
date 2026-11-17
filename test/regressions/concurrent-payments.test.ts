@@ -13,6 +13,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { SevdeskRequest } from "../../src/sevdesk/types.js";
 import { transactionBookTool } from "../../src/tools/banking/transaction-book.js";
+import { transactionCreateTool } from "../../src/tools/banking/transaction-create.js";
+import { transactionDeleteTool } from "../../src/tools/banking/transaction-delete.js";
+import { transactionEnshrineTool } from "../../src/tools/banking/transaction-enshrine.js";
 import { transactionMarkPrivateTool } from "../../src/tools/banking/transaction-private.js";
 import { transactionResetTool } from "../../src/tools/banking/transaction-reset.js";
 import { bookPaymentTool } from "../../src/tools/lifecycle/book-payment.js";
@@ -119,6 +122,11 @@ describe("bookings and their undo run one at a time per account (security review
       [enshrineTool("invoice"), { id: 1001 }],
       [enshrineTool("creditNote"), { id: 2001 }],
       [enshrineTool("voucher"), { id: 2001 }],
+      // #88: a hand-made row changes what can be booked (and may be booked in the same call); a
+      // delete and a lock check the row's status first, as a reset does.
+      [transactionCreateTool, { checkAccountId: 4004, allocations: [{ kind: "voucher", id: 1 }] }],
+      [transactionDeleteTool, { id: 5101 }],
+      [transactionEnshrineTool, { id: 5101 }],
     ];
     for (const [tool, args] of tools) {
       expect(tool.locks?.(args as never), tool.name).toContainEqual(ACCOUNT_BOOKINGS);

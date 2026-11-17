@@ -162,6 +162,16 @@ and 100 MiB per file, and changes nothing on the documents. sevDesk includes dra
 them out) and leaves out vouchers without a receipt file. A large archive takes minutes; a shorter
 period is the remedy. Details: [Reports and exports](guides/evaluations.md#invoice-and-receipt-archive).
 
+### Can it record cash takings (Kasse) and enter bank transactions by hand?
+
+Yes. A cash sale or a cash expense is a payment booked on its invoice or voucher against the cash
+register, without a bank transaction: sevDesk then adds the entry to the cash book itself, and
+[`sevdesk_cash_position`](tools.md#sevdesk_cash_position) shows the new balance. sevDesk takes no
+hand-made transactions on a cash register or a clearing account. On a file-import account
+[`sevdesk_transaction_create`](tools.md#sevdesk_transaction_create) enters a transaction by hand,
+and can book it on a document in the same step. Both are `commit` tools that you confirm; the
+details are in [Banking and cash](guides/banking.md).
+
 ### How far can I rely on the VAT summary and the profit and loss?
 
 They are estimates for checking, computed by the server from your documents; they are not

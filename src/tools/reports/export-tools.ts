@@ -340,6 +340,7 @@ async function startJob(ctx: ExecuteContext, params: DatevJobParams): Promise<st
       ...(error.status === undefined ? {} : { status: error.status }),
       ...(error.upstreamMessage === undefined ? {} : { upstreamMessage: error.upstreamMessage }),
       ...(error.exceptionUuid === undefined ? {} : { exceptionUuid: error.exceptionUuid }),
+      ...(error.explained ? { explained: true } : {}),
       cause: error,
     });
   }

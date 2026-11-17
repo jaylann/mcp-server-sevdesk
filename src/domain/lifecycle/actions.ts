@@ -96,7 +96,8 @@ const RESET_ENDPOINT: Readonly<Record<ResetTarget, string>> = {
 
 /**
  * Takes a document back one step: `PUT /{Invoice|CreditNote|Voucher}/{id}/resetToOpen` (unlinks
- * every payment of the document) or `…/resetToDraft`, no body.
+ * every payment of the document) or `…/resetToDraft`, no body. sevDesk's refusal of a reset to
+ * open because a payment is enshrined becomes our own explanation ({@link lockedPaymentRefusal}).
  */
 export async function resetDocument(
   client: SevdeskClient,
@@ -105,11 +106,63 @@ export async function resetDocument(
   to: ResetTarget,
   signal?: AbortSignal,
 ): Promise<void> {
-  await client.request({
-    method: "PUT",
-    path: sevdeskPath(KINDS[kind].objectName, id, RESET_ENDPOINT[to]),
-    ...(signal === undefined ? {} : { signal }),
+  try {
+    await client.request({
+      method: "PUT",
+      path: sevdeskPath(KINDS[kind].objectName, id, RESET_ENDPOINT[to]),
+      ...(signal === undefined ? {} : { signal }),
+    });
+  } catch (error) {
+    throw (to === "open" ? lockedPaymentRefusal(error, kind, id) : undefined) ?? error;
+  }
+}
+
+/** sevDesk's wording when a reset to open meets an enshrined payment (by payment or transaction). */
+const ALREADY_ENSHRINED = /already enshrined/i;
+
+/**
+ * sevDesk refuses `resetToOpen` while a bank transaction that pays the document is enshrined,
+ * with HTTP 400 "Already enshrined by transaction" (recorded on a voucher, spec/deviations.md
+ * D-098) or 422 code 322 "Already enshrined by payment" (sevdesk-rs on invoices, D-060). Either
+ * becomes a trusted explanation of our own (`explained`, without sevDesk's text); any other error
+ * is left as it is (`undefined`). Its "Nothing was changed." is true of this one request; when
+ * earlier resets of the same call went through (`sevdesk_transaction_reset`, completed writes),
+ * the rendered error drops that sentence and lists them instead (`toolErrorResult`).
+ */
+function lockedPaymentRefusal(
+  error: unknown,
+  kind: PaymentKind,
+  id: number,
+): SevdeskError | undefined {
+  if (
+    !(error instanceof SevdeskError) ||
+    error.kind !== "validation" ||
+    error.status === undefined ||
+    !ALREADY_ENSHRINED.test(error.upstreamMessage ?? "")
+  ) {
+    return undefined;
+  }
+  const correction =
+    kind === "invoice"
+      ? "a cancellation (sevdesk_invoice_cancel) or a credit note"
+      : kind === "creditNote"
+        ? "a new document"
+        : "a correcting voucher";
+  return new SevdeskError({
+    kind: "validation",
+    message:
+      `${capitalized(KINDS[kind].noun)} ${String(id)} cannot be reset to open: a bank ` +
+      "transaction that pays it is enshrined (festgeschrieben), and sevDesk keeps the payments " +
+      `of such a transaction for good. Nothing was changed. Correct it with ${correction} ` +
+      "instead.",
+    status: error.status,
+    explained: true,
+    cause: error,
   });
+}
+
+function capitalized(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 /**
@@ -227,6 +280,8 @@ export async function deleteDocument(
           "no longer one (probably finalized in the meantime). Nothing was deleted; check it " +
           `with ${toolPrefix}_get.`,
         ...(error.upstreamMessage === undefined ? {} : { upstreamMessage: error.upstreamMessage }),
+        // Our own sentence for a known refusal: shown instead of the generic advice.
+        explained: true,
         cause: error,
       });
     }

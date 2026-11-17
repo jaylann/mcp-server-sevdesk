@@ -470,6 +470,8 @@ function partialFailure(
     ...(error.upstreamMessage === undefined ? {} : { upstreamMessage: error.upstreamMessage }),
     ...(error.method === undefined ? {} : { method: error.method }),
     ...(error.path === undefined ? {} : { path: error.path }),
+    // An explained refusal stays shown with what was already set.
+    ...(error.explained ? { explained: true } : {}),
     cause: error,
     completedWrites: [documentObject(kind, id)],
   });

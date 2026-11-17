@@ -1,4 +1,4 @@
-<!-- translated-from: docs/quickstart.md sha256:6eb2fb2cf13d -->
+<!-- translated-from: docs/quickstart.md sha256:e1b7dd49cfbf -->
 
 # Schnellstart
 
@@ -136,8 +136,9 @@ gelangt sein könnte, setze es in sevDesk zurück; das alte Token funktioniert d
 - [Clients](clients.de.md): die Einrichtung für deinen Client und welche Clients Bestätigungen
   anzeigen.
 - [Berechtigungen](permissions.de.md): Stufen, Bestätigungen, Probelauf und Audit-Log.
-- Anleitungen für [Rechnungen](guides/invoices.de.md), [Belege](guides/receipts.de.md) und
-  [Auswertungen](guides/evaluations.de.md): die tägliche Buchhaltung mit dem Assistenten.
+- Anleitungen für [Rechnungen](guides/invoices.de.md), [Belege](guides/receipts.de.md),
+  [Bank und Kasse](guides/banking.de.md) und [Auswertungen](guides/evaluations.de.md): die
+  tägliche Buchhaltung mit dem Assistenten.
 - [Konfiguration](configuration.de.md): alle Einstellungen, Werkzeuggruppen, Grenzen und die
   Kommandozeile.
 - [Werkzeugreferenz](tools.md): jedes Werkzeug und jeder Prompt mit seinen Argumenten.

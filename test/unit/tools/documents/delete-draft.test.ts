@@ -448,6 +448,8 @@ describe("sevdesk_document_delete_draft", () => {
         "no longer one (probably finalized in the meantime). Nothing was deleted; check it with " +
         "sevdesk_order_get.",
     );
+    // Our own sentence, so the model sees it instead of the generic advice.
+    expect(error.explained).toBe(true);
     expect(error.upstreamMessage).toContain("can only be deleted in status 100");
     expect(error.completedWrites).toEqual([]);
     // No read-back after a refusal.

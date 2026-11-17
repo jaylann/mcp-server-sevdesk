@@ -120,8 +120,9 @@ in sevDesk; the old one stops working at once.
 
 - [Clients](clients.md): the setup for your client, and which clients show confirmations.
 - [Permissions](permissions.md): tiers, confirmations, dry runs and the audit log.
-- Guides for [invoices](guides/invoices.md), [receipts](guides/receipts.md) and
-  [reports](guides/evaluations.md): everyday bookkeeping with the assistant.
+- Guides for [invoices](guides/invoices.md), [receipts](guides/receipts.md),
+  [banking and cash](guides/banking.md) and [reports](guides/evaluations.md): everyday
+  bookkeeping with the assistant.
 - [Configuration](configuration.md): every setting, toolsets, limits and the command line.
 - [Tool reference](tools.md): every tool and prompt with its arguments.
 - [Remote mode](remote.md): host the server for claude.ai, the mobile apps or a team.

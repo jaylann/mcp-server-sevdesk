@@ -107,6 +107,28 @@ describe("describeSevdeskError", () => {
     );
   });
 
+  it("shows our own explanation of a known sevDesk refusal, without sevDesk's text", () => {
+    const explained = error({
+      kind: "validation",
+      status: 400,
+      message:
+        "Voucher 2001 cannot be reset to open: a bank transaction that pays it is enshrined.",
+      explained: true,
+    });
+
+    expect(describeSevdeskError(explained, context("commit"))).toBe(
+      "sevDesk refused the request (HTTP 400): Voucher 2001 cannot be reset to open: a bank " +
+        "transaction that pays it is enshrined.",
+    );
+    // The flag survives the completed writes of a multi-step call.
+    expect(withCompletedWrites(explained, [{ objectName: "Voucher", id: "1" }]).explained).toBe(
+      true,
+    );
+    // Without the flag, a message on an error sevDesk returned stays hidden (generic advice).
+    const plain = error({ kind: "validation", status: 400, message: explained.message });
+    expect(describeSevdeskError(plain, context("commit"))).not.toContain("Voucher 2001");
+  });
+
   it("explains local validation errors (no HTTP status) and says nothing was sent", () => {
     const local = captureSevdeskError(() => toSevdeskDate("2026-02-30"));
 
@@ -435,6 +457,31 @@ describe("errors after completed writes", () => {
 
     expect(text(toolErrorResult(failure, context("write")))).toMatch(
       /^The last step was refused before it was sent to sevDesk: Invalid request: bad date\./,
+    );
+  });
+
+  it('drops an explained refusal\'s "Nothing was changed.", which is true of its step only', () => {
+    const refusal = (): SevdeskError =>
+      error({
+        kind: "validation",
+        status: 400,
+        explained: true,
+        message:
+          "Voucher 2 cannot be reset to open: a payment of it is locked. Nothing was changed. " +
+          "Correct it with a correcting voucher instead.",
+      });
+
+    const result = text(
+      toolErrorResult(withCompletedWrites(refusal(), completed), context("commit")),
+    );
+
+    expect(result).toMatch(
+      /^sevDesk refused the request \(HTTP 400\): Voucher 2 cannot be reset to open: a payment of it is locked\. Correct it with a correcting voucher instead\.\nBefore this failed, the call had already created or changed: Contact 123, ContactAddress 456\./,
+    );
+    expect(result).not.toContain("Nothing was changed");
+    // Without completed writes the sentence stays: then nothing was changed.
+    expect(text(toolErrorResult(refusal(), context("commit")))).toContain(
+      "is locked. Nothing was changed. Correct it",
     );
   });
 

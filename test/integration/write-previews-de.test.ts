@@ -42,6 +42,15 @@ const ENGLISH_WORDS =
   /\b(?:the|and|or|is|are|its|it|with|cannot|this|of|to|be|by|from|not|then|only)\b/i;
 const ENGLISH_TERMS = /\b(?:account|contact|draft|open|paid|booked|unbooked|linked|status)\b/;
 
+/**
+ * Possessives and datives of the polite form. Our German addresses the reader with du; a
+ * capitalized "Ihre" or "Ihnen" (at a sentence start or after a colon, where German capitalizes
+ * anyway) reads as "your" or "to you" on the approval page: write "die" or "deren" instead. A
+ * sentence-initial "Sie" is left to the review, since its verb shows whom it means ("Sie behält"
+ * is the template). Fact values (sevDesk's data, such as a document's header text) are not checked.
+ */
+const POLITE_FORM = /\b(?:Ihnen|Ihre?[mnrs]?)\b/;
+
 /** The first English word left in `text`, if any. */
 function english(text: string): string | undefined {
   return (ENGLISH_WORDS.exec(text) ?? ENGLISH_TERMS.exec(text))?.[0];
@@ -106,6 +115,7 @@ describe("German previews", () => {
       }
       for (const text of wording(previewDe)) {
         expect(english(text), text).toBeUndefined();
+        expect(POLITE_FORM.exec(text)?.[0], text).toBeUndefined();
       }
       // A value that was reworded (a status change, an amount with a note) is German as well;
       // values taken over unchanged are sevDesk's data (names, numbers, an email text).

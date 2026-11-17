@@ -3,9 +3,12 @@
  * (`PUT …/resetToOpen`: unlinks every payment) or `to: "draft"` (`PUT …/resetToDraft`: open →
  * draft). No body. What happens to payments (jernoxit/sevdesk-rs, measured; firsttris/haben): the
  * linked transactions go back to status 100 (created), their log entries are deleted, `paidAmount`
- * returns to 0; there is no counter-booking. sevDesk refuses `resetToOpen` when a payment
- * transaction is enshrined (422/322 "Already enshrined by payment") and `resetToDraft` on an
- * enshrined document (422/322). Unlike the spec says, `resetToOpen` works on a paid, enshrined
+ * returns to 0; there is no counter-booking. A payment sevDesk booked without a transaction on a
+ * cash register is different: the row stays and sevDesk books a counter-entry dated at the reset
+ * (recorded, D-095). sevDesk refuses `resetToOpen` when a payment transaction is enshrined (422/322
+ * "Already enshrined by payment" per sevdesk-rs; recorded on a voucher as 400 "Already enshrined
+ * by transaction", D-098; `resetDocument` explains both) and `resetToDraft` on an enshrined
+ * document (422/322). Unlike the spec says, `resetToOpen` works on a paid, enshrined
  * invoice whose transactions are not enshrined, so that case is not refused here. Vouchers use the
  * same endpoints with their own codes (open 100, draft 50; spec `voucherResetToOpen`,
  * `voucherResetToDraft`); their behavior with payments is assumed to match (not recorded).
@@ -50,7 +53,8 @@ const DESCRIPTIONS: Readonly<Record<PaymentKind, string>> = {
   invoice:
     'Reset an invoice one step back. to "open" (resetToOpen): a paid or partially paid ' +
     "invoice becomes open again and every booked payment is unlinked (bank transactions return " +
-    'to unbooked; no counter-booking). to "draft" (resetToDraft): an open invoice without ' +
+    "to unbooked with no counter-booking; on a cash register (Kasse) sevDesk books a " +
+    'counter-entry instead). to "draft" (resetToDraft): an open invoice without ' +
     "payments becomes a draft again and can be edited (sevdesk_invoice_update_draft); not for " +
     "enshrined (festgeschrieben) invoices. For a paid invoice reset to open first, then to " +
     "draft. Changing an invoice the customer already received is not allowed bookkeeping: " +
@@ -60,7 +64,8 @@ const DESCRIPTIONS: Readonly<Record<PaymentKind, string>> = {
   creditNote:
     'Reset a credit note one step back. to "open" (resetToOpen): a paid or partially paid ' +
     "credit note becomes open again and every booked payout is unlinked (bank transactions " +
-    'return to unbooked; no counter-booking). to "draft" (resetToDraft): an open credit note ' +
+    "return to unbooked with no counter-booking; on a cash register (Kasse) sevDesk books a " +
+    'counter-entry instead). to "draft" (resetToDraft): an open credit note ' +
     "without payouts becomes a draft again and can be edited (sevdesk_credit_note_update_draft); " +
     "not for enshrined (festgeschrieben) credit notes. " +
     "For a paid credit note reset to open first, then to draft. Commit tier: asks a human to " +
@@ -68,7 +73,8 @@ const DESCRIPTIONS: Readonly<Record<PaymentKind, string>> = {
   voucher:
     'Reset a voucher (Beleg) one step back. to "open" (resetToOpen): a paid or partially paid ' +
     "voucher becomes open (100) again and every booked payment is unlinked (bank transactions " +
-    'return to unbooked; no counter-booking). to "draft" (resetToDraft): an open voucher without ' +
+    "return to unbooked with no counter-booking; on a cash register (Kasse) sevDesk books a " +
+    'counter-entry instead). to "draft" (resetToDraft): an open voucher without ' +
     "payments becomes a draft (50) again and can be changed with sevdesk_voucher_update_draft " +
     "or deleted with sevdesk_voucher_delete_draft; not for enshrined (festgeschrieben) " +
     "vouchers. For a paid voucher reset to open first, then to draft. Commit tier: asks a human " +
@@ -84,20 +90,24 @@ function resetWarnings(doc: LifecycleDocument<PaymentKind>, to: ResetTarget): Ph
         `Every payment booked on this ${noun} is taken back: linked bank transactions are ` +
           "unlinked from it and return to unbooked (status 100), or to partly linked (status " +
           "200) while they still pay other documents (split payments, recorded), and the paid " +
-          "amount goes back to 0. sevDesk makes no counter-booking. Transactions sevDesk " +
-          "created itself for payments on offline accounts are deleted (recorded); cash " +
-          "registers (Kasse) were not measured, so check them afterwards.",
+          "amount goes back to 0. sevDesk makes no counter-booking for them. Transactions " +
+          "sevDesk created itself for payments on clearing (offline) accounts are deleted " +
+          "(recorded). On a cash register (Kasse) such a transaction stays: sevDesk books a " +
+          "counter-entry with the opposite amount, dated the day of the reset (recorded).",
         `Jede auf ${german.thisOneDative} gebuchte Zahlung wird zurückgenommen: Verknüpfte ` +
           "Kontoumsätze werden davon gelöst und gelten wieder als ungebucht (Status 100) oder, " +
           "solange sie noch andere Dokumente bezahlen (Sammelzahlungen), als teilweise " +
           "verknüpft (Status 200); der bezahlte Betrag geht auf 0 zurück. sevDesk erstellt " +
-          "keine Gegenbuchung. Umsätze, die sevDesk für Zahlungen auf Offline-Konten selbst " +
-          "angelegt hat, werden gelöscht; für Kassen wurde das nicht geprüft, kontrolliere " +
-          "diese daher anschließend.",
+          "dafür keine Gegenbuchung. Umsätze, die sevDesk für Zahlungen auf Verrechnungskonten " +
+          "(offline) selbst angelegt hat, werden gelöscht. Auf einer Kasse bleibt ein solcher " +
+          "Umsatz stehen: sevDesk bucht eine Gegenbuchung mit dem umgekehrten Betrag und dem " +
+          "Datum des Zurücksetzens.",
       ),
       phrase(
-        "sevDesk refuses the reset if one of the payment transactions is enshrined.",
-        "sevDesk lehnt das Zurücksetzen ab, wenn einer der Zahlungsumsätze festgeschrieben ist.",
+        "sevDesk refuses the reset if one of the payment transactions is enshrined " +
+          "(festgeschrieben); then nothing changes.",
+        "sevDesk lehnt das Zurücksetzen ab, wenn einer der Zahlungsumsätze festgeschrieben " +
+          "ist; dann ändert sich nichts.",
       ),
     ];
     if (doc.enshrined) {

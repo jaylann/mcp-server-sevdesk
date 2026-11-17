@@ -448,6 +448,8 @@ export async function executeVoucherDelete(
           "be deleted, and it is no longer one (probably finalized in the meantime). Nothing was " +
           "deleted; check it with sevdesk_voucher_get.",
         ...(error.upstreamMessage === undefined ? {} : { upstreamMessage: error.upstreamMessage }),
+        // Our own sentence for a known refusal: shown instead of the generic advice.
+        explained: true,
         cause: error,
       });
     }

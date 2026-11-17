@@ -21,6 +21,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { SevdeskRequest } from "../../src/sevdesk/types.js";
 import { bankAccountCreateTool } from "../../src/tools/banking/account-create.js";
+import { transactionCreateTool } from "../../src/tools/banking/transaction-create.js";
 import { contactCreateTool } from "../../src/tools/contacts/create.js";
 import { contactUpdateTool } from "../../src/tools/contacts/update.js";
 import { creditNoteCreateDraftTool } from "../../src/tools/credit-notes/draft-create.js";
@@ -33,6 +34,7 @@ import { orderUpdateDraftTool } from "../../src/tools/orders/draft-update.js";
 import { partCreateTool } from "../../src/tools/parts/create.js";
 import { partUpdateTool } from "../../src/tools/parts/update.js";
 import {
+  ACCOUNT_BOOKINGS,
   ACCOUNT_CHECK_ACCOUNTS,
   ACCOUNT_CONTACT_NUMBERS,
   ACCOUNT_CREDIT_NOTE_NUMBERS,
@@ -375,6 +377,12 @@ describe("check-then-write tools declare the records they check", () => {
       [{ objectName: "Part", id: "6001" }, ACCOUNT_PART_NUMBERS],
     ],
     [bankAccountCreateTool, { kind: "clearing", name: "Verrechnung" }, [ACCOUNT_CHECK_ACCOUNTS]],
+    // The account's rows of the day are checked for a duplicate, then the row is created.
+    [
+      transactionCreateTool,
+      { checkAccountId: 4004 },
+      [ACCOUNT_BOOKINGS, { objectName: "CheckAccount", id: "4004" }],
+    ],
   ];
 
   it.each(cases)("%#", (tool, args, expected) => {

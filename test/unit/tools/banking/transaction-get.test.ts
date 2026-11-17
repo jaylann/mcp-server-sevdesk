@@ -42,6 +42,29 @@ describe("sevdesk_transaction_get", () => {
     });
   });
 
+  it("reports a deleted row as deleted, never as a live one (soft delete, D-096)", async () => {
+    const { client, result } = await run([
+      transactionRoute(
+        transactionRow({ id: "5201", status: "100", deletedAt: "2026-11-16T22:01:00+01:00" }),
+      ),
+      accountRoute(accountRow(4002)),
+    ]);
+    expect(result.data.transaction).toMatchObject({
+      id: 5201,
+      deleted: true,
+      deletedOn: "2026-11-16",
+    });
+    expect(result.data.assignments).toEqual([]);
+    expect(result.data.remaining).toBeUndefined();
+    expect(result.data.remainingUnknown).toBe("the transaction was deleted");
+    expect(result.summary).toBe(
+      "Bank transaction 5201 was deleted on 2026-11-16: sevDesk keeps a deleted row readable by " +
+        "id, but it is in no list or balance and cannot be booked.",
+    );
+    // A deleted row has nothing left to book: its log is not read.
+    expect(client.callsTo("/CheckAccountTransactionLog")).toEqual([]);
+  });
+
   it("shows the assignments with their documents and the remaining amount", async () => {
     const { client, result } = await run([
       transactionRoute(SPLIT),

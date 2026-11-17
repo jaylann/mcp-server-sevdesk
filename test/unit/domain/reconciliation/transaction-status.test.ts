@@ -251,6 +251,7 @@ describe("planTransactionReset", () => {
   });
 
   it("warns that sevDesk deletes transactions it created on offline and cash accounts", async () => {
+    // Offline (clearing) account: the row sevDesk created for a booking is deleted (D-071).
     const fake = client({
       transaction: transactionRow({
         id: "5201",
@@ -261,6 +262,49 @@ describe("planTransactionReset", () => {
     });
     const plan = await planTransactionReset(fake, 5201, { cacheOwner: fake });
     expect(plan.warnings.at(-1)?.en).toContain("such a transaction is deleted by the reset");
+    expect(plan.warnings.at(-1)?.de).toContain("Verrechnungskonto (offline)");
+  });
+
+  it("says that a cash register keeps the row and books a counter-entry (D-095)", async () => {
+    const fake = client({
+      transaction: transactionRow({
+        id: "5201",
+        amount: "238",
+        status: "400",
+        checkAccount: { id: "4003", objectName: "CheckAccount" },
+      }),
+    });
+    const plan = await planTransactionReset(fake, 5201, { cacheOwner: fake });
+    expect(plan.warnings.at(-1)?.en).toBe(
+      "This transaction is on a cash register (Kasse): the reset does not delete it. sevDesk " +
+        "keeps it and books a counter-entry with the opposite amount, dated the day of the " +
+        "reset, so the cash book shows both entries and the balance returns.",
+    );
+    expect(plan.warnings.at(-1)?.de).toContain(
+      "bucht eine Gegenbuchung mit dem umgekehrten Betrag",
+    );
+    expect(english(plan.warnings).join(" ")).not.toContain("is deleted by the reset");
+    expect(plan.warnings[0]?.en).toContain(
+      "on a cash register sevDesk keeps them and books a counter-entry dated the day of the reset",
+    );
+  });
+
+  it("refuses a deleted transaction, which sevDesk keeps readable by id (D-096)", async () => {
+    const deleted = client({
+      transaction: transactionRow({
+        id: "5201",
+        status: "100",
+        deletedAt: "2026-11-16T22:01:00+01:00",
+      }),
+    });
+    expect(await refusal(deleted)).toBe(
+      "Bank transaction 5201 was deleted on 2026-11-16: sevDesk keeps a deleted row readable by " +
+        "id, but it is in no list or balance and can no longer be booked, changed or locked. " +
+        "Find the live rows with sevdesk_transactions_list.",
+    );
+    expect(() => assertMarkablePrivate(dto({ deleted: true, deletedOn: "2026-11-16" }))).toThrow(
+      "was deleted on 2026-11-16",
+    );
   });
 
   it("refuses unknown, enshrined and unbooked transactions", async () => {
@@ -279,7 +323,11 @@ describe("planTransactionReset", () => {
           transaction: transactionRow({ id: "5201", enshrined: "2026-03-01T00:00:00+01:00" }),
         }),
       ),
-    ).toContain("is enshrined (festgeschrieben)");
+    ).toBe(
+      "Bank transaction 5201 is enshrined (festgeschrieben): sevDesk keeps its bookings for good " +
+        "and refuses to reset the documents it pays to open, so nothing can be undone. A " +
+        "correction needs a new document (for an invoice a cancellation or a credit note).",
+    );
     expect(await refusal(client({ transaction: transactionRow({ id: "5201" }) }))).toBe(
       "Bank transaction 5201 is not booked (status 100); there is nothing to reset.",
     );

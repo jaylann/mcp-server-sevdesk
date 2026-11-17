@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:2567a70c4b72 -->
+<!-- translated-from: docs/faq.md sha256:770281f1d085 -->
 
 # Häufige Fragen
 
@@ -177,6 +177,17 @@ oder die Belege eines Zeitraums in ein ZIP packen, standardmäßig höchstens 50
 damit du sie herausnehmen kannst) und lässt Belege ohne Belegdatei weg. Ein großes Archiv dauert
 Minuten; die Abhilfe ist ein kürzerer Zeitraum. Mehr dazu:
 [Auswertungen und Exporte](guides/evaluations.de.md#rechnungs--und-belegarchiv).
+
+### Kann es Bareinnahmen (Kasse) erfassen und Kontoumsätze von Hand eintragen?
+
+Ja. Ein Barverkauf oder eine Barausgabe ist eine Zahlung, die auf der Rechnung oder dem Beleg gegen
+die Kasse gebucht wird, ohne Kontoumsatz: sevDesk trägt den Eintrag dann selbst ins Kassenbuch ein,
+und [`sevdesk_cash_position`](tools.md#sevdesk_cash_position) zeigt den neuen Bestand. Auf einer
+Kasse oder einem Verrechnungskonto nimmt sevDesk keine von Hand erfassten Umsätze an. Auf einem
+Dateiimport-Konto trägt [`sevdesk_transaction_create`](tools.md#sevdesk_transaction_create) einen
+Umsatz von Hand ein und kann ihn im selben Schritt einem Dokument zuordnen. Beides sind
+`commit`-Werkzeuge, die du bestätigst; Einzelheiten stehen in
+[Bank und Kasse](guides/banking.de.md).
 
 ### Wie weit kann ich mich auf die Umsatzsteuer-Auswertung und die Gewinn- und Verlustrechnung verlassen?
 

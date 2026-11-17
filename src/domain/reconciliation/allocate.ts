@@ -19,6 +19,7 @@ import { SevdeskError, withCompletedWrites } from "../../sevdesk/errors.js";
 import { sevdeskPath } from "../../sevdesk/paths.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import {
+  assertTransactionNotDeleted,
   type BankAccountDto,
   getBankAccount,
   getTransaction,
@@ -43,7 +44,7 @@ import {
 } from "../lifecycle/payments.js";
 import { formatMoney } from "../lifecycle/preview.js";
 import { assertBookable, refuse } from "../lifecycle/transitions.js";
-import { add, compare, money, subtract, toDecimalString } from "../money.js";
+import { add, compare, type Money, money, subtract, toDecimalString } from "../money.js";
 import { type Phrase, phrase, type PreviewLanguage } from "../preview-text.js";
 import { readTransactionLog, remainingAmount, TRANSACTION_STATUS } from "./transaction-log.js";
 
@@ -126,6 +127,7 @@ const STATUS_REFUSALS: Readonly<Record<number, string>> = {
  * (200).
  */
 function assertTransactionBookable(transaction: TransactionDto): void {
+  assertTransactionNotDeleted(transaction);
   const ref = `Bank transaction ${String(transaction.id)}`;
   if (transaction.enshrined) {
     refuse(`${ref} is enshrined (festgeschrieben) and cannot be booked anymore.`);
@@ -178,7 +180,72 @@ export async function planAllocation(
   requests: readonly AllocationRequest[],
   options: CountryReadOptions,
 ): Promise<AllocationPlan> {
-  const { signal, cacheOwner } = options;
+  const { signal } = options;
+  checkRequests(requests);
+
+  const transaction = await lookup(
+    () => getTransaction(client, transactionId, signal),
+    `Bank transaction ${String(transactionId)} does not exist; find it with ` +
+      "sevdesk_transactions_list.",
+  );
+  assertTransactionBookable(transaction);
+  const log = await readTransactionLog(client, transaction.id, signal);
+  const remainingBefore = bookableRemaining(transaction, remainingAmount(transaction, log));
+  const accountId = transaction.account?.id ?? 0;
+  const account = await getBankAccount(client, accountId, signal);
+  const bookingDate = transaction.valueDate ?? transaction.entryDate;
+  if (bookingDate === undefined) {
+    refuse(`Bank transaction ${String(transaction.id)} has no date to book the payments on.`);
+  }
+  const planned = await planAllocations(
+    client,
+    {
+      transactionId: transaction.id,
+      amount: transaction.amount,
+      account,
+      bookingDate,
+      remainingBefore,
+      name: phrase(
+        `bank transaction ${String(transaction.id)}`,
+        `Kontoumsatz ${String(transaction.id)}`,
+      ),
+    },
+    requests,
+    options,
+  );
+  return { transaction, account, bookingDate, remainingBefore, ...planned };
+}
+
+/**
+ * What allocations are planned against: an existing transaction, or one that the same call
+ * creates first (`sevdesk_transaction_create`), whose id is not known yet.
+ */
+export interface AllocationTarget {
+  /**
+   * The transaction to link each booking to; `undefined` while it does not exist yet: the
+   * payloads then carry no transaction, and the caller links them with `linkTransaction`
+   * (`lifecycle/payments.ts`) once sevDesk has named the new row.
+   */
+  readonly transactionId: number | undefined;
+  /** Signed as the money moves (positive = in), in the transaction's currency; not zero. */
+  readonly amount: Money;
+  readonly account: BankAccountDto;
+  /** Booking day, `YYYY-MM-DD`. */
+  readonly bookingDate: string;
+  /** What is left to assign, positive. */
+  readonly remainingBefore: string;
+  /** How the guards and warnings name the transaction ("bank transaction 5101"). */
+  readonly name: Phrase;
+}
+
+/** The allocations of an {@link AllocationPlan}, planned against an {@link AllocationTarget}. */
+export type PlannedAllocations = Pick<
+  AllocationPlan,
+  "allocated" | "remainingAfter" | "allocations" | "warnings"
+>;
+
+/** Refuses no request, more than {@link MAX_ALLOCATIONS}, and a document named twice. */
+function checkRequests(requests: readonly AllocationRequest[]): void {
   if (requests.length === 0) refuse("Name at least one document to book the transaction to.");
   if (requests.length > MAX_ALLOCATIONS) {
     refuse(`At most ${MAX_ALLOCATIONS} documents can be booked in one call.`);
@@ -194,29 +261,31 @@ export async function planAllocation(
     }
     seen.add(key);
   }
+}
 
-  const transaction = await lookup(
-    () => getTransaction(client, transactionId, signal),
-    `Bank transaction ${String(transactionId)} does not exist; find it with ` +
-      "sevdesk_transactions_list.",
-  );
-  assertTransactionBookable(transaction);
-  const log = await readTransactionLog(client, transaction.id, signal);
-  const remainingBefore = bookableRemaining(transaction, remainingAmount(transaction, log));
-  const currency = transaction.amount.currency;
-  const accountId = transaction.account?.id ?? 0;
-  const account = await getBankAccount(client, accountId, signal);
-  const bookingDate = transaction.valueDate ?? transaction.entryDate;
-  if (bookingDate === undefined) {
-    refuse(`Bank transaction ${String(transaction.id)} has no date to book the payments on.`);
-  }
-
-  const ref = `bank transaction ${String(transaction.id)}`;
+/**
+ * Plans booking `target` to `requests` (in that order): reads every document and runs every
+ * guard of {@link planAllocation} that does not need the transaction itself (direction, currency,
+ * account, open amounts, the total against `remainingBefore`). Throws a trusted `validation`
+ * error before anything is sent when one fails.
+ */
+export async function planAllocations(
+  client: SevdeskClient,
+  target: AllocationTarget,
+  requests: readonly AllocationRequest[],
+  options: CountryReadOptions,
+): Promise<PlannedAllocations> {
+  const { signal, cacheOwner } = options;
+  checkRequests(requests);
+  const { account, bookingDate, remainingBefore } = target;
+  const currency = target.amount.currency;
+  const direction = compare(target.amount.amount, 0) < 0 ? "out" : "in";
+  const ref = target.name.en;
   const show = (value: string, lang: PreviewLanguage = "en"): string =>
     formatMoney(money(value, currency), lang);
   const allocations: PlannedAllocation[] = [];
   const warnings: Phrase[] = [];
-  const signed = transaction.amount.amount;
+  const signed = target.amount.amount;
   const transactionTotal = toDecimalString(compare(signed, 0) < 0 ? subtract(0, signed) : signed);
   let allocated = "0";
   for (const request of requests) {
@@ -228,8 +297,8 @@ export async function planAllocation(
     assertBookable(doc);
     const docRef = documentRef(doc, true);
     const expected = paymentDirection(doc);
-    if (expected !== transaction.direction) {
-      const moves = transaction.direction === "in" ? "incoming" : "outgoing";
+    if (expected !== direction) {
+      const moves = direction === "in" ? "incoming" : "outgoing";
       const needs = expected === "in" ? "incoming money" : "outgoing money";
       refuse(
         `${docRef} needs ${needs}, but ${ref} is ${moves}. Invoices and revenue vouchers take ` +
@@ -267,7 +336,7 @@ export async function planAllocation(
       paymentType: request.paymentType ?? "payment",
       date: bookingDate,
       checkAccountId: account.id,
-      transactionId: transaction.id,
+      transactionId: target.transactionId,
       transactionAmount: transactionTotal,
     });
     allocated = total;
@@ -286,22 +355,13 @@ export async function planAllocation(
       phrase(
         `${show(remainingAfter)} of ${ref} stays unassigned: it becomes partly linked (status ` +
           "200) and can be booked further with sevdesk_transaction_book.",
-        `${show(remainingAfter, "de")} von Kontoumsatz ${String(transaction.id)} bleiben ohne ` +
+        `${show(remainingAfter, "de")} von ${target.name.de} bleiben ohne ` +
           "Zuordnung: Der Umsatz gilt dann als teilweise verknüpft (Status 200) und kann mit " +
           "sevdesk_transaction_book weiter gebucht werden.",
       ),
     );
   }
-  return {
-    transaction,
-    account,
-    bookingDate,
-    remainingBefore,
-    allocated,
-    remainingAfter,
-    allocations,
-    warnings,
-  };
+  return { allocated, remainingAfter, allocations, warnings };
 }
 
 /** A record a write changed: `{objectName, id}`, for `affected` and completed writes. */

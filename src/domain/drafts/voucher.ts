@@ -887,6 +887,8 @@ function notDraftAnymore(error: SevdeskError, voucherId: number | undefined): Se
       'it to draft first with sevdesk_voucher_reset (to "draft").',
     ...(error.status === undefined ? {} : { status: error.status }),
     ...(error.upstreamMessage === undefined ? {} : { upstreamMessage: error.upstreamMessage }),
+    // Our own sentence for a known refusal: shown instead of the generic advice.
+    explained: true,
     cause: error,
   });
 }
@@ -933,6 +935,8 @@ function afterUpload(error: SevdeskError): SevdeskError {
     ...(error.upstreamMessage === undefined ? {} : { upstreamMessage: error.upstreamMessage }),
     ...(error.method === undefined ? {} : { method: error.method }),
     ...(error.path === undefined ? {} : { path: error.path }),
+    // The message stays ours (the explanation plus the upload note), so it is still shown.
+    ...(error.explained ? { explained: true } : {}),
     cause: error,
     completedWrites: error.completedWrites,
   });

@@ -31,7 +31,11 @@
 import { z } from "zod";
 
 import { toUnixSeconds } from "../../sevdesk/dates.js";
-import type { BankAccountDto, TransactionDto } from "../banking.js";
+import {
+  assertTransactionNotDeleted,
+  type BankAccountDto,
+  type TransactionDto,
+} from "../banking.js";
 import {
   compare,
   type DecimalLike,
@@ -212,7 +216,8 @@ export function paymentSign(subject: PaymentSubject): -1 | 1 {
  * Checks the check account for a payment and returns warnings for the preview. Refuses archived
  * accounts, accounts in another currency than the document, and online (bank) accounts without a
  * transaction to link (spec: "When the check account is type online, you must provide a
- * transaction").
+ * transaction"). Without a transaction, sevDesk creates the row itself on offline and cash
+ * accounts: this is how a cash sale or a cash expense is recorded on a cash register (D-095).
  */
 export function checkPaymentAccount(
   doc: LifecycleDocument<PaymentKind>,
@@ -234,8 +239,28 @@ export function checkPaymentAccount(
     refuse(
       `${accountRef} is a bank account fed by imports (online); sevDesk needs the imported ` +
         `transaction to link. Find it with sevdesk_transactions_list (status created) and pass ` +
-        `transactionId.`,
+        `transactionId` +
+        (account.fileImport
+          ? "; a payment not imported yet can be entered with sevdesk_transaction_create, which " +
+            "can book it on the document in the same step."
+          : "."),
     );
+  }
+  if (account.type === "cash") {
+    // Recorded on the trial's register (D-095): the booking creates a row at status 400 and moves
+    // the balance; resetToOpen keeps that row and books a counter-entry dated at the reset.
+    return [
+      phrase(
+        `sevDesk records this payment as a new entry in the cash book (Kassenbuch) of cash ` +
+          `register ${String(account.id)}, and the register's balance changes by it. Undoing ` +
+          "the payment later does not remove that entry: sevDesk books a counter-entry dated " +
+          "the day of the undo.",
+        `sevDesk trägt diese Zahlung als neuen Eintrag in das Kassenbuch der Kasse ` +
+          `${String(account.id)} ein, und der Kassenbestand ändert sich entsprechend. Wird die ` +
+          "Zahlung später rückgängig gemacht, bleibt dieser Eintrag stehen: sevDesk bucht eine " +
+          "Gegenbuchung mit dem Datum des Rückgängigmachens.",
+      ),
+    ];
   }
   if (account.type === "unknown") {
     return [
@@ -279,6 +304,7 @@ export function checkPaymentTransaction(
   amount: string,
   assigned = "0",
 ): Phrase[] {
+  assertTransactionNotDeleted(transaction);
   const ref = `Bank transaction ${String(transaction.id)}`;
   const refDe = `Kontoumsatz ${String(transaction.id)}`;
   if (transaction.account?.id !== accountId) {
@@ -401,6 +427,24 @@ const bookAmountPayloadSchema = z.strictObject({
 });
 
 export type BookAmountPayload = z.output<typeof bookAmountPayloadSchema>;
+
+/**
+ * `payload` linked to bank transaction `transactionId`: for a booking planned before its
+ * transaction existed (`sevdesk_transaction_create` books the row it has just created). Refuses a
+ * payload that is linked already, so a planned link is never replaced.
+ */
+export function linkTransaction(
+  payload: BookAmountPayload,
+  transactionId: number,
+): BookAmountPayload {
+  if (payload.checkAccountTransaction !== undefined) {
+    throw new Error("linkTransaction: the booking is linked to a transaction already.");
+  }
+  return bookAmountPayloadSchema.parse({
+    ...payload,
+    checkAccountTransaction: { id: transactionId, objectName: "CheckAccountTransaction" },
+  });
+}
 
 export interface PaymentRequest {
   /** Exact positive decimal in the document's currency (from `amountInput`). */
