@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { creditNoteGetTool as tool } from "../../../../src/tools/credit-notes/get.js";
 import { withCountryRoute } from "../../../helpers/country-route.js";
 import { type FakeRoute, FakeSevdeskClient, testContext } from "../../../helpers/fake-client.js";
+import { discountRow, discountsRoute, noDiscountsRoute } from "../drafts/routes.js";
 
 const routes: readonly FakeRoute[] = [
   {
@@ -16,9 +17,24 @@ const routes: readonly FakeRoute[] = [
     response: { fixture: "credit-notes/credit-note-positions-2001.json" },
   },
   { path: "/Unity", response: { fixture: "meta/units.json" } },
+  noDiscountsRoute,
 ];
 
 describe("sevdesk_credit_note_get (community: recorded CreditNote shapes, fake data)", () => {
+  it("shows a discount on the whole credit note (D-116)", async () => {
+    const client = new FakeSevdeskClient(
+      withCountryRoute([
+        discountsRoute("CreditNote", 2001, [discountRow("CreditNote", 2001, { value: "3" })]),
+        ...routes,
+      ]),
+    );
+    const result = await tool.handler(tool.input.parse({ id: 2001 }), testContext(client));
+    expect(tool.output.parse(result.data)).toEqual(result.data);
+    expect(result.data.discount?.items).toEqual([
+      { id: 9001, kind: "percent", value: "3", basis: "net", text: "Rabatt" },
+    ]);
+  });
+
   it("is a read tool with explicit annotations", () => {
     expect(tool.tier).toBe("read");
     expect(tool.toolset).toBe("credit-notes");
@@ -65,6 +81,7 @@ describe("sevdesk_credit_note_get (community: recorded CreditNote shapes, fake d
       },
     ]);
     expect(result.data.positionsComplete).toBe(true);
+    expect(result.data).not.toHaveProperty("discount");
     expect(result.summary).toBe("Credit note 2001 (status Open / delivered) with 1 position.");
   });
 

@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/receipts.md sha256:38ee50631fe3 -->
+<!-- translated-from: docs/guides/receipts.md sha256:a2d206faa832 -->
 
 # Belege und Eingangsrechnungen
 
@@ -43,6 +43,16 @@ Die Beleg-Werkzeuge lesen nie von sich aus auf deiner Festplatte:
   [`sevdesk_upload_request`](../tools.md#sevdesk_upload_request) auf, gibt dir einen Link und
   reicht den Upload weiter, sobald du sagst, dass du fertig bist. Auf eine Seite passen bis zu 10
   Dateien; siehe [Dateien über HTTP](../remote/files.de.md).
+- **Von einem Link**, in beiden Modi, wenn die Hosts, von denen er kommen darf, in
+  `SEVDESK_FILE_URL_HOSTS` stehen: Gib dem Assistenten einen https-Link zur Datei (den
+  Download-Link eines Lieferantenportals, einen Speicher-Link). Der Server lädt sie nur für diesen
+  Aufruf herunter, ohne sich irgendwo anzumelden; siehe
+  [Dateien von einem Link](../configuration.de.md#dateien-von-einem-link).
+
+Die Vorschau des Probelaufs zeigt die vollständige SHA-256 der Datei. Der echte Aufruf liest die
+Datei erneut (ein Link wird erneut heruntergeladen); der Assistent kann diese SHA-256 deshalb als
+`fileSha256` übergeben: Haben sich die Bytes dazwischen geändert, wird der Aufruf abgelehnt, bevor
+etwas sevDesk erreicht.
 
 > Erfasse den Beleg Belege/2026-11/tankstelle-shell.pdf.
 
@@ -114,7 +124,9 @@ ohne Bestätigung) schickt eine Belegdatei an sevDesks eigene Belegerkennung. se
 einen Belegentwurf mit der Datei als Anhang an, eine Ausgabe, außer du sagst, dass es eine
 Einnahme ist, und füllt binnen Sekunden Belegdatum, Belegnummer, Summen, einen Lieferantentext und
 die Positionen aus. Das Werkzeug wartet bis zu 15 Sekunden und nennt dann, was sevDesk ausgefüllt
-hat und was noch fehlt.
+hat und was noch fehlt. Lass es zuerst als Probelauf laufen und übergib die SHA-256 aus seiner
+Vorschau als `fileSha256`: Der echte Aufruf liest die Datei erneut und sendet sie nur, wenn die
+Bytes dieselben sind.
 
 Nichts davon ist geprüft, und vollständig ist der Entwurf nie:
 
@@ -197,6 +209,13 @@ nicht gebuchte Kontoumsätze über Belegnummer und Betrag den Belegen zu und buc
 der du zustimmst, mit [`sevdesk_transaction_book`](../tools.md#sevdesk_transaction_book)
 (`commit`). Eine Bankgebühr, zu der es noch keinen Beleg gibt, bekommt zuerst einen Beleg, dann
 wird der Umsatz darauf gebucht.
+
+Um die Belege zu finden, die überhaupt fehlen, geht der Prompt
+[`missing_receipts`](../tools.md#missing_receipts) einen Monat oder ein Quartal durch: ausgehende
+Umsätze, die kein Beleg erklärt, Lieferanten, die regelmäßig abrechnen und im Zeitraum keine
+Rechnung haben, Belege nur im Entwurf oder doppelt gebucht und, mit `SEVDESK_FILE_DIRS`, die Dateien
+in deinem Belegordner, die an keinem Beleg hängen. Seine Befunde sind Hinweise, keine
+Steuerberatung; ein Beleg, der auftaucht, wird wie oben als Belegentwurf erfasst.
 
 ## Festschreiben
 

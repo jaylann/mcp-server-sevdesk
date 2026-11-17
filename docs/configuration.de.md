@@ -1,4 +1,4 @@
-<!-- translated-from: docs/configuration.md sha256:93a52c931ea4 -->
+<!-- translated-from: docs/configuration.md sha256:acb8f518a9d2 -->
 
 # Konfiguration
 
@@ -71,22 +71,61 @@ wird nicht gezeigt, weil es das Geheimnis selbst sein kann, in die falsche Varia
 
 ### Werkzeuge und Ausgabe
 
-| Variable                    | Standard  | Bedeutung                                                                                                                                                                                                                                                                  |
-| --------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SEVDESK_TOOLSETS`          | `default` | Die [Werkzeuggruppen](#werkzeuggruppen), die geladen werden: eine Liste aus `meta`, `contacts`, `invoices`, `credit-notes`, `orders`, `vouchers`, `banking`, `parts`, `reports`, `advanced` oder `default` (alles außer `advanced`) oder `all`. `meta` wird immer geladen. |
-| `SEVDESK_STRUCTURED_OUTPUT` | `auto`    | `auto`, `on` oder `off`: ob Werkzeuge ein Ausgabeschema angeben und neben dem JSON-Text typisierten `structuredContent` zurückgeben. Siehe [Strukturierte Ausgabe](#strukturierte-ausgabe).                                                                                |
+| Variable                    | Standard  | Bedeutung                                                                                                                                                                                                                                                                         |
+| --------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SEVDESK_TOOLSETS`          | `default` | Die [Werkzeuggruppen](#werkzeuggruppen), die geladen werden: eine Liste aus `meta`, `contacts`, `invoices`, `credit-notes`, `orders`, `vouchers`, `banking`, `parts`, `reports`, `advanced` oder `default` (alles außer `advanced`) oder `all`. `meta` wird immer geladen.        |
+| `SEVDESK_STRUCTURED_OUTPUT` | `auto`    | `auto`, `on` oder `off`: ob Werkzeuge ein Ausgabeschema angeben und neben dem JSON-Text typisierten `structuredContent` zurückgeben. Siehe [Strukturierte Ausgabe](#strukturierte-ausgabe).                                                                                       |
+| `SEVDESK_VIES_CHECK`        | `0`       | `1` oder `true` erlaubt `sevdesk_vat_id_check`, beim VIES-Dienst der Europäischen Kommission zu fragen, ob eine USt-IdNr. gültig ist; dabei geht die USt-IdNr. an `ec.europa.eu` ([Datenschutz](../PRIVACY.de.md)). Nicht gesetzt, `0` oder `false`: nur ihr Format wird geprüft. |
+
+Die VIES-Prüfung folgt der veröffentlichten Beschreibung der Schnittstelle durch die Kommission und
+ist noch nicht gegen den echten Dienst getestet. Zwei Dinge sind unbestätigt: ob VIES Nummern aus
+Nordirland (Präfix `XI`) annimmt und wie es meldet, dass es einen Mitgliedstaat nicht erreicht.
+Eine Antwort, die der Server nicht lesen kann, meldet er als „nicht verfügbar“ (`unavailable`), nie
+als ungültige Nummer.
 
 ### Dateien und Audit-Log
 
-| Variable             | Standard | Bedeutung                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| -------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SEVDESK_FILE_DIRS`  |          | Ordner, aus denen Belege und E-Rechnungen gelesen werden dürfen: für Belegentwürfe (`sevdesk_voucher_create_draft`, `sevdesk_voucher_update_draft`, `sevdesk_voucher_recognize_receipt`), `sevdesk_einvoice_parse` und `sevdesk_voucher_import_einvoice`. Symbolische Links müssen innerhalb bleiben; sonst kann nichts auf deiner Festplatte gelesen werden. Ohne die Variable nehmen diese Werkzeuge keine lokalen Dateien an (und die beiden E-Rechnungs-Werkzeuge und die Belegerkennung werden nicht angeboten). |
-| `SEVDESK_OUTPUT_DIR` |          | Der Ordner, in den `sevdesk_document_save`, `sevdesk_csv_export` und `sevdesk_datev_export` Dateien schreiben dürfen (PDFs, E-Rechnungs-XML, CSV- und DATEV-Exporte). Diese Werkzeuge werden nur angeboten, wenn die Variable gesetzt ist. Sie legen nur neue Dateien an, mit Modus 0600, und überschreiben nie eine.                                                                                                                                                                                                 |
-| `SEVDESK_AUDIT_LOG`  |          | Pfad eines Protokolls im Format JSON Lines, an das nur angehängt wird, für jeden schreibenden Aufruf (Modus 0600): Vorschauen, Bestätigungen, Ausführungen und Fehlschläge. Ist die Variable gesetzt, die Datei aber nicht beschreibbar, werden Schreibvorgänge abgelehnt. Siehe [Audit-Log](permissions/audit-log.de.md).                                                                                                                                                                                            |
+| Variable                 | Standard | Bedeutung                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SEVDESK_FILE_DIRS`      |          | Ordner, aus denen Belege und E-Rechnungen gelesen werden dürfen: für Belegentwürfe (`sevdesk_voucher_create_draft`, `sevdesk_voucher_update_draft`, `sevdesk_voucher_recognize_receipt`), `sevdesk_einvoice_parse` und `sevdesk_voucher_import_einvoice`, und der Ordner, den `sevdesk_receipt_folder_check` mit den in sevDesk gebuchten Belegen vergleicht (nur Prüfsummen). Symbolische Links müssen innerhalb bleiben; sonst kann nichts auf deiner Festplatte gelesen werden. Ohne die Variable nehmen diese Werkzeuge keine lokalen Dateien an (und die beiden E-Rechnungs-Werkzeuge, die Belegerkennung und die Belegordner-Prüfung werden nicht angeboten). |
+| `SEVDESK_FILE_URL_HOSTS` |          | Hosts, von denen diese Werkzeuge einen Beleg oder eine E-Rechnung herunterladen dürfen, wenn `file` ein https-Link ist: eine Liste von Hostnamen, `*.example.com` für jede Subdomain von example.com. Leer: Links werden abgelehnt. Siehe [Dateien von einem Link](#dateien-von-einem-link).                                                                                                                                                                                                                                                                                                                                                                        |
+| `SEVDESK_OUTPUT_DIR`     |          | Der Ordner, in den `sevdesk_document_save`, `sevdesk_csv_export` und `sevdesk_datev_export` Dateien schreiben dürfen (PDFs, E-Rechnungs-XML, CSV- und DATEV-Exporte). Diese Werkzeuge werden nur angeboten, wenn die Variable gesetzt ist. Sie legen nur neue Dateien an, mit Modus 0600, und überschreiben nie eine.                                                                                                                                                                                                                                                                                                                                               |
+| `SEVDESK_AUDIT_LOG`      |          | Pfad eines Protokolls im Format JSON Lines, an das nur angehängt wird, für jeden schreibenden Aufruf (Modus 0600): Vorschauen, Bestätigungen, Ausführungen und Fehlschläge. Ist die Variable gesetzt, die Datei aber nicht beschreibbar, werden Schreibvorgänge abgelehnt. Siehe [Audit-Log](permissions/audit-log.de.md).                                                                                                                                                                                                                                                                                                                                          |
 
 Im Fernzugriff liegen die Ordner auf dem Server. Der OAuth-Modus lehnt beide Ordnervariablen ab
 und verwendet stattdessen Upload-Seiten und Download-Links
 ([Dateien über HTTP](remote/files.de.md)).
+
+#### Dateien von einem Link
+
+Ist `SEVDESK_FILE_URL_HOSTS` gesetzt, nimmt das Argument `file` der fünf Werkzeuge oben auch einen
+https-Link an, für einen Beleg in einem Lieferantenportal oder einem Cloud-Speicher, in jedem
+Modus (auch mit OAuth). Der Server lädt die Datei während des Aufrufs herunter und behält nichts:
+
+- nur von den aufgeführten Hosts, nach Namen (keine IP-Adressen, kein anderer Port, kein
+  Benutzername oder Passwort im Link), und nur, wenn jede Adresse, zu der der Host aufgelöst wird,
+  öffentlich ist: Private, Loopback-, Link-Local-, CGNAT- und Multicast-Adressen werden abgelehnt,
+  und die Verbindung geht an die geprüfte Adresse;
+- Weiterleitungen werden höchstens dreimal verfolgt und nur zu Hosts auf der Liste, gleich
+  geprüft;
+- gesendet werden keine Cookies, keine Zugangsdaten und nie das sevDesk-Token; ein Link, der eine
+  Anmeldung braucht, schlägt fehl;
+- eine PDF-, PNG-, JPEG- oder XML-Datei (geprüft am Inhalt und am angegebenen Typ; eine Webseite
+  wie eine Anmeldeseite wird abgelehnt), höchstens 20 MB, innerhalb von 60 Sekunden; höchstens
+  zwei Downloads gleichzeitig je Konto.
+
+Vorschau und Ergebnis zeigen den Namen der Datei, ihre SHA-256 und den Host, von dem sie kam. Der
+Name ist der letzte Teil des Link-Pfads, wenn er ein Dateiname von höchstens 64 Zeichen ist, der
+auf `.pdf`, `.png`, `.jpg`, `.jpeg` oder `.xml` endet, sonst `download.pdf` (oder `.png`, `.jpg`,
+`.xml`); unter diesem Namen behält sevDesk die Datei. Sonst wird nichts vom Link gezeigt, und das
+Audit-Log hält nur seinen Host fest (`https://host/…?[redacted]`). Der echte Aufruf lädt die Datei
+nach einem Probelauf erneut: Übergib die SHA-256 aus der Vorschau des Probelaufs als `fileSha256`,
+dann wird eine Datei mit anderen Bytes abgelehnt, bevor etwas sevDesk erreicht (das gilt auch für
+lokale Dateien und Uploads).
+
+Trage Hosts genau ein (internationalisierte Namen in ihrer `xn--`-Form). `*.example.com` erlaubt
+jede Subdomain von example.com: Nenne eine geteilte Domain (den Speicher eines Cloud-Anbieters)
+nur, wenn du jeder Datei darauf traust, denn dort kann jeder eine Datei ablegen.
 
 ### Verbindung
 
@@ -123,14 +162,14 @@ und spart Tokens.
 | Werkzeuggruppe | Umfang                                                                                                                                                                                     |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `meta`         | Kontoübersicht, Stammdaten (Steuerregeln, Buchungskonten, Einheiten, Länder, …), Dokumente als Datei speichern, Upload-Anfragen im Fernzugriff. Wird immer geladen.                        |
-| `contacts`     | Kunden und Lieferanten: suchen, abrufen, anlegen, ändern, nächste Kundennummer.                                                                                                            |
+| `contacts`     | Kunden und Lieferanten: suchen, abrufen, anlegen, ändern, löschen, nächste Kundennummer.                                                                                                   |
 | `invoices`     | Rechnungen: auflisten, abrufen, Entwürfe, Rechnungen aus Aufträgen, Mahnungen, Fertigstellen bis Festschreiben, PDF, E-Rechnungs-XML und Tauglichkeitsprüfung.                             |
 | `credit-notes` | Gutschriften: auflisten, abrufen, Entwürfe, Gutschriften aus Rechnungen, Fertigstellen bis Festschreiben, PDF.                                                                             |
 | `orders`       | Aufträge (Angebote, Auftragsbestätigungen, Lieferscheine): auflisten, abrufen, Entwürfe, fertigstellen, versenden, PDF.                                                                    |
 | `vouchers`     | Belege: auflisten, abrufen, Entwürfe mit angehängter Belegdatei, E-Rechnungen auslesen und importieren, Fertigstellen bis Festschreiben.                                                   |
 | `banking`      | Zahlungskonten und Kontoumsätze, Zuordnungsvorschläge, Kontoumsätze Dokumenten zuordnen, private Umsätze.                                                                                  |
 | `parts`        | Artikel einschließlich Lagerbestand: auflisten, abrufen, anlegen, ändern.                                                                                                                  |
-| `reports`      | Zusammenfassungen, Altersstruktur offener Forderungen und Verbindlichkeiten, Liquidität, Änderungen seit einem Datum, Umsatzsteuer-Auswertung, Gewinn und Verlust, CSV- und DATEV-Exporte. |
+| `reports`      | Zusammenfassungen, offene Posten nach Alter, Liquidität, Änderungen seit einem Stichtag, USt-Auswertung, Gewinn und Verlust, Steuerregel-Hilfe, USt-IdNr.-Prüfung, CSV- und DATEV-Exporte. |
 | `advanced`     | `sevdesk_api_get`, ein reines Lese-GET auf jeden sevDesk-Endpunkt. Standardmäßig aus.                                                                                                      |
 
 Jedes Werkzeug mit seiner Werkzeuggruppe, Stufe und seinen Argumenten steht in der

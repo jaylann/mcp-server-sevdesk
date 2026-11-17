@@ -4,6 +4,7 @@
  * folder behaviour is tested next to each tool; the transfer store and the file accesses in
  * `test/unit/safety/`.
  */
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
@@ -199,6 +200,27 @@ describe("a draft from sevDesk's receipt recognition, from an upload", () => {
     const kept = await transfer.store.readUpload(OWNER, ref.slice("upload:".length));
     expect(kept === undefined).toBe(released);
   });
+
+  it("refuses an upload with other bytes than fileSha256 before any request, and keeps it", async () => {
+    const transfer = await openTransfer();
+    const ref = await transfer.upload(PDF_BYTES);
+    const digest = createHash("sha256").update(PDF_BYTES).digest("hex");
+    const fake = new FakeSevdeskClient([version2Route, recognitionRoute()]);
+    const error = await executeWrite(
+      voucherRecognizeReceiptTool(),
+      { file: ref, fileSha256: "c".repeat(64) },
+      fake,
+      filesConfig(),
+      transfer.access(),
+    ).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(SevdeskError);
+    expect((error as SevdeskError).message).toContain(
+      `The file's SHA-256 (${digest.slice(0, 12)}…) differs from fileSha256 (cccccccccccc…)`,
+    );
+    expect((error as SevdeskError).message).not.toContain(ref.slice("upload:".length));
+    expect(fake.calls).toEqual([]);
+    expect(transfer.store.usage().records).toBe(1);
+  });
 });
 
 describe("receipts and e-invoices from uploads", () => {
@@ -386,10 +408,52 @@ describe("receipts and e-invoices from uploads", () => {
     expect(part.name).toBe("Rechnung-0815.pdf");
     expect(part.type).toBe("application/pdf");
     expect(new Uint8Array(await part.arrayBuffer())).toEqual(PDF_BYTES);
-    const fact = plan.preview.facts.find((f) => f.label === "Receipt file (Belegbild)")?.value;
-    expect(fact).toMatch(/^Rechnung-0815\.pdf \(PDF, \d+ bytes, SHA-256 [0-9a-f]{16}…\)$/);
+    const at = plan.preview.facts.findIndex((f) => f.label === "Receipt file (Belegbild)");
+    expect(plan.preview.facts.slice(at, at + 2)).toEqual([
+      {
+        label: "Receipt file (Belegbild)",
+        value: `Rechnung-0815.pdf (PDF, ${String(PDF_BYTES.length)} bytes)`,
+      },
+      { label: "SHA-256", value: createHash("sha256").update(PDF_BYTES).digest("hex") },
+    ]);
     expect(output.data.receipt).toMatchObject({ name: "Rechnung-0815.pdf", kind: "pdf" });
     expect(JSON.stringify([plan.preview, output])).not.toContain(ref.slice("upload:".length));
+  });
+
+  it("attaches an upload only when it has the SHA-256 of fileSha256, and keeps it otherwise", async () => {
+    const transfer = await openTransfer();
+    const ref = await transfer.upload(PDF_BYTES, { name: "Rechnung-0815.pdf" });
+    const digest = createHash("sha256").update(PDF_BYTES).digest("hex");
+
+    const refused = voucherClient();
+    const error = await executeWrite(
+      voucherCreateDraftTool,
+      { ...DRAFT_ARGS, file: ref, fileSha256: "c".repeat(64) },
+      refused,
+      filesConfig(),
+      transfer.access(),
+    ).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(SevdeskError);
+    expect((error as SevdeskError).message).toContain(
+      `The file's SHA-256 (${digest.slice(0, 12)}…) differs from fileSha256 (cccccccccccc…)`,
+    );
+    expect((error as SevdeskError).message).not.toContain(ref.slice("upload:".length));
+    expect(refused.calls).toEqual([]);
+    // Nothing was attached, so the upload stays for the next try.
+    expect(transfer.store.usage().records).toBe(1);
+
+    const fake = voucherClient();
+    await executeWrite(
+      voucherCreateDraftTool,
+      { ...DRAFT_ARGS, file: ref, fileSha256: digest },
+      fake,
+      filesConfig(),
+      transfer.access(),
+    );
+    expect(fake.writes().map((call) => call.path)).toEqual([
+      "/Voucher/Factory/uploadTempFile",
+      "/Voucher/Factory/saveVoucher",
+    ]);
   });
 
   it("refuses another grant's upload and a wrong kind before any request", async () => {
@@ -445,7 +509,8 @@ describe("receipts and e-invoices from uploads", () => {
 
   it("parses an uploaded e-invoice", async () => {
     const transfer = await openTransfer();
-    const ref = await transfer.upload(await readFile(CII), {
+    const bytes = await readFile(CII);
+    const ref = await transfer.upload(bytes, {
       name: "RE-2026-0001.xml",
       kind: "xml",
       purpose: "einvoice",
@@ -465,7 +530,11 @@ describe("receipts and e-invoices from uploads", () => {
       files: transfer.access(),
     });
 
-    expect(result.data.file).toEqual({ name: "RE-2026-0001.xml", kind: "xml" });
+    expect(result.data.file).toEqual({
+      name: "RE-2026-0001.xml",
+      kind: "xml",
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+    });
     expect(result.data.invoice.number).toBe("RE-2026-0001");
     expect(client.writes()).toEqual([]);
     expect(transfer.store.usage().records).toBe(1);

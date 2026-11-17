@@ -95,6 +95,11 @@ it.each([
       ...(kind === "order"
         ? [recorded(`/Order/${id}/getRelatedObjects`, "orders/order-related.json")]
         : []),
+      // The recorded answer for a document without discounts (2026-11-16, D-116).
+      {
+        path: `/${object}/${id}/getDiscounts`,
+        response: { fixture: "recorded/2026-11-16/orders/order-discounts.json" },
+      },
     ];
     const factory = createServerFactory({
       config: allEnabledConfig(),

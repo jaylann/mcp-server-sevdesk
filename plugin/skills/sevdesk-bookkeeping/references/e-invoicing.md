@@ -55,8 +55,9 @@ Retention: keep the XML unaltered in its original form; see [gobd.md](gobd.md).
 
 ## What this server checks
 
-- `sevdesk_einvoice_parse` (`read`, needs `SEVDESK_FILE_DIRS`) reads an XRechnung (UBL 2.1 or
-  CII) or a ZUGFeRD/Factur-X PDF from an allowed directory (up to 20 MiB per file, 5 MiB of XML)
+- `sevdesk_einvoice_parse` (`read`, needs `SEVDESK_FILE_DIRS`, or `SEVDESK_FILE_URL_HOSTS` for
+  an https link) reads an XRechnung (UBL 2.1 or CII) or a ZUGFeRD/Factur-X PDF from an allowed
+  directory or link host (up to 20 MiB per file, 5 MiB of XML)
   and returns the EN 16931 data: profile (from the specification identifier BT-24), parties with
   VAT IDs, dates, lines, allowances and charges, VAT breakdown, totals and payment details. It
   reports findings as errors or warnings with rule codes: EN 16931 business rules (`BR-…`, e.g.

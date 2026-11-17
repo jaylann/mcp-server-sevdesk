@@ -65,24 +65,26 @@ export function voucherRecognizeReceiptTool(
     name: "sevdesk_voucher_recognize_receipt",
     title: "Draft a voucher with sevDesk's receipt recognition",
     description:
-      "Create a draft voucher (Beleg; expense by default, or revenue) from a receipt file with " +
+      "Create a draft voucher (Beleg; expense or revenue) from a receipt file with " +
       "sevDesk's own receipt recognition (Belegerkennung): sevDesk creates the draft with the " +
       "file attached at once and fills in date, Belegnummer, sums, a supplier text and " +
       `positions within seconds; the tool waits up to ${WAIT_SECONDS} s. The result says which ` +
       "fields sevDesk filled in (unchecked; positions and tax rates can be wrong even when the " +
       "total is right) and what is missing: always the tax rule and booking accounts, usually a " +
       "supplier contact. Complete the draft with sevdesk_voucher_update_draft before " +
-      "sevdesk_voucher_finalize. PDF (PNG/JPEG: recognition unmeasured) from SEVDESK_FILE_DIRS " +
-      "or an upload. Every call creates a new draft, also for a file sent before or when " +
-      "nothing is recognised (delete it with sevdesk_voucher_delete_draft). When you know the " +
-      "fields, use sevdesk_voucher_create_draft. Update 2.0 only. Tier write; dryRun previews.",
+      "sevdesk_voucher_finalize. PDF (PNG/JPEG: recognition unmeasured) from SEVDESK_FILE_DIRS, " +
+      "an upload or an allowed https link (read again on the real call; fileSha256 pins its " +
+      "bytes). Every call creates a new draft, also for a file sent before or when nothing is " +
+      "recognised (delete it with sevdesk_voucher_delete_draft). When you know the fields, use " +
+      "sevdesk_voucher_create_draft. Update 2.0 only. Tier write; dryRun previews.",
     toolset: "vouchers",
     tier: "write",
+    // Open world: `file` may be an https link the server downloads (SEVDESK_FILE_URL_HOSTS).
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: false,
-      openWorldHint: false,
+      openWorldHint: true,
     },
     localEffects: "reads-files",
     available: canReadFiles,

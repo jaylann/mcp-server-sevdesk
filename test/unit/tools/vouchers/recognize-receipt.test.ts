@@ -3,17 +3,20 @@
  * (`createVoucherFromFile`, spec/deviations.md D-103). The POST goes out once; the draft is read
  * until its sums appear, waiting through an injected sleep, so no test waits for real.
  */
+import { createHash } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import { RECOGNITION_WAITS_MS } from "../../../../src/domain/drafts/voucher-recognition.js";
+import { localFileAccess } from "../../../../src/safety/file-sources.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { voucherRecognizeReceiptTool } from "../../../../src/tools/vouchers/recognize-receipt.js";
 import { VOUCHER_WRITE_TOOLS } from "../../../../src/tools/vouchers/write-tools.js";
 import { allEnabledConfig } from "../../../helpers/config.js";
 import { type FakeRoute, FakeSevdeskClient } from "../../../helpers/fake-client.js";
+import { fakeLinks, LINK, LINK_HOST, LINK_PDF, served } from "../../../helpers/links.js";
 import { filesDeployment, filesOffDeployment } from "../../../helpers/transfer.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import {
@@ -35,6 +38,10 @@ const ID = 2301;
 
 /** The PNG signature: enough for the content check that recognises the file kind. */
 const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
+const PDF_DIGEST = sha256(PDF_BYTES);
+const LINK_DIGEST = sha256(LINK_PDF);
 
 let sleeps: number[] = [];
 const sleep = (ms: number): Promise<void> => {
@@ -114,17 +121,19 @@ describe("sevdesk_voucher_recognize_receipt", () => {
     expect(tool.tier).toBe("write");
     expect(tool.toolset).toBe("vouchers");
     expect(tool.localEffects).toBe("reads-files");
+    // Open world: `file` may be an https link the server downloads.
     expect(tool.annotations).toEqual({
       readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: false,
-      openWorldHint: false,
+      openWorldHint: true,
     });
     expect(tool.description.length).toBeLessThanOrEqual(1000);
     expect(tool.available?.(allEnabledConfig())).toBe(false);
     expect(tool.available?.(allEnabledConfig({ deployment: filesOffDeployment() }))).toBe(false);
     expect(tool.available?.(allEnabledConfig({ fileDirs: ["/in"] }))).toBe(true);
     expect(tool.available?.(allEnabledConfig({ deployment: filesDeployment() }))).toBe(true);
+    expect(tool.available?.(allEnabledConfig({ fileUrlHosts: [LINK_HOST] }))).toBe(true);
     expect(VOUCHER_WRITE_TOOLS.map((candidate) => candidate.name)).toContain(tool.name);
   });
 
@@ -141,9 +150,19 @@ describe("sevdesk_voucher_recognize_receipt", () => {
         "to 15 s for it.",
     );
     expect(plan.preview.action).not.toContain("Rechnung-0815");
-    expect(plan.preview.facts.find((f) => f.label === "Receipt file (Belegbild)")?.value).toMatch(
-      /^Rechnung-0815\.pdf \(PDF, \d+ bytes, SHA-256 [0-9a-f]{16}…\)$/,
-    );
+    // Name, kind and size, then the full SHA-256 (what fileSha256 takes) as a fact of its own.
+    expect(plan.preview.facts.slice(1, 3)).toEqual([
+      {
+        label: "Receipt file (Belegbild)",
+        value: `Rechnung-0815.pdf (PDF, ${String(PDF_BYTES.length)} bytes)`,
+      },
+      { label: "SHA-256", value: PDF_DIGEST },
+    ]);
+    expect(plan.previewDe?.facts.slice(1, 3)).toEqual([
+      { label: "Belegdatei", value: `Rechnung-0815.pdf (PDF, ${String(PDF_BYTES.length)} Bytes)` },
+      { label: "SHA-256", value: PDF_DIGEST },
+    ]);
+    expect(plan.preview.facts.map((f) => f.label)).not.toContain("Downloaded from");
     expect(plan.preview.facts).toContainEqual({
       label: "Left empty",
       value: "tax rule (Steuerregel), booking accounts (Buchungskonten), supplier contact",
@@ -159,11 +178,12 @@ describe("sevdesk_voucher_recognize_receipt", () => {
     expect(plan.previewDe?.facts.map((f) => f.label)).toEqual([
       "Art",
       "Belegdatei",
+      "SHA-256",
       "Von sevDesk ausgefüllt",
       "Bleibt leer",
       "Status nach dem Speichern",
     ]);
-    expect(plan.previewDe?.facts[3]?.value).toBe("Steuerregel, Buchungskonten, Lieferantenkontakt");
+    expect(plan.previewDe?.facts[4]?.value).toBe("Steuerregel, Buchungskonten, Lieferantenkontakt");
     expect(plan.previewDe?.warnings).toHaveLength(4);
   });
 
@@ -211,6 +231,96 @@ describe("sevdesk_voucher_recognize_receipt", () => {
     );
     expect(old.kind).toBe("validation");
     expect(legacy.writes()).toEqual([]);
+  });
+
+  it("sends a receipt downloaded from an allowed link: hash and host in preview and result", async () => {
+    const links = fakeLinks();
+    const config = { fileUrlHosts: [LINK_HOST] };
+    const files = localFileAccess({ fileDirs: [], outputDir: undefined, ...config }, links.reader);
+    const { fake } = client();
+    const { plan, output } = await executeWrite(tool, { file: LINK }, fake, config, files);
+
+    expect(links.requests).toHaveLength(1);
+    const part = fake.writes()[0]?.form?.get("voucher") as File;
+    expect(part.name).toBe("Rechnung-4711.pdf");
+    expect(new Uint8Array(await part.arrayBuffer())).toEqual(LINK_PDF);
+    expect(plan.preview.facts.slice(1, 4)).toEqual([
+      {
+        label: "Receipt file (Belegbild)",
+        value: `Rechnung-4711.pdf (PDF, ${String(LINK_PDF.length)} bytes)`,
+      },
+      { label: "SHA-256", value: LINK_DIGEST },
+      { label: "Downloaded from", value: `https://${LINK_HOST}` },
+    ]);
+    expect(plan.previewDe?.facts.slice(1, 4)).toEqual([
+      { label: "Belegdatei", value: `Rechnung-4711.pdf (PDF, ${String(LINK_PDF.length)} Bytes)` },
+      { label: "SHA-256", value: LINK_DIGEST },
+      { label: "Heruntergeladen von", value: `https://${LINK_HOST}` },
+    ]);
+    expect(output.data.receipt).toEqual({
+      name: "Rechnung-4711.pdf",
+      kind: "pdf",
+      bytes: LINK_PDF.length,
+      sha256: LINK_DIGEST,
+      downloadedFrom: `https://${LINK_HOST}`,
+    });
+    // The link's path and query (its signature) appear nowhere in what the model gets back.
+    const everything = JSON.stringify({ plan: plan.preview, de: plan.previewDe, output });
+    expect(everything).not.toContain("SIGNATURE-7f3a");
+    expect(everything).not.toContain("/portal");
+  });
+
+  it("sends the receipt only when it has the SHA-256 the dry run showed", async () => {
+    const { dir, file } = await folder();
+    const config = { fileDirs: [dir] };
+    const dryRun = await prepareWrite(tool, { file }, client().fake, config);
+    const shown = dryRun.preview.facts.find((f) => f.label === "SHA-256")?.value;
+    expect(shown).toBe(PDF_DIGEST);
+    expect(dryRun.previewDe?.facts).toContainEqual({ label: "SHA-256", value: PDF_DIGEST });
+
+    const { fake } = client();
+    const { output } = await executeWrite(
+      tool,
+      { file, fileSha256: shown?.toUpperCase() },
+      fake,
+      config,
+    );
+    expect(fake.writes().map((write) => write.path)).toEqual([
+      "/Voucher/Factory/createVoucherFromFile",
+    ]);
+    expect(output.data.receipt?.sha256).toBe(PDF_DIGEST);
+
+    // The file is replaced after the dry run: the real call refuses it before any request.
+    await writeFile(file, "%PDF-1.7\nein anderer Beleg\n%%EOF");
+    const replaced = client().fake;
+    const error = await failure(
+      executeWrite(tool, { file, fileSha256: PDF_DIGEST }, replaced, config),
+    );
+    expect(error.kind).toBe("validation");
+    expect(error.message).toContain(`differs from fileSha256 (${PDF_DIGEST.slice(0, 12)}…)`);
+    expect(error.message).toContain("Nothing was sent to sevDesk.");
+    expect(error.message).not.toContain(dir);
+    expect(replaced.writes()).toEqual([]);
+    expect(replaced.calls).toEqual([]);
+  });
+
+  it("refuses a link that serves other bytes on the real call, before any request", async () => {
+    const other = new TextEncoder().encode("%PDF-1.7\nein anderer Beleg\n%%EOF");
+    const links = fakeLinks({ respond: () => served(other) });
+    const config = { fileUrlHosts: [LINK_HOST] };
+    const files = localFileAccess({ fileDirs: [], outputDir: undefined, ...config }, links.reader);
+    const { fake } = client();
+    const error = await failure(
+      executeWrite(tool, { file: LINK, fileSha256: LINK_DIGEST }, fake, config, files),
+    );
+    expect(error.message).toContain(
+      `The file's SHA-256 (${sha256(other).slice(0, 12)}…) differs from fileSha256 ` +
+        `(${LINK_DIGEST.slice(0, 12)}…)`,
+    );
+    expect(error.message).toContain("Nothing was sent to sevDesk.");
+    expect(error.message).not.toContain("SIGNATURE");
+    expect(fake.writes()).toEqual([]);
+    expect(fake.calls).toEqual([]);
   });
 
   it("sends the PDF once as multipart (creditDebit C, part voucher) and reports a recognised draft", async () => {
@@ -261,6 +371,7 @@ describe("sevdesk_voucher_recognize_receipt", () => {
       name: "Rechnung-0815.pdf",
       kind: "pdf",
       bytes: PDF_BYTES.length,
+      sha256: PDF_DIGEST,
     });
     expect(data.possibleDuplicates).toBeUndefined();
     expect(data.notes).toEqual([

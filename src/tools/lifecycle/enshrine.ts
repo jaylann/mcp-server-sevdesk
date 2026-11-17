@@ -110,7 +110,7 @@ export function enshrineTool(kind: PaymentKind) {
       // What is locked for good: the stored texts, address and positions as facts, and the
       // binding over the same read (review 2026-11, round 3).
       const content = await documentContent(ctx, doc);
-      const warnings = [...enshrineWarnings(kind), content.notShown];
+      const warnings = [...enshrineWarnings(kind), content.notShown, ...content.notes];
       return {
         ...bothPreviews((lang) => ({
           action:

@@ -56,7 +56,8 @@ import {
   assertUpdate2,
   kindText,
   readReceiptFile,
-  receiptText,
+  receiptFacts,
+  receiptSha256,
   type VoucherCallOptions,
 } from "./voucher-checks.js";
 import { receiptBlob, type ReceiptFile, VOUCHER_DRAFT_STATUS } from "./voucher-payload.js";
@@ -117,16 +118,25 @@ function partyWord(kind: VoucherKind): Phrase {
 
 /**
  * Reads the receipt (PDF, PNG or JPEG, through the call's file access with its size and type
- * checks, like the receipt of a manual draft), checks that the account is on Update 2.0 (a
- * recognised draft can only be completed there) and builds the preview. Nothing is written.
+ * checks, like the receipt of a manual draft; a link is downloaded, `options.signal` stops it),
+ * refuses other bytes than `fileSha256` names, checks that the account is on Update 2.0 (a
+ * recognised draft can only be completed there) and builds the preview, which shows the file's
+ * full SHA-256 for the caller to pass back as `fileSha256`: the real call reads the file again,
+ * and the draft it makes cannot be taken back. Nothing is written.
  */
 export async function prepareVoucherRecognition(
   client: SevdeskClient,
-  args: { readonly file: string; readonly kind?: VoucherKind | undefined },
+  args: {
+    readonly file: string;
+    readonly fileSha256?: string | undefined;
+    readonly kind?: VoucherKind | undefined;
+  },
   options: VoucherCallOptions,
 ): Promise<RecognitionPlan> {
   const kind = args.kind ?? "expense";
-  const file = await readReceiptFile(options.files, args.file);
+  const file = await readReceiptFile({ files: options.files, signal: options.signal }, args.file, {
+    sha256: args.fileSha256,
+  });
   await assertUpdate2(client, options.signal, options.cacheOwner);
   const seconds = String(RECOGNITION_WAIT_MS / 1_000);
   const party = partyWord(kind);
@@ -144,7 +154,7 @@ export async function prepareVoucherRecognition(
         ),
         [
           fact(text("Kind", "Art"), kindText(kind, lang)),
-          fact(text("Receipt file (Belegbild)", "Belegdatei"), receiptText(file, lang)),
+          ...receiptFacts(file, lang),
           fact(
             text("Filled in by sevDesk", "Von sevDesk ausgefüllt"),
             text(
@@ -244,7 +254,14 @@ export interface RecognitionResult {
   readonly reads: number;
   readonly waitedMs: number;
   readonly duplicates: DuplicateScan;
-  readonly receipt: { readonly name: string; readonly kind: string; readonly bytes: number };
+  /** The file sent: name, kind, size, SHA-256 and, for a link, the origin it came from. */
+  readonly receipt: {
+    readonly name: string;
+    readonly kind: string;
+    readonly bytes: number;
+    readonly sha256: string;
+    readonly downloadedFrom?: string;
+  };
   /** Trusted notes: what to check, what is missing, what to do next. */
   readonly notes: readonly string[];
   readonly notesDe: readonly string[];
@@ -341,6 +358,8 @@ export async function executeVoucherRecognition(
       name: cleanText(state.file.name, 200) ?? "file",
       kind: state.file.kind,
       bytes: state.file.bytes.length,
+      sha256: receiptSha256(state.file),
+      ...(state.file.host === undefined ? {} : { downloadedFrom: `https://${state.file.host}` }),
     },
     notes: inLanguage(recognitionNotes(facts), "en"),
     notesDe: inLanguage(recognitionNotes(facts), "de"),
