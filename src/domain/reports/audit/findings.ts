@@ -175,8 +175,9 @@ export const auditCoverageSchema = z.object({
     .int()
     .optional()
     .describe(
-      "vat: documents whose contact has no usable data (no VAT id, no address) or German and " +
-        "foreign data at once, so where it is established could not be told.",
+      "vat: documents whose contact has no usable data (no VAT id, no address), German and " +
+        "foreign data at once, or data a capped contact or address list may have left out, so " +
+        "where it is established could not be told.",
     ),
   truncated: z
     .boolean()

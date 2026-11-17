@@ -339,6 +339,11 @@ interface Party {
   /** Whether the VAT id is known (embedded in the document or the contact was listed). */
   readonly vatIdKnown: boolean;
   readonly location: PartyLocation;
+  /**
+   * False when a capped contact or address list may have left out some of its data (see
+   * `parties.ts`): no finding then rests on what the data does not show.
+   */
+  readonly complete: boolean;
 }
 
 type Verdict =
@@ -391,6 +396,9 @@ function partyOf(header: DocumentHeader, directory: PartyDirectory): Party {
     facts,
     vatIdKnown: embedded !== undefined || listed !== undefined,
     location: locate(facts),
+    complete:
+      !directory.coverage.addressesTruncated &&
+      (listed !== undefined || !directory.coverage.contactsTruncated),
   };
 }
 
@@ -400,8 +408,20 @@ function partyOf(header: DocumentHeader, directory: PartyDirectory): Party {
  * business registered or established in Germany); the EU rules 14 and 8 are questioned only for
  * a supplier with nothing but German data, and checked against the area only for one with nothing
  * but foreign data. An address whose country is unknown might be German: not judged.
+ *
+ * Data a capped list left out can only add a German or a foreign location: that turns a finding
+ * or a rate check into OK or not judged, never an OK into a finding. So for an incomplete party
+ * the OKs stand and the rest is not judged.
  */
 function judgePurchase(header: DocumentHeader, rule: number, party: Party): Verdict {
+  const verdict = purchaseVerdict(header, rule, party);
+  if (!party.complete && (verdict.kind === "finding" || verdict.kind === "positions")) {
+    return NOT_JUDGED;
+  }
+  return verdict;
+}
+
+function purchaseVerdict(header: DocumentHeader, rule: number, party: Party): Verdict {
   const { location } = party;
   if (party.facts.countriesUnknown === true) return NOT_JUDGED;
   if (!location.germany && !location.abroad) return NOT_JUDGED;
@@ -437,8 +457,9 @@ function judgeSale(header: DocumentHeader, rule: number, party: Party): Verdict 
     case 1:
       if (header.eur === undefined) return { kind: "left_out" };
       if (compare(header.eur.tax, 0) <= 0 || vatId !== "eu" || party.location.germany) return OK;
-      // A German address would settle it; one whose country is unknown might be German.
-      return party.facts.countriesUnknown === true
+      // A German address would settle it; one whose country is unknown, or one a capped list
+      // left out, might be German. Rules 3 and 21 rest on the VAT id alone.
+      return party.facts.countriesUnknown === true || !party.complete
         ? NOT_JUDGED
         : finding("german_vat_to_eu_business");
     case 3:
@@ -597,13 +618,13 @@ async function runVatCheck(context: AuditCheckContext): Promise<AuditCheckResult
 
   const notRead = scan === undefined ? 0 : scan.notRead + scan.unconvertible.length;
   const incomplete = scan?.documents.filter((document) => !document.positionsComplete).length ?? 0;
-  const contactsTruncated = directory?.coverage.truncated === true;
+  const contacts = directory?.coverage;
   const leftOut = missingAmounts + notRead;
   const truncated =
     listed.truncated ||
     (scan !== undefined && scan.notRead > 0) ||
     incomplete > 0 ||
-    contactsTruncated;
+    contacts?.truncated === true;
 
   const notes = [
     "Documents are selected by document date; drafts are not checked. Sales are checked on " +
@@ -614,15 +635,23 @@ async function runVatCheck(context: AuditCheckContext): Promise<AuditCheckResult
   if (notJudged > 0) {
     notes.push(
       `${plural(notJudged, "document")} could not be judged: the contact has no VAT id and no ` +
-        "address in sevDesk, German and foreign data that leave the question open, or an " +
-        "address in a country that could not be resolved (coverage.notJudged). Complete the " +
-        "contacts to have them checked.",
+        "address in sevDesk, German and foreign data that leave the question open, an " +
+        "address in a country that could not be resolved, or data a capped list left out " +
+        "(coverage.notJudged). Complete the contacts to have them checked.",
     );
   }
-  if (contactsTruncated) {
+  if (contacts?.contactsTruncated === true) {
     notes.push(
-      "The contact or address list stopped at its cap: contacts beyond it are unknown and their " +
-        "documents were not judged.",
+      "The contact list stopped at its cap: for contacts beyond it only what the document shows " +
+        "was used (the VAT id and address on an invoice), and no finding was made that their " +
+        "missing data could overturn.",
+    );
+  }
+  if (contacts?.addressesTruncated === true) {
+    notes.push(
+      "The address list stopped at its cap: any contact may have further addresses, German or " +
+        "foreign, so no finding was made that such an address could overturn; findings on a " +
+        "customer's VAT id (rules 3 and 21) stand.",
     );
   }
   if (directory?.countriesUnread === true) {

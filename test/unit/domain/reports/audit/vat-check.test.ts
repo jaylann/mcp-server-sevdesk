@@ -419,7 +419,59 @@ describe("check vat: incomplete reads", () => {
 
     expect(result.coverage.truncated).toBe(true);
     expect(result.coverage.contacts?.truncated).toBe(true);
-    expect(result.notes.join(" ")).toContain("contacts beyond it are unknown");
+    const notes = result.notes.join(" ");
+    expect(notes).toContain("The contact list stopped at its cap");
+    expect(notes).toContain("The address list stopped at its cap");
+    // A customer's German address could be beyond the cap; its VAT id alone still settles 3 and 21.
+    expect(idsOf(result, "german_vat_to_eu_business")).toEqual([]);
+    expect(idsOf(result, "intra_eu_supply_without_eu_vat_id")).toEqual([3203]);
+    expect(idsOf(result, "eu_service_without_eu_vat_id")).toEqual([3204]);
+  });
+
+  it("makes no finding an address beyond the cap of the address list could overturn", async () => {
+    // Every contact is listed, but the Dutch supplier's German branch address is past the cap.
+    const dutch: ContactSpec = {
+      id: 2201,
+      name: "Logistics B.V.",
+      vatNumber: "NL123456789B01",
+      countries: [COUNTRY.NL, COUNTRY.FR, COUNTRY.DE],
+    };
+    const vouchers = [purchase(1, dutch, 9, [{ rate: "19", net: "100", tax: "19" }], "not_judged")];
+    const invoices = [
+      sale(
+        2,
+        { id: 4301, vatNumber: "FR12345678901", country: COUNTRY.FR },
+        1,
+        "190",
+        "not_judged",
+      ),
+      sale(
+        3,
+        { id: 4302, vatNumber: null, country: COUNTRY.AT },
+        3,
+        "0",
+        "intra_eu_supply_without_eu_vat_id",
+      ),
+    ];
+    const { client, result } = await audit(
+      [
+        regularAccount,
+        accountDatevRoute,
+        ...scenarioRoutes({ vouchers, invoices }),
+        ...directoryRoutes([dutch]),
+      ],
+      { limits: { maxContactRows: 2 } },
+    );
+
+    expect(result.coverage.contacts).toEqual({ read: 1, addressesRead: 2, truncated: true });
+    expect(idsOf(result, "foreign_supplier_charged_german_vat")).toEqual([]);
+    expect(idsOf(result, "german_vat_to_eu_business")).toEqual([]);
+    expect(client.callsTo("/VoucherPos")).toEqual([]);
+    expect(idsOf(result, "intra_eu_supply_without_eu_vat_id")).toEqual([3]);
+    expect(result.coverage.notJudged).toBe(2);
+    expect(result.notes.join(" ")).toContain(
+      "The address list stopped at its cap: any contact may have further addresses",
+    );
   });
 
   it("says when the document listing stopped at its cap", async () => {

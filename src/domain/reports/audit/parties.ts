@@ -23,6 +23,10 @@
  * - A contact with an address whose country cannot be resolved (the country table could not be
  *   read, or it lacks the id) is marked `countriesUnknown`: that address might be German, so the
  *   checks do not judge where it is established.
+ * - When a list stops at its cap, what sevDesk holds is incomplete: contacts beyond the contact
+ *   list's cap are unknown, and beyond the address list's cap any contact may lack addresses. More
+ *   data can only add a German or a foreign location, so the checks keep what such a contact's
+ *   data already settles and do not judge what its missing data could change.
  *
  * A VAT id must look like one (two letters, then at least one digit), so text such as "keine"
  * typed into the field is not read as a country. Where a party is established, the prefix decides
@@ -168,8 +172,12 @@ export interface PartyDirectory {
   readonly coverage: {
     readonly read: number;
     readonly addressesRead: number;
-    /** A cap stopped one of the two lists: contacts beyond it are unknown. */
+    /** A cap stopped one of the two lists (see the two below). */
     readonly truncated: boolean;
+    /** The contact list stopped at its cap: contacts beyond it are not in `parties`. */
+    readonly contactsTruncated: boolean;
+    /** The address list stopped at its cap: any contact in `parties` may lack addresses. */
+    readonly addressesTruncated: boolean;
   };
   /** True when addresses or documents had countries but the country table could not be read. */
   readonly countriesUnread: boolean;
@@ -248,6 +256,8 @@ export async function loadPartyDirectory(
       read: contacts.scanned,
       addressesRead: addresses.scanned,
       truncated: contacts.truncated || addresses.truncated,
+      contactsTruncated: contacts.truncated,
+      addressesTruncated: addresses.truncated,
     },
     countriesUnread: withCountry && countryCodes.size === 0,
   };

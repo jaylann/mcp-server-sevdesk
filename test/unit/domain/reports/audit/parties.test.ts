@@ -142,7 +142,13 @@ describe("loadPartyDirectory", () => {
     });
     expect(directory.parties.get(CONTACTS.swiss.id)?.vatId).toBe("CHE123456789MWST");
     expect(directory.parties.get(CONTACTS.unknown.id)?.countries).toEqual([]);
-    expect(directory.coverage).toEqual({ read: 11, addressesRead: 11, truncated: false });
+    expect(directory.coverage).toEqual({
+      read: 11,
+      addressesRead: 11,
+      truncated: false,
+      contactsTruncated: false,
+      addressesTruncated: false,
+    });
     expect(directory.countriesUnread).toBe(false);
     expect(client.callsTo("/Contact")[0]?.query).toMatchObject({ depth: "1", limit: 1000 });
     expect(client.callsTo("/ContactAddress")[0]?.query).toEqual({
@@ -157,8 +163,34 @@ describe("loadPartyDirectory", () => {
     const client = new FakeSevdeskClient(directoryRoutes());
     const directory = await loadPartyDirectory(client, { cacheOwner: {}, maxRows: 4 });
 
-    expect(directory.coverage.truncated).toBe(true);
+    expect(directory.coverage).toMatchObject({
+      truncated: true,
+      contactsTruncated: true,
+      addressesTruncated: true,
+    });
     expect(directory.parties.size).toBe(4);
+  });
+
+  it("tells a capped address list apart from a capped contact list", async () => {
+    const client = new FakeSevdeskClient(
+      directoryRoutes([
+        {
+          id: 1,
+          name: "Logistics B.V.",
+          vatNumber: "NL123456789B01",
+          countries: [COUNTRY.NL, COUNTRY.FR, COUNTRY.DE],
+        },
+      ]),
+    );
+    const directory = await loadPartyDirectory(client, { cacheOwner: {}, maxRows: 2 });
+
+    expect(directory.coverage).toMatchObject({
+      truncated: true,
+      contactsTruncated: false,
+      addressesTruncated: true,
+    });
+    // The German address lies beyond the cap.
+    expect(directory.parties.get(1)?.countries).toEqual(["FR", "NL"]);
   });
 
   it("marks contacts whose address countries cannot be resolved", async () => {
