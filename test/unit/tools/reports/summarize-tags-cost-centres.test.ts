@@ -277,6 +277,28 @@ describe("sevdesk_records_summarize: tags", () => {
     expect(summary).toContain("The breakdown is incomplete.");
   }, 20_000); // 10,001 relation rows.
 
+  it("says so when the account has more tags than were read for the group names", async () => {
+    // 10,001 tags: the last one (id 30000) is beyond the cap, and invoice 501 carries it.
+    const tagsBeyondCap = many(10_001, (index) => tagRow(20_000 + index, `Tag ${String(index)}`));
+    const { report, summary } = await summarize({ subject: "invoices", groupBy: "tag" }, [
+      tagsRoute(tagsBeyondCap),
+      allRelations([relationRow(8101, 30_000, "Invoice", 501)]),
+      invoices,
+    ]);
+
+    expect(report.groups.map((group) => [group.key, group.tag, group.count])).toEqual([
+      ["tag:30000", { id: 30_000 }, 1],
+      ["none", undefined, 2],
+    ]);
+    // Only the label suffers: the grouping comes from the relations, which were all read.
+    expect(report.groupsComplete).toBe(true);
+    expect(report.notes).toContain(
+      "The account has more than 10,000 tags; only the first ones were read for the names, so " +
+        "the groups of the others show only their tag id. The figures are not affected.",
+    );
+    expect(summary).not.toContain("incomplete");
+  }, 20_000); // 10,001 tag rows.
+
   it("filters by tag with the measured list filter and checks every row", async () => {
     const { client, report, summary } = await summarize({ subject: "invoices", tag: "projekt y" }, [
       TAGS,

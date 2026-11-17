@@ -59,7 +59,8 @@ anything is counted: you never get the totals of all documents labelled as one p
 - **None.** Documents without a tag or without a cost centre form their own group, `none`.
 - **Incomplete reads.** The tags come from the account's tag assignments, read up to 10,000. With
   more, or when the row cap stops reading, the breakdown is marked incomplete
-  (`groupsComplete: false`) instead of passing partial sums off as final.
+  (`groupsComplete: false`) instead of passing partial sums off as final. The tag names are read
+  up to 10,000 tags as well; beyond that a group shows only its tag id, and the result says so.
 
 ## Open items and cash
 

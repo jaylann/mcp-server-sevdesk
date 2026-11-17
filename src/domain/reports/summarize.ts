@@ -65,6 +65,7 @@ import {
   tagFilterOutput,
   tagFilterOutputShape,
   type TagListFilter,
+  tagNamesCutNote,
 } from "../tags.js";
 import { listVouchers, VOUCHER_KINDS, VOUCHER_STATUS_KEYS, type VoucherKind } from "../vouchers.js";
 import {
@@ -935,6 +936,8 @@ function documentGroupingNotes(
           "sit in none: the breakdown is incomplete (groupsComplete false).",
       );
     }
+    const namesCut = tagNamesCutNote(context.documentTags);
+    if (namesCut !== undefined) notes.push(namesCut);
   }
   if (params.groupBy === "cost_centre") {
     notes.push(

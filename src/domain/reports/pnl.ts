@@ -61,6 +61,7 @@ import {
   resolveTagDocuments,
   TAG_READ_MAX,
   type TagDocuments,
+  tagNamesCutNote,
 } from "../tags.js";
 import { importVatAccountIds, isImportVat } from "./import-vat.js";
 import {
@@ -725,6 +726,8 @@ function breakdownNotes(breakdown: Breakdown, source: GroupingSource): string[] 
         "sit in none: the breakdown is incomplete.",
     );
   }
+  const namesCut = tagNamesCutNote(source.documentTags);
+  if (namesCut !== undefined) notes.push(namesCut);
   return notes;
 }
 

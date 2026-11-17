@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/evaluations.md sha256:f7ffbf575a4e -->
+<!-- translated-from: docs/guides/evaluations.md sha256:a1f27f4480f6 -->
 
 # Auswertungen und Exporte
 
@@ -65,7 +65,9 @@ Dokumente als die eines Projekts ausgegeben.
 - **Ohne.** Dokumente ohne Tag oder ohne Kostenstelle bilden eine eigene Gruppe, `none`.
 - **Unvollständiges Lesen.** Die Tags kommen aus den Tag-Zuordnungen des Kontos, gelesen bis
   10.000. Gibt es mehr, oder stoppt die Zeilengrenze das Lesen, ist die Aufteilung als
-  unvollständig markiert (`groupsComplete: false`), statt Teilsummen als endgültig auszugeben.
+  unvollständig markiert (`groupsComplete: false`), statt Teilsummen als endgültig auszugeben. Die
+  Tag-Namen werden ebenfalls bis 10.000 Tags gelesen; darüber zeigt eine Gruppe nur ihre Tag-ID,
+  und das Ergebnis sagt es.
 
 ## Offene Posten und Liquidität
 

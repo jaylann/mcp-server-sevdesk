@@ -336,6 +336,33 @@ describe("profitAndLoss: tags", () => {
     expect(profitAndLossSentence(report)).toContain(", incomplete.");
   }, 20_000); // 10,001 relation rows.
 
+  it("says so when the account has more tags than were read for the group names", async () => {
+    // 10,001 tags: the last one (id 30000) is beyond the cap, and invoice 1 carries it.
+    const tagsBeyondCap = many(10_001, (index) => tagRow(20_000 + index, `Tag ${String(index)}`));
+    const { run } = accrual(
+      [
+        tagsRoute(tagsBeyondCap),
+        allRelations([relationRow(8101, 30_000, "Invoice", 1)]),
+        ...scenarioRoutes(scenario()),
+      ],
+      { groupBy: "tag" },
+    );
+    const report = await run;
+
+    expect(report.breakdown?.groups[0]).toMatchObject({
+      key: "tag:30000",
+      tag: { id: 30_000 },
+      income: EUR("1000.00"),
+    });
+    expect(report.breakdown?.groups[0]?.tag).not.toHaveProperty("name");
+    // Only the label suffers: the grouping comes from the relations, which were all read.
+    expect(report.breakdown?.complete).toBe(true);
+    expect(report.notes).toContain(
+      "The account has more than 10,000 tags; only the first ones were read for the names, so " +
+        "the groups of the others show only their tag id. The figures are not affected.",
+    );
+  }, 20_000); // 10,001 tag rows.
+
   it("reports the figures as truncated when the tag has more uses than were read", async () => {
     const uses = many(10_001, (index) =>
       relationRow(100_000 + index, 7001, "Order", 900_000 + index),

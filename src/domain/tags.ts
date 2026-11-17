@@ -414,19 +414,24 @@ export function tagDocumentKey(objectName: string, id: number): string {
 export interface DocumentTags {
   /** Tag ids per {@link tagDocumentKey}, each id once, ascending. */
   readonly byDocument: ReadonlyMap<string, readonly number[]>;
-  /** The account's tags by id, for the group names (as far as read). */
+  /** The account's tags by id, for the group names (as far as read, see `namesComplete`). */
   readonly tags: ReadonlyMap<number, TagRecord>;
   /**
    * False when the account has more relations than {@link TAG_READ_MAX}: documents whose
    * relations were not read look untagged, so a breakdown is incomplete.
    */
   readonly complete: boolean;
+  /**
+   * False when the account has more tags than {@link TAG_READ_MAX}: groups of the tags beyond
+   * them have an id and no name. Only the labels suffer; grouping is by the relations' tag ids.
+   */
+  readonly namesComplete: boolean;
 }
 
 /**
  * Reads all tag relations of the account (`GET /TagRelation`, pages of 1,000, up to
- * {@link TAG_READ_MAX}) and all tags (`GET /Tag`, for the names) and maps each document to its
- * tags. A document can carry several tags.
+ * {@link TAG_READ_MAX}) and all tags (`GET /Tag`, for the names, up to the same cap) and maps
+ * each document to its tags. A document can carry several tags.
  */
 export async function readDocumentTags(
   client: SevdeskClient,
@@ -455,7 +460,20 @@ export async function readDocumentTags(
     ),
     tags: new Map(tags.items.map(parseTag).map((tag) => [tag.id, tag] as const)),
     complete: !relations.truncated,
+    namesComplete: !tags.truncated,
   };
+}
+
+/**
+ * The trusted note of a breakdown by tag when the account's tags were not all read (see
+ * {@link DocumentTags.namesComplete}), or `undefined`.
+ */
+export function tagNamesCutNote(documentTags: DocumentTags | undefined): string | undefined {
+  return documentTags === undefined || documentTags.namesComplete
+    ? undefined
+    : `The account has more than ${TAG_READ_MAX.toLocaleString("en-US")} tags; only the first ` +
+        "ones were read for the names, so the groups of the others show only their tag id. The " +
+        "figures are not affected.";
 }
 
 /** The list query of a tag filter: `tags[0][id]` + `tags[0][objectName]` (D-090). */
