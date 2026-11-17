@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/evaluations.md sha256:c598f6802b40 -->
+<!-- translated-from: docs/guides/evaluations.md sha256:a8093c1d4e20 -->
 
 # Auswertungen und Exporte
 
@@ -175,9 +175,10 @@ Voreinstellung.
 
 [`sevdesk_datev_settings_update`](../tools.md#sevdesk_datev_settings_update) (`commit`, fragt
 nach deiner Bestätigung) setzt die Beraternummer (1001 bis 9999999), die Mandantennummer (1 bis 99999) und den Beginn des Wirtschaftsjahres, die der DATEV-Export braucht. Gib nur an, was sich
-ändert; die anderen behalten ihren Wert in sevDesk. Die Bestätigung zeigt jeden bisherigen Wert
-neben dem neuen, und danach liest das Werkzeug die Einstellungen zurück und sagt, was sevDesk
-gespeichert hat.
+ändert; die anderen behalten ihren Wert in sevDesk, weil sevDesk alle drei zusammen nimmt. Die
+Bestätigung zeigt jeden bisherigen Wert neben dem neuen und warnt, wenn eine so behaltene Nummer
+außerhalb des DATEV-Bereichs liegt, und danach liest das Werkzeug die Einstellungen zurück und
+sagt, was sevDesk gespeichert hat.
 
 Die Einstellungen gelten für das ganze Konto: Jeder spätere DATEV-Export trägt sie, und das DATEV
 deiner Steuerberatung ordnet die Daten danach zu. Nimm die Nummern von deiner Steuerberatung; eine

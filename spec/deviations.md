@@ -2562,8 +2562,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   (`DEFAULT_VAT_BASIS` in `src/domain/reports/vat.ts`). `sevdesk_datev_settings_update` (a
   `commit` tool, `src/domain/exports/datev-settings.ts`) writes the three DATEV settings in the
   recorded form (JSON numbers, the fiscal-year start as Unix seconds of Berlin midnight), fills the
-  ones not given from the current values (the spec requires all three), refuses a call that
-  changes nothing, and reads them back.
+  ones not given from the current values (the spec requires all three) and warns when such a kept
+  number lies outside DATEV's range, refuses a call that changes nothing, and reads them back,
+  comparing the numbers by value (a stored `01001` goes out as 1001).
 - **Test:** `test/unit/domain/account-settings.test.ts` (including "takes a single object as well
   as the first row of a list, and lenient scalars", "maps every recorded company key, cleans text
   and compacts the IBAN"), `test/unit/tools/drafts/regime.test.ts`,

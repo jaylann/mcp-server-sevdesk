@@ -18,6 +18,7 @@ import {
   CLIENT_NUMBER_MAX,
   CLIENT_NUMBER_MIN,
   currentDatevSettings,
+  DATEV_NUMBER_RANGES,
   DATEV_SETTING_KEYS,
   type DatevSettingChange,
   type DatevSettingKey,
@@ -73,6 +74,26 @@ const settingsOutput = z.object({
 function shown(key: DatevSettingKey, value: string | undefined, lang: PreviewLanguage): string {
   if (value === undefined) return lang === "de" ? "(nicht gesetzt)" : "(not set)";
   return key === "accountingYearBegin" ? dateText(value, lang) : value;
+}
+
+/**
+ * A current number outside DATEV's range that the call sends again unchanged (the spec requires
+ * all three settings). `value` is sevDesk's digits-only value (`readDatevExportConfig`).
+ */
+function keptOutOfRangeText(
+  key: keyof typeof DATEV_NUMBER_RANGES,
+  value: string,
+  lang: PreviewLanguage,
+): string {
+  const [min, max] = DATEV_NUMBER_RANGES[key];
+  const range = `${String(min)}–${String(max)}`;
+  return lang === "de"
+    ? `Die bisherige ${LABELS[key].de} ${value} liegt außerhalb des DATEV-Bereichs (${range}) ` +
+        "und wird unverändert erneut gesendet: Der DATEV-Import kann den Export ablehnen. Gib " +
+        "die richtige Nummer der Steuerkanzlei mit an."
+    : `The current ${LABELS[key].en} ${value} lies outside DATEV's range (${range}) and is ` +
+        "sent again unchanged: DATEV's import may refuse the export. Give the right number " +
+        "from the tax adviser as well.";
 }
 
 /** "1001 → 1234567" or "1234567 (unchanged)". */
@@ -159,6 +180,7 @@ export const datevSettingsUpdateTool = defineWriteTool({
             : "Every later DATEV export carries these numbers, and the tax adviser's DATEV " +
               "import files the data under them: wrong numbers put the booking data under the " +
               "wrong client or make the import fail.",
+          ...plan.keptOutOfRange.map((key) => keptOutOfRangeText(key, plan.sent[key], lang)),
           lang === "de"
             ? "Der Wirtschaftsjahresbeginn bestimmt, wie DATEV-Exporte nach Wirtschaftsjahren " +
               "getrennt werden."

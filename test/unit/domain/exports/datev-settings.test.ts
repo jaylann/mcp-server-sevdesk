@@ -80,6 +80,44 @@ describe("planDatevSettings", () => {
     );
   });
 
+  it("compares the numbers by value: a stored 01001 is the same as 1001", () => {
+    const leadingZero: DatevExportConfig = { ...SET, accountantNumber: "01001" };
+
+    const plan = planDatevSettings(leadingZero, { accountantClientNumber: 54321 });
+
+    expect(plan.changes[0]).toMatchObject({ key: "accountantNumber", changed: false });
+    // It goes out as a JSON number, so sevDesk reads it back without the zero.
+    expect(plan.body.accountantNumber).toBe(1001);
+    expect(
+      storedDifferently(plan.sent, {
+        accountantNumber: "1001",
+        accountantClientNumber: "54321",
+        accountingYearBegin: "2026-01-01",
+      }),
+    ).toEqual([]);
+    expect(() => planDatevSettings(leadingZero, { accountantNumber: 1001 })).toThrow(
+      expect.objectContaining({ message: expect.stringContaining("nothing to change") as unknown }),
+    );
+  });
+
+  it("names the numbers it resends unchanged although they are outside DATEV's range", () => {
+    const outside: DatevExportConfig = {
+      ...SET,
+      accountantNumber: "999",
+      accountantClientNumber: "123456",
+    };
+
+    expect(
+      planDatevSettings(outside, { accountingYearBegin: "2026-07-01" }).keptOutOfRange,
+    ).toEqual(["accountantNumber", "accountantClientNumber"]);
+    // A number given now replaces the stored one and is always in range.
+    expect(
+      planDatevSettings(outside, { accountantNumber: 1001, accountantClientNumber: 1 })
+        .keptOutOfRange,
+    ).toEqual([]);
+    expect(planDatevSettings(SET, { accountantClientNumber: 54321 }).keptOutOfRange).toEqual([]);
+  });
+
   it("refuses when the account id is unknown", () => {
     expect(() =>
       planDatevSettings({ ...SET, clientId: undefined }, { accountantClientNumber: 2 }),
@@ -115,5 +153,10 @@ describe("storedDifferently", () => {
     expect(
       storedDifferently(sent, { accountantNumber: "1234567", accountingYearBegin: "2025-12-31" }),
     ).toEqual(["accountantClientNumber", "accountingYearBegin"]);
+    // Numbers by value, a leading zero is no difference; another number still is.
+    expect(storedDifferently(sent, { ...sent, accountantClientNumber: "054321" })).toEqual([]);
+    expect(storedDifferently(sent, { ...sent, accountantNumber: "1234568" })).toEqual([
+      "accountantNumber",
+    ]);
   });
 });

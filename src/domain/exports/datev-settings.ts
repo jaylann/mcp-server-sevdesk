@@ -31,6 +31,14 @@ export const ACCOUNTANT_NUMBER_MAX = 9_999_999;
 export const CLIENT_NUMBER_MIN = 1;
 export const CLIENT_NUMBER_MAX = 99_999;
 
+/** The two number settings with their DATEV range, `[min, max]`. */
+export const DATEV_NUMBER_RANGES: Readonly<
+  Record<"accountantNumber" | "accountantClientNumber", readonly [number, number]>
+> = {
+  accountantNumber: [ACCOUNTANT_NUMBER_MIN, ACCOUNTANT_NUMBER_MAX],
+  accountantClientNumber: [CLIENT_NUMBER_MIN, CLIENT_NUMBER_MAX],
+};
+
 /** The three settings, in the order previews and results list them. */
 export const DATEV_SETTING_KEYS = [
   "accountantNumber",
@@ -72,6 +80,12 @@ export interface DatevSettingsPlan {
   readonly body: UpdateExportConfigBody;
   /** The values sent, as this server shows them (for the read-back comparison). */
   readonly sent: Required<Record<DatevSettingKey, string>>;
+  /**
+   * Number settings the caller left out whose current value lies outside DATEV's range: the spec
+   * makes the call resend them as they are, so the preview warns (a given value is always in
+   * range).
+   */
+  readonly keptOutOfRange: readonly ("accountantNumber" | "accountantClientNumber")[];
 }
 
 /** Readable names, for errors. */
@@ -145,7 +159,7 @@ export function planDatevSettings(
   }
   const changes = DATEV_SETTING_KEYS.map((key): DatevSettingChange => {
     const next = asked[key] ?? current[key] ?? "";
-    return { key, current: current[key], next, changed: next !== current[key] };
+    return { key, current: current[key], next, changed: !sameSetting(key, next, current[key]) };
   });
   if (!changes.some((change) => change.changed)) {
     throw invalid("sevDesk already has these DATEV settings; nothing to change.");
@@ -165,10 +179,16 @@ export function planDatevSettings(
     accountantClientNumber: nextOf("accountantClientNumber"),
     accountingYearBegin: nextOf("accountingYearBegin"),
   };
+  const keptOutOfRange = (["accountantNumber", "accountantClientNumber"] as const).filter((key) => {
+    const [min, max] = DATEV_NUMBER_RANGES[key];
+    const value = Number(sent[key]);
+    return input[key] === undefined && (value < min || value > max);
+  });
   return {
     clientId: config.clientId,
     changes,
     sent,
+    keptOutOfRange,
     body: {
       accountantNumber: Number(sent.accountantNumber),
       accountantClientNumber: Number(sent.accountantClientNumber),
@@ -200,7 +220,18 @@ export function storedDifferently(
   sent: Required<Record<DatevSettingKey, string>>,
   stored: DatevSettingValues,
 ): DatevSettingKey[] {
-  return DATEV_SETTING_KEYS.filter((key) => stored[key] !== sent[key]);
+  return DATEV_SETTING_KEYS.filter((key) => !sameSetting(key, stored[key], sent[key]));
+}
+
+/**
+ * Whether two values of a setting are the same: the numbers by value, since they go out as JSON
+ * numbers (a stored `01001` is sent as 1001 and reads back as `1001`), the fiscal-year start as
+ * the date. Both values are digit strings or `YYYY-MM-DD` (`readDatevExportConfig`, the input
+ * schema), so `Number` is exact here.
+ */
+function sameSetting(key: DatevSettingKey, a: string | undefined, b: string | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return key === "accountingYearBegin" ? a === b : Number(a) === Number(b);
 }
 
 function checkRange(value: number | undefined, min: number, max: number, name: string): void {

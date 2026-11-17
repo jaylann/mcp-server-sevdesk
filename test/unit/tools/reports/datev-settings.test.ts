@@ -128,6 +128,33 @@ describe("sevdesk_datev_settings_update: prepare", () => {
     expect(plan.previewDe.warnings.at(-1)).toContain("15.03.2026");
   });
 
+  it("warns in both languages when it resends a current number outside DATEV's range", async () => {
+    const client = new FakeSevdeskClient([sevClient("999", "12345", "2026-01-01T00:00:00+01:00")]);
+
+    const plan = await prepareWrite(
+      datevSettingsUpdateTool,
+      { accountantClientNumber: 54321 },
+      client,
+    );
+
+    expect(plan.preview.facts[0]).toEqual({
+      label: "Beraternummer (accountant number)",
+      value: "999 (unchanged)",
+    });
+    expect(plan.preview.warnings).toContain(
+      "The current Beraternummer (accountant number) 999 lies outside DATEV's range " +
+        "(1001–9999999) and is sent again unchanged: DATEV's import may refuse the export. Give " +
+        "the right number from the tax adviser as well.",
+    );
+    expect(plan.previewDe.warnings).toContain(
+      "Die bisherige Beraternummer 999 liegt außerhalb des DATEV-Bereichs (1001–9999999) und " +
+        "wird unverändert erneut gesendet: Der DATEV-Import kann den Export ablehnen. Gib die " +
+        "richtige Nummer der Steuerkanzlei mit an.",
+    );
+    expect(plan.preview.warnings).toHaveLength(plan.previewDe.warnings.length);
+    expect(client.writes()).toEqual([]);
+  });
+
   it.each([
     [{}, CONFIGURED, "give at least one"],
     [{ accountantNumber: 1234567 }, CONFIGURED, "nothing to change"],
@@ -200,6 +227,24 @@ describe("sevdesk_datev_settings_update: execute", () => {
     expect((output.data as { warnings: string[] }).warnings).toEqual([
       expect.stringContaining("Mandantennummer (client number) as 12345, not as sent (54321)"),
     ]);
+  });
+
+  it("reads a stored leading zero back as the same number, not as a difference", async () => {
+    const before = new FakeSevdeskClient([
+      sevClient("01001", "12345", "2026-01-01T00:00:00+01:00"),
+      PUT,
+    ]);
+    // Sent as the JSON number 1001, so sevDesk reads it back without the zero.
+    const after = new FakeSevdeskClient([sevClient("1001", "54321", "2026-01-01T00:00:00+01:00")]);
+
+    const { output } = await executeWrite(
+      datevSettingsUpdateTool,
+      { accountantClientNumber: 54321 },
+      switchingClient(before, after),
+    );
+
+    expect(before.writes()[0]?.body).toMatchObject({ accountantNumber: 1001 });
+    expect(output.data).toMatchObject({ storedAsSent: true, warnings: [] });
   });
 
   it("names the changed account when the read-back fails", async () => {

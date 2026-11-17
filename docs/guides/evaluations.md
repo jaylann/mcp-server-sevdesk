@@ -163,9 +163,10 @@ the default.
 [`sevdesk_datev_settings_update`](../tools.md#sevdesk_datev_settings_update) (`commit`, asks you
 to confirm) sets the accountant number (Beraternummer, 1001 to 9999999), the client number
 (Mandantennummer, 1 to 99999) and the start of the fiscal year (Wirtschaftsjahresbeginn) that the
-DATEV export needs. Give only what changes; the others keep their values in sevDesk. The
-confirmation shows every current value next to the new one, and afterwards the tool reads the
-settings back and says what sevDesk stored.
+DATEV export needs. Give only what changes; the others keep their values in sevDesk, since
+sevDesk takes all three at once. The confirmation shows every current value next to the new one
+and warns when a number kept that way lies outside DATEV's range, and afterwards the tool reads
+the settings back and says what sevDesk stored.
 
 The settings apply to the whole account: every later DATEV export carries them, and your tax
 adviser's DATEV files the data under them. Take the numbers from your adviser; a wrong number puts
