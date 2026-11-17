@@ -16,6 +16,8 @@ import {
   createOrderFromOrder,
   derivedOrderState,
   findOrdersFrom,
+  orderDiscountFacts,
+  readOrderDiscounts,
 } from "../../domain/order-follow-ups.js";
 import {
   bothPreviews,
@@ -95,6 +97,16 @@ const TRUNCATED: Phrase = phrase(
     "werden.",
 );
 
+// Only createInvoiceFromOrder was recorded with a discount (it copies it, D-116).
+const DISCOUNTS: Phrase = phrase(
+  "The offer carries discounts or surcharges on the whole document (listed above). Whether " +
+    "sevDesk takes them over to the order confirmation has not been checked; compare the new " +
+    "draft's totals with sevdesk_order_get before finalizing it.",
+  "Das Angebot trägt Rabatte oder Aufschläge auf das ganze Dokument (oben aufgeführt). Ob " +
+    "sevDesk sie in die Auftragsbestätigung übernimmt, ist nicht geprüft; vergleiche die Summen " +
+    "des neuen Entwurfs mit sevdesk_order_get, bevor du ihn fertigstellst.",
+);
+
 export const orderCreateConfirmationTool = defineWriteTool({
   name: "sevdesk_order_create_confirmation",
   title: "Create an order confirmation from a sevDesk offer",
@@ -127,7 +139,7 @@ export const orderCreateConfirmationTool = defineWriteTool({
       cacheOwner: ctx.config,
     });
     const { accepts } = assertConfirmable(doc);
-    const existing = await findOrdersFrom(ctx.client, doc, "confirmation", false, ctx.signal);
+    const existing = await findOrdersFrom(ctx.client, doc, "confirmation", ctx.signal);
     if (existing.ids.length > 0 && !args.allowDuplicate) {
       refuse(
         `An order confirmation from ${documentRef(doc)} exists already: ` +
@@ -136,7 +148,9 @@ export const orderCreateConfirmationTool = defineWriteTool({
       );
     }
     const content = await documentContent(ctx, doc);
+    const discounts = await readOrderDiscounts(ctx.client, doc.id, ctx.signal);
     const warnings: Phrase[] = [accepts ? ACCEPTS : STAYS_ACCEPTED, DRAFT, NUMBER];
+    if (discounts.rows.length > 0) warnings.push(DISCOUNTS);
     if (existing.ids.length > 0) {
       warnings.push(
         phrase(
@@ -173,6 +187,7 @@ export const orderCreateConfirmationTool = defineWriteTool({
                 : "order confirmation (Auftragsbestätigung, AB) as a draft",
           },
           ...content.printed(lang),
+          ...orderDiscountFacts(discounts, doc.currency, lang),
         ],
         warnings: warnings.map((warning) => warning[lang]),
         irreversible: false,

@@ -19,14 +19,27 @@
  * Neither request is retried. Before writing, orders already made from the same source are
  * looked up (`GET /Order` by contact and type, `origin` checked on every row since sevDesk ignores
  * filters it does not know, D-035), so a repeated call does not create a second document.
+ *
+ * Once the request went through, the new order exists (and a confirmation's offer is accepted):
+ * every later failure carries them as completed writes, so the error never reads as if nothing
+ * happened.
  */
 import { z } from "zod";
 
 import type { SevdeskObjectRef } from "../safety/write-types.js";
-import { SevdeskError } from "../sevdesk/errors.js";
-import { toSevdeskId } from "../sevdesk/paths.js";
-import { parseUpstream, zId, zIntish, zOptionalRef, zText } from "../sevdesk/schema.js";
+import { SevdeskError, withCompletedWrites } from "../sevdesk/errors.js";
+import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
+import {
+  parseUpstream,
+  zBool01,
+  zId,
+  zIntish,
+  zOptionalDecimal,
+  zOptionalRef,
+  zText,
+} from "../sevdesk/schema.js";
 import type { QueryValue, SevdeskClient } from "../sevdesk/types.js";
+import { moneyFromUpstream } from "./common.js";
 import type { CountryReadOptions } from "./country-codes.js";
 import {
   createdDocumentId,
@@ -38,7 +51,9 @@ import {
 } from "./derived-documents.js";
 import { quotableNumber } from "./drafts/numbering.js";
 import { type LifecycleDocument, readLifecycleDocument, STATUS } from "./lifecycle/documents.js";
+import { type Fact, formatMoney } from "./lifecycle/preview.js";
 import { getOrder, type OrderDetails } from "./orders.js";
+import { numberText, type PreviewLanguage } from "./preview-text.js";
 
 /** The two order factories. */
 export type OrderFactory = "confirmation" | "deliveryNote";
@@ -109,9 +124,9 @@ const orderRowSchema = z.object({
 
 type OrderScanRow = z.output<typeof orderRowSchema>;
 
-/** Ids of orders that match, and whether the scan stopped at its cap. */
-export interface OrderScan {
-  readonly ids: readonly number[];
+/** Orders that match, and whether the scan stopped at its cap. */
+interface OrderScan {
+  readonly rows: readonly OrderScanRow[];
   readonly truncated: boolean;
 }
 
@@ -126,31 +141,47 @@ async function scanOrders(
     pageSize: SCAN_PAGE_SIZE,
     ...(signal === undefined ? {} : { signal }),
   });
-  const ids = list.items
+  const rows = list.items
     .map((raw) => parseUpstream(orderRowSchema, raw, "orders"))
-    .filter(matches)
-    .map((row) => row.id);
-  return { ids: [...new Set(ids)].sort((a, b) => a - b), truncated: list.truncated };
+    .filter(matches);
+  return { rows, truncated: list.truncated };
+}
+
+/** Distinct ids, ascending. */
+function idsOf(rows: readonly OrderScanRow[]): number[] {
+  return [...new Set(rows.map((row) => row.id))].sort((a, b) => a - b);
 }
 
 function typeOf(row: OrderScanRow): string | undefined {
   return row.orderType?.trim().toUpperCase();
 }
 
+/** Orders of a factory's type made from one source, see {@link findOrdersFrom}. */
+export interface OrdersFrom {
+  /** Every such order, whatever its status. */
+  readonly ids: readonly number[];
+  /** Those of them that are drafts (100). */
+  readonly drafts: readonly number[];
+  /** Those of them that are not drafts (finalized, sent, …). */
+  readonly others: readonly number[];
+  /** The scan stopped at its cap: there may be more. */
+  readonly truncated: boolean;
+}
+
 /**
- * Orders of the factory's type already made from `source` (their `origin` is the source), drafts
- * only with `draftsOnly`. Lists `GET /Order` by the source's contact and the type; reads only.
+ * Orders of the factory's type already made from `source` (their `origin` is the source), split
+ * into drafts and the rest. Lists `GET /Order` by the source's contact (without a contact filter
+ * when the source has none) and the type; reads only.
  */
-export function findOrdersFrom(
+export async function findOrdersFrom(
   client: SevdeskClient,
   source: LifecycleDocument<"order">,
   factory: OrderFactory,
-  draftsOnly: boolean,
   signal?: AbortSignal,
-): Promise<OrderScan> {
+): Promise<OrdersFrom> {
   const { type } = ORDER_FACTORIES[factory];
   const contactId = source.contact?.id;
-  return scanOrders(
+  const scan = await scanOrders(
     client,
     {
       ...(contactId === undefined
@@ -159,12 +190,15 @@ export function findOrdersFrom(
       orderType: type,
     },
     (row) =>
-      row.origin?.objectName === "Order" &&
-      row.origin.id === source.id &&
-      typeOf(row) === type &&
-      (!draftsOnly || row.status === STATUS.draft),
+      row.origin?.objectName === "Order" && row.origin.id === source.id && typeOf(row) === type,
     signal,
   );
+  return {
+    ids: idsOf(scan.rows),
+    drafts: idsOf(scan.rows.filter((row) => row.status === STATUS.draft)),
+    others: idsOf(scan.rows.filter((row) => row.status !== STATUS.draft)),
+    truncated: scan.truncated,
+  };
 }
 
 /** What {@link createOrderFromOrder} returns. */
@@ -183,6 +217,9 @@ export interface DerivedOrderResult {
  * then reads the source again: it is listed in `affected` when sevDesk changed it (a confirmation
  * accepts the offer) or when it could not be read. Last, other orders of the new type with the
  * same number are looked up for the notes.
+ *
+ * A failure after the request names what exists by then: the new order once its id is known, and
+ * for a confirmation the offer, which sevDesk accepted in the same request.
  */
 export async function createOrderFromOrder(
   client: SevdeskClient,
@@ -201,7 +238,15 @@ export async function createOrderFromOrder(
     ...(signal === undefined ? {} : { signal }),
   });
   const sourceRef: SevdeskObjectRef = { objectName: "Order", id: String(sourceId) };
-  const newId = createdDocumentId(answer, "order", `the created ${info.noun}`);
+  // What the request changed besides the new order: a confirmation accepts its offer (D-107).
+  const sourceChanged = state.factory === "confirmation" ? [sourceRef] : [];
+  let newId: number;
+  try {
+    newId = createdDocumentId(answer, "order", `the created ${info.noun}`);
+  } catch (error) {
+    if (error instanceof SevdeskError) throw withCompletedWrites(error, sourceChanged);
+    throw error;
+  }
   if (newId === sourceId) {
     throw new SevdeskError({
       kind: "unexpected_response",
@@ -213,7 +258,10 @@ export async function createOrderFromOrder(
     });
   }
   const created: SevdeskObjectRef[] = [{ objectName: "Order", id: String(newId) }];
-  const details = await readBack(() => getOrder(client, newId, { signal, cacheOwner }), created);
+  const details = await readBack(
+    () => getOrder(client, newId, { signal, cacheOwner }),
+    [...created, ...sourceChanged],
+  );
   const after = await readQuietly(() =>
     readLifecycleDocument(client, "order", sourceId, { signal, cacheOwner }),
   );
@@ -235,20 +283,22 @@ export async function createOrderFromOrder(
     ],
     affected,
   );
-  const notes = await sameNumberNotes(client, info, newId, order.number, signal);
+  const notes = await sameNumberNotes(client, info, newId, order.number, affected, signal);
   return { details, affected, source: after, notes };
 }
 
 /**
  * Trusted notes about the new order's number (D-107): sevDesk handed it out without moving the
  * counter, so other orders of the type may carry it already, and the next one may get it again.
- * A failed or cut lookup becomes a note too; it never fails the call (the order exists).
+ * A failed or cut lookup becomes a note too; it never fails the call (the order exists). Only a
+ * cancel (or an unexpected error) ends the call here, and then with `affected` as completed writes.
  */
 async function sameNumberNotes(
   client: SevdeskClient,
   info: FactoryInfo,
   newId: number,
   number: string | undefined,
+  affected: readonly SevdeskObjectRef[],
   signal: AbortSignal | undefined,
 ): Promise<string[]> {
   if (number === undefined) {
@@ -269,16 +319,27 @@ async function sameNumberNotes(
       signal,
     );
   } catch (error) {
-    if (!(error instanceof SevdeskError) || error.kind === "aborted") throw error;
+    if (!(error instanceof SevdeskError)) {
+      throw new SevdeskError({
+        kind: "unexpected_response",
+        message:
+          `The ${info.noun} was created, but checking its number against other orders failed ` +
+          "unexpectedly.",
+        cause: error,
+        completedWrites: affected,
+      });
+    }
+    if (error.kind === "aborted") throw withCompletedWrites(error, affected);
     return [
       counter,
       `Whether another ${info.noun} carries ${label} already could not be checked; look it up ` +
         "with sevdesk_orders_list.",
     ];
   }
-  if (others.ids.length > 0) {
+  const sameIds = idsOf(others.rows);
+  if (sameIds.length > 0) {
     return [
-      `The new ${info.noun} has the same number (${label}) as ${idList("order", others.ids)}: ` +
+      `The new ${info.noun} has the same number (${label}) as ${idList("order", sameIds)}: ` +
         "sevDesk hands out the next number of the range without moving its counter. Give one of " +
         "them another number in the sevDesk web app before sending it.",
       counter,
@@ -291,4 +352,116 @@ async function sameNumberNotes(
           "sevdesk_orders_list.",
       ]
     : [counter];
+}
+
+// ---------------------------------------------------------------------------------------------
+// Discounts on the whole source order (D-116)
+// ---------------------------------------------------------------------------------------------
+
+/** A row of `GET /Order/{id}/getDiscounts`; D-116 recorded every scalar as a string. */
+const discountRowSchema = z.object({
+  id: zId,
+  object: zOptionalRef,
+  /** true: a discount (Rabatt); false: a surcharge (Aufschlag). */
+  discount: zBool01.optional(),
+  text: zText,
+  /** true: `value` is a percentage; false: an amount in the order's currency. */
+  percentage: zBool01.optional(),
+  value: zOptionalDecimal,
+  /** Whether `value` applies to the net (true) or gross (false) total. */
+  isNet: zBool01.optional(),
+});
+
+type OrderDiscount = z.output<typeof discountRowSchema>;
+
+/** Rows asked for in one page: a document carries a handful at most. */
+const DISCOUNT_PAGE_SIZE = 100;
+
+/** The discounts and surcharges stored on a whole order, see {@link readOrderDiscounts}. */
+export interface OrderDiscounts {
+  readonly rows: readonly OrderDiscount[];
+  /** False when the page came back full, so there may be more rows. */
+  readonly complete: boolean;
+}
+
+/**
+ * The discounts and surcharges on the whole order (not those of single positions), from
+ * `GET /Order/{id}/getDiscounts` (D-116). A row that names another record is dropped. Reads only.
+ * Whether a factory copies them to the new order is not recorded (only `createInvoiceFromOrder`
+ * was), so the follow-up tools show them on the source and say exactly that.
+ */
+export async function readOrderDiscounts(
+  client: SevdeskClient,
+  orderId: number,
+  signal?: AbortSignal,
+): Promise<OrderDiscounts> {
+  const page = await client.list(
+    sevdeskPath("Order", orderId, "getDiscounts"),
+    {},
+    { limit: DISCOUNT_PAGE_SIZE, ...(signal === undefined ? {} : { signal }) },
+  );
+  const rows = page.items
+    .map((raw) => parseUpstream(discountRowSchema, raw, "the discounts of an order"))
+    .filter(
+      (row) =>
+        row.object === undefined ||
+        (row.object.objectName === "Order" && row.object.id === orderId),
+    );
+  return { rows, complete: page.items.length < DISCOUNT_PAGE_SIZE };
+}
+
+const DISCOUNT_TEXT = {
+  en: {
+    label: "Discounts on the whole document (Rabatte, Aufschläge)",
+    discount: "discount",
+    surcharge: "surcharge",
+    either: "discount or surcharge",
+    net: "net",
+    gross: "gross",
+    more: `sevDesk returned ${String(DISCOUNT_PAGE_SIZE)} rows; there may be more. Check them in sevDesk.`,
+  },
+  de: {
+    label: "Rabatte und Aufschläge auf das ganze Dokument",
+    discount: "Rabatt",
+    surcharge: "Aufschlag",
+    either: "Rabatt oder Aufschlag",
+    net: "netto",
+    gross: "brutto",
+    more:
+      `sevDesk hat ${String(DISCOUNT_PAGE_SIZE)} Zeilen geliefert; es kann weitere geben. ` +
+      "Prüfe sie in sevDesk.",
+  },
+} as const;
+
+/** "10 % discount (net): Treuerabatt", "10.00 EUR surcharge (gross)": one discount row. */
+function discountLine(row: OrderDiscount, currency: string, lang: PreviewLanguage): string {
+  const t = DISCOUNT_TEXT[lang];
+  let amount = "?";
+  if (row.value !== undefined) {
+    const fixed = row.percentage === false ? moneyFromUpstream(row.value, currency) : undefined;
+    amount =
+      fixed === undefined
+        ? `${numberText(row.value, lang)}${row.percentage === true ? " %" : ""}`
+        : formatMoney(fixed, lang);
+  }
+  const kind = row.discount === undefined ? t.either : row.discount ? t.discount : t.surcharge;
+  const base = row.isNet === undefined ? "" : ` (${row.isNet ? t.net : t.gross})`;
+  const text = row.text?.split(/\s+/).filter(Boolean).join(" ");
+  return `${amount} ${kind}${base}${text === undefined || text === "" ? "" : `: ${text}`}`;
+}
+
+/**
+ * The fact listing the discounts and surcharges on the whole order, one row per line; no fact
+ * when it carries none (absent values are left out of previews, like in `lifecycle/content.ts`).
+ */
+export function orderDiscountFacts(
+  discounts: OrderDiscounts,
+  currency: string,
+  lang: PreviewLanguage,
+): Fact[] {
+  if (discounts.rows.length === 0 && discounts.complete) return [];
+  const t = DISCOUNT_TEXT[lang];
+  const lines = discounts.rows.map((row) => discountLine(row, currency, lang));
+  if (!discounts.complete) lines.push(t.more);
+  return [{ label: t.label, value: lines.join("\n") }];
 }

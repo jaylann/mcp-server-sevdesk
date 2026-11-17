@@ -15,6 +15,8 @@ import {
   createOrderFromOrder,
   derivedOrderState,
   findOrdersFrom,
+  orderDiscountFacts,
+  readOrderDiscounts,
 } from "../../domain/order-follow-ups.js";
 import { defineWriteTool } from "../define-tool.js";
 import { documentContent, documentObject } from "../lifecycle/shared.js";
@@ -31,14 +33,14 @@ export const orderCreateDeliveryNoteTool = defineWriteTool({
   title: "Create a delivery note from a sevDesk order",
   description:
     "Create a delivery note (Lieferschein, LI) draft from an order confirmation " +
-    "(Auftragsbestätigung, AB: draft, sent or accepted) or a sent offer (Angebot, AN) with its " +
-    "contact, texts and positions. sevDesk leaves the source unchanged. Not from offer drafts, " +
-    "rejected or accepted offers (create the confirmation first with " +
-    "sevdesk_order_create_confirmation) or delivery notes. Refuses when a delivery note draft " +
-    "from the order exists (allowDuplicate overrides, e.g. a second partial delivery). Tier " +
-    "write. sevDesk gives it the next LI number without moving its counter; the result names " +
-    "other delivery notes with the same number. Then check it with sevdesk_order_get and " +
-    "finalize it with sevdesk_order_finalize.",
+    "(Auftragsbestätigung, AB: draft, sent or accepted) or an offer (Angebot, AN: sent or " +
+    "accepted) with its contact, texts and positions. sevDesk leaves the source unchanged. Not " +
+    "from offer drafts (send them first), rejected offers or delivery notes. Refuses when a " +
+    "delivery note draft from the order exists (allowDuplicate overrides, e.g. a second partial " +
+    "delivery); finalized ones from the order are named in the preview. Tier write. sevDesk " +
+    "gives it the next LI number without moving its counter; the result names other delivery " +
+    "notes with the same number. Then check it with sevdesk_order_get and finalize it with " +
+    "sevdesk_order_finalize.",
   toolset: "orders",
   tier: "write",
   annotations: {
@@ -62,15 +64,16 @@ export const orderCreateDeliveryNoteTool = defineWriteTool({
       cacheOwner: ctx.config,
     });
     assertDeliveryNoteSource(doc);
-    const existing = await findOrdersFrom(ctx.client, doc, "deliveryNote", true, ctx.signal);
-    if (existing.ids.length > 0 && !args.allowDuplicate) {
+    const existing = await findOrdersFrom(ctx.client, doc, "deliveryNote", ctx.signal);
+    if (existing.drafts.length > 0 && !args.allowDuplicate) {
       refuse(
         `A delivery note draft from ${documentRef(doc)} exists already: ` +
-          `${idList("order", existing.ids)}. Finish or delete that draft (sevdesk_order_get), ` +
+          `${idList("order", existing.drafts)}. Finish or delete that draft (sevdesk_order_get), ` +
           "or call again with allowDuplicate: true to create another one.",
       );
     }
     const content = await documentContent(ctx, doc);
+    const discounts = await readOrderDiscounts(ctx.client, doc.id, ctx.signal);
     const warnings = [
       "The delivery note is created as a draft (Entwurf) with the order's contact, texts and " +
         "positions as listed here; sevDesk leaves the order itself unchanged. Check it with " +
@@ -79,14 +82,31 @@ export const orderCreateDeliveryNoteTool = defineWriteTool({
         "counter, so another delivery note may carry the same number; the result names any it " +
         "finds.",
     ];
-    if (existing.ids.length > 0) {
+    if (discounts.rows.length > 0) {
+      // Only createInvoiceFromOrder was recorded with a discount (it copies it, D-116).
       warnings.push(
-        `Creating another one (allowDuplicate): ${idList("delivery note draft", existing.ids)} ` +
+        "The order carries discounts or surcharges on the whole document (listed above). " +
+          "Whether sevDesk takes them over to the delivery note has not been checked; check the " +
+          "new draft with sevdesk_order_get before finalizing it.",
+      );
+    }
+    if (existing.drafts.length > 0) {
+      warnings.push(
+        `Creating another one (allowDuplicate): ${idList("delivery note draft", existing.drafts)} ` +
           "from this order exists already.",
       );
     }
+    if (existing.others.length > 0) {
+      // Not refused: a second delivery note can be a partial delivery. Named so a repeated
+      // request does not go unnoticed.
+      warnings.push(
+        "Created from this order already and no longer a draft: " +
+          `${idList("delivery note", existing.others)}. Create another one only for a further ` +
+          "(partial) delivery.",
+      );
+    }
     if (existing.truncated) {
-      warnings.push("Not every order could be checked for an earlier delivery note draft.");
+      warnings.push("Not every order could be checked for an earlier delivery note.");
     }
     warnings.push(content.notShown.en);
     return {
@@ -98,6 +118,7 @@ export const orderCreateDeliveryNoteTool = defineWriteTool({
           ...content.identity("en"),
           { label: "Creates", value: "delivery note (Lieferschein, LI) as a draft" },
           ...content.printed("en"),
+          ...orderDiscountFacts(discounts, doc.currency, "en"),
         ],
         warnings,
         irreversible: false,

@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
+import type { CollectedList, SevdeskClient } from "../../../../src/sevdesk/types.js";
 import { orderCreateConfirmationTool as tool } from "../../../../src/tools/orders/create-confirmation.js";
 import type { FakeRoute } from "../../../helpers/fake-client.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import {
   derivedReadRoutes,
   derivedRow,
+  discountRow,
+  discountsOf,
   positionsOf,
   sentOffer,
 } from "../../../write-cases/orders.js";
@@ -20,6 +23,10 @@ function list(rows: readonly Row[]): FakeRoute {
   return { path: "/Order", response: { body: { objects: rows } } };
 }
 
+function failing(kind: SevdeskError["kind"]): { readonly error: SevdeskError } {
+  return { error: new SevdeskError({ kind, message: `The request failed (${kind}).` }) };
+}
+
 interface Options {
   readonly before?: Row;
   readonly afterOffer?: Row;
@@ -29,17 +36,25 @@ interface Options {
   readonly earlier?: readonly Row[];
   /** Orders the number scan after the request finds. */
   readonly sameNumber?: readonly Row[];
+  /** Discounts on the whole offer. */
+  readonly discounts?: readonly Row[];
+  /** Routes tried before the default ones, e.g. failing reads. */
+  readonly beforeFirst?: readonly FakeRoute[];
+  readonly afterFirst?: readonly FakeRoute[];
 }
 
 function staged(options: Options = {}): StagedClient {
   const readBack = options.readBack ?? created;
   return new StagedClient(
     [
+      ...(options.beforeFirst ?? []),
       documentRoute("order", options.before ?? sentOffer),
       positionsOf("3001"),
+      discountsOf("3001", options.discounts),
       list(options.earlier ?? []),
     ],
     [
+      ...(options.afterFirst ?? []),
       {
         method: "POST",
         path: CREATE,
@@ -52,6 +67,33 @@ function staged(options: Options = {}): StagedClient {
     ],
   );
 }
+
+/** What the tool's execute throws after the one request it sends. */
+async function executeFailure(client: SevdeskClient, staged: StagedClient): Promise<SevdeskError> {
+  const error = await executeWrite(tool, { orderId: 3001 }, client).catch((e: unknown) => e);
+  expect(error).toBeInstanceOf(SevdeskError);
+  expect(staged.writes()).toHaveLength(1);
+  return error as SevdeskError;
+}
+
+/** `client`, with the `GET /Order` scans whose query has `key` answered by `answer` instead. */
+function scansBy(
+  client: StagedClient,
+  key: string,
+  answer: (list: CollectedList) => CollectedList,
+): SevdeskClient {
+  return {
+    request: (request) => client.request(request),
+    list: (path, query, options) => client.list(path, query, options),
+    listAll: async (path, query, options) => {
+      const list = await client.listAll(path, query, options);
+      return path === "/Order" && query?.[key] !== undefined ? answer(list) : list;
+    },
+    download: (request) => client.download(request),
+  };
+}
+
+const cut = (list: CollectedList): CollectedList => ({ ...list, truncated: true });
 
 async function refusal(before: Row, earlier: readonly Row[] = []): Promise<string> {
   const client = staged({ before, earlier });
@@ -258,5 +300,174 @@ describe("sevdesk_order_create_confirmation (D-107)", () => {
       completedWrites: [{ objectName: "Order", id: "3001" }],
     });
     expect(client.writes()).toHaveLength(1);
+  });
+
+  describe("after the request, a failure names what exists (review of #112, M1)", () => {
+    const both = [
+      { objectName: "Order", id: "3101" },
+      { objectName: "Order", id: "3001" },
+    ];
+
+    it("names the accepted offer too when the confirmation cannot be read back", async () => {
+      const client = staged({
+        afterFirst: [{ path: "/Order/3101", response: failing("timeout") }],
+      });
+      const error = await executeFailure(client, client);
+      expect(error.kind).toBe("timeout");
+      expect(error.completedWrites).toEqual(both);
+    });
+
+    it("names the offer when the answer carries no readable id", async () => {
+      const client = staged({ answer: { unexpected: true } });
+      const error = await executeFailure(client, client);
+      expect(error.kind).toBe("unexpected_response");
+      expect(error.completedWrites).toEqual([{ objectName: "Order", id: "3001" }]);
+    });
+
+    it("names the confirmation and the offer when cancelled during the number check", async () => {
+      const client = staged({
+        afterFirst: [
+          { path: "/Order", query: { orderNumber: "AB-1003" }, response: failing("aborted") },
+        ],
+      });
+      const error = await executeFailure(client, client);
+      expect(error.kind).toBe("aborted");
+      expect(error.completedWrites).toEqual(both);
+    });
+
+    it("names them when the number check fails unexpectedly", async () => {
+      const client = staged();
+      const broken = scansBy(client, "orderNumber", () => {
+        throw new TypeError("broken");
+      });
+      const error = await executeFailure(broken, client);
+      expect(error.kind).toBe("unexpected_response");
+      expect(error.message).toBe(
+        "The order confirmation was created, but checking its number against other orders " +
+          "failed unexpectedly.",
+      );
+      expect(error.completedWrites).toEqual(both);
+    });
+  });
+
+  describe("notes and warnings of the checks around the request (review of #112, L4)", () => {
+    const counter =
+      "sevDesk does not move its AB number counter for this request, so the next order " +
+      "confirmation may get AB-1003 again; check the number before sending either.";
+
+    it("notes a number check that failed, without failing the call", async () => {
+      const client = staged({
+        afterFirst: [
+          { path: "/Order", query: { orderNumber: "AB-1003" }, response: failing("server") },
+        ],
+      });
+      const { output } = await executeWrite(tool, { orderId: 3001 }, client);
+      expect(output.data.notes).toEqual([
+        counter,
+        "Whether another order confirmation carries AB-1003 already could not be checked; look " +
+          "it up with sevdesk_orders_list.",
+      ]);
+    });
+
+    it("notes a number check cut at its cap", async () => {
+      const client = scansBy(staged(), "orderNumber", cut);
+      const { output } = await executeWrite(tool, { orderId: 3001 }, client);
+      expect(output.data.notes).toEqual([
+        counter,
+        "Not every order confirmation could be checked for the same number; look it up with " +
+          "sevdesk_orders_list.",
+      ]);
+    });
+
+    it("notes a confirmation without a number and skips the number check", async () => {
+      const client = staged({ readBack: { ...created, orderNumber: null } });
+      const { output } = await executeWrite(tool, { orderId: 3001 }, client);
+      expect(output.data.notes).toEqual([
+        "sevDesk gave the new order confirmation no number; set one before sending it.",
+      ]);
+      expect(client.calls.filter((call) => call.query["orderNumber"] !== undefined)).toEqual([]);
+    });
+
+    it("notes an offer that could not be read again and lists it as affected", async () => {
+      const client = staged({ afterFirst: [{ path: "/Order/3001", response: failing("server") }] });
+      const { output } = await executeWrite(tool, { orderId: 3001 }, client);
+      expect(output.data.notes?.[0]).toBe(
+        "Offer 3001 could not be read again; check its status with sevdesk_order_get.",
+      );
+      expect(output.affected).toEqual([
+        { objectName: "Order", id: "3101" },
+        { objectName: "Order", id: "3001" },
+      ]);
+      expect(output.summary).toBe(
+        "Created order confirmation draft 3101 from offer 3001. Finalize it with " +
+          "sevdesk_order_finalize.",
+      );
+    });
+
+    it("warns in both languages when the earlier-confirmation scan was cut", async () => {
+      const plan = await prepareWrite(tool, { orderId: 3001 }, scansBy(staged(), "orderType", cut));
+      expect(plan.preview.warnings).toContain(
+        "Not every order could be checked for an earlier confirmation from this offer.",
+      );
+      expect(plan.previewDe.warnings).toContain(
+        "Nicht alle Aufträge konnten auf eine frühere Auftragsbestätigung aus diesem Angebot " +
+          "geprüft werden.",
+      );
+    });
+
+    it("scans without a contact filter when the offer has no contact", async () => {
+      const client = staged({ before: offer({ contact: null }) });
+      await prepareWrite(tool, { orderId: 3001 }, client);
+      const scans = client.calls.filter((call) => call.path === "/Order");
+      expect(scans).toHaveLength(1);
+      expect(scans[0]?.query).toMatchObject({ orderType: "AB" });
+      expect(scans[0]?.query).not.toHaveProperty("contact[id]");
+    });
+  });
+
+  it("shows the offer's document discounts in both languages (review of #112, L5)", async () => {
+    const client = staged({
+      discounts: [
+        discountRow("3001"),
+        discountRow("3001", {
+          id: "8002",
+          discount: "0",
+          text: "Express\nZuschlag",
+          percentage: "0",
+          value: "12.5",
+          isNet: "0",
+        }),
+        // Another order's row: not shown.
+        discountRow("3001", { id: "8003", object: { id: "3009", objectName: "Order" } }),
+      ],
+    });
+    const plan = await prepareWrite(tool, { orderId: 3001 }, client);
+    expect(client.calls.find((call) => call.path === "/Order/3001/getDiscounts")?.query).toEqual(
+      expect.objectContaining({ limit: 100 }),
+    );
+    expect(plan.preview.facts).toContainEqual({
+      label: "Discounts on the whole document (Rabatte, Aufschläge)",
+      value: "5 % discount (net): Treuerabatt\n12.50 EUR surcharge (gross): Express Zuschlag",
+    });
+    expect(plan.previewDe.facts).toContainEqual({
+      label: "Rabatte und Aufschläge auf das ganze Dokument",
+      value: "5 % Rabatt (netto): Treuerabatt\n12,50 EUR Aufschlag (brutto): Express Zuschlag",
+    });
+    expect(plan.preview.warnings).toContain(
+      "The offer carries discounts or surcharges on the whole document (listed above). Whether " +
+        "sevDesk takes them over to the order confirmation has not been checked; compare the " +
+        "new draft's totals with sevdesk_order_get before finalizing it.",
+    );
+    expect(plan.previewDe.warnings).toContain(
+      "Das Angebot trägt Rabatte oder Aufschläge auf das ganze Dokument (oben aufgeführt). Ob " +
+        "sevDesk sie in die Auftragsbestätigung übernimmt, ist nicht geprüft; vergleiche die " +
+        "Summen des neuen Entwurfs mit sevdesk_order_get, bevor du ihn fertigstellst.",
+    );
+    // Without discounts there is neither the fact nor the warning.
+    const plain = await prepareWrite(tool, { orderId: 3001 }, staged());
+    expect(plain.preview.facts.map((fact) => fact.label)).not.toContain(
+      "Discounts on the whole document (Rabatte, Aufschläge)",
+    );
+    expect(plain.preview.warnings.join("\n")).not.toContain("discounts or surcharges");
   });
 });

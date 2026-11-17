@@ -3699,23 +3699,33 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   accepted or stays so. It refuses drafts (that would accept an offer the customer never received)
   and rejected offers (reopening one is its own confirmed step,
   `sevdesk_order_set_offer_status`, D-108). `sevdesk_order_create_delivery_note` (write tier,
-  the source stays as it is) takes sent offers and order confirmations that are drafts, sent or
-  accepted; it refuses offer drafts although sevDesk accepts them (nothing was offered to the
-  customer yet to deliver on) and accepted offers (not recorded; deliver on their confirmation).
-  Both send the order in the query and the body, read the new order back (its id comes from the
-  answer itself, `createdDocumentId`, D-064), check that it is a draft of the expected type that
-  points to the source, and look up other orders of the type with the same number for a trusted
-  note. Both refuse a second document from the same source unless `allowDuplicate` (the delivery
-  note only a second draft). (#89)
+  the source stays as it is) takes sent and accepted offers and order confirmations that are
+  drafts, sent or accepted; it refuses offer drafts although sevDesk accepts them (nothing was
+  offered to the customer yet to deliver on) and rejected offers. An accepted offer as the source
+  is not recorded; it is allowed because the factory left every recorded source alone, whatever
+  its status (decided 2026-11-17). Both send the order in the query and the body, read the new
+  order back (its id comes from the answer itself, `createdDocumentId`, D-064), check that it is
+  a draft of the expected type that points to the source, and look up other orders of the type
+  with the same number for a trusted note. A failure after the request lists the new order and,
+  for a confirmation, the offer as completed writes. Both refuse a second document from the same
+  source unless `allowDuplicate`; the delivery note refuses only a second draft and names
+  finalized delivery notes from the same source in a warning (a further one can be a partial
+  delivery). Both previews list the source's discounts on the whole document
+  (`GET /Order/{id}/getDiscounts`, D-116) and say that whether the factory copies them has not
+  been checked. (#89)
 - **Test:** `test/unit/tools/orders/create-confirmation.test.ts` ("creates the confirmation with
   the offer in query and body, and reads both back", "creates one from an accepted offer and says
-  the offer stays accepted", "refuses a draft offer before any request", "refuses a rejected
-  offer before any request", "names another confirmation with the same number"),
-  `test/unit/tools/orders/create-delivery-note.test.ts` ("creates the delivery note with the
-  source in query and body, and reads it back", "refuses offer drafts, rejected and accepted
-  offers, and other statuses"), `test/regressions/offer-status-and-confirmation.test.ts`
-  ("refuses a confirmation from an offer with status 100/300"),
-  `test/integration/order-acceptance-path.test.ts`. Live: probes
+  the offer stays accepted", "refuses a draft offer before any request (sevDesk would accept it
+  unsent)", "refuses a rejected offer before any request (sevDesk would accept it silently)",
+  "names another confirmation with the same number", "names the accepted offer too when the
+  confirmation cannot be read back", "shows the offer's document discounts in both languages
+  (review of #112, L5)"), `test/unit/tools/orders/create-delivery-note.test.ts` ("creates the
+  delivery note with the source in query and body, and reads it back", "accepts sent and accepted
+  offers and order confirmations that are drafts, sent or accepted", "refuses offer drafts,
+  rejected offers and other statuses", "names finalized delivery notes from the order without
+  refusing (review of #112, L1)"), `test/unit/domain/order-discounts.test.ts`,
+  `test/regressions/offer-status-and-confirmation.test.ts` ("refuses a confirmation from an offer
+  with status 100/300"), `test/integration/order-acceptance-path.test.ts`. Live: probes
   `write-order-contract-note-from-order`, `write-order-packing-list-from-order` (their reporting:
   `test/unit/scripts/gaps-documents-probes.test.ts`, "describes order confirmations and delivery
   notes against their source").
@@ -3741,8 +3751,8 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   refuses drafts, so the renumbering never happens through it, and every order that is not an
   offer. The offer is read back afterwards. (#89)
 - **Test:** `test/unit/tools/orders/offer-status.test.ts` ("accepts a sent offer with a body of
-  only the status, and reads it back", "refuses a draft offer before any request", "allows accept
-  and reject only from sent, reopen only from accepted or rejected"),
+  only the status, and reads it back", "refuses a draft offer before any request: sevDesk would
+  renumber it", "allows accept and reject only from sent, reopen only from accepted or rejected"),
   `test/regressions/offer-status-and-confirmation.test.ts` ("refuses to accept/reject/reopen a
   draft offer", "builds and sends only {status}"). Live: probe `write-order-status-accept-reject`
   (`test/unit/scripts/gaps-documents-probes.test.ts`, "sets offer statuses, sets them back, and

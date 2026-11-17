@@ -32,6 +32,7 @@ import { derivedRow, sentOffer } from "../write-cases/orders.js";
 
 const ORDER_PATH = /^\/Order\/(\d+)$/;
 const RELATED_PATH = /^\/Order\/(\d+)\/getRelatedObjects$/;
+const DISCOUNTS_PATH = /^\/Order\/(\d+)\/getDiscounts$/;
 const SEND_BY_PATH = /^\/Order\/(\d+)\/sendBy$/;
 const INVOICE_PATH = /^\/Invoice\/(\d+)$/;
 
@@ -163,6 +164,8 @@ class ScriptedAccount implements SevdeskClient {
   /** The rows of a list this account answers itself, or `undefined` for the fixed ones. */
   private rows(path: string, query: Readonly<Record<string, QueryValue>>): unknown[] | undefined {
     if (path === "/OrderPos") return orderPositions(String(query["order[id]"]));
+    // No discounts on the whole document (D-116).
+    if (DISCOUNTS_PATH.test(path)) return [];
     if (path !== "/Order") return undefined;
     // Filters sevDesk applies; the tools check every row themselves anyway.
     return [...this.orders.values()].filter(

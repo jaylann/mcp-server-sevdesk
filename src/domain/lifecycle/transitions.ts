@@ -323,27 +323,22 @@ export function assertConfirmable(doc: LifecycleDocument<"order">): { readonly a
 }
 
 /**
- * The sources `createPackingListFromOrder` may turn into a delivery note, as recorded (D-107): a
- * sent offer (200), and an order confirmation that is a draft, sent or accepted (100, 200, 500;
- * sevDesk shows a sent confirmation as 500). It leaves the source alone. Refused: offer drafts
- * (sevDesk accepts them, but nothing was offered to the customer yet, so there is nothing to
- * deliver on), rejected offers, accepted offers (not recorded; deliver on their confirmation),
+ * The sources `createPackingListFromOrder` may turn into a delivery note (D-107): an offer that
+ * was sent or accepted (200, 500), and an order confirmation that is a draft, sent or accepted
+ * (100, 200, 500; sevDesk shows a sent confirmation as 500). sevDesk leaves the source alone,
+ * whatever its status (recorded from sent and draft offers and from confirmations; the owner chose
+ * to allow accepted offers too, 2026-11-17). Refused: offer drafts (sevDesk accepts them, but
+ * nothing was offered to the customer yet, so there is nothing to deliver on), rejected offers,
  * delivery notes and every other status.
  */
 export function assertDeliveryNoteSource(doc: LifecycleDocument<"order">): void {
   const ref = documentRef(doc, true);
   if (doc.typeCode === "AN") {
     refuseOfferDraft(doc, "nothing was offered to the customer yet to deliver on");
-    if (doc.status === ORDER_STATUS.sent) return;
-    if (doc.status === ORDER_STATUS.accepted) {
-      refuse(
-        `${ref} is an accepted offer. Create its order confirmation first ` +
-          "(sevdesk_order_create_confirmation) and the delivery note from that confirmation.",
-      );
-    }
+    if (doc.status === ORDER_STATUS.sent || doc.status === ORDER_STATUS.accepted) return;
     refuse(
-      `${ref} has ${statusText(doc)}; delivery notes are created from sent offers (200) or from ` +
-        "order confirmations.",
+      `${ref} has ${statusText(doc)}; delivery notes are created from sent or accepted offers ` +
+        "(200, 500) or from order confirmations.",
     );
   }
   if (doc.typeCode === "AB") {
