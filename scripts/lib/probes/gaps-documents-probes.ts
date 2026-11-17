@@ -7,16 +7,22 @@
  *
  * Like every write probe they run only with `--allow-writes` on a trial account and create their
  * own tagged data through `createTestData` (contact, drafts, headers and notes carry the run tag),
- * which lands in the cleanup list. Nothing is e-mailed or enshrined. Documents are finalized
- * (`sendBy`, which only marks them as sent) only where a question needs a sent document, and the
- * probe's question says so. Findings report codes, amounts, ids, key names and scrubbed values;
- * base64 bodies (the PDF of a `changeParameter` answer, the DocServer thumbnails) never reach a
- * finding, and the run's scrubber replaces them in the evidence.
+ * which lands in the cleanup list. Nothing is e-mailed, and no probe calls an enshrine endpoint.
+ * Documents are finalized (`sendBy`, which marks them as sent) only where a question needs a sent
+ * document, and the probe's question says so: offers and order confirmations, which are not
+ * enshrined, and the one invoice of `write-credit-note-update-draft`, which the trial account
+ * enshrines when it is finalized (D-023, D-059). Recurring templates (WKR) stay on the account
+ * unless a probe deletes them; a template at status 200 is ended (status 50) before its DELETE,
+ * which sevDesk refuses at 200 (D-112). Findings report codes, amounts, ids, key names and
+ * scrubbed values; base64 bodies (the PDF of a `changeParameter` answer, the DocServer thumbnails)
+ * never reach a finding, and the run's scrubber replaces them in the evidence.
  *
  * Orders need a number: `saveOrder` without `orderNumber` is refused (D-027). The probes save
  * orders with the number `getNextOrderNumber` peeks (`useNextNumber=false`, reserves nothing).
  * Only the opt-in probe `write-reserved-number-delete-draft` reserves numbers, as the draft tools
- * do (D-066), and so consumes numbers of the trial's sequences.
+ * do (D-066). sevDesk handed a reserved number out again once its draft was deleted (recorded
+ * 2026-11-16, D-066); a run that stops between the reservation and the delete leaves a gap in
+ * the trial's sequence.
  */
 import { rowsOf } from "../fixture-plan.js";
 import { RUN_TAG_PREFIX } from "../live-env.js";
@@ -154,7 +160,7 @@ async function peekNumber(ctx: ProbeContext, range: NumberRange): Promise<string
 /**
  * Reserves the next number of a range (`useNextNumber=true`), as the draft tools do (D-066): a
  * side-effect GET with the write tier. Only the opt-in probe `write-reserved-number-delete-draft`
- * calls it, because it consumes a number of the trial's sequence.
+ * calls it: the number is given back only when the draft saved with it is deleted (D-066).
  */
 async function reserveNumber(ctx: ProbeContext, range: NumberRange): Promise<string | undefined> {
   const { path, query } = rangeRequest(range);
@@ -726,6 +732,39 @@ async function deactivateTemplate(
     `saveInvoice {status: 50} ${outcomeOf(saved)} → status ${str(afterSave, "status")}; ` +
     `PUT /Invoice/{id} {status: 50} ${outcomeOf(put)} → status ${str(afterPut, "status")}`;
   return { route: str(afterPut, "status") === "50" ? "PUT" : undefined, text };
+}
+
+/**
+ * Deletes a template the probe made. The first DELETE is part of what a probe observes; when it
+ * leaves the template (sevDesk refuses one at status 200 with 409, D-112), the template is ended
+ * with status 50 and deleted again, so no active, scheduled template stays behind. One that still
+ * stays is marked in the cleanup list with its status. `refused` says the first DELETE left it.
+ */
+async function deleteTemplate(
+  ctx: ProbeContext,
+  id: number,
+): Promise<{ readonly gone: boolean; readonly refused: boolean; readonly text: string }> {
+  const first = await deleteAndCheck(ctx, "Invoice", id);
+  if (first.gone) return { gone: true, refused: false, text: first.text };
+  const ended = await deactivateTemplate(ctx, id);
+  const again = ended.route === undefined ? undefined : await deleteAndCheck(ctx, "Invoice", id);
+  if (again?.gone !== true) {
+    const status = str(await ctx.read.byId("Invoice", id), "status");
+    data(ctx).mark(
+      "Invoice",
+      id,
+      status === "50"
+        ? "recurring template (WKR), ended (status 50): delete in the web app"
+        : `ACTIVE recurring template (WKR, status ${status || "?"}): end and delete it in the web app`,
+    );
+  }
+  return {
+    gone: again?.gone === true,
+    refused: true,
+    text:
+      `${first.text}; cleanup: ${ended.text}` +
+      (again === undefined ? "" : `; DELETE again: ${again.gone ? "gone" : again.text}`),
+  };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1302,7 +1341,8 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
     mode: "write",
     optIn: true,
     question:
-      "OPT-IN, consumes one number of the trial's offer sequence and one of its credit note sequence: after reserving a number with " +
+      "OPT-IN, reserves one number of the trial's offer sequence and one of its credit note sequence (recorded: given back once the draft is deleted, D-066; " +
+      "a run that stops before the delete leaves a gap): after reserving a number with " +
       "useNextNumber=true (as the draft tools do, D-066), saving an offer and a credit note draft with it and deleting the draft, which number comes next: " +
       "the reserved one again, or the one after it (a gap in the Nummernkreis)?",
     deviations: ["D-066", "D-027"],
@@ -1576,7 +1616,7 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
         );
       }
       lines.push(
-        `DELETE the template at status ${str(await ctx.read.byId("Invoice", id), "status")}: ${(await deleteAndCheck(ctx, "Invoice", id)).text}`,
+        `DELETE the template at status ${str(await ctx.read.byId("Invoice", id), "status")}: ${(await deleteTemplate(ctx, id)).text}`,
       );
       const second = await createTemplate(ctx, addDays(ctx.today, 30));
       if ("failure" in second) {
@@ -1585,7 +1625,7 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
         const off = await deactivateTemplate(ctx, second.id);
         const status = str(await ctx.read.byId("Invoice", second.id), "status");
         lines.push(
-          `Second template ${second.id}: ${off.text}; DELETE at status ${status}: ${(await deleteAndCheck(ctx, "Invoice", second.id)).text}`,
+          `Second template ${second.id}: ${off.text}; DELETE at status ${status}: ${(await deleteTemplate(ctx, second.id)).text}`,
         );
       }
       return { verdict: "observed", finding: `${lines.join(". ")}.` };
@@ -1598,7 +1638,8 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
     question:
       "accountNextInvoice (Unix seconds or dd.mm.yyyy) was not stored on create, and accountStartDate/EndDate/LastInvoice read back empty. Which input stores a start, " +
       "end or next-run date: accountStartDate and accountEndDate as Unix seconds, ISO or dd.mm.yyyy, accountNextInvoice as ISO, start + next together, invoiceDate alone, " +
-      "the dates in an update with the template's id (saveInvoice or PUT /Invoice/{id}), or status 200 in an update? Each template is read back (every account… field) and deleted.",
+      "the dates in an update with the template's id (saveInvoice or PUT /Invoice/{id}), or status 200 in an update? Each template is read back (every account… field) and deleted; " +
+      "one that DELETE leaves (sevDesk refuses status 200, D-112) is ended with status 50 and deleted again.",
     deviations: ["D-111", "D-014"],
     async run(ctx) {
       const next = addDays(ctx.today, 30);
@@ -1614,8 +1655,10 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
         created += 1;
         const stored = storedDates(made.row);
         if (stored.length > 0) storing.push(`${variant.label} (${stored.join(", ")})`);
-        const deleted = await deleteAndCheck(ctx, "Invoice", made.id);
-        lines.push(`${variant.label}: ${made.text}; ${deleted.gone ? "deleted" : deleted.text}`);
+        const deleted = await deleteTemplate(ctx, made.id);
+        lines.push(
+          `${variant.label}: ${made.text}; ${deleted.gone && !deleted.refused ? "deleted" : deleted.text}`,
+        );
       }
       if (created === 0) return inconclusive(`No template was saved. ${lines.join(". ")}.`);
       return {
@@ -1890,9 +1933,9 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
           }
           const due = DUE_KEYS.filter((key) => str(made.row, key) !== "");
           if (due.length === 0) {
-            const deleted = await deleteAndCheck(ctx, "Invoice", made.id);
+            const deleted = await deleteTemplate(ctx, made.id);
             tried.push(
-              `${variant.label}, run ${next}: no start or next-run date stored (${deleted.gone ? "deleted" : deleted.text})`,
+              `${variant.label}, run ${next}: no start or next-run date stored (${deleted.gone && !deleted.refused ? "deleted" : deleted.text})`,
             );
             break;
           }
@@ -2003,8 +2046,13 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
         (await ctx.read.page("/Invoice", undefined, 1000)).rows.map((row) => str(row, "id")),
       );
       const all = (await ctx.read.page("/Invoice", { showAll: "true" }, 1000)).rows;
+      // The templates of one run share their header, so a header match is listed under each of
+      // them; rows linked to any tagged template belong to that one only. Counted once each.
+      const templateIds = new Set(templates.map((row) => str(row, "id")));
+      const linkedToTemplate = (row: Row) =>
+        templateIds.has(String(refId(row, "origin") ?? str(row, "origin")));
+      const generated = new Set<string>();
       const lines: string[] = [];
-      let generatedTotal = 0;
       for (const template of templates.slice(0, 10)) {
         const id = Number(template["id"]);
         const byOrigin = (
@@ -2019,9 +2067,9 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
             str(row, "invoiceType") !== "WKR" &&
             str(row, "header") !== "" &&
             str(row, "header") === str(template, "header") &&
-            !byOrigin.some((item) => str(item, "id") === str(row, "id")),
+            !linkedToTemplate(row),
         );
-        generatedTotal += byOrigin.length + byHeader.length;
+        for (const row of [...byOrigin, ...byHeader]) generated.add(str(row, "id"));
         const describe = (row: Row) =>
           `${str(row, "id")}: type ${str(row, "invoiceType")}, status ${str(row, "status")}, ${numberText(ctx, row, "Invoice")}, ` +
           `invoiceDate ${str(row, "invoiceDate").slice(0, 10) || "-"}, created ${str(row, "create").slice(0, 16) || "-"}, ` +
@@ -2029,12 +2077,12 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
         lines.push(
           `Template ${id} (status ${str(template, "status")}, in the default list: ${defaultIds.has(str(template, "id"))}; ${schedule(ctx, template)}): ` +
             `generated with this origin: ${byOrigin.length === 0 ? "none" : byOrigin.map(describe).join("; ")}; ` +
-            `same header, no origin link: ${byHeader.length === 0 ? "none" : byHeader.map(describe).join("; ")}`,
+            `same header, not linked to a tagged template: ${byHeader.length === 0 ? "none" : byHeader.map(describe).join("; ")}`,
         );
       }
       return {
         verdict: "observed",
-        finding: `${templates.length} tagged template(s), ${generatedTotal} generated invoice(s) found. ${lines.join(". ")}.`,
+        finding: `${templates.length} tagged template(s), ${generated.size} generated invoice(s) found. ${lines.join(". ")}.`,
         deviations: { "D-049": "informs", "D-014": "informs" },
       };
     },
