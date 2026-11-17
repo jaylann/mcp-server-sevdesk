@@ -333,7 +333,7 @@ Lieferbedingungen: Lieferung frei Haus"
 exports[`German previews > enshrine a booked bank transaction: says the same in German 1`] = `
 "Kontoumsatz 5101 festschreiben (GoBD): dauerhaft sperren.
 ! Nicht umkehrbar (GoBD): sevDesk ändert diesen Kontoumsatz danach nie wieder: kein Statuswechsel, kein Löschen, und seine Buchungen lassen sich nicht mehr rückgängig machen (sevdesk_transaction_reset).
-! Die Dokumente, die er bezahlt, lassen sich nicht mehr auf offen zurücksetzen: Ihre Zahlung aus diesem Umsatz bleibt dauerhaft bestehen; eine Korrektur braucht dann ein neues Dokument (bei einer Rechnung ein Storno oder eine Gutschrift).
+! Die Dokumente, die er bezahlt, lassen sich nicht mehr auf offen zurücksetzen: Die Zahlung aus diesem Umsatz bleibt dauerhaft bestehen; eine Korrektur braucht dann ein neues Dokument (bei einer Rechnung ein Storno oder eine Gutschrift).
 ! Die Dokumente selbst werden dadurch nicht festgeschrieben; das tun ihre eigenen Werkzeuge (sevdesk_invoice_enshrine, sevdesk_voucher_enshrine, sevdesk_credit_note_enshrine).
 (nicht umkehrbar)
 Kontoumsatz: ID 5101, 177,33 EUR (Eingang)

@@ -40,6 +40,13 @@ const ENGLISH_WORDS =
   /\b(?:the|and|or|is|are|its|it|with|cannot|this|of|to|be|by|from|not|then|only)\b/i;
 const ENGLISH_TERMS = /\b(?:account|contact|draft|open|paid|booked|unbooked|linked|status)\b/;
 
+/**
+ * The polite form. Our German addresses the reader with du; a capitalized "Ihre" or "Sie" (also
+ * after a colon) reads as "your" or "you" on the approval page. Fact values (sevDesk's data, such
+ * as a document's header text) are not checked.
+ */
+const POLITE_FORM = /\b(?:Sie|Ihnen|Ihre?[mnrs]?)\b/;
+
 /** The first English word left in `text`, if any. */
 function english(text: string): string | undefined {
   return (ENGLISH_WORDS.exec(text) ?? ENGLISH_TERMS.exec(text))?.[0];
@@ -104,6 +111,7 @@ describe("German previews", () => {
       }
       for (const text of wording(previewDe)) {
         expect(english(text), text).toBeUndefined();
+        expect(POLITE_FORM.exec(text)?.[0], text).toBeUndefined();
       }
       // A value that was reworded (a status change, an amount with a note) is German as well;
       // values taken over unchanged are sevDesk's data (names, numbers, an email text).

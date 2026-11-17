@@ -39,7 +39,7 @@ const ENSHRINE_WARNINGS: readonly Phrase[] = [
     "The documents it pays can no longer be reset to open: their payment from this " +
       "transaction stays for good, so a correction needs a new document (for an invoice a " +
       "cancellation or a credit note).",
-    "Die Dokumente, die er bezahlt, lassen sich nicht mehr auf offen zurücksetzen: Ihre " +
+    "Die Dokumente, die er bezahlt, lassen sich nicht mehr auf offen zurücksetzen: Die " +
       "Zahlung aus diesem Umsatz bleibt dauerhaft bestehen; eine Korrektur braucht dann ein " +
       "neues Dokument (bei einer Rechnung ein Storno oder eine Gutschrift).",
   ),
