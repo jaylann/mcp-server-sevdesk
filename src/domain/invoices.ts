@@ -23,6 +23,11 @@ import {
   withDocumentCountry,
 } from "./country-codes.js";
 import {
+  type DocumentDiscount,
+  documentDiscountDto,
+  readDocumentDiscounts,
+} from "./document-discounts.js";
+import {
   addDays,
   addressDto,
   allOf,
@@ -407,22 +412,30 @@ export interface InvoiceDetails {
   readonly positions: readonly z.output<typeof positionDtoSchema>[];
   /** False when sevDesk had more position rows than could be read. */
   readonly positionsComplete: boolean;
+  /** The document discount, when asked for (`withDiscount`) and the invoice has one. */
+  readonly discount?: DocumentDiscount | undefined;
 }
 
 /**
  * One invoice (`GET /Invoice/{id}`, contact embedded) with its positions
  * (`GET /InvoicePos?invoice[id]=…&invoice[objectName]=Invoice`) and unit names (`GET /Unity`).
+ * `withDiscount` also reads its document discounts (`GET /Invoice/{id}/getDiscounts`, see
+ * `document-discounts.ts`): the get and draft tools show them, the other readers of an invoice
+ * do not need them and skip the request.
  */
 export async function getInvoice(
   client: SevdeskClient,
   invoiceId: number,
-  options: CountryReadOptions & { readonly today?: string | undefined },
+  options: CountryReadOptions & {
+    readonly today?: string | undefined;
+    readonly withDiscount?: boolean | undefined;
+  },
 ): Promise<InvoiceDetails> {
   const { signal, cacheOwner } = options;
   const today = options.today ?? berlinDateOf(Date.now());
   const id = toSevdeskId(invoiceId);
   const withSignal = signal === undefined ? {} : { signal };
-  const [payload, positions, unitNames] = await Promise.all([
+  const [payload, positions, unitNames, discounts] = await Promise.all([
     client.request({
       method: "GET",
       path: sevdeskPath("Invoice", id),
@@ -441,6 +454,9 @@ export async function getInvoice(
       signal,
     ),
     loadUnitNames(client, signal),
+    options.withDiscount === true
+      ? readDocumentDiscounts(client, "invoice", id, signal)
+      : Promise.resolve(undefined),
   ]);
   const record = parseInvoiceRecord(expectSingle(payload, `invoice ${id}`));
   const invoice = await withDocumentCountry(toInvoiceDetail(record, today), client, {
@@ -448,9 +464,14 @@ export async function getInvoice(
     cacheOwner,
   });
   const context = { currency: invoice.currency, showNet: record.showNet, unitNames };
+  const discount =
+    discounts === undefined
+      ? undefined
+      : documentDiscountDto(discounts.rows, record, invoice.currency);
   return {
     invoice,
     positions: positions.rows.map((row) => toPositionDto(row, context)),
     positionsComplete: positions.complete,
+    ...(discount === undefined ? {} : { discount }),
   };
 }

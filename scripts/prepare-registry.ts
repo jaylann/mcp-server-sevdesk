@@ -1,7 +1,10 @@
 /**
- * Adds the release's MCPB package to the server.json sent to the MCP Registry. The source file
- * stays a template: a bundle hash is only known after packing, and re-runs may replace the asset.
- * The publish job downloads the public release asset first, then hashes those exact bytes here.
+ * Adds the release's MCPB package to the server.json sent to the MCP Registry, and pins the icons
+ * served from this repository's `main` branch to the release tag, so the registry entry keeps the
+ * icon of the release it lists when `main` moves on. The source file stays a template: a bundle
+ * hash is only known after packing, re-runs may replace the asset, and its icon URL on `main`
+ * resolves before the tag exists. The publish job downloads the public release asset first, then
+ * hashes those exact bytes here.
  *
  * Dependency-free because the publish job has OIDC permission and must not install packages.
  * Input checks deliberately use plain Node; tests validate the result against the official schema.
@@ -19,6 +22,8 @@ import { pathToFileURL } from "node:url";
 const REPOSITORY = "https://github.com/jaylann/mcp-server-sevdesk";
 const NAME = "mcp-server-sevdesk";
 const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+/** This repository's files by ref: `main/…` in the template, `<tag>/…` once released. */
+const RAW_FILES = "https://raw.githubusercontent.com/jaylann/mcp-server-sevdesk/";
 
 /** Only fixed, script-owned messages belong here: these are safe to print in release logs. */
 export class RegistryInputError extends Error {}
@@ -37,9 +42,10 @@ export function failureMessage(error: unknown): string {
 }
 
 /**
- * Returns a fresh registry document with exactly one MCPB package for the verified release.
- * Refuses stale versions, a different bundle/server identity and an already populated template.
- * All other registry metadata and packages are preserved.
+ * Returns a fresh registry document with exactly one MCPB package for the verified release and
+ * the icons from this repository's `main` pinned to `tag`. Refuses stale versions, a different
+ * bundle/server identity and an already populated template (an MCPB entry, or an icon of this
+ * repository on another ref). All other registry metadata, icons and packages are preserved.
  */
 export function registryWithBundle(
   source: unknown,
@@ -78,8 +84,10 @@ export function registryWithBundle(
       "The server.json template must not contain a precomputed MCPB entry.",
     );
   }
+  const icons = server["icons"] === undefined ? {} : { icons: pinnedIcons(server["icons"], tag) };
   return {
     ...server,
+    ...icons,
     packages: [
       ...entries,
       {
@@ -90,6 +98,23 @@ export function registryWithBundle(
       },
     ],
   };
+}
+
+/** `icons` with every icon from this repository's `main` pinned to `tag`; others kept as they are. */
+function pinnedIcons(icons: unknown, tag: string): Record<string, unknown>[] {
+  if (!Array.isArray(icons)) {
+    throw new RegistryInputError("server.json icons must be a list.");
+  }
+  const onMain = `${RAW_FILES}main/`;
+  return icons.map((entry) => {
+    const icon = record(entry);
+    const src = icon["src"];
+    if (typeof src !== "string" || !src.startsWith(RAW_FILES)) return icon;
+    if (!src.startsWith(onMain)) {
+      throw new RegistryInputError("server.json icons from this repository must point at main.");
+    }
+    return { ...icon, src: `${RAW_FILES}${tag}/${src.slice(onMain.length)}` };
+  });
 }
 
 function record(value: unknown): Record<string, unknown> {
@@ -142,7 +167,9 @@ export function main(argv: readonly string[]): void {
     mkdirSync(dirname(output), { recursive: true });
     writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`);
   });
-  console.log("Prepared server.json with the release bundle's URL and SHA-256.");
+  console.log(
+    "Prepared server.json with the release bundle's URL and SHA-256, its icon pinned to the tag.",
+  );
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {

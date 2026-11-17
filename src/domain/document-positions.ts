@@ -108,6 +108,11 @@ export const salesDocumentFields = {
   sumTaxForeignCurrency: zOptionalDecimal,
   sumGrossForeignCurrency: zOptionalDecimal,
   sumDiscountsForeignCurrency: zOptionalDecimal,
+  /** Document discounts net and gross, negative for a deduction (`document-discounts.ts`). */
+  sumDiscountNet: zOptionalDecimal,
+  sumDiscountGross: zOptionalDecimal,
+  sumDiscountNetForeignCurrency: zOptionalDecimal,
+  sumDiscountGrossForeignCurrency: zOptionalDecimal,
 };
 
 /** The shared fields of a parsed sales document record. */

@@ -806,7 +806,7 @@ describe("gap probes on a simulated trial account", () => {
     ).toEqual([]);
     for (const call of account.client.writes()) {
       expect(call.tier, `${call.method} ${call.path}`).toMatch(/^(write|commit)$/);
-      if (/bookAmount|resetTo|^\/CheckAccountTransaction\/\d+$/.test(call.path)) {
+      if (/bookAmount|resetTo|^\/CheckAccountTransaction(\/\d+)?$/.test(call.path)) {
         expect(call.tier, call.path).toBe("commit");
       }
     }
@@ -1150,7 +1150,9 @@ describe("gap probe helpers", () => {
     const client = new ScriptedClient(() => new RawAnswer(zip, "application/zip"));
     const evidence: Exchange[] = [];
     const http = createProbeHttp(client, createScrubber({ secrets: [TOKEN] }), evidence);
-    const result = await http.get("/Export/invoiceZip", { download: "true" });
+    // The archive is a side-effect GET for the client (D-101), so it declares the write tier as
+    // the probe's zipExport does.
+    const result = await http.get("/Export/invoiceZip", { download: "true" }, { tier: "write" });
     expect(evidence[0]?.body).toBe(`binary, starts with "PK"… (${zip.length} bytes, not JSON)`);
     expect(JSON.stringify(evidence)).not.toMatch(/Huber|1042/);
     expect(result.bytes).toEqual(zip);

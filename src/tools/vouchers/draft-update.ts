@@ -11,14 +11,15 @@ export const voucherUpdateDraftTool = defineWriteTool({
   name: "sevdesk_voucher_update_draft",
   title: "Update a draft voucher",
   description:
-    "Update an unlocked draft voucher (Beleg, status 50): supplier, dates, tax rule, positions or receipt file. EUR drafts keep omitted fields. Every non-EUR update needs a fresh exchangeRate or foreignCurrencyDeadline and ALL positions in the voucher currency: retaining stored EUR amounts can convert them again. Any currency change also needs all positions. Use currency EUR with EUR amounts to convert back, without a rate. Update 2.0 only; ReceiptGuidance is checked. Tier write; dryRun previews. Foreign-currency drafts cannot be finalized here.",
+    "Update an unlocked draft voucher (Beleg, status 50): supplier, dates, tax rule, positions or receipt file (read again on the real call; fileSha256 pins its bytes). EUR drafts keep omitted fields. Every non-EUR update needs a fresh exchangeRate or foreignCurrencyDeadline and ALL positions in the voucher currency: retaining stored EUR amounts can convert them again. Any currency change also needs all positions. Use currency EUR with EUR amounts to convert back, without a rate. Update 2.0 only; ReceiptGuidance is checked. Tier write; dryRun previews. Foreign-currency drafts cannot be finalized here.",
   toolset: "vouchers",
   tier: "write",
+  // Open world: `file` may be an https link the server downloads (SEVDESK_FILE_URL_HOSTS).
   annotations: {
     readOnlyHint: false,
     destructiveHint: true,
     idempotentHint: false,
-    openWorldHint: false,
+    openWorldHint: true,
   },
   localEffects: "reads-files",
   input: z.strictObject({ ...voucherUpdateInputShape, ...dryRunInputShape }),

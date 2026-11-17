@@ -128,6 +128,51 @@ describe("listDocumentHeaders", () => {
     expect(client.callsTo("/Voucher")[0]?.query).toMatchObject({ voucherType: "VOU" });
   });
 
+  it("returns the drafts with keepDrafts, still counted as excluded, with their creation day", async () => {
+    const created = { create: "2026-03-02T23:30:00+01:00" };
+    const client = new FakeSevdeskClient(
+      scenarioRoutes({
+        invoices: [
+          {
+            row: invoiceDoc({ id: 2, date: "2026-03-06", net: "10", tax: "1.9", status: "100" }),
+            positions: [],
+          },
+        ],
+        vouchers: [
+          { row: voucherDoc({ id: 21, date: "2026-03-12", net: "50", tax: "9.5" }), positions: [] },
+          {
+            row: voucherDoc(
+              { id: 22, date: "2026-03-11", net: "50", tax: "9.5", status: "50" },
+              created,
+            ),
+            positions: [],
+          },
+          {
+            row: voucherDoc(
+              { id: 23, date: "2026-03-12", net: "50", tax: "9.5", status: "50" },
+              { voucherType: "RV" },
+            ),
+            positions: [],
+          },
+        ],
+      }),
+    );
+    const params = { from: "2026-03-01", to: "2026-03-31", today: TODAY };
+
+    const kept = await listDocumentHeaders(client, { ...params, keepDrafts: true });
+    expect(kept.headers.map((header) => header.id)).toEqual([21]);
+    expect(kept.drafts.map((header) => `${header.kind}:${String(header.id)}`)).toEqual([
+      "invoice:2",
+      "voucher:22",
+    ]);
+    // sevDesk's time stamp is read as a Berlin day.
+    expect(kept.drafts[1]?.createdAt).toBe("2026-03-02");
+    expect(kept.excluded).toMatchObject({ draft: 2, recurring_template: 1 });
+
+    const plain = await listDocumentHeaders(client, params);
+    expect(plain.drafts).toEqual([]);
+  });
+
   it("maps the header fields the reports need", async () => {
     const client = new FakeSevdeskClient(
       scenarioRoutes({

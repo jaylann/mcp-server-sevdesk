@@ -99,3 +99,34 @@ export function previousQuarter(today: string): Period {
   const quarter = Math.floor((Number(today.slice(5, 7)) - 1) / 3) + 1;
   return quarter === 1 ? quarterPeriod(year - 1, 4) : quarterPeriod(year, quarter - 1);
 }
+
+/** `YYYY`, years 2000–2099. */
+export const YEAR_PATTERN = /^20\d\d$/;
+
+/** The calendar year `year`, as a day range with its label (`2025`). */
+export interface YearPeriod {
+  readonly year: number;
+  readonly label: string;
+  readonly from: string;
+  readonly to: string;
+}
+
+/** The calendar year `year`. */
+export function yearPeriod(year: number): YearPeriod {
+  return { year, label: String(year), from: `${String(year)}-01-01`, to: `${String(year)}-12-31` };
+}
+
+/** The year before the one `today` (`YYYY-MM-DD`) lies in. */
+export function previousYear(today: string): YearPeriod {
+  return yearPeriod(Number(today.slice(0, 4)) - 1);
+}
+
+/** The day `days` days before `today` (`YYYY-MM-DD`), as `YYYY-MM-DD`. */
+export function daysBefore(today: string, days: number): string {
+  const at = Date.UTC(
+    Number(today.slice(0, 4)),
+    Number(today.slice(5, 7)) - 1,
+    Number(today.slice(8, 10)) - days,
+  );
+  return new Date(at).toISOString().slice(0, 10);
+}

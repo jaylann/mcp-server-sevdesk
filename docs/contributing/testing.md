@@ -64,7 +64,9 @@ The checked-in `server.json` is the npm/OCI template. `publish-registry` waits f
 downloads the public release bundle, and runs `scripts/prepare-registry.ts` with plain Node to add
 its MCPB URL and SHA-256 to the `server.json` it publishes. It checks the bundle's name and manifest
 version before writing; no dependency install runs in that privileged job. The MCPB entry is
-generated at publication time because release-please cannot know the hash of a future asset.
+generated at publication time because release-please cannot know the hash of a future asset. The
+same step moves the icon URL from `main` to the release tag: the checked-in URL has to resolve
+before the tag exists, the published one keeps the icon of that release.
 The generator's tests validate against the official schema pinned by `server.json` (snapshot and
 provenance in `spec/mcp-registry/`). To dry-run the same preparation after `pnpm mcpb`:
 

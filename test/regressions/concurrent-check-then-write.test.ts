@@ -45,6 +45,7 @@ import {
   resultText,
   writeHarness,
 } from "../helpers/write-flow.js";
+import { noDiscountsRoute } from "../unit/tools/lifecycle/helpers.js";
 
 closeWriteHarnessesAfterEach();
 
@@ -225,6 +226,8 @@ describe("concurrent invoices from one order", () => {
           query: { "invoice[id]": 1101, "invoice[objectName]": "Invoice" },
           response: { fixture: "masterdata/invoice-positions-1101.json" },
         },
+        // The order's and the new invoice's discounts on the whole document: none.
+        noDiscountsRoute,
       ],
     });
     stateful(fake, (req) => {

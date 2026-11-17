@@ -25,7 +25,7 @@ import { sniffKind } from "../safety/local-files.js";
 import { expectSingle } from "../sevdesk/envelope.js";
 import { SevdeskError } from "../sevdesk/errors.js";
 import { sevdeskPath } from "../sevdesk/paths.js";
-import { parseUpstream, zBool01, zOptionalRef, zOptionalString } from "../sevdesk/schema.js";
+import { parseUpstream, zBool01, zId, zOptionalRef, zOptionalString } from "../sevdesk/schema.js";
 import type { SevdeskClient } from "../sevdesk/types.js";
 
 /** The document files this server can fetch. */
@@ -489,6 +489,71 @@ export async function fetchVoucherReceipt(
     filename: safeFilename(undefined, `receipt-voucher-${voucherId}`, RECEIPT_EXTENSIONS[kind]),
     bytes,
   };
+}
+
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+
+/** The receipt file a voucher row names, as far as the row tells. */
+export interface VoucherReceiptRef {
+  readonly documentId: number;
+  /**
+   * SHA-256 of the uploaded file as sevDesk stores it (`contentHash`), lower case so two compare
+   * as strings; absent when the row did not embed the document, the document has none (files
+   * sevDesk rendered itself have `null`), or the value is not a SHA-256 hex digest.
+   */
+  readonly hash?: string | undefined;
+  /** Size of the stored file in bytes (`filesize`), when the row embedded the document. */
+  readonly size?: number | undefined;
+  /** The stored file's extension (`extension`), lower case, when it looks like one (`pdf`). */
+  readonly extension?: string | undefined;
+  /** Whether the row carried the document itself (`embed=document`), not only its reference. */
+  readonly embedded: boolean;
+}
+
+const embeddedDocumentSchema = z.object({
+  id: zId,
+  contentHash: z.unknown().optional(),
+  filesize: z.unknown().optional(),
+  extension: z.unknown().optional(),
+});
+
+/** A file extension as sevDesk stores it: a few letters or digits, no dot. */
+const EXTENSION = /^[a-z0-9]{1,5}$/;
+
+/**
+ * The receipt of one raw voucher row (`GET /Voucher`, `GET /Voucher/{id}`), from its `document`:
+ * `{id, objectName}` without `embed`, the whole `Document` with `embed=document`, whose
+ * `contentHash` is the SHA-256 of the uploaded bytes (spec/deviations.md D-100;
+ * recorded 2026-11-17: `GET /Voucher?embed=document` embeds it in every list row, so the hashes of
+ * a period cost no request per voucher). Not every receipt has one: a receipt created by
+ * `Voucher/Factory/createVoucherFromFile` (sevDesk's own recognition) has `contentHash` null, but
+ * `filesize` (the bytes sent) and `extension` (recorded 2026-11-17, trial account, Update 2.0).
+ * `undefined` when the voucher has no receipt or the value is not a document reference. Never
+ * fails the row: the voucher mappers parse the reference.
+ */
+export function voucherReceiptOf(raw: unknown): VoucherReceiptRef | undefined {
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const document: unknown = (raw as Record<string, unknown>)["document"];
+  const parsed = embeddedDocumentSchema.safeParse(document);
+  if (!parsed.success || typeof document !== "object" || document === null) return undefined;
+  const embedded = Object.keys(document).some((key) => key !== "id" && key !== "objectName");
+  const { contentHash, filesize, extension } = parsed.data;
+  const hash = typeof contentHash === "string" ? contentHash.trim().toLowerCase() : undefined;
+  const ext = typeof extension === "string" ? extension.trim().toLowerCase() : undefined;
+  return {
+    documentId: parsed.data.id,
+    hash: hash !== undefined && SHA256_HEX.test(hash) ? hash : undefined,
+    size: byteCount(filesize),
+    extension: ext !== undefined && EXTENSION.test(ext) ? ext : undefined,
+    embedded,
+  };
+}
+
+/** A non-negative whole number of bytes, sent as `"1435"` or `1435`; else `undefined`. */
+function byteCount(value: unknown): number | undefined {
+  const text = typeof value === "number" ? String(value) : value;
+  if (typeof text !== "string" || !/^\d{1,15}$/.test(text.trim())) return undefined;
+  return Number(text.trim());
 }
 
 function unexpected(message: string): SevdeskError {
