@@ -1,8 +1,8 @@
 /**
  * The EU member states as VAT law sees them, in one table: ISO 3166-1 alpha-2 code, the prefix
  * of their VAT identification numbers (EL for Greece) and their standard VAT rate. Every EU list
- * of this server comes from here: the e-invoice voucher suggestion, the tax-rule helper and the
- * VAT-ID check.
+ * of this server comes from here: the e-invoice voucher suggestion, the tax-rule helper, the
+ * VAT-ID check and the account audit.
  *
  * **Standard rates.** Source: European Commission, Your Europe (Business), "VAT rules and rates"
  * (https://europa.eu/youreurope/business/taxation/vat/vat-rules-rates/index_en.htm), table of
@@ -87,4 +87,14 @@ export function isEuMemberState(code: string | undefined): boolean {
 /** The member state whose VAT IDs start with `prefix` (upper case), e.g. EL → Greece. */
 export function euMemberStateByVatPrefix(prefix: string): EuMemberState | undefined {
   return BY_PREFIX.get(prefix);
+}
+
+/**
+ * The country whose VAT a place with ISO code `country` (any case) comes under, upper case:
+ * Monaco counts as France (§ 1 Abs. 2a Satz 2 UStG, Art. 7 MwStSystRL); any other code stands for
+ * itself.
+ */
+export function vatCountryOf(country: string): string {
+  const code = country.trim().toUpperCase();
+  return code === "MC" ? "FR" : code;
 }

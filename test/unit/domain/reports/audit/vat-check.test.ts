@@ -15,10 +15,16 @@ import {
 import {
   accountDatevRoute,
   CONTACTS,
+  type ContactSpec,
+  COUNTRY,
+  type CustomerSpec,
   directoryRoutes,
+  type ExpectedDocument,
   expectedIds,
+  purchase,
   PURCHASES,
   quarterRoutes,
+  sale,
   SALES,
 } from "./scenario.js";
 
@@ -290,6 +296,77 @@ describe("check vat: grouping, wording and untrusted text", () => {
     expect(result.notes.join(" ")).toContain(
       "1 foreign-currency document without EUR values in sevDesk",
     );
+  });
+});
+
+describe("check vat: places and VAT id formats VAT law treats apart", () => {
+  /** Every document's expectation against the result: its code, or no finding for `ok`. */
+  function expectEach(result: AuditResult, documents: readonly ExpectedDocument[]): void {
+    for (const document of documents) {
+      const id = Number(document.row["id"]);
+      const codes = result.findings
+        .filter((entry) => entry.records.some((record) => record.id === id))
+        .map((entry) => entry.code);
+      expect(codes, `document ${String(id)}`).toEqual(
+        document.expect === "ok" ? [] : [document.expect],
+      );
+    }
+  }
+
+  it("counts a supplier in Monaco as one in France (EU)", async () => {
+    const monaco: ContactSpec = { id: 2101, name: "Yachting SAM", countries: [COUNTRY.MC] };
+    const reverseCharge = [{ rate: "0", net: "100", tax: "0" }];
+    const vouchers = [
+      purchase(1, monaco, 14, reverseCharge, "ok"),
+      purchase(2, monaco, 8, reverseCharge, "ok"),
+      purchase(3, monaco, 12, reverseCharge, "eu_supplier_under_rule_12"),
+    ];
+    const { result } = await audit([
+      regularAccount,
+      accountDatevRoute,
+      ...scenarioRoutes({ vouchers }),
+      ...directoryRoutes([monaco]),
+    ]);
+
+    expectEach(result, vouchers);
+    expect(result.coverage.notJudged).toBe(0);
+  });
+
+  it("judges customers' VAT ids by the format of their state, Northern Ireland for goods only", async () => {
+    const northernIreland: CustomerSpec = {
+      id: 4101,
+      vatNumber: "XI123456789",
+      country: COUNTRY.GB,
+    };
+    const greekPrefix: CustomerSpec = { id: 4102, vatNumber: "GR123456789", country: COUNTRY.GR };
+    const tooShort: CustomerSpec = { id: 4103, vatNumber: "FR123", country: COUNTRY.FR };
+    const euSmallBusiness: CustomerSpec = {
+      id: 4104,
+      vatNumber: "ATU12345678EX",
+      country: COUNTRY.AT,
+    };
+    const invoices = [
+      sale(11, northernIreland, 3, "0", "ok"),
+      sale(12, northernIreland, 21, "0", "eu_service_without_eu_vat_id"),
+      sale(13, greekPrefix, 3, "0", "intra_eu_supply_without_eu_vat_id"),
+      // Not a valid VAT id of another member state: German VAT stands.
+      sale(14, greekPrefix, 1, "190", "ok"),
+      sale(15, tooShort, 21, "0", "eu_service_without_eu_vat_id"),
+      sale(16, euSmallBusiness, 3, "0", "ok"),
+    ];
+    const { result } = await audit([
+      regularAccount,
+      ...scenarioRoutes({ invoices }),
+      ...directoryRoutes([]),
+    ]);
+
+    expectEach(result, invoices);
+    const greek = result.findings.find((entry) => entry.contact?.id === greekPrefix.id);
+    expect(greek?.reason).toContain(
+      "sevDesk holds a VAT id in the wrong format for its state for this customer.",
+    );
+    const ni = result.findings.find((entry) => entry.contact?.id === northernIreland.id);
+    expect(ni?.reason).toContain("a VAT id from Northern Ireland (EU rules for goods only)");
   });
 });
 

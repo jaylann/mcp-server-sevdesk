@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  customerVatIdOf,
   loadPartyDirectory,
   locate,
   vatIdArea,
@@ -19,6 +20,10 @@ describe("vatIdArea", () => {
     ["EU372000041", "non_eu"],
     ["CHE123456789MWST", "non_eu"],
     ["GB123456789", "non_eu"],
+    // Greek numbers start with EL; a GR prefix is in the wrong format, but still Greece.
+    ["GR123456789", "eu"],
+    // Where a party is established, the prefix decides, in its state's format or not.
+    ["FR123", "eu"],
   ])("places %s in %s", (vatId, area) => {
     expect(vatIdArea(vatId)).toBe(area);
   });
@@ -29,6 +34,34 @@ describe("vatIdArea", () => {
       expect(vatIdArea(vatId)).toBeUndefined();
     },
   );
+});
+
+describe("customerVatIdOf", () => {
+  it.each([
+    [undefined, "none"],
+    ["DE123456789", "germany"],
+    ["FR12345678901", "eu"],
+    ["EL123456789", "eu"],
+    ["IE1234567T", "eu"],
+    ["NL123456789B01", "eu"],
+    ["XI123456789", "northern_ireland"],
+    // The format of the issuing state decides, as in the tax-rule helper.
+    ["FR123", "wrong_format"],
+    ["ATU1", "wrong_format"],
+    ["DE12345", "wrong_format"],
+    ["GR123456789", "wrong_format"],
+    ["FR123456789012345678", "wrong_format"],
+    // The EX suffix of the EU small-business scheme is checked apart from the number.
+    ["ATU12345678EX", "eu"],
+    ["ATU1EX", "wrong_format"],
+    ["CHE123456789MWST", "non_eu"],
+    ["GB123456789", "non_eu"],
+    ["EU372000041", "non_eu"],
+    ["KEINE", "unreadable"],
+    ["1234567890", "unreadable"],
+  ])("reads %s as %s", (vatId, state) => {
+    expect(customerVatIdOf(vatId)).toBe(state);
+  });
 });
 
 describe("locate", () => {
@@ -60,6 +93,23 @@ describe("locate", () => {
   it("prefers the VAT id's area over the addresses and leaves mixed addresses open", () => {
     expect(locate({ vatId: "EU372000041", countries: ["IE"] }).area).toBe("non_eu");
     expect(locate({ vatId: undefined, countries: ["AT", "CH"] }).area).toBeUndefined();
+  });
+
+  it("counts Monaco as France, inside the EU", () => {
+    expect(locate({ vatId: undefined, countries: ["MC"] })).toMatchObject({
+      germany: false,
+      abroad: true,
+      area: "eu",
+    });
+    expect(locate({ vatId: undefined, countries: ["MC", "FR"] }).area).toBe("eu");
+    expect(locate({ vatId: undefined, countries: ["MC", "CH"] }).area).toBeUndefined();
+  });
+
+  it("places a supplier with a GR-prefixed VAT id in the EU, never outside it", () => {
+    expect(locate({ vatId: "GR123456789", countries: [] })).toMatchObject({
+      abroad: true,
+      area: "eu",
+    });
   });
 
   it("sees German and foreign data at once", () => {

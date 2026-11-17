@@ -17,7 +17,8 @@
  * Sales (invoices; cancellation invoices are left out, they mirror their original): German VAT
  * (rule 1) to a customer with a VAT id of another EU state and no German data (§ 3a Abs. 2,
  * § 6a UStG), and intra-EU supplies or services (rules 3, 21) without a VAT id of another EU state
- * (§ 6a Abs. 1 Satz 1 Nr. 4, § 18a UStG).
+ * (§ 6a Abs. 1 Satz 1 Nr. 4, § 18a UStG). A VAT id counts only in the valid format of its state,
+ * as in the tax-rule helper (`customerVatIdOf`).
  *
  * False positives the data rules out: a supplier with a German VAT id or a German address
  * (registered or established in Germany, § 13b Abs. 7 UStG) may charge German VAT; a supplier with
@@ -51,13 +52,13 @@ import {
   scanNotes,
 } from "./findings.js";
 import {
+  customerVatIdOf,
   loadPartyDirectory,
   locate,
   type PartyArea,
   type PartyDirectory,
   type PartyFacts,
   type PartyLocation,
-  vatIdArea,
 } from "./parties.js";
 
 /** Purchase tax rules this check compares with the supplier. */
@@ -310,8 +311,9 @@ const TEXTS: Readonly<Record<VatFindingCode, (context: TextContext) => FindingTe
 
 /** What sevDesk holds as a customer's VAT id, in words (trusted: never the VAT id itself). */
 function vatIdStateOf(vatId: string | undefined): string {
-  if (vatId === undefined) return "no VAT id";
-  switch (vatIdArea(vatId)) {
+  switch (customerVatIdOf(vatId)) {
+    case "none":
+      return "no VAT id";
     case "germany":
       return "a German VAT id";
     case "non_eu":
@@ -320,7 +322,9 @@ function vatIdStateOf(vatId: string | undefined): string {
       return "a VAT id from Northern Ireland (EU rules for goods only)";
     case "eu":
       return "a VAT id of another EU state";
-    case undefined:
+    case "wrong_format":
+      return "a VAT id in the wrong format for its state";
+    case "unreadable":
       return "a VAT id without a country prefix";
   }
 }
@@ -428,22 +432,23 @@ function judgePurchase(header: DocumentHeader, rule: number, party: Party): Verd
 /** A sale (invoice): rule against the customer's VAT id and location. */
 function judgeSale(header: DocumentHeader, rule: number, party: Party): Verdict {
   if (!party.vatIdKnown) return NOT_JUDGED;
-  const area = vatIdArea(party.facts.vatId);
+  const vatId = customerVatIdOf(party.facts.vatId);
   switch (rule) {
     case 1:
       if (header.eur === undefined) return { kind: "left_out" };
-      if (compare(header.eur.tax, 0) <= 0 || area !== "eu" || party.location.germany) return OK;
+      if (compare(header.eur.tax, 0) <= 0 || vatId !== "eu" || party.location.germany) return OK;
       // A German address would settle it; one whose country is unknown might be German.
       return party.facts.countriesUnknown === true
         ? NOT_JUDGED
         : finding("german_vat_to_eu_business");
     case 3:
       // Northern Ireland follows the EU rules for goods (XI VAT ids).
-      return area === "eu" || area === "northern_ireland"
+      return vatId === "eu" || vatId === "northern_ireland"
         ? OK
         : finding("intra_eu_supply_without_eu_vat_id");
     case 21:
-      return area === "eu" ? OK : finding("eu_service_without_eu_vat_id");
+      // Northern Ireland follows the UK's rules for services: an XI VAT id does not fit rule 21.
+      return vatId === "eu" ? OK : finding("eu_service_without_eu_vat_id");
     default:
       return OK;
   }
