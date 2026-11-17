@@ -502,9 +502,9 @@ const vatPrecheck = definePrompt({
         "documents whose tax rule does not fit where the supplier or customer is established " +
         "(foreign VAT deducted, reverse charge missing, EU VAT ids). Then `check: " +
         '"reverse_charge"`: the § 13b base by tax rule. Against the summary on the accrual ' +
-        "basis its sums should match Kz 46/47, 84/85 (rules 12 and 13 together), 60 and 21 up " +
-        "to cent rounding; on the cash basis they can differ, since the check counts by tax " +
-        "point. Findings are hints: check each with me.",
+        "basis its bases should match Kz 46, 84 (rules 12 and 13 together), 60 and 21, and its " +
+        "tax amounts (Kz 47, 85, 67) up to a cent of rounding; on the cash basis they can " +
+        "differ, since the check counts by tax point. Findings are hints: check each with me.",
       tools: ["sevdesk_records_audit"],
     },
     {

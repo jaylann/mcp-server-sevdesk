@@ -67,9 +67,12 @@ describe.each(["month_end_close", "vat_precheck"])("%s", (name) => {
 describe("vat_precheck", () => {
   it("claims a match of the § 13b sums with the summary only on the accrual basis, up to cents", () => {
     const text = textOf(planned("vat_precheck", testConfig()));
+    // The wording of the guide (docs/guides/evaluations.md, "§13b base"): bases match, tax
+    // amounts up to a cent.
     expect(text).toContain(
-      "Against the summary on the accrual basis its sums should match Kz 46/47, 84/85 (rules 12 " +
-        "and 13 together), 60 and 21 up to cent rounding; on the cash basis they can differ",
+      "Against the summary on the accrual basis its bases should match Kz 46, 84 (rules 12 and " +
+        "13 together), 60 and 21, and its tax amounts (Kz 47, 85, 67) up to a cent of rounding; " +
+        "on the cash basis they can differ",
     );
     expect(text).not.toContain("its sums match the summary");
   });

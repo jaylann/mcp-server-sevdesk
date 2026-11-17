@@ -160,11 +160,12 @@ no pre-returns.
    [tax-rules.md](tax-rules.md) explains which tax rule lands in which field.
 3. Audits for the same period (`sevdesk_records_audit`, hints, not tax advice): `check: vat`
    (tax rule against where the supplier or customer is established), `check: reverse_charge` (the
-   §13b base by rule; against the accrual-basis summary it should match Kz 46/47, 84/85 (rules 12
-   and 13 together), 60 and 21 up to cent rounding, not on the cash basis), `check: duplicates`
-   (input VAT counted twice) and `check: recurring_gaps` (missing bills, input VAT not claimed).
-   With `SEVDESK_FILE_DIRS`: `sevdesk_receipt_folder_check` on the folder with the period's receipts
-   (files no voucher carries were probably never booked; a hint, not proof).
+   §13b base by rule; against the accrual-basis summary the bases should match Kz 46, 84 (rules
+   12 and 13 together), 60 and 21 and the tax amounts (Kz 47, 85, 67) up to a cent, not on the
+   cash basis), `check: duplicates` (input VAT counted twice) and `check: recurring_gaps` (missing
+   bills, input VAT not claimed). With `SEVDESK_FILE_DIRS`: `sevdesk_receipt_folder_check` on the
+   folder with the period's receipts (files no voucher carries were probably never booked; a hint,
+   not proof).
 4. Spot checks with `sevdesk_voucher_get` / `sevdesk_invoice_get` for flagged documents; fix
    drafts, reset (`commit`) or cancel finalized documents as needed. Never delete booked ones.
 5. Intra-EU supplies and EU B2B services also go into the Zusammenfassende Meldung (ZM, due on
