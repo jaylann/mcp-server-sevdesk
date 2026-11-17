@@ -53,9 +53,10 @@ describe("planBankAccountCreate", () => {
     expect(plan.preview.warnings).toEqual([
       expect.stringMatching(/cannot delete a payment account through its API, only archive it/),
       expect.stringMatching(/clearing account takes no transactions entered by hand/),
-      expect.stringMatching(
-        /^Without accountingNumber sevDesk gives the account the next free number of the 18xx/,
-      ),
+      "Without accountingNumber sevDesk picks the booking account itself: recorded on SKR04, the " +
+        "next free number of the 18xx range, for file-import and clearing accounts alike; other " +
+        "charts of accounts are not recorded. Ask the tax consultant whether the account needs a " +
+        "specific one.",
     ]);
     expect(plan.preview.irreversible).toBe(false);
   });
@@ -132,7 +133,8 @@ describe("planBankAccountCreate", () => {
       message:
         "Booking account 1820 is already used by payment account 4001, and every payment " +
         "account needs a booking account of its own. Choose another number, or leave " +
-        "accountingNumber out to get the next free number of the 18xx range.",
+        "accountingNumber out to let sevDesk pick a free one (recorded on SKR04: the next free " +
+        "18xx number).",
     });
     const client = new FakeSevdeskClient([
       accountsWith([
@@ -327,8 +329,8 @@ describe("executeBankAccountCreate", () => {
       message:
         "sevDesk refused booking account 1803: another payment account already uses it, possibly " +
         "an archived one, which keeps its number and is not listed. Nothing was created. Choose " +
-        "another number, or leave accountingNumber out to get the next free number of the 18xx " +
-        "range.",
+        "another number, or leave accountingNumber out to let sevDesk pick a free one (recorded " +
+        "on SKR04: the next free 18xx number).",
       upstreamMessage: undefined,
     });
     expect(client.writes()).toHaveLength(1);
@@ -347,8 +349,8 @@ describe("executeBankAccountCreate", () => {
       message:
         "sevDesk does not accept 3321 as the booking account of a payment account. Nothing was " +
         "created. Choose a booking account the chart of accounts provides for bank or clearing " +
-        "accounts (ask the tax consultant), or leave accountingNumber out to get the next free " +
-        "number of the 18xx range.",
+        "accounts (ask the tax consultant), or leave accountingNumber out to let sevDesk pick a " +
+        "free one (recorded on SKR04: the next free 18xx number).",
       upstreamMessage: undefined,
     });
     expect(client.writes()).toHaveLength(1);

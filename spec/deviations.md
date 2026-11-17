@@ -4568,8 +4568,10 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   gives one, as a JSON integer, after checking that no listed account has it (archived accounts
   hold their numbers but are not listed, so sevDesk's own check remains the last word). The two
   422 refusals become the tool's own sentences ("already used, possibly by an archived account";
-  "not accepted as the booking account of a payment account"), without sevDesk's text; leaving
-  the number out gives the next free 18xx number. The result takes the number from sevDesk's
+  "not accepted as the booking account of a payment account"), without sevDesk's text; they
+  advise leaving the number out so that sevDesk picks one, and name the 18xx range only as
+  recorded on SKR04 (the trial account's chart; which number another chart gets is not
+  recorded). The result takes the number from sevDesk's
   answer and reports a different or missing one. The tool always sends `importType` `CSV`, the
   recorded value, and never `iban` or `MT940`.
 - **Test:** `test/unit/domain/bank-account-create.test.ts` ("sends a file-import account as CSV,
