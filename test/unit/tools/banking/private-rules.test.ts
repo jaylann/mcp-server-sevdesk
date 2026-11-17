@@ -250,7 +250,8 @@ describe("sevdesk_private_transaction_rule_create", () => {
     [
       "both texts",
       { counterparty: "Netflix", purpose: "Abo" },
-      "A rule takes one text here: counterparty or purpose",
+      "sevDesk would store a rule with both, but whether it then needs both texts to match or " +
+        "only one is not known",
     ],
     ["a two-letter text", { counterparty: "AG" }, "too short"],
     ["three letters with spaces and dots", { purpose: "d. m. x" }, "at least 4 letters or digits"],
@@ -330,6 +331,30 @@ describe("sevdesk_private_transaction_rule_create", () => {
     expect(output.summary).toContain(
       "Note: sevDesk stored rule 952 with other texts than were sent",
     );
+  });
+
+  // sevDesk stores a text exactly as sent, spaces included (D-099): the tool sends it trimmed and
+  // checks the stored text against the trimmed one.
+  it("sends the text trimmed and finds it stored as sent", async () => {
+    const client = new StagedClient(createReads([], []), [POST, rulesRoute([NEW_RULE])]);
+    const { output } = await executeWrite(createTool, { counterparty: "  Netflix " }, client);
+    expect(client.writes()[0]?.body).toEqual({
+      objectName: "PrivateTransactionRule",
+      counterpartName: "Netflix",
+    });
+    expect(output.summary).not.toContain("Note:");
+  });
+
+  it.each([
+    ["with the spaces of an untrimmed text", "  Netflix "],
+    ["cut short, as sevDesk cuts texts over 255 characters", "Netfl"],
+  ])("notes a stored text %s", async (_label, stored) => {
+    const client = new StagedClient(createReads([], []), [
+      POST,
+      rulesRoute([ruleRow(952, { counterpartName: stored })]),
+    ]);
+    const { output } = await executeWrite(createTool, { counterparty: "Netflix" }, client);
+    expect(output.summary).toContain("Note: sevDesk stored rule 952 with other texts");
   });
 
   it("does not repeat the POST when the answer names no rule", async () => {

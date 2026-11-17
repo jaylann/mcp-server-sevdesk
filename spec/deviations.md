@@ -3590,37 +3590,54 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   transactions", `POST` creates one (`objectName`, `paymentPurpose`, `counterpartName`, both
   nullable) and answers 201 with the bare model, `DELETE /PrivateTransactionRule/{id}` deletes
   one. When and how a rule is applied is not said.
-- **Actual behavior:** `GET` with `limit`/`offset` answers `{objects: []}` (no `total` without
-  `countAll`). `POST` answers 2xx with the rule wrapped in `objects` (keys `id`, `objectName`,
-  `additionalInformation`, `create`, `update`, `sevClient`, `paymentPurpose`, `counterpartName`;
-  the field not sent is `null`; ids were small integers, `951`). `DELETE` answers
-  `{objects: [null]}`. Two tagged rules (one per field) turned **none** of five tagged open
-  transactions on a file-import account private (exact and partial counterpart, exact and
-  partial purpose, neither), nor a matching one created after the rules, and deleting the rules
-  changed nothing. Rules probably act only when sevDesk imports bank transactions, which a trial
-  cannot do.
+- **Actual behavior:**
+  - `GET` with `limit`/`offset` answers `{objects: [...]}`; without `countAll` no `total` was
+    seen, with `countAll=true` it reports one (0 before, 8 after eight creations), and
+    `limit`/`offset` page properly (two pages of two, no shared id).
+  - `POST` answers 2xx with the rule wrapped in `objects` (keys `id`, `objectName`,
+    `additionalInformation`, `create`, `update`, `sevClient`, `paymentPurpose`, `counterpartName`;
+    the field not sent is `null`; ids were small integers, `951`). It stores a text exactly as
+    sent, without trimming (two leading spaces and one trailing kept: 37 characters for a
+    34-character text). 100 and 255 characters are stored in full; 256 and 1,000 characters are
+    accepted with 2xx and **cut to 255 without notice**. A rule with both texts is accepted and
+    stored with both; a second rule with exactly the same `counterpartName` is accepted and stored
+    as a second row (no duplicate check); a rule with neither text is refused with 422 "At least
+    one of the parameters must be set". `DELETE` answers `{objects: [null]}`.
+  - Two tagged rules (one per field) turned **none** of five tagged open transactions on a
+    file-import account private (exact and partial counterpart, exact and partial purpose,
+    neither), nor a matching one created after the rules, and deleting the rules changed nothing.
+    Rules probably act only when sevDesk imports bank transactions, which a trial cannot do; so
+    how a rule matches (exact, contains, case, both texts or either) is not known, and whether a
+    CSV file import applies rules cannot be tested through the API.
 - **Sources:** spec (`listPrivateTransactionRules`, `createPrivateTransactionRule`,
   `deletePrivateTransactionRule`); recorded 2026-11-16, trial account, Update 2.0 (probe
-  `write-private-transaction-rule`).
+  `write-private-transaction-rule`); recorded 2026-11-17, trial account, Update 2.0 (one-off
+  checks by the orchestrator: `countAll`, paging, both texts, duplicates, spaces, lengths, no
+  text; eight tagged rules, all deleted again).
 - **Impact:** The rule tools of #88 can list, create and delete rules, but a preview of which
   open transactions a new rule "would match" cannot rely on sevDesk applying it to existing or
   hand-made rows: it must say that sevDesk applies rules to imported transactions, and mark any
   local matching as an estimate. Handling (#88): `sevdesk_private_transaction_rules_list` (read,
   explicit `limit`, texts cleaned), `sevdesk_private_transaction_rule_create` and
   `sevdesk_private_transaction_rule_delete` (both `commit`: a rule makes sevDesk mark imports
-  private as `sevdesk_transaction_mark_private` does by hand). Create sends one text per rule, as
-  recorded (a rule with both texts is refused: whether sevDesk then needs both or either is not
-  recorded), refuses texts with fewer than four letters or digits and a rule whose text equals an
-  existing one's (case and spaces ignored), and lists up to ten of at most 500 open transactions
+  private as `sevdesk_transaction_mark_private` does by hand). Create sends one trimmed text per
+  rule (sevDesk would store a rule with both texts, but whether it then needs both or either is
+  not known, so both are refused), at most 100 characters (a longer limit would need the read-back
+  to catch sevDesk's silent cut at 255), refuses texts with fewer than four letters or digits and
+  a rule whose text equals an existing one's (case and spaces ignored; sevDesk itself would store
+  the duplicate), and lists up to ten of at most 500 open transactions
   whose counterparty or purpose contains the text, every time labelled as this server's estimate,
   never as sevDesk's matching, with the sentence that sevDesk acts on bank imports and could not
   be tested on a trial account. Both tools confirm the write by reading the rule list back (no
-  read by id is recorded); the delete preview says that private transactions stay private.
+  read by id is recorded); create compares the stored text exactly with the trimmed text it sent
+  and notes any difference. The delete preview says that private transactions stay private.
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("answers the banking questions as
   recorded…": no row turns private, the rules are deleted);
   `test/unit/tools/banking/private-rules.test.ts` (list, refusals, the estimate and its labels,
-  read-backs); `test/regressions/private-transaction-rules.test.ts` (no rule without a
-  confirmation, no match stated as fact). The recorded list was empty, so no fixture was kept; the
+  read-backs, the trimmed text sent and a stored text with spaces or cut short noted);
+  `test/regressions/private-transaction-rules.test.ts` (no rule without a confirmation, no match
+  stated as fact); `test/regressions/concurrent-check-then-write.test.ts` (two equal creations at
+  once give one rule). The recorded list was empty, so no fixture was kept; the
   tests build rows with the recorded keys.
 
 ### D-100: A receipt's `contentHash` is the SHA-256 of the file; rendered PDFs have none

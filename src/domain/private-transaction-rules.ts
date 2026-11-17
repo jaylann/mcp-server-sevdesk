@@ -6,17 +6,21 @@
  *
  * What is recorded (trial account, Update 2.0, spec/deviations.md D-099):
  * - `GET /PrivateTransactionRule` with `limit`/`offset` answers `{objects: [...]}`, rows with `id`,
- *   `objectName`, `create`, `update`, `sevClient`, `paymentPurpose` and `counterpartName`.
+ *   `objectName`, `create`, `update`, `sevClient`, `paymentPurpose` and `counterpartName`; with
+ *   `countAll=true` (the client always sends it) it reports `total`, and paging works.
  * - `POST /PrivateTransactionRule` with `objectName` and one of the two texts answers 2xx with the
- *   rule wrapped in `objects`; the text not sent is `null`. `DELETE /PrivateTransactionRule/{id}`
- *   answers `{objects: [null]}`.
+ *   rule wrapped in `objects`; the text not sent is `null`. It stores a text exactly as sent
+ *   (spaces included), cuts one over 255 characters to 255 without notice, accepts a rule with
+ *   both texts, stores a second rule with the same text without complaint, and refuses one with
+ *   neither (422). `DELETE /PrivateTransactionRule/{id}` answers `{objects: [null]}`.
  * - Two rules (one per text) turned none of five open transactions entered by hand private, not
  *   even one created after them, and deleting them changed nothing. sevDesk most likely applies
  *   rules only when it imports transactions from the bank, which a trial account cannot do. How a
- *   rule matches (exact, contains, case) is therefore not known.
+ *   rule matches (exact, contains, case, both texts or either) is therefore not known.
  *
- * Not recorded, and so not done here: a rule with both texts (refused), changing a rule, sevDesk's
- * own limits on the text, and how it treats a duplicate (refused here before anything is sent).
+ * So this module sends one trimmed text per rule of at most {@link RULE_TEXT_MAX} characters,
+ * refuses a duplicate itself (sevDesk would store it), and checks the stored text on the
+ * read-back. Changing a rule is not recorded and not offered.
  *
  * The open transactions a new rule "would touch" are an estimate made here: the rule's text found,
  * ignoring case, inside the counterparty or purpose of open (unbooked) transactions. Every text
@@ -53,7 +57,10 @@ const RULES_PAGE_SIZE = 1000;
  * real names such as "REWE", "ALDI", "Lohn" or "Miete". Spaces and punctuation do not count.
  */
 export const RULE_TEXT_MIN = 4;
-/** Longest rule text accepted here (sevDesk's own limit is not recorded). */
+/**
+ * Longest rule text accepted here. sevDesk keeps 255 characters and cuts a longer text without
+ * notice (D-099); 100 is ample for a name or a purpose and stays clear of that cut.
+ */
 export const RULE_TEXT_MAX = 100;
 /** Longest rule text shown from sevDesk (untrusted; a rule made elsewhere may be longer). */
 const RULE_TEXT_DISPLAY_MAX = 200;
@@ -136,10 +143,17 @@ export function listPrivateRules(
   return readPage(client, RULE_PATH, {}, page, (raw) => toRuleDto(parseRule(raw)), signal);
 }
 
-/** A listed rule with comparison keys of its stored texts (untrusted: never put into messages). */
+/**
+ * A listed rule with its stored texts exactly as sevDesk answered them, and comparison keys of
+ * them. Both are untrusted: never put them into messages.
+ */
 interface RuleEntry {
   readonly rule: PrivateRuleDto;
   readonly keys: { readonly counterparty: string; readonly purpose: string };
+  readonly stored: {
+    readonly counterparty: string | undefined;
+    readonly purpose: string | undefined;
+  };
 }
 
 /** Every rule of one page of {@link RULES_PAGE_SIZE}; `complete` is false when more may exist. */
@@ -157,6 +171,7 @@ async function readAllRules(
       counterparty: textKey(record.counterpartName),
       purpose: textKey(record.paymentPurpose),
     },
+    stored: { counterparty: record.counterpartName, purpose: record.paymentPurpose },
   }));
   const received = page.items.length;
   const complete = page.total === undefined ? received < RULES_PAGE_SIZE : page.total <= received;
@@ -267,9 +282,10 @@ function singleText(input: PrivateRuleCreateInput): { field: RuleField; text: st
   const { counterparty, purpose } = input;
   if (counterparty !== undefined && purpose !== undefined) {
     refuse(
-      "A rule takes one text here: counterparty or purpose. Whether sevDesk then needs both " +
-        "texts to match or only one was not tested, so a rule with both is refused. Create one " +
-        "rule per text if either text should mark a transaction private. Nothing was sent.",
+      "A rule takes one text here: counterparty or purpose. sevDesk would store a rule with " +
+        "both, but whether it then needs both texts to match or only one is not known, so such " +
+        "a rule is refused. Create one rule per text if either text should mark a transaction " +
+        "private. Nothing was sent.",
     );
   }
   if (counterparty !== undefined) return { field: "counterparty", text: counterparty };
@@ -355,12 +371,16 @@ export async function executePrivateRuleCreate(
       completedWrites: changed,
     });
   }
+  // Compared exactly with the trimmed text that was sent: sevDesk stores a text as sent (spaces
+  // included) and cuts one over 255 characters without notice (D-099), so any difference means
+  // it changed the text.
   const requested =
     "counterpartName" in payload
-      ? { counterparty: textKey(payload.counterpartName), purpose: "" }
-      : { counterparty: "", purpose: textKey(payload.paymentPurpose) };
+      ? { counterparty: payload.counterpartName, purpose: undefined }
+      : { counterparty: undefined, purpose: payload.paymentPurpose };
   const notes =
-    entry.keys.counterparty === requested.counterparty && entry.keys.purpose === requested.purpose
+    entry.stored.counterparty === requested.counterparty &&
+    entry.stored.purpose === requested.purpose
       ? []
       : [
           `sevDesk stored rule ${String(id)} with other texts than were sent; check it with ` +
