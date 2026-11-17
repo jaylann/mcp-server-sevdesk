@@ -157,6 +157,7 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 | [D-114](#d-114-docserver-layout-lists-sit-under-objects-and-carry-large-base64-fields)             | DocServer layout lists sit under `objects` and carry large base64 fields               | Open                  |
 | [D-115](#d-115-post-and-delete-texttemplate-create-and-delete-text-templates)                      | `POST` and `DELETE /TextTemplate` create and delete text templates                     | Open                  |
 | [D-116](#d-116-document-discounts-discountsave-takes-a-list-getdiscounts-reads-them)               | Document discounts: `discountSave` takes a list; `getDiscounts` reads them             | Open                  |
+| [D-135](#d-135-saveinvoice-leaves-a-position-sent-by-its-id-unchanged-without-an-error)            | `saveInvoice` leaves a position sent by its id unchanged, without an error             | Open                  |
 
 ## Entries
 
@@ -3788,24 +3789,41 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   - What sevDesk generates on the run date is pending: the template left by
     `write-recurring-template-due` (start 2026-11-15) is read by `read-recurring-generated` on
     2026-11-17.
+  - Recorded on 2026-11-17, updates through `saveInvoice` with
+    `invoice: {id, objectName, mapAll, …}` and only the named fields: such a minimal body keeps
+    type `WKR`, contact, header, status, schedule and positions (with no position keys, with
+    `invoicePosSave: []` and `invoicePosDelete: null`, or both `null`). `accountIntervall` alone is
+    stored and moves neither `accountStartDate` nor `accountNextInvoice`. `accountEndDate` alone is
+    stored and moves nothing else; `accountEndDate: null` removes it, an empty string is refused
+    with 500 "No date part in '' found.". A new `accountStartDate` moves both start and next run
+    (on a template that had not run; a template that has run is not recorded). A header alone is
+    stored.
 - **Sources:** spec (`Model_Invoice`, `Model_InvoiceResponse`); recorded 2026-11-16, trial
   account, Update 2.0 (probes `write-recurring-template-create`, `write-recurring-interval-formats`,
   `write-recurring-schedule-fields`, `write-recurring-template-due`;
-  `test/fixtures/recorded/2026-11-16/invoices/recurring-templates.json`).
+  `test/fixtures/recorded/2026-11-16/invoices/recurring-templates.json`); recorded 2026-11-17,
+  trial account, Update 2.0 (one-off checks by the orchestrator).
 - **Impact:** A recurring template is created with `invoiceType: "WKR"`, a validated
   `accountIntervall` (the server checks the ISO-8601 form itself, since sevDesk does not: one of
   `P0Y1M0W`, `P0Y3M0W`, `P0Y6M0W`, `P1Y0M0W`) and `accountStartDate`, optionally
   `accountEndDate`; never `accountNextInvoice` or `recurring…`.
-  Reads show interval, next run, start and end date; the invoice parser reads `accountIntervall`
-  and `accountNextInvoice` today and needs `accountStartDate` and `accountEndDate`. (#91)
+  Reads show interval, next run, start and end date: `sevdesk_invoice_get` and the rows of
+  `sevdesk_invoices_list` carry the stored schedule of a template (`readStoredSchedule`). A
+  template is changed with a minimal body (the id and only what changes, never `invoiceType` or
+  `status`); a new start is refused on a template that has run, and `null` removes the end date.
+  (#91)
 - **Test:** `test/contract/recorded-gaps-documents.test.ts` ("carries the schedule fields the
   parser does not read yet", "reads through the invoice parser: interval as sent, next run as a
   Berlin date", "reads through the template reader: interval, start, next run and end as
-  stored (D-111)"); the create tool: `test/unit/domain/recurring/payload.test.ts` (never
-  `accountNextInvoice` or `recurring…`, always `WKR`), `test/unit/domain/recurring/schedule.test.ts`,
+  stored (D-111)", "shows the schedule in sevdesk_invoices_list rows of templates"); the create
+  tool: `test/unit/domain/recurring/payload.test.ts` (never `accountNextInvoice` or `recurring…`,
+  always `WKR`), `test/unit/domain/recurring/schedule.test.ts`,
   `test/unit/tools/invoices/recurring-create.test.ts` ("prepares a WKR body with the schedule and
   reads only (D-111)", "says where sevDesk stored another schedule, type, status or total than was
-  sent").
+  sent"); the update tool: `test/unit/domain/recurring/payload.test.ts` ("never sends a type, a
+  status or the next run"), `test/unit/tools/invoices/recurring-update.test.ts` ("a new interval:
+  accountIntervall alone, the next run stays", "an end date alone, and null to remove one", "a new
+  start date moves the next run too", "a new start on a template that has run").
 
 ### D-112: Recurring templates: status 50 ends, status 200 blocks `DELETE`, lists hide them
 
@@ -3821,17 +3839,28 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   - The default `GET /Invoice` leaves templates out; `showWkr=all` and `invoiceType=WKR` list
     them (only templates), `showAll=true` too. A template has no number and no `sendDate`.
   - Whether status 100 or only 200 makes sevDesk generate invoices is pending (D-111).
+  - Recorded on 2026-11-17: status 50 keeps every schedule field as it was, `accountNextInvoice`
+    included, so an ended template's next run is no run that will happen. An update of other
+    fields at status 50 is accepted; status back to 100 keeps the schedule unchanged.
 - **Sources:** spec (Invoice tag, status table and filters); recorded 2026-11-16, trial account,
   Update 2.0 (probes `write-recurring-template-update-end`, `write-recurring-schedule-fields`,
-  `write-recurring-template-create`).
-- **Impact:** Ending a template is `saveInvoice` with its id and status 50, previewed; deleting
-  is allowed only at 50 or 100. The lifecycle tools keep refusing templates
-  (`refuseTemplate`). (#91)
+  `write-recurring-template-create`); recorded 2026-11-17, trial account, Update 2.0 (one-off
+  checks by the orchestrator).
+- **Impact:** Ending a template is `saveInvoice` with its id and `status: "50"` alone
+  (`sevdesk_invoice_end_recurring`), reactivating the same with the save status
+  (`sevdesk_invoice_reactivate_recurring`, refused while the kept next run is past); both
+  previewed. Reads mark a template at 50 as ended. Deleting a template is left to the web app. The
+  lifecycle tools keep refusing templates (`refuseTemplate`); invoices generated from one are not
+  refused because of it. (#91)
 - **Test:** `test/contract/recorded-gaps-documents.test.ts` ("lists only templates, active ones
-  (status 200) included, with total and paging"), `test/regressions/recurring-template-guards.test.ts`
-  (no tool finalizes, sends, books, cancels, enshrines, resets, updates or deletes a template at
-  status 100, 200 or 50), `test/unit/domain/recurring/payload.test.ts` ("saves with the recorded
-  status of a new template (D-112)"); the end tool: pending, #91.
+  (status 200) included, with total and paging", "marks an ended template's schedule"),
+  `test/regressions/recurring-template-guards.test.ts` (no tool finalizes, sends, books, cancels,
+  enshrines, resets, updates or deletes a template at status 100, 200 or 50, nor after the
+  template tools changed and ended it; an invoice generated from a template is not refused as
+  one), `test/unit/domain/recurring/payload.test.ts` ("saves with the recorded status of a new
+  template (D-112)", "sends status 50 or the save status as text, and nothing else"),
+  `test/unit/tools/invoices/recurring-status.test.ts` ("sends status 50 and nothing else",
+  "refuses a next run in the past").
 
 ### D-113: `changeParameter` answers the layout in `metaData`; orders need a preview first
 
@@ -3949,3 +3978,25 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
 - **Test:** `test/contract/recorded-gaps-documents.test.ts` ("answers an empty list with total
   null for an order without discounts"); the draft tools: pending, #94. Live: probes
   `write-document-discount`, `read-order-get-discounts`.
+
+### D-135: `saveInvoice` leaves a position sent by its id unchanged, without an error
+
+- **Status:** Open. **Evidence:** spec + recorded.
+- **Spec says:** The `InvoicePos` tag says a document and its positions are changed through the
+  save factory with the ids and `mapAll`; nothing says a position needs all its fields.
+- **Actual behavior:** Recorded on 2026-11-17 on a recurring invoice template (WKR) with two
+  positions: one `saveInvoice` with the template's id sent position A by its id with only a new
+  price (`{id, objectName: "InvoicePos", mapAll: true, price: 200}`) in `invoicePosSave`, a new
+  position C in `invoicePosSave` and position B in `invoicePosDelete`. C was added, B deleted and
+  the sums recalculated, but A kept its old price; sevDesk answered without an error. Whether a
+  position sent by its id with all its fields is changed is not recorded.
+- **Sources:** spec (tag `InvoicePos`, `createInvoiceByFactory`); recorded 2026-11-17, trial
+  account, Update 2.0 (one-off checks by the orchestrator).
+- **Impact:** Positions are never changed by id. A change replaces all of them in one request
+  (every stored row in `invoicePosDelete`, the new rows without ids in `invoicePosSave`), as the
+  invoice draft update does (D-054), and `sevdesk_invoice_update_recurring` compares the stored
+  positions with the sent ones afterwards, so a change sevDesk ignored becomes a note. (#91)
+- **Test:** `test/unit/domain/recurring/payload.test.ts` ("replaces positions as a whole: new rows
+  to save, stored rows to delete": the schema has no place for a position with an id),
+  `test/unit/tools/invoices/recurring-update.test.ts` ("positions replace every stored one in one
+  request, never by id", "notices a position change sevDesk ignored").

@@ -108,9 +108,8 @@ describe("sevdesk_invoice_update_recurring", () => {
         { label: "Total per invoice", value: "unchanged: gross 65.45 EUR" },
       ]);
       expect(plan.preview.warnings).toEqual([
-        "Every invoice sevDesk creates from this template after the change carries it, by " +
-          "itself and without asking anyone again. This approval covers all of them until the " +
-          "template ends.",
+        "Every invoice sevDesk creates from this template by itself after the change carries " +
+          "it; nobody is asked again. This approval covers all of them until the template ends.",
         "Invoices sevDesk already created from this template stay as they are; the change " +
           "applies only to later ones.",
         expect.stringMatching(/^Not recorded yet: what sevDesk generates on a run date/),

@@ -391,11 +391,11 @@ function facts(input: TemplateUpdatePreviewInput, lang: PreviewLanguage): Previe
 }
 
 const APPLIES_FROM_NEXT_RUN: Phrase = phrase(
-  "Every invoice sevDesk creates from this template after the change carries it, by itself and " +
-    "without asking anyone again. This approval covers all of them until the template ends.",
-  "Jede Rechnung, die sevDesk nach der Änderung aus dieser Vorlage erzeugt, trägt sie, " +
-    "selbständig und ohne erneut zu fragen. Diese Freigabe gilt für alle diese Rechnungen, bis " +
-    "die Vorlage endet.",
+  "Every invoice sevDesk creates from this template by itself after the change carries it; " +
+    "nobody is asked again. This approval covers all of them until the template ends.",
+  "Jede Rechnung, die sevDesk nach der Änderung selbst aus dieser Vorlage erzeugt, übernimmt " +
+    "sie; niemand wird erneut gefragt. Diese Freigabe gilt für alle diese Rechnungen, bis die " +
+    "Vorlage endet.",
 );
 
 const ENDED_APPLIES_LATER: Phrase = phrase(

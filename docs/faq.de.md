@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:82927922c84c -->
+<!-- translated-from: docs/faq.md sha256:57f184dff250 -->
 
 # Häufige Fragen
 
@@ -150,14 +150,17 @@ nichts überprüft. Unterstützung für Österreich ist für ein späteres 1.x-R
 
 ### Kann es Abo-Rechnungen einrichten?
 
-Es kann eine anlegen.
-[`sevdesk_invoice_create_recurring`](tools.md#sevdesk_invoice_create_recurring) (Stufe `commit`, du
-bestätigst) speichert eine Vorlage für wiederkehrende Rechnungen, monatlich, vierteljährlich,
-halbjährlich oder jährlich, aus der sevDesk dann an jedem Ausführungstag selbst eine Rechnung
-erzeugt ([Abo-Rechnungen](guides/invoices.de.md#abo-rechnungen)). Was sevDesk an einem
-Ausführungstag erzeugt (einen Entwurf oder eine fertiggestellte Rechnung, versendet oder nicht),
-ist noch nicht erfasst; prüf deshalb die erste erzeugte Rechnung. Ändern oder beenden lässt sich
-eine Vorlage vorerst nur in der sevDesk-Web-App.
+Ja. [`sevdesk_invoice_create_recurring`](tools.md#sevdesk_invoice_create_recurring) (Stufe
+`commit`, du bestätigst) speichert eine Vorlage für wiederkehrende Rechnungen, monatlich,
+vierteljährlich, halbjährlich oder jährlich, aus der sevDesk dann an jedem Ausführungstag selbst
+eine Rechnung erzeugt ([Abo-Rechnungen](guides/invoices.de.md#abo-rechnungen)).
+[`sevdesk_invoice_update_recurring`](tools.md#sevdesk_invoice_update_recurring) ändert eine,
+[`sevdesk_invoice_end_recurring`](tools.md#sevdesk_invoice_end_recurring) beendet eine und
+[`sevdesk_invoice_reactivate_recurring`](tools.md#sevdesk_invoice_reactivate_recurring) startet sie
+wieder, jeweils Stufe `commit` mit deiner Bestätigung. Was sevDesk an einem Ausführungstag erzeugt
+(einen Entwurf oder eine fertiggestellte Rechnung, versendet oder nicht), ist noch nicht erfasst;
+prüf deshalb die erste erzeugte Rechnung. Löschen lässt sich eine Vorlage nur in der
+sevDesk-Web-App.
 
 ### Kann es Briefe per Post versenden?
 

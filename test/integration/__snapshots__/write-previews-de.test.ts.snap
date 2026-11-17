@@ -126,7 +126,7 @@ Summe (erwartet): netto 100,00 USD, USt. 19,00 USD, brutto 119,00 USD"
 
 exports[`German previews > change a recurring invoice template: says the same in German 1`] = `
 "Abo-Rechnung 2301 für Musterfirma GmbH (Kontakt 1001) ändern: Positionen, Fußtext, Intervall.
-! Jede Rechnung, die sevDesk nach der Änderung aus dieser Vorlage erzeugt, trägt sie, selbständig und ohne erneut zu fragen. Diese Freigabe gilt für alle diese Rechnungen, bis die Vorlage endet.
+! Jede Rechnung, die sevDesk nach der Änderung selbst aus dieser Vorlage erzeugt, übernimmt sie; niemand wird erneut gefragt. Diese Freigabe gilt für alle diese Rechnungen, bis die Vorlage endet.
 ! Rechnungen, die sevDesk aus dieser Vorlage schon erzeugt hat, bleiben, wie sie sind; die Änderung gilt nur für spätere.
 ! Noch nicht erfasst: was sevDesk an einem Ausführungstag erzeugt (einen Entwurf oder eine fertiggestellte, gebuchte Rechnung mit Nummer), ob sevDesk diese Rechnung an den Kunden versendet und ob eine mit Status 100 gespeicherte Vorlage überhaupt ausgeführt wird. Prüf die erste erzeugte Rechnung in sevDesk.
 ! Bei einem neuen Intervall behält sevDesk die nächste Ausführung (01.12.2026); die Ausführungen danach folgen dem neuen Intervall.

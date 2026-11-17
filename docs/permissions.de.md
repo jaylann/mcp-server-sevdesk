@@ -1,4 +1,4 @@
-<!-- translated-from: docs/permissions.md sha256:8405988d460f -->
+<!-- translated-from: docs/permissions.md sha256:f13650b65adc -->
 
 # Berechtigungen und Bestätigung
 
@@ -18,7 +18,7 @@ Jedes Werkzeug gehört zu genau einer Stufe. Lesen und Schreiben teilen sich nie
 | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
 | `read`     | Auflisten, abrufen, suchen, Auswertungen, PDF-Vorschauen (die ein Dokument nie als versendet markieren), E-Rechnungen auslesen, Dokumentdateien und CSV-Exporte in `SEVDESK_OUTPUT_DIR` speichern (oder als Download-Link). Immer aktiv. | nein        |
 | `write`    | Kontakte, Artikel, Entwürfe von Rechnungen, Gutschriften, Aufträgen und Belegen, Mahnungen, der DATEV-Export. Umkehrbar oder harmlos.                                                                                                    | nein        |
-| `commit`   | Fertigstellen, Zahlungen buchen, Kontoumsätze zuordnen, Umsätze als privat markieren, stornieren, festschreiben (GoBD), zurücksetzen, Entwürfe löschen, Abo-Rechnungen anlegen. Rechtlich bindend oder schwer rückgängig zu machen.      | **ja**      |
+| `commit`   | Fertigstellen, Zahlungen buchen, Kontoumsätze zuordnen, Umsätze als privat markieren, stornieren, festschreiben (GoBD), zurücksetzen, Entwürfe löschen, Abo-Rechnungen. Rechtlich bindend oder schwer rückgängig zu machen.              | **ja**      |
 | `external` | Rechnungen, Gutschriften und Aufträge per E-Mail versenden. Erreicht Dritte.                                                                                                                                                             | **ja**      |
 
 Die Stufen wählst du mit `SEVDESK_ALLOW`, zum Beispiel `SEVDESK_ALLOW=write` oder

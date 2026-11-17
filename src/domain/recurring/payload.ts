@@ -1,9 +1,11 @@
 /**
- * The request that saves a new recurring invoice template: `POST /Invoice/Factory/saveInvoice`
- * with `invoiceType: "WKR"` (spec/deviations.md D-111), parsed with a strict schema right before
- * it is stored in the plan, as every draft body is (`../drafts/payloads.ts`, D-003).
+ * The requests that save recurring invoice templates through `POST /Invoice/Factory/saveInvoice`
+ * (spec/deviations.md D-111, D-112): a new template, a change of a stored one, and its end or
+ * reactivation. Each is parsed with a strict schema right before it is stored in the plan, as
+ * every draft body is (`../drafts/payloads.ts`, D-003). The change and status bodies are described
+ * at their schemas below.
  *
- * What the schema enforces on purpose:
+ * What the schema of a new template enforces on purpose:
  * - `invoiceType` is always `WKR`, and the status is {@link TEMPLATE_SAVE_STATUS};
  * - the schedule is `accountIntervall` (one of the fixed forms of `schedule.ts`) and
  *   `accountStartDate`, optionally `accountEndDate`, as Unix seconds of 00:00 Berlin time (the

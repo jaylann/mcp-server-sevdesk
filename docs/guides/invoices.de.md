@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/invoices.md sha256:caef58509a6e -->
+<!-- translated-from: docs/guides/invoices.md sha256:a89cc9bc2e8d -->
 
 # Rechnungen: vom Entwurf bis zur Zahlung
 
@@ -9,20 +9,22 @@ Kunden Rechnungen stellen. Zu jedem Schritt steht, was du fragst, welches Werkze
 
 ## Überblick
 
-| Schritt                                     | Werkzeug                                                                                                                                                         | Stufe             | Bestätigung    |
-| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | -------------- |
-| [Kunden finden](#bevor-du-beginnst)         | [`sevdesk_contacts_search`](../tools.md#sevdesk_contacts_search)                                                                                                 | `read`            | nein           |
-| [Entwurf anlegen](#einen-entwurf-anlegen)   | [`sevdesk_invoice_create_draft`](../tools.md#sevdesk_invoice_create_draft), [`sevdesk_invoice_create_from_order`](../tools.md#sevdesk_invoice_create_from_order) | `write`           | nein           |
-| [Prüfen](#den-entwurf-prüfen)               | [`sevdesk_invoice_get`](../tools.md#sevdesk_invoice_get), [`sevdesk_invoice_pdf`](../tools.md#sevdesk_invoice_pdf)                                               | `read`            | nein           |
-| [Ändern](#den-entwurf-prüfen)               | [`sevdesk_invoice_update_draft`](../tools.md#sevdesk_invoice_update_draft)                                                                                       | `write`           | nein           |
-| [Löschen](#einen-entwurf-löschen)           | [`sevdesk_document_delete_draft`](../tools.md#sevdesk_document_delete_draft)                                                                                     | `commit`          | **ja**         |
-| [Fertigstellen](#fertigstellen)             | [`sevdesk_invoice_finalize`](../tools.md#sevdesk_invoice_finalize)                                                                                               | `commit`          | **ja**         |
-| [Per E-Mail versenden](#versenden)          | [`sevdesk_invoice_send_email`](../tools.md#sevdesk_invoice_send_email)                                                                                           | `external`        | **ja**         |
-| [Zahlung buchen](#die-zahlung-buchen)       | [`sevdesk_invoice_book_payment`](../tools.md#sevdesk_invoice_book_payment)                                                                                       | `commit`          | **ja**         |
-| [Mahnen](#säumige-kunden-mahnen)            | [`sevdesk_invoice_create_reminder`](../tools.md#sevdesk_invoice_create_reminder)                                                                                 | `write`           | nein           |
-| [Korrigieren](#stornieren-oder-korrigieren) | [`sevdesk_invoice_cancel`](../tools.md#sevdesk_invoice_cancel), [`sevdesk_credit_note_create_from_invoice`](../tools.md#sevdesk_credit_note_create_from_invoice) | `commit`, `write` | Storno: **ja** |
-| [Festschreiben](#festschreiben)             | [`sevdesk_invoice_enshrine`](../tools.md#sevdesk_invoice_enshrine)                                                                                               | `commit`          | **ja**         |
-| [Regelmäßig abrechnen](#abo-rechnungen)     | [`sevdesk_invoice_create_recurring`](../tools.md#sevdesk_invoice_create_recurring)                                                                               | `commit`          | **ja**         |
+| Schritt                                     | Werkzeug                                                                                                                                                                 | Stufe             | Bestätigung    |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------- | -------------- |
+| [Kunden finden](#bevor-du-beginnst)         | [`sevdesk_contacts_search`](../tools.md#sevdesk_contacts_search)                                                                                                         | `read`            | nein           |
+| [Entwurf anlegen](#einen-entwurf-anlegen)   | [`sevdesk_invoice_create_draft`](../tools.md#sevdesk_invoice_create_draft), [`sevdesk_invoice_create_from_order`](../tools.md#sevdesk_invoice_create_from_order)         | `write`           | nein           |
+| [Prüfen](#den-entwurf-prüfen)               | [`sevdesk_invoice_get`](../tools.md#sevdesk_invoice_get), [`sevdesk_invoice_pdf`](../tools.md#sevdesk_invoice_pdf)                                                       | `read`            | nein           |
+| [Ändern](#den-entwurf-prüfen)               | [`sevdesk_invoice_update_draft`](../tools.md#sevdesk_invoice_update_draft)                                                                                               | `write`           | nein           |
+| [Löschen](#einen-entwurf-löschen)           | [`sevdesk_document_delete_draft`](../tools.md#sevdesk_document_delete_draft)                                                                                             | `commit`          | **ja**         |
+| [Fertigstellen](#fertigstellen)             | [`sevdesk_invoice_finalize`](../tools.md#sevdesk_invoice_finalize)                                                                                                       | `commit`          | **ja**         |
+| [Per E-Mail versenden](#versenden)          | [`sevdesk_invoice_send_email`](../tools.md#sevdesk_invoice_send_email)                                                                                                   | `external`        | **ja**         |
+| [Zahlung buchen](#die-zahlung-buchen)       | [`sevdesk_invoice_book_payment`](../tools.md#sevdesk_invoice_book_payment)                                                                                               | `commit`          | **ja**         |
+| [Mahnen](#säumige-kunden-mahnen)            | [`sevdesk_invoice_create_reminder`](../tools.md#sevdesk_invoice_create_reminder)                                                                                         | `write`           | nein           |
+| [Korrigieren](#stornieren-oder-korrigieren) | [`sevdesk_invoice_cancel`](../tools.md#sevdesk_invoice_cancel), [`sevdesk_credit_note_create_from_invoice`](../tools.md#sevdesk_credit_note_create_from_invoice)         | `commit`, `write` | Storno: **ja** |
+| [Festschreiben](#festschreiben)             | [`sevdesk_invoice_enshrine`](../tools.md#sevdesk_invoice_enshrine)                                                                                                       | `commit`          | **ja**         |
+| [Regelmäßig abrechnen](#abo-rechnungen)     | [`sevdesk_invoice_create_recurring`](../tools.md#sevdesk_invoice_create_recurring)                                                                                       | `commit`          | **ja**         |
+| [Vorlage ändern](#abo-rechnungen)           | [`sevdesk_invoice_update_recurring`](../tools.md#sevdesk_invoice_update_recurring)                                                                                       | `commit`          | **ja**         |
+| [Beenden oder neu starten](#abo-rechnungen) | [`sevdesk_invoice_end_recurring`](../tools.md#sevdesk_invoice_end_recurring), [`sevdesk_invoice_reactivate_recurring`](../tools.md#sevdesk_invoice_reactivate_recurring) | `commit`          | **ja**         |
 
 ```mermaid
 flowchart TD
@@ -112,7 +114,8 @@ bestätigst**) löscht einen Entwurf mit seinen Positionen; dasselbe Werkzeug l�
 von Aufträgen und Gutschriften. Die Vorschau nennt das Dokument (Nummer, Kunde, Datum, Summe);
 ändert sich der Entwurf, bevor du zustimmst, wirst du erneut gefragt. Gelöscht werden nur Entwürfe
 (Status 100): Eine fertiggestellte Rechnung bleibt in der Buchhaltung und wird stattdessen storniert
-oder mit einer Gutschrift korrigiert, und Abo-Rechnungen (Vorlagen) werden hier nicht gelöscht.
+oder mit einer Gutschrift korrigiert, und Abo-Rechnungen (Vorlagen) werden hier nicht gelöscht,
+sondern [beendet](#abo-rechnungen).
 Aufträge und Gutschriften bekommen ihre Nummer schon beim Speichern des Entwurfs; nach dem Löschen
 vergibt sevDesk diese Nummer an das nächste Dokument, der Nummernkreis bleibt also lückenlos.
 
@@ -278,9 +281,50 @@ Vorlage zurück und sagt, wo sevDesk einen anderen Zeitplan gespeichert hat, als
 > die erste Rechnung, die eine neue Vorlage erzeugt, in sevDesk.
 
 Vorlagen listet [`sevdesk_invoices_list`](../tools.md#sevdesk_invoices_list) mit dem Typ
-`recurring`. Ändern, pausieren oder beenden lässt sich eine Vorlage vorerst nur in der
-sevDesk-Web-App (Abo-Rechnungen). Die anderen Rechnungswerkzeuge lehnen eine Vorlage ab: Sie wird
-über sie nie fertiggestellt, versendet, bezahlt, storniert, als Entwurf geändert oder gelöscht.
+`recurring`. Jede Zeile und [`sevdesk_invoice_get`](../tools.md#sevdesk_invoice_get) zeigen den
+Zeitplan, wie sevDesk ihn speichert: Intervall, Start, nächste Ausführung, Ende, letzte Ausführung
+und ob die Vorlage beendet ist.
+
+### Vorlage ändern, beenden oder neu starten
+
+> Erhöh die Wartung der Musterfirma ab der nächsten Rechnung auf 550 EUR netto.
+
+[`sevdesk_invoice_update_recurring`](../tools.md#sevdesk_invoice_update_recurring) (`commit`,
+**du bestätigst**) ändert eine Vorlage: Positionen (angegebene Positionen ersetzen alle), Texte,
+Zahlungsziel, Steuerregel, Kunde oder Anschrift und den Zeitplan. Es ändert sich nur, was du
+angibst. Die Vorschau zeigt jede Änderung als vorher → nachher, neue Positionen und Texte
+vollständig, die Summe je Rechnung vorher und nachher und die Ausführungstage nach der Änderung.
+Jede Rechnung, die sevDesk danach erzeugt, trägt die Änderung; schon erzeugte Rechnungen bleiben,
+wie sie sind.
+
+- Ein neues **Intervall** behält die nächste Ausführung; die Ausführungen danach folgen dem neuen
+  Intervall.
+- Ein neues **Startdatum** wird auch zur nächsten Ausführung. Es folgt den Regeln einer neuen
+  Vorlage und wird abgelehnt, sobald die Vorlage eine Rechnung erzeugt hat: Was sevDesk dann mit
+  einem neuen Start macht, ist nicht erfasst.
+- Ein neues **Enddatum** liegt am Tag der nächsten Ausführung oder danach; `removeEndDate` lässt
+  die Vorlage laufen, bis sie beendet wird.
+
+Nach dem Speichern liest der Assistent die Vorlage zurück und nennt alles, was sevDesk anders
+gespeichert hat, auch eine Position, deren Änderung sevDesk übergangen hat.
+
+> Beende das Wartungs-Abo der Musterfirma.
+
+[`sevdesk_invoice_end_recurring`](../tools.md#sevdesk_invoice_end_recurring) (`commit`, **du
+bestätigst**) beendet eine Vorlage (Status 50): sevDesk erzeugt aus ihr keine Rechnung mehr. Schon
+erzeugte Rechnungen bleiben, wie sie sind; eine falsche wird mit
+[`sevdesk_invoice_cancel`](../tools.md#sevdesk_invoice_cancel) storniert. Die Vorlage behält ihre
+Positionen und ihren Zeitplan, und
+[`sevdesk_invoice_reactivate_recurring`](../tools.md#sevdesk_invoice_reactivate_recurring)
+(`commit`, **du bestätigst**) startet sie wieder; ihre Vorschau nennt die nächsten
+Ausführungstage und was sevDesk an einem Ausführungstag tut. Das Aktivieren wird abgelehnt,
+solange die nächste Ausführung der Vorlage in der Vergangenheit liegt, weil sevDesk dann die
+versäumten Rechnungen auf einmal erzeugen könnte: Gib ihr zuerst ein neues Startdatum.
+
+Löschen lässt sich eine Vorlage nur in der sevDesk-Web-App (Abo-Rechnungen); das Beenden ist der
+umkehrbare Weg. Die anderen Rechnungswerkzeuge lehnen eine Vorlage ab: Sie wird über sie nie
+fertiggestellt, versendet, bezahlt, storniert, als Entwurf geändert oder gelöscht. Eine Rechnung,
+die sevDesk aus einer Vorlage erzeugt, wird nicht wegen ihrer Vorlage abgelehnt.
 
 ## Siehe auch
 

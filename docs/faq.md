@@ -136,12 +136,16 @@ release.
 
 ### Can it set up recurring invoices (Abo-Rechnungen)?
 
-It can create one. [`sevdesk_invoice_create_recurring`](tools.md#sevdesk_invoice_create_recurring)
-(`commit` tier, you confirm) saves a recurring invoice template, monthly, quarterly, half-yearly or
-yearly, from which sevDesk then creates an invoice on every run date by itself
-([Recurring](guides/invoices.md#recurring)). What sevDesk generates on a run date (a draft or a
-finalized invoice, sent or not) is not recorded yet, so check the first invoice it generates.
-Changing or ending a template is done in the sevDesk web app for now.
+Yes. [`sevdesk_invoice_create_recurring`](tools.md#sevdesk_invoice_create_recurring) (`commit`
+tier, you confirm) saves a recurring invoice template, monthly, quarterly, half-yearly or yearly,
+from which sevDesk then creates an invoice on every run date by itself
+([Recurring](guides/invoices.md#recurring)).
+[`sevdesk_invoice_update_recurring`](tools.md#sevdesk_invoice_update_recurring) changes one,
+[`sevdesk_invoice_end_recurring`](tools.md#sevdesk_invoice_end_recurring) ends one and
+[`sevdesk_invoice_reactivate_recurring`](tools.md#sevdesk_invoice_reactivate_recurring) starts it
+again, each `commit` tier with your confirmation. What sevDesk generates on a run date (a draft or
+a finalized invoice, sent or not) is not recorded yet, so check the first invoice it generates. A
+template is deleted only in the sevDesk web app.
 
 ### Can it send letters by post?
 
