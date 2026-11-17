@@ -159,6 +159,8 @@ describe("sevdesk_contact_delete", () => {
           "this cannot be undone.",
         "sevDesk deletes the organisation's 1 contact person (Ansprechpartner) with it; this " +
           "cannot be undone either.",
+        "Any custom field values (Zusatzfelder) of the contact and of its contact person are " +
+          "deleted with them.",
       ],
       irreversible: true,
     });
@@ -182,6 +184,8 @@ describe("sevdesk_contact_delete", () => {
           "gelöscht; das lässt sich nicht rückgängig machen.",
         "sevDesk löscht den Ansprechpartner der Organisation mit; das lässt sich ebenfalls nicht " +
           "rückgängig machen.",
+        "Auch die Werte von Zusatzfeldern des Kontakts und seines Ansprechpartners werden " +
+          "mitgelöscht.",
       ],
       irreversible: true,
     });
@@ -242,8 +246,38 @@ describe("sevdesk_contact_delete", () => {
       label: "Werte von Zusatzfeldern (werden mitgelöscht)",
       value: "nicht lesbar",
     });
+    // Unread values may exist, so the warning names them all the same.
+    expect(preview.warnings).toContain(
+      "Its custom field values (Zusatzfelder) are deleted with it.",
+    );
+    expect(previewDe.warnings).toContain("Auch die Werte seiner Zusatzfelder werden mitgelöscht.");
     expect(client.writes()).toEqual([]);
     expect(client.callsTo("/ContactCustomField").every((call) => call.method === "GET")).toBe(true);
+  });
+
+  it("binds the approval to the custom field values the preview counts (D-086)", async () => {
+    const [first, second] = (
+      loadFixture("contacts/custom-fields-1001.json").body as { objects: object[] }
+    ).objects;
+    const prepare = (values: FakeRoute["response"]) =>
+      prepareWrite(
+        tool,
+        { id: 1001 },
+        new FakeSevdeskClient(withCountryRoute(organisationRoutes(personsRoute([]), values))),
+      );
+    const plan = await prepare({ body: { objects: [first, second] } });
+    // The same count, but value 7002 replaced by another one: the same previews, another binding.
+    const swapped = await prepare({ body: { objects: [first, { ...second, id: "7009" }] } });
+    expect(swapped.preview).toEqual(plan.preview);
+    expect(swapped.previewDe).toEqual(plan.previewDe);
+    expect(swapped.binding).not.toBe(plan.binding);
+    // Unreadable values bind as such, unlike any list that was read.
+    const unreadable = await prepare({
+      error: new SevdeskError({ kind: "server", status: 500, message: "Down." }),
+    });
+    expect(unreadable.binding).not.toBe(plan.binding);
+    const empty = await prepare({ body: { objects: [] } });
+    expect(empty.binding).not.toBe(unreadable.binding);
   });
 
   it("lists no contact persons as none, and says when address lists were cut", async () => {
@@ -275,7 +309,9 @@ describe("sevdesk_contact_delete", () => {
     expect(preview.warnings).toEqual([
       "The contact, its at least 10000 addresses and its 3 communication ways are deleted from " +
         "sevDesk; this cannot be undone.",
+      "Its custom field values (Zusatzfelder) are deleted with it.",
     ]);
+    expect(previewDe.warnings).toContain("Auch die Werte seiner Zusatzfelder werden mitgelöscht.");
     expect(previewDe.facts).toContainEqual({
       label: "Ansprechpartner (werden mitgelöscht)",
       value: "keine",

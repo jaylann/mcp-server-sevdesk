@@ -32,7 +32,11 @@ import { type CompletedWrite, SevdeskError } from "../sevdesk/errors.js";
 import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
 import type { SevdeskClient } from "../sevdesk/types.js";
 import { cleanText } from "./common.js";
-import { customFieldDtoSchema, readCustomFieldsForDisplay } from "./contact-custom-fields.js";
+import {
+  customFieldDtoSchema,
+  type DisplayedCustomFields,
+  readCustomFieldsForDisplay,
+} from "./contact-custom-fields.js";
 import {
   addressDtoSchema,
   communicationWayDtoSchema,
@@ -445,6 +449,8 @@ export async function prepareContactDelete(
       ),
     );
   }
+  const customFieldWarning = customFieldValuesWarning(customFields, personCount);
+  if (customFieldWarning !== undefined) warnings.push(customFieldWarning);
 
   const name = cleanText(contact.displayName, VALUE_MAX) ?? `(unnamed contact ${String(id)})`;
   const customerNumber = cleanText(contact.customerNumber, VALUE_MAX);
@@ -501,10 +507,42 @@ export async function prepareContactDelete(
         addresses: addressIds,
         communicationWays: communicationWayIds,
         persons: persons.map((person) => person.id),
+        // The values the fact row counts, so one swapped for another asks again; null when
+        // they could not be read.
+        customFieldValues: customFields.readable ? customFields.rows.map((row) => row.id) : null,
       }),
     ),
     state: { contact, addressIds, communicationWayIds, persons },
   };
+}
+
+/**
+ * The warning that custom field values go with the contact (D-086), and with its contact persons,
+ * whom sevDesk deletes too (D-084). The persons' values are not read, so they are "any". Left out
+ * when the contact has no values (all of them read) and no persons.
+ */
+function customFieldValuesWarning(
+  customFields: DisplayedCustomFields,
+  personCount: number,
+): Phrase | undefined {
+  if (personCount > 0) {
+    const one = personCount === 1;
+    return phrase(
+      "Any custom field values (Zusatzfelder) of the contact and of its " +
+        `${one ? "contact person" : `${String(personCount)} contact persons`} are deleted with ` +
+        "them.",
+      "Auch die Werte von Zusatzfeldern des Kontakts und " +
+        `${one ? "seines Ansprechpartners" : `seiner ${String(personCount)} Ansprechpartner`} ` +
+        "werden mitgelöscht.",
+    );
+  }
+  if (customFields.readable && customFields.complete && customFields.rows.length === 0) {
+    return undefined;
+  }
+  return phrase(
+    "Its custom field values (Zusatzfelder) are deleted with it.",
+    "Auch die Werte seiner Zusatzfelder werden mitgelöscht.",
+  );
 }
 
 /** "Delete contact 1001 (organisation) and its 2 contact persons from sevDesk." */
