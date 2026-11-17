@@ -614,7 +614,8 @@ async function lookup(
       const costCentres = list.items
         .filter((centre) => keep(centre.id, centre.number, centre.name))
         .map((centre) => ({ ...centre }));
-      return { ...upstreamCounts(kind, list, costCentres.length), costCentres };
+      // The domain's flag: it also counts a full page without `total` as cut.
+      return { ...upstreamCounts(kind, list, costCentres.length, list.truncated), costCentres };
     }
     case "contact_custom_fields": {
       const list = await listCustomFieldSettings(ctx.client, ctx.signal);
@@ -638,17 +639,22 @@ function counts(
   return { kind, source, total, returned, truncated: false, hasMore: false, limit: null };
 }
 
+/**
+ * The counts of a list read from sevDesk. `truncated` defaults to "sevDesk's total is larger than
+ * what was read"; a domain reader that knows better (a full page without `total`) passes its own.
+ */
 function upstreamCounts(
   kind: LookupKind,
   list: { readonly items: readonly unknown[]; readonly total: number },
   returned: number,
+  truncated = list.total > list.items.length,
 ) {
   return {
     kind,
     source: "sevdesk" as const,
     total: list.total,
     returned,
-    truncated: list.total > list.items.length,
+    truncated,
     hasMore: false,
     limit: null,
   };

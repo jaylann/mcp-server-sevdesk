@@ -166,6 +166,22 @@ describe("sevdesk_reference_lookup", () => {
     expect(withDefault.result.data).toMatchObject({ total: 1200, truncated: true });
   });
 
+  it("reports a full page of cost centres without total as cut, like the domain does", async () => {
+    const rows = Array.from({ length: 1000 }, (_, index) =>
+      costCentreRow(index + 1, `K${String(index + 1)}`, `Kostenstelle ${String(index + 1)}`),
+    );
+    // `total: null`: one page without a usable count (see the fake client).
+    const { result } = await lookup({ kind: "cost_centres" }, [
+      { path: "/CostCentre", response: { body: { total: null, objects: rows } } },
+    ]);
+    expect(result.data).toMatchObject({
+      kind: "cost_centres",
+      total: 1000,
+      returned: 1000,
+      truncated: true,
+    });
+  });
+
   it("lists the account's custom contact fields with limit 1000, GET only (D-086)", async () => {
     const { client, result } = await lookup({ kind: "contact_custom_fields" }, [
       {
