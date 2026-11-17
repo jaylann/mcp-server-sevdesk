@@ -1,12 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  checkVies,
-  swapViesFetch,
-  VIES_ENDPOINT,
-  viesTransport,
-} from "../../../../src/domain/vat/vies.js";
+import { checkVies } from "../../../../src/domain/vat/vies.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
+import { swapViesFetch, VIES_ENDPOINT } from "../../../../src/sevdesk/vies-request.js";
 import { createFakeFetch, jsonResponse, networkError } from "../../../helpers/fake-fetch.js";
 
 let restore: (() => void) | undefined;
@@ -160,12 +156,38 @@ describe("checkVies: answers", () => {
     await expect(pending).rejects.toBeInstanceOf(SevdeskError);
     await expect(pending).rejects.toMatchObject({ kind: "aborted" });
   });
+});
 
-  it("swapViesFetch restores the previous fetch", () => {
-    const original = viesTransport.fetch;
-    const undo = swapViesFetch(() => Promise.reject(new Error("fake")));
-    expect(viesTransport.fetch).not.toBe(original);
-    undo();
-    expect(viesTransport.fetch).toBe(original);
+describe("checkVies: an outage reported next to valid false (userError)", () => {
+  it.each([
+    ["MS_UNAVAILABLE", "member_state_unavailable"],
+    ["MS_MAX_CONCURRENT_REQ", "member_state_unavailable"],
+    ["GLOBAL_MAX_CONCURRENT_REQ", "busy"],
+    ["SERVICE_UNAVAILABLE", "busy"],
+    ["TIMEOUT", "timeout"],
+    ["VAT_BLOCKED", "rejected"],
+    ["SOMETHING_NEW", "unexpected_response"],
+  ] as const)("reads %s as unavailable (%s), not as an invalid number", async (code, reason) => {
+    useFetch(answer(false, { userError: code, name: "---", address: "---" }));
+    expect(await checkVies("AT", "U12345678")).toEqual({ status: "unavailable", reason });
+  });
+
+  it("keeps VALID and INVALID, and an empty or missing userError, as the answer they are", async () => {
+    useFetch(
+      answer(true, { userError: "VALID" }),
+      answer(false, { userError: "invalid" }),
+      answer(false, { userError: null }),
+      answer(false, { userError: "" }),
+    );
+    expect(await checkVies("AT", "U12345678")).toEqual({
+      status: "valid",
+      checkedOn: "2026-11-16",
+    });
+    for (let reply = 0; reply < 3; reply += 1) {
+      expect(await checkVies("AT", "U12345678")).toEqual({
+        status: "invalid",
+        checkedOn: "2026-11-16",
+      });
+    }
   });
 });

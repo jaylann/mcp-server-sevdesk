@@ -96,7 +96,8 @@ export interface Settings {
   readonly fileDirs: readonly string[];
   /**
    * `SEVDESK_VIES_CHECK` (default off): `sevdesk_vat_id_check` may ask the European Commission's
-   * VIES service about a VAT ID, which sends the number to `ec.europa.eu` (`src/domain/vat/vies.ts`).
+   * VIES service about a VAT ID, which sends the number to `ec.europa.eu`
+   * (`src/sevdesk/vies-request.ts`).
    */
   readonly viesCheck: boolean;
   readonly userAgent: string;

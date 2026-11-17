@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { loadConfig } from "../../../../src/config.js";
 import type { TaxRuleSuggestion } from "../../../../src/domain/vat/tax-rule-helper.js";
 import type { VatIdCheck } from "../../../../src/domain/vat/vat-id-check.js";
-import { swapViesFetch } from "../../../../src/domain/vat/vies.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
+import { swapViesFetch } from "../../../../src/sevdesk/vies-request.js";
 import {
   REPORT_VAT_TOOLS,
   taxRuleSuggestTool,
