@@ -1,4 +1,4 @@
-<!-- translated-from: docs/contributing/changes.md sha256:ba3c910417ea -->
+<!-- translated-from: docs/contributing/changes.md sha256:79ec7a7820e3 -->
 
 # Änderungen vornehmen
 
@@ -77,8 +77,9 @@ vor, `f` füllt bis zur Grenze auf; `--scenario steady|burst` schickt Anfragen v
 
 ## Einen Prompt hinzufügen
 
-Prompts sind Buchhaltungsabläufe, die der Benutzer im Client auswählt. Sie erzeugen nur Text und
-rufen sevDesk nie auf.
+Prompts sind Buchhaltungsabläufe, die der Benutzer im Client auswählt. Ein Prompt erzeugt beim
+Darstellen nur Text und ruft sevDesk nie auf; nur die Vorschläge für manche Argumente
+(`completion/complete`) lesen Namen aus dem Konto, nur lesend.
 
 1. Trage den Prompt mit `definePrompt` in `src/prompts/catalog.ts` ein: ein `name` in snake_case
    ohne Präfix `sevdesk_` (Clients ordnen Prompts je Server in einen eigenen Namensraum), Titel,
@@ -91,7 +92,14 @@ rufen sevDesk nie auf.
    Schritt freischalten würde; welche, ergänzt der Renderer.
 3. Argumente sind optionale Strings mit einer Muster- oder Längenprüfung. Zeige ein rohes Argument
    nur über `fenceInline`, nie im vertrauenswürdigen Text.
-4. Führe `test/unit/prompts/` und `test/integration/prompts-list.test.ts` aus: Der Lint rendert
+4. Soll ein Argument vervollständigt werden, nenne seine `CompletionKind` in `completions` (month,
+   period, contact, checkAccount); der Katalog enthält nur diesen Namen. Eine neue Art braucht
+   einen Vervollständiger in `src/prompts/completions.ts`, einen Eintrag in `COMPLETION_HINTS`
+   (die Spalte Suggestions in `docs/tools.md`) und, wenn sie sevDesk liest, einen in
+   `COMPLETION_TOOLS`: das Lesewerkzeug, das registriert sein muss, bevor sie etwas liest. Ein
+   solcher Lesevorgang läuft über `readOnlyClient` mit ausdrücklichem Limit und wird je `Config`
+   eines Kontos zwischengespeichert.
+5. Führe `test/unit/prompts/` und `test/integration/prompts-list.test.ts` aus: Der Lint rendert
    jeden Prompt in vielen Konfigurationen und schlägt fehl, wenn ein Schritt ein Werkzeug nennt,
    das diese Konfiguration nicht registriert. Aktualisiere den Snapshot von `prompts/list`
    (`pnpm test test/integration/prompts-list.test.ts -u`) und prüfe den Diff, danach

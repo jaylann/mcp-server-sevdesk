@@ -1062,7 +1062,7 @@ async function sourceInvoiceChanges(
  * A read after the write that must not turn a successful write into an error: any failure gives
  * `undefined`, and the caller treats the record as possibly changed.
  */
-async function readQuietly<T>(read: () => Promise<T>): Promise<T | undefined> {
+export async function readQuietly<T>(read: () => Promise<T>): Promise<T | undefined> {
   try {
     return await read();
   } catch {
@@ -1071,7 +1071,7 @@ async function readQuietly<T>(read: () => Promise<T>): Promise<T | undefined> {
 }
 
 /** A problem when the type is not one of `expected` (only known-looking codes are named). */
-function typeProblem(type: string, expected: readonly string[]): string[] {
+export function typeProblem(type: string, expected: readonly string[]): string[] {
   if (expected.includes(type)) return [];
   const shown = /^[A-Z]{2,3}$/.test(type) ? `type ${type}` : "another type";
   return [`it has ${shown} instead of ${expected.join(" or ")}`];
@@ -1082,7 +1082,7 @@ function typeProblem(type: string, expected: readonly string[]): string[] {
  * did something other than what the preview promised, so no "draft created" is claimed. The
  * error carries `completed` so the records are known to exist.
  */
-function verifyDraft(
+export function verifyDraft(
   created: { readonly what: string; readonly id: number; readonly tool: string },
   status: number,
   problems: readonly string[],
@@ -1113,7 +1113,7 @@ function refId(raw: unknown): number | undefined {
  * The id of a document a Factory endpoint created: the answer's object itself (`{id, …}`), its
  * nested `key` member (`{creditNote: {id}}`, `{invoice: {id}}`), or either inside an array of one.
  */
-function createdDocumentId(payload: unknown, key: string, what: string): number {
+export function createdDocumentId(payload: unknown, key: string, what: string): number {
   const single =
     Array.isArray(payload) && payload.length === 1 ? (payload as unknown[])[0] : payload;
   const nested = z.object({ [key]: z.object({ id: zId }) }).safeParse(single);
@@ -1122,7 +1122,10 @@ function createdDocumentId(payload: unknown, key: string, what: string): number 
 }
 
 /** Reads the created record back; a failure carries `written` as completed writes. */
-async function readBack<T>(read: () => Promise<T>, written: readonly CompletedWrite[]): Promise<T> {
+export async function readBack<T>(
+  read: () => Promise<T>,
+  written: readonly CompletedWrite[],
+): Promise<T> {
   try {
     return await read();
   } catch (error) {
@@ -1193,7 +1196,7 @@ function totalsFacts(
   return facts;
 }
 
-function idList(noun: string, ids: readonly number[]): string {
+export function idList(noun: string, ids: readonly number[]): string {
   const shown = ids.slice(0, 5).map((id) => `${noun} ${id}`);
   return ids.length > 5 ? `${shown.join(", ")} and ${ids.length - 5} more` : shown.join(", ");
 }

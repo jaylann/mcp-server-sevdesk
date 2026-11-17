@@ -42,17 +42,26 @@ describe("tools/list", () => {
     expect(await surface(allEnabledConfig())).toMatchSnapshot();
   });
 
-  it("SEVDESK_FILE_DIRS set: adds only the read-only e-invoice parser to the read tier", async () => {
+  it("SEVDESK_FILE_DIRS set: adds only the read-only file readers to the read tier", async () => {
+    const readers = ["sevdesk_einvoice_parse", "sevdesk_receipt_folder_check"];
     const without = (await surface(testConfig())).map((tool) => tool.name);
     const tools = await surface(testConfig({ fileDirs: ["/srv/belege"] }));
 
-    expect(without).not.toContain("sevdesk_einvoice_parse");
-    expect(
-      tools.map((tool) => tool.name).filter((name) => name !== "sevdesk_einvoice_parse"),
-    ).toEqual(without);
-    expect(tools.find((tool) => tool.name === "sevdesk_einvoice_parse")?.annotations).toMatchObject(
-      { readOnlyHint: true, destructiveHint: false },
+    for (const name of readers) expect(without).not.toContain(name);
+    expect(tools.map((tool) => tool.name).filter((name) => !readers.includes(name))).toEqual(
+      without,
     );
+    for (const name of readers) {
+      expect(tools.find((tool) => tool.name === name)?.annotations, name).toMatchObject({
+        readOnlyHint: true,
+        destructiveHint: false,
+      });
+    }
+  });
+
+  it("SEVDESK_FILE_DIRS set (adds the receipt folder check)", async () => {
+    const tools = await surface(testConfig({ fileDirs: ["/srv/belege"] }));
+    expect(tools.filter((tool) => tool.name === "sevdesk_receipt_folder_check")).toMatchSnapshot();
   });
 
   it("SEVDESK_OUTPUT_DIR set (adds the file-writing save tool)", async () => {
@@ -98,6 +107,7 @@ describe("tools/list", () => {
 
   it("over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds the file tools", async () => {
     const fileTools = [
+      "sevdesk_archive_export",
       "sevdesk_csv_export",
       "sevdesk_datev_export",
       "sevdesk_document_save",

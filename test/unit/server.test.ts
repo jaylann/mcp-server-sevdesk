@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import type { Client } from "@modelcontextprotocol/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -9,19 +11,26 @@ import type { Settings } from "../../src/config.js";
 import { buildInstructions } from "../../src/instructions.js";
 import { createSafetyRuntime } from "../../src/safety/runtime.js";
 import { createServer, createServerFactory, SERVER_INFO } from "../../src/server.js";
+import { SERVER_ICONS } from "../../src/server-icon.js";
 import { ToolDefinitionError } from "../../src/tools/define-tool.js";
 import { ALL_TOOLS } from "../../src/tools/index.js";
 import { selectTools } from "../../src/tools/registry.js";
 import type { AnyToolDefinition } from "../../src/tools/types.js";
 import { allEnabledConfig, testConfig } from "../helpers/config.js";
+import { connectConfirming } from "../helpers/confirm-client.js";
 import { connectFactory, connectInProcess, type ConnectOptions } from "../helpers/connect.js";
 import { createDummyTools, READ_ANNOTATIONS, stubClient } from "../helpers/dummy-tools.js";
 import { grantAuthInfo, type GrantOptions, httpDeployment } from "../helpers/write-flow.js";
 
 const clients: Client[] = [];
+/** Stdio harnesses, closed with their server side. */
+const harnesses: { close: () => Promise<void> }[] = [];
 
 afterEach(async () => {
-  await Promise.all(clients.splice(0).map((client) => client.close()));
+  await Promise.all([
+    ...clients.splice(0).map((client) => client.close()),
+    ...harnesses.splice(0).map((harness) => harness.close()),
+  ]);
 });
 
 async function connect(
@@ -43,6 +52,45 @@ describe("createServer", () => {
       expect(SERVER_INFO.name).toBe("mcp-server-sevdesk");
     },
   );
+
+  it.each([
+    ["modern", "http"],
+    ["legacy", "http"],
+    ["modern", "stdio"],
+    ["legacy", "stdio"],
+  ] as const)("declares the icon from assets/icon.svg (%s era over %s)", async (era, transport) => {
+    let client: Client;
+    if (transport === "http") {
+      client = await connect([], { era });
+    } else {
+      const harness = await connectConfirming(
+        createServerFactory({ config: testConfig(), client: stubClient(), tools: [] }),
+        { era, transport, elicitation: false },
+      );
+      harnesses.push(harness);
+      client = harness.client;
+    }
+
+    const icons = client.getServerVersion()?.icons;
+    expect(icons).toEqual(SERVER_ICONS);
+    expect(icons).toHaveLength(1);
+    expect(icons?.[0]?.src).toMatch(/^data:image\/svg\+xml;base64,[A-Za-z0-9+/]+=*$/);
+    expect(icons?.[0]?.mimeType).toBe("image/svg+xml");
+    expect(icons?.[0]?.sizes).toEqual(["any"]);
+  });
+
+  it("embeds a self-contained, script-free copy of assets/icon.svg as the icon", () => {
+    const [icon] = SERVER_ICONS;
+    const svg = Buffer.from(icon?.src.split(",")[1] ?? "", "base64").toString("utf8");
+    const source = readFileSync(new URL("../../assets/icon.svg", import.meta.url), "utf8");
+    const paths = source.match(/<path [^>]*\/>/g) ?? [];
+
+    expect(svg).toMatch(/^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" viewBox="0 0 64 64">/);
+    expect(paths).toHaveLength(2);
+    for (const path of paths) expect(svg).toContain(path);
+    expect(svg).not.toMatch(/<script|<!--|\bon[a-z]+\s*=|href|url\(|<foreignObject/i);
+    expect(icon?.src.length).toBeLessThan(800);
+  });
 
   it("sends instructions generated from the registered tools", async () => {
     const { tools } = createDummyTools();
