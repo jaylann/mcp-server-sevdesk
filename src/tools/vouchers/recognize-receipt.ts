@@ -100,11 +100,18 @@ export function voucherRecognizeReceiptTool(
         files: ctx.files,
       }),
     execute: async (args, plan, ctx) => {
+      // An upload is released as soon as sevDesk's answer shows it attached, also when a read
+      // after that fails: the draft exists, and a retry with the same upload would make another.
+      // An answer without the receipt leaves the decision to the read-back (a release is a no-op
+      // the second time, and for a local file or a link).
       const result = await executeVoucherRecognition(ctx.client, plan.state, {
         signal: ctx.signal,
         sleep: options.sleep,
         onWait: (reads, maxReads) =>
           ctx.progress(reads, maxReads, "Waiting for sevDesk's receipt recognition"),
+        onAttached: () => {
+          ctx.files.release(args.file);
+        },
       });
       if (result.details.voucher.hasDocument === true) ctx.files.release(args.file);
       return recognitionToolOutput(result);

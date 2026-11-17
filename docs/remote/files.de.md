@@ -1,4 +1,4 @@
-<!-- translated-from: docs/remote/files.md sha256:eb44cf7cbefd -->
+<!-- translated-from: docs/remote/files.md sha256:376cf5af2657 -->
 
 # Dateien: Uploads und Download-Links
 
@@ -27,12 +27,15 @@ anderen Weg: Sie gehen per MCP an den Client.)
 
 Sobald das Erstellen, Ändern, Erkennen oder Importieren gelingt und das Zurücklesen aus sevDesk
 einen Anhang bestätigt, gibt der Server den Upload frei und löscht seine gespeicherte Datei; der
-Platz ist sofort wieder verfügbar. Das Auslesen einer E-Rechnung, Probeläufe, fehlgeschlagene Aufrufe und ein
-fehlender oder unklarer Anhang im zurückgelesenen Beleg behalten den Upload bis zum Ablauf für einen
-weiteren Versuch. Beim Ändern muss sich die Anhang-ID gegenüber dem unmittelbar vor dem Speichern
-geprüften Stand ändern (oder erstmals ein Anhang vorliegen, wenn vorher ausdrücklich keiner
-vorhanden war); bei gleicher ID oder unbekanntem vorherigem Stand bleibt der Upload bis zum Ablauf
-verfügbar. Um eine erfolgreich angehängte Datei nach der Freigabe ihres Uploads erneut zu
+Platz ist sofort wieder verfügbar. Das Auslesen einer E-Rechnung, Probeläufe, fehlgeschlagene
+Aufrufe und ein fehlender oder unklarer Anhang im zurückgelesenen Beleg behalten den Upload bis zum
+Ablauf für einen weiteren Versuch. Das Erkennen ist die Ausnahme: sevDesks Antwort auf den Upload
+nennt den angehängten Beleg schon, und der Entwurf besteht ab da, also wird der Upload sofort
+freigegeben, auch wenn das Zurücklesen des Entwurfs danach fehlschlägt (erneut gesendet, entstünde
+ein zweiter Entwurf). Beim Ändern muss sich die Anhang-ID gegenüber dem unmittelbar vor dem
+Speichern geprüften Stand ändern (oder erstmals ein Anhang vorliegen, wenn vorher ausdrücklich
+keiner vorhanden war); bei gleicher ID oder unbekanntem vorherigem Stand bleibt der Upload bis zum
+Ablauf verfügbar. Um eine erfolgreich angehängte Datei nach der Freigabe ihres Uploads erneut zu
 verwenden, fordere einen neuen Upload an.
 
 Ein Beleg, der schon online liegt (in einem Lieferantenportal, hinter einem Speicher-Link), braucht

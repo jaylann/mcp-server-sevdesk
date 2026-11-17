@@ -24,10 +24,13 @@ client asks for as `sevdesk://` resources are a different path: they go to the c
 Once a create, update, recognition or import succeeds and sevDesk's read-back confirms an
 attachment, the server releases the upload and deletes its stored file, freeing the slot
 immediately. Parsing, dry runs, failed calls and a missing or uncertain attachment in the read-back
-keep the upload until expiry for another attempt. On an update, the attachment ID must change from the state checked immediately
-before saving (or follow an explicitly absent attachment); if it stays the same or the previous
-state is unknown, the upload remains available until expiry. To use a successfully attached file
-again after its upload was released, request a new upload.
+keep the upload until expiry for another attempt. A recognition is the exception: sevDesk's answer
+to the upload already names the attached receipt, and the draft exists from then on, so the upload
+is released at once, also when reading the draft back fails afterwards (sending it again would
+make a second draft). On an update, the attachment ID must change from the state checked
+immediately before saving (or follow an explicitly absent attachment); if it stays the same or the
+previous state is unknown, the upload remains available until expiry. To use a successfully
+attached file again after its upload was released, request a new upload.
 
 A receipt that is already online (a supplier portal, a storage link) needs no upload when the
 operator lists its host in `SEVDESK_FILE_URL_HOSTS`: the model passes the https link as `file`,

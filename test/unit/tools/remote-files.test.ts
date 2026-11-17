@@ -43,6 +43,7 @@ import { executeWrite, prepareWrite } from "../../helpers/write-tools.js";
 import { DATEV_ROUTES, DATEV_ZIP, zipFetch } from "../../write-cases/reports.js";
 import {
   CREATE_READ_ROUTES,
+  createdFromFileRow,
   draftRow,
   PDF_BYTES,
   positionsRoute,
@@ -164,16 +165,32 @@ describe("file tools with remote file transfer: registration", () => {
 });
 
 describe("a draft from sevDesk's receipt recognition, from an upload", () => {
+  // The answer to the upload already carries the receipt (D-103): an upload it shows attached is
+  // released at once, so a read that fails afterwards cannot leave an upload id that a retry turns
+  // into a second draft. Without the receipt in the answer, the read-back decides.
   it.each([
-    { stage: "success", released: true },
-    { stage: "refused", released: false },
-    { stage: "noDocument", released: false },
-  ])("$stage: releases the upload only once sevDesk attached it", async ({ stage, released }) => {
+    { stage: "attached", answer: "document", readBack: "ok", released: true },
+    {
+      stage: "read fails after an attached answer",
+      answer: "document",
+      readBack: "fails",
+      released: true,
+    },
+    { stage: "attached per read-back only", answer: "none", readBack: "ok", released: true },
+    { stage: "attached nowhere", answer: "none", readBack: "noDocument", released: false },
+    {
+      stage: "read fails, answer without receipt",
+      answer: "none",
+      readBack: "fails",
+      released: false,
+    },
+    { stage: "upload refused", answer: "refused", readBack: "ok", released: false },
+  ] as const)("$stage: released $released", async ({ answer, readBack, released }) => {
     const transfer = await openTransfer();
     const ref = await transfer.upload(PDF_BYTES);
     const fake = new FakeSevdeskClient([
       version2Route,
-      stage === "refused"
+      answer === "refused"
         ? {
             method: "POST",
             path: "/Voucher/Factory/createVoucherFromFile",
@@ -181,8 +198,13 @@ describe("a draft from sevDesk's receipt recognition, from an upload", () => {
               error: new SevdeskError({ kind: "validation", status: 415, message: "Rejected." }),
             },
           }
-        : recognitionRoute(),
-      voucherRoute(recognisedRow(stage === "noDocument" ? { document: null } : {})),
+        : recognitionRoute(createdFromFileRow(answer === "none" ? { document: null } : {})),
+      readBack === "fails"
+        ? {
+            path: "/Voucher/2301",
+            response: { error: new SevdeskError({ kind: "server", status: 500, message: "x" }) },
+          }
+        : voucherRoute(recognisedRow(readBack === "noDocument" ? { document: null } : {})),
       positionsRoute(2301, [recognisedPositionRow()]),
       voucherListRoute([]),
     ]);
@@ -193,8 +215,19 @@ describe("a draft from sevDesk's receipt recognition, from an upload", () => {
       filesConfig(),
       transfer.access(),
     );
-    if (stage === "refused") await expect(run).rejects.toBeInstanceOf(SevdeskError);
-    else await run;
+    if (answer === "refused") {
+      await expect(run).rejects.toBeInstanceOf(SevdeskError);
+    } else if (readBack === "fails") {
+      const error = await run.catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(SevdeskError);
+      // The draft exists: the error names it as a completed write.
+      expect((error as SevdeskError).completedWrites).toEqual([
+        { objectName: "Voucher", id: "2301" },
+      ]);
+    } else {
+      await run;
+    }
+    expect(fake.writes()).toHaveLength(1);
     const form = fake.writes()[0]?.form;
     expect(new Uint8Array(await (form?.get("voucher") as Blob).arrayBuffer())).toEqual(PDF_BYTES);
     const kept = await transfer.store.readUpload(OWNER, ref.slice("upload:".length));

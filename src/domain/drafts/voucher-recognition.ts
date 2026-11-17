@@ -35,7 +35,7 @@ import { expectSingle } from "../../sevdesk/envelope.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import { realSleep } from "../../sevdesk/pacing.js";
 import { sevdeskPath } from "../../sevdesk/paths.js";
-import { parseUpstream, zId, zOptionalDecimal, zText } from "../../sevdesk/schema.js";
+import { parseUpstream, zId, zOptionalDecimal, zOptionalRef, zText } from "../../sevdesk/schema.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { cleanText } from "../common.js";
 import { compare, isZero } from "../money.js";
@@ -234,6 +234,13 @@ export interface RecognitionOptions {
   readonly sleep?: RecognitionSleep | undefined;
   /** Called before each wait with the reads made so far and the most reads there will be. */
   readonly onWait?: ((reads: number, maxReads: number) => Promise<void>) | undefined;
+  /**
+   * Called once, right after sevDesk's answer to the upload shows the receipt attached to the new
+   * draft, before anything is read back. The caller releases a remote upload there: the draft
+   * exists from this moment on, so an upload kept after a failed read would let a retry with the
+   * same upload id make a second draft.
+   */
+  readonly onAttached?: (() => void) | undefined;
 }
 
 /** What the duplicate scan after the recognition found. */
@@ -267,13 +274,24 @@ export interface RecognitionResult {
   readonly notesDe: readonly string[];
 }
 
-/** The fields of a voucher record this module compares; everything else is ignored. */
+/**
+ * The fields of a voucher record this module compares; everything else is ignored. `document`
+ * stays unparsed here, so an unexpected shape cannot fail the answer that names the new voucher;
+ * {@link documentAttached} reads it.
+ */
 const watchedSchema = z.object({
   id: zId,
   objectName: zText,
   voucherDate: z.unknown().optional(),
   sumGross: zOptionalDecimal,
+  document: z.unknown().optional(),
 });
+
+/** Whether a voucher record references its receipt (`document`, recorded as `{id, objectName}`). */
+function documentAttached(record: z.output<typeof watchedSchema>): boolean {
+  const parsed = zOptionalRef.safeParse(record.document);
+  return parsed.success && parsed.data !== undefined;
+}
 
 /**
  * Sends the receipt to the recognition (one POST, never retried), waits for the sums, reads the
@@ -296,6 +314,9 @@ export async function executeVoucherRecognition(
   const created = readCreatedVoucher(answer);
   const id = created.id;
   const saved = { objectName: "Voucher", id: String(id) };
+  // Recorded: the answer already carries the receipt (D-103), so the release does not wait for a
+  // read that may fail.
+  if (documentAttached(created)) options.onAttached?.();
 
   const waited = await readBack(saved, () => waitForRecognition(client, id, options));
   const voucher = waited.voucher;
