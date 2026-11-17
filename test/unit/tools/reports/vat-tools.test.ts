@@ -235,13 +235,14 @@ describe("sevdesk_tax_rule_suggest", () => {
         rate: "19",
       }),
     ]);
-    expect(data.exceptions.map((outcome) => outcome.taxRuleId)).toEqual([4, 5, 17]);
+    expect(data.exceptions.map((outcome) => outcome.taxRuleId)).toEqual([4, 5]);
+    expect(data.notes).toContainEqual(expect.stringContaining("Heligoland"));
     expect(data.vatId).toMatchObject({ status: "valid_format", country: "DE" });
     expect(data.disclaimer.en).toContain("Not tax advice");
     expect(data.disclaimer.de).toContain("Keine Steuerberatung");
     expect(summary).toBe(
       "Tax rule 1 (Umsatzsteuerpflichtige Umsätze) for services to a business in Germany. " +
-        "3 exception(s). Not tax advice.",
+        "2 exception(s). Not tax advice.",
     );
     expect(client.writes()).toEqual([]);
   });

@@ -51,19 +51,19 @@ const REGULAR: readonly {
   readonly note?: string;
   readonly basis: string;
 }[] = [
-  // Domestic (Inland); Heligoland and Büsingen are outside it
+  // Domestic (Inland); Heligoland and Büsingen are a note, not an exception
   ...SUPPLY_KINDS.map((supply) => ({
     label: `domestic business ${supply}`,
     facts: facts("regular", "DE", "business", supply, DE_VAT),
     suggestions: [1],
-    exceptions: [4, 5, outside(supply)],
+    exceptions: [4, 5],
     basis: "§ 1 Abs. 1 Nr. 1",
   })),
   ...SUPPLY_KINDS.map((supply) => ({
     label: `domestic consumer ${supply}`,
     facts: facts("regular", "DE", "consumer", supply),
     suggestions: [1],
-    exceptions: [4, outside(supply)],
+    exceptions: [4],
     basis: "§ 12 UStG",
   })),
   // Intra-EU B2B: goods (innergemeinschaftliche Lieferung) and services (§ 13b / reverse charge)
@@ -256,7 +256,7 @@ describe("decideSalesTaxRule: unknown regime", () => {
     const decision = decideSalesTaxRule(facts(undefined, "DE", "business", "goods"));
     expect(decision.decided).toBe(false);
     expect(decision.suggestions.map((outcome) => outcome.taxRuleId)).toEqual([1]);
-    expect(decision.exceptions.map((outcome) => outcome.taxRuleId)).toEqual([4, 5, 2, 11]);
+    expect(decision.exceptions.map((outcome) => outcome.taxRuleId)).toEqual([4, 5, 11]);
     expect(decision.warnings[0]).toContain("regular VAT is assumed");
   });
 });
@@ -441,7 +441,6 @@ describe("decideSalesTaxRule: parts of member states outside the EU VAT area", (
     ["ES", "the Canary Islands, Ceuta or Melilla"],
     ["IT", "Livigno, Campione d'Italia"],
     ["GR", "Mount Athos"],
-    ["DE", "Heligoland or Büsingen am Hochrhein"],
   ])("%s: export for goods, not taxable here for services, as exceptions", (country, places) => {
     for (const supply of SUPPLY_KINDS) {
       for (const customerType of ["business", "consumer"] as const) {
@@ -470,6 +469,22 @@ describe("decideSalesTaxRule: parts of member states outside the EU VAT area", (
         vatId: ES_VAT,
       }),
     ).toContain("It can still be right in a special case");
+  });
+
+  it("names Heligoland and Büsingen for a German customer in a note, not as an exception", () => {
+    for (const supply of SUPPLY_KINDS) {
+      for (const customerType of ["business", "consumer"] as const) {
+        const decision = decideSalesTaxRule(facts("regular", "DE", customerType, supply));
+        const label = `${supply} ${customerType}`;
+        expect(ruleIds(decision.exceptions), label).not.toContain(outside(supply));
+        expect(decision.notes, label).toContainEqual(
+          expect.stringContaining("Heligoland and Büsingen am Hochrhein are not part of Germany"),
+        );
+      }
+    }
+    expect(
+      decideSalesTaxRule(facts("regular", "AT", "business", "goods", AT_VAT)).notes.join(" "),
+    ).not.toContain("Heligoland");
   });
 
   it("adds nothing for a state whose outside places have their own code", () => {

@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/invoices.md sha256:fca318374fe7 -->
+<!-- translated-from: docs/guides/invoices.md sha256:13c2e28e36d2 -->
 
 # Rechnungen: vom Entwurf bis zur Zahlung
 
@@ -76,8 +76,8 @@ Regelsteuersatz des Kundenlandes), den Hinweis, den die Rechnung tragen muss (et
 Schwelle oder eine besondere Art von Leistung, nennt es jede Möglichkeit mit ihrer Bedingung,
 statt zu raten. Nordirland folgt bei Waren den Regeln der EU (gib das Land `XI` oder die
 XI-USt-IdNr. des Kunden an), Monaco gilt als Frankreich, und Gebiete von Mitgliedstaaten außerhalb
-des Mehrwertsteuergebiets der EU, etwa die Kanarischen Inseln, kommen als Ausnahmen. Es ist keine
-Steuerberatung.
+des Mehrwertsteuergebiets der EU, etwa die Kanarischen Inseln, kommen als Ausnahmen (Helgoland und
+Büsingen, bei einem Kunden in Deutschland, als Hinweis). Es ist keine Steuerberatung.
 [`sevdesk_vat_id_check`](../tools.md#sevdesk_vat_id_check) (`read`) prüft das Format einer
 USt-IdNr.; beim VIES-Dienst der Europäischen Kommission fragt es nur nach, wenn der Betreiber des
 Servers das eingeschaltet hat (`SEVDESK_VIES_CHECK`, siehe [Datenschutz](../../PRIVACY.de.md)).

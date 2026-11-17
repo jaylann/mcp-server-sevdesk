@@ -69,8 +69,8 @@ standard rate), the note the invoice must carry (for example "Steuerschuldnersch
 Leistungsempfängers") and the legal basis. When a threshold or a special kind of service decides,
 it lists each option with its condition instead of guessing. Northern Ireland follows the EU rules
 for goods (pass country `XI` or the customer's XI VAT ID), Monaco counts as France, and parts of
-member states outside the EU VAT area, such as the Canary Islands, come as exceptions. It is not
-tax advice.
+member states outside the EU VAT area, such as the Canary Islands, come as exceptions (Heligoland
+and Büsingen, for a German customer, as a note). It is not tax advice.
 [`sevdesk_vat_id_check`](../tools.md#sevdesk_vat_id_check) (`read`) checks a VAT ID's format; it
 asks the European Commission's VIES service only if the server's operator switched that on
 (`SEVDESK_VIES_CHECK`, see [Privacy](../../PRIVACY.md)). The draft preview also warns when the tax

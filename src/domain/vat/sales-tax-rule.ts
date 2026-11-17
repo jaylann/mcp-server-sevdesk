@@ -34,9 +34,10 @@
  *   country XI (the code VAT law uses; sevDesk's country list has none), or with country GB and a
  *   VAT ID of Northern Ireland (XI…); for other GB customers the goods case is an exception;
  * - **parts of member states outside the EU VAT area** under their state's own ISO code (Art. 6
- *   MwStSystRL, for Germany § 1 Abs. 2 Satz 1 UStG: the Canary Islands, Ceuta, Melilla,
- *   Heligoland, Büsingen, Livigno, Campione d'Italia, Mount Athos): an exception, rule 2 for goods
- *   and 17 for services. Places outside it with their own code (Åland AX, the French overseas
+ *   MwStSystRL: the Canary Islands, Ceuta, Melilla, Livigno, Campione d'Italia, Mount Athos): an
+ *   exception, rule 2 for goods and 17 for services. Germany's own (Heligoland and Büsingen, § 1
+ *   Abs. 2 Satz 1 UStG) get a note instead, so the common domestic answer keeps its exceptions to
+ *   the routine ones. Places outside it with their own code (Åland AX, the French overseas
  *   departments, Greenland, …) are simply outside the EU.
  *
  * Assumes, as sevDesk's tax rules do, a business established in Germany, and for goods that they
@@ -287,9 +288,13 @@ function byArea(facts: SaleFacts, rateOf: StandardRateOf): CandidateDecision {
   }
 }
 
-/** Notes on a place VAT law treats apart from its ISO code (Monaco, Northern Ireland). */
+/**
+ * Notes on a place VAT law treats apart from its ISO code: Monaco, Northern Ireland, and the
+ * German territories outside the EU VAT area.
+ */
 function placeNotes(facts: SaleFacts): string[] {
   const code = facts.country.trim().toUpperCase();
+  if (code === "DE") return [GERMAN_TERRITORIES_NOTE];
   if (code === "MC") return [MONACO_NOTE];
   if (inNorthernIreland(facts) || (code === "GB" && facts.supply === "goods")) {
     return [NORTHERN_IRELAND_NOTE];
@@ -298,23 +303,16 @@ function placeNotes(facts: SaleFacts): string[] {
 }
 
 /**
- * Parts of member states outside the EU VAT area under the state's own ISO code (Art. 6
- * MwStSystRL), with what to name them and the legal basis to add.
+ * Parts of other member states outside the EU VAT area under the state's own ISO code (Art. 6
+ * MwStSystRL), named for the texts. Germany's own are a note ({@link GERMAN_TERRITORIES_NOTE}).
  */
-const OUTSIDE_VAT_AREA: Readonly<
-  Record<string, { readonly places: string; readonly legalBasis: string }>
-> = {
-  DE: {
-    places: "Heligoland or Büsingen am Hochrhein",
-    legalBasis: "§ 1 Abs. 2 Satz 1 UStG; Art. 6 MwStSystRL",
-  },
-  ES: { places: "the Canary Islands, Ceuta or Melilla", legalBasis: "Art. 6 MwStSystRL" },
-  GR: { places: "Mount Athos", legalBasis: "Art. 6 MwStSystRL" },
-  IT: {
-    places: "Livigno, Campione d'Italia or the Italian waters of Lake Lugano",
-    legalBasis: "Art. 6 MwStSystRL",
-  },
+const OUTSIDE_VAT_AREA: Readonly<Record<string, string>> = {
+  ES: "the Canary Islands, Ceuta or Melilla",
+  GR: "Mount Athos",
+  IT: "Livigno, Campione d'Italia or the Italian waters of Lake Lugano",
 };
+
+const OUTSIDE_VAT_AREA_BASIS = "Art. 6 MwStSystRL";
 
 /**
  * The exception for a customer in a part of its member state that lies outside the EU VAT area:
@@ -322,9 +320,9 @@ const OUTSIDE_VAT_AREA: Readonly<
  * with such a rule still gets the hint, which says it can be right in a special case.
  */
 function outsideVatAreaException(facts: SaleFacts): Candidate | undefined {
-  const territory = OUTSIDE_VAT_AREA[facts.country.trim().toUpperCase()];
-  if (territory === undefined) return undefined;
-  const { places, legalBasis } = territory;
+  const places = OUTSIDE_VAT_AREA[facts.country.trim().toUpperCase()];
+  if (places === undefined) return undefined;
+  const legalBasis = OUTSIDE_VAT_AREA_BASIS;
   if (facts.supply === "goods") {
     return {
       ...exportOf(
@@ -916,6 +914,12 @@ const NORTHERN_IRELAND_NOTE =
   "an export but an intra-Community supply to a business with an XI VAT ID (rule 3, also in the " +
   "Zusammenfassende Meldung; without one, German VAT) or a distance sale to a consumer. Services " +
   "count as supplied outside the EU. Pass country XI, or the customer's XI VAT ID with GB.";
+
+const GERMAN_TERRITORIES_NOTE =
+  "Heligoland and Büsingen am Hochrhein are not part of Germany for VAT (§ 1 Abs. 2 Satz 1 " +
+  "UStG, Art. 6 MwStSystRL): goods that go there are an export (rule 2), and services to a " +
+  "business there, or electronic and § 3a Abs. 4 services to a consumer living there, are not " +
+  "taxable in Germany (rule 17).";
 
 const MONACO_NOTE =
   "Monaco counts as France for VAT (§ 1 Abs. 2a Satz 2 UStG, Art. 7 MwStSystRL): businesses " +
