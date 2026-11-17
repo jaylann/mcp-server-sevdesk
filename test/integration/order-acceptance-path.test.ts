@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 
 import { SevdeskError } from "../../src/sevdesk/errors.js";
+import { isReadingPost } from "../../src/sevdesk/read-posts.js";
 import type {
   CollectedList,
   ListAllOptions,
@@ -27,7 +28,7 @@ import { orderSetOfferStatusTool } from "../../src/tools/orders/offer-status.js"
 import { withCountryRoute } from "../helpers/country-route.js";
 import { FakeSevdeskClient, loadFixture } from "../helpers/fake-client.js";
 import { executeWrite } from "../helpers/write-tools.js";
-import type { Row } from "../unit/tools/lifecycle/helpers.js";
+import { layoutObjects, type Row } from "../unit/tools/lifecycle/helpers.js";
 import { derivedRow, sentOffer } from "../write-cases/orders.js";
 
 const ORDER_PATH = /^\/Order\/(\d+)$/;
@@ -87,6 +88,8 @@ class ScriptedAccount implements SevdeskClient {
 
   private answer(request: SevdeskRequest): unknown {
     const { method, path } = request;
+    // The layout read of a draft's finalize approval (render without reload, D-113) is no write.
+    if (isReadingPost(request)) return layoutObjects({}, "order");
     if (method !== "GET") this.writes.push({ method, path, body: request.body });
     if (method === "GET") {
       const order = ORDER_PATH.exec(path)?.[1];
