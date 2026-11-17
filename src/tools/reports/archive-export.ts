@@ -92,6 +92,23 @@ const COVERAGE: Readonly<Record<ArchiveParams["subject"], string>> = {
     "sevdesk_vouchers_list when completeness matters.",
 };
 
+/**
+ * How long the archive may take. Over stdio the request has its own budget of
+ * `ARCHIVE_TIMEOUT_MS` (5 minutes); a remote server's router still ends every request after
+ * 120 s, and the download link must fit the account's share of the file space (20 MiB by
+ * default without a state directory, `docs/remote/files.md`), which a month of invoices can
+ * exceed (24.6 MB recorded for 130).
+ */
+const DURATION_LOCAL =
+  "sevDesk renders every PDF of the period before it answers: a large archive takes minutes " +
+  "and is stopped after 5; a ZIP above 100 MiB is not saved. The remedy for both is a shorter " +
+  "period.";
+const DURATION_REMOTE =
+  "sevDesk renders every PDF of the period before it answers (about a minute per 100 " +
+  "invoices), and this remote server ends every request after 120 seconds; the download link " +
+  "must also fit this account's share of the server's file space (SEVDESK_HTTP_FILES_MAX_MB). " +
+  "The remedy for both is a shorter period, such as a week or two of invoices.";
+
 export const archiveExportTool = defineWriteTool({
   name: "sevdesk_archive_export",
   title: "Invoice or voucher PDFs as a ZIP file",
@@ -103,7 +120,8 @@ export const archiveExportTool = defineWriteTool({
     "minAmount/maxAmount narrow by amount. sevDesk includes drafts (draftEntries counts them); " +
     "vouchers without a receipt file are not in it. Nothing changes on any document; write " +
     "tier because sevDesk renders every PDF first: about a minute per 100 invoices, stopped " +
-    "after 5 minutes; the remedy is a shorter period. limit: documents asked for (default " +
+    "after 5 minutes (on a remote server after 120 s); the remedy is a shorter period. limit: " +
+    "documents asked for (default " +
     `${String(DEFAULT_ARCHIVE_DOCUMENTS)}, up to ${String(MAX_ARCHIVE_DOCUMENTS)}; ` +
     "mayBeTruncated hints at a cut); at most 100 MiB per ZIP. Returns the path or link and " +
     "counts, never the content. dryRun previews.",
@@ -192,9 +210,7 @@ export const archiveExportTool = defineWriteTool({
             "(festgeschrieben).",
           DRAFTS_INCLUDED,
           COVERAGE[args.subject],
-          "sevDesk renders every PDF of the period before it answers: a large archive takes " +
-            "minutes and is stopped after 5; a ZIP above 100 MiB is not saved. The remedy for " +
-            "both is a shorter period.",
+          ctx.config.deployment.kind === "http" ? DURATION_REMOTE : DURATION_LOCAL,
         ],
         irreversible: false,
       },

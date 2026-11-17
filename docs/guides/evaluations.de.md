@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/evaluations.md sha256:70e10a270a0f -->
+<!-- translated-from: docs/guides/evaluations.md sha256:c598f6802b40 -->
 
 # Auswertungen und Exporte
 
@@ -208,8 +208,10 @@ einen Bereich von Beträgen (einschließlich der Grenzen; bei Belegen der Brutto
   100 bis 130 Rechnungen (20 bis 25 MB), etwa eine Sekunde für ein paar Belege. Die Anfrage für
   das Archiv bekommt bis zu 5 Minuten, unabhängig von `SEVDESK_TIMEOUT_MS`; danach bricht sie ab,
   ohne etwas zu speichern, und die Abhilfe ist ein kürzerer Zeitraum. Auf einem entfernten Server
-  endet jede Anfrage nach 120 Sekunden ([Betrieb](../remote/operations.de.md)), exportiere dort
-  also etwa einen Monat Rechnungen pro Aufruf.
+  endet jede Anfrage nach 120 Sekunden ([Betrieb](../remote/operations.de.md)), und der
+  Download-Link muss in den Anteil des Kontos am Dateispeicher passen, 20 MiB ohne
+  Zustandsverzeichnis ([Dateien](../remote/files.de.md#grenzen-und-laufzeiten)): Exportiere dort
+  ein bis zwei Wochen Rechnungen pro Aufruf.
 - Es fragt sevDesk nach höchstens 500 Dokumenten (`limit`, bis 1.000) und speichert höchstens
   100 MiB pro ZIP (eine erzeugte Rechnung hat etwa 140 bis 190 KB): 500 Rechnungen passen in die
   5 Minuten und die 100 MiB, 1.000 nicht. Exportiere lange Zeiträume in Teilen. Enthält das ZIP

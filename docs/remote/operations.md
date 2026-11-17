@@ -129,10 +129,12 @@ lock.
   reachable while `/mcp` is busy; `/mcp` itself answers 503 once its 56 are taken, which seven
   accounts at their limit can cause. A request may take 120 seconds; the tax reports
   (`sevdesk_vat_summary`, `sevdesk_profit_and_loss`) stop reading after 90 seconds and return
-  what they have, marked incomplete. The document archive (`sevdesk_archive_export`) gives sevDesk
-  up to 5 minutes for the ZIP, but on a remote server the request still ends after 120 seconds:
-  export at most about a month of invoices per call there (130 invoices took 63 seconds). These
-  numbers are fixed.
+  what they have, marked incomplete. These numbers are fixed. The document archive
+  (`sevdesk_archive_export`) gives sevDesk up to 5 minutes for the ZIP, but on a remote server
+  the request still ends after 120 seconds, and its download link must fit the account's share
+  of the file space, 20 MiB without a state directory ([Files](files.md#limits-and-lifetimes)).
+  130 invoices took 63 seconds and came to 24.6 MB, so export a week or two of invoices per call
+  there, or give the server more file space (a state directory, or `SEVDESK_HTTP_FILES_MAX_MB`).
 - **JSON-RPC batches** (several messages in one request, sent only by clients of protocol version
   2025-03-26) may hold at most 8 messages and no request id twice; otherwise the whole batch is
   refused with 400 and nothing of it runs. A batch counts as one request.

@@ -195,7 +195,9 @@ range of amounts (inclusive; for vouchers the gross amount).
   100 to 130 invoices (20 to 25 MB), about a second for a few receipts. The archive request gets
   up to 5 minutes, independent of `SEVDESK_TIMEOUT_MS`; beyond that it stops with nothing saved,
   and the remedy is a shorter period. On a remote server every request ends after 120 seconds
-  ([Operations](../remote/operations.md)), so export about a month of invoices per call there.
+  ([Operations](../remote/operations.md)), and the download link must fit the account's share of
+  the file space, 20 MiB without a state directory ([Files](../remote/files.md#limits-and-lifetimes)):
+  export a week or two of invoices per call there.
 - It asks sevDesk for at most 500 documents (`limit`, up to 1,000) and saves at most 100 MiB per
   ZIP (a rendered invoice is about 140 to 190 KB): 500 invoices fit the 5 minutes and the 100 MiB,
   1,000 do not. Export long periods in parts. When the ZIP holds close to `limit` files, the result

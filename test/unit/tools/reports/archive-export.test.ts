@@ -8,6 +8,7 @@ import { listZipEntries } from "../../../../src/domain/exports/zip.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { archiveExportTool } from "../../../../src/tools/reports/archive-export.js";
 import { FakeSevdeskClient, testContext } from "../../../helpers/fake-client.js";
+import { filesConfig, useTransfer } from "../../../helpers/transfer.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import { buildZip, pdfBytes } from "../../../helpers/zip.js";
 import { ARCHIVE_ROUTES, INVOICE_ARCHIVE } from "../../../write-cases/reports.js";
@@ -47,7 +48,33 @@ describe("sevdesk_archive_export: metadata", () => {
     });
     expect(archiveExportTool.description).toContain("includes drafts");
     expect(archiveExportTool.description).toContain("100 MiB");
+    // The 5 minutes are the archive's own budget; a remote server's router ends at 120 s.
+    expect(archiveExportTool.description).toContain(
+      "stopped after 5 minutes (on a remote server after 120 s)",
+    );
     expect(archiveExportTool.description.length).toBeLessThanOrEqual(900);
+  });
+});
+
+describe("sevdesk_archive_export: on a remote server", () => {
+  const transfer = useTransfer();
+
+  it("names the 120-second request limit and the account's file space, not the 5 minutes", async () => {
+    const fixture = await transfer();
+    const config = filesConfig();
+    const client = new FakeSevdeskClient(ARCHIVE_ROUTES);
+
+    const plan = await prepareWrite(archiveExportTool, OCTOBER, client, config, fixture.access());
+
+    expect(plan.preview.warnings).toContain(
+      "sevDesk renders every PDF of the period before it answers (about a minute per 100 " +
+        "invoices), and this remote server ends every request after 120 seconds; the download " +
+        "link must also fit this account's share of the server's file space " +
+        "(SEVDESK_HTTP_FILES_MAX_MB). The remedy for both is a shorter period, such as a week " +
+        "or two of invoices.",
+    );
+    expect(plan.preview.warnings.join(" ")).not.toContain("stopped after 5");
+    expect(client.calls).toEqual([]);
   });
 });
 
