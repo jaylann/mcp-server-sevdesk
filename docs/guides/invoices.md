@@ -344,7 +344,8 @@ For a paid or partially paid invoice,
 confirmation) adjusts the draft like the invoice update: it changes only the fields you name, and
 new positions replace all stored positions. The credit note keeps its number and the invoice it
 reduces; its positions may only use that invoice's tax rates, and its contact and currency stay
-the invoice's. Only drafts can be changed. The credit note is finalized with
+the invoice's. A cost centre is set or removed as on an invoice (`costCentre`,
+`removeCostCentre`). Only drafts can be changed. The credit note is finalized with
 [`sevdesk_credit_note_finalize`](../tools.md#sevdesk_credit_note_finalize) or emailed with
 [`sevdesk_credit_note_send_email`](../tools.md#sevdesk_credit_note_send_email), and a refund is
 booked with [`sevdesk_credit_note_book_payment`](../tools.md#sevdesk_credit_note_book_payment), each

@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { creditNoteCreateDraftTool } from "../../../../src/tools/credit-notes/draft-create.js";
+import { creditNoteUpdateDraftTool } from "../../../../src/tools/credit-notes/draft-update.js";
 import { invoiceCreateDraftTool } from "../../../../src/tools/invoices/draft-create.js";
 import { invoiceUpdateDraftTool } from "../../../../src/tools/invoices/draft-update.js";
 import type { AnyWriteToolDefinition } from "../../../../src/tools/types.js";
@@ -39,6 +40,7 @@ import {
 import {
   creditNoteCreateArgs,
   creditNoteCreateRoutes,
+  creditNoteUpdateRoutes,
   invoiceCreateArgs,
   invoiceCreateRoutes,
   invoiceUpdateRoutes,
@@ -72,15 +74,22 @@ async function refusal(
   return error as SevdeskError;
 }
 
-/** The stored draft invoice 2102 with `fields` replaced. */
-function storedInvoice(fields: Record<string, unknown>): FakeRoute {
-  const stored = loadFixture("drafts/invoice-2102-draft.json").body as {
+/** The stored draft at `path` (fixture `drafts/<fixture>`) with `fields` replaced. */
+function storedDraft(path: string, fixture: string, fields: Record<string, unknown>): FakeRoute {
+  const stored = loadFixture(`drafts/${fixture}`).body as {
     objects: Record<string, unknown>[];
   };
-  return {
-    path: "/Invoice/2102",
-    response: { body: { objects: [{ ...stored.objects[0], ...fields }] } },
-  };
+  return { path, response: { body: { objects: [{ ...stored.objects[0], ...fields }] } } };
+}
+
+/** The stored draft invoice 2102 with `fields` replaced. */
+function storedInvoice(fields: Record<string, unknown>): FakeRoute {
+  return storedDraft("/Invoice/2102", "invoice-2102-draft.json", fields);
+}
+
+/** The stored draft credit note 2202 with `fields` replaced. */
+function storedCreditNote(fields: Record<string, unknown>): FakeRoute {
+  return storedDraft("/CreditNote/2202", "credit-note-2202-draft.json", fields);
 }
 
 describe("the costCentre argument", () => {
@@ -309,6 +318,109 @@ describe("sevdesk_credit_note_create_draft with costCentre", () => {
 
   it("refuses an unknown cost centre without writing", async () => {
     await refusal(tool, { ...creditNoteCreateArgs, costCentre: "Werkstatt" }, routes);
+  });
+});
+
+describe("sevdesk_credit_note_update_draft with costCentre", () => {
+  const tool = creditNoteUpdateDraftTool;
+  const onFirst = storedCreditNote({ costCentre: storedCostCentre(first.id) });
+
+  it("sets a new cost centre and shows the change from the stored one", async () => {
+    const client = new FakeSevdeskClient(
+      withRoutes(creditNoteUpdateRoutes, onFirst, costCentresRoute),
+    );
+    const { plan } = await executeWrite(tool, { id: 2202, costCentre: "Mustername 3" }, client);
+    expect(plan.state.body.creditNote.costCentre).toEqual(CENTRE_REF);
+    expect(client.writes()[0]?.body).toMatchObject({
+      creditNote: { id: 2202, costCentre: CENTRE_REF },
+    });
+    expect(plan.preview.action).toBe(
+      "Update draft credit note 2202 for Musterfirma GmbH (contact 1001): change cost centre.",
+    );
+    expect(plan.preview.facts).toContainEqual({
+      label: "Cost centre (Kostenstelle)",
+      value: "M62573C Mustername 1 (id 344964) → MCP1 Mustername 3 (id 344959)",
+    });
+  });
+
+  it("sets one on a draft without any", async () => {
+    const client = new FakeSevdeskClient(withRoutes(creditNoteUpdateRoutes, costCentresRoute));
+    const plan = await prepareWrite(tool, { id: 2202, costCentre: third.id }, client);
+    expect(plan.state.body.creditNote.costCentre).toEqual(CENTRE_REF);
+    expect(plan.preview.facts).toContainEqual({
+      label: "Cost centre (Kostenstelle)",
+      value: "(none) → MCP1 Mustername 3 (id 344959)",
+    });
+  });
+
+  it("leaves the key out when the call does not name one: sevDesk keeps it (D-092)", async () => {
+    const client = new FakeSevdeskClient(withRoutes(creditNoteUpdateRoutes, onFirst));
+    const { plan } = await executeWrite(tool, { id: 2202, header: "Gutschrift X" }, client);
+    expect(plan.state.body.creditNote).not.toHaveProperty("costCentre");
+    const body = client.writes()[0]?.body as { creditNote: Record<string, unknown> };
+    expect(body.creditNote).not.toHaveProperty("costCentre");
+    expect(client.callsTo("/CostCentre")).toEqual([]);
+  });
+
+  it("removes the stored cost centre with removeCostCentre: costCentre null (D-092)", async () => {
+    const client = new FakeSevdeskClient(
+      withRoutes(creditNoteUpdateRoutes, onFirst, costCentresRoute),
+    );
+    const { plan } = await executeWrite(tool, { id: 2202, removeCostCentre: true }, client);
+    expect(plan.state.body.creditNote.costCentre).toBeNull();
+    expect(client.writes()[0]?.body).toMatchObject({
+      creditNote: { id: 2202, costCentre: null },
+    });
+    expect(plan.preview.action).toBe(
+      "Update draft credit note 2202 for Musterfirma GmbH (contact 1001): change cost centre.",
+    );
+    expect(plan.preview.facts).toContainEqual({
+      label: "Cost centre (Kostenstelle)",
+      value: "M62573C Mustername 1 (id 344964) → removed",
+    });
+  });
+
+  it("refuses removeCostCentre alone on a draft without a cost centre, without writing", async () => {
+    const error = await refusal(
+      tool,
+      { id: 2202, removeCostCentre: true },
+      withRoutes(creditNoteUpdateRoutes, costCentresRoute),
+    );
+    expect(error).toMatchObject({ kind: "validation", message: "This draft has no cost centre." });
+  });
+
+  it("refuses removeCostCentre: false alone as nothing to change, before any read", async () => {
+    const client = new FakeSevdeskClient(withRoutes(creditNoteUpdateRoutes, onFirst));
+    await expect(
+      prepareWrite(tool, { id: 2202, removeCostCentre: false }, client),
+    ).rejects.toMatchObject({
+      kind: "validation",
+      message: "Nothing to change: give at least one field of the credit note besides id.",
+    });
+    expect(client.calls).toEqual([]);
+  });
+
+  it("refuses costCentre and removeCostCentre together, before any write", async () => {
+    const client = new FakeSevdeskClient(
+      withRoutes(creditNoteUpdateRoutes, onFirst, costCentresRoute),
+    );
+    await expect(
+      prepareWrite(tool, { id: 2202, costCentre: "MCP1", removeCostCentre: true }, client),
+    ).rejects.toMatchObject({
+      kind: "validation",
+      message: "Pass either costCentre (a new one) or removeCostCentre, not both.",
+    });
+    expect(client.callsTo("/CostCentre")).toEqual([]);
+    expect(client.writes()).toEqual([]);
+  });
+
+  it("refuses an unknown cost centre without writing", async () => {
+    const error = await refusal(
+      tool,
+      { id: 2202, costCentre: "Werkstatt" },
+      withRoutes(creditNoteUpdateRoutes, costCentresRoute),
+    );
+    expect(error.kind).toBe("validation");
   });
 });
 

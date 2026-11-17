@@ -368,7 +368,8 @@ Für eine bezahlte oder teilweise bezahlte Rechnung legt
 Bestätigung) passt den Entwurf so an, wie du eine Rechnung änderst: Er ändert nur die Felder, die du
 nennst, und neue Positionen ersetzen alle gespeicherten. Die Gutschrift behält ihre Nummer und die
 Rechnung, die sie mindert; ihre Positionen dürfen nur die Steuersätze dieser Rechnung haben, und
-Kontakt und Währung bleiben die der Rechnung. Ändern lassen sich nur Entwürfe. Fertiggestellt wird
+Kontakt und Währung bleiben die der Rechnung. Eine Kostenstelle setzt oder entfernt er wie bei einer
+Rechnung (`costCentre`, `removeCostCentre`). Ändern lassen sich nur Entwürfe. Fertiggestellt wird
 die Gutschrift mit
 [`sevdesk_credit_note_finalize`](../tools.md#sevdesk_credit_note_finalize) oder per E-Mail versendet
 mit [`sevdesk_credit_note_send_email`](../tools.md#sevdesk_credit_note_send_email), und eine

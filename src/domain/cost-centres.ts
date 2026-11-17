@@ -16,8 +16,7 @@
  *   rows carry their `costCentre`, so every row is checked again here. `costCentre=<id>` alone
  *   answers 422. The credit-note list filter was not measured and is not offered.
  * - Recorded 2026-11-17: an update with the id and `costCentre: null` removes the cost centre
- *   (invoices, vouchers, credit notes); the invoice and voucher updates offer it as
- *   `removeCostCentre`.
+ *   (invoices, vouchers, credit notes); the three update tools offer it as `removeCostCentre`.
  *
  * Numbers and names are untrusted text: they go into DTOs and preview values through `cleanText`
  * and never into summaries or error messages.
@@ -284,7 +283,10 @@ export function costCentreRef(id: number): { id: number; objectName: "CostCentre
 // Updates: set, remove or keep
 // ---------------------------------------------------------------------------------------------
 
-/** The cost-centre arguments of `sevdesk_invoice_update_draft` and `sevdesk_voucher_update_draft`. */
+/**
+ * The cost-centre arguments of `sevdesk_invoice_update_draft`, `sevdesk_voucher_update_draft` and
+ * `sevdesk_credit_note_update_draft`.
+ */
 export const costCentreUpdateInputShape = {
   costCentre: costCentreValue
     .optional()
