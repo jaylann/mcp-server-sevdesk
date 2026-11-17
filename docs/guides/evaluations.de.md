@@ -139,8 +139,10 @@ Die Prüfung summiert die Bemessungsgrundlage nach § 13b des Zeitraums je Steue
 (Regeln 12, 13 und 14, bei denen du die Steuer als Leistungsempfänger schuldest, mit der
 geschuldeten Steuer und dem Teil, den du als Vorsteuer wieder abziehst) und ausgestellt (Regel 5,
 Kz 60; Regel 21, Kz 21). Jede Summe nennt ihre UStVA-Kennzahlen und listet die Belege dahinter. Sie
-nutzt dieselben Steuerzeitpunkte wie `sevdesk_vat_summary`, die Summen stimmen also mit deren Kz
-46/47, 84/85, 67, 60 und 21 überein. Sie meldet Regel 13 (ohne Vorsteuerabzug) bei einem Konto mit
+nutzt dieselben Steuerzeitpunkte wie `sevdesk_vat_summary`, die Bemessungsgrundlagen stimmen also
+mit deren Kz 46, 84, 60 und 21 überein. Die Steuerbeträge (Kz 47, 85, 67) können um einen Cent
+abweichen, weil die Prüfung je Steuerregel rundet und die Auswertung je Formularzeile (Kz 84/85
+fassen die Regeln 12 und 13 zusammen). Sie meldet Regel 13 (ohne Vorsteuerabzug) bei einem Konto mit
 Regelbesteuerung (`reverse_charge_without_deduction`) und die Regeln 12 und 14 (mit
 Vorsteuerabzug) bei einem Kleinunternehmer-Konto, das die Steuer schuldet, sie aber nicht abziehen
 darf (`reverse_charge_deduction_on_small_business`).

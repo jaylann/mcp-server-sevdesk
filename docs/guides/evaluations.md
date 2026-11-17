@@ -129,8 +129,9 @@ judged (`coverage.notJudged`), so complete the contact to have them checked.
 The check sums the §13b base of the period by tax rule: received (rules 12, 13 and 14, where you
 owe the VAT as recipient, with the tax owed and the part deducted again as input VAT) and issued
 (rule 5, Kz 60; rule 21, Kz 21). Each sum names its UStVA Kennzahlen and lists the documents
-behind it. It uses the same tax points as `sevdesk_vat_summary`, so the sums match its Kz 46/47,
-84/85, 67, 60 and 21. It flags rule 13 (no input VAT deduction) on an account with regular
+behind it. It uses the same tax points as `sevdesk_vat_summary`, so the bases match its Kz 46, 84,
+60 and 21. The tax amounts (Kz 47, 85, 67) can differ by a cent, because the check rounds per tax
+rule and the summary per form line (Kz 84/85 combine rules 12 and 13). It flags rule 13 (no input VAT deduction) on an account with regular
 taxation (`reverse_charge_without_deduction`), and rules 12 and 14 (with deduction) on a
 Kleinunternehmer account, which owes the tax but may not deduct it
 (`reverse_charge_deduction_on_small_business`).

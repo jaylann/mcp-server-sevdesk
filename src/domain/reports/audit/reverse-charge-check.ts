@@ -14,7 +14,9 @@
  * the period of the service (§ 13b Abs. 1 UStG), rules 12 and 13 with the invoice, at the latest
  * at the end of the month after the supply (§ 13b Abs. 2 UStG), rules 5 and 21 at the end of the
  * supply. Documents are listed with the VAT summary's margin around the period
- * (`ACCRUAL_MARGIN_DAYS`), so the sums match its Kz 46, 84, 60 and 21 for the same period.
+ * (`ACCRUAL_MARGIN_DAYS`), so the bases match its Kz 46, 84, 60 and 21 for the same period. The
+ * tax can differ by a cent: it is rounded here per rule and rate, there per form line and rate,
+ * and Kz 84/85 combine rules 12 and 13.
  *
  * Findings, against the account's regime today:
  * - rule 13 (§ 13b without input VAT deduction) on an account with regular taxation, which costs
