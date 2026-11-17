@@ -162,7 +162,7 @@ und spart Tokens.
 | Werkzeuggruppe | Umfang                                                                                                                                                                                     |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `meta`         | Kontoübersicht, Stammdaten (Steuerregeln, Buchungskonten, Einheiten, Länder, …), Dokumente als Datei speichern, Upload-Anfragen im Fernzugriff. Wird immer geladen.                        |
-| `contacts`     | Kunden und Lieferanten: suchen, abrufen, anlegen, ändern, nächste Kundennummer.                                                                                                            |
+| `contacts`     | Kunden und Lieferanten: suchen, abrufen, anlegen, ändern, löschen, nächste Kundennummer.                                                                                                   |
 | `invoices`     | Rechnungen: auflisten, abrufen, Entwürfe, Rechnungen aus Aufträgen, Mahnungen, Fertigstellen bis Festschreiben, PDF, E-Rechnungs-XML und Tauglichkeitsprüfung.                             |
 | `credit-notes` | Gutschriften: auflisten, abrufen, Entwürfe, Gutschriften aus Rechnungen, Fertigstellen bis Festschreiben, PDF.                                                                             |
 | `orders`       | Aufträge (Angebote, Auftragsbestätigungen, Lieferscheine): auflisten, abrufen, Entwürfe, fertigstellen, versenden, PDF.                                                                    |

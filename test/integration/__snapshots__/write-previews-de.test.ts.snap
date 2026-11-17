@@ -321,6 +321,20 @@ Brutto: 119,00 EUR
 Bisher bezahlt: 0,00 EUR"
 `;
 
+exports[`German previews > delete an organisation with its addresses, communication ways and contact persons: says the same in German 1`] = `
+"Kontakt 1001 (Organisation) und seinen Ansprechpartner aus sevDesk löschen.
+! Der Kontakt, seine 2 Adressen und seine 3 Kommunikationswege werden aus sevDesk gelöscht; das lässt sich nicht rückgängig machen.
+! sevDesk löscht den Ansprechpartner der Organisation mit; das lässt sich ebenfalls nicht rückgängig machen.
+(nicht umkehrbar)
+Kontakt: Musterfirma GmbH (ID 1001)
+Kundennummer: K-1001
+Kategorie: Kunde
+Adressen (werden mitgelöscht): 2
+Kommunikationswege (werden mitgelöscht): 3
+Ansprechpartner (werden mitgelöscht): 1
+Ansprechpartner (wird mitgelöscht): Dr. Max Mustermann (Kontakt 1002)"
+`;
+
 exports[`German previews > email an open credit note: says the same in German 1`] = `
 "Gutschrift GU-1001 über sevDesk per E-Mail senden an kunde@example.com.
 ! Die E-Mail geht sofort aus sevDesk an alle aufgeführten Empfänger und lässt sich nicht zurückholen.

@@ -2335,11 +2335,13 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   account, Update 2.0 (probe `write-contact-partial-update`, in both write runs); recorded
   2026-11-16, trial account, Update 2.0 (probe `write-contact-parent`).
 - **Impact:** `sevdesk_contact_update` sends only the fields that change, to the contact, its
-  billing address and its main communication ways (`src/domain/contacts-write.ts`). Nothing can be
-  cleared (empty strings are rejected by the input schema), an update without changes is a
-  validation error, and a person never gets an organisation name or an organisation a first or
-  last name. `sevdesk_part_update` relies on the same reading for `PUT /Part/{partId}`
-  (`src/domain/parts-write.ts`).
+  billing address and its main communication ways (`src/domain/contacts-write.ts`). A text field
+  is never cleared (empty strings are rejected by the input schema); what an update takes away is
+  named in its `remove` argument: the link to a person's organisation (`PUT` with `parent: null`,
+  D-083) and single addresses and communication ways (`DELETE`, D-084, sent after every other
+  change). An update without changes is a validation error, and a person never gets an
+  organisation name or an organisation a first or last name. `sevdesk_part_update` relies on the
+  same reading for `PUT /Part/{partId}` (`src/domain/parts-write.ts`).
 - **Test:** `test/unit/tools/masterdata/contact-update.test.ts` ("changes only the given fields of
   contact, billing address and main entries", "sends no contact PUT when only a communication way
   changes", "refuses an update that changes nothing", "never mixes the kinds of contacts"),
@@ -3147,13 +3149,23 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   the contacts of that parent. `PUT` answers the contact as one object.
 - **Sources:** spec (`Model_Contact`, `Model_ContactUpdate`, `getContacts`); recorded 2026-11-16,
   trial account, Update 2.0 (probes `write-contact-parent`, `write-contact-parent-invalid`).
-- **Impact:** No tool sets `parent` yet. #86 must refuse a parent that is not an organisation and
-  a contact that is not a person itself (sevDesk would store both), read a missing `parent` key as
-  "no organisation", list contact persons with the `parent[id]` filter (and filter again locally,
-  D-035), and clear with `parent: null`.
+- **Impact:** `sevdesk_contact_create` and `sevdesk_contact_update` set `parent` from
+  `parentOrganisationId` and refuse, before anything is sent, a parent that does not exist or is a
+  person, the contact itself as parent and a parent on an organisation (sevDesk would store all of
+  them). A missing `parent` key reads as "no organisation" (`parentOrganisationId` absent).
+  `remove` kind `parentOrganisation` sends `PUT` with `parent: null`, after checking that the
+  contact belongs to that organisation. `sevdesk_contact_delete` lists the contacts whose parent
+  the contact is with the `parent[id]` filter and filters again locally (D-035), for persons too,
+  since sevDesk stores a person as parent.
 - **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("follows parent through create, set,
   change and clear and checks the parent filter", "reports wrong-sided parents as stored, as
   recorded, and a refusal with its message (D-083)"); its simulated account behaves as recorded.
+  `test/unit/tools/masterdata/contact-create.test.ts` ("links a new person to its organisation and
+  names it in the preview", "refuses %s (sevDesk would store it)"),
+  `test/unit/tools/masterdata/contact-update.test.ts` ("moves a person to another organisation and
+  names both", "removes the link with parent null and lists it as removed", "refuses %s (sevDesk
+  would store it)"), `test/unit/tools/masterdata/contact-delete.test.ts` ("deletes an organisation
+  and confirms with a read that it is gone (D-084)": the contact persons by the parent filter).
   Live: probes `write-contact-parent`, `write-contact-parent-invalid`.
 
 ### D-084: Deleting a contact deletes its addresses and communication ways
@@ -3170,17 +3182,42 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   address can be deleted while it is the billing address (category 47) and while it is the last
   one; the contact stays. The main e-mail and then the last e-mail can be deleted; the other
   e-mail does not become main (`main` stays `"0"`), so a contact can be left without a main entry
-  of a type. A contact a document references is not deleted (D-085).
+  of a type. A contact a document references is not deleted (D-085). Deleting an organisation
+  also deletes its contact persons (the persons whose `parent` it is): after `DELETE` of an
+  organisation with one such person, neither referenced by a document, answered `[null]`, `GET` of
+  the organisation and of the person both answered 404, and a `DELETE` of the person answered 404.
+  Not measured: an organisation whose contact person a document references (whether the whole
+  delete is refused or only the person stays), and contact persons with addresses or
+  communication ways of their own.
 - **Sources:** spec (`deleteContact`, `deleteContactAddress`, `deleteCommunicationWay`); recorded
   2026-11-16, trial account, Update 2.0 (probes `write-contact-delete`,
   `write-contact-delete-referenced`, `write-contact-address-delete`,
-  `write-communication-way-delete`).
-- **Impact:** No tool deletes yet. #86's contact delete must say in its preview that the
-  addresses and communication ways go too, and treat 404 on a repeated delete as "already gone";
-  removing an address or way must say when it removes the billing address or the main entry, since
-  sevDesk elects no new one.
+  `write-communication-way-delete`); the contact persons: recorded 2026-11-16, trial account,
+  Update 2.0 (one-off check by the orchestrator, run tag `MCP-E2E 20261116-2319-p4jr`).
+- **Impact:** `sevdesk_contact_delete` says in its preview that the addresses and communication
+  ways go too, and for an organisation lists the contact persons that go with it (up to 20 by name
+  and id, the rest counted; it refuses an organisation with more than 100, which it cannot all
+  read). It reads them for a person too, since sevDesk stores a person as parent (D-083), and
+  says that sevDesk may delete them with it (not measured). The approval is bound to the ids of
+  those persons, so a person added in between asks again. Afterwards it reads each person back and
+  says so when one is still there or could not be checked. A 404 on the DELETE counts as "already
+  gone". Removing an address or way says when it removes the billing address or the main entry,
+  since sevDesk elects no new one; when the same
+  update gives a new value for that very entry, a new billing address or main entry is added
+  instead of rewriting another one.
 - **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("deletes contacts, addresses and
-  communication ways and reports what is left"). Live: the four probes above.
+  communication ways and reports what is left"); `test/unit/tools/masterdata/contact-delete.test.ts`
+  ("deletes an organisation with its contact persons and reads every one back (D-084)", "lists up
+  to 20 contact persons by name and binds the approval to all of them", "refuses an organisation
+  whose contact persons cannot all be read", "says so when a contact person is still there or
+  could not be checked", "counts a 404 on the DELETE as already gone (D-084)", "shows, binds and
+  reads back the contacts stored with a person as parent (D-083)");
+  `test/unit/tools/masterdata/contact-update.test.ts` ("removes an address and the main e-mail
+  last and says what is left", "warns when the billing address goes and nothing replaces it",
+  "adds a new billing address when the billing address goes, and leaves the delivery address
+  alone", "adds a new main e-mail when the main one goes, and leaves the other e-mail alone",
+  "counts an entry sevDesk no longer has as already gone"). Live: the four probes above;
+  the contact-person cascade has no probe yet.
 
 ### D-085: Refused deletes of referenced contacts and cost centres arrive as HTTP 200
 
@@ -3198,13 +3235,21 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Impact:** The client already turns a 2xx body with an `error` member and no `objects` into an
   `unexpected_response` error with status 200 and sevDesk's message as `upstreamMessage`
   (`readJsonEnvelope` in `src/sevdesk/client.ts`), so such a refusal never passes as a successful
-  delete. #86 and #87 must report it as "sevDesk refused: the record is still referenced", read
-  the record back to confirm it still exists, and never retry.
+  delete. `sevdesk_contact_delete` sends the `DELETE` once (never retried), reads the contact back
+  and, while it is still there, reports `stillReferenced` with a note in its own words (sevDesk's
+  text never reaches the result); when a contact person reads back as gone after the refusal, it
+  no longer says that nothing was deleted. The cost-centre half stays for #87: its delete must
+  report the refusal the same way.
 - **Test:** `test/unit/sevdesk/client.test.ts` ("treats objects null next to an error as
   unexpected_response", "keeps sevDesk's error text from a 2xx error body as the upstream message
   only"); `test/unit/scripts/gaps-contacts-probes.test.ts` ("deletes contacts, addresses and
   communication ways and reports what is left", "deletes only its own cost centres, unused and in
-  use"). Live: probes `write-contact-delete-referenced`, `write-cost-centre-delete`.
+  use"); `test/regressions/contact-delete-referenced.test.ts` ("is reported as a refusal in our
+  words, not as a deletion, and never retried", through the real client);
+  `test/unit/tools/masterdata/contact-delete.test.ts` ("reports sevDesk's refusal of a referenced
+  contact in its own words (D-085)", "does not claim nothing was deleted when a contact person is
+  gone after a refusal"). Live: probes `write-contact-delete-referenced`,
+  `write-cost-centre-delete`.
 
 ### D-086: Custom contact fields: 30-character names, no contact embed, cascading deletes
 
