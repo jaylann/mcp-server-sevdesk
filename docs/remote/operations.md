@@ -128,8 +128,8 @@ lock.
   64, 8 are kept for token refresh, sign-in, the approval inbox and the file pages, so those stay
   reachable while `/mcp` is busy; `/mcp` itself answers 503 once its 56 are taken, which seven
   accounts at their limit can cause. A request may take 120 seconds; the tax reports
-  (`sevdesk_vat_summary`, `sevdesk_profit_and_loss`) stop reading after 90 seconds and return
-  what they have, marked incomplete. These numbers are fixed.
+  (`sevdesk_vat_summary`, `sevdesk_profit_and_loss`) and the audits (`sevdesk_records_audit`) stop
+  reading after 90 seconds and return what they have, marked incomplete. These numbers are fixed.
 - **JSON-RPC batches** (several messages in one request, sent only by clients of protocol version
   2025-03-26) may hold at most 8 messages and no request id twice; otherwise the whole batch is
   refused with 400 and nothing of it runs. A batch counts as one request.

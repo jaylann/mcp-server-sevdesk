@@ -1,4 +1,4 @@
-<!-- translated-from: README.md sha256:616cb8f33591 -->
+<!-- translated-from: README.md sha256:cc14d322ef59 -->
 
 <!-- Nur die Breite: mit einer Höhe dazu zeichnet GitHub einen getönten Kasten hinter das Bild. -->
 <p align="center"><img src="https://raw.githubusercontent.com/jaylann/mcp-server-sevdesk/main/assets/logo.svg" alt="" width="96"></p>
@@ -71,7 +71,7 @@ freischalten, zuerst im Probelauf, und das Token sicher aufbewahren.
 
 ## Was er kann
 
-77 Werkzeuge in 10 Werkzeuggruppen. Die 40 Lesewerkzeuge füllen die erste Spalte; mit den
+78 Werkzeuge in 10 Werkzeuggruppen. Die 41 Lesewerkzeuge füllen die erste Spalte; mit den
 Schreibstufen kommen 37 weitere Werkzeuge hinzu, die Daten anlegen und ändern.
 
 | Bereich                                | Lesen                                                                                                                                                                                                                                                                                                                 | Schreiben (`write`, `commit`, `external`)                                                                                                                                                                                                                    |
@@ -85,8 +85,11 @@ Schreibstufen kommen 37 weitere Werkzeuge hinzu, die Daten anlegen und ändern.
 | **Advanced** (standardmäßig aus)       | `sevdesk_api_get`: ein reines Lese-GET auf jeden sevDesk-Endpunkt, den kein anderes Werkzeug abdeckt, etwa Textvorlagen. Es lehnt alles ab, was Daten ändern, Dateien liefern oder Hintergrundaufgaben starten könnte                                                                                                 |                                                                                                                                                                                                                                                              |
 
 Die Umsatzsteuer-Auswertung ist deutlich als Schätzung gekennzeichnet (Soll- oder
-Istversteuerung). Jedes Schreibwerkzeug akzeptiert `dryRun: true` und gibt dann nur genau das
-zurück, was es tun würde. Belegentwürfe können in Fremdwährung sein, mit einem Wechselkurs oder
+Istversteuerung). Die **Prüfungen** (`sevdesk_records_audit`) beantworten „Was ist falsch?“:
+ausländische Lieferanten und Kunden, deren Umsatzsteuer-Behandlung nicht passt, und die
+Bemessungsgrundlage nach § 13b je Steuerregel, jeder Befund mit seinen Belegen, seiner
+Rechtsgrundlage und dem, was zu prüfen ist; es sind Hinweise, keine Steuerberatung. Jedes
+Schreibwerkzeug akzeptiert `dryRun: true` und gibt dann nur genau das zurück, was es tun würde. Belegentwürfe können in Fremdwährung sein, mit einem Wechselkurs oder
 einem Wechselkursdatum; solche Entwürfe lassen sich über den Server nicht fertigstellen
 ([Belege](docs/guides/receipts.de.md)). Die vollständige, generierte Referenz ist
 [docs/tools.md](docs/tools.md).

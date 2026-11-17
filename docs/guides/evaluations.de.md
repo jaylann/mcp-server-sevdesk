@@ -1,11 +1,11 @@
-<!-- translated-from: docs/guides/evaluations.md sha256:63d24848c90f -->
+<!-- translated-from: docs/guides/evaluations.md sha256:4af99a4fd764 -->
 
 # Auswertungen und Exporte
 
 Was dir der Assistent über deine Bücher sagen kann und wo seine Antworten enden: Summen, offene
-Posten, Liquidität, die Umsatzsteuer-Auswertung, die Gewinn- und Verlustrechnung und die Exporte für
-deine Steuerberatung. Diese Seite ist für alle, die Zahlen aus sevDesk haben wollen, und für alle,
-die entscheiden, wie weit sie ihnen trauen. Jede Auswertung hier ist `read`; nur der DATEV-Export
+Posten, Liquidität, die Umsatzsteuer-Auswertung, die Gewinn- und Verlustrechnung, die Prüfungen und
+die Exporte für deine Steuerberatung. Diese Seite ist für alle, die Zahlen aus sevDesk haben wollen,
+und für alle, die entscheiden, wie weit sie ihnen trauen. Jede Auswertung hier ist `read`; nur der DATEV-Export
 braucht `write` ([Berechtigungen](../permissions.de.md#stufen)).
 
 > [!IMPORTANT]
@@ -24,6 +24,7 @@ braucht `write` ([Berechtigungen](../permissions.de.md#stufen)).
 | Was sich seit einem Datum geändert hat                    | [`sevdesk_changed_since`](../tools.md#sevdesk_changed_since)         | `read`  |
 | Was ungefähr in der Umsatzsteuer-Voranmeldung stehen wird | [`sevdesk_vat_summary`](../tools.md#sevdesk_vat_summary)             | `read`  |
 | Gewinn für einen Monat, ein Quartal oder ein Jahr         | [`sevdesk_profit_and_loss`](../tools.md#sevdesk_profit_and_loss)     | `read`  |
+| Was falsch aussieht: Umsatzsteuer-Behandlung, § 13b       | [`sevdesk_records_audit`](../tools.md#sevdesk_records_audit)         | `read`  |
 | Eine CSV-Datei für Excel oder die Steuerberatung          | [`sevdesk_csv_export`](../tools.md#sevdesk_csv_export)               | `read`  |
 | Die DATEV-Buchungsdaten für die Steuerberatung            | [`sevdesk_datev_export`](../tools.md#sevdesk_datev_export)           | `write` |
 
@@ -90,6 +91,69 @@ Buchungskonto, das Ergebnis und die Umsatzsteuerströme getrennt davon (vereinna
 gezahlte Vorsteuer, an das Finanzamt gezahlte oder von ihm erstattete Umsatzsteuer). Grundlage ist
 standardmäßig das Zufluss- und Abflussprinzip (der Tag, an dem das Geld floss, aus den Zahlungen,
 die sevDesk mit Dokumenten verknüpft) oder auf Wunsch das Dokumentdatum (periodengerecht).
+
+## Prüfungen
+
+> Prüf die Umsatzsteuer-Behandlung unserer Einkäufe und Verkäufe im dritten Quartal.
+
+> Wie hoch ist unsere Bemessungsgrundlage nach § 13b für Oktober, je Steuerregel?
+
+[`sevdesk_records_audit`](../tools.md#sevdesk_records_audit) beantwortet „Was ist falsch?“ statt
+„Wie lauten die Zahlen?“. Es führt pro Aufruf eine Prüfung für einen Monat, ein Quartal, ein Jahr
+oder einen Zeitraum aus und liefert Befunde. Jeder nennt seine Art (`code`) und wie sicher er ist
+(`severity`: `warning`, wenn die Daten auf eine falsche Buchung deuten, `check`, wenn die Antwort
+von Tatsachen abhängt, die sevDesk nicht kennt), begründet sich mit der Rechtsgrundlage und sagt,
+was zu prüfen oder zu tun ist, mit dem Kontakt und den Belegen samt Links in sevDesk. Die Belege
+einer Art und eines Kontakts bilden einen Befund. Befunde sind Hinweise, keine Steuerberatung, und
+jedes Ergebnis sagt das auf Englisch und Deutsch. Das Werkzeug ändert nichts.
+
+### Umsatzsteuer-Behandlung (`vat`)
+
+Die Prüfung vergleicht die Steuerregel jedes Dokuments damit, wo die Gegenseite ansässig ist,
+soweit sevDesk es weiß: die USt-IdNr. des Kontakts und die Länder seiner Adressen. Eine deutsche
+USt-IdNr. oder eine deutsche Adresse gilt als in Deutschland registriert oder ansässig, und Monaco
+zählt als Frankreich. Bei Verkäufen zählt die USt-IdNr. eines Kunden nur im gültigen Format ihres
+Staats, so wie [`sevdesk_vat_id_check`](../tools.md#sevdesk_vat_id_check) sie prüft. Dokumente
+werden nach Belegdatum ausgewählt; Verkäufe werden an Rechnungen geprüft.
+
+| Code                                                                            | Bedeutet                                                                                                                           |
+| ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `foreign_supplier_charged_german_vat`                                           | Ein Lieferant im Ausland hat deutsche Umsatzsteuer berechnet, als Vorsteuer gebucht (Regel 9); meist schuldest du sie (§ 13b UStG) |
+| `foreign_vat_deducted`                                                          | Umsatzsteuer zu einem Satz, den Deutschland nicht kennt, als Vorsteuer gebucht (Regel 9)                                           |
+| `foreign_supplier_zero_rate`                                                    | Ein Lieferant im Ausland mit 0 % gebucht (Regel 9 oder 10), ohne Reverse Charge oder innergemeinschaftlichen Erwerb                |
+| `eu_reverse_charge_for_domestic_supplier`, `acquisition_from_domestic_supplier` | Regel 14 oder 8 bei einem Lieferanten mit nur deutschen Daten                                                                      |
+| `eu_reverse_charge_for_non_eu_supplier`, `acquisition_from_non_eu_supplier`     | Regel 14 oder 8 bei einem Lieferanten außerhalb der EU                                                                             |
+| `eu_supplier_under_rule_12`                                                     | Eine Leistung aus einem anderen EU-Staat unter Regel 12 statt 14                                                                   |
+| `german_vat_to_eu_business`                                                     | Deutsche Umsatzsteuer auf einer Rechnung an einen Kunden mit USt-IdNr. eines anderen EU-Staats                                     |
+| `intra_eu_supply_without_eu_vat_id`, `eu_service_without_eu_vat_id`             | Regel 3 oder 21 ohne gültige USt-IdNr. des Kunden aus einem anderen EU-Staat                                                       |
+
+Bewusst nicht gemeldet: ein ausländischer Lieferant mit deutscher USt-IdNr. oder deutscher Adresse
+(er darf deutsche Umsatzsteuer berechnen), ein Lieferant mit nur deutschen Daten, der keine
+Umsatzsteuer berechnet (zum Beispiel ein Kleinunternehmer), ein Lieferant in der
+EU-Kleinunternehmerregelung (USt-IdNr. endet auf EX) und Einfuhrumsatzsteuer auf dem Konto
+Einfuhrumsatzsteuer. Ein Kontakt ohne USt-IdNr. und Adresse lässt sich nicht einordnen: Seine
+Dokumente zählen als nicht beurteilt (`coverage.notJudged`); ergänz den Kontakt, damit sie geprüft
+werden.
+
+### Bemessungsgrundlage nach § 13b (`reverse_charge`)
+
+Die Prüfung summiert die Bemessungsgrundlage nach § 13b des Zeitraums je Steuerregel: empfangen
+(Regeln 12, 13 und 14, bei denen du die Steuer als Leistungsempfänger schuldest, mit der
+geschuldeten Steuer und dem Teil, den du als Vorsteuer wieder abziehst) und ausgestellt (Regel 5,
+Kz 60; Regel 21, Kz 21). Jede Summe nennt ihre UStVA-Kennzahlen und listet die Belege dahinter. Sie
+nutzt dieselben Steuerzeitpunkte wie `sevdesk_vat_summary`, die Bemessungsgrundlagen stimmen also
+mit deren Kz 46, 84, 60 und 21 überein. Die Steuerbeträge (Kz 47, 85, 67) können um einen Cent
+abweichen, weil die Prüfung je Steuerregel rundet und die Auswertung je Formularzeile (Kz 84/85
+fassen die Regeln 12 und 13 zusammen). Sie meldet Regel 13 (ohne Vorsteuerabzug) bei einem Konto mit
+Regelbesteuerung (`reverse_charge_without_deduction`) und die Regeln 12 und 14 (mit
+Vorsteuerabzug) bei einem Kleinunternehmer-Konto, das die Steuer schuldet, sie aber nicht abziehen
+darf (`reverse_charge_deduction_on_small_business`).
+
+Beide Prüfungen lesen die Dokumente des Zeitraums und, wo die Steuersätze entscheiden, deren
+Positionen; `vat` liest außerdem die Kontakt- und die Adressliste je einmal. Wie die anderen
+Auswertungen sagen sie, was sie ausgelassen haben (`coverage.truncated`,
+`coverage.documentsLeftOut`), und über HTTP hören sie nach etwa 90 Sekunden auf zu lesen: Frag
+nach einem Monat, wenn ein Quartal zu viel ist.
 
 ## Wie weit du dich darauf verlassen kannst
 

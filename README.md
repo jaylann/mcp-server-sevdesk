@@ -65,7 +65,7 @@ the token safe.
 
 ## What it can do
 
-77 tools across 10 toolsets. The 40 read tools fill the first column; with the write tiers
+78 tools across 10 toolsets. The 41 read tools fill the first column; with the write tiers
 enabled, 37 more tools create and change data.
 
 | Area                               | Read                                                                                                                                                                                                               | Write (`write`, `commit`, `external`)                                                                                                                                                                                                                             |
@@ -78,7 +78,10 @@ enabled, 37 more tools create and change data.
 | **Contacts and parts**             | Search and get, parts with their stock (Lagerbestand)                                                                                                                                                              | Create and update, including a part's `stock` and `stockEnabled`                                                                                                                                                                                                  |
 | **Advanced** (off by default)      | `sevdesk_api_get`: a read-only GET of any sevDesk endpoint no other tool covers, such as text templates. It refuses everything that could change data, return files or start jobs                                  |                                                                                                                                                                                                                                                                   |
 
-The VAT summary is clearly marked as an estimate (accrual or cash basis). Every write tool accepts
+The VAT summary is clearly marked as an estimate (accrual or cash basis). The **audits**
+(`sevdesk_records_audit`) answer "what is wrong?": foreign suppliers and customers whose VAT
+treatment does not fit, and the §13b base by tax rule, each finding with its documents, its legal
+basis and what to check; they are hints, not tax advice. Every write tool accepts
 `dryRun: true` and then only returns exactly what it would do. Voucher drafts can be in a foreign
 currency, with an exchange rate or a rate date; such drafts cannot be finalized through the server
 ([Receipts](docs/guides/receipts.md)). The full generated reference is
