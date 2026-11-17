@@ -277,11 +277,12 @@ export const documentSetLayoutTool = defineWriteTool({
     ];
     return {
       ...bothPreviews((lang) => ({
+        // No "(draft)" here: the title may already carry "(no number yet)", and the status fact
+        // says it is a draft.
         action:
           lang === "de"
-            ? `${capitalize(keyList(pending, lang))} von ${documentTitle(doc, lang)} (Entwurf) ` +
-              "ändern."
-            : `Set the ${keyList(pending, lang)} of ${documentTitle(doc)} (draft).`,
+            ? `${capitalize(keyList(pending, lang))} von ${documentTitle(doc, lang)} ändern.`
+            : `Set the ${keyList(pending, lang)} of ${documentTitle(doc)}.`,
         facts: [
           ...documentFacts(doc, lang),
           ...changes.map((change) => ({

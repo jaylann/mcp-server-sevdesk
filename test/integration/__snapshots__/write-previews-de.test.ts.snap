@@ -655,7 +655,7 @@ Bisher bezahlt: 0,00 EUR"
 `;
 
 exports[`German previews > set language, template and letterhead of a draft invoice: says the same in German 1`] = `
-"Sprache, Vorlage und Briefpapier von Rechnung 1003 (noch ohne Nummer) (Entwurf) ändern.
+"Sprache, Vorlage und Briefpapier von Rechnung 1003 (noch ohne Nummer) ändern.
 ! Nur das Layout ändert sich: Status, Nummer, Texte und Positionen des Entwurfs bleiben, wie sie sind.
 ! Jede Auswahl geht als eigene Anfrage an sevDesk (changeParameter), in der Reihenfolge Sprache, Vorlage, Briefpapier, und keine wird wiederholt. Schlägt eine fehl, bleiben die vorherigen gesetzt, und das Ergebnis nennt sie.
 (umkehrbar)
@@ -675,7 +675,7 @@ Briefpapier: Briefpapier 1 (ID lp-1) → Zweites Briefpapier (ID lp-2)"
 `;
 
 exports[`German previews > set the language of a draft order: says the same in German 1`] = `
-"Sprache von Auftrag 3002 (noch ohne Nummer) (Entwurf) ändern.
+"Sprache von Auftrag 3002 (noch ohne Nummer) ändern.
 ! Nur das Layout ändert sich: Status, Nummer, Texte und Positionen des Entwurfs bleiben, wie sie sind.
 ! Jede Auswahl geht als eigene Anfrage an sevDesk (changeParameter), in der Reihenfolge Sprache, Vorlage, Briefpapier, und keine wird wiederholt. Schlägt eine fehl, bleiben die vorherigen gesetzt, und das Ergebnis nennt sie.
 ! sevDesk nimmt eine Layout-Änderung an diesem Entwurf erst nach einer PDF-Vorschau an; der Server ruft daher zuerst eine ab (getPdf mit preventSendBy=true, der Entwurf bleibt ein Entwurf).
