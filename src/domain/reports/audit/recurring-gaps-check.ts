@@ -450,9 +450,9 @@ async function runRecurringGapsCheck(context: AuditCheckContext): Promise<AuditC
 export const recurringGapsCheck = {
   label: "missing bills of regular suppliers",
   summary:
-    "suppliers that bill monthly, quarterly or yearly (learned from " +
-    `${String(LOOKBACK_MONTHS)} months of vouchers) with no bill in a period inside the audited ` +
-    "range, which usually means a lost receipt; a supplier that stopped billing is not reported",
+    "suppliers that bill monthly, quarterly or yearly (learned from each supplier's vouchers " +
+    "around the period) with no bill in a period inside the audited range, which usually means " +
+    "a lost receipt; a supplier that stopped billing is not reported",
   codes: RECURRING_GAP_FINDING_CODES,
   run: runRecurringGapsCheck,
 };

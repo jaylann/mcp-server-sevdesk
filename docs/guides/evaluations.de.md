@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/evaluations.md sha256:e7179dea629a -->
+<!-- translated-from: docs/guides/evaluations.md sha256:41ecf838ebae -->
 
 # Auswertungen und Exporte
 
@@ -225,10 +225,12 @@ immer etwa drei Jahre, und das Konto hat in dieser Zeit mehr Belege, als die Pr�
 
 Die Prüfungen `vat` und `reverse_charge` lesen die Dokumente des Zeitraums und, wo die Steuersätze
 entscheiden, deren Positionen; `vat` liest außerdem die Kontakt- und die Adressliste je einmal.
-`duplicates` und `recurring_gaps` lesen nur Dokumentlisten (und `duplicates` die oben genannten
-Prüfsummen). Wie die anderen Auswertungen sagen sie, was sie ausgelassen haben
-(`coverage.truncated`, `coverage.documentsLeftOut`), und über HTTP hören sie nach etwa 90 Sekunden
-auf zu lesen: Frag nach einem Monat, wenn ein Quartal zu viel ist.
+`duplicates` und `recurring_gaps` lesen nur Dokumentlisten, bis zu 10.000 Zeilen (und `duplicates`
+die oben genannten Prüfsummen); `recurring_gaps` liest immer etwa drei Jahre, welcher Zeitraum es
+auch ist. Wie die anderen Auswertungen sagen sie, was sie ausgelassen haben (`coverage.truncated`,
+`coverage.documentsLeftOut`), und über HTTP hören sie nach etwa 90 Sekunden auf, Dokument für
+Dokument zu lesen: Frag nach einem Monat, wenn ein Quartal zu viel ist (was `recurring_gaps` liest,
+wird dadurch nicht kürzer).
 
 ## Wie weit du dich darauf verlassen kannst
 

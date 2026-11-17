@@ -76,7 +76,7 @@ export const AMOUNT_WINDOW_DAYS = 5;
  * Two vouchers with the same document number count as booked twice up to this many days apart:
  * more than a two-week payment term, less than the four weeks between two monthly bills.
  */
-export const NUMBER_WINDOW_DAYS = 21;
+const NUMBER_WINDOW_DAYS = 21;
 /** How far before the period vouchers are read to find the earlier one of a pair. */
 const NUMBER_LOOKBACK_DAYS = 31;
 /** A draft created this many days before today or earlier counts as stuck. */

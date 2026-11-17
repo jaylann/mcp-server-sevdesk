@@ -208,9 +208,11 @@ has more vouchers in that time than the check can read.
 
 The checks `vat` and `reverse_charge` read the period's documents and, where the rates decide,
 their positions; `vat` also reads the contact and address lists once each. `duplicates` and
-`recurring_gaps` read document lists only (and `duplicates` the receipt checksums above). Like the
+`recurring_gaps` read document lists only, up to 10,000 rows (and `duplicates` the receipt
+checksums above); `recurring_gaps` always reads about three years, whatever the period. Like the
 other reports they say what they left out (`coverage.truncated`, `coverage.documentsLeftOut`), and
-over HTTP they stop reading after about 90 seconds: ask for a month when a quarter is too much.
+over HTTP they stop reading document by document after about 90 seconds: ask for a month when a
+quarter is too much (this does not shorten what `recurring_gaps` reads).
 
 ## How far you can rely on them
 

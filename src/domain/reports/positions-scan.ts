@@ -75,7 +75,7 @@ import {
 /** Most documents whose positions one report reads; more are reported as truncated. */
 export const MAX_SCAN_DOCUMENTS = 1_500;
 /** Most document rows (headers) one report lists across invoices, credit notes and vouchers. */
-const MAX_HEADER_ROWS = 10_000;
+export const MAX_HEADER_ROWS = 10_000;
 /** Position reads in flight at once (the client paces them anyway). */
 const POSITION_CONCURRENCY = 4;
 const NUMBER_MAX = 100;
