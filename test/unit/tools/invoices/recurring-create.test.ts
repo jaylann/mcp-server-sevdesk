@@ -479,6 +479,27 @@ describe("sevdesk_invoice_create_recurring", () => {
     expect(output.summary).toMatch(/ See notes\.$/);
   });
 
+  it("notes nothing when sevDesk made the first run before the read-back (D-111)", async () => {
+    // A first run today: sevDesk generates the first draft 30–40 s after the save, so a slow
+    // read-back finds the next run one interval on and the last run set.
+    const generated = {
+      accountStartDate: "2026-11-17T00:00:00+01:00",
+      accountNextInvoice: "2026-12-17T00:00:00+01:00",
+      accountLastInvoice: "2026-11-17T12:00:41+01:00",
+    };
+    const client = new FakeSevdeskClient(
+      withRoutes(routes, settingsReadRoute(templateRow({ ...generated, ...SETTINGS_ON }))),
+    );
+    const { output } = await executeWrite(tool, { ...args, startDate: "2026-11-17" }, client);
+    expect(output.data.schedule).toMatchObject({
+      startDate: "2026-11-17",
+      nextRun: "2026-12-17",
+      lastRun: "2026-11-17",
+    });
+    expect(output.data.notes).toBeUndefined();
+    expect(output.summary).not.toContain("See notes");
+  });
+
   describe("compares automatic generation and sending as stored with what was sent (D-132)", () => {
     const check = "Check the template in the sevDesk web app before its first run.";
     const offNote =

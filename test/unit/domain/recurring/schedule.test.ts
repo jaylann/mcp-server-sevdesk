@@ -397,4 +397,39 @@ describe("scheduleDifferences", () => {
         "template in sevDesk before its first run.",
     ]);
   });
+
+  describe("a first run sevDesk made before the read-back (D-111: next run one interval on, last run set)", () => {
+    const monthly = schedule("monthly", TODAY);
+    const generated = `${TODAY}T12:00:41+01:00`;
+    /** `asked`, which starts today, as read back with this next and last run. */
+    function differencesAfter(asked: Schedule, nextRun: string, lastRun: string | null) {
+      const stored = readStoredSchedule(
+        storedRow({
+          accountIntervall: asked.wire,
+          accountStartDate: `${TODAY}T00:00:00+01:00`,
+          accountNextInvoice: `${nextRun}T00:00:00+01:00`,
+          accountLastInvoice: lastRun,
+        }),
+      );
+      return scheduleDifferences(asked, stored);
+    }
+    const nextNote = (next: string) =>
+      `sevDesk set the next run to ${next}, not to the start date ${TODAY}. Check the template ` +
+      "in sevDesk before its first run.";
+
+    it("is the schedule as asked, for every interval", () => {
+      expect(differencesAfter(monthly, "2026-12-17", generated)).toEqual([]);
+      expect(differencesAfter(schedule("quarterly", TODAY), "2027-02-17", generated)).toEqual([]);
+      expect(differencesAfter(schedule("half_yearly", TODAY), "2027-05-17", generated)).toEqual([]);
+      expect(differencesAfter(schedule("yearly", TODAY), "2027-11-17", generated)).toEqual([]);
+    });
+
+    it("is still named without a last run, with a next run further on, or with a run before the start", () => {
+      expect(differencesAfter(monthly, "2026-12-17", null)).toEqual([nextNote("2026-12-17")]);
+      expect(differencesAfter(monthly, "2027-01-17", generated)).toEqual([nextNote("2027-01-17")]);
+      expect(differencesAfter(monthly, "2026-12-17", "2026-11-16T23:59:00+01:00")).toEqual([
+        nextNote("2026-12-17"),
+      ]);
+    });
+  });
 });

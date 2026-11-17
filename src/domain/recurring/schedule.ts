@@ -307,9 +307,23 @@ function readAutoGenerate(value: unknown): {
 }
 
 /**
+ * Whether the stored schedule shows the first run already made (D-111). With generation on and the
+ * first run today, sevDesk creates the first draft 30–40 s after the save, and a slow read-back can
+ * come later than that. sevDesk then sets the next run one interval on and the last run to the
+ * moment of generation, on or after the start date: the schedule as asked, one run later.
+ */
+function firstRunMade(asked: Schedule, stored: StoredSchedule): boolean {
+  return (
+    stored.lastRun !== undefined &&
+    stored.lastRun >= asked.startDate &&
+    stored.nextRun === addMonths(asked.startDate, INTERVALS[asked.interval].months)
+  );
+}
+
+/**
  * Trusted notes on every way the stored schedule differs from the one sent (empty when it is as
- * asked). Stored dates were parsed into `YYYY-MM-DD`; the stored interval is upstream text and is
- * not repeated here (the output carries it).
+ * asked, a first run sevDesk already made included). Stored dates were parsed into `YYYY-MM-DD`;
+ * the stored interval is upstream text and is not repeated here (the output carries it).
  */
 export function scheduleDifferences(asked: Schedule, stored: StoredSchedule): string[] {
   const notes: string[] = [];
@@ -327,7 +341,7 @@ export function scheduleDifferences(asked: Schedule, stored: StoredSchedule): st
         "Check the template in sevDesk before its first run.",
     );
   }
-  if (stored.nextRun !== asked.startDate) {
+  if (stored.nextRun !== asked.startDate && !firstRunMade(asked, stored)) {
     notes.push(
       stored.nextRun === undefined
         ? "sevDesk stored no next run date, so the template may never run. Check it in sevDesk."
