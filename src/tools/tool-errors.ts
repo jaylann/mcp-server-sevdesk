@@ -43,7 +43,7 @@ export function toolErrorResult(error: unknown, context: ToolErrorContext): Call
     const completed = completedWritesLine(error);
     const text = describeSevdeskError(error, context);
     return errorResult(
-      completed === undefined ? text : `${withoutNothingSent(text)}\n${completed}`,
+      completed === undefined ? text : `${withoutNothingDone(text)}\n${completed}`,
     );
   }
   if (isAbortError(error)) {
@@ -326,13 +326,15 @@ function completedWritesLine(error: SevdeskError): string | undefined {
 }
 
 /**
- * Removes "nothing was sent" claims from a description: with completed writes they would only be
- * true of the failed step, and read as if the whole call changed nothing.
+ * Removes "nothing was sent" and "Nothing was changed." claims from a description: with completed
+ * writes they would only be true of the failed step (an explained refusal says so of the one
+ * request sevDesk refused, `lockedPaymentRefusal`), and read as if the whole call changed nothing.
  */
-function withoutNothingSent(text: string): string {
+function withoutNothingDone(text: string): string {
   return text
     .replace(/ \(nothing was sent\)/gi, "")
     .replace(/\s*nothing was sent(?: to sevDesk)?\./gi, "")
+    .replace(/\s*Nothing was changed\./g, "")
     .replace(
       /The request was refused before it was sent to sevDesk/g,
       "The last step was refused before it was sent to sevDesk",

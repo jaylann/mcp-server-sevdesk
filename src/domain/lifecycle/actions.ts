@@ -123,7 +123,9 @@ const ALREADY_ENSHRINED = /already enshrined/i;
  * with HTTP 400 "Already enshrined by transaction" (recorded on a voucher, spec/deviations.md
  * D-098) or 422 code 322 "Already enshrined by payment" (sevdesk-rs on invoices, D-060). Either
  * becomes a trusted explanation of our own (`explained`, without sevDesk's text); any other error
- * is left as it is (`undefined`). Nothing was changed.
+ * is left as it is (`undefined`). Its "Nothing was changed." is true of this one request; when
+ * earlier resets of the same call went through (`sevdesk_transaction_reset`, completed writes),
+ * the rendered error drops that sentence and lists them instead (`toolErrorResult`).
  */
 function lockedPaymentRefusal(
   error: unknown,
