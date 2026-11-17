@@ -12,7 +12,9 @@
  *   probe (sevDesk keeps every row `bookAmount` books on the Kasse, and `resetToOpen` adds a
  *   counter-entry instead of deleting it, D-095, D-096), enshrining ONE transaction the probe
  *   created itself, the DATEV XML export job (it may mark documents as exported), and
- *   `createVoucherFromFile`. Nothing else is enshrined and nothing is e-mailed.
+ *   `createVoucherFromFile`. No other enshrine request is sent and nothing is e-mailed; the one
+ *   invoice `write-export-invoice-zip` finalizes is enshrined by the trial account itself, which
+ *   enshrines invoices when they are finalized (D-023, D-059).
  * - The ZIP exports are sent as side-effect GETs (`write` tier), since nobody has recorded whether
  *   they mark documents as sent the way `getPdf` without `preventSendBy` does. They first check
  *   with `limit` 1 and filters that should match nothing that sevDesk honours the filters, and
