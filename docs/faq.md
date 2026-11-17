@@ -39,9 +39,11 @@ create it for a dedicated sevDesk user.
 ### Where does my data go?
 
 The server runs on your computer (or on your own server in remote mode) and talks only to the
-sevDesk API. There are two exceptions: the DATEV export, which sevDesk delivers as a download from
-its own storage (on Amazon S3), and a remote server in OAuth mode, which fetches a connecting
-client's metadata document from the client's host. Results go to your MCP client, and from there to your model provider: invoices,
+sevDesk API. There are three exceptions: the DATEV export, which sevDesk delivers as a download
+from its own storage (on Amazon S3), the VAT-ID check with VIES, the European Commission's
+service, only if you switch it on with `SEVDESK_VIES_CHECK`, and a remote server in OAuth mode,
+which fetches a connecting client's metadata document from the client's host. Results go to your
+MCP client, and from there to your model provider: invoices,
 contacts and bank transactions are then part of your conversation, under that provider's terms.
 Accounting data contains personal data of your customers, so check your provider's
 data-processing terms before you connect a live account.

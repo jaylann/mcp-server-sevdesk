@@ -190,13 +190,18 @@ no pre-returns.
 ## Invoices (Rechnungen)
 
 1. `sevdesk_contacts_search` for the customer id.
-2. `sevdesk_invoice_create_draft` (`dryRun` first). For a public-sector customer or a business
+2. Tax rule, unless it is a plain domestic sale: `sevdesk_tax_rule_suggest` with the contact and
+   goods or services gives the rule, the rate and the note the invoice must carry
+   ([tax-rules.md](tax-rules.md)); when the answer depends on a threshold or a special service, ask
+   the user. For an EU business customer check the USt-IdNr. with `sevdesk_vat_id_check`.
+3. `sevdesk_invoice_create_draft` (`dryRun` first), with the note in `footText`. The preview warns
+   when the rule is not the usual one for the customer. For a public-sector customer or a business
    that wants an e-invoice, check it with `sevdesk_invoice_einvoice_preflight`.
-3. `sevdesk_invoice_finalize` (`commit`): the number is assigned and the invoice becomes binding.
-4. `sevdesk_invoice_send_email` (`external`) or the user sends the PDF
+4. `sevdesk_invoice_finalize` (`commit`): the number is assigned and the invoice becomes binding.
+5. `sevdesk_invoice_send_email` (`external`) or the user sends the PDF
    (`sevdesk_invoice_pdf`, `sevdesk_document_save`).
-5. Payment: via the bank reconciliation, or `sevdesk_invoice_book_payment` (`commit`).
-6. Mistake after finalizing: `sevdesk_invoice_cancel` (Stornorechnung) or a credit note
+6. Payment: via the bank reconciliation, or `sevdesk_invoice_book_payment` (`commit`).
+7. Mistake after finalizing: `sevdesk_invoice_cancel` (Stornorechnung) or a credit note
    (`sevdesk_credit_note_create_from_invoice`); `sevdesk_invoice_reset` to draft only for an invoice
    that was never sent to anyone (see [gobd.md](gobd.md)).
 

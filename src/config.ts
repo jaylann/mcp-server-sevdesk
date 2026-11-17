@@ -94,6 +94,12 @@ export interface Settings {
    * (`readConfinedFile`, `src/safety/local-files.ts`). Empty: no tool reads local files.
    */
   readonly fileDirs: readonly string[];
+  /**
+   * `SEVDESK_VIES_CHECK` (default off): `sevdesk_vat_id_check` may ask the European Commission's
+   * VIES service about a VAT ID, which sends the number to `ec.europa.eu`
+   * (`src/sevdesk/vies-request.ts`).
+   */
+  readonly viesCheck: boolean;
   readonly userAgent: string;
 }
 
@@ -226,6 +232,7 @@ export const KNOWN_SETTINGS: readonly string[] = [
   "SEVDESK_AUDIT_LOG",
   "SEVDESK_OUTPUT_DIR",
   "SEVDESK_FILE_DIRS",
+  "SEVDESK_VIES_CHECK",
   // Secrets (`readSecret`): the value, or the file that holds it.
   ...SECRET_SETTINGS,
   ...SECRET_SETTINGS.map(secretFileSetting),
@@ -405,6 +412,7 @@ export function readSettings(env: Env, problems: string[]): Settings {
     auditLogPath: nonEmpty(env["SEVDESK_AUDIT_LOG"]),
     outputDir: nonEmpty(env["SEVDESK_OUTPUT_DIR"]),
     fileDirs: readAbsolutePaths(env, "SEVDESK_FILE_DIRS", problems),
+    viesCheck: readFlag(env, "SEVDESK_VIES_CHECK", problems),
     userAgent: `${PACKAGE_NAME}/${VERSION} (+https://github.com/jaylann/mcp-server-sevdesk)`,
   };
   problems.push(...checkSettingNames(env).problems);
