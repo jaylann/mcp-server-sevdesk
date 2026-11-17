@@ -315,6 +315,23 @@ describe("minimumWriteTier", () => {
     expect(minimumWriteTier("/Voucher/Factory/uploadTempFile", undefined, undefined)).toBe("write");
   });
 
+  it("reads every spelling of a saveVoucher's voucher and status keys", () => {
+    const save = "/Voucher/Factory/saveVoucher";
+    const both = { voucher: { status: 50 }, Voucher: { status: 100 } };
+    expect(minimumWriteTier(save, undefined, both)).toBe("commit");
+    expect(minimumWriteTier(save, undefined, { Voucher: { Status: 100 } })).toBe("commit");
+    expect(minimumWriteTier(save, undefined, { voucher: { status: 50, STATUS: "100" } })).toBe(
+      "commit",
+    );
+    expect(minimumWriteTier(save, undefined, { voucher: { status: 50 }, VOUCHER: null })).toBe(
+      "commit",
+    );
+    expect(minimumWriteTier(save, undefined, { Voucher: { Status: "50" } })).toBe("write");
+    expect(minimumWriteTier(save, undefined, { voucher: { status: 50, Status: 50 } })).toBe(
+      "write",
+    );
+  });
+
   it("lets write tools reserve document numbers", () => {
     expect(minimumWriteTier("/Order/Factory/getNextOrderNumber", { useNextNumber: "true" })).toBe(
       "write",

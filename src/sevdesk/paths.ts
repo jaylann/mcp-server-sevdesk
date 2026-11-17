@@ -340,15 +340,25 @@ function savesBindingDocument(
 /**
  * Whether a `saveVoucher` body moves the voucher out of draft: `voucher.status` other than the
  * draft status 50 (100 = open, booked into the books; sevDesk's spec says higher statuses are set
- * through `saveVoucher`). That is the voucher's "finalize", so it needs `commit` like `sendBy`;
- * a missing or unreadable status counts as not a draft, erring towards the stricter tier.
+ * through `saveVoucher`). That is the voucher's "finalize", so it needs `commit` like `sendBy`.
+ * Like {@link setsSavedStatus}, every key that names the voucher counts (any letter case), and so
+ * does every `status` key in it; only when each of them is 50 (number or text) is the save a
+ * draft. A missing body, voucher or status, or one that is not a plain object, counts as not a
+ * draft, erring towards the stricter tier.
  */
 function savesOpenVoucher(body: unknown): boolean {
-  if (typeof body !== "object" || body === null) return true;
-  const voucher = (body as { voucher?: unknown }).voucher;
-  if (typeof voucher !== "object" || voucher === null) return true;
-  const status = (voucher as { status?: unknown }).status;
-  return !(status === VOUCHER_DRAFT_STATUS || status === String(VOUCHER_DRAFT_STATUS));
+  const vouchers = isPlainRecord(body) ? ownValues(body, "voucher") : [];
+  if (vouchers.length === 0) return true;
+  return vouchers.some((voucher) => {
+    if (!isPlainRecord(voucher)) return true;
+    const statuses = ownValues(voucher, "status");
+    return (
+      statuses.length === 0 ||
+      statuses.some(
+        (status) => status !== VOUCHER_DRAFT_STATUS && status !== String(VOUCHER_DRAFT_STATUS),
+      )
+    );
+  });
 }
 
 /** sevDesk's voucher draft status (spec: saveVoucher accepts 50 and 100). */
