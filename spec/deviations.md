@@ -4385,7 +4385,13 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   another currency than EUR, and on an e-invoice. What a partial or advance invoice from an order does with its discount is
   not checked either; the from-order preview says so. The replacement was checked on an invoice;
   orders and credit notes send the same discount keys. The read-back still says when sevDesk
-  stored something other than what was sent.
+  stored something other than what was sent. `sevdesk_invoice_update_recurring` reads a recurring
+  template's discounts with the same reader and never sends discount keys: the totals of new
+  positions count a kept single net discount as the invoice draft update does (`updateTotals`),
+  and otherwise the preview says that sevDesk computes them. Not recorded: whether sevDesk keeps a
+  discount when every position is replaced (the preview says so and the read-back compares the
+  discounts with the ones before), `getDiscounts` on a template (only on drafts), and whether the
+  invoices a template generates carry its discount.
 - **Test:** `test/contract/recorded-gaps-documents.test.ts` ("answers an empty list with total
   null for an order without discounts", "reads through the document discount reader: no rows,
   nothing shown or bound"), `test/unit/domain/drafts/discount.test.ts` ("gives the recorded sums
@@ -4400,8 +4406,9 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   German when the document has several discounts"), `test/unit/domain/document-discounts.test.ts`
   (the shared reader and row text; "refuses a row with no discount flag", "… no percentage
   flag"), `test/unit/tools/orders/create-confirmation.test.ts` ("shows
-  and binds the offer's document discounts in both languages (review of #112, L5)"). Live: probes
-  `write-document-discount`, `read-order-get-discounts`.
+  and binds the offer's document discounts in both languages (review of #112, L5)"),
+  `test/unit/tools/invoices/recurring-update.test.ts` ("a discount on the whole template (D-116;
+  review of #124, M2)"). Live: probes `write-document-discount`, `read-order-get-discounts`.
 
 ### D-132: Recurring templates: generation and auto-sending are switches read by `embed`
 

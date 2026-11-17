@@ -20,6 +20,12 @@
  * - The price of a position sent by its id is kept (D-135). Positions are therefore replaced as a
  *   whole, like the invoice draft update does it, and the read-back compares the stored positions
  *   with the ones sent, so a change sevDesk ignored becomes a note.
+ * - A discount on the whole document (Rabatt, D-116) is read like the invoice draft update reads
+ *   it (`getDiscounts`) and left alone: the body has no discount keys. New positions' expected
+ *   totals count a single net discount (`updateTotals`); with several, a surcharge, a gross amount
+ *   or what is not recorded for discounts, sevDesk computes the total and the preview says so.
+ *   Whether sevDesk keeps the discount when every position is replaced is not recorded, so the
+ *   preview says that too, and the read-back compares the discounts with the ones before.
  *
  * A template with automatic sending on, or whose settings sevDesk does not return, is not changed
  * here (`assertNoAutoSending`): sevDesk would e-mail invoices from it with no further approval.
@@ -33,8 +39,14 @@ import { SevdeskError } from "../../sevdesk/errors.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { cleanText, isoDateInput } from "../common.js";
 import type { CountryReadOptions } from "../country-codes.js";
+import {
+  type DiscountRow,
+  type DocumentDiscount,
+  readDocumentDiscounts,
+} from "../document-discounts.js";
 import { type PositionDto, TEXT_MAX } from "../document-positions.js";
 import { loadCurrentInvoice } from "../drafts/current.js";
+import { planDiscountChange, updateTotals } from "../drafts/discount.js";
 import { assertChanges, ref, structuredAddress } from "../drafts/document.js";
 import { todayInBerlin, wireTimestamp } from "../drafts/fields.js";
 import { INVOICE_TAX_OPTIONS, invoiceUpdateInputShape } from "../drafts/invoice.js";
@@ -166,16 +178,21 @@ export interface RecurringInvoiceUpdateState {
   readonly schedule: ExpectedSchedule;
   /** Automatic generation as switched by the call; `undefined` when the call leaves it alone. */
   readonly generationOn: boolean | undefined;
-  /** Set when the positions are replaced: what was sent, and the totals expected. */
+  /**
+   * Set when the positions are replaced: what was sent, and the totals expected (`undefined` when
+   * a kept discount leaves computing them to sevDesk).
+   */
   readonly positions?:
     | {
         readonly sent: readonly DraftPosition[];
         readonly mode: PriceMode;
-        readonly expected: Amounts;
+        readonly expected: Amounts | undefined;
       }
     | undefined;
   /** The number of stored positions, which an update without positions keeps. */
   readonly keptPositions: number;
+  /** The discounts on the whole document the template had, which the change leaves alone. */
+  readonly keptDiscounts: readonly DiscountRow[];
   /** What changes, for the summary (trusted names). */
   readonly changed: readonly ChangeName[];
 }
@@ -380,6 +397,7 @@ export async function prepareRecurringInvoiceUpdate(
   const schedule = await resolveSchedule(client, args, stored, today, signal);
   const generation = resolveGeneration(args, stored, schedule, today);
   checkEndKeepsPastRun(doc.id, state, stored, schedule, generation, today);
+  const discounts = await readDocumentDiscounts(client, "invoice", doc.id, signal);
 
   const basics = await resolveUpdateBasics(
     client,
@@ -391,10 +409,24 @@ export async function prepareRecurringInvoiceUpdate(
     options,
   );
   const positions = basics.positions;
-  const expected = positions === undefined ? undefined : expectedTotals(positions, basics.mode);
-  if (expected !== undefined && compare(expected.gross, 0) <= 0) {
+  // The discount is kept (no discount keys); new positions' totals count it as the invoice draft
+  // update does, or leave the computing to sevDesk where that is not recorded.
+  const totals = updateTotals({
+    change: planDiscountChange(undefined, discounts, `Recurring invoice template ${doc.id}`),
+    positions,
+    storedPositions: current.positions,
+    mode: basics.mode,
+    currency: basics.currency,
+    currencyChanged: basics.currencyChanged,
+    stored: doc,
+    eInvoice: doc.propertyIsEInvoice === true,
+  });
+  const expected = totals.expected;
+  const charged =
+    expected ?? (positions === undefined ? undefined : expectedTotals(positions, basics.mode));
+  if (charged !== undefined && compare(charged.gross, 0) <= 0) {
     refuse(
-      `Every invoice of this template would total ${expected.gross} ${basics.currency} gross. A ` +
+      `Every invoice of this template would total ${charged.gross} ${basics.currency} gross. A ` +
         "recurring invoice must charge something: check the positions (a credit to the customer " +
         "is a credit note, not a recurring invoice).",
     );
@@ -483,6 +515,7 @@ export async function prepareRecurringInvoiceUpdate(
       gross: storedAmount(doc.sumGross),
     },
     after: { header, headText, footText, timeToPay, positions, expected },
+    discounts: discounts.rows,
     stored,
     schedule,
     generation,
@@ -505,10 +538,9 @@ export async function prepareRecurringInvoiceUpdate(
       },
       generationOn: generation.changed ? generation.after === "on" : undefined,
       positions:
-        positions === undefined || expected === undefined
-          ? undefined
-          : { sent: positions, mode: basics.mode, expected },
+        positions === undefined ? undefined : { sent: positions, mode: basics.mode, expected },
       keptPositions: current.positions.length,
+      keptDiscounts: discounts.rows,
       changed,
     },
   };
@@ -560,8 +592,8 @@ export interface RecurringInvoiceUpdateResult {
 
 /**
  * Sends the prepared body (one request, never retried) and reads the template back: the invoice
- * with its positions, schedule and settings (`getInvoice`). A failing read-back names the
- * template as a completed write.
+ * with its positions, schedule, settings and discounts (`getInvoice`). A failing read-back names
+ * the template as a completed write.
  */
 export async function executeRecurringInvoiceUpdate(
   client: SevdeskClient,
@@ -580,7 +612,9 @@ export async function executeRecurringInvoiceUpdate(
   });
   const id = sameTemplateSaved(response, state.id);
   const saved = { objectName: "Invoice", id: String(id) };
-  const details = await readBack(saved, () => getInvoice(client, id, options));
+  const details = await readBack(saved, () =>
+    getInvoice(client, id, { ...options, withDiscount: true }),
+  );
   const schedule = details.invoice.schedule ?? {};
   // The schedule of a record that is no template any more is not read; its type note says so.
   const isTemplate = details.invoice.type.code === "WKR";
@@ -595,6 +629,7 @@ export async function executeRecurringInvoiceUpdate(
         ? settingsDifferences(state.generationOn, schedule)
         : []),
       ...positionNotes(state, details),
+      ...discountNotes(state.keptDiscounts, details.discount),
     ],
   };
 }
@@ -642,14 +677,45 @@ function positionNotes(state: RecurringInvoiceUpdateState, details: InvoiceDetai
     });
   }
   const gross = details.invoice.totals.gross?.amount;
-  if (gross !== undefined && compare(gross, sent.expected.gross) !== 0) {
+  const { expected } = sent;
+  if (gross !== undefined && expected !== undefined && compare(gross, expected.gross) !== 0) {
     notes.push(
       `sevDesk computed a gross total of ${gross} ${details.invoice.currency} per invoice; the ` +
-        `preview expected ${sent.expected.gross} ${details.invoice.currency}. Check the ` +
-        "template's positions and price mode in sevDesk before its next run.",
+        `preview expected ${expected.gross} ${details.invoice.currency}. Check the ` +
+        "template's positions, price mode and discount in sevDesk before its next run.",
     );
   }
   return notes;
+}
+
+/**
+ * A trusted note when the discounts on the whole document read back differ from the ones the
+ * template had (the change sends no discount keys; whether replacing every position keeps them is
+ * not recorded). Only counts are named, never the stored texts.
+ */
+function discountNotes(
+  kept: readonly DiscountRow[],
+  actual: DocumentDiscount | undefined,
+): string[] {
+  const items = actual?.items ?? [];
+  const same =
+    items.length === kept.length &&
+    kept.every((row, index) => {
+      const item = items[index];
+      return (
+        item !== undefined &&
+        (item.surcharge === true) === row.surcharge &&
+        item.kind === (row.percentage ? "percent" : "amount") &&
+        compare(item.value, row.value) === 0 &&
+        (item.basis === undefined ? undefined : item.basis === "net") === row.isNet
+      );
+    });
+  if (same) return [];
+  return [
+    `sevDesk lists ${String(items.length)} discount(s) on the whole template after the save; it ` +
+      `had ${String(kept.length)} before, which the change did not touch. Check the template's ` +
+      "discount and its total per invoice in sevDesk before its next run.",
+  ];
 }
 
 /** Which of name, quantity, unit price and tax rate differ between a sent and a stored position. */

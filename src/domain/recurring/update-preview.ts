@@ -8,6 +8,13 @@
  * The approval is also bound to the exact body sent (`update.ts`).
  */
 import { cleanText, trimmedText } from "../common.js";
+import {
+  type DiscountRow,
+  discountRowText,
+  severalDiscountsWarning,
+} from "../document-discounts.js";
+import { TEXT_MAX } from "../document-positions.js";
+import { storedDiscountState } from "../drafts/discount.js";
 import type { Amounts, DraftPosition, PriceMode } from "../drafts/positions.js";
 import { addressText, type DraftPreview, moneyText, type PreviewFact } from "../drafts/preview.js";
 import type { UpdateBasics } from "../drafts/shared.js";
@@ -90,8 +97,14 @@ export interface TemplateUpdatePreviewInput {
     readonly footText: string | undefined;
     readonly timeToPay: number | undefined;
     readonly positions: readonly DraftPosition[] | undefined;
+    /**
+     * With new positions: the totals including a kept discount; `undefined` when sevDesk computes
+     * them (see `updateTotals`).
+     */
     readonly expected: Amounts | undefined;
   };
+  /** The template's discounts on the whole document (D-116), which the change leaves alone. */
+  readonly discounts: readonly DiscountRow[];
   readonly stored: StoredSchedule;
   readonly schedule: ScheduleChange;
   readonly generation: GenerationChange;
@@ -121,6 +134,7 @@ const LABELS = {
     nextRun: "Next run",
     followingRuns: "Following runs",
     end: "End",
+    discount: "Discount on the whole document (Rabatt)",
     total: "Total per invoice",
     none: "none",
     days: "days",
@@ -148,6 +162,7 @@ const LABELS = {
     nextRun: "Nächste Ausführung",
     followingRuns: "Folgende Ausführungen",
     end: "Ende",
+    discount: "Rabatt auf den Gesamtbetrag",
     total: "Summe je Rechnung",
     none: "keines",
     days: "Tage",
@@ -252,12 +267,38 @@ function totalText(input: TemplateUpdatePreviewInput, lang: PreviewLanguage): st
     input.before.gross === undefined
       ? undefined
       : `${lang === "de" ? "brutto" : "gross"} ${moneyText(input.before.gross, currency, lang)}`;
-  const { expected } = input.after;
+  const { expected, positions } = input.after;
   if (expected === undefined) {
+    if (positions !== undefined) {
+      // New positions with a kept discount this server does not compute (see the warnings).
+      const computed =
+        lang === "de" ? "berechnet sevDesk (siehe Hinweise)" : "computed by sevDesk (see warnings)";
+      return arrow(before, computed, LABELS[lang].none);
+    }
     if (before === undefined) return undefined;
     return lang === "de" ? `unverändert: ${before}` : `unchanged: ${before}`;
   }
   return arrow(before, totalsText(expected, currency, lang), LABELS[lang].none);
+}
+
+/**
+ * The template's discounts on the whole document, which the change keeps: each as every preview
+ * shows one (`discountRowText`), with its printed text cleaned (upstream text), or `undefined`.
+ */
+function discountFactText(
+  input: TemplateUpdatePreviewInput,
+  lang: PreviewLanguage,
+): string | undefined {
+  const { discounts } = input;
+  if (discounts.length === 0) return undefined;
+  const list = discounts
+    .map((row) => {
+      const text = cleanText(row.text, TEXT_MAX.short);
+      const quoted = text === undefined ? "" : lang === "de" ? ` („${text}“)` : ` ("${text}")`;
+      return `${discountRowText(row, input.basics.currency, lang)}${quoted}`;
+    })
+    .join("; ");
+  return lang === "de" ? `unverändert: ${list}` : `unchanged: ${list}`;
 }
 
 function taxRuleText(input: TemplateUpdatePreviewInput, lang: PreviewLanguage): string | undefined {
@@ -419,6 +460,7 @@ function facts(input: TemplateUpdatePreviewInput, lang: PreviewLanguage): Previe
   if (input.state === "ended" || input.projected === undefined) {
     add(t.end, schedule.endDate === undefined ? t.none : dateText(schedule.endDate, lang));
   }
+  add(t.discount, discountFactText(input, lang));
   add(t.total, totalText(input, lang));
   return list;
 }
@@ -522,7 +564,64 @@ function firstRunToday(stored: StoredSchedule): Phrase {
     : runTodayAtStoredTime(stored.runTime, "change");
 }
 
-/** Consequences first, then notes on the schedule, then the tax rule. */
+/**
+ * New positions on a template with a discount on the whole document: the body leaves the
+ * discount alone, but whether sevDesk keeps it when every position is replaced is not recorded
+ * (D-116 records the replacement of a discount with `invoicePosSave: null` only). `counted`: the
+ * total per invoice in the preview counts the discount.
+ */
+function keptDiscountUnrecorded(counted: boolean): Phrase {
+  return phrase(
+    "This template has a discount on the whole document, which the change leaves alone. Whether " +
+      "sevDesk keeps it when every position is replaced is not recorded" +
+      (counted ? "; the total per invoice above counts it as kept." : ".") +
+      " The result says whether sevDesk still lists it.",
+    "Diese Vorlage hat einen Rabatt auf den Gesamtbetrag, den die Änderung nicht berührt. Ob " +
+      "sevDesk ihn behält, wenn alle Positionen ersetzt werden, ist nicht erfasst" +
+      (counted ? "; die Summe je Rechnung oben rechnet ihn als erhalten ein." : ".") +
+      " Das Ergebnis sagt, ob sevDesk ihn danach noch führt.",
+  );
+}
+
+/** New positions whose total with the kept discounts this server does not compute. */
+const DISCOUNTS_NOT_COMPUTED: Readonly<Record<"one" | "other", Phrase>> = {
+  one: phrase(
+    "The total per invoice with the kept discount is not computed here (this server computes it " +
+      "only where that is recorded: net prices, one tax rate, a discount no larger than the net " +
+      "total): sevDesk computes it. Check it in the result before the template's next run.",
+    "Die Summe je Rechnung mit dem erhaltenen Rabatt wird hier nicht berechnet (dieser Server " +
+      "berechnet sie nur, wo das erfasst ist: Nettopreise, ein Steuersatz, ein Rabatt bis zum " +
+      "Nettobetrag): sevDesk berechnet sie. Prüfe sie im Ergebnis vor der nächsten Ausführung der " +
+      "Vorlage.",
+  ),
+  other: phrase(
+    "The template's discounts on the whole document (several, a surcharge or a gross amount) are " +
+      "not computed here: sevDesk computes the total per invoice. Check it in the result before " +
+      "the template's next run.",
+    "Die Rabatte der Vorlage auf den Gesamtbetrag (mehrere, ein Aufschlag oder ein Bruttobetrag) " +
+      "werden hier nicht berechnet: sevDesk berechnet die Summe je Rechnung. Prüfe sie im " +
+      "Ergebnis vor der nächsten Ausführung der Vorlage.",
+  ),
+};
+
+/** What the preview says about the template's discounts on the whole document. */
+function discountWarnings(input: TemplateUpdatePreviewInput, lang: PreviewLanguage): string[] {
+  const { discounts } = input;
+  const { positions, expected } = input.after;
+  const state = storedDiscountState(discounts);
+  const list: (string | undefined)[] = [
+    severalDiscountsWarning(discounts.length)?.[lang],
+    positions !== undefined && discounts.length > 0
+      ? keptDiscountUnrecorded(expected !== undefined)[lang]
+      : undefined,
+    positions !== undefined && expected === undefined && state.kind !== "none"
+      ? DISCOUNTS_NOT_COMPUTED[state.kind][lang]
+      : undefined,
+  ];
+  return list.filter((warning): warning is string => warning !== undefined);
+}
+
+/** Consequences first, then notes on the schedule, then the discount, then the tax rule. */
 function warnings(
   input: TemplateUpdatePreviewInput,
   changed: readonly ChangeName[],
@@ -554,6 +653,7 @@ function warnings(
       ? SHORT_MONTH_RUNS[lang]
       : undefined,
     active && projected !== undefined ? endOnRunWarning(projected, lang) : undefined,
+    ...discountWarnings(input, lang),
     basics.regime === undefined && taxOrPositions
       ? lang === "de"
         ? UNKNOWN_REGIME_WARNING_DE

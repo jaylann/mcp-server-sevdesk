@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/invoices.md sha256:4f3074fc59a4 -->
+<!-- translated-from: docs/guides/invoices.md sha256:a51cb2a22b46 -->
 
 # Rechnungen: vom Entwurf bis zur Zahlung
 
@@ -472,10 +472,14 @@ ein Entwurf, den sevDesk an dem Tag schon erzeugt hat, den alten Inhalt behält.
   heute liegt: sevDesk würde nachholen und für jeden versäumten Zeitraum einen Entwurf erzeugen,
   einen pro Minute. Gib im selben Aufruf ein neues Startdatum an. Eine nächste Ausführung heute ist
   sofort fällig, bei einer in der Web-App angelegten Vorlage zu ihrer gespeicherten Uhrzeit.
+- Ein **Rabatt auf den Gesamtbetrag** der Vorlage bleibt, wie er ist; die Änderung setzt nie
+  einen. Bei neuen Positionen rechnet die Summe je Rechnung ihn ein, wo das erfasst ist (ein
+  Nettorabatt, Nettopreise, ein Steuersatz), sonst berechnet sevDesk die Summe. Ob sevDesk den
+  Rabatt behält, wenn alle Positionen ersetzt werden, ist nicht erfasst; die Vorschau sagt das.
 
 Nach dem Speichern liest der Assistent die Vorlage zurück und nennt alles, was sevDesk anders
-gespeichert hat, auch eine Position, deren Änderung sevDesk übergangen hat, und einen Schalter,
-der nicht übernommen wurde.
+gespeichert hat, auch eine Position, deren Änderung sevDesk übergangen hat, einen Schalter, der
+nicht übernommen wurde, und einen Rabatt, der nicht mehr da ist.
 
 > Beende das Wartungs-Abo der Musterfirma.
 

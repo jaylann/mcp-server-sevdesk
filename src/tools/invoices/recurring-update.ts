@@ -11,6 +11,7 @@
  */
 import { z } from "zod";
 
+import { documentDiscountSchema } from "../../domain/document-discounts.js";
 import { positionDtoSchema } from "../../domain/document-positions.js";
 import { invoiceDetailSchema } from "../../domain/invoices.js";
 import { storedScheduleSchema } from "../../domain/recurring/schedule.js";
@@ -30,6 +31,12 @@ const output = z.object({
     .boolean()
     .describe("False when sevDesk had more position rows than could be read back."),
   schedule: storedScheduleSchema.describe("The schedule as sevDesk stores it now."),
+  discount: documentDiscountSchema
+    .optional()
+    .describe(
+      "Discount on the whole template (Rabatt) as stored now; left out when there is none. The " +
+        "change never sets it.",
+    ),
   notes: z
     .array(z.string())
     .optional()
@@ -75,13 +82,14 @@ export const invoiceUpdateRecurringTool = defineWriteTool({
       signal: ctx.signal,
       cacheOwner: ctx.config,
     });
-    const { invoice, positions, positionsComplete } = result.details;
+    const { invoice, positions, positionsComplete, discount } = result.details;
     return {
       data: {
         invoice,
         positions: [...positions],
         positionsComplete,
         schedule: result.schedule,
+        ...(discount === undefined ? {} : { discount }),
         ...(result.notes.length === 0 ? {} : { notes: [...result.notes] }),
       },
       summary:

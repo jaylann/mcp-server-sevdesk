@@ -438,9 +438,14 @@ keeps the old content.
   would catch up and create one draft per missed period, a minute apart. Give a new start date in
   the same call. A next run today is due at once, or at its stored time of day for a template made
   in the web app.
+- A **discount on the whole document** (Rabatt) on the template stays as it is; the change never
+  sets one. With new positions the total per invoice counts it where that is recorded (one net
+  discount, net prices, one tax rate), else sevDesk computes the total. Whether sevDesk keeps the
+  discount when every position is replaced is not recorded, so the preview says so.
 
 After saving, the assistant reads the template back and names every way sevDesk stored something
-else, including a position whose change sevDesk ignored and a switch that did not take.
+else, including a position whose change sevDesk ignored, a switch that did not take and a discount
+that is no longer there.
 
 > End the Musterfirma maintenance subscription.
 
