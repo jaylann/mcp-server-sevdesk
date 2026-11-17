@@ -5,7 +5,8 @@
  * ways: its recorded keys and scalar types, a read through `sevdesk_api_get`, and a run of the
  * probe that asked the question. The tools #86 and #87 add parse these files with their own
  * schemas and extend this test: the custom field settings go through `listCustomFieldSettings`
- * (`sevdesk_reference_lookup` kind `contact_custom_fields`, the contact tools' `customFields`).
+ * (`sevdesk_reference_lookup` kind `contact_custom_fields`, the contact tools' `customFields`),
+ * the cost centre list through `listCostCentres` (`src/domain/cost-centres.ts`).
  *
  * Not committed: `contacts/custom-fields.json` (`GET /ContactCustomField`). The recording answered
  * an empty list (the probe had deleted its values), which pins no row shape; the value rows are in
@@ -18,6 +19,7 @@ import { runProbes } from "../../scripts/lib/probes/runner.js";
 import { createScrubber } from "../../scripts/lib/scrub.js";
 import { apiGet } from "../../src/domain/api-get.js";
 import { listCustomFieldSettings } from "../../src/domain/contact-custom-fields.js";
+import { listCostCentres } from "../../src/domain/cost-centres.js";
 import type { Tier } from "../../src/safety/tiers.js";
 import { createSevdeskClient } from "../../src/sevdesk/client.js";
 import { apiGetTool } from "../../src/tools/advanced/api-get.js";
@@ -251,6 +253,26 @@ describe("recorded values the tools will rely on", () => {
     expect(settings).toEqual({
       items: [{ id: 19498, name: "Mustername 4" }],
       total: 1,
+      truncated: false,
+    });
+  });
+});
+
+describe("the production parsers on the recorded answers", () => {
+  it("listCostCentres reads the recorded cost centres with an explicit limit (D-091)", async () => {
+    const body = bodyOf("recorded/2026-11-16/cost-centres/cost-centres-list.json");
+    const { client, fake } = realClient(jsonResponse(body));
+    const list = await listCostCentres(client);
+    expect(fake.requests).toHaveLength(1);
+    expect(fake.requests[0]?.url.pathname).toBe("/api/v1/CostCentre");
+    expect(fake.requests[0]?.url.searchParams.get("limit")).toBe("1000");
+    expect(list).toEqual({
+      items: [
+        { id: 344964, number: "M62573C", name: "Mustername 1" },
+        { id: 344962, number: "M62573A", name: "Mustername 2" },
+        { id: 344959, number: "MCP1", name: "Mustername 3" },
+      ],
+      total: 3,
       truncated: false,
     });
   });

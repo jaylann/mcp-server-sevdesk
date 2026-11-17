@@ -171,6 +171,9 @@ const invoiceDocumentSchema = z
     invoiceType: z.literal("RE"),
     status: z.literal(100),
     ...invoiceContentShape,
+    // null removes a stored cost centre on an update (recorded 2026-11-17, D-092). Recurring
+    // templates keep the shared shape, which refuses null.
+    costCentre: ref("CostCentre").nullable().optional(),
   })
   .refine(oneTaxSetting, TAX_MESSAGE);
 
@@ -222,6 +225,8 @@ const creditNoteDocumentSchema = z
     ...structuredAddressShape,
     customerInternalNote: z.string().optional(),
     paymentMethod: ref("PaymentMethod").optional(),
+    // null removes a stored cost centre on an update (recorded 2026-11-17, D-092).
+    costCentre: ref("CostCentre").nullable().optional(),
     origin: z.strictObject({ id, objectName: z.string().min(1) }).optional(),
   })
   .refine(oneTaxSetting, TAX_MESSAGE)

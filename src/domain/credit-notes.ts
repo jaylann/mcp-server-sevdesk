@@ -103,6 +103,7 @@ const creditNoteRecordSchema = z.object({
   origin: zOptionalRef,
   payDate: zDateValue,
   enshrined: zDateValue,
+  costCentre: zOptionalRef,
 });
 
 type CreditNoteRecord = z.output<typeof creditNoteRecordSchema>;
@@ -162,6 +163,11 @@ export const creditNoteDetailSchema = creditNoteRowSchema
       })
       .optional(),
     contactPersonId: z.number().int().optional(),
+    costCentreId: z
+      .number()
+      .int()
+      .optional()
+      .describe("Kostenstelle id; see sevdesk_reference_lookup kind=cost_centres."),
     internalNote: z.string().optional(),
     headText: z.string().optional(),
     footText: z.string().optional(),
@@ -213,6 +219,7 @@ function toCreditNoteDetail(record: CreditNoteRecord): CreditNoteDetail {
     tax: taxDto(record),
     address: addressDto(record),
     contactPersonId: refId(record.contactPerson, "a credit note's contact person"),
+    costCentreId: record.costCentre?.id,
     internalNote: cleanText(record.customerInternalNote, TEXT_MAX.long),
     headText: cleanText(record.headText, TEXT_MAX.long),
     footText: cleanText(record.footText, TEXT_MAX.long),

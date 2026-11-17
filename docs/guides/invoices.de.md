@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/invoices.md sha256:a51cb2a22b46 -->
+<!-- translated-from: docs/guides/invoices.md sha256:175df045de07 -->
 
 # Rechnungen: vom Entwurf bis zur Zahlung
 
@@ -90,6 +90,15 @@ deshalb abgelehnt wird der Entwurf nie.
 
 Eine Position kann einen Artikel aus [`sevdesk_parts_list`](../tools.md#sevdesk_parts_list)
 verknüpfen, Bezeichnung und Preis kommen aber trotzdem aus der Position.
+
+> Buch sie auf die Kostenstelle München.
+
+Der Entwurf kann eine Kostenstelle deines Kontos tragen, angegeben mit ihrer ID, Nummer oder ihrem
+Namen; [`sevdesk_reference_lookup`](../tools.md#sevdesk_reference_lookup) mit der Art
+`cost_centres` listet sie auf. Ein Name oder eine Nummer, die das Konto nicht kennt oder die zu
+mehreren Kostenstellen passt, wird abgelehnt, bevor etwas gespeichert wird. Eine Änderung ohne
+Kostenstelle behält die gespeicherte; `removeCostCentre` nimmt sie wieder vom Entwurf, und die
+Vorschau nennt die entfernte.
 
 ### Ein Rabatt auf die ganze Rechnung
 
@@ -359,7 +368,8 @@ Für eine bezahlte oder teilweise bezahlte Rechnung legt
 Bestätigung) passt den Entwurf so an, wie du eine Rechnung änderst: Er ändert nur die Felder, die du
 nennst, und neue Positionen ersetzen alle gespeicherten. Die Gutschrift behält ihre Nummer und die
 Rechnung, die sie mindert; ihre Positionen dürfen nur die Steuersätze dieser Rechnung haben, und
-Kontakt und Währung bleiben die der Rechnung. Ändern lassen sich nur Entwürfe. Fertiggestellt wird
+Kontakt und Währung bleiben die der Rechnung. Eine Kostenstelle setzt oder entfernt er wie bei einer
+Rechnung (`costCentre`, `removeCostCentre`). Ändern lassen sich nur Entwürfe. Fertiggestellt wird
 die Gutschrift mit
 [`sevdesk_credit_note_finalize`](../tools.md#sevdesk_credit_note_finalize) oder per E-Mail versendet
 mit [`sevdesk_credit_note_send_email`](../tools.md#sevdesk_credit_note_send_email), und eine

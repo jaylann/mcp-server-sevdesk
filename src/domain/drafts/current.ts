@@ -116,7 +116,8 @@ const zSourceRef = z
 /**
  * Credit notes (recorded 2026-11-16, spec/deviations.md D-110): besides the shared fields, the
  * number, type, dates, booking category and source invoice (`refSrcInvoice`, and `origin` on
- * credit notes made by `createFromInvoice`), cash discount, payment method, structured address.
+ * credit notes made by `createFromInvoice`), cash discount, payment method, cost centre (D-092),
+ * structured address.
  */
 const currentCreditNoteSchema = z.object({
   ...documentShape,
@@ -132,6 +133,7 @@ const currentCreditNoteSchema = z.object({
   addressZip: zText,
   addressCity: zText,
   paymentMethod: zOptionalRef,
+  costCentre: zOptionalRef,
   bookingCategory: zText,
   refSrcInvoice: zSourceRef,
   enshrined: zDate,

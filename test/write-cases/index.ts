@@ -1,6 +1,7 @@
 import { withCountryRoute } from "../helpers/country-route.js";
 import type { WriteToolCase } from "../helpers/write-cases.js";
 import { BANKING_CASES } from "./banking.js";
+import { COST_CENTRES_CASES } from "./cost-centres.js";
 import { DRAFTS_CASES } from "./drafts.js";
 import { LIFECYCLE_CASES } from "./lifecycle.js";
 import { MASTERDATA_CASES } from "./masterdata.js";
@@ -21,4 +22,5 @@ export const WRITE_TOOL_CASES: readonly WriteToolCase[] = [
   ...REPORTS_CASES,
   ...RECURRING_CASES,
   ...TAGS_CASES,
+  ...COST_CENTRES_CASES,
 ].map((testCase) => ({ ...testCase, routes: withCountryRoute(testCase.routes) }));

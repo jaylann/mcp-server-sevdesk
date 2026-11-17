@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:182ca29899c0 -->
+<!-- translated-from: docs/faq.md sha256:b6974694240b -->
 
 # Häufige Fragen
 
@@ -278,6 +278,22 @@ hinzu oder entfernt ihn, ein Dokument pro Aufruf. Tags haben einen Namen, keine 
 sevDesk vergleicht Namen ohne Rücksicht auf Groß- und Kleinschreibung und Akzente („Café“ ist
 „cafe“): Ein Name, den sevDesk noch nicht kennt, legt den Tag an, und wer einen Tag von seinem
 letzten Dokument entfernt, löscht ihn in sevDesk; die Vorschau sagt beides.
+
+### Kann es Rechnungen und Belege auf eine Kostenstelle buchen?
+
+Ja. Die Werkzeuge, die Entwürfe von Rechnungen, Belegen und Gutschriften anlegen und ändern
+(`sevdesk_invoice_create_draft`, `sevdesk_invoice_update_draft`, `sevdesk_voucher_create_draft`,
+`sevdesk_voucher_update_draft`, `sevdesk_credit_note_create_draft`,
+`sevdesk_credit_note_update_draft`), nehmen das Argument `costCentre`: die ID der Kostenstelle oder
+ihre Nummer oder ihren Namen als Text, verglichen ohne Rücksicht auf Groß- und Kleinschreibung und
+Akzente. `sevdesk_reference_lookup` mit der Art `cost_centres` listet die Kostenstellen des
+Kontos. Ein unbekannter Name oder einer, der zu mehreren Kostenstellen passt, wird abgelehnt, bevor
+etwas gespeichert wird. `sevdesk_invoices_list` und `sevdesk_vouchers_list` filtern nach
+Kostenstelle („die Ausgaben dieses Monats auf der Kostenstelle München“), die Abrufwerkzeuge zeigen
+sie, und die Freigabe beim Fertigstellen nennt sie. Aufträge nehmen keine: sevDesk nimmt eine
+Kostenstelle am Auftrag an, speichert sie aber nicht. Eine Änderung ohne `costCentre` behält die
+gespeicherte, und `removeCostCentre: true` nimmt sie mit den drei Änderungswerkzeugen von einem
+Entwurf. Die Kostenstellen selbst verwaltest du in sevDesk.
 
 ## Hilfe
 

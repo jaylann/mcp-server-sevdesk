@@ -50,6 +50,7 @@ import {
   statusDto,
   statusDtoSchema,
 } from "./common.js";
+import { type CostCentre, costCentreFilterQuery, inCostCentre } from "./cost-centres.js";
 import { documentTotalsSchema, listDocuments, taxDtoSchema } from "./document-positions.js";
 import { VOUCHER_STATUS_CODES, VOUCHER_TYPE_CODES } from "./filter-keys.js";
 import { voucherLink } from "./links.js";
@@ -149,6 +150,7 @@ const voucherRecordSchema = z.object({
   paymentDeadline: zBerlinDate,
   deliveryDate: zBerlinDate,
   deliveryDateUntil: zBerlinDate,
+  costCentre: zOptionalRef,
 });
 
 type VoucherRecord = z.output<typeof voucherRecordSchema>;
@@ -223,6 +225,11 @@ export const voucherDtoSchema = z.object({
     .boolean()
     .optional()
     .describe("Whether a receipt file is attached, when sevDesk reports it."),
+  costCentreId: z
+    .number()
+    .int()
+    .optional()
+    .describe("Kostenstelle id; see sevdesk_reference_lookup kind=cost_centres."),
   warnings: z.array(z.string()).optional().describe("Problems found in the data, if any."),
   link: z.string().optional().describe("Opens the voucher in the sevDesk web app."),
 });
@@ -335,6 +342,7 @@ function toVoucherDto(record: VoucherRecord, raw: unknown): VoucherDto {
     paid,
     // Only when the record carries the key: the recorded list response has no `document` at all.
     hasDocument: hasKey(raw, "document") ? record.document !== undefined : undefined,
+    costCentreId: record.costCentre?.id,
     warnings,
     link: voucherLink(record.id),
   });
@@ -438,6 +446,8 @@ export interface VoucherListParams {
   readonly type?: VoucherTypeKey | undefined;
   /** Only vouchers with this tag (`resolveTagFilter`), re-checked on every row. */
   readonly tagFilter?: TagListFilter | undefined;
+  /** Only vouchers on this cost centre (`resolveCostCentreFilter`), re-checked on every row. */
+  readonly costCentreFilter?: CostCentre | undefined;
   readonly limit: number;
   readonly offset: number;
 }
@@ -461,7 +471,7 @@ export interface VoucherListResult {
  * The date range goes out as Unix seconds (`startDate`/`endDate`, starting one second before the
  * first day) and every voucher date is checked against it again, so the first day counts under
  * either reading of the spec (see `documentDateFilter`); that re-check only drops rows and keeps
- * sevDesk's paging. So does the tag's (`carriesTag`).
+ * sevDesk's paging. So do the tag's (`carriesTag`) and the cost centre's (`inCostCentre`).
  */
 export async function listVouchers(
   client: SevdeskClient,
@@ -473,6 +483,7 @@ export async function listVouchers(
   const query: Record<string, QueryValue> = {
     ...dates.query,
     ...tagFilterQuery(params.tagFilter),
+    ...costCentreFilterQuery(params.costCentreFilter),
   };
   if (params.status !== undefined) query["status"] = VOUCHER_STATUS_CODES[params.status];
   if (params.kind !== undefined) query["creditDebit"] = creditDebitForKind(params.kind);
@@ -492,7 +503,10 @@ export async function listVouchers(
     offset: params.offset,
     map: (raw) => toVoucherDto(parseVoucherRecord(raw), raw),
     keep: type === undefined ? undefined : (item) => item.type === type,
-    recheck: (item) => dates.contains(item.date) && carriesTag(params.tagFilter, item.id),
+    recheck: (item) =>
+      dates.contains(item.date) &&
+      carriesTag(params.tagFilter, item.id) &&
+      inCostCentre(params.costCentreFilter, item.costCentreId),
     signal,
   });
   return {

@@ -74,7 +74,8 @@ const voucherSchema = z
     currency: voucherCurrencyInput,
     propertyExchangeRate: exchangeRateInput.optional(),
     propertyForeignCurrencyDeadline: germanDate.optional(),
-    costCentre: ref("CostCentre").optional(),
+    // null removes a stored cost centre on an update (recorded 2026-11-17, D-092).
+    costCentre: ref("CostCentre").nullable().optional(),
   })
   .refine((voucher) => {
     const count =

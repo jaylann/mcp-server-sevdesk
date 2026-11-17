@@ -109,17 +109,33 @@ export function taxText(
   return rule === undefined ? "stored tax rule" : `tax rule ${taxRuleLabel(rule)}`;
 }
 
-/** Throws a `validation` error when an update call changes nothing. */
-export function assertChanges(args: object, noun: string): void {
-  const given = Object.entries(args).filter(
-    ([key, value]) => key !== "id" && key !== "dryRun" && value !== undefined,
-  );
+/**
+ * Throws a `validation` error when an update call changes nothing; returns the names of the
+ * fields it gives (besides `id` and `dryRun`). `flags` names boolean arguments that ask for
+ * something only when true, such as `removeCostCentre`: `false` counts as left out, so a call with
+ * nothing but `false` is refused instead of saving the draft unchanged.
+ */
+export function assertChanges(
+  args: object,
+  noun: string,
+  flags: readonly string[] = [],
+): readonly string[] {
+  const given = Object.entries(args)
+    .filter(
+      ([key, value]) =>
+        key !== "id" &&
+        key !== "dryRun" &&
+        value !== undefined &&
+        !(value === false && flags.includes(key)),
+    )
+    .map(([key]) => key);
   if (given.length === 0) {
     throw new SevdeskError({
       kind: "validation",
       message: `Nothing to change: give at least one field of the ${noun} besides id.`,
     });
   }
+  return given;
 }
 
 /** Records what an update changes, for the preview's action and facts. */

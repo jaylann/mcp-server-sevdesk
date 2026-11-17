@@ -17,6 +17,7 @@ import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
 import { parseUpstream } from "../sevdesk/schema.js";
 import type { QueryValue, SevdeskClient } from "../sevdesk/types.js";
 import { documentDateFilter, moneyFromUpstream, moneySchema } from "./common.js";
+import { type CostCentre, costCentreFilterQuery, inCostCentre } from "./cost-centres.js";
 import {
   countryCodeSchema,
   type CountryReadOptions,
@@ -163,6 +164,11 @@ export const invoiceRowSchema = z.object({
         "invoice itself keeps status 1000 (paid) in sevDesk's API.",
     ),
   header: z.string().optional().describe("Document title (Betreff)."),
+  costCentreId: z
+    .number()
+    .int()
+    .optional()
+    .describe("Kostenstelle id; see sevdesk_reference_lookup kind=cost_centres."),
   eInvoice: z
     .boolean()
     .optional()
@@ -232,7 +238,6 @@ export const invoiceDetailSchema = invoiceRowSchema
       .optional()
       .describe("Recurring invoice (Abo-Rechnung) schedule, when set."),
     contactPersonId: z.number().int().optional().describe("SevUser responsible for the invoice."),
-    costCentreId: z.number().int().optional().describe("Kostenstelle."),
     internalNote: z.string().optional().describe("Internal note (not printed)."),
     headText: z.string().optional().describe("Intro text (may contain HTML)."),
     footText: z.string().optional().describe("Closing text (may contain HTML)."),
@@ -283,6 +288,7 @@ function toInvoiceRow(record: InvoiceRecord, today: string): InvoiceRow {
     cancelsInvoiceId:
       typeCode === "SR" && record.origin?.objectName === "Invoice" ? record.origin.id : undefined,
     header: cleanText(record.header, TEXT_MAX.short),
+    costCentreId: record.costCentre?.id,
     eInvoice: record.propertyIsEInvoice,
     sent: sentDto(record),
     enshrined: berlinDate(record.enshrined) === undefined ? undefined : true,
@@ -325,7 +331,6 @@ function toInvoiceDetail(record: InvoiceRecord, today: string): InvoiceDetail {
     reminder: Object.keys(reminder).length === 0 ? undefined : reminder,
     recurring: Object.keys(recurring).length === 0 ? undefined : recurring,
     contactPersonId: refId(record.contactPerson, "an invoice's contact person"),
-    costCentreId: record.costCentre?.id,
     internalNote: cleanText(record.customerInternalNote, TEXT_MAX.long),
     headText: cleanText(record.headText, TEXT_MAX.long),
     footText: cleanText(record.footText, TEXT_MAX.long),
@@ -375,6 +380,8 @@ export interface InvoiceListParams {
   readonly overdueOnly?: boolean | undefined;
   /** Only invoices with this tag (`resolveTagFilter`), re-checked on every row. */
   readonly tagFilter?: TagListFilter | undefined;
+  /** Only invoices on this cost centre (`resolveCostCentreFilter`), re-checked on every row. */
+  readonly costCentreFilter?: CostCentre | undefined;
   readonly limit: number;
   readonly offset: number;
   /** Berlin `YYYY-MM-DD` used for "today" (tests); defaults to the current date. */
@@ -387,8 +394,8 @@ export interface InvoiceListParams {
  * here (see `listDocuments`): the overdue filter, whose server-side form (`delinquent`) the web
  * app only uses together with `status=200` and `notPartiallyPaid`, and exact re-checks of the
  * number (see {@link matchesNumber}) and the type, which sevDesk would ignore silently if it did
- * not understand them (spec/deviations.md D-015, D-035). The date range and the tag are
- * re-checked without a scan (see `documentDateFilter`, `carriesTag`).
+ * not understand them (spec/deviations.md D-015, D-035). The date range, the tag and the cost
+ * centre are re-checked without a scan (see `documentDateFilter`, `carriesTag`, `inCostCentre`).
  */
 export async function listInvoices(
   client: SevdeskClient,
@@ -404,6 +411,7 @@ export async function listInvoices(
     embed,
     ...dates.query,
     ...tagFilterQuery(params.tagFilter),
+    ...costCentreFilterQuery(params.costCentreFilter),
   };
   if (params.status !== undefined) query["status"] = INVOICE_STATUS_FILTERS[params.status];
   if (type !== undefined) query["invoiceType"] = type;
@@ -432,7 +440,10 @@ export async function listInvoices(
       matchesNumber(params.number),
       type === undefined ? undefined : (row: InvoiceRow) => row.type.code === type,
     ),
-    recheck: (row) => dates.contains(row.date) && carriesTag(params.tagFilter, row.id),
+    recheck: (row) =>
+      dates.contains(row.date) &&
+      carriesTag(params.tagFilter, row.id) &&
+      inCostCentre(params.costCentreFilter, row.costCentreId),
     signal,
   });
 }

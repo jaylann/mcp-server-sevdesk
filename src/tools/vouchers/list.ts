@@ -2,6 +2,12 @@ import { z } from "zod";
 
 import { dateRangeInputShape } from "../../domain/common.js";
 import {
+  costCentreFilterInputShape,
+  costCentreFilterOutput,
+  costCentreFilterOutputShape,
+  resolveCostCentreFilter,
+} from "../../domain/cost-centres.js";
+import {
   documentListData,
   documentListSummary,
   localFilterOutputShape,
@@ -33,6 +39,7 @@ const output = z.object({
   ...pageOutputShape,
   ...localFilterOutputShape,
   ...tagFilterOutputShape,
+  ...costCentreFilterOutputShape,
 });
 
 /** `sevdesk_vouchers_list`: find receipts (Belege) with sevDesk's own filters. */
@@ -44,7 +51,7 @@ export const vouchersListTool = defineTool({
     "income documents (Einnahmen, kind=revenue). Filter by status (draft = Entwurf, open = " +
     "offen/fällig, transferred = überwiesen, partially_paid, paid = bezahlt), kind, supplier " +
     "contact id or supplier name, Belegnummer/description, voucher date range, type " +
-    "(normal or recurring) and tag (by name). Filters run in sevDesk; the type is also re-checked here (then " +
+    "(normal or recurring), tag (by name) and costCentre (Kostenstelle). Filters run in sevDesk; the type is also re-checked here (then " +
     "rows are scanned, total is left out and filteredLocally is set). Exact amounts. " +
     "Paged: pass nextOffset as offset while hasMore is true. Use detail=summary to browse/find. Use sevdesk_voucher_get for positions, tax rule and booking accounts. " +
     "Find supplier ids with sevdesk_contacts_search.",
@@ -87,14 +94,16 @@ export const vouchersListTool = defineTool({
     ...dateRangeInputShape,
     type: z.enum(VOUCHER_TYPE_KEYS).optional().describe("normal (VOU) or recurring (RV)."),
     ...tagFilterInputShape,
+    ...costCentreFilterInputShape,
     ...pagingInputShape({ limit: 25, max: 100 }),
   }),
   output,
   handler: async (args, ctx) => {
+    const costCentreFilter = await resolveCostCentreFilter(ctx.client, args.costCentre, ctx.signal);
     const tagFilter = await resolveTagFilter(ctx.client, args.tag, "voucher", ctx.signal);
     const { items, window, state, filteredLocally } = await listVouchers(
       ctx.client,
-      { ...args, tagFilter },
+      { ...args, tagFilter, costCentreFilter },
       ctx.signal,
     );
     const page = {
@@ -109,6 +118,7 @@ export const vouchersListTool = defineTool({
         ...documentListData(page, args),
         items: args.detail === "summary" ? items.map(voucherSummary) : [...items],
         ...tagFilterOutput(tagFilter),
+        ...costCentreFilterOutput(costCentreFilter),
       },
       summary:
         documentListSummary("Vouchers", "matching vouchers", page, args) + tagFilterNote(tagFilter),

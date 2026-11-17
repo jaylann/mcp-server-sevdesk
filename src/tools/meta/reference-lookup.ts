@@ -5,6 +5,7 @@ import {
   customFieldSettingDtoSchema,
   listCustomFieldSettings,
 } from "../../domain/contact-custom-fields.js";
+import { costCentreDtoSchema, listCostCentres } from "../../domain/cost-centres.js";
 import { listLetterpapers, listTemplates } from "../../domain/layouts.js";
 import type { SalesKind } from "../../domain/lifecycle/documents.js";
 import { loadReceiptGuidance, RECEIPT_TYPES } from "../../domain/receipt-guidance.js";
@@ -34,6 +35,7 @@ const LOOKUP_KINDS = [
   "countries",
   "units",
   "payment_methods",
+  "cost_centres",
   "receipt_guidance",
   "letterpapers",
   "templates",
@@ -217,6 +219,10 @@ const output = z.object({
   countries: z.array(countryItem).optional(),
   units: z.array(unitItem).optional(),
   paymentMethods: z.array(paymentMethodItem).optional(),
+  costCentres: z
+    .array(costCentreDtoSchema)
+    .optional()
+    .describe("Kind cost_centres: the account's Kostenstellen."),
   contactCustomFields: z
     .array(customFieldSettingDtoSchema)
     .optional()
@@ -252,7 +258,8 @@ export const referenceLookupTool = defineTool({
     "(Steuerregeln for Update 2.0, e.g. 1 = steuerpflichtig, 11 = Kleinunternehmer §19), " +
     "contact_categories (Kunde, Lieferant, …), status_codes (Entwurf, offen, bezahlt per " +
     "document type), document_types (RE, AN, …), users (SevUser), countries (StaticCountry), " +
-    "units (Einheiten), payment_methods (Zahlungsarten) and receipt_guidance (Kontierungshilfe: " +
+    "units (Einheiten), payment_methods (Zahlungsarten), cost_centres (Kostenstellen: id, " +
+    "number, name) and receipt_guidance (Kontierungshilfe: " +
     "which booking account (accountDatev) allows which tax rules and tax rates for expense or " +
     "revenue receipts (Belege); filter with accountNumber, taxRuleId and receiptType, paged " +
     "with limit/offset), letterpapers (Briefpapiere), templates (Vorlagen, with documentType), " +
@@ -602,6 +609,14 @@ async function lookup(
         .map((method) => ({ ...method }));
       return { ...upstreamCounts(kind, list, paymentMethods.length), paymentMethods };
     }
+    case "cost_centres": {
+      const list = await listCostCentres(ctx.client, ctx.signal);
+      const costCentres = list.items
+        .filter((centre) => keep(centre.id, centre.number, centre.name))
+        .map((centre) => ({ ...centre }));
+      // The domain's flag: it also counts a full page without `total` as cut.
+      return { ...upstreamCounts(kind, list, costCentres.length, list.truncated), costCentres };
+    }
     case "contact_custom_fields": {
       const list = await listCustomFieldSettings(ctx.client, ctx.signal);
       const contactCustomFields = list.items
@@ -624,17 +639,22 @@ function counts(
   return { kind, source, total, returned, truncated: false, hasMore: false, limit: null };
 }
 
+/**
+ * The counts of a list read from sevDesk. `truncated` defaults to "sevDesk's total is larger than
+ * what was read"; a domain reader that knows better (a full page without `total`) passes its own.
+ */
 function upstreamCounts(
   kind: LookupKind,
   list: { readonly items: readonly unknown[]; readonly total: number },
   returned: number,
+  truncated = list.total > list.items.length,
 ) {
   return {
     kind,
     source: "sevdesk" as const,
     total: list.total,
     returned,
-    truncated: list.total > list.items.length,
+    truncated,
     hasMore: false,
     limit: null,
   };

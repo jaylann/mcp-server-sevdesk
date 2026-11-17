@@ -255,6 +255,20 @@ call. Tags are named, not numbered, and sevDesk compares names ignoring case and
 ("Café" is "cafe"): a name sevDesk does not know yet creates the tag, and removing a tag from its
 last document deletes the tag in sevDesk; the preview says both.
 
+### Can it book invoices and receipts on a cost centre (Kostenstelle)?
+
+Yes. The create and update draft tools of invoices, vouchers and credit notes
+(`sevdesk_invoice_create_draft`, `sevdesk_invoice_update_draft`, `sevdesk_voucher_create_draft`,
+`sevdesk_voucher_update_draft`, `sevdesk_credit_note_create_draft`,
+`sevdesk_credit_note_update_draft`) take a `costCentre`: its id, or its number or name as text,
+compared ignoring case and accents. `sevdesk_reference_lookup` with kind `cost_centres` lists the
+account's cost centres. An unknown name, or one that fits several cost centres, is refused before
+anything is saved. `sevdesk_invoices_list` and `sevdesk_vouchers_list` filter by cost centre
+("this month's expenses on cost centre Munich"), the get tools show it, and the finalize approval
+lists it. Orders take none: sevDesk accepts a cost centre on an order but does not keep it. An
+update without `costCentre` keeps the stored one, and `removeCostCentre: true` on the three
+update tools takes it off a draft. Managing the cost centres themselves is done in sevDesk.
+
 ## Support
 
 ### Where do I get help?

@@ -30,6 +30,18 @@ import { z } from "zod";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { statusDto } from "../common.js";
+import {
+  COST_CENTRE_FLAGS,
+  type CostCentreArg,
+  costCentreChange,
+  costCentreInput,
+  costCentreLabel,
+  costCentreRef,
+  costCentreUpdate,
+  costCentreUpdateInputShape,
+  costCentreUpdatePayload,
+  resolveCostCentre,
+} from "../cost-centres.js";
 import { type CountryReadOptions, loadCountryCodes } from "../country-codes.js";
 import { readDocumentDiscounts } from "../document-discounts.js";
 import { getInvoice, type InvoiceDetails } from "../invoices.js";
@@ -240,6 +252,7 @@ export const invoiceCreateInputShape = {
   discount: discountInput.optional(),
   contactPersonId: contactPersonIdInput,
   ...addressInputShape,
+  costCentre: costCentreInput,
 };
 
 /** Input fields of `sevdesk_invoice_update_draft` (without `dryRun`). */
@@ -274,6 +287,7 @@ export const invoiceUpdateInputShape = {
   discount: discountUpdateInput,
   contactPersonId: contactPersonIdInput,
   ...addressInputShape,
+  ...costCentreUpdateInputShape,
 };
 
 export interface InvoiceCreateArgs extends CreateArgs, TextArgs {
@@ -284,6 +298,7 @@ export interface InvoiceCreateArgs extends CreateArgs, TextArgs {
   readonly timeToPay?: number | undefined;
   readonly header?: string | undefined;
   readonly discount?: DiscountInput | undefined;
+  readonly costCentre?: CostCentreArg | undefined;
 }
 
 export interface InvoiceUpdateArgs extends UpdateArgs, TextArgs {
@@ -295,6 +310,8 @@ export interface InvoiceUpdateArgs extends UpdateArgs, TextArgs {
   readonly header?: string | undefined;
   /** A new document discount, `null` to remove the stored one, left out to keep it. */
   readonly discount?: DiscountInput | null | undefined;
+  readonly costCentre?: CostCentreArg | undefined;
+  readonly removeCostCentre?: boolean | undefined;
 }
 
 /** What `execute` needs: the exact body the preview describes. */
@@ -323,6 +340,10 @@ export async function prepareInvoiceCreate(
   const date = args.date ?? todayInBerlin();
   const delivery = resolveDeliveryPeriod(date, args.deliveryDate, args.deliveryDateUntil, true);
   const discount = args.discount === undefined ? undefined : resolveDiscount(args.discount);
+  const centre =
+    args.costCentre === undefined
+      ? undefined
+      : await resolveCostCentre(client, args.costCentre, signal);
   const texts = await resolveTemplateTexts(client, args, INVOICE_TEXT_TYPE, signal);
   const basics = await resolveCreateBasics(client, args, INVOICE_TAX_OPTIONS, options);
   const { contact, contactPerson, address, currency, mode } = basics;
@@ -349,6 +370,8 @@ export async function prepareInvoiceCreate(
         deliveryDate: wireTimestamp(delivery.from),
         deliveryDateUntil: delivery.until === undefined ? undefined : wireTimestamp(delivery.until),
         ...content,
+        // Not part of `newInvoiceContent`: recurring templates do not take a cost centre.
+        costCentre: centre === undefined ? undefined : costCentreRef(centre.id),
       },
       invoicePosSave: newInvoicePositions(basics),
       invoicePosDelete: null,
@@ -369,6 +392,7 @@ export async function prepareInvoiceCreate(
     fact("Prices entered as", mode),
     fact("Tax", taxText(basics.rule, basics.tax)),
     fact("Tax text", basics.tax.taxText),
+    ...(centre === undefined ? [] : [fact("Cost centre (Kostenstelle)", costCentreLabel(centre))]),
     ...positionFacts(basics.positions, mode, currency),
     ...(discount === undefined ? [] : [fact("Discount", discountText(discount, currency))]),
     fact("Total (expected)", totalsText(expected, currency)),
@@ -396,10 +420,16 @@ export async function prepareInvoiceUpdate(
   options: DraftCallOptions,
 ): Promise<InvoiceDraftPlan> {
   const { signal } = options;
-  assertChanges(args, "invoice");
+  const given = assertChanges(args, "invoice", COST_CENTRE_FLAGS);
   const current = await loadCurrentInvoice(client, args.id, signal);
   const doc = current.document;
   checkUpdatable(doc);
+  const centre = await costCentreUpdate(
+    client,
+    args,
+    { storedId: doc.costCentre?.id, given },
+    signal,
+  );
   const texts = await resolveTemplateTexts(client, args, INVOICE_TEXT_TYPE, signal);
   const discounts = await readDocumentDiscounts(client, "invoice", doc.id, signal);
   const change = planDiscountChange(args.discount, discounts, `Invoice ${doc.id}`);
@@ -467,7 +497,7 @@ export async function prepareInvoiceUpdate(
         ...updatedAddressFields(doc, basics.address),
         customerInternalNote: doc.customerInternalNote,
         paymentMethod: storedRef(doc.paymentMethod, "PaymentMethod"),
-        costCentre: storedRef(doc.costCentre, "CostCentre"),
+        costCentre: costCentreUpdatePayload(centre, doc.costCentre?.id),
         origin:
           doc.origin === undefined
             ? undefined
@@ -513,6 +543,9 @@ export async function prepareInvoiceUpdate(
   logContactPersonChange(log, doc, basics);
   logTextChanges(log, doc.header, { ...args, ...texts });
   logPricingChanges(log, doc, basics, current.positions.length);
+  if (centre !== undefined) {
+    log.value("cost centre", "Cost centre (Kostenstelle)", ...costCentreChange(centre));
+  }
   const keptDiscount = logDiscountChange(log, change, discounts.rows, basics.currency);
 
   // The tax rule is judged again only when the call changes what it depends on.

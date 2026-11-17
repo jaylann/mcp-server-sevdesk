@@ -83,6 +83,14 @@ rule is not the usual one for the customer; it never refuses the draft for that.
 A position can link a part (Artikel) from [`sevdesk_parts_list`](../tools.md#sevdesk_parts_list),
 but its name and price still come from the position.
 
+> Put it on cost centre Munich.
+
+The draft can carry a cost centre (Kostenstelle) of your account, named by its id, number or name;
+[`sevdesk_reference_lookup`](../tools.md#sevdesk_reference_lookup) with kind `cost_centres` lists
+them. A name or number the account does not have, or one that fits several cost centres, is
+refused before anything is saved. An update that does not name a cost centre keeps the stored one;
+`removeCostCentre` takes it off the draft again, and the preview names the one removed.
+
 ### A discount on the whole invoice
 
 > Give Musterfirma 3 % off the whole invoice.
@@ -336,7 +344,8 @@ For a paid or partially paid invoice,
 confirmation) adjusts the draft like the invoice update: it changes only the fields you name, and
 new positions replace all stored positions. The credit note keeps its number and the invoice it
 reduces; its positions may only use that invoice's tax rates, and its contact and currency stay
-the invoice's. Only drafts can be changed. The credit note is finalized with
+the invoice's. A cost centre is set or removed as on an invoice (`costCentre`,
+`removeCostCentre`). Only drafts can be changed. The credit note is finalized with
 [`sevdesk_credit_note_finalize`](../tools.md#sevdesk_credit_note_finalize) or emailed with
 [`sevdesk_credit_note_send_email`](../tools.md#sevdesk_credit_note_send_email), and a refund is
 booked with [`sevdesk_credit_note_book_payment`](../tools.md#sevdesk_credit_note_book_payment), each

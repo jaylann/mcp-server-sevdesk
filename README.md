@@ -80,7 +80,9 @@ enabled, 52 more tools create and change data.
 
 Invoices, credit notes, orders and vouchers can carry tags (projects, customers, branches):
 `sevdesk_tags_list` shows each tag with its uses, the four list tools filter by tag, and
-`sevdesk_document_tag` (tier `write`) adds a tag to one document or removes it.
+`sevdesk_document_tag` (tier `write`) adds a tag to one document or removes it. Invoice, voucher
+and credit note drafts take a cost centre (Kostenstelle) by id, number or name, and the invoice
+and voucher lists filter by it.
 
 The VAT summary is clearly marked as an estimate (accrual or cash basis). The **audits**
 (`sevdesk_records_audit`) answer "what is wrong?": foreign suppliers and customers whose VAT

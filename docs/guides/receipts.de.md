@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/receipts.md sha256:1f8c732f3433 -->
+<!-- translated-from: docs/guides/receipts.md sha256:51db7a394939 -->
 
 # Belege und Eingangsrechnungen
 
@@ -90,6 +90,14 @@ Lieferanten als Kontakt oder nur mit Namen, Belegnummer, Daten und eine Position
 und Steuersatz, standardmäßig brutto. Jede Kombination aus Konto, Steuerregel und Steuersatz wird
 vor dem Speichern gegen die Kontierungshilfe geprüft, und die Datei, falls angegeben, wird
 hochgeladen und angehängt. Der Beleg bleibt ein Entwurf: Gebucht ist noch nichts.
+
+> Buch ihn auf die Kostenstelle MCP1.
+
+Ein Beleg kann eine Kostenstelle tragen, angegeben mit ihrer ID, Nummer oder ihrem Namen
+([`sevdesk_reference_lookup`](../tools.md#sevdesk_reference_lookup), Art `cost_centres`); eine
+unbekannte oder mehrdeutige wird abgelehnt. `sevdesk_vouchers_list` filtert danach, und die
+Freigabe beim Fertigstellen zeigt sie. `sevdesk_voucher_update_draft` mit `removeCostCentre` nimmt
+sie von einem Entwurf.
 
 Fremdwährungen funktionieren mit einem Wechselkurs oder einem Kursdatum, aber solche Entwürfe lassen
 sich über den Server nicht fertigstellen. Die Regeln für das Ändern stehen in der

@@ -3496,13 +3496,28 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Sources:** recorded 2026-11-16, trial account, Update 2.0 (probes `read-cost-centre-list`,
   `write-cost-centre-create`, `write-cost-centre-delete`; the list in
   `test/fixtures/recorded/2026-11-16/cost-centres/cost-centres-list.json`).
-- **Impact:** No tool reads cost centres yet (D-024). #87 lists them for `sevdesk_reference_lookup`
-  with an explicit `limit` and checks a `costCentre` argument against that list.
+- **Impact:** `sevdesk_reference_lookup` kind `cost_centres` lists them (id, number, name, the
+  default flag) from one `GET /CostCentre` with `limit` 1000; a longer list is reported as
+  `truncated` (`listCostCentres` in `src/domain/cost-centres.ts`). The `costCentre` argument of
+  the draft tools and the list filters is checked against that list: an id, or a number or name
+  compared ignoring case and accents; an unknown or ambiguous one is refused before any write.
+  The get tools and the finalize, send and enshrine approvals show a stored cost centre with
+  number and name from the same list; when sevDesk refuses that list (any error but a cancelled
+  call or this server's own guard), they show the id alone and the approvals add a warning, in
+  English and German (`showCostCentre`): the id is in the record the approval binds, so number
+  and name are display only. Resolving a `costCentre` argument still fails then. Creating,
+  renaming and deleting cost centres is not offered.
 - **Test:** `test/contract/recorded-gaps-contacts.test.ts` (the recorded list: keys, the number
-  pattern, `defaultCentre`, through `sevdesk_api_get` and the probe `read-cost-centre-list`);
+  pattern, `defaultCentre`, through `sevdesk_api_get`, the probe `read-cost-centre-list` and
+  "listCostCentres reads the recorded cost centres with an explicit limit (D-091)");
+  `test/unit/domain/cost-centres.test.ts` ("shows the id alone, flagged unread, when sevDesk
+  refuses the list"); `test/regressions/approval-binds-document-content.test.ts` ("shows the id
+  alone with a warning when the cost centres cannot be read (#87)");
+  `test/unit/tools/meta/reference-lookup.test.ts` ("lists the account's cost centres
+  (Kostenstellen) with an explicit limit (D-091)");
   `test/unit/scripts/gaps-contacts-probes.test.ts` ("checks costCentre on create and on updates
   with the id, per document kind", "deletes only its own cost centres, unused and in use"). Live:
-  the three probes above.
+  the three probes above; `pnpm test:live` runs the lookup kind.
 
 ### D-092: `saveOrder` drops `costCentre`; invoices, vouchers and credit notes keep it
 
@@ -3517,16 +3532,45 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   after updates (D-003). `GET /Invoice` and `/Voucher` honour `costCentre[id]` +
   `costCentre[objectName]=CostCentre` (every row carries that cost centre, the control without it
   is left out); `costCentre=<id>` alone answers 422 "Invalid costCentre given, must have id and
-  objectName".
+  objectName". An update with the id and `costCentre: null` removes the cost centre: a draft
+  invoice (`saveInvoice`), voucher (`saveVoucher`, `status: 50`) and credit note
+  (`saveCreditNote`) that had one each answered 2xx and read back with `costCentre` null.
 - **Sources:** spec (`Model_Voucher`, `Model_VoucherUpdate`, `Model_InvoiceResponse`); recorded
   2026-11-16, trial account, Update 2.0 (probes `write-cost-centre-documents`,
-  `write-cost-centre-list-filters`).
-- **Impact:** #87 offers `costCentre` on invoice, voucher and credit note drafts only, never on
-  orders, and filters the invoice and voucher lists with both keys. The invoice update already
-  carries the stored `costCentre` over (D-052, D-054).
+  `write-cost-centre-list-filters`); recorded 2026-11-17, trial account, Update 2.0 (one-off check
+  by the orchestrator: `costCentre: null` on updates).
+- **Impact:** `costCentre` is an argument of the create and update draft tools of invoices,
+  vouchers and credit notes (`sevdesk_invoice_create_draft`, `sevdesk_invoice_update_draft`,
+  `sevdesk_voucher_create_draft`, `sevdesk_voucher_update_draft`,
+  `sevdesk_credit_note_create_draft`, `sevdesk_credit_note_update_draft`) only, never of the
+  order tools; the strict `saveOrder` body has no such key. An invoice or voucher update without
+  it carries the stored one over (D-052, D-054); a credit-note update leaves the key out, and
+  sevDesk keeps the stored one. `sevdesk_invoices_list` and `sevdesk_vouchers_list` filter with
+  both keys and check every row's `costCentre` again, so a filter sevDesk ignored cannot answer
+  the whole list; the credit-note list has no filter (not measured). The three update tools take
+  `removeCostCentre: true`, which sends `costCentre: null` (refused together with `costCentre`);
+  the preview names the cost centre that is removed (`costCentreUpdate` in
+  `src/domain/cost-centres.ts`). No update saves a draft unchanged for it:
+  `removeCostCentre: false` asks for nothing (a call with nothing else is refused as nothing to
+  change), and `removeCostCentre: true` on a draft without a cost centre is refused ("This draft
+  has no cost centre.") when the call asks for nothing else. Not recorded, so not offered: cost
+  centres on voucher positions.
 - **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("checks costCentre on create and on
   updates with the id, per document kind", "tells honoured list filters from ignored ones, with an
-  untagged control"). Live: the two probes above.
+  untagged control"); `test/regressions/cost-centre-filter-never-unfiltered.test.ts`;
+  `test/regressions/order-never-sends-cost-centre.test.ts`;
+  `test/unit/tools/drafts/cost-centre-drafts.test.ts` ("keeps the stored cost centre when the
+  call leaves it out (D-052, D-054)", "removes the stored cost centre with removeCostCentre:
+  costCentre null (D-092)", "removes the stored cost centre and shows which one, in both
+  languages", "sends no costCentre key when none is stored and none is asked for", "refuses
+  removeCostCentre alone on a draft without a cost centre, without writing", "refuses
+  removeCostCentre: false alone as nothing to change, before any read", and in
+  "sevdesk_credit_note_update_draft with costCentre": "leaves the key out when the call does not
+  name one: sevDesk keeps it (D-092)", "removes the stored cost centre with removeCostCentre:
+  costCentre null (D-092)");
+  `test/unit/domain/cost-centres.test.ts` ("costCentreUpdate (set, remove or keep)");
+  `test/unit/tools/documents/cost-centre-reads.test.ts`. Live: the two probes above; the removal
+  by the 2026-11-17 one-off check (no probe).
 
 ### D-095: On a cash register `resetToOpen` books a counter-entry instead of deleting
 

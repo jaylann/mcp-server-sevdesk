@@ -20,11 +20,14 @@ interface JsonSchemaProperty {
   readonly enum?: readonly unknown[];
   readonly default?: unknown;
   readonly items?: JsonSchemaProperty;
+  readonly anyOf?: readonly JsonSchemaProperty[];
   readonly minimum?: number;
   readonly maximum?: number;
 }
 
 function typeOf(property: JsonSchemaProperty): string {
+  // A union such as the cost centre argument (an id or a text).
+  if (property.anyOf !== undefined) return property.anyOf.map(typeOf).join(" \\| ");
   if (property.enum !== undefined) {
     return property.enum.map((value) => `\`${String(value)}\``).join(" \\| ");
   }
