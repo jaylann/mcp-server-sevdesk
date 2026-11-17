@@ -448,6 +448,58 @@ describe("sevdesk_invoice_update_recurring", () => {
       expect(message).toContain("Give a new startDate in the same call.");
     });
 
+    describe("an end date change that lets a past next run happen (catch-up, D-111)", () => {
+      // An active template with generation on whose kept next run (2026-07-01) lies before today
+      // and after its end date (2026-06-30). What sevDesk does on reaching an end date is not
+      // recorded; with that end date gone, nothing recorded keeps it from catching up one draft
+      // per missed period, a minute apart, as it does for a start in the past.
+      const stopped = (overrides: Row = {}): FakeRoute[] =>
+        templateChangeRoutes(
+          templateRow({
+            accountStartDate: storedDate("2026-01-01"),
+            accountNextInvoice: storedDate("2026-07-01"),
+            accountEndDate: storedDate("2026-06-30"),
+            ...overrides,
+          }),
+        );
+
+      it.each([[{ removeEndDate: true }], [{ endDate: "2027-12-31" }]] as const)(
+        "refuses %j, naming the catch-up",
+        async (change) => {
+          expect(await refusal(change, stopped())).toBe(
+            "The next run of recurring invoice template 2301 is 2026-07-01: before today " +
+              "(2026-11-17 in Berlin) and after its end date 2026-06-30, with automatic " +
+              "generation on. With the end date removed or moved past that run, sevDesk could " +
+              "catch up and create a draft for every period since then, one a minute, as it does " +
+              "for a start in the past; no preview shows those drafts. Give a new startDate in " +
+              "the same call.",
+          );
+        },
+      );
+
+      it("refuses it with a generation value whose meaning is not recorded", async () => {
+        const unrecorded = stopped({ propertyAutoGenerateRecurringInvoice: "0" });
+        expect(await refusal({ removeEndDate: true }, unrecorded)).toContain(
+          "with automatic generation stored as a value whose meaning is not recorded",
+        );
+      });
+
+      it("passes with a new start, with generation off, ended, or with the end date kept", async () => {
+        const restarted = await prepare(
+          { removeEndDate: true, startDate: "2026-12-01" },
+          stopped(),
+        );
+        expect(restarted.state.body.invoice).toMatchObject({ accountEndDate: null });
+        expect(restarted.state.schedule).toMatchObject({ nextRun: "2026-12-01" });
+        expect(restarted.state.schedule.endDate).toBeUndefined();
+        const off = stopped({ propertyAutoGenerateRecurringInvoice: null });
+        await prepare({ removeEndDate: true }, off);
+        await prepare({ removeEndDate: true, autoGenerate: false }, stopped());
+        await prepare({ endDate: "2027-12-31" }, stopped({ status: "50" }));
+        await prepare({ header: "Neu" }, stopped());
+      });
+    });
+
     it("an unchanged switch is no change", async () => {
       expect(await refusal({ autoGenerate: true })).toBe(
         "Nothing changes: recurring invoice template 2301 already has every value given.",

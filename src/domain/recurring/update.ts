@@ -15,7 +15,8 @@
  *   start must lie after today and after the last day of the newest period billed.
  * - `propertyAutoGenerateRecurringInvoice: true` switches automatic generation on, `false` off.
  *   With generation on and a next run before today, sevDesk catches up one draft per missed
- *   period, a minute apart: switching it on then is refused unless the same call sets a new start.
+ *   period, a minute apart: switching it on then is refused unless the same call sets a new start,
+ *   and so is removing or moving an end date that lies before such a run (`checkEndKeepsPastRun`).
  * - The price of a position sent by its id is kept (D-135). Positions are therefore replaced as a
  *   whole, like the invoice draft update does it, and the read-back compares the stored positions
  *   with the ones sent, so a change sevDesk ignored becomes a note.
@@ -80,6 +81,7 @@ import {
   scheduleNotes,
   templateIdInput,
   templateRecordNotes,
+  type TemplateState,
   templateState,
 } from "./template.js";
 import {
@@ -319,6 +321,42 @@ function resolveGeneration(
 }
 
 /**
+ * Refuses an end date change that lets a past next run happen: an active template whose automatic
+ * generation is on after the call (or has a stored value whose meaning is not recorded) and whose
+ * next run lies before today and after its stored end date, which the call removes or moves past
+ * that run. sevDesk could then catch up one draft per missed period, a minute apart, as it does for
+ * a start in the past (D-111), and no preview shows those drafts. What sevDesk does on reaching an
+ * end date is not recorded: the refusal rests only on that catch-up, the same one that refuses
+ * switching generation on (`resolveGeneration`) and reactivating (`status.ts`) with a past next
+ * run. A new start in the same call moves the next run after today and passes.
+ */
+function checkEndKeepsPastRun(
+  id: number,
+  state: TemplateState,
+  stored: StoredSchedule,
+  schedule: ScheduleChange,
+  generation: GenerationChange,
+  today: string,
+): void {
+  const { nextRun } = schedule;
+  if (state !== "active" || generation.after === "off") return;
+  if (nextRun === undefined || nextRun >= today || stored.endDate === undefined) return;
+  const blocks = (end: string | undefined): boolean => end !== undefined && end < nextRun;
+  if (!blocks(stored.endDate) || blocks(schedule.endDate)) return;
+  const switchState =
+    generation.after === "on"
+      ? "with automatic generation on"
+      : "with automatic generation stored as a value whose meaning is not recorded";
+  refuse(
+    `The next run of recurring invoice template ${String(id)} is ${nextRun}: before today ` +
+      `(${today} in Berlin) and after its end date ${stored.endDate}, ${switchState}. With the ` +
+      "end date removed or moved past that run, sevDesk could catch up and create a draft for " +
+      "every period since then, one a minute, as it does for a start in the past; no preview " +
+      "shows those drafts. Give a new startDate in the same call.",
+  );
+}
+
+/**
  * Validates a change (the template and its settings first, then the schedule), reads what the
  * body needs, and builds the minimal body and both previews. Throws `validation` errors for a call
  * that is not about a template, is not safe, or changes nothing; sends nothing.
@@ -344,6 +382,7 @@ export async function prepareRecurringInvoiceUpdate(
   const today = todayInBerlin();
   const schedule = await resolveSchedule(client, args, stored, today, signal);
   const generation = resolveGeneration(args, stored, schedule, today);
+  checkEndKeepsPastRun(doc.id, state, stored, schedule, generation, today);
 
   const basics = await resolveUpdateBasics(
     client,
