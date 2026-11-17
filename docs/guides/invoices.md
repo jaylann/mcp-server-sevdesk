@@ -107,15 +107,19 @@ first, so turning a rejection into an acceptance is always a step of its own.
 
 [`sevdesk_order_create_delivery_note`](../tools.md#sevdesk_order_create_delivery_note) (`write`,
 no confirmation) creates a delivery note (Lieferschein, LI) draft from an order confirmation (draft,
-sent or accepted) or a sent offer, and leaves the source as it is. Offer drafts, rejected and
-accepted offers are refused (for an accepted offer, deliver on its confirmation).
+sent or accepted) or from an offer that was sent or accepted, and leaves the source as it is. Offer
+drafts and rejected offers are refused.
 
-Both creating tools refuse a second document from the same order unless you ask for one, and
-finalize the new draft with [`sevdesk_order_finalize`](../tools.md#sevdesk_order_finalize). sevDesk
-gives the new document the next number of its range without moving the counter, so it can carry a
-number another confirmation or delivery note already has; the result names any it finds. To find
-offers that are still open, ask for sent offers in a date range
-([`sevdesk_orders_list`](../tools.md#sevdesk_orders_list)).
+The confirmation tool refuses a second confirmation from the same offer unless you ask for one. The
+delivery note tool refuses only while an earlier delivery note from the same order is still a
+draft, because a further delivery note can be a partial delivery; finalized ones are named in its
+preview. The new draft is finalized with
+[`sevdesk_order_finalize`](../tools.md#sevdesk_order_finalize). Both previews also list discounts
+or surcharges on the whole source document; whether sevDesk takes them over has not been checked,
+so compare the new draft's totals before finalizing it. sevDesk gives the new document the next
+number of its range without moving the counter, so it can carry a number another confirmation or
+delivery note already has; the result names any it finds. To find offers that are still open, ask
+for sent offers in a date range ([`sevdesk_orders_list`](../tools.md#sevdesk_orders_list)).
 
 ### From an offer or order confirmation
 
