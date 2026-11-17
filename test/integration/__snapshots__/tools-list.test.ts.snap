@@ -536,6 +536,16 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
       "description": "Effective receipt_guidance page size; null for unpaged kinds.",
     },
   },
+  "sevdesk_tax_rule_suggest": {
+    "/properties/customer/properties/country": {
+      "description": "ISO 3166-1 alpha-2 code of the customer's country; XI for Northern Ireland.",
+      "type": "string",
+    },
+    "/properties/vatId/properties/country": {
+      "description": "ISO 3166-1 alpha-2 of the issuing state (GR for EL); XI for Northern Ireland.",
+      "type": "string",
+    },
+  },
   "sevdesk_transaction_book": {
     "/properties/result/properties/bookings/items/properties/document/properties/status/properties/key": {
       "description": "Accepted status filter key; absent when no filter accepts this code.",
@@ -583,6 +593,12 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
     },
     "/properties/limit": {
       "type": "integer",
+    },
+  },
+  "sevdesk_vat_id_check": {
+    "/properties/format/properties/country": {
+      "description": "ISO 3166-1 alpha-2 of the issuing state (GR for EL); XI for Northern Ireland.",
+      "type": "string",
     },
   },
   "sevdesk_vat_summary": {
@@ -4075,6 +4091,60 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
   },
   {
     "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "Suggest the tax rule for a sale",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "contactId": {
+          "description": "The customer's contact: its invoice-address country, VAT ID and kind are used.",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
+        "country": {
+          "description": "Customer's country, ISO 3166-1 alpha-2 (e.g. AT, CH; XI for Northern Ireland); overrides the contact's.",
+          "pattern": "^[A-Za-z]{2}$",
+          "type": "string",
+        },
+        "customerType": {
+          "description": "business (B2B) or consumer (B2C); overrides what the contact suggests.",
+          "enum": [
+            "business",
+            "consumer",
+          ],
+          "type": "string",
+        },
+        "supply": {
+          "description": "goods (Lieferung), services (sonstige Leistung) or digital_services (telecommunication, broadcasting, electronically supplied services, §3a Abs. 5 UStG).",
+          "enum": [
+            "goods",
+            "services",
+            "digital_services",
+          ],
+          "type": "string",
+        },
+        "vatId": {
+          "description": "Customer's VAT ID; overrides the contact's.",
+          "maxLength": 30,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "supply",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_tax_rule_suggest",
+    "title": "Suggest the tax rule for a sale",
+  },
+  {
+    "annotations": {
       "destructiveHint": true,
       "idempotentHint": false,
       "openWorldHint": false,
@@ -4328,6 +4398,33 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     "annotations": {
       "destructiveHint": false,
       "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+      "title": "Check a VAT ID",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "vatId": {
+          "description": "VAT ID (USt-IdNr.) with its prefix, e.g. ATU12345678; spaces, dots, dashes allowed.",
+          "maxLength": 30,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "vatId",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_vat_id_check",
+    "title": "Check a VAT ID",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
       "title": "VAT return estimate (UStVA)",
@@ -4443,7 +4540,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     "annotations": {
       "destructiveHint": false,
       "idempotentHint": false,
-      "openWorldHint": false,
+      "openWorldHint": true,
       "readOnlyHint": false,
       "title": "Create a draft voucher",
     },
@@ -4490,9 +4587,14 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "string",
         },
         "file": {
-          "description": "Receipt file (Belegbild: PDF, PNG or JPEG, up to 20 MB) inside SEVDESK_FILE_DIRS, absolute or relative to one of those folders, or on a remote server the uploadId from sevdesk_upload_request. It is uploaded and attached.",
-          "maxLength": 1000,
+          "description": "Receipt file (Belegbild: PDF, PNG or JPEG, up to 20 MB) inside SEVDESK_FILE_DIRS, absolute or relative to one of those folders, or on a remote server the uploadId from sevdesk_upload_request, or an https link to a host in SEVDESK_FILE_URL_HOSTS. It is uploaded and attached.",
+          "maxLength": 2048,
           "minLength": 1,
+          "type": "string",
+        },
+        "fileSha256": {
+          "description": "SHA-256 (64 hex) the file must have, e.g. from the dry run's preview. The file is read again on the real call (a link is downloaded again); other bytes are refused before anything reaches sevDesk.",
+          "pattern": "^[0-9a-fA-F]{64}$",
           "type": "string",
         },
         "foreignCurrencyDeadline": {
@@ -4746,7 +4848,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     "annotations": {
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": false,
+      "openWorldHint": true,
       "readOnlyHint": false,
       "title": "Update a draft voucher",
     },
@@ -4789,9 +4891,14 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "string",
         },
         "file": {
-          "description": "Receipt file to attach (PDF, PNG or JPEG inside SEVDESK_FILE_DIRS, or on a remote server the uploadId from sevdesk_upload_request).",
-          "maxLength": 1000,
+          "description": "Receipt file to attach (PDF, PNG or JPEG inside SEVDESK_FILE_DIRS, on a remote server the uploadId from sevdesk_upload_request, or an https link to a host in SEVDESK_FILE_URL_HOSTS).",
+          "maxLength": 2048,
           "minLength": 1,
+          "type": "string",
+        },
+        "fileSha256": {
+          "description": "SHA-256 (64 hex) the file must have, e.g. from the dry run's preview. The file is read again on the real call (a link is downloaded again); other bytes are refused before anything reaches sevDesk.",
+          "pattern": "^[0-9a-fA-F]{64}$",
           "type": "string",
         },
         "foreignCurrencyDeadline": {
@@ -7709,6 +7816,60 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
+      "title": "Suggest the tax rule for a sale",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "contactId": {
+          "description": "The customer's contact: its invoice-address country, VAT ID and kind are used.",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
+        "country": {
+          "description": "Customer's country, ISO 3166-1 alpha-2 (e.g. AT, CH; XI for Northern Ireland); overrides the contact's.",
+          "pattern": "^[A-Za-z]{2}$",
+          "type": "string",
+        },
+        "customerType": {
+          "description": "business (B2B) or consumer (B2C); overrides what the contact suggests.",
+          "enum": [
+            "business",
+            "consumer",
+          ],
+          "type": "string",
+        },
+        "supply": {
+          "description": "goods (Lieferung), services (sonstige Leistung) or digital_services (telecommunication, broadcasting, electronically supplied services, §3a Abs. 5 UStG).",
+          "enum": [
+            "goods",
+            "services",
+            "digital_services",
+          ],
+          "type": "string",
+        },
+        "vatId": {
+          "description": "Customer's VAT ID; overrides the contact's.",
+          "maxLength": 30,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "supply",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_tax_rule_suggest",
+    "title": "Suggest the tax rule for a sale",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
       "title": "Get a sevDesk bank transaction with its assignments",
     },
     "inputSchema": {
@@ -7819,6 +7980,33 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
     "annotations": {
       "destructiveHint": false,
       "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+      "title": "Check a VAT ID",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "vatId": {
+          "description": "VAT ID (USt-IdNr.) with its prefix, e.g. ATU12345678; spaces, dots, dashes allowed.",
+          "maxLength": 30,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "vatId",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_vat_id_check",
+    "title": "Check a VAT ID",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
       "title": "VAT return estimate (UStVA)",
@@ -7871,7 +8059,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
     "annotations": {
       "destructiveHint": false,
       "idempotentHint": false,
-      "openWorldHint": false,
+      "openWorldHint": true,
       "readOnlyHint": false,
       "title": "Create a draft voucher",
     },
@@ -7918,9 +8106,14 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "string",
         },
         "file": {
-          "description": "Receipt file (Belegbild: PDF, PNG or JPEG, up to 20 MB) inside SEVDESK_FILE_DIRS, absolute or relative to one of those folders, or on a remote server the uploadId from sevdesk_upload_request. It is uploaded and attached.",
-          "maxLength": 1000,
+          "description": "Receipt file (Belegbild: PDF, PNG or JPEG, up to 20 MB) inside SEVDESK_FILE_DIRS, absolute or relative to one of those folders, or on a remote server the uploadId from sevdesk_upload_request, or an https link to a host in SEVDESK_FILE_URL_HOSTS. It is uploaded and attached.",
+          "maxLength": 2048,
           "minLength": 1,
+          "type": "string",
+        },
+        "fileSha256": {
+          "description": "SHA-256 (64 hex) the file must have, e.g. from the dry run's preview. The file is read again on the real call (a link is downloaded again); other bytes are refused before anything reaches sevDesk.",
+          "pattern": "^[0-9a-fA-F]{64}$",
           "type": "string",
         },
         "foreignCurrencyDeadline": {
@@ -8045,7 +8238,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
     "annotations": {
       "destructiveHint": true,
       "idempotentHint": false,
-      "openWorldHint": false,
+      "openWorldHint": true,
       "readOnlyHint": false,
       "title": "Update a draft voucher",
     },
@@ -8088,9 +8281,14 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "string",
         },
         "file": {
-          "description": "Receipt file to attach (PDF, PNG or JPEG inside SEVDESK_FILE_DIRS, or on a remote server the uploadId from sevdesk_upload_request).",
-          "maxLength": 1000,
+          "description": "Receipt file to attach (PDF, PNG or JPEG inside SEVDESK_FILE_DIRS, on a remote server the uploadId from sevdesk_upload_request, or an https link to a host in SEVDESK_FILE_URL_HOSTS).",
+          "maxLength": 2048,
           "minLength": 1,
+          "type": "string",
+        },
+        "fileSha256": {
+          "description": "SHA-256 (64 hex) the file must have, e.g. from the dry run's preview. The file is read again on the real call (a link is downloaded again); other bytes are refused before anything reaches sevDesk.",
+          "pattern": "^[0-9a-fA-F]{64}$",
           "type": "string",
         },
         "foreignCurrencyDeadline": {
@@ -9495,6 +9693,60 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
+      "title": "Suggest the tax rule for a sale",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "contactId": {
+          "description": "The customer's contact: its invoice-address country, VAT ID and kind are used.",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
+        "country": {
+          "description": "Customer's country, ISO 3166-1 alpha-2 (e.g. AT, CH; XI for Northern Ireland); overrides the contact's.",
+          "pattern": "^[A-Za-z]{2}$",
+          "type": "string",
+        },
+        "customerType": {
+          "description": "business (B2B) or consumer (B2C); overrides what the contact suggests.",
+          "enum": [
+            "business",
+            "consumer",
+          ],
+          "type": "string",
+        },
+        "supply": {
+          "description": "goods (Lieferung), services (sonstige Leistung) or digital_services (telecommunication, broadcasting, electronically supplied services, §3a Abs. 5 UStG).",
+          "enum": [
+            "goods",
+            "services",
+            "digital_services",
+          ],
+          "type": "string",
+        },
+        "vatId": {
+          "description": "Customer's VAT ID; overrides the contact's.",
+          "maxLength": 30,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "supply",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_tax_rule_suggest",
+    "title": "Suggest the tax rule for a sale",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
       "title": "Get a sevDesk bank transaction with its assignments",
     },
     "inputSchema": {
@@ -9600,6 +9852,33 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
     },
     "name": "sevdesk_transactions_list",
     "title": "List sevDesk bank transactions",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": true,
+      "title": "Check a VAT ID",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "vatId": {
+          "description": "VAT ID (USt-IdNr.) with its prefix, e.g. ATU12345678; spaces, dots, dashes allowed.",
+          "maxLength": 30,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "vatId",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_vat_id_check",
+    "title": "Check a VAT ID",
   },
   {
     "annotations": {
@@ -9943,7 +10222,7 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
     "annotations": {
       "destructiveHint": false,
       "idempotentHint": true,
-      "openWorldHint": false,
+      "openWorldHint": true,
       "readOnlyHint": true,
       "title": "Parse an e-invoice file",
     },
@@ -9952,9 +10231,14 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
       "additionalProperties": false,
       "properties": {
         "file": {
-          "description": "The e-invoice file: an absolute path inside one of the SEVDESK_FILE_DIRS folders, or a path relative to one of them, e.g. Rechnungen/RE-4711.xml; or on a remote server the uploadId from sevdesk_upload_request.",
-          "maxLength": 1024,
+          "description": "The e-invoice file: an absolute path inside one of the SEVDESK_FILE_DIRS folders, or a path relative to one of them, e.g. Rechnungen/RE-4711.xml; on a remote server the uploadId from sevdesk_upload_request; or an https link to a host in SEVDESK_FILE_URL_HOSTS.",
+          "maxLength": 2048,
           "minLength": 1,
+          "type": "string",
+        },
+        "fileSha256": {
+          "description": "SHA-256 (64 hex) the file must have; other bytes are refused (a link is downloaded again on every call). The result's file.sha256 pins the import to the bytes read here.",
+          "pattern": "^[0-9a-fA-F]{64}$",
           "type": "string",
         },
       },
@@ -10031,7 +10315,7 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
     "annotations": {
       "destructiveHint": false,
       "idempotentHint": false,
-      "openWorldHint": false,
+      "openWorldHint": true,
       "readOnlyHint": false,
       "title": "Import an e-invoice as a voucher",
     },
@@ -10087,9 +10371,14 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
           "type": "string",
         },
         "file": {
-          "description": "The e-invoice: an XRechnung XML or a ZUGFeRD/Factur-X PDF inside SEVDESK_FILE_DIRS, absolute or relative to one of those folders, or on a remote server the uploadId from sevdesk_upload_request. It is attached to the voucher.",
-          "maxLength": 1000,
+          "description": "The e-invoice: an XRechnung XML or a ZUGFeRD/Factur-X PDF inside SEVDESK_FILE_DIRS, absolute or relative to one of those folders, or on a remote server the uploadId from sevdesk_upload_request, or an https link to a host in SEVDESK_FILE_URL_HOSTS. It is attached to the voucher.",
+          "maxLength": 2048,
           "minLength": 1,
+          "type": "string",
+        },
+        "fileSha256": {
+          "description": "SHA-256 (64 hex) the file must have, e.g. from sevdesk_einvoice_parse or the dry run's preview. The file is read again on the real call (a link is downloaded again); other bytes are refused before anything reaches sevDesk.",
+          "pattern": "^[0-9a-fA-F]{64}$",
           "type": "string",
         },
         "foreignCurrencyDeadline": {

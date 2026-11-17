@@ -51,7 +51,7 @@ exports[`prompts/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
   {
     "arguments": [
       {
-        "description": "The receipt or e-invoice file, as the voucher tools take it (a path inside SEVDESK_FILE_DIRS, or an upload reference). Default: the assistant asks for it.",
+        "description": "The receipt or e-invoice file, as the voucher tools take it (a path inside SEVDESK_FILE_DIRS, an upload reference, or an https link to a host in SEVDESK_FILE_URL_HOSTS). Default: the assistant asks for it.",
         "name": "file",
         "required": false,
       },
@@ -126,7 +126,7 @@ exports[`prompts/list > SEVDESK_ALLOW=write 1`] = `
   {
     "arguments": [
       {
-        "description": "The receipt or e-invoice file, as the voucher tools take it (a path inside SEVDESK_FILE_DIRS, or an upload reference). Default: the assistant asks for it.",
+        "description": "The receipt or e-invoice file, as the voucher tools take it (a path inside SEVDESK_FILE_DIRS, an upload reference, or an https link to a host in SEVDESK_FILE_URL_HOSTS). Default: the assistant asks for it.",
         "name": "file",
         "required": false,
       },

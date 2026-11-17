@@ -103,6 +103,12 @@ export class ChangeLog {
     this.facts.push(fact(label, value));
   }
 
+  /** Adds a change shown as several facts (each built with {@link fact}), in their order. */
+  noteFacts(name: string, facts: readonly PreviewFact[]): void {
+    this.names.push(name);
+    this.facts.push(...facts);
+  }
+
   get changed(): readonly string[] {
     return this.names;
   }

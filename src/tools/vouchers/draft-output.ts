@@ -16,7 +16,12 @@ export const voucherDraftOutput = z.object({
       name: z.string().describe("Local file name of the attached receipt (Belegbild)."),
       kind: z.string().describe("pdf, png, jpeg or xml (recognized by content)."),
       bytes: z.number().int(),
+      sha256: z.string().describe("SHA-256 of the attached bytes, hex."),
       pages: z.number().int().optional().describe("Pages sevDesk counted, when it said."),
+      downloadedFrom: z
+        .string()
+        .optional()
+        .describe("For a file from an https link: the origin it was downloaded from."),
     })
     .optional()
     .describe("The receipt file uploaded and attached by this call."),

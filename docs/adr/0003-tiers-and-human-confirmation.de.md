@@ -1,4 +1,4 @@
-<!-- translated-from: docs/adr/0003-tiers-and-human-confirmation.md sha256:3c9dddb10426 -->
+<!-- translated-from: docs/adr/0003-tiers-and-human-confirmation.md sha256:a4fc00cf4293 -->
 
 # ADR 0003: Berechtigungsstufen und Bestätigung durch einen Menschen
 
@@ -49,10 +49,61 @@ Werkzeug.
    ändert, trägt die Stufe des aufrufenden Werkzeugs (vom Framework eingetragen, nie vom Werkzeug),
    und der Client lehnt sie ab, wenn diese Stufe nicht aktiviert ist oder unter der Mindeststufe des
    Endpunkts liegt: `sendBy`, `bookAmount`, `enshrine`, `cancelInvoice`, `resetToDraft`,
-   `resetToOpen`, `changeParameter`, ein versendendes `getPdf` und DATEV-Exporte mit `enshrine`
-   brauchen `commit`; `sendViaEmail` und `sendByWithRender` brauchen `external`; alles andere
-   braucht `write`. Ein `write`-Werkzeug kann also nicht fertigstellen, buchen, stornieren oder
-   versenden, auch nicht aus Versehen.
+   `resetToOpen`, `changeParameter`, `createContractNoteFromOrder`, ein versendendes `getPdf`,
+   DATEV-Exporte mit `enshrine`, ein `saveVoucher`, dessen Beleg kein Entwurf ist, eine Änderung an
+   den Banktransaktionen selbst (`/CheckAccountTransaction` und `/CheckAccountTransaction/{id}`),
+   eine Anfrage an einen einzelnen Dokumentdatensatz (`/Invoice/{id}`, `/Order/{id}`,
+   `/CreditNote/{id}`, `/Voucher/{id}`), die seinen Status setzt (bei einer Rechnung auch ihre Art
+   oder ihren Zeitplan), ein `saveInvoice`, `saveOrder` oder `saveCreditNote`, das einen anderen
+   Status als den Entwurfsstatus 100 speichert, und ein `saveInvoice`, das eine Abo-Vorlage
+   speichern kann, brauchen `commit`; `sendViaEmail` und `sendByWithRender` brauchen `external`;
+   alles andere braucht `write`. Ein `write`-Werkzeug kann also nicht fertigstellen, buchen,
+   stornieren oder versenden, auch nicht aus Versehen.
+
+**Bindende Anfragen, die der Name des Endpunkts nicht zeigt** (ergänzt am 2026-11-16, aus den
+Aufzeichnungen von D-095 bis D-112). Drei Anfragen sehen wie gewöhnliches Speichern aus, binden aber
+oder lassen sich schwer rückgängig machen. Der Client verlangt für sie daher `commit`, nach Pfad,
+Query, Body und Formular (`src/sevdesk/paths.ts`), bevor ein Werkzeug sie sendet:
+
+- **Eine Banktransaktion anlegen** (`POST /CheckAccountTransaction`). Eine neue Zeile ändert den
+  Saldo des Kontos und das, was darauf gebucht werden kann. Sie lässt sich nicht einfach
+  zurücknehmen: Löschen markiert sie nur als gelöscht und geht nur, solange sie nicht gebucht ist
+  (D-096), und ist eine Zahlung auf ihr gebucht und sie festgeschrieben, lassen sich weder die
+  Zeile noch diese Zahlung mehr ändern (D-098). Die Regel prüft nur den Pfad; der Client fragt nur
+  nach Anfragen, die Daten ändern, das Listen-`GET` auf demselben Pfad ist also nicht betroffen.
+- **Ein Angebot annehmen oder ablehnen.** Das tut `PUT /Order/{id}` mit einem `status`, und bei
+  einem Angebotsentwurf vergibt sevDesk dabei auch eine neue Nummer (D-108);
+  `createContractNoteFromOrder` setzt das Ausgangsangebot auf angenommen, selbst einen nie
+  versendeten Entwurf (D-107). Ein direkt geschriebener Status umgeht `sendBy` und die Prüfungen der
+  Werkzeuge für den Lebenszyklus bei jeder Dokumentart, die Regel erfasst daher einen `status` im
+  Body jedes Dokumentdatensatzes und einen anderen Status als den Entwurfsstatus 100 im Dokument
+  eines `saveInvoice`, `saveOrder` oder `saveCreditNote` (`saveOrder` mit der ID eines Angebots und
+  Status 500 nimmt es genauso an). Die Entwurfswerkzeuge speichern immer Status 100, und die
+  Aktualisierungen der Entwürfe lehnen einen gespeicherten Status außer 100 ab, bevor sie senden;
+  das deckt den Fall ab, den der Client nicht sieht (100 mit der ID eines Dokuments, das kein
+  Entwurf mehr ist). Ein vorhandener Body, der sich nicht lesen lässt, zählt, als setze er einen;
+  eine Anfrage ohne Body (ein `DELETE`) behält die Stufe ihres Pfads.
+  `createPackingListFromOrder` lässt sein Ausgangsdokument unverändert und bleibt `write`.
+- **Eine Abo-Vorlage speichern** (`saveInvoice` mit `invoiceType` `WKR`). sevDesk stellt daraus
+  später selbst Rechnungen aus (D-111, D-112). Nur ein Speichern, das seine Art als Text außer
+  `WKR` nennt, bleibt `write`: Eine Aktualisierung, die die ID ohne Art sendet, behält die
+  gespeicherte (eine Vorlage zu beenden ist eine solche Aktualisierung), eine fehlende oder nicht
+  lesbare Art zählt also als Vorlage. Die Entwurfswerkzeuge senden immer `RE`, und die
+  Aktualisierung eines Rechnungsentwurfs lehnt jede gespeicherte Art außer `RE` ab, bevor sie
+  sendet; das deckt den Fall ab, den der Client nicht sieht (`RE` mit der ID einer gespeicherten
+  Vorlage). `PUT /Invoice/{id}` ändert eine Vorlage ebenfalls (D-111), bei einem
+  Rechnungsdatensatz braucht daher auch ein Body, der `invoiceType` oder ein Feld des Zeitplans
+  (`account…`) setzt, `commit`.
+
+Diese Regeln lesen, was gesendet wird: den Body als JSON-Text (eine Methode `toJSON` zählt also mit,
+ein Schlüssel mit dem Wert `undefined` nicht) und die Query-Schlüssel mit denselben Namen, so
+verglichen, wie sevDesks PHP-Backend sie liest (`Status`, `status[0]`; beim Speichern
+`invoice[status]` und jeder andere Schlüssel unter dem Namen des Dokuments). Ein Multipart-Formular
+an einen Dokumentdatensatz oder ein Speichern lässt sich nicht lesen und zählt als bindend. Kein
+ausgeliefertes Werkzeug sendet eine Query oder ein Formular an diese Endpunkte.
+
+Das Löschen eines Dokuments oder Kontakts hebt der Client nicht an: Er sieht die HTTP-Methode nicht,
+und die Werkzeuge, die löschen, geben selbst `commit` an (`sevdesk_voucher_delete_draft`).
 
 **Bestätigung durch einen Menschen für `commit` und `external`**, eingestellt mit
 `SEVDESK_CONFIRM`:
@@ -211,6 +262,9 @@ Werkzeuge ausdrücklich an jedem Werkzeug angegeben.
   stattdessen eine Warnung.
 - Nachteil: Nach einer Zeitüberschreitung bei einem Schreibvorgang ist das Ergebnis unbekannt. Das
   Werkzeug meldet das und sagt dem Benutzer, wie er es prüft, statt es zu wiederholen.
+- Nachteil: Ein `write`-Werkzeug, das eine Rechnung über `saveInvoice` aktualisiert, muss ihre Art
+  (`RE`) mitsenden. Eine Aktualisierung nur mit der ID braucht `commit`, weil der Client sie nicht
+  von einer Änderung an einer Abo-Vorlage unterscheiden kann.
 
 ## Erwogene Alternativen
 

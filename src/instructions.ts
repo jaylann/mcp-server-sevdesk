@@ -18,7 +18,8 @@ export interface Section {
  * the user enables more), dry-run status and how to work efficiently. Never longer than
  * {@link MAX_INSTRUCTIONS_LENGTH}; contains no upstream data. How more tiers are enabled, where
  * browser approvals are decided and how files travel (uploads and download links) depend on
- * `config.deployment`; the stdio text is unchanged.
+ * `config.deployment`; the stdio text is unchanged. With `SEVDESK_FILE_URL_HOSTS` set, one line
+ * names the hosts a file argument may link to.
  */
 export function buildInstructions(tools: readonly AnyToolDefinition[], config: Config): string {
   const sections: Section[] = [
@@ -42,6 +43,7 @@ export function buildInstructions(tools: readonly AnyToolDefinition[], config: C
         "items were omitted.",
     },
     ...filesSection(tools, config),
+    ...linksSection(tools, config),
     ...callingSection(tools),
   ];
   return fitToCap(sections);
@@ -171,6 +173,37 @@ function filesSection(tools: readonly AnyToolDefinition[], config: Config): Sect
       ? " and leave as download links"
       : "";
   return [{ text: `Files arrive via ${UPLOAD_REQUEST} (uploadId as file)${links}.` }];
+}
+
+/** Characters of host names the links section lists before it counts the rest. */
+const LINK_HOSTS_BUDGET = 120;
+
+/**
+ * `SEVDESK_FILE_URL_HOSTS` with a tool that reads files registered: which hosts a `file` argument
+ * may link to. The hosts are the operator's configuration (trusted); the first one is always
+ * named, further ones while they fit {@link LINK_HOSTS_BUDGET}, the rest counted. Optional: a
+ * refused link names the allowed hosts too, so the line yields to the required sections.
+ */
+function linksSection(tools: readonly AnyToolDefinition[], config: Config): Section[] {
+  const hosts = config.fileUrlHosts;
+  if (hosts.length === 0 || !tools.some((tool) => tool.localEffects === "reads-files")) {
+    return [];
+  }
+  const shown: string[] = [];
+  let used = 0;
+  for (const host of hosts) {
+    if (shown.length > 0 && used + host.length > LINK_HOSTS_BUDGET) break;
+    shown.push(host);
+    used += host.length + 2;
+  }
+  const more = hosts.length - shown.length;
+  const list = `${shown.join(", ")}${more > 0 ? ` and ${String(more)} more` : ""}`;
+  return [
+    {
+      text: `A file argument may also be an https link to ${list}; links elsewhere are refused.`,
+      optional: true,
+    },
+  ];
 }
 
 const REFERENCE_LOOKUP = "sevdesk_reference_lookup";
