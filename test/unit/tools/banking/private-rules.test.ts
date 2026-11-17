@@ -99,9 +99,11 @@ describe("sevdesk_private_transaction_rules_list", () => {
     ]);
     expect(result.data).toMatchObject({ offset: 0, limit: 50, hasMore: false, total: 2 });
     expect(client.calls[0]?.query).toMatchObject({ limit: 50, offset: 0 });
-    // The summary is trusted text: counts and where rules act, never a rule's text.
+    // The summary is trusted text: counts and where rules act (untested, so not as a fact), never
+    // a rule's text.
     expect(result.summary).toBe(
-      "Private-transaction rules 1–2 of 2. sevDesk applies them when it imports bank transactions.",
+      "Private-transaction rules 1–2 of 2. sevDesk is expected to apply them when it imports " +
+        "bank transactions (not testable on a trial account).",
     );
     expect(result.summary).not.toContain("Huber");
   });
@@ -332,8 +334,9 @@ describe("sevdesk_private_transaction_rule_create", () => {
     ]);
     expect(output.data.rule).toEqual({ id: 952, counterparty: "Netflix", createdOn: "2026-11-16" });
     expect(output.summary).toBe(
-      "Private-transaction rule 952 created: sevDesk applies it when it imports bank " +
-        "transactions (when measured, rules did not change existing transactions).",
+      "Private-transaction rule 952 created. sevDesk is expected to apply it when it imports " +
+        "bank transactions (not testable on a trial account). When measured, rules did not " +
+        "change existing transactions.",
     );
     expect(output.affected).toEqual([{ objectName: "PrivateTransactionRule", id: "952" }]);
   });

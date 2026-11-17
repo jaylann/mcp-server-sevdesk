@@ -39,6 +39,18 @@ import { ACCOUNT_PRIVATE_TRANSACTION_RULES } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 import { COMMIT_ANNOTATIONS, READ_ANNOTATIONS } from "./reconcile-shared.js";
 
+/**
+ * Where rules act, for the results the model reads (English only, like every summary): sevDesk is
+ * expected to apply rules on bank imports, but that could not be measured (D-099), so it is never
+ * stated as a fact.
+ */
+function whereRulesAct(pronoun: "it" | "them"): string {
+  return (
+    `sevDesk is expected to apply ${pronoun} when it imports bank transactions (not testable on ` +
+    "a trial account)."
+  );
+}
+
 // ---------------------------------------------------------------------------------------------
 // List
 // ---------------------------------------------------------------------------------------------
@@ -66,10 +78,7 @@ export const privateRulesListTool = defineTool({
     const summary = pageSummary("Private-transaction rules", page.window, page.state);
     return {
       data: { items: [...page.items], ...pageOutput(page.window, page.state, args.limit) },
-      summary:
-        page.items.length === 0
-          ? summary
-          : `${summary} sevDesk applies them when it imports bank transactions.`,
+      summary: page.items.length === 0 ? summary : `${summary} ${whereRulesAct("them")}`,
     };
   },
 });
@@ -179,8 +188,8 @@ export const privateRuleCreateTool = defineWriteTool({
       ctx.signal,
     );
     const summary =
-      `Private-transaction rule ${String(rule.id)} created: sevDesk applies it when it imports ` +
-      "bank transactions (when measured, rules did not change existing transactions).";
+      `Private-transaction rule ${String(rule.id)} created. ${whereRulesAct("it")} When ` +
+      "measured, rules did not change existing transactions.";
     return {
       data: { rule },
       summary: notes.length === 0 ? summary : `${summary} Note: ${notes.join(" ")}`,
