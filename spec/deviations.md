@@ -3542,8 +3542,12 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   whole list; the credit-note list has no filter (not measured). `sevdesk_invoice_update_draft`
   and `sevdesk_voucher_update_draft` take `removeCostCentre: true`, which sends
   `costCentre: null` (refused together with `costCentre`); the preview names the cost centre that
-  is removed (`costCentreUpdate` in `src/domain/cost-centres.ts`). The credit-note update tool
-  does not offer it yet. Not recorded, so not offered: cost centres on voucher positions.
+  is removed (`costCentreUpdate` in `src/domain/cost-centres.ts`). No update saves a draft
+  unchanged for it: `removeCostCentre: false` asks for nothing (a call with nothing else is
+  refused as nothing to change), and `removeCostCentre: true` on a draft without a cost centre
+  is refused ("This draft has no cost centre.") when the call asks for nothing else. The
+  credit-note update tool does not offer it yet. Not recorded, so not offered: cost centres on
+  voucher positions.
 - **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("checks costCentre on create and on
   updates with the id, per document kind", "tells honoured list filters from ignored ones, with an
   untagged control"); `test/regressions/cost-centre-filter-never-unfiltered.test.ts`;
@@ -3551,7 +3555,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   `test/unit/tools/drafts/cost-centre-drafts.test.ts` ("keeps the stored cost centre when the
   call leaves it out (D-052, D-054)", "removes the stored cost centre with removeCostCentre:
   costCentre null (D-092)", "removes the stored cost centre and shows which one, in both
-  languages", "sends no costCentre key when none is stored and none is asked for");
+  languages", "sends no costCentre key when none is stored and none is asked for", "refuses
+  removeCostCentre alone on a draft without a cost centre, without writing", "refuses
+  removeCostCentre: false alone as nothing to change, before any read");
   `test/unit/domain/cost-centres.test.ts` ("costCentreUpdate (set, remove or keep)");
   `test/unit/tools/documents/cost-centre-reads.test.ts`. Live: the two probes above; the removal
   by the 2026-11-17 one-off check (no probe).

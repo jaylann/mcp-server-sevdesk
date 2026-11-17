@@ -22,6 +22,7 @@ import type { SevdeskClient } from "../../sevdesk/types.js";
 import type { TaxRegime } from "../account-settings.js";
 import { cleanText, currencyCode } from "../common.js";
 import {
+  COST_CENTRE_FLAGS,
   type CostCentreArg,
   costCentreChange,
   costCentreFacts,
@@ -404,12 +405,17 @@ export async function prepareVoucherUpdate(
   options: VoucherCallOptions,
 ): Promise<VoucherSavePlan> {
   const { signal } = options;
-  assertChanges(args, "voucher");
+  const given = assertChanges(args, "voucher", COST_CENTRE_FLAGS);
   checkSupplierArgs(args.supplierId, args.supplierName, false);
   const file = await readOptionalReceipt(options, args.file, args.fileSha256);
   const stored = await loadStoredVoucher(client, args.id, signal);
   const kind = checkDraft(stored, "changed");
-  const centre = await costCentreUpdate(client, args, stored.record.costCentre?.id, signal);
+  const centre = await costCentreUpdate(
+    client,
+    args,
+    { storedId: stored.record.costCentre?.id, given },
+    signal,
+  );
   const oldCurrency = currencyCode(stored.record.currency);
   const currency = resolveVoucherCurrency(args.currency ?? oldCurrency, args);
   const convertsCurrency = oldCurrency !== currency.currency;

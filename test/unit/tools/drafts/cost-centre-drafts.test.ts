@@ -218,6 +218,19 @@ describe("sevdesk_invoice_update_draft with costCentre", () => {
     expect(client.callsTo("/CostCentre")).toEqual([]);
   });
 
+  it("refuses removeCostCentre: false alone as nothing to change, before any read", async () => {
+    const client = new FakeSevdeskClient(
+      withRoutes(invoiceUpdateRoutes, storedInvoice({ costCentre: storedCostCentre(first.id) })),
+    );
+    await expect(
+      prepareWrite(tool, { id: 2102, removeCostCentre: false }, client),
+    ).rejects.toMatchObject({
+      kind: "validation",
+      message: "Nothing to change: give at least one field of the invoice besides id.",
+    });
+    expect(client.calls).toEqual([]);
+  });
+
   it("refuses costCentre and removeCostCentre together, before any write", async () => {
     const client = new FakeSevdeskClient(withRoutes(invoiceUpdateRoutes, costCentresRoute));
     await expect(
@@ -230,11 +243,26 @@ describe("sevdesk_invoice_update_draft with costCentre", () => {
     expect(client.writes()).toEqual([]);
   });
 
-  it("names no change when it removes from a draft without a cost centre", async () => {
+  it("refuses removeCostCentre alone on a draft without a cost centre, without writing", async () => {
+    const error = await refusal(
+      tool,
+      { id: 2102, removeCostCentre: true },
+      withRoutes(invoiceUpdateRoutes, costCentresRoute),
+    );
+    expect(error).toMatchObject({ kind: "validation", message: "This draft has no cost centre." });
+  });
+
+  it("leaves a removal of nothing out when the call changes something else", async () => {
     const client = new FakeSevdeskClient(withRoutes(invoiceUpdateRoutes, costCentresRoute));
-    const plan = await prepareWrite(tool, { id: 2102, removeCostCentre: true }, client);
-    expect(plan.preview.action).toMatch(/change nothing visible\.$/);
-    expect(plan.state.body.invoice.costCentre).toBeNull();
+    const plan = await prepareWrite(
+      tool,
+      { id: 2102, header: "Rechnung Projekt X", removeCostCentre: true },
+      client,
+    );
+    expect(plan.state.body.invoice).not.toHaveProperty("costCentre");
+    expect(plan.preview.action).toBe(
+      "Update draft invoice 2102 for Musterfirma GmbH (contact 1001): change title.",
+    );
     expect(client.callsTo("/CostCentre")).toEqual([]);
   });
 
@@ -377,6 +405,39 @@ describe("sevdesk_voucher_update_draft with costCentre", () => {
       label: "Kostenstelle",
       value: "M62573C Mustername 1 (ID 344964) → entfernt",
     });
+  });
+
+  it("refuses removeCostCentre alone on a draft without a cost centre, without writing", async () => {
+    const error = await refusal(tool, { id: 2101, removeCostCentre: true }, [
+      costCentresRoute,
+      voucherRoute(draftRow()),
+      positionsRoute(2101, [positionRow()]),
+    ]);
+    expect(error).toMatchObject({ kind: "validation", message: "This draft has no cost centre." });
+  });
+
+  it("refuses removeCostCentre: false alone as nothing to change", async () => {
+    const fake = client(draftRow({ costCentre: storedCostCentre(first.id) }), [costCentresRoute]);
+    await expect(
+      prepareWrite(tool, { id: 2101, removeCostCentre: false }, fake),
+    ).rejects.toMatchObject({
+      kind: "validation",
+      message: "Nothing to change: give at least one field of the voucher besides id.",
+    });
+    expect(fake.calls).toEqual([]);
+  });
+
+  it("leaves a removal of nothing out when the call changes something else", async () => {
+    const fake = client(draftRow(), [costCentresRoute]);
+    const { plan } = await executeWrite(
+      tool,
+      { id: 2101, number: "ER-2026-0816", removeCostCentre: true },
+      fake,
+    );
+    const body = fake.writes()[0]?.body as { voucher: Record<string, unknown> };
+    expect(body.voucher).not.toHaveProperty("costCentre");
+    expect(plan.preview.action).toBe("Update draft voucher 2101: change Belegnummer.");
+    expect(fake.callsTo("/CostCentre")).toEqual([]);
   });
 
   it("refuses costCentre and removeCostCentre together", async () => {

@@ -298,19 +298,38 @@ export const costCentreUpdateInputShape = {
     .describe("true removes the stored Kostenstelle from the draft. Not together with costCentre."),
 };
 
+/**
+ * The boolean cost-centre argument of the update tools, for `assertChanges`' `flags`:
+ * `removeCostCentre: false` asks for nothing.
+ */
+export const COST_CENTRE_FLAGS: readonly string[] = ["removeCostCentre"];
+
 /** What an update does with the cost centre. */
 export interface CostCentreUpdate {
   /** The cost centre the draft gets; `null` removes the stored one. */
   readonly next: CostCentre | null;
-  /** The stored cost centre as listed (`{id}` alone when the list lacks it); none if unset. */
+  /**
+   * The stored cost centre as listed (`{id}` alone when the list lacks it); none if unset (only
+   * when `next` sets one).
+   */
   readonly stored?: CostCentre | undefined;
+}
+
+/** What {@link costCentreUpdate} needs to know of the stored draft and of the rest of the call. */
+export interface CostCentreUpdateContext {
+  /** The id of the cost centre the draft stores; `undefined` when it has none. */
+  readonly storedId: number | undefined;
+  /** The fields the call gives, as `assertChanges` returns them. */
+  readonly given: readonly string[];
 }
 
 /**
  * The cost-centre change an update asks for, or `undefined` to keep the stored one (no request).
  * `costCentre` is resolved like {@link resolveCostCentre}; `removeCostCentre: true` removes it,
  * which `costCentre: null` does (recorded 2026-11-17, spec/deviations.md D-092). Both together are
- * refused.
+ * refused. `removeCostCentre: true` on a draft without a cost centre removes nothing: alone it is
+ * refused ("This draft has no cost centre.") before any write, since it would only save the draft
+ * unchanged; next to other fields it is left out like `false`.
  */
 export async function costCentreUpdate(
   client: SevdeskClient,
@@ -318,9 +337,10 @@ export async function costCentreUpdate(
     readonly costCentre?: CostCentreArg | undefined;
     readonly removeCostCentre?: boolean | undefined;
   },
-  storedId: number | undefined,
+  context: CostCentreUpdateContext,
   signal?: AbortSignal,
 ): Promise<CostCentreUpdate | undefined> {
+  const { storedId, given } = context;
   const remove = args.removeCostCentre === true;
   if (remove && args.costCentre !== undefined) {
     throw validation("Pass either costCentre (a new one) or removeCostCentre, not both.");
@@ -330,10 +350,13 @@ export async function costCentreUpdate(
     return { next: choice.centre, stored: choice.stored };
   }
   if (!remove) return undefined;
-  return {
-    next: null,
-    stored: storedId === undefined ? undefined : await describeCostCentre(client, storedId, signal),
-  };
+  if (storedId === undefined) {
+    if (given.every((key) => key === "removeCostCentre")) {
+      throw validation("This draft has no cost centre.");
+    }
+    return undefined;
+  }
+  return { next: null, stored: await describeCostCentre(client, storedId, signal) };
 }
 
 /**
@@ -349,16 +372,16 @@ export function costCentreUpdatePayload(
 }
 
 /**
- * Before and after of a cost-centre change for a preview's change log; both `undefined` when a
- * removal finds none stored (nothing visible changes).
+ * Before and after of a cost-centre change for a preview's change log; before is `undefined` when
+ * the draft had none.
  */
 export function costCentreChange(
   update: CostCentreUpdate,
   lang: PreviewLanguage = "en",
-): readonly [string | undefined, string | undefined] {
+): readonly [string | undefined, string] {
   const before = update.stored === undefined ? undefined : costCentreLabel(update.stored, lang);
   if (update.next !== null) return [before, costCentreLabel(update.next, lang)];
-  return [before, before === undefined ? undefined : lang === "de" ? "entfernt" : "removed"];
+  return [before, lang === "de" ? "entfernt" : "removed"];
 }
 
 // ---------------------------------------------------------------------------------------------

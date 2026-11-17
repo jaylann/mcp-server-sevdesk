@@ -31,6 +31,7 @@ import { SevdeskError } from "../../sevdesk/errors.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { statusDto } from "../common.js";
 import {
+  COST_CENTRE_FLAGS,
   type CostCentreArg,
   costCentreChange,
   costCentreInput,
@@ -419,11 +420,16 @@ export async function prepareInvoiceUpdate(
   options: DraftCallOptions,
 ): Promise<InvoiceDraftPlan> {
   const { signal } = options;
-  assertChanges(args, "invoice");
+  const given = assertChanges(args, "invoice", COST_CENTRE_FLAGS);
   const current = await loadCurrentInvoice(client, args.id, signal);
   const doc = current.document;
   checkUpdatable(doc);
-  const centre = await costCentreUpdate(client, args, doc.costCentre?.id, signal);
+  const centre = await costCentreUpdate(
+    client,
+    args,
+    { storedId: doc.costCentre?.id, given },
+    signal,
+  );
   const texts = await resolveTemplateTexts(client, args, INVOICE_TEXT_TYPE, signal);
   const discounts = await readDocumentDiscounts(client, "invoice", doc.id, signal);
   const change = planDiscountChange(args.discount, discounts, `Invoice ${doc.id}`);
