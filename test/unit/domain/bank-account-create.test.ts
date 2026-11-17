@@ -305,19 +305,27 @@ describe("executeBankAccountCreate", () => {
     expect(result.notes).toEqual([]);
   });
 
-  /** A 422 as the client raises it, with sevDesk's (recorded) text as upstreamMessage. */
-  function refused(upstreamMessage: string): SevdeskError {
+  /**
+   * A 422 as the client raises it on a POST to `path`: sevDesk's (recorded) text as
+   * upstreamMessage, with the request and an exception id as the client sets them.
+   */
+  function refused(upstreamMessage: string, path = CLEARING): SevdeskError {
     return new SevdeskError({
       kind: "validation",
       status: 422,
       message: "sevDesk rejected the request as invalid.",
       upstreamMessage,
+      exceptionUuid: "6f1c2a9e-0000-4000-8000-000000000422",
+      method: "POST",
+      path,
     });
   }
 
   it("turns sevDesk's 'already used' refusal into its own sentence without sevDesk's text", async () => {
     const client = new FakeSevdeskClient([
-      created(FILE_IMPORT, { error: refused("The given account number is already used") }),
+      created(FILE_IMPORT, {
+        error: refused("The given account number is already used", FILE_IMPORT),
+      }),
     ]);
     const attempt = executeBankAccountCreate(client, {
       ...importState,
@@ -332,6 +340,10 @@ describe("executeBankAccountCreate", () => {
         "another number, or leave accountingNumber out to let sevDesk pick a free one (recorded " +
         "on SKR04: the next free 18xx number).",
       upstreamMessage: undefined,
+      // The request and sevDesk's exception id stay for the error output and the audit log.
+      method: "POST",
+      path: "/CheckAccount/Factory/fileImportAccount",
+      exceptionUuid: "6f1c2a9e-0000-4000-8000-000000000422",
     });
     expect(client.writes()).toHaveLength(1);
   });
@@ -346,12 +358,16 @@ describe("executeBankAccountCreate", () => {
     });
     await expect(attempt).rejects.toMatchObject({
       kind: "validation",
+      status: 422,
       message:
         "sevDesk does not accept 3321 as the booking account of a payment account. Nothing was " +
         "created. Choose a booking account the chart of accounts provides for bank or clearing " +
         "accounts (ask the tax consultant), or leave accountingNumber out to let sevDesk pick a " +
         "free one (recorded on SKR04: the next free 18xx number).",
       upstreamMessage: undefined,
+      method: "POST",
+      path: CLEARING,
+      exceptionUuid: "6f1c2a9e-0000-4000-8000-000000000422",
     });
     expect(client.writes()).toHaveLength(1);
   });

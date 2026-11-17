@@ -246,8 +246,9 @@ export async function executeBankAccountCreate(
  * account number is already used" (also by an archived account, which keeps its number and is
  * not listed, so the pre-check cannot see it) and "The given account number … is invalid" (the
  * number is not one sevDesk allows for a payment account). Each becomes a trusted sentence of our
- * own, without sevDesk's text; any other error is left as it is (`undefined`). Nothing was
- * created in either case.
+ * own, without sevDesk's text; status, request and sevDesk's exception id are kept for the error
+ * output and the audit log. Any other error is left as it is (`undefined`). Nothing was created in
+ * either case.
  */
 function accountingNumberRefusal(
   error: unknown,
@@ -278,7 +279,11 @@ function accountingNumberRefusal(
     kind: "validation",
     message,
     ...(error.status === undefined ? {} : { status: error.status }),
+    ...(error.exceptionUuid === undefined ? {} : { exceptionUuid: error.exceptionUuid }),
+    ...(error.method === undefined ? {} : { method: error.method }),
+    ...(error.path === undefined ? {} : { path: error.path }),
     cause: error,
+    completedWrites: error.completedWrites,
   });
 }
 
