@@ -4,10 +4,17 @@
  */
 import { SevdeskError } from "../../sevdesk/errors.js";
 import { cleanText, currencyCode, splitTotals, type SumFields } from "../common.js";
+import { compare } from "../money.js";
 import type { PreviewLanguage } from "../preview-text.js";
 import type { TaxRule } from "../reference-data.js";
-import { type DraftPreview, fact, type PreviewFact } from "./preview.js";
+import { addressText, type DraftPreview, fact, type PreviewFact } from "./preview.js";
 import type { DocumentAddress } from "./recipient.js";
+import {
+  addressBlock,
+  type StoredAddressFields,
+  type StoredDocument,
+  type UpdateBasics,
+} from "./shared.js";
 import { taxRuleLabel } from "./tax.js";
 
 /** `{id, objectName}` for a payload. */
@@ -45,6 +52,34 @@ export function structuredAddress(address: DocumentAddress): {
 }
 
 /**
+ * The address fields of an invoice or credit note update: the stored text and parts carried over
+ * unchanged, or a new address written both ways (printed text and every structured part).
+ */
+export function updatedAddressFields(
+  stored: StoredAddressFields,
+  address: DocumentAddress | undefined,
+): {
+  address?: string | undefined;
+  addressName?: string | undefined;
+  addressStreet?: string | null | undefined;
+  addressZip?: string | null | undefined;
+  addressCity?: string | null | undefined;
+  addressCountry?: { id: number; objectName: "StaticCountry" } | undefined;
+} {
+  if (address === undefined) {
+    return {
+      address: stored.address,
+      addressName: stored.addressName,
+      addressStreet: stored.addressStreet,
+      addressZip: stored.addressZip,
+      addressCity: stored.addressCity,
+      addressCountry: storedRef(stored.addressCountry, "StaticCountry"),
+    };
+  }
+  return { address: addressBlock(address), ...structuredAddress(address) };
+}
+
+/**
  * The stored gross total for a preview, in the document's own currency (foreign-currency
  * documents keep it in `sum…ForeignCurrency`, spec/deviations.md D-043), plus the EUR amount
  * sevDesk books when the two differ.
@@ -56,6 +91,27 @@ export function storedTotalText(
   if (totals.gross === undefined) return "as stored";
   const booked = eur?.gross === undefined ? "" : ` (${eur.gross.amount} EUR booked)`;
   return `gross ${totals.gross.amount} ${totals.gross.currency}${booked}`;
+}
+
+/**
+ * Warning for an update that replaces the positions of a draft with stored document discounts
+ * (Rabatte; `sumDiscounts` is not zero, negative for a discount, spec/deviations.md D-116). The
+ * update leaves the discount rows alone and sevDesk applies them to the new positions, but the
+ * expected total is computed from the positions only. `undefined` when the positions stay (the
+ * stored total already includes the discounts) or the draft has none.
+ */
+export function storedDiscountWarning(
+  sumDiscounts: string | undefined,
+  positionsReplaced: boolean,
+): string | undefined {
+  if (!positionsReplaced || sumDiscounts === undefined || compare(sumDiscounts, "0") === 0) {
+    return undefined;
+  }
+  return (
+    "The draft has document discounts (Rabatte) that stay on it: sevDesk applies them to the " +
+    "new positions, so the saved total will differ from the expected total, which leaves them " +
+    "out. Check the total after the save."
+  );
 }
 
 /** The preview text of the tax setting, e.g. "tax rule 1 Umsatzsteuerpflichtige Umsätze". */
@@ -111,6 +167,90 @@ export class ChangeLog {
 
   get changed(): readonly string[] {
     return this.names;
+  }
+}
+
+/** Logs a new contact and a new address: the first changes of every draft update preview. */
+export function logRecipientChanges(
+  log: ChangeLog,
+  stored: StoredDocument,
+  basics: UpdateBasics,
+): void {
+  if (basics.contactChanged) {
+    log.value(
+      "contact",
+      "Customer",
+      `contact ${stored.contact?.id ?? "none"}`,
+      `contact ${basics.contact.contact.id}`,
+    );
+  }
+  if (basics.address !== undefined) {
+    log.value("address", "Address", basics.addressBefore, addressText(basics.address));
+  }
+}
+
+/** Logs a new contact person (after the dates and terms of each document type). */
+export function logContactPersonChange(
+  log: ChangeLog,
+  stored: StoredDocument,
+  basics: UpdateBasics,
+): void {
+  if (!basics.contactPersonChanged) return;
+  log.value(
+    "contact person",
+    "Contact person",
+    stored.contactPerson === undefined ? undefined : `user ${stored.contactPerson.id}`,
+    `${basics.contactPerson.name ?? "user"} (user ${basics.contactPerson.id})`,
+  );
+}
+
+/** Logs a new title, intro text (Kopftext) and closing text (Fußtext). */
+export function logTextChanges(
+  log: ChangeLog,
+  storedHeader: string | undefined,
+  args: {
+    readonly header?: string | undefined;
+    readonly headText?: string | undefined;
+    readonly footText?: string | undefined;
+  },
+): void {
+  if (args.header !== undefined) log.value("title", "Title", storedHeader, args.header);
+  if (args.headText !== undefined) log.note("intro text", "Intro text", "replaced");
+  if (args.footText !== undefined) log.note("closing text", "Closing text", "replaced");
+}
+
+/**
+ * Logs price mode, tax, currency and replaced positions: the last changes of every draft update
+ * preview. `storedPositions` is the number of stored rows a new list replaces.
+ */
+export function logPricingChanges(
+  log: ChangeLog,
+  stored: StoredDocument,
+  basics: UpdateBasics,
+  storedPositions: number,
+): void {
+  if (basics.modeChanged) {
+    log.value(
+      "price mode",
+      "Prices entered as",
+      basics.mode === "net" ? "gross" : "net",
+      basics.mode,
+    );
+  }
+  if (basics.taxChanged) {
+    log.note(
+      "tax",
+      "Tax",
+      `${taxText(basics.rule, basics.tax)}; text: ${basics.tax.taxText ?? "(none)"}`,
+    );
+  }
+  if (basics.currencyChanged) log.value("currency", "Currency", stored.currency, basics.currency);
+  if (basics.positions !== undefined) {
+    log.note(
+      "positions",
+      "Positions",
+      `replace ${positionCount(storedPositions)} with ${positionCount(basics.positions.length)}`,
+    );
   }
 }
 

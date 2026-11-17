@@ -296,7 +296,9 @@ The `offer_follow_up` prompt accepts optional strings: `minAgeDays` (1–4 digit
 6. Payment: via the bank reconciliation, or `sevdesk_invoice_book_payment` (`commit`).
 7. Mistake after finalizing: `sevdesk_invoice_cancel` (Stornorechnung) or a credit note
    (`sevdesk_credit_note_create_from_invoice`); `sevdesk_invoice_reset` to draft only for an invoice
-   that was never sent to anyone (see [gobd.md](gobd.md)).
+   that was never sent to anyone (see [gobd.md](gobd.md)). A credit note draft is corrected with
+   `sevdesk_credit_note_update_draft` (`dryRun` first; positions replace all stored ones and keep
+   the invoice's tax rates) before `sevdesk_credit_note_finalize` (`commit`).
 
 ## Sources
 

@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-import { creditNoteDetailSchema } from "../../domain/credit-notes.js";
-import { positionDtoSchema } from "../../domain/document-positions.js";
 import {
   creditNoteCreateInputShape,
   executeCreditNoteDraft,
@@ -10,18 +8,7 @@ import {
 import { defineWriteTool } from "../define-tool.js";
 import { ACCOUNT_CREDIT_NOTE_NUMBERS } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
-
-const output = z.object({
-  creditNote: creditNoteDetailSchema,
-  positions: z.array(positionDtoSchema).describe("Positionen as sevDesk stored them."),
-  positionsComplete: z
-    .boolean()
-    .describe("False when sevDesk had more position rows than could be read back."),
-  notes: z
-    .array(z.string())
-    .optional()
-    .describe("Things to check, e.g. a total that differs from the preview or a missing number."),
-});
+import { creditNoteDraftOutput, creditNoteDraftToolOutput } from "./draft-output.js";
 
 /** `sevdesk_credit_note_create_draft`: a new draft credit note (Gutschrift) with positions. */
 export const creditNoteCreateDraftTool = defineWriteTool({
@@ -39,7 +26,7 @@ export const creditNoteCreateDraftTool = defineWriteTool({
     "sevdesk_credit_note_create_from_invoice instead. Defaults: today, net prices, EUR (or the " +
     "invoice's currency), the contact's invoice address, the account's only user as contact " +
     "person, tax rule 1 (11 on a Kleinunternehmer account). dryRun previews without saving. " +
-    "After: sevdesk_credit_note_pdf, " +
+    "After: sevdesk_credit_note_update_draft to change it, sevdesk_credit_note_pdf, " +
     "sevdesk_credit_note_finalize.",
   toolset: "credit-notes",
   tier: "write",
@@ -50,7 +37,7 @@ export const creditNoteCreateDraftTool = defineWriteTool({
     openWorldHint: false,
   },
   input: z.strictObject({ ...creditNoteCreateInputShape, ...dryRunInputShape }),
-  output,
+  output: creditNoteDraftOutput,
   // The number range it reserves from is the one sevdesk_credit_note_create_from_invoice takes
   // its numbers from, so the two run one at a time; with a source invoice, also the "no credit
   // note for it yet" check of both tools (review 2026-11, round 3).
@@ -62,26 +49,12 @@ export const creditNoteCreateDraftTool = defineWriteTool({
   ],
   prepare: (args, ctx) =>
     prepareCreditNoteCreate(ctx.client, args, { signal: ctx.signal, cacheOwner: ctx.config }),
-  execute: async (_args, plan, ctx) => {
-    const result = await executeCreditNoteDraft(ctx.client, plan.state, {
-      signal: ctx.signal,
-      cacheOwner: ctx.config,
-    });
-    const { creditNote, positions, positionsComplete } = result.details;
-    const gross = creditNote.totals.gross;
-    const total = gross === undefined ? "" : `, gross ${gross.amount} ${gross.currency}`;
-    const count = `${positions.length} position${positions.length === 1 ? "" : "s"}`;
-    return {
-      data: {
-        creditNote,
-        positions: [...positions],
-        positionsComplete,
-        ...(result.notes.length === 0 ? {} : { notes: [...result.notes] }),
-      },
-      summary:
-        `Created draft credit note ${result.id} (${count}${total}).` +
-        (result.notes.length === 0 ? "" : " See notes."),
-      affected: [{ objectName: "CreditNote", id: String(result.id) }],
-    };
-  },
+  execute: async (_args, plan, ctx) =>
+    creditNoteDraftToolOutput(
+      await executeCreditNoteDraft(ctx.client, plan.state, {
+        signal: ctx.signal,
+        cacheOwner: ctx.config,
+      }),
+      "Created",
+    ),
 });

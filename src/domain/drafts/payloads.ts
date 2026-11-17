@@ -7,7 +7,9 @@
  *
  * What the schemas enforce on purpose:
  * - positions go into `invoicePosSave` / `creditNotePosSave` / `orderPosSave` (the spec's
- *   `required` lists name `invoicePos` etc., which do not exist: D-004);
+ *   `required` lists name `invoicePos` etc., which do not exist: D-004); stored positions to
+ *   delete go into `*PosDelete` as a list of refs, never as the spec's single object (D-054,
+ *   D-110);
  * - no derived totals (`sum*`, `priceNet`, `priceGross`, `priceTax`) anywhere (B8);
  * - document numbers only from sevDesk (B4): invoices none on create (`sendBy` assigns it);
  *   orders and credit notes the number reserved from the number range (`numbering.ts`); on
@@ -132,9 +134,10 @@ export const CREDIT_NOTE_BOOKING_CATEGORIES = [
 
 const creditNoteDocumentSchema = z
   .strictObject({
+    id: id.optional(),
     objectName: z.literal("CreditNote"),
     mapAll: z.literal(true),
-    creditNoteNumber: z.string().min(1),
+    creditNoteNumber: z.string().min(1).optional(),
     creditNoteType: z.literal("CN"),
     status: z.literal(100),
     contact: ref("Contact"),
@@ -142,25 +145,47 @@ const creditNoteDocumentSchema = z
     creditNoteDate: germanDate,
     deliveryDate: timestamp,
     deliveryDateUntil: timestamp.optional(),
-    header: z.string().min(1),
+    header: z.string().min(1).optional(),
     headText: z.string().optional(),
     footText: z.string().optional(),
-    discount: z.literal(0),
+    discount: z.number().min(0).max(100),
+    discountTime: z.number().int().min(0).optional(),
     currency: z.string().length(3),
     showNet: z.boolean(),
     ...taxShape,
     bookingCategory: z.enum(CREDIT_NOTE_BOOKING_CATEGORIES),
     refSrcInvoice: ref("Invoice").optional(),
     ...structuredAddressShape,
+    customerInternalNote: z.string().optional(),
+    paymentMethod: ref("PaymentMethod").optional(),
+    origin: z.strictObject({ id, objectName: z.string().min(1) }).optional(),
   })
-  .refine(oneTaxSetting, TAX_MESSAGE);
+  .refine(oneTaxSetting, TAX_MESSAGE)
+  // A new credit note carries the number reserved for it (without one, `sendBy` fails: see
+  // credit-note.ts); an update keeps whatever the draft has stored, also none.
+  .refine(
+    (doc) => doc.id !== undefined || doc.creditNoteNumber !== undefined,
+    "a new credit note carries its reserved number",
+  );
 
-/** `POST /CreditNote/Factory/saveCreditNote` (create only). */
-export const saveCreditNoteBodySchema = z.strictObject({
-  creditNote: creditNoteDocumentSchema,
-  creditNotePosSave: z.array(positionSchema("CreditNotePos")).min(1),
-  creditNotePosDelete: z.null(),
-});
+/**
+ * `POST /CreditNote/Factory/saveCreditNote` (create, or update with `creditNote.id`; recorded
+ * 2026-11-16, spec/deviations.md D-110). `creditNotePosDelete` is a list of refs or `null`: the
+ * spec's single `{id, objectName}` object is refused with HTTP 400. An update that keeps the
+ * positions sends `creditNotePosSave: []` with `creditNotePosDelete: null`, the recorded shape.
+ */
+export const saveCreditNoteBodySchema = z
+  .strictObject({
+    creditNote: creditNoteDocumentSchema,
+    creditNotePosSave: z.array(positionSchema("CreditNotePos")),
+    creditNotePosDelete: deleteSchema("CreditNotePos"),
+  })
+  .refine(
+    (body) =>
+      body.creditNote.id !== undefined ||
+      (body.creditNotePosSave.length > 0 && body.creditNotePosDelete === null),
+    "a new credit note has positions and nothing to delete",
+  );
 export type SaveCreditNoteBody = z.output<typeof saveCreditNoteBodySchema>;
 
 const orderDocumentSchema = z

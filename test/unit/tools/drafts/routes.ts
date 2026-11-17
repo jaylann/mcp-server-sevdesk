@@ -189,7 +189,8 @@ const sourceInvoiceRoutes: readonly FakeRoute[] = [
   },
 ];
 
-const saveCreditNoteRoute: FakeRoute = {
+/** A `saveCreditNote` that answers with the new credit note 2201 (a create). */
+export const saveCreditNoteRoute: FakeRoute = {
   method: "POST",
   path: "/CreditNote/Factory/saveCreditNote",
   response: { fixture: "drafts/save-credit-note-response.json" },
@@ -263,6 +264,50 @@ export const creditNoteCreateRoutes: readonly FakeRoute[] = [
   saveCreditNoteRoute,
   ...creditNote2201Routes,
   creditNoteNumbersRoute("GU-1000", "GU-1001", null),
+];
+
+/**
+ * The stored draft credit note 2202 (read before an update): an underachievement credit note of
+ * invoice 1001 made by `createFromInvoice` (origin and refSrcInvoice), two positions at 19 %.
+ */
+const creditNote2202Routes: readonly FakeRoute[] = [
+  { path: "/CreditNote/2202", response: { fixture: "drafts/credit-note-2202-draft.json" } },
+  {
+    path: "/CreditNotePos",
+    query: { "creditNote[id]": 2202 },
+    response: { fixture: "drafts/credit-note-positions-2202.json" },
+  },
+];
+
+/** A `saveCreditNote` that answers with credit note 2202 (an update; the recorded answer keys). */
+const saveCreditNote2202Route: FakeRoute = {
+  method: "POST",
+  path: "/CreditNote/Factory/saveCreditNote",
+  response: {
+    body: {
+      objects: {
+        creditNote: { id: "2202", objectName: "CreditNote" },
+        creditNotePos: [],
+        discount: [],
+      },
+    },
+  },
+};
+
+/**
+ * Reads and the write of a credit note update. The source invoice 1001 is read only when the
+ * update changes what its checks depend on; the stored record is read again for the read-back.
+ */
+export const creditNoteUpdateRoutes: readonly FakeRoute[] = [
+  ...creditNote2202Routes,
+  regularAccountRoute,
+  version2Route,
+  ...contactRoutes,
+  oneUserRoute,
+  countriesRoute,
+  unitsRoute,
+  ...sourceInvoiceRoutes,
+  saveCreditNote2202Route,
 ];
 
 // ---------------------------------------------------------------------------------------------

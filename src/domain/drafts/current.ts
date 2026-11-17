@@ -1,6 +1,7 @@
 /**
  * The stored state of a draft that an update tool changes: the raw writable fields of the
- * invoice or order (`GET /Invoice/{id}`, `GET /Order/{id}`) and its position rows.
+ * invoice, credit note or order (`GET /Invoice/{id}`, `GET /CreditNote/{id}`, `GET /Order/{id}`)
+ * and its position rows.
  *
  * Updates go through the save factories with the document's id (spec tag `InvoicePos`: "you must
  * use the same endpoint as when creating an invoice, then passing in the ID along with the
@@ -70,6 +71,8 @@ const currentInvoiceSchema = z.object({
   timeToPay: zOptionalInt,
   discount: zOptionalDecimal,
   discountTime: zOptionalInt,
+  /** The document discounts' net sum (Rabatte, negative for a discount, D-116); read, never sent. */
+  sumDiscounts: zOptionalDecimal,
   addressName: zText,
   addressStreet: zText,
   addressZip: zText,
@@ -93,6 +96,47 @@ const currentOrderSchema = z.object({
 });
 
 export type CurrentOrder = z.output<typeof currentOrderSchema>;
+
+/**
+ * `refSrcInvoice` as recorded (`{id, objectName}`) or as the tag text types it (a bare id, read
+ * the same way by `credit-notes.ts`); `null`/"" become `undefined`.
+ */
+const zSourceRef = z
+  .union([z.object({ id: zId }), zId, z.null(), z.literal("")])
+  .optional()
+  .transform((value) =>
+    value === null || value === "" || value === undefined
+      ? undefined
+      : { id: typeof value === "number" ? value : value.id },
+  );
+
+/**
+ * Credit notes (recorded 2026-11-16, spec/deviations.md D-110): besides the shared fields, the
+ * number, type, dates, booking category and source invoice (`refSrcInvoice`, and `origin` on
+ * credit notes made by `createFromInvoice`), cash discount, payment method, structured address.
+ */
+const currentCreditNoteSchema = z.object({
+  ...documentShape,
+  creditNoteNumber: zText,
+  creditNoteType: zText,
+  creditNoteDate: zDate,
+  deliveryDate: zDate,
+  deliveryDateUntil: zDate,
+  discount: zOptionalDecimal,
+  discountTime: zOptionalInt,
+  /** The document discounts' net sum (Rabatte, negative for a discount, D-116); read, never sent. */
+  sumDiscounts: zOptionalDecimal,
+  addressName: zText,
+  addressStreet: zText,
+  addressZip: zText,
+  addressCity: zText,
+  paymentMethod: zOptionalRef,
+  bookingCategory: zText,
+  refSrcInvoice: zSourceRef,
+  enshrined: zDate,
+});
+
+export type CurrentCreditNote = z.output<typeof currentCreditNoteSchema>;
 
 /** A stored draft with its position rows (sorted by position number). */
 export interface CurrentDraft<D> {
@@ -133,6 +177,41 @@ export async function loadCurrentInvoice(
     "an invoice",
   );
   return { document, positions: completePositions(positions, `invoice ${id}`) };
+}
+
+/** The stored credit note and its positions. A missing credit note is a `validation` error. */
+export async function loadCurrentCreditNote(
+  client: SevdeskClient,
+  creditNoteId: number,
+  signal?: AbortSignal,
+): Promise<CurrentDraft<CurrentCreditNote>> {
+  const id = toSevdeskId(creditNoteId);
+  const [payload, positions] = await Promise.all([
+    readOrExplain(
+      client,
+      sevdeskPath("CreditNote", id),
+      `Credit note ${id}`,
+      "sevdesk_credit_notes_list",
+      signal,
+    ),
+    listDocumentPositions(
+      client,
+      {
+        path: "/CreditNotePos",
+        parentKey: "creditNote",
+        objectName: "CreditNote",
+        what: "credit note positions",
+      },
+      id,
+      signal,
+    ),
+  ]);
+  const document = parseUpstream(
+    currentCreditNoteSchema,
+    expectSingle(payload, `credit note ${id}`),
+    "a credit note",
+  );
+  return { document, positions: completePositions(positions, `credit note ${id}`) };
 }
 
 /** The stored order and its positions. A missing order is a `validation` error. */

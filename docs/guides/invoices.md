@@ -252,8 +252,15 @@ cancellation to the customer with `sevdesk_invoice_send_email`.
 
 For a paid or partially paid invoice,
 [`sevdesk_credit_note_create_from_invoice`](../tools.md#sevdesk_credit_note_create_from_invoice)
-(`write`, no confirmation) creates a credit note draft (Gutschrift) with all its positions, which
-the assistant can then adjust. It is finalized with
+(`write`, no confirmation) creates a credit note draft (Gutschrift) with all its positions.
+
+> In that credit note, keep only the wrong position and credit 40 EUR net for it.
+
+[`sevdesk_credit_note_update_draft`](../tools.md#sevdesk_credit_note_update_draft) (`write`, no
+confirmation) adjusts the draft like the invoice update: it changes only the fields you name, and
+new positions replace all stored positions. The credit note keeps its number and the invoice it
+reduces; its positions may only use that invoice's tax rates, and its contact and currency stay
+the invoice's. Only drafts can be changed. The credit note is finalized with
 [`sevdesk_credit_note_finalize`](../tools.md#sevdesk_credit_note_finalize) or emailed with
 [`sevdesk_credit_note_send_email`](../tools.md#sevdesk_credit_note_send_email), and a refund is
 booked with [`sevdesk_credit_note_book_payment`](../tools.md#sevdesk_credit_note_book_payment), each

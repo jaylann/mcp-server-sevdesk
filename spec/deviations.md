@@ -2005,7 +2005,10 @@ true`) and a lone `priceGross` 119 (with `showNet: false`) give the same totals.
   the stored ones)", "fails loudly when sevDesk saved a different invoice"),
   `test/unit/tools/drafts/order-drafts.test.ts` ("carries the stored order over, keeps its number
   and replaces the positions", "fails loudly when sevDesk saved a different order"),
-  `test/unit/tools/drafts/update-edges.test.ts`. Vouchers:
+  `test/unit/tools/drafts/update-edges.test.ts`. Credit notes:
+  `test/unit/tools/drafts/credit-note-update-draft.test.ts` ("changes one field and carries every
+  stored field over, positions untouched", "replaces all positions in one request and checks them
+  against the source invoice"), `test/regressions/credit-note-pos-delete-list.test.ts`. Vouchers:
   `test/unit/tools/vouchers/update-draft.test.ts` ("changes the Belegnummer and carries every
   stored field over, positions untouched", "replaces all positions in one request
   (voucherPosDelete lists the stored ones)", "fails loudly when sevDesk saved another voucher"),
@@ -3976,9 +3979,14 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Impact:** `sevdesk_credit_note_update_draft` works like the invoice update (D-054): one
   `saveCreditNote` with the id and every stored field carried over; replaced positions go out
   with `creditNotePosDelete` as an array. (#90)
-- **Test:** pending: the #90 tools. Live: probe `write-credit-note-update-draft`
-  (`test/unit/scripts/gaps-documents-probes.test.ts`, "updates credit note drafts in place,
-  replaces positions and keeps the invoice link").
+- **Test:** `test/regressions/credit-note-pos-delete-list.test.ts` ("sends the stored positions
+  as a list of refs when one position is removed", "refuses the spec's single-object form before
+  sending"), `test/unit/tools/drafts/credit-note-update-draft.test.ts` ("changes one field and
+  carries every stored field over, positions untouched", "keeps origin, refSrcInvoice, type and
+  number of a credit note made from an invoice", "replaces all positions in one request and checks
+  them against the source invoice", "fails loudly when sevDesk saved a different credit note").
+  Live: probe `write-credit-note-update-draft` (`test/unit/scripts/gaps-documents-probes.test.ts`,
+  "updates credit note drafts in place, replaces positions and keeps the invoice link").
 
 ### D-111: Recurring templates run from `accountStartDate`; `accountNextInvoice` is ignored
 
