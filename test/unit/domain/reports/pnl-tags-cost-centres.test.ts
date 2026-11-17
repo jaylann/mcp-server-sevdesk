@@ -195,6 +195,64 @@ describe("profitAndLoss: cost centres", () => {
         "group none.",
     );
     expect(profitAndLossSentence(report)).toContain("Breakdown by cost centre: 3 groups.");
+    expect(report.notes.filter((note) => note.startsWith("A group's documents"))).toEqual([]);
+  });
+
+  it("explains a group whose documents have no income or expenses (a VAT payment)", async () => {
+    const { run } = accrual(
+      [
+        costCentresRoute,
+        ...scenarioRoutes({
+          invoices: [
+            {
+              row: invoiceDoc({ id: 1, date: "2026-02-10", net: "1000", tax: "190" }, on(third.id)),
+              positions: invoicePositions(1, [{ rate: "19", net: "1000", tax: "190" }]),
+            },
+          ],
+          vouchers: [
+            {
+              row: voucherDoc({ id: 31, date: "2026-02-14", net: "100", tax: "19" }, on(third.id)),
+              positions: voucherPositions(31, [
+                { rate: "19", net: "100", tax: "19", account: 4930 },
+              ]),
+            },
+            // USt-Vorauszahlung (tax rule 15) without a cost centre: a VAT flow, not an expense.
+            {
+              row: voucherDoc({ id: 34, date: "2026-02-10", net: "800", tax: "0", rule: 15 }),
+              positions: voucherPositions(34, [{ rate: "0", net: "800", tax: "0", account: 3820 }]),
+            },
+          ],
+        }),
+      ],
+      { groupBy: "cost_centre" },
+    );
+    const report = await run;
+
+    expect(report.vatFlows.paidToTaxOffice).toEqual(EUR("800.00"));
+    expect(report.breakdown?.groups).toEqual([
+      {
+        key: "cost_centre:344959",
+        costCentre: third,
+        income: EUR("1000.00"),
+        expenses: EUR("100.00"),
+        result: EUR("900.00"),
+        documents: 2,
+      },
+      // The VAT payment is the group's document: counted, with no income or expenses.
+      {
+        key: "none",
+        income: EUR("0.00"),
+        expenses: EUR("0.00"),
+        result: EUR("0.00"),
+        documents: 1,
+      },
+    ]);
+    expect(report.notes).toContain(
+      "A group's documents counts every document in it, including 1 document whose amounts are " +
+        "all outside income and expenses (VAT payments to or from the Finanzamt or import VAT in " +
+        "vatFlows, fixed assets in assets, not-operating items in notOperating): a group can hold " +
+        "documents and show no income or expenses.",
+    );
   });
 
   it("counts only the payments on the cost centre's documents on the cash basis", async () => {

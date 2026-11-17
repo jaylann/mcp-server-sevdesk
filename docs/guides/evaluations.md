@@ -112,7 +112,9 @@ With `costCentre` or `tag` it counts only the documents on that cost centre or w
 both bases; the result names the filter (`filters`). `groupBy: "cost_centre"` or `"tag"` adds the
 income, expenses and result of each cost centre or tag (`breakdown`). The cost-centre groups,
 `none` included, add up to the totals; tag groups overlap when a document has several tags, and
-the breakdown says so. Unknown or ambiguous names are refused, as in the summary.
+the breakdown says so. A group's document count includes documents without income or expenses,
+such as a VAT payment to the Finanzamt, so a group can hold documents and show no income or
+expenses. Unknown or ambiguous names are refused, as in the summary.
 
 ## How far you can rely on them
 

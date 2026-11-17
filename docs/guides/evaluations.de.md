@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/evaluations.md sha256:a1f27f4480f6 -->
+<!-- translated-from: docs/guides/evaluations.md sha256:19b97c291d87 -->
 
 # Auswertungen und Exporte
 
@@ -122,8 +122,10 @@ Mit `costCentre` oder `tag` zählt sie nur die Dokumente auf dieser Kostenstelle
 Tag, auf beiden Grundlagen; das Ergebnis nennt den Filter (`filters`). `groupBy: "cost_centre"`
 oder `"tag"` ergänzt Einnahmen, Ausgaben und Ergebnis je Kostenstelle oder Tag (`breakdown`). Die
 Kostenstellen-Gruppen ergeben samt `none` die Gesamtsummen; Tag-Gruppen überschneiden sich, wenn
-ein Dokument mehrere Tags trägt, und die Aufteilung sagt es. Unbekannte oder mehrdeutige Namen
-werden abgelehnt, wie bei den Summen.
+ein Dokument mehrere Tags trägt, und die Aufteilung sagt es. Die Zahl der Dokumente einer Gruppe
+zählt auch Dokumente ohne Einnahmen oder Ausgaben mit, etwa eine Umsatzsteuerzahlung an das
+Finanzamt; eine Gruppe kann also Dokumente enthalten und keine Einnahmen oder Ausgaben zeigen.
+Unbekannte oder mehrdeutige Namen werden abgelehnt, wie bei den Summen.
 
 ## Wie weit du dich darauf verlassen kannst
 

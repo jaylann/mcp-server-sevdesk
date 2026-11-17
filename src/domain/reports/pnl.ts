@@ -181,7 +181,14 @@ const breakdownSchema = z.object({
       income: moneySchema.describe("Net income of the group's documents."),
       expenses: moneySchema.describe("Net expenses of the group's documents (no fixed assets)."),
       result: moneySchema.describe("income − expenses of the group."),
-      documents: z.number().int(),
+      documents: z
+        .number()
+        .int()
+        .describe(
+          "Documents in the group, each once: also those whose amounts are all outside income " +
+            "and expenses (VAT payments to or from the Finanzamt, import VAT, fixed assets, " +
+            "not-operating items), so a group can hold documents and show no income or expenses.",
+        ),
     }),
   ),
 });
@@ -438,7 +445,11 @@ export async function profitAndLoss(
           importVatAccounts,
           truncated,
         });
-  if (breakdown !== undefined) notes.push(...breakdownNotes(breakdown, grouping));
+  if (breakdown !== undefined) {
+    const outside = new Set(contributions.map((entry) => headerKey(entry.document.header)));
+    for (const key of totals.resultDocuments) outside.delete(key);
+    notes.push(...breakdownNotes(breakdown, grouping, outside.size));
+  }
   notes.push(
     ...incompleteTaxReportNotes({
       timedOut,
@@ -701,7 +712,15 @@ function groupLabel(
   return { tag: compact({ id, name: source.documentTags?.tags.get(id)?.name }) };
 }
 
-function breakdownNotes(breakdown: Breakdown, source: GroupingSource): string[] {
+/**
+ * What the breakdown means. `outsideResult` is the number of its documents whose amounts are all
+ * outside income and expenses: they count in their group's `documents` all the same.
+ */
+function breakdownNotes(
+  breakdown: Breakdown,
+  source: GroupingSource,
+  outsideResult: number,
+): string[] {
   const notes: string[] = [];
   if (breakdown.by === "cost_centre") {
     notes.push(
@@ -728,6 +747,15 @@ function breakdownNotes(breakdown: Breakdown, source: GroupingSource): string[] 
   }
   const namesCut = tagNamesCutNote(source.documentTags);
   if (namesCut !== undefined) notes.push(namesCut);
+  if (outsideResult > 0) {
+    notes.push(
+      "A group's documents counts every document in it, including " +
+        `${plural(outsideResult, "document")} whose amounts are all outside income and expenses ` +
+        "(VAT payments to or from the Finanzamt or import VAT in vatFlows, fixed assets in " +
+        "assets, not-operating items in notOperating): a group can hold documents and show no " +
+        "income or expenses.",
+    );
+  }
   return notes;
 }
 
@@ -793,6 +821,8 @@ function aggregate(
   assets: ProfitAndLoss["assets"];
   notOperating: ProfitAndLoss["notOperating"];
   notes: string[];
+  /** Keys ({@link headerKey}) of the documents with an amount in income or expenses. */
+  resultDocuments: ReadonlySet<string>;
 } {
   const income = new Map<number | undefined, Sum>();
   const expenses = new Map<AccountKey, Sum>();
@@ -918,5 +948,8 @@ function aggregate(
         reason: NOT_OPERATING[ruleId] ?? "",
       })),
     notes,
+    resultDocuments: new Set(
+      [...income.values(), ...expenses.values()].flatMap((sum) => [...sum.documents]),
+    ),
   };
 }
