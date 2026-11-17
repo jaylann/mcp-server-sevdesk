@@ -228,6 +228,9 @@ it, drafts included, is all the check reads from sevDesk.
 | `receipt_file_only_on_draft` | Only a draft carries the file: not booked yet (`check`)                                      |
 | `receipt_file_draft_repeats` | A booked voucher and a draft carry the file: delete the draft rather than book it (`check`)  |
 
+Like the audits, every result says in English and German that its findings are hints, not tax
+advice (`caveat`), and what a match proves (`matching`).
+
 Every file that matches is listed with its vouchers and their status (`matched`). A match proves
 that exactly this file is attached to that voucher. No match is a hint, not proof: the same
 receipt as another file (a scan or photo of the paper, a copy converted or compressed by sevDesk

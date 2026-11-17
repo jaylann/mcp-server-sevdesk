@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 
+import { AUDIT_CAVEAT, AUDIT_CAVEAT_DE } from "../../../../../src/domain/reports/audit/findings.js";
 import {
   MATCHING,
   MATCHING_DE,
@@ -379,6 +380,19 @@ describe("receipt folder check", () => {
     expect(MATCHING).toContain("Amounts, dates and suppliers are not compared");
     expect(MATCHING_DE).toContain("Kein Treffer beweist nicht, dass der Beleg fehlt");
     expect(MATCHING_DE).toContain("Beträge, Daten und Lieferanten werden nicht verglichen");
+  });
+
+  it("marks its findings as hints, not tax advice, in English and German", async () => {
+    const result = await check(new FakeSevdeskClient(routes()));
+
+    expect(result.caveat).toBe(AUDIT_CAVEAT);
+    expect(result.caveatDe).toBe(AUDIT_CAVEAT_DE);
+    expect(result.caveat).toContain("not tax advice");
+    expect(result.caveatDe).toContain("keine Steuerberatung");
+    // Also when the folder holds nothing to compare.
+    const empty = await check(new FakeSevdeskClient(routes()), scanOf([]));
+    expect(empty.caveat).toBe(AUDIT_CAVEAT);
+    expect(empty.caveatDe).toBe(AUDIT_CAVEAT_DE);
   });
 
   it("keeps file paths out of the trusted text", async () => {

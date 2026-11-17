@@ -28,7 +28,8 @@
  * - `receipt_file_booked_twice`: two or more booked vouchers carry it.
  * Every file that matches is also listed in `matched` with its vouchers and their status.
  *
- * What a match does and does not prove is stated in every result ({@link MATCHING},
+ * Every result states, in English and German, that its findings are hints and not tax advice (the
+ * audit's caveat, `AUDIT_CAVEAT`) and what a match does and does not prove ({@link MATCHING},
  * {@link MATCHING_DE}). Amount, date and supplier are not compared: without reading the file's
  * content (no PDF parsing, no OCR) the check does not know them. Two weak hints, labelled as such:
  * - the day of the file's last modification (`modified`): when it was saved or copied, not the
@@ -57,6 +58,8 @@ import { plural, type ReportRunOptions, shiftDays } from "../shared.js";
 import type { ReportPeriod } from "../vat.js";
 import { numberKey } from "./duplicates-check.js";
 import {
+  AUDIT_CAVEAT,
+  AUDIT_CAVEAT_DE,
   auditFindingSchema,
   byDateThenId,
   type FindingText,
@@ -361,6 +364,8 @@ export const receiptFolderResultSchema = z.object({
   check: z.literal(CHECK),
   period: z.object({ from: z.string(), to: z.string(), label: z.string() }),
   source: z.string(),
+  caveat: z.string().describe("Findings are hints, not tax advice."),
+  caveatDe: z.string().describe("The same in German."),
   matching: z.string().describe("What a match and a missing match prove."),
   matchingDe: z.string().describe("The same in German."),
   withoutChecksum: z
@@ -684,6 +689,8 @@ export async function runReceiptFolderCheck(
     check: CHECK,
     period: { from: period.from, to: period.to, label: period.label },
     source: SOURCE,
+    caveat: AUDIT_CAVEAT,
+    caveatDe: AUDIT_CAVEAT_DE,
     matching: MATCHING,
     matchingDe: MATCHING_DE,
     withoutChecksum:

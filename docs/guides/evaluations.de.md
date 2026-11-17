@@ -245,6 +245,9 @@ eingeschlossen.
 | `receipt_file_only_on_draft` | Nur ein Entwurf trägt die Datei: noch nicht gebucht (`check`)                                        |
 | `receipt_file_draft_repeats` | Ein gebuchter Beleg und ein Entwurf tragen die Datei: den Entwurf löschen statt buchen (`check`)     |
 
+Wie bei den Prüfungen sagt jedes Ergebnis auf Englisch und Deutsch, dass seine Befunde Hinweise
+sind, keine Steuerberatung (`caveat`), und was ein Treffer beweist (`matching`).
+
 Jede Datei mit Treffer wird mit ihren Belegen und deren Status aufgeführt (`matched`). Ein Treffer
 beweist, dass genau diese Datei an diesem Beleg hängt. Kein Treffer ist ein Hinweis, kein Beweis:
 Derselbe Beleg als andere Datei (ein Scan oder Foto des Papiers, eine von sevDesk oder einem
