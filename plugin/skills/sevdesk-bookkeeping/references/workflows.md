@@ -127,18 +127,25 @@ listed when the bank tools or the audit are enabled.
 1. `sevdesk_bank_accounts_list`; if `checkAccount` was given, resolve it to a `checkAccountId`.
 2. `sevdesk_transactions_list` with `status: ["created"]`, `direction: "out"` and the period's
    `from`/`to`: outgoing transactions that no document is booked to yet.
-3. `sevdesk_reconcile_suggest` for them: one with a matching voucher only needs booking ("Reconcile
-   the bank"); one without any matching voucher most likely lacks its receipt. Bank fees, taxes,
-   salaries and private withdrawals often have no supplier receipt: ask the user.
+3. `sevdesk_reconcile_suggest` with the same `from`/`to` (and `checkAccountId`), paging with
+   `nextOffset`, or with a single `transactionId`, not both: one with a matching voucher only
+   needs booking ("Reconcile the bank"; check that the voucher has its receipt file); one without
+   any matching voucher most likely lacks its receipt. Bank fees, taxes, salaries and private
+   withdrawals often have no supplier receipt: ask the user.
 4. `sevdesk_records_audit` with `check: recurring_gaps` (regular suppliers without a bill in the
    period) and `check: duplicates` (receipts booked twice, drafts left open). Hints, not tax
    advice.
 5. `sevdesk_vouchers_list` with `status: "draft"`: receipts captured but never finalized.
 6. With `SEVDESK_FILE_DIRS`: `sevdesk_receipt_folder_check` on the user's folder for the period:
    files no voucher carries, files only on a draft, files on two vouchers (a hint, not proof).
-7. File each receipt that turns up as in "File a receipt": `sevdesk_voucher_create_draft` with the
-   file as `file`, `dryRun` first, and its SHA-256 (from the folder check or the preview) as
-   `fileSha256`. An XRechnung or ZUGFeRD file goes through `sevdesk_voucher_import_einvoice`.
+7. File each receipt that turns up as in "File a receipt": on a remote server the user uploads it
+   first (`sevdesk_upload_request`, then the uploadId as `file`); the booking account and tax
+   rule come from `sevdesk_reference_lookup` (`kind: "receipt_guidance"`);
+   `sevdesk_voucher_create_draft` with the file as `file`, `dryRun` first, and its SHA-256 (from
+   the folder check or the preview) as `fileSha256`. An XRechnung or ZUGFeRD file goes through
+   `sevdesk_voucher_import_einvoice`.
+8. Then `sevdesk_voucher_finalize` and book the bank transaction to the voucher with
+   `sevdesk_transaction_book` (both `commit`, confirmation).
 
 ## Dunning run (Mahnlauf)
 
@@ -232,7 +239,8 @@ fiscal year that does not start on 1 January, use its `from`/`to` instead of `ye
 2. `sevdesk_profit_and_loss` for the year (EÜR view, cash basis by default) and
    `sevdesk_records_summarize` grouped by month for plausibility checks and to size the archive
    parts. Purchases on asset accounts (e.g. GWG, EDV-Software) are listed apart and without
-   depreciation (AfA); depreciation is done by the Steuerberater or in sevDesk.
+   depreciation (AfA); depreciation is done by the Steuerberater or in sevDesk. The profit and
+   loss reads positions of up to 1,500 documents: if it reports `truncated`, run it per quarter.
 3. `sevdesk_records_audit` for the year: `vat`, `reverse_charge`, `duplicates`, `recurring_gaps`
    (hints, not tax advice; `vat` and `reverse_charge` read up to 1,500 documents, so per quarter
    for more). With `SEVDESK_FILE_DIRS`: `sevdesk_receipt_folder_check` (500 files per call).
@@ -245,7 +253,8 @@ fiscal year that does not start on 1 January, use its `from`/`to` instead of `ye
 6. `sevdesk_archive_export` for `invoices` and `vouchers` (`dryRun` first), in parts: one call
    holds 500 documents by default (`limit` up to 1,000), stops after 5 minutes (on a remote server
    after 120 s, and a download link must fit the account's file space) and saves at most 100 MiB.
-   By quarter, or by month where the counts are large or a part fails.
+   On a local server by quarter, or by month where the counts are large or a part fails; on a
+   remote server by month, or by one or two weeks where a month has many invoices.
 7. Enshrine the year's documents if not done monthly (`commit`, irreversible), after the
    Steuerberater's review, and keep the retention periods in mind ([gobd.md](gobd.md)).
 

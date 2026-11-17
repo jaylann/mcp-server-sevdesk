@@ -381,8 +381,14 @@ describe("prompt catalog", () => {
         expect(steps).toContain("stopped after 5 minutes and not saved above 100 MiB");
         expect(steps).toContain("on a remote server it is stopped after 120 seconds");
         expect(steps).toContain("the account's file space");
-        expect(steps).toContain("by quarter (`year: 2025, quarter: 1` to `4`)");
+        expect(steps).toContain("on a local server by quarter (`year: 2025, quarter: 1` to `4`)");
+        expect(steps).toContain("on a remote server by month, or by one or two weeks");
         expect(steps).toContain('`subject: "invoices"`, then with `subject: "vouchers"`');
+        // The profit and loss reads positions up to the scan cap, like the VAT audits.
+        expect(steps).toContain(
+          "It reads the positions of up to 1,500 documents; if it reports `truncated`, run it " +
+            "per quarter",
+        );
         expect(steps).toContain("never guessed");
         expect(steps).toContain("Findings are hints, not tax advice");
       });

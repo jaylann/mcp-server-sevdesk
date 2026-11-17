@@ -60,9 +60,13 @@ describe("missing_receipts", () => {
     expect(bankOnly?.unavailable).toEqual([
       "Checking regular suppliers for missing bills and receipts booked twice: needs the " +
         "`reports` toolset (SEVDESK_TOOLSETS).",
+      "Checking for draft receipts (Belege): needs the `vouchers` toolset (SEVDESK_TOOLSETS).",
       "Filing a found receipt as a voucher draft: needs the `vouchers` toolset " +
         "(SEVDESK_TOOLSETS) and the `write` tier (SEVDESK_ALLOW).",
+      "Finalizing the filed vouchers and booking their bank transactions: needs the " +
+        "`vouchers` toolset (SEVDESK_TOOLSETS) and the `commit` tier (SEVDESK_ALLOW).",
     ]);
+    expect(textOf(bankOnly)).not.toContain("sevdesk_vouchers_list");
     expect(textOf(bankOnly)).toContain('`direction: "out"`');
 
     const auditOnly = planned("missing_receipts", testConfig({ toolsets: toolsets("reports") }));
@@ -79,11 +83,54 @@ describe("missing_receipts", () => {
     expect(read).toContain(
       "- Filing a found receipt as a voucher draft: needs the `write` tier (SEVDESK_ALLOW).",
     );
-    const write = textOf(
-      planned("missing_receipts", testConfig({ allowedTiers: tiers("read", "write") })),
+    const writePlan = planned(
+      "missing_receipts",
+      testConfig({ allowedTiers: tiers("read", "write") }),
     );
+    const write = textOf(writePlan);
     expect(write).toContain("`sevdesk_voucher_create_draft` with `dryRun: true`");
-    expect(write).not.toContain("Not available with the current settings");
+    expect(write).toContain('`sevdesk_reference_lookup` with `kind: "receipt_guidance"`');
+    expect(writePlan?.unavailable).toEqual([
+      "Finalizing the filed vouchers and booking their bank transactions: needs the `commit` " +
+        "tier (SEVDESK_ALLOW).",
+    ]);
+
+    const all = textOf(planned("missing_receipts", allEnabledConfig()));
+    expect(all).toContain("`sevdesk_voucher_finalize` (`dryRun: true` first)");
+    expect(all).toContain("`sevdesk_transaction_book`");
+    expect(all).not.toContain("Not available with the current settings");
+  });
+
+  it("offers the upload step only where the server takes uploads", () => {
+    const oauth = textOf(
+      planned("missing_receipts", allEnabledConfig({ deployment: OAUTH_FILES })),
+    );
+    expect(oauth).toContain(
+      '`sevdesk_upload_request` (`purpose: "receipt"`, or `"einvoice"` for an XRechnung or ' +
+        "ZUGFeRD file)",
+    );
+    expect(oauth).toContain("pass the returned uploadId as `file` below");
+
+    for (const config of [
+      testConfig(),
+      allEnabledConfig(),
+      allEnabledConfig({ fileDirs: ["/srv/belege"] }),
+    ]) {
+      const plan = planned("missing_receipts", config);
+      expect(textOf(plan)).not.toContain("sevdesk_upload_request");
+      // No "needs" line either: a local server reads files from its folders instead.
+      expect(plan?.unavailable.join(" ")).not.toMatch(/upload|SEVDESK_HTTP_FILES/i);
+    }
+  });
+
+  it("scopes the suggestions like the transaction list, never with a transactionId too", () => {
+    const text = textOf(planned("missing_receipts", testConfig()), { checkAccount: "17" });
+    expect(text).toContain(
+      '`sevdesk_reconcile_suggest` with `from: "2026-10-01", to: "2026-10-31"` and the ' +
+        "resolved `checkAccountId` (page with `nextOffset`), or with a single `transactionId` " +
+        "from the list above, not both",
+    );
+    expect(text).toContain("check that its receipt file is attached");
   });
 
   it("checks a receipt folder only where the server reads local folders", () => {
@@ -154,6 +201,36 @@ describe("year_end_handoff", () => {
     );
     expect(oauth).toContain("`sevdesk_datev_export` with `year: 2025`");
     expect(oauth).toContain("on a remote server it is stopped after 120 seconds");
+    expect(oauth).toContain("on a remote server by month, or by one or two weeks (`from`/`to`)");
+  });
+
+  it("names the voucher toolset for the draft and unpaid receipts instead of dropping them", () => {
+    const plan = planned(
+      "year_end_handoff",
+      testConfig({ toolsets: toolsets("meta", "banking", "invoices", "reports") }),
+    );
+    expect(plan?.unavailable).toEqual(
+      expect.arrayContaining([
+        "Checking for draft receipts (Belege): needs the `vouchers` toolset (SEVDESK_TOOLSETS).",
+        "Listing the year's unpaid receipts (Belege): needs the `vouchers` toolset " +
+          "(SEVDESK_TOOLSETS).",
+      ]),
+    );
+    const text = textOf(plan);
+    // The invoice half of the open items stays.
+    expect(text).toContain('`sevdesk_invoices_list` with `status: "open"`');
+    expect(text).not.toContain("sevdesk_vouchers_list");
+
+    const noInvoices = planned(
+      "year_end_handoff",
+      testConfig({ toolsets: toolsets("meta", "banking", "vouchers", "reports") }),
+    );
+    expect(noInvoices?.unavailable).toEqual(
+      expect.arrayContaining([
+        "Listing the year's unpaid invoices: needs the `invoices` toolset (SEVDESK_TOOLSETS).",
+      ]),
+    );
+    expect(textOf(noInvoices)).toContain('`sevdesk_vouchers_list` with `status: "open"`');
   });
 });
 
