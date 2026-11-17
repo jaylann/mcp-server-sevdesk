@@ -296,18 +296,23 @@ payment term, tax rule, customer or address, the schedule, and automatic generat
 (`autoGenerate`). Only what you give changes. The preview shows each change as before → after, new
 positions and texts in full, the total per invoice before and after, and the run dates after the
 change. Every invoice sevDesk creates afterwards carries the change; invoices it already created
-stay as they are.
+stay as they are. On a run day, the preview warns that a draft sevDesk already created that day
+keeps the old content.
 
 - A new **interval** keeps the next run date; the runs after it follow the new interval.
 - A new **start date** becomes the next run as well, and sevDesk clears the template's last run.
   It must lie after today and, once the template has generated invoices, after the end of the
   period of the newest one; otherwise sevDesk would bill a period again. The assistant finds those
-  invoices by their origin, the template.
+  invoices by their origin, the template, and refuses when one of them has no delivery date,
+  since its period cannot be told.
 - A new **end date** lies on or after the next run; `removeEndDate` lets the template run until it
-  is ended.
+  is ended. With automatic generation on and a next run before today and after the end date (a
+  template that stopped at its end date), removing the end date or moving it is refused: sevDesk
+  could catch up the missed periods. Give a new start date in the same call.
 - Switching **automatic generation on** is refused while the next run lies before today: sevDesk
   would catch up and create one draft per missed period, a minute apart. Give a new start date in
-  the same call. A next run today is due at once.
+  the same call. A next run today is due at once, or at its stored time of day for a template made
+  in the web app.
 
 After saving, the assistant reads the template back and names every way sevDesk stored something
 else, including a position whose change sevDesk ignored and a switch that did not take.
@@ -321,7 +326,8 @@ with [`sevdesk_invoice_cancel`](../tools.md#sevdesk_invoice_cancel). The templat
 positions, schedule and automatic generation, and
 [`sevdesk_invoice_reactivate_recurring`](../tools.md#sevdesk_invoice_reactivate_recurring)
 (`commit`, **you confirm**) starts it again. Its preview says what happens then: with automatic
-generation on, sevDesk generates drafts again, the first at once if the next run is today; with it
+generation on, sevDesk generates drafts again, the first at once if the next run is today (at its
+stored time of day for a template made in the web app); with it
 off, reactivating alone generates nothing. With it on, reactivating is refused while the next run
 lies before today, because sevDesk would catch up the missed periods at once: give the template a
 new start date first.

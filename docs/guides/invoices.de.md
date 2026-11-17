@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/invoices.md sha256:3c4857cd3292 -->
+<!-- translated-from: docs/guides/invoices.md sha256:d7bbe101b8d7 -->
 
 # Rechnungen: vom Entwurf bis zur Zahlung
 
@@ -320,20 +320,25 @@ Zahlungsziel, Steuerregel, Kunde oder Anschrift, den Zeitplan und die automatisc
 (`autoGenerate`). Es ändert sich nur, was du angibst. Die Vorschau zeigt jede Änderung als vorher
 → nachher, neue Positionen und Texte vollständig, die Summe je Rechnung vorher und nachher und die
 Ausführungstage nach der Änderung. Jede Rechnung, die sevDesk danach erzeugt, trägt die Änderung;
-schon erzeugte Rechnungen bleiben, wie sie sind.
+schon erzeugte Rechnungen bleiben, wie sie sind. An einem Ausführungstag warnt die Vorschau, dass
+ein Entwurf, den sevDesk an dem Tag schon erzeugt hat, den alten Inhalt behält.
 
 - Ein neues **Intervall** behält die nächste Ausführung; die Ausführungen danach folgen dem neuen
   Intervall.
 - Ein neues **Startdatum** wird auch zur nächsten Ausführung, und sevDesk löscht die letzte
   Ausführung der Vorlage. Es muss nach heute liegen und, sobald die Vorlage Rechnungen erzeugt hat,
   nach dem Ende des Zeitraums der neuesten; sonst würde sevDesk einen Zeitraum erneut abrechnen. Der
-  Assistent findet diese Rechnungen über ihre Herkunft, die Vorlage.
+  Assistent findet diese Rechnungen über ihre Herkunft, die Vorlage, und lehnt ab, wenn eine davon
+  kein Lieferdatum hat, weil sich ihr Zeitraum dann nicht bestimmen lässt.
 - Ein neues **Enddatum** liegt am Tag der nächsten Ausführung oder danach; `removeEndDate` lässt
-  die Vorlage laufen, bis sie beendet wird.
+  die Vorlage laufen, bis sie beendet wird. Ist die automatische Generierung an und liegt die
+  nächste Ausführung vor heute und nach dem Enddatum (eine Vorlage, die an ihrem Enddatum stehen
+  geblieben ist), wird das Entfernen oder Verschieben des Enddatums abgelehnt: sevDesk könnte die
+  versäumten Zeiträume nachholen. Gib im selben Aufruf ein neues Startdatum an.
 - Die **automatische Generierung einschalten** wird abgelehnt, solange die nächste Ausführung vor
   heute liegt: sevDesk würde nachholen und für jeden versäumten Zeitraum einen Entwurf erzeugen,
   einen pro Minute. Gib im selben Aufruf ein neues Startdatum an. Eine nächste Ausführung heute ist
-  sofort fällig.
+  sofort fällig, bei einer in der Web-App angelegten Vorlage zu ihrer gespeicherten Uhrzeit.
 
 Nach dem Speichern liest der Assistent die Vorlage zurück und nennt alles, was sevDesk anders
 gespeichert hat, auch eine Position, deren Änderung sevDesk übergangen hat, und einen Schalter,
@@ -349,7 +354,8 @@ storniert. Die Vorlage behält Positionen, Zeitplan und automatische Generierung
 [`sevdesk_invoice_reactivate_recurring`](../tools.md#sevdesk_invoice_reactivate_recurring)
 (`commit`, **du bestätigst**) startet sie wieder. Ihre Vorschau sagt, was dann geschieht: Bei
 eingeschalteter automatischer Generierung erzeugt sevDesk wieder Entwürfe, den ersten sofort, wenn
-die nächste Ausführung heute ist; ist sie aus, erzeugt das Aktivieren allein nichts. Ist sie an,
+die nächste Ausführung heute ist (bei einer in der Web-App angelegten Vorlage zu ihrer
+gespeicherten Uhrzeit); ist sie aus, erzeugt das Aktivieren allein nichts. Ist sie an,
 wird das Aktivieren abgelehnt, solange die nächste Ausführung vor heute liegt, weil sevDesk dann
 die versäumten Zeiträume auf einmal nachholen würde: Gib der Vorlage zuerst ein neues Startdatum.
 
