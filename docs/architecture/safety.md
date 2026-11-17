@@ -22,11 +22,14 @@ its default and the switches (`SEVDESK_ALLOW`, `SEVDESK_READ_ONLY`, dry run) are
    `enshrine` exports, a `saveVoucher` whose voucher is not a draft (the voucher's finalize),
    `PUT`/`DELETE /CheckAccountTransaction/{id}` (private marking, reset), creating a bank
    transaction (`POST /CheckAccountTransaction`), a document's status set directly (a `status` in
-   the body of a request to one document record; `PUT /Order/{id}` accepts or rejects an offer
-   this way), `createContractNoteFromOrder` (it accepts the source offer) and saving a recurring
-   invoice template (a `saveInvoice` whose type is `WKR`, missing or not text, or a
-   `PUT /Invoice/{id}` that sets the type or schedule) need `commit`; `sendViaEmail` and
-   `sendByWithRender` need `external`). Why each of these binds:
+   the body or query of a request to one document record; `PUT /Order/{id}` accepts or rejects
+   an offer this way) or through a save (a `saveInvoice`, `saveOrder` or `saveCreditNote` whose
+   document has a status other than the draft status 100), `createContractNoteFromOrder` (it
+   accepts the source offer) and saving a recurring invoice template (a `saveInvoice` whose type
+   is `WKR`, missing or not text, or a `PUT /Invoice/{id}` that sets the type or schedule) need
+   `commit`; `sendViaEmail` and `sendByWithRender` need `external`). These rules read the body as
+   it is sent (its JSON text) and the query keys of the same names; a multipart form to a
+   document record or one of these saves counts as binding. Why each of these binds:
    [ADR 0003](../adr/0003-tiers-and-human-confirmation.md).
 
 Write tools never set the tier: their `execute` gets a client that stamps it (`tierScopedClient`,

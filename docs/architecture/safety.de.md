@@ -1,4 +1,4 @@
-<!-- translated-from: docs/architecture/safety.md sha256:d4d3a032bc44 -->
+<!-- translated-from: docs/architecture/safety.md sha256:8332d696a85e -->
 
 # Sicherheitsmodell
 
@@ -26,12 +26,17 @@ Was jede Stufe abdeckt, ihre Voreinstellung und die Schalter (`SEVDESK_ALLOW`,
    dessen Beleg kein Entwurf ist (das Fertigstellen des Belegs),
    `PUT`/`DELETE /CheckAccountTransaction/{id}` (als privat markieren, zurücksetzen), eine
    Banktransaktion anlegen (`POST /CheckAccountTransaction`), der Status eines Dokuments direkt
-   gesetzt (ein `status` im Body einer Anfrage an einen einzelnen Dokumentdatensatz; so nimmt
-   `PUT /Order/{id}` ein Angebot an oder lehnt es ab), `createContractNoteFromOrder` (nimmt das
+   gesetzt (ein `status` im Body oder in der Query einer Anfrage an einen einzelnen
+   Dokumentdatensatz; so nimmt `PUT /Order/{id}` ein Angebot an oder lehnt es ab) oder über ein
+   Speichern (ein `saveInvoice`, `saveOrder` oder `saveCreditNote`, dessen Dokument einen anderen
+   Status als den Entwurfsstatus 100 hat), `createContractNoteFromOrder` (nimmt das
    Ausgangsangebot an) und eine Abo-Vorlage speichern (ein `saveInvoice`, dessen Art `WKR` ist,
    fehlt oder kein Text ist, oder ein `PUT /Invoice/{id}`, das die Art oder den Zeitplan setzt)
-   brauchen `commit`; `sendViaEmail` und `sendByWithRender` brauchen `external`). Warum jede davon
-   bindet: [ADR 0003](../adr/0003-tiers-and-human-confirmation.de.md).
+   brauchen `commit`; `sendViaEmail` und `sendByWithRender` brauchen `external`). Diese Regeln
+   lesen den Body so, wie er gesendet wird (seinen JSON-Text), und die Query-Schlüssel mit
+   denselben Namen; ein Multipart-Formular an einen Dokumentdatensatz oder an eines dieser
+   Speichern zählt als bindend. Warum jede davon bindet:
+   [ADR 0003](../adr/0003-tiers-and-human-confirmation.de.md).
 
 Schreibwerkzeuge setzen die Stufe nie selbst: Ihr `execute` bekommt einen Client, der sie
 einstempelt (`tierScopedClient`, der auch die Regel des Endpunkts anwendet), ihr `prepare` einen,

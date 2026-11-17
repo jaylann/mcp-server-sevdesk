@@ -12,6 +12,11 @@
  * - saving a recurring invoice template, `saveInvoice` with `invoiceType` `WKR` (#91): sevDesk
  *   issues invoices from it later on its own (D-111, D-112).
  *
+ * A status written directly skips `sendBy` on every document, so the same holds for a status
+ * other than the draft status 100 saved through `saveInvoice`, `saveOrder` or `saveCreditNote`,
+ * and for a status in the query, in a multipart form or behind a body's `toJSON` (what is sent
+ * is what counts).
+ *
  * The tools that send them are `commit` tools. Both the HTTP client and the tier-stamping view a
  * write tool's `execute` gets (`tierScopedClient`) refuse each of them from a `write` tool before
  * anything is sent, while the neighbouring requests the shipped `write` tools rely on still go
@@ -118,6 +123,58 @@ const BINDING: readonly (readonly [string, SevdeskRequest])[] = [
       },
     },
   ],
+  [
+    "accepting an offer through saveOrder",
+    {
+      method: "POST",
+      path: "/Order/Factory/saveOrder",
+      body: {
+        order: { id: 7, objectName: "Order", mapAll: true, orderType: "AN", status: 500 },
+        orderPosSave: null,
+        orderPosDelete: null,
+      },
+    },
+  ],
+  [
+    "setting an invoice's status through saveInvoice",
+    {
+      method: "POST",
+      path: "/Invoice/Factory/saveInvoice",
+      body: {
+        invoice: { id: 9, objectName: "Invoice", mapAll: true, invoiceType: "RE", status: 1000 },
+        invoicePosSave: null,
+        invoicePosDelete: null,
+      },
+    },
+  ],
+  [
+    "setting a credit note's status through saveCreditNote",
+    {
+      method: "POST",
+      path: "/CreditNote/Factory/saveCreditNote",
+      body: {
+        creditNote: { id: 4, objectName: "CreditNote", mapAll: true, status: "200" },
+        creditNotePosSave: null,
+        creditNotePosDelete: null,
+      },
+    },
+  ],
+  [
+    "accepting an offer through the query",
+    { method: "PUT", path: "/Order/7", query: { status: 500 } },
+  ],
+  [
+    "accepting an offer through a form",
+    { method: "PUT", path: "/Order/7", form: formWith("status", "500") },
+  ],
+  [
+    "accepting an offer behind a body's toJSON",
+    {
+      method: "PUT",
+      path: "/Order/7",
+      body: { header: "Angebot", toJSON: () => ({ status: 500 }) },
+    },
+  ],
 ];
 
 /** Requests shipped `write` tools send next to them; they must keep working. */
@@ -144,7 +201,29 @@ const NEIGHBOURS: readonly (readonly [string, SevdeskRequest])[] = [
     },
   ],
   ["changing an order's header", { method: "PUT", path: "/Order/7", body: { header: "Angebot" } }],
+  [
+    "saving an offer draft",
+    {
+      method: "POST",
+      path: "/Order/Factory/saveOrder",
+      body: {
+        order: { id: 7, objectName: "Order", mapAll: true, orderType: "AN", status: 100 },
+        orderPosSave: null,
+        orderPosDelete: null,
+      },
+    },
+  ],
+  [
+    "uploading a receipt file",
+    { method: "POST", path: "/Voucher/Factory/uploadTempFile", form: formWith("file", "%PDF-") },
+  ],
 ];
+
+function formWith(name: string, value: string): FormData {
+  const form = new FormData();
+  form.append(name, value);
+  return form;
+}
 
 describe("binding requests need the commit tier", () => {
   it.each(BINDING)("the HTTP client refuses %s from a write tool", async (_label, request) => {

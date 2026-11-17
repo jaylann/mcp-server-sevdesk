@@ -1,4 +1,4 @@
-<!-- translated-from: docs/adr/0003-tiers-and-human-confirmation.md sha256:c45735c80561 -->
+<!-- translated-from: docs/adr/0003-tiers-and-human-confirmation.md sha256:a4fc00cf4293 -->
 
 # ADR 0003: Berechtigungsstufen und Bestätigung durch einen Menschen
 
@@ -53,16 +53,17 @@ Werkzeug.
    DATEV-Exporte mit `enshrine`, ein `saveVoucher`, dessen Beleg kein Entwurf ist, eine Änderung an
    den Banktransaktionen selbst (`/CheckAccountTransaction` und `/CheckAccountTransaction/{id}`),
    eine Anfrage an einen einzelnen Dokumentdatensatz (`/Invoice/{id}`, `/Order/{id}`,
-   `/CreditNote/{id}`, `/Voucher/{id}`), deren Body seinen Status setzt (bei einer Rechnung auch
-   ihre Art oder ihren Zeitplan), und ein `saveInvoice`, das eine Abo-Vorlage speichern kann,
-   brauchen `commit`; `sendViaEmail` und `sendByWithRender` brauchen `external`; alles andere
-   braucht `write`. Ein `write`-Werkzeug kann also nicht fertigstellen, buchen, stornieren oder
-   versenden, auch nicht aus Versehen.
+   `/CreditNote/{id}`, `/Voucher/{id}`), die seinen Status setzt (bei einer Rechnung auch ihre Art
+   oder ihren Zeitplan), ein `saveInvoice`, `saveOrder` oder `saveCreditNote`, das einen anderen
+   Status als den Entwurfsstatus 100 speichert, und ein `saveInvoice`, das eine Abo-Vorlage
+   speichern kann, brauchen `commit`; `sendViaEmail` und `sendByWithRender` brauchen `external`;
+   alles andere braucht `write`. Ein `write`-Werkzeug kann also nicht fertigstellen, buchen,
+   stornieren oder versenden, auch nicht aus Versehen.
 
 **Bindende Anfragen, die der Name des Endpunkts nicht zeigt** (ergänzt am 2026-11-16, aus den
 Aufzeichnungen von D-095 bis D-112). Drei Anfragen sehen wie gewöhnliches Speichern aus, binden aber
-oder lassen sich schwer rückgängig machen. Der Client verlangt für sie daher `commit`, nach Pfad und
-Body (`src/sevdesk/paths.ts`), bevor ein Werkzeug sie sendet:
+oder lassen sich schwer rückgängig machen. Der Client verlangt für sie daher `commit`, nach Pfad,
+Query, Body und Formular (`src/sevdesk/paths.ts`), bevor ein Werkzeug sie sendet:
 
 - **Eine Banktransaktion anlegen** (`POST /CheckAccountTransaction`). Eine neue Zeile ändert den
   Saldo des Kontos und das, was darauf gebucht werden kann. Sie lässt sich nicht einfach
@@ -75,8 +76,13 @@ Body (`src/sevdesk/paths.ts`), bevor ein Werkzeug sie sendet:
   `createContractNoteFromOrder` setzt das Ausgangsangebot auf angenommen, selbst einen nie
   versendeten Entwurf (D-107). Ein direkt geschriebener Status umgeht `sendBy` und die Prüfungen der
   Werkzeuge für den Lebenszyklus bei jeder Dokumentart, die Regel erfasst daher einen `status` im
-  Body jedes Dokumentdatensatzes. Ein vorhandener Body, der sich nicht lesen lässt, zählt, als setze
-  er einen; eine Anfrage ohne Body (ein `DELETE`) behält die Stufe ihres Pfads.
+  Body jedes Dokumentdatensatzes und einen anderen Status als den Entwurfsstatus 100 im Dokument
+  eines `saveInvoice`, `saveOrder` oder `saveCreditNote` (`saveOrder` mit der ID eines Angebots und
+  Status 500 nimmt es genauso an). Die Entwurfswerkzeuge speichern immer Status 100, und die
+  Aktualisierungen der Entwürfe lehnen einen gespeicherten Status außer 100 ab, bevor sie senden;
+  das deckt den Fall ab, den der Client nicht sieht (100 mit der ID eines Dokuments, das kein
+  Entwurf mehr ist). Ein vorhandener Body, der sich nicht lesen lässt, zählt, als setze er einen;
+  eine Anfrage ohne Body (ein `DELETE`) behält die Stufe ihres Pfads.
   `createPackingListFromOrder` lässt sein Ausgangsdokument unverändert und bleibt `write`.
 - **Eine Abo-Vorlage speichern** (`saveInvoice` mit `invoiceType` `WKR`). sevDesk stellt daraus
   später selbst Rechnungen aus (D-111, D-112). Nur ein Speichern, das seine Art als Text außer
@@ -88,6 +94,13 @@ Body (`src/sevdesk/paths.ts`), bevor ein Werkzeug sie sendet:
   Vorlage). `PUT /Invoice/{id}` ändert eine Vorlage ebenfalls (D-111), bei einem
   Rechnungsdatensatz braucht daher auch ein Body, der `invoiceType` oder ein Feld des Zeitplans
   (`account…`) setzt, `commit`.
+
+Diese Regeln lesen, was gesendet wird: den Body als JSON-Text (eine Methode `toJSON` zählt also mit,
+ein Schlüssel mit dem Wert `undefined` nicht) und die Query-Schlüssel mit denselben Namen, so
+verglichen, wie sevDesks PHP-Backend sie liest (`Status`, `status[0]`; beim Speichern
+`invoice[status]` und jeder andere Schlüssel unter dem Namen des Dokuments). Ein Multipart-Formular
+an einen Dokumentdatensatz oder ein Speichern lässt sich nicht lesen und zählt als bindend. Kein
+ausgeliefertes Werkzeug sendet eine Query oder ein Formular an diese Endpunkte.
 
 Das Löschen eines Dokuments oder Kontakts hebt der Client nicht an: Er sieht die HTTP-Methode nicht,
 und die Werkzeuge, die löschen, geben selbst `commit` an (`sevdesk_voucher_delete_draft`).

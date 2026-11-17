@@ -196,10 +196,16 @@ function innerSideEffect(path: string): string | undefined {
  * - a `Voucher/Factory/saveVoucher` whose body is not a draft (status ≠ 50: the voucher's
  *   finalize, {@link savesOpenVoucher});
  * - a request to one document record (`/Invoice/{id}`, `/Order/{id}`, `/CreditNote/{id}`,
- *   `/Voucher/{id}`) whose body sets its status, and on an invoice its type or schedule
+ *   `/Voucher/{id}`) that sets its status, and on an invoice its type or schedule
  *   ({@link setsBindingRecordField}: accepting an offer, D-108; a recurring template, D-111);
+ * - a `saveInvoice`, `saveOrder` or `saveCreditNote` that writes a status other than the draft
+ *   status 100 into its document ({@link setsSavedStatus}), the same step through the factory;
  * - an `Invoice/Factory/saveInvoice` that may save a recurring invoice template
  *   ({@link maySaveTemplate}, D-111, D-112).
+ *
+ * The rules by body read the body as it is sent (`JSON.stringify`, {@link wireBody}) and the query
+ * keys of the same names; a multipart `form` on these requests cannot be read and counts as
+ * binding ({@link FACTORY_SAVES}, {@link setsBindingRecordField}).
  */
 const ENDPOINT_TIERS: Readonly<Record<string, WriteTier>> = {
   sendby: "commit",
@@ -226,20 +232,21 @@ function listedTier(name: string): WriteTier | undefined {
  * The lowest tier that may make a request that changes data (the caller decides that it does,
  * see `resolveGetSafety`): the endpoint's entry in the tier table, `commit` for a `getPdf` that
  * marks the document as sent (same effect as `sendBy`), for DATEV exports with an `enshrine`
- * flag and for the requests listed under {@link ENDPOINT_TIERS} by path and body (bank
- * transactions, a voucher save that is not a draft, a document record's status, a recurring
- * template), otherwise `write` (this includes a next-number GET that reserves the number: a draft
- * tool reserves the number it saves the draft with). The client refuses a request whose declared
- * tier does not cover it (`tierCovers`), so a `write` tool can never finalize, book, cancel,
- * accept an offer, create a bank transaction, save a recurring template or send.
+ * flag and for the requests listed under {@link ENDPOINT_TIERS} by path, query, body and form
+ * (bank transactions, a voucher save that is not a draft, a document's status written directly
+ * or through a factory save, a recurring template), otherwise `write` (this includes a
+ * next-number GET that reserves the number: a draft tool reserves the number it saves the draft
+ * with). The client refuses a request whose declared tier does not cover it (`tierCovers`), so a
+ * `write` tool can never finalize, book, cancel, accept an offer, create a bank transaction, save
+ * a recurring template or send.
  *
- * It sees path, query and body, not the HTTP method. Both callers (the HTTP client and
+ * It sees path, query, body and form, not the HTTP method. Both callers (the HTTP client and
  * `tierScopedClient`) ask only for requests that change data, so a rule by path covers every
  * such method: `/CheckAccountTransaction` is also the list path, but a list `GET` never gets
- * here. A rule by body leaves a request without a body (a `DELETE`) at the tier of its path, so
- * deleting a document or a contact needs `write` here; the tools that delete them declare
- * `commit` themselves (`sevdesk_voucher_delete_draft`), while the probes still delete their own
- * test records with `write`.
+ * here. A rule by body leaves a request without a body, query or form (a `DELETE`) at the tier of
+ * its path, so deleting a document or a contact needs `write` here; the tools that delete them
+ * declare `commit` themselves (`sevdesk_voucher_delete_draft`), while the probes still delete
+ * their own test records with `write`.
  *
  * A listed endpoint or `getPdf` before the last path segment (`/Invoice/1/sendBy/2`, see
  * {@link resolveGetSafety}) raises the minimum to its tier as well.
@@ -248,29 +255,86 @@ export function minimumWriteTier(
   path: string,
   query: Readonly<Record<string, QueryValue>> | undefined,
   body?: unknown,
+  form?: FormData,
 ): WriteTier {
-  const own = endpointTier(path, query, body);
+  const own = endpointTier(path, query, body, form);
   return innerSegments(path).reduce<WriteTier>((highest, name) => {
     const inner = name === "getpdf" ? "commit" : listedTier(name);
     return inner !== undefined && !tierCovers(highest, inner) ? inner : highest;
   }, own);
 }
 
-/** {@link minimumWriteTier} by the last path segment, the query and the body. */
+/** {@link minimumWriteTier} by the last path segment, the query, the body and the form. */
 function endpointTier(
   path: string,
   query: Readonly<Record<string, QueryValue>> | undefined,
   body: unknown,
+  form: FormData | undefined,
 ): WriteTier {
   const endpoint = path.slice(path.lastIndexOf("/") + 1).toLowerCase();
   const listed = listedTier(endpoint);
   if (listed !== undefined) return listed;
   if (endpoint === "getpdf" || enshrineFlagSet(query)) return "commit";
   if (TRANSACTION_RECORD.test(path) || TRANSACTION_COLLECTION.test(path)) return "commit";
-  if (endpoint === "savevoucher" && savesOpenVoucher(body)) return "commit";
-  if (endpoint === "saveinvoice" && maySaveTemplate(body)) return "commit";
-  if (setsBindingRecordField(path, body)) return "commit";
+  const save = FACTORY_SAVES.get(endpoint);
+  if (save !== undefined) return savesBindingDocument(save, query, body, form) ? "commit" : "write";
+  const record = DOCUMENT_RECORD.exec(path);
+  if (record !== null) {
+    const invoice = record[1]?.toLowerCase() === "invoice";
+    return setsBindingRecordField(invoice, query, body, form) ? "commit" : "write";
+  }
   return "write";
+}
+
+/**
+ * A factory save whose body carries one document: the document's body key (lower case) and the
+ * rule that makes saving it binding, given the body as it is sent ({@link wireBody}).
+ */
+interface FactorySave {
+  readonly document: string;
+  readonly binds: (body: unknown) => boolean;
+}
+
+/**
+ * The factory saves with a rule by body, by lower-case endpoint name: `saveVoucher` (a voucher
+ * that is not a draft, {@link savesOpenVoucher}), `saveInvoice` (a recurring template,
+ * {@link maySaveTemplate}, or a status other than draft, {@link setsSavedStatus}), `saveOrder`
+ * and `saveCreditNote` (a status other than draft). A `Map`, so names like `constructor` never
+ * read `Object.prototype`.
+ */
+const FACTORY_SAVES: ReadonlyMap<string, FactorySave> = new Map<string, FactorySave>([
+  ["savevoucher", { document: "voucher", binds: savesOpenVoucher }],
+  [
+    "saveinvoice",
+    {
+      document: "invoice",
+      binds: (body) => maySaveTemplate(body) || setsSavedStatus(body, "invoice"),
+    },
+  ],
+  ["saveorder", { document: "order", binds: (body) => setsSavedStatus(body, "order") }],
+  [
+    "savecreditnote",
+    { document: "creditnote", binds: (body) => setsSavedStatus(body, "creditnote") },
+  ],
+]);
+
+/**
+ * Whether a factory save binds: its rule by body, or anything the rule cannot read. A multipart
+ * `form` cannot be read, and a query key that names the document (`invoice[status]`,
+ * `Order[orderType]`, read the way PHP reads it, {@link phpQueryName}) can fill the same fields
+ * as the body; no tool sends either to these endpoints.
+ */
+function savesBindingDocument(
+  save: FactorySave,
+  query: Readonly<Record<string, QueryValue>> | undefined,
+  body: unknown,
+  form: FormData | undefined,
+): boolean {
+  if (form !== undefined) return true;
+  const named = Object.entries(query ?? {}).some(
+    ([key, value]) => value !== undefined && phpQueryName(key) === save.document,
+  );
+  return named || save.binds(wireBody(body));
 }
 
 /**
@@ -333,6 +397,34 @@ function maySaveTemplate(body: unknown): boolean {
 const TEMPLATE_TYPE = "WKR";
 
 /**
+ * Whether a factory save's body (`saveInvoice`, `saveOrder`, `saveCreditNote`) writes a status
+ * other than the draft status 100 into its `document` (`invoice`, `order`, `creditnote`): written
+ * there it skips `sendBy` and the lifecycle tools' checks like a status written on the record
+ * itself ({@link setsBindingRecordField}), e.g. `saveOrder` with an offer's id and status 500
+ * accepts it. Every key that names the document counts (any letter case), and so does every
+ * `status` key in it; a status of 100 (number or text) is a draft. A document that is not a plain
+ * object, or a body that is present but not one, cannot be read and counts as setting one. A
+ * document without a status sets none (an update keeps the stored one). The draft tools always
+ * send 100 (`drafts/payloads.ts` pins it). A 100 with the id of a document that is no longer a
+ * draft cannot be seen here; the draft update tools refuse a stored status other than 100 before
+ * they send (`checkUpdatable` in `drafts/invoice.ts` and `drafts/order.ts`).
+ */
+function setsSavedStatus(body: unknown, document: string): boolean {
+  if (body === undefined) return false;
+  if (!isPlainRecord(body)) return true;
+  return ownValues(body, document).some(
+    (record) =>
+      !isPlainRecord(record) ||
+      ownValues(record, "status").some(
+        (status) => status !== DOCUMENT_DRAFT_STATUS && status !== String(DOCUMENT_DRAFT_STATUS),
+      ),
+  );
+}
+
+/** sevDesk's draft status of invoices, orders and credit notes. */
+const DOCUMENT_DRAFT_STATUS = 100;
+
+/**
  * One document record, not its sub-resources: `/Invoice/{id}`, `/Order/{id}`, `/CreditNote/{id}`
  * or `/Voucher/{id}` (case-insensitive). Group 1 is the record's model name.
  */
@@ -344,27 +436,62 @@ const DOCUMENT_RECORD = /^\/(invoice|order|creditnote|voucher)\/[^/]+$/i;
  * - `status`, on any of them: written directly it skips `sendBy` and the checks of the lifecycle
  *   tools. `PUT /Order/{id}` with only a status accepts or rejects an offer, and on a draft offer
  *   sevDesk renumbers it as well (D-108);
- * - on an invoice also `invoiceType` and the schedule fields (`account…`: `accountIntervall`,
- *   `accountStartDate`, `accountEndDate`, `accountNextInvoice`): `PUT /Invoice/{id}` changes a
- *   recurring template the way `saveInvoice` does (D-111), see {@link maySaveTemplate}.
+ * - when `invoice` (the record is an invoice), also `invoiceType` and the schedule fields
+ *   (`account…`: `accountIntervall`, `accountStartDate`, `accountEndDate`, `accountNextInvoice`):
+ *   `PUT /Invoice/{id}` changes a recurring template the way `saveInvoice` does (D-111), see
+ *   {@link maySaveTemplate}.
  *
- * Keys are compared in any letter case, own keys only; a key whose value is `undefined` is not
- * sent and sets nothing. A body that is present but not a plain object cannot be read and counts
- * as setting one, erring towards the stricter tier like {@link savesOpenVoucher}. No body at all
- * (a `DELETE`) sets nothing. No shipped tool sends a body to these records: the draft tools save
- * through the `Factory` endpoints.
+ * The body is read as it is sent ({@link wireBody}): keys in any letter case, a key whose value
+ * is `undefined` is not sent and sets nothing. A query key of the same name (read the way PHP
+ * reads it, {@link phpQueryName}: `Status`, `status[0]`) sets the field as well. A body that is
+ * present but not a plain object, or a multipart `form`, cannot be read and counts as setting
+ * one, erring towards the stricter tier like {@link savesOpenVoucher}. No body, query or form at
+ * all (a `DELETE`) sets nothing. No shipped tool sends a body, query or form to these records:
+ * the draft tools save through the `Factory` endpoints.
  */
-function setsBindingRecordField(path: string, body: unknown): boolean {
-  const record = DOCUMENT_RECORD.exec(path);
-  if (record === null || body === undefined) return false;
-  if (!isPlainRecord(body)) return true;
-  const invoice = record[1]?.toLowerCase() === "invoice";
-  return Object.entries(body).some(([key, value]) => {
-    if (value === undefined) return false;
-    const name = key.toLowerCase();
-    return name === "status" || (invoice && (name === "invoicetype" || name.startsWith("account")));
-  });
+function setsBindingRecordField(
+  invoice: boolean,
+  query: Readonly<Record<string, QueryValue>> | undefined,
+  body: unknown,
+  form: FormData | undefined,
+): boolean {
+  if (form !== undefined) return true;
+  const binding = (name: string): boolean =>
+    name === "status" || (invoice && (name === "invoicetype" || name.startsWith("account")));
+  const named = Object.entries(query ?? {}).some(
+    ([key, value]) => value !== undefined && binding(phpQueryName(key)),
+  );
+  if (named) return true;
+  const sent = wireBody(body);
+  if (sent === undefined) return false;
+  if (!isPlainRecord(sent)) return true;
+  return Object.keys(sent).some((key) => binding(key.toLowerCase()));
 }
+
+/**
+ * The body as sevDesk receives it: the client sends `JSON.stringify(body)`, so the rules by body
+ * read that, parsed back. A `toJSON` method, a getter or an inherited key is read the way it goes
+ * out, and `undefined` values are gone. `undefined` stays `undefined` (no body); a body that
+ * cannot be serialized (a cycle, a `BigInt`, a function) is {@link UNREADABLE}, which no rule can
+ * read, so it counts as binding (the client then refuses to send it anyway).
+ */
+function wireBody(body: unknown): unknown {
+  if (body === undefined) return undefined;
+  try {
+    const text = stringify(body);
+    if (text === undefined) return UNREADABLE;
+    const sent: unknown = JSON.parse(text);
+    return sent;
+  } catch {
+    return UNREADABLE;
+  }
+}
+
+/** `JSON.stringify`, typed as it behaves: a function or a symbol has no JSON text. */
+const stringify: (value: unknown) => string | undefined = JSON.stringify;
+
+/** What {@link wireBody} returns for a body without a JSON form: not a record, not `undefined`. */
+const UNREADABLE = Symbol("unreadable body");
 
 /** Whether `value` is a JSON object: not `null`, not an array. */
 function isPlainRecord(value: unknown): value is Readonly<Record<string, unknown>> {
