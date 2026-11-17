@@ -20,6 +20,13 @@ import {
   type OrderTypeFilter,
 } from "../../domain/orders.js";
 import { pageOutputShape, pagingInputShape } from "../../domain/paging.js";
+import {
+  resolveTagFilter,
+  tagFilterInputShape,
+  tagFilterNote,
+  tagFilterOutput,
+  tagFilterOutputShape,
+} from "../../domain/tags.js";
 import { defineTool } from "../define-tool.js";
 
 const STATUS_KEYS = Object.keys(ORDER_STATUS_FILTERS) as [
@@ -32,6 +39,7 @@ const output = z.object({
   items: z.array(z.union([orderRowSchema, orderSummarySchema])),
   ...pageOutputShape,
   ...localFilterOutputShape,
+  ...tagFilterOutputShape,
 });
 
 /** `sevdesk_orders_list`: find offers, order confirmations and delivery notes. */
@@ -43,7 +51,7 @@ export const ordersListTool = defineTool({
     "(Auftragsbestätigungen, AB) and delivery notes (Lieferscheine, LI), with compact rows: " +
     "number, type, status, contact, date, net/tax/gross. Filter by type, status (draft = " +
     "Entwurf, sent = versendet, rejected = abgelehnt, accepted = angenommen, " +
-    "partially_invoiced, invoiced = berechnet), contactId, exact order number and date range. " +
+    "partially_invoiced, invoiced = berechnet), contactId, exact order number, date range and tag (by name). " +
     "Type and number are also checked here (up to 1,000 rows scanned per call; total left " +
     "out, filteredLocally set). Page with offset = nextOffset while hasMore. " +
     "Use detail=summary to browse/find. Use sevdesk_order_get for details and positions.",
@@ -82,17 +90,21 @@ export const ordersListTool = defineTool({
       .optional()
       .describe("Exact order number, e.g. 'AN-1000'."),
     ...dateRangeInputShape,
+    ...tagFilterInputShape,
     ...pagingInputShape({ limit: 25, max: 100 }),
   }),
   output,
   handler: async (args, ctx) => {
-    const result = await listOrders(ctx.client, args, ctx.signal);
+    const tagFilter = await resolveTagFilter(ctx.client, args.tag, "order", ctx.signal);
+    const result = await listOrders(ctx.client, { ...args, tagFilter }, ctx.signal);
     return {
       data: {
         ...documentListData(result, args),
         items: args.detail === "summary" ? result.items.map(orderSummary) : [...result.items],
+        ...tagFilterOutput(tagFilter),
       },
-      summary: documentListSummary("Orders", "matching orders", result, args),
+      summary:
+        documentListSummary("Orders", "matching orders", result, args) + tagFilterNote(tagFilter),
     };
   },
 });

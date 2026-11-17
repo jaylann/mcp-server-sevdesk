@@ -157,7 +157,7 @@ export function finalizeTool(kind: SalesKind) {
       // it is writable without confirmation, so the human sees it here (review 2026-11, round 3).
       const content = await documentContent(ctx, doc);
       // Consequences first, then what the facts leave out, then notes on this document.
-      const warnings = [...finalizeWarnings(kind), content.notShown];
+      const warnings = [...finalizeWarnings(kind), content.notShown, ...content.notes];
       if (doc.number?.includes("%") === true) {
         warnings.push(
           phrase(

@@ -467,7 +467,9 @@ async function costCentreOf(ctx: ProbeContext, kind: DocumentKind, id: number): 
 
 /**
  * `save<Kind>` of an existing draft with only `header` fields (and the id): the update form the
- * recordings showed to keep omitted fields (D-054). Vouchers send their full probe header.
+ * recordings showed to keep omitted fields (D-054). Vouchers send their full probe header. The
+ * invoice update sends no `invoiceType`, so it is a commit step: the client cannot tell it from a
+ * change of a recurring template, which keeps its stored type the same way (D-112).
  */
 function saveWithId(
   ctx: ProbeContext,
@@ -479,7 +481,7 @@ function saveWithId(
   if (kind === "Voucher") return saveVoucherStatus(ctx, id, { label, status: 50 }, header);
   const key = SAVE_KEY[kind];
   return ctx.http.write("POST", `/${kind}/Factory/save${kind}`, {
-    tier: "write",
+    tier: kind === "Invoice" ? "commit" : "write",
     body: {
       [key]: { id, objectName: kind, mapAll: true, ...header },
       [`${key}PosSave`]: [],

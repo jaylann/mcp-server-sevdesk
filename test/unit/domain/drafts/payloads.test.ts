@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { duplicateWarning, findDuplicates } from "../../../../src/domain/drafts/duplicates.js";
+import {
+  duplicateWarning,
+  findDuplicates,
+  sameGross,
+} from "../../../../src/domain/drafts/duplicates.js";
 import {
   saveCreditNoteBodySchema,
   savedDocumentId,
@@ -166,6 +170,15 @@ describe("draft duplicates", () => {
     const ids = await findDuplicates(client, { kind: "creditNote" }, query);
     expect(ids).toEqual([5, 7]);
     expect(duplicateWarning("credit note", [], query)).toBeUndefined();
+  });
+
+  it("compares gross totals exactly, per currency, with 0 as an amount (sameGross)", () => {
+    const eur = (gross: string | undefined) => ({ currency: "EUR", gross });
+    expect(sameGross(eur("11.9"), eur("11.90"))).toBe(true);
+    expect(sameGross(eur("0"), eur("0.00"))).toBe(true);
+    expect(sameGross(eur("11.90"), eur("11.91"))).toBe(false);
+    expect(sameGross(eur("11.90"), { currency: "USD", gross: "11.90" })).toBe(false);
+    expect(sameGross(eur(undefined), eur(undefined))).toBe(false);
   });
 });
 

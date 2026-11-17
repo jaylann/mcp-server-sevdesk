@@ -16,6 +16,7 @@ import {
 } from "../../src/safety/runtime.js";
 import type { Tier } from "../../src/safety/tiers.js";
 import { createServerFactory, type ServerFactory } from "../../src/server.js";
+import type { SevdeskClient } from "../../src/sevdesk/types.js";
 import type { AnyToolDefinition } from "../../src/tools/types.js";
 import { allEnabledConfig } from "./config.js";
 import {
@@ -59,6 +60,12 @@ export interface WriteHarnessOptions {
    * reports success or failure; default off, as in `testConfig`. A real browser is never started.
    */
   readonly opener?: "opens" | "fails";
+  /**
+   * Wraps the fake client the server talks to, e.g. to answer from state that the writes change
+   * (a layout that `changeParameter` sets and `render` reads). The wrapper must pass every
+   * request on to `fake`, so `writesOf(fake)` still sees it.
+   */
+  readonly wrap?: (fake: FakeSevdeskClient) => SevdeskClient;
 }
 
 /** The launch link of a local approval page: a single-use ticket (`approval-local.ts`). */
@@ -81,7 +88,8 @@ export async function writeHarness(options: WriteHarnessOptions): Promise<WriteH
       return Promise.resolve(options.opener === "opens");
     },
   });
-  const factory = createServerFactory({ config, client: fake, tools: options.tools, safety });
+  const client = options.wrap?.(fake) ?? fake;
+  const factory = createServerFactory({ config, client, tools: options.tools, safety });
   const harness = await connectConfirming(factory, options.connect);
   cleanups.push(async () => {
     await harness.close();

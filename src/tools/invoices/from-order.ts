@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { amountInput } from "../../domain/common.js";
 import { executeOrderToInvoice, planOrderToInvoice } from "../../domain/derived-documents.js";
+import { documentDiscountSchema } from "../../domain/document-discounts.js";
 import { positionDtoSchema, statusDtoSchema } from "../../domain/document-positions.js";
 import { invoiceDetailSchema } from "../../domain/invoices.js";
 import { defineWriteTool } from "../define-tool.js";
@@ -13,6 +14,12 @@ const output = z.object({
   positionsComplete: z
     .boolean()
     .describe("False when sevDesk had more position rows than could be read."),
+  discount: documentDiscountSchema
+    .optional()
+    .describe(
+      "The invoice's discount on the whole document (Rabatt), which sevDesk copies from the " +
+        "order; left out when there is none.",
+    ),
   orderId: z.number().int().describe("The order the invoice was created from."),
   orderStatus: statusDtoSchema
     .optional()
@@ -29,9 +36,10 @@ export const invoiceFromOrderTool = defineWriteTool({
   title: "Create an invoice from a sevDesk order",
   description:
     "Create an invoice draft (Rechnung) from an offer (Angebot, AN) or order confirmation " +
-    "(Auftragsbestätigung, AB) with its positions: the whole order (mode full), or a partial " +
-    "invoice (Teilrechnung, mode partial) or advance invoice (Abschlagsrechnung, mode advance) " +
-    "for an amount as percentage, net or gross. The order must be sent, accepted or partially " +
+    "(Auftragsbestätigung, AB) with its positions and its discount on the whole document " +
+    "(Rabatt): the whole order (mode full), or a partial invoice (Teilrechnung, mode partial) " +
+    "or advance invoice (Abschlagsrechnung, mode advance) for an amount as percentage, net or " +
+    "gross. The order must be sent, accepted or partially " +
     "invoiced, not a draft, rejected or fully invoiced; partial/advance need tax rule 1 or 11. " +
     "Refuses when an invoice draft from the order exists (allowDuplicate overrides). Tier " +
     "write. Then check it with sevdesk_invoice_get and finalize it with " +
@@ -80,17 +88,27 @@ export const invoiceFromOrderTool = defineWriteTool({
       signal: ctx.signal,
       cacheOwner: ctx.config,
     });
+    const { discount } = details;
+    const discounts =
+      discount === undefined
+        ? ""
+        : `, with ${String(discount.items.length)} discount${
+            discount.items.length === 1 ? "" : "s"
+          } on the whole document`;
     return {
       data: {
         invoice: details.invoice,
         positions: [...details.positions],
         positionsComplete: details.positionsComplete,
+        ...(discount === undefined ? {} : { discount }),
         orderId: plan.state.orderId,
         ...(order === undefined ? {} : { orderStatus: order.status }),
       },
+      // Counts and codes only, never sevDesk's text; the discount warning is this server's own.
       summary:
         `Created invoice draft ${details.invoice.id} (${details.invoice.type.code}) from order ` +
-        `${plan.state.orderId}; finalize it with sevdesk_invoice_finalize.`,
+        `${plan.state.orderId}${discounts}; finalize it with sevdesk_invoice_finalize.` +
+        (discount?.warning === undefined ? "" : ` ${discount.warning}`),
       affected,
     };
   },

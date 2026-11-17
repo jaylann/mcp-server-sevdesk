@@ -5,7 +5,7 @@ import {
   resolvePublicAddress,
   SsrfError,
   systemResolver,
-} from "../../../../src/http/oauth/ssrf.js";
+} from "../../../src/safety/public-address.js";
 
 describe("isPublicAddress", () => {
   it.each([

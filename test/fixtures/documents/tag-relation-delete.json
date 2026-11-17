@@ -1,0 +1,11 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "DELETE /TagRelation/{tagRelationId} (probe write-tag-relation-remove, recording session 2026-11-16)",
+    "date": "2026-11-16",
+    "systemVersion": "2.0",
+    "note": "The undocumented DELETE answers a list of one null (spec/deviations.md D-089)."
+  },
+  "status": 200,
+  "body": { "objects": [null] }
+}

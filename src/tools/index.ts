@@ -2,7 +2,7 @@ import { ADVANCED_TOOLS } from "./advanced/index.js";
 import { BANKING_TOOLS } from "./banking/index.js";
 import { CONTACT_TOOLS } from "./contacts/index.js";
 import { CREDIT_NOTE_TOOLS } from "./credit-notes/index.js";
-import { DOCUMENT_FILE_TOOLS } from "./documents/index.js";
+import { DOCUMENT_FILE_TOOLS, DOCUMENT_TAG_TOOLS } from "./documents/index.js";
 import { INVOICE_TOOLS } from "./invoices/index.js";
 import { META_TOOLS } from "./meta/index.js";
 import { ORDER_TOOLS } from "./orders/index.js";
@@ -27,6 +27,7 @@ export const ALL_TOOLS: readonly AnyToolDefinition[] = assertUniqueNames([
   ...BANKING_TOOLS,
   ...PART_TOOLS,
   ...DOCUMENT_FILE_TOOLS,
+  ...DOCUMENT_TAG_TOOLS,
   ...REPORT_TOOLS,
   ...ADVANCED_TOOLS,
 ]);

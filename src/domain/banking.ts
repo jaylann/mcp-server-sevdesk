@@ -369,6 +369,27 @@ export async function listBankAccounts(
   };
 }
 
+/**
+ * The names of the active check accounts (`GET /CheckAccount`, one request, no balances), e.g. for
+ * argument suggestions. Archived and unnamed accounts are left out; names are sanitized and
+ * without duplicates.
+ */
+export async function listBankAccountNames(
+  client: SevdeskClient,
+  signal?: AbortSignal,
+): Promise<readonly string[]> {
+  const page = await client.list("/CheckAccount", undefined, {
+    limit: ACCOUNT_PAGE_SIZE,
+    ...(signal === undefined ? {} : { signal }),
+  });
+  const names = page.items
+    .map(parseAccount)
+    .filter((record) => record.status !== ARCHIVED_STATUS)
+    .map((record) => cleanText(record.name, NAME_MAX))
+    .filter((name): name is string => name !== undefined);
+  return [...new Set(names)];
+}
+
 /** The balance as an exact decimal string, or `undefined` when sevDesk refused it. */
 async function fetchBalance(
   client: SevdeskClient,

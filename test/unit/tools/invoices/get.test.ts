@@ -3,7 +3,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { invoiceGetTool as tool } from "../../../../src/tools/invoices/get.js";
 import { withCountryRoute } from "../../../helpers/country-route.js";
-import { type FakeRoute, FakeSevdeskClient, testContext } from "../../../helpers/fake-client.js";
+import {
+  type FakeRoute,
+  FakeSevdeskClient,
+  loadFixture,
+  testContext,
+} from "../../../helpers/fake-client.js";
+import { discountRow, discountsRoute, noDiscountsRoute } from "../drafts/routes.js";
+
+type Row = Record<string, unknown>;
 
 const invoiceRoute: FakeRoute = {
   path: "/Invoice/1001",
@@ -18,8 +26,9 @@ const positionsRoute: FakeRoute = {
 const unitsRoute: FakeRoute = { path: "/Unity", response: { fixture: "meta/units.json" } };
 const routes = [invoiceRoute, positionsRoute, unitsRoute];
 
+/** Calls the tool; the invoice has no document discount unless `withRoutes` gives one first. */
 async function get(id: number, withRoutes: readonly FakeRoute[] = routes) {
-  const client = new FakeSevdeskClient(withCountryRoute(withRoutes));
+  const client = new FakeSevdeskClient(withCountryRoute([...withRoutes, noDiscountsRoute]));
   const result = await tool.handler(tool.input.parse({ id }), testContext(client));
   return { client, result };
 }
@@ -163,11 +172,83 @@ describe("sevdesk_invoice_get (community: recorded Invoice/InvoicePos shapes, fa
           response: { body: { objects: [] } },
         },
         unitsRoute,
+        noDiscountsRoute,
       ]),
     );
     await expect(
       tool.handler(tool.input.parse({ id: 42 }), testContext(client)),
     ).rejects.toMatchObject({ kind: "not_found", message: "sevDesk found no invoice 42." });
+  });
+
+  it("reads the document discounts with a limit and leaves discount out when there is none", async () => {
+    const { client, result } = await get(1001);
+    expect(client.callsTo("/Invoice/1001/getDiscounts")).toEqual([
+      expect.objectContaining({
+        operation: "list",
+        query: { limit: 1000, offset: 0, countAll: true },
+      }),
+    ]);
+    expect(result.data).not.toHaveProperty("discount");
+  });
+
+  it("shows a discount on the whole invoice with what sevDesk deducted (D-116)", async () => {
+    const recorded = loadFixture("invoices/invoice-1001.json").body as { objects: Row[] };
+    const discounted = {
+      ...recorded.objects[0],
+      sumDiscountNet: "-14.90",
+      sumDiscountGross: "-17.73",
+    };
+    const { result } = await get(1001, [
+      { ...invoiceRoute, response: { body: { objects: [discounted] } } },
+      positionsRoute,
+      unitsRoute,
+      discountsRoute("Invoice", 1001, [
+        discountRow("Invoice", 1001, { text: "Treue​rabatt" }),
+        discountRow("Invoice", 1001, {
+          id: "9002",
+          percentage: "0",
+          value: "5.5",
+          isNet: "0",
+          discount: "0",
+          text: null,
+        }),
+      ]),
+    ]);
+
+    // Two rows: sevDesk's totals may count only one of them (checked 2026-11-17), so the DTO and
+    // the summary say so.
+    const several =
+      "This document has 2 discounts on the whole document, and sevDesk's totals may count only " +
+      "one of them (in a check, only the newest), so the total may not be what the listed " +
+      "discounts suggest. Check the total in sevDesk.";
+    expect(tool.output.parse(result.data)).toEqual(result.data);
+    expect(result.data.discount).toEqual({
+      items: [
+        { id: 9001, kind: "percent", value: "10", basis: "net", text: "Treuerabatt" },
+        { id: 9002, kind: "amount", value: "5.5", basis: "gross", surcharge: true },
+      ],
+      net: { amount: "-14.90", currency: "EUR" },
+      gross: { amount: "-17.73", currency: "EUR" },
+      warning: several,
+    });
+    expect(result.summary.endsWith(` ${several}`)).toBe(true);
+  });
+
+  it("gives no warning for a single discount", async () => {
+    const { result } = await get(1001, [
+      ...routes,
+      discountsRoute("Invoice", 1001, [discountRow("Invoice", 1001)]),
+    ]);
+    expect(result.data.discount).not.toHaveProperty("warning");
+    expect(result.summary).not.toContain("discounts on the whole document");
+  });
+
+  it("refuses a discount row of another document instead of showing it", async () => {
+    const error = await get(1001, [
+      ...routes,
+      discountsRoute("Invoice", 1001, [discountRow("Invoice", 1002)]),
+    ]).catch((caught: unknown) => caught);
+    expect(error).toMatchObject({ kind: "unexpected_response" });
   });
 
   it("rejects invalid ids before calling sevDesk", () => {

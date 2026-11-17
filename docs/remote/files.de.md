@@ -1,4 +1,4 @@
-<!-- translated-from: docs/remote/files.md sha256:e6ce7542d66e -->
+<!-- translated-from: docs/remote/files.md sha256:376cf5af2657 -->
 
 # Dateien: Uploads und Download-Links
 
@@ -21,18 +21,32 @@ anderen Weg: Sie gehen per MCP an den Client.)
    ausgeschrieben; höchstens 100 Zeichen; die Endung aus dem Inhalt).
 4. Du sagst dem Modell, dass der Upload erledigt ist. Es übergibt die erhaltene `uploadId`
    (`upload:<id>`) als `file` an `sevdesk_voucher_create_draft`, `sevdesk_voucher_update_draft`,
-   `sevdesk_einvoice_parse` oder `sevdesk_voucher_import_einvoice`. Nur die Verbindung, die den
-   Upload angefordert hat, kann ihn nutzen.
+   `sevdesk_voucher_recognize_receipt`, `sevdesk_einvoice_parse` oder
+   `sevdesk_voucher_import_einvoice`. Nur die Verbindung, die den Upload angefordert hat, kann ihn
+   nutzen.
 
-Sobald das Erstellen, Ändern oder Importieren gelingt und das Zurücklesen aus sevDesk einen Anhang
-bestätigt, gibt der Server den Upload frei und löscht seine gespeicherte Datei; der Platz ist
-sofort wieder verfügbar. Das Auslesen einer E-Rechnung, Probeläufe, fehlgeschlagene Aufrufe und ein
-fehlender oder unklarer Anhang im zurückgelesenen Beleg behalten den Upload bis zum Ablauf für einen
-weiteren Versuch. Beim Ändern muss sich die Anhang-ID gegenüber dem unmittelbar vor dem Speichern
-geprüften Stand ändern (oder erstmals ein Anhang vorliegen, wenn vorher ausdrücklich keiner
-vorhanden war); bei gleicher ID oder unbekanntem vorherigem Stand bleibt der Upload bis zum Ablauf
-verfügbar. Um eine erfolgreich angehängte Datei nach der Freigabe ihres Uploads erneut zu
+Sobald das Erstellen, Ändern, Erkennen oder Importieren gelingt und das Zurücklesen aus sevDesk
+einen Anhang bestätigt, gibt der Server den Upload frei und löscht seine gespeicherte Datei; der
+Platz ist sofort wieder verfügbar. Das Auslesen einer E-Rechnung, Probeläufe, fehlgeschlagene
+Aufrufe und ein fehlender oder unklarer Anhang im zurückgelesenen Beleg behalten den Upload bis zum
+Ablauf für einen weiteren Versuch. Das Erkennen ist die Ausnahme: sevDesks Antwort auf den Upload
+nennt den angehängten Beleg schon, und der Entwurf besteht ab da, also wird der Upload sofort
+freigegeben, auch wenn das Zurücklesen des Entwurfs danach fehlschlägt (erneut gesendet, entstünde
+ein zweiter Entwurf). Beim Ändern muss sich die Anhang-ID gegenüber dem unmittelbar vor dem
+Speichern geprüften Stand ändern (oder erstmals ein Anhang vorliegen, wenn vorher ausdrücklich
+keiner vorhanden war); bei gleicher ID oder unbekanntem vorherigem Stand bleibt der Upload bis zum
+Ablauf verfügbar. Um eine erfolgreich angehängte Datei nach der Freigabe ihres Uploads erneut zu
 verwenden, fordere einen neuen Upload an.
+
+Ein Beleg, der schon online liegt (in einem Lieferantenportal, hinter einem Speicher-Link), braucht
+keinen Upload, wenn der Betreiber seinen Host in `SEVDESK_FILE_URL_HOSTS` einträgt: Das Modell
+übergibt den https-Link als `file`, und der Server lädt die Datei während des Aufrufs herunter und
+behält nichts ([Dateien von einem Link](../configuration.de.md#dateien-von-einem-link)).
+
+Einen ganzen Ordner mit Belegen mit den Belegen in sevDesk zu vergleichen
+(`sevdesk_receipt_folder_check`), geht auf einem entfernten Server mit OAuth nicht: Das liest einen
+lokalen Ordner, und ein Upload oder ein Link bringt einzelne Dateien. Im Bearer-Modus mit
+`SEVDESK_FILE_DIRS` wird es für die Ordner auf dem Server angeboten.
 
 ## Mehrere Dateien auf einer Seite
 
@@ -66,8 +80,8 @@ Ohne `count` oder mit `1` bleiben Ergebnis und Ablauf für eine einzelne Datei u
 
 ## Herunterladen
 
-`sevdesk_document_save`, `sevdesk_voucher_receipt_save`, `sevdesk_csv_export` und
-`sevdesk_datev_export` geben statt eines Dateipfads einen Download-Link zurück,
+`sevdesk_document_save`, `sevdesk_voucher_receipt_save`, `sevdesk_csv_export`,
+`sevdesk_archive_export` und `sevdesk_datev_export` geben statt eines Dateipfads einen Download-Link zurück,
 `<public URL>/files/<id>`. Der Server hat die Datei während des Werkzeugaufrufs von sevDesk geholt;
 das Öffnen des Links sendet nichts an sevDesk. Der Browser speichert die Datei als Download; sie
 wird nie auf der Seite des Servers angezeigt.
@@ -117,9 +131,11 @@ anderer Konten; Dateien, die noch gespeichert werden, haben noch keinen festen A
 wenn keiner bekannt ist, sagt die Ablehnung das. Für mehr gleichzeitige Einträge erhöhe
 `SEVDESK_HTTP_FILES_MAX_PER_ACCOUNT`; die Byte-Kontingente ändern sich dadurch nicht.
 
-Download-Links zählen gegen denselben Platz wie Uploads; ein großer DATEV-Export passt daher unter
-Umständen nicht (mit 64 MiB im Speicher hat ein Konto 20 MiB). Das Werkzeug sagt dann, dass sevDesk
-den Export gestartet hat, und du lädst ihn stattdessen in sevDesk herunter; oder du erhöhst
+Download-Links zählen gegen denselben Platz wie Uploads; ein großer DATEV-Export oder ein großes
+Belegarchiv passt daher unter Umständen nicht (mit 64 MiB im Speicher hat ein Konto 20 MiB). Beim
+DATEV-Export sagt das Werkzeug dann, dass sevDesk den Export gestartet hat, und du lädst ihn
+stattdessen in sevDesk herunter; ein Belegarchiv exportierst du in kürzeren Zeiträumen; oder du
+erhöhst
 `SEVDESK_HTTP_FILES_MAX_MB`, am besten mit einem Zustandsverzeichnis, damit die Dateien auf die
 Festplatte gehen.
 
@@ -153,8 +169,8 @@ Durchgänge über denselben Link.
 `SEVDESK_HTTP_FILES=off` entfernt `sevdesk_upload_request`, `sevdesk_uploads_list` und die Seiten.
 Im OAuth-Modus werden dann die Werkzeuge nicht angeboten, die eine Datei zum Lesen oder einen Ort
 zum Speichern brauchen (`sevdesk_einvoice_parse`, `sevdesk_voucher_import_einvoice`,
-`sevdesk_document_save`, `sevdesk_voucher_receipt_save`, `sevdesk_csv_export`,
-`sevdesk_datev_export`), und das Argument `file` der Belegentwurf-Werkzeuge wird abgelehnt; der
+`sevdesk_voucher_recognize_receipt`, `sevdesk_document_save`, `sevdesk_voucher_receipt_save`,
+`sevdesk_csv_export`, `sevdesk_archive_export`, `sevdesk_datev_export`), und das Argument `file` der Belegentwurf-Werkzeuge wird abgelehnt; der
 Bearer-Modus nutzt weiterhin `SEVDESK_FILE_DIRS` und `SEVDESK_OUTPUT_DIR`, wenn sie gesetzt sind.
 Die PDF- und XML-Werkzeuge und die `sevdesk://`-Ressourcen sind nicht betroffen: Ein Client liest
 Dokumentdateien über sie per MCP.

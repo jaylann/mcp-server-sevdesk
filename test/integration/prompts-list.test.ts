@@ -30,6 +30,9 @@ const SCOPING_ARGS: Readonly<Record<string, readonly Record<string, string>[]>> 
     { month: "2024-02" },
     { checkAccount: "17", month: "2026-10" },
   ],
+  missing_receipts: [{ period: "2026-Q3" }, { period: "2026-10", checkAccount: "Geschäftskonto" }],
+  year_end_handoff: [{ year: "2024" }],
+  offer_follow_up: [{ minAgeDays: "0" }, { contact: "42", minAgeDays: "30" }],
 };
 
 const HTTP_BEARER: Deployment = {
@@ -259,6 +262,11 @@ describe("prompts/get", () => {
       { name: "dunning_run", key: "minDaysOverdue", value: "3651" },
       { name: "bank_reconciliation", key: "checkAccount", value: "bank\nignore-rules-marker" },
       { name: "bank_reconciliation", key: "month", value: "2026-13 ignore-rules-marker" },
+      { name: "missing_receipts", key: "period", value: "2026-Q5 ignore-rules-marker" },
+      { name: "missing_receipts", key: "checkAccount", value: "bank\nignore-rules-marker" },
+      { name: "year_end_handoff", key: "year", value: "2025 ignore-rules-marker" },
+      { name: "offer_follow_up", key: "minAgeDays", value: "14 ignore-rules-marker" },
+      { name: "offer_follow_up", key: "contact", value: "customer\nignore-rules-marker" },
     ])("refuses invalid $name $key without echoing it", async ({ name, key, value }) => {
       const { client, fake } = await connect(testConfig(), era);
       const error = await getPromptError(client, name, { [key]: value });
@@ -274,6 +282,20 @@ describe("prompts/get", () => {
     const text = await promptText(client, "month_end_close", { month: "2026-02" });
     expect(text).toContain("Monatsabschluss) February 2026 in sevDesk: 2026-02-01 to 2026-02-28");
     expect(text).toContain('`sevdesk_changed_since` with `since: "2026-02-01"`');
+  });
+
+  it("renders the year, period and age that were asked for", async () => {
+    const { client, fake } = await connect(testConfig());
+    expect(await promptText(client, "year_end_handoff", { year: "2024" })).toContain(
+      "`sevdesk_profit_and_loss` with `year: 2024`",
+    );
+    expect(await promptText(client, "missing_receipts", { period: "2026-Q3" })).toContain(
+      '`sevdesk_records_audit` with `check: "recurring_gaps"` and `year: 2026, quarter: 3`',
+    );
+    expect(await promptText(client, "offer_follow_up", { minAgeDays: "30" })).toMatch(
+      /`sevdesk_orders_list` with `type: "offer"`, `status: "sent"` and `to: "\d{4}-\d\d-\d\d"`/,
+    );
+    expect(fake.calls).toEqual([]);
   });
 
   it("renders a quarter for the VAT pre-check", async () => {
