@@ -26,8 +26,22 @@ on a free 14-day trial account**, with three tools. This page is the maintainer'
   (`SEVDESK_LIVE_MAX_EXISTING_RECORDS` changes the limit). They enable the `write` and `commit`
   tiers. The `external` tier (e-mail) is enabled only when you pass an address of your own
   (`pnpm probe --probe-email`, `SEVDESK_LIVE_EMAIL_TO` for `test:live`), and then exactly one
-  e-mail goes to that address, never to a contact. Nothing is enshrined. The only export is the
-  DATEV CSV job of the M4 probe and scenario (it starts a job; never with `enshrineDocuments`).
+  e-mail goes to that address, never to a contact. No enshrine request is sent, with one
+  exception: the opt-in probe `write-transaction-enshrine` enshrines one tagged transaction it
+  created itself (irreversible, trial account only). Exports: the DATEV CSV job of the M4 probe and
+  scenario (it starts a job; never with `enshrineDocuments`), the invoice and voucher ZIPs of the
+  gap probes (they change no document, D-101), and the DATEV XML job of the opt-in probe
+  `write-export-datev-xml`. The opt-in probe `write-voucher-from-file` sends one generated receipt
+  to `createVoucherFromFile`; the draft voucher it creates stays on the account. The other gap
+  probes leave records that cannot be deleted: offers and order confirmations marked as sent, and
+  two finalized invoices, one for `createFromInvoice` and one for the invoice ZIP export (the trial
+  enshrines invoices when they are finalized, D-023, D-059). Two of them leave recurring invoice
+  templates to delete in the web app.
+  Three more are opt-in because of what they leave: `write-cash-register-transaction` (its cash
+  bookings and the counter-entries of their resets stay in the cash book, D-095),
+  `write-reserved-number-delete-draft` (reserves an offer and a credit note number; sevDesk handed
+  them out again once the drafts were deleted, D-066) and `write-recurring-template-due` (leaves
+  ONE ACTIVE recurring template on purpose; end and delete it after `read-recurring-generated`).
 - Everything written is named after a run tag such as `MCP-E2E 20261120-1432-k3f9` and listed in a
   cleanup list (end of the probe report, end of the `test:live` log).
 - Recordings and reports are scrubbed (`scripts/lib/scrub.ts`): names, e-mails, phones,
@@ -145,7 +159,14 @@ Notes:
 
 The M4 probes and the M4 lifecycle scenario cover vouchers, bank transactions, the DATEV export
 and e-invoices. They need company data and a DATEV configuration first; preparation, runs, what
-they create and what to commit are on their own page: [M4 runs](recording-session/m4.md).
+they create and what to commit are on their own page: [M4 runs](recording-session/m4.md). The
+gap probes of 2026-11-16 run from the same page:
+[banking, exports and receipt recognition](recording-session/m4.md#gap-probes-banking-exports-receipt-recognition)
+(cash and clearing accounts, deleting and enshrining transactions, private-transaction rules,
+receipt hashes, ZIP exports, the DATEV XML job),
+[contacts, tags and cost centres](recording-session/m4.md#gap-probes-contacts-tags-and-cost-centres),
+and
+[orders, drafts, recurring invoices and layouts](recording-session/m4.md#gap-probes-orders-drafts-recurring-invoices-and-layouts).
 
 ## 3b. M5 remote check (about 60 to 90 minutes)
 

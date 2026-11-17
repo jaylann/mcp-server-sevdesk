@@ -556,10 +556,11 @@ describe.skipIf(!gate.open)(
         state.account = Number(reusable["id"]);
       }
       const noon = new Date(`${TODAY}T11:00:00Z`).toISOString();
+      // A new bank transaction needs the commit tier (`minimumWriteTier`).
       const transaction = await stack.sevdesk.request({
         method: "POST",
         path: "/CheckAccountTransaction",
-        tier: "write",
+        tier: "commit",
         body: {
           objectName: "CheckAccountTransaction",
           mapAll: true,

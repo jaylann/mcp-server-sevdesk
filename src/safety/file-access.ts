@@ -10,22 +10,35 @@
  *   `upload:<id>` from `sevdesk_upload_request` (the human uploads the file on a page of this
  *   server, signed in to the account), and deliveries become short-lived download links that also
  *   need that browser session. See docs/adr/0008-file-transfer-over-http.md.
+ * - **Either mode, with `SEVDESK_FILE_URL_HOSTS`**: a file reference may also be an https link to
+ *   one of the operator's hosts; `./url-files.ts` downloads it during the call (public addresses
+ *   only, pinned connection, capped) and keeps nothing.
  *
- * Invariant: every byte a tool reads or hands out passes one of these two paths, so the
- * confinement rules (local folders, account-bound uploads and links) hold for every tool.
+ * Invariant: every byte a tool reads or hands out passes one of these paths, so the confinement
+ * rules (local folders, account-bound uploads and links, the allowed public hosts) hold for every
+ * tool.
  */
 import type { Config } from "../config.js";
 import type { LocalFileKind } from "./local-files.js";
 import type { FolderScan, FolderScanOptions } from "./local-folder.js";
 import type { UploadBatchState, UploadPurpose } from "./transfer-types.js";
 
-/** A file a tool read, from a local folder or from an upload. */
+/** A file a tool read: from a local folder, from an upload, or downloaded from an https link. */
 export interface InputFile {
-  /** Base name as given by the file system or the uploader. Untrusted: sanitize before display. */
+  /**
+   * Base name as given by the file system or the uploader; for a link its last path segment when
+   * that is a short file name, else `download.<ext>` (`linkFileName` in `./url-files.ts`).
+   * Untrusted: sanitize before display.
+   */
   readonly name: string;
   readonly kind: LocalFileKind;
   readonly bytes: Uint8Array;
-  readonly source: "local" | "upload";
+  readonly source: "local" | "upload" | "url";
+  /**
+   * `source: "url"` only: the host the file was downloaded from, one of `SEVDESK_FILE_URL_HOSTS`
+   * (where a redirect led, the last one). Never the rest of the link.
+   */
+  readonly host?: string | undefined;
 }
 
 /** What a caller accepts when reading a file. */
@@ -34,6 +47,8 @@ export interface ReadFileOptions {
   readonly maxBytes: number;
   /** Kinds the caller can handle; anything else is refused. */
   readonly kinds: readonly LocalFileKind[];
+  /** The tool call's cancellation: stops a download from a link. */
+  readonly signal?: AbortSignal | undefined;
 }
 
 /**
@@ -109,9 +124,11 @@ export interface FileAccess {
   /** Reads this connection's batch metadata without reading bytes or creating records. */
   listUploads(batchId: string): UploadBatchState;
   /**
-   * Reads the file `ref` names: a path (inside `SEVDESK_FILE_DIRS`) or an `upload:<id>`
-   * reference. Throws a local `validation` `SevdeskError` with a trusted message when the
-   * reference is not allowed, unknown, expired, too large or of the wrong kind.
+   * Reads the file `ref` names: a path (inside `SEVDESK_FILE_DIRS`), an `upload:<id>` reference,
+   * or an https link ({@link isUrlRef}) to a host in `SEVDESK_FILE_URL_HOSTS`. Throws a local
+   * `validation` `SevdeskError` with a trusted message when the reference is not allowed,
+   * unknown, expired, unreachable, too large or of the wrong kind (`aborted` when
+   * `options.signal` stops a download).
    */
   read(ref: string, options: ReadFileOptions): Promise<InputFile>;
   /**
@@ -124,8 +141,9 @@ export interface FileAccess {
   scanFolder(folder: string | undefined, options: FolderScanOptions): Promise<FolderScan>;
   /**
    * Releases a remote upload after sevDesk confirms it was attached successfully. Local files
-   * are never deleted. Unknown, foreign or already released references are harmless no-ops;
-   * reads, previews and failed writes must not call this.
+   * are never deleted, and a file from a link was never kept (its bytes live only in the call).
+   * Unknown, foreign or already released references are harmless no-ops; reads, previews and
+   * failed writes must not call this.
    */
   release(ref: string): void;
   /** Hands `file` out: a new file in `SEVDESK_OUTPUT_DIR`, or a download link over HTTP. */
@@ -164,6 +182,35 @@ export function uploadRef(id: string): string {
   return `${UPLOAD_REF_PREFIX}${id}`;
 }
 
+/**
+ * A scheme of two or more characters followed by `://`. A Windows drive (`C:/…`, one letter) does
+ * not match, and a local file whose name looks like this is passed as `./https:…`.
+ */
+const URL_REF = /^[a-z][a-z0-9+.-]+:\/\//i;
+
+/**
+ * Whether `ref` names a link rather than a path or an upload: anything that starts like a URL.
+ * Only https links to the allowed hosts are read; every other scheme is refused with a message,
+ * never taken for a path.
+ */
+export function isUrlRef(ref: string): boolean {
+  return URL_REF.test(ref);
+}
+
+/**
+ * `ref` as a log may hold it: a link as its scheme and host only, `https://host/…?[redacted]`
+ * (a signed link carries its signature in the query, a capability link its token in the path,
+ * and user info is a password), anything else unchanged.
+ */
+export function loggableFileRef(ref: string): string {
+  if (!isUrlRef(ref)) return ref;
+  // The user info ends at the last `@` before the path, as URL parsers read it.
+  const match = /^([^:]+:\/\/)(?:[^/?#]*@)?([^/?#]*)([^?#]*)([?#][\s\S]*)?$/.exec(ref);
+  const [, scheme = "", host = "", path = "", tail] = match ?? [];
+  const shownPath = path === "" || path === "/" ? path : "/…";
+  return `${scheme}${host}${shownPath}${tail === undefined ? "" : "?[redacted]"}`;
+}
+
 /** Whether remote file transfer is on for this deployment. */
 export function remoteFilesEnabled(config: Pick<Config, "deployment">): boolean {
   return config.deployment.kind === "http" && config.deployment.files !== undefined;
@@ -171,15 +218,21 @@ export function remoteFilesEnabled(config: Pick<Config, "deployment">): boolean 
 
 /**
  * Whether tools that read a whole folder are offered: local folders only (`SEVDESK_FILE_DIRS`, over
- * stdio or in bearer mode). Uploads carry single files, so remote file transfer does not count.
+ * stdio or in bearer mode). Uploads and https links carry single files, so neither remote file
+ * transfer nor `SEVDESK_FILE_URL_HOSTS` counts.
  */
 export function canReadFolders(config: Pick<Config, "fileDirs">): boolean {
   return config.fileDirs.length > 0;
 }
 
-/** Whether tools that read files are offered: local folders or remote uploads. */
-export function canReadFiles(config: Pick<Config, "fileDirs" | "deployment">): boolean {
-  return config.fileDirs.length > 0 || remoteFilesEnabled(config);
+/**
+ * Whether tools that read files are offered: local folders, remote uploads, or hosts files may be
+ * downloaded from.
+ */
+export function canReadFiles(
+  config: Pick<Config, "fileDirs" | "deployment" | "fileUrlHosts">,
+): boolean {
+  return config.fileDirs.length > 0 || remoteFilesEnabled(config) || config.fileUrlHosts.length > 0;
 }
 
 /** Whether tools that hand out files are offered: an output folder or remote download links. */

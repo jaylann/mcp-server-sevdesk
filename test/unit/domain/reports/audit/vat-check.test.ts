@@ -15,10 +15,16 @@ import {
 import {
   accountDatevRoute,
   CONTACTS,
+  type ContactSpec,
+  COUNTRY,
+  type CustomerSpec,
   directoryRoutes,
+  type ExpectedDocument,
   expectedIds,
+  purchase,
   PURCHASES,
   quarterRoutes,
+  sale,
   SALES,
 } from "./scenario.js";
 
@@ -171,6 +177,25 @@ describe("check vat on a quarter with known positives and negatives", () => {
     }
   });
 
+  it("cites the current § 13b and words the German titles in full", async () => {
+    const { result } = await audit([regularAccount, ...quarterRoutes()]);
+    const byCode = (code: string) => result.findings.find((finding) => finding.code === code);
+
+    // Nr. 12 (telecommunication services to resellers) since 2021.
+    expect(byCode("eu_reverse_charge_for_domestic_supplier")?.reason).toContain(
+      "§ 13b Abs. 2 Nr. 2 to 12 UStG",
+    );
+    expect(byCode("eu_supplier_under_rule_12")?.titleDe).toBe(
+      "Leistung eines EU-Unternehmens mit Steuerregel 12",
+    );
+    expect(byCode("eu_reverse_charge_for_non_eu_supplier")?.titleDe).toBe(
+      "EU-Reverse-Charge bei einem Lieferanten außerhalb der EU",
+    );
+    expect(byCode("acquisition_from_non_eu_supplier")?.titleDe).toBe(
+      "Innergemeinschaftlicher Erwerb von einem Lieferanten außerhalb der EU",
+    );
+  });
+
   it("says what the customer's VAT id is without quoting it", async () => {
     const { result } = await audit([regularAccount, ...quarterRoutes()]);
     const missing = result.findings.find(
@@ -293,6 +318,135 @@ describe("check vat: grouping, wording and untrusted text", () => {
   });
 });
 
+describe("check vat: places and VAT id formats VAT law treats apart", () => {
+  /** Every document's expectation against the result: its code, or no finding for `ok`. */
+  function expectEach(result: AuditResult, documents: readonly ExpectedDocument[]): void {
+    for (const document of documents) {
+      const id = Number(document.row["id"]);
+      const codes = result.findings
+        .filter((entry) => entry.records.some((record) => record.id === id))
+        .map((entry) => entry.code);
+      expect(codes, `document ${String(id)}`).toEqual(
+        document.expect === "ok" ? [] : [document.expect],
+      );
+    }
+  }
+
+  it("counts a supplier in Monaco as one in France (EU)", async () => {
+    const monaco: ContactSpec = { id: 2101, name: "Yachting SAM", countries: [COUNTRY.MC] };
+    const reverseCharge = [{ rate: "0", net: "100", tax: "0" }];
+    const vouchers = [
+      purchase(1, monaco, 14, reverseCharge, "ok"),
+      purchase(2, monaco, 8, reverseCharge, "ok"),
+      purchase(3, monaco, 12, reverseCharge, "eu_supplier_under_rule_12"),
+    ];
+    const { result } = await audit([
+      regularAccount,
+      accountDatevRoute,
+      ...scenarioRoutes({ vouchers }),
+      ...directoryRoutes([monaco]),
+    ]);
+
+    expectEach(result, vouchers);
+    expect(result.coverage.notJudged).toBe(0);
+  });
+
+  it("judges customers' VAT ids by the format of their state, Northern Ireland for goods only", async () => {
+    const northernIreland: CustomerSpec = {
+      id: 4101,
+      vatNumber: "XI123456789",
+      country: COUNTRY.GB,
+    };
+    const greekPrefix: CustomerSpec = { id: 4102, vatNumber: "GR123456789", country: COUNTRY.GR };
+    const tooShort: CustomerSpec = { id: 4103, vatNumber: "FR123", country: COUNTRY.FR };
+    const euSmallBusiness: CustomerSpec = {
+      id: 4104,
+      vatNumber: "ATU12345678EX",
+      country: COUNTRY.AT,
+    };
+    const invoices = [
+      sale(11, northernIreland, 3, "0", "ok"),
+      sale(12, northernIreland, 21, "0", "eu_service_without_eu_vat_id"),
+      sale(13, greekPrefix, 3, "0", "intra_eu_supply_without_eu_vat_id"),
+      // Not a valid VAT id of another member state: German VAT stands.
+      sale(14, greekPrefix, 1, "190", "ok"),
+      sale(15, tooShort, 21, "0", "eu_service_without_eu_vat_id"),
+      sale(16, euSmallBusiness, 3, "0", "ok"),
+    ];
+    const { result } = await audit([
+      regularAccount,
+      ...scenarioRoutes({ invoices }),
+      ...directoryRoutes([]),
+    ]);
+
+    expectEach(result, invoices);
+    const greek = result.findings.find((entry) => entry.contact?.id === greekPrefix.id);
+    expect(greek?.reason).toContain(
+      "sevDesk holds a VAT id in the wrong format for its state for this customer.",
+    );
+    const ni = result.findings.find((entry) => entry.contact?.id === northernIreland.id);
+    expect(ni?.reason).toContain("a VAT id from Northern Ireland (EU rules for goods only)");
+  });
+
+  it("places a customer by the invoice's address country when no contact has an address", async () => {
+    const french: CustomerSpec = { id: 4201, vatNumber: "FR12345678901", country: COUNTRY.FR };
+    const invoices = [sale(21, french, 1, "190", "german_vat_to_eu_business")];
+    const { result } = await audit([
+      regularAccount,
+      ...scenarioRoutes({ invoices }),
+      ...directoryRoutes([{ id: 1, name: "Ohne Adresse", countries: [] }]),
+    ]);
+
+    expectEach(result, invoices);
+    expect(result.findings[0]?.contact?.countries).toEqual(["FR"]);
+    expect(result.coverage.notJudged).toBe(0);
+  });
+});
+
+describe("check vat: German rates by date", () => {
+  const taxedFrom = (
+    id: number,
+    dates: { readonly date: string; readonly delivery?: string },
+    rate: string,
+  ) => ({
+    row: voucherDoc({
+      id,
+      ...dates,
+      rule: 9,
+      net: "100",
+      tax: rate,
+      contactId: CONTACTS.austrianHotel.id,
+    }),
+    positions: voucherPositions(id, [{ rate, net: "100", tax: rate }]),
+  });
+
+  it("counts 16 and 5 % as German only for supplies in the second half of 2020", async () => {
+    const client = new FakeSevdeskClient([
+      regularAccount,
+      accountDatevRoute,
+      ...scenarioRoutes({
+        vouchers: [
+          taxedFrom(1, { date: "2020-08-10" }, "16"),
+          // Invoiced in January for a supply in December 2020.
+          taxedFrom(2, { date: "2021-01-05", delivery: "2020-12-20" }, "5"),
+          // Cyprus' reduced rate, years later.
+          taxedFrom(3, { date: "2021-02-10" }, "5"),
+          taxedFrom(4, { date: "2021-02-11" }, "16"),
+        ],
+      }),
+      ...directoryRoutes(),
+    ]);
+    const result = await runAudit(client, "vat", {
+      period: resolvePeriod({ from: "2020-07-01", to: "2021-03-31" }),
+      cacheOwner: {},
+      today: TODAY,
+    });
+
+    expect(idsOf(result, "foreign_supplier_charged_german_vat")).toEqual([1, 2]);
+    expect(idsOf(result, "foreign_vat_deducted")).toEqual([3, 4]);
+  });
+});
+
 describe("check vat: incomplete reads", () => {
   it("says how much a position cap left out", async () => {
     const { result } = await audit([regularAccount, ...quarterRoutes()], {
@@ -328,7 +482,59 @@ describe("check vat: incomplete reads", () => {
 
     expect(result.coverage.truncated).toBe(true);
     expect(result.coverage.contacts?.truncated).toBe(true);
-    expect(result.notes.join(" ")).toContain("contacts beyond it are unknown");
+    const notes = result.notes.join(" ");
+    expect(notes).toContain("The contact list stopped at its cap");
+    expect(notes).toContain("The address list stopped at its cap");
+    // A customer's German address could be beyond the cap; its VAT id alone still settles 3 and 21.
+    expect(idsOf(result, "german_vat_to_eu_business")).toEqual([]);
+    expect(idsOf(result, "intra_eu_supply_without_eu_vat_id")).toEqual([3203]);
+    expect(idsOf(result, "eu_service_without_eu_vat_id")).toEqual([3204]);
+  });
+
+  it("makes no finding an address beyond the cap of the address list could overturn", async () => {
+    // Every contact is listed, but the Dutch supplier's German branch address is past the cap.
+    const dutch: ContactSpec = {
+      id: 2201,
+      name: "Logistics B.V.",
+      vatNumber: "NL123456789B01",
+      countries: [COUNTRY.NL, COUNTRY.FR, COUNTRY.DE],
+    };
+    const vouchers = [purchase(1, dutch, 9, [{ rate: "19", net: "100", tax: "19" }], "not_judged")];
+    const invoices = [
+      sale(
+        2,
+        { id: 4301, vatNumber: "FR12345678901", country: COUNTRY.FR },
+        1,
+        "190",
+        "not_judged",
+      ),
+      sale(
+        3,
+        { id: 4302, vatNumber: null, country: COUNTRY.AT },
+        3,
+        "0",
+        "intra_eu_supply_without_eu_vat_id",
+      ),
+    ];
+    const { client, result } = await audit(
+      [
+        regularAccount,
+        accountDatevRoute,
+        ...scenarioRoutes({ vouchers, invoices }),
+        ...directoryRoutes([dutch]),
+      ],
+      { limits: { maxContactRows: 2 } },
+    );
+
+    expect(result.coverage.contacts).toEqual({ read: 1, addressesRead: 2, truncated: true });
+    expect(idsOf(result, "foreign_supplier_charged_german_vat")).toEqual([]);
+    expect(idsOf(result, "german_vat_to_eu_business")).toEqual([]);
+    expect(client.callsTo("/VoucherPos")).toEqual([]);
+    expect(idsOf(result, "intra_eu_supply_without_eu_vat_id")).toEqual([3]);
+    expect(result.coverage.notJudged).toBe(2);
+    expect(result.notes.join(" ")).toContain(
+      "The address list stopped at its cap: any contact may have further addresses",
+    );
   });
 
   it("says when the document listing stopped at its cap", async () => {

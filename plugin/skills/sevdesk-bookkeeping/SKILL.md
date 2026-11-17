@@ -26,7 +26,8 @@ every write is real, and finalized or enshrined records cannot simply be deleted
 4. **Respect the tiers.** `read` (default), `write` (drafts, reversible), `commit` (legally
    binding: finalize, book, cancel, enshrine, reset), `external` (emails third parties). Tools
    above the enabled tiers are not offered at all. If one is missing, tell the user which tier
-   (`SEVDESK_ALLOW`) or setting (`SEVDESK_FILE_DIRS`, `SEVDESK_OUTPUT_DIR`) enables it; never
+   (`SEVDESK_ALLOW`) or setting (`SEVDESK_FILE_DIRS`, `SEVDESK_FILE_URL_HOSTS`,
+   `SEVDESK_OUTPUT_DIR`) enables it; never
    work around it with another tool.
 5. **Humans confirm binding steps.** `commit` and `external` tools ask the user in a confirmation
    prompt (or an approval page). If the user declines, do not retry unless they ask. A
@@ -44,6 +45,8 @@ every write is real, and finalized or enshrined records cannot simply be deleted
 | -------------------------------------------- | ------------------------------------------------------------------- |
 | know the account setup, tiers, regime        | `sevdesk_account_info`                                              |
 | find a tax rule or booking account           | `sevdesk_reference_lookup` (`kind: tax_rules` / `receipt_guidance`) |
+| choose the tax rule for an invoice           | `sevdesk_tax_rule_suggest`                                          |
+| check a customer's VAT ID (USt-IdNr.)        | `sevdesk_vat_id_check`                                              |
 | find a customer or supplier                  | `sevdesk_contacts_search`                                           |
 | file a receipt (Beleg)                       | `sevdesk_voucher_create_draft` (see workflows)                      |
 | check or import an e-invoice                 | `sevdesk_einvoice_parse`, then `sevdesk_voucher_import_einvoice`    |

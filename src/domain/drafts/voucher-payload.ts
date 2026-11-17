@@ -185,6 +185,11 @@ export interface ReceiptFile {
   readonly name: string;
   readonly kind: LocalFileKind;
   readonly bytes: Uint8Array;
+  /**
+   * Set when the file was downloaded from an https link: the host it came from (one of
+   * `SEVDESK_FILE_URL_HOSTS`, trusted). Never the link's path or query.
+   */
+  readonly host?: string | undefined;
 }
 
 /** The multipart body of `uploadTempFile`: one part `file` with the sniffed MIME type. */

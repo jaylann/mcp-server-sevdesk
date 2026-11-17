@@ -65,6 +65,7 @@ const monthEndClose = definePrompt({
       .optional()
       .describe("Month to close, YYYY-MM (e.g. 2026-10). Default: the previous month."),
   }),
+  completions: { month: "month" },
   requires: ["sevdesk_changed_since"],
   resolve: (args, context) => ({
     period: args.month === undefined ? previousMonth(context.today) : parsePeriod(args.month),
@@ -214,7 +215,8 @@ const receiptIntake = definePrompt({
       .optional()
       .describe(
         "The receipt or e-invoice file, as the voucher tools take it (a path inside " +
-          "SEVDESK_FILE_DIRS, or an upload reference). Default: the assistant asks for it.",
+          "SEVDESK_FILE_DIRS, an upload reference, or an https link to a host in " +
+          "SEVDESK_FILE_URL_HOSTS). Default: the assistant asks for it.",
       ),
   }),
   requires: [
@@ -281,8 +283,10 @@ const receiptIntake = definePrompt({
     {
       text:
         "E-invoice: `sevdesk_voucher_import_einvoice` with the file, `dryRun: true` first, then " +
-        "without. It creates a voucher draft (supplier, dates, positions, VAT) and keeps the " +
-        "original file with it; check its booking accounts as above.",
+        "without and with the file's SHA-256 from the parse or the preview as `fileSha256`, so " +
+        "the file that was checked is the one imported. It creates a voucher draft (supplier, " +
+        "dates, positions, VAT) and keeps the original file with it; check its booking accounts " +
+        "as above.",
       tools: ["sevdesk_voucher_import_einvoice"],
       fallback: "Importing an e-invoice as a voucher draft",
     },
@@ -292,8 +296,9 @@ const receiptIntake = definePrompt({
         "default), supplier (`supplierId` or `supplierName`), Belegnummer (`number`), Belegdatum " +
         "(`date`), positions with booking account, amount and rate, the tax rule (`taxRuleId`) " +
         "and the file as `file`, if there is one. It refuses a likely duplicate unless " +
-        "`allowDuplicate` is set. Show me the preview, then call it again without `dryRun`: the " +
-        "voucher is a draft.",
+        "`allowDuplicate` is set. Show me the preview, then call it again without `dryRun` (with " +
+        "a file, pass the preview's SHA-256 as `fileSha256`: the file is read again, and other " +
+        "bytes are refused): the voucher is a draft.",
       tools: ["sevdesk_voucher_create_draft"],
       fallback: "Creating the voucher draft",
     },
@@ -344,6 +349,7 @@ const dunningRun = definePrompt({
         "Minimum days overdue (inclusive, 0–3650, as 1–4 digits). Default: all overdue invoices.",
       ),
   }),
+  completions: { contact: "contact" },
   requires: ["sevdesk_invoices_list"],
   resolve: (args, context) => ({ ...args, today: context.today }),
   intro: ({ today, contact, minDaysOverdue }) =>
@@ -438,6 +444,7 @@ const vatPrecheck = definePrompt({
           "month.",
       ),
   }),
+  completions: { period: "period" },
   requires: ["sevdesk_vat_summary"],
   resolve: (args, context) => ({
     period: args.period === undefined ? previousMonth(context.today) : parsePeriod(args.period),
@@ -574,6 +581,7 @@ const bankReconciliation = definePrompt({
       .optional()
       .describe("Month to reconcile, YYYY-MM (2000–2099). Default: no date scope."),
   }),
+  completions: { checkAccount: "checkAccount", month: "month" },
   requires: [
     "sevdesk_bank_accounts_list",
     "sevdesk_transactions_list",

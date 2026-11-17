@@ -1,4 +1,4 @@
-<!-- translated-from: docs/remote/files.md sha256:22814b0bdaff -->
+<!-- translated-from: docs/remote/files.md sha256:57efb0a38ea4 -->
 
 # Dateien: Uploads und Download-Links
 
@@ -34,10 +34,15 @@ vorhanden war); bei gleicher ID oder unbekanntem vorherigem Stand bleibt der Upl
 verfügbar. Um eine erfolgreich angehängte Datei nach der Freigabe ihres Uploads erneut zu
 verwenden, fordere einen neuen Upload an.
 
+Ein Beleg, der schon online liegt (in einem Lieferantenportal, hinter einem Speicher-Link), braucht
+keinen Upload, wenn der Betreiber seinen Host in `SEVDESK_FILE_URL_HOSTS` einträgt: Das Modell
+übergibt den https-Link als `file`, und der Server lädt die Datei während des Aufrufs herunter und
+behält nichts ([Dateien von einem Link](../configuration.de.md#dateien-von-einem-link)).
+
 Einen ganzen Ordner mit Belegen mit den Belegen in sevDesk zu vergleichen
 (`sevdesk_receipt_folder_check`), geht auf einem entfernten Server mit OAuth nicht: Das liest einen
-lokalen Ordner, und ein Upload bringt einzelne Dateien. Im Bearer-Modus mit `SEVDESK_FILE_DIRS`
-wird es für die Ordner auf dem Server angeboten.
+lokalen Ordner, und ein Upload oder ein Link bringt einzelne Dateien. Im Bearer-Modus mit
+`SEVDESK_FILE_DIRS` wird es für die Ordner auf dem Server angeboten.
 
 ## Mehrere Dateien auf einer Seite
 

@@ -27,18 +27,21 @@ export const COUNTRY = {
   DE: 1,
   CH: 2,
   AT: 3,
+  GB: 9,
   FR: 11,
+  GR: 12,
   IE: 13,
   LU: 17,
   NL: 18,
   PL: 21,
+  MC: 43,
   US: 1353,
 } as const;
 
 /** The import VAT account (Einfuhrumsatzsteuer, AccountDatev id 2624, `import-vat.ts`). */
 const IMPORT_VAT_ACCOUNT = 2624;
 
-interface ContactSpec {
+export interface ContactSpec {
   readonly id: number;
   readonly name: string;
   readonly vatNumber?: string;
@@ -158,7 +161,8 @@ export interface ExpectedDocument extends ScenarioDocument {
   readonly expect: Expectation;
 }
 
-function purchase(
+/** A voucher dated 2026-02-10 from `contact` with `positions`. */
+export function purchase(
   id: number,
   contact: ContactSpec,
   rule: number,
@@ -228,9 +232,17 @@ export const PURCHASES: readonly ExpectedDocument[] = [
   purchase(3121, CONTACTS.german, 9, [at19("100")], "ok"),
 ];
 
-function sale(
+/** A customer as an invoice embeds it: its VAT id and the invoice's address country. */
+export interface CustomerSpec {
+  readonly id: number;
+  readonly vatNumber: string | null;
+  readonly country: number;
+}
+
+/** An invoice dated 2026-03-05 over 1,000 EUR net to `customer`. */
+export function sale(
   id: number,
-  customer: { readonly id: number; readonly vatNumber: string | null; readonly country: number },
+  customer: CustomerSpec,
   rule: number,
   tax: string,
   expect: Expectation,
@@ -261,7 +273,7 @@ const CUSTOMERS = {
   frenchWithGermanAddress: { id: 4004, vatNumber: "FR12345678901", country: COUNTRY.DE },
   german: { id: 4002, vatNumber: "DE111111111", country: COUNTRY.DE },
   private: { id: 4003, vatNumber: null, country: COUNTRY.AT },
-} as const;
+} as const satisfies Record<string, CustomerSpec>;
 
 /** Sales: invoices dated 2026-03-05. */
 export const SALES: readonly ExpectedDocument[] = [

@@ -27,6 +27,7 @@ import { open } from "node:fs/promises";
 import type { RequestPrincipal } from "../accounts/types.js";
 import { appendLine, type GetUid, ownedByOtherUser } from "./append-file.js";
 import { escapeHiddenCharacters } from "./fence.js";
+import { loggableFileRef } from "./file-access.js";
 import { REDACTED, redactSecrets } from "./redact.js";
 import type { WriteTier } from "./tiers.js";
 import type { ConfirmationPreview, SevdeskObjectRef } from "./write-types.js";
@@ -287,13 +288,18 @@ function toLine(event: AuditEvent, at: Date, secrets: readonly string[]): Record
 }
 
 /**
- * Deep copy with every string redacted (secrets and upload ids), its hidden characters escaped
- * (kept visible instead of stripped, so the log shows what was sent) and capped with an explicit
- * marker; non-JSON values become their type name.
+ * Deep copy with every string redacted (secrets, upload ids, and everything but the scheme and
+ * host of a string that starts like a link, such as `file: "https://…"`: a signed link carries
+ * its signature in the query, a capability link its token in the path), its hidden characters
+ * escaped (kept visible instead of stripped, so the log shows what was sent) and capped with an
+ * explicit marker; non-JSON values become their type name.
  */
 function cleanValue(value: unknown, secrets: readonly string[]): unknown {
   if (typeof value === "string") {
-    const redacted = redactSecrets(value, secrets).replace(UPLOAD_ID, `upload:${REDACTED}`);
+    const redacted = redactSecrets(loggableFileRef(value), secrets).replace(
+      UPLOAD_ID,
+      `upload:${REDACTED}`,
+    );
     return capped(escapeHiddenCharacters(redacted, { allowNewlines: true }));
   }
   if (value === null || typeof value === "number" || typeof value === "boolean") {

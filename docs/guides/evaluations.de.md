@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/evaluations.md sha256:b2e723f0a5a0 -->
+<!-- translated-from: docs/guides/evaluations.md sha256:099bc550892c -->
 
 # Auswertungen und Exporte
 
@@ -116,7 +116,9 @@ jedes Ergebnis sagt das auf Englisch und Deutsch. Das Werkzeug ändert nichts.
 
 Die Prüfung vergleicht die Steuerregel jedes Dokuments damit, wo die Gegenseite ansässig ist,
 soweit sevDesk es weiß: die USt-IdNr. des Kontakts und die Länder seiner Adressen. Eine deutsche
-USt-IdNr. oder eine deutsche Adresse gilt als in Deutschland registriert oder ansässig. Dokumente
+USt-IdNr. oder eine deutsche Adresse gilt als in Deutschland registriert oder ansässig, und Monaco
+zählt als Frankreich. Bei Verkäufen zählt die USt-IdNr. eines Kunden nur im gültigen Format ihres
+Staats, so wie [`sevdesk_vat_id_check`](../tools.md#sevdesk_vat_id_check) sie prüft. Dokumente
 werden nach Belegdatum ausgewählt; Verkäufe werden an Rechnungen geprüft.
 
 | Code                                                                            | Bedeutet                                                                                                                           |
@@ -128,7 +130,7 @@ werden nach Belegdatum ausgewählt; Verkäufe werden an Rechnungen geprüft.
 | `eu_reverse_charge_for_non_eu_supplier`, `acquisition_from_non_eu_supplier`     | Regel 14 oder 8 bei einem Lieferanten außerhalb der EU                                                                             |
 | `eu_supplier_under_rule_12`                                                     | Eine Leistung aus einem anderen EU-Staat unter Regel 12 statt 14                                                                   |
 | `german_vat_to_eu_business`                                                     | Deutsche Umsatzsteuer auf einer Rechnung an einen Kunden mit USt-IdNr. eines anderen EU-Staats                                     |
-| `intra_eu_supply_without_eu_vat_id`, `eu_service_without_eu_vat_id`             | Regel 3 oder 21 ohne USt-IdNr. des Kunden aus einem anderen EU-Staat                                                               |
+| `intra_eu_supply_without_eu_vat_id`, `eu_service_without_eu_vat_id`             | Regel 3 oder 21 ohne gültige USt-IdNr. des Kunden aus einem anderen EU-Staat                                                       |
 
 Bewusst nicht gemeldet: ein ausländischer Lieferant mit deutscher USt-IdNr. oder deutscher Adresse
 (er darf deutsche Umsatzsteuer berechnen), ein Lieferant mit nur deutschen Daten, der keine
@@ -144,33 +146,47 @@ Die Prüfung summiert die Bemessungsgrundlage nach § 13b des Zeitraums je Steue
 (Regeln 12, 13 und 14, bei denen du die Steuer als Leistungsempfänger schuldest, mit der
 geschuldeten Steuer und dem Teil, den du als Vorsteuer wieder abziehst) und ausgestellt (Regel 5,
 Kz 60; Regel 21, Kz 21). Jede Summe nennt ihre UStVA-Kennzahlen und listet die Belege dahinter. Sie
-nutzt dieselben Steuerzeitpunkte wie `sevdesk_vat_summary`, die Summen stimmen also mit deren Kz
-46/47, 84/85, 67, 60 und 21 überein. Sie meldet Regel 13 (ohne Vorsteuerabzug) bei einem Konto mit
-Regelbesteuerung (`reverse_charge_without_deduction`).
+nutzt dieselben Steuerzeitpunkte wie `sevdesk_vat_summary`, die Bemessungsgrundlagen stimmen also
+mit deren Kz 46, 84, 60 und 21 überein. Die Steuerbeträge (Kz 47, 85, 67) können um einen Cent
+abweichen, weil die Prüfung je Steuerregel rundet und die Auswertung je Formularzeile (Kz 84/85
+fassen die Regeln 12 und 13 zusammen). Sie meldet Regel 13 (ohne Vorsteuerabzug) bei einem Konto mit
+Regelbesteuerung (`reverse_charge_without_deduction`) und die Regeln 12 und 14 (mit
+Vorsteuerabzug) bei einem Kleinunternehmer-Konto, das die Steuer schuldet, sie aber nicht abziehen
+darf (`reverse_charge_deduction_on_small_business`).
 
 ### Doppelt gebuchte Belege und liegen gebliebene Entwürfe (`duplicates`)
 
 Die Prüfung vergleicht die Belege jedes Lieferanten, Ausgaben und Einnahmen getrennt. Lieferant
 ist der Kontakt des Belegs oder, wenn er keinen hat, der Lieferantenname auf dem Beleg; ein Beleg
-ohne beides wird nicht verglichen, die Hinweise zählen ihn. Ein Paar zählt im Zeitraum seines
-späteren Belegs; für den früheren werden Belege bis 31 Tage vor dem Zeitraum gelesen.
+ohne beides wird nicht verglichen, die Hinweise zählen ihn. Ein Paar mit einem Entwurf wird auch
+über Lieferanten hinweg gefunden, an derselben Nummer und demselben Bruttobetrag: Die
+Belegerkennung von sevDesk füllt Rechnungsnummer und Betrag eines Belegs aus, aber nicht den
+Kontakt des Lieferanten, also kann dieselbe PDF, die zweimal in sevDesk ankommt, unter zwei
+Lieferanten oder unter keinem stehen. Ein Paar zählt im Zeitraum seines späteren Belegs; für den
+früheren werden Belege bis 31 Tage vor dem Zeitraum gelesen.
 
-| Code                    | Bedeutet                                                                                                                                                                                    |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `voucher_number_twice`  | Gebuchte Belege mit derselben Belegnummer (`warning`). Groß- und Kleinschreibung, Leerzeichen und `-_/.#` zählen nicht; eine Nummer braucht eine Ziffer, „Miete“ als Beschreibung ist keine |
-| `voucher_receipt_twice` | Ein Paar mit gleichem Betrag, dessen Belegdateien dieselbe SHA-256-Prüfsumme haben: dieselbe Datei zweimal hochgeladen (`warning`)                                                          |
-| `voucher_amount_twice`  | Gebuchte Belege mit demselben Bruttobetrag und derselben Währung, höchstens 5 Tage auseinander, nicht durch zwei verschiedene Nummern unterschieden (`check`)                               |
-| `draft_repeats_voucher` | Ein Entwurf mit derselben Nummer wie ein gebuchter Beleg oder demselben Betrag innerhalb von 5 Tagen (`check`): lieber löschen als buchen                                                   |
-| `voucher_draft_stuck`   | Ein Beleg mit Datum im Zeitraum, der 21 Tage oder länger nach dem Anlegen in sevDesk noch ein Entwurf ist (`check`)                                                                         |
-| `sales_draft_stuck`     | Dasselbe für eine Rechnung oder Gutschrift: Der Kunde hat noch keine Rechnung (`check`)                                                                                                     |
+| Code                    | Bedeutet                                                                                                                                                                                                                                                               |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `voucher_number_twice`  | Gebuchte Belege mit derselben Belegnummer, höchstens 21 Tage auseinander (`warning`). Groß- und Kleinschreibung, Leerzeichen und `-_/.#` zählen nicht; eine Nummer braucht eine Ziffer, „Miete“ als Beschreibung ist keine                                             |
+| `voucher_receipt_twice` | Ein Paar mit gleichem Betrag, dessen Belegdateien dieselbe SHA-256-Prüfsumme haben: dieselbe Datei zweimal hochgeladen (`warning`)                                                                                                                                     |
+| `voucher_amount_twice`  | Gebuchte Belege mit demselben Bruttobetrag und derselben Währung, höchstens 5 Tage auseinander, nicht durch zwei verschiedene Nummern unterschieden (`check`)                                                                                                          |
+| `draft_repeats_voucher` | Ein Entwurf mit derselben Nummer wie ein gebuchter Beleg, höchstens 21 Tage auseinander, und demselben Lieferanten oder demselben Betrag (bei jedem Lieferanten); oder mit demselben Lieferanten und Betrag innerhalb von 5 Tagen (`check`): lieber löschen als buchen |
+| `draft_twice`           | Zwei Entwürfe, nach denselben Regeln gepaart (`check`): meist derselbe Beleg zweimal hochgeladen; einen buchen, den anderen löschen                                                                                                                                    |
+| `voucher_draft_stuck`   | Ein Beleg mit Datum im Zeitraum, der 21 Tage oder länger nach dem Anlegen in sevDesk noch ein Entwurf ist (`check`)                                                                                                                                                    |
+| `sales_draft_stuck`     | Dasselbe für eine Rechnung oder Gutschrift: Der Kunde hat noch keine Rechnung (`check`)                                                                                                                                                                                |
 
 Bewusst nicht gemeldet: Einkäufe mit gleichem Betrag im Abstand einer Woche, zwei Belege mit
-verschiedenen Nummern, ein Beleg und seine Stornierung (+x und −x), dieselbe Nummer von einem
-anderen Lieferanten oder in der anderen Richtung, ein Bruttobetrag von 0, zwei Entwürfe (jeder wird
-gemeldet, sobald er liegen geblieben ist) und ein Entwurf, der vor weniger als 21 Tagen angelegt
-wurde, wie alt sein Belegdatum auch ist. Ausgangsrechnungen werden nur auf liegen gebliebene
-Entwürfe geprüft: Ihre Nummern kommen aus dem Nummernkreis von sevDesk, und eine doppelt gestellte
-Rechnung wird mit einer Stornorechnung berichtigt.
+verschiedenen Nummern, dieselbe Nummer auf Belegen, die mehr als 21 Tage auseinanderliegen (eine
+Beschreibung wie „Miete 2026“ auf jeder Monatsrechnung), ein Beleg und seine Stornierung (+x und
+−x), dieselbe Nummer von einem anderen Lieferanten oder in der anderen Richtung zwischen gebuchten
+Belegen, Entwürfe verschiedener Lieferanten mit anderem Betrag oder ohne Nummer, ein Bruttobetrag
+von 0 und ein Entwurf, der vor weniger als 21 Tagen angelegt wurde, wie alt sein Belegdatum auch
+ist. Ausgangsrechnungen werden nur auf liegen gebliebene Entwürfe geprüft: Ihre Nummern kommen aus
+dem Nummernkreis von sevDesk, und eine doppelt gestellte Rechnung wird mit einer Stornorechnung
+berichtigt. Um diese Entwürfe zu finden, listet die Prüfung jede Rechnung und Gutschrift mit Datum
+im Zeitraum (ein Abruf je 1.000): Die Listen von sevDesk haben laut Spezifikation einen
+Statusfilter, aber keine Aufzeichnung zeigt, dass er nur Entwürfe liefert, deshalb wird er nicht
+genutzt.
 
 Um ein Paar mit gleichem Betrag zu bestätigen, vergleicht die Prüfung die SHA-256-Prüfsummen der
 Belegdateien seiner Belege, die sevDesk mit der Belegliste schickt (kein zusätzlicher Abruf je
@@ -194,7 +210,11 @@ ungefähr denselben Tag fallen (innerhalb von 7 Tagen), in der Regel eine Rechnu
 übliche Zahl an Rechnungen) je Zeitraum, mit höchstens einem von vier Zeiträumen ohne Rechnung;
 Quartals- und Jahresrechnungen müssen in denselben Monat des Quartals oder Jahres fallen. Ein
 Zeitraum gilt nur dann als fehlend, wenn davor mindestens drei Monate (bei Quartal und Jahr: zwei
-Zeiträume) mit Rechnungen liegen und danach einer.
+Zeiträume) mit Rechnungen liegen und danach einer. Den Rhythmus lernt die Prüfung für jeden Monat
+neu, aus den Rechnungen des Lieferanten in den 12 Monaten davor und danach (bei Jahresrechnungen
+24 Monate davor): Ein Lieferant, der von Monats- auf Quartalsrechnungen umgestellt hat, wird ab
+dann an seinen Quartalsrechnungen gemessen. Eine Rechnung wird am üblichen Tag des Lieferanten
+erwartet oder am letzten Tag des Monats, wenn der Monat kürzer ist: eine Rechnung vom 31. am 30. Juni.
 
 | Code                     | Bedeutet                                                                 |
 | ------------------------ | ------------------------------------------------------------------------ |
@@ -205,16 +225,21 @@ Zeiträume) mit Rechnungen liegen und danach einer.
 Bewusst nicht gemeldet: ein geänderter Betrag (Beträge werden nicht verglichen), eine Rechnung, die
 sich um ein paar Tage über ein Monatsende verschoben hat, zwei Rechnungen in einem Monat neben einem
 Monat ohne Rechnung (die Rechnung kam zu spät oder zu früh), ein Lieferant, der nicht mehr abrechnet,
-und der letzte Zeitraum, solange die nächste Rechnung des Lieferanten noch nicht da ist.
-Wiederkehrende Belegvorlagen (RV) von sevDesk sind keine Rechnungen und werden nicht gelesen; die
-daraus gebuchten Belege zählen wie alle anderen. Hört die Liste an ihrer Obergrenze auf, meldet die
-Prüfung gar keine Lücken, denn ein nicht gelesener Beleg sähe wie eine aus.
+der letzte Zeitraum, solange die nächste Rechnung des Lieferanten noch nicht da ist, und eine
+Rechnung, die ohne den Kontakt des Lieferanten, aber unter seinem Namen gebucht wurde (sie zählt
+für den einen Kontakt, dessen Belege diesen Namen tragen). Wiederkehrende Belegvorlagen (RV) von
+sevDesk sind keine Rechnungen und werden nicht gelesen; die daraus gebuchten Belege zählen wie alle
+anderen. Hört die Liste an ihrer Obergrenze auf, meldet die Prüfung gar keine Lücken, denn ein
+nicht gelesener Beleg sähe wie eine aus. Ein kürzerer Zeitraum hilft dann nicht: Gelesen werden
+immer etwa drei Jahre, und das Konto hat in dieser Zeit mehr Belege, als die Prüfung lesen kann.
 
 Die Prüfungen `vat` und `reverse_charge` lesen die Dokumente des Zeitraums und, wo die Steuersätze
 entscheiden, deren Positionen; `vat` liest außerdem die Kontakt- und die Adressliste je einmal.
-`duplicates` und `recurring_gaps` lesen nur Dokumentlisten. Wie die anderen Auswertungen sagen
-sie, was sie ausgelassen haben (`coverage.truncated`, `coverage.documentsLeftOut`), und über HTTP
-hören sie nach etwa 90 Sekunden auf zu lesen: Frag nach einem Monat, wenn ein Quartal zu viel ist.
+`duplicates` und `recurring_gaps` lesen nur Dokumentlisten, bis zu 10.000 Zeilen; `recurring_gaps`
+liest immer etwa drei Jahre, welcher Zeitraum es auch ist. Wie die anderen Auswertungen sagen sie,
+was sie ausgelassen haben (`coverage.truncated`, `coverage.documentsLeftOut`), und über HTTP hören
+sie nach etwa 90 Sekunden auf, Dokument für Dokument zu lesen: Frag nach einem Monat, wenn ein
+Quartal zu viel ist (was `recurring_gaps` liest, wird dadurch nicht kürzer).
 
 ### Belege im Ordner, die nie gebucht wurden
 

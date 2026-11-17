@@ -29,10 +29,15 @@ before saving (or follow an explicitly absent attachment); if it stays the same 
 state is unknown, the upload remains available until expiry. To use a successfully attached file
 again after its upload was released, request a new upload.
 
+A receipt that is already online (a supplier portal, a storage link) needs no upload when the
+operator lists its host in `SEVDESK_FILE_URL_HOSTS`: the model passes the https link as `file`,
+and the server downloads it during the call and keeps nothing
+([Files from a link](../configuration.md#files-from-a-link)).
+
 Comparing a whole folder of receipts with the vouchers in sevDesk
 (`sevdesk_receipt_folder_check`) is not available on a remote server with OAuth: it reads a local
-folder, and an upload carries single files. In bearer mode with `SEVDESK_FILE_DIRS` it is offered
-for the folders on the server.
+folder, and an upload or a link carries single files. In bearer mode with `SEVDESK_FILE_DIRS` it is
+offered for the folders on the server.
 
 ## Several files on one page
 

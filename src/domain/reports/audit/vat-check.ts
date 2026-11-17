@@ -17,7 +17,8 @@
  * Sales (invoices; cancellation invoices are left out, they mirror their original): German VAT
  * (rule 1) to a customer with a VAT id of another EU state and no German data (§ 3a Abs. 2,
  * § 6a UStG), and intra-EU supplies or services (rules 3, 21) without a VAT id of another EU state
- * (§ 6a Abs. 1 Satz 1 Nr. 4, § 18a UStG).
+ * (§ 6a Abs. 1 Satz 1 Nr. 4, § 18a UStG). A VAT id counts only in the valid format of its state,
+ * as in the tax-rule helper (`customerVatIdOf`).
  *
  * False positives the data rules out: a supplier with a German VAT id or a German address
  * (registered or established in Germany, § 13b Abs. 7 UStG) may charge German VAT; a supplier with
@@ -51,21 +52,27 @@ import {
   scanNotes,
 } from "./findings.js";
 import {
+  customerVatIdOf,
   loadPartyDirectory,
   locate,
   type PartyArea,
   type PartyDirectory,
   type PartyFacts,
   type PartyLocation,
-  vatIdArea,
 } from "./parties.js";
 
 /** Purchase tax rules this check compares with the supplier. */
 const EXPENSE_RULES: ReadonlySet<number> = new Set([8, 9, 10, 12, 14]);
 /** Sales tax rules this check compares with the customer. */
 const REVENUE_RULES: ReadonlySet<number> = new Set([1, 3, 21]);
-/** VAT rates Germany charges (16 and 5 in the second half of 2020). */
-const GERMAN_RATES = ["19", "7", "16", "5"] as const;
+/** VAT rates Germany charges. */
+const GERMAN_RATES = ["19", "7"] as const;
+/**
+ * The temporary reduction (§ 28 Abs. 1 and 2 UStG, Zweites Corona-Steuerhilfegesetz): 16 and 5 %
+ * for supplies from 2020-07-01 to 2020-12-31. Outside it, these are other states' rates (5 % in
+ * Cyprus, for one).
+ */
+const REDUCED_2020 = { rates: ["16", "5"], from: "2020-07-01", to: "2020-12-31" } as const;
 
 export const VAT_FINDING_CODES = [
   "foreign_supplier_charged_german_vat",
@@ -198,7 +205,7 @@ const TEXTS: Readonly<Record<VatFindingCode, (context: TextContext) => FindingTe
       "Rule 14 is for services of a business established in another EU state (§ 13b Abs. 1 " +
       "UStG), but sevDesk holds only German data for the supplier (a German VAT id or address). " +
       "A business established in Germany charges German VAT itself (§ 13a Abs. 1 Nr. 1 UStG), " +
-      "apart from the domestic reverse-charge cases of § 13b Abs. 2 Nr. 2 to 11 UStG (e.g. " +
+      "apart from the domestic reverse-charge cases of § 13b Abs. 2 Nr. 2 to 12 UStG (e.g. " +
       "construction services, building cleaning), which belong under rule 12.",
     action:
       "Check the invoice: with German VAT, book it under rule 9; for a domestic reverse-charge " +
@@ -222,7 +229,7 @@ const TEXTS: Readonly<Record<VatFindingCode, (context: TextContext) => FindingTe
   eu_supplier_under_rule_12: () => ({
     severity: "check",
     title: "Service from an EU business under rule 12",
-    titleDe: "Leistung eines EU-Unternehmens unter Regel 12",
+    titleDe: "Leistung eines EU-Unternehmens mit Steuerregel 12",
     reason:
       "The supplier looks established in another EU state, but the document uses rule 12 " +
       "(§ 13b Abs. 2 UStG, Kz 84/85). Services of a business established in another EU state " +
@@ -237,7 +244,7 @@ const TEXTS: Readonly<Record<VatFindingCode, (context: TextContext) => FindingTe
   eu_reverse_charge_for_non_eu_supplier: () => ({
     severity: "check",
     title: "EU reverse charge for a supplier outside the EU",
-    titleDe: "EU-Reverse-Charge bei Lieferant außerhalb der EU",
+    titleDe: "EU-Reverse-Charge bei einem Lieferanten außerhalb der EU",
     reason:
       "Rule 14 (§ 13b Abs. 1 UStG, Kz 46/47) is only for services of a business established in " +
       "another EU state, but the supplier looks established outside the EU. Services of a " +
@@ -250,7 +257,7 @@ const TEXTS: Readonly<Record<VatFindingCode, (context: TextContext) => FindingTe
   acquisition_from_non_eu_supplier: () => ({
     severity: "check",
     title: "Intra-EU acquisition from a supplier outside the EU",
-    titleDe: "Innergemeinschaftlicher Erwerb von Lieferant außerhalb der EU",
+    titleDe: "Innergemeinschaftlicher Erwerb von einem Lieferanten außerhalb der EU",
     reason:
       "Rule 8 (intra-EU acquisition, § 1a UStG) needs goods that come from another EU state, " +
       "but the supplier looks established outside the EU. Goods shipped from outside the EU are " +
@@ -310,8 +317,9 @@ const TEXTS: Readonly<Record<VatFindingCode, (context: TextContext) => FindingTe
 
 /** What sevDesk holds as a customer's VAT id, in words (trusted: never the VAT id itself). */
 function vatIdStateOf(vatId: string | undefined): string {
-  if (vatId === undefined) return "no VAT id";
-  switch (vatIdArea(vatId)) {
+  switch (customerVatIdOf(vatId)) {
+    case "none":
+      return "no VAT id";
     case "germany":
       return "a German VAT id";
     case "non_eu":
@@ -320,7 +328,9 @@ function vatIdStateOf(vatId: string | undefined): string {
       return "a VAT id from Northern Ireland (EU rules for goods only)";
     case "eu":
       return "a VAT id of another EU state";
-    case undefined:
+    case "wrong_format":
+      return "a VAT id in the wrong format for its state";
+    case "unreadable":
       return "a VAT id without a country prefix";
   }
 }
@@ -335,6 +345,11 @@ interface Party {
   /** Whether the VAT id is known (embedded in the document or the contact was listed). */
   readonly vatIdKnown: boolean;
   readonly location: PartyLocation;
+  /**
+   * False when a capped contact or address list may have left out some of its data (see
+   * `parties.ts`): no finding then rests on what the data does not show.
+   */
+  readonly complete: boolean;
 }
 
 type Verdict =
@@ -387,6 +402,9 @@ function partyOf(header: DocumentHeader, directory: PartyDirectory): Party {
     facts,
     vatIdKnown: embedded !== undefined || listed !== undefined,
     location: locate(facts),
+    complete:
+      !directory.coverage.addressesTruncated &&
+      (listed !== undefined || !directory.coverage.contactsTruncated),
   };
 }
 
@@ -396,8 +414,20 @@ function partyOf(header: DocumentHeader, directory: PartyDirectory): Party {
  * business registered or established in Germany); the EU rules 14 and 8 are questioned only for
  * a supplier with nothing but German data, and checked against the area only for one with nothing
  * but foreign data. An address whose country is unknown might be German: not judged.
+ *
+ * Data a capped list left out can only add a German or a foreign location: that turns a finding
+ * or a rate check into OK or not judged, never an OK into a finding. So for an incomplete party
+ * the OKs stand and the rest is not judged.
  */
 function judgePurchase(header: DocumentHeader, rule: number, party: Party): Verdict {
+  const verdict = purchaseVerdict(header, rule, party);
+  if (!party.complete && (verdict.kind === "finding" || verdict.kind === "positions")) {
+    return NOT_JUDGED;
+  }
+  return verdict;
+}
+
+function purchaseVerdict(header: DocumentHeader, rule: number, party: Party): Verdict {
   const { location } = party;
   if (party.facts.countriesUnknown === true) return NOT_JUDGED;
   if (!location.germany && !location.abroad) return NOT_JUDGED;
@@ -428,29 +458,40 @@ function judgePurchase(header: DocumentHeader, rule: number, party: Party): Verd
 /** A sale (invoice): rule against the customer's VAT id and location. */
 function judgeSale(header: DocumentHeader, rule: number, party: Party): Verdict {
   if (!party.vatIdKnown) return NOT_JUDGED;
-  const area = vatIdArea(party.facts.vatId);
+  const vatId = customerVatIdOf(party.facts.vatId);
   switch (rule) {
     case 1:
       if (header.eur === undefined) return { kind: "left_out" };
-      if (compare(header.eur.tax, 0) <= 0 || area !== "eu" || party.location.germany) return OK;
-      // A German address would settle it; one whose country is unknown might be German.
-      return party.facts.countriesUnknown === true
+      if (compare(header.eur.tax, 0) <= 0 || vatId !== "eu" || party.location.germany) return OK;
+      // A German address would settle it; one whose country is unknown, or one a capped list
+      // left out, might be German. Rules 3 and 21 rest on the VAT id alone.
+      return party.facts.countriesUnknown === true || !party.complete
         ? NOT_JUDGED
         : finding("german_vat_to_eu_business");
     case 3:
       // Northern Ireland follows the EU rules for goods (XI VAT ids).
-      return area === "eu" || area === "northern_ireland"
+      return vatId === "eu" || vatId === "northern_ireland"
         ? OK
         : finding("intra_eu_supply_without_eu_vat_id");
     case 21:
-      return area === "eu" ? OK : finding("eu_service_without_eu_vat_id");
+      // Northern Ireland follows the UK's rules for services: an XI VAT id does not fit rule 21.
+      return vatId === "eu" ? OK : finding("eu_service_without_eu_vat_id");
     default:
       return OK;
   }
 }
 
-function isGermanRate(rate: string): boolean {
-  return GERMAN_RATES.some((german) => sameRate(rate, german));
+/** Whether `rate` is a German rate on `header`: 16 and 5 % only for 2020's reduction. */
+function isGermanRate(rate: string, header: DocumentHeader): boolean {
+  if (GERMAN_RATES.some((german) => sameRate(rate, german))) return true;
+  return REDUCED_2020.rates.some((reduced) => sameRate(rate, reduced)) && inReducedPeriod(header);
+}
+
+/** The document date or the supply date (or its end) falls in 2020's reduction. */
+function inReducedPeriod(header: DocumentHeader): boolean {
+  return [header.date, header.deliveryDate, header.deliveryDateUntil].some(
+    (date) => date !== undefined && date >= REDUCED_2020.from && date <= REDUCED_2020.to,
+  );
 }
 
 /**
@@ -458,6 +499,7 @@ function isGermanRate(rate: string): boolean {
  * German rates, other rates, or nothing but 0 %.
  */
 function judgeRates(
+  header: DocumentHeader,
   groups: readonly PositionGroup[],
   location: PartyLocation,
 ): VatFindingCode | undefined {
@@ -466,7 +508,7 @@ function judgeRates(
   if (taxed.length === 0) {
     return location.smallBusinessScheme ? undefined : "foreign_supplier_zero_rate";
   }
-  return taxed.some((group) => isGermanRate(group.rate))
+  return taxed.some((group) => isGermanRate(group.rate, header))
     ? "foreign_supplier_charged_german_vat"
     : "foreign_vat_deducted";
 }
@@ -514,6 +556,8 @@ async function runVatCheck(context: AuditCheckContext): Promise<AuditCheckResult
       : await loadPartyDirectory(client, {
           cacheOwner: context.cacheOwner,
           maxRows: limits?.maxContactRows,
+          // An invoice's own address country places the customer even without contact addresses.
+          documentsHaveCountries: candidates.some((header) => header.countryId !== undefined),
           signal: options.signal,
           onProgress: options.onProgress,
         });
@@ -583,20 +627,20 @@ async function runVatCheck(context: AuditCheckContext): Promise<AuditCheckResult
       const groups = document.groups.filter(
         (group) => !isImportVat(document.header, group, importVat),
       );
-      const code = judgeRates(groups, party.location);
+      const code = judgeRates(document.header, groups, party.location);
       if (code !== undefined) drafts.push(draftOf(code, document.header, party));
     }
   }
 
   const notRead = scan === undefined ? 0 : scan.notRead + scan.unconvertible.length;
   const incomplete = scan?.documents.filter((document) => !document.positionsComplete).length ?? 0;
-  const contactsTruncated = directory?.coverage.truncated === true;
+  const contacts = directory?.coverage;
   const leftOut = missingAmounts + notRead;
   const truncated =
     listed.truncated ||
     (scan !== undefined && scan.notRead > 0) ||
     incomplete > 0 ||
-    contactsTruncated;
+    contacts?.truncated === true;
 
   const notes = [
     "Documents are selected by document date; drafts are not checked. Sales are checked on " +
@@ -607,15 +651,23 @@ async function runVatCheck(context: AuditCheckContext): Promise<AuditCheckResult
   if (notJudged > 0) {
     notes.push(
       `${plural(notJudged, "document")} could not be judged: the contact has no VAT id and no ` +
-        "address in sevDesk, German and foreign data that leave the question open, or an " +
-        "address in a country that could not be resolved (coverage.notJudged). Complete the " +
-        "contacts to have them checked.",
+        "address in sevDesk, German and foreign data that leave the question open, an " +
+        "address in a country that could not be resolved, or data a capped list left out " +
+        "(coverage.notJudged). Complete the contacts to have them checked.",
     );
   }
-  if (contactsTruncated) {
+  if (contacts?.contactsTruncated === true) {
     notes.push(
-      "The contact or address list stopped at its cap: contacts beyond it are unknown and their " +
-        "documents were not judged.",
+      "The contact list stopped at its cap: for contacts beyond it only what the document shows " +
+        "was used (the VAT id and address on an invoice), and no finding was made that their " +
+        "missing data could overturn.",
+    );
+  }
+  if (contacts?.addressesTruncated === true) {
+    notes.push(
+      "The address list stopped at its cap: any contact may have further addresses, German or " +
+        "foreign, so no finding was made that such an address could overturn; findings on a " +
+        "customer's VAT id (rules 3 and 21) stand.",
     );
   }
   if (directory?.countriesUnread === true) {

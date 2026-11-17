@@ -109,8 +109,10 @@ nothing.
 
 The check compares each document's tax rule with where the other side is established, as far as
 sevDesk knows it: the contact's VAT ID and the countries of its addresses. A German VAT ID or a
-German address counts as registered or established in Germany. Documents are taken by document
-date; sales are checked on invoices.
+German address counts as registered or established in Germany, and Monaco counts as France. On
+sales, a customer's VAT ID counts only in the valid format of its state, as
+[`sevdesk_vat_id_check`](../tools.md#sevdesk_vat_id_check) checks it. Documents are taken by
+document date; sales are checked on invoices.
 
 | Code                                                                            | Means                                                                                                       |
 | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
@@ -121,7 +123,7 @@ date; sales are checked on invoices.
 | `eu_reverse_charge_for_non_eu_supplier`, `acquisition_from_non_eu_supplier`     | Rule 14 or 8 for a supplier outside the EU                                                                  |
 | `eu_supplier_under_rule_12`                                                     | A service from another EU state under rule 12 instead of 14                                                 |
 | `german_vat_to_eu_business`                                                     | German VAT on an invoice to a customer with a VAT ID of another EU state                                    |
-| `intra_eu_supply_without_eu_vat_id`, `eu_service_without_eu_vat_id`             | Rule 3 or 21 without the customer's VAT ID of another EU state                                              |
+| `intra_eu_supply_without_eu_vat_id`, `eu_service_without_eu_vat_id`             | Rule 3 or 21 without a valid VAT ID of the customer from another EU state                                   |
 
 Not flagged on purpose: a foreign supplier with a German VAT ID or a German address (it may charge
 German VAT), a supplier with only German data that charges no VAT (for example a Kleinunternehmer),
@@ -134,32 +136,43 @@ judged (`coverage.notJudged`), so complete the contact to have them checked.
 The check sums the §13b base of the period by tax rule: received (rules 12, 13 and 14, where you
 owe the VAT as recipient, with the tax owed and the part deducted again as input VAT) and issued
 (rule 5, Kz 60; rule 21, Kz 21). Each sum names its UStVA Kennzahlen and lists the documents
-behind it. It uses the same tax points as `sevdesk_vat_summary`, so the sums match its Kz 46/47,
-84/85, 67, 60 and 21. It flags rule 13 (no input VAT deduction) on an account with regular
-taxation (`reverse_charge_without_deduction`).
+behind it. It uses the same tax points as `sevdesk_vat_summary`, so the bases match its Kz 46, 84,
+60 and 21. The tax amounts (Kz 47, 85, 67) can differ by a cent, because the check rounds per tax
+rule and the summary per form line (Kz 84/85 combine rules 12 and 13). It flags rule 13 (no input VAT deduction) on an account with regular
+taxation (`reverse_charge_without_deduction`), and rules 12 and 14 (with deduction) on a
+Kleinunternehmer account, which owes the tax but may not deduct it
+(`reverse_charge_deduction_on_small_business`).
 
 ### Vouchers booked twice and stuck drafts (`duplicates`)
 
 The check compares the vouchers (Belege) of each supplier, expenses and revenue apart. The
 supplier is the voucher's contact, or the supplier name on the voucher when it has no contact; a
-voucher with neither is not compared and the notes count it. A pair counts in the period of its
-later voucher; vouchers up to 31 days before the period are read for the earlier one.
+voucher with neither is not compared and the notes count it. A pair that involves a draft is also
+found across suppliers, by the same number and gross amount: sevDesk's receipt recognition fills
+in a receipt's invoice number and amount, but not the supplier's contact, so the same PDF reaching
+sevDesk twice can stand under two suppliers or none. A pair counts in the period of its later
+voucher; vouchers up to 31 days before the period are read for the earlier one.
 
-| Code                    | Means                                                                                                                                                                    |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `voucher_number_twice`  | Booked vouchers with the same document number (`warning`). Case, spaces and `-_/.#` do not count; a number needs a digit, so "Miete" typed as the description is not one |
-| `voucher_receipt_twice` | A same-amount pair whose receipt files have the same SHA-256 checksum: the same file uploaded twice (`warning`)                                                          |
-| `voucher_amount_twice`  | Booked vouchers with the same gross amount and currency, at most 5 days apart, not told apart by two different numbers (`check`)                                         |
-| `draft_repeats_voucher` | A draft with the same number as a booked voucher, or the same amount within 5 days (`check`): delete it rather than book it                                              |
-| `voucher_draft_stuck`   | A voucher dated in the period that is still a draft 21 days or more after it was created in sevDesk (`check`)                                                            |
-| `sales_draft_stuck`     | The same for an invoice or credit note: the customer has not been billed (`check`)                                                                                       |
+| Code                    | Means                                                                                                                                                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `voucher_number_twice`  | Booked vouchers with the same document number, at most 21 days apart (`warning`). Case, spaces and `-_/.#` do not count; a number needs a digit, so "Miete" typed as the description is not one                          |
+| `voucher_receipt_twice` | A same-amount pair whose receipt files have the same SHA-256 checksum: the same file uploaded twice (`warning`)                                                                                                          |
+| `voucher_amount_twice`  | Booked vouchers with the same gross amount and currency, at most 5 days apart, not told apart by two different numbers (`check`)                                                                                         |
+| `draft_repeats_voucher` | A draft with the same number as a booked voucher, at most 21 days apart, and the same supplier or the same amount (any supplier); or the same supplier and amount within 5 days (`check`): delete it rather than book it |
+| `draft_twice`           | Two drafts paired by the same rules (`check`): usually the same receipt uploaded twice; book one, delete the other                                                                                                       |
+| `voucher_draft_stuck`   | A voucher dated in the period that is still a draft 21 days or more after it was created in sevDesk (`check`)                                                                                                            |
+| `sales_draft_stuck`     | The same for an invoice or credit note: the customer has not been billed (`check`)                                                                                                                                       |
 
 Not flagged on purpose: purchases of the same amount a week apart, two receipts with different
-numbers, a voucher and its reversal (+x and −x), the same number from another supplier or in the
-other direction, a gross amount of 0, two drafts (each is reported once it is stuck), and a draft
-created less than 21 days ago, however old its document date. Sales invoices are checked for
-stuck drafts only: their numbers come from sevDesk's own number range, and an invoice issued twice
-is corrected with a cancellation invoice.
+numbers, the same number on vouchers more than 21 days apart (a description such as "Miete 2026"
+repeated on every monthly bill), a voucher and its reversal (+x and −x), the same number from
+another supplier or in the other direction between booked vouchers, drafts under different
+suppliers with another amount or without a number, a gross amount of 0, and a draft created less
+than 21 days ago, however old its document date. Sales invoices are checked for stuck drafts only:
+their numbers come from sevDesk's own number range, and an invoice issued twice is corrected with
+a cancellation invoice. To find those drafts the check lists every invoice and credit note dated in
+the period (one request per 1,000): sevDesk's lists declare a status filter, but no recording shows
+that it returns only drafts, so it is not used.
 
 To confirm a same-amount pair the check compares the SHA-256 checksums of the vouchers' receipt
 files, which sevDesk sends with the voucher list (no extra read per voucher). sevDesk stores no
@@ -180,7 +193,11 @@ A supplier counts as regular when its bills fall on about the same day (within 7
 three times in four, one bill (or its usual number of bills) per period as a rule, with at most one
 period in four empty; quarterly and yearly bills must fall in the same month of the quarter or
 year. A period counts as missing only with at least three months (quarterly and yearly: two
-periods) with bills before it and one after it.
+periods) with bills before it and one after it. The rhythm is learned for each month of the audit
+from the supplier's bills of the 12 months before and after it (yearly bills: 24 months before),
+so a supplier that went from monthly to quarterly bills is judged by its quarterly bills from then
+on. A bill is expected on the supplier's usual day, or on the month's last day when the month is
+shorter: a bill of the 31st is expected on 30 June.
 
 | Code                     | Means                                                         |
 | ------------------------ | ------------------------------------------------------------- |
@@ -190,16 +207,21 @@ periods) with bills before it and one after it.
 
 Not flagged on purpose: a change of amount (amounts are not compared), a bill that moved a few days
 across a month end, two bills in one month next to a month without one (the bill came late or
-early), a supplier that stopped billing, and the latest period while the supplier's next bill has
-not come yet. sevDesk's recurring voucher templates (RV) are not bills and are not read; the
-vouchers booked from them count like any other. When the listing stops at its cap the check
-reports no gaps at all, since a voucher not read would look like one.
+early), a supplier that stopped billing, the latest period while the supplier's next bill has not
+come yet, and a bill booked without the supplier's contact but under its name (it counts for the
+one contact whose vouchers carry that name). sevDesk's recurring voucher templates (RV) are not
+bills and are not read; the vouchers booked from them count like any other. When the listing stops
+at its cap the check reports no gaps at all, since a voucher not read would look like one. A
+shorter period does not help then: the range read always spans about three years, so the account
+has more vouchers in that time than the check can read.
 
 The checks `vat` and `reverse_charge` read the period's documents and, where the rates decide,
 their positions; `vat` also reads the contact and address lists once each. `duplicates` and
-`recurring_gaps` read document lists only. Like the other reports they say what they left out
-(`coverage.truncated`, `coverage.documentsLeftOut`), and over HTTP they stop reading after about
-90 seconds: ask for a month when a quarter is too much.
+`recurring_gaps` read document lists only, up to 10,000 rows; `recurring_gaps` always reads about
+three years, whatever the period. Like the other reports they say what they left out
+(`coverage.truncated`, `coverage.documentsLeftOut`), and over HTTP they stop reading document by
+document after about 90 seconds: ask for a month when a quarter is too much (this does not shorten
+what `recurring_gaps` reads).
 
 ### Receipts in a folder that were never booked
 

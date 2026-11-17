@@ -729,9 +729,7 @@ describe("M4 probe catalog", () => {
     ).toEqual(["write-einvoice-xml", "write-export-datev-config"]);
     expect(M4_PROBES.some((probe) => probe.sendsEmail === true)).toBe(false);
     const manual = NOT_PROBED.map((check) => check.what).join("\n");
-    expect(manual).toMatch(/createDatevXmlZipExportJob/);
     expect(manual).toMatch(/enshrineDocuments/);
-    expect(manual).toMatch(/useNextNumber=true/);
     expect(manual).toMatch(/Voucher\|?.*enshrine|Voucher\/\{id\}\/enshrine/);
   });
 
@@ -918,7 +916,7 @@ describe("M4 probes on a simulated trial account", () => {
     for (const call of account.client.writes()) {
       expect(call.tier, `${call.method} ${call.path}`).toMatch(/^(write|commit)$/);
       expect(call.path).not.toMatch(/enshrine|sendVia|sendByWithRender/);
-      if (/bookAmount|resetTo|sendBy|^\/CheckAccountTransaction\/\d+$/.test(call.path)) {
+      if (/bookAmount|resetTo|sendBy|^\/CheckAccountTransaction(\/\d+)?$/.test(call.path)) {
         expect(call.tier, call.path).toBe("commit");
       }
     }

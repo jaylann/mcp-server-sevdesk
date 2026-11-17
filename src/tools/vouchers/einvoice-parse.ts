@@ -1,7 +1,11 @@
+import { createHash } from "node:crypto";
+
 import { z } from "zod";
 
 import { maskIban } from "../../domain/banking.js";
 import { cleanText, moneySchema } from "../../domain/common.js";
+import { checkFileSha256 } from "../../domain/drafts/voucher-checks.js";
+import { fileSha256Input } from "../../domain/drafts/voucher-inputs.js";
 import { PROFILE_LABELS, typeCodeLabel, unitLabel } from "../../domain/einvoice/codes.js";
 import {
   EINVOICE_CONTAINERS,
@@ -44,6 +48,11 @@ const output = z.object({
   file: z.object({
     name: z.string().describe("Base name of the file that was read."),
     kind: z.enum(["xml", "pdf"]),
+    sha256: z.string().describe("SHA-256 of the bytes that were read, hex."),
+    downloadedFrom: z
+      .string()
+      .optional()
+      .describe("For a file from an https link: the origin it was downloaded from."),
   }),
   invoice: z.object({
     syntax: z.enum(EINVOICE_SYNTAXES).describe("ubl (UBL 2.1) or cii (UN/CEFACT CII)."),
@@ -126,13 +135,14 @@ const output = z.object({
 
 type Output = z.output<typeof output>;
 
-/** `sevdesk_einvoice_parse`: read an XRechnung / ZUGFeRD file (local or uploaded). */
+/** `sevdesk_einvoice_parse`: read an XRechnung / ZUGFeRD file (local, uploaded or from a link). */
 export const einvoiceParseTool = defineTool({
   name: "sevdesk_einvoice_parse",
   title: "Parse an e-invoice file",
   description:
-    "Read an e-invoice (E-Rechnung) from a folder listed in SEVDESK_FILE_DIRS or, on a remote " +
-    "server, from an upload (sevdesk_upload_request purpose einvoice): an " +
+    "Read an e-invoice (E-Rechnung) from a folder listed in SEVDESK_FILE_DIRS, on a remote " +
+    "server from an upload (sevdesk_upload_request purpose einvoice), or from an https link to " +
+    "a host in SEVDESK_FILE_URL_HOSTS: an " +
     "XRechnung (UBL or CII XML) or a ZUGFeRD / Factur-X PDF with embedded XML. Returns the " +
     "EN 16931 data (Lieferant/seller, buyer, Rechnungsnummer, dates, lines, VAT breakdown, " +
     "totals), rule findings (sums, VAT categories, XRechnung rules) and a suggested voucher " +
@@ -143,11 +153,12 @@ export const einvoiceParseTool = defineTool({
     "sevdesk_voucher_import_einvoice creates the draft voucher with the file attached.",
   toolset: "vouchers",
   tier: "read",
+  // Open world: `file` may be an https link the server downloads (SEVDESK_FILE_URL_HOSTS).
   annotations: {
     readOnlyHint: true,
     destructiveHint: false,
     idempotentHint: true,
-    openWorldHint: false,
+    openWorldHint: true,
   },
   localEffects: "reads-files",
   available: canReadFiles,
@@ -155,19 +166,26 @@ export const einvoiceParseTool = defineTool({
     file: z
       .string()
       .min(1)
-      .max(1_024)
+      .max(2_048)
       .describe(
         "The e-invoice file: an absolute path inside one of the SEVDESK_FILE_DIRS folders, or " +
-          "a path relative to one of them, e.g. Rechnungen/RE-4711.xml; or on a remote server " +
-          "the uploadId from sevdesk_upload_request.",
+          "a path relative to one of them, e.g. Rechnungen/RE-4711.xml; on a remote server " +
+          "the uploadId from sevdesk_upload_request; or an https link to a host in " +
+          "SEVDESK_FILE_URL_HOSTS.",
       ),
+    fileSha256: fileSha256Input.describe(
+      "SHA-256 (64 hex) the file must have; other bytes are refused (a link is downloaded " +
+        "again on every call). The result's file.sha256 pins the import to the bytes read here.",
+    ),
   }),
   output,
   handler: async (args, ctx) => {
     const file = await ctx.files.read(args.file, {
       maxBytes: MAX_EINVOICE_FILE_BYTES,
       kinds: ["xml", "pdf"],
+      signal: ctx.signal,
     });
+    checkFileSha256(file.bytes, args.fileSha256);
     const parsed = await parseEInvoice(file.bytes);
     const suggestion = await planVoucherFromEInvoice(parsed, {
       client: ctx.client,
@@ -176,7 +194,12 @@ export const einvoiceParseTool = defineTool({
     });
     const kind: "xml" | "pdf" = file.kind === "pdf" ? "pdf" : "xml";
     const data: Output = {
-      file: { name: cleanText(file.name, FILE_NAME_MAX) ?? "file", kind },
+      file: {
+        name: cleanText(file.name, FILE_NAME_MAX) ?? "file",
+        kind,
+        sha256: createHash("sha256").update(file.bytes).digest("hex"),
+        ...(file.host === undefined ? {} : { downloadedFrom: `https://${file.host}` }),
+      },
       invoice: invoiceDto(parsed),
       findings: parsed.findings,
       suggestedVoucher: suggestion,
