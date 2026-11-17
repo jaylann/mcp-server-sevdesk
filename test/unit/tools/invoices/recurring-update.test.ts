@@ -270,6 +270,30 @@ describe("sevdesk_invoice_update_recurring", () => {
       expect(plan.previewDe.warnings).toContain(FIRST_RUN_TODAY.de);
     });
 
+    it("switches it on for a next run today at a later stored time: names that time", async () => {
+      const at = "2026-11-17T23:00:00+01:00";
+      const web = templateChangeRoutes(
+        templateRow({
+          propertyAutoGenerateRecurringInvoice: null,
+          accountStartDate: at,
+          accountNextInvoice: at,
+        }),
+      );
+      const plan = await prepare({ autoGenerate: true }, web);
+      expect(plan.preview.warnings).toContain(
+        "The next run is today at 23:00 (Berlin time), the time stored with it: sevDesk creates " +
+          "a draft within about a minute of that time, or within about a minute of the change if " +
+          "that time has passed by then.",
+      );
+      expect(plan.previewDe.warnings).toContain(
+        "Die nächste Ausführung ist heute um 23:00 Uhr (Berliner Zeit), der mit ihr gespeicherten " +
+          "Uhrzeit: sevDesk erzeugt etwa eine Minute danach einen Entwurf, oder etwa eine Minute " +
+          "nach dem Speichern der Änderung, wenn diese Uhrzeit dann schon vorbei ist.",
+      );
+      expect(plan.preview.warnings).not.toContain(FIRST_RUN_TODAY.en);
+      expect(plan.preview.warnings.join(" ")).not.toMatch(/due at once/);
+    });
+
     it("switches it on for a past next run only together with a new start", async () => {
       const past = storedDate("2026-11-01");
       const off = templateChangeRoutes(

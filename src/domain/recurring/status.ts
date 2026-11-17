@@ -10,8 +10,9 @@
  * sevDesk already generated.
  *
  * Whether a reactivated template generates anything is decided by its automatic generation:
- * - on: sevDesk generates drafts again, at once when the next run is today. A next run before
- *   today is refused, since sevDesk catches up one missed period a minute (D-111);
+ * - on: sevDesk generates drafts again, at once when the next run is today (at its stored run time
+ *   when that is later, for one made in the web app). A next run before today is refused, since
+ *   sevDesk catches up one missed period a minute (D-111);
  * - off (never set or switched off): reactivating alone generates nothing, which the preview says;
  * - a stored value whose meaning is not recorded: refused, so the outcome is never a guess.
  * A template with automatic sending on, or whose settings sevDesk did not return, is not
@@ -44,7 +45,7 @@ import {
   intervalText,
   SHORT_MONTH_RUNS,
 } from "./preview.js";
-import { RUN_DATE_BEHAVIOUR, TEMPLATE_SAVE_STATUS } from "./run-date.js";
+import { RUN_DATE_BEHAVIOUR, runTodayAtStoredTime, TEMPLATE_SAVE_STATUS } from "./run-date.js";
 import {
   ENDED_STATUS,
   runDayFitsEveryMonth,
@@ -544,6 +545,13 @@ const RUN_TODAY_REACTIVATING: Phrase = phrase(
     "nach dem Aktivieren einen Entwurf.",
 );
 
+/** A next run today: due at once at 00:00, else at the run time stored with it. */
+function runTodayPhrase(schedule: StoredSchedule): Phrase {
+  return schedule.runTime === undefined
+    ? RUN_TODAY_REACTIVATING
+    : runTodayAtStoredTime(schedule.runTime, "reactivation");
+}
+
 const RUNS_NOT_LISTED: Phrase = phrase(
   "The stored interval is not one this server offers, so the runs after the next one are not " +
     "listed; check them in the sevDesk web app.",
@@ -565,7 +573,7 @@ function reactivateWarnings(input: StatusPreviewInput, lang: PreviewLanguage): s
     GENERATES_AGAIN[lang],
     generationOnPhrase(schedule)[lang],
     RUN_DATE_BEHAVIOUR.autoSending[lang],
-    schedule.nextRun === today ? RUN_TODAY_REACTIVATING[lang] : undefined,
+    schedule.nextRun === today ? runTodayPhrase(schedule)[lang] : undefined,
     projected === undefined ? RUNS_NOT_LISTED[lang] : undefined,
     projected !== undefined && !runDayFitsEveryMonth(projected)
       ? SHORT_MONTH_RUNS[lang]

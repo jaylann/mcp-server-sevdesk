@@ -33,7 +33,7 @@ import {
   priceModeText,
   SHORT_MONTH_RUNS,
 } from "./preview.js";
-import { FIRST_RUN_TODAY, RUN_DATE_BEHAVIOUR } from "./run-date.js";
+import { FIRST_RUN_TODAY, RUN_DATE_BEHAVIOUR, runTodayAtStoredTime } from "./run-date.js";
 import {
   INTERVALS,
   type RecurringInterval,
@@ -495,6 +495,16 @@ function intervalKeepsNext(next: string, lang: PreviewLanguage): string {
         "new interval.";
 }
 
+/**
+ * Generation switched on with the next run today: due at once at 00:00, else at the run time
+ * stored with the next run (a template made in the web app).
+ */
+function firstRunToday(stored: StoredSchedule): Phrase {
+  return stored.runTime === undefined
+    ? FIRST_RUN_TODAY
+    : runTodayAtStoredTime(stored.runTime, "change");
+}
+
 /** Consequences first, then notes on the schedule, then the tax rule. */
 function warnings(input: TemplateUpdatePreviewInput, lang: PreviewLanguage): string[] {
   const { schedule, projected, basics, generation } = input;
@@ -506,7 +516,9 @@ function warnings(input: TemplateUpdatePreviewInput, lang: PreviewLanguage): str
     KEEPS_CREATED[lang],
     active || generation.changed ? generationSentence(input, lang) : undefined,
     switchedOn ? RUN_DATE_BEHAVIOUR.autoSending[lang] : undefined,
-    switchedOn && active && schedule.nextRun === input.today ? FIRST_RUN_TODAY[lang] : undefined,
+    switchedOn && active && schedule.nextRun === input.today
+      ? firstRunToday(input.stored)[lang]
+      : undefined,
     schedule.intervalChanged && !schedule.startChanged && schedule.nextRun !== undefined
       ? intervalKeepsNext(schedule.nextRun, lang)
       : undefined,

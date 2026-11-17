@@ -282,6 +282,31 @@ describe("sevdesk_invoice_reactivate_recurring", () => {
     );
   });
 
+  it("names the stored run time of a next run today that is later than now (web app)", async () => {
+    const at = "2026-11-17T23:00:00+01:00";
+    const plan = await prepareWrite(
+      reactivateTool,
+      { id: 2301 },
+      new FakeSevdeskClient(
+        templateChangeRoutes(
+          templateRow({ status: "50", accountStartDate: at, accountNextInvoice: at }),
+        ),
+      ),
+    );
+    expect(plan.preview.warnings).toContain(
+      "The next run is today at 23:00 (Berlin time), the time stored with it: sevDesk creates a " +
+        "draft within about a minute of that time, or within about a minute of the reactivation " +
+        "if that time has passed by then.",
+    );
+    expect(plan.previewDe.warnings).toContain(
+      "Die nächste Ausführung ist heute um 23:00 Uhr (Berliner Zeit), der mit ihr gespeicherten " +
+        "Uhrzeit: sevDesk erzeugt etwa eine Minute danach einen Entwurf, oder etwa eine Minute " +
+        "nach dem Aktivieren, wenn diese Uhrzeit dann schon vorbei ist.",
+    );
+    expect(plan.preview.warnings.join(" ")).not.toMatch(/due at once/);
+    expect(plan.previewDe.warnings).toHaveLength(plan.preview.warnings.length);
+  });
+
   it("with generation off: reactivating alone generates nothing, also with a past next run", async () => {
     const past = storedDate("2026-11-01");
     const off = templateRow({
