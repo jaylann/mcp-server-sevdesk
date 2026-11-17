@@ -100,7 +100,8 @@ export type ServerFactory = McpServerFactory & {
 export function createServerFactory(deps: ServerDeps | AccountServerDeps): ServerFactory {
   if ("accounts" in deps) return accountServerFactory(deps);
   const prepared = prepare(deps);
-  const factory: McpServerFactory = (context) => instantiate(prepared, context.era);
+  const factory: McpServerFactory = (context) =>
+    instantiate(prepared, context.era, context.requestInfo?.signal);
   return Object.assign(factory, { close: () => prepared.safety.close() });
 }
 
@@ -181,6 +182,7 @@ function accountServerFactory(deps: AccountServerDeps): ServerFactory {
     return instantiate(
       { config, client, ...surface, safety, transfer: deps.transfer },
       context.era,
+      context.requestInfo?.signal,
     );
   };
   return Object.assign(factory, {
@@ -191,7 +193,15 @@ function accountServerFactory(deps: AccountServerDeps): ServerFactory {
   });
 }
 
-function instantiate(prepared: PreparedServer, era: ProtocolEra | undefined): McpServer {
+/**
+ * `signal` is the HTTP request's (the client left, the deadline passed, shutdown), which this
+ * instance serves alone; undefined over stdio and from {@link createServer}.
+ */
+function instantiate(
+  prepared: PreparedServer,
+  era: ProtocolEra | undefined,
+  signal?: AbortSignal,
+): McpServer {
   const { config, client } = prepared;
   const server = new McpServer(SERVER_INFO, {
     // Declared up front so tools/list, resources/list and prompts/list are valid when empty;
@@ -222,6 +232,7 @@ function instantiate(prepared: PreparedServer, era: ProtocolEra | undefined): Mc
       config,
       client,
       tools: new Set(prepared.tools.map((tool) => tool.name)),
+      signal,
     }),
   });
   return server;

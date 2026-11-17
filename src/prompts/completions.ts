@@ -8,15 +8,24 @@
  *
  * - only when the read tool behind them is registered for the configuration
  *   ({@link COMPLETION_TOOLS}), so never without the read tier or the toolset;
- * - through a client that refuses every request that changes data, one list request with an
- *   explicit `limit`;
+ * - through a client that refuses every request that changes data, always with an explicit
+ *   `limit`: one list request per kind, plus a name search (limit 100) per typed name when the
+ *   account has more contacts than one read returns;
  * - cached for {@link COMPLETION_CACHE_TTL_MS} per account. Over HTTP each request builds a new
  *   server instance (ADR 0004), so the cache lives here, keyed by the account's `Config` object:
  *   the owner the domain caches use, one per OAuth context (`src/accounts/resolver.ts`). One
- *   account's names never reach another account.
+ *   account's names never reach another account. The full lists are kept apart from the
+ *   searches, of which the {@link MAX_CACHED_SEARCHES} most recently used are kept, so a burst of
+ *   typed names never pushes the full contact list out.
  *
- * A failed read suggests nothing and is not cached, so the next keystroke tries again; a
- * suggestion is optional, and the prompt works without one.
+ * A failed read suggests nothing and is kept for {@link COMPLETION_FAILURE_TTL_MS}. A failure that
+ * concerns the account rather than the typed name ({@link ACCOUNT_FAILURES}: sevDesk refused the
+ * token, asked to slow down or did not answer) also holds back every new read of the account for
+ * that long, so a lasting failure (a revoked token, say) is not sent again on every keystroke. A
+ * suggestion is optional, and the prompt works without one. A search is stopped when every
+ * request waiting for it has ended early ({@link AccountCompleterOptions.signal}), so it gives up
+ * its place in the account's request pacing; the full lists are always read to the end, because
+ * the next keystroke needs them.
  *
  * Suggestions are data for the client, not text of a prompt. A chosen value comes back as an
  * ordinary argument: the SDK checks it against the argument's pattern and the prompt shows it only
@@ -26,7 +35,7 @@ import type { Config } from "../config.js";
 import { listBankAccountNames } from "../domain/banking.js";
 import { listContactNames } from "../domain/contacts.js";
 import { berlinDateOf } from "../sevdesk/dates.js";
-import { SevdeskError } from "../sevdesk/errors.js";
+import { SevdeskError, type SevdeskErrorKind } from "../sevdesk/errors.js";
 import { readOnlyClient } from "../sevdesk/scoped-client.js";
 import type { SevdeskClient } from "../sevdesk/types.js";
 import { monthPeriod, type Period, quarterPeriod } from "./periods.js";
@@ -40,6 +49,9 @@ export type Completers = Readonly<Partial<Record<CompletionKind, Completer>>>;
 
 /** How long names read from an account are reused. */
 export const COMPLETION_CACHE_TTL_MS = 60_000;
+
+/** How long a failed read is reused (suggesting nothing) before the next keystroke tries again. */
+export const COMPLETION_FAILURE_TTL_MS = 5_000;
 
 /** The read tool whose registration a kind needs; months and periods need none. */
 export const COMPLETION_TOOLS = {
@@ -65,8 +77,19 @@ const CONTACT_LIMIT = 1000;
 const CONTACT_SEARCH_LIMIT = 100;
 /** Longest typed name sent to sevDesk as a search: the longest reference an argument accepts. */
 const MAX_SEARCH_LENGTH = 200;
-/** Cached reads per account (the full lists and typed names). */
-const MAX_CACHED_READS = 32;
+/** Searches by typed name cached per account; the full lists do not count. */
+export const MAX_CACHED_SEARCHES = 32;
+/**
+ * Failures that any other read of the account would meet too, so new reads wait
+ * {@link COMPLETION_FAILURE_TTL_MS}; the others (a refused search, say) concern one read only.
+ */
+const ACCOUNT_FAILURES: ReadonlySet<SevdeskErrorKind> = new Set([
+  "auth",
+  "rate_limited",
+  "server",
+  "network",
+  "timeout",
+]);
 
 // ---------------------------------------------------------------------------------------------
 // Months and periods
@@ -159,53 +182,139 @@ export function periodCompleters(now: () => number): Completers {
 // Names from the account
 // ---------------------------------------------------------------------------------------------
 
-interface CachedRead {
-  readonly expires: number;
-  readonly names: Promise<NameList>;
-}
-
 interface NameList {
   readonly names: readonly string[];
   /** False when the account may hold more than were read. */
   readonly complete: boolean;
 }
 
-/** By account (`Config` object), then by read; see the module comment. */
-const caches = new WeakMap<object, Map<string, CachedRead>>();
+/** One read of names, shared by every caller of the account while it is reused. */
+interface CachedRead {
+  /**
+   * Reused until then: {@link COMPLETION_CACHE_TTL_MS} after it started, or at most
+   * {@link COMPLETION_FAILURE_TTL_MS} after it failed.
+   */
+  expires: number;
+  readonly names: Promise<NameList>;
+  /** Callers waiting that may still give up on the read; infinite once one never will. */
+  waiting: number;
+  /** Drops the read from the cache and stops it, unless it has settled. */
+  readonly stop: () => void;
+}
+
+/** One account's reads: the full lists by kind, and the searches by typed name. */
+interface AccountReads {
+  readonly lists: Map<string, CachedRead>;
+  /** Least recently used first; at most {@link MAX_CACHED_SEARCHES}. */
+  readonly searches: Map<string, CachedRead>;
+  /** Set after a failure of {@link ACCOUNT_FAILURES}: new reads fail with it until then. */
+  held?: { readonly until: number; readonly error: SevdeskError };
+}
+
+/** By account (`Config` object); see the module comment. */
+const caches = new WeakMap<object, AccountReads>();
+
+function readsOf(owner: object): AccountReads {
+  let reads = caches.get(owner);
+  if (reads === undefined) {
+    reads = { lists: new Map(), searches: new Map() };
+    caches.set(owner, reads);
+  }
+  return reads;
+}
 
 /**
- * The names `load` reads, shared by every caller for {@link COMPLETION_CACHE_TTL_MS}, including
- * one still in flight. A failed read is dropped, so it is not reused.
+ * The read `key` of `reads` (one of `account`'s maps): the cached one while it is reused (a hit
+ * moves it last, as the most recently used), or a new one that `load` starts. Before a new read,
+ * expired reads are dropped, then the least recently used until fewer than `limit` remain; an
+ * evicted read still answers the callers waiting for it. A failed read is kept for
+ * {@link COMPLETION_FAILURE_TTL_MS}; while the account is held back, a new read fails at once
+ * without calling `load`.
  */
 function cachedRead(
-  owner: object,
+  account: AccountReads,
+  reads: Map<string, CachedRead>,
   key: string,
   now: () => number,
-  load: () => Promise<NameList>,
-): Promise<NameList> {
-  let cache = caches.get(owner);
-  if (cache === undefined) {
-    cache = new Map();
-    caches.set(owner, cache);
-  }
+  load: (signal: AbortSignal) => Promise<NameList>,
+  limit = Number.POSITIVE_INFINITY,
+): CachedRead {
   const at = now();
-  const hit = cache.get(key);
-  if (hit !== undefined && hit.expires > at) return hit.names;
-  for (const [cachedKey, entry] of cache) {
-    if (entry.expires <= at) cache.delete(cachedKey);
+  const hit = reads.get(key);
+  if (hit !== undefined && hit.expires > at) {
+    reads.delete(key);
+    reads.set(key, hit);
+    return hit;
   }
-  while (cache.size >= MAX_CACHED_READS) {
-    const oldest = cache.keys().next().value;
+  for (const [cachedKey, entry] of reads) {
+    if (entry.expires <= at) reads.delete(cachedKey);
+  }
+  while (reads.size >= limit) {
+    const oldest = reads.keys().next().value;
     if (oldest === undefined) break;
-    cache.delete(oldest);
+    reads.delete(oldest);
   }
-  const reads = cache;
-  const names: Promise<NameList> = load().catch((error: unknown) => {
-    if (reads.get(key)?.names === names) reads.delete(key);
-    throw error;
+  const held = account.held !== undefined && account.held.until > at ? account.held : undefined;
+  const controller = new AbortController();
+  let settled = false;
+  const read: CachedRead = {
+    expires: held?.until ?? at + COMPLETION_CACHE_TTL_MS,
+    names: held === undefined ? load(controller.signal) : Promise.reject(held.error),
+    waiting: 0,
+    stop: () => {
+      if (settled) return;
+      if (reads.get(key) === read) reads.delete(key);
+      controller.abort();
+    },
+  };
+  reads.set(key, read);
+  void read.names.then(
+    () => {
+      settled = true;
+    },
+    (error: unknown) => {
+      settled = true;
+      // A stopped read is no longer cached and holds nothing back; other failures are reused.
+      if (controller.signal.aborted) return;
+      const until = now() + COMPLETION_FAILURE_TTL_MS;
+      if (reads.get(key) === read) read.expires = Math.min(read.expires, until);
+      if (error !== held?.error && error instanceof SevdeskError) {
+        if (ACCOUNT_FAILURES.has(error.kind)) account.held = { until, error };
+      }
+    },
+  );
+  return read;
+}
+
+/** Waits for `read` without ever giving up on it, so it is never stopped. */
+function awaitRead(read: CachedRead): Promise<NameList> {
+  read.waiting = Number.POSITIVE_INFINITY;
+  return read.names;
+}
+
+/**
+ * Waits for `read` until `signal` aborts, and gives `undefined` then. When the last caller still
+ * waiting gives up, the read is stopped; a caller without a signal never gives up.
+ */
+function awaitReadUnless(
+  read: CachedRead,
+  signal: AbortSignal | undefined,
+): Promise<NameList | undefined> {
+  if (signal === undefined) return awaitRead(read);
+  read.waiting += 1;
+  let giveUp = (): void => undefined;
+  const gaveUp = new Promise<undefined>((resolve) => {
+    giveUp = () => {
+      read.waiting -= 1;
+      if (read.waiting === 0) read.stop();
+      resolve(undefined);
+    };
   });
-  reads.set(key, { expires: at + COMPLETION_CACHE_TTL_MS, names });
-  return names;
+  if (signal.aborted) giveUp();
+  else signal.addEventListener("abort", giveUp, { once: true });
+  return Promise.race([read.names, gaveUp]).finally(() => {
+    signal.removeEventListener("abort", giveUp);
+  });
 }
 
 /**
@@ -230,6 +339,13 @@ export interface AccountCompleterOptions {
   readonly client: SevdeskClient;
   /** Names of the tools registered for this configuration (see {@link COMPLETION_TOOLS}). */
   readonly tools: ReadonlySet<string>;
+  /**
+   * Aborts when the request this instance serves ends early. The SDK hands a completer no signal
+   * of its own; over HTTP every request is a new instance, so the request's signal (the client
+   * left, the deadline passed, the server shuts down) stands in. Undefined over stdio, where one
+   * instance serves the whole connection. Only searches by typed name are stopped with it.
+   */
+  readonly signal?: AbortSignal | undefined;
   /** Epoch milliseconds, for the cache (tests). Default `Date.now`. */
   readonly now?: () => number;
 }
@@ -249,36 +365,47 @@ async function quietly(complete: () => Promise<readonly string[]>): Promise<read
  * registered (an empty object otherwise).
  */
 export function accountCompleters(options: AccountCompleterOptions): Completers {
-  const { config, tools } = options;
+  const { tools, signal } = options;
   const now = options.now ?? Date.now;
   const client = readOnlyClient(options.client, "suggesting prompt arguments");
+  const reads = readsOf(options.config);
   const completers: Partial<Record<CompletionKind, Completer>> = {};
 
   if (tools.has(COMPLETION_TOOLS.contact)) {
     completers.contact = (value) =>
       quietly(async () => {
-        const all = await cachedRead(config, "contact", now, () =>
-          listContactNames(client, { limit: CONTACT_LIMIT }),
+        const all = await awaitRead(
+          cachedRead(reads, reads.lists, "contact", now, (stop) =>
+            listContactNames(client, { limit: CONTACT_LIMIT }, stop),
+          ),
         );
         const needle = value.trim();
         if (all.complete || needle === "" || needle.length > MAX_SEARCH_LENGTH) {
           return rankNames(all.names, value);
         }
-        const key = `contact:${needle.toLocaleLowerCase("de")}`;
-        const found = await cachedRead(config, key, now, () =>
-          listContactNames(client, { query: needle, limit: CONTACT_SEARCH_LIMIT }),
+        const search = cachedRead(
+          reads,
+          reads.searches,
+          needle.toLocaleLowerCase("de"),
+          now,
+          (stop) => listContactNames(client, { query: needle, limit: CONTACT_SEARCH_LIMIT }, stop),
+          MAX_CACHED_SEARCHES,
         );
-        return rankNames([...all.names, ...found.names], value);
+        const found = await awaitReadUnless(search, signal);
+        // Undefined: the request ended early, and nothing is sent back for it.
+        return found === undefined ? [] : rankNames([...all.names, ...found.names], value);
       });
   }
 
   if (tools.has(COMPLETION_TOOLS.checkAccount)) {
     completers.checkAccount = (value) =>
       quietly(async () => {
-        const accounts = await cachedRead(config, "checkAccount", now, async () => ({
-          names: await listBankAccountNames(client),
-          complete: true,
-        }));
+        const accounts = await awaitRead(
+          cachedRead(reads, reads.lists, "checkAccount", now, async (stop) => ({
+            names: await listBankAccountNames(client, stop),
+            complete: true,
+          })),
+        );
         return rankNames(accounts.names, value);
       });
   }

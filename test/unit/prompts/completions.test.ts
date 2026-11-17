@@ -1,17 +1,20 @@
 /**
  * Argument suggestions (`src/prompts/completions.ts`): months and periods from the clock, contact
  * and payment account names from the account (gated by the registered read tools, read-only,
- * with an explicit limit, cached per account), and how `completableArgs` attaches them without
- * touching the shared catalog schemas.
+ * with an explicit limit, cached per account, failures kept briefly, searches stopped when nobody
+ * waits for them), and how `completableArgs` attaches them without touching the shared catalog
+ * schemas.
  */
 import { isCompletable } from "@modelcontextprotocol/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { PROMPTS } from "../../../src/prompts/catalog.js";
 import {
   accountCompleters,
   COMPLETION_CACHE_TTL_MS,
+  COMPLETION_FAILURE_TTL_MS,
+  MAX_CACHED_SEARCHES,
   monthSuggestions,
   periodCompleters,
   periodSuggestions,
@@ -23,6 +26,7 @@ import type { PromptDefinition } from "../../../src/prompts/types.js";
 import { SevdeskError } from "../../../src/sevdesk/errors.js";
 import type { SevdeskClient } from "../../../src/sevdesk/types.js";
 import { testConfig } from "../../helpers/config.js";
+import { crowdedAccount } from "../../helpers/crowded-contacts.js";
 import { type FakeRoute, FakeSevdeskClient } from "../../helpers/fake-client.js";
 
 const TODAY = "2026-11-16";
@@ -59,6 +63,11 @@ function clock(start = Date.UTC(2026, 10, 16, 12)): {
 } {
   let at = start;
   return { now: () => at, advance: (ms) => (at += ms) };
+}
+
+/** Lets every pending promise settle (one macrotask). */
+function settle(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
 }
 
 describe("month suggestions", () => {
@@ -250,23 +259,200 @@ describe("account completers", () => {
     expect(second.calls).toHaveLength(1);
   });
 
-  it("suggests nothing when sevDesk fails, and does not cache the failure", async () => {
+  it("suggests nothing when sevDesk fails, and keeps the failure for a few seconds", async () => {
     let fail = true;
-    const fake = new FakeSevdeskClient([CONTACTS]);
-    const flaky = withList(fake, (path, query, options) =>
-      fail
+    let reads = 0;
+    const fake = new FakeSevdeskClient([CONTACTS, ACCOUNTS]);
+    const flaky = withList(fake, (path, query, options) => {
+      reads += 1;
+      return fail
         ? Promise.reject(new SevdeskError({ kind: "network", message: "offline" }))
-        : fake.list(path, query, options),
-    );
+        : fake.list(path, query, options);
+    });
+    const time = clock();
     const completers = accountCompleters({
       config: testConfig(),
       client: flaky,
       tools: BOTH_TOOLS,
+      now: time.now,
     });
 
     expect(await completers.contact?.("mus")).toEqual([]);
+    expect(await completers.contact?.("must")).toEqual([]);
+    // sevDesk did not answer: the account's other list waits as well.
+    expect(await completers.checkAccount?.("")).toEqual([]);
+    expect(reads).toBe(1);
+
     fail = false;
+    time.advance(COMPLETION_FAILURE_TTL_MS - 1);
+    expect(await completers.contact?.("mus")).toEqual([]);
+    expect(reads).toBe(1);
+    time.advance(1);
     expect(await completers.contact?.("mus")).toHaveLength(4);
+    expect(await completers.checkAccount?.("")).toHaveLength(4);
+    expect(reads).toBe(3);
+  });
+
+  it("holds the account's searches back after sevDesk refused the token", async () => {
+    const account = crowdedAccount({
+      failure: (name) =>
+        name === undefined
+          ? undefined
+          : new SevdeskError({ kind: "auth", message: "The token was refused.", status: 401 }),
+    });
+    const time = clock();
+    const completers = accountCompleters({
+      config: testConfig(),
+      client: account.client,
+      tools: BOTH_TOOLS,
+      now: time.now,
+    });
+
+    for (const value of ["a", "ab", "abc", "abcd"]) {
+      expect(await completers.contact?.(value), value).toEqual([]);
+    }
+    expect(account.calls).toEqual([undefined, "a"]);
+    time.advance(COMPLETION_FAILURE_TTL_MS);
+    await completers.contact?.("abcde");
+    expect(account.calls).toEqual([undefined, "a", "abcde"]);
+  });
+
+  it("does not hold the account back after a failure of one search", async () => {
+    const account = crowdedAccount({
+      failure: (name) =>
+        name === "kaputt"
+          ? new SevdeskError({ kind: "validation", message: "Invalid request.", status: 400 })
+          : undefined,
+    });
+    const completers = accountCompleters({
+      config: testConfig(),
+      client: account.client,
+      tools: BOTH_TOOLS,
+    });
+
+    expect(await completers.contact?.("kaputt")).toEqual([]);
+    expect(await completers.contact?.("Kaputt ")).toEqual([]);
+    expect(await completers.contact?.("zebra")).toEqual(["zebra GmbH"]);
+    expect(account.calls).toEqual([undefined, "kaputt", "zebra"]);
+  });
+
+  it("keeps the full contact list while searches come and go, the least recently used first out", async () => {
+    const account = crowdedAccount();
+    const completers = accountCompleters({
+      config: testConfig(),
+      client: account.client,
+      tools: BOTH_TOOLS,
+    });
+    const typed = Array.from(
+      { length: MAX_CACHED_SEARCHES },
+      (_, index) => `suche ${String(index)}`,
+    );
+
+    for (const value of typed) await completers.contact?.(value);
+    expect(await completers.contact?.("suche 0")).toEqual(["suche 0 GmbH"]);
+    await completers.contact?.("eine mehr");
+    await completers.contact?.("suche 0");
+    await completers.contact?.("suche 1");
+
+    expect(account.calls.filter((name) => name === undefined)).toHaveLength(1);
+    expect(account.calls.filter((name) => name !== undefined)).toEqual([
+      ...typed,
+      "eine mehr",
+      "suche 1",
+    ]);
+  });
+
+  it("stops a search when the request waiting for it ends early, and does not keep it", async () => {
+    const account = crowdedAccount({ hold: true });
+    const config = testConfig();
+    const request = new AbortController();
+    const completers = accountCompleters({
+      config,
+      client: account.client,
+      tools: BOTH_TOOLS,
+      signal: request.signal,
+    });
+
+    const answer = completers.contact?.("zebra");
+    await vi.waitFor(() => {
+      expect(account.held).toHaveLength(1);
+    });
+    request.abort();
+    expect(await answer).toEqual([]);
+    expect(account.held[0]?.signal?.aborted).toBe(true);
+
+    const next = accountCompleters({ config, client: account.client, tools: BOTH_TOOLS });
+    const again = next.contact?.("zebra");
+    await vi.waitFor(() => {
+      expect(account.held).toHaveLength(2);
+    });
+    account.held[1]?.release();
+    expect(await again).toEqual(["zebra GmbH"]);
+    expect(account.calls).toEqual([undefined, "zebra", "zebra"]);
+  });
+
+  it("keeps a search running while another request still waits for it", async () => {
+    const account = crowdedAccount({ hold: true });
+    const config = testConfig();
+    const first = new AbortController();
+    const a = accountCompleters({
+      config,
+      client: account.client,
+      tools: BOTH_TOOLS,
+      signal: first.signal,
+    });
+    const b = accountCompleters({
+      config,
+      client: account.client,
+      tools: BOTH_TOOLS,
+      signal: new AbortController().signal,
+    });
+
+    const fromA = a.contact?.("zebra");
+    await vi.waitFor(() => {
+      expect(account.held).toHaveLength(1);
+    });
+    const fromB = b.contact?.("zebra");
+    await settle();
+    first.abort();
+    expect(await fromA).toEqual([]);
+    expect(account.held[0]?.signal?.aborted).toBe(false);
+
+    account.held[0]?.release();
+    expect(await fromB).toEqual(["zebra GmbH"]);
+    const c = accountCompleters({ config, client: account.client, tools: BOTH_TOOLS });
+    expect(await c.contact?.("Zebra")).toEqual(["zebra GmbH"]);
+    expect(account.calls).toEqual([undefined, "zebra"]);
+  });
+
+  it("reads the full lists to the end, also for a request that ended early", async () => {
+    const fake = new FakeSevdeskClient([CONTACTS, ACCOUNTS]);
+    const signals: (AbortSignal | undefined)[] = [];
+    let open = (): void => undefined;
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const slow = withList(fake, async (path, query, options) => {
+      signals.push(options?.signal);
+      await gate;
+      return fake.list(path, query, options);
+    });
+    const request = new AbortController();
+    const completers = accountCompleters({
+      config: testConfig(),
+      client: slow,
+      tools: BOTH_TOOLS,
+      signal: request.signal,
+    });
+
+    const contacts = completers.contact?.("mus");
+    const accounts = completers.checkAccount?.("konto");
+    request.abort();
+    open();
+    expect(await contacts).toHaveLength(4);
+    expect(await accounts).toEqual(["Basiskonto", "Geschäftskonto Musterbank"]);
+    expect(signals).toHaveLength(2);
+    expect(signals.every((signal) => signal?.aborted === false)).toBe(true);
   });
 
   it("does not hide programming errors", async () => {

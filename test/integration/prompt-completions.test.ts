@@ -2,13 +2,19 @@
  * `completion/complete` for prompt arguments through the real server and the SDK client, on
  * fixtures: both protocol eras, the HTTP entry (one instance per request) and the stdio entry (one
  * instance per connection), the `completions` capability only where something is completed, the
- * names of two OAuth accounts kept apart, and untrusted names that never reach a prompt unfenced.
+ * names of two OAuth accounts kept apart, untrusted names that never reach a prompt unfenced, and
+ * a contact search stopped when its HTTP request ends early.
  *
  * Not covered here: the MCP Inspector and a real client UI (see the PR).
  */
-import type { Client } from "@modelcontextprotocol/client";
-import { type AuthInfo, type ProtocolEra, ProtocolError } from "@modelcontextprotocol/server";
-import { afterEach, describe, expect, it } from "vitest";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+import {
+  type AuthInfo,
+  createMcpHandler,
+  type ProtocolEra,
+  ProtocolError,
+} from "@modelcontextprotocol/server";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createAccountResolver } from "../../src/accounts/resolver.js";
 import type { Config } from "../../src/config.js";
@@ -17,6 +23,7 @@ import type { ToolsetName } from "../../src/tools/toolsets.js";
 import { allEnabledConfig, testConfig } from "../helpers/config.js";
 import { connectConfirming } from "../helpers/confirm-client.js";
 import { connectFactory } from "../helpers/connect.js";
+import { crowdedAccount } from "../helpers/crowded-contacts.js";
 import { type FakeRoute, FakeSevdeskClient } from "../helpers/fake-client.js";
 import { grantAuthInfo, httpDeployment } from "../helpers/write-flow.js";
 
@@ -204,6 +211,67 @@ describe("completions capability", () => {
     );
     expect(ProtocolError.isInstance(error)).toBe(true);
   });
+});
+
+describe("an HTTP request that ends early", () => {
+  /**
+   * A client on the HTTP handler whose requests each carry a signal of their own, as the router
+   * gives them (client gone, deadline, shutdown); `end()` aborts the last request's.
+   */
+  async function connectEndable(
+    factory: ServerFactory,
+    era: ProtocolEra,
+  ): Promise<{ client: Client; end: () => void }> {
+    cleanups.push(() => factory.close());
+    const handler = createMcpHandler(factory);
+    let last = new AbortController();
+    const client = new Client(
+      { name: "test-client", version: "0.0.0" },
+      era === "legacy" ? {} : { versionNegotiation: { mode: { pin: "2026-07-28" } } },
+    );
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL("http://localhost/mcp"), {
+        fetch: (url, init) => {
+          last = new AbortController();
+          return handler.fetch(new Request(url, { ...init, signal: last.signal }));
+        },
+      }),
+    );
+    cleanups.push(() => client.close());
+    return {
+      client,
+      end: () => {
+        last.abort();
+      },
+    };
+  }
+
+  it.each(["modern", "legacy"] as const)(
+    "stops the contact search it started (%s era)",
+    async (era) => {
+      const account = crowdedAccount({ hold: true });
+      const factory = createServerFactory({ config: testConfig(), client: account.client });
+      const { client, end } = await connectEndable(factory, era);
+
+      // The client is gone with its request: what it would have got does not matter.
+      void complete(client, "dunning_run", "contact", "zebra").catch(() => undefined);
+      await vi.waitFor(() => {
+        expect(account.held).toHaveLength(1);
+      });
+      end();
+      await vi.waitFor(() => {
+        expect(account.held[0]?.signal?.aborted).toBe(true);
+      });
+
+      const second = complete(client, "dunning_run", "contact", "zebra");
+      await vi.waitFor(() => {
+        expect(account.held).toHaveLength(2);
+      });
+      account.held[1]?.release();
+      expect(await second).toEqual(["zebra GmbH"]);
+      expect(account.held[1]?.signal?.aborted).toBe(false);
+    },
+  );
 });
 
 describe("two OAuth accounts", () => {
