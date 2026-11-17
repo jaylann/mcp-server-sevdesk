@@ -11,12 +11,12 @@ use each of them; the guarantees behind confirmations are in
 
 Every tool belongs to exactly one tier. Reads and writes never share a tool.
 
-| Tier       | What it allows                                                                                                                                                                                         | Confirmation |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------ |
-| `read`     | List, get, search, reports, PDF previews (which never mark a document as sent), parsing e-invoices, saving document files and CSV exports into `SEVDESK_OUTPUT_DIR` (or as download links). Always on. | no           |
-| `write`    | Contacts, parts, payment accounts, drafts of invoices, credit notes, orders and vouchers, dunning reminders, the DATEV export. Reversible or harmless.                                                 | no           |
-| `commit`   | Finalize, book payments; book, enter, delete, enshrine and mark private bank transactions; cancel (Storno), enshrine (festschreiben, GoBD), reset, delete voucher drafts. Binding or hard to undo.     | **yes**      |
-| `external` | Send invoices, credit notes and orders by email. Reaches third parties.                                                                                                                                | **yes**      |
+| Tier       | What it allows                                                                                                                                                                                                           | Confirmation |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------ |
+| `read`     | List, get, search, reports, PDF previews (which never mark a document as sent), parsing e-invoices, saving document files and CSV exports into `SEVDESK_OUTPUT_DIR` (or as download links). Always on.                   | no           |
+| `write`    | Contacts, parts, payment accounts, drafts of invoices, credit notes, orders and vouchers, dunning reminders, the DATEV export. Reversible or harmless.                                                                   | no           |
+| `commit`   | Finalize, book payments; book, enter, delete and mark private bank transactions; cancel (Storno), reset, delete voucher drafts; enshrine documents and bank transactions (festschreiben, GoBD). Binding or hard to undo. | **yes**      |
+| `external` | Send invoices, credit notes and orders by email. Reaches third parties.                                                                                                                                                  | **yes**      |
 
 Choose the tiers with `SEVDESK_ALLOW`, for example `SEVDESK_ALLOW=write` or
 `SEVDESK_ALLOW=write,commit`; `all` enables every tier. `SEVDESK_READ_ONLY=1` turns everything but
