@@ -64,6 +64,20 @@ const fileInput = z
       "uploaded and attached.",
   );
 
+/**
+ * `fileSha256` of every tool that reads a file: the SHA-256 the bytes must have (checked by
+ * `checkFileSha256` in `voucher-checks.ts`). Any case; compared in lower case.
+ */
+export const fileSha256Input = z
+  .string()
+  .regex(/^[0-9a-fA-F]{64}$/, "expected a SHA-256: 64 hex characters")
+  .optional()
+  .describe(
+    "SHA-256 (64 hex) the file must have, e.g. from the dry run's preview. The file is read " +
+      "again on the real call (a link is downloaded again); other bytes are refused before " +
+      "anything reaches sevDesk.",
+  );
+
 const supplierIdInput = positiveId
   .optional()
   .describe(
@@ -134,6 +148,7 @@ export const voucherCreateInputShape = {
   amountMode: amountModeInput,
   positions: positionsInput,
   file: fileInput.optional(),
+  fileSha256: fileSha256Input,
   allowDuplicate: z
     .boolean()
     .optional()
@@ -174,6 +189,7 @@ export const voucherUpdateInputShape = {
         "the uploadId from sevdesk_upload_request, or an https link to a host in " +
         "SEVDESK_FILE_URL_HOSTS).",
     ),
+  fileSha256: fileSha256Input,
 };
 
 export interface VoucherCreateArgs extends ExchangeArgs {
@@ -190,6 +206,7 @@ export interface VoucherCreateArgs extends ExchangeArgs {
   readonly amountMode?: AmountMode | undefined;
   readonly positions: readonly VoucherPositionInput[];
   readonly file?: string | undefined;
+  readonly fileSha256?: string | undefined;
   readonly allowDuplicate?: boolean | undefined;
 }
 
@@ -207,6 +224,7 @@ export interface VoucherUpdateArgs extends ExchangeArgs {
   readonly amountMode?: AmountMode | undefined;
   readonly positions?: readonly VoucherPositionInput[] | undefined;
   readonly file?: string | undefined;
+  readonly fileSha256?: string | undefined;
 }
 
 /** Input fields of `sevdesk_voucher_import_einvoice` (without `dryRun`). */
@@ -222,6 +240,11 @@ export const voucherImportInputShape = {
         "sevdesk_upload_request, or an https link to a host in SEVDESK_FILE_URL_HOSTS. It is " +
         "attached to the voucher.",
     ),
+  fileSha256: fileSha256Input.describe(
+    "SHA-256 (64 hex) the file must have, e.g. from sevdesk_einvoice_parse or the dry run's " +
+      "preview. The file is read again on the real call (a link is downloaded again); other " +
+      "bytes are refused before anything reaches sevDesk.",
+  ),
   accountDatevId: positiveId
     .optional()
     .describe(
@@ -261,6 +284,7 @@ export const voucherImportInputShape = {
 
 export interface VoucherImportArgs extends ExchangeArgs {
   readonly file: string;
+  readonly fileSha256?: string | undefined;
   readonly accountDatevId?: number | undefined;
   readonly accounts?:
     readonly { readonly taxRate: string; readonly accountDatevId: number }[] | undefined;

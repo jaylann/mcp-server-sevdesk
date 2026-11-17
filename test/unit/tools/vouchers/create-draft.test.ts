@@ -1,12 +1,14 @@
 import { createHash } from "node:crypto";
+import { writeFile } from "node:fs/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import { localFileAccess } from "../../../../src/safety/file-sources.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
+import type { ConfirmationPreview } from "../../../../src/tools/types.js";
 import { voucherCreateDraftTool as tool } from "../../../../src/tools/vouchers/draft-create.js";
 import { type FakeRoute, FakeSevdeskClient } from "../../../helpers/fake-client.js";
-import { fakeLinks, LINK, LINK_HOST, LINK_PDF } from "../../../helpers/links.js";
+import { fakeLinks, LINK, LINK_HOST, LINK_PDF, served } from "../../../helpers/links.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import {
   accountsRoute,
@@ -83,6 +85,22 @@ async function refusal(promise: Promise<unknown>): Promise<string> {
   expect(error).toBeInstanceOf(SevdeskError);
   expect((error as SevdeskError).kind).toBe("validation");
   return (error as SevdeskError).message;
+}
+
+/**
+ * The receipt's facts in `preview`, from the one labelled `label`: the file, its SHA-256 and, for a
+ * file from a link, where it came from.
+ */
+function receiptFacts(
+  preview: ConfirmationPreview | undefined,
+  label: string,
+): ConfirmationPreview["facts"] {
+  const facts = preview?.facts ?? [];
+  const at = facts.findIndex((entry) => entry.label === label);
+  if (at === -1) return [];
+  const host = facts[at + 2]?.label;
+  const fromLink = host === "Downloaded from" || host === "Heruntergeladen von";
+  return facts.slice(at, at + (fromLink ? 3 : 2));
 }
 
 let cleanup: (() => Promise<void>) | undefined;
@@ -241,9 +259,16 @@ describe("sevdesk_voucher_create_draft", () => {
 
     expect(plan.preview.action).toContain(", and attach the receipt file.");
     expect(plan.preview.action).not.toContain("Rechnung-0815");
-    expect(plan.preview.facts.find((f) => f.label === "Receipt file (Belegbild)")?.value).toMatch(
-      /^Rechnung-0815\.pdf \(PDF, \d+ bytes, SHA-256 [0-9a-f]{16}…\)$/,
-    );
+    // Name, kind and size, then the full SHA-256 (what fileSha256 takes) as a fact of its own.
+    const receiptAt = plan.preview.facts.findIndex((f) => f.label === "Receipt file (Belegbild)");
+    expect(plan.preview.facts.slice(receiptAt, receiptAt + 2)).toEqual([
+      {
+        label: "Receipt file (Belegbild)",
+        value: `Rechnung-0815.pdf (PDF, ${String(PDF_BYTES.length)} bytes)`,
+      },
+      { label: "SHA-256", value: createHash("sha256").update(PDF_BYTES).digest("hex") },
+    ]);
+    expect(plan.preview.facts.map((f) => f.label)).not.toContain("Downloaded from");
     expect(output.data.receipt).toEqual({
       name: "Rechnung-0815.pdf",
       kind: "pdf",
@@ -321,16 +346,19 @@ describe("sevdesk_voucher_create_draft", () => {
     expect(part.type).toBe("application/pdf");
     expect(new Uint8Array(await part.arrayBuffer())).toEqual(LINK_PDF);
 
-    const fact = (preview: typeof plan.preview, label: string) =>
-      preview.facts.find((entry) => entry.label === label)?.value;
-    expect(fact(plan.preview, "Receipt file (Belegbild)")).toBe(
-      `Rechnung-4711.pdf (PDF, ${String(LINK_PDF.length)} bytes, SHA-256 ${digest}), ` +
-        `downloaded from https://${LINK_HOST}`,
-    );
-    expect(plan.previewDe === undefined ? undefined : fact(plan.previewDe, "Belegdatei")).toBe(
-      `Rechnung-4711.pdf (PDF, ${String(LINK_PDF.length)} Bytes, SHA-256 ${digest}), ` +
-        `heruntergeladen von https://${LINK_HOST}`,
-    );
+    expect(receiptFacts(plan.preview, "Receipt file (Belegbild)")).toEqual([
+      {
+        label: "Receipt file (Belegbild)",
+        value: `Rechnung-4711.pdf (PDF, ${String(LINK_PDF.length)} bytes)`,
+      },
+      { label: "SHA-256", value: digest },
+      { label: "Downloaded from", value: `https://${LINK_HOST}` },
+    ]);
+    expect(receiptFacts(plan.previewDe, "Belegdatei")).toEqual([
+      { label: "Belegdatei", value: `Rechnung-4711.pdf (PDF, ${String(LINK_PDF.length)} Bytes)` },
+      { label: "SHA-256", value: digest },
+      { label: "Heruntergeladen von", value: `https://${LINK_HOST}` },
+    ]);
     expect(output.data.receipt).toMatchObject({
       name: "Rechnung-4711.pdf",
       sha256: digest,
@@ -340,6 +368,136 @@ describe("sevdesk_voucher_create_draft", () => {
     const everything = JSON.stringify({ plan: plan.preview, de: plan.previewDe, output });
     expect(everything).not.toContain("SIGNATURE-7f3a");
     expect(everything).not.toContain("/portal");
+  });
+
+  it.each([
+    ["an 80-character last segment (not taken as the name)", `Rechnung_${"0".repeat(67)}.pdf`],
+    ["the longest name taken from a link (64 characters)", `${"R".repeat(60)}.pdf`],
+  ])(
+    "keeps host and full SHA-256 whole in English and German behind %s",
+    async (_name, segment) => {
+      const config = { fileUrlHosts: [LINK_HOST] };
+      const links = fakeLinks();
+      const files = localFileAccess(
+        { fileDirs: [], outputDir: undefined, ...config },
+        links.reader,
+      );
+      const link = `https://${LINK_HOST}/portal/${segment}?sig=SIGNATURE-7f3a`;
+      const plan = await prepareWrite(tool, { ...args, file: link }, client(), config, files);
+
+      const shown = segment.length <= 64 ? segment : "download.pdf";
+      const digest = createHash("sha256").update(LINK_PDF).digest("hex");
+      expect(receiptFacts(plan.preview, "Receipt file (Belegbild)")).toEqual([
+        {
+          label: "Receipt file (Belegbild)",
+          value: `${shown} (PDF, ${String(LINK_PDF.length)} bytes)`,
+        },
+        { label: "SHA-256", value: digest },
+        { label: "Downloaded from", value: `https://${LINK_HOST}` },
+      ]);
+      expect(receiptFacts(plan.previewDe, "Belegdatei")).toEqual([
+        { label: "Belegdatei", value: `${shown} (PDF, ${String(LINK_PDF.length)} Bytes)` },
+        { label: "SHA-256", value: digest },
+        { label: "Heruntergeladen von", value: `https://${LINK_HOST}` },
+      ]);
+    },
+  );
+
+  describe("fileSha256", () => {
+    const LINK_DIGEST = createHash("sha256").update(LINK_PDF).digest("hex");
+    const linkConfig = { fileUrlHosts: [LINK_HOST] };
+
+    it("is a 64-character hex argument, any case", () => {
+      const parse = (fileSha256: string) =>
+        tool.input.safeParse({ ...args, file: "a.pdf", fileSha256 }).success;
+      expect(parse(LINK_DIGEST)).toBe(true);
+      expect(parse(LINK_DIGEST.toUpperCase())).toBe(true);
+      expect(parse(LINK_DIGEST.slice(1))).toBe(false);
+      expect(parse(`${LINK_DIGEST.slice(1)}g`)).toBe(false);
+    });
+
+    it("attaches a link's file when its bytes have the SHA-256 the dry run showed", async () => {
+      const links = fakeLinks();
+      const files = localFileAccess(
+        { fileDirs: [], outputDir: undefined, ...linkConfig },
+        links.reader,
+      );
+      const dryRun = await prepareWrite(tool, { ...args, file: LINK }, client(), linkConfig, files);
+      const shown = receiptFacts(dryRun.preview, "Receipt file (Belegbild)")[1]?.value;
+      expect(shown).toBe(LINK_DIGEST);
+
+      const fake = client();
+      const { output } = await executeWrite(
+        tool,
+        { ...args, file: LINK, fileSha256: shown?.toUpperCase() },
+        fake,
+        linkConfig,
+        files,
+      );
+      expect(fake.writes().map((write) => write.path)).toEqual([
+        "/Voucher/Factory/uploadTempFile",
+        "/Voucher/Factory/saveVoucher",
+      ]);
+      expect(output.data.receipt).toMatchObject({ sha256: LINK_DIGEST });
+    });
+
+    it("refuses a link that serves other bytes on the real call, before any request", async () => {
+      const other = new TextEncoder().encode("%PDF-1.7\nein anderer Beleg\n%%EOF");
+      const links = fakeLinks({ respond: () => served(other) });
+      const files = localFileAccess(
+        { fileDirs: [], outputDir: undefined, ...linkConfig },
+        links.reader,
+      );
+      const fake = client();
+      const message = await refusal(
+        executeWrite(
+          tool,
+          { ...args, file: LINK, fileSha256: LINK_DIGEST },
+          fake,
+          linkConfig,
+          files,
+        ),
+      );
+      const otherDigest = createHash("sha256").update(other).digest("hex");
+      expect(message).toBe(
+        `The file's SHA-256 (${otherDigest.slice(0, 12)}…) differs from fileSha256 ` +
+          `(${LINK_DIGEST.slice(0, 12)}…): these are not the bytes that were checked before (a ` +
+          "link is downloaded again on every call, and a file can be replaced). Check the file " +
+          "again (a dry run shows its SHA-256) and pass the new value. Nothing was sent to sevDesk.",
+      );
+      expect(message).not.toContain("SIGNATURE");
+      expect(fake.calls).toEqual([]);
+    });
+
+    it("refuses a local file that was replaced after the dry run, also in a dry run", async () => {
+      const folder = await receiptFolder();
+      cleanup = folder.undo;
+      const config = { fileDirs: [folder.dir] };
+      const dryRun = await prepareWrite(tool, { ...args, file: folder.file }, client(), config);
+      const digest = receiptFacts(dryRun.preview, "Receipt file (Belegbild)")[1]?.value ?? "";
+      expect(digest).toBe(createHash("sha256").update(PDF_BYTES).digest("hex"));
+
+      await writeFile(folder.file, "%PDF-1.7\nersetzt\n%%EOF");
+      const fake = client();
+      for (const run of [
+        () => prepareWrite(tool, { ...args, file: folder.file, fileSha256: digest }, fake, config),
+        () => executeWrite(tool, { ...args, file: folder.file, fileSha256: digest }, fake, config),
+      ]) {
+        const message = await refusal(run());
+        expect(message).toContain(`differs from fileSha256 (${digest.slice(0, 12)}…)`);
+        expect(message).not.toContain(folder.dir);
+      }
+      expect(fake.calls).toEqual([]);
+    });
+
+    it("is refused without a file, before any request", async () => {
+      const fake = client();
+      const message = await refusal(
+        prepareWrite(tool, { ...args, fileSha256: LINK_DIGEST }, fake, linkConfig),
+      );
+      expect(message).toContain("fileSha256 pins the bytes of file; pass it together with file");
+      expect(fake.calls).toEqual([]);
+    });
   });
 
   it("refuses a link while SEVDESK_FILE_URL_HOSTS is empty, before any request", async () => {

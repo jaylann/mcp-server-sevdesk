@@ -4,6 +4,8 @@ import { z } from "zod";
 
 import { maskIban } from "../../domain/banking.js";
 import { cleanText, moneySchema } from "../../domain/common.js";
+import { checkFileSha256 } from "../../domain/drafts/voucher-checks.js";
+import { fileSha256Input } from "../../domain/drafts/voucher-inputs.js";
 import { PROFILE_LABELS, typeCodeLabel, unitLabel } from "../../domain/einvoice/codes.js";
 import {
   EINVOICE_CONTAINERS,
@@ -171,6 +173,10 @@ export const einvoiceParseTool = defineTool({
           "the uploadId from sevdesk_upload_request; or an https link to a host in " +
           "SEVDESK_FILE_URL_HOSTS.",
       ),
+    fileSha256: fileSha256Input.describe(
+      "SHA-256 (64 hex) the file must have; other bytes are refused (a link is downloaded " +
+        "again on every call). The result's file.sha256 pins the import to the bytes read here.",
+    ),
   }),
   output,
   handler: async (args, ctx) => {
@@ -179,6 +185,7 @@ export const einvoiceParseTool = defineTool({
       kinds: ["xml", "pdf"],
       signal: ctx.signal,
     });
+    checkFileSha256(file.bytes, args.fileSha256);
     const parsed = await parseEInvoice(file.bytes);
     const suggestion = await planVoucherFromEInvoice(parsed, {
       client: ctx.client,

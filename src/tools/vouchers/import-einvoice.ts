@@ -22,7 +22,7 @@ export function voucherImportEInvoiceTool(planner: VoucherSuggestionPlanner) {
     name: "sevdesk_voucher_import_einvoice",
     title: "Import an e-invoice as a voucher",
     description:
-      "Import an XRechnung XML or ZUGFeRD/Factur-X PDF as a draft voucher (Beleg) with its receipt attached. File from SEVDESK_FILE_DIRS, an upload or an allowed https link. Supplier, currency, dates and net positions per VAT rate come from the invoice; supply accountDatevId or accounts per rate. A non-EUR invoice requires exchangeRate (EUR per currency unit) or foreignCurrencyDeadline. Refuses unreliable sums, VAT breakdowns or invalid booking-account/tax-rule combinations. Update 2.0 only. Tier write; dryRun previews. Foreign-currency drafts cannot be finalized here.",
+      "Import an XRechnung XML or ZUGFeRD/Factur-X PDF as a draft voucher (Beleg) with its receipt attached. File from SEVDESK_FILE_DIRS, an upload or an allowed https link (read again on the real call; fileSha256 pins its bytes). Supplier, currency, dates and net positions per VAT rate come from the invoice; supply accountDatevId or accounts per rate. A non-EUR invoice requires exchangeRate (EUR per currency unit) or foreignCurrencyDeadline. Refuses unreliable sums, VAT breakdowns or invalid booking-account/tax-rule combinations. Update 2.0 only. Tier write; dryRun previews. Foreign-currency drafts cannot be finalized here.",
     toolset: "vouchers",
     tier: "write",
     // Open world: `file` may be an https link the server downloads (SEVDESK_FILE_URL_HOSTS).

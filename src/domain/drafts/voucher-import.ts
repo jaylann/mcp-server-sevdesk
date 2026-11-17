@@ -361,7 +361,10 @@ export async function prepareVoucherImport(
   options: VoucherCallOptions,
   planner: VoucherSuggestionPlanner,
 ): Promise<VoucherSavePlan> {
-  const file = await readReceiptFile(options, args.file, EINVOICE_FILE_KINDS);
+  const file = await readReceiptFile(options, args.file, {
+    kinds: EINVOICE_FILE_KINDS,
+    sha256: args.fileSha256,
+  });
   const parsed = await parseEInvoice(file.bytes, { fileName: file.name });
   const suggestion = await planner(parsed, {
     client,

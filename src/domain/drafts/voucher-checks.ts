@@ -50,6 +50,7 @@ import {
 import { TAX_RULES, type TaxRule, taxRuleById } from "../reference-data.js";
 import { listVouchers, type VoucherKind } from "../vouchers.js";
 import { type Amounts, positionAmounts } from "./positions.js";
+import { fact, type PreviewFact } from "./preview.js";
 import {
   checkTaxRuleRegime,
   checkTaxRuleUseCase,
@@ -555,22 +556,31 @@ export function duplicateCheck(
 // Receipt file
 // ---------------------------------------------------------------------------------------------
 
+/** What a caller expects of the file it reads. */
+export interface ReceiptExpectation {
+  /** Kinds accepted (checked by content); default {@link RECEIPT_FILE_KINDS}. */
+  readonly kinds?: readonly LocalFileKind[] | undefined;
+  /** The caller's `fileSha256` (hex, any case): other bytes are refused ({@link checkFileSha256}). */
+  readonly sha256?: string | undefined;
+}
+
 /**
  * Reads the receipt `ref` names (a path inside `SEVDESK_FILE_DIRS`, an `upload:` reference over
  * HTTP, or an https link to a host in `SEVDESK_FILE_URL_HOSTS`) through `options.files`, which
- * refuses with an actionable message otherwise; `kinds` defaults to {@link RECEIPT_FILE_KINDS}.
+ * refuses with an actionable message otherwise, and checks it against `expected`.
  * `options.signal` stops a download.
  */
 export async function readReceiptFile(
   options: Pick<VoucherCallOptions, "files" | "signal">,
   ref: string,
-  kinds: readonly LocalFileKind[] = RECEIPT_FILE_KINDS,
+  expected: ReceiptExpectation = {},
 ): Promise<ReceiptFile> {
   const file = await options.files.read(ref, {
     maxBytes: MAX_RECEIPT_BYTES,
-    kinds,
+    kinds: expected.kinds ?? RECEIPT_FILE_KINDS,
     signal: options.signal,
   });
+  checkFileSha256(file.bytes, expected.sha256);
   return {
     name: file.name,
     kind: file.kind,
@@ -579,27 +589,77 @@ export async function readReceiptFile(
   };
 }
 
+/**
+ * The receipt of a create or update: {@link readReceiptFile} when `ref` is given, else nothing. A
+ * `fileSha256` without a file is refused rather than ignored.
+ */
+export async function readOptionalReceipt(
+  options: Pick<VoucherCallOptions, "files" | "signal">,
+  ref: string | undefined,
+  sha256: string | undefined,
+): Promise<ReceiptFile | undefined> {
+  if (ref !== undefined) return readReceiptFile(options, ref, { sha256 });
+  if (sha256 !== undefined) {
+    refuse(
+      "fileSha256 pins the bytes of file; pass it together with file, or leave it out. Nothing " +
+        "was sent to sevDesk.",
+    );
+  }
+  return undefined;
+}
+
+/**
+ * Refuses `bytes` when `expected` (a caller's `fileSha256`: 64 hex characters, any case) is given
+ * and is not their SHA-256. A file is read again on every call (a link downloaded again, an upload
+ * or a local file possibly replaced), so the real call can see other bytes than the dry run whose
+ * preview a human checked; `fileSha256` binds them. The message is trusted text: both hashes are
+ * hex, shortened, and nothing of the file or its reference is in it.
+ */
+export function checkFileSha256(bytes: Uint8Array, expected: string | undefined): void {
+  if (expected === undefined) return;
+  const actual = createHash("sha256").update(bytes).digest("hex");
+  const wanted = expected.toLowerCase();
+  if (actual === wanted) return;
+  refuse(
+    `The file's SHA-256 (${actual.slice(0, 12)}…) differs from fileSha256 ` +
+      `(${wanted.slice(0, 12)}…): these are not the bytes that were checked before (a link is ` +
+      "downloaded again on every call, and a file can be replaced). Check the file again (a dry " +
+      "run shows its SHA-256) and pass the new value. Nothing was sent to sevDesk.",
+  );
+}
+
 /** Lower-case hex SHA-256 of a receipt's bytes. */
 export function receiptSha256(file: ReceiptFile): string {
   return createHash("sha256").update(file.bytes).digest("hex");
 }
 
 /**
- * "Rechnung-4711.pdf (PDF, 48211 bytes, SHA-256 3f2a…)": local text, cleaned by the fact. A file
- * from a link shows its full SHA-256 and the host it came from ("…, downloaded from
- * https://portal.example.com"), never the link's path or query.
+ * The facts of a receipt in a preview, each on its own so that a long file name cannot push the
+ * others past the cap of a fact value:
+ *
+ * - the file, "Rechnung-4711.pdf (PDF, 48211 bytes)" (local text, cleaned by the fact), after
+ *   `prefix` (an update's "attach ");
+ * - its full SHA-256, what `fileSha256` takes to bind the real call to these bytes;
+ * - for a file from a link, the host it came from ("https://portal.example.com"), never the rest
+ *   of the link.
  */
-export function receiptText(file: ReceiptFile, lang: PreviewLanguage = "en"): string {
+export function receiptFacts(
+  file: ReceiptFile,
+  lang: PreviewLanguage = "en",
+  prefix = "",
+): PreviewFact[] {
   const de = lang === "de";
   const size = `${String(file.bytes.length)} ${de ? "Bytes" : "bytes"}`;
-  const digest = receiptSha256(file);
-  if (file.host !== undefined) {
-    return (
-      `${file.name} (${file.kind.toUpperCase()}, ${size}, SHA-256 ${digest}), ` +
-      `${de ? "heruntergeladen von" : "downloaded from"} https://${file.host}`
-    );
-  }
-  return `${file.name} (${file.kind.toUpperCase()}, ${size}, SHA-256 ${digest.slice(0, 16)}…)`;
+  return [
+    fact(
+      de ? "Belegdatei" : "Receipt file (Belegbild)",
+      `${prefix}${file.name} (${file.kind.toUpperCase()}, ${size})`,
+    ),
+    fact("SHA-256", receiptSha256(file)),
+    ...(file.host === undefined
+      ? []
+      : [fact(de ? "Heruntergeladen von" : "Downloaded from", `https://${file.host}`)]),
+  ];
 }
 
 // ---------------------------------------------------------------------------------------------

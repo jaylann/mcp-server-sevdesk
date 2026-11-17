@@ -4440,6 +4440,11 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "minLength": 1,
           "type": "string",
         },
+        "fileSha256": {
+          "description": "SHA-256 (64 hex) the file must have, e.g. from the dry run's preview. The file is read again on the real call (a link is downloaded again); other bytes are refused before anything reaches sevDesk.",
+          "pattern": "^[0-9a-fA-F]{64}$",
+          "type": "string",
+        },
         "foreignCurrencyDeadline": {
           "description": "Exchange-rate date, YYYY-MM-DD. sevDesk selects the rate; EUR totals are known after saving. For non-EUR only, instead of exchangeRate.",
           "type": "string",
@@ -4737,6 +4742,11 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "description": "Receipt file to attach (PDF, PNG or JPEG inside SEVDESK_FILE_DIRS, on a remote server the uploadId from sevdesk_upload_request, or an https link to a host in SEVDESK_FILE_URL_HOSTS).",
           "maxLength": 2048,
           "minLength": 1,
+          "type": "string",
+        },
+        "fileSha256": {
+          "description": "SHA-256 (64 hex) the file must have, e.g. from the dry run's preview. The file is read again on the real call (a link is downloaded again); other bytes are refused before anything reaches sevDesk.",
+          "pattern": "^[0-9a-fA-F]{64}$",
           "type": "string",
         },
         "foreignCurrencyDeadline": {
@@ -7813,6 +7823,11 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "minLength": 1,
           "type": "string",
         },
+        "fileSha256": {
+          "description": "SHA-256 (64 hex) the file must have, e.g. from the dry run's preview. The file is read again on the real call (a link is downloaded again); other bytes are refused before anything reaches sevDesk.",
+          "pattern": "^[0-9a-fA-F]{64}$",
+          "type": "string",
+        },
         "foreignCurrencyDeadline": {
           "description": "Exchange-rate date, YYYY-MM-DD. sevDesk selects the rate; EUR totals are known after saving. For non-EUR only, instead of exchangeRate.",
           "type": "string",
@@ -7981,6 +7996,11 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "description": "Receipt file to attach (PDF, PNG or JPEG inside SEVDESK_FILE_DIRS, on a remote server the uploadId from sevdesk_upload_request, or an https link to a host in SEVDESK_FILE_URL_HOSTS).",
           "maxLength": 2048,
           "minLength": 1,
+          "type": "string",
+        },
+        "fileSha256": {
+          "description": "SHA-256 (64 hex) the file must have, e.g. from the dry run's preview. The file is read again on the real call (a link is downloaded again); other bytes are refused before anything reaches sevDesk.",
+          "pattern": "^[0-9a-fA-F]{64}$",
           "type": "string",
         },
         "foreignCurrencyDeadline": {
@@ -9792,6 +9812,11 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
           "minLength": 1,
           "type": "string",
         },
+        "fileSha256": {
+          "description": "SHA-256 (64 hex) the file must have; other bytes are refused (a link is downloaded again on every call). The result's file.sha256 pins the import to the bytes read here.",
+          "pattern": "^[0-9a-fA-F]{64}$",
+          "type": "string",
+        },
       },
       "required": [
         "file",
@@ -9925,6 +9950,11 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
           "description": "The e-invoice: an XRechnung XML or a ZUGFeRD/Factur-X PDF inside SEVDESK_FILE_DIRS, absolute or relative to one of those folders, or on a remote server the uploadId from sevdesk_upload_request, or an https link to a host in SEVDESK_FILE_URL_HOSTS. It is attached to the voucher.",
           "maxLength": 2048,
           "minLength": 1,
+          "type": "string",
+        },
+        "fileSha256": {
+          "description": "SHA-256 (64 hex) the file must have, e.g. from sevdesk_einvoice_parse or the dry run's preview. The file is read again on the real call (a link is downloaded again); other bytes are refused before anything reaches sevDesk.",
+          "pattern": "^[0-9a-fA-F]{64}$",
           "type": "string",
         },
         "foreignCurrencyDeadline": {

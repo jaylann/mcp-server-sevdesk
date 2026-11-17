@@ -130,6 +130,32 @@ describe("sevdesk_einvoice_parse", () => {
     expect(links.requests[0]?.signal).toBeDefined();
   });
 
+  it("parses the file only when it has the SHA-256 of fileSha256 (any case)", async () => {
+    const xml = await readFile(new URL("generated/cii-en16931-invoice.xml", FIXTURES));
+    const digest = createHash("sha256").update(xml).digest("hex");
+    const client = new FakeSevdeskClient([sevClient, contacts]);
+    const env = { SEVDESK_FILE_DIRS: inbox };
+    const matched = await tool.handler(
+      tool.input.parse({ file: "2026/RE-2026-0001.xml", fileSha256: digest.toUpperCase() }),
+      testContext(client, env),
+    );
+    expect(tool.output.parse(matched.data).file.sha256).toBe(digest);
+
+    const other = new FakeSevdeskClient([sevClient, contacts]);
+    const error: unknown = await tool
+      .handler(
+        tool.input.parse({ file: "2026/RE-2026-0001.xml", fileSha256: "b".repeat(64) }),
+        testContext(other, env),
+      )
+      .catch((thrown: unknown) => thrown);
+    expect(error).toBeInstanceOf(SevdeskError);
+    expect((error as SevdeskError).message).toContain(
+      `The file's SHA-256 (${digest.slice(0, 12)}…) differs from fileSha256 (bbbbbbbbbbbb…)`,
+    );
+    expect((error as SevdeskError).message).not.toContain("RE-2026-0001");
+    expect(other.calls).toEqual([]);
+  });
+
   it("parses an XRechnung-style XML by relative path and suggests a voucher", async () => {
     const { client, data, result } = await parse("2026/RE-2026-0001.xml");
     expect(client.writes()).toEqual([]);

@@ -54,9 +54,9 @@ import {
   kindText,
   loadSupplierName,
   partyLabel,
-  readReceiptFile,
+  readOptionalReceipt,
+  receiptFacts,
   receiptSha256,
-  receiptText,
   resolveVoucherPositions,
   resolveVoucherRule,
   supplierText,
@@ -182,7 +182,7 @@ export async function prepareVoucherCreate(
 ): Promise<VoucherSavePlan> {
   checkSupplierArgs(args.supplierId, args.supplierName, true);
   resolveVoucherCurrency(args.currency ?? "EUR", args);
-  const file = args.file === undefined ? undefined : await readReceiptFile(options, args.file);
+  const file = await readOptionalReceipt(options, args.file, args.fileSha256);
   return prepareVoucherCreateSpec(
     client,
     {
@@ -325,9 +325,7 @@ export async function prepareVoucherCreateSpec(
         text("Total (expected)", "Summe (erwartet)"),
         totalsText(expected, currency.currency, lang),
       ),
-      ...(file === undefined
-        ? []
-        : [fact(text("Receipt file (Belegbild)", "Belegdatei"), receiptText(file, lang))]),
+      ...(file === undefined ? [] : receiptFacts(file, lang)),
       ...((de ? extras.factsDe : extras.facts) ?? extras.facts ?? []),
       fact(
         text("Status after saving", "Status nach dem Speichern"),
@@ -390,7 +388,7 @@ export async function prepareVoucherUpdate(
   const { signal } = options;
   assertChanges(args, "voucher");
   checkSupplierArgs(args.supplierId, args.supplierName, false);
-  const file = args.file === undefined ? undefined : await readReceiptFile(options, args.file);
+  const file = await readOptionalReceipt(options, args.file, args.fileSha256);
   const stored = await loadStoredVoucher(client, args.id, signal);
   const kind = checkDraft(stored, "changed");
   const oldCurrency = currencyCode(stored.record.currency);
@@ -564,11 +562,7 @@ export async function prepareVoucherUpdate(
       );
     }
     if (file !== undefined)
-      log.note(
-        text("file", "Datei"),
-        text("Receipt file (Belegbild)", "Belegdatei"),
-        `${text("attach", "anhängen:")} ${receiptText(file, lang)}`,
-      );
+      log.noteFacts(text("file", "Datei"), receiptFacts(file, lang, text("attach ", "anhängen: ")));
 
     const warnings =
       args.taxRuleId === undefined

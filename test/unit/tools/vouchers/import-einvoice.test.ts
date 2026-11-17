@@ -128,15 +128,57 @@ describe("sevdesk_voucher_import_einvoice", () => {
       files,
     );
 
+    const digest = createHash("sha256").update(xml).digest("hex");
     expect(stand.calls[0]?.number).toBe("123456XX");
-    expect(JSON.stringify(plan.preview)).toContain(`downloaded from https://${LINK_HOST}`);
+    expect(plan.preview.facts).toContainEqual({ label: "SHA-256", value: digest });
+    expect(plan.preview.facts).toContainEqual({
+      label: "Downloaded from",
+      value: `https://${LINK_HOST}`,
+    });
     expect(JSON.stringify(plan.preview)).not.toContain("SIGNATURE-7f3a");
     expect((fake.writes()[0]?.form?.get("file") as File).name).toBe("Rechnung-4711.xml");
     expect(output.data.receipt).toMatchObject({
       kind: "xml",
-      sha256: createHash("sha256").update(xml).digest("hex"),
+      sha256: digest,
       downloadedFrom: `https://${LINK_HOST}`,
     });
+  });
+
+  it("imports the file only when it has the SHA-256 of fileSha256", async () => {
+    const dir = await sampleFolder();
+    const digest = createHash("sha256")
+      .update(await readFile(SAMPLE))
+      .digest("hex");
+    const tool = voucherImportEInvoiceTool(planner().plan);
+    const config = { fileDirs: [dir] };
+
+    const fake = client();
+    await executeWrite(
+      tool,
+      { file: "xrechnung.xml", accountDatevId: 4266, fileSha256: digest },
+      fake,
+      config,
+    );
+    expect(fake.writes().map((write) => write.path)).toEqual([
+      "/Voucher/Factory/uploadTempFile",
+      "/Voucher/Factory/saveVoucher",
+    ]);
+
+    const stand = planner();
+    const refused = client();
+    const error = await executeWrite(
+      voucherImportEInvoiceTool(stand.plan),
+      { file: "xrechnung.xml", accountDatevId: 4266, fileSha256: "a".repeat(64) },
+      refused,
+      config,
+    ).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(SevdeskError);
+    expect((error as SevdeskError).message).toContain(
+      `The file's SHA-256 (${digest.slice(0, 12)}…) differs from fileSha256 (aaaaaaaaaaaa…)`,
+    );
+    // Refused before the file is parsed or anything is asked of sevDesk.
+    expect(stand.calls).toEqual([]);
+    expect(refused.calls).toEqual([]);
   });
 
   it("imports the XRechnung as a draft with one net position per VAT rate and attaches it", async () => {
