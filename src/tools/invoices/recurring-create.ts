@@ -50,7 +50,7 @@ export const invoiceCreateRecurringTool = defineWriteTool({
     "Generierung, default true), sevDesk creates a draft invoice from it on every run date by " +
     "itself, within about a minute; the drafts are neither finalized nor sent and carry a " +
     "provisional number until finalized. With autoGenerate false, sevDesk creates nothing until " +
-    "someone switches it on in the web app. This tool never switches on sevDesk's automatic " +
+    "it is switched on (sevdesk_invoice_update_recurring). This tool never switches on sevDesk's automatic " +
     "sending by e-mail. Customer, positions, texts, payment term and tax rule work as in " +
     "sevdesk_invoice_create_draft (EUR only), plus the schedule: interval monthly, quarterly, " +
     "half_yearly or yearly; startDate, the first run (today or later, on day 1–28; later runs " +
@@ -59,9 +59,10 @@ export const invoiceCreateRecurringTool = defineWriteTool({
     "zero. Commit tier: a human confirms the preview, which lists the positions, the total per " +
     "invoice, the next run dates and what sevDesk does on a run date; dryRun only previews. The " +
     "preview warns when the customer has a template with the same total already. Changing or " +
-    "ending a template: the sevDesk web app. Before: sevdesk_contacts_search for contactId. " +
-    "After: sevdesk_invoices_list with type recurring, sevdesk_invoice_get; a generated draft " +
-    "is finalized and sent like any draft (sevdesk_invoice_finalize, sevdesk_invoice_send_email).",
+    "ending a template: sevdesk_invoice_update_recurring, sevdesk_invoice_end_recurring. Before: " +
+    "sevdesk_contacts_search for contactId. After: sevdesk_invoices_list with type recurring, " +
+    "sevdesk_invoice_get; a generated draft is finalized and sent like any draft " +
+    "(sevdesk_invoice_finalize, sevdesk_invoice_send_email).",
   toolset: "invoices",
   tier: "commit",
   annotations: {

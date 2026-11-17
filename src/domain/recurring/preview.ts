@@ -53,11 +53,21 @@ export interface TemplatePreviewInput {
 }
 
 const HOW_TO_END: Phrase = phrase(
-  "To change, pause or end the template later, or to switch automatic generation on or off, use " +
-    "the sevDesk web app (Abo-Rechnungen); this server has no tool for that yet.",
-  "Ändern, pausieren oder beenden lässt sich die Vorlage vorerst nur in der sevDesk-Web-App " +
-    "(Abo-Rechnungen); dort wird auch die automatische Generierung ein- oder ausgeschaltet. " +
-    "Dieser Server hat dafür noch kein Werkzeug.",
+  "To change the template later, also to switch automatic generation on or off, use " +
+    "sevdesk_invoice_update_recurring; to end it, sevdesk_invoice_end_recurring. A template is " +
+    "deleted only in the sevDesk web app (Abo-Rechnungen).",
+  "Ändern lässt sich die Vorlage später mit sevdesk_invoice_update_recurring, auch die " +
+    "automatische Generierung ein- oder ausschalten; beenden mit sevdesk_invoice_end_recurring. " +
+    "Löschen lässt sich eine Vorlage nur in der sevDesk-Web-App (Abo-Rechnungen).",
+);
+
+/** For a template whose run day some months lack (one made in the web app). */
+export const SHORT_MONTH_RUNS: Phrase = phrase(
+  "The runs fall on a day some months do not have; how sevDesk moves such a run is not " +
+    "recorded. The dates listed assume the month's last day.",
+  "Die Ausführungen fallen auf einen Tag, den nicht jeder Monat hat; wie sevDesk eine solche " +
+    "Ausführung verschiebt, ist nicht erfasst. Die genannten Daten nehmen den letzten Tag des " +
+    "Monats an.",
 );
 
 const AUTO_GENERATE_TEXT: Readonly<Record<"on" | "off", Phrase>> = {
@@ -152,7 +162,7 @@ function actionText(input: TemplatePreviewInput, lang: PreviewLanguage): string 
 }
 
 /** "monthly, every month on day 1 (P0Y1M0W)", "vierteljährlich, alle 3 Monate am 15. (P0Y3M0W)". */
-function intervalText(schedule: Schedule, lang: PreviewLanguage): string {
+export function intervalText(schedule: Schedule, lang: PreviewLanguage): string {
   const { months, wire } = INTERVALS[schedule.interval];
   const day = String(schedule.runDay);
   const label = INTERVALS[schedule.interval][lang];
@@ -169,7 +179,7 @@ function intervalText(schedule: Schedule, lang: PreviewLanguage): string {
  * the end date, whether sevDesk still makes it is not recorded ({@link endOnRunWarning}), so the
  * count is given as one fewer or that many.
  */
-function endText(schedule: Schedule, lang: PreviewLanguage): string {
+export function endText(schedule: Schedule, lang: PreviewLanguage): string {
   const count = runCount(schedule);
   if (schedule.endDate === undefined || count === undefined) {
     return lang === "de"
@@ -194,7 +204,8 @@ function endText(schedule: Schedule, lang: PreviewLanguage): string {
         "template on its end date)";
 }
 
-function followingRunsText(schedule: Schedule, lang: PreviewLanguage): string {
+/** The runs after the first, up to {@link FOLLOWING_RUNS}, or that none comes before the end. */
+export function followingRunsText(schedule: Schedule, lang: PreviewLanguage): string {
   const following = runDates(schedule, FOLLOWING_RUNS + 1).slice(1);
   if (following.length === 0) {
     return lang === "de" ? "keine bis zum Enddatum" : "none before the end date";
@@ -202,7 +213,7 @@ function followingRunsText(schedule: Schedule, lang: PreviewLanguage): string {
   return following.map((date) => dateText(date, lang)).join(", ");
 }
 
-function priceModeText(mode: PriceMode, lang: PreviewLanguage): string {
+export function priceModeText(mode: PriceMode, lang: PreviewLanguage): string {
   if (lang === "en") return mode;
   return mode === "net" ? "netto" : "brutto";
 }
@@ -220,7 +231,7 @@ function taxText(input: TemplatePreviewInput, lang: PreviewLanguage): string {
  * One position: "Beratung: 3 × 10.00 EUR net, 19 % VAT → net 30.00 EUR", then its text as given
  * on the next line. In German "3 × 10,00 EUR netto, 19 % USt. → netto 30,00 EUR".
  */
-function positionText(
+export function positionText(
   position: DraftPosition,
   mode: PriceMode,
   currency: string,
@@ -328,7 +339,8 @@ function similarWarning(input: TemplatePreviewInput, lang: PreviewLanguage): str
   );
 }
 
-function endOnRunWarning(schedule: Schedule, lang: PreviewLanguage): string | undefined {
+/** A warning when a run falls on the end date itself (sevDesk's behaviour there is not recorded). */
+export function endOnRunWarning(schedule: Schedule, lang: PreviewLanguage): string | undefined {
   const { endDate } = schedule;
   if (endDate === undefined || !endsOnRun(schedule)) return undefined;
   const end = dateText(endDate, lang);

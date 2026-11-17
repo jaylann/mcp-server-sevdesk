@@ -87,6 +87,7 @@ passt = "passt"
 separat = "separat"
 suche = "suche"
 Ende = "Ende"
+startet = "startet"
 # The German name of a document language (src/domain/layouts.ts) and sevDesk's label for it.
 Spanisch = "Spanisch"
 spanisch = "spanisch"

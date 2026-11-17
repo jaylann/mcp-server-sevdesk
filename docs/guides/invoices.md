@@ -7,20 +7,22 @@ whether you confirm it.
 
 ## Overview
 
-| Step                                   | Tool                                                                                                                                                             | Tier              | You confirm     |
-| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | --------------- |
-| [Find the customer](#before-you-start) | [`sevdesk_contacts_search`](../tools.md#sevdesk_contacts_search)                                                                                                 | `read`            | no              |
-| [Create a draft](#create-a-draft)      | [`sevdesk_invoice_create_draft`](../tools.md#sevdesk_invoice_create_draft), [`sevdesk_invoice_create_from_order`](../tools.md#sevdesk_invoice_create_from_order) | `write`           | no              |
-| [Check it](#check-the-draft)           | [`sevdesk_invoice_get`](../tools.md#sevdesk_invoice_get), [`sevdesk_invoice_pdf`](../tools.md#sevdesk_invoice_pdf)                                               | `read`            | no              |
-| [Change it](#check-the-draft)          | [`sevdesk_invoice_update_draft`](../tools.md#sevdesk_invoice_update_draft)                                                                                       | `write`           | no              |
-| [Delete it](#delete-a-draft)           | [`sevdesk_document_delete_draft`](../tools.md#sevdesk_document_delete_draft)                                                                                     | `commit`          | **yes**         |
-| [Finalize](#finalize)                  | [`sevdesk_invoice_finalize`](../tools.md#sevdesk_invoice_finalize)                                                                                               | `commit`          | **yes**         |
-| [Send by email](#send-it)              | [`sevdesk_invoice_send_email`](../tools.md#sevdesk_invoice_send_email)                                                                                           | `external`        | **yes**         |
-| [Book the payment](#book-the-payment)  | [`sevdesk_invoice_book_payment`](../tools.md#sevdesk_invoice_book_payment)                                                                                       | `commit`          | **yes**         |
-| [Remind](#remind-overdue-customers)    | [`sevdesk_invoice_create_reminder`](../tools.md#sevdesk_invoice_create_reminder)                                                                                 | `write`           | no              |
-| [Correct](#cancel-or-correct)          | [`sevdesk_invoice_cancel`](../tools.md#sevdesk_invoice_cancel), [`sevdesk_credit_note_create_from_invoice`](../tools.md#sevdesk_credit_note_create_from_invoice) | `commit`, `write` | cancel: **yes** |
-| [Enshrine](#enshrine)                  | [`sevdesk_invoice_enshrine`](../tools.md#sevdesk_invoice_enshrine)                                                                                               | `commit`          | **yes**         |
-| [Bill on a schedule](#recurring)       | [`sevdesk_invoice_create_recurring`](../tools.md#sevdesk_invoice_create_recurring)                                                                               | `commit`          | **yes**         |
+| Step                                   | Tool                                                                                                                                                                     | Tier              | You confirm     |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------- | --------------- |
+| [Find the customer](#before-you-start) | [`sevdesk_contacts_search`](../tools.md#sevdesk_contacts_search)                                                                                                         | `read`            | no              |
+| [Create a draft](#create-a-draft)      | [`sevdesk_invoice_create_draft`](../tools.md#sevdesk_invoice_create_draft), [`sevdesk_invoice_create_from_order`](../tools.md#sevdesk_invoice_create_from_order)         | `write`           | no              |
+| [Check it](#check-the-draft)           | [`sevdesk_invoice_get`](../tools.md#sevdesk_invoice_get), [`sevdesk_invoice_pdf`](../tools.md#sevdesk_invoice_pdf)                                                       | `read`            | no              |
+| [Change it](#check-the-draft)          | [`sevdesk_invoice_update_draft`](../tools.md#sevdesk_invoice_update_draft)                                                                                               | `write`           | no              |
+| [Delete it](#delete-a-draft)           | [`sevdesk_document_delete_draft`](../tools.md#sevdesk_document_delete_draft)                                                                                             | `commit`          | **yes**         |
+| [Finalize](#finalize)                  | [`sevdesk_invoice_finalize`](../tools.md#sevdesk_invoice_finalize)                                                                                                       | `commit`          | **yes**         |
+| [Send by email](#send-it)              | [`sevdesk_invoice_send_email`](../tools.md#sevdesk_invoice_send_email)                                                                                                   | `external`        | **yes**         |
+| [Book the payment](#book-the-payment)  | [`sevdesk_invoice_book_payment`](../tools.md#sevdesk_invoice_book_payment)                                                                                               | `commit`          | **yes**         |
+| [Remind](#remind-overdue-customers)    | [`sevdesk_invoice_create_reminder`](../tools.md#sevdesk_invoice_create_reminder)                                                                                         | `write`           | no              |
+| [Correct](#cancel-or-correct)          | [`sevdesk_invoice_cancel`](../tools.md#sevdesk_invoice_cancel), [`sevdesk_credit_note_create_from_invoice`](../tools.md#sevdesk_credit_note_create_from_invoice)         | `commit`, `write` | cancel: **yes** |
+| [Enshrine](#enshrine)                  | [`sevdesk_invoice_enshrine`](../tools.md#sevdesk_invoice_enshrine)                                                                                                       | `commit`          | **yes**         |
+| [Bill on a schedule](#recurring)       | [`sevdesk_invoice_create_recurring`](../tools.md#sevdesk_invoice_create_recurring)                                                                                       | `commit`          | **yes**         |
+| [Change a template](#recurring)        | [`sevdesk_invoice_update_recurring`](../tools.md#sevdesk_invoice_update_recurring)                                                                                       | `commit`          | **yes**         |
+| [End or restart it](#recurring)        | [`sevdesk_invoice_end_recurring`](../tools.md#sevdesk_invoice_end_recurring), [`sevdesk_invoice_reactivate_recurring`](../tools.md#sevdesk_invoice_reactivate_recurring) | `commit`          | **yes**         |
 
 ```mermaid
 flowchart TD
@@ -211,7 +213,7 @@ confirm**) deletes a draft with its positions; the same tool deletes order and c
 The preview names the document (number, customer, date, total); if the draft changes before you
 approve, you are asked again. Only drafts (status 100) are deleted: a finalized invoice stays in
 the books and is cancelled or corrected with a credit note instead, and recurring invoice
-templates are not deleted here.
+templates are not deleted here (they are [ended](#recurring)).
 
 Mind the number range. Orders and credit notes take their number when the draft is saved; after
 the deletion sevDesk gives that number to the next document only if it was the last one handed
@@ -382,8 +384,9 @@ not the template's status. The tool switches it on unless you ask for it off:
   gets its own when it is finalized. Check a generated draft, then finalize and send it like any
   other ([Finalize](#finalize), [Send it](#send-it)). A first run today is due at once: the first
   draft appears about a minute after saving.
-- **Off**: sevDesk creates nothing by itself, until someone switches automatic generation on for
-  the template in the sevDesk web app or clicks "Rechnung erzeugen" there.
+- **Off**: sevDesk creates nothing by itself, until automatic generation is switched on for the
+  template ([below](#change-end-or-restart-a-template), or in the sevDesk web app) or someone
+  clicks "Rechnung erzeugen" in the web app.
 
 The preview shows what every invoice will say: customer and address, each position with its text,
 head and foot text, the total per invoice. It also shows the first run, the next three run dates,
@@ -403,9 +406,76 @@ The web app's "Nachfällig" option (bill in arrears) is not set by this server e
 other intervals (7 or 14 days, 2 months, 2 to 5 years) are not offered.
 
 Templates are listed with [`sevdesk_invoices_list`](../tools.md#sevdesk_invoices_list) and type
-`recurring`. Changing, pausing or ending one, and switching automatic generation on or off, is
-done in the sevDesk web app (Abo-Rechnungen) for now. The other invoice tools refuse a template: it
-is never finalized, sent, paid, cancelled, changed as a draft or deleted through them.
+`recurring`. Each row, and [`sevdesk_invoice_get`](../tools.md#sevdesk_invoice_get), shows the
+schedule as sevDesk stores it: interval (also one made in the web app, in words), start, next run,
+end, last run, whether automatic generation and automatic sending are on, and whether the template
+is ended.
+
+### Change, end or restart a template
+
+> Raise the Musterfirma maintenance to 550 EUR net from the next invoice on.
+
+[`sevdesk_invoice_update_recurring`](../tools.md#sevdesk_invoice_update_recurring) (`commit`,
+**you confirm**) changes a template: positions (given positions replace all of them), texts,
+payment term, tax rule, customer or address, the schedule, and automatic generation
+(`autoGenerate`). Only what you give changes. The preview shows each change as before → after, new
+positions and texts in full, the total per invoice before and after, and the run dates after the
+change. Every invoice sevDesk creates afterwards carries the change; invoices it already created
+stay as they are. On a run day, the preview warns that a draft sevDesk already created that day
+keeps the old content.
+
+- A new **interval** keeps the next run date; the runs after it follow the new interval.
+- A new **start date** becomes the next run as well, and sevDesk clears the template's last run.
+  It must lie after today and, once the template has generated invoices, after the end of the
+  period of the newest one; otherwise sevDesk would bill a period again. The assistant finds those
+  invoices by their origin, the template, and refuses when one of them has no delivery date,
+  since its period cannot be told.
+- A new **end date** lies on or after the next run; `removeEndDate` lets the template run until it
+  is ended. With automatic generation on and a next run before today and after the end date (a
+  template that stopped at its end date), removing the end date or moving it is refused: sevDesk
+  could catch up the missed periods. Give a new start date in the same call.
+- Switching **automatic generation on** is refused while the next run lies before today: sevDesk
+  would catch up and create one draft per missed period, a minute apart. Give a new start date in
+  the same call. A next run today is due at once, or at its stored time of day for a template made
+  in the web app.
+- A **discount on the whole document** (Rabatt) on the template stays as it is; the change never
+  sets one. With new positions the total per invoice counts it where that is recorded (one net
+  discount, net prices, one tax rate), else sevDesk computes the total. Whether sevDesk keeps the
+  discount when every position is replaced is not recorded, so the preview says so.
+
+After saving, the assistant reads the template back and names every way sevDesk stored something
+else, including a position whose change sevDesk ignored, a switch that did not take and a discount
+that is no longer there.
+
+> End the Musterfirma maintenance subscription.
+
+[`sevdesk_invoice_end_recurring`](../tools.md#sevdesk_invoice_end_recurring) (`commit`, **you
+confirm**) ends a template (status 50): sevDesk creates no further invoice from it, even with
+automatic generation on. Invoices it already created stay as they are; a wrong one is cancelled
+with [`sevdesk_invoice_cancel`](../tools.md#sevdesk_invoice_cancel). The template keeps its
+positions, schedule and automatic generation, and
+[`sevdesk_invoice_reactivate_recurring`](../tools.md#sevdesk_invoice_reactivate_recurring)
+(`commit`, **you confirm**) starts it again. Its preview says what happens then: with automatic
+generation on, sevDesk generates drafts again, the first at once if the next run is today (at its
+stored time of day for a template made in the web app); with it
+off, reactivating alone generates nothing. With it on, reactivating is refused while the next run
+lies before today, because sevDesk would catch up the missed periods at once: give the template a
+new start date first.
+
+> [!WARNING]
+> A template with **automatic sending** on is only ended through this server: ending stops the
+> e-mails. Changing or reactivating it is refused, because sevDesk would finalize, e-mail and lock
+> invoices from it with no further approval; manage such a template in the sevDesk web app. When
+> sevDesk does not return its settings, changing and reactivating are refused as well.
+
+Templates made in the web app work too, also with an interval this server does not offer (such as
+weekly or every two months): they can be ended, and changed as long as the interval stays; where
+their run dates cannot be computed, the preview says so.
+
+A template is deleted only in the sevDesk web app (Abo-Rechnungen); ending it is the reversible
+way. The other invoice tools refuse a template: it is never finalized, sent, paid, cancelled,
+changed as a draft or deleted through them. An invoice sevDesk creates from a template is a
+regular draft and is not refused because of its template.
 
 ## Related
 

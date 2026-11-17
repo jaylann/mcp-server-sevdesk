@@ -20,8 +20,9 @@ import { documentDiscountDto, readDocumentDiscounts } from "../../src/domain/doc
 import { mapInvoiceDetail } from "../../src/domain/invoices.js";
 import { listLetterpapers } from "../../src/domain/layouts.js";
 import { readStoredSchedule, scheduleDifferences } from "../../src/domain/recurring/schedule.js";
+import { invoicesListTool } from "../../src/tools/invoices/list.js";
 import { TEST_TOKEN } from "../helpers/config.js";
-import { FakeSevdeskClient, loadFixture } from "../helpers/fake-client.js";
+import { FakeSevdeskClient, loadFixture, testContext } from "../helpers/fake-client.js";
 import { ScriptedClient, type ScriptedHandler } from "../unit/scripts/scripted-client.js";
 
 /** Every recorded file of this session that this test covers (below `test/fixtures/`). */
@@ -159,6 +160,41 @@ describe("GET /Invoice?showWkr=all: recurring templates (D-111, D-112, D-049)", 
         sent ?? {},
       ),
     ).toEqual([]);
+  });
+
+  it("shows the schedule in sevdesk_invoices_list rows of templates (D-111, D-112)", async () => {
+    const client = new FakeSevdeskClient([{ path: "/Invoice", response: { fixture: file } }]);
+    const { data } = await invoicesListTool.handler(
+      invoicesListTool.input.parse({ type: "recurring", limit: 100 }),
+      testContext(client),
+    );
+    expect(data.items.length).toBeGreaterThan(0);
+    for (const item of data.items) {
+      // The fake answers every page with the same rows: match them by id.
+      const row = rows(file).find((candidate) => String(candidate["id"]) === String(item.id));
+      expect(item).toHaveProperty("schedule", readStoredSchedule(row ?? {}));
+    }
+    expect(
+      data.items.map((item) => ("schedule" in item ? item.schedule : undefined)),
+    ).toContainEqual({
+      interval: "P0Y1M0W",
+      intervalKey: "monthly",
+      every: "every 1 month",
+      startDate: "2026-11-15",
+      nextRun: "2026-11-15",
+    });
+    // A regular invoice gets no schedule.
+    const invoice = loadFixture("invoices/invoice-1001.json").body as { objects: unknown[] };
+    expect(mapInvoiceDetail(invoice.objects[0], "2026-11-16")).not.toHaveProperty("schedule");
+  });
+
+  it("marks an ended template's schedule (status 50 keeps the next run, recorded 2026-11-17)", () => {
+    const [row] = rows(file);
+    const detail = mapInvoiceDetail({ ...row, status: "50" }, "2026-11-16");
+    expect(detail.schedule?.ended).toBe(true);
+    expect(
+      mapInvoiceDetail({ ...row, status: "100" }, "2026-11-16").schedule?.ended,
+    ).toBeUndefined();
   });
 
   it("is what read-recurring-generated reads: tagged templates, none in the default list", async () => {

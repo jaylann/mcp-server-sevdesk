@@ -162,7 +162,8 @@ export const documentDeleteDraftTool = defineWriteTool({
     "Auftragsbestätigung, Lieferschein) with its positions, e.g. one created by mistake, for the " +
     "wrong customer, or a duplicate. Only drafts (status 100); a finalized invoice is cancelled " +
     "(sevdesk_invoice_cancel) or corrected with a credit note, never deleted. Recurring invoice " +
-    "templates (Abo-Rechnung) are not deleted here. Deleting a draft with a number can leave a " +
+    "templates (Abo-Rechnung) are not deleted here (end one with " +
+    "sevdesk_invoice_end_recurring). Deleting a draft with a number can leave a " +
     "gap in the number range: sevDesk hands the number out again only if it was the last one, " +
     "and an invoice draft with a number may be an issued invoice reset to draft, which is " +
     "cancelled instead; the preview warns. Cannot be undone. Commit tier: asks a human to " +

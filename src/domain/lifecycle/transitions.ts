@@ -452,8 +452,9 @@ export function assertDeletable(doc: LifecycleDocument<SalesKind>): void {
   if (isInvoiceType(doc, "WKR")) {
     refuse(
       `${ref} is a recurring invoice template (WKR, Abo-Rechnung), not a draft; ` +
-        "sevdesk_document_delete_draft does not delete templates. Deactivate or delete it in " +
-        "the sevDesk web app.",
+        "sevdesk_document_delete_draft does not delete templates. End it with " +
+        "sevdesk_invoice_end_recurring (it can be reactivated later); a template is deleted " +
+        "only in the sevDesk web app.",
     );
   }
   if (doc.status !== statusOf(doc).draft) {

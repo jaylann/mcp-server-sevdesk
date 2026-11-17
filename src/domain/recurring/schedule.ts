@@ -30,7 +30,7 @@
 import { z } from "zod";
 
 import { SevdeskError } from "../../sevdesk/errors.js";
-import { parseUpstream, zBerlinDate, zText } from "../../sevdesk/schema.js";
+import { parseUpstream, zBerlinDate, zOptionalInt, zText } from "../../sevdesk/schema.js";
 import { cleanText, compact } from "../common.js";
 import { describeInterval } from "../vouchers.js";
 
@@ -92,6 +92,20 @@ function refuse(message: string): never {
  */
 export function checkSchedule(input: ScheduleInput, today: string): Schedule {
   const { startDate, endDate } = input;
+  const runDay = checkStartDate(startDate, today);
+  if (endDate !== undefined) checkEndDate(endDate, startDate, "the start date");
+  // Only the schedule: callers pass all of a tool's arguments.
+  const { interval } = input;
+  return endDate === undefined
+    ? { interval, startDate, wire: INTERVALS[interval].wire, runDay }
+    : { interval, startDate, endDate, wire: INTERVALS[interval].wire, runDay };
+}
+
+/**
+ * Checks a first run (a new template's start, or a changed one) against the rules of the module
+ * comment and returns its day of the month. Throws `validation` errors with the caller's dates.
+ */
+export function checkStartDate(startDate: string, today: string): number {
   if (startDate < today) {
     refuse(
       `The start date ${startDate} is in the past (today is ${today} in Berlin). sevDesk would ` +
@@ -115,24 +129,46 @@ export function checkSchedule(input: ScheduleInput, today: string): Schedule {
         `month. Start on the ${String(LAST_START_DAY)}th or on the 1st of the next month instead.`,
     );
   }
-  if (endDate !== undefined) {
-    if (endDate < startDate) {
-      refuse(`The end date ${endDate} is before the start date ${startDate}.`);
-    }
-    const last = addMonths(startDate, MAX_RUN_YEARS * 12);
-    if (endDate > last) {
-      refuse(
-        `The end date ${endDate} is more than ${String(MAX_RUN_YEARS)} years after the start ` +
-          `date ${startDate} (the latest is ${last}). Leave endDate out for a template that runs ` +
-          "until it is ended.",
-      );
-    }
+  return runDay;
+}
+
+/**
+ * Checks an end date against the first run it follows: on or after `from` and at most ten years
+ * after it. `fromLabel` names `from` in the message ("the start date", "the next run"); both are
+ * trusted.
+ */
+export function checkEndDate(endDate: string, from: string, fromLabel: string): void {
+  if (endDate < from) {
+    refuse(`The end date ${endDate} is before ${fromLabel} ${from}.`);
   }
-  // Only the schedule: callers pass all of a tool's arguments.
-  const { interval } = input;
-  return endDate === undefined
-    ? { interval, startDate, wire: INTERVALS[interval].wire, runDay }
-    : { interval, startDate, endDate, wire: INTERVALS[interval].wire, runDay };
+  const last = addMonths(from, MAX_RUN_YEARS * 12);
+  if (endDate > last) {
+    refuse(
+      `The end date ${endDate} is more than ${String(MAX_RUN_YEARS)} years after ${fromLabel} ` +
+        `${from} (the latest is ${last}). Leave endDate out for a template that runs until it ` +
+        "is ended.",
+    );
+  }
+}
+
+/**
+ * The schedule a stored template follows from `firstRun` (its next run, or a new start date) on,
+ * for listing run dates. Unlike {@link checkSchedule} it checks nothing: a template made in the
+ * web app may run on day 29–31, which {@link runDates} then moves to a shorter month's last day.
+ */
+export function scheduleFrom(
+  interval: RecurringInterval,
+  firstRun: string,
+  endDate: string | undefined,
+): Schedule {
+  const base = { interval, startDate: firstRun, wire: INTERVALS[interval].wire };
+  const runDay = dayOf(firstRun);
+  return endDate === undefined ? { ...base, runDay } : { ...base, endDate, runDay };
+}
+
+/** Whether the schedule's run day exists in every month (see the module comment). */
+export function runDayFitsEveryMonth(schedule: Schedule): boolean {
+  return schedule.runDay <= LAST_START_DAY;
 }
 
 /**
@@ -183,6 +219,12 @@ export function intervalOf(duration: string): RecurringInterval | undefined {
 // ---------------------------------------------------------------------------------------------
 
 /**
+ * Status 50, "Deactivated recurring invoice" (D-112): an ended template. sevDesk keeps every
+ * schedule field at 50 (recorded 2026-11-17), so its next run is no run that will happen.
+ */
+export const ENDED_STATUS = 50;
+
+/**
  * The `embed` value that adds automatic generation and automatic sending to a template record,
  * by id and on every row of `GET /Invoice?invoiceType=WKR` (D-132). Neither is in the plain
  * record.
@@ -199,6 +241,7 @@ type AutoGenerateState = (typeof AUTO_GENERATE_STATES)[number];
 
 /** The schedule fields of a stored template (lenient, like every upstream read). */
 const storedRecordSchema = z.object({
+  status: zOptionalInt,
   accountIntervall: zText,
   accountStartDate: zBerlinDate,
   accountNextInvoice: zBerlinDate,
@@ -225,11 +268,25 @@ export const storedScheduleSchema = z.object({
     .describe('The interval in words ("every 1 month", "every 2 weeks"), when it is a duration.'),
   startDate: z.string().optional().describe("First run (accountStartDate), YYYY-MM-DD."),
   nextRun: z.string().optional().describe("Next run (accountNextInvoice), YYYY-MM-DD."),
+  runTime: z
+    .string()
+    .optional()
+    .describe(
+      "Time of day (HH:MM, Berlin) stored with the next run, when it is not 00:00: a template " +
+        "made in the web app runs at the time it was saved at.",
+    ),
   endDate: z.string().optional().describe("No run after this date (accountEndDate), YYYY-MM-DD."),
   lastRun: z
     .string()
     .optional()
     .describe("When sevDesk last created an invoice from it (accountLastInvoice), YYYY-MM-DD."),
+  ended: z
+    .literal(true)
+    .optional()
+    .describe(
+      "Set when the template is ended (status 50): sevDesk creates no invoice from it, even " +
+        "with automatic generation on, and nextRun is only the date it kept, not a coming run.",
+    ),
   autoGenerate: z
     .enum(AUTO_GENERATE_STATES)
     .optional()
@@ -279,11 +336,37 @@ export function readStoredSchedule(raw: unknown): StoredSchedule {
     every: interval === undefined ? undefined : describeInterval(interval),
     startDate: record.accountStartDate,
     nextRun: record.accountNextInvoice,
+    runTime: storedRunTime(raw),
     endDate: record.accountEndDate,
     lastRun: record.accountLastInvoice,
+    ended: record.status === ENDED_STATUS ? true : undefined,
     ...readAutoGenerate(record.propertyAutoGenerateRecurringInvoice),
     ...readAutoSend(record.autoSendConfiguration),
   });
+}
+
+const BERLIN_TIME = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Europe/Berlin",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+/**
+ * The Berlin time of day of a stored next run that carries one other than 00:00 (an ISO
+ * date-time, as a template made in the web app stores it, D-111); `undefined` for midnight, a
+ * bare date or anything that is not a date-time.
+ */
+function storedRunTime(raw: unknown): string | undefined {
+  const value =
+    typeof raw === "object" && raw !== null && "accountNextInvoice" in raw
+      ? raw.accountNextInvoice
+      : undefined;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T/.test(value)) return undefined;
+  const moment = new Date(value);
+  if (Number.isNaN(moment.getTime())) return undefined;
+  const time = BERLIN_TIME.format(moment);
+  return time === "00:00" ? undefined : time;
 }
 
 function readAutoSend(value: unknown): {

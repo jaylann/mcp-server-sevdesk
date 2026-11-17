@@ -65,8 +65,8 @@ the token safe.
 
 ## What it can do
 
-89 tools across 10 toolsets. The 42 read tools fill the first column; with the write tiers
-enabled, 47 more tools create and change data.
+92 tools across 10 toolsets. The 42 read tools fill the first column; with the write tiers
+enabled, 50 more tools create and change data.
 
 | Area                               | Read                                                                                                                                                                                                               | Write (`write`, `commit`, `external`)                                                                                                                                                                                                                             |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

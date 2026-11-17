@@ -270,8 +270,9 @@ describe("sevdesk_invoice_create_recurring", () => {
         "switches it on for the template in the sevDesk web app, sevDesk finalizes every invoice " +
         "it creates with its final number, e-mails it with the PDF to the customer and enshrines " +
         "it (festgeschrieben) within about two minutes of the run time, before anyone has seen it.",
-      "To change, pause or end the template later, or to switch automatic generation on or off, " +
-        "use the sevDesk web app (Abo-Rechnungen); this server has no tool for that yet.",
+      "To change the template later, also to switch automatic generation on or off, use " +
+        "sevdesk_invoice_update_recurring; to end it, sevdesk_invoice_end_recurring. A template " +
+        "is deleted only in the sevDesk web app (Abo-Rechnungen).",
     ]);
   });
 

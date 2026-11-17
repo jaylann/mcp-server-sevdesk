@@ -69,6 +69,7 @@ every write is real, and finalized or enshrined records cannot simply be deleted
 | follow up on open offers                     | `sevdesk_orders_list` (`type: offer`, `status: sent`)               |
 | write an invoice                             | `sevdesk_invoice_create_draft`, then `sevdesk_invoice_finalize`     |
 | bill on a schedule (Abo-Rechnung)            | `sevdesk_invoice_create_recurring`                                  |
+| change or end an Abo-Rechnung                | `sevdesk_invoice_update_recurring`, `sevdesk_invoice_end_recurring` |
 | check an invoice as e-invoice                | `sevdesk_invoice_einvoice_preflight`                                |
 
 The main workflows are also MCP prompts of the server (in Claude Code `/mcp__sevdesk__<name>`):

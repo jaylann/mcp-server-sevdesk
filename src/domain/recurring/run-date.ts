@@ -70,6 +70,25 @@ export const RUN_DATE_BEHAVIOUR: Readonly<Record<RunDateCase, Phrase>> = {
 };
 
 /**
+ * The `on` case for a stored template whose run time is not known to be 00:00: one made in the web
+ * app stores its start and next run with the time of day it was saved at, and that time is then
+ * the run time (recorded 2026-11-17, D-111). Same facts, without naming midnight.
+ */
+export const RUN_DATE_ON_AT_STORED_TIME: Phrase = phrase(
+  "Automatic generation is on: on every run date, within about a minute of the run time stored " +
+    "with the template's next run (not necessarily midnight), sevDesk creates a draft invoice " +
+    "from this template by itself, with its positions and texts plus a line in the head text " +
+    "that names the billing period. sevDesk neither finalizes nor sends the draft, and its " +
+    "number is provisional: a person must still finalize and send every draft.",
+  "Die automatische Generierung ist an: An jedem Ausführungstag erzeugt sevDesk etwa eine Minute " +
+    "nach der Uhrzeit, die mit der nächsten Ausführung der Vorlage gespeichert ist (nicht " +
+    "unbedingt Mitternacht), selbst einen Rechnungsentwurf aus dieser Vorlage, mit ihren " +
+    "Positionen und Texten und einer Zeile im Kopftext, die den Abrechnungszeitraum nennt. " +
+    "sevDesk stellt den Entwurf weder fertig noch versendet ihn, und seine Nummer ist vorläufig: " +
+    "Jeden Entwurf muss noch jemand fertigstellen und versenden.",
+);
+
+/**
  * Whether the first run is due at once on `today` (Berlin's `YYYY-MM-DD`): it is today and
  * automatic generation is on. The preview then carries {@link FIRST_RUN_TODAY}.
  */
@@ -81,10 +100,32 @@ export function firstRunDueAtOnce(
   return autoGenerate && startDate === today;
 }
 
-/** Added when the first run is due at once ({@link firstRunDueAtOnce}). */
+/**
+ * Added when the first run is due at once ({@link firstRunDueAtOnce}), and when a change switches
+ * automatic generation on for a template whose next run is today at 00:00.
+ */
 export const FIRST_RUN_TODAY: Phrase = phrase(
   "The first run is today, so it is due at once: sevDesk creates the first draft within about a " +
     "minute of saving the template.",
   "Die erste Ausführung ist heute und damit sofort fällig: sevDesk erzeugt den ersten Entwurf " +
     "etwa eine Minute nach dem Speichern der Vorlage.",
 );
+
+/**
+ * Said instead of "due at once" when a stored template's next run is today and carries a run time
+ * other than 00:00 (`HH:MM` Berlin, a template made in the web app, D-111): sevDesk generates
+ * within about a minute of that time, or of the save that makes the run due (`after`: a change
+ * that switches generation on, or a reactivation) when that time has passed by then. The time is
+ * not compared with the clock, so the preview stays the same between asking and approving.
+ */
+export function runTodayAtStoredTime(runTime: string, after: "change" | "reactivation"): Phrase {
+  return phrase(
+    `The next run is today at ${runTime} (Berlin time), the time stored with it: sevDesk creates ` +
+      `a draft within about a minute of that time, or within about a minute of the ${after} if ` +
+      "that time has passed by then.",
+    `Die nächste Ausführung ist heute um ${runTime} Uhr (Berliner Zeit), der mit ihr ` +
+      "gespeicherten Uhrzeit: sevDesk erzeugt etwa eine Minute danach einen Entwurf, oder etwa " +
+      `eine Minute nach dem ${after === "change" ? "Speichern der Änderung" : "Aktivieren"}, ` +
+      "wenn diese Uhrzeit dann schon vorbei ist.",
+  );
+}
