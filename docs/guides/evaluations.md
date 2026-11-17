@@ -176,7 +176,11 @@ A supplier counts as regular when its bills fall on about the same day (within 7
 three times in four, one bill (or its usual number of bills) per period as a rule, with at most one
 period in four empty; quarterly and yearly bills must fall in the same month of the quarter or
 year. A period counts as missing only with at least three months (quarterly and yearly: two
-periods) with bills before it and one after it.
+periods) with bills before it and one after it. The rhythm is learned for each month of the audit
+from the supplier's bills of the 12 months before and after it (yearly bills: 24 months before),
+so a supplier that went from monthly to quarterly bills is judged by its quarterly bills from then
+on. A bill is expected on the supplier's usual day, or on the month's last day when the month is
+shorter: a bill of the 31st is expected on 30 June.
 
 | Code                     | Means                                                         |
 | ------------------------ | ------------------------------------------------------------- |
@@ -186,10 +190,13 @@ periods) with bills before it and one after it.
 
 Not flagged on purpose: a change of amount (amounts are not compared), a bill that moved a few days
 across a month end, two bills in one month next to a month without one (the bill came late or
-early), a supplier that stopped billing, and the latest period while the supplier's next bill has
-not come yet. sevDesk's recurring voucher templates (RV) are not bills and are not read; the
-vouchers booked from them count like any other. When the listing stops at its cap the check
-reports no gaps at all, since a voucher not read would look like one.
+early), a supplier that stopped billing, the latest period while the supplier's next bill has not
+come yet, and a bill booked without the supplier's contact but under its name (it counts for the
+one contact whose vouchers carry that name). sevDesk's recurring voucher templates (RV) are not
+bills and are not read; the vouchers booked from them count like any other. When the listing stops
+at its cap the check reports no gaps at all, since a voucher not read would look like one. A
+shorter period does not help then: the range read always spans about three years, so the account
+has more vouchers in that time than the check can read.
 
 The checks `vat` and `reverse_charge` read the period's documents and, where the rates decide,
 their positions; `vat` also reads the contact and address lists once each. `duplicates` and

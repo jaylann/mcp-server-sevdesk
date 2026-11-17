@@ -18,6 +18,7 @@ import {
   auditResultSchema,
   runAudit,
 } from "../../../../../src/domain/reports/audit/registry.js";
+import { supplierKeysJoiningNames } from "../../../../../src/domain/reports/audit/supplier-bills.js";
 import type { DocumentHeader } from "../../../../../src/domain/reports/positions-scan.js";
 import { resolvePeriod } from "../../../../../src/domain/reports/vat.js";
 import { FakeSevdeskClient } from "../../../../helpers/fake-client.js";
@@ -47,6 +48,9 @@ function bill(spec: BillSpec): ScenarioDocument {
     extra["supplier"] = null;
     extra["supplierName"] = spec.supplierName ?? null;
     extra["supplierNameAtSave"] = spec.supplierName ?? null;
+  } else if (spec.supplierName !== undefined) {
+    // sevDesk keeps the supplier name next to the contact.
+    extra["supplierName"] = spec.supplierName;
   }
   return {
     row: voucherDoc(
@@ -259,7 +263,10 @@ describe("check recurring_gaps", () => {
 
     expect(notes).toContain("dated 2024-01-01 to 2026-06-15");
     // Monthly: all but the quarterly, the sporadic one and the customer (revenue is not read).
-    expect(notes).toContain("Suppliers with a rhythm: 7 monthly, 1 quarterly, 0 yearly.");
+    expect(notes).toContain(
+      "Suppliers with a rhythm around the period: 7 monthly, 1 quarterly, 0 yearly.",
+    );
+    expect(notes).toContain("the supplier's bills of the 12 months before and after it");
     expect(notes).toContain("recurring voucher templates (RV)");
     expect(notes).toContain("1 expense voucher without a supplier");
     const expenses = ALL.filter((doc) => doc.row["creditDebit"] === "C").length;
@@ -277,7 +284,34 @@ describe("check recurring_gaps", () => {
 
     expect(result.findings).toEqual([]);
     expect(result.coverage.truncated).toBe(true);
-    expect(result.notes.join(" ")).toContain("The scan was cut");
+    const notes = result.notes.join(" ");
+    expect(notes).toContain("The scan was cut: listing vouchers stopped at its cap of 50 rows");
+    // The range read is about three years whatever the period: no futile advice.
+    expect(notes).toContain("A shorter period does not help");
+    expect(notes).not.toContain("Use a shorter period");
+  });
+
+  it("counts a bill booked without the contact for the contact of the same name", async () => {
+    const telco = 4200;
+    const bills = [
+      ...monthly(telco, 12, "2025-01", "2026-05", {
+        skip: ["2026-02"],
+        supplierName: "Telco GmbH",
+      }),
+      // February was booked by hand without the contact, under the same name.
+      bill({ supplier: null, supplierName: "telco  gmbh", date: "2026-02-12" }),
+    ];
+
+    const { result } = await audit(bills);
+    expect(result.findings).toEqual([]);
+    expect(result.notes.join(" ")).toContain(
+      "Suppliers with a rhythm around the period: 1 monthly",
+    );
+
+    // Without that bill the gap is real, and the finding names the contact.
+    const { result: gap } = await audit(bills.slice(0, -1));
+    expect(gap.findings).toHaveLength(1);
+    expect(gap.findings[0]).toMatchObject({ missing: ["2026-02"], contact: { id: telco } });
   });
 
   it("finds a missing yearly bill once the next one exists", async () => {
@@ -337,8 +371,10 @@ describe("findGaps", () => {
       headers(["2026-01-05", "2026-02-05", "2026-03-05", "2026-05-05"]),
       period,
     );
-    expect(three?.rhythm.code).toBe("monthly_bill_missing");
-    expect(three?.gaps.map((gap) => gap.month)).toEqual(["2026-04"]);
+    expect(three?.rhythms.map((rhythm) => rhythm.code)).toEqual(["monthly_bill_missing"]);
+    expect(three?.gaps.map((gap) => [gap.rhythm.code, gap.month, gap.expected])).toEqual([
+      ["monthly_bill_missing", "2026-04", "2026-04-05"],
+    ]);
 
     const two = findGaps(headers(["2026-02-05", "2026-03-05", "2026-05-05", "2026-06-05"]), period);
     expect(two?.gaps).toEqual([]);
@@ -349,8 +385,82 @@ describe("findGaps", () => {
       headers(["2026-01-30", "2026-02-27", "2026-03-31", "2026-05-02", "2026-05-30", "2026-06-29"]),
       period,
     );
-    expect(result?.rhythm.code).toBe("monthly_bill_missing");
+    expect(result?.rhythms.map((rhythm) => rhythm.code)).toEqual(["monthly_bill_missing"]);
     expect(result?.gaps).toEqual([]);
+  });
+
+  it("expects a month-end bill in the gap's own month, on its last day when it is shorter", () => {
+    // Typical day 31: June's bill is due on 30 June, not on 1 July.
+    const endOfMonth = headers([
+      "2026-01-31",
+      "2026-02-28",
+      "2026-03-31",
+      "2026-04-30",
+      "2026-05-31",
+      "2026-07-31",
+    ]);
+    const june = findGaps(endOfMonth, { from: "2026-06-01", to: "2026-06-30" });
+    expect(june?.gaps.map((gap) => [gap.month, gap.expected])).toEqual([["2026-06", "2026-06-30"]]);
+    expect(findGaps(endOfMonth, { from: "2026-07-01", to: "2026-07-31" })?.gaps).toEqual([]);
+
+    // Typical day 30: February's bill is due on 28 February, not on 2 March.
+    const thirtieth = headers([
+      "2025-10-30",
+      "2025-11-30",
+      "2025-12-30",
+      "2026-01-30",
+      "2026-03-30",
+      "2026-04-30",
+    ]);
+    const february = findGaps(thirtieth, { from: "2026-02-01", to: "2026-02-28" });
+    expect(february?.gaps.map((gap) => [gap.month, gap.expected])).toEqual([
+      ["2026-02", "2026-02-28"],
+    ]);
+    expect(findGaps(thirtieth, { from: "2026-03-01", to: "2026-03-31" })?.gaps).toEqual([]);
+  });
+
+  it("judges each month by the bills around it, so a changed rhythm is not a run of gaps", () => {
+    // Monthly on the 10th for two years (March 2025 missing), then quarterly from 2026.
+    const monthlyThenQuarterly = headers([
+      ...[...Array(24).keys()]
+        .map((index) => {
+          const year = 2024 + Math.floor(index / 12);
+          return `${String(year)}-${String((index % 12) + 1).padStart(2, "0")}-10`;
+        })
+        .filter((date) => date !== "2025-03-10"),
+      "2026-01-10",
+      "2026-04-10",
+      "2026-07-10",
+      "2026-10-10",
+    ]);
+
+    // Over the whole range most months hold a bill; around 2026 they do not.
+    expect(findGaps(monthlyThenQuarterly, period)?.gaps ?? []).toEqual([]);
+    // The monthly era still has its real gap.
+    const early = findGaps(monthlyThenQuarterly, { from: "2025-01-01", to: "2025-03-31" });
+    expect(early?.gaps.map((gap) => [gap.rhythm.code, gap.month])).toEqual([
+      ["monthly_bill_missing", "2025-03"],
+    ]);
+
+    // Once a year of quarterly bills exists, a missing quarter is reported as such.
+    const quarterly = headers([
+      ...[...Array(24).keys()].map((index) => {
+        const year = 2023 + Math.floor(index / 12);
+        return `${String(year)}-${String((index % 12) + 1).padStart(2, "0")}-10`;
+      }),
+      "2025-01-10",
+      "2025-04-10",
+      "2025-07-10",
+      "2025-10-10",
+      "2026-01-10",
+      "2026-07-10",
+      "2026-10-10",
+    ]);
+    const q2 = findGaps(quarterly, { from: "2026-04-01", to: "2026-06-30" });
+    expect(q2?.rhythms.map((rhythm) => rhythm.code)).toEqual(["quarterly_bill_missing"]);
+    expect(q2?.gaps.map((gap) => [gap.rhythm.code, gap.month])).toEqual([
+      ["quarterly_bill_missing", "2026-04"],
+    ]);
   });
 
   it("lets an extra bill next to a gap cover it", () => {
@@ -384,6 +494,37 @@ describe("findGaps", () => {
       to: "2026-05-31",
     });
     expect(result?.gaps).toEqual([]);
+  });
+});
+
+describe("supplierKeysJoiningNames", () => {
+  const named = (id: number, contact: { id?: number; name?: string }): DocumentHeader => ({
+    ...header(id, "2026-01-05"),
+    contact,
+  });
+
+  it("joins a voucher known by name to the one contact of that name, and only then", () => {
+    const vouchers = [
+      named(1, { id: 42, name: "Telco GmbH" }),
+      named(2, { name: " telco   GMBH " }),
+      named(3, { id: 7, name: "Kiosk" }),
+      named(4, { id: 8, name: "Kiosk" }),
+      named(5, { name: "kiosk" }),
+      named(6, { name: "Bäcker" }),
+      named(7, {}),
+    ];
+    const keyOf = supplierKeysJoiningNames(vouchers);
+
+    expect(vouchers.map(keyOf)).toEqual([
+      "id:42",
+      "id:42",
+      "id:7",
+      "id:8",
+      // Two contacts carry the name: it joins neither.
+      "name:kiosk",
+      "name:bäcker",
+      undefined,
+    ]);
   });
 });
 

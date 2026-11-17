@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/evaluations.md sha256:2bef130e3834 -->
+<!-- translated-from: docs/guides/evaluations.md sha256:64e2a09c4ce1 -->
 
 # Auswertungen und Exporte
 
@@ -190,7 +190,11 @@ ungefähr denselben Tag fallen (innerhalb von 7 Tagen), in der Regel eine Rechnu
 übliche Zahl an Rechnungen) je Zeitraum, mit höchstens einem von vier Zeiträumen ohne Rechnung;
 Quartals- und Jahresrechnungen müssen in denselben Monat des Quartals oder Jahres fallen. Ein
 Zeitraum gilt nur dann als fehlend, wenn davor mindestens drei Monate (bei Quartal und Jahr: zwei
-Zeiträume) mit Rechnungen liegen und danach einer.
+Zeiträume) mit Rechnungen liegen und danach einer. Den Rhythmus lernt die Prüfung für jeden Monat
+neu, aus den Rechnungen des Lieferanten in den 12 Monaten davor und danach (bei Jahresrechnungen
+24 Monate davor): Ein Lieferant, der von Monats- auf Quartalsrechnungen umgestellt hat, wird ab
+dann an seinen Quartalsrechnungen gemessen. Eine Rechnung wird am üblichen Tag des Lieferanten
+erwartet oder am letzten Tag des Monats, wenn der Monat kürzer ist: eine Rechnung vom 31. am 30. Juni.
 
 | Code                     | Bedeutet                                                                 |
 | ------------------------ | ------------------------------------------------------------------------ |
@@ -201,10 +205,13 @@ Zeiträume) mit Rechnungen liegen und danach einer.
 Bewusst nicht gemeldet: ein geänderter Betrag (Beträge werden nicht verglichen), eine Rechnung, die
 sich um ein paar Tage über ein Monatsende verschoben hat, zwei Rechnungen in einem Monat neben einem
 Monat ohne Rechnung (die Rechnung kam zu spät oder zu früh), ein Lieferant, der nicht mehr abrechnet,
-und der letzte Zeitraum, solange die nächste Rechnung des Lieferanten noch nicht da ist.
-Wiederkehrende Belegvorlagen (RV) von sevDesk sind keine Rechnungen und werden nicht gelesen; die
-daraus gebuchten Belege zählen wie alle anderen. Hört die Liste an ihrer Obergrenze auf, meldet die
-Prüfung gar keine Lücken, denn ein nicht gelesener Beleg sähe wie eine aus.
+der letzte Zeitraum, solange die nächste Rechnung des Lieferanten noch nicht da ist, und eine
+Rechnung, die ohne den Kontakt des Lieferanten, aber unter seinem Namen gebucht wurde (sie zählt
+für den einen Kontakt, dessen Belege diesen Namen tragen). Wiederkehrende Belegvorlagen (RV) von
+sevDesk sind keine Rechnungen und werden nicht gelesen; die daraus gebuchten Belege zählen wie alle
+anderen. Hört die Liste an ihrer Obergrenze auf, meldet die Prüfung gar keine Lücken, denn ein
+nicht gelesener Beleg sähe wie eine aus. Ein kürzerer Zeitraum hilft dann nicht: Gelesen werden
+immer etwa drei Jahre, und das Konto hat in dieser Zeit mehr Belege, als die Prüfung lesen kann.
 
 Die Prüfungen `vat` und `reverse_charge` lesen die Dokumente des Zeitraums und, wo die Steuersätze
 entscheiden, deren Positionen; `vat` liest außerdem die Kontakt- und die Adressliste je einmal.
