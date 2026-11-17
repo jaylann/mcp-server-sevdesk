@@ -73,13 +73,34 @@ function organisationRoutes(persons: FakeRoute = personsRoute()): FakeRoute[] {
   ];
 }
 
-/** Person 1002 (belongs to 1001) without addresses or communication ways. */
-function personRoutes(): FakeRoute[] {
+/**
+ * Person 1002 (belongs to 1001) without addresses or communication ways, and the contacts stored
+ * with 1002 as their parent (none unless given; sevDesk stores a person as parent, D-083).
+ */
+function personRoutes(children: readonly unknown[] = []): FakeRoute[] {
   return [
     { path: "/Contact/1002", response: { fixture: "contacts/contact-1002.json" } },
     { path: "/ContactAddress", query: filter(1002), response: { body: { objects: [] } } },
     { path: "/CommunicationWay", query: filter(1002), response: { body: { objects: [] } } },
+    {
+      path: "/Contact",
+      query: { depth: "1", "parent[id]": "1002", "parent[objectName]": "Contact" },
+      response: { body: { objects: children } },
+    },
   ];
+}
+
+/** Person 1006, "Dr. Lisa Mustermann", stored with person 1002 as its parent. */
+function childOf1002(): unknown {
+  const [person] = (loadFixture("contacts/contact-1002.json").body as { objects: object[] })
+    .objects;
+  return {
+    ...person,
+    id: "1006",
+    surename: "Lisa",
+    customerNumber: "K-1006",
+    parent: { id: "1002", objectName: "Contact" },
+  };
 }
 
 /** The DELETE, then the reads of contact 1001 and of its contact person 1002. */
@@ -190,7 +211,7 @@ describe("sevdesk_contact_delete", () => {
     ]);
   });
 
-  it("names a person's organisation and reads no contact persons for it", async () => {
+  it("names a person's organisation and adds nothing when no contact names it as parent", async () => {
     const client = new FakeSevdeskClient(personRoutes());
     const { preview, previewDe } = await prepareWrite(tool, { id: 1002 }, client);
     expect(preview.action).toBe("Delete contact 1002 (person) from sevDesk.");
@@ -205,7 +226,61 @@ describe("sevdesk_contact_delete", () => {
     expect(preview.warnings).toHaveLength(1);
     expect(previewDe.action).toBe("Kontakt 1002 (Person) aus sevDesk löschen.");
     expect(previewDe.facts[3]).toEqual({ label: "Ansprechpartner von", value: "Kontakt 1001" });
-    expect(client.callsTo("/Contact")).toEqual([]);
+    // The parent filter is read for a person too (D-083: sevDesk stores a person as parent).
+    expect(client.callsTo("/Contact")).toHaveLength(1);
+  });
+
+  it("shows, binds and reads back the contacts stored with a person as parent (D-083)", async () => {
+    const plain = await prepareWrite(tool, { id: 1002 }, new FakeSevdeskClient(personRoutes()));
+    const client = new StagedClient(personRoutes([childOf1002()]), [
+      { method: "DELETE", path: "/Contact/1002", response: DELETED },
+      { path: "/Contact/1002", response: GONE },
+      { path: "/Contact/1006", response: STILL_THERE },
+    ]);
+    const { plan, output } = await executeWrite(tool, { id: 1002 }, client);
+
+    expect(plan.preview.action).toBe(
+      "Delete contact 1002 (person) from sevDesk; sevDesk may delete its 1 contact person with it.",
+    );
+    expect(plan.preview.facts.slice(-2)).toEqual([
+      { label: "Contact persons (may be deleted with it)", value: "1" },
+      {
+        label: "Contact person (may be deleted with it)",
+        value: "Dr. Lisa Mustermann (contact 1006)",
+      },
+    ]);
+    expect(plan.preview.warnings[1]).toBe(
+      "sevDesk has 1 contact stored with this person as its organisation (parent, set outside " +
+        "this server). sevDesk may delete it with it; this cannot be undone either.",
+    );
+    expect(plan.previewDe.action).toBe(
+      "Kontakt 1002 (Person) aus sevDesk löschen; sevDesk löscht möglicherweise seinen " +
+        "Ansprechpartner mit.",
+    );
+    expect(plan.previewDe.facts.slice(-2)).toEqual([
+      { label: "Ansprechpartner (werden möglicherweise mitgelöscht)", value: "1" },
+      {
+        label: "Ansprechpartner (wird möglicherweise mitgelöscht)",
+        value: "Dr. Lisa Mustermann (Kontakt 1006)",
+      },
+    ]);
+    expect(plan.previewDe.warnings[1]).toBe(
+      "In sevDesk ist 1 Kontakt mit dieser Person als Organisation gespeichert (parent, " +
+        "außerhalb dieses Servers gesetzt). sevDesk löscht ihn möglicherweise mit; das lässt " +
+        "sich ebenfalls nicht rückgängig machen.",
+    );
+    // A contact stored under the person after the human was asked asks again.
+    expect(plan.binding).not.toBe(plain.binding);
+
+    expect(output.data.contactPersons).toEqual([
+      { id: 1006, displayName: "Dr. Lisa Mustermann", outcome: "remaining" },
+    ]);
+    expect(output.data.notes).toEqual([
+      "Contact person 1006 is still in sevDesk although person 1002 was deleted; whether " +
+        "sevDesk deletes contacts stored under a person is not recorded. Check with " +
+        "sevdesk_contact_get.",
+    ]);
+    expect(output.affected).not.toContainEqual({ objectName: "Contact", id: "1006" });
   });
 
   it("lists no contact persons as none, and says when address lists were cut", async () => {

@@ -74,7 +74,13 @@ export const contactDeleteTool = defineWriteTool({
     prepareContactDelete(ctx.client, args.id, { signal: ctx.signal, cacheOwner: ctx.config }),
   execute: async (args, plan, ctx) => {
     const { contact, addressIds, communicationWayIds, persons } = plan.state;
-    const result = await executeContactDelete(ctx.client, args.id, persons, ctx.signal);
+    const result = await executeContactDelete(
+      ctx.client,
+      args.id,
+      contact.kind,
+      persons,
+      ctx.signal,
+    );
     const id = String(args.id);
     const data = {
       contact,

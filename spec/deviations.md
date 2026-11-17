@@ -3190,9 +3190,10 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Impact:** `sevdesk_contact_delete` says in its preview that the addresses and communication
   ways go too, and for an organisation lists the contact persons that go with it (up to 20 by name
   and id, the rest counted; it refuses an organisation with more than 100, which it cannot all
-  read). The approval is bound to the ids of those persons, so a person added in between asks
-  again. Afterwards it reads each person back and says so when one is still there or could not be
-  checked. A 404 on the DELETE counts as "already gone". Removing an address or way says when it
+  read). It reads them for a person too, since sevDesk stores a person as parent (D-083), and
+  says that sevDesk may delete them with it (not measured). The approval is bound to the ids of
+  those persons, so a person added in between asks again. Afterwards it reads each person back and
+  says so when one is still there or could not be checked. A 404 on the DELETE counts as "already gone". Removing an address or way says when it
   removes the billing address or the main entry, since sevDesk elects no new one; when the same
   update gives a new value for that very entry, a new billing address or main entry is added
   instead of rewriting another one.
@@ -3201,7 +3202,8 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   ("deletes an organisation with its contact persons and reads every one back (D-084)", "lists up
   to 20 contact persons by name and binds the approval to all of them", "refuses an organisation
   whose contact persons cannot all be read", "says so when a contact person is still there or
-  could not be checked", "counts a 404 on the DELETE as already gone (D-084)");
+  could not be checked", "counts a 404 on the DELETE as already gone (D-084)", "shows, binds and
+  reads back the contacts stored with a person as parent (D-083)");
   `test/unit/tools/masterdata/contact-update.test.ts` ("removes an address and the main e-mail
   last and says what is left", "warns when the billing address goes and nothing replaces it",
   "adds a new billing address when the billing address goes, and leaves the delivery address
