@@ -9,7 +9,6 @@
  */
 import type { SevdeskClientEvent } from "../../../src/sevdesk/client.js";
 import { SevdeskError, type SevdeskErrorKind } from "../../../src/sevdesk/errors.js";
-import { minimumWriteTier } from "../../../src/sevdesk/paths.js";
 import type { QueryValue, SevdeskClient } from "../../../src/sevdesk/types.js";
 import { rowsOf } from "../fixture-plan.js";
 import type { Scrubber } from "../scrub.js";
@@ -684,10 +683,12 @@ export function createTestData(options: {
         [POSITION_KEY[kind].replace("Save", "Delete")]: null,
         ...documentOptions.body,
       };
-      // The tier the client requires for this body: `write` for a draft, `commit` for a recurring
-      // invoice template (`invoiceType` WKR, or none: `minimumWriteTier`).
+      // A recurring invoice template (WKR) is a commit step (D-111); every other probe document is
+      // a draft (status 100), which a write tool may save. The client refuses a body that needs
+      // more than the tier declared here.
+      const template = kind === "Invoice" && header["invoiceType"] === "WKR";
       const result = await http.write("POST", SAVE_PATH[kind], {
-        tier: minimumWriteTier(SAVE_PATH[kind], undefined, body),
+        tier: template ? "commit" : "write",
         body,
       });
       const id = createdId(result.objects, RESPONSE_KEY[kind]);

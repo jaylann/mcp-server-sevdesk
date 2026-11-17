@@ -18,7 +18,6 @@
  * Only the opt-in probe `write-reserved-number-delete-draft` reserves numbers, as the draft tools
  * do (D-066), and so consumes numbers of the trial's sequences.
  */
-import { minimumWriteTier } from "../../../src/sevdesk/paths.js";
 import { rowsOf } from "../fixture-plan.js";
 import { RUN_TAG_PREFIX } from "../live-env.js";
 import {
@@ -1800,18 +1799,17 @@ export const GAPS_DOCUMENTS_PROBES: readonly ProbeDefinition[] = [
             ...new Set([...readBack.ids, ...inAnswer.map((item) => Number(item["id"]))]),
           ].filter((item) => Number.isSafeInteger(item) && item > 0);
           if (percentage && discountIds.length > 0) {
-            const path = `/${kind}/Factory/save${kind}`;
-            const body = {
-              [BODY_KEY[kind]]: { id, objectName: kind, mapAll: true },
-              [`${BODY_KEY[kind]}PosSave`]: [],
-              [`${BODY_KEY[kind]}PosDelete`]: null,
-              discountSave: null,
-              discountDelete: discountIds.map((item) => ({ id: item, objectName: "Discounts" })),
-            };
-            // An invoice update without invoiceType needs commit (`minimumWriteTier`).
-            const result = await ctx.http.write("POST", path, {
-              tier: minimumWriteTier(path, undefined, body),
-              body,
+            const result = await ctx.http.write("POST", `/${kind}/Factory/save${kind}`, {
+              // An invoice update without invoiceType is a commit step: the client cannot tell
+              // it from a change of a recurring template.
+              tier: kind === "Invoice" ? "commit" : "write",
+              body: {
+                [BODY_KEY[kind]]: { id, objectName: kind, mapAll: true },
+                [`${BODY_KEY[kind]}PosSave`]: [],
+                [`${BODY_KEY[kind]}PosDelete`]: null,
+                discountSave: null,
+                discountDelete: discountIds.map((item) => ({ id: item, objectName: "Discounts" })),
+              },
             });
             const after = await ctx.read.byId(kind, id);
             const left = await discountReadBack(ctx, kind, id);

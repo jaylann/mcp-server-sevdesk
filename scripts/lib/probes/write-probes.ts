@@ -8,7 +8,6 @@
  * Nothing here sends e-mails, enshrines or exports: those are listed as "not probed, manual".
  */
 import { format, subtract } from "../../../src/domain/money.js";
-import { minimumWriteTier } from "../../../src/sevdesk/paths.js";
 import {
   addDays,
   berlinMidnight,
@@ -932,21 +931,20 @@ export const WRITE_PROBES: readonly ProbeDefinition[] = [
           continue;
         }
         const before = await ctx.read.byId(kind, draft.id);
-        const path = `/${kind}/Factory/save${kind}`;
-        const body = {
-          [key]: {
-            id: draft.id,
-            objectName: kind,
-            mapAll: true,
-            header: `${data(ctx).tag} ${kind} updated`,
+        const update = await ctx.http.write("POST", `/${kind}/Factory/save${kind}`, {
+          // An invoice update without invoiceType is a commit step: the client cannot tell it
+          // from a change of a recurring template.
+          tier: kind === "Invoice" ? "commit" : "write",
+          body: {
+            [key]: {
+              id: draft.id,
+              objectName: kind,
+              mapAll: true,
+              header: `${data(ctx).tag} ${kind} updated`,
+            },
+            [`${key}PosSave`]: [],
+            [`${key}PosDelete`]: null,
           },
-          [`${key}PosSave`]: [],
-          [`${key}PosDelete`]: null,
-        };
-        // An invoice update without invoiceType needs commit (`minimumWriteTier`).
-        const update = await ctx.http.write("POST", path, {
-          tier: minimumWriteTier(path, undefined, body),
-          body,
         });
         const answerId = createdId(update.objects, key);
         const after = await ctx.read.byId(kind, draft.id);
