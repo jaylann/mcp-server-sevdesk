@@ -1,12 +1,13 @@
-<!-- translated-from: docs/guides/evaluations.md sha256:0375c83687ae -->
+<!-- translated-from: docs/guides/evaluations.md sha256:be20700dc6d4 -->
 
 # Auswertungen und Exporte
 
 Was dir der Assistent über deine Bücher sagen kann und wo seine Antworten enden: Summen, offene
 Posten, Liquidität, die Umsatzsteuer-Auswertung, die Gewinn- und Verlustrechnung, die Prüfungen und
 die Exporte für deine Steuerberatung. Diese Seite ist für alle, die Zahlen aus sevDesk haben wollen,
-und für alle, die entscheiden, wie weit sie ihnen trauen. Jede Auswertung hier ist `read`; nur der DATEV-Export
-braucht `write` ([Berechtigungen](../permissions.de.md#stufen)).
+und für alle, die entscheiden, wie weit sie ihnen trauen. Jede Auswertung hier ist `read`; der
+DATEV-Export und das Belegarchiv brauchen `write`, das Setzen der DATEV-Einstellungen braucht
+`commit` ([Berechtigungen](../permissions.de.md#stufen)).
 
 > [!IMPORTANT]
 > Die Auswertungen berechnet dieser Server aus deinen sevDesk-Daten. Sie sind nicht die
@@ -28,6 +29,7 @@ braucht `write` ([Berechtigungen](../permissions.de.md#stufen)).
 | Welche Belege in meinem Ordner nicht gebucht sind           | [`sevdesk_receipt_folder_check`](../tools.md#sevdesk_receipt_folder_check) | `read`  |
 | Eine CSV-Datei für Excel oder die Steuerberatung            | [`sevdesk_csv_export`](../tools.md#sevdesk_csv_export)                     | `read`  |
 | Die DATEV-Buchungsdaten für die Steuerberatung              | [`sevdesk_datev_export`](../tools.md#sevdesk_datev_export)                 | `write` |
+| Alle Rechnungs- oder Beleg-PDFs eines Zeitraums             | [`sevdesk_archive_export`](../tools.md#sevdesk_archive_export)             | `write` |
 
 Zwei Prompts kombinieren sie: [`vat_precheck`](../tools.md#vat_precheck) vor der
 Umsatzsteuer-Voranmeldung und [`month_end_close`](../tools.md#month_end_close) für den
@@ -353,11 +355,81 @@ einem entfernten Server: ein Download-Link). Du kannst es auf Einnahmen, Ausgabe
 Kasse oder Anlagen beschränken, nur Dokumente behalten, die im Zeitraum bezahlt wurden, und die
 Belegbilder hinzufügen, was die Datei deutlich größer macht. Es dauert bis zu einigen Minuten.
 
+Mit `format: "xml"` exportiert sevDesk statt des Buchungsstapels die Dokumente selbst als
+DATEV-XML mit ihren Belegbildern, für eine Steuerberatung, die Belege importiert. Das umfasst nur
+Einnahmen und Ausgaben (Kontoumsätze, Kasse und Anlagen fallen weg, und die Vorschau sagt das),
+und die Belegbilder sind immer dabei: etwa 5,6 MB für einen Monat eines kleinen Kontos. Nur die im
+Zeitraum bezahlten Dokumente zu behalten (`exportByPaydate`) geht nur beim CSV-Export: Der
+XML-Export wurde ohne diese Option aufgezeichnet, daher lehnt das Werkzeug sie dort ab. Ob der
+XML-Export festgeschriebene Dokumente enthält, wurde nicht aufgezeichnet; Vorschau und Ergebnis
+sagen das, prüfe den Export also in sevDesk, wenn sie darin sein müssen. Der CSV-Export bleibt die
+Voreinstellung.
+
 - Es braucht die DATEV-Einstellungen in sevDesk (Beraternummer, Mandantennummer, Beginn des
-  Wirtschaftsjahres) und lehnt mit einem Hinweis ab, wenn sie fehlen.
-- Es kann die Dokumente in sevDesk als exportiert markieren. Es schreibt sie nie fest.
+  Wirtschaftsjahres) und lehnt mit einem Hinweis ab, wenn sie fehlen; siehe
+  [DATEV-Einstellungen](#datev-einstellungen) unten.
+- Es schreibt die Dokumente nie fest. Ein aufgezeichneter XML-Export hat nichts als exportiert
+  markiert: Ein zweiter Export desselben Zeitraums enthielt dieselben Dokumente.
 - sevDesk liefert die Datei aus seinem eigenen Speicher bei Amazon S3 aus
   ([Datenschutz](../../PRIVACY.de.md)).
+- Dieser Server lädt höchstens 100 MiB herunter. Ein größerer Export (ein langer Zeitraum mit
+  Belegbildern) wird nicht gespeichert: Exportiere Monat für Monat, oder lade ihn in sevDesk
+  herunter.
+
+### DATEV-Einstellungen
+
+> Setz die DATEV-Mandantennummer auf 54321; die Beraternummer meiner Steuerberaterin ist 1234567.
+
+[`sevdesk_datev_settings_update`](../tools.md#sevdesk_datev_settings_update) (`commit`, fragt
+nach deiner Bestätigung) setzt die Beraternummer (1001 bis 9999999), die Mandantennummer (1 bis 99999) und den Beginn des Wirtschaftsjahres, die der DATEV-Export braucht. Gib nur an, was sich
+ändert; die anderen behalten ihren Wert in sevDesk, weil sevDesk alle drei zusammen nimmt. Die
+Bestätigung zeigt jeden bisherigen Wert neben dem neuen und warnt, wenn eine so behaltene Nummer
+außerhalb des DATEV-Bereichs liegt oder der angegebene Beginn des Wirtschaftsjahres mehr als ein
+Jahr vom heutigen Tag entfernt ist (gemeint ist der erste Tag des laufenden Wirtschaftsjahres).
+Danach liest das Werkzeug die Einstellungen zurück und sagt, was sevDesk gespeichert hat.
+
+Die Einstellungen gelten für das ganze Konto: Jeder spätere DATEV-Export trägt sie, und das DATEV
+deiner Steuerberatung ordnet die Daten danach zu. Nimm die Nummern von deiner Steuerberatung; eine
+falsche Nummer legt deine Buchungsdaten bei einem anderen Mandanten ab oder lässt den Import
+scheitern.
+
+### Rechnungs- und Belegarchiv
+
+> Pack alle Rechnungs-PDFs aus 2026 für die Betriebsprüfung in ein ZIP.
+
+[`sevdesk_archive_export`](../tools.md#sevdesk_archive_export) (`write`, ohne Bestätigung) lässt
+sevDesk jedes Rechnungs-PDF (`subject: "invoices"`) oder jeden Beleg (`subject: "vouchers"`)
+eines Monats, Quartals, Jahres oder Zeitraums in ein ZIP packen, eine Datei pro Dokument, und
+speichert es wie den DATEV-Export. Rechnungen lassen sich auf einen Kunden eingrenzen, beide auf
+einen Bereich von Beträgen (einschließlich der Grenzen; bei Belegen der Bruttobetrag).
+
+- An keinem Dokument ändert sich etwas: kein Status, kein Versanddatum, nichts festgeschrieben. Es
+  braucht `write`, weil sevDesk auf Anfrage jedes PDF erzeugt.
+- **sevDesk nimmt Entwürfe mit.** Ihre Dateinamen tragen „(Entwurf)“ und keine Nummer; das
+  Ergebnis zählt sie (`draftEntries`) und sagt es. Entferne sie, bevor du das Archiv weitergibst.
+  Nur diese Kennzeichnung zählt: Ob sevDesk andere Zustände genauso markiert, wurde nicht
+  beobachtet, nimm also nichts anderes allein auf das Wort des Werkzeugs heraus.
+- **Das Archiv kann weniger Dateien enthalten, als du Dokumente hast.** Belege ohne hochgeladene
+  Belegdatei fehlen darin (13 Dateien für 53 Belege auf dem Testkonto), und ein Rechnungsarchiv
+  enthielt eine Rechnung weniger als die Rechnungsliste. So baut sevDesk das Archiv, das ist kein
+  Fehler; vergleiche die Anzahl mit den Listen, wenn es auf Vollständigkeit ankommt.
+- **Es dauert.** sevDesk erzeugt das ganze ZIP, bevor es antwortet: etwa 30 bis 60 Sekunden für
+  100 bis 130 Rechnungen (20 bis 25 MB), etwa eine Sekunde für ein paar Belege. Die Anfrage für
+  das Archiv bekommt bis zu 5 Minuten, unabhängig von `SEVDESK_TIMEOUT_MS`; danach bricht sie ab,
+  ohne etwas zu speichern, und die Abhilfe ist ein kürzerer Zeitraum. Auf einem entfernten Server
+  endet jede Anfrage nach 120 Sekunden ([Betrieb](../remote/operations.de.md)), und der
+  Download-Link muss in den Anteil des Kontos am Dateispeicher passen, 20 MiB ohne
+  Zustandsverzeichnis ([Dateien](../remote/files.de.md#grenzen-und-laufzeiten)): Exportiere dort
+  ein bis zwei Wochen Rechnungen pro Aufruf.
+- Es fragt sevDesk nach höchstens 500 Dokumenten (`limit`, bis 1.000) und speichert höchstens
+  100 MiB pro ZIP (eine erzeugte Rechnung hat etwa 140 bis 190 KB): 500 Rechnungen passen in die
+  5 Minuten und die 100 MiB, 1.000 nicht. Exportiere lange Zeiträume in Teilen. Enthält das ZIP
+  fast `limit` Dateien, sagt das Ergebnis, dass sevDesk dort aufgehört haben kann
+  (`mayBeTruncated`). Das ist ein Hinweis, keine Zählung: Belege ohne Belegdatei fehlen im ZIP,
+  daher kann ein Belegarchiv abgeschnitten sein und trotzdem weit weniger Dateien als `limit`
+  enthalten.
+- Passt nichts, schickt sevDesk ein ZIP mit nur einem Hinweis darin; das Werkzeug speichert nichts
+  und sagt, dass kein Dokument gepasst hat.
 
 ### CSV
 
@@ -370,7 +442,7 @@ Datei; das Ergebnis sagt, wenn es mehr geben könnte. Es gibt den Pfad oder Link
 Inhalt, und ändert nichts in sevDesk. Für Summen ist `sevdesk_records_summarize` das bessere
 Werkzeug.
 
-Beide Exporte werden nur angeboten, wenn der Server Dateien ausliefern kann: mit
+Die Datei-Exporte werden nur angeboten, wenn der Server Dateien ausliefern kann: mit
 `SEVDESK_OUTPUT_DIR` über stdio ([Konfiguration](../configuration.de.md)) oder über Download-Links
 auf einem entfernten Server ([Dateien über HTTP](../remote/files.de.md)). Jeder Aufruf erzeugt eine
 neue Datei.

@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import type { Tier } from "../../../src/safety/tiers.js";
 import {
   createSevdeskClient,
+  MAX_REQUEST_TIMEOUT_MS,
   parseRetryAfter,
+  requestTimeoutMs,
   type SevdeskClientConfig,
   type SevdeskClientEvent,
   writeBlockReason,
@@ -778,6 +780,32 @@ describe("timeouts and cancellation", () => {
     expect(error.kind).toBe("timeout");
     expect(error.message).toContain("20 ms");
     expect(fake.requests).toHaveLength(3);
+  });
+
+  it("gives a download its own, longer time budget, and only a download", async () => {
+    const { client } = setup(["hang", "hang", "hang"], { config: { timeoutMs: 20 } });
+    const download = await catchError(
+      client.download({ method: "GET", path: "/Export/invoiceCsv", timeoutMs: 60 }),
+    );
+    expect(download.kind).toBe("timeout");
+    expect(download.message).toContain("60 ms");
+    expect(download.message).not.toContain("SEVDESK_TIMEOUT_MS");
+
+    const json = setup(["hang", "hang", "hang"], { config: { timeoutMs: 20 } });
+    const request = await catchError(
+      json.client.request({ method: "GET", path: "/Invoice", timeoutMs: 60 }),
+    );
+    expect(request.message).toContain("20 ms");
+    expect(request.message).toContain("SEVDESK_TIMEOUT_MS");
+  });
+
+  it("bounds a request's own time budget by the configured time and 10 minutes", () => {
+    expect(requestTimeoutMs(30_000, undefined)).toBe(30_000);
+    expect(requestTimeoutMs(30_000, 300_000)).toBe(300_000);
+    expect(requestTimeoutMs(30_000, 5_000)).toBe(30_000);
+    expect(requestTimeoutMs(30_000, 3_600_000)).toBe(MAX_REQUEST_TIMEOUT_MS);
+    expect(requestTimeoutMs(30_000, Number.NaN)).toBe(30_000);
+    expect(MAX_REQUEST_TIMEOUT_MS).toBe(600_000);
   });
 
   it("recovers when a retry after a timeout succeeds", async () => {

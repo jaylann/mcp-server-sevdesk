@@ -5,7 +5,9 @@ import {
   DATEV_HASH_PATH,
   DATEV_JOB_PATH,
   DATEV_PROGRESS_PATH,
+  DATEV_XML_JOB_PATH,
   datevFilename,
+  datevJobPath,
   datevJobQuery,
   exportFilename,
   fiscalYearStartWithin,
@@ -73,7 +75,18 @@ describe("readDatevExportConfig", () => {
       accountantClientNumber: "12345",
       accountingYearBegin: "2026-01-01",
       missing: [],
+      clientId: 9001,
     });
+  });
+
+  it("leaves the client id out when GET /SevClient carries none", async () => {
+    const client = new FakeSevdeskClient([
+      {
+        path: "/SevClient",
+        response: { body: { objects: { id: "x", accountantNumber: "1001" } } },
+      },
+    ]);
+    await expect(readDatevExportConfig(client)).resolves.toMatchObject({ clientId: undefined });
   });
 
   it("names every missing setting (null, zero, not digits, unreadable date)", async () => {
@@ -137,6 +150,56 @@ describe("the job", () => {
       ),
     ).toEqual(["startDate", "endDate", "scope", "exportByPaydate", "includeDocumentImages"]);
     expect(resolveGetSafety(DATEV_JOB_PATH, query, false).sideEffect).toBe(true);
+  });
+
+  it("builds the XML job's query from the recorded keys only: E/X scope, no image or export flags", () => {
+    const query = datevJobQuery({
+      from: "2026-01-01",
+      to: "2026-03-31",
+      scope: ["assets", "earnings", "expenditure", "transactions"],
+      includeDocumentImages: true,
+      format: "xml",
+    });
+    expect(query).toEqual({
+      startDate: Date.parse("2026-01-01T00:00:00+01:00") / 1000,
+      endDate: Date.parse("2026-04-01T00:00:00+02:00") / 1000 - 1,
+      scope: "EX",
+    });
+    // exportByPaydate was not recorded on the XML job (D-102): never sent there, even if asked.
+    expect(
+      Object.keys(
+        datevJobQuery({ ...params, scope: ["earnings"], exportByPaydate: true, format: "xml" }),
+      ),
+    ).toEqual(["startDate", "endDate", "scope"]);
+    expect(datevJobPath("xml")).toBe(DATEV_XML_JOB_PATH);
+    expect(datevJobPath()).toBe(DATEV_JOB_PATH);
+    expect(resolveGetSafety(DATEV_XML_JOB_PATH, query, false).sideEffect).toBe(true);
+    expect(datevFilename({ ...params, format: "xml" })).toBe(
+      "DATEV-XML_2026-01-01_2026-03-31_ED.zip",
+    );
+  });
+
+  it("starts the XML job with a POST to its own path", async () => {
+    const client = new FakeSevdeskClient([
+      {
+        method: "POST",
+        path: DATEV_XML_JOB_PATH,
+        response: { fixture: "exports/datev-job-start.json" },
+      },
+    ]);
+
+    await expect(
+      startDatevExportJob(client, { ...params, scope: ["earnings", "expenditure"], format: "xml" }),
+    ).resolves.toBe(JOB);
+
+    expect(client.writes()).toEqual([
+      expect.objectContaining({
+        method: "POST",
+        path: DATEV_XML_JOB_PATH,
+        query: expect.objectContaining({ scope: "EX" }) as unknown,
+      }),
+    ]);
+    expect(client.writes()[0]?.body).toBeUndefined();
   });
 
   it("starts the job with a POST and the query, and reads the id", async () => {

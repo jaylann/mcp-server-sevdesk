@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:e7e383cde981 -->
+<!-- translated-from: docs/faq.md sha256:f1d1d00e11b4 -->
 
 # Häufige Fragen
 
@@ -132,9 +132,20 @@ Ja. [`sevdesk_datev_export`](tools.md#sevdesk_datev_export) lässt sevDesk den
 DATEV-Buchungsstapel (CSV-Dateien in einem ZIP) für einen Monat, ein Quartal, ein Jahr oder einen
 Zeitraum erstellen, gespeichert in deinem Ausgabeordner oder im Fernzugriff als Download-Link
 angeboten. Es schreibt die Dokumente nie fest und braucht die DATEV-Einstellungen in sevDesk
-(Beraternummer, Mandantennummer, Beginn des Wirtschaftsjahres).
-[`sevdesk_csv_export`](tools.md#sevdesk_csv_export) speichert die CSV-Exporte von sevDesk, zum
-Beispiel für Excel.
+(Beraternummer, Mandantennummer, Beginn des Wirtschaftsjahres), die
+[`sevdesk_datev_settings_update`](tools.md#sevdesk_datev_settings_update) nach deiner Bestätigung
+setzt. Mit `format: "xml"` exportiert es stattdessen die Dokumente als DATEV-XML mit ihren
+Belegbildern. [`sevdesk_csv_export`](tools.md#sevdesk_csv_export) speichert die CSV-Exporte von
+sevDesk, zum Beispiel für Excel.
+
+### Bekomme ich alle Rechnungs- oder Beleg-PDFs auf einmal, für die Steuerberatung oder eine Betriebsprüfung?
+
+Ja. [`sevdesk_archive_export`](tools.md#sevdesk_archive_export) lässt sevDesk die Rechnungs-PDFs
+oder die Belege eines Zeitraums in ein ZIP packen, standardmäßig höchstens 500 Dokumente (bis
+1.000) und 100 MiB pro Datei, und ändert nichts an den Dokumenten. sevDesk nimmt Entwürfe mit (das Ergebnis zählt sie,
+damit du sie herausnehmen kannst) und lässt Belege ohne Belegdatei weg. Ein großes Archiv dauert
+Minuten; die Abhilfe ist ein kürzerer Zeitraum. Mehr dazu:
+[Auswertungen und Exporte](guides/evaluations.de.md#rechnungs--und-belegarchiv).
 
 ### Wie weit kann ich mich auf die Umsatzsteuer-Auswertung und die Gewinn- und Verlustrechnung verlassen?
 

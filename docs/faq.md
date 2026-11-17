@@ -120,8 +120,18 @@ Yes. [`sevdesk_datev_export`](tools.md#sevdesk_datev_export) lets sevDesk build 
 Buchungsstapel (CSV files in a ZIP) for a month, quarter, year or date range, saved in your output
 folder or offered as a download link in remote mode. It never enshrines (festschreiben) the
 documents and needs the DATEV settings in sevDesk (Beraternummer, Mandantennummer, start of the
-fiscal year). [`sevdesk_csv_export`](tools.md#sevdesk_csv_export) saves sevDesk's CSV exports, for
+fiscal year), which [`sevdesk_datev_settings_update`](tools.md#sevdesk_datev_settings_update) sets
+after you confirm. With `format: "xml"` it exports the documents as DATEV XML with their receipt
+images instead. [`sevdesk_csv_export`](tools.md#sevdesk_csv_export) saves sevDesk's CSV exports, for
 example for Excel.
+
+### Can I get all invoice or receipt PDFs at once, for the tax adviser or a tax audit?
+
+Yes. [`sevdesk_archive_export`](tools.md#sevdesk_archive_export) lets sevDesk put the invoice PDFs
+or the voucher receipts of a period into one ZIP, at most 500 documents by default (up to 1,000)
+and 100 MiB per file, and changes nothing on the documents. sevDesk includes drafts (the result counts them so you can take
+them out) and leaves out vouchers without a receipt file. A large archive takes minutes; a shorter
+period is the remedy. Details: [Reports and exports](guides/evaluations.md#invoice-and-receipt-archive).
 
 ### How far can I rely on the VAT summary and the profit and loss?
 

@@ -141,6 +141,20 @@ describe("resolveGetSafety", () => {
     },
   );
 
+  it.each(["/Export/invoiceZip", "/Export/voucherzip", "/Export/invoiceZip/1"])(
+    "treats the document archive %s as a side effect (heavy, never retried; D-101)",
+    (path) => {
+      expect(resolveGetSafety(path, { download: "true" }, false)).toEqual({
+        sideEffect: true,
+        effect: "it renders an archive of every matching document in sevDesk",
+        query: { download: "true" },
+      });
+      expect(minimumWriteTier(path, { download: "true" })).toBe("write");
+      // An enshrine flag makes any of them commit, as for the DATEV export.
+      expect(minimumWriteTier(path, { enshrine: true })).toBe("commit");
+    },
+  );
+
   it("keeps the job's progress and download info as reads", () => {
     for (const path of [
       "/Progress/getProgress",
@@ -832,6 +846,10 @@ describe("genericGetRefusal", () => {
     ["/Export/datevCSV", /sevdesk_datev_export/],
     ["/Export/createDatevCsvZipExportJob", /sevdesk_datev_export/],
     ["/Foo/createDatevXmlZipExportJob", /sevdesk_datev_export/],
+    ["/Export/invoiceZip", /sevdesk_archive_export/],
+    ["/Export/voucherZip", /sevdesk_archive_export/],
+    ["/Foo/invoiceZip", /sevdesk_archive_export/],
+    ["/Invoice/voucherzip/1", /sevdesk_archive_export/],
     ["/ExportJob/jobDownloadInfo", /sevdesk_datev_export/],
     ["/Progress/generateDownloadHash", /generateDownloadHash/],
     ["/Progress/getProgress", /sevdesk_datev_export/],

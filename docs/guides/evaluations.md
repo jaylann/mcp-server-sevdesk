@@ -3,7 +3,8 @@
 What the assistant can tell you about your books, and where its answers stop: totals, open items,
 cash, the VAT summary, the profit and loss, the audits, and the exports for your tax adviser. It is
 for anyone who wants numbers out of sevDesk, and for anyone deciding how far to trust them. Every
-report here is `read`; only the DATEV export needs `write` ([Permissions](../permissions.md#tiers)).
+report here is `read`; the DATEV export and the document archive need `write`, setting the DATEV
+settings needs `commit` ([Permissions](../permissions.md#tiers)).
 
 > [!IMPORTANT]
 > The reports are computed by this server from your sevDesk records. They are not sevDesk's own
@@ -24,6 +25,7 @@ report here is `read`; only the DATEV export needs `write` ([Permissions](../per
 | Which receipts in my folder are not booked    | [`sevdesk_receipt_folder_check`](../tools.md#sevdesk_receipt_folder_check) | `read`  |
 | A CSV file for Excel or the tax adviser       | [`sevdesk_csv_export`](../tools.md#sevdesk_csv_export)                     | `read`  |
 | The DATEV booking data for the tax adviser    | [`sevdesk_datev_export`](../tools.md#sevdesk_datev_export)                 | `write` |
+| All invoice or receipt PDFs of a period       | [`sevdesk_archive_export`](../tools.md#sevdesk_archive_export)             | `write` |
 
 Two prompts combine them: [`vat_precheck`](../tools.md#vat_precheck) before the
 Umsatzsteuer-Voranmeldung, and [`month_end_close`](../tools.md#month_end_close) for a month-end
@@ -327,10 +329,77 @@ can limit it to earnings, expenditure, transactions, cash register or assets, ke
 paid in the period, and add the receipt images, which makes the file much larger. It takes up to a
 few minutes.
 
+With `format: "xml"` sevDesk exports the documents themselves as DATEV XML with their receipt
+images (Belegbilder) instead of the booking batch, for an adviser who imports documents. It covers
+earnings and expenditure only (transactions, cash register and assets are left out, and the
+preview says so), and the receipt images are always included: about 5.6 MB for one month of a
+small account. Keeping only the documents paid in the period (`exportByPaydate`) works with the
+CSV export only: the XML export was recorded without it, so the tool refuses it there. Whether the
+XML export includes enshrined (festgeschriebene) documents has not been recorded; the preview and
+the result say so, so check the export in sevDesk when they must be in it. The CSV export stays
+the default.
+
 - It needs the DATEV settings in sevDesk (Beraternummer, Mandantennummer, start of the fiscal
-  year) and refuses with guidance when they are missing.
-- It may mark the documents as exported in sevDesk. It never enshrines them.
+  year) and refuses with guidance when they are missing; see
+  [DATEV settings](#datev-settings) below.
+- It never enshrines (festschreiben) the documents. A recorded XML export marked nothing as
+  exported: a second export of the same period held the same documents.
 - sevDesk delivers the file from its own storage on Amazon S3 ([Privacy](../../PRIVACY.md)).
+- This server downloads at most 100 MiB. A larger export (a long period with receipt images) is not
+  saved: export month by month, or download it in sevDesk.
+
+### DATEV settings
+
+> Set the DATEV client number to 54321; my tax adviser's Beraternummer is 1234567.
+
+[`sevdesk_datev_settings_update`](../tools.md#sevdesk_datev_settings_update) (`commit`, asks you
+to confirm) sets the accountant number (Beraternummer, 1001 to 9999999), the client number
+(Mandantennummer, 1 to 99999) and the start of the fiscal year (Wirtschaftsjahresbeginn) that the
+DATEV export needs. Give only what changes; the others keep their values in sevDesk, since
+sevDesk takes all three at once. The confirmation shows every current value next to the new one
+and warns when a number kept that way lies outside DATEV's range, or when the fiscal-year start
+you give is more than a year away from today (it should be the first day of the current fiscal
+year). Afterwards the tool reads the settings back and says what sevDesk stored.
+
+The settings apply to the whole account: every later DATEV export carries them, and your tax
+adviser's DATEV files the data under them. Take the numbers from your adviser; a wrong number puts
+your booking data under another client or makes the import fail.
+
+### Invoice and receipt archive
+
+> Put all invoice PDFs of 2026 into one ZIP for the tax audit.
+
+[`sevdesk_archive_export`](../tools.md#sevdesk_archive_export) (`write`, no confirmation) lets
+sevDesk put every invoice PDF (`subject: "invoices"`) or every voucher receipt
+(`subject: "vouchers"`) of a month, quarter, year or date range into one ZIP, one file per
+document, and saves it like the DATEV export. Invoices can be narrowed to one customer, both to a
+range of amounts (inclusive; for vouchers the gross amount).
+
+- Nothing changes on any document: no status, no send date, nothing enshrined. It needs `write`
+  because sevDesk renders every PDF on request.
+- **sevDesk includes drafts.** Their file names carry "(Entwurf)" and no number; the result
+  counts them (`draftEntries`) and says so. Remove them before you hand the archive on. Only that
+  label counts: whether sevDesk marks other states the same way has not been seen, so take out
+  nothing else on the tool's word.
+- **The archive can hold fewer files than you have documents.** Vouchers without an uploaded
+  receipt file are not in it (13 files for 53 vouchers on the test account), and an invoice archive
+  held one invoice fewer than the invoice list. This is how sevDesk builds the archive, not an
+  error; compare the counts with the lists when completeness matters.
+- **It takes time.** sevDesk renders the whole ZIP before it answers: about 30 to 60 seconds for
+  100 to 130 invoices (20 to 25 MB), about a second for a few receipts. The archive request gets
+  up to 5 minutes, independent of `SEVDESK_TIMEOUT_MS`; beyond that it stops with nothing saved,
+  and the remedy is a shorter period. On a remote server every request ends after 120 seconds
+  ([Operations](../remote/operations.md)), and the download link must fit the account's share of
+  the file space, 20 MiB without a state directory ([Files](../remote/files.md#limits-and-lifetimes)):
+  export a week or two of invoices per call there.
+- It asks sevDesk for at most 500 documents (`limit`, up to 1,000) and saves at most 100 MiB per
+  ZIP (a rendered invoice is about 140 to 190 KB): 500 invoices fit the 5 minutes and the 100 MiB,
+  1,000 do not. Export long periods in parts. When the ZIP holds close to `limit` files, the result
+  says sevDesk may have stopped there (`mayBeTruncated`). That is a hint, not a count: vouchers
+  without a receipt file are not in the ZIP, so a voucher archive can be cut while holding far
+  fewer files than `limit`.
+- When nothing matches, sevDesk sends a ZIP with only a note in it; the tool saves nothing and
+  says that no document matched.
 
 ### CSV
 
@@ -342,7 +411,7 @@ BOM, `;`-separated, German headers), at most 1,000 rows per file; the result say
 exist. It returns the path or link, never the content, and changes nothing in sevDesk. For totals,
 `sevdesk_records_summarize` is the better tool.
 
-Both exports are offered only when the server can deliver files: with `SEVDESK_OUTPUT_DIR` over
+The file exports are offered only when the server can deliver files: with `SEVDESK_OUTPUT_DIR` over
 stdio ([Configuration](../configuration.md)), or through download links on a remote server
 ([Files over HTTP](../remote/files.md)). Every call creates a new file.
 

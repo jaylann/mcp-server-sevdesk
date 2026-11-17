@@ -107,6 +107,7 @@ describe("tools/list", () => {
 
   it("over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds the file tools", async () => {
     const fileTools = [
+      "sevdesk_archive_export",
       "sevdesk_csv_export",
       "sevdesk_datev_export",
       "sevdesk_document_save",
