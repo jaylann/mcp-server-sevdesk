@@ -213,7 +213,7 @@ Status nach dem Speichern: Entwurf (50), noch nicht gebucht"
 exports[`German previews > create a recurring invoice template: says the same in German 1`] = `
 "Abo-Rechnung (Vorlage für wiederkehrende Rechnungen) für Musterfirma GmbH (Kontakt 1001) anlegen: 65,45 EUR brutto je Rechnung, monatlich ab 01.12.2026, bis sie beendet wird.
 ! Ab der ersten Ausführung erzeugt sevDesk an jedem Ausführungstag selbst eine Rechnung aus dieser Vorlage, mit diesen Positionen und Texten; niemand wird erneut gefragt. Diese Freigabe gilt für alle diese Rechnungen, bis die Vorlage endet.
-! Noch nicht bestätigt: was sevDesk an einem Ausführungstag erzeugt (einen Entwurf oder eine fertiggestellte, gebuchte Rechnung mit Nummer), ob sevDesk diese Rechnung an den Kunden versendet und ob eine mit Status 100 gespeicherte Vorlage überhaupt ausgeführt wird. Prüfe die erste Ausführung in sevDesk.
+! Noch nicht erfasst: was sevDesk an einem Ausführungstag erzeugt (einen Entwurf oder eine fertiggestellte, gebuchte Rechnung mit Nummer), ob sevDesk diese Rechnung an den Kunden versendet und ob eine mit Status 100 gespeicherte Vorlage überhaupt ausgeführt wird. Prüf die erste erzeugte Rechnung in sevDesk.
 ! Ändern, pausieren oder beenden lässt sich die Vorlage vorerst nur in der sevDesk-Web-App (Abo-Rechnungen); dieser Server hat dafür noch kein Werkzeug.
 (umkehrbar)
 Kunde: Musterfirma GmbH (Kontakt 1001)

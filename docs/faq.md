@@ -139,9 +139,9 @@ release.
 It can create one. [`sevdesk_invoice_create_recurring`](tools.md#sevdesk_invoice_create_recurring)
 (`commit` tier, you confirm) saves a recurring invoice template, monthly, quarterly, half-yearly or
 yearly, from which sevDesk then creates an invoice on every run date by itself
-([Recurring](guides/invoices.md#recurring)). What sevDesk creates on a run date (a draft or a
-finalized invoice) is not confirmed yet, so check the first one. Changing or ending a template is
-done in the sevDesk web app for now.
+([Recurring](guides/invoices.md#recurring)). What sevDesk generates on a run date (a draft or a
+finalized invoice, sent or not) is not recorded yet, so check the first invoice it generates.
+Changing or ending a template is done in the sevDesk web app for now.
 
 ### Can it send letters by post?
 

@@ -189,9 +189,10 @@ describe("sevdesk_invoice_create_recurring", () => {
       "From the first run on, sevDesk creates an invoice from this template on every run date by " +
         "itself, with these positions and texts; nobody is asked again. This approval covers " +
         "every one of those invoices until the template ends.",
-      "Not confirmed yet: what sevDesk creates on a run date (a draft, or a finalized invoice " +
+      "Not recorded yet: what sevDesk generates on a run date (a draft, or a finalized invoice " +
         "with a number that is booked), whether it sends that invoice to the customer, and " +
-        "whether a template saved with status 100 runs at all. Check the first run in sevDesk.",
+        "whether a template saved with status 100 runs at all. Check the first invoice it " +
+        "generates in sevDesk.",
       "To change, pause or end the template later, use the sevDesk web app (Abo-Rechnungen); " +
         "this server has no tool for that yet.",
     ]);

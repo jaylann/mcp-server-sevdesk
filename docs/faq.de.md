@@ -155,9 +155,9 @@ Es kann eine anlegen.
 bestätigst) speichert eine Vorlage für wiederkehrende Rechnungen, monatlich, vierteljährlich,
 halbjährlich oder jährlich, aus der sevDesk dann an jedem Ausführungstag selbst eine Rechnung
 erzeugt ([Abo-Rechnungen](guides/invoices.de.md#abo-rechnungen)). Was sevDesk an einem
-Ausführungstag erzeugt (einen Entwurf oder eine fertiggestellte Rechnung), ist noch nicht
-bestätigt; prüf deshalb die erste. Ändern oder beenden lässt sich eine Vorlage vorerst nur in der
-sevDesk-Web-App.
+Ausführungstag erzeugt (einen Entwurf oder eine fertiggestellte Rechnung, versendet oder nicht),
+ist noch nicht erfasst; prüf deshalb die erste erzeugte Rechnung. Ändern oder beenden lässt sich
+eine Vorlage vorerst nur in der sevDesk-Web-App.
 
 ### Kann es Briefe per Post versenden?
 

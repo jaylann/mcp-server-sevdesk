@@ -255,9 +255,9 @@ template with the same total. After saving, the assistant reads the template bac
 sevDesk stored another schedule than it sent.
 
 > [!WARNING]
-> What sevDesk creates on a run date (a draft, or a finalized invoice with a number, sent to the
-> customer or not) is not confirmed yet, and the preview says so. Check the first invoice a new
-> template creates in sevDesk.
+> What sevDesk generates on a run date (a draft, or a finalized invoice with a number, sent to the
+> customer or not) is not recorded yet, and the preview says so. Check the first invoice a new
+> template generates in sevDesk.
 
 Templates are listed with [`sevdesk_invoices_list`](../tools.md#sevdesk_invoices_list) and type
 `recurring`. Changing, pausing or ending one is done in the sevDesk web app (Abo-Rechnungen) for

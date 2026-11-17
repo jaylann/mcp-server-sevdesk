@@ -274,8 +274,8 @@ Vorlage zurück und sagt, wo sevDesk einen anderen Zeitplan gespeichert hat, als
 
 > [!WARNING]
 > Was sevDesk an einem Ausführungstag erzeugt (einen Entwurf oder eine fertiggestellte Rechnung mit
-> Nummer, an den Kunden versendet oder nicht), ist noch nicht bestätigt; die Vorschau sagt das.
-> Prüf die erste Rechnung, die eine neue Vorlage erzeugt, in sevDesk.
+> Nummer, an den Kunden versendet oder nicht), ist noch nicht erfasst; die Vorschau sagt das. Prüf
+> die erste Rechnung, die eine neue Vorlage erzeugt, in sevDesk.
 
 Vorlagen listet [`sevdesk_invoices_list`](../tools.md#sevdesk_invoices_list) mit dem Typ
 `recurring`. Ändern, pausieren oder beenden lässt sich eine Vorlage vorerst nur in der
