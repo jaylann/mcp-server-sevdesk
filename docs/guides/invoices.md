@@ -237,33 +237,53 @@ credit note. When to enshrine is a question for you and your Steuerberater.
 
 [`sevdesk_invoice_create_recurring`](../tools.md#sevdesk_invoice_create_recurring) (`commit`,
 **you confirm**) creates a recurring invoice template (Abo-Rechnung, type WKR) for retainers, rent
-or subscriptions. From its start date on, sevDesk creates an invoice from it on every run date by
-itself; nobody is asked again. Customer, positions, texts, payment term and tax rule work as for a
-draft and pass the same checks; the template is in EUR, and its total must be above zero. The
-schedule has:
+or subscriptions. Customer, positions, texts, payment term and tax rule work as for a draft and
+pass the same checks; the template is in EUR, and its total must be above zero. The schedule has:
 
 - an **interval**: monthly, quarterly, half-yearly or yearly;
 - a **start date**, the first run: today or later, at most a year ahead, on day 1 to 28 of a
   month. Every later run falls on the same day of the month. Days 29 to 31 are refused, because
   how sevDesk moves a run into a shorter month is not recorded. A start in the past is refused too:
-  sevDesk might create all the invoices due since then at once;
+  sevDesk catches up and creates an invoice for every period since then, one a minute;
 - an optional **end date**, at most ten years after the start. Without one, the template runs until
   it is ended.
 
+**Automatic generation** (Automatische Generierung) decides whether anything happens on a run date,
+not the template's status. The tool switches it on unless you ask for it off:
+
+- **On** (the default): on every run date, within about a minute after midnight (Berlin time),
+  sevDesk creates a **draft** invoice from the template by itself. The draft is dated the day it
+  is created, has the run date as its delivery date and the billing period up to the day before the
+  next run, and sevDesk adds a line naming that period to the head text. It is not finalized and
+  not sent. Its number is provisional: several generated drafts can show the same number, and each
+  gets its own when it is finalized. Check a generated draft, then finalize and send it like any
+  other ([Finalize](#finalize), [Send it](#send-it)). A first run today is due at once: the first
+  draft appears about a minute after saving.
+- **Off**: sevDesk creates nothing by itself, until automatic generation is switched on for the
+  template ([below](#change-end-or-restart-a-template), or in the sevDesk web app) or someone
+  clicks "Rechnung erzeugen" in the web app.
+
 The preview shows what every invoice will say: customer and address, each position with its text,
 head and foot text, the total per invoice. It also shows the first run, the next three run dates,
-the end with the number of invoices up to it, and a warning when the customer already has a
-template with the same total. After saving, the assistant reads the template back and says where
-sevDesk stored another schedule than it sent.
+the end with the number of runs up to it, whether automatic generation is on and what that means,
+and a warning when the customer already has a template with the same total. After saving, the
+assistant reads the template back and says where sevDesk stored another schedule or another
+automatic generation than it sent.
 
 > [!WARNING]
-> What sevDesk generates on a run date (a draft, or a finalized invoice with a number, sent to the
-> customer or not) is not recorded yet, and the preview says so. Check the first invoice a new
-> template generates in sevDesk.
+> sevDesk can also send generated invoices by itself: with **automatic sending** (Automatisches
+> Versenden) on as well, it finalizes each one with its final number, e-mails it with the PDF to
+> the customer and enshrines it within about two minutes of the run, before anyone has seen it.
+> This server never switches automatic sending on, and its read-back tells you when a template has
+> it. Switch it on in the web app only if that is what you want.
+
+The web app's "Nachfällig" option (bill in arrears) is not set by this server either, and its
+other intervals (7 or 14 days, 2 months, 2 to 5 years) are not offered.
 
 Templates are listed with [`sevdesk_invoices_list`](../tools.md#sevdesk_invoices_list) and type
 `recurring`. Each row, and [`sevdesk_invoice_get`](../tools.md#sevdesk_invoice_get), shows the
-schedule as sevDesk stores it: interval, start, next run, end, last run, and whether the template
+schedule as sevDesk stores it: interval (also one made in the web app, in words), start, next run,
+end, last run, whether automatic generation and automatic sending are on, and whether the template
 is ended.
 
 ### Change, end or restart a template
@@ -272,37 +292,54 @@ is ended.
 
 [`sevdesk_invoice_update_recurring`](../tools.md#sevdesk_invoice_update_recurring) (`commit`,
 **you confirm**) changes a template: positions (given positions replace all of them), texts,
-payment term, tax rule, customer or address, and the schedule. Only what you give changes. The
-preview shows each change as before → after, new positions and texts in full, the total per
-invoice before and after, and the run dates after the change. Every invoice sevDesk creates
-afterwards carries the change; invoices it already created stay as they are.
+payment term, tax rule, customer or address, the schedule, and automatic generation
+(`autoGenerate`). Only what you give changes. The preview shows each change as before → after, new
+positions and texts in full, the total per invoice before and after, and the run dates after the
+change. Every invoice sevDesk creates afterwards carries the change; invoices it already created
+stay as they are.
 
 - A new **interval** keeps the next run date; the runs after it follow the new interval.
-- A new **start date** becomes the next run as well. It follows the rules of a new template and is
-  refused once the template has created an invoice: what sevDesk then does with a new start is not
-  recorded.
+- A new **start date** becomes the next run as well, and sevDesk clears the template's last run.
+  It must lie after today and, once the template has generated invoices, after the end of the
+  period of the newest one; otherwise sevDesk would bill a period again. The assistant finds those
+  invoices by their origin, the template.
 - A new **end date** lies on or after the next run; `removeEndDate` lets the template run until it
   is ended.
+- Switching **automatic generation on** is refused while the next run lies before today: sevDesk
+  would catch up and create one draft per missed period, a minute apart. Give a new start date in
+  the same call. A next run today is due at once.
 
 After saving, the assistant reads the template back and names every way sevDesk stored something
-else, including a position whose change sevDesk ignored.
+else, including a position whose change sevDesk ignored and a switch that did not take.
 
 > End the Musterfirma maintenance subscription.
 
 [`sevdesk_invoice_end_recurring`](../tools.md#sevdesk_invoice_end_recurring) (`commit`, **you
-confirm**) ends a template (status 50): sevDesk creates no further invoice from it. Invoices it
-already created stay as they are; a wrong one is cancelled with
-[`sevdesk_invoice_cancel`](../tools.md#sevdesk_invoice_cancel). The template keeps its positions and
-schedule, and
+confirm**) ends a template (status 50): sevDesk creates no further invoice from it, even with
+automatic generation on. Invoices it already created stay as they are; a wrong one is cancelled
+with [`sevdesk_invoice_cancel`](../tools.md#sevdesk_invoice_cancel). The template keeps its
+positions, schedule and automatic generation, and
 [`sevdesk_invoice_reactivate_recurring`](../tools.md#sevdesk_invoice_reactivate_recurring)
-(`commit`, **you confirm**) starts it again; its preview lists the next run dates and what sevDesk
-does on a run date. Reactivating is refused while the template's next run lies in the past, because
-sevDesk might then create the missed invoices at once: give it a new start date first.
+(`commit`, **you confirm**) starts it again. Its preview says what happens then: with automatic
+generation on, sevDesk generates drafts again, the first at once if the next run is today; with it
+off, reactivating alone generates nothing. Reactivating is refused while the next run lies before
+today, because sevDesk would catch up the missed periods at once: give the template a new start
+date first.
+
+> [!WARNING]
+> A template with **automatic sending** on is only ended through this server: ending stops the
+> e-mails. Changing or reactivating it is refused, because sevDesk would finalize, e-mail and lock
+> invoices from it with no further approval; manage such a template in the sevDesk web app. When
+> sevDesk does not return its settings, changing and reactivating are refused as well.
+
+Templates made in the web app work too, also with an interval this server does not offer (such as
+weekly or every two months): they can be ended, and changed as long as the interval stays; where
+their run dates cannot be computed, the preview says so.
 
 A template is deleted only in the sevDesk web app (Abo-Rechnungen); ending it is the reversible
 way. The other invoice tools refuse a template: it is never finalized, sent, paid, cancelled,
-changed as a draft or deleted through them. An invoice sevDesk creates from a template is not
-refused because of its template.
+changed as a draft or deleted through them. An invoice sevDesk creates from a template is a
+regular draft and is not refused because of its template.
 
 ## Related
 

@@ -138,14 +138,19 @@ release.
 
 Yes. [`sevdesk_invoice_create_recurring`](tools.md#sevdesk_invoice_create_recurring) (`commit`
 tier, you confirm) saves a recurring invoice template, monthly, quarterly, half-yearly or yearly,
-from which sevDesk then creates an invoice on every run date by itself
-([Recurring](guides/invoices.md#recurring)).
-[`sevdesk_invoice_update_recurring`](tools.md#sevdesk_invoice_update_recurring) changes one,
+with automatic generation on unless you ask for it off
+([Recurring](guides/invoices.md#recurring)). sevDesk then creates a draft invoice from it on every
+run date by itself, within about a minute: not finalized, not sent, with a provisional number that
+becomes final when the draft is finalized. You check each draft and finalize and send it with the
+usual invoice tools. The server never switches on sevDesk's automatic sending, which would finalize,
+e-mail and enshrine every generated invoice before anyone sees it.
+[`sevdesk_invoice_update_recurring`](tools.md#sevdesk_invoice_update_recurring) changes a template
+(also its automatic generation),
 [`sevdesk_invoice_end_recurring`](tools.md#sevdesk_invoice_end_recurring) ends one and
 [`sevdesk_invoice_reactivate_recurring`](tools.md#sevdesk_invoice_reactivate_recurring) starts it
-again, each `commit` tier with your confirmation. What sevDesk generates on a run date (a draft or
-a finalized invoice, sent or not) is not recorded yet, so check the first invoice it generates. A
-template is deleted only in the sevDesk web app.
+again, each `commit` tier with your confirmation. A template with automatic sending on is only
+ended here; changing or reactivating it is left to the sevDesk web app. A template is deleted only
+in the sevDesk web app.
 
 ### Can it send letters by post?
 

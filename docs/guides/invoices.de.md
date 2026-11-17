@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/invoices.md sha256:a89cc9bc2e8d -->
+<!-- translated-from: docs/guides/invoices.md sha256:MARKER_TBD -->
 
 # Rechnungen: vom Entwurf bis zur Zahlung
 
@@ -255,35 +255,60 @@ Wann du festschreibst, klärst du mit deiner Steuerberatung.
 
 [`sevdesk_invoice_create_recurring`](../tools.md#sevdesk_invoice_create_recurring) (`commit`, **du
 bestätigst**) legt eine Abo-Rechnung an (Vorlage für wiederkehrende Rechnungen, Typ WKR), etwa für
-Pauschalen, Mieten oder Abonnements. Ab dem Startdatum erzeugt sevDesk an jedem Ausführungstag
-selbst eine Rechnung daraus; niemand wird erneut gefragt. Kunde, Positionen, Texte, Zahlungsziel
-und Steuerregel funktionieren wie beim Entwurf und durchlaufen dieselben Prüfungen; die Vorlage ist
-in EUR, und ihre Summe muss über null liegen. Zum Zeitplan gehören:
+Pauschalen, Mieten oder Abonnements. Kunde, Positionen, Texte, Zahlungsziel und Steuerregel
+funktionieren wie beim Entwurf und durchlaufen dieselben Prüfungen; die Vorlage ist in EUR, und
+ihre Summe muss über null liegen. Zum Zeitplan gehören:
 
 - ein **Intervall**: monatlich, vierteljährlich, halbjährlich oder jährlich;
 - ein **Startdatum**, die erste Ausführung: heute oder später, höchstens ein Jahr im Voraus, am 1.
   bis 28. eines Monats. Jede weitere Ausführung fällt auf denselben Tag des Monats. Der 29. bis 31.
   wird abgelehnt, weil nicht erfasst ist, wie sevDesk eine Ausführung in einen kürzeren Monat
-  verschiebt. Ein Start in der Vergangenheit wird ebenfalls abgelehnt: sevDesk könnte sonst alle
-  seither fälligen Rechnungen auf einmal erzeugen;
+  verschiebt. Ein Start in der Vergangenheit wird ebenfalls abgelehnt: sevDesk holt sonst nach und
+  erzeugt für jeden Zeitraum seitdem eine Rechnung, eine pro Minute;
 - ein optionales **Enddatum**, höchstens zehn Jahre nach dem Start. Ohne Enddatum läuft die Vorlage,
   bis sie beendet wird.
 
+Ob an einem Ausführungstag etwas geschieht, entscheidet die **automatische Generierung**, nicht
+der Status der Vorlage. Das Werkzeug schaltet sie ein, außer du willst sie aus:
+
+- **An** (Standard): An jedem Ausführungstag erzeugt sevDesk etwa eine Minute nach Mitternacht
+  (Berliner Zeit) selbst einen **Rechnungsentwurf** aus der Vorlage. Der Entwurf trägt den Tag
+  seiner Erzeugung als Rechnungsdatum, den Ausführungstag als Lieferdatum und den
+  Leistungszeitraum bis zum Tag vor der nächsten Ausführung; sevDesk ergänzt im Kopftext eine
+  Zeile mit diesem Zeitraum. Er ist weder fertiggestellt noch versendet. Seine Nummer ist
+  vorläufig: Mehrere erzeugte Entwürfe können dieselbe Nummer zeigen, und jeder bekommt beim
+  Fertigstellen seine eigene. Prüf einen erzeugten Entwurf und stell ihn dann wie jeden anderen
+  fertig und versende ihn ([Fertigstellen](#fertigstellen), [Versenden](#versenden)). Eine erste
+  Ausführung heute ist sofort fällig: Der erste Entwurf erscheint etwa eine Minute nach dem
+  Speichern.
+- **Aus**: sevDesk erzeugt von selbst nichts, bis die automatische Generierung für die Vorlage
+  eingeschaltet wird ([unten](#vorlage-ändern-beenden-oder-neu-starten) oder in der
+  sevDesk-Web-App) oder jemand in der Web-App auf „Rechnung erzeugen“ klickt.
+
 Die Vorschau zeigt, was auf jeder Rechnung stehen wird: Kunde und Anschrift, jede Position mit
 ihrem Text, Kopf- und Fußtext, die Summe je Rechnung. Dazu kommen die erste Ausführung, die nächsten
-drei Ausführungstage, das Ende mit der Zahl der Rechnungen bis dahin und eine Warnung, wenn der
-Kunde schon eine Vorlage mit derselben Summe hat. Nach dem Speichern liest der Assistent die
-Vorlage zurück und sagt, wo sevDesk einen anderen Zeitplan gespeichert hat, als er gesendet hat.
+drei Ausführungstage, das Ende mit der Zahl der Ausführungen bis dahin, ob die automatische
+Generierung an ist und was das bedeutet, und eine Warnung, wenn der Kunde schon eine Vorlage mit
+derselben Summe hat. Nach dem Speichern liest der Assistent die Vorlage zurück und sagt, wo sevDesk
+einen anderen Zeitplan oder eine andere automatische Generierung gespeichert hat, als er gesendet
+hat.
 
 > [!WARNING]
-> Was sevDesk an einem Ausführungstag erzeugt (einen Entwurf oder eine fertiggestellte Rechnung mit
-> Nummer, an den Kunden versendet oder nicht), ist noch nicht erfasst; die Vorschau sagt das. Prüf
-> die erste Rechnung, die eine neue Vorlage erzeugt, in sevDesk.
+> sevDesk kann erzeugte Rechnungen auch selbst versenden: Ist zusätzlich das **automatische
+> Versenden** an, stellt sevDesk jede etwa zwei Minuten nach der Ausführung mit ihrer endgültigen
+> Nummer fertig, schickt sie mit dem PDF per E-Mail an den Kunden und schreibt sie fest, bevor
+> jemand sie gesehen hat. Dieser Server schaltet das automatische Versenden nie ein, und sein
+> Zurücklesen sagt dir, wenn eine Vorlage es hat. Schalte es in der Web-App nur ein, wenn du genau
+> das willst.
+
+Die Option „Nachfällig“ der Web-App (Abrechnung im Nachhinein) setzt dieser Server ebenfalls nicht,
+und ihre weiteren Intervalle (7 oder 14 Tage, 2 Monate, 2 bis 5 Jahre) bietet er nicht an.
 
 Vorlagen listet [`sevdesk_invoices_list`](../tools.md#sevdesk_invoices_list) mit dem Typ
 `recurring`. Jede Zeile und [`sevdesk_invoice_get`](../tools.md#sevdesk_invoice_get) zeigen den
-Zeitplan, wie sevDesk ihn speichert: Intervall, Start, nächste Ausführung, Ende, letzte Ausführung
-und ob die Vorlage beendet ist.
+Zeitplan, wie sevDesk ihn speichert: Intervall (auch ein in der Web-App angelegtes, in Worten),
+Start, nächste Ausführung, Ende, letzte Ausführung, ob automatische Generierung und automatisches
+Versenden an sind und ob die Vorlage beendet ist.
 
 ### Vorlage ändern, beenden oder neu starten
 
@@ -291,40 +316,60 @@ und ob die Vorlage beendet ist.
 
 [`sevdesk_invoice_update_recurring`](../tools.md#sevdesk_invoice_update_recurring) (`commit`,
 **du bestätigst**) ändert eine Vorlage: Positionen (angegebene Positionen ersetzen alle), Texte,
-Zahlungsziel, Steuerregel, Kunde oder Anschrift und den Zeitplan. Es ändert sich nur, was du
-angibst. Die Vorschau zeigt jede Änderung als vorher → nachher, neue Positionen und Texte
-vollständig, die Summe je Rechnung vorher und nachher und die Ausführungstage nach der Änderung.
-Jede Rechnung, die sevDesk danach erzeugt, trägt die Änderung; schon erzeugte Rechnungen bleiben,
-wie sie sind.
+Zahlungsziel, Steuerregel, Kunde oder Anschrift, den Zeitplan und die automatische Generierung
+(`autoGenerate`). Es ändert sich nur, was du angibst. Die Vorschau zeigt jede Änderung als vorher
+→ nachher, neue Positionen und Texte vollständig, die Summe je Rechnung vorher und nachher und die
+Ausführungstage nach der Änderung. Jede Rechnung, die sevDesk danach erzeugt, trägt die Änderung;
+schon erzeugte Rechnungen bleiben, wie sie sind.
 
 - Ein neues **Intervall** behält die nächste Ausführung; die Ausführungen danach folgen dem neuen
   Intervall.
-- Ein neues **Startdatum** wird auch zur nächsten Ausführung. Es folgt den Regeln einer neuen
-  Vorlage und wird abgelehnt, sobald die Vorlage eine Rechnung erzeugt hat: Was sevDesk dann mit
-  einem neuen Start macht, ist nicht erfasst.
+- Ein neues **Startdatum** wird auch zur nächsten Ausführung, und sevDesk löscht die letzte
+  Ausführung der Vorlage. Es muss nach heute liegen und, sobald die Vorlage Rechnungen erzeugt hat,
+  nach dem Ende des Zeitraums der neuesten; sonst würde sevDesk einen Zeitraum erneut abrechnen. Der
+  Assistent findet diese Rechnungen über ihre Herkunft, die Vorlage.
 - Ein neues **Enddatum** liegt am Tag der nächsten Ausführung oder danach; `removeEndDate` lässt
   die Vorlage laufen, bis sie beendet wird.
+- Die **automatische Generierung einschalten** wird abgelehnt, solange die nächste Ausführung vor
+  heute liegt: sevDesk würde nachholen und für jeden versäumten Zeitraum einen Entwurf erzeugen,
+  einen pro Minute. Gib im selben Aufruf ein neues Startdatum an. Eine nächste Ausführung heute ist
+  sofort fällig.
 
 Nach dem Speichern liest der Assistent die Vorlage zurück und nennt alles, was sevDesk anders
-gespeichert hat, auch eine Position, deren Änderung sevDesk übergangen hat.
+gespeichert hat, auch eine Position, deren Änderung sevDesk übergangen hat, und einen Schalter,
+der nicht übernommen wurde.
 
 > Beende das Wartungs-Abo der Musterfirma.
 
 [`sevdesk_invoice_end_recurring`](../tools.md#sevdesk_invoice_end_recurring) (`commit`, **du
-bestätigst**) beendet eine Vorlage (Status 50): sevDesk erzeugt aus ihr keine Rechnung mehr. Schon
-erzeugte Rechnungen bleiben, wie sie sind; eine falsche wird mit
-[`sevdesk_invoice_cancel`](../tools.md#sevdesk_invoice_cancel) storniert. Die Vorlage behält ihre
-Positionen und ihren Zeitplan, und
+bestätigst**) beendet eine Vorlage (Status 50): sevDesk erzeugt aus ihr keine Rechnung mehr, auch
+nicht bei eingeschalteter automatischer Generierung. Schon erzeugte Rechnungen bleiben, wie sie
+sind; eine falsche wird mit [`sevdesk_invoice_cancel`](../tools.md#sevdesk_invoice_cancel)
+storniert. Die Vorlage behält Positionen, Zeitplan und automatische Generierung, und
 [`sevdesk_invoice_reactivate_recurring`](../tools.md#sevdesk_invoice_reactivate_recurring)
-(`commit`, **du bestätigst**) startet sie wieder; ihre Vorschau nennt die nächsten
-Ausführungstage und was sevDesk an einem Ausführungstag tut. Das Aktivieren wird abgelehnt,
-solange die nächste Ausführung der Vorlage in der Vergangenheit liegt, weil sevDesk dann die
-versäumten Rechnungen auf einmal erzeugen könnte: Gib ihr zuerst ein neues Startdatum.
+(`commit`, **du bestätigst**) startet sie wieder. Ihre Vorschau sagt, was dann geschieht: Bei
+eingeschalteter automatischer Generierung erzeugt sevDesk wieder Entwürfe, den ersten sofort, wenn
+die nächste Ausführung heute ist; ist sie aus, erzeugt das Aktivieren allein nichts. Das Aktivieren
+wird abgelehnt, solange die nächste Ausführung vor heute liegt, weil sevDesk dann die versäumten
+Zeiträume auf einmal nachholen würde: Gib der Vorlage zuerst ein neues Startdatum.
+
+> [!WARNING]
+> Eine Vorlage mit eingeschaltetem **automatischem Versenden** wird über diesen Server nur beendet:
+> Das Beenden stoppt die E-Mails. Ändern oder Aktivieren wird abgelehnt, weil sevDesk Rechnungen
+> aus ihr ohne weitere Freigabe fertigstellen, per E-Mail versenden und festschreiben würde; eine
+> solche Vorlage verwaltest du in der sevDesk-Web-App. Liefert sevDesk ihre Einstellungen nicht,
+> werden Ändern und Aktivieren ebenfalls abgelehnt.
+
+Auch in der Web-App angelegte Vorlagen funktionieren, selbst mit einem Intervall, das dieser
+Server nicht anbietet (etwa wöchentlich oder alle zwei Monate): Sie lassen sich beenden und ändern,
+solange das Intervall bleibt; wo ihre Ausführungstage nicht berechnet werden können, sagt die
+Vorschau das.
 
 Löschen lässt sich eine Vorlage nur in der sevDesk-Web-App (Abo-Rechnungen); das Beenden ist der
 umkehrbare Weg. Die anderen Rechnungswerkzeuge lehnen eine Vorlage ab: Sie wird über sie nie
 fertiggestellt, versendet, bezahlt, storniert, als Entwurf geändert oder gelöscht. Eine Rechnung,
-die sevDesk aus einer Vorlage erzeugt, wird nicht wegen ihrer Vorlage abgelehnt.
+die sevDesk aus einer Vorlage erzeugt, ist ein gewöhnlicher Entwurf und wird nicht wegen ihrer
+Vorlage abgelehnt.
 
 ## Siehe auch
 

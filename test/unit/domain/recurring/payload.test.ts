@@ -99,6 +99,22 @@ describe("saveInvoice body of a recurring invoice template (D-111, D-003)", () =
     expect(parse(body({ accountEndDate: "2027-12-01" }))).toBe(false);
   });
 
+  it("sends automatic generation only as true, or not at all (D-132)", () => {
+    expect(parse(body({ propertyAutoGenerateRecurringInvoice: true }))).toBe(true);
+    // false in a creating save is not recorded; "0" stores "0", whose meaning is not recorded.
+    for (const value of [false, "0", "1", 1, 0, null]) {
+      expect(parse(body({ propertyAutoGenerateRecurringInvoice: value })), String(value)).toBe(
+        false,
+      );
+    }
+  });
+
+  it("never sends autoSendConfiguration: this server does not switch on automatic sending", () => {
+    for (const value of [null, { sendType: "VM", timeValue: "P0D" }]) {
+      expect(parse(body({ autoSendConfiguration: value })), JSON.stringify(value)).toBe(false);
+    }
+  });
+
   it("has no id and no number: a save creates a new template", () => {
     expect(parse(body({ id: 2301 }))).toBe(false);
     expect(parse(body({ invoiceNumber: "RE-1" }))).toBe(false);

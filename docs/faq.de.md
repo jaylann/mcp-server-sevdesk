@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:57f184dff250 -->
+<!-- translated-from: docs/faq.md sha256:MARKER_TBD -->
 
 # Häufige Fragen
 
@@ -151,16 +151,21 @@ nichts überprüft. Unterstützung für Österreich ist für ein späteres 1.x-R
 ### Kann es Abo-Rechnungen einrichten?
 
 Ja. [`sevdesk_invoice_create_recurring`](tools.md#sevdesk_invoice_create_recurring) (Stufe
-`commit`, du bestätigst) speichert eine Vorlage für wiederkehrende Rechnungen, monatlich,
-vierteljährlich, halbjährlich oder jährlich, aus der sevDesk dann an jedem Ausführungstag selbst
-eine Rechnung erzeugt ([Abo-Rechnungen](guides/invoices.de.md#abo-rechnungen)).
-[`sevdesk_invoice_update_recurring`](tools.md#sevdesk_invoice_update_recurring) ändert eine,
+`commit`, du bestätigst) speichert eine Vorlage für wiederkehrende Rechnungen, monatlich, vierteljährlich,
+halbjährlich oder jährlich, mit eingeschalteter automatischer Generierung, außer du willst sie aus
+([Abo-Rechnungen](guides/invoices.de.md#abo-rechnungen)). sevDesk erzeugt daraus dann an jedem
+Ausführungstag selbst einen Rechnungsentwurf, innerhalb etwa einer Minute: nicht fertiggestellt,
+nicht versendet, mit einer vorläufigen Nummer, die beim Fertigstellen endgültig wird. Du prüfst
+jeden Entwurf und stellst ihn mit den üblichen Rechnungswerkzeugen fertig und versendest ihn. Das
+automatische Versenden von sevDesk, das jede erzeugte Rechnung fertigstellen, per E-Mail versenden
+und festschreiben würde, bevor jemand sie sieht, schaltet der Server nie ein.
+[`sevdesk_invoice_update_recurring`](tools.md#sevdesk_invoice_update_recurring) ändert eine Vorlage
+(auch ihre automatische Generierung),
 [`sevdesk_invoice_end_recurring`](tools.md#sevdesk_invoice_end_recurring) beendet eine und
 [`sevdesk_invoice_reactivate_recurring`](tools.md#sevdesk_invoice_reactivate_recurring) startet sie
-wieder, jeweils Stufe `commit` mit deiner Bestätigung. Was sevDesk an einem Ausführungstag erzeugt
-(einen Entwurf oder eine fertiggestellte Rechnung, versendet oder nicht), ist noch nicht erfasst;
-prüf deshalb die erste erzeugte Rechnung. Löschen lässt sich eine Vorlage nur in der
-sevDesk-Web-App.
+wieder, jeweils Stufe `commit` mit deiner Bestätigung. Eine Vorlage mit eingeschaltetem
+automatischem Versenden wird hier nur beendet; Ändern oder Aktivieren bleibt der sevDesk-Web-App
+überlassen. Löschen lässt sich eine Vorlage nur in der sevDesk-Web-App.
 
 ### Kann es Briefe per Post versenden?
 

@@ -132,9 +132,12 @@ describe("GET /Invoice?showWkr=all: recurring templates (D-111, D-112, D-049)", 
       expect(schedule.lastRun).toBeUndefined();
     }
     // The form this server sends is read as its interval; text sevDesk accepted is kept as is.
+    // The list was read without the settings embed, so automatic generation and sending are left
+    // out rather than guessed (D-132).
     expect(schedules).toContainEqual({
       interval: "P0Y1M0W",
       intervalKey: "monthly",
+      every: "every 1 month",
       startDate: "2026-11-15",
       nextRun: "2026-11-15",
     });
