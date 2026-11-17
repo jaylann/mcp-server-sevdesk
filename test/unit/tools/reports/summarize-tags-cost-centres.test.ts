@@ -86,7 +86,10 @@ describe("sevdesk_records_summarize: cost centres", () => {
     });
     expect(report.costCentreFilter).toEqual(third);
     expect(report.recordsScanned).toBe(4);
-    expect(summary).toBe("Vouchers: 2 counted in 1 currency; 4 sevDesk rows read.");
+    // The sentence alone must not pass the cost centre's figures off as the account's.
+    expect(summary).toBe(
+      "Vouchers (only cost centre id 344959): 2 counted in 1 currency; 4 sevDesk rows read.",
+    );
   });
 
   it("groups by cost centre with a none group, and the groups add up to the totals", async () => {
@@ -275,7 +278,7 @@ describe("sevdesk_records_summarize: tags", () => {
   }, 20_000); // 10,001 relation rows.
 
   it("filters by tag with the measured list filter and checks every row", async () => {
-    const { client, report } = await summarize({ subject: "invoices", tag: "projekt y" }, [
+    const { client, report, summary } = await summarize({ subject: "invoices", tag: "projekt y" }, [
       TAGS,
       tagUsesRoute(7001, [
         relationRow(8101, 7001, "Invoice", 501),
@@ -291,6 +294,34 @@ describe("sevdesk_records_summarize: tags", () => {
     expect(report.recordsCounted).toBe(2);
     expect(report.totals.lines[0]?.net).toEqual(eur("300.00"));
     expect(report.tagFilter).toEqual({ tagId: 7001, rowsChecked: true });
+    expect(summary).toBe(
+      "Invoices (only tag id 7001): 2 counted in 1 currency; 3 sevDesk rows read.",
+    );
+  });
+
+  it("names both limits in the sentence when a tag and a cost centre filter the totals", async () => {
+    const { report, summary } = await summarize(
+      { subject: "invoices", tag: "Projekt Y", costCentre: "MCP1", groupBy: "status" },
+      [
+        TAGS,
+        costCentresRoute,
+        tagUsesRoute(7001, [relationRow(8101, 7001, "Invoice", 501)]),
+        rows("/Invoice", [
+          invoiceDoc(
+            { id: 501, date: "2026-10-01", net: "100", tax: "19" },
+            {
+              costCentre: storedCostCentre(third.id),
+            },
+          ),
+        ]),
+      ],
+    );
+
+    expect(report.recordsCounted).toBe(1);
+    expect(summary).toBe(
+      "Invoices (only cost centre id 344959 and tag id 7001): 1 counted in 1 currency, 1 group " +
+        "by status; 1 sevDesk rows read.",
+    );
   });
 });
 

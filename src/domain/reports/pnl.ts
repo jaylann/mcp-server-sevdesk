@@ -81,6 +81,7 @@ import {
   voucherDirections,
 } from "./positions-scan.js";
 import {
+  filterLimits,
   incompleteSuffix,
   incompleteTaxReportNotes,
   invalidReportRequest,
@@ -519,13 +520,11 @@ export async function profitAndLoss(
 
 /** Trusted one-line summary (counts, ids and the result only; no names). */
 export function profitAndLossSentence(report: ProfitAndLoss): string {
-  const limits = [
-    report.filters?.costCentre === undefined
-      ? undefined
-      : `cost centre id ${String(report.filters.costCentre.id)}`,
-    report.filters?.tag === undefined ? undefined : `tag id ${String(report.filters.tag.id)}`,
-  ].filter((limit) => limit !== undefined);
-  const filtered = limits.length === 0 ? "" : `, only ${limits.join(" and ")}`;
+  const limits = filterLimits({
+    costCentreId: report.filters?.costCentre?.id,
+    tagId: report.filters?.tag?.id,
+  });
+  const filtered = limits === "" ? "" : `, ${limits}`;
   const breakdown =
     report.breakdown === undefined
       ? ""

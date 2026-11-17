@@ -69,6 +69,7 @@ import {
 import { listVouchers, VOUCHER_KINDS, VOUCHER_STATUS_KEYS, type VoucherKind } from "../vouchers.js";
 import {
   coverageOutputShape,
+  filterLimits,
   invalidReportRequest,
   monthOf,
   plural,
@@ -469,9 +470,14 @@ export async function summarizeRecords(
   };
 }
 
-/** Trusted one-line summary of a report: counts only. */
+/** Trusted one-line summary of a report: counts, and the ids a tag or cost-centre filter names. */
 export function summaryReportSentence(report: SummaryReport): string {
   const subject = SUBJECTS[report.subject];
+  const limits = filterLimits({
+    costCentreId: report.costCentreFilter?.id,
+    tagId: report.tagFilter?.tagId,
+  });
+  const title = limits === "" ? subject.title : `${subject.title} (${limits})`;
   const currencies = new Set(report.totals.lines.map((line) => line.currency)).size;
   const grouped =
     report.groupBy === "none"
@@ -489,7 +495,7 @@ export function summaryReportSentence(report: SummaryReport): string {
   const incomplete =
     report.groupsComplete === false && !report.truncated ? " The breakdown is incomplete." : "";
   return (
-    `${subject.title}: ${report.recordsCounted} counted in ${plural(currencies, "currency", "currencies")}` +
+    `${title}: ${report.recordsCounted} counted in ${plural(currencies, "currency", "currencies")}` +
     `${grouped}; ${report.recordsScanned} sevDesk rows read.${truncated}${overlap}${incomplete}`
   );
 }
