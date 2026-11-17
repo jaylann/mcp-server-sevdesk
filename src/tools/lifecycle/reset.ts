@@ -53,7 +53,8 @@ const DESCRIPTIONS: Readonly<Record<PaymentKind, string>> = {
   invoice:
     'Reset an invoice one step back. to "open" (resetToOpen): a paid or partially paid ' +
     "invoice becomes open again and every booked payment is unlinked (bank transactions return " +
-    'to unbooked; no counter-booking). to "draft" (resetToDraft): an open invoice without ' +
+    "to unbooked with no counter-booking; on a cash register (Kasse) sevDesk books a " +
+    'counter-entry instead). to "draft" (resetToDraft): an open invoice without ' +
     "payments becomes a draft again and can be edited (sevdesk_invoice_update_draft); not for " +
     "enshrined (festgeschrieben) invoices. For a paid invoice reset to open first, then to " +
     "draft. Changing an invoice the customer already received is not allowed bookkeeping: " +
@@ -63,14 +64,16 @@ const DESCRIPTIONS: Readonly<Record<PaymentKind, string>> = {
   creditNote:
     'Reset a credit note one step back. to "open" (resetToOpen): a paid or partially paid ' +
     "credit note becomes open again and every booked payout is unlinked (bank transactions " +
-    'return to unbooked; no counter-booking). to "draft" (resetToDraft): an open credit note ' +
+    "return to unbooked with no counter-booking; on a cash register (Kasse) sevDesk books a " +
+    'counter-entry instead). to "draft" (resetToDraft): an open credit note ' +
     "without payouts becomes a draft again; not for enshrined (festgeschrieben) credit notes. " +
     "For a paid credit note reset to open first, then to draft. Commit tier: asks a human to " +
     "confirm the preview; dryRun only previews.",
   voucher:
     'Reset a voucher (Beleg) one step back. to "open" (resetToOpen): a paid or partially paid ' +
     "voucher becomes open (100) again and every booked payment is unlinked (bank transactions " +
-    'return to unbooked; no counter-booking). to "draft" (resetToDraft): an open voucher without ' +
+    "return to unbooked with no counter-booking; on a cash register (Kasse) sevDesk books a " +
+    'counter-entry instead). to "draft" (resetToDraft): an open voucher without ' +
     "payments becomes a draft (50) again and can be changed with sevdesk_voucher_update_draft " +
     "or deleted with sevdesk_voucher_delete_draft; not for enshrined (festgeschrieben) " +
     "vouchers. For a paid voucher reset to open first, then to draft. Commit tier: asks a human " +
