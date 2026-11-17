@@ -35,6 +35,7 @@ import {
   type UploadRequest,
 } from "./file-access.js";
 import { type LocalFileKind, readConfinedFile } from "./local-files.js";
+import { scanConfinedFolder } from "./local-folder.js";
 import { refused, resolveOutputDir, writeNewFile } from "./output-files.js";
 import { duration } from "./transfer-store.js";
 import {
@@ -109,6 +110,7 @@ export function localFileAccess(
       }
       return readLocal(fileDirs, ref, options);
     },
+    scanFolder: (folder, options) => scanConfinedFolder(fileDirs, folder, options),
     release() {
       // Local files belong to the user and outlive tool calls; downloaded ones were never kept.
     },
@@ -215,6 +217,14 @@ export function remoteFileAccess(
         );
       }
       return checkUpload(file, options);
+    },
+    async scanFolder(folder, options) {
+      if (config.fileDirs.length > 0) return local.scanFolder(folder, options);
+      throw refusal(
+        "This server reads no local folders: a remote server cannot see the folders on the " +
+          "user's device, and an upload is a single file. Checking a receipt folder needs a " +
+          "local server (or a remote one in bearer mode) with SEVDESK_FILE_DIRS",
+      );
     },
     release(ref) {
       const id = parseUploadRef(ref);

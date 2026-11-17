@@ -5,6 +5,7 @@ import { cashPositionTool } from "./cash-position.js";
 import { changedSinceTool } from "./changed-since.js";
 import { datevSettingsUpdateTool } from "./datev-settings.js";
 import { REPORT_EXPORT_TOOLS } from "./export-tools.js";
+import { receiptFolderCheckTool } from "./receipt-folder.js";
 import { recordsSummarizeTool } from "./summarize.js";
 import { REPORT_TAX_TOOLS } from "./tax-tools.js";
 import { REPORT_VAT_TOOLS } from "./vat-tools.js";
@@ -22,6 +23,7 @@ export const REPORT_TOOLS: readonly AnyToolDefinition[] = [
   ...REPORT_TAX_TOOLS,
   ...REPORT_VAT_TOOLS,
   recordsAuditTool,
+  receiptFolderCheckTool,
   ...REPORT_EXPORT_TOOLS,
   datevSettingsUpdateTool,
 ];

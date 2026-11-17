@@ -1,4 +1,4 @@
-<!-- translated-from: docs/remote/files.md sha256:1288b53a0d54 -->
+<!-- translated-from: docs/remote/files.md sha256:cb8985181200 -->
 
 # Dateien: Uploads und Download-Links
 
@@ -38,6 +38,11 @@ Ein Beleg, der schon online liegt (in einem Lieferantenportal, hinter einem Spei
 keinen Upload, wenn der Betreiber seinen Host in `SEVDESK_FILE_URL_HOSTS` einträgt: Das Modell
 übergibt den https-Link als `file`, und der Server lädt die Datei während des Aufrufs herunter und
 behält nichts ([Dateien von einem Link](../configuration.de.md#dateien-von-einem-link)).
+
+Einen ganzen Ordner mit Belegen mit den Belegen in sevDesk zu vergleichen
+(`sevdesk_receipt_folder_check`), geht auf einem entfernten Server mit OAuth nicht: Das liest einen
+lokalen Ordner, und ein Upload oder ein Link bringt einzelne Dateien. Im Bearer-Modus mit
+`SEVDESK_FILE_DIRS` wird es für die Ordner auf dem Server angeboten.
 
 ## Mehrere Dateien auf einer Seite
 

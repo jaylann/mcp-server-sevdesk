@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:ad74ffded0ec -->
+<!-- translated-from: docs/faq.md sha256:f1d1d00e11b4 -->
 
 # Häufige Fragen
 
@@ -153,6 +153,29 @@ Sie sind Schätzungen zum Prüfen, die der Server aus deinen Dokumenten berechne
 Auswertungen von sevDesk noch eine Steuererklärung. Jedes Ergebnis sagt, was es ausgelassen hat.
 Was sie abdecken und was bei dir bleibt, steht unter
 [Auswertungen und Exporte](guides/evaluations.de.md#wie-weit-du-dich-darauf-verlassen-kannst).
+
+### Findet es doppelt gebuchte Belege oder fehlende Rechnungen?
+
+Ja, als Hinweise. `sevdesk_records_audit` mit `check: duplicates` sucht doppelt gebuchte Belege
+(derselbe Lieferant und dieselbe Belegnummer, dieselbe Belegdatei oder derselbe Betrag innerhalb
+weniger Tage) und Entwürfe, die drei Wochen oder länger offen liegen; `check: recurring_gaps` lernt,
+welche Lieferanten jeden Monat, jedes Quartal oder jedes Jahr abrechnen, und nennt die Zeiträume
+ohne Rechnung, meist ein verlorener Beleg. Beide lesen nur deine Daten und ändern nichts. Was sie
+melden und was sie bewusst auslassen, steht unter
+[Auswertungen und Exporte](guides/evaluations.de.md#prüfungen).
+
+### Erkennt es, welche Belege in meinem Ordner nie gebucht wurden?
+
+Ja, wenn der Server diesen Ordner lesen darf (`SEVDESK_FILE_DIRS`: nicht auf einem entfernten
+Server mit OAuth; im Bearer-Modus nur für Ordner auf dem Server). `sevdesk_receipt_folder_check`
+vergleicht die SHA-256-Prüfsummen der PDF-, PNG-, JPEG- und XML-Dateien im Ordner mit denen der
+Belegdateien an deinen Belegen, für einen Monat, ein Quartal oder ein Jahr. Eine Datei, die kein
+Beleg trägt, wurde wohl nie gebucht; das ist ein
+Hinweis, kein Beweis, denn derselbe Beleg als andere Datei (ein Scan, ein Foto aus der App) hat
+eine andere Prüfsumme, und eine Belegdatei, die die Belegerkennung von sevDesk aus einem Upload
+angelegt hat, hat gar keine (das Ergebnis zählt sie und nennt solche derselben Größe als
+schwachen Hinweis). Die Prüfung holt keinen Dateiinhalt ins Gespräch und lädt nichts hoch
+([Auswertungen und Exporte](guides/evaluations.de.md#belege-im-ordner-die-nie-gebucht-wurden)).
 
 ### Unterstützt es sevDesk in Österreich?
 

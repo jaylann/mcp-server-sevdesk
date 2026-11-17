@@ -1,4 +1,4 @@
-<!-- translated-from: README.md sha256:b0f6a9aee805 -->
+<!-- translated-from: README.md sha256:1c8371e40798 -->
 
 <!-- Nur die Breite: mit einer Höhe dazu zeichnet GitHub einen getönten Kasten hinter das Bild. -->
 <p align="center"><img src="https://raw.githubusercontent.com/jaylann/mcp-server-sevdesk/main/assets/logo.svg" alt="" width="96"></p>
@@ -71,7 +71,7 @@ freischalten, zuerst im Probelauf, und das Token sicher aufbewahren.
 
 ## Was er kann
 
-80 Werkzeuge in 10 Werkzeuggruppen. Die 41 Lesewerkzeuge füllen die erste Spalte; mit den
+81 Werkzeuge in 10 Werkzeuggruppen. Die 42 Lesewerkzeuge füllen die erste Spalte; mit den
 Schreibstufen kommen 39 weitere Werkzeuge hinzu, die Daten anlegen und ändern.
 
 | Bereich                                | Lesen                                                                                                                                                                                                                                                                                                                 | Schreiben (`write`, `commit`, `external`)                                                                                                                                                                                                                    |
@@ -86,9 +86,14 @@ Schreibstufen kommen 39 weitere Werkzeuge hinzu, die Daten anlegen und ändern.
 
 Die Umsatzsteuer-Auswertung ist deutlich als Schätzung gekennzeichnet (Soll- oder
 Istversteuerung). Die **Prüfungen** (`sevdesk_records_audit`) beantworten „Was ist falsch?“:
-ausländische Lieferanten und Kunden, deren Umsatzsteuer-Behandlung nicht passt, und die
-Bemessungsgrundlage nach § 13b je Steuerregel, jeder Befund mit seinen Belegen, seiner
-Rechtsgrundlage und dem, was zu prüfen ist; es sind Hinweise, keine Steuerberatung. Jedes
+ausländische Lieferanten und Kunden, deren Umsatzsteuer-Behandlung nicht passt, die
+Bemessungsgrundlage nach § 13b je Steuerregel, doppelt gebuchte Belege und liegen gebliebene
+Entwürfe sowie fehlende Rechnungen von Lieferanten, die jeden Monat, jedes Quartal oder jedes Jahr
+abrechnen, jeder Befund mit seinen Belegen, seiner Rechtsgrundlage und dem, was zu prüfen ist; es
+sind Hinweise, keine Steuerberatung. Wo der Server einen lokalen Ordner liest
+(`SEVDESK_FILE_DIRS`), vergleicht `sevdesk_receipt_folder_check` dessen Belegdateien anhand der
+Prüfsumme mit denen an den Belegen in sevDesk und nennt die Dateien, die wohl nie gebucht wurden.
+Jedes
 Schreibwerkzeug akzeptiert `dryRun: true` und gibt dann nur genau das zurück, was es tun würde. Belegentwürfe können in Fremdwährung sein, mit einem Wechselkurs oder
 einem Wechselkursdatum; solche Entwürfe lassen sich über den Server nicht fertigstellen
 ([Belege](docs/guides/receipts.de.md)). Die vollständige, generierte Referenz ist

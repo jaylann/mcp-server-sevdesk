@@ -12,19 +12,20 @@ settings needs `commit` ([Permissions](../permissions.md#tiers)).
 
 ## Which report answers what
 
-| Question                                      | Tool                                                                 | Tier    |
-| --------------------------------------------- | -------------------------------------------------------------------- | ------- |
-| Revenue per month, costs per supplier, totals | [`sevdesk_records_summarize`](../tools.md#sevdesk_records_summarize) | `read`  |
-| Who owes us what, and since when              | [`sevdesk_receivables_aging`](../tools.md#sevdesk_receivables_aging) | `read`  |
-| What we owe, and when it is due               | [`sevdesk_payables_aging`](../tools.md#sevdesk_payables_aging)       | `read`  |
-| How much money we have, and will have         | [`sevdesk_cash_position`](../tools.md#sevdesk_cash_position)         | `read`  |
-| What changed since a date                     | [`sevdesk_changed_since`](../tools.md#sevdesk_changed_since)         | `read`  |
-| What the VAT return will roughly say          | [`sevdesk_vat_summary`](../tools.md#sevdesk_vat_summary)             | `read`  |
-| Profit for a month, quarter or year           | [`sevdesk_profit_and_loss`](../tools.md#sevdesk_profit_and_loss)     | `read`  |
-| What looks wrong: VAT treatment, §13b base    | [`sevdesk_records_audit`](../tools.md#sevdesk_records_audit)         | `read`  |
-| A CSV file for Excel or the tax adviser       | [`sevdesk_csv_export`](../tools.md#sevdesk_csv_export)               | `read`  |
-| The DATEV booking data for the tax adviser    | [`sevdesk_datev_export`](../tools.md#sevdesk_datev_export)           | `write` |
-| All invoice or receipt PDFs of a period       | [`sevdesk_archive_export`](../tools.md#sevdesk_archive_export)       | `write` |
+| Question                                      | Tool                                                                       | Tier    |
+| --------------------------------------------- | -------------------------------------------------------------------------- | ------- |
+| Revenue per month, costs per supplier, totals | [`sevdesk_records_summarize`](../tools.md#sevdesk_records_summarize)       | `read`  |
+| Who owes us what, and since when              | [`sevdesk_receivables_aging`](../tools.md#sevdesk_receivables_aging)       | `read`  |
+| What we owe, and when it is due               | [`sevdesk_payables_aging`](../tools.md#sevdesk_payables_aging)             | `read`  |
+| How much money we have, and will have         | [`sevdesk_cash_position`](../tools.md#sevdesk_cash_position)               | `read`  |
+| What changed since a date                     | [`sevdesk_changed_since`](../tools.md#sevdesk_changed_since)               | `read`  |
+| What the VAT return will roughly say          | [`sevdesk_vat_summary`](../tools.md#sevdesk_vat_summary)                   | `read`  |
+| Profit for a month, quarter or year           | [`sevdesk_profit_and_loss`](../tools.md#sevdesk_profit_and_loss)           | `read`  |
+| What looks wrong: VAT, §13b, duplicates, gaps | [`sevdesk_records_audit`](../tools.md#sevdesk_records_audit)               | `read`  |
+| Which receipts in my folder are not booked    | [`sevdesk_receipt_folder_check`](../tools.md#sevdesk_receipt_folder_check) | `read`  |
+| A CSV file for Excel or the tax adviser       | [`sevdesk_csv_export`](../tools.md#sevdesk_csv_export)                     | `read`  |
+| The DATEV booking data for the tax adviser    | [`sevdesk_datev_export`](../tools.md#sevdesk_datev_export)                 | `write` |
+| All invoice or receipt PDFs of a period       | [`sevdesk_archive_export`](../tools.md#sevdesk_archive_export)             | `write` |
 
 Two prompts combine them: [`vat_precheck`](../tools.md#vat_precheck) before the
 Umsatzsteuer-Voranmeldung, and [`month_end_close`](../tools.md#month_end_close) for a month-end
@@ -93,6 +94,10 @@ to documents) or accrual (by document date).
 
 > What is our §13b base for October, by tax rule?
 
+> Did we book any receipt twice in the third quarter, and which drafts are still open?
+
+> Is a monthly bill missing this year?
+
 [`sevdesk_records_audit`](../tools.md#sevdesk_records_audit) answers "what is wrong?" instead of
 "what are the numbers?". It runs one check per call for a month, quarter, year or date range and
 returns findings. Each names its kind (`code`) and how sure it is (`severity`: `warning` when the
@@ -140,10 +145,138 @@ taxation (`reverse_charge_without_deduction`), and rules 12 and 14 (with deducti
 Kleinunternehmer account, which owes the tax but may not deduct it
 (`reverse_charge_deduction_on_small_business`).
 
-Both checks read the period's documents and, where the rates decide, their positions; `vat` also
-reads the contact and address lists once each. Like the other reports they say what they left out
-(`coverage.truncated`, `coverage.documentsLeftOut`), and over HTTP they stop reading after about 90
-seconds: ask for a month when a quarter is too much.
+### Vouchers booked twice and stuck drafts (`duplicates`)
+
+The check compares the vouchers (Belege) of each supplier, expenses and revenue apart. The
+supplier is the voucher's contact, or the supplier name on the voucher when it has no contact; a
+voucher with neither is not compared and the notes count it. A pair that involves a draft is also
+found across suppliers, by the same number and gross amount: sevDesk's receipt recognition fills
+in a receipt's invoice number and amount, but not the supplier's contact, so the same PDF reaching
+sevDesk twice can stand under two suppliers or none. A pair counts in the period of its later
+voucher; vouchers up to 31 days before the period are read for the earlier one.
+
+| Code                    | Means                                                                                                                                                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `voucher_number_twice`  | Booked vouchers with the same document number, at most 21 days apart (`warning`). Case, spaces and `-_/.#` do not count; a number needs a digit, so "Miete" typed as the description is not one                          |
+| `voucher_receipt_twice` | A same-amount pair whose receipt files have the same SHA-256 checksum: the same file uploaded twice (`warning`)                                                                                                          |
+| `voucher_amount_twice`  | Booked vouchers with the same gross amount and currency, at most 5 days apart, not told apart by two different numbers (`check`)                                                                                         |
+| `draft_repeats_voucher` | A draft with the same number as a booked voucher, at most 21 days apart, and the same supplier or the same amount (any supplier); or the same supplier and amount within 5 days (`check`): delete it rather than book it |
+| `draft_twice`           | Two drafts paired by the same rules (`check`): usually the same receipt uploaded twice; book one, delete the other                                                                                                       |
+| `voucher_draft_stuck`   | A voucher dated in the period that is still a draft 21 days or more after it was created in sevDesk (`check`)                                                                                                            |
+| `sales_draft_stuck`     | The same for an invoice or credit note: the customer has not been billed (`check`)                                                                                                                                       |
+
+Not flagged on purpose: purchases of the same amount a week apart, two receipts with different
+numbers, the same number on vouchers more than 21 days apart (a description such as "Miete 2026"
+repeated on every monthly bill), a voucher and its reversal (+x and −x), the same number from
+another supplier or in the other direction between booked vouchers, drafts under different
+suppliers with another amount or without a number, a gross amount of 0, and a draft created less
+than 21 days ago, however old its document date. Sales invoices are checked for stuck drafts only:
+their numbers come from sevDesk's own number range, and an invoice issued twice is corrected with
+a cancellation invoice. To find those drafts the check lists every invoice and credit note dated in
+the period (one request per 1,000): sevDesk's lists declare a status filter, but no recording shows
+that it returns only drafts, so it is not used.
+
+To confirm a same-amount pair the check compares the SHA-256 checksums of the vouchers' receipt
+files, which sevDesk sends with the voucher list (no extra read per voucher). sevDesk stores no
+checksum for some receipts (one its recognition created from an uploaded file has none), so
+`voucher_receipt_twice` can only be found for receipts with one. Different checksums,
+or a receipt without one, prove nothing, since the same paper scanned twice gives two files, so
+such a pair stays a `check`.
+
+### Missing bills of regular suppliers (`recurring_gaps`)
+
+The check learns from the expense vouchers which suppliers bill every month, quarter or year, and
+reports a period inside the audit without any voucher of that supplier: usually a lost or unbooked
+receipt. It reads the vouchers (drafts included) from 24 months before the period to 12 months
+after it, but not after today. The finding names the missing months (`missing`) and lists the
+supplier's bills before and after each gap.
+
+A supplier counts as regular when its bills fall on about the same day (within 7 days) at least
+three times in four, one bill (or its usual number of bills) per period as a rule, with at most one
+period in four empty; quarterly and yearly bills must fall in the same month of the quarter or
+year. A period counts as missing only with at least three months (quarterly and yearly: two
+periods) with bills before it and one after it. The rhythm is learned for each month of the audit
+from the supplier's bills of the 12 months before and after it (yearly bills: 24 months before),
+so a supplier that went from monthly to quarterly bills is judged by its quarterly bills from then
+on. A bill is expected on the supplier's usual day, or on the month's last day when the month is
+shorter: a bill of the 31st is expected on 30 June.
+
+| Code                     | Means                                                         |
+| ------------------------ | ------------------------------------------------------------- |
+| `monthly_bill_missing`   | A month without a bill from a supplier that bills monthly     |
+| `quarterly_bill_missing` | A quarter without a bill from a supplier that bills quarterly |
+| `yearly_bill_missing`    | A year without a bill from a supplier that bills yearly       |
+
+Not flagged on purpose: a change of amount (amounts are not compared), a bill that moved a few days
+across a month end, two bills in one month next to a month without one (the bill came late or
+early), a supplier that stopped billing, the latest period while the supplier's next bill has not
+come yet, and a bill booked without the supplier's contact but under its name (it counts for the
+one contact whose vouchers carry that name). sevDesk's recurring voucher templates (RV) are not
+bills and are not read; the vouchers booked from them count like any other. When the listing stops
+at its cap the check reports no gaps at all, since a voucher not read would look like one. A
+shorter period does not help then: the range read always spans about three years, so the account
+has more vouchers in that time than the check can read.
+
+The checks `vat` and `reverse_charge` read the period's documents and, where the rates decide,
+their positions; `vat` also reads the contact and address lists once each. `duplicates` and
+`recurring_gaps` read document lists only, up to 10,000 rows; `recurring_gaps` always reads about
+three years, whatever the period. Like the other reports they say what they left out
+(`coverage.truncated`, `coverage.documentsLeftOut`), and over HTTP they stop reading document by
+document after about 90 seconds: ask for a month when a quarter is too much (this does not shorten
+what `recurring_gaps` reads).
+
+### Receipts in a folder that were never booked
+
+> Which receipts in my folder for March 2026 are not booked in sevDesk?
+
+[`sevdesk_receipt_folder_check`](../tools.md#sevdesk_receipt_folder_check) compares the receipt
+files of a folder on your computer with the receipt files attached to the vouchers in sevDesk. It
+is a tool of its own, because it exists only where the server can read local folders: it is
+offered only with `SEVDESK_FILE_DIRS` ([Configuration](../configuration.md)), so not on a remote
+server with OAuth, where an upload carries a single file, and in bearer mode only for folders on
+the server ([Files over HTTP](../remote/files.md)).
+
+It reads only inside `SEVDESK_FILE_DIRS`: the folder you name, or all of them, with subfolders up
+to three levels deep only when you ask. It takes PDF, PNG, JPEG and XML files (recognized by their
+content) of up to 20 MB, at most 500 files and 1 GB per call, and computes each file's SHA-256
+checksum. Hidden files, symbolic links and other file types are skipped and counted; when a limit
+is reached the result says that the folder was cut. No file content leaves the server and nothing
+is uploaded: the result holds paths, sizes, modification dates and checksums. sevDesk stores a
+checksum for receipts uploaded through the API's upload (not for those its recognition created),
+and the voucher list carries it, so the voucher list of the period, 62 days before and after it,
+drafts included, is all the check reads from sevDesk.
+
+| Code                         | Means                                                                                        |
+| ---------------------------- | -------------------------------------------------------------------------------------------- |
+| `receipt_file_booked_twice`  | Two or more booked vouchers carry the file (`warning`)                                       |
+| `receipt_file_not_booked`    | No voucher read carries the file: probably never booked (`check`)                            |
+| `receipt_file_before_period` | The same, but the file was last changed before the vouchers read: an older receipt (`check`) |
+| `receipt_file_only_on_draft` | Only a draft carries the file: not booked yet (`check`)                                      |
+| `receipt_file_draft_repeats` | A booked voucher and a draft carry the file: delete the draft rather than book it (`check`)  |
+
+Like the audits, every result says in English and German that its findings are hints, not tax
+advice (`caveat`), and what a match proves (`matching`).
+
+Every file that matches is listed with its vouchers and their status (`matched`). A match proves
+that exactly this file is attached to that voucher. No match is a hint, not proof: the same
+receipt as another file (a scan or photo of the paper, a copy converted or compressed by sevDesk
+or another program, a receipt that reached sevDesk by e-mail or through its app) has another
+checksum, and a voucher dated outside the range read is not compared. Amounts, dates and
+suppliers are not compared, since that would need the file's content. Two weak hints help: the
+day the file was last changed (`modified`, not the receipt date), and vouchers whose document
+number appears in the file name (`possibleVouchers`). An unmatched file last changed after the
+range read stays `receipt_file_not_booked`, since a receipt of the period may have been saved
+late; a note counts such files, which may belong to a later period. To book a file that is
+missing, create a draft with
+[`sevdesk_voucher_create_draft`](../tools.md#sevdesk_voucher_create_draft), the file as `file` and
+its `sha256` as `fileSha256`, so the draft gets exactly the bytes the check saw (needs `write`).
+
+Not every receipt in sevDesk has a checksum: one that sevDesk's recognition created from an
+uploaded file has none, so no file can ever match it. The result counts such receipts in the range
+read (`withoutChecksum`, with a note in English and German). While there are any, an unmatched
+file is reported as having no receipt with its checksum, not as unbooked, and a receipt without a
+checksum whose size in bytes and extension equal the file's is named as a third weak hint
+(`sameSizeVouchers`), never as a match.
 
 ## How far you can rely on them
 

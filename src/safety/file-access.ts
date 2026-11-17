@@ -20,6 +20,7 @@
  */
 import type { Config } from "../config.js";
 import type { LocalFileKind } from "./local-files.js";
+import type { FolderScan, FolderScanOptions } from "./local-folder.js";
 import type { UploadBatchState, UploadPurpose } from "./transfer-types.js";
 
 /** A file a tool read: from a local folder, from an upload, or downloaded from an https link. */
@@ -131,6 +132,14 @@ export interface FileAccess {
    */
   read(ref: string, options: ReadFileOptions): Promise<InputFile>;
   /**
+   * Lists the receipt files of a folder inside `SEVDESK_FILE_DIRS` (`folder` absolute or relative
+   * to one of them; every configured folder when `undefined`) with their SHA-256 checksums, never
+   * their content (`scanConfinedFolder`, `./local-folder.ts`). Local folders only: an upload is a
+   * single file, so a server without `SEVDESK_FILE_DIRS` refuses. Throws a local `validation`
+   * `SevdeskError` with a trusted message when the folder is not allowed.
+   */
+  scanFolder(folder: string | undefined, options: FolderScanOptions): Promise<FolderScan>;
+  /**
    * Releases a remote upload after sevDesk confirms it was attached successfully. Local files
    * are never deleted, and a file from a link was never kept (its bytes live only in the call).
    * Unknown, foreign or already released references are harmless no-ops; reads, previews and
@@ -205,6 +214,15 @@ export function loggableFileRef(ref: string): string {
 /** Whether remote file transfer is on for this deployment. */
 export function remoteFilesEnabled(config: Pick<Config, "deployment">): boolean {
   return config.deployment.kind === "http" && config.deployment.files !== undefined;
+}
+
+/**
+ * Whether tools that read a whole folder are offered: local folders only (`SEVDESK_FILE_DIRS`, over
+ * stdio or in bearer mode). Uploads and https links carry single files, so neither remote file
+ * transfer nor `SEVDESK_FILE_URL_HOSTS` counts.
+ */
+export function canReadFolders(config: Pick<Config, "fileDirs">): boolean {
+  return config.fileDirs.length > 0;
 }
 
 /**

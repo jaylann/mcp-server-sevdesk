@@ -1,7 +1,8 @@
 /**
  * `sevdesk_records_audit`: account audits that answer "what is wrong?" instead of "what are the
- * numbers?". A read tool: each check lists documents, contacts and positions and changes nothing.
- * The checks live in `src/domain/reports/audit/` (`registry.ts`).
+ * numbers?". A read tool that changes nothing: `vat` and `reverse_charge` read documents,
+ * contacts and positions; `duplicates` and `recurring_gaps` read document lists only. The checks
+ * live in `src/domain/reports/audit/` (`registry.ts`).
  */
 import { z } from "zod";
 
@@ -13,7 +14,7 @@ import {
   auditSentence,
   runAudit,
 } from "../../domain/reports/audit/registry.js";
-import { MAX_SCAN_DOCUMENTS } from "../../domain/reports/positions-scan.js";
+import { MAX_HEADER_ROWS, MAX_SCAN_DOCUMENTS } from "../../domain/reports/positions-scan.js";
 import { resolvePeriod } from "../../domain/reports/vat.js";
 import { defineTool } from "../define-tool.js";
 import { periodInputShape } from "./period-input.js";
@@ -28,9 +29,11 @@ export const recordsAuditTool = defineTool({
     "findings, each with the documents (Belege, Rechnungen; ids and links), the contact, a " +
     "reason citing the law (UStG) and what to check. One check per call: " +
     `${auditChecksDescription()}. Findings are hints, not tax advice (Hinweise, keine ` +
-    "Steuerberatung). Reads documents, contacts and positions (up to " +
-    `${MAX_SCAN_DOCUMENTS.toLocaleString("en-US")} documents; slow for long periods) and ` +
-    "changes nothing. For the UStVA figures use sevdesk_vat_summary.",
+    "Steuerberatung). vat and reverse_charge read documents, contacts and positions (up to " +
+    `${MAX_SCAN_DOCUMENTS.toLocaleString("en-US")} documents; slow for long periods); ` +
+    "duplicates and recurring_gaps read document lists only (up to " +
+    `${MAX_HEADER_ROWS.toLocaleString("en-US")} rows; recurring_gaps always about three years ` +
+    "around the period). Changes nothing. For the UStVA figures use sevdesk_vat_summary.",
   toolset: "reports",
   tier: "read",
   annotations: {
