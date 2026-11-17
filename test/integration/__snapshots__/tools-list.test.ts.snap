@@ -2313,6 +2313,44 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
   {
     "annotations": {
       "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Set sevDesk's DATEV export settings",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "accountantClientNumber": {
+          "description": "Mandantennummer at the adviser, 1–99999.",
+          "maximum": 99999,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "accountantNumber": {
+          "description": "Beraternummer of the tax adviser, 1001–9999999.",
+          "maximum": 9999999,
+          "minimum": 1001,
+          "type": "integer",
+        },
+        "accountingYearBegin": {
+          "description": "First day of the current fiscal year (Wirtschaftsjahresbeginn), YYYY-MM-DD, usually January 1st; the preview warns when it is more than a year away from today.",
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_datev_settings_update",
+    "title": "Set sevDesk's DATEV export settings",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": false,
@@ -2375,44 +2413,6 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     },
     "name": "sevdesk_document_set_layout",
     "title": "Set the language, template or letterhead of a draft",
-  },
-  {
-    "annotations": {
-      "destructiveHint": true,
-      "idempotentHint": false,
-      "openWorldHint": false,
-      "readOnlyHint": false,
-      "title": "Set sevDesk's DATEV export settings",
-    },
-    "inputSchema": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "additionalProperties": false,
-      "properties": {
-        "accountantClientNumber": {
-          "description": "Mandantennummer at the adviser, 1–99999.",
-          "maximum": 99999,
-          "minimum": 1,
-          "type": "integer",
-        },
-        "accountantNumber": {
-          "description": "Beraternummer of the tax adviser, 1001–9999999.",
-          "maximum": 9999999,
-          "minimum": 1001,
-          "type": "integer",
-        },
-        "accountingYearBegin": {
-          "description": "First day of the current fiscal year (Wirtschaftsjahresbeginn), YYYY-MM-DD, usually January 1st; the preview warns when it is more than a year away from today.",
-          "type": "string",
-        },
-        "dryRun": {
-          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
-          "type": "boolean",
-        },
-      },
-      "type": "object",
-    },
-    "name": "sevdesk_datev_settings_update",
-    "title": "Set sevDesk's DATEV export settings",
   },
   {
     "annotations": {
@@ -4923,6 +4923,9 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
             "units",
             "payment_methods",
             "receipt_guidance",
+            "letterpapers",
+            "templates",
+            "text_templates",
             "contact_custom_fields",
           ],
           "type": "string",
@@ -9247,6 +9250,9 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
             "units",
             "payment_methods",
             "receipt_guidance",
+            "letterpapers",
+            "templates",
+            "text_templates",
             "contact_custom_fields",
           ],
           "type": "string",
@@ -11222,6 +11228,9 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
             "units",
             "payment_methods",
             "receipt_guidance",
+            "letterpapers",
+            "templates",
+            "text_templates",
             "contact_custom_fields",
           ],
           "type": "string",
