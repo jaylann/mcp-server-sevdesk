@@ -58,8 +58,9 @@ export const contactUpdateTool = defineWriteTool({
     remove: removeInput
       .optional()
       .describe(
-        "Entries to take off this contact, each {kind, id}. Removed after the other changes; " +
-          "the changes apply to what remains.",
+        "Entries to take off this contact, each {kind, id}. Removed after the other changes. " +
+          "When an entry removed is the one a change would apply to (the billing address, the " +
+          "main e-mail, phone or website), a new one is added instead.",
       ),
     ...dryRunInputShape,
   }),

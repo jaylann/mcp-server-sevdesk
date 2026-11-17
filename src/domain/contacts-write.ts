@@ -488,9 +488,10 @@ export interface ContactUpdateState {
  * Reads the contact with its addresses and communication ways and works out the smallest change:
  * contact fields that differ, the organisation a person belongs to, the billing address (or the
  * only address; a new billing address when there is neither) and the main e-mail/phone/website of
- * each type (added when missing), then what `remove` takes off. Changes apply to what remains after
- * the removals, so a removed entry is never the one changed. Fields that were not given are never
- * touched. Throws a `validation` SevdeskError when the change is impossible (names of the other
+ * each type (added when missing), then what `remove` takes off. The entry a change applies to is
+ * chosen from the contact as read; when `remove` takes that very entry off, a new one is added (a
+ * new billing address, a new main entry) instead, so a change never moves to another entry
+ * because of a removal. Fields that were not given are never touched. Throws a `validation` SevdeskError when the change is impossible (names of the other
  * contact kind, customer number taken, a parent that is no organisation, an id of another contact)
  * or empty.
  */
@@ -647,7 +648,10 @@ export async function planContactUpdate(
   for (const { field: key, type, label } of COMMUNICATION_FIELDS) {
     const value = input[key];
     if (value === undefined) continue;
-    const target = mainWay(details, type, removedWayIds);
+    const current = mainWay(details, type);
+    // The entry this change would overwrite is being removed: add a new main entry instead of
+    // overwriting another entry of the type (review of #108).
+    const target = current === undefined || removedWayIds.has(current.id) ? undefined : current;
     if (target !== undefined) {
       if (sameValue(type, target.value, value)) continue;
       communicationWays.push({
@@ -685,7 +689,9 @@ export async function planContactUpdate(
         .map((way) => wayKindOfType(way.body.type))
         .filter((kind): kind is WayKind => kind !== undefined),
     );
-    warnings.push(...removalWarnings(details, removal.removals, newMainKinds));
+    warnings.push(
+      ...removalWarnings(details, removal.removals, newMainKinds, address?.kind === "create"),
+    );
     facts.push({
       label: "Left afterwards",
       value: leftText(
@@ -813,7 +819,11 @@ async function planAddressChange(
   facts: ConfirmationFact[],
   signal: AbortSignal | undefined,
 ): Promise<AddressChange | undefined> {
-  const target = targetAddress(details, removedIds);
+  const current = targetAddress(details);
+  // The address this change would overwrite is being removed: add a new billing address instead
+  // of rewriting another address (review of #108).
+  const replaced = current !== undefined && removedIds.has(current.id) ? current : undefined;
+  const target = replaced === undefined ? current : undefined;
   if (target !== undefined) {
     const body: Record<string, unknown> = {};
     const lines: string[] = [];
@@ -833,8 +843,11 @@ async function planAddressChange(
   }
   if ([input.street, input.zip, input.city].every((value) => value === undefined)) {
     throw validation(
-      `Contact ${details.contact.id} has no address yet: a new one needs street, zip or city, ` +
-        "not only a country.",
+      replaced === undefined
+        ? `Contact ${details.contact.id} has no address yet: a new one needs street, zip or ` +
+            "city, not only a country."
+        : `Address ${replaced.id}, the one this update would change, is removed: a new billing ` +
+            "address needs street, zip or city, not only a country.",
     );
   }
   const resolved = country ?? (await resolveCountry(client, DEFAULT_COUNTRY_CODE, signal));
@@ -855,34 +868,25 @@ async function planAddressChange(
 }
 
 /**
- * The address an update changes, among those it does not remove: the billing address
+ * The address an update changes, as the contact was read: the billing address
  * (Rechnungsanschrift, lowest id first), else the only address; `undefined` (add a billing
  * address) when there is neither.
  */
-function targetAddress(
-  details: ContactDetails,
-  removedIds: ReadonlySet<number>,
-): ContactDetails["addresses"][number] | undefined {
-  const sorted = details.addresses
-    .filter((address) => !removedIds.has(address.id))
-    .sort((a, b) => a.id - b.id);
+function targetAddress(details: ContactDetails): ContactDetails["addresses"][number] | undefined {
+  const sorted = [...details.addresses].sort((a, b) => a.id - b.id);
   return (
     sorted.find((address) => address.category?.id === BILLING_ADDRESS_CATEGORY) ??
     (sorted.length === 1 ? sorted[0] : undefined)
   );
 }
 
-/**
- * The main communication way of a type, else the one with the lowest id, among those the update
- * does not remove.
- */
+/** The main communication way of a type, else the one with the lowest id, as the contact was read. */
 function mainWay(
   details: ContactDetails,
   type: CommunicationType,
-  removedIds: ReadonlySet<number>,
 ): ContactDetails["communicationWays"][number] | undefined {
   const ofType = details.communicationWays
-    .filter((way) => way.type.toUpperCase() === type && !removedIds.has(way.id))
+    .filter((way) => way.type.toUpperCase() === type)
     .sort((a, b) => a.id - b.id);
   return ofType.find((way) => way.main) ?? ofType[0];
 }

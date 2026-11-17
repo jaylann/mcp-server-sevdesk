@@ -737,25 +737,112 @@ describe("sevdesk_contact_update", () => {
       );
     });
 
-    it("warns when the billing address goes and changes what remains instead", async () => {
+    it("warns when the billing address goes and nothing replaces it", async () => {
+      const client = new FakeSevdeskClient([
+        { method: "DELETE", path: "/ContactAddress/3001", response: DELETED },
+        ...routes(),
+      ]);
+      const plan = await prepareWrite(
+        tool,
+        { id: 1001, remove: [{ kind: "address", id: 3001 }] },
+        client,
+      );
+      expect(plan.preview.warnings).toEqual([
+        "Address 3001 is the billing address (Rechnungsanschrift); sevDesk makes no other " +
+          "address the billing address, so the contact has none afterwards.",
+      ]);
+    });
+
+    it("adds a new billing address when the billing address goes, and leaves the delivery address alone", async () => {
       const client = new FakeSevdeskClient([
         { method: "DELETE", path: "/ContactAddress/3001", response: DELETED },
         ...routes(),
         { method: "PUT", path: "/ContactAddress/3002", response: OK },
       ]);
-      const plan = await prepareWrite(
+      const { plan } = await executeWrite(
         tool,
         { id: 1001, city: "Neustadt", remove: [{ kind: "address", id: 3001 }] },
         client,
       );
       expect(plan.preview.facts).toContainEqual({
-        label: "Address (id 3002)",
-        value: "city Musterstadt → Neustadt",
+        label: "New billing address (Rechnungsanschrift)",
+        value: "Neustadt, Deutschland",
       });
-      expect(plan.preview.warnings).toEqual([
-        "Address 3001 is the billing address (Rechnungsanschrift); sevDesk makes no other " +
-          "address the billing address, so the contact has none afterwards.",
+      expect(plan.preview.facts).not.toContainEqual(
+        expect.objectContaining({ label: "Address (id 3002)" }),
+      );
+      expect(plan.preview.facts).toContainEqual({
+        label: "Left afterwards",
+        value: "2 addresses, 3 communication ways",
+      });
+      expect(plan.preview.warnings).toEqual([]);
+      const writes = client.writes();
+      expect(writes.map((call) => [call.method, call.path])).toEqual([
+        ["POST", "/ContactAddress"],
+        ["DELETE", "/ContactAddress/3001"],
       ]);
+      expect(writes[0]?.body).toMatchObject({
+        city: "Neustadt",
+        country: { id: 1, objectName: "StaticCountry" },
+        category: { id: 47, objectName: "Category" },
+        contact: { id: 1001, objectName: "Contact" },
+      });
+    });
+
+    it("refuses a country alone when the billing address it would change goes", async () => {
+      const client = new FakeSevdeskClient(routes());
+      await expect(
+        prepareWrite(
+          tool,
+          { id: 1001, country: "AT", remove: [{ kind: "address", id: 3001 }] },
+          client,
+        ),
+      ).rejects.toMatchObject({
+        kind: "validation",
+        message:
+          "Address 3001, the one this update would change, is removed: a new billing address " +
+          "needs street, zip or city, not only a country.",
+      });
+      expect(client.writes()).toEqual([]);
+    });
+
+    it("adds a new main e-mail when the main one goes, and leaves the other e-mail alone", async () => {
+      const ways = {
+        body: {
+          objects: [
+            { id: "4001", type: "EMAIL", value: "info@example.com", main: "1" },
+            { id: "4004", type: "EMAIL", value: "billing@example.com", main: "0" },
+          ].map((row) => ({ ...row, contact: { id: "1001", objectName: "Contact" } })),
+        },
+      };
+      const client = new FakeSevdeskClient([
+        { method: "DELETE", path: "/CommunicationWay/4001", response: DELETED },
+        { method: "PUT", path: "/CommunicationWay/4004", response: OK },
+        ...routes({ ways }),
+      ]);
+      const { plan } = await executeWrite(
+        tool,
+        { id: 1001, email: "new@example.com", remove: [{ kind: "email", id: 4001 }] },
+        client,
+      );
+      expect(plan.preview.facts).toContainEqual({
+        label: "E-mail (new)",
+        value: "new@example.com",
+      });
+      expect(plan.preview.facts).not.toContainEqual(
+        expect.objectContaining({ label: "E-mail (id 4004)" }),
+      );
+      expect(plan.preview.warnings).toEqual([]);
+      const writes = client.writes();
+      expect(writes.map((call) => [call.method, call.path])).toEqual([
+        ["POST", "/CommunicationWay"],
+        ["DELETE", "/CommunicationWay/4001"],
+      ]);
+      expect(writes[0]?.body).toMatchObject({
+        type: "EMAIL",
+        value: "new@example.com",
+        main: true,
+      });
     });
 
     it("replaces the main e-mail: adds the new one first, removes the old one last", async () => {

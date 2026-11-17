@@ -1206,7 +1206,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "string",
         },
         "remove": {
-          "description": "Entries to take off this contact, each {kind, id}. Removed after the other changes; the changes apply to what remains.",
+          "description": "Entries to take off this contact, each {kind, id}. Removed after the other changes. When an entry removed is the one a change would apply to (the billing address, the main e-mail, phone or website), a new one is added instead.",
           "items": {
             "additionalProperties": false,
             "properties": {
@@ -5746,7 +5746,7 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "type": "string",
         },
         "remove": {
-          "description": "Entries to take off this contact, each {kind, id}. Removed after the other changes; the changes apply to what remains.",
+          "description": "Entries to take off this contact, each {kind, id}. Removed after the other changes. When an entry removed is the one a change would apply to (the billing address, the main e-mail, phone or website), a new one is added instead.",
           "items": {
             "additionalProperties": false,
             "properties": {

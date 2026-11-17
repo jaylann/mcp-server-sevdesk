@@ -195,19 +195,21 @@ function planWayRemoval(details: ContactDetails, kind: WayKind, id: number): Pla
 
 /**
  * The consequences of an update's removals that sevDesk does not handle (D-084): a removed billing
- * address leaves no billing address unless another one remains, and a removed main entry leaves
- * its type without a main entry unless the same update adds a new main one (`newMainKinds`).
+ * address leaves no billing address unless another one remains or the same update adds a new one
+ * (`newBillingAddress`), and a removed main entry leaves its type without a main entry unless the
+ * same update adds a new main one (`newMainKinds`).
  */
 export function removalWarnings(
   details: ContactDetails,
   removals: readonly PlannedRemoval[],
   newMainKinds: ReadonlySet<WayKind>,
+  newBillingAddress: boolean,
 ): string[] {
   const removedIds = new Set(removals.map((removal) => `${removal.kind}:${String(removal.id)}`));
   const warnings: string[] = [];
   for (const removal of removals) {
     if (removal.kind === "address") {
-      if (removal.address.category?.id !== BILLING_ADDRESS_CATEGORY) continue;
+      if (newBillingAddress || removal.address.category?.id !== BILLING_ADDRESS_CATEGORY) continue;
       const otherBilling = details.addresses.some(
         (row) =>
           row.id !== removal.id &&

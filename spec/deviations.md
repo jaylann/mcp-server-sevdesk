@@ -3193,7 +3193,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   read). The approval is bound to the ids of those persons, so a person added in between asks
   again. Afterwards it reads each person back and says so when one is still there or could not be
   checked. A 404 on the DELETE counts as "already gone". Removing an address or way says when it
-  removes the billing address or the main entry, since sevDesk elects no new one.
+  removes the billing address or the main entry, since sevDesk elects no new one; when the same
+  update gives a new value for that very entry, a new billing address or main entry is added
+  instead of rewriting another one.
 - **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("deletes contacts, addresses and
   communication ways and reports what is left"); `test/unit/tools/masterdata/contact-delete.test.ts`
   ("deletes an organisation with its contact persons and reads every one back (D-084)", "lists up
@@ -3201,8 +3203,10 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   whose contact persons cannot all be read", "says so when a contact person is still there or
   could not be checked", "counts a 404 on the DELETE as already gone (D-084)");
   `test/unit/tools/masterdata/contact-update.test.ts` ("removes an address and the main e-mail
-  last and says what is left", "warns when the billing address goes and changes what remains
-  instead", "counts an entry sevDesk no longer has as already gone"). Live: the four probes above;
+  last and says what is left", "warns when the billing address goes and nothing replaces it",
+  "adds a new billing address when the billing address goes, and leaves the delivery address
+  alone", "adds a new main e-mail when the main one goes, and leaves the other e-mail alone",
+  "counts an entry sevDesk no longer has as already gone"). Live: the four probes above;
   the contact-person cascade has no probe yet.
 
 ### D-085: Refused deletes of referenced contacts and cost centres arrive as HTTP 200
