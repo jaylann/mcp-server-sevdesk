@@ -272,6 +272,26 @@ describe("sevdesk_private_transaction_rule_create", () => {
     expect(plan.preview.warnings.join(" ")).not.toContain("500");
   });
 
+  it("names a single examined transaction without 'the first 1'", async () => {
+    const rows = Array.from({ length: 6000 }, (_, index) =>
+      index === 0
+        ? open(7000, "Netflix", "Abo")
+        : open(7000 + index, "Stadtwerke", "Strom", { status: "400" }),
+    );
+    const client = new StagedClient(createReads([], rows), []);
+    const plan = await prepareWrite(createTool, { counterparty: "Netflix" }, client);
+    expect(plan.preview.facts[2]?.value).toBe("1 (the list was cut)");
+    expect(plan.previewDe.facts[2]?.value).toBe("1 (die Liste wurde gekürzt)");
+    expect(plan.preview.warnings).toContain(
+      "Only 1 open transaction was examined: the list was cut, and more may look like what the " +
+        "rule is meant for.",
+    );
+    expect(plan.previewDe.warnings).toContain(
+      "Nur 1 offener Umsatz wurde geprüft: Die Liste wurde gekürzt, und weitere können gemeint " +
+        "scheinen.",
+    );
+  });
+
   it.each([
     ["no text", {}, "Give the text the rule matches"],
     [

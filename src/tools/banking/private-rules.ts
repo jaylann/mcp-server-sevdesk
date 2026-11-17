@@ -207,15 +207,18 @@ export const privateRuleCreateTool = defineWriteTool({
 function createFacts(plan: PrivateRuleCreatePlan, lang: PreviewLanguage): Fact[] {
   const de = lang === "de";
   const { estimate } = plan;
-  const examined = de
-    ? `${String(estimate.examined)} ` +
-      (estimate.complete
-        ? "(alle offenen Umsätze)"
-        : `(die ersten ${String(estimate.examined)}; die Liste wurde gekürzt)`)
-    : `${String(estimate.examined)} ` +
-      (estimate.complete
-        ? "(all open transactions)"
-        : `(the first ${String(estimate.examined)}; the list was cut)`);
+  const count = estimate.examined;
+  // "The first 1" reads oddly: with one (or none) examined, only the cut is named.
+  const cut =
+    count > 1
+      ? de
+        ? `(die ersten ${String(count)}; die Liste wurde gekürzt)`
+        : `(the first ${String(count)}; the list was cut)`
+      : de
+        ? "(die Liste wurde gekürzt)"
+        : "(the list was cut)";
+  const all = de ? "(alle offenen Umsätze)" : "(all open transactions)";
+  const examined = `${String(count)} ${estimate.complete ? all : cut}`;
   const listed = estimate.listed.length;
   const matches =
     estimate.matches === 0
