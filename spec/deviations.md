@@ -4187,13 +4187,16 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   `sevdesk_order_set_offer_status`) bind the rows and list them in both languages, and the
   delivery note preview lists them (D-107); `sevdesk_invoice_create_from_order` shows the order's
   discounts in its preview and the invoice's in its result. Every one reads the rows with the same
-  reader, which refuses a row of another record, and writes each with the same text. A document
-  with several rows is never replaced or removed by the draft tools (the refusal says that
-  sevDesk's totals do not count all of them), and the get tools, the from-order tool and all of
-  these approvals warn about it. A kept discount is never refused: when the totals cannot be
-  computed with it, the draft update preview says that sevDesk computes them. Not measured, so a new discount is refused with a reason: on gross prices, on
-  positions with several tax rates, a fixed amount on a document in another currency than EUR,
-  and on an e-invoice. What a partial or advance invoice from an order does with its discount is
+  reader and writes each with the same text. The reader refuses a row of another record, a row
+  without a value, and a row whose `discount` or `percentage` flag is missing or unreadable:
+  recorded rows always carry both, and without one whether it deducts or adds, and whether its
+  value is a percentage or an amount, would be a guess. A document with several rows is never
+  replaced or removed by the draft tools (the refusal says that sevDesk's totals do not count all
+  of them), and the get tools, the from-order tool and all of these approvals warn about it. A
+  kept discount is never refused: when the totals cannot be computed with it, the draft update
+  preview says that sevDesk computes them. Not measured, so a new discount is refused with a
+  reason: on gross prices, on positions with several tax rates, a fixed amount on a document in
+  another currency than EUR, and on an e-invoice. What a partial or advance invoice from an order does with its discount is
   not checked either; the from-order preview says so. The replacement was checked on an invoice;
   orders and credit notes send the same discount keys. The read-back still says when sevDesk
   stored something other than what was sent.
@@ -4209,6 +4212,7 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   ("sevdesk_invoice_create_from_order with a discount on the whole order"),
   `test/regressions/approval-binds-document-discount.test.ts` (Guard 3: "warns in English and
   German when the document has several discounts"), `test/unit/domain/document-discounts.test.ts`
-  (the shared reader and row text), `test/unit/tools/orders/create-confirmation.test.ts` ("shows
+  (the shared reader and row text; "refuses a row with no discount flag", "… no percentage
+  flag"), `test/unit/tools/orders/create-confirmation.test.ts` ("shows
   and binds the offer's document discounts in both languages (review of #112, L5)"). Live: probes
   `write-document-discount`, `read-order-get-discounts`.

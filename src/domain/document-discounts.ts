@@ -79,7 +79,8 @@ function unexpected(message: string): SevdeskError {
 
 /**
  * Reads the discounts of one document (`GET /<kind>/{id}/getDiscounts`, one page with an explicit
- * limit). Every row must name this document as its `object` and carry a value; anything else, and
+ * limit). Every row must name this document as its `object` and carry a value and both its
+ * `discount` and `percentage` flags (readable as "0"/"1"); anything else, and
  * a page as long as the limit (the rest would be unknown), is an `unexpected_response` error:
  * nothing is shown, approved or replaced on discounts this server could not read completely.
  */
@@ -108,11 +109,20 @@ export async function readDocumentDiscounts(
         "sevDesk listed a document discount that does not belong to the document or has no value.",
       );
     }
+    // Recorded rows always carry both flags (D-116). Without one, whether the row deducts or
+    // adds, and whether its value is a percentage or an amount, would be a guess.
+    if (row.discount === undefined || row.percentage === undefined) {
+      throw unexpected(
+        "sevDesk listed a document discount without saying whether it is a discount or a " +
+          "surcharge and whether its value is a percentage or an amount. Check the document in " +
+          "sevDesk.",
+      );
+    }
     return {
       id: row.id,
       text: row.text,
-      surcharge: row.discount === false,
-      percentage: row.percentage === true,
+      surcharge: !row.discount,
+      percentage: row.percentage,
       value: row.value,
       isNet: row.isNet,
     };

@@ -70,6 +70,43 @@ describe("reading the discounts of an order (D-116)", () => {
     );
   });
 
+  // D-116 recorded both flags on every row; a row without one is refused, not guessed as a
+  // discount or a fixed amount (as the order follow-ups' reader of #112 refused to guess too).
+  it.each([
+    ["no discount flag", { discount: null }],
+    ["no percentage flag", { percentage: null }],
+    ["neither flag", { discount: undefined, percentage: undefined }],
+  ])("refuses a row with %s", async (_label, overrides) => {
+    const client = new FakeSevdeskClient([
+      discountsOf("3001", [discountRow("3001"), discountRow("3001", { id: "8002", ...overrides })]),
+    ]);
+    const error = await failure(readDocumentDiscounts(client, "order", 3001));
+    expect(error.kind).toBe("unexpected_response");
+    expect(error.message).toBe(
+      "sevDesk listed a document discount without saying whether it is a discount or a " +
+        "surcharge and whether its value is a percentage or an amount. Check the document in " +
+        "sevDesk.",
+    );
+  });
+
+  it.each([
+    ["an unreadable discount flag", { discount: "yes" }],
+    ["an unreadable percentage flag", { percentage: "2" }],
+  ])("refuses a row with %s, in its own words", async (_label, overrides) => {
+    const client = new FakeSevdeskClient([discountsOf("3001", [discountRow("3001", overrides)])]);
+    const error = await failure(readDocumentDiscounts(client, "order", 3001));
+    expect(error.kind).toBe("unexpected_response");
+    expect(error.message).not.toContain(String(Object.values(overrides)[0]));
+  });
+
+  it("reads a surcharge and a fixed amount from their flags", async () => {
+    const client = new FakeSevdeskClient([
+      discountsOf("3001", [discountRow("3001", { discount: "0", percentage: "0" })]),
+    ]);
+    const [row] = (await readDocumentDiscounts(client, "order", 3001)).rows;
+    expect(row).toMatchObject({ surcharge: true, percentage: false });
+  });
+
   it("refuses a row it cannot read instead of leaving it out", async () => {
     const client = new FakeSevdeskClient([
       discountsOf("3001", [discountRow("3001", { value: "ten" })]),
