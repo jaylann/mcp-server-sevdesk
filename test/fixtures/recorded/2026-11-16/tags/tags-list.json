@@ -1,0 +1,75 @@
+{
+  "_provenance": {
+    "source": "recorded",
+    "ref": "GET /Tag?limit=n (recording session 2026-11-16)",
+    "date": "2026-11-16",
+    "systemVersion": "2.0",
+    "note": "Personal and company data replaced by scripts/lib/scrub.ts; keys, nulls and scalar types as recorded. A recorded single page (has total). Tags of documents (#87): whether a row carries a usage count; probe read-tag-lists."
+  },
+  "status": 200,
+  "body": {
+    "total": 6,
+    "objects": [
+      {
+        "id": "5888327",
+        "objectName": "Tag",
+        "additionalInformation": null,
+        "create": "2026-11-16T21:40:56+01:00",
+        "name": "Mustertag 1",
+        "objectType": null,
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        }
+      },
+      {
+        "id": "5888324",
+        "objectName": "Tag",
+        "additionalInformation": null,
+        "create": "2026-11-16T21:40:49+01:00",
+        "name": "Mustertag 2",
+        "objectType": null,
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        }
+      },
+      {
+        "id": "5888328",
+        "objectName": "Tag",
+        "additionalInformation": null,
+        "create": "2026-11-16T21:41:00+01:00",
+        "name": "Mustertag 3",
+        "objectType": null,
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        }
+      },
+      {
+        "id": "5888323",
+        "objectName": "Tag",
+        "additionalInformation": null,
+        "create": "2026-11-16T21:40:45+01:00",
+        "name": "Mustertag 4",
+        "objectType": null,
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        }
+      },
+      {
+        "id": "5888409",
+        "objectName": "Tag",
+        "additionalInformation": null,
+        "create": "2026-11-16T21:56:28+01:00",
+        "name": "Mustertag 5",
+        "objectType": null,
+        "sevClient": {
+          "id": "9001",
+          "objectName": "SevClient"
+        }
+      }
+    ]
+  }
+}

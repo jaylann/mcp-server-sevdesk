@@ -267,10 +267,8 @@ export function createProbeHttp(
           status: "2xx",
           ...(response.contentType === undefined ? {} : { contentType: response.contentType }),
           body:
-            // Only the first line (a CSV's header row, an XML declaration, `%PDF-1.x`), never
-            // the data rows after it.
             json === undefined
-              ? `${scrubber.scrubText((text.split(/\r?\n/, 1)[0] ?? "").slice(0, 120))}… (${response.body.length} bytes, not JSON)`
+              ? `${firstLineEvidence(text, scrubber)}… (${response.body.length} bytes, not JSON)`
               : scrubber.scrub(json),
         });
         return {
@@ -316,6 +314,28 @@ export function createProbeHttp(
       }
     },
   };
+}
+
+/**
+ * What the evidence keeps of a body that is not JSON: only its first line (a CSV's header row, an
+ * XML declaration, `%PDF-1.x`), never the data rows after it. A binary body (a ZIP, an image) is
+ * reduced to its leading printable signature (`PK`): its first "line" can hold an entry's file
+ * name or other data.
+ */
+function firstLineEvidence(text: string, scrubber: Scrubber): string {
+  const line = (text.split(/\r?\n/, 1)[0] ?? "").slice(0, 120);
+  // A control character other than tab, or U+FFFD (a byte that is not UTF-8), marks a binary body.
+  let binaryAt = -1;
+  for (let index = 0; index < line.length; index += 1) {
+    const code = line.charCodeAt(index);
+    if ((code < 0x20 && code !== 0x09) || code === 0xfffd) {
+      binaryAt = index;
+      break;
+    }
+  }
+  if (binaryAt === -1) return scrubber.scrubText(line);
+  const signature = line.slice(0, Math.min(binaryAt, 8));
+  return `binary, starts with ${JSON.stringify(scrubber.scrubText(signature))}`;
 }
 
 /**
@@ -477,6 +497,8 @@ interface DocumentOptions {
   readonly fields?: Readonly<Record<string, unknown>>;
   /** Header fields to leave out (e.g. `deliveryDate`, to see whether sevDesk requires it). */
   readonly omit?: readonly string[];
+  /** Top-level body keys sent after the position keys (e.g. `discountSave`, `discountDelete`). */
+  readonly body?: Readonly<Record<string, unknown>>;
 }
 
 export type DocumentKind = "Invoice" | "CreditNote" | "Order";
@@ -655,13 +677,19 @@ export function createTestData(options: {
         taxRate: 19,
         ...position,
       }));
+      const body = {
+        [RESPONSE_KEY[kind]]: header,
+        [POSITION_KEY[kind]]: positions,
+        [POSITION_KEY[kind].replace("Save", "Delete")]: null,
+        ...documentOptions.body,
+      };
+      // A recurring invoice template (WKR) is a commit step (D-111); every other probe document is
+      // a draft (status 100), which a write tool may save. The client refuses a body that needs
+      // more than the tier declared here.
+      const template = kind === "Invoice" && header["invoiceType"] === "WKR";
       const result = await http.write("POST", SAVE_PATH[kind], {
-        tier: "write",
-        body: {
-          [RESPONSE_KEY[kind]]: header,
-          [POSITION_KEY[kind]]: positions,
-          [POSITION_KEY[kind].replace("Save", "Delete")]: null,
-        },
+        tier: template ? "commit" : "write",
+        body,
       });
       const id = createdId(result.objects, RESPONSE_KEY[kind]);
       if (id !== undefined) register(kind, id, "draft (deletable in the web app)");
