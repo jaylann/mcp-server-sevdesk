@@ -1,13 +1,14 @@
 /**
- * Export tools (M4), both handing their file out only through `ToolContext.files`: a new file in
- * `SEVDESK_OUTPUT_DIR` (never overwriting), or over HTTP with file transfer a download link. Both
- * are registered only when files can be delivered (`canDeliverFiles`), and both check the
+ * Export tools (M4), all handing their file out only through `ToolContext.files`: a new file in
+ * `SEVDESK_OUTPUT_DIR` (never overwriting), or over HTTP with file transfer a download link. All
+ * are registered only when files can be delivered (`canDeliverFiles`), and all check the
  * delivery (`checkDelivery`) before their first sevDesk request:
  *
- * - `sevdesk_datev_export` (write tier): starts sevDesk's DATEV export job, waits for it, downloads
- *   the ZIP from the presigned link (never shown to the model) and saves it. A write because the
- *   job is a request that changes state in sevDesk (it may mark the exported documents as
- *   exported); it never enshrines.
+ * - `sevdesk_datev_export` (write tier): starts sevDesk's DATEV export job (CSV or, with
+ *   `format: "xml"`, XML with receipt images), waits for it, downloads the ZIP from the presigned
+ *   link (never shown to the model) and saves it. A write because the job is a request that starts
+ *   work in sevDesk; it never enshrines, and no recorded export marked a document as exported
+ *   (D-077, D-102).
  * - `sevdesk_csv_export` (read tier, `writes-files`): one of sevDesk's CSV exports, saved as is.
  * - `sevdesk_archive_export` (write tier, `./archive-export.ts`): the invoice or voucher PDFs of
  *   a period as one ZIP.
