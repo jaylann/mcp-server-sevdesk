@@ -23,8 +23,10 @@
  *
  * Commit tier although the endpoint needs only `write`, like `sevdesk_voucher_delete_draft`: a
  * deletion cannot be undone, so a human confirms the preview, which names the document. The
- * approval is bound to the stored record and its positions (`readDocumentContent`), so a draft
- * changed between the preview and the approval is asked about again instead of deleted unseen.
+ * approval is bound to the stored record, its positions, its document discounts and its layout
+ * (`readDocumentContent`; the layout is read with `render` without reload, a reading POST), so a
+ * draft changed between the preview and the approval is asked about again instead of deleted
+ * unseen.
  *
  * Registration: toolset `meta` (it spans three document toolsets, as `sevdesk_document_save`
  * does) with an `available` condition (at least one of them enabled); each call is checked

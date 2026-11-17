@@ -9,12 +9,14 @@ import { testConfig } from "../../../helpers/config.js";
 import { withCountryRoute } from "../../../helpers/country-route.js";
 import { type FakeRoute, FakeSevdeskClient } from "../../../helpers/fake-client.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
+import { discountRow, discountsRoute } from "../drafts/routes.js";
 import {
   creditNoteRow,
   documentRoute,
   invoiceRow,
   orderRow,
   positionRoutes,
+  renderRoute,
   type Row,
   StagedClient,
   writeRoute,
@@ -269,7 +271,7 @@ describe("sevdesk_document_delete_draft", () => {
     expect(plan.preview.warnings).toHaveLength(1);
   });
 
-  it("binds the approval to the stored record and its positions", async () => {
+  it("binds the approval to the stored record, its positions, discounts and layout", async () => {
     const id = 1001;
     const args = { kind: "invoice", id };
     const position = {
@@ -280,14 +282,30 @@ describe("sevdesk_document_delete_draft", () => {
       quantity: "1",
       price: "100",
     };
-    const withRows = (row: Row, rows: readonly Row[]): FakeSevdeskClient =>
+    // `extra` routes come first, so they replace the defaults of `positionRoutes`.
+    const withRows = (
+      row: Row,
+      rows: readonly Row[],
+      extra: readonly FakeRoute[] = [],
+    ): FakeSevdeskClient =>
       new FakeSevdeskClient(
         withCountryRoute([
           documentRoute("invoice", row),
+          ...extra,
           ...positionRoutes({ "/InvoicePos": rows }),
         ]),
       );
-    const base = await prepareWrite(tool, args, withRows(INVOICE.row, [position]));
+    const fake = withRows(INVOICE.row, [position]);
+    const base = await prepareWrite(tool, args, fake);
+    // The binding read the discounts and, for a draft, the layout (`render` without reload, a
+    // reading POST: no write).
+    expect(fake.calls.map((call) => [call.method, call.path])).toEqual(
+      expect.arrayContaining([
+        ["GET", "/Invoice/1001/getDiscounts"],
+        ["POST", "/Invoice/1001/render"],
+      ]),
+    );
+    expect(fake.writes()).toEqual([]);
     const same = await prepareWrite(tool, args, withRows(INVOICE.row, [position]));
     const editedText = await prepareWrite(
       tool,
@@ -299,9 +317,25 @@ describe("sevdesk_document_delete_draft", () => {
       args,
       withRows(INVOICE.row, [{ ...position, price: "200" }]),
     );
+    const addedDiscount = await prepareWrite(
+      tool,
+      args,
+      withRows(
+        INVOICE.row,
+        [position],
+        [discountsRoute("Invoice", id, [discountRow("Invoice", id)])],
+      ),
+    );
+    const otherLanguage = await prepareWrite(
+      tool,
+      args,
+      withRows(INVOICE.row, [position], [renderRoute("invoice", { language: "en" })]),
+    );
     expect(same.binding).toBe(base.binding);
     expect(editedText.binding).not.toBe(base.binding);
     expect(editedPosition.binding).not.toBe(base.binding);
+    expect(addedDiscount.binding).not.toBe(base.binding);
+    expect(otherLanguage.binding).not.toBe(base.binding);
   });
 
   it("says so when sevDesk still returns the document after the DELETE", async () => {
