@@ -4,6 +4,7 @@
  */
 import { SevdeskError } from "../../sevdesk/errors.js";
 import { cleanText, currencyCode, splitTotals, type SumFields } from "../common.js";
+import { compare } from "../money.js";
 import type { PreviewLanguage } from "../preview-text.js";
 import type { TaxRule } from "../reference-data.js";
 import { addressText, type DraftPreview, fact, type PreviewFact } from "./preview.js";
@@ -90,6 +91,27 @@ export function storedTotalText(
   if (totals.gross === undefined) return "as stored";
   const booked = eur?.gross === undefined ? "" : ` (${eur.gross.amount} EUR booked)`;
   return `gross ${totals.gross.amount} ${totals.gross.currency}${booked}`;
+}
+
+/**
+ * Warning for an update that replaces the positions of a draft with stored document discounts
+ * (Rabatte; `sumDiscounts` is not zero, negative for a discount, spec/deviations.md D-116). The
+ * update leaves the discount rows alone and sevDesk applies them to the new positions, but the
+ * expected total is computed from the positions only. `undefined` when the positions stay (the
+ * stored total already includes the discounts) or the draft has none.
+ */
+export function storedDiscountWarning(
+  sumDiscounts: string | undefined,
+  positionsReplaced: boolean,
+): string | undefined {
+  if (!positionsReplaced || sumDiscounts === undefined || compare(sumDiscounts, "0") === 0) {
+    return undefined;
+  }
+  return (
+    "The draft has document discounts (Rabatte) that stay on it: sevDesk applies them to the " +
+    "new positions, so the saved total will differ from the expected total, which leaves them " +
+    "out. Check the total after the save."
+  );
 }
 
 /** The preview text of the tax setting, e.g. "tax rule 1 Umsatzsteuerpflichtige Umsätze". */

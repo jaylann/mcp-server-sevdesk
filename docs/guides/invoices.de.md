@@ -276,7 +276,7 @@ Für eine bezahlte oder teilweise bezahlte Rechnung legt
 > Lass in dieser Gutschrift nur die falsche Position stehen und schreib dafür 40 EUR netto gut.
 
 [`sevdesk_credit_note_update_draft`](../tools.md#sevdesk_credit_note_update_draft) (`write`, ohne
-Bestätigung) passt den Entwurf an wie die Änderung einer Rechnung: Er ändert nur die Felder, die du
+Bestätigung) passt den Entwurf so an, wie du eine Rechnung änderst: Er ändert nur die Felder, die du
 nennst, und neue Positionen ersetzen alle gespeicherten. Die Gutschrift behält ihre Nummer und die
 Rechnung, die sie mindert; ihre Positionen dürfen nur die Steuersätze dieser Rechnung haben, und
 Kontakt und Währung bleiben die der Rechnung. Ändern lassen sich nur Entwürfe. Fertiggestellt wird

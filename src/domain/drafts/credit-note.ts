@@ -60,6 +60,7 @@ import {
   numberLabel,
   positionCount,
   ref,
+  storedDiscountWarning,
   storedNumber,
   storedRef,
   storedTotalText,
@@ -553,7 +554,11 @@ export async function prepareCreditNoteUpdate(
     `Update draft credit note ${doc.id} for ${customer}: change ` +
       `${log.changed.join(", ") || "nothing visible"}.`,
     facts,
-    [royaltyWarning(category), ...basics.warnings],
+    [
+      royaltyWarning(category),
+      ...basics.warnings,
+      storedDiscountWarning(doc.sumDiscounts, basics.positions !== undefined),
+    ],
   );
   return { preview, state: { body, creditNoteId: doc.id, expected } };
 }

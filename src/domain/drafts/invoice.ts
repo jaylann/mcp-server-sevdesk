@@ -42,6 +42,7 @@ import {
   numberLabel,
   positionCount,
   ref,
+  storedDiscountWarning,
   storedNumber,
   storedRef,
   storedTotalText,
@@ -431,7 +432,11 @@ export async function prepareInvoiceUpdate(
   const preview = draftPreview(
     `Update draft invoice ${doc.id} for ${customer}: change ${log.changed.join(", ") || "nothing visible"}.`,
     facts,
-    [...basics.warnings, taxHint],
+    [
+      ...basics.warnings,
+      taxHint,
+      storedDiscountWarning(doc.sumDiscounts, basics.positions !== undefined),
+    ],
   );
   return { preview, state: { body, invoiceId: doc.id, expected } };
 }

@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { type Tier } from "../../../../src/safety/tiers.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
+import { creditNoteCreateDraftTool } from "../../../../src/tools/credit-notes/draft-create.js";
 import { creditNoteUpdateDraftTool as tool } from "../../../../src/tools/credit-notes/draft-update.js";
+import { creditNoteFromInvoiceTool } from "../../../../src/tools/credit-notes/from-invoice.js";
+import { resetTool } from "../../../../src/tools/lifecycle/reset.js";
 import { selectTools } from "../../../../src/tools/registry.js";
 import { testConfig } from "../../../helpers/config.js";
 import { type FakeRoute, FakeSevdeskClient, loadFixture } from "../../../helpers/fake-client.js";
@@ -103,6 +106,16 @@ describe("sevdesk_credit_note_update_draft (recorded update shape, fake data)", 
     });
   });
 
+  it("is named by the tools that leave a credit note draft behind", () => {
+    for (const other of [
+      creditNoteCreateDraftTool,
+      creditNoteFromInvoiceTool,
+      resetTool("creditNote"),
+    ]) {
+      expect(other.description).toContain("sevdesk_credit_note_update_draft");
+    }
+  });
+
   it("is registered only when the write tier is allowed", () => {
     const listed = (tiers: Tier[]) =>
       selectTools([tool], testConfig({ allowedTiers: new Set<Tier>(tiers) })).length;
@@ -146,6 +159,42 @@ describe("sevdesk_credit_note_update_draft (recorded update shape, fake data)", 
     });
     // discountTime was null: nothing is sent (sevDesk then stores "0", D-110).
     expect(plan.state.body.creditNote).not.toHaveProperty("discountTime");
+  });
+
+  it("changes the date, one address field and the contact person, keeping the rest", async () => {
+    const { client, plan } = await prepare({
+      id: 2202,
+      date: "2026-11-03",
+      addressStreet: "Neue Straße 2",
+      contactPersonId: 2001,
+    });
+    expect(plan.state.body.creditNote).toEqual({
+      ...carriedCreditNote,
+      creditNoteDate: "03.11.2026",
+      // The stored delivery date (2026-11-02) stays; it does not follow the new date.
+      deliveryDate: TIMESTAMPS["2026-11-02"],
+      addressStreet: "Neue Straße 2",
+      address: "Musterfirma GmbH, Buchhaltung\nNeue Straße 2\n12345 Musterstadt",
+      contactPerson: { id: 2001, objectName: "SevUser" },
+    });
+    expect(plan.state.body.creditNotePosSave).toEqual([]);
+    expect(plan.preview.facts).toEqual([
+      { label: "Credit note", value: "2202 (number GU-1003, draft)" },
+      { label: "Customer", value: "Musterfirma GmbH (contact 1001)" },
+      { label: "Booking category", value: "UNDERACHIEVEMENT" },
+      { label: "Reduces invoice", value: "1001" },
+      {
+        label: "Address",
+        value:
+          "Musterfirma GmbH, Buchhaltung, Musterstraße 1, 12345 Musterstadt, Deutschland → " +
+          "Musterfirma GmbH, Buchhaltung, Neue Straße 2, 12345 Musterstadt, Deutschland",
+      },
+      { label: "Credit note date", value: "2026-11-02 → 2026-11-03" },
+      { label: "Contact person", value: "user 7001 → Erika Musterfrau (user 2001)" },
+      { label: "Total (unchanged)", value: "gross 47.60 EUR" },
+    ]);
+    // None of these changes needs the source invoice re-checked.
+    expect(client.callsTo("/Invoice/1001")).toEqual([]);
   });
 
   it("carries a stored cash discount and payment method over", async () => {
@@ -231,6 +280,28 @@ describe("sevdesk_credit_note_update_draft (recorded update shape, fake data)", 
         label: "Total (expected)",
         value: "net 30.00 EUR, tax 5.70 EUR, gross 35.70 EUR",
       });
+    });
+
+    it("warns that stored document discounts are left out of the expected total", async () => {
+      const discounted = withRoutes(routes, storedDraft({ sumDiscounts: "-10" }));
+      const replaced = await prepare(
+        { id: 2202, positions: [{ name: "Preisnachlass", quantity: 1, unitPrice: 30 }] },
+        discounted,
+      );
+      expect(replaced.plan.preview.warnings).toContainEqual(
+        "The draft has document discounts (Rabatte) that stay on it: sevDesk applies them to " +
+          "the new positions, so the saved total will differ from the expected total, which " +
+          "leaves them out. Check the total after the save.",
+      );
+      // Kept positions show the stored total, which already includes the discounts.
+      const kept = await prepare({ id: 2202, header: "Neu" }, discounted);
+      expect(kept.plan.preview.warnings.join(" ")).not.toContain("Rabatte");
+      // A stored zero (the fixture) warns about nothing.
+      const plain = await prepare({
+        id: 2202,
+        positions: [{ name: "Preisnachlass", quantity: 1, unitPrice: 30 }],
+      });
+      expect(plain.plan.preview.warnings.join(" ")).not.toContain("Rabatte");
     });
 
     it("saves positions on a draft that has none, deleting nothing", async () => {
@@ -339,6 +410,20 @@ describe("sevdesk_credit_note_update_draft (recorded update shape, fake data)", 
       expect(plan.preview.warnings).toContainEqual(
         expect.stringMatching(/^On a Kleinunternehmer account provision credit notes take/),
       );
+    });
+
+    it("point a kept rule 9 to their own Kleinunternehmer rule, not to rule 11", async () => {
+      const { plan } = await prepare(
+        { id: 2202, header: "Provision Oktober" },
+        withRoutes(routes, provision, smallBusinessAccountRoute),
+      );
+      expect(plan.preview.warnings).toContainEqual(
+        "The draft keeps tax rule 9 (Vorsteuerabziehbare Aufwendungen), which does not fit this " +
+          "account's VAT regulation (the Kleinunternehmer regulation (§19 UStG)): sevDesk will " +
+          "refuse to finalize it. Pass taxRuleId 10 (Nicht vorsteuerabziehbare Aufwendungen) " +
+          "with 0 % rates to fix it.",
+      );
+      expect(plan.preview.warnings.join(" ")).not.toContain("taxRuleId 11");
     });
   });
 
