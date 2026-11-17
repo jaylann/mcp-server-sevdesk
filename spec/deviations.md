@@ -157,7 +157,7 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 | [D-114](#d-114-docserver-layout-lists-sit-under-objects-and-carry-large-base64-fields)             | DocServer layout lists sit under `objects` and carry large base64 fields               | Open                  |
 | [D-115](#d-115-post-and-delete-texttemplate-create-and-delete-text-templates)                      | `POST` and `DELETE /TextTemplate` create and delete text templates                     | Open                  |
 | [D-116](#d-116-document-discounts-discountsave-takes-a-list-getdiscounts-reads-them)               | Document discounts: `discountSave` takes a list; `getDiscounts` reads them             | Open                  |
-| [D-135](#d-135-saveinvoice-leaves-a-position-sent-by-its-id-unchanged-without-an-error)            | `saveInvoice` leaves a position sent by its id unchanged, without an error             | Open                  |
+| [D-135](#d-135-saveinvoice-keeps-the-price-of-a-position-sent-by-its-id-without-an-error)          | `saveInvoice` keeps the price of a position sent by its id, without an error           | Open                  |
 
 ## Entries
 
@@ -3979,24 +3979,37 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   null for an order without discounts"); the draft tools: pending, #94. Live: probes
   `write-document-discount`, `read-order-get-discounts`.
 
-### D-135: `saveInvoice` leaves a position sent by its id unchanged, without an error
+### D-135: `saveInvoice` keeps the price of a position sent by its id, without an error
 
 - **Status:** Open. **Evidence:** spec + recorded.
 - **Spec says:** The `InvoicePos` tag says a document and its positions are changed through the
-  save factory with the ids and `mapAll`; nothing says a position needs all its fields.
-- **Actual behavior:** Recorded on 2026-11-17 on a recurring invoice template (WKR) with two
-  positions: one `saveInvoice` with the template's id sent position A by its id with only a new
-  price (`{id, objectName: "InvoicePos", mapAll: true, price: 200}`) in `invoicePosSave`, a new
-  position C in `invoicePosSave` and position B in `invoicePosDelete`. C was added, B deleted and
-  the sums recalculated, but A kept its old price; sevDesk answered without an error. Whether a
-  position sent by its id with all its fields is changed is not recorded.
+  save factory with the ids and `mapAll`; nothing says a field of a stored position cannot be
+  changed that way.
+- **Actual behavior:** Recorded on 2026-11-17 on recurring invoice templates (WKR), each with its
+  id in one `saveInvoice`:
+  - Position A sent by its id with only a new price (`{id, objectName: "InvoicePos", mapAll:
+true, price: 200}`) in `invoicePosSave`, a new position C in `invoicePosSave` and position B
+    in `invoicePosDelete`: C was added, B deleted and the sums recalculated, but A kept its old
+    price.
+  - A position sent by its id with all its fields (`quantity: 2`, a new `name`, `unity`,
+    `taxRate: 19`, `price: 333`; stored price 300): name and quantity were stored, the price
+    stayed 300, and the sums followed the old price (net 650 = 2 × 300 + 40 + 10).
+  - Neither request got an error. So the price of a stored position is not changed in place in
+    the forms tried, while other fields are.
+  - Full replacement works: both stored rows in `invoicePosDelete` and three new rows in
+    `invoicePosSave` left exactly the three new rows, each with the template as parent
+    (`invoice.id`); the old rows answer 404 by id, and the sums are right (net 350, gross 416.50
+    for 300 + 40 + 10 at 19 %).
 - **Sources:** spec (tag `InvoicePos`, `createInvoiceByFactory`); recorded 2026-11-17, trial
   account, Update 2.0 (one-off checks by the orchestrator).
-- **Impact:** Positions are never changed by id. A change replaces all of them in one request
-  (every stored row in `invoicePosDelete`, the new rows without ids in `invoicePosSave`), as the
-  invoice draft update does (D-054), and `sevdesk_invoice_update_recurring` compares the stored
-  positions with the sent ones afterwards, so a change sevDesk ignored becomes a note. (#91)
+- **Impact:** Positions are never changed by id: whole replacement is the only recorded way to
+  change a price. A change replaces all of them in one request (every stored row in
+  `invoicePosDelete`, the new rows without ids in `invoicePosSave`), as the invoice draft update
+  does (D-054), and `sevdesk_invoice_update_recurring` compares each stored position (name,
+  quantity, unit price, tax rate) and the gross total with what was sent afterwards, so a change
+  sevDesk ignored becomes a note. (#91)
 - **Test:** `test/unit/domain/recurring/payload.test.ts` ("replaces positions as a whole: new rows
   to save, stored rows to delete": the schema has no place for a position with an id),
   `test/unit/tools/invoices/recurring-update.test.ts` ("positions replace every stored one in one
-  request, never by id", "notices a position change sevDesk ignored").
+  request, never by id", "notices a position change sevDesk ignored", "compares name, quantity
+  and tax rate of every position read back").

@@ -405,6 +405,23 @@ describe("sevdesk_invoice_update_recurring", () => {
       ]);
     });
 
+    it("compares name, quantity and tax rate of every position read back", async () => {
+      // Sent: the stored first position, and the second with a new name, quantity and rate.
+      const positions = [
+        { name: "Beratung", quantity: 3, unitPrice: "10.00", taxRate: 19 },
+        { name: "Paket Plus", quantity: 2, unitPrice: "25.00", taxRate: 7 },
+      ];
+      // sevDesk kept both stored rows as they were (D-135).
+      const client = new StagedClient(templateChangeRoutes(), templateChangeRoutes());
+      const { output } = await executeWrite(tool, { id: 2301, positions }, client);
+      expect(output.data.notes).toEqual([
+        "Position 2 as stored differs from what was sent (name, quantity, tax rate): sevDesk may " +
+          "have ignored the change. Check it in sevDesk before the template's next run.",
+        "sevDesk computed a gross total of 65.45 EUR per invoice; the preview expected 89.20 " +
+          "EUR. Check the template's positions and price mode in sevDesk before its next run.",
+      ]);
+    });
+
     it("notices a type or status sevDesk changed, and a lost position", async () => {
       const after = templateChangeRoutes(templateRow({ invoiceType: "RE", status: "200" }), [
         templatePositionRows()[0] ?? {},
