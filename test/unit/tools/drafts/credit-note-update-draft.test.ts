@@ -12,6 +12,8 @@ import { type FakeRoute, FakeSevdeskClient, loadFixture } from "../../../helpers
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import {
   creditNoteUpdateRoutes as routes,
+  discountRow,
+  discountsRoute,
   notFound,
   saveCreditNoteRoute,
   smallBusinessAccountRoute,
@@ -282,26 +284,29 @@ describe("sevdesk_credit_note_update_draft (recorded update shape, fake data)", 
       });
     });
 
-    it("warns that stored document discounts are left out of the expected total", async () => {
-      const discounted = withRoutes(routes, storedDraft({ sumDiscounts: "-10" }));
+    it("counts a kept discount in the expected total of new positions (D-116)", async () => {
+      // The stored discount rows are the one source: the expected total includes the kept
+      // discount, so no extra warning says it is left out (#107's stop-gap until #94).
+      const discounted = withRoutes(
+        routes,
+        storedDraft({ sumDiscounts: "-4", sumDiscountNet: "-4", sumDiscountGross: "-4.76" }),
+        discountsRoute("CreditNote", 2202, [discountRow("CreditNote", 2202)]),
+      );
       const replaced = await prepare(
         { id: 2202, positions: [{ name: "Preisnachlass", quantity: 1, unitPrice: 30 }] },
         discounted,
       );
-      expect(replaced.plan.preview.warnings).toContainEqual(
-        "The draft has document discounts (Rabatte) that stay on it: sevDesk applies them to " +
-          "the new positions, so the saved total will differ from the expected total, which " +
-          "leaves them out. Check the total after the save.",
-      );
-      // Kept positions show the stored total, which already includes the discounts.
-      const kept = await prepare({ id: 2202, header: "Neu" }, discounted);
-      expect(kept.plan.preview.warnings.join(" ")).not.toContain("Rabatte");
-      // A stored zero (the fixture) warns about nothing.
-      const plain = await prepare({
-        id: 2202,
-        positions: [{ name: "Preisnachlass", quantity: 1, unitPrice: 30 }],
+      expect(replaced.plan.preview.facts).toContainEqual({
+        label: "Total (expected)",
+        value: "net 27.00 EUR, tax 5.13 EUR, gross 32.13 EUR",
       });
-      expect(plain.plan.preview.warnings.join(" ")).not.toContain("Rabatte");
+      expect(replaced.plan.preview.facts).toContainEqual({
+        label: "Discount (unchanged)",
+        value: '10 % of the net total ("Rabatt")',
+      });
+      expect(replaced.plan.preview.warnings.join(" ")).not.toContain("discount");
+      const kept = await prepare({ id: 2202, header: "Neu" }, discounted);
+      expect(kept.plan.preview.warnings.join(" ")).not.toContain("discount");
     });
 
     it("saves positions on a draft that has none, deleting nothing", async () => {

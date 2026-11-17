@@ -76,8 +76,6 @@ const currentInvoiceSchema = z.object({
   timeToPay: zOptionalInt,
   discount: zOptionalDecimal,
   discountTime: zOptionalInt,
-  /** The document discounts' net sum (Rabatte, negative for a discount, D-116); read, never sent. */
-  sumDiscounts: zOptionalDecimal,
   addressName: zText,
   addressStreet: zText,
   addressZip: zText,
@@ -129,8 +127,6 @@ const currentCreditNoteSchema = z.object({
   deliveryDateUntil: zDate,
   discount: zOptionalDecimal,
   discountTime: zOptionalInt,
-  /** The document discounts' net sum (Rabatte, negative for a discount, D-116); read, never sent. */
-  sumDiscounts: zOptionalDecimal,
   addressName: zText,
   addressStreet: zText,
   addressZip: zText,
