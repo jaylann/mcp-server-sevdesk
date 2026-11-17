@@ -71,6 +71,11 @@ shown, because it may be the secret itself, pasted into the wrong variable.
 | `SEVDESK_STRUCTURED_OUTPUT` | `auto`    | `auto`, `on` or `off`: whether tools declare an output schema and return typed `structuredContent` next to the JSON text. See [Structured output](#structured-output).                                                                       |
 | `SEVDESK_VIES_CHECK`        | `0`       | `1` or `true` lets `sevdesk_vat_id_check` ask the European Commission's VIES service whether a VAT ID is valid, which sends the VAT ID to `ec.europa.eu` ([Privacy](../PRIVACY.md)). Unset, `0` or `false`: only its format is checked.      |
 
+The VIES check follows the Commission's published API description and has not been tested against
+the live service yet. Two things are unconfirmed: whether VIES accepts Northern Ireland numbers
+(prefix `XI`), and how it reports a member state it cannot reach. An answer the server cannot read
+is reported as "unavailable", never as an invalid number.
+
 ### Files and the audit log
 
 | Variable                 | Default | Meaning                                                                                                                                                                                                                                                                                                                                                                        |
