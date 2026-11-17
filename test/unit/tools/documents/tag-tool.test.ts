@@ -483,9 +483,9 @@ describe("sevdesk_document_tag: remove", () => {
     await expect(prepareWrite(tool, remove, fake)).rejects.toMatchObject({
       kind: "validation",
       message:
-        "The tag's uses could not all be counted (more than 10,000 tag uses were read), so this " +
-        "server cannot tell whether this is its last use, which would delete the tag; it does " +
-        "not remove it.",
+        "The tag's uses could not all be counted (the account has more than 10,000 tag uses), so " +
+        "this server cannot tell whether this is its last use, which would delete the tag; it " +
+        "does not remove it.",
     });
     expect(fake.writes()).toEqual([]);
   });

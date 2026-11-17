@@ -253,9 +253,9 @@ async function planRemove(
   if (!uses.complete && uses.count <= 1) {
     // Only when sevDesk ignored the tag filter on an account with more relations than were read.
     throw validation(
-      `The tag's uses could not all be counted (more than ${TAG_READ_MAX.toLocaleString("en-US")} ` +
-        "tag uses were read), so this server cannot tell whether this is its last use, which " +
-        "would delete the tag; it does not remove it.",
+      "The tag's uses could not all be counted (the account has more than " +
+        `${TAG_READ_MAX.toLocaleString("en-US")} tag uses), so this server cannot tell whether ` +
+        "this is its last use, which would delete the tag; it does not remove it.",
     );
   }
   const lastUse = uses.count <= 1;
