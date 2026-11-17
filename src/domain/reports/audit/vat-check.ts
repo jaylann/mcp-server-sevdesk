@@ -65,8 +65,14 @@ import {
 const EXPENSE_RULES: ReadonlySet<number> = new Set([8, 9, 10, 12, 14]);
 /** Sales tax rules this check compares with the customer. */
 const REVENUE_RULES: ReadonlySet<number> = new Set([1, 3, 21]);
-/** VAT rates Germany charges (16 and 5 in the second half of 2020). */
-const GERMAN_RATES = ["19", "7", "16", "5"] as const;
+/** VAT rates Germany charges. */
+const GERMAN_RATES = ["19", "7"] as const;
+/**
+ * The temporary reduction (§ 28 Abs. 1 and 2 UStG, Zweites Corona-Steuerhilfegesetz): 16 and 5 %
+ * for supplies from 2020-07-01 to 2020-12-31. Outside it, these are other states' rates (5 % in
+ * Cyprus, for one).
+ */
+const REDUCED_2020 = { rates: ["16", "5"], from: "2020-07-01", to: "2020-12-31" } as const;
 
 export const VAT_FINDING_CODES = [
   "foreign_supplier_charged_german_vat",
@@ -475,8 +481,17 @@ function judgeSale(header: DocumentHeader, rule: number, party: Party): Verdict 
   }
 }
 
-function isGermanRate(rate: string): boolean {
-  return GERMAN_RATES.some((german) => sameRate(rate, german));
+/** Whether `rate` is a German rate on `header`: 16 and 5 % only for 2020's reduction. */
+function isGermanRate(rate: string, header: DocumentHeader): boolean {
+  if (GERMAN_RATES.some((german) => sameRate(rate, german))) return true;
+  return REDUCED_2020.rates.some((reduced) => sameRate(rate, reduced)) && inReducedPeriod(header);
+}
+
+/** The document date or the supply date (or its end) falls in 2020's reduction. */
+function inReducedPeriod(header: DocumentHeader): boolean {
+  return [header.date, header.deliveryDate, header.deliveryDateUntil].some(
+    (date) => date !== undefined && date >= REDUCED_2020.from && date <= REDUCED_2020.to,
+  );
 }
 
 /**
@@ -484,6 +499,7 @@ function isGermanRate(rate: string): boolean {
  * German rates, other rates, or nothing but 0 %.
  */
 function judgeRates(
+  header: DocumentHeader,
   groups: readonly PositionGroup[],
   location: PartyLocation,
 ): VatFindingCode | undefined {
@@ -492,7 +508,7 @@ function judgeRates(
   if (taxed.length === 0) {
     return location.smallBusinessScheme ? undefined : "foreign_supplier_zero_rate";
   }
-  return taxed.some((group) => isGermanRate(group.rate))
+  return taxed.some((group) => isGermanRate(group.rate, header))
     ? "foreign_supplier_charged_german_vat"
     : "foreign_vat_deducted";
 }
@@ -611,7 +627,7 @@ async function runVatCheck(context: AuditCheckContext): Promise<AuditCheckResult
       const groups = document.groups.filter(
         (group) => !isImportVat(document.header, group, importVat),
       );
-      const code = judgeRates(groups, party.location);
+      const code = judgeRates(document.header, groups, party.location);
       if (code !== undefined) drafts.push(draftOf(code, document.header, party));
     }
   }

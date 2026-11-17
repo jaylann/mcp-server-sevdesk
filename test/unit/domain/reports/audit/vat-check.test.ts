@@ -384,6 +384,50 @@ describe("check vat: places and VAT id formats VAT law treats apart", () => {
   });
 });
 
+describe("check vat: German rates by date", () => {
+  const taxedFrom = (
+    id: number,
+    dates: { readonly date: string; readonly delivery?: string },
+    rate: string,
+  ) => ({
+    row: voucherDoc({
+      id,
+      ...dates,
+      rule: 9,
+      net: "100",
+      tax: rate,
+      contactId: CONTACTS.austrianHotel.id,
+    }),
+    positions: voucherPositions(id, [{ rate, net: "100", tax: rate }]),
+  });
+
+  it("counts 16 and 5 % as German only for supplies in the second half of 2020", async () => {
+    const client = new FakeSevdeskClient([
+      regularAccount,
+      accountDatevRoute,
+      ...scenarioRoutes({
+        vouchers: [
+          taxedFrom(1, { date: "2020-08-10" }, "16"),
+          // Invoiced in January for a supply in December 2020.
+          taxedFrom(2, { date: "2021-01-05", delivery: "2020-12-20" }, "5"),
+          // Cyprus' reduced rate, years later.
+          taxedFrom(3, { date: "2021-02-10" }, "5"),
+          taxedFrom(4, { date: "2021-02-11" }, "16"),
+        ],
+      }),
+      ...directoryRoutes(),
+    ]);
+    const result = await runAudit(client, "vat", {
+      period: resolvePeriod({ from: "2020-07-01", to: "2021-03-31" }),
+      cacheOwner: {},
+      today: TODAY,
+    });
+
+    expect(idsOf(result, "foreign_supplier_charged_german_vat")).toEqual([1, 2]);
+    expect(idsOf(result, "foreign_vat_deducted")).toEqual([3, 4]);
+  });
+});
+
 describe("check vat: incomplete reads", () => {
   it("says how much a position cap left out", async () => {
     const { result } = await audit([regularAccount, ...quarterRoutes()], {
