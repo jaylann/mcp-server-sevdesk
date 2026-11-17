@@ -88,7 +88,22 @@ export const RUN_DATE_ON_AT_STORED_TIME: Phrase = phrase(
     "Jeden Entwurf muss noch jemand fertigstellen und versenden.",
 );
 
-/** Added when the first run is today and automatic generation is on: the run is due at once. */
+/**
+ * Whether the first run is due at once on `today` (Berlin's `YYYY-MM-DD`): it is today and
+ * automatic generation is on. The preview then carries {@link FIRST_RUN_TODAY}.
+ */
+export function firstRunDueAtOnce(
+  startDate: string,
+  autoGenerate: boolean,
+  today: string,
+): boolean {
+  return autoGenerate && startDate === today;
+}
+
+/**
+ * Added when the first run is due at once ({@link firstRunDueAtOnce}), and when a change switches
+ * automatic generation on for a template whose next run is today at 00:00.
+ */
 export const FIRST_RUN_TODAY: Phrase = phrase(
   "The first run is today, so it is due at once: sevDesk creates the first draft within about a " +
     "minute of saving the template.",

@@ -102,7 +102,7 @@ type VatBasis = (typeof VAT_BASES)[number];
 const DEFAULT_VAT_BASIS: VatBasis = "accrual";
 
 /** Days around the period whose documents are listed to find their tax points (accrual). */
-const ACCRUAL_MARGIN_DAYS = 62;
+export const ACCRUAL_MARGIN_DAYS = 62;
 /** Documents listed by reference in `coverage.unconvertible` (the count is complete). */
 const MAX_LISTED_REFS = 20;
 /** Invoice type of an advance invoice (Abschlagsrechnung). */

@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  daysBefore,
   MONTH_PATTERN,
   monthPeriod,
   parsePeriod,
   PERIOD_PATTERN,
   previousMonth,
   previousQuarter,
+  previousYear,
   quarterPeriod,
+  YEAR_PATTERN,
+  yearPeriod,
 } from "../../../src/prompts/periods.js";
 
 describe("periods", () => {
@@ -48,6 +52,42 @@ describe("periods", () => {
     expect(previousQuarter("2026-11-09").key).toBe("2026-Q3");
     expect(previousQuarter("2027-02-15").key).toBe("2026-Q4");
     expect(previousQuarter("2026-04-01").key).toBe("2026-Q1");
+  });
+
+  it("builds a calendar year and finds the previous one", () => {
+    expect(yearPeriod(2025)).toEqual({
+      year: 2025,
+      label: "2025",
+      from: "2025-01-01",
+      to: "2025-12-31",
+    });
+    expect(previousYear("2026-11-09")).toEqual(yearPeriod(2025));
+    expect(previousYear("2027-01-01")).toEqual(yearPeriod(2026));
+  });
+
+  it.each([
+    ["2026-11-09", 0, "2026-11-09"],
+    ["2026-11-09", 14, "2026-10-26"],
+    ["2026-03-01", 1, "2026-02-28"],
+    ["2028-03-01", 1, "2028-02-29"],
+    ["2027-01-05", 10, "2026-12-26"],
+    ["2026-11-09", 3650, "2016-11-11"],
+  ])("counts %s back by %i days to %s", (today, days, expected) => {
+    expect(daysBefore(today, days)).toBe(expected);
+  });
+
+  it.each([
+    ["2025", true],
+    ["2000", true],
+    ["2099", true],
+    ["1999", false],
+    ["2100", false],
+    ["25", false],
+    ["2025-01", false],
+    ["2025\n", false],
+    [" 2025", false],
+  ])("%j is a year: %s", (value, year) => {
+    expect(YEAR_PATTERN.test(value)).toBe(year);
   });
 
   it.each([

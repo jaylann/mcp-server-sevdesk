@@ -38,6 +38,14 @@ The voucher tools never read your disk on their own:
   [`sevdesk_upload_request`](../tools.md#sevdesk_upload_request), gives you a link, and passes the
   upload on once you say it is done. Up to 10 files fit on one page; see
   [Files over HTTP](../remote/files.md).
+- **From a link**, in either mode, when the hosts it may come from are listed in
+  `SEVDESK_FILE_URL_HOSTS`: give the assistant an https link to the file (a supplier portal's
+  download link, a storage link). The server downloads it for this call only, without signing in
+  anywhere; see [Files from a link](../configuration.md#files-from-a-link).
+
+The dry run's preview shows the file's full SHA-256. The real call reads the file again (a link is
+downloaded again), so the assistant can pass that SHA-256 as `fileSha256`: if the bytes changed in
+between, the call is refused before anything reaches sevDesk.
 
 > File the receipt Belege/2026-11/tankstelle-shell.pdf.
 
@@ -145,6 +153,13 @@ From the bank side, the [`bank_reconciliation`](../tools.md#bank_reconciliation)
 unbooked transactions to vouchers by Belegnummer and amount and books each match you agree to with
 [`sevdesk_transaction_book`](../tools.md#sevdesk_transaction_book) (`commit`). A bank fee with no
 receipt yet gets a voucher first, then the transaction is booked to it.
+
+To find the receipts that are missing in the first place, the
+[`missing_receipts`](../tools.md#missing_receipts) prompt goes through a month or quarter:
+outgoing transactions no voucher explains, suppliers that bill regularly without a bill in the
+period, receipts only on drafts or booked twice and, with `SEVDESK_FILE_DIRS`, the files in your
+receipt folder that no voucher carries. Its findings are hints, not tax advice; a receipt that
+turns up is filed as a voucher draft as above.
 
 ## Enshrine
 

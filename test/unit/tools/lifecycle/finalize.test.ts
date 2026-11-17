@@ -9,7 +9,9 @@ import {
   creditNoteRow,
   documentRoute,
   invoiceRow,
+  noDiscountsRoute,
   orderRow,
+  renderRoute,
   type Row,
   StagedClient,
   writeRoute,
@@ -85,9 +87,12 @@ describe.each(cases)("$name (community record shapes, fake values)", (kind) => {
     expect(client.calls.map(({ method, path }) => `${method} ${path}`)).toEqual([
       `GET ${kind.path}`,
       "GET /StaticCountry",
-      // One read of the positions, for the preview facts and the approval binding
-      // (readDocumentContent).
+      // One read of the positions and one of the document discounts, for the preview facts and
+      // the approval binding (readDocumentContent); the draft's layout too (render without
+      // reload, a reading POST, D-113).
       `GET /${kind.path.split("/")[1] ?? ""}Pos`,
+      `GET ${kind.path}/getDiscounts`,
+      `POST ${kind.path}/render`,
       `PUT ${kind.path}/sendBy`,
       `GET ${kind.path}`,
     ]);
@@ -179,9 +184,11 @@ describe("sevdesk_invoice_finalize details", () => {
         'Festschreibung"), it is also enshrined (festgeschrieben) and can never be changed or ' +
         "reset again.",
       // Review 2026-11, round 3: the facts now list the stored content; this names the rest.
-      "The facts list the stored texts, the address and the positions. Not shown: the contact " +
-        "person (Ansprechpartner), the country of the address, the units and linked articles " +
-        "of the positions, and the layout of the PDF. Check sevdesk_invoice_pdf if they matter.",
+      // An invoice draft's layout is listed too (D-113), so only the other print options are left.
+      "The facts list the stored texts, the address, the positions and the layout (language, " +
+        "template, letterhead). Not shown: the contact person (Ansprechpartner), the country of " +
+        "the address, the units and linked articles of the positions, and the other print " +
+        "options of the PDF (such as a payment QR code). Check sevdesk_invoice_pdf if they matter.",
     ]);
   });
 
@@ -234,6 +241,8 @@ describe("sevdesk_invoice_finalize details", () => {
             },
           },
         },
+        noDiscountsRoute,
+        renderRoute(),
       ]),
     );
 
@@ -251,7 +260,7 @@ describe("sevdesk_invoice_finalize details", () => {
       label: "Address on the document",
       value: "Andere Firma GmbH\nPostfach 1\n54321 Anderswo",
     });
-    // In printed order: head text, the positions by position number, foot text.
+    // In printed order: head text, the positions by position number, foot text; then the layout.
     expect(plan.preview.facts.slice(labels.indexOf("Head text (Kopftext)"))).toEqual([
       { label: "Head text (Kopftext)", value: "Sehr geehrte Damen und Herren," },
       {
@@ -268,6 +277,9 @@ describe("sevdesk_invoice_finalize details", () => {
         label: "Foot text (Fußtext)",
         value: "Bitte überweisen Sie an IBAN DE00 1234 5678 9012 3456 78.",
       },
+      { label: "Language (Sprache)", value: "German (Germany), de_DE" },
+      { label: "Template (Vorlage)", value: "Standard (id tpl-standard)" },
+      { label: "Letterhead (Briefpapier)", value: "Briefpapier 1 (id lp-1)" },
     ]);
     const labelsDe = plan.previewDe.facts.map((fact) => fact.label);
     expect(labelsDe).toHaveLength(labels.length);
@@ -287,6 +299,9 @@ describe("sevdesk_invoice_finalize details", () => {
         label: "Fußtext",
         value: "Bitte überweisen Sie an IBAN DE00 1234 5678 9012 3456 78.",
       },
+      { label: "Sprache", value: "Deutsch (Deutschland), de_DE" },
+      { label: "Vorlage", value: "Standard (ID tpl-standard)" },
+      { label: "Briefpapier", value: "Briefpapier 1 (ID lp-1)" },
     ]);
     expect(plan.previewDe.facts).toContainEqual({
       label: "Anschrift auf dem Dokument",
@@ -356,7 +371,15 @@ describe("sevdesk_invoice_finalize details", () => {
       kind: "validation",
       completedWrites: [],
     });
-    expect(client.calls.map(({ method }) => method)).toEqual(["GET", "GET", "GET", "PUT"]);
+    // Record, country, positions, discounts, the layout (a reading POST), then the refused PUT.
+    expect(client.calls.map(({ method }) => method)).toEqual([
+      "GET",
+      "GET",
+      "GET",
+      "GET",
+      "POST",
+      "PUT",
+    ]);
   });
 
   it("accepts dryRun and rejects unknown arguments", () => {

@@ -93,6 +93,7 @@ import { listInvoices } from "../invoices.js";
 import { add, compare, isZero, type Money, money } from "../money.js";
 import { numberText, type PreviewLanguage } from "../preview-text.js";
 import { taxRuleById } from "../reference-data.js";
+import { isEuMemberState } from "../vat/eu.js";
 import { normalizeIban, normalizeVatId } from "./fields.js";
 import {
   type EInvoiceParty,
@@ -108,37 +109,6 @@ const CONTACT_PAGE_SIZE = 1_000;
 const MAX_CANDIDATES = 10;
 /** Rows of a `name` search added when the scan was cut off. */
 const NAME_SEARCH_LIMIT = 100;
-
-/** ISO 3166-1 alpha-2 codes of the EU member states (Greece is GR here, EL in VAT ids). */
-const EU_COUNTRIES: ReadonlySet<string> = new Set([
-  "AT",
-  "BE",
-  "BG",
-  "CY",
-  "CZ",
-  "DE",
-  "DK",
-  "EE",
-  "ES",
-  "FI",
-  "FR",
-  "GR",
-  "HR",
-  "HU",
-  "IE",
-  "IT",
-  "LT",
-  "LU",
-  "LV",
-  "MT",
-  "NL",
-  "PL",
-  "PT",
-  "RO",
-  "SE",
-  "SI",
-  "SK",
-]);
 
 /** Findings that change amounts or VAT: an invoice with one of them is not imported. */
 const BLOCKING_FINDING = /^(?:SD-PROFILE|SD-NUMBER|BR-1[2-6]|BR-CO-1[0-7]|BR-[A-Z]{1,2}-0[189])$/;
@@ -729,7 +699,7 @@ function ruleFor(
               : "Domestic reverse charge (§13b Abs. 2 UStG, e.g. construction services): rule 12.",
           );
         }
-        if (EU_COUNTRIES.has(sellerCountry)) {
+        if (isEuMemberState(sellerCountry)) {
           return rule(
             14,
             de
@@ -796,7 +766,7 @@ function ruleFor(
             : "Domestic reverse charge revenue (§13b UStG): rule 5.",
         );
       }
-      if (EU_COUNTRIES.has(buyerCountry)) {
+      if (isEuMemberState(buyerCountry)) {
         return {
           id: undefined,
           reason:

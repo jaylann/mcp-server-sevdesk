@@ -252,7 +252,9 @@ describe("sevdesk_invoice_reactivate_recurring", () => {
     expect(fact(plan.preview.facts, "Next run")).toBe("2026-12-01");
     expect(fact(plan.preview.facts, "Following runs")).toBe("2027-01-01, 2027-02-01");
     expect(fact(plan.preview.facts, "End")).toBe(
-      "2027-02-01 (3 runs up to then, the first included)",
+      // The last run falls on the end date, which sevDesk may or may not still run (D-111).
+      "2027-02-01 (2 or 3 runs up to then, the first included: 3 if sevDesk still runs the " +
+        "template on its end date)",
     );
     expect(plan.preview.warnings).toEqual([
       expect.stringMatching(/^Once reactivated, sevDesk again creates a draft invoice/),

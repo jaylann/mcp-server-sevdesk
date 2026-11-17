@@ -37,11 +37,7 @@ import { type PositionDto, TEXT_MAX } from "../document-positions.js";
 import { loadCurrentInvoice } from "../drafts/current.js";
 import { assertChanges, ref, structuredAddress } from "../drafts/document.js";
 import { todayInBerlin, wireTimestamp } from "../drafts/fields.js";
-import {
-  INVOICE_TAX_OPTIONS,
-  invoiceStoredAddress,
-  invoiceUpdateInputShape,
-} from "../drafts/invoice.js";
+import { INVOICE_TAX_OPTIONS, invoiceUpdateInputShape } from "../drafts/invoice.js";
 import { strictBody } from "../drafts/payloads.js";
 import {
   type Amounts,
@@ -57,6 +53,7 @@ import {
   addressBlock,
   type DraftCallOptions,
   resolveUpdateBasics,
+  structuredStoredAddress,
   type UpdateArgs,
 } from "../drafts/shared.js";
 import { getInvoice, type InvoiceDetails, readTemplateSchedule } from "../invoices.js";
@@ -387,7 +384,7 @@ export async function prepareRecurringInvoiceUpdate(
   const basics = await resolveUpdateBasics(
     client,
     doc,
-    invoiceStoredAddress(doc),
+    structuredStoredAddress(doc),
     current.positions,
     args,
     { scope: INVOICE_TAX_OPTIONS.scope },

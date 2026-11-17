@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TEMPLATE_SETTINGS_EMBED } from "../../../../src/domain/recurring/schedule.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
+import { tierScopedClient } from "../../../../src/sevdesk/scoped-client.js";
 import { invoiceCreateRecurringTool as tool } from "../../../../src/tools/invoices/recurring-create.js";
 import { ACCOUNT_RECURRING_INVOICES } from "../../../../src/tools/types.js";
+import { allEnabledConfig } from "../../../helpers/config.js";
 import { type FakeRoute, FakeSevdeskClient } from "../../../helpers/fake-client.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import { notFound, TIMESTAMPS, unknownRegimeRoute, withRoutes } from "../drafts/routes.js";
@@ -344,6 +346,43 @@ describe("sevdesk_invoice_create_recurring", () => {
     );
   });
 
+  it("counts a run on the end date as one that may not happen, in both languages", async () => {
+    const fact = (plan: Awaited<ReturnType<typeof prepare>>["plan"], lang: "en" | "de") =>
+      (lang === "de" ? plan.previewDe : plan.preview).facts.find(
+        (f) => f.label === (lang === "de" ? "Ende" : "End"),
+      )?.value;
+    // Monthly from 2026-12-01 to 2027-12-01: the 13th run falls on the end date.
+    const year = await prepare({ ...args, endDate: "2027-12-01" });
+    expect(fact(year.plan, "en")).toBe(
+      "2027-12-01 (12 or 13 runs up to then, the first included: 13 if sevDesk still runs the " +
+        "template on its end date)",
+    );
+    expect(fact(year.plan, "de")).toBe(
+      "01.12.2027 (bis dahin 12 oder 13 Ausführungen, die erste eingeschlossen: 13, wenn " +
+        "sevDesk die Vorlage am Enddatum noch ausführt)",
+    );
+    // The fact and the warning that the run on the end date is not recorded keep their places.
+    expect(year.plan.preview.facts.map((f) => f.label).indexOf("End")).toBe(5);
+    expect(year.plan.previewDe.facts.map((f) => f.label).indexOf("Ende")).toBe(5);
+    expect(year.plan.preview.warnings.at(-1)).toBe(
+      "A run falls on the end date itself (2027-12-01); whether sevDesk still runs the template " +
+        "on its end date is not recorded.",
+    );
+    expect(year.plan.previewDe.warnings.at(-1)).toBe(
+      "Eine Ausführung fällt genau auf das Enddatum (01.12.2027); ob sevDesk die Vorlage am " +
+        "Enddatum selbst noch ausführt, ist nicht erfasst.",
+    );
+    // The end on the start date: the only run is the one on the end date.
+    const single = await prepare({ ...args, endDate: "2026-12-01" });
+    expect(fact(single.plan, "en")).toBe(
+      "2026-12-01 (0 or 1 run up to then: 1 if sevDesk still runs the template on its end date)",
+    );
+    expect(fact(single.plan, "de")).toBe(
+      "01.12.2026 (bis dahin 0 oder 1 Ausführung: 1, wenn sevDesk die Vorlage am Enddatum noch " +
+        "ausführt)",
+    );
+  });
+
   it("says when no run follows the first", async () => {
     const { plan } = await prepare({ ...args, endDate: "2026-12-01" });
     expect(plan.preview.facts.find((f) => f.label === "Following runs")?.value).toBe(
@@ -478,6 +517,27 @@ describe("sevdesk_invoice_create_recurring", () => {
         "template in sevDesk before its first run.",
     ]);
     expect(output.summary).toMatch(/ See notes\.$/);
+  });
+
+  it("notes nothing when sevDesk made the first run before the read-back (D-111)", async () => {
+    // A first run today: sevDesk generates the first draft 30–40 s after the save, so a slow
+    // read-back finds the next run one interval on and the last run set.
+    const generated = {
+      accountStartDate: "2026-11-17T00:00:00+01:00",
+      accountNextInvoice: "2026-12-17T00:00:00+01:00",
+      accountLastInvoice: "2026-11-17T12:00:41+01:00",
+    };
+    const client = new FakeSevdeskClient(
+      withRoutes(routes, settingsReadRoute(templateRow({ ...generated, ...SETTINGS_ON }))),
+    );
+    const { output } = await executeWrite(tool, { ...args, startDate: "2026-11-17" }, client);
+    expect(output.data.schedule).toMatchObject({
+      startDate: "2026-11-17",
+      nextRun: "2026-12-17",
+      lastRun: "2026-11-17",
+    });
+    expect(output.data.notes).toBeUndefined();
+    expect(output.summary).not.toContain("See notes");
   });
 
   describe("compares automatic generation and sending as stored with what was sent (D-132)", () => {
@@ -667,6 +727,76 @@ describe("sevdesk_invoice_create_recurring", () => {
       }
       expect(tool.input.safeParse({ ...args, interval: undefined }).success).toBe(false);
       expect(tool.input.safeParse({ ...args, startDate: undefined }).success).toBe(false);
+    });
+  });
+
+  describe("a plan whose day ended before the save", () => {
+    /**
+     * Prepares at 23:59 Berlin time on 2026-11-17 and runs `execute` with that plan at 00:01 the
+     * next day, as when midnight passes between the last preparation and the save.
+     */
+    async function saveAfterMidnight(callArgs: Record<string, unknown>) {
+      vi.setSystemTime(new Date("2026-11-17T23:59:00+01:00"));
+      const client = new FakeSevdeskClient(routes);
+      const plan = await prepareWrite(tool, callArgs, client);
+      vi.setSystemTime(new Date("2026-11-18T00:01:00+01:00"));
+      const error = await tool
+        .execute(tool.input.parse(callArgs), plan, {
+          client: tierScopedClient(client, tool.tier),
+          config: allEnabledConfig(),
+          signal: new AbortController().signal,
+          progress: () => Promise.resolve(),
+          files: {} as never,
+        })
+        .then(
+          () => undefined,
+          (thrown: unknown) => thrown,
+        );
+      return { client, plan, error };
+    }
+    const changed =
+      "Nothing was sent: the date in Berlin changed from 2026-11-17 to 2026-11-18 after the " +
+      "preview was made.";
+
+    it("refuses a first run that became due at once, which the preview did not warn of", async () => {
+      const { client, plan, error } = await saveAfterMidnight({ ...args, startDate: "2026-11-18" });
+      expect(plan.preview.warnings).toHaveLength(3);
+      expect(error).toBeInstanceOf(SevdeskError);
+      expect(error).toMatchObject({
+        kind: "validation",
+        message:
+          `${changed} The first run on 2026-11-18 is now today, so sevDesk would create the ` +
+          "first draft within about a minute of the save, which the preview did not say. Call " +
+          "the tool again for a new preview.",
+      });
+      expect(client.writes()).toEqual([]);
+    });
+
+    it("refuses a start that is now in the past, which sevDesk would catch up", async () => {
+      const { client, error } = await saveAfterMidnight({ ...args, startDate: "2026-11-17" });
+      expect(error).toBeInstanceOf(SevdeskError);
+      const { kind, message } = error as SevdeskError;
+      expect(kind).toBe("validation");
+      expect(message.startsWith(changed)).toBe(true);
+      expect(message).toContain(
+        "The start date 2026-11-17 is in the past (today is 2026-11-18 in Berlin).",
+      );
+      expect(message.endsWith("Call the tool again for a new preview.")).toBe(true);
+      expect(client.writes()).toEqual([]);
+    });
+
+    it("saves when the new day changes nothing the preview said", async () => {
+      const later = await saveAfterMidnight(args);
+      expect(later.error).toBeUndefined();
+      expect(later.client.writes()).toHaveLength(1);
+      // Without automatic generation a first run today creates nothing, warned or not.
+      const off = await saveAfterMidnight({
+        ...args,
+        startDate: "2026-11-18",
+        autoGenerate: false,
+      });
+      expect(off.error).toBeUndefined();
+      expect(off.client.writes()).toHaveLength(1);
     });
   });
 

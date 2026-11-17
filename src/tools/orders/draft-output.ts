@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { documentDiscountSchema } from "../../domain/document-discounts.js";
 import { positionDtoSchema } from "../../domain/document-positions.js";
 import type { OrderDraftResult } from "../../domain/drafts/order.js";
 import { orderDetailSchema } from "../../domain/orders.js";
@@ -12,6 +13,9 @@ export const orderDraftOutput = z.object({
   positionsComplete: z
     .boolean()
     .describe("False when sevDesk had more position rows than could be read back."),
+  discount: documentDiscountSchema
+    .optional()
+    .describe("Discount on the whole order (Rabatt) as stored; left out when there is none."),
   notes: z
     .array(z.string())
     .optional()
@@ -25,7 +29,7 @@ export function orderDraftToolOutput(
   result: OrderDraftResult,
   verb: "Created" | "Updated",
 ): ToolOutput<OrderDraftOutput> {
-  const { order, positions, positionsComplete } = result.details;
+  const { order, positions, positionsComplete, discount } = result.details;
   const gross = order.totals.gross;
   const total = gross === undefined ? "" : `, gross ${gross.amount} ${gross.currency}`;
   const count = `${positions.length} position${positions.length === 1 ? "" : "s"}`;
@@ -34,6 +38,7 @@ export function orderDraftToolOutput(
       order,
       positions: [...positions],
       positionsComplete,
+      ...(discount === undefined ? {} : { discount }),
       ...(result.notes.length === 0 ? {} : { notes: [...result.notes] }),
     },
     summary:

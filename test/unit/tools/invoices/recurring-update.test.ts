@@ -144,7 +144,9 @@ describe("sevdesk_invoice_update_recurring", () => {
       );
       expect(fact(plan.previewDe.facts, "Enddatum")).toBe("keines → 01.06.2027");
       expect(fact(plan.previewDe.facts, "Ende")).toBe(
-        "01.06.2027 (bis dahin 3 Ausführungen, die erste eingeschlossen)",
+        // The last run falls on the end date, which sevDesk may or may not still run (D-111).
+        "01.06.2027 (bis dahin 2 oder 3 Ausführungen, die erste eingeschlossen: 3, wenn sevDesk " +
+          "die Vorlage am Enddatum noch ausführt)",
       );
       expect(plan.previewDe.warnings).toHaveLength(plan.preview.warnings.length);
       expect(plan.state.body.invoice.accountEndDate).toBe(JUN_1);
