@@ -35,6 +35,7 @@ import {
   getBankAccount,
   getTransaction,
   listTransactions,
+  MAX_SCAN_ROWS,
   type TransactionDto,
 } from "../banking.js";
 import { cleanText } from "../common.js";
@@ -218,7 +219,10 @@ export interface TransactionCreatePlan {
  * retried, but a model may call the tool twice): rows of the same account and value date with
  * the same signed amount and purpose (compared without case and extra spaces) are named in a
  * warning, so the human who confirms sees them. It warns rather than refuses, because two equal
- * payments on one day happen. sevDesk's lists leave deleted rows out (D-096).
+ * payments on one day happen. sevDesk's lists leave deleted rows out (D-096). sevDesk filters
+ * dates only by entry date (D-047), so the value date is filtered here: the check reads the
+ * account's rows until it holds {@link DUPLICATE_SCAN_MATCHES} of that day or has searched
+ * `MAX_SCAN_ROWS`, and a warning says which of the two stopped it.
  */
 export async function planTransactionCreate(
   client: SevdeskClient,
@@ -279,9 +283,9 @@ export async function planTransactionCreate(
         "sich nur, solange er ungebucht ist (sevdesk_transaction_delete).",
     ),
   ];
+  const day = (lang: PreviewLanguage) => dateText(input.date, lang);
   if (duplicates.length > 0) {
     const ids = duplicates.slice(0, 10).map(String).join(", ");
-    const day = (lang: PreviewLanguage) => dateText(input.date, lang);
     warnings.push(
       phrase(
         `Account ${String(account.id)} already has ${duplicates.length === 1 ? "a row" : `${String(duplicates.length)} rows`} ` +
@@ -294,7 +298,22 @@ export async function planTransactionCreate(
       ),
     );
   }
-  if (scan.scanCapped || scan.hasMore) {
+  if (scan.scanCapped) {
+    // The scan reads the account's rows in sevDesk's order and stopped at its cap: it may not
+    // have reached that day at all.
+    warnings.push(
+      phrase(
+        `Account ${String(account.id)} has more rows than the duplicate check searches ` +
+          `(${String(MAX_SCAN_ROWS)}), so rows dated ${day("en")} may not have been checked; ` +
+          "check it with sevdesk_transactions_list before confirming.",
+        `Das Konto ${String(account.id)} hat mehr Umsätze, als die Prüfung auf Doppelte ` +
+          `durchsucht (${String(MAX_SCAN_ROWS)}); Umsätze vom ${day("de")} wurden daher ` +
+          "womöglich nicht geprüft. Prüfe es vor der Bestätigung mit sevdesk_transactions_list.",
+      ),
+    );
+  } else if (scan.hasMore) {
+    // Below the cap, the scan stops early only once it holds DUPLICATE_SCAN_MATCHES rows of
+    // that day.
     warnings.push(
       phrase(
         "The account has more rows on that day than were checked for duplicates; check it " +
