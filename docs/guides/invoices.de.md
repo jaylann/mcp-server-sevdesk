@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/invoices.md sha256:a51cb2a22b46 -->
+<!-- translated-from: docs/guides/invoices.md sha256:175df045de07 -->
 
 # Rechnungen: vom Entwurf bis zur Zahlung
 

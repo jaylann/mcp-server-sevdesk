@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:182ca29899c0 -->
+<!-- translated-from: docs/faq.md sha256:b6974694240b -->
 
 # Häufige Fragen
 

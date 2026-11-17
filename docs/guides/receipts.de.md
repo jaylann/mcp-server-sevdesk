@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/receipts.md sha256:1f8c732f3433 -->
+<!-- translated-from: docs/guides/receipts.md sha256:51db7a394939 -->
 
 # Belege und Eingangsrechnungen
 

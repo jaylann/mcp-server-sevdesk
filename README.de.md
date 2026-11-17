@@ -1,4 +1,4 @@
-<!-- translated-from: README.md sha256:14fab4b5b733 -->
+<!-- translated-from: README.md sha256:ae18c434bebd -->
 
 <!-- Nur die Breite: mit einer Höhe dazu zeichnet GitHub einen getönten Kasten hinter das Bild. -->
 <p align="center"><img src="https://raw.githubusercontent.com/jaylann/mcp-server-sevdesk/main/assets/logo.svg" alt="" width="96"></p>
