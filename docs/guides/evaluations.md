@@ -266,8 +266,8 @@ number appears in the file name (`possibleVouchers`). An unmatched file last cha
 range read stays `receipt_file_not_booked`, since a receipt of the period may have been saved
 late; a note counts such files, which may belong to a later period. To book a file that is
 missing, create a draft with
-[`sevdesk_voucher_create_draft`](../tools.md#sevdesk_voucher_create_draft) and the file as `file`
-(needs `write`).
+[`sevdesk_voucher_create_draft`](../tools.md#sevdesk_voucher_create_draft), the file as `file` and
+its `sha256` as `fileSha256`, so the draft gets exactly the bytes the check saw (needs `write`).
 
 Not every receipt in sevDesk has a checksum: one that sevDesk's recognition created from an
 uploaded file has none, so no file can ever match it. The result counts such receipts in the range

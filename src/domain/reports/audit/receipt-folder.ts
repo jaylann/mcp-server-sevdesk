@@ -147,8 +147,8 @@ const TEXTS: Readonly<Record<ReceiptFolderCode, FindingText>> = {
     action:
       "Look for the receipt in sevDesk (sevdesk_vouchers_list by supplier, date or number; " +
       "possibleVouchers names vouchers whose number appears in the file name). If it is not " +
-      "booked, book it, for example as a draft with sevdesk_voucher_create_draft and this file " +
-      "as file.",
+      "booked, book it, for example as a draft with sevdesk_voucher_create_draft, this file as " +
+      "file and its sha256 as fileSha256, so the draft gets exactly the bytes checked here.",
   },
   receipt_file_before_period: {
     severity: "check",
@@ -259,7 +259,12 @@ const folderFileSchema = z.object({
       "Day of the file's last change (Europe/Berlin), YYYY-MM-DD: when it was saved or copied, " +
         "not the receipt date (weak hint).",
     ),
-  sha256: z.string().describe("SHA-256 of the file's bytes, lower-case hex."),
+  sha256: z
+    .string()
+    .describe(
+      "SHA-256 of the file's bytes, lower-case hex: pass it as fileSha256 with the file when " +
+        "booking it, so the draft gets exactly these bytes.",
+    ),
   possibleVouchers: z
     .array(voucherHintSchema)
     .optional()

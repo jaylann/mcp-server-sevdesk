@@ -40,7 +40,7 @@ export const receiptFolderCheckTool = defineTool({
     "content: only paths, sizes, dates and checksums. No match is a hint, not proof: the same " +
     "receipt as another file (a scan, a photo from the sevDesk app, a converted copy) has " +
     "another checksum; amounts, dates and suppliers are not compared. Changes nothing. To book " +
-    "a file: sevdesk_voucher_create_draft with it as file.",
+    "a file: sevdesk_voucher_create_draft with it as file and its sha256 as fileSha256.",
   toolset: "reports",
   tier: "read",
   annotations: {

@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/evaluations.md sha256:099bc550892c -->
+<!-- translated-from: docs/guides/evaluations.md sha256:0375c83687ae -->
 
 # Auswertungen und Exporte
 
@@ -287,7 +287,8 @@ geändert wurde, bleibt `receipt_file_not_booked`, denn ein Beleg des Zeitraums 
 gespeichert worden sein; ein Hinweis zählt solche Dateien, die zu einem späteren Zeitraum gehören
 können. Um eine fehlende Datei zu buchen, lege mit
 [`sevdesk_voucher_create_draft`](../tools.md#sevdesk_voucher_create_draft) einen Entwurf mit der
-Datei als `file` an (braucht `write`).
+Datei als `file` und ihrer `sha256` als `fileSha256` an, damit der Entwurf genau die Bytes bekommt,
+die die Prüfung gesehen hat (braucht `write`).
 
 Nicht jede Belegdatei in sevDesk hat eine Prüfsumme: Eine, die die Belegerkennung von sevDesk aus
 einer hochgeladenen Datei angelegt hat, hat keine, also kann keine Datei je zu ihr passen. Das

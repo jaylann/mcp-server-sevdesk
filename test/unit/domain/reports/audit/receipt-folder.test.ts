@@ -271,6 +271,17 @@ describe("receipt folder check", () => {
     expect(notBooked?.files[0]?.possibleVouchers).toHaveLength(1);
   });
 
+  it("says how to book an unmatched file bound to the bytes it checked", async () => {
+    const result = await check(new FakeSevdeskClient(routes()));
+    const notBooked = result.findings.find((entry) => entry.code === "receipt_file_not_booked");
+
+    expect(notBooked?.action).toContain(
+      "sevdesk_voucher_create_draft, this file as file and its sha256 as fileSha256",
+    );
+    // The value to pass is the file's own checksum, in the form fileSha256 takes.
+    expect(notBooked?.files[0]?.sha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+
   it("reads the vouchers of the period and its margin once, with the documents embedded", async () => {
     const client = new FakeSevdeskClient(routes());
     const result = await check(client);
