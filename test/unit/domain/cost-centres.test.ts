@@ -18,8 +18,10 @@ import {
   inCostCentre,
   listCostCentres,
   resolveCostCentre,
+  showCostCentre,
   storedCostCentre,
 } from "../../../src/domain/cost-centres.js";
+import { SevdeskError } from "../../../src/sevdesk/errors.js";
 import {
   costCentreRow,
   costCentresRoute,
@@ -240,8 +242,40 @@ describe("stored cost centres", () => {
 
   it("reads the stored reference of a raw record", async () => {
     const raw = { id: "1", costCentre: { id: String(third.id), objectName: "CostCentre" } };
-    expect(await storedCostCentre(recorded(), raw)).toEqual(third);
+    expect(await storedCostCentre(recorded(), raw)).toEqual({ centre: third, unread: false });
     expect(await costCentreOf(recorded(), third.id)).toEqual({ costCentre: third });
+  });
+
+  it("shows the id alone, flagged unread, when sevDesk refuses the list", async () => {
+    for (const kind of ["auth", "server", "network", "timeout", "unexpected_response"] as const) {
+      const client = new FakeSevdeskClient([
+        { path: "/CostCentre", response: { error: new SevdeskError({ kind, message: "No." }) } },
+      ]);
+      expect(await showCostCentre(client, third.id), kind).toEqual({
+        centre: { id: third.id },
+        unread: true,
+      });
+      expect(await costCentreOf(client, third.id), kind).toEqual({
+        costCentre: { id: third.id },
+      });
+    }
+  });
+
+  it("passes a cancelled call and the server's own guard on, and fails describeCostCentre", async () => {
+    for (const kind of ["aborted", "blocked"] as const) {
+      const client = new FakeSevdeskClient([
+        { path: "/CostCentre", response: { error: new SevdeskError({ kind, message: "No." }) } },
+      ]);
+      await expect(showCostCentre(client, third.id)).rejects.toMatchObject({ kind });
+    }
+    const refused = new FakeSevdeskClient([
+      {
+        path: "/CostCentre",
+        response: { error: new SevdeskError({ kind: "auth", message: "No." }) },
+      },
+    ]);
+    // The update previews keep failing: they describe a cost centre the call changes.
+    await expect(describeCostCentre(refused, third.id)).rejects.toMatchObject({ kind: "auth" });
   });
 
   it("labels and facts show number, name and id in both languages", () => {

@@ -19,7 +19,9 @@
  *   (invoices, vouchers, credit notes); the three update tools offer it as `removeCostCentre`.
  *
  * Numbers and names are untrusted text: they go into DTOs and preview values through `cleanText`
- * and never into summaries or error messages.
+ * and never into summaries or error messages. Where they are display only (the get tools and
+ * approvals of stored documents), a failing list read shows the id alone ({@link showCostCentre});
+ * where an argument is resolved, it fails the call.
  */
 import { z } from "zod";
 
@@ -27,7 +29,7 @@ import { SevdeskError } from "../sevdesk/errors.js";
 import { parseUpstream, zBool01, zId, zOptionalRef, zText } from "../sevdesk/schema.js";
 import type { QueryValue, SevdeskClient } from "../sevdesk/types.js";
 import { cleanText, compact } from "./common.js";
-import type { PreviewLanguage } from "./preview-text.js";
+import { type Phrase, phrase, type PreviewLanguage } from "./preview-text.js";
 
 /**
  * Page size of the one `GET /CostCentre` read: sevDesk's maximum `limit`. An account with more
@@ -109,7 +111,8 @@ export function costCentreLabel(centre: CostCentre, lang: PreviewLanguage = "en"
 
 /**
  * The cost centre with this id as the account lists it, or `{id}` alone when the list does not
- * have it (deleted, or beyond the cut). For the get tools and previews of stored documents.
+ * have it (deleted, or beyond the cut). A failing list read fails the call: the update previews
+ * use it; display-only callers go through {@link showCostCentre}.
  */
 export async function describeCostCentre(
   client: SevdeskClient,
@@ -120,14 +123,56 @@ export async function describeCostCentre(
   return list.items.find((centre) => centre.id === id) ?? { id };
 }
 
+/** A stored cost centre for display (get tools, approvals). */
+export interface ShownCostCentre {
+  readonly centre: CostCentre;
+  /** True when the account's list could not be read: `centre` is then the id alone. */
+  readonly unread: boolean;
+}
+
+/**
+ * The stored cost centre with this id for display only: {@link describeCostCentre}, or the id
+ * alone (`unread`) when `GET /CostCentre` fails with any `SevdeskError` but a cancelled call or
+ * this server's own guard (`aborted`, `blocked`), e.g. on a plan or for a user without cost
+ * centres. The id comes from the document record, which approvals bind, so number and name are
+ * display only and an unreadable list need not block reading, finalizing or sending a document
+ * (like an unreadable layout, `readApprovalLayout` in `lifecycle/content.ts`). The draft tools'
+ * arguments are still resolved strictly: a guess there would book costs on the wrong cost centre.
+ */
+export async function showCostCentre(
+  client: SevdeskClient,
+  id: number,
+  signal?: AbortSignal,
+): Promise<ShownCostCentre> {
+  try {
+    return { centre: await describeCostCentre(client, id, signal), unread: false };
+  } catch (error) {
+    if (error instanceof SevdeskError && error.kind !== "aborted" && error.kind !== "blocked") {
+      return { centre: { id }, unread: true };
+    }
+    throw error;
+  }
+}
+
+/** The approval warning for a cost centre shown by its id alone ({@link ShownCostCentre}). */
+export const COST_CENTRE_UNREAD: Phrase = phrase(
+  "The number and name of the cost centre could not be read from sevDesk, so only its id is " +
+    "shown. Check them in sevDesk before you approve.",
+  "Nummer und Name der Kostenstelle ließen sich nicht aus sevDesk lesen; gezeigt wird nur ihre " +
+    "ID. Prüfe sie vor der Freigabe in sevDesk.",
+);
+
 /** The `costCentre` output field of the get tools (invoice, voucher, credit note). */
 export const costCentreOutput = costCentreDtoSchema
   .optional()
-  .describe("The document's Kostenstelle with number and name; left out when none is set.");
+  .describe(
+    "The document's Kostenstelle with number and name (the id alone when sevDesk does not " +
+      "list it or its list could not be read); left out when none is set.",
+  );
 
 /**
  * The {@link costCentreOutput} value of a get tool for a document's `costCentreId`: `{}` without
- * one (no request), else `{costCentre}` described by {@link describeCostCentre}.
+ * one (no request), else `{costCentre}` from {@link showCostCentre}.
  */
 export async function costCentreOf(
   client: SevdeskClient,
@@ -136,23 +181,23 @@ export async function costCentreOf(
 ): Promise<{ costCentre?: CostCentre }> {
   return costCentreId === undefined
     ? {}
-    : { costCentre: await describeCostCentre(client, costCentreId, signal) };
+    : { costCentre: (await showCostCentre(client, costCentreId, signal)).centre };
 }
 
 /** The `costCentre` reference a raw document record stores, if any. */
 const storedCostCentreSchema = z.object({ costCentre: zOptionalRef });
 
 /**
- * The cost centre a raw document record (`GET /Invoice/{id}`, `/Voucher/{id}`, …) carries,
- * described by {@link describeCostCentre}; `undefined` without one (no request then).
+ * The cost centre a raw document record (`GET /Invoice/{id}`, `/Voucher/{id}`, …) carries, from
+ * {@link showCostCentre}; `undefined` without one (no request then).
  */
 export async function storedCostCentre(
   client: SevdeskClient,
   raw: unknown,
   signal?: AbortSignal,
-): Promise<CostCentre | undefined> {
+): Promise<ShownCostCentre | undefined> {
   const ref = parseUpstream(storedCostCentreSchema, raw, "a document").costCentre;
-  return ref === undefined ? undefined : describeCostCentre(client, ref.id, signal);
+  return ref === undefined ? undefined : showCostCentre(client, ref.id, signal);
 }
 
 /** The approval fact of a stored cost centre, in both languages; none without one. */

@@ -3502,13 +3502,19 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   the draft tools and the list filters is checked against that list: an id, or a number or name
   compared ignoring case and accents; an unknown or ambiguous one is refused before any write.
   The get tools and the finalize, send and enshrine approvals show a stored cost centre with
-  number and name from the same list. Creating, renaming and deleting cost centres is not
-  offered.
+  number and name from the same list; when sevDesk refuses that list (any error but a cancelled
+  call or this server's own guard), they show the id alone and the approvals add a warning, in
+  English and German (`showCostCentre`): the id is in the record the approval binds, so number
+  and name are display only. Resolving a `costCentre` argument still fails then. Creating,
+  renaming and deleting cost centres is not offered.
 - **Test:** `test/contract/recorded-gaps-contacts.test.ts` (the recorded list: keys, the number
   pattern, `defaultCentre`, through `sevdesk_api_get`, the probe `read-cost-centre-list` and
   "listCostCentres reads the recorded cost centres with an explicit limit (D-091)");
-  `test/unit/domain/cost-centres.test.ts`; `test/unit/tools/meta/reference-lookup.test.ts`
-  ("lists the account's cost centres (Kostenstellen) with an explicit limit (D-091)");
+  `test/unit/domain/cost-centres.test.ts` ("shows the id alone, flagged unread, when sevDesk
+  refuses the list"); `test/regressions/approval-binds-document-content.test.ts` ("shows the id
+  alone with a warning when the cost centres cannot be read (#87)");
+  `test/unit/tools/meta/reference-lookup.test.ts` ("lists the account's cost centres
+  (Kostenstellen) with an explicit limit (D-091)");
   `test/unit/scripts/gaps-contacts-probes.test.ts` ("checks costCentre on create and on updates
   with the id, per document kind", "deletes only its own cost centres, unused and in use"). Live:
   the three probes above; `pnpm test:live` runs the lookup kind.

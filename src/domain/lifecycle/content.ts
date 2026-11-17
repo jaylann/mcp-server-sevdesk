@@ -40,7 +40,7 @@ import {
 } from "../../sevdesk/schema.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { cleanText, moneyFromUpstream, splitTotals, trimmedText } from "../common.js";
-import { costCentreFacts, storedCostCentre } from "../cost-centres.js";
+import { COST_CENTRE_UNREAD, costCentreFacts, storedCostCentre } from "../cost-centres.js";
 import type { CreditNoteDetail } from "../credit-notes.js";
 import {
   type DiscountRow,
@@ -97,7 +97,8 @@ export interface DocumentContent {
   readonly notShown: Phrase;
   /**
    * Warnings about this document's content, e.g. several discounts on the whole document, whose
-   * total sevDesk may not compute from all of them (D-116). Empty for most documents.
+   * total sevDesk may not compute from all of them (D-116), or a cost centre or layout that could
+   * not be read. Empty for most documents.
    */
   readonly notes: readonly Phrase[];
   /**
@@ -218,10 +219,12 @@ export async function readDocumentContent(
     ),
     kind === "voucher" ? undefined : readDocumentDiscounts(client, kind, doc.id, signal),
     readApprovalLayout(client, doc, signal),
-    // The stored cost centre with number and name (its id is in the record the binding hashes).
+    // The stored cost centre with number and name (its id is in the record the binding hashes);
+    // the id alone, with a note, when the list cannot be read (`showCostCentre`).
     storedCostCentre(client, doc.raw, signal),
   ]);
   const binding = documentBinding(doc, positions, discounts?.raw, layout);
+  const centreNotes = centre?.unread === true ? [COST_CENTRE_UNREAD] : [];
   if (discounts === undefined) {
     // A voucher: it has no document discounts.
     const rows = positions.rows.map((row) =>
@@ -232,10 +235,10 @@ export async function readDocumentContent(
       (lang) => documentFacts(doc, lang),
       (lang) => [
         ...voucherFacts(doc, rows, positions.complete, lang),
-        ...costCentreFacts(centre, lang),
+        ...costCentreFacts(centre?.centre, lang),
       ],
       NOT_SHOWN.voucher,
-      [],
+      centreNotes,
       0,
     );
   }
@@ -257,6 +260,7 @@ export async function readDocumentContent(
     // Several discounts: sevDesk's totals do not count all of them (D-116), so the total shown
     // may not be what the rows listed suggest.
     ...(several === undefined ? [] : [several]),
+    ...centreNotes,
     ...(layout?.read === false ? [layoutUnreadable(pdfTool)] : []),
   ];
   return content(
@@ -264,7 +268,7 @@ export async function readDocumentContent(
     (lang) => documentFacts(doc, lang, addressFacts(record, TEXT[lang])),
     (lang) => [
       ...salesFacts(doc, record, rows, positions.complete, discounts.rows, lang),
-      ...costCentreFacts(centre, lang),
+      ...costCentreFacts(centre?.centre, lang),
       ...(layout?.read === true ? layoutFacts(layout.layout, lang) : []),
     ],
     layout?.read === true ? notShownWithLayout(pdfTool) : NOT_SHOWN[doc.kind],
