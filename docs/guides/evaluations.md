@@ -141,7 +141,11 @@ With `format: "xml"` sevDesk exports the documents themselves as DATEV XML with 
 images (Belegbilder) instead of the booking batch, for an adviser who imports documents. It covers
 earnings and expenditure only (transactions, cash register and assets are left out, and the
 preview says so), and the receipt images are always included: about 5.6 MB for one month of a
-small account. The CSV export stays the default.
+small account. Keeping only the documents paid in the period (`exportByPaydate`) works with the
+CSV export only: the XML export was recorded without it, so the tool refuses it there. Whether the
+XML export includes enshrined (festgeschriebene) documents has not been recorded; the preview and
+the result say so, so check the export in sevDesk when they must be in it. The CSV export stays
+the default.
 
 - It needs the DATEV settings in sevDesk (Beraternummer, Mandantennummer, start of the fiscal
   year) and refuses with guidance when they are missing; see

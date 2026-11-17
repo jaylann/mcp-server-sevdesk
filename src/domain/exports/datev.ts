@@ -174,7 +174,10 @@ export interface DatevJobParams {
   readonly from: string;
   readonly to: string;
   readonly scope: readonly DatevScopeKey[];
-  /** Only paid documents whose pay date lies in the period (sevDesk's `exportByPaydate`). */
+  /**
+   * Only paid documents whose pay date lies in the period (sevDesk's `exportByPaydate`). CSV only:
+   * the XML job was recorded without it (D-102), so it is never sent there.
+   */
   readonly exportByPaydate?: boolean | undefined;
   /** CSV only (the XML export always holds the receipt images). */
   readonly includeDocumentImages?: boolean | undefined;
@@ -196,7 +199,8 @@ export function datevJobPath(format: DatevFormat = "csv"): string {
  * The query of the job start. Built from a fixed list of keys, so `enshrineDocuments`,
  * `includeExportedDocuments` (or any other flag) can never be sent; booleans go out as
  * `true`/`false` like the spec's examples. The XML job gets the recorded keys only (period and a
- * scope of E/X), plus `exportByPaydate` when asked for.
+ * scope of E/X, D-102): no `exportByPaydate`, no image flag, and no `includeEnshrined` either,
+ * whose default the spec leaves open.
  */
 export function datevJobQuery(params: DatevJobParams): Record<string, string | number> {
   const xml = params.format === "xml";
@@ -205,7 +209,7 @@ export function datevJobQuery(params: DatevJobParams): Record<string, string | n
     startDate: toUnixSeconds(params.from, "start"),
     endDate: toUnixSeconds(params.to, "end"),
     scope: scopeParameter(scope),
-    ...(params.exportByPaydate === undefined
+    ...(xml || params.exportByPaydate === undefined
       ? {}
       : { exportByPaydate: params.exportByPaydate ? "true" : "false" }),
     ...(xml

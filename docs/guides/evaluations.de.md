@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/evaluations.md sha256:40fb5b5e0566 -->
+<!-- translated-from: docs/guides/evaluations.md sha256:70e10a270a0f -->
 
 # Auswertungen und Exporte
 
@@ -151,8 +151,12 @@ Belegbilder hinzufügen, was die Datei deutlich größer macht. Es dauert bis zu
 Mit `format: "xml"` exportiert sevDesk statt des Buchungsstapels die Dokumente selbst als
 DATEV-XML mit ihren Belegbildern, für eine Steuerberatung, die Belege importiert. Das umfasst nur
 Einnahmen und Ausgaben (Kontoumsätze, Kasse und Anlagen fallen weg, und die Vorschau sagt das),
-und die Belegbilder sind immer dabei: etwa 5,6 MB für einen Monat eines kleinen Kontos. Der
-CSV-Export bleibt die Voreinstellung.
+und die Belegbilder sind immer dabei: etwa 5,6 MB für einen Monat eines kleinen Kontos. Nur die im
+Zeitraum bezahlten Dokumente zu behalten (`exportByPaydate`) geht nur beim CSV-Export: Der
+XML-Export wurde ohne diese Option aufgezeichnet, daher lehnt das Werkzeug sie dort ab. Ob der
+XML-Export festgeschriebene Dokumente enthält, wurde nicht aufgezeichnet; Vorschau und Ergebnis
+sagen das, prüfe den Export also in sevDesk, wenn sie darin sein müssen. Der CSV-Export bleibt die
+Voreinstellung.
 
 - Es braucht die DATEV-Einstellungen in sevDesk (Beraternummer, Mandantennummer, Beginn des
   Wirtschaftsjahres) und lehnt mit einem Hinweis ab, wenn sie fehlen; siehe

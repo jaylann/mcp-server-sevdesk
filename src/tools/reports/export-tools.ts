@@ -72,6 +72,15 @@ interface DatevPlanState {
   readonly label: string;
 }
 
+/**
+ * The XML job's `includeEnshrined` is never sent and its default is unknown (D-102): an XML
+ * export may leave enshrined documents out, and nothing recorded says either way.
+ */
+const XML_ENSHRINED_UNRECORDED =
+  "Whether the XML export includes enshrined (festgeschriebene) documents is not recorded: " +
+  "sevDesk's includeEnshrined is not sent and its default is unknown. Check the export in " +
+  "sevDesk when enshrined documents must be in it.";
+
 /** Saved files' content is never parsed or returned; only their size and where they went. */
 export const datevExportTool = defineWriteTool({
   name: "sevdesk_datev_export",
@@ -80,14 +89,14 @@ export const datevExportTool = defineWriteTool({
     "DATEV-Export: let sevDesk build the DATEV booking data (Buchungsstapel, CSV in a ZIP) for a " +
     "month, quarter, year or date range and save the ZIP as a new file in SEVDESK_OUTPUT_DIR " +
     "(on a remote server: a download link for the user), e.g. for the tax adviser " +
-    "(Steuerberater). scope picks earnings, expenditure, transactions, " +
-    "cash register and assets (default all); exportByPaydate keeps only documents paid in the " +
-    "period; includeDocumentImages adds the receipts (larger). format=xml: the documents as " +
-    "DATEV XML with receipt images (earnings, expenditure; MBs per month). Write tier: it " +
-    "starts an export job in sevDesk; it never enshrines (festschreiben). Needs the DATEV " +
-    "settings (sevdesk_datev_settings_update); refused with guidance when they are missing. " +
-    "dryRun previews. " +
-    "The download link is never shown. Takes up to a few minutes.",
+    "(Steuerberater). scope picks earnings, expenditure, transactions, cash register and " +
+    "assets (default all); exportByPaydate (CSV only) keeps only documents paid in the period; " +
+    "includeDocumentImages adds the receipts (larger). format=xml: the documents as DATEV XML " +
+    "with receipt images (earnings, expenditure; MBs per month; whether enshrined documents " +
+    "are in it is not recorded). Write tier: it starts an export job in sevDesk; it never " +
+    "enshrines (festschreiben). Needs the DATEV settings (sevdesk_datev_settings_update); " +
+    "refused with guidance when they are missing. dryRun previews. The download link is never " +
+    "shown. Takes up to a few minutes.",
   toolset: "reports",
   tier: "write",
   localEffects: "writes-files",
@@ -111,7 +120,10 @@ export const datevExportTool = defineWriteTool({
     exportByPaydate: z
       .boolean()
       .optional()
-      .describe("Only paid documents whose pay date lies in the period (Zahlungsdatum)."),
+      .describe(
+        "Only paid documents whose pay date lies in the period (Zahlungsdatum). CSV only: " +
+          "refused with format xml.",
+      ),
     includeDocumentImages: z
       .boolean()
       .default(false)
@@ -140,6 +152,14 @@ export const datevExportTool = defineWriteTool({
       throw refused(
         "The XML export covers documents only: give scope earnings and/or expenditure (or use " +
           "format csv for transactions, cash register and assets). Nothing was sent",
+      );
+    }
+    // The XML job was recorded with the period and scope only (D-102); what sevDesk does with
+    // exportByPaydate there is unknown, so it is refused rather than sent or silently dropped.
+    if (xml && args.exportByPaydate !== undefined) {
+      throw refused(
+        "exportByPaydate applies to the CSV export only: the XML export was recorded without it. " +
+          "Leave it out with format xml, or use format csv. Nothing was sent",
       );
     }
     // Local checks first: a misconfiguration costs no sevDesk request.
@@ -230,6 +250,7 @@ export const datevExportTool = defineWriteTool({
                   `${leftOut.map((key) => SCOPE_LABELS[key]).join(", ")}.`,
               ]
             : []),
+          ...(xml ? [XML_ENSHRINED_UNRECORDED] : []),
         ],
         irreversible: false,
       },
@@ -271,11 +292,14 @@ export const datevExportTool = defineWriteTool({
           format: params.format ?? "csv",
         },
         summary:
-          "download" in delivery
+          ("download" in delivery
             ? `${name} ${label}: the ZIP (${size} bytes) is ready as ` +
               `${downloadText(delivery.download)}; sevDesk export job ${jobId}.`
             : `${name} ${label}: saved the ZIP (${size} bytes) as a new file in ` +
-              `SEVDESK_OUTPUT_DIR; sevDesk export job ${jobId}.`,
+              `SEVDESK_OUTPUT_DIR; sevDesk export job ${jobId}.`) +
+          (params.format === "xml"
+            ? " Whether it includes enshrined (festgeschriebene) documents is not recorded."
+            : ""),
         affected: [job],
       };
     } catch (error) {

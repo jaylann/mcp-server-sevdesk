@@ -10077,7 +10077,7 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
           "type": "boolean",
         },
         "exportByPaydate": {
-          "description": "Only paid documents whose pay date lies in the period (Zahlungsdatum).",
+          "description": "Only paid documents whose pay date lies in the period (Zahlungsdatum). CSV only: refused with format xml.",
           "type": "boolean",
         },
         "format": {

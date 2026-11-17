@@ -3685,7 +3685,10 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   `BITTE-ENTPACKEN_Belegbilder_…_bis_….zip`, is a ZIP of two inner ZIPs named `DATEV_…_bis_….zip`
   (5.6 MB and 6.7 KB for one month of the trial). No invoice (130) and no voucher (51) changed
   any key. A second job with `includeExportedDocuments=false` exported the same two entries of
-  almost the same size: nothing was marked as exported in a way this flag reads.
+  almost the same size: nothing was marked as exported in a way this flag reads. Not measured:
+  `exportByPaydate` and `includeEnshrined` on this job (neither was sent). The spec leaves the
+  default of `includeEnshrined` open, so whether an XML export holds enshrined documents is
+  unknown.
 - **Sources:** spec (`exportDatevXML`); recorded 2026-11-16, trial account, Update 2.0 (probe
   `write-export-datev-xml`, opt-in).
 - **Impact:** `sevdesk_datev_export` can offer the XML format (#95) with the same job flow,
@@ -3697,12 +3700,15 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   ZIPs, unchanged documents, equal entries); `test/unit/domain/exports/datev.test.ts` ("builds the
   XML job's query from the recorded keys only: E/X scope, no image or export flags", "starts the
   XML job with a POST to its own path"), `test/unit/tools/reports/export-tools.test.ts`
-  ("sevdesk_datev_export: format xml"), `test/regressions/export-archives-no-enshrine.test.ts`
+  ("sevdesk_datev_export: format xml", including "refuses exportByPaydate %s with the XML export
+  before sending anything"), `test/regressions/export-archives-no-enshrine.test.ts`
   ("DATEV XML export"). Handling: `sevdesk_datev_export` takes `format: "xml"` (default `csv`,
   unchanged): the same job flow, downloader, host allowlist and 100 MiB cap, a POST to
-  `createDatevXmlZipExportJob` with only `startDate`, `endDate`, a scope of E/X and
-  `exportByPaydate` when asked (`datevJobQuery`), never `includeExportedDocuments`; the preview
-  names the parts the XML export leaves out and does not warn about an "exported" mark.
+  `createDatevXmlZipExportJob` with only `startDate`, `endDate` and a scope of E/X
+  (`datevJobQuery`), never `exportByPaydate` (refused with XML before anything is sent),
+  `includeEnshrined` or `includeExportedDocuments`; the preview names the parts the XML export
+  leaves out, does not warn about an "exported" mark, and says, like the result, that whether
+  enshrined documents are included is not recorded.
 
 ### D-103: `createVoucherFromFile` makes a draft that sevDesk fills in within seconds
 

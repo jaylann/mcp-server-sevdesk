@@ -587,7 +587,29 @@ describe("sevdesk_datev_export: format xml", () => {
       "left out: Kontoumsätze (transactions), Kasse (cash register), Anlagen (assets)",
     );
     expect(warnings).not.toContain("includeExportedDocuments");
+    // includeEnshrined is never sent and its default is unknown (D-102).
+    expect(plan.preview.warnings).toContain(
+      "Whether the XML export includes enshrined (festgeschriebene) documents is not recorded: " +
+        "sevDesk's includeEnshrined is not sent and its default is unknown. Check the export in " +
+        "sevDesk when enshrined documents must be in it.",
+    );
   });
+
+  it.each([true, false])(
+    "refuses exportByPaydate %s with the XML export before sending anything",
+    async (exportByPaydate) => {
+      const client = new FakeSevdeskClient(DATEV_ROUTES);
+      const error = await prepareWrite(
+        datevExportTool,
+        { year: 2026, quarter: 1, format: "xml", exportByPaydate },
+        client,
+        { outputDir: directory },
+      ).catch((caught: unknown) => caught);
+      expect(error).toMatchObject({ kind: "validation" });
+      expect((error as Error).message).toContain("exportByPaydate applies to the CSV export only");
+      expect(client.calls).toEqual([]);
+    },
+  );
 
   it("refuses a scope without documents before sending anything", async () => {
     const client = new FakeSevdeskClient(DATEV_ROUTES);
@@ -634,6 +656,9 @@ describe("sevdesk_datev_export: format xml", () => {
       "DATEV_1234567_12345_20260101_bis_20260331_2.zip",
     ]);
     expect(output.summary).toContain("DATEV XML export 2026-Q1");
+    expect(output.summary).toContain(
+      "Whether it includes enshrined (festgeschriebene) documents is not recorded.",
+    );
   });
 
   it("refuses an XML download that is not a ZIP and names the started job", async () => {

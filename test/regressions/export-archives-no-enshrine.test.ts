@@ -83,7 +83,7 @@ describe("DATEV XML export", () => {
 
     await executeWrite(
       datevExportTool,
-      { year: 2026, quarter: 2, format: "xml", exportByPaydate: true, includeDocumentImages: true },
+      { year: 2026, quarter: 2, format: "xml", includeDocumentImages: true },
       client,
       { outputDir: directory },
     );
@@ -92,6 +92,8 @@ describe("DATEV XML export", () => {
     for (const call of client.calls) {
       expect(Object.keys(call.query).filter((key) => FORBIDDEN_KEYS.test(key))).toEqual([]);
     }
+    // Only the recorded keys (D-102); exportByPaydate is refused with XML before anything is sent.
+    expect(Object.keys(client.writes()[0]?.query ?? {})).toEqual(["startDate", "endDate", "scope"]);
   });
 
   it("refuses a download that is not a ZIP and saves nothing", async () => {
