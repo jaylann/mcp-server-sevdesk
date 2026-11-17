@@ -226,6 +226,15 @@ const PREVIEW_WARNINGS: readonly Phrase[] = [
       "Erkennung suchen: Das Ergebnis nennt Belege mit demselben Datum, derselben Bruttosumme " +
       "und Belegnummer.",
   ),
+  // D-100: sevDesk stores no contentHash for a receipt its recognition attached.
+  phrase(
+    "sevDesk stores no checksum for the receipt of this draft: sevdesk_receipt_folder_check " +
+      "cannot find it, and sevdesk_records_audit pairs duplicate drafts by number and amount " +
+      "instead.",
+    "sevDesk speichert für die Belegdatei dieses Entwurfs keine Prüfsumme: " +
+      "sevdesk_receipt_folder_check findet sie nicht, und sevdesk_records_audit erkennt doppelte " +
+      "Entwürfe stattdessen an Nummer und Betrag.",
+  ),
 ];
 
 // ---------------------------------------------------------------------------------------------

@@ -140,7 +140,11 @@ then says so and names the draft, to complete or to delete with
 notice a file it has seen before: every call makes another draft, so send each receipt once.
 Duplicates can only be looked for after the recognition: the result names vouchers with the same
 date, gross amount and Belegnummer, and says when it could not compare every voucher of that day
-or had nothing to compare.
+or had nothing to compare. Later checks see such a draft differently: sevDesk stores no checksum
+for a receipt its recognition attached, so
+[`sevdesk_receipt_folder_check`](../tools.md#sevdesk_receipt_folder_check) cannot find it, while
+[`sevdesk_records_audit`](evaluations.md#vouchers-booked-twice-and-stuck-drafts-duplicates) still
+pairs duplicate drafts by number and gross amount.
 
 It takes PDF, PNG and JPEG files. How well the recognition reads a photo is unmeasured (a tiny
 test image gave a draft with nothing filled in), so expect to enter the details of a photo

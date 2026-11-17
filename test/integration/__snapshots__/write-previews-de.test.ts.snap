@@ -347,6 +347,7 @@ exports[`German previews > draft a voucher with sevDesk's receipt recognition: s
 ! sevdesk_voucher_finalize lehnt den Entwurf ab, bis sevdesk_voucher_update_draft eine Steuerregel und auf jeder Position ein Buchungskonto gesetzt hat.
 ! Die erkannten Positionen und Steuersätze können falsch sein, auch wenn die Summe stimmt (ein Beleg mit 19 % und 7 % kam als eine Position zu 7 % zurück).
 ! sevDesk lehnt eine schon gesendete Datei nicht ab, und Dubletten lassen sich erst nach der Erkennung suchen: Das Ergebnis nennt Belege mit demselben Datum, derselben Bruttosumme und Belegnummer.
+! sevDesk speichert für die Belegdatei dieses Entwurfs keine Prüfsumme: sevdesk_receipt_folder_check findet sie nicht, und sevdesk_records_audit erkennt doppelte Entwürfe stattdessen an Nummer und Betrag.
 (umkehrbar)
 Art: Ausgabe: Die Zahlung geht vom Bankkonto ab
 Belegdatei: Rechnung-0815.pdf (PDF, 77 Bytes)

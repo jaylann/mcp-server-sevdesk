@@ -170,13 +170,19 @@ describe("sevdesk_voucher_recognize_receipt", () => {
       label: "Left empty",
       value: "tax rule (Steuerregel), booking accounts (Buchungskonten), supplier contact",
     });
-    expect(plan.preview.warnings).toHaveLength(4);
+    expect(plan.preview.warnings).toHaveLength(5);
     expect(plan.preview.warnings[0]).toContain("Every call creates another draft.");
     expect(plan.preview.warnings[2]).toBe(
       "The recognised positions and tax rates can be wrong even when the total is right (a " +
         "receipt with 19 % and 7 % came back as one position at 7 %).",
     );
     expect(plan.preview.warnings[3]).toContain("sevDesk does not refuse a file it has seen before");
+    // D-100: no contentHash for a recognised receipt, so only the audit's number rule finds it.
+    expect(plan.preview.warnings[4]).toBe(
+      "sevDesk stores no checksum for the receipt of this draft: sevdesk_receipt_folder_check " +
+        "cannot find it, and sevdesk_records_audit pairs duplicate drafts by number and amount " +
+        "instead.",
+    );
     expect(plan.previewDe?.action).toContain("Belegerkennung");
     expect(plan.previewDe?.facts.map((f) => f.label)).toEqual([
       "Art",
@@ -187,7 +193,8 @@ describe("sevdesk_voucher_recognize_receipt", () => {
       "Status nach dem Speichern",
     ]);
     expect(plan.previewDe?.facts[4]?.value).toBe("Steuerregel, Buchungskonten, Lieferantenkontakt");
-    expect(plan.previewDe?.warnings).toHaveLength(4);
+    expect(plan.previewDe?.warnings).toHaveLength(5);
+    expect(plan.previewDe?.warnings[4]).toContain("keine Prüfsumme");
   });
 
   it("previews a revenue receipt with the customer, and an image with its warning", async () => {
@@ -210,9 +217,9 @@ describe("sevdesk_voucher_recognize_receipt", () => {
       label: "Bleibt leer",
       value: "Steuerregel, Buchungskonten, Kundenkontakt",
     });
-    expect(plan.preview.warnings).toHaveLength(5);
-    expect(plan.preview.warnings[4]).toContain("How well sevDesk's recognition reads an image");
-    expect(plan.previewDe?.warnings).toHaveLength(5);
+    expect(plan.preview.warnings).toHaveLength(6);
+    expect(plan.preview.warnings[5]).toContain("How well sevDesk's recognition reads an image");
+    expect(plan.previewDe?.warnings).toHaveLength(6);
   });
 
   it("refuses without a folder, a file that is not a receipt and an Update 1.0 account, before any write", async () => {

@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/receipts.md sha256:a1864c7869b1 -->
+<!-- translated-from: docs/guides/receipts.md sha256:1f8c732f3433 -->
 
 # Belege und Eingangsrechnungen
 
@@ -150,7 +150,12 @@ sagt das Werkzeug das und nennt den Entwurf, zum Vervollständigen oder zum Lös
 schon gesendete Datei nicht: Jeder Aufruf legt einen weiteren Entwurf an, schicke also jeden Beleg
 nur einmal. Nach Dubletten lässt sich erst nach der Erkennung suchen: Das Ergebnis nennt Belege mit
 demselben Datum, demselben Bruttobetrag und derselben Belegnummer und sagt, wenn es nicht jeden
-Beleg dieses Tages vergleichen konnte oder nichts zu vergleichen hatte.
+Beleg dieses Tages vergleichen konnte oder nichts zu vergleichen hatte. Spätere Prüfungen sehen
+einen solchen Entwurf anders: sevDesk speichert für eine Belegdatei, die seine Erkennung angehängt
+hat, keine Prüfsumme, daher findet
+[`sevdesk_receipt_folder_check`](../tools.md#sevdesk_receipt_folder_check) sie nicht, während
+[`sevdesk_records_audit`](evaluations.de.md#doppelt-gebuchte-belege-und-liegen-gebliebene-entwürfe-duplicates)
+doppelte Entwürfe weiterhin an Nummer und Bruttobetrag erkennt.
 
 Es nimmt PDF-, PNG- und JPEG-Dateien. Wie gut die Erkennung ein Foto liest, ist nicht gemessen
 (ein winziges Testbild ergab einen Entwurf ohne ausgefüllte Angaben); rechne also damit, die

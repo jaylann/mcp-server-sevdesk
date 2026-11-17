@@ -3873,20 +3873,29 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   anything is sent, since the draft it makes cannot be taken back. It takes the file kinds of a
   manual receipt (PDF, PNG, JPEG): sevDesk accepted the PNG, and a photo that is not recognised
   still gives a draft the tool names for completing; for an image the preview and the result say
-  that its recognition is unmeasured. The result lists the fields sevDesk
-  filled in (`recognition.filledIn`, unchecked), what is missing (`taxRule`, `bookingAccount`,
+  that its recognition is unmeasured. The result lists the fields sevDesk filled in
+  (`recognition.filledIn`, unchecked), what is missing (`taxRule`, `bookingAccount`,
   `number`, `supplierContact`) and, in trusted notes that never quote recognised text, that
   positions and tax rates can be wrong even when the total is right (a receipt with several
   rates has to be entered again as one position per rate) and how to complete the draft with
   `sevdesk_voucher_update_draft` (`taxRuleId`, positions with `accountDatevId`, checked against
   the ReceiptGuidance) or delete it. Without sums after 15 s it says so and names the draft. An
   answer that does not name the new voucher is an error that says a draft probably exists and
-  must be looked for, not created again; a failure after that names the draft as created.
+  must be looked for, not created again; a failure after that names the draft as created. The
+  answer already names the attached receipt (`document`), so a remote upload is released right
+  then, not after the read-back: a read that fails afterwards cannot leave an upload id that a
+  retry turns into a second draft.
   Because sevDesk does not deduplicate, the tool's own scan after the recognition is the only
   guard: other vouchers of the same direction with the same date, gross total and recognised
   Belegnummer (the supplier text is not compared), reported, not refused. It reads one page of
   up to 1,000 vouchers; when sevDesk has more, when it failed, or when there was no recognised
   date and total to compare, the result says that the check was partial or did not run.
+  The receipt of such a draft has a Document with `contentHash` null (D-100, recorded
+  2026-11-17 for a PDF and a PNG), so `sevdesk_receipt_folder_check` cannot match it (it counts
+  it under `coverage.vouchers.withoutChecksum`) and the audit's same-receipt rule
+  (`voucher_receipt_twice`) cannot see it; the audit's `duplicates` check still pairs two such
+  drafts by direction, document number and gross amount across suppliers (`draft_twice`, or
+  `draft_repeats_voucher` against a booked voucher). The preview says so.
   `sevdesk_voucher_finalize` refuses the draft, expense or revenue, until both the tax rule and
   every booking account are set (`storedRule`, `storedPositionsFor`).
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("runs the opt-in probes only when
@@ -3897,7 +3906,10 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   once, after waits, and not within the bound; a partial recognition; the several-rates note;
   duplicates, a partial scan, a page without a count and a skipped scan; an unreadable answer; a
   refused upload; a cancelled wait and a failed read naming the draft; recognised text kept out
-  of summary and notes). The safety net:
+  of summary and notes). The upload release: `test/unit/tools/remote-files.test.ts` (released
+  from the answer also when the read fails, kept when neither the answer nor the read-back
+  shows the receipt). The tier: `test/unit/sevdesk/paths.test.ts` (the multipart POST stays
+  `write`). The safety net:
   `test/regressions/recognised-voucher-draft.test.ts` (the finalize refuses a draft shaped like
   the recorded one without a tax rule or a booking account, and accepts it once both are set;
   the normal update completes it, replaces the wrongly split 7 % position with one position per
