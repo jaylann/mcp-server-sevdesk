@@ -19,7 +19,8 @@ import { prepareWrite } from "../helpers/write-tools.js";
 import { WRITE_TOOL_CASES } from "../write-cases/index.js";
 
 const CONFIRMED = WRITE_TOOL_CASES.filter((testCase) => requiresConfirmation(testCase.tool.tier));
-// Voucher create/update/import also carry bilingual previews, including currency and rate facts.
+// Voucher create/update/import also carry bilingual previews, including currency and rate facts;
+// so does the draft from sevDesk's receipt recognition.
 const BILINGUAL = WRITE_TOOL_CASES.filter(
   (testCase) =>
     requiresConfirmation(testCase.tool.tier) ||
@@ -27,6 +28,7 @@ const BILINGUAL = WRITE_TOOL_CASES.filter(
       "sevdesk_voucher_update_draft",
       "sevdesk_voucher_create_draft",
       "sevdesk_voucher_import_einvoice",
+      "sevdesk_voucher_recognize_receipt",
     ].includes(testCase.tool.name),
 );
 const UNCONFIRMED = WRITE_TOOL_CASES.filter((testCase) => !BILINGUAL.includes(testCase));

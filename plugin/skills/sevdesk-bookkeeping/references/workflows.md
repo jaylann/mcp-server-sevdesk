@@ -49,6 +49,16 @@ or an https link to a host in `SEVDESK_FILE_URL_HOSTS`.
    `allowDuplicate` is set. Show the preview, then call it again without `dryRun`, with the
    preview's SHA-256 as `fileSha256`: the file is read again (a link downloaded again), and other
    bytes than the user saw are refused. The voucher is a draft (status 50).
+
+   Or let sevDesk's own recognition (Belegerkennung) fill it in:
+   `sevdesk_voucher_recognize_receipt` (`write`) with the file, `dryRun` first, then with the
+   preview's SHA-256 as `fileSha256`. sevDesk creates the draft at once and fills in date,
+   number, sums, a supplier text and positions, all unchecked (one position at a wrong rate is
+   common for a receipt with several rates). Every call makes another draft, so send each
+   receipt once; when the result lists `possibleDuplicates`, check them and delete the new draft
+   if it repeats one. Complete the draft with `sevdesk_voucher_update_draft` (tax rule, one
+   position per rate with its booking account, supplier) before step 7.
+
 6. Corrections while it is a draft: `sevdesk_voucher_update_draft` (changes only what is given;
    `positions` replaces all positions); a wrong duplicate draft: `sevdesk_voucher_delete_draft`.
 7. `sevdesk_voucher_finalize` (`commit`, confirmation): draft → open (status 100); from now on

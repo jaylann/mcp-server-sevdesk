@@ -35,6 +35,7 @@ const FILE_WRITERS = [
 const FILE_READERS = [
   "sevdesk_voucher_create_draft",
   "sevdesk_voucher_import_einvoice",
+  "sevdesk_voucher_recognize_receipt",
   "sevdesk_voucher_update_draft",
   "sevdesk_einvoice_parse",
   "sevdesk_receipt_folder_check",
@@ -116,7 +117,11 @@ describe("tool metadata", () => {
   });
 
   it("offers the tools that only work on a file only when files can be read", () => {
-    const fileOnly = ["sevdesk_einvoice_parse", "sevdesk_voucher_import_einvoice"];
+    const fileOnly = [
+      "sevdesk_einvoice_parse",
+      "sevdesk_voucher_import_einvoice",
+      "sevdesk_voucher_recognize_receipt",
+    ];
     for (const name of fileOnly) {
       const tool = ALL_TOOLS.find((candidate) => candidate.name === name);
       expect(tool?.available?.(allEnabledConfig()), name).toBe(false);

@@ -932,7 +932,7 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   | `GET /PartUnity`                                                                       | alternative units of parts, with their own price and factor (`sevdesk_api_get`)                                    | known    |
   | `GET /Document`, document download                                                     | attached documents and receipts (metadata through `sevdesk_api_get`, files through `sevdesk_voucher_receipt_save`) | recorded |
   | `GET /SevSequence/Factory/getByType`                                                   | next document number (see D-027); `sevdesk_api_get` refuses it                                                     | known    |
-  | `POST /Voucher/Factory/createVoucherFromFile`                                          | voucher draft from a file, filled in by sevDesk's recognition (D-103; no tool uses it)                             | recorded |
+  | `POST /Voucher/Factory/createVoucherFromFile`                                          | voucher draft from a file, filled in by sevDesk's recognition (D-103; `sevdesk_voucher_recognize_receipt`)         | recorded |
 
   Recorded shapes: `GET /AccountDatev` rows have 28 keys (`number`, `name`, `accountDatevCategory`,
   `accountCategory`, …), scalars as strings, and GET by id answers one row; the list ignores every
@@ -993,8 +993,9 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
 - **Impact:** Each undocumented endpoint gets a hand-written schema, a smoke test, and lives in
   the `advanced` toolset or behind a lookup until a recording confirms its shape. `uncertain`
   endpoints are not used by default tools: receipts go through `uploadTempFile` and `saveVoucher`
-  (D-011, D-026); `createVoucherFromFile` is recorded now, but no tool uses it until #96 does
-  (D-103). `GET /TextTemplate`, `/PartUnity` and `/Document`
+  (D-011, D-026); the recorded `createVoucherFromFile` is used only by
+  `sevdesk_voucher_recognize_receipt` (D-103). `GET /TextTemplate`,
+  `/PartUnity` and `/Document`
   have no curated tool; the generic read `sevdesk_api_get` (advanced toolset, off by default)
   reads them without a schema of its own: it returns the raw `objects` sanitized as untrusted
   text, drops binary fields and `sevClient` echoes, and always sends `limit`, `offset` and
@@ -1013,7 +1014,8 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   recorded answers in `test/fixtures/recorded/2026-11-10/advanced/` against them, the ignored
   `limit` included); the receipt download: `test/unit/tools/vouchers/receipt-save.test.ts`. `/SevSequence/Factory/getByType`: no tool uses it, and `sevdesk_api_get` refuses it
   (`test/unit/sevdesk/paths.test.ts`, `genericGetRefusal`). `/CostCentre` and
-  `DELETE /TagRelation/{tagRelationId}`: D-091 and D-089.
+  `DELETE /TagRelation/{tagRelationId}`: D-091 and D-089. `createVoucherFromFile`:
+  `test/unit/tools/vouchers/recognize-receipt.test.ts` (D-103).
 
 ### D-025: PDF rendering returns one base64 `pdf` since 2026-04-07
 
@@ -3848,17 +3850,82 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   `"0"`, `supplierName` (a text, but not the PDF's supplier line, and no supplier contact) and
   `resultDisdar`; `taxRule` stayed null. It added one position: `taxRate` 19, `sum` 100, net
   `"0"`, the three sums, and `accountDatev` **null**.
+
+  Recorded 2026-11-17 (generated test files, all drafts deleted again):
+  - `creditDebit` `D` works: a draft (status 50, `voucherType` VOU) with `creditDebit` `D`, which
+    the recognition filled in with net 200, tax 38, gross 238 and one position at 19 %; `taxRule`
+    null.
+  - A PNG (1x1, `image/png`, part `voucher`) is accepted and makes a draft; nothing was
+    recognised from it (sums 0, no position after 8 s). JPEG and real photos are unmeasured.
+  - For four PDFs the sums were there at the second read, about one second after the upload (the
+    read right after the POST still had 0). Scans and long PDFs are unmeasured.
+  - **Several tax rates are recognised wrongly:** a receipt with 100.00 net at 19 % and 50.00
+    net at 7 % (gross 172.50) came back as ONE position at 7 % with net 161.21, tax 11.29, gross
+    172.50. The gross total was right, the split was not.
+  - **sevDesk does not deduplicate:** the same file sent twice made a second draft with the same
+    recognised values, without a refusal or a reference to the first.
+
 - **Sources:** [lippoliv/paperlessngx-to-sevdesk](https://github.com/lippoliv/paperlessngx-to-sevdesk)
   (`src/main.py`); recorded 2026-11-16, trial account, Update 2.0 (probe
-  `write-voucher-from-file`, opt-in).
+  `write-voucher-from-file`, opt-in); recorded 2026-11-17, trial account, Update 2.0 (one-off
+  check by the orchestrator, run tag `MCP-E2E 20261117-0035-y3q6`).
 - **Impact:** Recognition can start a voucher draft (#96), but the result is incomplete: no tax
   rule, no booking account, an unreliable supplier. A tool must poll the draft until the sums
   appear (bounded, a few seconds), show which fields came from sevDesk, and complete tax rule and
   account through the normal update with ReceiptGuidance before anything is finalized. The
   draft exists even if recognition fails, so the tool must name it for cleanup.
+- **Handling:** `sevdesk_voucher_recognize_receipt` (`write`;
+  `src/domain/drafts/voucher-recognition.ts`) sends a receipt once (multipart, `creditDebit` `C`
+  or, with `kind: revenue`, `D`, part `voucher` with the sniffed MIME type, never retried),
+  reads the draft at once and then after waits of 1, 1, 2, 2, 3, 3 and 3 s (15 s at most, three
+  times the slowest recorded 5 s) until `sumGross` is not 0, and reads the positions. The file
+  comes through the shared resolver like any receipt (a path, an upload or an allowed https link);
+  the preview shows its full SHA-256, and `fileSha256` refuses other bytes on the real call before
+  anything is sent, since the draft it makes cannot be taken back. It takes the file kinds of a
+  manual receipt (PDF, PNG, JPEG): sevDesk accepted the PNG, and a photo that is not recognised
+  still gives a draft the tool names for completing; for an image the preview and the result say
+  that its recognition is unmeasured. The result lists the fields sevDesk filled in
+  (`recognition.filledIn`, unchecked), what is missing (`taxRule`, `bookingAccount`,
+  `number`, `supplierContact`) and, in trusted notes that never quote recognised text, that
+  positions and tax rates can be wrong even when the total is right (a receipt with several
+  rates has to be entered again as one position per rate) and how to complete the draft with
+  `sevdesk_voucher_update_draft` (`taxRuleId`, positions with `accountDatevId`, checked against
+  the ReceiptGuidance) or delete it. Without sums after 15 s it says so and names the draft. An
+  answer that does not name the new voucher is an error that says a draft probably exists and
+  must be looked for, not created again; a failure after that names the draft as created. The
+  answer already names the attached receipt (`document`), so a remote upload is released right
+  then, not after the read-back: a read that fails afterwards cannot leave an upload id that a
+  retry turns into a second draft.
+  Because sevDesk does not deduplicate, the tool's own scan after the recognition is the only
+  guard: other vouchers of the same direction with the same date, gross total and recognised
+  Belegnummer (the supplier text is not compared), reported, not refused. It reads one page of
+  up to 1,000 vouchers; when sevDesk has more, when it failed, or when there was no recognised
+  date and total to compare, the result says that the check was partial or did not run.
+  The receipt of such a draft has a Document with `contentHash` null (D-100, recorded
+  2026-11-17 for a PDF and a PNG), so `sevdesk_receipt_folder_check` cannot match it (it counts
+  it under `coverage.vouchers.withoutChecksum`) and the audit's same-receipt rule
+  (`voucher_receipt_twice`) cannot see it; the audit's `duplicates` check still pairs two such
+  drafts by direction, document number and gross amount across suppliers (`draft_twice`, or
+  `draft_repeats_voucher` against a booked voucher). The preview says so.
+  `sevdesk_voucher_finalize` refuses the draft, expense or revenue, until both the tax rule and
+  every booking account are set (`storedRule`, `storedPositionsFor`).
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("runs the opt-in probes only when
   named…": the multipart request, the placeholders, the recognised fields, `taxRule` and
-  `accountDatev` null). Handling: pending, the recognition option of #96.
+  `accountDatev` null). The tool: `test/unit/tools/vouchers/recognize-receipt.test.ts` (the
+  multipart body sent once; a revenue receipt with `D`; a PNG with its MIME type and the image
+  note; a receipt from a link; `fileSha256` matching and refusing other bytes; recognised at
+  once, after waits, and not within the bound; a partial recognition; the several-rates note;
+  duplicates, a partial scan, a page without a count and a skipped scan; an unreadable answer; a
+  refused upload; a cancelled wait and a failed read naming the draft; recognised text kept out
+  of summary and notes). The upload release: `test/unit/tools/remote-files.test.ts` (released
+  from the answer also when the read fails, kept when neither the answer nor the read-back
+  shows the receipt). The tier: `test/unit/sevdesk/paths.test.ts` (the multipart POST stays
+  `write`). The safety net:
+  `test/regressions/recognised-voucher-draft.test.ts` (the finalize refuses a draft shaped like
+  the recorded one without a tax rule or a booking account, and accepts it once both are set;
+  the normal update completes it, replaces the wrongly split 7 % position with one position per
+  rate, and completes a recognised revenue draft that is then accepted). Fixtures
+  `test/fixtures/vouchers/voucher-from-file-*.json`, `voucher-positions-from-file.json`.
 
 ### D-107: Order factories copy the order; a confirmation marks the offer accepted
 

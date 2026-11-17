@@ -1,4 +1,4 @@
-<!-- translated-from: docs/adr/0008-file-transfer-over-http.md sha256:a40720b9fa24 -->
+<!-- translated-from: docs/adr/0008-file-transfer-over-http.md sha256:777cdb20f131 -->
 
 # ADR 0008: Dateiübertragung über HTTP
 
@@ -213,8 +213,9 @@ wenn es ein Dateiname von höchstens 64 Zeichen ist, der auf `.pdf`, `.png`, `.j
 der Name wird gezeigt und in sevDesk gespeichert. Meldungen, Vorschauen und Ergebnisse zeigen
 nichts weiter von einem Link, und das Audit-Log hält ein Link-Argument nur mit Schema und Host fest
 (`https://host/…?[redacted]`). Die Werkzeuge, die eine Datei nehmen, erklären
-`openWorldHint: true` (ihre Stufen bleiben), und `sevdesk_einvoice_parse` und
-`sevdesk_voucher_import_einvoice` werden auch allein mit Link-Hosts angeboten.
+`openWorldHint: true` (ihre Stufen bleiben), und `sevdesk_einvoice_parse`,
+`sevdesk_voucher_import_einvoice` und `sevdesk_voucher_recognize_receipt` werden auch allein mit
+Link-Hosts angeboten.
 `sevdesk_receipt_folder_check` nimmt keine Datei und nie einen Link, nur einen Ordner innerhalb von
 `SEVDESK_FILE_DIRS`; es bleibt daher geschlossen (`openWorldHint: false`), und Link-Hosts allein
 (`SEVDESK_FILE_URL_HOSTS`) bieten es nicht an. `test/integration/metadata-lint.test.ts` prüft

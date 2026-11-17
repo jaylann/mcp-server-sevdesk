@@ -52,7 +52,8 @@ export const uploadRequestTool = defineTool({
   title: "Request a file upload",
   description:
     "Let the user upload a file to this remote server, for the tools that take a file " +
-    "(sevdesk_voucher_create_draft, sevdesk_voucher_update_draft, sevdesk_einvoice_parse, " +
+    "(sevdesk_voucher_create_draft, sevdesk_voucher_update_draft, " +
+    "sevdesk_voucher_recognize_receipt, sevdesk_einvoice_parse, " +
     "sevdesk_voucher_import_einvoice): purpose receipt (Beleg, Belegbild: PDF, PNG or JPEG) or " +
     "einvoice (E-Rechnung: XRechnung XML or ZUGFeRD/Factur-X PDF). Returns a link: give it to " +
     "the user, who opens it in the browser they connected this server with and uploads the " +
