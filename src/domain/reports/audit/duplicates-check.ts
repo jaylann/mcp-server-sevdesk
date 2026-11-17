@@ -35,7 +35,7 @@
  *   {@link NUMBER_WINDOW_DAYS} days apart) and the same gross amount (not 0). sevDesk's receipt
  *   recognition (`Voucher/Factory/createVoucherFromFile`) fills in the PDF's date, invoice number
  *   and sums, but names no supplier contact and a supplier name that is not the PDF's supplier
- *   (recorded 2026-11-16, spec/deviations.md D-103 on main): the same PDF reaching sevDesk twice
+ *   (recorded 2026-11-16, spec/deviations.md D-103): the same PDF reaching sevDesk twice
  *   gives two drafts, or a draft next to the booked voucher, under different suppliers or none.
  * - **Stuck drafts** (`voucher_draft_stuck`, `sales_draft_stuck`): a voucher, invoice or credit
  *   note dated in the period that is still a draft and was created at least
