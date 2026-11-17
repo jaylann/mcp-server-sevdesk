@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/invoices.md sha256:HASH-PENDING -->
+<!-- translated-from: docs/guides/invoices.md sha256:6da4488e42a3 -->
 
 # Rechnungen: vom Entwurf bis zur Zahlung
 

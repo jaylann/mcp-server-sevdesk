@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:HASH-PENDING -->
+<!-- translated-from: docs/faq.md sha256:c17a3544adf8 -->
 
 # Häufige Fragen
 
