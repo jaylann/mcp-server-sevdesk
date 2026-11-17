@@ -1308,6 +1308,17 @@ Find overdue invoices in sevDesk, rule out payments that are not booked yet, and
 | `contact`        | no       | Customer reference (name or id, up to 200 characters). Default: all customers.          | contact names (with `sevdesk_contacts_search`) |
 | `minDaysOverdue` | no       | Minimum days overdue (inclusive, 0–3650, as 1–4 digits). Default: all overdue invoices. | —                                              |
 
+### `missing_receipts`
+
+**Missing receipts (fehlende Belege)** · needs one of `sevdesk_transactions_list` or `sevdesk_records_audit`
+
+Find missing receipts in sevDesk for a month or quarter: outgoing bank transactions no voucher explains, regular suppliers without a bill, receipts only on drafts or booked twice and, where the server reads a receipt folder, files never booked; then file the ones found as voucher drafts, with a dry run first. Findings are hints. Not tax advice.
+
+| Argument       | Required | Description                                                                                    | Suggestions                                               |
+| -------------- | -------- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `period`       | no       | Month (YYYY-MM, e.g. 2026-10) or quarter (YYYY-Qn, e.g. 2026-Q3). Default: the previous month. | recent months and quarters                                |
+| `checkAccount` | no       | Payment account reference (name or id, up to 200 characters). Default: all payment accounts.   | payment account names (with `sevdesk_bank_accounts_list`) |
+
 ### `month_end_close`
 
 **Month-end close (Monatsabschluss)** · needs `sevdesk_changed_since`
@@ -1317,6 +1328,17 @@ Close a month in sevDesk: what changed, unbooked bank transactions and missing r
 | Argument | Required | Description                                                          | Suggestions   |
 | -------- | -------- | -------------------------------------------------------------------- | ------------- |
 | `month`  | no       | Month to close, YYYY-MM (e.g. 2026-10). Default: the previous month. | recent months |
+
+### `offer_follow_up`
+
+**Offer follow-up (Angebote nachfassen)** · needs `sevdesk_orders_list`
+
+Follow up on open offers (Angebote) in sevDesk: sent offers the customer has not answered after some days, then per offer marking it accepted or rejected, the order confirmation, delivery note and invoice from it, each with a dry run first, or a follow-up message the user sends. Not tax advice.
+
+| Argument     | Required | Description                                                                                                   | Suggestions                                    |
+| ------------ | -------- | ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `minAgeDays` | no       | Only offers at least this many days old, from the offer date (inclusive, 0–3650, as 1–4 digits). Default: 14. | —                                              |
+| `contact`    | no       | Customer reference (name or id, up to 200 characters). Default: all customers.                                | contact names (with `sevdesk_contacts_search`) |
 
 ### `receipt_intake`
 
@@ -1337,3 +1359,13 @@ Check a month or quarter in sevDesk before the Umsatzsteuer-Voranmeldung (UStVA)
 | Argument | Required | Description                                                                                    | Suggestions                |
 | -------- | -------- | ---------------------------------------------------------------------------------------------- | -------------------------- |
 | `period` | no       | Month (YYYY-MM, e.g. 2026-10) or quarter (YYYY-Qn, e.g. 2026-Q3). Default: the previous month. | recent months and quarters |
+
+### `year_end_handoff`
+
+**Year-end handoff (Übergabe an den Steuerberater)** · needs `sevdesk_profit_and_loss`
+
+Prepare a year in sevDesk for the Steuerberater: unbooked transactions and drafts, profit and loss (EÜR view), the audits, open invoices and vouchers, the DATEV export (CSV or XML; the DATEV settings only if they are missing or wrong) and the invoice and receipt archive in parts, each export with a dry run first. Findings are hints. Not tax advice.
+
+| Argument | Required | Description                                                                 | Suggestions |
+| -------- | -------- | --------------------------------------------------------------------------- | ----------- |
+| `year`   | no       | Year to hand over, YYYY (2000–2099, e.g. 2025). Default: the previous year. | —           |

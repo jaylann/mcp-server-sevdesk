@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/invoices.md sha256:fdfda06b037b -->
+<!-- translated-from: docs/guides/invoices.md sha256:5116eed024ed -->
 
 # Rechnungen: vom Entwurf bis zur Zahlung
 
@@ -129,7 +129,10 @@ also vergleiche die Summen des neuen Entwurfs, bevor du ihn fertigstellst. sevDe
 Dokument die nächste Nummer seines Nummernkreises, ohne den Zähler weiterzuschalten; es kann also
 eine Nummer tragen, die eine andere Auftragsbestätigung oder ein anderer Lieferschein schon hat. Das
 Ergebnis nennt solche, die es findet. Offene Angebote findest du mit einer Frage nach versendeten
-Angeboten in einem Zeitraum ([`sevdesk_orders_list`](../tools.md#sevdesk_orders_list)).
+Angeboten in einem Zeitraum ([`sevdesk_orders_list`](../tools.md#sevdesk_orders_list)). Der Prompt
+[`offer_follow_up`](../tools.md#offer_follow_up) macht das für Angebote, die älter als eine Zahl von
+Tagen sind (standardmäßig 14), und geht jedes mit dir durch: angenommen oder abgelehnt, die
+Auftragsbestätigung, der Lieferschein, die Rechnung oder eine Nachfrage, die du selbst schickst.
 
 ### Aus einem Angebot oder einer Auftragsbestätigung
 

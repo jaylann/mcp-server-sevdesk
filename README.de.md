@@ -1,4 +1,4 @@
-<!-- translated-from: README.md sha256:9e730a9ed0cc -->
+<!-- translated-from: README.md sha256:e40319f46c5c -->
 
 <!-- Nur die Breite: mit einer Höhe dazu zeichnet GitHub einen getönten Kasten hinter das Bild. -->
 <p align="center"><img src="https://raw.githubusercontent.com/jaylann/mcp-server-sevdesk/main/assets/logo.svg" alt="" width="96"></p>
@@ -104,13 +104,16 @@ einem Wechselkursdatum; solche Entwürfe lassen sich über den Server nicht fert
 Fertige Arbeitsabläufe als MCP-Prompts. Clients zeigen sie neben den Werkzeugen an; in Claude Code
 sind es Slash-Befehle wie `/mcp__sevdesk__month_end_close`.
 
-| Prompt                | Was er tut                                                                                                                                                                  | Argumente                                                           |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `month_end_close`     | Monatsabschluss: Änderungen, nicht zugeordnete Kontoumsätze, Entwürfe, offene Forderungen und Verbindlichkeiten, Umsatzsteuer-Vorprüfung, Gewinn, Übergabe per DATEV-Export | `month` (YYYY-MM, Standard: der Vormonat)                           |
-| `receipt_intake`      | Beleg erfassen, E-Rechnung importieren: Dublettenprüfung, Buchungskonto und Steuerregel, Belegentwurf, fertigstellen, Zahlung                                               | `file` (optional)                                                   |
-| `dunning_run`         | Mahnlauf: überfällige Rechnungen, nicht zugeordnete Zahlungseingänge, Mahnungsentwürfe                                                                                      | `contact` (Name/ID), `minDaysOverdue` (0–3650 Tage); beide optional |
-| `vat_precheck`        | UStVA-Vorprüfung: nicht zugeordnete Kontoumsätze und Entwürfe, Umsatzsteuer-Auswertung (Kennzahlen), ZM                                                                     | `period` (YYYY-MM oder YYYY-Qn)                                     |
-| `bank_reconciliation` | Kontoabgleich: Vorschläge, Zuordnungen, private Umsätze, Korrekturen                                                                                                        | `checkAccount` (Name/ID), `month` (YYYY-MM); beide optional         |
+| Prompt                | Was er tut                                                                                                                                                                  | Argumente                                                                 |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `month_end_close`     | Monatsabschluss: Änderungen, nicht zugeordnete Kontoumsätze, Entwürfe, offene Forderungen und Verbindlichkeiten, Umsatzsteuer-Vorprüfung, Gewinn, Übergabe per DATEV-Export | `month` (YYYY-MM, Standard: der Vormonat)                                 |
+| `receipt_intake`      | Beleg erfassen, E-Rechnung importieren: Dublettenprüfung, Buchungskonto und Steuerregel, Belegentwurf, fertigstellen, Zahlung                                               | `file` (optional)                                                         |
+| `dunning_run`         | Mahnlauf: überfällige Rechnungen, nicht zugeordnete Zahlungseingänge, Mahnungsentwürfe                                                                                      | `contact` (Name/ID), `minDaysOverdue` (0–3650 Tage); beide optional       |
+| `vat_precheck`        | UStVA-Vorprüfung: nicht zugeordnete Kontoumsätze und Entwürfe, Umsatzsteuer-Auswertung (Kennzahlen), ZM                                                                     | `period` (YYYY-MM oder YYYY-Qn)                                           |
+| `bank_reconciliation` | Kontoabgleich: Vorschläge, Zuordnungen, private Umsätze, Korrekturen                                                                                                        | `checkAccount` (Name/ID), `month` (YYYY-MM); beide optional               |
+| `missing_receipts`    | Fehlende Belege: ausgehende Umsätze ohne Beleg, regelmäßige Lieferanten ohne Rechnung, Belege nur im Entwurf oder doppelt gebucht, nicht gebuchte Dateien im Belegordner    | `period` (YYYY-MM oder YYYY-Qn), `checkAccount` (Name/ID); beide optional |
+| `year_end_handoff`    | Übergabe an die Steuerberatung: Entwürfe und nicht zugeordnete Umsätze, Gewinn- und Verlustrechnung, Prüfungen, offene Posten, DATEV-Export, Belegarchiv in Teilen          | `year` (YYYY, Standard: das Vorjahr)                                      |
+| `offer_follow_up`     | Angebote nachfassen: versendete Angebote ohne Antwort, dann annehmen oder ablehnen, Auftragsbestätigung, Lieferschein, Rechnung                                             | `minAgeDays` (0–3650, Standard 14), `contact` (Name/ID); beide optional   |
 
 Ein Prompt erscheint nur, wenn die Werkzeuge, die er braucht, aktiviert sind; Schritte, die eine
 deaktivierte Stufe, Werkzeuggruppe oder einen fehlenden Ordner brauchen, werden mit der

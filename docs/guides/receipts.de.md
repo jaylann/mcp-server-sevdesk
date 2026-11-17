@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/receipts.md sha256:7ceebf59fb07 -->
+<!-- translated-from: docs/guides/receipts.md sha256:195c5b11dc86 -->
 
 # Belege und Eingangsrechnungen
 
@@ -166,6 +166,13 @@ nicht gebuchte Kontoumsätze über Belegnummer und Betrag den Belegen zu und buc
 der du zustimmst, mit [`sevdesk_transaction_book`](../tools.md#sevdesk_transaction_book)
 (`commit`). Eine Bankgebühr, zu der es noch keinen Beleg gibt, bekommt zuerst einen Beleg, dann
 wird der Umsatz darauf gebucht.
+
+Um die Belege zu finden, die überhaupt fehlen, geht der Prompt
+[`missing_receipts`](../tools.md#missing_receipts) einen Monat oder ein Quartal durch: ausgehende
+Umsätze, die kein Beleg erklärt, Lieferanten, die regelmäßig abrechnen und im Zeitraum keine
+Rechnung haben, Belege nur im Entwurf oder doppelt gebucht und, mit `SEVDESK_FILE_DIRS`, die Dateien
+in deinem Belegordner, die an keinem Beleg hängen. Seine Befunde sind Hinweise, keine
+Steuerberatung; ein Beleg, der auftaucht, wird wie oben als Belegentwurf erfasst.
 
 ## Festschreiben
 

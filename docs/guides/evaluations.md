@@ -27,9 +27,11 @@ settings needs `commit` ([Permissions](../permissions.md#tiers)).
 | The DATEV booking data for the tax adviser    | [`sevdesk_datev_export`](../tools.md#sevdesk_datev_export)                 | `write` |
 | All invoice or receipt PDFs of a period       | [`sevdesk_archive_export`](../tools.md#sevdesk_archive_export)             | `write` |
 
-Two prompts combine them: [`vat_precheck`](../tools.md#vat_precheck) before the
-Umsatzsteuer-Voranmeldung, and [`month_end_close`](../tools.md#month_end_close) for a month-end
-close up to the hand-over to the Steuerberater.
+Three prompts combine them: [`vat_precheck`](../tools.md#vat_precheck) before the
+Umsatzsteuer-Voranmeldung, [`month_end_close`](../tools.md#month_end_close) for a month-end close
+up to the hand-over to the Steuerberater, and [`year_end_handoff`](../tools.md#year_end_handoff)
+for the year: profit and loss, the audits, the open items, the DATEV export and the document
+archive in parts small enough for its limits.
 
 ## Totals
 
@@ -113,8 +115,10 @@ The check compares each document's tax rule with where the other side is establi
 sevDesk knows it: the contact's VAT ID and the countries of its addresses. A German VAT ID or a
 German address counts as registered or established in Germany, and Monaco counts as France. On
 sales, a customer's VAT ID counts only in the valid format of its state, as
-[`sevdesk_vat_id_check`](../tools.md#sevdesk_vat_id_check) checks it. Documents are taken by
-document date; sales are checked on invoices.
+[`sevdesk_vat_id_check`](../tools.md#sevdesk_vat_id_check) checks it. Greek VAT IDs start with
+EL, so a number stored with the prefix GR counts as a VAT ID in the wrong format for its state
+(the finding says so), never as one from outside the EU; for where a supplier is established, GR
+still means Greece. Documents are taken by document date; sales are checked on invoices.
 
 | Code                                                                            | Means                                                                                                       |
 | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |

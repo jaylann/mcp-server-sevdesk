@@ -188,6 +188,9 @@ stored in sevDesk. Messages, previews and results show nothing else of a link, a
 records a link argument as its scheme and host only (`https://host/…?[redacted]`). The tools that
 take a file declare `openWorldHint: true` (their tiers stay), and `sevdesk_einvoice_parse` and
 `sevdesk_voucher_import_einvoice` are offered with link hosts alone too.
+`sevdesk_receipt_folder_check` takes no file and never a link, only a folder inside
+`SEVDESK_FILE_DIRS`, so it stays closed-world (`openWorldHint: false`), and link hosts alone
+(`SEVDESK_FILE_URL_HOSTS`) do not offer it; `test/integration/metadata-lint.test.ts` checks both.
 
 **Binding the real call to the checked bytes (2026-11-17, review of #101).** A dry run and the
 real call read the file separately: a link is downloaded again, an upload or a local file can be
