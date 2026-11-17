@@ -65,6 +65,9 @@ const NO_FOLLOW: number = (constants as Partial<typeof constants>).O_NOFOLLOW ??
 const NON_BLOCK: number = (constants as Partial<typeof constants>).O_NONBLOCK ?? 0;
 /** UNC (`\\host\share`, `//host/share`) and device (`\\?\`, `\\.\`) paths. */
 const NETWORK_OR_DEVICE_PATH = /^[\\/]{2}/;
+/** The refusal when no configured folder exists (any more). */
+const NO_FOLDER_EXISTS =
+  "None of the folders in SEVDESK_FILE_DIRS exists; the user has to create them or fix the setting";
 
 /**
  * Reads one file from the configured directories under the rules in the module doc. Throws a
@@ -150,9 +153,12 @@ export async function locateConfinedFolders(
     const folders: Located[] = [];
     for (const root of roots) {
       if (folders.some((folder) => folder.real === root.real)) continue;
-      const info = await stat(root.real);
+      // Removed or renamed since its real path was read: skipped like a folder that is missing.
+      const info = await stat(root.real).catch(() => undefined);
+      if (info === undefined) continue;
       folders.push({ real: root.real, dev: info.dev, ino: info.ino });
     }
+    if (folders.length === 0) throw refusal(NO_FOLDER_EXISTS);
     return { folders, roots: folders.map((folder) => folder.real) };
   }
   const shown = displayName(requested, "folder");
@@ -258,12 +264,7 @@ async function checkedRoots(
     }
   }
   const roots = await realDirectories(fileDirs);
-  if (roots.length === 0) {
-    throw refusal(
-      "None of the folders in SEVDESK_FILE_DIRS exists; the user has to create them or fix the " +
-        "setting",
-    );
-  }
+  if (roots.length === 0) throw refusal(NO_FOLDER_EXISTS);
   return roots;
 }
 
@@ -328,7 +329,9 @@ async function locate(
       continue;
     }
     if (!roots.some((root) => within(root.real, real))) continue;
-    const info = await stat(real);
+    // Removed or renamed since `realpath`: as missing, so the one refusal below answers.
+    const info = await stat(real).catch(() => undefined);
+    if (info === undefined) continue;
     if (kind === "file" ? !info.isFile() : !info.isDirectory()) {
       throw refusal(`${shown} is not a ${kind === "file" ? "regular file" : "folder"}`);
     }
