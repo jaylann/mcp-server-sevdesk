@@ -24,6 +24,7 @@ export const orderCreateDraftTool = defineWriteTool({
     "Kleinunternehmer (0 %). Rules that do not fit the account and rates the rule does not " +
     "allow are refused before anything is sent; the preview warns about a possible duplicate. " +
     "discount: a discount on the whole order (Rabatt, percent or a fixed net amount). " +
+    "headTextTemplate, footTextTemplate: a text template's text, by name. " +
     "dryRun previews without saving. Before: " +
     "sevdesk_contacts_search. After: sevdesk_order_update_draft, sevdesk_order_pdf, " +
     "sevdesk_order_finalize, sevdesk_invoice_create_from_order.",

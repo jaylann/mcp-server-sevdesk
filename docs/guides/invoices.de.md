@@ -83,6 +83,33 @@ Entwurf später, bleibt der Rabatt, solange du ihn nicht ersetzt oder entfernst.
 mehreren Rabatten (sevDesk rechnet dann nur einen davon in die Summen ein) bleibt der Web-App von
 sevDesk überlassen; die Abfragewerkzeuge und die Freigabe weisen darauf hin.
 
+### Eine englische Rechnung auf anderem Briefpapier
+
+> Stell die Rechnung an die Musterfirma auf Englisch und auf unser zweites Briefpapier um.
+
+[`sevdesk_document_set_layout`](../tools.md#sevdesk_document_set_layout) (`commit`, **du
+bestätigst**) setzt Sprache, Vorlage oder Briefpapier eines Entwurfs: Rechnung, Angebot,
+Auftragsbestätigung, Lieferschein oder Gutschrift. Sprachen: Deutsch (Deutschland, Österreich,
+Schweiz), Englisch, Spanisch, Französisch, Italienisch und Griechisch, als `de_DE`, `de_AT`,
+`de_CH`, `en_US`, `es_ES`, `fr_FR`, `it_IT`, `el_GR`. Vorlagen und Briefpapiere nennst du mit ID
+oder Namen; [`sevdesk_reference_lookup`](../tools.md#sevdesk_reference_lookup) listet sie (`kind`
+`templates` mit `documentType`, `letterpapers`). Die Vorschau zeigt die bisherige und die neue
+Auswahl; eine Sprache, Vorlage oder ein Briefpapier, das sevDesk für das Dokument nicht anbietet,
+lehnt der Server ab, bevor etwas gesendet wird. Jede Auswahl geht einzeln an sevDesk, und das
+Ergebnis nennt, was sevDesk gespeichert hat. Die übrigen Druckoptionen (etwa ein QR-Code zur
+Zahlung oder Falzmarken) bleiben, wie sie sind.
+
+Es fragt dich, obwohl es nur Entwürfe ändert, weil der Endpunkt von sevDesk dafür auch ein schon
+versendetes Dokument ändern würde; der Server hält ihn deshalb auf der Stufe `commit`. Die
+Freigaben zum Fertigstellen und Versenden zeigen das Layout noch einmal.
+
+Kopf- und Fußtexte können aus deinen Textvorlagen kommen: Nenn eine als `headTextTemplate` oder
+`footTextTemplate` der Entwurfswerkzeuge. Rechnungen nehmen die Vorlagen für Rechnungen;
+Angebote, Auftragsbestätigungen und Lieferscheine die für Angebote (andere hält sevDesk für
+Aufträge nicht vor); für Gutschriften gibt es das noch nicht.
+
+> Nimm für die Rechnung unsere englische Fußtext-Vorlage.
+
 ### Aus einem Angebot oder einer Auftragsbestätigung
 
 > Mach aus dem Angebot AN-1042 eine Rechnung.
@@ -144,8 +171,9 @@ macht aus dem Entwurf eine offene Rechnung: sevDesk vergibt die endgültige Numm
 markiert sie als versendet. Beim Kunden kommt nichts an; das Werkzeug hält nur fest, wie du sie
 versendest (standardmäßig PDF-Download, sonst Post, Druck oder E-Mail außerhalb von sevDesk). Bevor
 du freigibst, zeigt die Vorschau, was in der Rechnung steht, so wie sevDesk sie speichert: Adresse,
-Kopf- und Fußtext, jede Position, einen Rabatt auf den Gesamtbetrag, Bedingungen und Daten. Ändert
-sich davon etwas, während du entscheidest, wirst du erneut gefragt.
+Kopf- und Fußtext, jede Position, einen Rabatt auf den Gesamtbetrag, Bedingungen und Daten sowie
+Sprache, Vorlage und Briefpapier. Ändert sich davon etwas, während du entscheidest, wirst du
+erneut gefragt.
 
 > [!WARNING]
 > Mit dem Fertigstellen wird die Rechnung unter ihrer Nummer rechtlich bindend. Danach lässt sie

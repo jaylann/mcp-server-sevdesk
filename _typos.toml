@@ -85,5 +85,8 @@ Typs = "Typs"
 passt = "passt"
 separat = "separat"
 suche = "suche"
+# The German name of a document language (src/domain/layouts.ts) and sevDesk's label for it.
+Spanisch = "Spanisch"
+spanisch = "spanisch"
 # The informal address of the German page texts, which their tests quote.
 deine = "deine"

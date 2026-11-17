@@ -76,6 +76,32 @@ instead of guessing. Changing the draft later keeps the discount unless you repl
 it. A document with several discounts (sevDesk's totals then count only one of them) is left to
 the sevDesk web app, and the get tools and the approval warn about it.
 
+### An English invoice on another letterhead
+
+> Make the Musterfirma invoice English and put it on our second letterhead.
+
+[`sevdesk_document_set_layout`](../tools.md#sevdesk_document_set_layout) (`commit`, **you
+confirm**) sets the language (Sprache), template (Vorlage) or letterhead (Briefpapier) of a draft
+invoice, offer, order confirmation, delivery note or credit note. Languages: German (Germany,
+Austria, Switzerland), English, Spanish, French, Italian and Greek, as `de_DE`, `de_AT`, `de_CH`,
+`en_US`, `es_ES`, `fr_FR`, `it_IT`, `el_GR`. Templates and letterheads are named by id or name;
+[`sevdesk_reference_lookup`](../tools.md#sevdesk_reference_lookup) lists them (`kind`
+`templates` with `documentType`, `letterpapers`). The preview shows the current and the new
+choice; a language, template or letterhead sevDesk does not offer for the document is refused
+before anything is sent. Each choice goes to sevDesk on its own, and the result says what sevDesk
+stored. Other print options (a payment QR code, fold lines and the like) stay as they are.
+
+It asks you, although it only touches drafts, because sevDesk's endpoint for it would also change
+a document that was already sent; the server keeps that endpoint at the `commit` tier. The finalize
+and send approvals show the layout again.
+
+Head and foot texts can come from your text templates (Textvorlagen): name one as
+`headTextTemplate` or `footTextTemplate` of the draft tools. Invoices take the invoice templates,
+offers, order confirmations and delivery notes the offer templates (sevDesk keeps no others for
+orders); credit notes are not offered yet.
+
+> Use our English foot text template for the invoice.
+
 ### From an offer or order confirmation
 
 > Turn offer AN-1042 into an invoice.
@@ -135,7 +161,8 @@ turns the draft into an open invoice: sevDesk assigns the final number, books it
 sent. Nothing reaches the customer; the tool only records how you send it (PDF download by
 default, or post, print, email outside sevDesk). Before you approve, the preview lists what the
 invoice says as sevDesk stores it: address, head and foot text, every position, a discount on the
-whole invoice, terms and dates. If any of it changes while you decide, you are asked again.
+whole invoice, terms and dates, and its language, template and letterhead. If any of it changes
+while you decide, you are asked again.
 
 > [!WARNING]
 > Finalizing makes the invoice legally binding under its number. Afterwards it can only be reset

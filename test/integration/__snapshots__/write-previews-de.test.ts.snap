@@ -398,7 +398,7 @@ exports[`German previews > finalize a draft credit note: says the same in German
 ! Die Gutschrift wird rechtlich bindend: sevDesk bucht sie unter der Nummer, die der Entwurf trägt. Danach lässt sie sich nur noch durch Zurücksetzen auf Entwurf (solange sie nicht festgeschrieben ist) oder ein neues Dokument korrigieren.
 ! sevDesk sendet nichts an den Kunden: Es wird nur vermerkt, wie das Dokument versendet wurde. Für den Versand per E-Mail über sevDesk gibt es stattdessen sevdesk_credit_note_send_email.
 ! Schreibt das sevDesk-Konto Dokumente beim Abschließen automatisch fest (Einstellung „Automatische Festschreibung“), wird das Dokument dabei auch festgeschrieben und kann nie wieder geändert oder zurückgesetzt werden.
-! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfe bei Bedarf sevdesk_credit_note_pdf.
+! Die Angaben nennen die gespeicherten Texte, die Anschrift, die Positionen und das Layout (Sprache, Vorlage, Briefpapier). Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie die übrigen Druckoptionen des PDF (etwa ein QR-Code zur Zahlung). Prüfe bei Bedarf sevdesk_credit_note_pdf.
 (umkehrbar)
 Gutschrift: GU-1101 (ID 2001)
 Status: Entwurf (100)
@@ -417,7 +417,10 @@ Steuerregel: 1 Umsatzsteuerpflichtige Umsätze
 Buchungskategorie: Minderleistung einer Rechnung oder eines Belegs (UNDERACHIEVEMENT)
 Mindert Rechnung: ID 1004
 Kopftext: Wir schreiben Ihnen folgenden Betrag gut.
-Positionen: keine"
+Positionen: keine
+Sprache: Deutsch (Deutschland), de_DE
+Vorlage: Standard (ID tpl-standard)
+Briefpapier: nicht gewählt (Standard von sevDesk)"
 `;
 
 exports[`German previews > finalize a draft invoice with a discount on the whole invoice: says the same in German 1`] = `
@@ -425,7 +428,7 @@ exports[`German previews > finalize a draft invoice with a discount on the whole
 ! Die Rechnung wird rechtlich bindend: sevDesk vergibt ihre endgültige Nummer und bucht sie. Danach lässt sie sich nur noch durch Zurücksetzen auf Entwurf (solange sie nicht festgeschrieben ist), ein Storno oder eine Gutschrift korrigieren.
 ! sevDesk sendet nichts an den Kunden: Es wird nur vermerkt, wie das Dokument versendet wurde. Für den Versand per E-Mail über sevDesk gibt es stattdessen sevdesk_invoice_send_email.
 ! Schreibt das sevDesk-Konto Dokumente beim Abschließen automatisch fest (Einstellung „Automatische Festschreibung“), wird das Dokument dabei auch festgeschrieben und kann nie wieder geändert oder zurückgesetzt werden.
-! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfe bei Bedarf sevdesk_invoice_pdf.
+! Die Angaben nennen die gespeicherten Texte, die Anschrift, die Positionen und das Layout (Sprache, Vorlage, Briefpapier). Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie die übrigen Druckoptionen des PDF (etwa ein QR-Code zur Zahlung). Prüfe bei Bedarf sevdesk_invoice_pdf.
 (umkehrbar)
 Rechnung: ID 1002, noch ohne Nummer
 Typ: Rechnung (RE)
@@ -450,7 +453,10 @@ Positionen: keine
 Rabatt auf den Gesamtbetrag: 3 % vom Nettobetrag
 Text: Treuerabatt
 Rabatte insgesamt: -4,47 EUR netto, -5,32 EUR brutto
-Fußtext: Bitte überweisen Sie den Betrag innerhalb von 14 Tagen."
+Fußtext: Bitte überweisen Sie den Betrag innerhalb von 14 Tagen.
+Sprache: Deutsch (Deutschland), de_DE
+Vorlage: Standard (ID tpl-standard)
+Briefpapier: Briefpapier 1 (ID lp-1)"
 `;
 
 exports[`German previews > finalize a draft invoice: says the same in German 1`] = `
@@ -458,7 +464,7 @@ exports[`German previews > finalize a draft invoice: says the same in German 1`]
 ! Die Rechnung wird rechtlich bindend: sevDesk vergibt ihre endgültige Nummer und bucht sie. Danach lässt sie sich nur noch durch Zurücksetzen auf Entwurf (solange sie nicht festgeschrieben ist), ein Storno oder eine Gutschrift korrigieren.
 ! sevDesk sendet nichts an den Kunden: Es wird nur vermerkt, wie das Dokument versendet wurde. Für den Versand per E-Mail über sevDesk gibt es stattdessen sevdesk_invoice_send_email.
 ! Schreibt das sevDesk-Konto Dokumente beim Abschließen automatisch fest (Einstellung „Automatische Festschreibung“), wird das Dokument dabei auch festgeschrieben und kann nie wieder geändert oder zurückgesetzt werden.
-! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfe bei Bedarf sevdesk_invoice_pdf.
+! Die Angaben nennen die gespeicherten Texte, die Anschrift, die Positionen und das Layout (Sprache, Vorlage, Briefpapier). Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie die übrigen Druckoptionen des PDF (etwa ein QR-Code zur Zahlung). Prüfe bei Bedarf sevdesk_invoice_pdf.
 (umkehrbar)
 Rechnung: ID 1001, noch ohne Nummer
 Typ: Rechnung (RE)
@@ -480,14 +486,17 @@ Skonto: 2 % innerhalb von 7 Tagen
 Steuerregel: 1 Umsatzsteuerpflichtige Umsätze
 Kopftext: Vielen Dank für Ihren Auftrag.
 Positionen: keine
-Fußtext: Bitte überweisen Sie den Betrag innerhalb von 14 Tagen."
+Fußtext: Bitte überweisen Sie den Betrag innerhalb von 14 Tagen.
+Sprache: Deutsch (Deutschland), de_DE
+Vorlage: Standard (ID tpl-standard)
+Briefpapier: Briefpapier 1 (ID lp-1)"
 `;
 
 exports[`German previews > finalize a draft order: says the same in German 1`] = `
 "Auftrag 3002 (noch ohne Nummer) fertigstellen: Entwurf → versendet, als Versandart wird „PDF-Download (VPDF)“ vermerkt.
 ! Der Auftrag wird als versendet markiert (Status 200), und sevDesk vergibt seine endgültige Nummer.
 ! sevDesk sendet nichts an den Kunden: Es wird nur vermerkt, wie das Dokument versendet wurde. Für den Versand per E-Mail über sevDesk gibt es stattdessen sevdesk_order_send_email.
-! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfe bei Bedarf sevdesk_order_pdf.
+! Die Angaben nennen die gespeicherten Texte, die Anschrift, die Positionen und das Layout (Sprache, Vorlage, Briefpapier). Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie die übrigen Druckoptionen des PDF (etwa ein QR-Code zur Zahlung). Prüfe bei Bedarf sevdesk_order_pdf.
 (umkehrbar)
 Auftrag: ID 3002, noch ohne Nummer
 Typ: Auftragsbestätigung (AB)
@@ -509,7 +518,10 @@ Kopftext: <p>Gerne bieten wir Ihnen an:</p>
 Positionen: keine
 Fußtext: <p>Das Angebot ist 30 Tage gültig.</p>
 Zahlungsbedingungen: 14 Tage netto
-Lieferbedingungen: Lieferung frei Haus"
+Lieferbedingungen: Lieferung frei Haus
+Sprache: Deutsch (Deutschland), de_DE
+Vorlage: Standard (ID tpl-standard)
+Briefpapier: nicht gewählt (Standard von sevDesk)"
 `;
 
 exports[`German previews > finalize a draft voucher: says the same in German 1`] = `
@@ -640,6 +652,43 @@ Netto: 250,50 EUR
 Umsatzsteuer: 47,60 EUR
 Brutto: 298,10 EUR
 Bisher bezahlt: 0,00 EUR"
+`;
+
+exports[`German previews > set language, template and letterhead of a draft invoice: says the same in German 1`] = `
+"Sprache, Vorlage und Briefpapier von Rechnung 1003 (noch ohne Nummer) (Entwurf) ändern.
+! Nur das Layout ändert sich: Status, Nummer, Texte und Positionen des Entwurfs bleiben, wie sie sind.
+! Jede Auswahl geht als eigene Anfrage an sevDesk (changeParameter), in der Reihenfolge Sprache, Vorlage, Briefpapier, und keine wird wiederholt. Schlägt eine fehl, bleiben die vorherigen gesetzt, und das Ergebnis nennt sie.
+(umkehrbar)
+Rechnung: ID 1003, noch ohne Nummer
+Typ: Rechnung (RE)
+Status: Entwurf (100)
+Kunde: Musterfirma GmbH (Kontakt 1001)
+Datum: 01.10.2026
+Fällig am: 15.10.2026
+Netto: 149,02 EUR
+Umsatzsteuer: 28,31 EUR
+Brutto: 177,33 EUR
+Bisher bezahlt: 0,00 EUR
+Sprache: Deutsch (Deutschland), de_DE → Englisch (USA), en_US
+Vorlage: Standard (ID tpl-standard) → Modern (ID tpl-modern)
+Briefpapier: Briefpapier 1 (ID lp-1) → Zweites Briefpapier (ID lp-2)"
+`;
+
+exports[`German previews > set the language of a draft order: says the same in German 1`] = `
+"Sprache von Auftrag 3002 (noch ohne Nummer) (Entwurf) ändern.
+! Nur das Layout ändert sich: Status, Nummer, Texte und Positionen des Entwurfs bleiben, wie sie sind.
+! Jede Auswahl geht als eigene Anfrage an sevDesk (changeParameter), in der Reihenfolge Sprache, Vorlage, Briefpapier, und keine wird wiederholt. Schlägt eine fehl, bleiben die vorherigen gesetzt, und das Ergebnis nennt sie.
+! sevDesk nimmt eine Layout-Änderung an diesem Entwurf erst nach einer PDF-Vorschau an; der Server ruft daher zuerst eine ab (getPdf mit preventSendBy=true, der Entwurf bleibt ein Entwurf).
+(umkehrbar)
+Auftrag: ID 3002, noch ohne Nummer
+Typ: Auftragsbestätigung (AB)
+Status: Entwurf (100)
+Kunde: Musterfirma GmbH (Kontakt 1001)
+Datum: 20.09.2026
+Netto: 144,02 EUR
+Umsatzsteuer: 27,36 EUR
+Brutto: 171,38 EUR
+Sprache: Deutsch (Deutschland), de_DE → Englisch (USA), en_US"
 `;
 
 exports[`German previews > undo the booking of a bank transaction: says the same in German 1`] = `

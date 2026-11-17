@@ -17,6 +17,7 @@ import type {
 } from "../../../../src/sevdesk/types.js";
 import { withCountryRoute } from "../../../helpers/country-route.js";
 import {
+  changedData,
   type FakeRoute,
   FakeSevdeskClient,
   loadFixture,
@@ -103,10 +104,10 @@ export function documentRoute(kind: keyof typeof OBJECT_PATHS, row: Row): FakeRo
 }
 
 /**
- * Empty position lists of every kind, and no document discounts on any invoice, credit note or
- * order (the recorded empty answer of `getDiscounts`): what finalize, send and enshrine read for
- * their preview facts and approval binding (`readDocumentContent`). `rows` for one path replace
- * its empty list.
+ * Empty position lists of every kind, no document discounts on any invoice, credit note or order
+ * (the recorded empty answer of `getDiscounts`), and the default layout of any invoice, order and
+ * credit note ({@link renderRoute}): what finalize, send and enshrine read for their preview
+ * facts and approval binding (`readDocumentContent`). `rows` for one path replace its empty list.
  */
 export function positionRoutes(rows: Readonly<Record<string, readonly Row[]>> = {}): FakeRoute[] {
   return [
@@ -115,7 +116,121 @@ export function positionRoutes(rows: Readonly<Record<string, readonly Row[]>> = 
       response: { body: { objects: rows[path] ?? [] } },
     })),
     noDiscountsRoute,
+    renderRoute("invoice"),
+    renderRoute("order"),
   ];
+}
+
+/** The current language, template and letterhead of a layout answer (see {@link layoutObjects}). */
+export interface LayoutValues {
+  readonly language?: string | null;
+  readonly template?: string | null;
+  readonly letterpaper?: string | null;
+}
+
+/** Which language values a layout answer lists: an invoice's or an order's (and credit note's). */
+export type LayoutStyle = "invoice" | "order";
+
+/**
+ * The language choices sevDesk lists (recorded 2026-11-17, D-140): the same eight translation
+ * codes on every kind, but invoices store `en` and `de` where orders and credit notes store the
+ * locale form.
+ */
+const LANGUAGE_CHOICES: readonly (readonly [string, string, string])[] = [
+  ["de_DE", "de", "deutsch"],
+  ["de_AT", "de_AT", "deutsch (Österreich)"],
+  ["de_CH", "de_CH", "deutsch (Schweiz)"],
+  ["en_US", "en", "englisch"],
+  ["es_ES", "es_ES", "spanisch"],
+  ["fr_FR", "fr_FR", "französisch"],
+  ["it_IT", "it_IT", "italienisch"],
+  ["el_GR", "el_GR", "griechisch"],
+];
+
+/**
+ * The `objects` of a layout answer in the recorded shape (D-113: `render` answers `{docId, pdf,
+ * parameters}`, `changeParameter` the same under `metaData`): language, template and letterhead
+ * with their choices, and one more print option with a boolean value. Templates `tpl-standard`
+ * (Standard) and `tpl-modern` (Modern), letterheads `lp-1` (Briefpapier 1) and `lp-2` (Zweites
+ * Briefpapier): ids and names are made up (the recording is scrubbed). Defaults as recorded: an
+ * invoice in German (`de`) on Standard and Briefpapier 1; an order or credit note in German
+ * (`de_DE`) on Standard with the letterhead value `""` (none chosen).
+ */
+export function layoutObjects(values: LayoutValues = {}, style: LayoutStyle = "invoice"): Row {
+  const parameter = (key: string, value: string | null, choices: Row[]): Row => ({
+    key,
+    name: key,
+    values: choices,
+    visible: true,
+    value,
+  });
+  const invoice = style === "invoice";
+  const pick = (value: string | null | undefined, fallback: string) =>
+    value === undefined ? fallback : value;
+  return {
+    docId: "00000000000000000000000000000001",
+    pdf: "JVBERi0xLjQKJSVFT0YK",
+    parameters: [
+      parameter(
+        "language",
+        pick(values.language, invoice ? "de" : "de_DE"),
+        LANGUAGE_CHOICES.map(([locale, invoiceValue, name]) => ({
+          name: invoice ? invoiceValue : name,
+          value: invoice ? invoiceValue : locale,
+          translationCode: `SEVDOC_LANG_${locale.toUpperCase()}`,
+          isCustom: null,
+        })),
+      ),
+      parameter("template", pick(values.template, "tpl-standard"), [
+        { name: "Standard", value: "tpl-standard" },
+        { name: "Modern", value: "tpl-modern" },
+      ]),
+      parameter("letterpaper", pick(values.letterpaper, invoice ? "lp-1" : ""), [
+        { name: "Briefpapier 1", value: "lp-1" },
+        { name: "Zweites Briefpapier", value: "lp-2" },
+      ]),
+      parameter("printFooter", null, [{ name: "ja", value: true }]),
+    ],
+  };
+}
+
+/**
+ * `POST /{Invoice|Order|CreditNote}/{id}/render` (`{forceReload: false}`): style `invoice` serves
+ * every invoice, style `order` every order and credit note, answering the layout `values`
+ * ({@link layoutObjects}, parameters at the top level as recorded); `objects` replaces the whole
+ * answer.
+ */
+export function renderRoute(
+  style: LayoutStyle = "invoice",
+  values: LayoutValues = {},
+  objects?: unknown,
+): FakeRoute {
+  return {
+    method: "POST",
+    path: style === "invoice" ? "/Invoice/{id}/render" : "/{Order|CreditNote}/{id}/render",
+    pathPattern:
+      style === "invoice" ? /^\/Invoice\/\d+\/render$/ : /^\/(?:Order|CreditNote)\/\d+\/render$/,
+    response: { body: { objects: objects ?? layoutObjects(values, style) } },
+  };
+}
+
+/**
+ * `PUT /{kind}/{id}/changeParameter` answering the layout `values` in the recorded shape: under
+ * `metaData` (invoices), with `result` beside it (orders, credit notes).
+ */
+export function changeParameterRoute(
+  path: string,
+  style: LayoutStyle,
+  values: LayoutValues,
+): FakeRoute {
+  const metaData = layoutObjects(values, style);
+  return {
+    method: "PUT",
+    path,
+    response: {
+      body: { objects: style === "invoice" ? { metaData } : { result: 1, metaData } },
+    },
+  };
 }
 
 /** `GET /{Invoice|CreditNote|Order}/{id}/getDiscounts` for any document: none (recorded shape). */
@@ -176,7 +291,7 @@ export class StagedClient implements SevdeskClient {
 
   /** Calls that changed data. */
   writes(): RecordedCall[] {
-    return this.calls.filter((call) => call.method !== "GET" || call.sideEffect);
+    return this.calls.filter(changedData);
   }
 
   private current(): FakeSevdeskClient {

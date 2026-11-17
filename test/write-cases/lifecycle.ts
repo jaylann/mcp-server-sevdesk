@@ -1,13 +1,16 @@
 import { CREDIT_NOTE_LIFECYCLE_TOOLS } from "../../src/tools/credit-notes/lifecycle-tools.js";
+import { documentSetLayoutTool } from "../../src/tools/documents/layout-tool.js";
 import { INVOICE_LIFECYCLE_TOOLS } from "../../src/tools/invoices/lifecycle-tools.js";
 import { ORDER_LIFECYCLE_TOOLS } from "../../src/tools/orders/lifecycle-tools.js";
 import type { AnyToolDefinition, AnyWriteToolDefinition } from "../../src/tools/types.js";
 import { isWriteTool } from "../../src/tools/types.js";
+import { letterpapersRoute, templatesRoute } from "../helpers/layout-routes.js";
 import type { WriteToolCase } from "../helpers/write-cases.js";
 import { discountRow, discountsRoute } from "../unit/tools/drafts/routes.js";
 import {
   accountRoute,
   accountRow,
+  changeParameterRoute,
   creditNoteRow,
   documentRoute,
   fixtureRow,
@@ -208,11 +211,54 @@ const CASES: readonly WriteToolCase[] = [
     ],
     writes: [{ method: "PUT", path: "/Invoice/1002/sendBy" }],
   },
+  // Its own invoice (1003): language, template and letterhead, one request each (D-113).
+  {
+    label: "set language, template and letterhead of a draft invoice",
+    tool: documentSetLayoutTool,
+    args: {
+      kind: "invoice",
+      id: 1003,
+      language: "en_US",
+      template: "Modern",
+      letterpaper: "Zweites Briefpapier",
+    },
+    routes: [
+      documentRoute("invoice", { ...draftInvoice, id: "1003" }),
+      templatesRoute("Invoice"),
+      letterpapersRoute(),
+      changeParameterRoute("/Invoice/1003/changeParameter", "invoice", {
+        language: "en",
+        template: "tpl-modern",
+        letterpaper: "lp-2",
+      }),
+    ],
+    writes: [
+      { method: "PUT", path: "/Invoice/1003/changeParameter" },
+      { method: "PUT", path: "/Invoice/1003/changeParameter" },
+      { method: "PUT", path: "/Invoice/1003/changeParameter" },
+    ],
+  },
+  // An order needs a PDF preview first (getPdf with preventSendBy, a read, D-113).
+  {
+    label: "set the language of a draft order",
+    tool: documentSetLayoutTool,
+    args: { kind: "order", id: 3002, language: "en_US" },
+    routes: [
+      documentRoute("order", draftOrder),
+      {
+        path: "/Order/3002/getPdf",
+        query: { preventSendBy: true },
+        response: { fixture: "documents/order-pdf.json" },
+      },
+      changeParameterRoute("/Order/3002/changeParameter", "order", { language: "en_US" }),
+    ],
+    writes: [{ method: "PUT", path: "/Order/3002/changeParameter" }],
+  },
 ];
 
 /**
- * Every case also serves empty position lists and no document discounts, read by the approval
- * binding (`documentBinding`); a case's own routes come first.
+ * Every case also serves empty position lists, no document discounts and the default layout, read
+ * by the approval binding (`documentBinding`); a case's own routes come first.
  */
 export const LIFECYCLE_CASES: readonly WriteToolCase[] = CASES.map((testCase) => ({
   ...testCase,

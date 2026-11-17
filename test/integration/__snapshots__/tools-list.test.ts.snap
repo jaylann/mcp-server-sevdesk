@@ -2082,6 +2082,72 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
   {
     "annotations": {
       "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Set the language, template or letterhead of a draft",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Draft id (not its number), e.g. from sevdesk_invoices_list, sevdesk_orders_list or sevdesk_credit_notes_list.",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
+        "kind": {
+          "description": "Which document: invoice, credit_note or order.",
+          "enum": [
+            "invoice",
+            "credit_note",
+            "order",
+          ],
+          "type": "string",
+        },
+        "language": {
+          "description": "Language of the printed document, e.g. en_US for English.",
+          "enum": [
+            "de_DE",
+            "de_AT",
+            "de_CH",
+            "en_US",
+            "es_ES",
+            "fr_FR",
+            "it_IT",
+            "el_GR",
+          ],
+          "type": "string",
+        },
+        "letterpaper": {
+          "description": "Letterhead (Briefpapier): its id or exact name.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
+        "template": {
+          "description": "Template (Vorlage): its id or exact name.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "kind",
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_document_set_layout",
+    "title": "Set the language, template or letterhead of a draft",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
       "idempotentHint": false,
       "openWorldHint": false,
       "readOnlyHint": false,
@@ -2277,9 +2343,21 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "maxLength": 10000,
           "type": "string",
         },
+        "footTextTemplate": {
+          "description": "Foot text (Fußtext) from a text template (Textvorlage) of this document type, by its name (sevdesk_reference_lookup kind=text_templates); instead of footText.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
         "headText": {
           "description": "Intro text above the positions (Kopftext); simple HTML allowed.",
           "maxLength": 10000,
+          "type": "string",
+        },
+        "headTextTemplate": {
+          "description": "Head text (Kopftext) from a text template (Textvorlage) of this document type, by its name (sevdesk_reference_lookup kind=text_templates); instead of headText.",
+          "maxLength": 200,
+          "minLength": 1,
           "type": "string",
         },
         "header": {
@@ -2858,9 +2936,21 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "maxLength": 10000,
           "type": "string",
         },
+        "footTextTemplate": {
+          "description": "Foot text (Fußtext) from a text template (Textvorlage) of this document type, by its name (sevdesk_reference_lookup kind=text_templates); instead of footText.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
         "headText": {
           "description": "Intro text above the positions (Kopftext); simple HTML allowed.",
           "maxLength": 10000,
+          "type": "string",
+        },
+        "headTextTemplate": {
+          "description": "Head text (Kopftext) from a text template (Textvorlage) of this document type, by its name (sevdesk_reference_lookup kind=text_templates); instead of headText.",
+          "maxLength": 200,
+          "minLength": 1,
           "type": "string",
         },
         "header": {
@@ -3188,9 +3278,21 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "maxLength": 10000,
           "type": "string",
         },
+        "footTextTemplate": {
+          "description": "Foot text (Fußtext) from a text template (Textvorlage) of this document type, by its name (sevdesk_reference_lookup kind=text_templates); instead of footText.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
         "headText": {
           "description": "Intro text above the positions (Kopftext); simple HTML allowed.",
           "maxLength": 10000,
+          "type": "string",
+        },
+        "headTextTemplate": {
+          "description": "Head text (Kopftext) from a text template (Textvorlage) of this document type, by its name (sevdesk_reference_lookup kind=text_templates); instead of headText.",
+          "maxLength": 200,
+          "minLength": 1,
           "type": "string",
         },
         "header": {
@@ -3583,9 +3685,21 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "maxLength": 10000,
           "type": "string",
         },
+        "footTextTemplate": {
+          "description": "Foot text (Fußtext) from a text template (Textvorlage) of this document type, by its name (sevdesk_reference_lookup kind=text_templates); instead of footText.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
         "headText": {
           "description": "Intro text above the positions (Kopftext); simple HTML allowed.",
           "maxLength": 10000,
+          "type": "string",
+        },
+        "headTextTemplate": {
+          "description": "Head text (Kopftext) from a text template (Textvorlage) of this document type, by its name (sevdesk_reference_lookup kind=text_templates); instead of headText.",
+          "maxLength": 200,
+          "minLength": 1,
           "type": "string",
         },
         "header": {
@@ -4352,6 +4466,15 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "pattern": "^\\d{1,12}$",
           "type": "string",
         },
+        "documentType": {
+          "description": "templates (required) and text_templates: invoice, order or credit_note.",
+          "enum": [
+            "invoice",
+            "order",
+            "credit_note",
+          ],
+          "type": "string",
+        },
         "kind": {
           "description": "Which list to return.",
           "enum": [
@@ -4364,6 +4487,9 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
             "units",
             "payment_methods",
             "receipt_guidance",
+            "letterpapers",
+            "templates",
+            "text_templates",
           ],
           "type": "string",
         },
@@ -6516,9 +6642,21 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "maxLength": 10000,
           "type": "string",
         },
+        "footTextTemplate": {
+          "description": "Foot text (Fußtext) from a text template (Textvorlage) of this document type, by its name (sevdesk_reference_lookup kind=text_templates); instead of footText.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
         "headText": {
           "description": "Intro text above the positions (Kopftext); simple HTML allowed.",
           "maxLength": 10000,
+          "type": "string",
+        },
+        "headTextTemplate": {
+          "description": "Head text (Kopftext) from a text template (Textvorlage) of this document type, by its name (sevdesk_reference_lookup kind=text_templates); instead of headText.",
+          "maxLength": 200,
+          "minLength": 1,
           "type": "string",
         },
         "header": {
@@ -6915,9 +7053,21 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "maxLength": 10000,
           "type": "string",
         },
+        "footTextTemplate": {
+          "description": "Foot text (Fußtext) from a text template (Textvorlage) of this document type, by its name (sevdesk_reference_lookup kind=text_templates); instead of footText.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
         "headText": {
           "description": "Intro text above the positions (Kopftext); simple HTML allowed.",
           "maxLength": 10000,
+          "type": "string",
+        },
+        "headTextTemplate": {
+          "description": "Head text (Kopftext) from a text template (Textvorlage) of this document type, by its name (sevdesk_reference_lookup kind=text_templates); instead of headText.",
+          "maxLength": 200,
+          "minLength": 1,
           "type": "string",
         },
         "header": {
@@ -7245,9 +7395,21 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "maxLength": 10000,
           "type": "string",
         },
+        "footTextTemplate": {
+          "description": "Foot text (Fußtext) from a text template (Textvorlage) of this document type, by its name (sevdesk_reference_lookup kind=text_templates); instead of footText.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
         "headText": {
           "description": "Intro text above the positions (Kopftext); simple HTML allowed.",
           "maxLength": 10000,
+          "type": "string",
+        },
+        "headTextTemplate": {
+          "description": "Head text (Kopftext) from a text template (Textvorlage) of this document type, by its name (sevdesk_reference_lookup kind=text_templates); instead of headText.",
+          "maxLength": 200,
+          "minLength": 1,
           "type": "string",
         },
         "header": {
@@ -7531,9 +7693,21 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "maxLength": 10000,
           "type": "string",
         },
+        "footTextTemplate": {
+          "description": "Foot text (Fußtext) from a text template (Textvorlage) of this document type, by its name (sevdesk_reference_lookup kind=text_templates); instead of footText.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
         "headText": {
           "description": "Intro text above the positions (Kopftext); simple HTML allowed.",
           "maxLength": 10000,
+          "type": "string",
+        },
+        "headTextTemplate": {
+          "description": "Head text (Kopftext) from a text template (Textvorlage) of this document type, by its name (sevdesk_reference_lookup kind=text_templates); instead of headText.",
+          "maxLength": 200,
+          "minLength": 1,
           "type": "string",
         },
         "header": {
@@ -8300,6 +8474,15 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
           "pattern": "^\\d{1,12}$",
           "type": "string",
         },
+        "documentType": {
+          "description": "templates (required) and text_templates: invoice, order or credit_note.",
+          "enum": [
+            "invoice",
+            "order",
+            "credit_note",
+          ],
+          "type": "string",
+        },
         "kind": {
           "description": "Which list to return.",
           "enum": [
@@ -8312,6 +8495,9 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
             "units",
             "payment_methods",
             "receipt_guidance",
+            "letterpapers",
+            "templates",
+            "text_templates",
           ],
           "type": "string",
         },
@@ -10031,6 +10217,15 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
           "pattern": "^\\d{1,12}$",
           "type": "string",
         },
+        "documentType": {
+          "description": "templates (required) and text_templates: invoice, order or credit_note.",
+          "enum": [
+            "invoice",
+            "order",
+            "credit_note",
+          ],
+          "type": "string",
+        },
         "kind": {
           "description": "Which list to return.",
           "enum": [
@@ -10043,6 +10238,9 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
             "units",
             "payment_methods",
             "receipt_guidance",
+            "letterpapers",
+            "templates",
+            "text_templates",
           ],
           "type": "string",
         },
