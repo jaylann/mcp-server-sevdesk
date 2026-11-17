@@ -3,7 +3,8 @@
 - **Status:** Accepted; the pages' look, language and policy amended by
   [ADR 0010](0010-server-pages-in-two-languages.md); upload release and configurable count amended
   2026-11-12 ([#35](https://github.com/jaylann/mcp-server-sevdesk/issues/35)); batch uploads amended
-  2026-11-12 ([#34](https://github.com/jaylann/mcp-server-sevdesk/issues/34))
+  2026-11-12 ([#34](https://github.com/jaylann/mcp-server-sevdesk/issues/34)); files from an https
+  link amended 2026-11-16 ([#96](https://github.com/jaylann/mcp-server-sevdesk/issues/96))
 - **Date:** 2026-11-09
 - **Amends:** [ADR 0007](0007-approval-inbox-over-http.md) (its browser session now also opens
   the upload and download pages)
@@ -157,6 +158,50 @@ existing receiving-ticket rule; later files may expire while it is written. Each
 file gets its own file TTL. Batch metadata exists only while at least one slot has a live ticket
 or file, bounding metadata by the record cap; completed or fully expired batches become unknown.
 
+**Files from an https link (2026-11-16, #96).** Receipts often already live at a URL (a supplier
+portal, a download link, cloud storage), and downloading them only to upload them again costs the
+user a round trip through the browser. The `file` argument therefore also takes an https link, in
+every mode, stdio included, when the operator lists hosts in `SEVDESK_FILE_URL_HOSTS` (empty by
+default: every link is refused, naming the setting, before any network I/O). The argument stays
+one string, the third form next to a path and `upload:<id>` (anything that starts like a URL is a
+link; a local file named like one is passed as `./https:…`), so schemas stay static and
+`tools/list` stable, as above. The link comes from the model, so the download is fenced in like
+the client metadata fetch of OAuth mode, whose guard moved to `src/safety/public-address.ts` and
+`src/safety/pinned-https.ts` for both: https only, the default port, no user info, a host name on
+the list (exact, or `*.example.com` for its subdomains), resolved once per download to public
+addresses only, the connection pinned to the checked address; no cookies, credentials or sevDesk
+token; 200 only, uncompressed, a content type that fits the content (checked on the headers before
+the body is read), no web page where XML is expected, the caller's size limit (20 MiB) on
+`Content-Length` and while streaming, 60 seconds in total, two downloads at once per account and
+four in the process. **Redirects are followed**, at most three, each target checked by the same
+rules including the list; a host keeps the address of its first resolution within one download.
+Cloud storage and portals hand out links that redirect (to a storage or CDN host), and refusing
+them would make the feature useless for them; the list still bounds every host a request reaches,
+and a redirect off it is refused without naming the target. **Nothing is kept**: the bytes live in
+the tool call, like a local file's, so `FileAccess.release` has nothing to release, and the real
+call downloads the file again after a dry run. The previews of every file show its full SHA-256
+as a fact of its own (a link's also the host), the results add `sha256` (every source) and
+`downloadedFrom`. The file's name is the link's last path segment only when that is a file name
+of at most 64 characters ending in `.pdf`, `.png`, `.jpg`, `.jpeg` or `.xml`, else
+`download.<ext>`: a capability link may carry its token in the path, and the name is shown and
+stored in sevDesk. Messages, previews and results show nothing else of a link, and the audit log
+records a link argument as its scheme and host only (`https://host/…?[redacted]`). The tools that
+take a file declare `openWorldHint: true` (their tiers stay), and `sevdesk_einvoice_parse` and
+`sevdesk_voucher_import_einvoice` are offered with link hosts alone too.
+`sevdesk_receipt_folder_check` takes no file and never a link, only a folder inside
+`SEVDESK_FILE_DIRS`, so it stays closed-world (`openWorldHint: false`), and link hosts alone
+(`SEVDESK_FILE_URL_HOSTS`) do not offer it; `test/integration/metadata-lint.test.ts` checks both.
+
+**Binding the real call to the checked bytes (2026-11-17, review of #101).** A dry run and the
+real call read the file separately: a link is downloaded again, an upload or a local file can be
+replaced in between, so the real call may attach other bytes than the preview a human checked.
+Every tool that takes `file` therefore also takes an optional `fileSha256` (64 hex characters, any
+case). When it is given, the call computes the SHA-256 of the bytes it is about to use, in a dry
+run as in the real call, and refuses before anything reaches sevDesk when they differ; the message
+names both hashes, shortened, and nothing of the file or its reference. The full SHA-256 to pass
+comes from the dry run's preview (or `sevdesk_einvoice_parse`'s `file.sha256`). Without
+`fileSha256` nothing changes.
+
 ## Consequences
 
 - Good: claude.ai and the Claude apps can attach receipts, import e-invoices and get PDFs and
@@ -187,6 +232,15 @@ or file, bounding metadata by the record cap; completed or fully expired batches
 - Bad: with `SEVDESK_OAUTH_ACCOUNTS=any` the server briefly holds other people's receipts and
   exports, and a few accounts together (3 with the in-memory default, 4 with 256 MiB on disk) can
   fill the space for everyone until their files expire (startup warns).
+- Good (links): a receipt that is already online needs no round trip through the browser, and the
+  same argument works over stdio and HTTP.
+- Bad (links): the server reaches hosts beyond sevDesk at the model's request. The list bounds
+  them, but a host on it that serves files anyone can upload (a shared storage domain, especially
+  under `*.`) lets the model attach such a file. Slow downloads keep others waiting up to a
+  minute: two per account, so in OAuth mode two accounts together can still fill the four slots
+  of the process.
+- Bad (links): the real call downloads the file again, so without `fileSha256` it may attach
+  other bytes than the dry run showed.
 
 ## Alternatives considered
 
@@ -207,3 +261,9 @@ or file, bounding metadata by the record cap; completed or fully expired batches
   cost and corruption, and claude.ai does not save embedded files for the user.
 - **A server folder per account in OAuth mode.** Rejected: the files would still be on the server,
   not with the user, and the disk would need its own cleanup and access model.
+- **`file: {url}`, an object** (the issue's first sketch). Rejected for the reason of the separate
+  `uploadId` field: a union in every file argument; the scheme is as unambiguous as `upload:`.
+- **Links without redirects.** Rejected: most storage links redirect; checking every hop against
+  the same rules keeps the guarantee.
+- **Any host, guarded only by the public-address check.** Rejected: the server would fetch from
+  wherever a prompt injection points it, and the model would attach whatever it found there.

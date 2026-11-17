@@ -63,8 +63,9 @@ export const contactUpdateTool = defineWriteTool({
     remove: removeInput
       .optional()
       .describe(
-        "Entries to take off this contact, each {kind, id}. Removed after the other changes; " +
-          "the changes apply to what remains.",
+        "Entries to take off this contact, each {kind, id}. Removed after the other changes. " +
+          "When an entry removed is the one a change would apply to (the billing address, the " +
+          "main e-mail, phone or website), a new one is added instead.",
       ),
     ...dryRunInputShape,
   }),
@@ -78,14 +79,22 @@ export const contactUpdateTool = defineWriteTool({
   // added when there is none, an id to remove must be one of its entries), so two updates at
   // once added two. A new customer number is checked against the other contacts first, like on
   // create (review 2026-11, round 3). A new organisation is checked to be one, so a deletion of
-  // it must not run in between.
-  locks: (args) => [
-    { objectName: "Contact", id: String(args.id) },
-    ...(args.customerNumber === undefined ? [] : [ACCOUNT_CONTACT_NUMBERS]),
-    ...(args.parentOrganisationId === undefined
-      ? []
-      : [{ objectName: "Contact", id: String(args.parentOrganisationId) }]),
-  ],
+  // it must not run in between. The organisation whose link `remove` takes off is locked too: a
+  // deletion of it lists and binds this person, and must not see it leave half-way (review of
+  // #108).
+  locks: (args) => {
+    const organisations = [
+      args.parentOrganisationId,
+      ...(args.remove ?? [])
+        .filter((entry) => entry.kind === "parentOrganisation")
+        .map((entry) => entry.id),
+    ].filter((id): id is number => id !== undefined);
+    return [
+      { objectName: "Contact", id: String(args.id) },
+      ...(args.customerNumber === undefined ? [] : [ACCOUNT_CONTACT_NUMBERS]),
+      ...[...new Set(organisations)].map((id) => ({ objectName: "Contact", id: String(id) })),
+    ];
+  },
   prepare: (args, ctx) =>
     planContactUpdate(ctx.client, args, { signal: ctx.signal, cacheOwner: ctx.config }),
   execute: async (_args, plan, ctx) => {

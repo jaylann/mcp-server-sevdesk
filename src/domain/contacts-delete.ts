@@ -204,19 +204,21 @@ function planWayRemoval(details: ContactDetails, kind: WayKind, id: number): Pla
 
 /**
  * The consequences of an update's removals that sevDesk does not handle (D-084): a removed billing
- * address leaves no billing address unless another one remains, and a removed main entry leaves
- * its type without a main entry unless the same update adds a new main one (`newMainKinds`).
+ * address leaves no billing address unless another one remains or the same update adds a new one
+ * (`newBillingAddress`), and a removed main entry leaves its type without a main entry unless the
+ * same update adds a new main one (`newMainKinds`).
  */
 export function removalWarnings(
   details: ContactDetails,
   removals: readonly PlannedRemoval[],
   newMainKinds: ReadonlySet<WayKind>,
+  newBillingAddress: boolean,
 ): string[] {
   const removedIds = new Set(removals.map((removal) => `${removal.kind}:${String(removal.id)}`));
   const warnings: string[] = [];
   for (const removal of removals) {
     if (removal.kind === "address") {
-      if (removal.address.category?.id !== BILLING_ADDRESS_CATEGORY) continue;
+      if (newBillingAddress || removal.address.category?.id !== BILLING_ADDRESS_CATEGORY) continue;
       const otherBilling = details.addresses.some(
         (row) =>
           row.id !== removal.id &&
@@ -363,7 +365,10 @@ interface ContactDeleteState {
   readonly contact: ContactDto;
   readonly addressIds: readonly number[];
   readonly communicationWayIds: readonly number[];
-  /** An organisation's contact persons, which sevDesk deletes with it (D-084); else empty. */
+  /**
+   * The contacts whose parent this contact is: an organisation's contact persons, which sevDesk
+   * deletes with it (D-084), or those stored under a person, which it may delete; else empty.
+   */
   readonly persons: readonly ContactPerson[];
 }
 
@@ -388,15 +393,16 @@ interface DeletePreview {
 }
 
 /**
- * Reads the contact with its addresses and communication ways (and, for an organisation, the
- * persons that belong to it) and builds the confirmation in English and German: the contact by
- * name and customer number, how many addresses, communication ways and custom field values
- * sevDesk deletes with it (the values: D-086; a failed read of them is shown, not raised), an
- * organisation's contact persons, which sevDesk deletes with it too (listed by name and id up to
- * {@link LISTED_PERSONS}), and that this cannot be undone. Refuses a contact that does not exist,
- * and an organisation whose contact persons cannot all be read (a partial list would hide what
- * goes). Whether documents still reference the contact only sevDesk knows, and it refuses that
- * itself (see {@link executeContactDelete}).
+ * Reads the contact with its addresses and communication ways and the contacts whose parent it is
+ * (for any kind, since sevDesk stores a person as parent too, D-083) and builds the confirmation
+ * in English and German: the contact by name and customer number, how many addresses,
+ * communication ways and custom field values sevDesk deletes with it (the values: D-086; a failed
+ * read of them is shown, not raised), the contact persons (listed by name and id up to
+ * {@link LISTED_PERSONS}): an organisation's, which sevDesk deletes with it too, or those stored
+ * under a person, which it may delete (not measured), and that this cannot be undone. Refuses a
+ * contact that does not exist, and one whose contact persons cannot all be read (a partial list
+ * would hide what goes). Whether documents still reference the contact only sevDesk knows, and it
+ * refuses that itself (see {@link executeContactDelete}).
  */
 export async function prepareContactDelete(
   client: SevdeskClient,
@@ -414,12 +420,14 @@ export async function prepareContactDelete(
     throw error;
   }
   const { contact } = details;
+  // Persons are read for every kind: sevDesk stores any contact as a parent (D-083), so a person
+  // (or data from other clients) can have contacts whose parent it is, and the cascade may take
+  // them too.
   const [persons, customFields] = await Promise.all([
-    contact.kind === "organisation"
-      ? contactPersons(client, id, options.signal)
-      : Promise.resolve([]),
+    contactPersons(client, contact, options.signal),
     readCustomFieldsForDisplay(client, id, options.signal),
   ]);
+  const organisation = contact.kind === "organisation";
 
   const addresses = countText(details.addresses.length, details.addressesComplete);
   const ways = countText(details.communicationWays.length, details.communicationWaysComplete);
@@ -439,7 +447,7 @@ export async function prepareContactDelete(
   ];
   const personCount = persons.length;
   const onePerson = personCount === 1;
-  if (personCount > 0) {
+  if (personCount > 0 && organisation) {
     warnings.push(
       phrase(
         `sevDesk deletes the organisation's ${String(personCount)} contact ` +
@@ -448,8 +456,21 @@ export async function prepareContactDelete(
           "der Organisation mit; das lässt sich ebenfalls nicht rückgängig machen.",
       ),
     );
+  } else if (personCount > 0) {
+    warnings.push(
+      phrase(
+        `sevDesk has ${String(personCount)} contact${plural(personCount)} stored with this ` +
+          `person as ${onePerson ? "its" : "their"} organisation (parent, set outside this ` +
+          `server). sevDesk may delete ${onePerson ? "it" : "them"} with it; this cannot be ` +
+          "undone either.",
+        `In sevDesk ${onePerson ? "ist 1 Kontakt" : `sind ${String(personCount)} Kontakte`} mit ` +
+          "dieser Person als Organisation gespeichert (parent, außerhalb dieses Servers gesetzt). " +
+          `sevDesk löscht ${onePerson ? "ihn" : "sie"} möglicherweise mit; das lässt sich ` +
+          "ebenfalls nicht rückgängig machen.",
+      ),
+    );
   }
-  const customFieldWarning = customFieldValuesWarning(customFields, personCount);
+  const customFieldWarning = customFieldValuesWarning(customFields, personCount, organisation);
   if (customFieldWarning !== undefined) warnings.push(customFieldWarning);
 
   const name = cleanText(contact.displayName, VALUE_MAX) ?? `(unnamed contact ${String(id)})`;
@@ -493,7 +514,7 @@ export async function prepareContactDelete(
           value: customFieldValues[lang],
         },
       );
-      if (contact.kind === "organisation") facts.push(...personFacts(persons, lang));
+      if (organisation || personCount > 0) facts.push(...personFacts(persons, organisation, lang));
       return {
         action: deleteAction(id, contact.kind, personCount, lang),
         facts,
@@ -517,14 +538,24 @@ export async function prepareContactDelete(
 }
 
 /**
- * The warning that custom field values go with the contact (D-086), and with its contact persons,
- * whom sevDesk deletes too (D-084). The persons' values are not read, so they are "any". Left out
- * when the contact has no values (all of them read) and no persons.
+ * The warning that custom field values go with the contact (D-086), and with an organisation's
+ * contact persons, whom sevDesk deletes too (D-084), or with the contacts stored under a person,
+ * which it may delete. The persons' values are not read, so they are "any". Left out when the
+ * contact has no values (all of them read) and no persons.
  */
 function customFieldValuesWarning(
   customFields: DisplayedCustomFields,
   personCount: number,
+  organisation: boolean,
 ): Phrase | undefined {
+  if (personCount > 0 && !organisation) {
+    return phrase(
+      "Its custom field values (Zusatzfelder) are deleted with it, and so are those of any " +
+        "contact sevDesk deletes with it.",
+      "Auch die Werte seiner Zusatzfelder werden mitgelöscht, ebenso die jedes Kontakts, den " +
+        "sevDesk mitlöscht.",
+    );
+  }
   if (personCount > 0) {
     const one = personCount === 1;
     return phrase(
@@ -545,7 +576,10 @@ function customFieldValuesWarning(
   );
 }
 
-/** "Delete contact 1001 (organisation) and its 2 contact persons from sevDesk." */
+/**
+ * "Delete contact 1001 (organisation) and its 2 contact persons from sevDesk."; for a person that
+ * other contacts name as parent, that sevDesk may delete them with it.
+ */
 function deleteAction(
   id: number,
   kind: ContactDto["kind"],
@@ -553,8 +587,14 @@ function deleteAction(
   lang: PreviewLanguage,
 ): string {
   const contact = String(id);
+  const organisation = kind === "organisation";
   if (lang === "de") {
-    const noun = kind === "organisation" ? "Organisation" : "Person";
+    const noun = organisation ? "Organisation" : "Person";
+    if (!organisation && persons > 0) {
+      const them =
+        persons === 1 ? "seinen Ansprechpartner" : `seine ${String(persons)} Ansprechpartner`;
+      return `Kontakt ${contact} (Person) aus sevDesk löschen; sevDesk löscht möglicherweise ${them} mit.`;
+    }
     const alsoPersons =
       persons === 0
         ? ""
@@ -563,24 +603,35 @@ function deleteAction(
           : ` und seine ${String(persons)} Ansprechpartner`;
     return `Kontakt ${contact} (${noun})${alsoPersons} aus sevDesk löschen.`;
   }
-  const alsoPersons =
-    persons === 0 ? "" : ` and its ${String(persons)} contact person${plural(persons)}`;
-  return `Delete contact ${contact} (${kind})${alsoPersons} from sevDesk.`;
+  const them = `its ${String(persons)} contact person${plural(persons)}`;
+  if (!organisation && persons > 0) {
+    return `Delete contact ${contact} (person) from sevDesk; sevDesk may delete ${them} with it.`;
+  }
+  return `Delete contact ${contact} (${kind})${persons === 0 ? "" : ` and ${them}`} from sevDesk.`;
 }
 
 /**
- * The facts that name an organisation's contact persons: how many, then one fact per person
- * (cleaned name and id) up to {@link LISTED_PERSONS}, then how many more are not listed.
+ * The facts that name the contact persons (contacts whose parent the contact is): how many, then
+ * one fact per person (cleaned name and id) up to {@link LISTED_PERSONS}, then how many more are
+ * not listed. `certain` (an organisation, recorded, D-084): "deleted with it"; for a person, whose
+ * cascade is not measured: "may be deleted with it".
  */
-function personFacts(persons: readonly ContactPerson[], lang: PreviewLanguage): ConfirmationFact[] {
+function personFacts(
+  persons: readonly ContactPerson[],
+  certain: boolean,
+  lang: PreviewLanguage,
+): ConfirmationFact[] {
   const de = lang === "de";
+  const perhaps = certain ? "" : "möglicherweise ";
+  const many = de ? `werden ${perhaps}mitgelöscht` : `${certain ? "" : "may be "}deleted with it`;
+  const one = de ? `wird ${perhaps}mitgelöscht` : many;
   const facts: ConfirmationFact[] = [
     {
-      label: de ? "Ansprechpartner (werden mitgelöscht)" : "Contact persons (deleted with it)",
+      label: de ? `Ansprechpartner (${many})` : `Contact persons (${many})`,
       value: persons.length === 0 ? (de ? "keine" : "none") : String(persons.length),
     },
     ...persons.slice(0, LISTED_PERSONS).map((person) => ({
-      label: de ? "Ansprechpartner (wird mitgelöscht)" : "Contact person (deleted with it)",
+      label: de ? `Ansprechpartner (${one})` : `Contact person (${one})`,
       value: `${person.name} (${de ? "Kontakt" : "contact"} ${String(person.id)})`,
     })),
   ];
@@ -589,8 +640,8 @@ function personFacts(persons: readonly ContactPerson[], lang: PreviewLanguage): 
     facts.push({
       label: de ? "Weitere Ansprechpartner" : "More contact persons",
       value: de
-        ? `${String(rest)} weitere, werden ebenfalls gelöscht, hier nicht aufgeführt`
-        : `${String(rest)} more, deleted as well, not listed here`,
+        ? `${String(rest)} weitere, werden ${perhaps}ebenfalls gelöscht, hier nicht aufgeführt`
+        : `${String(rest)} more, ${certain ? "" : "may be "}deleted as well, not listed here`,
     });
   }
   return facts;
@@ -630,18 +681,19 @@ export interface ContactDeleteResult {
  * read is a 404. A 404 on the DELETE itself means it was gone already. sevDesk's refusal of a
  * contact that documents reference arrives inside HTTP 200 (D-085); it becomes `stillReferenced`
  * with a note in our own words once the read shows the contact is still there. Other failures of
- * the DELETE pass through unchanged. An organisation's contact persons (`persons`, from the
- * preview) are read back one by one too, since sevDesk deletes them with it (D-084); a person that
- * is still there, or could not be read, gets a note.
+ * the DELETE pass through unchanged. The contact persons (`persons`, from the preview) are read
+ * back one by one too, since sevDesk deletes an organisation's with it (D-084) and may delete
+ * those stored under a person; one whose fate does not match the contact's, or could not be read,
+ * gets a note. `kind` is the deleted contact's.
  */
 export async function executeContactDelete(
   client: SevdeskClient,
   contactId: number,
+  kind: ContactDto["kind"],
   persons: readonly ContactPerson[],
   signal: AbortSignal | undefined,
 ): Promise<ContactDeleteResult> {
-  const result = await deleteAndCheck(client, contactId, persons.length > 0, signal);
-  if (persons.length === 0) return { ...result, persons: [] };
+  const result = await deleteAndCheck(client, contactId, signal);
   const outcomes: ContactPersonOutcome[] = [];
   for (const person of persons) {
     outcomes.push({
@@ -650,10 +702,15 @@ export async function executeContactDelete(
       outcome: await personOutcome(client, person.id, signal),
     });
   }
+  const personGone = outcomes.some((entry) => entry.outcome === "deleted");
   return {
     ...result,
     persons: outcomes,
-    notes: [...result.notes, ...personNotes(contactId, result.deleted, outcomes)],
+    notes: [
+      ...(result.stillReferenced ? [refusalNote(contactId, persons.length > 0, personGone)] : []),
+      ...result.notes,
+      ...personNotes(contactId, kind, result.deleted, outcomes),
+    ],
   };
 }
 
@@ -676,31 +733,38 @@ async function personOutcome(
   }
 }
 
-/** The notes on contact persons whose read afterwards does not match the organisation's fate. */
+/**
+ * The notes on contact persons whose read afterwards does not match the fate of the contact they
+ * belong to (`parent`, an organisation or a person).
+ */
 function personNotes(
-  organisationId: number,
-  organisationDeleted: boolean,
+  parentId: number,
+  parentKind: ContactDto["kind"],
+  parentDeleted: boolean,
   outcomes: readonly ContactPersonOutcome[],
 ): string[] {
   const ids = (outcome: ContactPersonOutcome["outcome"]): string[] =>
     outcomes.filter((entry) => entry.outcome === outcome).map((entry) => String(entry.id));
-  const organisation = String(organisationId);
+  const parent = `${parentKind} ${String(parentId)}`;
   const notes: string[] = [];
   const remaining = ids("remaining");
-  if (organisationDeleted && remaining.length > 0) {
+  if (parentDeleted && remaining.length > 0) {
+    const one = remaining.length === 1;
     notes.push(
-      `Contact ${remaining.length === 1 ? "person" : "persons"} ${remaining.join(", ")} ` +
-        `${remaining.length === 1 ? "is" : "are"} still in sevDesk although organisation ` +
-        `${organisation} was deleted; why sevDesk kept ${remaining.length === 1 ? "it" : "them"} ` +
-        "is not recorded (perhaps a document uses it). Check with sevdesk_contact_get.",
+      `Contact ${one ? "person" : "persons"} ${remaining.join(", ")} ` +
+        `${one ? "is" : "are"} still in sevDesk although ${parent} was deleted; ` +
+        (parentKind === "organisation"
+          ? `why sevDesk kept ${one ? "it" : "them"} is not recorded (perhaps a document uses it). `
+          : `whether sevDesk deletes contacts stored under a person is not recorded. `) +
+        "Check with sevdesk_contact_get.",
     );
   }
   const gone = ids("deleted");
-  if (!organisationDeleted && gone.length > 0) {
+  if (!parentDeleted && gone.length > 0) {
     notes.push(
       `Contact ${gone.length === 1 ? "person" : "persons"} ${gone.join(", ")} ` +
-        `${gone.length === 1 ? "is" : "are"} gone although organisation ${organisation} is ` +
-        "still in sevDesk. Check with sevdesk_contact_get.",
+        `${gone.length === 1 ? "is" : "are"} gone although ${parent} is still in sevDesk. ` +
+        "Check with sevdesk_contact_get.",
     );
   }
   const unchecked = ids("unchecked");
@@ -714,11 +778,25 @@ function personNotes(
   return notes;
 }
 
+/**
+ * sevDesk's refusal (D-085) in our words. "Nothing was deleted" only while no contact person read
+ * back as gone: a partial cascade is not measured, and the reads afterwards may show one.
+ */
+function refusalNote(contactId: number, hasPersons: boolean, personGone: boolean): string {
+  const referenced = hasPersons ? "it or one of its contact persons" : "it";
+  return (
+    `sevDesk refused to delete contact ${String(contactId)}: documents still reference ` +
+    `${referenced} (sevDesk keeps a contact that invoices or other documents use, drafts ` +
+    `included). ${personGone ? "The contact" : "Nothing was deleted; the contact"}, its ` +
+    "addresses and its communication ways are unchanged. Give those drafts another contact or " +
+    "delete them first; finalized documents keep their contact."
+  );
+}
+
 /** The DELETE and the read of the contact itself (see {@link executeContactDelete}). */
 async function deleteAndCheck(
   client: SevdeskClient,
   contactId: number,
-  hasPersons: boolean,
   signal: AbortSignal | undefined,
 ): Promise<Omit<ContactDeleteResult, "persons">> {
   const id = String(contactId);
@@ -761,19 +839,10 @@ async function deleteAndCheck(
   }
 
   if (refused) {
-    const referenced = hasPersons ? "it or one of its contact persons" : "it";
+    // The refusal's note depends on what the reads of the contact persons find; the caller writes
+    // it (refusalNote).
     return stillThere
-      ? {
-          deleted: false,
-          stillReferenced: true,
-          notes: [
-            `sevDesk refused to delete contact ${id}: documents still reference ${referenced} ` +
-              "(sevDesk keeps a contact that invoices or other documents use, drafts included). " +
-              "Nothing was deleted; the contact, its addresses and its communication ways are " +
-              "unchanged. Give those drafts another contact or delete them first; finalized " +
-              "documents keep their contact.",
-          ],
-        }
+      ? { deleted: false, stillReferenced: true, notes: [] }
       : {
           deleted: true,
           stillReferenced: false,
@@ -814,33 +883,41 @@ function isReferenceRefusal(error: SevdeskError): boolean {
 }
 
 /**
- * The persons whose `parent` is this organisation, by id, with their cleaned names on one line
- * (D-083: the parent filter works; checked again here). Refuses when there are more than
- * {@link PERSON_SCAN_MAX}: sevDesk deletes them all with the organisation (D-084), and a preview
- * that names only some of them would hide what goes.
+ * The contacts whose `parent` is this contact, by id, with their cleaned names on one line
+ * (D-083: the parent filter works; checked again here). For an organisation these are its contact
+ * persons; a person has them only when it was stored as a parent outside this server (sevDesk
+ * checks nothing, D-083). Refuses when there are more than {@link PERSON_SCAN_MAX}: sevDesk
+ * deletes an organisation's persons with it (D-084), and a preview that names only some of them
+ * would hide what goes.
  */
 async function contactPersons(
   client: SevdeskClient,
-  organisationId: number,
+  contact: ContactDto,
   signal: AbortSignal | undefined,
 ): Promise<ContactPerson[]> {
+  const parentId = contact.id;
   const list = await client.listAll(
     "/Contact",
-    { depth: "1", "parent[id]": organisationId, "parent[objectName]": "Contact" },
+    { depth: "1", "parent[id]": parentId, "parent[objectName]": "Contact" },
     { max: PERSON_SCAN_MAX, ...(signal === undefined ? {} : { signal }) },
   );
   if (list.truncated) {
     throw validation(
-      `Contact ${String(organisationId)} is an organisation with more than ` +
-        `${String(PERSON_SCAN_MAX)} contact persons (Ansprechpartner), and sevDesk deletes them ` +
-        "all with it. Not all of them could be read, so this deletion is not offered here; " +
-        "nothing was changed.",
+      contact.kind === "organisation"
+        ? `Contact ${String(parentId)} is an organisation with more than ` +
+            `${String(PERSON_SCAN_MAX)} contact persons (Ansprechpartner), and sevDesk deletes ` +
+            "them all with it. Not all of them could be read, so this deletion is not offered " +
+            "here; nothing was changed."
+        : `Contact ${String(parentId)} is a person that more than ${String(PERSON_SCAN_MAX)} ` +
+            "contacts name as their organisation (parent), and sevDesk may delete them with it. " +
+            "Not all of them could be read, so this deletion is not offered here; nothing was " +
+            "changed.",
     );
   }
   const persons = new Map<number, ContactPerson>();
   for (const raw of list.items) {
     const record = parseContactRecord(raw);
-    if (record.parent?.id !== organisationId || record.id === organisationId) continue;
+    if (record.parent?.id !== parentId || record.id === parentId) continue;
     const name = cleanText(toContactDto(record).displayName.replace(/\s+/g, " "), VALUE_MAX);
     persons.set(record.id, {
       id: record.id,
