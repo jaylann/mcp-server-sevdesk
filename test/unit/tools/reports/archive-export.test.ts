@@ -72,7 +72,8 @@ describe("sevdesk_archive_export: prepare", () => {
       Documents: "invoices (rendered PDFs)",
       Period: "2026-10-01 to 2026-10-31",
       Contact: "contact 42",
-      "At most": "1000 documents",
+      // 500 by default: 1,000 invoices would outlast the 5 minutes and the 100 MiB.
+      "At most": "500 documents",
       "File name": "invoices_2026-10-01_2026-10-31.zip",
     });
     const warnings = plan.preview.warnings.join(" ");
@@ -158,7 +159,7 @@ describe("sevdesk_archive_export: execute", () => {
     expect(client.writes()[0]?.query).toMatchObject({
       download: "true",
       "sevQuery[modelName]": "Invoice",
-      "sevQuery[limit]": 1000,
+      "sevQuery[limit]": 500,
     });
     expect(output.data).toMatchObject({
       subject: "invoices",
@@ -167,7 +168,7 @@ describe("sevdesk_archive_export: execute", () => {
       entries: 3,
       pdfEntries: 3,
       draftEntries: 1,
-      limit: 1000,
+      limit: 500,
       mayBeTruncated: false,
     });
     const data = output.data as { savedTo: string; warnings: string[] };
@@ -218,6 +219,59 @@ describe("sevdesk_archive_export: execute", () => {
       "sevQuery[limit]": 2,
       "sevQuery[filter][startAmount]": "10.5",
     });
+    expect((output.data as { warnings: string[] }).warnings).toContain(
+      "The ZIP holds 2 files, close to the limit of 2 documents: sevDesk may have stopped " +
+        "there, so more may exist. Export a shorter period or raise limit (up to 1000).",
+    );
+  });
+
+  it("flags an archive a file short of the limit: the limit counts documents, the ZIP files", async () => {
+    // sevDesk left one invoice of the list out of both recorded archives (D-101): an archive
+    // cut at 50 invoices can hold 49 files.
+    const files = buildZip(
+      Array.from({ length: 49 }, (_, index) => ({
+        name: `2026-10-01_Rechnung_RE-${String(2000 + index)}_${String(index)}.pdf`,
+        content: pdfBytes(String(index)),
+      })),
+    );
+    const client = new FakeSevdeskClient([
+      { path: "/Export/invoiceZip", response: { bytes: files, contentType: "application/zip" } },
+    ]);
+
+    const { output } = await executeWrite(archiveExportTool, { ...OCTOBER, limit: 50 }, client, {
+      outputDir: directory,
+    });
+
+    expect(output.data).toMatchObject({ entries: 49, limit: 50, mayBeTruncated: true });
+    expect((output.data as { warnings: string[] }).warnings).toContain(
+      "The ZIP holds 49 files, close to the limit of 50 documents: sevDesk may have stopped " +
+        "there, so more may exist. Export a shorter period or raise limit (up to 1000).",
+    );
+  });
+
+  it("asks only for a shorter period when the limit is already the maximum", async () => {
+    const files = buildZip(
+      Array.from({ length: 980 }, (_, index) => ({
+        name: `2026-10-01_Beleg_${String(index)}.pdf`,
+        content: "%PDF",
+      })),
+    );
+    const client = new FakeSevdeskClient([
+      { path: "/Export/voucherZip", response: { bytes: files, contentType: "application/zip" } },
+    ]);
+
+    const { output } = await executeWrite(
+      archiveExportTool,
+      { subject: "vouchers", year: 2026, limit: 1000 },
+      client,
+      { outputDir: directory },
+    );
+
+    expect(output.data).toMatchObject({ entries: 980, mayBeTruncated: true });
+    expect((output.data as { warnings: string[] }).warnings).toContain(
+      "The ZIP holds 980 files, close to the limit of 1000 documents: sevDesk may have stopped " +
+        "there, so more may exist. Export a shorter period.",
+    );
   });
 
   it.each([

@@ -19,7 +19,9 @@
  *   and hash the same way. {@link isDraftEntry} counts them, so the tool can say so.
  * - **Fewer entries than documents is normal:** a voucher archive holds only vouchers with a
  *   receipt file (13 entries for 53 listed vouchers), and an invoice archive held one invoice
- *   fewer than the list (130 of 131, 110 of 111; which one is unknown).
+ *   fewer than the list (130 of 131, 110 of 111; which one is unknown). So the entry count only
+ *   hints at whether sevDesk stopped at `sevQuery[limit]` ({@link mayBeTruncated}); whether it
+ *   stops there at all is not recorded (only an empty archive was asked for with two limits).
  * - **Nothing matched:** sevDesk still answers a ZIP, with one entry `readme.txt` ("Es wurden keine
  *   Dateien hochgeladen, daher ist diese ZIP leer."). That entry is never counted as a document
  *   ({@link isPlaceholderEntry}); an archive without documents is not saved.
@@ -59,8 +61,19 @@ export const ARCHIVE_EXPORTS: Readonly<Record<ArchiveSubject, ArchiveSpec>> = {
   vouchers: { path: "/Export/voucherZip", modelName: "Voucher", noun: "vouchers" },
 };
 
-/** Most documents one archive asks for (`sevQuery[limit]`; sevDesk's page maximum, D-019). */
+/**
+ * Most documents one archive may ask for (`sevQuery[limit]`; sevDesk's page maximum, D-019).
+ * Whether sevDesk stops at the limit is not recorded (D-101).
+ */
 export const MAX_ARCHIVE_DOCUMENTS = 1_000;
+/**
+ * The limit an archive asks for when the caller gives none: 500 invoices fit both budgets, at the
+ * recorded 0.5 s and 140–190 KB per rendered invoice (D-101) about 4 minutes of
+ * {@link ARCHIVE_TIMEOUT_MS} and 70–95 MB of {@link MAX_ARCHIVE_BYTES}. 1,000 invoices would need
+ * about 8 minutes and up to 190 MB, so a default of {@link MAX_ARCHIVE_DOCUMENTS} would fail on a
+ * busy year after minutes of rendering.
+ */
+export const DEFAULT_ARCHIVE_DOCUMENTS = 500;
 /**
  * Largest archive accepted: 100 MiB, as for the DATEV ZIP. A rendered invoice was 138 KB on the
  * trial account, so about 700 invoices fit; a longer period is exported in parts.
@@ -123,6 +136,25 @@ export interface DocumentArchive {
   readonly pdfEntries: number;
   /** Entries named like drafts ({@link isDraftEntry}). */
   readonly draftEntries: number;
+}
+
+/** Share of the limit by which the file count may fall short and still count as cut. */
+const TRUNCATION_SLACK = 0.02;
+
+/**
+ * Whether sevDesk may have stopped at `limit`: the ZIP holds at least `limit` minus a slack of
+ * 2 % (at least 1) files. The limit applies to the documents sevDesk selects, the ZIP holds files,
+ * and the two differ: an invoice archive held one invoice fewer than the list (D-101), so an
+ * archive cut at the limit can hold a few files less than the limit. Counting files cannot see a
+ * cut voucher archive whose vouchers mostly lack a receipt file, so `false` is no proof that every
+ * document is in it; the result says so for vouchers. (A count of the matching documents
+ * beforehand would settle it, but `GET /Invoice` and `GET /Voucher` take no amount filter, and
+ * their date filter is another parameter whose bounds the list tools re-check locally
+ * (`documentDateFilter`), so their `total` is not known to match what the archive selects.)
+ */
+export function mayBeTruncated(entries: number, limit: number): boolean {
+  if (entries === 0) return false;
+  return entries >= limit - Math.max(1, Math.ceil(limit * TRUNCATION_SLACK));
 }
 
 /**

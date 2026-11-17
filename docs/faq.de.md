@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:324d78b885be -->
+<!-- translated-from: docs/faq.md sha256:ad74ffded0ec -->
 
 # Häufige Fragen
 
@@ -141,8 +141,8 @@ sevDesk, zum Beispiel für Excel.
 ### Bekomme ich alle Rechnungs- oder Beleg-PDFs auf einmal, für die Steuerberatung oder eine Betriebsprüfung?
 
 Ja. [`sevdesk_archive_export`](tools.md#sevdesk_archive_export) lässt sevDesk die Rechnungs-PDFs
-oder die Belege eines Zeitraums in ein ZIP packen, höchstens 1.000 Dokumente und 100 MiB pro
-Datei, und ändert nichts an den Dokumenten. sevDesk nimmt Entwürfe mit (das Ergebnis zählt sie,
+oder die Belege eines Zeitraums in ein ZIP packen, standardmäßig höchstens 500 Dokumente (bis
+1.000) und 100 MiB pro Datei, und ändert nichts an den Dokumenten. sevDesk nimmt Entwürfe mit (das Ergebnis zählt sie,
 damit du sie herausnehmen kannst) und lässt Belege ohne Belegdatei weg. Ein großes Archiv dauert
 Minuten; die Abhilfe ist ein kürzerer Zeitraum. Mehr dazu:
 [Auswertungen und Exporte](guides/evaluations.de.md#rechnungs--und-belegarchiv).

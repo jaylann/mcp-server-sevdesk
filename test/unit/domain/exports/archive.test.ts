@@ -5,10 +5,12 @@ import {
   archiveFilename,
   type ArchiveParams,
   archiveQuery,
+  DEFAULT_ARCHIVE_DOCUMENTS,
   exportArchive,
   isDraftEntry,
   isPlaceholderEntry,
   MAX_ARCHIVE_BYTES,
+  mayBeTruncated,
   mediaType,
 } from "../../../../src/domain/exports/archive.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
@@ -303,5 +305,29 @@ describe("helpers", () => {
 
   it("names the file from our own values", () => {
     expect(archiveFilename(INVOICES)).toBe("invoices_2026-10-01_2026-10-31.zip");
+  });
+
+  it.each([
+    // An archive cut at the limit can hold a few files less (D-101: one invoice fewer than the
+    // list), so a count within 2 % of the limit (at least 1) counts as possibly cut.
+    [0, 1, false],
+    [1, 1, true],
+    [1, 2, true],
+    [999, 1000, true],
+    [980, 1000, true],
+    [979, 1000, false],
+    [490, 500, true],
+    [489, 500, false],
+    [3, 500, false],
+  ])("treats %i files for a limit of %i as possibly cut: %s", (entries, limit, expected) => {
+    expect(mayBeTruncated(entries, limit)).toBe(expected);
+  });
+
+  it("asks for a default that fits the time and size budgets at the recorded rates", () => {
+    // D-101: 63 s for 130 invoices, and 138 KB (up to about 190 KB) per rendered invoice.
+    const secondsPerInvoice = 63 / 130;
+    const bytesPerInvoice = 190_000;
+    expect(DEFAULT_ARCHIVE_DOCUMENTS * secondsPerInvoice * 1000).toBeLessThan(ARCHIVE_TIMEOUT_MS);
+    expect(DEFAULT_ARCHIVE_DOCUMENTS * bytesPerInvoice).toBeLessThan(MAX_ARCHIVE_BYTES);
   });
 });

@@ -190,8 +190,12 @@ range of amounts (inclusive; for vouchers the gross amount).
   up to 5 minutes, independent of `SEVDESK_TIMEOUT_MS`; beyond that it stops with nothing saved,
   and the remedy is a shorter period. On a remote server every request ends after 120 seconds
   ([Operations](../remote/operations.md)), so export about a month of invoices per call there.
-- At most 1,000 documents and 100 MiB per ZIP (a rendered invoice is about 140 to 190 KB): export
-  long periods in parts. The result says when the limit may have cut the archive.
+- It asks sevDesk for at most 500 documents (`limit`, up to 1,000) and saves at most 100 MiB per
+  ZIP (a rendered invoice is about 140 to 190 KB): 500 invoices fit the 5 minutes and the 100 MiB,
+  1,000 do not. Export long periods in parts. When the ZIP holds close to `limit` files, the result
+  says sevDesk may have stopped there (`mayBeTruncated`). That is a hint, not a count: vouchers
+  without a receipt file are not in the ZIP, so a voucher archive can be cut while holding far
+  fewer files than `limit`.
 - When nothing matches, sevDesk sends a ZIP with only a note in it; the tool saves nothing and
   says that no document matched.
 

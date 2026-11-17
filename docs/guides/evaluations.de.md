@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/evaluations.md sha256:8135007a5904 -->
+<!-- translated-from: docs/guides/evaluations.md sha256:eeaf961d01e3 -->
 
 # Auswertungen und Exporte
 
@@ -205,9 +205,13 @@ einen Bereich von Beträgen (einschließlich der Grenzen; bei Belegen der Brutto
   ohne etwas zu speichern, und die Abhilfe ist ein kürzerer Zeitraum. Auf einem entfernten Server
   endet jede Anfrage nach 120 Sekunden ([Betrieb](../remote/operations.de.md)), exportiere dort
   also etwa einen Monat Rechnungen pro Aufruf.
-- Höchstens 1.000 Dokumente und 100 MiB pro ZIP (eine erzeugte Rechnung hat etwa 140 bis 190 KB):
-  Exportiere lange Zeiträume in Teilen. Das Ergebnis sagt, wenn die Grenze das Archiv abgeschnitten
-  haben kann.
+- Es fragt sevDesk nach höchstens 500 Dokumenten (`limit`, bis 1.000) und speichert höchstens
+  100 MiB pro ZIP (eine erzeugte Rechnung hat etwa 140 bis 190 KB): 500 Rechnungen passen in die
+  5 Minuten und die 100 MiB, 1.000 nicht. Exportiere lange Zeiträume in Teilen. Enthält das ZIP
+  fast `limit` Dateien, sagt das Ergebnis, dass sevDesk dort aufgehört haben kann
+  (`mayBeTruncated`). Das ist ein Hinweis, keine Zählung: Belege ohne Belegdatei fehlen im ZIP,
+  daher kann ein Belegarchiv abgeschnitten sein und trotzdem weit weniger Dateien als `limit`
+  enthalten.
 - Passt nichts, schickt sevDesk ein ZIP mit nur einem Hinweis darin; das Werkzeug speichert nichts
   und sagt, dass kein Dokument gepasst hat.
 

@@ -9954,8 +9954,8 @@ exports[`tools/list > over HTTP with file transfer (SEVDESK_HTTP_FILES on): adds
           "type": "string",
         },
         "limit": {
-          "default": 1000,
-          "description": "Most documents, 1–1000.",
+          "default": 500,
+          "description": "Most documents to ask sevDesk for, 1–1000. The default fits the time and size limits (about 0.5 s and 140–190 KB per invoice).",
           "maximum": 1000,
           "minimum": 1,
           "type": "integer",
