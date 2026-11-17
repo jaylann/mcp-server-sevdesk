@@ -19,7 +19,10 @@
  *   **tax-exempt sales** (§ 4 UStG) and **domestic reverse charge** (§ 13b Abs. 2 UStG): listed
  *   as `exceptions`, each with when it applies instead;
  * - **the Kleinunternehmer thresholds** (§ 19 UStG) and the **Soll/Ist choice**, which sevDesk's
- *   API does not expose and which changes when VAT is due, not the rule: notes.
+ *   API does not expose and which changes when VAT is due, not the rule: notes;
+ * - **a Kleinunternehmer's distance sales and digital services to EU consumers**, which leave
+ *   § 19 above the same 10,000 € threshold, where no sevDesk rule on such an account fits: rule 11
+ *   with its condition and a warning (`decided: false`).
  *
  * Places VAT law treats apart from their ISO code ({@link customerAreaOf}):
  *
@@ -645,35 +648,31 @@ function smallBusiness(facts: SaleFacts): CandidateDecision {
             '"Steuerschuldnerschaft des Leistungsempfängers" and both VAT IDs (§ 14a Abs. 1 UStG).',
     );
   }
-  if (area === "eu" && facts.customerType === "consumer" && facts.supply !== "services") {
-    notes.push(
-      "Above 10,000 € a year of distance sales and digital services to consumers in other EU " +
-        "states, the place of supply moves to the consumer's state (§ 3c, § 3a Abs. 5 UStG), " +
-        "where the § 19 exemption does not apply; sevDesk offers no One-Stop-Shop rule on a " +
-        "Kleinunternehmer account.",
-    );
-  }
-  return {
-    decided: true,
-    suggestions: [
-      {
-        taxRuleId: 11,
-        rate: "0",
-        invoiceNote: {
-          de: "Steuerbefreiung nach § 19 UStG (Kleinunternehmerregelung)",
-          en: "VAT exemption for small businesses under § 19 UStG",
-          required: true,
-        },
-        legalBasis: "§ 19 Abs. 1 UStG; § 34a UStDV (invoice note)",
-        reason:
-          "This sevDesk account uses the Kleinunternehmer regulation: its sales show no VAT, and " +
-          "sevDesk takes tax rule 11 for every sale on such an account.",
-      },
-    ],
-    exceptions: [],
-    notes,
-    warnings: [],
+  const rule: Candidate = {
+    taxRuleId: 11,
+    rate: "0",
+    invoiceNote: {
+      de: "Steuerbefreiung nach § 19 UStG (Kleinunternehmerregelung)",
+      en: "VAT exemption for small businesses under § 19 UStG",
+      required: true,
+    },
+    legalBasis: "§ 19 Abs. 1 UStG; § 34a UStDV (invoice note)",
+    reason:
+      "This sevDesk account uses the Kleinunternehmer regulation: its sales show no VAT, and " +
+      "sevDesk takes tax rule 11 for every sale on such an account.",
   };
+  // Distance sales and digital services to EU consumers leave § 19 above the EU threshold, and
+  // no sevDesk rule on this account fits them then: the threshold decides, so not decided.
+  if (area === "eu" && facts.customerType === "consumer" && facts.supply !== "services") {
+    return {
+      decided: false,
+      suggestions: [{ ...rule, when: SMALL_BUSINESS_UNDER_THRESHOLD }],
+      exceptions: [],
+      notes,
+      warnings: [SMALL_BUSINESS_OVER_THRESHOLD],
+    };
+  }
+  return { decided: true, suggestions: [rule], exceptions: [], notes, warnings: [] };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -835,6 +834,18 @@ const OVER_THRESHOLD =
 const UNDER_THRESHOLD =
   "those sales stayed at or below 10,000 € net in the previous and stay so in the current " +
   "calendar year, and you did not opt for taxation in the consumer's state";
+
+const SMALL_BUSINESS_UNDER_THRESHOLD =
+  "your distance sales of goods and digital services to consumers in other EU states stayed at " +
+  "or below 10,000 € net in the previous and stay so in the current calendar year, and you did " +
+  "not opt for taxation in the consumer's state (§ 3c Abs. 4, § 3a Abs. 5 UStG)";
+
+const SMALL_BUSINESS_OVER_THRESHOLD =
+  "Above 10,000 € net a year of distance sales and digital services to consumers in other EU " +
+  "states, the place of supply moves to the consumer's state (§ 3c Abs. 1, § 3a Abs. 5 UStG), " +
+  "where the § 19 exemption does not apply. Rule 11 then does not fit, and sevDesk offers no " +
+  "One-Stop-Shop rule on a Kleinunternehmer account: ask your Steuerberater how to invoice such " +
+  "a sale.";
 
 const UNKNOWN_REGIME =
   "The account's VAT regulation (regular VAT or Kleinunternehmer, § 19 UStG) could not be read " +

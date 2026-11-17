@@ -206,7 +206,11 @@ describe("decideSalesTaxRule: Kleinunternehmer (§ 19 UStG)", () => {
     const decision = decideSalesTaxRule(
       facts("small_business", row.country, row.customerType, row.supply, undefined),
     );
-    expect(decision.decided).toBe(true);
+    // Only distance sales and digital services to EU consumers depend on the EU threshold.
+    const toEuConsumer =
+      row.country === "AT" && row.customerType === "consumer" && row.supply !== "services";
+    expect(decision.decided).toBe(!toEuConsumer);
+    expect(decision.warnings).toHaveLength(toEuConsumer ? 1 : 0);
     expect(decision.suggestions).toHaveLength(1);
     const [only] = decision.suggestions;
     expect(only).toMatchObject({ taxRuleId: 11, rate: "0", invoiceNote: { required: true } });
@@ -221,8 +225,28 @@ describe("decideSalesTaxRule: Kleinunternehmer (§ 19 UStG)", () => {
       facts("small_business", "AT", "business", "services", AT_VAT),
     );
     expect(services.notes).toContainEqual(expect.stringContaining(REVERSE_CHARGE));
-    const goods = decideSalesTaxRule(facts("small_business", "AT", "consumer", "goods"));
-    expect(goods.notes).toContainEqual(expect.stringContaining("10,000 €"));
+  });
+
+  it("leaves distance sales and digital services to EU consumers to the threshold", () => {
+    for (const supply of ["goods", "digital_services"] as const) {
+      const decision = decideSalesTaxRule(facts("small_business", "AT", "consumer", supply));
+      expect(decision.decided, supply).toBe(false);
+      expect(
+        decision.suggestions.map((outcome) => outcome.taxRuleId),
+        supply,
+      ).toEqual([11]);
+      expect(decision.suggestions[0]?.when, supply).toContain("at or below 10,000 € net");
+      expect(decision.warnings, supply).toEqual([
+        expect.stringContaining("sevDesk offers no One-Stop-Shop rule on a Kleinunternehmer"),
+      ]);
+      expect(decision.warnings[0], supply).toContain("Steuerberater");
+    }
+    // Northern Ireland counts as the EU for goods here too; ordinary services stay decided.
+    const ni = decideSalesTaxRule(facts("small_business", "XI", "consumer", "goods"));
+    expect(ni.decided).toBe(false);
+    const services = decideSalesTaxRule(facts("small_business", "AT", "consumer", "services"));
+    expect(services.decided).toBe(true);
+    expect(services.suggestions[0]?.when).toBeUndefined();
   });
 });
 
