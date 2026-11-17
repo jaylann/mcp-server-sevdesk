@@ -11,10 +11,10 @@ import { VOUCHERS_CASES } from "./vouchers.js";
 /** Every write-tool case (lead-owned: add new area files here). */
 export const WRITE_TOOL_CASES: readonly WriteToolCase[] = [
   ...DRAFTS_CASES,
-  ...RECURRING_CASES,
   ...LIFECYCLE_CASES,
   ...MASTERDATA_CASES,
   ...VOUCHERS_CASES,
   ...BANKING_CASES,
   ...REPORTS_CASES,
+  ...RECURRING_CASES,
 ].map((testCase) => ({ ...testCase, routes: withCountryRoute(testCase.routes) }));
