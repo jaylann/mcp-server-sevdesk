@@ -12,6 +12,7 @@ import {
   SUPPLY_KINDS,
   type SupplyKind,
   taxRuleMismatchWarning,
+  vatIdShowsBusiness,
 } from "../../../../src/domain/vat/sales-tax-rule.js";
 import { checkVatIdFormat } from "../../../../src/domain/vat/vat-id.js";
 
@@ -476,6 +477,25 @@ describe("decideSalesTaxRule: parts of member states outside the EU VAT area", (
     expect(france.exceptions).toEqual([]);
     const austria = decideSalesTaxRule(facts("regular", "AT", "consumer", "digital_services"));
     expect(austria.exceptions).toEqual([]);
+  });
+});
+
+describe("vatIdShowsBusiness", () => {
+  it("counts a valid format, and outside the EU another country's number with digits", () => {
+    expect(vatIdShowsBusiness(AT_VAT, "AT")).toBe(true);
+    expect(vatIdShowsBusiness(XI_VAT, "GB")).toBe(true);
+    expect(vatIdShowsBusiness(checkVatIdFormat("CHE-123.456.789"), "CH")).toBe(true);
+    expect(vatIdShowsBusiness(checkVatIdFormat("GB123456789"), "XI")).toBe(true);
+  });
+
+  it("never counts placeholders, a wrong EU format, or a foreign number inside the EU", () => {
+    for (const text of ["n/a", "-", "none", "keine", "ATU1234", "GR123456789"]) {
+      expect(vatIdShowsBusiness(checkVatIdFormat(text), "AT"), text).toBe(false);
+    }
+    expect(vatIdShowsBusiness(checkVatIdFormat("none"), "CH")).toBe(false);
+    expect(vatIdShowsBusiness(checkVatIdFormat("CHE123456789"), "DE")).toBe(false);
+    // Monaco counts as France, so a foreign number is no sign there either.
+    expect(vatIdShowsBusiness(checkVatIdFormat("CHE123456789"), "MC")).toBe(false);
   });
 });
 

@@ -28,14 +28,14 @@ afterEach(() => {
 
 type Raw = Record<string, unknown>;
 
-/** Contact 1001 turned into an Austrian company with an Austrian VAT ID. */
-function austrianContact(): FakeRoute[] {
+/** Contact 1001 in Austria: by default a company with an Austrian VAT ID, or with `overrides`. */
+function austrianContact(overrides: Raw = { vatNumber: "ATU12345678" }): FakeRoute[] {
   const contact = loadFixture("contacts/contact-1001.json").body as { objects: Raw[] };
   const addresses = loadFixture("contacts/contact-addresses-1001.json").body as { objects: Raw[] };
   return [
     {
       path: "/Contact/1001",
-      response: { body: { objects: [{ ...contact.objects[0], vatNumber: "ATU12345678" }] } },
+      response: { body: { objects: [{ ...contact.objects[0], ...overrides }] } },
     },
     {
       path: "/ContactAddress",
@@ -137,6 +137,18 @@ describe("invoice draft: tax rule hint", () => {
     );
     expect(domestic.at(-1)).toContain(
       "(a business in Germany with a VAT ID): 1 for goods, services and digital services.",
+    );
+  });
+
+  it("takes a person whose VAT ID field holds no VAT ID for a consumer", async () => {
+    const person = { name: null, surename: "Max", familyname: "Muster", vatNumber: "n/a" };
+    const found = await warnings(
+      invoiceCreateDraftTool,
+      { contactId: 1001, taxRuleId: 21, positions: zeroRated },
+      withRoutes(invoiceCreateRoutes, ...austrianContact(person), countries),
+    );
+    expect(found.at(-1)).toContain(
+      "(a consumer in Austria): 18 or 1 for goods, 1 for services, 19 or 1 for digital services.",
     );
   });
 

@@ -156,6 +156,23 @@ export function placeName(country: string): string | undefined {
   return euMemberState(code)?.name ?? OTHER_PLACE_NAMES[code];
 }
 
+/**
+ * Whether a customer's VAT ID shows that it buys as a business: a valid format of an EU member
+ * state or of Northern Ireland, or, for a customer in `country` outside the EU, another country's
+ * number with digits in it. "n/a", "-", "none" and an EU number in the wrong format never count.
+ */
+export function vatIdShowsBusiness(vatId: VatIdFormatCheck, country: string): boolean {
+  switch (vatId.status) {
+    case "valid_format":
+      return true;
+    case "not_eu":
+      return euMemberState(vatCountryOf(country)) === undefined && /\d/.test(vatId.vatId ?? "");
+    case "invalid_format":
+    case "unreadable":
+      return false;
+  }
+}
+
 /** The code VAT law uses for Northern Ireland (the prefix of its VAT IDs). */
 const NORTHERN_IRELAND = "XI";
 

@@ -111,6 +111,13 @@ const routes: FakeRoute[] = [
     15,
   ),
   ...contactRoutes(2003, { name: "Ohne Land AG", vatNumber: null }),
+  // An Austrian private person and an Austrian company whose VAT ID field holds no VAT ID.
+  ...contactRoutes(
+    2004,
+    { name: null, surename: "Max", familyname: "Muster", vatNumber: "n/a" },
+    14,
+  ),
+  ...contactRoutes(2005, { name: "Grazer Muster KG", vatNumber: "-" }, 14),
   {
     path: "/Contact/4040",
     response: { error: new SevdeskError({ kind: "not_found", message: "sevDesk found nothing." }) },
@@ -330,6 +337,39 @@ describe("sevdesk_tax_rule_suggest", () => {
       type: "business",
     });
     expect(services.data.suggestions.map((outcome) => outcome.taxRuleId)).toEqual([17]);
+  });
+
+  it("counts a VAT ID as a sign of a business only in a valid format", async () => {
+    // A private person whose contact holds "n/a" as VAT ID stays a consumer.
+    const person = await suggest({ contactId: 2004, supply: "goods" });
+    expect(person.data.customer).toMatchObject({
+      country: "AT",
+      type: "consumer",
+      typeFrom: "contact_person",
+    });
+    expect(person.data.suggestions.map((outcome) => outcome.taxRuleId)).toEqual([18, 1]);
+    expect(person.data.vatId).toEqual({ status: "unreadable" });
+    // An organisation stays a business by its kind.
+    const company = await suggest({ contactId: 2005, supply: "services" });
+    expect(company.data.customer).toMatchObject({
+      type: "business",
+      typeFrom: "contact_organisation",
+    });
+    // Without a contact, text that is no VAT ID tells nothing: the call has to say.
+    for (const vatId of ["n/a", "ATU1234"]) {
+      const refused = await rejection({ supply: "goods", country: "AT", vatId });
+      expect(refused.kind, vatId).toBe("validation");
+      expect(refused.message, vatId).toBe(
+        "The VAT ID given is not in a valid format, so it does not show that the customer is a " +
+          "business. Say whether the customer buys as a business or a consumer: pass " +
+          "customerType (business or consumer), or contactId.",
+      );
+    }
+    // Outside the EU another country's number counts; a word without digits does not.
+    const swiss = await suggest({ supply: "services", country: "CH", vatId: "CHE-123.456.789" });
+    expect(swiss.data.customer).toMatchObject({ type: "business", typeFrom: "vat_id" });
+    const none = await rejection({ supply: "services", country: "CH", vatId: "none" });
+    expect(none.message).toContain("not in a valid format");
   });
 
   it("uses rule 11 on a Kleinunternehmer account and says when the regime is unknown", async () => {

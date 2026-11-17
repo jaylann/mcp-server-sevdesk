@@ -5,9 +5,11 @@
  * own values win, checks the VAT ID's format offline and returns the decision of
  * `sales-tax-rule.ts` as a DTO. Reads only; never calls VIES or any other host.
  *
- * The customer type, when the call does not say: business when the contact has a VAT ID or is an
- * organisation (sevDesk's rule: `name` set), consumer for a person without one; without a contact,
- * business when a VAT ID is given. The result says where each fact came from.
+ * The customer type, when the call does not say: business when the contact's VAT ID shows it
+ * (`vatIdShowsBusiness`: a valid format, or outside the EU another country's number) or the
+ * contact is an organisation (sevDesk's rule: `name` set), else consumer; without a contact,
+ * business when the VAT ID given shows it. "n/a", "-" or a number in the wrong format is no
+ * evidence. The result says where each fact came from.
  */
 import { z } from "zod";
 
@@ -31,8 +33,9 @@ import {
   SUPPLY_KINDS,
   type SupplyKind,
   taxRuleMismatchWarning,
+  vatIdShowsBusiness,
 } from "./sales-tax-rule.js";
-import { checkVatIdFormat, vatIdFormatSchema } from "./vat-id.js";
+import { checkVatIdFormat, type VatIdFormatCheck, vatIdFormatSchema } from "./vat-id.js";
 
 const outcomeSchema = z.object({
   taxRuleId: z.number().int().describe("sevDesk tax rule (Steuerregel) id for taxRuleId."),
@@ -89,7 +92,9 @@ export const taxRuleSuggestionSchema = z.object({
     type: z.enum(CUSTOMER_TYPES).describe("business (B2B) or consumer (B2C)."),
     typeFrom: z
       .enum(TYPE_SOURCES)
-      .describe("input, vat_id (a VAT ID was given), or the contact's VAT ID, kind."),
+      .describe(
+        "input, vat_id (a VAT ID in a valid format was given), or the contact's VAT ID, kind.",
+      ),
   }),
   supply: z.enum(SUPPLY_KINDS),
   regime: z
@@ -154,16 +159,20 @@ export async function suggestTaxRule(
   }
 
   const vatIdText = input.vatId ?? contact?.contact.vatNumber;
-  const typed = customerTypeOf(input, contact?.contact, vatIdText);
+  const vatId = vatIdText === undefined ? undefined : checkVatIdFormat(vatIdText);
+  const typed = customerTypeOf(input, contact?.contact, vatId, country);
   if (typed === undefined) {
     throw new SevdeskError({
       kind: "validation",
       message:
+        (vatId === undefined
+          ? ""
+          : "The VAT ID given is not in a valid format, so it does not show that the customer " +
+            "is a business. ") +
         "Say whether the customer buys as a business or a consumer: pass customerType " +
         "(business or consumer), or contactId.",
     });
   }
-  const vatId = vatIdText === undefined ? undefined : checkVatIdFormat(vatIdText);
   const decision = decideSalesTaxRule({
     regime,
     country,
@@ -210,8 +219,8 @@ export function invoiceTaxRuleHint(
   return taxRuleMismatchWarning(ruleId, {
     regime,
     country,
-    customerType: contactCustomerType(contact).type,
-    vatId: contact.vatNumber === undefined ? undefined : checkVatIdFormat(contact.vatNumber),
+    customerType: contactCustomerType(contact, country).type,
+    vatId: contactVatId(contact),
   });
 }
 
@@ -222,26 +231,45 @@ function isoCountry(value: string | undefined): string | undefined {
   return code === "EL" ? "GR" : code;
 }
 
-/** The customer type and where it came from; undefined when nothing tells it. */
+interface TypedCustomer {
+  readonly type: CustomerType;
+  readonly from: TypeSource;
+}
+
+/**
+ * The customer type and where it came from; undefined when nothing tells it. `vatId` is the VAT
+ * ID the decision uses (the call's, else the contact's); `country` is the customer's ISO code.
+ */
 function customerTypeOf(
   input: TaxRuleHelperInput,
   contact: ContactDto | undefined,
-  vatIdText: string | undefined,
-): { readonly type: CustomerType; readonly from: TypeSource } | undefined {
+  vatId: VatIdFormatCheck | undefined,
+  country: string,
+): TypedCustomer | undefined {
   if (input.customerType !== undefined) return { type: input.customerType, from: "input" };
-  if (contact !== undefined) return contactCustomerType(contact);
-  return vatIdText === undefined ? undefined : { type: "business", from: "vat_id" };
+  if (contact !== undefined) return contactCustomerType(contact, country);
+  return vatId !== undefined && vatIdShowsBusiness(vatId, country)
+    ? { type: "business", from: "vat_id" }
+    : undefined;
 }
 
-/** Business with a VAT ID or as an organisation, else consumer (see the module doc). */
-function contactCustomerType(contact: ContactDto): {
-  readonly type: CustomerType;
-  readonly from: TypeSource;
-} {
-  if (contact.vatNumber !== undefined) return { type: "business", from: "contact_vat_id" };
+/**
+ * Business when the contact's VAT ID shows it or the contact is an organisation, else consumer
+ * (see the module doc).
+ */
+function contactCustomerType(contact: ContactDto, country: string): TypedCustomer {
+  const vatId = contactVatId(contact);
+  if (vatId !== undefined && vatIdShowsBusiness(vatId, country)) {
+    return { type: "business", from: "contact_vat_id" };
+  }
   return contact.kind === "organisation"
     ? { type: "business", from: "contact_organisation" }
     : { type: "consumer", from: "contact_person" };
+}
+
+/** The format check of the contact's VAT ID, if it has one. */
+function contactVatId(contact: ContactDto): VatIdFormatCheck | undefined {
+  return contact.vatNumber === undefined ? undefined : checkVatIdFormat(contact.vatNumber);
 }
 
 function outcomeDto(outcome: RuleOutcome): z.input<typeof outcomeSchema> {
