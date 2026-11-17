@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import { TAG_OBJECT_NAMES } from "../../../../src/domain/tags.js";
 import type { Tier } from "../../../../src/safety/tiers.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
+import { minimumWriteTier } from "../../../../src/sevdesk/paths.js";
 import { DOCUMENT_TAG_TOOLS } from "../../../../src/tools/documents/index.js";
 import { documentTagTool as tool } from "../../../../src/tools/documents/tag-tool.js";
 import { selectTools } from "../../../../src/tools/registry.js";
@@ -51,6 +53,14 @@ describe("sevdesk_document_tag: metadata and registration", () => {
       },
     });
     expect(tool.locks?.(tool.input.parse(add))).toEqual([ACCOUNT_TAGS]);
+  });
+
+  it("sends requests the endpoint rules allow at the write tier it declares (minimumWriteTier)", () => {
+    for (const objectName of Object.values(TAG_OBJECT_NAMES)) {
+      const body = { name: "Projekt Y", object: { id: 1001, objectName } };
+      expect(minimumWriteTier("/Tag/Factory/create", undefined, body), objectName).toBe("write");
+    }
+    expect(minimumWriteTier("/TagRelation/8101", undefined, undefined)).toBe("write");
   });
 
   it("needs one of the four document toolsets, and the write tier for the write tool", () => {
