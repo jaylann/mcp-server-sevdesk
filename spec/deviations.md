@@ -4134,8 +4134,9 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   (#91)
 - **Test:** `test/contract/recorded-gaps-documents.test.ts` ("lists only templates, active ones
   (status 200) included, with total and paging"), `test/regressions/recurring-template-guards.test.ts`
-  (no tool finalizes, sends, books, cancels, enshrines, resets, updates, deletes, reminds of or
-  credits a template, or books a bank transaction to it, at status 100, 200 or 50),
+  (no tool finalizes, sends, books, cancels, enshrines, resets, updates, sets the layout of,
+  deletes, reminds of or credits a template, or books a bank transaction to it, at status 100, 200
+  or 50),
   `test/unit/domain/recurring/payload.test.ts` ("saves with the recorded status of a new template
   (D-112)"), `test/unit/domain/lifecycle/transitions.test.ts` (`assertDeletable`, "refuses
   recurring invoice templates, active or not"), `test/regressions/delete-only-drafts.test.ts`

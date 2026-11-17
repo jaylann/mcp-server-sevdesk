@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { transactionBookTool } from "../../src/tools/banking/transaction-book.js";
 import { creditNoteFromInvoiceTool } from "../../src/tools/credit-notes/from-invoice.js";
 import { documentDeleteDraftTool } from "../../src/tools/documents/delete-draft-tool.js";
+import { documentSetLayoutTool } from "../../src/tools/documents/layout-tool.js";
 import { invoiceUpdateDraftTool } from "../../src/tools/invoices/draft-update.js";
 import { INVOICE_LIFECYCLE_TOOLS } from "../../src/tools/invoices/lifecycle-tools.js";
 import { invoiceCreateRecurringTool } from "../../src/tools/invoices/recurring-create.js";
@@ -60,6 +61,7 @@ const TOOLS = [
   ...INVOICE_LIFECYCLE_TOOLS,
   invoiceUpdateDraftTool,
   documentDeleteDraftTool,
+  documentSetLayoutTool,
   invoiceReminderTool,
   creditNoteFromInvoiceTool,
   transactionBookTool,
@@ -122,6 +124,11 @@ const ATTEMPTS: readonly (readonly [string, Record<string, unknown>, string])[] 
     "sevdesk_document_delete_draft",
     { kind: "invoice", id: 2301 },
     "recurring invoice template (WKR, Abo-Rechnung), not a draft",
+  ],
+  [
+    "sevdesk_document_set_layout",
+    { kind: "invoice", id: 2301, language: "en_US" },
+    "is a recurring invoice template (WKR, Abo-Rechnung); its layout is not set here.",
   ],
   ["sevdesk_invoice_create_reminder", { invoiceId: 2301 }, derivedRefusal("a reminder")],
   ["sevdesk_credit_note_create_from_invoice", { invoiceId: 2301 }, derivedRefusal("a credit note")],
