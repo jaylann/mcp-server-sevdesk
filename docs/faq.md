@@ -138,6 +138,19 @@ suppliers bill every month, quarter or year and names the periods without a bill
 means a lost receipt. Both read your records only and change nothing. What they flag and what they
 leave out on purpose is in [Reports and exports](guides/evaluations.md#audits).
 
+### Can it tell which receipts in my folder were never booked?
+
+Yes, when the server may read that folder (`SEVDESK_FILE_DIRS`: not on a remote server with
+OAuth; in bearer mode only for folders on the server). `sevdesk_receipt_folder_check` compares
+the SHA-256 checksums of the PDF, PNG, JPEG and XML files in the folder with those of the receipt
+files attached to your vouchers, for a month, quarter or year. A file no voucher carries was
+probably never booked; it is a hint, not proof, because the
+same receipt as another file (a scan, a photo from the app) has another checksum, and a receipt
+that sevDesk's recognition created from an upload has no checksum at all (the result counts those
+and names any of the same size as a weak hint). The check reads no file content into the
+conversation and uploads nothing
+([Reports and exports](guides/evaluations.md#receipts-in-a-folder-that-were-never-booked)).
+
 ### Does it support sevDesk in Austria?
 
 Not in 1.0. Tax rules, the VAT summary (UStVA boxes), the e-invoice checks and the bookkeeping

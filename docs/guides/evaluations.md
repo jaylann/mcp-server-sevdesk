@@ -11,18 +11,19 @@ report here is `read`; only the DATEV export needs `write` ([Permissions](../per
 
 ## Which report answers what
 
-| Question                                      | Tool                                                                 | Tier    |
-| --------------------------------------------- | -------------------------------------------------------------------- | ------- |
-| Revenue per month, costs per supplier, totals | [`sevdesk_records_summarize`](../tools.md#sevdesk_records_summarize) | `read`  |
-| Who owes us what, and since when              | [`sevdesk_receivables_aging`](../tools.md#sevdesk_receivables_aging) | `read`  |
-| What we owe, and when it is due               | [`sevdesk_payables_aging`](../tools.md#sevdesk_payables_aging)       | `read`  |
-| How much money we have, and will have         | [`sevdesk_cash_position`](../tools.md#sevdesk_cash_position)         | `read`  |
-| What changed since a date                     | [`sevdesk_changed_since`](../tools.md#sevdesk_changed_since)         | `read`  |
-| What the VAT return will roughly say          | [`sevdesk_vat_summary`](../tools.md#sevdesk_vat_summary)             | `read`  |
-| Profit for a month, quarter or year           | [`sevdesk_profit_and_loss`](../tools.md#sevdesk_profit_and_loss)     | `read`  |
-| What looks wrong: VAT, §13b, duplicates, gaps | [`sevdesk_records_audit`](../tools.md#sevdesk_records_audit)         | `read`  |
-| A CSV file for Excel or the tax adviser       | [`sevdesk_csv_export`](../tools.md#sevdesk_csv_export)               | `read`  |
-| The DATEV booking data for the tax adviser    | [`sevdesk_datev_export`](../tools.md#sevdesk_datev_export)           | `write` |
+| Question                                      | Tool                                                                       | Tier    |
+| --------------------------------------------- | -------------------------------------------------------------------------- | ------- |
+| Revenue per month, costs per supplier, totals | [`sevdesk_records_summarize`](../tools.md#sevdesk_records_summarize)       | `read`  |
+| Who owes us what, and since when              | [`sevdesk_receivables_aging`](../tools.md#sevdesk_receivables_aging)       | `read`  |
+| What we owe, and when it is due               | [`sevdesk_payables_aging`](../tools.md#sevdesk_payables_aging)             | `read`  |
+| How much money we have, and will have         | [`sevdesk_cash_position`](../tools.md#sevdesk_cash_position)               | `read`  |
+| What changed since a date                     | [`sevdesk_changed_since`](../tools.md#sevdesk_changed_since)               | `read`  |
+| What the VAT return will roughly say          | [`sevdesk_vat_summary`](../tools.md#sevdesk_vat_summary)                   | `read`  |
+| Profit for a month, quarter or year           | [`sevdesk_profit_and_loss`](../tools.md#sevdesk_profit_and_loss)           | `read`  |
+| What looks wrong: VAT, §13b, duplicates, gaps | [`sevdesk_records_audit`](../tools.md#sevdesk_records_audit)               | `read`  |
+| Which receipts in my folder are not booked    | [`sevdesk_receipt_folder_check`](../tools.md#sevdesk_receipt_folder_check) | `read`  |
+| A CSV file for Excel or the tax adviser       | [`sevdesk_csv_export`](../tools.md#sevdesk_csv_export)                     | `read`  |
+| The DATEV booking data for the tax adviser    | [`sevdesk_datev_export`](../tools.md#sevdesk_datev_export)                 | `write` |
 
 Two prompts combine them: [`vat_precheck`](../tools.md#vat_precheck) before the
 Umsatzsteuer-Voranmeldung, and [`month_end_close`](../tools.md#month_end_close) for a month-end
@@ -173,9 +174,12 @@ a cancellation invoice. To find those drafts the check lists every invoice and c
 the period (one request per 1,000): sevDesk's lists declare a status filter, but no recording shows
 that it returns only drafts, so it is not used.
 
-To confirm a same-amount pair the check reads the receipt checksum of its vouchers (two reads per
-voucher), for at most 40 vouchers; the notes say when it stopped there. Different checksums prove
-nothing, since the same paper scanned twice gives two files, so such a pair stays a `check`.
+To confirm a same-amount pair the check compares the SHA-256 checksums of the vouchers' receipt
+files, which sevDesk sends with the voucher list (no extra read per voucher). sevDesk stores no
+checksum for some receipts (one its recognition created from an uploaded file has none), so
+`voucher_receipt_twice` can only be found for receipts with one. Different checksums,
+or a receipt without one, prove nothing, since the same paper scanned twice gives two files, so
+such a pair stays a `check`.
 
 ### Missing bills of regular suppliers (`recurring_gaps`)
 
@@ -213,11 +217,64 @@ has more vouchers in that time than the check can read.
 
 The checks `vat` and `reverse_charge` read the period's documents and, where the rates decide,
 their positions; `vat` also reads the contact and address lists once each. `duplicates` and
-`recurring_gaps` read document lists only, up to 10,000 rows (and `duplicates` the receipt
-checksums above); `recurring_gaps` always reads about three years, whatever the period. Like the
-other reports they say what they left out (`coverage.truncated`, `coverage.documentsLeftOut`), and
-over HTTP they stop reading document by document after about 90 seconds: ask for a month when a
-quarter is too much (this does not shorten what `recurring_gaps` reads).
+`recurring_gaps` read document lists only, up to 10,000 rows; `recurring_gaps` always reads about
+three years, whatever the period. Like the other reports they say what they left out
+(`coverage.truncated`, `coverage.documentsLeftOut`), and over HTTP they stop reading document by
+document after about 90 seconds: ask for a month when a quarter is too much (this does not shorten
+what `recurring_gaps` reads).
+
+### Receipts in a folder that were never booked
+
+> Which receipts in my folder for March 2026 are not booked in sevDesk?
+
+[`sevdesk_receipt_folder_check`](../tools.md#sevdesk_receipt_folder_check) compares the receipt
+files of a folder on your computer with the receipt files attached to the vouchers in sevDesk. It
+is a tool of its own, because it exists only where the server can read local folders: it is
+offered only with `SEVDESK_FILE_DIRS` ([Configuration](../configuration.md)), so not on a remote
+server with OAuth, where an upload carries a single file, and in bearer mode only for folders on
+the server ([Files over HTTP](../remote/files.md)).
+
+It reads only inside `SEVDESK_FILE_DIRS`: the folder you name, or all of them, with subfolders up
+to three levels deep only when you ask. It takes PDF, PNG, JPEG and XML files (recognized by their
+content) of up to 20 MB, at most 500 files and 1 GB per call, and computes each file's SHA-256
+checksum. Hidden files, symbolic links and other file types are skipped and counted; when a limit
+is reached the result says that the folder was cut. No file content leaves the server and nothing
+is uploaded: the result holds paths, sizes, modification dates and checksums. sevDesk stores a
+checksum for receipts uploaded through the API's upload (not for those its recognition created),
+and the voucher list carries it, so the voucher list of the period, 62 days before and after it,
+drafts included, is all the check reads from sevDesk.
+
+| Code                         | Means                                                                                        |
+| ---------------------------- | -------------------------------------------------------------------------------------------- |
+| `receipt_file_booked_twice`  | Two or more booked vouchers carry the file (`warning`)                                       |
+| `receipt_file_not_booked`    | No voucher read carries the file: probably never booked (`check`)                            |
+| `receipt_file_before_period` | The same, but the file was last changed before the vouchers read: an older receipt (`check`) |
+| `receipt_file_only_on_draft` | Only a draft carries the file: not booked yet (`check`)                                      |
+| `receipt_file_draft_repeats` | A booked voucher and a draft carry the file: delete the draft rather than book it (`check`)  |
+
+Like the audits, every result says in English and German that its findings are hints, not tax
+advice (`caveat`), and what a match proves (`matching`).
+
+Every file that matches is listed with its vouchers and their status (`matched`). A match proves
+that exactly this file is attached to that voucher. No match is a hint, not proof: the same
+receipt as another file (a scan or photo of the paper, a copy converted or compressed by sevDesk
+or another program, a receipt that reached sevDesk by e-mail or through its app) has another
+checksum, and a voucher dated outside the range read is not compared. Amounts, dates and
+suppliers are not compared, since that would need the file's content. Two weak hints help: the
+day the file was last changed (`modified`, not the receipt date), and vouchers whose document
+number appears in the file name (`possibleVouchers`). An unmatched file last changed after the
+range read stays `receipt_file_not_booked`, since a receipt of the period may have been saved
+late; a note counts such files, which may belong to a later period. To book a file that is
+missing, create a draft with
+[`sevdesk_voucher_create_draft`](../tools.md#sevdesk_voucher_create_draft), the file as `file` and
+its `sha256` as `fileSha256`, so the draft gets exactly the bytes the check saw (needs `write`).
+
+Not every receipt in sevDesk has a checksum: one that sevDesk's recognition created from an
+uploaded file has none, so no file can ever match it. The result counts such receipts in the range
+read (`withoutChecksum`, with a note in English and German). While there are any, an unmatched
+file is reported as having no receipt with its checksum, not as unbooked, and a receipt without a
+checksum whose size in bytes and extension equal the file's is named as a third weak hint
+(`sameSizeVouchers`), never as a match.
 
 ## How far you can rely on them
 

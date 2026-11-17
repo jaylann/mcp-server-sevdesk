@@ -23,11 +23,15 @@ export interface VoucherRows {
   readonly listed: HeaderList;
 }
 
-/** Lists the vouchers dated `from`–`to` (document date), drafts included. */
+/**
+ * Lists the vouchers dated `from`–`to` (document date), drafts included; with `receipts`, each
+ * with its receipt file's checksum (`embed=document`, see `HeaderListParams.voucherReceipts`).
+ */
 export async function listVoucherRows(
   context: AuditCheckContext,
   from: string,
   to: string,
+  options: { readonly receipts?: boolean | undefined } = {},
 ): Promise<VoucherRows> {
   const listed = await listDocumentHeaders(
     context.client,
@@ -36,6 +40,7 @@ export async function listVoucherRows(
       to,
       kinds: ["voucher"],
       keepDrafts: true,
+      voucherReceipts: options.receipts,
       maxRows: context.limits?.maxRows,
       today: context.today,
     },

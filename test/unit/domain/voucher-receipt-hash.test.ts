@@ -1,12 +1,12 @@
 /**
- * `fetchVoucherReceiptHash`: the SHA-256 of a voucher's receipt file from `GET /Voucher/{id}` and
- * `GET /Document/{id}` (spec/deviations.md D-100, PR #104), built on the recorded `GET /Document`
- * row (2026-11-10) and the community voucher row.
+ * `voucherReceiptOf`: the receipt a voucher row names and, with `embed=document`, the SHA-256 of
+ * its file (`contentHash`, spec/deviations.md D-100), built on the recorded
+ * `GET /Document` row (2026-11-10) and the community voucher row.
  */
 import { describe, expect, it } from "vitest";
 
-import { fetchVoucherReceiptHash } from "../../../src/domain/document-files.js";
-import { type FakeRoute, FakeSevdeskClient, loadFixture } from "../../helpers/fake-client.js";
+import { voucherReceiptOf } from "../../../src/domain/document-files.js";
+import { loadFixture } from "../../helpers/fake-client.js";
 import { voucher } from "../tools/reports/records.js";
 
 type Raw = Record<string, unknown>;
@@ -22,39 +22,72 @@ const DOCUMENT = (() => {
 
 const HASH = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
 
-function routes(document: unknown, contentHash?: unknown): FakeRoute[] {
-  return [
-    { path: "/Voucher/2001", response: { body: { objects: [voucher({ document })] } } },
-    {
-      path: "/Document/77",
-      response: { body: { objects: [{ ...structuredClone(DOCUMENT), id: "77", contentHash }] } },
-    },
-  ];
+/** The recorded row, its scrubbed `extension` set to what sevDesk stores (`pdf`). */
+function embedded(contentHash: unknown, extra: Raw = {}): Raw {
+  return { ...structuredClone(DOCUMENT), id: "77", extension: "pdf", contentHash, ...extra };
 }
 
-describe("fetchVoucherReceiptHash", () => {
-  it("reads the attached document's checksum, lower case, with two plain reads", async () => {
-    const client = new FakeSevdeskClient(
-      routes({ id: "77", objectName: "Document" }, HASH.toUpperCase()),
-    );
-
-    await expect(fetchVoucherReceiptHash(client, 2001)).resolves.toBe(HASH);
-    expect(client.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
-      "GET /Voucher/2001",
-      "GET /Document/77",
-    ]);
-    expect(client.writes()).toEqual([]);
+describe("voucherReceiptOf", () => {
+  it("reads the embedded document's checksum, lower case, with its size and extension", () => {
+    expect(voucherReceiptOf(voucher({ document: embedded(HASH.toUpperCase()) }))).toEqual({
+      documentId: 77,
+      hash: HASH,
+      size: 25772,
+      extension: "pdf",
+      embedded: true,
+    });
   });
 
-  it("has none without a receipt, for a file sevDesk rendered, or for a value that is no SHA-256", async () => {
-    const none = new FakeSevdeskClient(routes(null));
-    await expect(fetchVoucherReceiptHash(none, 2001)).resolves.toBeUndefined();
-    expect(none.calls).toHaveLength(1);
+  it("knows the document but no checksum from a plain reference (no embed)", () => {
+    expect(voucherReceiptOf(voucher({ document: { id: "77", objectName: "Document" } }))).toEqual({
+      documentId: 77,
+      hash: undefined,
+      size: undefined,
+      extension: undefined,
+      embedded: false,
+    });
+  });
 
-    const ref = { id: "77", objectName: "Document" };
-    for (const value of [null, "", "not-a-hash", HASH.slice(1)]) {
-      const client = new FakeSevdeskClient(routes(ref, value));
-      await expect(fetchVoucherReceiptHash(client, 2001)).resolves.toBeUndefined();
+  it("has no checksum for a rendered file, a recognized receipt or a value that is no SHA-256", () => {
+    for (const value of [null, "", "not-a-hash", HASH.slice(1), 42]) {
+      expect(voucherReceiptOf(voucher({ document: embedded(value) }))).toMatchObject({
+        documentId: 77,
+        hash: undefined,
+        embedded: true,
+      });
     }
+    // createVoucherFromFile: no checksum, but the bytes sent and the extension (2026-11-17).
+    const recognized = embedded(null, { filesize: "70", extension: "PNG", mimeType: null });
+    expect(voucherReceiptOf(voucher({ document: recognized }))).toEqual({
+      documentId: 77,
+      hash: undefined,
+      size: 70,
+      extension: "png",
+      embedded: true,
+    });
+  });
+
+  it("leaves out a size or extension that is not one", () => {
+    for (const [filesize, extension] of [
+      ["-1", ".pdf"],
+      ["1.5", "Muster-Text 19"],
+      [null, null],
+      ["", "toolongext"],
+    ]) {
+      expect(
+        voucherReceiptOf(voucher({ document: embedded(HASH, { filesize, extension }) })),
+      ).toMatchObject({ size: undefined, extension: undefined });
+    }
+    expect(voucherReceiptOf(voucher({ document: embedded(HASH, { filesize: 1435 }) }))?.size).toBe(
+      1435,
+    );
+  });
+
+  it("has no receipt without a document, and never fails the row", () => {
+    expect(voucherReceiptOf(voucher({ document: null }))).toBeUndefined();
+    expect(voucherReceiptOf(voucher({}))).toBeUndefined();
+    expect(voucherReceiptOf(voucher({ document: { id: "x" } }))).toBeUndefined();
+    expect(voucherReceiptOf("not a row")).toBeUndefined();
+    expect(voucherReceiptOf(null)).toBeUndefined();
   });
 });

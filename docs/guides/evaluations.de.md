@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/evaluations.md sha256:e9cc624635a9 -->
+<!-- translated-from: docs/guides/evaluations.md sha256:0375c83687ae -->
 
 # Auswertungen und Exporte
 
@@ -15,18 +15,19 @@ braucht `write` ([Berechtigungen](../permissions.de.md#stufen)).
 
 ## Welche Auswertung was beantwortet
 
-| Frage                                                       | Werkzeug                                                             | Stufe   |
-| ----------------------------------------------------------- | -------------------------------------------------------------------- | ------- |
-| Umsatz je Monat, Kosten je Lieferant, Summen                | [`sevdesk_records_summarize`](../tools.md#sevdesk_records_summarize) | `read`  |
-| Wer uns was schuldet, und seit wann                         | [`sevdesk_receivables_aging`](../tools.md#sevdesk_receivables_aging) | `read`  |
-| Was wir schulden, und wann es fällig ist                    | [`sevdesk_payables_aging`](../tools.md#sevdesk_payables_aging)       | `read`  |
-| Wie viel Geld wir haben und haben werden                    | [`sevdesk_cash_position`](../tools.md#sevdesk_cash_position)         | `read`  |
-| Was sich seit einem Datum geändert hat                      | [`sevdesk_changed_since`](../tools.md#sevdesk_changed_since)         | `read`  |
-| Was ungefähr in der Umsatzsteuer-Voranmeldung stehen wird   | [`sevdesk_vat_summary`](../tools.md#sevdesk_vat_summary)             | `read`  |
-| Gewinn für einen Monat, ein Quartal oder ein Jahr           | [`sevdesk_profit_and_loss`](../tools.md#sevdesk_profit_and_loss)     | `read`  |
-| Was falsch aussieht: Umsatzsteuer, § 13b, Dubletten, Lücken | [`sevdesk_records_audit`](../tools.md#sevdesk_records_audit)         | `read`  |
-| Eine CSV-Datei für Excel oder die Steuerberatung            | [`sevdesk_csv_export`](../tools.md#sevdesk_csv_export)               | `read`  |
-| Die DATEV-Buchungsdaten für die Steuerberatung              | [`sevdesk_datev_export`](../tools.md#sevdesk_datev_export)           | `write` |
+| Frage                                                       | Werkzeug                                                                   | Stufe   |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------- | ------- |
+| Umsatz je Monat, Kosten je Lieferant, Summen                | [`sevdesk_records_summarize`](../tools.md#sevdesk_records_summarize)       | `read`  |
+| Wer uns was schuldet, und seit wann                         | [`sevdesk_receivables_aging`](../tools.md#sevdesk_receivables_aging)       | `read`  |
+| Was wir schulden, und wann es fällig ist                    | [`sevdesk_payables_aging`](../tools.md#sevdesk_payables_aging)             | `read`  |
+| Wie viel Geld wir haben und haben werden                    | [`sevdesk_cash_position`](../tools.md#sevdesk_cash_position)               | `read`  |
+| Was sich seit einem Datum geändert hat                      | [`sevdesk_changed_since`](../tools.md#sevdesk_changed_since)               | `read`  |
+| Was ungefähr in der Umsatzsteuer-Voranmeldung stehen wird   | [`sevdesk_vat_summary`](../tools.md#sevdesk_vat_summary)                   | `read`  |
+| Gewinn für einen Monat, ein Quartal oder ein Jahr           | [`sevdesk_profit_and_loss`](../tools.md#sevdesk_profit_and_loss)           | `read`  |
+| Was falsch aussieht: Umsatzsteuer, § 13b, Dubletten, Lücken | [`sevdesk_records_audit`](../tools.md#sevdesk_records_audit)               | `read`  |
+| Welche Belege in meinem Ordner nicht gebucht sind           | [`sevdesk_receipt_folder_check`](../tools.md#sevdesk_receipt_folder_check) | `read`  |
+| Eine CSV-Datei für Excel oder die Steuerberatung            | [`sevdesk_csv_export`](../tools.md#sevdesk_csv_export)                     | `read`  |
+| Die DATEV-Buchungsdaten für die Steuerberatung              | [`sevdesk_datev_export`](../tools.md#sevdesk_datev_export)                 | `write` |
 
 Zwei Prompts kombinieren sie: [`vat_precheck`](../tools.md#vat_precheck) vor der
 Umsatzsteuer-Voranmeldung und [`month_end_close`](../tools.md#month_end_close) für den
@@ -187,10 +188,13 @@ im Zeitraum (ein Abruf je 1.000): Die Listen von sevDesk haben laut Spezifikatio
 Statusfilter, aber keine Aufzeichnung zeigt, dass er nur Entwürfe liefert, deshalb wird er nicht
 genutzt.
 
-Um ein Paar mit gleichem Betrag zu bestätigen, liest die Prüfung die Prüfsumme der Belegdateien
-seiner Belege (zwei Abrufe je Beleg), für höchstens 40 Belege; die Hinweise sagen, wenn sie dort
-aufgehört hat. Verschiedene Prüfsummen beweisen nichts, denn dasselbe Papier zweimal gescannt ergibt
-zwei Dateien; ein solches Paar bleibt ein `check`.
+Um ein Paar mit gleichem Betrag zu bestätigen, vergleicht die Prüfung die SHA-256-Prüfsummen der
+Belegdateien seiner Belege, die sevDesk mit der Belegliste schickt (kein zusätzlicher Abruf je
+Beleg). Für manche Belegdateien speichert sevDesk keine Prüfsumme (eine, die seine Belegerkennung
+aus einer hochgeladenen Datei angelegt hat, hat keine), daher kann `voucher_receipt_twice` nur für
+Belegdateien mit Prüfsumme gefunden werden. Verschiedene Prüfsummen oder eine Belegdatei ohne
+Prüfsumme beweisen nichts, denn dasselbe Papier zweimal gescannt ergibt zwei Dateien; ein solches
+Paar bleibt ein `check`.
 
 ### Fehlende Rechnungen regelmäßiger Lieferanten (`recurring_gaps`)
 
@@ -231,12 +235,68 @@ immer etwa drei Jahre, und das Konto hat in dieser Zeit mehr Belege, als die Pr�
 
 Die Prüfungen `vat` und `reverse_charge` lesen die Dokumente des Zeitraums und, wo die Steuersätze
 entscheiden, deren Positionen; `vat` liest außerdem die Kontakt- und die Adressliste je einmal.
-`duplicates` und `recurring_gaps` lesen nur Dokumentlisten, bis zu 10.000 Zeilen (und `duplicates`
-die oben genannten Prüfsummen); `recurring_gaps` liest immer etwa drei Jahre, welcher Zeitraum es
-auch ist. Wie die anderen Auswertungen sagen sie, was sie ausgelassen haben (`coverage.truncated`,
-`coverage.documentsLeftOut`), und über HTTP hören sie nach etwa 90 Sekunden auf, Dokument für
-Dokument zu lesen: Frag nach einem Monat, wenn ein Quartal zu viel ist (was `recurring_gaps` liest,
-wird dadurch nicht kürzer).
+`duplicates` und `recurring_gaps` lesen nur Dokumentlisten, bis zu 10.000 Zeilen; `recurring_gaps`
+liest immer etwa drei Jahre, welcher Zeitraum es auch ist. Wie die anderen Auswertungen sagen sie,
+was sie ausgelassen haben (`coverage.truncated`, `coverage.documentsLeftOut`), und über HTTP hören
+sie nach etwa 90 Sekunden auf, Dokument für Dokument zu lesen: Frag nach einem Monat, wenn ein
+Quartal zu viel ist (was `recurring_gaps` liest, wird dadurch nicht kürzer).
+
+### Belege im Ordner, die nie gebucht wurden
+
+> Welche Belege in meinem Ordner für März 2026 sind nicht in sevDesk gebucht?
+
+[`sevdesk_receipt_folder_check`](../tools.md#sevdesk_receipt_folder_check) vergleicht die
+Belegdateien eines Ordners auf deinem Rechner mit den Belegdateien an den Belegen in sevDesk. Es
+ist ein eigenes Werkzeug, weil es nur dort existiert, wo der Server lokale Ordner lesen kann: Es
+wird nur mit `SEVDESK_FILE_DIRS` angeboten ([Konfiguration](../configuration.de.md)), also nicht
+auf einem entfernten Server mit OAuth, wo ein Upload eine einzelne Datei bringt, und im
+Bearer-Modus nur für Ordner auf dem Server ([Dateien über HTTP](../remote/files.de.md)).
+
+Es liest nur innerhalb von `SEVDESK_FILE_DIRS`: den Ordner, den du nennst, oder alle, Unterordner
+bis drei Ebenen tief nur auf Wunsch. Es nimmt PDF-, PNG-, JPEG- und XML-Dateien (am Inhalt
+erkannt) bis 20 MB, höchstens 500 Dateien und 1 GB je Aufruf, und berechnet die SHA-256-Prüfsumme
+jeder Datei. Versteckte Dateien, symbolische Links und andere Dateitypen werden übersprungen und
+gezählt; ist eine Grenze erreicht, sagt das Ergebnis, dass der Ordner abgeschnitten wurde. Kein
+Dateiinhalt verlässt den Server und nichts wird hochgeladen: Das Ergebnis enthält Pfade, Größen,
+Änderungsdaten und Prüfsummen. sevDesk speichert eine Prüfsumme für Belegdateien, die über den
+Upload der API hochgeladen wurden (nicht für die, die seine Belegerkennung angelegt hat), und die
+Belegliste enthält sie; also liest die Prüfung aus sevDesk nur die Belegliste des Zeitraums, 62 Tage
+davor und danach, Entwürfe eingeschlossen.
+
+| Code                         | Bedeutet                                                                                             |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `receipt_file_booked_twice`  | Zwei oder mehr gebuchte Belege tragen die Datei (`warning`)                                          |
+| `receipt_file_not_booked`    | Kein gelesener Beleg trägt die Datei: wohl nie gebucht (`check`)                                     |
+| `receipt_file_before_period` | Ebenso, aber die Datei wurde vor den gelesenen Belegen zuletzt geändert: ein älterer Beleg (`check`) |
+| `receipt_file_only_on_draft` | Nur ein Entwurf trägt die Datei: noch nicht gebucht (`check`)                                        |
+| `receipt_file_draft_repeats` | Ein gebuchter Beleg und ein Entwurf tragen die Datei: den Entwurf löschen statt buchen (`check`)     |
+
+Wie bei den Prüfungen sagt jedes Ergebnis auf Englisch und Deutsch, dass seine Befunde Hinweise
+sind, keine Steuerberatung (`caveat`), und was ein Treffer beweist (`matching`).
+
+Jede Datei mit Treffer wird mit ihren Belegen und deren Status aufgeführt (`matched`). Ein Treffer
+beweist, dass genau diese Datei an diesem Beleg hängt. Kein Treffer ist ein Hinweis, kein Beweis:
+Derselbe Beleg als andere Datei (ein Scan oder Foto des Papiers, eine von sevDesk oder einem
+anderen Programm umgewandelte oder verkleinerte Kopie, ein Beleg, der per E-Mail oder über die App
+kam) hat eine andere Prüfsumme, und ein Beleg mit einem Datum außerhalb des gelesenen Zeitraums
+wird nicht verglichen. Beträge, Daten und Lieferanten werden nicht verglichen, denn dafür müsste
+der Inhalt der Datei gelesen werden. Zwei schwache Hinweise helfen: der Tag der letzten Änderung
+der Datei (`modified`, nicht das Belegdatum) und Belege, deren Belegnummer im Dateinamen steht
+(`possibleVouchers`). Eine Datei ohne Treffer, die erst nach dem gelesenen Zeitraum zuletzt
+geändert wurde, bleibt `receipt_file_not_booked`, denn ein Beleg des Zeitraums kann spät
+gespeichert worden sein; ein Hinweis zählt solche Dateien, die zu einem späteren Zeitraum gehören
+können. Um eine fehlende Datei zu buchen, lege mit
+[`sevdesk_voucher_create_draft`](../tools.md#sevdesk_voucher_create_draft) einen Entwurf mit der
+Datei als `file` und ihrer `sha256` als `fileSha256` an, damit der Entwurf genau die Bytes bekommt,
+die die Prüfung gesehen hat (braucht `write`).
+
+Nicht jede Belegdatei in sevDesk hat eine Prüfsumme: Eine, die die Belegerkennung von sevDesk aus
+einer hochgeladenen Datei angelegt hat, hat keine, also kann keine Datei je zu ihr passen. Das
+Ergebnis zählt solche Belegdateien im gelesenen Zeitraum (`withoutChecksum`, mit einem Hinweis auf
+Englisch und Deutsch). Solange es welche gibt, wird eine Datei ohne Treffer als Datei ohne Beleg
+mit ihrer Prüfsumme gemeldet, nicht als ungebucht, und eine Belegdatei ohne Prüfsumme mit
+derselben Größe in Bytes und derselben Endung wie die Datei wird als dritter schwacher Hinweis
+genannt (`sameSizeVouchers`), nie als Treffer.
 
 ## Wie weit du dich darauf verlassen kannst
 

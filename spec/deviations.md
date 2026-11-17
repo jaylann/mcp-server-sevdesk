@@ -3549,6 +3549,7 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Status:** Open. **Evidence:** spec + recorded.
 - **Spec says:** The `uploadTempFile` answer declares `contentHash` without saying what it
   hashes. `GET /Document` is undocumented (D-024); the community model lists `contentHash`.
+  `GET /Voucher` (`getVouchers`) declares no `embed` parameter.
 - **Actual behavior:**
   - For a generated 1,507-byte receipt PDF, `uploadTempFile`'s `contentHash` is the lower-case
     hex SHA-256 of the uploaded bytes (not MD5 or SHA-1). A second upload of the same bytes got a
@@ -3562,16 +3563,35 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   - Documents sevDesk renders itself (the PDF stored when an invoice is finalized, linked to the
     invoice as `baseObject`) are listed, at status 100, with `contentHash` **null**; so were the
     three newest documents of the account.
-- **Sources:** spec (`uploadTempFile`); recorded 2026-11-16, trial account, Update 2.0 (probes
-  `write-receipt-hash`, `read-document-hash`).
-- **Impact:** The receipt check of #92 computes SHA-256 locally and compares it with the
-  `contentHash` of the Document a voucher references (`GET /Document/{id}`), not with
-  `GET /Document` (which leaves receipts of drafts out); a null hash means "unknown", never "no
-  match". A file in a local folder matches a booked receipt by hash only; rendered invoices have
-  no hash to match.
+  - `GET /Voucher?embed=document` puts the whole Document into every list row in place of the
+    `{id, objectName}` reference, `contentHash` included (53 rows, 13 with a document, 12 of them
+    with a hash). It does so on later pages too (`limit=10` with `offset` 0, 10 and 40); more than
+    1,000 vouchers were not tried. Without `embed` a row carries only the reference.
+  - A receipt made by sevDesk's recognition (`Voucher/Factory/createVoucherFromFile`, D-103) gets
+    a Document with `contentHash` **null**, for a PDF and a PNG alike, also when read 12 seconds
+    later, by id and in the embedded list rows. Its `filesize` is the number of bytes sent (1,435
+    for the PDF, 70 for the PNG), `extension` is `pdf` / `png` and `mimeType` null. So only
+    receipts uploaded through `uploadTempFile` + `saveVoucher` carry a checksum.
+- **Sources:** spec (`uploadTempFile`, `getVouchers`); recorded 2026-11-16, trial account, Update
+  2.0 (probes `write-receipt-hash`, `read-document-hash`); recorded 2026-11-17, trial account,
+  Update 2.0 (manual check (lead): `embed=document` on the voucher list and its later pages, two
+  receipts made by `createVoucherFromFile`).
+- **Impact:** The receipt checks of #92 compare SHA-256 checksums with the `contentHash` sevDesk
+  lists with each voucher (`GET /Voucher?embed=document`, one request per 1,000 vouchers, no read
+  by id), not with `GET /Document` (which leaves receipts of drafts out). A null or missing hash
+  means "unknown", never "no match": rendered invoices and receipts made by the recognition have
+  none, so a result counts such receipts and words an unmatched file accordingly, and counts a
+  list row without the embedded document apart. A file matches a receipt by hash only; the same
+  `filesize` and `extension` are a hint, never a match.
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("compares receipt hashes without
   showing them": SHA-256 match, new token per upload, Document gone with the draft, null hashes
-  of rendered documents). Handling: pending, the receipt-folder check of #92.
+  of rendered documents); `test/unit/domain/voucher-receipt-hash.test.ts` (the embedded
+  document's checksum in lower case with size and extension; none for a plain reference, a
+  rendered file or a recognized receipt); `test/unit/domain/reports/audit/receipt-folder.test.ts`
+  (matches by the listed checksum, counts receipts without one and rows without the embedded
+  document, never matches by size); `test/unit/domain/reports/audit/duplicates-check.test.ts`
+  (checksums from the list with `embed=document`, no read by id). Handling: done,
+  `sevdesk_receipt_folder_check` and the `duplicates` check of `sevdesk_records_audit` (#92).
 
 ### D-101: The ZIP exports answer files only with `download=true` and change no document
 

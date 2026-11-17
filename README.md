@@ -65,7 +65,7 @@ the token safe.
 
 ## What it can do
 
-78 tools across 10 toolsets. The 41 read tools fill the first column; with the write tiers
+79 tools across 10 toolsets. The 42 read tools fill the first column; with the write tiers
 enabled, 37 more tools create and change data.
 
 | Area                               | Read                                                                                                                                                                                                               | Write (`write`, `commit`, `external`)                                                                                                                                                                                                                             |
@@ -82,7 +82,10 @@ The VAT summary is clearly marked as an estimate (accrual or cash basis). The **
 (`sevdesk_records_audit`) answer "what is wrong?": foreign suppliers and customers whose VAT
 treatment does not fit, the §13b base by tax rule, vouchers booked twice and stuck drafts, and
 missing bills of suppliers that bill every month, quarter or year, each finding with its
-documents, its legal basis and what to check; they are hints, not tax advice. Every write tool accepts
+documents, its legal basis and what to check; they are hints, not tax advice. Where the server
+reads a local folder (`SEVDESK_FILE_DIRS`), `sevdesk_receipt_folder_check` compares its receipt
+files with those attached to the vouchers in sevDesk by checksum and names the files probably
+never booked. Every write tool accepts
 `dryRun: true` and then only returns exactly what it would do. Voucher drafts can be in a foreign
 currency, with an exchange rate or a rate date; such drafts cannot be finalized through the server
 ([Receipts](docs/guides/receipts.md)). The full generated reference is
