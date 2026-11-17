@@ -185,7 +185,7 @@ export function templateUpdatePreviews(
   return bothPreviews((lang) => ({
     action: actionText(input, changed, lang),
     facts: facts(input, lang),
-    warnings: warnings(input, lang),
+    warnings: warnings(input, changed, lang),
     irreversible: false,
   }));
 }
@@ -495,6 +495,23 @@ function intervalKeepsNext(next: string, lang: PreviewLanguage): string {
         "new interval.";
 }
 
+/** The changes that decide when or whether invoices are made, not what they carry. */
+const SCHEDULE_CHANGES: ReadonlySet<ChangeName> = new Set<ChangeName>([
+  "interval",
+  "start date",
+  "end date",
+  "automatic generation",
+]);
+
+const RUN_TODAY_OLD_CONTENT: Phrase = phrase(
+  "The next run is today: a draft sevDesk has already created from this template today, or " +
+    "creates before this change is saved, keeps the old content. Check today's draft before it is " +
+    "finalized.",
+  "Die nächste Ausführung ist heute: Ein Entwurf, den sevDesk heute schon aus dieser Vorlage " +
+    "erzeugt hat oder vor dem Speichern dieser Änderung erzeugt, behält den alten Inhalt. Prüfe den " +
+    "heutigen Entwurf, bevor er fertiggestellt wird.",
+);
+
 /**
  * Generation switched on with the next run today: due at once at 00:00, else at the run time
  * stored with the next run (a template made in the web app).
@@ -506,19 +523,26 @@ function firstRunToday(stored: StoredSchedule): Phrase {
 }
 
 /** Consequences first, then notes on the schedule, then the tax rule. */
-function warnings(input: TemplateUpdatePreviewInput, lang: PreviewLanguage): string[] {
+function warnings(
+  input: TemplateUpdatePreviewInput,
+  changed: readonly ChangeName[],
+  lang: PreviewLanguage,
+): string[] {
   const { schedule, projected, basics, generation } = input;
   const active = input.state === "active";
   const taxOrPositions = basics.taxChanged || input.after.positions !== undefined;
   const switchedOn = generation.changed && generation.after === "on";
+  const runsToday = active && schedule.nextRun === input.today;
+  const contentChanged = changed.some((name) => !SCHEDULE_CHANGES.has(name));
+  // With generation on before the call too, today's draft may exist already, with the old content.
+  const keptOnToday = runsToday && generation.after === "on" && !generation.changed;
   const list: (string | undefined)[] = [
     active ? APPLIES_FROM_NEXT_RUN[lang] : ENDED_APPLIES_LATER[lang],
     KEEPS_CREATED[lang],
+    keptOnToday && contentChanged ? RUN_TODAY_OLD_CONTENT[lang] : undefined,
     active || generation.changed ? generationSentence(input, lang) : undefined,
     switchedOn ? RUN_DATE_BEHAVIOUR.autoSending[lang] : undefined,
-    switchedOn && active && schedule.nextRun === input.today
-      ? firstRunToday(input.stored)[lang]
-      : undefined,
+    switchedOn && runsToday ? firstRunToday(input.stored)[lang] : undefined,
     schedule.intervalChanged && !schedule.startChanged && schedule.nextRun !== undefined
       ? intervalKeepsNext(schedule.nextRun, lang)
       : undefined,

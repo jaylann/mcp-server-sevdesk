@@ -392,6 +392,44 @@ describe("sevdesk_invoice_update_recurring", () => {
       );
     });
 
+    it("a content change on a run day: today's draft may keep the old content", async () => {
+      const today = storedDate("2026-11-17");
+      const runsToday = (overrides: Row = {}): FakeRoute[] =>
+        templateChangeRoutes(
+          templateRow({ accountStartDate: today, accountNextInvoice: today, ...overrides }),
+        );
+      const en =
+        "The next run is today: a draft sevDesk has already created from this template today, or " +
+        "creates before this change is saved, keeps the old content. Check today's draft before " +
+        "it is finalized.";
+      const de =
+        "Die nächste Ausführung ist heute: Ein Entwurf, den sevDesk heute schon aus dieser " +
+        "Vorlage erzeugt hat oder vor dem Speichern dieser Änderung erzeugt, behält den alten " +
+        "Inhalt. Prüfe den heutigen Entwurf, bevor er fertiggestellt wird.";
+      const plan = await prepare(
+        {
+          header: "Neu",
+          positions: [{ name: "Wartung", quantity: 1, unitPrice: 10, taxRate: 19 }],
+        },
+        runsToday(),
+      );
+      // Right after the consequences, in the same place in both languages.
+      expect(plan.preview.warnings[2]).toBe(en);
+      expect(plan.previewDe.warnings[2]).toBe(de);
+      expect(plan.previewDe.warnings).toHaveLength(plan.preview.warnings.length);
+      // Not for a schedule change, without generation, nor when the call switches it on (the
+      // first draft then comes after the save).
+      const schedule = await prepare({ interval: "quarterly" }, runsToday());
+      expect(schedule.preview.warnings).not.toContain(en);
+      const off = runsToday({ propertyAutoGenerateRecurringInvoice: null });
+      expect((await prepare({ header: "Neu" }, off)).preview.warnings).not.toContain(en);
+      const switched = await prepare({ header: "Neu", autoGenerate: true }, off);
+      expect(switched.preview.warnings).not.toContain(en);
+      expect(switched.preview.warnings).toContain(FIRST_RUN_TODAY.en);
+      // Nor on another day.
+      expect((await prepare({ header: "Neu" })).preview.warnings).not.toContain(en);
+    });
+
     it("never sends a type or a status", async () => {
       const plan = await prepare({ interval: "yearly", header: "Neu", endDate: "2027-06-01" });
       expect(plan.state.body.invoice).not.toHaveProperty("invoiceType");
