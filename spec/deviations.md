@@ -3714,7 +3714,7 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   renumbering never happens through it. (#89)
 - **Test:** pending: the #89 tools. Live: probe `write-order-status-accept-reject`
   (`test/unit/scripts/gaps-documents-probes.test.ts`, "sets offer statuses, sets them back, and
-  records the refusal on a draft").
+  records the renumbering of a draft").
 
 ### D-109: `DELETE /Order` and `DELETE /CreditNote` delete only drafts
 
