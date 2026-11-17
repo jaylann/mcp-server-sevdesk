@@ -16,11 +16,17 @@
  * order and credit-note drafts; finalized documents are not rendered.
  *
  * Guard 3: a render that fails does not block the approval (no `write` tool can change the
- * layout) but says in both languages that the layout is not shown.
+ * layout) but says in both languages that the layout is not shown. A cancelled call and a render
+ * the server's own guard blocks fail instead.
+ *
+ * Guard 4: `sevdesk_document_set_layout` itself binds the record and the layout its "current →
+ * new" facts start from, and its preview names the resolved ids: a layout changed, or a name that
+ * resolves to another id, while the human reads the prompt asks again.
  */
 import { describe, expect, it } from "vitest";
 
 import { SevdeskError } from "../../src/sevdesk/errors.js";
+import { documentSetLayoutTool } from "../../src/tools/documents/layout-tool.js";
 import { enshrineTool } from "../../src/tools/lifecycle/enshrine.js";
 import { finalizeTool } from "../../src/tools/lifecycle/finalize.js";
 import { sendEmailTool } from "../../src/tools/lifecycle/send-email.js";
@@ -28,6 +34,7 @@ import type { AnyWriteToolDefinition } from "../../src/tools/types.js";
 import { approve } from "../helpers/confirm-client.js";
 import { withCountryRoute } from "../helpers/country-route.js";
 import { type FakeRoute, FakeSevdeskClient } from "../helpers/fake-client.js";
+import { letterpapersRoute, templateRow, templatesRoute } from "../helpers/layout-routes.js";
 import {
   closeWriteHarnessesAfterEach,
   resultData,
@@ -36,6 +43,7 @@ import {
 } from "../helpers/write-flow.js";
 import { prepareWrite } from "../helpers/write-tools.js";
 import {
+  changeParameterRoute,
   creditNoteRow,
   documentRoute,
   invoiceRow,
@@ -284,13 +292,134 @@ describe("a layout that cannot be read", () => {
     expect(readable.binding).not.toBe(plan.binding);
   });
 
-  it("stops a cancelled call instead of hiding it as unreadable", async () => {
-    const aborted: FakeRoute = {
+  it.each([
+    ["a cancelled call", "aborted", "Cancelled."],
+    // Only this server's own guard throws `blocked`: it says nothing about sevDesk, so it must not
+    // pass as "unreadable" (e.g. after the render lost its place among the reading POSTs).
+    ["a render the server's guard blocks", "blocked", "Blocked before sending."],
+  ] as const)("stops %s instead of hiding it as unreadable", async (_label, kind, message) => {
+    const failing: FakeRoute = {
       ...renderRoute("invoice"),
-      response: { error: new SevdeskError({ kind: "aborted", message: "Cancelled." }) },
+      response: { error: new SevdeskError({ kind, message }) },
     };
     await expect(
-      prepareWrite(finalizeTool("invoice"), { id: 1001 }, client(draft, aborted)),
-    ).rejects.toMatchObject({ kind: "aborted" });
+      prepareWrite(finalizeTool("invoice"), { id: 1001 }, client(draft, failing)),
+    ).rejects.toMatchObject({ kind });
+  });
+});
+
+/**
+ * `sevdesk_document_set_layout` binds the record and the layout it previews "current → new" from,
+ * and its preview names the resolved template and letterhead ids: a change in between asks again.
+ */
+describe("the approval of set_layout binds the layout it starts from", () => {
+  /** The invoice templates, Modern under `state.modernId` (a rename moves the name to another id). */
+  function liveTemplates(state: { modernId: string }): FakeRoute {
+    return {
+      path: "/DocServer/getTemplatesWithThumb",
+      query: { type: "Invoice" },
+      get response() {
+        return templatesRoute("Invoice", [
+          templateRow("Invoice"),
+          templateRow("Invoice", { default: 0, id: state.modernId, name: "Modern" }),
+        ]).response;
+      },
+    };
+  }
+
+  async function setLayout(
+    args: Record<string, unknown>,
+    routes: readonly FakeRoute[],
+    duringPrompt: () => void,
+  ) {
+    const harness = await writeHarness({
+      tools: [documentSetLayoutTool],
+      routes: [documentRoute("invoice", draft), ...routes],
+      connect: {
+        era: "modern",
+        transport: "http",
+        answer: (params) => {
+          // While the human reads the first prompt, sevDesk's state changes.
+          if (harness.prompts.length === 1) duringPrompt();
+          return approve(params);
+        },
+      },
+    });
+    const result = await harness.client.callTool({
+      name: "sevdesk_document_set_layout",
+      arguments: { kind: "invoice", id: 1001, ...args },
+    });
+    return { ...harness, result };
+  }
+
+  // The call asks for letterhead lp-2; the other print options change under it, or its letterhead.
+  const layoutEdits: readonly [string, LayoutValues][] = [
+    ["the language changes", { language: "el_GR" }],
+    ["the template changes", { template: "tpl-modern" }],
+    ["the letterhead is cleared", { letterpaper: "" }],
+  ];
+
+  it.each(layoutEdits)("asks again when %s after the human was asked", async (_label, edit) => {
+    const state: { values: LayoutValues } = { values: {} };
+    const { fake, prompts, result } = await setLayout(
+      { letterpaper: "lp-2" },
+      [
+        liveRender(state),
+        letterpapersRoute(),
+        changeParameterRoute("/Invoice/1001/changeParameter", "invoice", {
+          ...edit,
+          letterpaper: "lp-2",
+        }),
+      ],
+      () => {
+        state.values = edit;
+      },
+    );
+
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]?.message).toMatch(/^The record changed after you were asked/);
+    expect(resultData(result)).toMatchObject({ status: "done" });
+    expect(writesOf(fake)).toEqual([{ method: "PUT", path: "/Invoice/1001/changeParameter" }]);
+  });
+
+  it("asks again when the template name resolves to another id", async () => {
+    const state = { modernId: "tpl-modern" };
+    const { fake, prompts, result } = await setLayout(
+      { template: "Modern" },
+      [
+        renderRoute("invoice"),
+        liveTemplates(state),
+        changeParameterRoute("/Invoice/1001/changeParameter", "invoice", {
+          template: "tpl-modern-2",
+        }),
+      ],
+      () => {
+        state.modernId = "tpl-modern-2";
+      },
+    );
+
+    expect(prompts).toHaveLength(2);
+    expect(prompts[0]?.message).toContain("Modern (id tpl-modern)");
+    expect(prompts[1]?.message).toMatch(/^The record changed after you were asked/);
+    expect(prompts[1]?.message).toContain("Modern (id tpl-modern-2)");
+    expect(resultData(result)).toMatchObject({ status: "done" });
+    expect(fake.writes().map((call) => call.body)).toEqual([
+      { key: "template", value: "tpl-modern-2" },
+    ]);
+  });
+
+  it("asks once when nothing changed in between", async () => {
+    const { prompts, result } = await setLayout(
+      { letterpaper: "lp-2" },
+      [
+        renderRoute("invoice"),
+        letterpapersRoute(),
+        changeParameterRoute("/Invoice/1001/changeParameter", "invoice", { letterpaper: "lp-2" }),
+      ],
+      () => undefined,
+    );
+
+    expect(prompts).toHaveLength(1);
+    expect(resultData(result)).toMatchObject({ status: "done" });
   });
 });

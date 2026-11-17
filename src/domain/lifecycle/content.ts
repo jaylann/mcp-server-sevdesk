@@ -154,7 +154,8 @@ type LayoutRead =
  * a request on every send and enshrine). A failure of the read is shown as a warning and bound as
  * "unreadable" instead of failing the approval: no `write` tool can change the layout
  * (`changeParameter` needs `commit`), so nothing written unseen hides behind it. A cancelled call
- * stays cancelled.
+ * stays cancelled, and a read this server's own guard blocks (`blocked`, which says nothing about
+ * sevDesk, e.g. after the render lost its place among the reading POSTs) fails the approval.
  */
 async function readApprovalLayout(
   client: SevdeskClient,
@@ -166,7 +167,9 @@ async function readApprovalLayout(
   try {
     return { read: true, layout: await readDocumentLayout(client, doc.kind, doc.id, signal) };
   } catch (error) {
-    if (error instanceof SevdeskError && error.kind !== "aborted") return { read: false };
+    if (error instanceof SevdeskError && error.kind !== "aborted" && error.kind !== "blocked") {
+      return { read: false };
+    }
     throw error;
   }
 }
