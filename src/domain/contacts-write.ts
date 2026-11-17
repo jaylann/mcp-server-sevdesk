@@ -56,12 +56,14 @@ import {
   customFieldRemovalFact,
   type CustomFieldSettings,
   type CustomFieldWrite,
+  type DisplayedCustomFields,
   executeCustomFieldRemovals,
   executeCustomFieldWrites,
   listCustomFieldSettings,
   planCustomFieldRemovals,
   planCustomFieldValues,
   readContactCustomFields,
+  readCustomFieldsForDisplay,
 } from "./contact-custom-fields.js";
 import {
   type ContactDetails,
@@ -445,7 +447,9 @@ export async function planContactCreate(
 /**
  * Creates the contact, then its address, then its communication ways, then its custom field
  * values, and reads it back (the custom fields only when it set some). Never retries. When a step
- * after the contact fails, the thrown error lists the records already created.
+ * after the contact fails, the thrown error lists the records already created. A failed read-back
+ * of the custom fields, after every write went through, is `readable: false`, not an error: the
+ * create must not look failed and be repeated.
  */
 export async function executeContactCreate(
   client: SevdeskClient,
@@ -453,7 +457,7 @@ export async function executeContactCreate(
   options: CountryReadOptions,
 ): Promise<{
   details: ContactDetails;
-  customFields: ContactCustomFields | undefined;
+  customFields: DisplayedCustomFields | undefined;
   affected: SevdeskObjectRef[];
 }> {
   const { signal, cacheOwner } = options;
@@ -499,7 +503,7 @@ export async function executeContactCreate(
     const customFields =
       state.customFields.length === 0
         ? undefined
-        : await readContactCustomFields(client, contactId, signal);
+        : await readCustomFieldsForDisplay(client, contactId, signal);
     return { details, customFields, affected: completed.map((entry) => ({ ...entry })) };
   } catch (error) {
     throw afterPartialWrite(error, completed);
@@ -831,8 +835,8 @@ function planUpdateCustomFields(
  * Sends the planned changes in order (contact, address, communication ways, custom field values),
  * then the removals (`DELETE`s last, addresses and communication ways before custom field values,
  * so nothing is gone before its replacement exists), and reads the contact back (its custom fields
- * only when the update touched them). Never retries; a failure after the first write lists what
- * was already changed or deleted.
+ * only when the update touched them; a failed read of them is `readable: false`, not an error).
+ * Never retries; a failure after the first write lists what was already changed or deleted.
  */
 export async function executeContactUpdate(
   client: SevdeskClient,
@@ -840,7 +844,7 @@ export async function executeContactUpdate(
   options: CountryReadOptions,
 ): Promise<{
   details: ContactDetails;
-  customFields: ContactCustomFields | undefined;
+  customFields: DisplayedCustomFields | undefined;
   affected: SevdeskObjectRef[];
   removed: RemovedEntry[];
 }> {
@@ -926,7 +930,7 @@ export async function executeContactUpdate(
     const customFields =
       state.customFields.length === 0 && state.customFieldRemovals.length === 0
         ? undefined
-        : await readContactCustomFields(client, state.contactId, signal);
+        : await readCustomFieldsForDisplay(client, state.contactId, signal);
     return {
       details,
       customFields,

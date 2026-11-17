@@ -280,6 +280,35 @@ describe("sevdesk_contacts_search by custom field value (D-086)", () => {
     expect(exact.result.summary).not.toMatch(/cut/);
   });
 
+  it("de-duplicates by raw id, keeps the lowest 1000 ids and builds only those", async () => {
+    // Rows in descending order with each id twice. Only the ids of all matches are read; the
+    // rows past the cut are never parsed in full, so one that would not parse costs nothing.
+    const [row] = (
+      loadFixture("contacts/contacts-list.json").body as { objects: Record<string, unknown>[] }
+    ).objects;
+    const ids = Array.from({ length: 1200 }, (_, index) => 21_199 - index);
+    const objects = [
+      { ...row, id: "99999", name: { not: "a name" } },
+      ...ids.flatMap((id) => [
+        { ...row, id: String(id) },
+        { ...row, id, name: "Duplicate" },
+      ]),
+    ];
+    const { result } = await search(
+      { customField: { settingId: 19498, value: "x" }, limit: 100, offset: 900 },
+      // `total: null`: one page answered as is, without a count, as sevDesk answers every match.
+      [settingsRoute, findRoute({ body: { objects, total: null } })],
+    );
+    expect(result.data.items).toHaveLength(100);
+    expect(result.data.items[0]?.id).toBe(20_900);
+    expect(result.data.items.at(-1)?.id).toBe(20_999);
+    // The first row of each id is kept, not its duplicate.
+    expect(result.data.items.some((item) => item.displayName === "Duplicate")).toBe(false);
+    expect(result.data).toMatchObject({ hasMore: false });
+    expect(result.data).not.toHaveProperty("total");
+    expect(result.summary).toMatch(/The result was cut/);
+  });
+
   it.each([
     [{ query: "Muster" }, "query"],
     [{ customerNumber: "K-1001" }, "customerNumber"],

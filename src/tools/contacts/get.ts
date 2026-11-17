@@ -74,7 +74,12 @@ export const contactGetTool = defineTool({
     const fields = customFields.readable ? customFields.rows : [];
     const addressCount = count(addresses.length, "address", "addresses");
     const wayCount = count(communicationWays.length, "communication way", "communication ways");
-    const fieldCount = count(fields.length, "custom field value", "custom field values");
+    const parts = [addressCount, wayCount];
+    // An unreadable list is no count: "0 custom field values" would read as a fact.
+    if (customFields.readable) {
+      parts.push(count(fields.length, "custom field value", "custom field values"));
+    }
+    const last = parts.pop();
     const partial = [
       details.addressesComplete ? undefined : "addresses",
       details.communicationWaysComplete ? undefined : "communication ways",
@@ -87,9 +92,7 @@ export const contactGetTool = defineTool({
     const unreadableNote = customFields.readable
       ? ""
       : " Its custom field values could not be read.";
-    const summary =
-      `Contact ${contact.id} (${contact.kind}) with ${addressCount}, ${wayCount} and ` +
-      `${fieldCount}.`;
+    const summary = `Contact ${contact.id} (${contact.kind}) with ${parts.join(", ")} and ${last ?? ""}.`;
     return {
       data: {
         contact,

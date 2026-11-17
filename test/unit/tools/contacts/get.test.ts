@@ -162,9 +162,10 @@ describe("sevdesk_contact_get (community: recorded shapes, fake data)", () => {
     expect(result.data.contact.id).toBe(1001);
     expect(result.data.customFields).toEqual([]);
     expect(result.data.customFieldsComplete).toBe(false);
+    // No "0 custom field values": an unread list is no count.
     expect(result.summary).toBe(
-      "Contact 1001 (organisation) with 2 addresses, 3 communication ways and 0 custom field " +
-        "values. Its custom field values could not be read.",
+      "Contact 1001 (organisation) with 2 addresses and 3 communication ways. Its custom field " +
+        "values could not be read.",
     );
   });
 

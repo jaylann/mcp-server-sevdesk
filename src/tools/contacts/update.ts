@@ -11,6 +11,7 @@ import {
   contactFieldsShape,
   contactWriteData,
   contactWriteOutput,
+  customFieldReadBackNote,
   customFieldsInput,
   recordIdInput,
   removeInput,
@@ -99,17 +100,29 @@ export const contactUpdateTool = defineWriteTool({
       `Updated contact ${details.contact.id}: ${changed} record` +
       `${changed === 1 ? "" : "s"} changed or added`;
     const data = contactWriteData(details, customFields);
+    const readBackNote = customFieldReadBackNote(customFields);
     if (removed.length === 0) {
-      return { data, summary: `${summary}.`, affected };
+      return { data, summary: `${summary}.${readBackNote}`, affected };
     }
     const addresses = details.addresses.length;
     const ways = details.communicationWays.length;
+    const left = [
+      `${addresses} address${addresses === 1 ? "" : "es"}`,
+      `${ways} communication way${ways === 1 ? "" : "s"}`,
+    ];
+    if (customFields?.readable === true) {
+      const fields = customFields.rows.length;
+      left.push(
+        `${customFields.complete ? "" : "at least "}${fields} custom field ` +
+          `value${fields === 1 ? "" : "s"}`,
+      );
+    }
+    const last = left.pop();
     return {
       data: { ...data, removed },
       summary:
-        `${summary}, ${removed.length} removed (see removed). It has ${addresses} ` +
-        `address${addresses === 1 ? "" : "es"} and ${ways} communication ` +
-        `way${ways === 1 ? "" : "s"} left.`,
+        `${summary}, ${removed.length} removed (see removed). It has ${left.join(", ")} and ` +
+        `${last ?? ""} left.${readBackNote}`,
       affected,
     };
   },

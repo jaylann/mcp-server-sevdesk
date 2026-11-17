@@ -153,7 +153,15 @@ export async function listCustomFieldSettings(
 }
 
 /** A contact's custom field values, as read. */
-export type ContactCustomFields = ChildRows<CustomFieldDto>;
+export interface ContactCustomFields extends ChildRows<CustomFieldDto> {
+  /**
+   * Each value of `rows` as sevDesk stores it, by value id. `rows` hold the display copy
+   * (`cleanText`: trimmed, invisible and bidi characters removed), so whether an update changes a
+   * value is decided against this text: a stored "EXT-4711 " is changed to "EXT-4711". Never
+   * output.
+   */
+  readonly storedValues: ReadonlyMap<number, string>;
+}
 
 /**
  * The custom field values of one contact, with the setting's name (see the module comment). Rows
@@ -181,6 +189,7 @@ export async function readContactCustomFields(
       .filter((row): row is CustomFieldDto => row !== undefined)
       .sort((a, b) => a.id - b.id),
     complete: rows.complete,
+    storedValues: new Map(rows.rows.map((row) => [row.id, row.value ?? ""])),
   };
 }
 
@@ -388,11 +397,17 @@ export function planCustomFieldValues(
       writes.push({ kind: "create", settingId: setting.id, value: entry.value });
       facts.push({ label: `${label} (new)`, value: `${setting.name}: ${shown}` });
     } else {
-      if (value.value === entry.value) continue;
+      // Against the stored text, not the cleaned display copy: a stored value with outer spaces
+      // or invisible characters is changed, not skipped as equal.
+      if ((target.current.storedValues.get(value.id) ?? value.value) === entry.value) continue;
       writes.push({ kind: "update", id: value.id, value: entry.value });
+      const before =
+        value.value === shown
+          ? `${shownValue(value.value)} (stored with extra spaces or invisible characters)`
+          : shownValue(value.value);
       facts.push({
         label: `${label}, value id ${String(value.id)}`,
-        value: `${setting.name}: ${shownValue(value.value)} → ${shown}`,
+        value: `${setting.name}: ${before} → ${shown}`,
       });
     }
     changes.push(`custom field ${String(setting.id)}`);
@@ -554,6 +569,9 @@ export async function executeCustomFieldRemovals(
 // Search
 // ---------------------------------------------------------------------------------------------
 
+/** Just the id of a found contact, read for every match before the cut. */
+const matchIdSchema = z.object({ id: zId });
+
 /** The contacts one custom-field search found. */
 export interface CustomFieldMatches {
   readonly items: readonly ContactDto[];
@@ -564,10 +582,11 @@ export interface CustomFieldMatches {
 /**
  * The contacts (organisations and persons) whose value of `settingId` equals `value`, ignoring
  * case (`GET /Contact/Factory/findContactsByCustomFieldValue` with `customFieldSetting[id]` alone,
- * D-086), de-duplicated by id, sorted by id, and cut to {@link FIND_LIMIT}. sevDesk ignores
- * `limit` and `offset` here and answers every match at once, so the endpoint is read exactly once
- * (the client still sends the explicit `limit` every list request carries) and the caller pages
- * locally.
+ * D-086), de-duplicated by id, sorted by id, and cut to the {@link FIND_LIMIT} lowest ids. sevDesk
+ * ignores `limit` and `offset` here and answers every match at once, so the endpoint is read
+ * exactly once (the client still sends the explicit `limit` every list request carries) and the
+ * caller pages locally. Only the id of every match is read; the contacts kept are parsed and built
+ * for output, so a value thousands of contacts share costs no more than {@link FIND_LIMIT} rows.
  */
 export async function findContactsByCustomField(
   client: SevdeskClient,
@@ -584,15 +603,20 @@ export async function findContactsByCustomField(
     limit: FIND_LIMIT,
     ...(signal === undefined ? {} : { signal }),
   });
-  const byId = new Map<number, ContactDto>();
+  // First match of each id, by its raw id alone; the full parse waits until the cut is known.
+  const firstById = new Map<number, unknown>();
   for (const raw of page.items) {
-    const dto = toContactDto(parseContactRecord(raw));
-    if (!byId.has(dto.id)) byId.set(dto.id, dto);
+    const { id } = parseUpstream(matchIdSchema, raw, "contacts found by custom field");
+    if (!firstById.has(id)) firstById.set(id, raw);
   }
-  const all = [...byId.values()].sort((a, b) => a.id - b.id);
+  const ids = [...firstById.keys()].sort((a, b) => a - b);
+  const kept = ids.slice(0, FIND_LIMIT);
   const truncated =
-    all.length > FIND_LIMIT || (page.total !== undefined && page.total > page.items.length);
-  return { items: all.slice(0, FIND_LIMIT), truncated };
+    ids.length > kept.length || (page.total !== undefined && page.total > page.items.length);
+  return {
+    items: kept.map((id) => toContactDto(parseContactRecord(firstById.get(id)))),
+    truncated,
+  };
 }
 
 function validation(message: string): SevdeskError {

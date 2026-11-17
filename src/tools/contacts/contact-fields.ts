@@ -8,8 +8,8 @@
 import { z } from "zod";
 
 import {
-  type ContactCustomFields,
   customFieldDtoSchema,
+  type DisplayedCustomFields,
   SETTING_NAME_MAX,
   VALUE_MAX as CUSTOM_FIELD_VALUE_MAX,
 } from "../../domain/contact-custom-fields.js";
@@ -164,15 +164,22 @@ export const contactWriteOutput = z.object({
   customFieldsComplete: z
     .boolean()
     .optional()
-    .describe("With customFields: false when sevDesk had more values than could be read."),
+    .describe(
+      "Only when this call changed custom fields: false when sevDesk had more values than could " +
+        "be read (customFields is partial), or when they could not be read back at all " +
+        "(customFields is left out; see the summary).",
+    ),
 });
 
 export type ContactWriteOutput = z.output<typeof contactWriteOutput>;
 
-/** The read-back contact as tool output, with its custom fields when the write read them back. */
+/**
+ * The read-back contact as tool output, with its custom fields when the write read them back. A
+ * failed read-back leaves `customFields` out and sets `customFieldsComplete: false`.
+ */
 export function contactWriteData(
   details: ContactDetails,
-  customFields: ContactCustomFields | undefined,
+  customFields: DisplayedCustomFields | undefined,
 ): ContactWriteOutput {
   return {
     contact: details.contact,
@@ -182,6 +189,19 @@ export function contactWriteData(
     communicationWaysComplete: details.communicationWaysComplete,
     ...(customFields === undefined
       ? {}
-      : { customFields: [...customFields.rows], customFieldsComplete: customFields.complete }),
+      : customFields.readable
+        ? { customFields: [...customFields.rows], customFieldsComplete: customFields.complete }
+        : { customFieldsComplete: false }),
   };
+}
+
+/**
+ * Appended to a write's summary when the custom fields it changed could not be read back: the
+ * writes went through, only the read afterwards failed.
+ */
+export function customFieldReadBackNote(customFields: DisplayedCustomFields | undefined): string {
+  return customFields?.readable === false
+    ? " Its custom field values could not be read back after the write; sevdesk_contact_get " +
+        "shows them."
+    : "";
 }

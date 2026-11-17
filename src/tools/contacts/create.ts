@@ -10,6 +10,7 @@ import {
   contactFieldsShape,
   contactWriteData,
   contactWriteOutput,
+  customFieldReadBackNote,
   customFieldsInput,
 } from "./contact-fields.js";
 
@@ -73,7 +74,7 @@ export const contactCreateTool = defineWriteTool({
       `${addresses} address${addresses === 1 ? "" : "es"}`,
       `${ways} communication way${ways === 1 ? "" : "s"}`,
     ];
-    if (customFields !== undefined) {
+    if (customFields?.readable === true) {
       const fields = customFields.rows.length;
       parts.push(`${fields} custom field value${fields === 1 ? "" : "s"}`);
     }
@@ -82,7 +83,7 @@ export const contactCreateTool = defineWriteTool({
       data: contactWriteData(details, customFields),
       summary:
         `Created contact ${details.contact.id} (${details.contact.kind}) with ` +
-        `${parts.join(", ")} and ${last ?? ""}.`,
+        `${parts.join(", ")} and ${last ?? ""}.${customFieldReadBackNote(customFields)}`,
       affected,
     };
   },

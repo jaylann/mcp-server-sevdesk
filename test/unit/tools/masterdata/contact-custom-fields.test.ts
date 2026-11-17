@@ -166,6 +166,26 @@ describe("sevdesk_contact_create with custom fields (D-086)", () => {
     );
   });
 
+  it("reports a create whose values cannot be read back as done, and says so", async () => {
+    // Every write went through; only the read afterwards fails. An error here would invite the
+    // model to create the contact again.
+    const down = new SevdeskError({ kind: "server", status: 503, message: "Down." });
+    const fake = new FakeSevdeskClient(createRoutes([valuesRoute(1101, { error: down })]));
+    const { output } = await executeWrite(
+      contactCreateTool,
+      create,
+      numberedPosts(fake, ["7101", "7102"]),
+    );
+    expect(output.data).not.toHaveProperty("customFields");
+    expect(output.data.customFieldsComplete).toBe(false);
+    expect(output.affected).toHaveLength(3);
+    expect(output.summary).toBe(
+      "Created contact 1101 (organisation) with 0 addresses and 0 communication ways. Its " +
+        "custom field values could not be read back after the write; sevdesk_contact_get shows " +
+        "them.",
+    );
+  });
+
   it("reads no custom field data when none is given", async () => {
     const fake = new FakeSevdeskClient(createRoutes());
     const { output } = await executeWrite(
@@ -415,6 +435,73 @@ describe("sevdesk_contact_update with custom fields (D-086)", () => {
     expect(output.data.removed).toEqual([
       expect.objectContaining({ kind: "customField", id: 7002, alreadyGone: true }),
     ]);
+    // What is left includes the custom field values read back (here the fake's unchanged two).
+    expect(output.summary).toBe(
+      "Updated contact 1001: 0 records changed or added, 1 removed (see removed). It has 2 " +
+        "addresses, 3 communication ways and 2 custom field values left.",
+    );
+  });
+
+  it("changes a stored value that differs only by spaces or invisible characters", async () => {
+    // The display copy is cleaned ("EXT-4711"), the stored text is not: comparing against the
+    // display copy skipped the change and refused the update as "Nothing to change".
+    const fake = new FakeSevdeskClient(
+      updateRoutes({
+        body: { objects: [valueRow(7001, 1001, 19498, "Kundennr extern", "EXT-4711​ ")] },
+      }),
+    );
+    const { plan } = await executeWrite(
+      contactUpdateTool,
+      { id: 1001, customFields: [{ settingId: 19498, value: "EXT-4711" }] },
+      fake,
+    );
+    expect(plan.preview.facts).toContainEqual({
+      label: "Custom field (setting 19498), value id 7001",
+      value:
+        "Kundennr extern: EXT-4711 (stored with extra spaces or invisible characters) → EXT-4711",
+    });
+    expect(fake.writes().map((call) => [call.method, call.path, call.body])).toEqual([
+      ["PUT", "/ContactCustomField/7001", { objectName: "ContactCustomField", value: "EXT-4711" }],
+    ]);
+  });
+
+  it("reports an update whose values cannot be read back as done, and says so", async () => {
+    const down = new SevdeskError({ kind: "server", status: 503, message: "Down." });
+    // The values are read twice: for the plan, then back after the writes. Only the second fails.
+    let reads = 0;
+    const fake = new FakeSevdeskClient(updateRoutes());
+    const failing = new FakeSevdeskClient(updateRoutes({ error: down }));
+    const client: SevdeskClient = {
+      request: fake.request.bind(fake),
+      list: async (path, query, options) => {
+        if (path !== "/ContactCustomField") return fake.list(path, query, options);
+        reads += 1;
+        return reads === 1 ? fake.list(path, query, options) : failing.list(path, query, options);
+      },
+      listAll: fake.listAll.bind(fake),
+      download: fake.download.bind(fake),
+    };
+    const { output } = await executeWrite(
+      contactUpdateTool,
+      {
+        id: 1001,
+        customFields: [{ settingId: 19498, value: "EXT-4712" }],
+        remove: [{ kind: "customField", id: 7002 }],
+      },
+      client,
+    );
+    expect(reads).toBe(2);
+    expect(output.data).not.toHaveProperty("customFields");
+    expect(output.data.customFieldsComplete).toBe(false);
+    expect(output.affected).toEqual([
+      { objectName: "ContactCustomField", id: "7001" },
+      { objectName: "ContactCustomField", id: "7002" },
+    ]);
+    expect(output.summary).toBe(
+      "Updated contact 1001: 1 record changed or added, 1 removed (see removed). It has 2 " +
+        "addresses and 3 communication ways left. Its custom field values could not be read " +
+        "back after the write; sevdesk_contact_get shows them.",
+    );
   });
 
   it.each([
