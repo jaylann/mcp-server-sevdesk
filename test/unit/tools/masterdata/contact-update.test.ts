@@ -634,6 +634,22 @@ describe("sevdesk_contact_update", () => {
         { objectName: "Contact", id: "1003" },
       ]);
     });
+
+    it("locks the organisation whose link it removes, so its deletion sees a fixed list", () => {
+      expect(
+        tool.locks?.({
+          id: 1002,
+          remove: [
+            { kind: "parentOrganisation", id: 1001 },
+            { kind: "address", id: 3001 },
+          ],
+          dryRun: false,
+        }),
+      ).toEqual([
+        { objectName: "Contact", id: "1002" },
+        { objectName: "Contact", id: "1001" },
+      ]);
+    });
   });
 
   describe("remove: addresses and communication ways (D-084)", () => {
