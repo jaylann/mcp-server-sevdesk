@@ -124,3 +124,24 @@ describe("a path removed after its real path was read", () => {
     expect(message).toContain("is not a readable file inside the folders listed");
   });
 });
+
+describe("a listed name the folder no longer holds", () => {
+  it("is counted as changed but never named", async () => {
+    const lstat = vi.mocked(fsp.lstat);
+    // The folder before and after its listing, then the file: gone, as if the listing had read
+    // another folder swapped in for a moment.
+    lstat
+      .mockImplementationOnce(actual.lstat)
+      .mockImplementationOnce(actual.lstat)
+      .mockRejectedValueOnce(gone());
+
+    const scan = await scanConfinedFolder([first], undefined, { subfolders: false });
+
+    // (Then the subfolder `sub`, which is not read.)
+    expect(pathsOf(lstat).slice(0, 3)).toEqual([first, first, join(first, FOREIGN)]);
+    expect(scan.files).toEqual([]);
+    expect(scan.skipped.changed).toBe(1);
+    expect(scan.notChecked).toEqual([]);
+    expect(JSON.stringify(scan)).not.toContain(FOREIGN);
+  });
+});

@@ -10,7 +10,9 @@
  *   configured folder is scanned;
  * - a folder is checked again right before and right after its entries are read (still a folder
  *   and not a link, the same inode, its real path its own path and inside the configured
- *   folders); when that fails its entries are dropped and counted as `changed`;
+ *   folders); when that fails its entries are dropped and counted as `changed`. A name the
+ *   listing gave but the folder no longer holds is counted as `changed` and never listed: it may
+ *   come from another folder swapped in for a moment (`opendir` follows a link);
  * - entries are taken by their type as the directory reports it (nothing is followed), sorted by
  *   name, and skipped without being opened when the name is hidden (leading dot), the entry is a
  *   symbolic link (files and folders alike: links are never followed), it is neither a regular
@@ -356,7 +358,14 @@ async function scanFile(
     return;
   }
   const info = await lstat(path).catch(() => undefined);
-  if (info?.isFile() !== true) {
+  if (info === undefined) {
+    // The listing named it, but the folder no longer holds it: counted, never listed. `opendir`
+    // follows a link, so a folder swapped for a link and back while it was listed hands out the
+    // names of another folder, outside perhaps; only a name the folder still holds is shown.
+    state.skipped.changed += 1;
+    return;
+  }
+  if (!info.isFile()) {
     notChecked(state, path, "changed");
     return;
   }
