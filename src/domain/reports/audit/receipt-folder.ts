@@ -316,6 +316,20 @@ const skippedSchema = z
   })
   .describe("Entries not checked, by reason.");
 
+const filesByFindingSchema = z
+  .object({
+    receipt_file_booked_twice: z.number().int(),
+    receipt_file_not_booked: z.number().int(),
+    receipt_file_before_period: z.number().int(),
+    receipt_file_only_on_draft: z.number().int(),
+    receipt_file_draft_repeats: z.number().int(),
+  })
+  .describe(
+    "Files per kind of finding, counted over all findings, also those beyond the findings listed.",
+  ) satisfies z.ZodType<Record<ReceiptFolderCode, number>>;
+
+type FilesByFinding = z.output<typeof filesByFindingSchema>;
+
 const coverageSchema = z.object({
   folders: z
     .array(z.string())
@@ -329,6 +343,7 @@ const coverageSchema = z.object({
   filesChecked: z.number().int().describe("Receipt files whose checksum was computed."),
   filesMatched: z.number().int().describe("Files a voucher read carries."),
   filesNotMatched: z.number().int(),
+  filesByFinding: filesByFindingSchema,
   skipped: skippedSchema,
   notChecked: z
     .array(
@@ -709,6 +724,8 @@ export async function runReceiptFolderCheck(
       filesChecked: folder.files.length,
       filesMatched,
       filesNotMatched: notMatched,
+      // Over all findings: the list below stops at MAX_FINDINGS, the counts must not.
+      filesByFinding: filesPerFinding(sorted),
       skipped: {
         hidden: folder.skipped.hidden,
         links: folder.skipped.link,
@@ -733,6 +750,21 @@ export async function runReceiptFolderCheck(
     },
     notes: notesOf(params, range, vouchers, findingsOmitted),
   });
+}
+
+/** The files of each kind of finding (listed and omitted ones), over `findings`. */
+function filesPerFinding(findings: readonly ReceiptFolderFinding[]): FilesByFinding {
+  const count = (code: ReceiptFolderCode): number =>
+    findings
+      .filter((entry) => entry.code === code)
+      .reduce((sum, entry) => sum + entry.files.length + (entry.filesOmitted ?? 0), 0);
+  return {
+    receipt_file_booked_twice: count("receipt_file_booked_twice"),
+    receipt_file_not_booked: count("receipt_file_not_booked"),
+    receipt_file_before_period: count("receipt_file_before_period"),
+    receipt_file_only_on_draft: count("receipt_file_only_on_draft"),
+    receipt_file_draft_repeats: count("receipt_file_draft_repeats"),
+  };
 }
 
 /** Trusted notes: the range read, what the scan left out and why. Names no file. */
@@ -813,10 +845,7 @@ function notesOf(
 /** Trusted one-line summary: counts only, no file name. */
 export function receiptFolderSentence(result: ReceiptFolderResult): string {
   const { coverage } = result;
-  const count = (code: ReceiptFolderCode): number =>
-    result.findings
-      .filter((entry) => entry.code === code)
-      .reduce((sum, entry) => sum + entry.files.length + (entry.filesOmitted ?? 0), 0);
+  const count = (code: ReceiptFolderCode): number => coverage.filesByFinding[code];
   const unhashed = coverage.vouchers.withoutChecksum;
   let text =
     `Receipt folder ${result.period.label}: ${plural(coverage.filesChecked, "file")} checked, ` +

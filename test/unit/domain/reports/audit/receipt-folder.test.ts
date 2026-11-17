@@ -440,6 +440,36 @@ describe("receipt folder check", () => {
     expect(receiptFolderSentence(result)).toContain("The folder was cut");
   });
 
+  it("counts the files of findings beyond the cap in the summary", async () => {
+    // 120 files each booked twice (one warning per checksum) push the one unbooked file's
+    // finding past the 100 listed.
+    const twiceHashes = Array.from({ length: 120 }, (_, i) => i.toString(16).padStart(64, "a"));
+    const vouchers = twiceHashes.flatMap((hashOf, i) => [
+      voucher({ id: 2000 + 2 * i, date: "2026-02-01", hash: hashOf, number: `X${String(i)}` }),
+      voucher({ id: 2001 + 2 * i, date: "2026-02-02", hash: hashOf, number: `Y${String(i)}` }),
+    ]);
+    const files = [
+      ...twiceHashes.map((hashOf, i) => file(`twice-${String(i)}.pdf`, hashOf)),
+      file("unbooked.pdf", H.missing),
+    ];
+    const result = await check(new FakeSevdeskClient(scenarioRoutes({ vouchers })), scanOf(files));
+
+    expect(result.findings).toHaveLength(100);
+    expect(result.findingsOmitted).toBe(21);
+    expect(result.findings.some((entry) => entry.code === "receipt_file_not_booked")).toBe(false);
+    expect(result.coverage.filesByFinding).toEqual({
+      receipt_file_booked_twice: 120,
+      receipt_file_not_booked: 1,
+      receipt_file_before_period: 0,
+      receipt_file_only_on_draft: 0,
+      receipt_file_draft_repeats: 0,
+    });
+    expect(receiptFolderSentence(result)).toBe(
+      "Receipt folder 2026-Q1: 121 files checked, 120 found on a voucher, 1 not found, 120 " +
+        "booked more than once.",
+    );
+  });
+
   it("names each voucher's supplier when the vouchers of a file have different ones", async () => {
     const vouchers = [
       voucher({ id: 921, date: "2026-02-01", hash: H.twice, contactId: 3005 }),
