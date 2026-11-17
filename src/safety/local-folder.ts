@@ -26,7 +26,8 @@
  *   chunks while it is read: the bytes are never kept;
  * - the work is bounded: `maxFiles` files hashed, `maxTotalBytes` bytes hashed, `maxEntries`
  *   directory entries and `maxFolders` folders read. When a cap is reached, or `stop` says the
- *   time budget ran out, the scan stops and says why (`cut`).
+ *   time budget ran out, the scan stops and says why (`cut`). A folder with more entries than
+ *   are left is cut by name (its names are sorted first), not in the file system's order.
  *
  * Paths returned are real absolute paths inside the configured folders, as the voucher tools take
  * them. They are local data and untrusted: callers show them only as values of their own fields,
@@ -136,6 +137,11 @@ export interface FolderScan {
 
 /** Files listed in `notChecked`; the counts in `skipped` cover all of them. */
 const MAX_NOT_CHECKED = 50;
+/**
+ * Names read from one folder before they are sorted and cut to the entry cap (a few MB of memory
+ * at most; the entry cap ends the scan, so only one folder ever reads this many).
+ */
+const MAX_LISTED = 50_000;
 /** Longest path the voucher tools take as `file`. */
 const MAX_PATH_LENGTH = 1_000;
 const CHUNK_BYTES = 64 * 1024;
@@ -214,7 +220,6 @@ export async function scanConfinedFolder(
     }
     state.foldersRead += 1;
     state.entriesRead += listing.entries.length;
-    if (listing.cut) state.cut.add("entries");
 
     const subfolders: Located[] = [];
     for (const entry of listing.entries) {
@@ -237,6 +242,8 @@ export async function scanConfinedFolder(
       }
       await scanFile(path, roots, limits, options, state);
     }
+    // Only now: the entries read so far are checked, no further folder is read.
+    if (listing.cut) state.cut.add("entries");
     if (!options.subfolders) {
       state.subfoldersNotRead += subfolders.length;
     } else if (next.depth + 1 > limits.maxDepth) {
@@ -289,9 +296,11 @@ type Listing =
   | { readonly status: "changed" | "unreadable" };
 
 /**
- * The entries of `folder`, sorted by name (code-unit order), at most `maxEntries`. The folder is
- * checked before and after reading (see the module doc); `changed` when that fails, `unreadable`
- * when it cannot be opened.
+ * The first `maxEntries` entries of `folder` by name (code-unit order), `cut` when it holds more.
+ * Up to {@link MAX_LISTED} names are read and sorted before the first `maxEntries` are taken, so
+ * which entries a cut keeps does not depend on the order the file system lists them in; only a
+ * folder with more names than that is cut in listing order. The folder is checked before and after
+ * reading (see the module doc); `changed` when that fails, `unreadable` when it cannot be opened.
  */
 async function readFolder(
   folder: Located,
@@ -306,12 +315,12 @@ async function readFolder(
     return { status: "unreadable" };
   }
   const entries: Dirent[] = [];
-  let cut = false;
+  let more = false;
   try {
     // Leaving the loop early closes the directory, so does reaching its end.
     for await (const entry of dir) {
-      if (entries.length >= maxEntries) {
-        cut = true;
+      if (entries.length >= MAX_LISTED) {
+        more = true;
         break;
       }
       entries.push(entry);
@@ -321,7 +330,8 @@ async function readFolder(
   }
   if (!(await stillThere(folder, roots))) return { status: "changed" };
   entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  return { status: "ok", entries, cut };
+  const kept = entries.slice(0, Math.max(0, maxEntries));
+  return { status: "ok", entries: kept, cut: more || kept.length < entries.length };
 }
 
 /** Whether `folder` is still the folder the scan located: not a link, same inode, inside. */

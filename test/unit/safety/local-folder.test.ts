@@ -254,6 +254,26 @@ describe("scanConfinedFolder", () => {
     expect(names(folders)).not.toContain("2026/march.pdf");
   });
 
+  it("keeps the first entries by name when a folder holds more than the entry cap", async () => {
+    const folder = join(base, "many");
+    await mkdir(folder);
+    // Written out of order, so that neither creation order (or its reverse) nor a hashed listing
+    // (APFS, ext4) puts a, b and c first.
+    for (const name of ["g", "a", "k", "d", "i", "b", "l", "e", "h", "c", "j", "f"]) {
+      await writeFile(join(folder, `${name}.pdf`), encode(`%PDF-1.4 receipt ${name}`));
+    }
+    const scan = await scanConfinedFolder([folder], undefined, {
+      subfolders: false,
+      limits: { maxEntries: 3 },
+    });
+    expect(scan.files.map((file) => file.path.slice(folder.length + 1))).toEqual([
+      "a.pdf",
+      "b.pdf",
+      "c.pdf",
+    ]);
+    expect(scan.cut).toEqual(["entries"]);
+  });
+
   it("stops when the time budget runs out", async () => {
     let calls = 0;
     const scan = await scanConfinedFolder([root], undefined, {
