@@ -1,6 +1,6 @@
 /**
  * `voucherReceiptOf`: the receipt a voucher row names and, with `embed=document`, the SHA-256 of
- * its file (`contentHash`, spec/deviations.md D-100, PR #104), built on the recorded
+ * its file (`contentHash`, spec/deviations.md D-100), built on the recorded
  * `GET /Document` row (2026-11-10) and the community voucher row.
  */
 import { describe, expect, it } from "vitest";

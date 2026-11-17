@@ -445,7 +445,7 @@ export interface HeaderListParams {
   readonly keepDrafts?: boolean | undefined;
   /**
    * List vouchers with their receipt document embedded (`embed=document`), so each header's
-   * `receipt` carries the file's SHA-256 without a request per voucher (D-100, PR #104).
+   * `receipt` carries the file's SHA-256 without a request per voucher (spec/deviations.md D-100).
    */
   readonly voucherReceipts?: boolean | undefined;
 }

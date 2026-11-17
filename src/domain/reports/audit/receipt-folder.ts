@@ -8,7 +8,7 @@
  * checksums, never file content; its confinement is in `src/safety/local-folder.ts`) and the
  * vouchers dated from {@link RECEIPT_MARGIN_DAYS} days before the period to as many days after
  * it, drafts included, each with its receipt's `contentHash` (`GET /Voucher?embed=document`, one
- * request per 1,000 vouchers; spec/deviations.md D-100 (PR #104), recorded 2026-11-17). A
+ * request per 1,000 vouchers; spec/deviations.md D-100, recorded 2026-11-17). A
  * voucher's receipt checksum is the SHA-256 of the bytes uploaded to sevDesk, so a local file
  * matches only the very same bytes. Nothing is read by id, nothing is sent to sevDesk.
  *

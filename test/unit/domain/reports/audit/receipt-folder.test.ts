@@ -2,7 +2,7 @@
  * The receipt folder check's matching (`runReceiptFolderCheck`): a scanned folder (built here, the
  * scan itself is tested in `test/unit/safety/local-folder.test.ts`) against the vouchers of
  * 2026-Q1 as `GET /Voucher?embed=document` lists them (the recorded `GET /Document` row as the
- * embedded document, D-100 PR #104), with a known case per finding and the matches.
+ * embedded document, spec/deviations.md D-100), with a known case per finding and the matches.
  */
 import { describe, expect, it } from "vitest";
 

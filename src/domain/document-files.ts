@@ -523,7 +523,7 @@ const EXTENSION = /^[a-z0-9]{1,5}$/;
 /**
  * The receipt of one raw voucher row (`GET /Voucher`, `GET /Voucher/{id}`), from its `document`:
  * `{id, objectName}` without `embed`, the whole `Document` with `embed=document`, whose
- * `contentHash` is the SHA-256 of the uploaded bytes (spec/deviations.md D-100 (PR #104);
+ * `contentHash` is the SHA-256 of the uploaded bytes (spec/deviations.md D-100;
  * recorded 2026-11-17: `GET /Voucher?embed=document` embeds it in every list row, so the hashes of
  * a period cost no request per voucher). Not every receipt has one: a receipt created by
  * `Voucher/Factory/createVoucherFromFile` (sevDesk's own recognition) has `contentHash` null, but

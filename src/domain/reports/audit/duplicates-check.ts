@@ -19,8 +19,8 @@
  *   told apart by two different numbers. A gross of 0 doubles nothing and is not compared.
  * - **Same receipt file** (`voucher_receipt_twice`): a same-amount pair whose receipt files have
  *   the same SHA-256 checksum. The voucher list carries it: asked to embed the attached document
- *   (`embed=document`), sevDesk sends its `contentHash` in every row (spec/deviations.md D-100
- *   (PR #104), recorded 2026-11-17), so no voucher is read by id. Different checksums, or a receipt
+ *   (`embed=document`), sevDesk sends its `contentHash` in every row (spec/deviations.md D-100,
+ *   recorded 2026-11-17), so no voucher is read by id. Different checksums, or a receipt
  *   without one, prove nothing (the same paper scanned twice gives two files), so the pair then
  *   stays a `check`.
  * - Booked means any status but draft (open, transferred, partially paid, paid). A pair of a
