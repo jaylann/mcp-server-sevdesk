@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:PLACEHOLDER -->
+<!-- translated-from: docs/faq.md sha256:770281f1d085 -->
 
 # Häufige Fragen
 

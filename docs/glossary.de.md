@@ -1,4 +1,4 @@
-<!-- translated-from: docs/glossary.md sha256:d5e7228be909 -->
+<!-- translated-from: docs/glossary.md sha256:cdf7938fb26b -->
 
 # Glossar
 

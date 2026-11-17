@@ -423,6 +423,19 @@ Ansprechpartner (werden mitgelöscht): 1
 Ansprechpartner (wird mitgelöscht): Dr. Max Mustermann (Kontakt 1002)"
 `;
 
+exports[`German previews > delete an unbooked bank transaction: says the same in German 1`] = `
+"Kontoumsatz 5401 (177,33 EUR) löschen.
+! Der Umsatz verschwindet aus den Umsatzlisten und aus dem Saldo des Kontos, der sich um -177,33 EUR ändert. sevDesk hält ihn über seine ID weiter lesbar, als gelöscht markiert.
+! Kein Werkzeug stellt einen gelöschten Umsatz wieder her; wird er doch gebraucht, lege ihn mit sevdesk_transaction_create neu an.
+(nicht umkehrbar)
+Kontoumsatz: ID 5401, 177,33 EUR (Eingang)
+Wertstellung: 09.11.2026
+Zahlungskonto: Import-Konto (ID 4004)
+Status: Erstellt (100)
+Auftraggeber/Empfänger: Musterfirma GmbH
+Verwendungszweck: RE-1001"
+`;
+
 exports[`German previews > draft a voucher with sevDesk's receipt recognition: says the same in German 1`] = `
 "Belegdatei an sevDesks Belegerkennung senden: sevDesk legt sofort einen Belegentwurf (Ausgabe) mit der Datei an und füllt ihn binnen Sekunden aus; bis zu 15 s darauf warten.
 ! Der Entwurf entsteht, sobald die Datei gesendet ist, auch wenn die Erkennung nichts findet, und bleibt, bis er vervollständigt oder gelöscht wird (sevdesk_voucher_delete_draft). Jeder Aufruf legt einen weiteren Entwurf an.
@@ -546,6 +559,21 @@ Letzte Ausführung: noch keine
 Summe je Rechnung: netto 55,00 EUR, USt. 10,45 EUR, brutto 65,45 EUR"
 `;
 
+exports[`German previews > enshrine a booked bank transaction: says the same in German 1`] = `
+"Kontoumsatz 5101 festschreiben (GoBD): dauerhaft sperren.
+! Nicht umkehrbar (GoBD): sevDesk ändert diesen Kontoumsatz danach nie wieder: kein Statuswechsel, kein Löschen, und seine Buchungen lassen sich nicht mehr rückgängig machen (sevdesk_transaction_reset).
+! Die Dokumente, die er bezahlt, lassen sich nicht mehr auf offen zurücksetzen: Die Zahlung aus diesem Umsatz bleibt dauerhaft bestehen; eine Korrektur braucht dann ein neues Dokument (bei einer Rechnung ein Storno oder eine Gutschrift).
+! Die Dokumente selbst werden dadurch nicht festgeschrieben; das tun ihre eigenen Werkzeuge (sevdesk_invoice_enshrine, sevdesk_voucher_enshrine, sevdesk_credit_note_enshrine).
+(nicht umkehrbar)
+Kontoumsatz: ID 5101, 177,33 EUR (Eingang)
+Wertstellung: 05.01.2026
+Zahlungskonto: Geschäftskonto Musterbank (ID 4002)
+Status: Gebucht (400)
+Auftraggeber/Empfänger: Musterfirma GmbH
+Verwendungszweck: RE-1001
+Gebucht auf: Rechnung 1001"
+`;
+
 exports[`German previews > enshrine an open credit note: says the same in German 1`] = `
 "Gutschrift GU-1001 festschreiben (GoBD): dauerhaft sperren.
 ! Nicht umkehrbar (GoBD): Die Gutschrift kann nie wieder geändert, gelöscht oder auf Entwurf zurückgesetzt werden; Korrekturen sind dann nur noch mit einem neuen Dokument möglich.
@@ -620,6 +648,21 @@ Leistungsdatum oder -zeitraum: 10.01.2026
 Steuerregel: 9 Vorsteuerabziehbare Aufwendungen
 Positionen: keine
 Belegdatei: angehängt (ihr Inhalt wird hier nicht gezeigt)"
+`;
+
+exports[`German previews > enter a bank transaction by hand and book it to an invoice: says the same in German 1`] = `
+"Kontoumsatz über 177,33 EUR (Eingang) vom 09.11.2026 auf dem Dateiimport-Konto Import-Konto (ID 4004) anlegen und zuordnen zu Rechnung RE-1001.
+! Der neue Umsatz ändert den Saldo des Kontos 4004 um 177,33 EUR und gilt als ungebucht (Status 100), bis er Dokumenten zugeordnet ist. Löschen lässt er sich nur, solange er ungebucht ist (sevdesk_transaction_delete).
+! Der Status jedes Dokuments ändert sich (siehe die einzelnen Zuordnungen). Rückgängig machen lässt sich das mit sevdesk_transaction_reset: Das setzt diese Dokumente auf offen zurück und entfernt damit alle ihre Zahlungen.
+(umkehrbar)
+Zahlungskonto: Import-Konto (ID 4004, Dateiimport-Konto CSV)
+Wertstellung: 09.11.2026
+Betrag: 177,33 EUR (Eingang)
+Auftraggeber/Empfänger: Musterfirma GmbH
+Verwendungszweck: RE-1001
+Status danach: gebucht (400)
+Zuordnung 1: Rechnung 1001: Nummer RE-1001; 177,33 EUR (vollständige Zahlung, Betrag automatisch gewählt); offen 177,33 EUR; Status Offen / fällig (200) → bezahlt (1000); Musterfirma GmbH
+Danach nicht zugeordnet: 0,00 EUR (Umsatz vollständig gebucht, Status 400)"
 `;
 
 exports[`German previews > finalize a draft credit note: says the same in German 1`] = `
@@ -929,8 +972,8 @@ Summe (unverändert): 119 EUR"
 
 exports[`German previews > reset a paid invoice to open: says the same in German 1`] = `
 "Rechnung RE-1001 auf offen zurücksetzen (Bezahlt → offen 200) und alle Zahlungen davon lösen.
-! Jede auf dieser Rechnung gebuchte Zahlung wird zurückgenommen: Verknüpfte Kontoumsätze werden davon gelöst und gelten wieder als ungebucht (Status 100) oder, solange sie noch andere Dokumente bezahlen (Sammelzahlungen), als teilweise verknüpft (Status 200); der bezahlte Betrag geht auf 0 zurück. sevDesk erstellt keine Gegenbuchung. Umsätze, die sevDesk für Zahlungen auf Offline-Konten selbst angelegt hat, werden gelöscht; für Kassen wurde das nicht geprüft, kontrolliere diese daher anschließend.
-! sevDesk lehnt das Zurücksetzen ab, wenn einer der Zahlungsumsätze festgeschrieben ist.
+! Jede auf dieser Rechnung gebuchte Zahlung wird zurückgenommen: Verknüpfte Kontoumsätze werden davon gelöst und gelten wieder als ungebucht (Status 100) oder, solange sie noch andere Dokumente bezahlen (Sammelzahlungen), als teilweise verknüpft (Status 200); der bezahlte Betrag geht auf 0 zurück. sevDesk erstellt dafür keine Gegenbuchung. Umsätze, die sevDesk für Zahlungen auf Verrechnungskonten (offline) selbst angelegt hat, werden gelöscht. Auf einer Kasse bleibt ein solcher Umsatz stehen: sevDesk bucht eine Gegenbuchung mit dem umgekehrten Betrag und dem Datum des Zurücksetzens.
+! sevDesk lehnt das Zurücksetzen ab, wenn einer der Zahlungsumsätze festgeschrieben ist; dann ändert sich nichts.
 (umkehrbar)
 Rechnung: RE-1001 (ID 1001)
 Typ: Rechnung (RE)
@@ -1024,7 +1067,7 @@ Sprache: Deutsch (Deutschland), de_DE → Englisch (USA), en_US"
 
 exports[`German previews > undo the booking of a bank transaction: says the same in German 1`] = `
 "Buchungen des Kontoumsatzes 5101 rückgängig machen: 1 Dokument auf offen zurücksetzen (Rechnung RE-1001) und dabei alle ihre Zahlungen entfernen.
-! sevDesk kann einen einzelnen Umsatz nicht lösen: Jedes Dokument wird auf offen zurückgesetzt, und das entfernt ALLE darauf gebuchten Zahlungen, nicht nur die dieses Umsatzes. Dieser Umsatz verliert alle seine Buchungen und gilt wieder als ungebucht (Status 100). Andere Kontoumsätze, die auf diese Dokumente gebucht sind (je Dokument aufgeführt), verlieren nur diese Buchungen: Bezahlt ein solcher Umsatz noch andere Dokumente, gilt er danach als teilweise verknüpft (200), sonst als ungebucht (100). Umsätze, die sevDesk für Zahlungen ohne Umsatz selbst angelegt hat, werden stattdessen gelöscht.
+! sevDesk kann einen einzelnen Umsatz nicht lösen: Jedes Dokument wird auf offen zurückgesetzt, und das entfernt ALLE darauf gebuchten Zahlungen, nicht nur die dieses Umsatzes. Dieser Umsatz verliert alle seine Buchungen und gilt wieder als ungebucht (Status 100). Andere Kontoumsätze, die auf diese Dokumente gebucht sind (je Dokument aufgeführt), verlieren nur diese Buchungen: Bezahlt ein solcher Umsatz noch andere Dokumente, gilt er danach als teilweise verknüpft (200), sonst als ungebucht (100). Umsätze, die sevDesk für Zahlungen ohne Umsatz selbst angelegt hat, werden auf Verrechnungskonten (offline) stattdessen gelöscht; auf einer Kasse bleiben sie stehen, und sevDesk bucht eine Gegenbuchung mit dem Datum des Zurücksetzens.
 (umkehrbar)
 Kontoumsatz: ID 5101, 177,33 EUR (Eingang)
 Wertstellung: 05.01.2026
@@ -1033,7 +1076,7 @@ Status: Gebucht (400)
 Auftraggeber/Empfänger: Musterfirma GmbH
 Verwendungszweck: RE-1001
 Dokument 1: Rechnung 1001: Nummer RE-1001; Status Bezahlt (1000) → offen (200); dieser Umsatz hat 177,33 EUR bezahlt; weitere entfernte Zahlungen: 0,00 EUR
-Dieser Umsatz nach dem Zurücksetzen: ungebucht (Status 100) oder gelöscht, falls sevDesk ihn für eine Buchung angelegt hat"
+Dieser Umsatz nach dem Zurücksetzen: ungebucht (Status 100); falls sevDesk ihn für eine Buchung angelegt hat: auf einem Verrechnungskonto gelöscht, auf einer Kasse mit Gegenbuchung erhalten"
 `;
 
 exports[`German previews > update a draft voucher: says the same in German 1`] = `
