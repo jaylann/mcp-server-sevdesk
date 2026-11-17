@@ -33,7 +33,7 @@ import {
   priceModeText,
   SHORT_MONTH_RUNS,
 } from "./preview.js";
-import { RUN_DATE_BEHAVIOUR } from "./run-date.js";
+import { FIRST_RUN_TODAY, RUN_DATE_BEHAVIOUR } from "./run-date.js";
 import {
   INTERVALS,
   type RecurringInterval,
@@ -41,7 +41,7 @@ import {
   type Schedule,
   type StoredSchedule,
 } from "./schedule.js";
-import type { TemplateState } from "./template.js";
+import { generationOnPhrase, generationText, type TemplateState } from "./template.js";
 
 const NAME_MAX = 200;
 
@@ -54,6 +54,16 @@ export interface ScheduleChange {
   readonly nextRun: string | undefined;
   readonly endChanged: boolean;
   readonly endDate: string | undefined;
+}
+
+/** Automatic generation as stored (D-132): on, off, unrecorded, or not returned. */
+type GenerationState = StoredSchedule["autoGenerate"];
+
+/** Automatic generation before and after a change (built in `update.ts`). */
+export interface GenerationChange {
+  readonly before: GenerationState;
+  readonly after: GenerationState;
+  readonly changed: boolean;
 }
 
 /** What a change preview is built from. */
@@ -84,6 +94,7 @@ export interface TemplateUpdatePreviewInput {
   };
   readonly stored: StoredSchedule;
   readonly schedule: ScheduleChange;
+  readonly generation: GenerationChange;
   /** The runs from the next run on, after the change; none without a known interval or next run. */
   readonly projected: Schedule | undefined;
 }
@@ -91,6 +102,7 @@ export interface TemplateUpdatePreviewInput {
 const LABELS = {
   en: {
     template: "Template",
+    autoGenerate: "Automatic generation (Automatische Generierung)",
     customer: "Customer",
     address: "Address on the invoices",
     contactPerson: "Contact person (Ansprechpartner)",
@@ -117,6 +129,7 @@ const LABELS = {
   },
   de: {
     template: "Vorlage",
+    autoGenerate: "Automatische Generierung",
     customer: "Kunde",
     address: "Anschrift auf den Rechnungen",
     contactPerson: "Ansprechpartner",
@@ -158,6 +171,7 @@ const CHANGE_NAMES = {
   interval: phrase("interval", "Intervall"),
   "start date": phrase("start date", "Startdatum"),
   "end date": phrase("end date", "Enddatum"),
+  "automatic generation": phrase("automatic generation", "automatische Generierung"),
 } as const satisfies Record<string, Phrase>;
 
 /** A change an update makes (see {@link CHANGE_NAMES}). */
@@ -204,12 +218,18 @@ function arrow(before: string | undefined, after: string | undefined, none: stri
   return `${before ?? none} → ${after ?? none}`;
 }
 
-/** The interval as stored: the offered interval's name and form, or the raw form. */
+/**
+ * The interval as stored: the offered interval's name and form; for one made in the web app, its
+ * description (English) or the raw form (German).
+ */
 function storedIntervalText(stored: StoredSchedule, lang: PreviewLanguage): string {
   if (stored.intervalKey !== undefined) {
     return `${INTERVALS[stored.intervalKey][lang]} (${stored.interval ?? ""})`;
   }
-  return stored.interval ?? LABELS[lang].none;
+  if (stored.interval === undefined) return LABELS[lang].none;
+  return lang === "en" && stored.every !== undefined
+    ? `${stored.every} (${stored.interval})`
+    : stored.interval;
 }
 
 function newIntervalText(input: TemplateUpdatePreviewInput, lang: PreviewLanguage): string {
@@ -277,6 +297,13 @@ function facts(input: TemplateUpdatePreviewInput, lang: PreviewLanguage): Previe
     t.template,
     `${String(input.id)} (${de ? "Abo-Rechnung" : "recurring invoice template"}, ` +
       `${input.state === "ended" ? (de ? "beendet" : "ended") : de ? "aktiv" : "active"})`,
+  );
+  const { generation } = input;
+  add(
+    t.autoGenerate,
+    generation.changed
+      ? arrow(generationText(generation.before, lang), generationText(generation.after, lang), "")
+      : generationText(generation.before, lang),
   );
   add(
     t.customer,
@@ -346,13 +373,19 @@ function facts(input: TemplateUpdatePreviewInput, lang: PreviewLanguage): Previe
   add(t.footText, after.footText);
   if (schedule.intervalChanged) {
     add(t.interval, arrow(storedIntervalText(stored, lang), newIntervalText(input, lang), t.none));
+  } else if (stored.intervalKey === undefined && stored.interval !== undefined) {
+    // One this server does not offer (made in the web app): shown as stored, since no run is listed.
+    add(t.interval, storedIntervalText(stored, lang));
   }
   if (schedule.startChanged && schedule.startDate !== undefined) {
     add(
       t.startDate,
       arrow(
         stored.startDate === undefined ? undefined : dateText(stored.startDate, lang),
-        `${dateText(schedule.startDate, lang)} ${de ? "(auch die nächste Ausführung)" : "(also the next run)"}`,
+        `${dateText(schedule.startDate, lang)} ` +
+          (de
+            ? "(auch die nächste Ausführung; die letzte Ausführung wird gelöscht)"
+            : "(also the next run; the last run is cleared)"),
         t.none,
       ),
     );
@@ -413,15 +446,39 @@ const KEEPS_CREATED: Phrase = phrase(
 );
 
 const START_MOVES_NEXT: Phrase = phrase(
-  "sevDesk moves the next run to the new start date as well.",
-  "sevDesk verlegt die nächste Ausführung ebenfalls auf das neue Startdatum.",
+  "sevDesk moves the next run to the new start date as well and clears the template's last run " +
+    "(recorded). The new start lies after the period of every invoice the template has generated, " +
+    "so no period is billed twice.",
+  "sevDesk verlegt die nächste Ausführung ebenfalls auf das neue Startdatum und löscht die letzte " +
+    "Ausführung der Vorlage (erfasst). Der neue Start liegt nach dem Zeitraum jeder Rechnung, die " +
+    "die Vorlage erzeugt hat, sodass kein Zeitraum doppelt abgerechnet wird.",
 );
 
-const STARTS_TODAY: Phrase = phrase(
-  "The new start date is today: sevDesk may create an invoice as soon as the change is saved.",
-  "Das neue Startdatum ist heute: sevDesk erzeugt womöglich eine Rechnung, sobald die Änderung " +
-    "gespeichert ist.",
+const GENERATION_UNRECORDED: Phrase = phrase(
+  "Automatic generation has a stored value whose meaning is not recorded (see " +
+    "schedule.autoGenerateValue), so whether sevDesk generates invoices from this template is " +
+    "unknown. Set autoGenerate to switch it on or off.",
+  "Die automatische Generierung hat einen gespeicherten Wert, dessen Bedeutung nicht erfasst ist " +
+    "(siehe schedule.autoGenerateValue); ob sevDesk aus dieser Vorlage Rechnungen erzeugt, ist " +
+    "daher unbekannt. Mit autoGenerate lässt sie sich ein- oder ausschalten.",
 );
+
+/** What sevDesk does on a run date with the generation the template has after the change. */
+function generationSentence(
+  input: TemplateUpdatePreviewInput,
+  lang: PreviewLanguage,
+): string | undefined {
+  switch (input.generation.after) {
+    case "on":
+      return generationOnPhrase(input.stored)[lang];
+    case "off":
+      return RUN_DATE_BEHAVIOUR.off[lang];
+    case "unrecorded":
+      return GENERATION_UNRECORDED[lang];
+    case undefined:
+      return undefined;
+  }
+}
 
 const UNKNOWN_INTERVAL: Phrase = phrase(
   "The stored interval is not one this server offers, so the following runs are not listed; " +
@@ -440,20 +497,20 @@ function intervalKeepsNext(next: string, lang: PreviewLanguage): string {
 
 /** Consequences first, then notes on the schedule, then the tax rule. */
 function warnings(input: TemplateUpdatePreviewInput, lang: PreviewLanguage): string[] {
-  const { schedule, projected, basics } = input;
+  const { schedule, projected, basics, generation } = input;
   const active = input.state === "active";
   const taxOrPositions = basics.taxChanged || input.after.positions !== undefined;
+  const switchedOn = generation.changed && generation.after === "on";
   const list: (string | undefined)[] = [
     active ? APPLIES_FROM_NEXT_RUN[lang] : ENDED_APPLIES_LATER[lang],
     KEEPS_CREATED[lang],
-    active ? RUN_DATE_BEHAVIOUR[lang] : undefined,
+    active || generation.changed ? generationSentence(input, lang) : undefined,
+    switchedOn ? RUN_DATE_BEHAVIOUR.autoSending[lang] : undefined,
+    switchedOn && active && schedule.nextRun === input.today ? FIRST_RUN_TODAY[lang] : undefined,
     schedule.intervalChanged && !schedule.startChanged && schedule.nextRun !== undefined
       ? intervalKeepsNext(schedule.nextRun, lang)
       : undefined,
     schedule.startChanged ? START_MOVES_NEXT[lang] : undefined,
-    schedule.startChanged && schedule.startDate === input.today && active
-      ? STARTS_TODAY[lang]
-      : undefined,
     active && projected === undefined && schedule.interval === undefined
       ? UNKNOWN_INTERVAL[lang]
       : undefined,

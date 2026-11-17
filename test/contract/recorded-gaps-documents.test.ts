@@ -177,6 +177,7 @@ describe("GET /Invoice?showWkr=all: recurring templates (D-111, D-112, D-049)", 
     ).toContainEqual({
       interval: "P0Y1M0W",
       intervalKey: "monthly",
+      every: "every 1 month",
       startDate: "2026-11-15",
       nextRun: "2026-11-15",
     });

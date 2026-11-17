@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  RUN_DATE_BEHAVIOUR,
+  RUN_DATE_ON_AT_STORED_TIME,
+} from "../../../../src/domain/recurring/run-date.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import {
   invoiceEndRecurringTool as endTool,
@@ -93,6 +97,7 @@ describe("sevdesk_invoice_end_recurring", () => {
       { label: "Customer", value: "Musterfirma GmbH (contact 1001)" },
       { label: "Title (Betreff)", value: "Rechnung" },
       { label: "Interval", value: "monthly, every month on day 1 (P0Y1M0W)" },
+      { label: "Automatic generation (Automatische Generierung)", value: "on" },
       { label: "Next run", value: "2026-12-01, no longer happens once the template is ended" },
       { label: "End", value: "none" },
       { label: "Last run", value: "none yet" },
@@ -102,6 +107,8 @@ describe("sevdesk_invoice_end_recurring", () => {
       "Invoices sevDesk already created from this template stay as they are: ending it does " +
         "not cancel, change or delete any of them (a wrong one is cancelled with " +
         "sevdesk_invoice_cancel).",
+      "An ended template generates nothing, even with automatic generation on (recorded). It " +
+        "keeps its automatic generation as it is, for a later reactivation.",
       "The template is kept with its positions and schedule: " +
         "sevdesk_invoice_reactivate_recurring starts it again. A template is deleted only in the " +
         "sevDesk web app (Abo-Rechnungen).",
@@ -113,7 +120,51 @@ describe("sevdesk_invoice_end_recurring", () => {
     expect(fact(plan.previewDe.facts, "Nächste Ausführung")).toBe(
       "01.12.2026, entfällt mit dem Beenden",
     );
-    expect(plan.previewDe.warnings).toHaveLength(2);
+    expect(plan.previewDe.warnings).toHaveLength(3);
+  });
+
+  it("ends a template with automatic sending on, saying that it stops the e-mails", async () => {
+    const sending = templateRow({ autoSendConfiguration: { id: "77", sendType: "VM" } });
+    const plan = await prepareWrite(
+      endTool,
+      { id: 2301 },
+      new FakeSevdeskClient(templateChangeRoutes(sending)),
+    );
+    expect(plan.state.body.invoice).toEqual({
+      id: 2301,
+      objectName: "Invoice",
+      mapAll: true,
+      status: "50",
+    });
+    expect(plan.preview.warnings).toContainEqual(
+      expect.stringMatching(
+        /^Automatic sending \(Automatisches Versenden\) is on for this template: ending it stops/,
+      ),
+    );
+    expect(plan.previewDe.warnings).toHaveLength(plan.preview.warnings.length);
+  });
+
+  it("ends a template made in the web app (an interval this server does not offer)", async () => {
+    const at = "2026-12-01T11:08:00+01:00";
+    const web = templateRow({
+      accountIntervall: "P0Y0M1W",
+      accountStartDate: at,
+      accountNextInvoice: at,
+      autoSendConfiguration: undefined,
+      propertyAutoGenerateRecurringInvoice: undefined,
+    });
+    const plan = await prepareWrite(
+      endTool,
+      { id: 2301 },
+      new FakeSevdeskClient(templateChangeRoutes(web)),
+    );
+    expect(fact(plan.preview.facts, "Interval")).toBe(
+      "every 1 week (P0Y0M1W; not an interval this server offers)",
+    );
+    expect(fact(plan.preview.facts, "Automatic generation (Automatische Generierung)")).toBe(
+      "not returned by sevDesk",
+    );
+    expect(plan.preview.facts.map((f) => f.value).join(" ")).not.toMatch(/00:00/);
   });
 
   it("warns when the next run is today", async () => {
@@ -182,7 +233,7 @@ describe("sevdesk_invoice_reactivate_recurring", () => {
     });
   });
 
-  it("previews that sevDesk issues invoices again, with the run dates", async () => {
+  it("previews that sevDesk generates drafts again (generation on), with the run dates", async () => {
     const plan = await prepareWrite(
       reactivateTool,
       { id: 2301 },
@@ -194,25 +245,91 @@ describe("sevdesk_invoice_reactivate_recurring", () => {
     );
     expect(plan.preview.action).toBe(
       "Reactivate recurring invoice template 2301 (Abo-Rechnung) for Musterfirma GmbH (contact " +
-        "1001): sevDesk issues invoices from it again, 65.45 EUR gross each, the next on " +
-        "2026-12-01.",
+        "1001): sevDesk generates draft invoices from it again, 65.45 EUR gross each, the next " +
+        "on 2026-12-01.",
     );
+    expect(fact(plan.preview.facts, "Automatic generation (Automatische Generierung)")).toBe("on");
     expect(fact(plan.preview.facts, "Next run")).toBe("2026-12-01");
     expect(fact(plan.preview.facts, "Following runs")).toBe("2027-01-01, 2027-02-01");
     expect(fact(plan.preview.facts, "End")).toBe(
-      "2027-02-01 (3 invoices up to then, the first included)",
+      "2027-02-01 (3 runs up to then, the first included)",
     );
     expect(plan.preview.warnings).toEqual([
-      expect.stringMatching(/^Once reactivated, sevDesk again creates an invoice/),
-      expect.stringMatching(/^Not recorded yet: what sevDesk generates on a run date/),
-      "A run falls on the end date itself (2027-02-01); whether sevDesk still creates an " +
-        "invoice on its end date is not recorded.",
+      expect.stringMatching(/^Once reactivated, sevDesk again creates a draft invoice/),
+      RUN_DATE_BEHAVIOUR.on.en,
+      RUN_DATE_BEHAVIOUR.autoSending.en,
+      expect.stringMatching(/^A run falls on the end date itself \(2027-02-01\)/),
     ]);
     expect(plan.previewDe.action).toBe(
       "Abo-Rechnung 2301 für Musterfirma GmbH (Kontakt 1001) wieder aktivieren: sevDesk erzeugt " +
-        "aus ihr wieder Rechnungen über 65,45 EUR brutto, die nächste am 01.12.2026.",
+        "aus ihr wieder Rechnungsentwürfe über 65,45 EUR brutto, den nächsten am 01.12.2026.",
     );
     expect(plan.previewDe.warnings).toHaveLength(plan.preview.warnings.length);
+  });
+
+  it("says that a next run today is due at once", async () => {
+    const today = storedDate("2026-11-17");
+    const plan = await prepareWrite(
+      reactivateTool,
+      { id: 2301 },
+      new FakeSevdeskClient(
+        templateChangeRoutes(templateRow({ status: "50", accountNextInvoice: today })),
+      ),
+    );
+    expect(plan.preview.warnings).toContain(
+      "The next run is today, so it is due at once: sevDesk creates a draft within about a " +
+        "minute of the reactivation.",
+    );
+  });
+
+  it("with generation off: reactivating alone generates nothing, also with a past next run", async () => {
+    const past = storedDate("2026-11-01");
+    const off = templateRow({
+      status: "50",
+      propertyAutoGenerateRecurringInvoice: null,
+      accountNextInvoice: past,
+    });
+    const plan = await prepareWrite(
+      reactivateTool,
+      { id: 2301 },
+      new FakeSevdeskClient(templateChangeRoutes(off)),
+    );
+    expect(plan.preview.action).toBe(
+      "Reactivate recurring invoice template 2301 (Abo-Rechnung) for Musterfirma GmbH (contact " +
+        "1001); with automatic generation off, sevDesk creates nothing from it by itself.",
+    );
+    expect(plan.preview.warnings).toEqual([
+      expect.stringMatching(
+        /^Automatic generation is off for this template, so reactivating it alone generates nothing\./,
+      ),
+      "The next run (2026-11-01) lies before today: before automatic generation is switched " +
+        "on, the template needs a new start date, or sevDesk would catch up the missed periods.",
+    ]);
+    expect(plan.previewDe.warnings).toHaveLength(2);
+  });
+
+  it("a template made in the web app: runs at its stored time, the later runs not listed", async () => {
+    const at = "2026-12-01T11:08:00+01:00";
+    const web = templateRow({
+      status: "50",
+      accountIntervall: "P0Y0M1W",
+      accountStartDate: at,
+      accountNextInvoice: at,
+    });
+    const plan = await prepareWrite(
+      reactivateTool,
+      { id: 2301 },
+      new FakeSevdeskClient(templateChangeRoutes(web)),
+    );
+    expect(fact(plan.preview.facts, "Following runs")).toBe(
+      "not computed: the stored interval is not one this server offers",
+    );
+    expect(plan.preview.warnings).toContain(RUN_DATE_ON_AT_STORED_TIME.en);
+    expect(plan.preview.warnings).not.toContain(RUN_DATE_BEHAVIOUR.on.en);
+    expect(plan.preview.warnings).toContain(
+      "The stored interval is not one this server offers, so the runs after the next one are " +
+        "not listed; check them in the sevDesk web app.",
+    );
   });
 
   it("warns about a run day some months lack (a template from the web app)", async () => {
@@ -237,12 +354,13 @@ describe("sevdesk_invoice_reactivate_recurring", () => {
       "a next run in the past",
       templateRow({ status: "50", accountNextInvoice: storedDate("2026-11-01") }),
       "The next run of recurring invoice template 2301 is 2026-11-01, before today (2026-11-17 " +
-        "in Berlin).",
+        "in Berlin), and its automatic generation is on. Reactivated, sevDesk would catch up " +
+        "and create a draft for every period since then, one a minute",
     ],
     [
-      "no next run",
+      "no next run with generation on",
       templateRow({ status: "50", accountNextInvoice: null }),
-      "has no next run date",
+      "has automatic generation on but no next run date",
     ],
     [
       "an end before the next run",
@@ -250,9 +368,19 @@ describe("sevdesk_invoice_reactivate_recurring", () => {
       "The end date 2026-11-30 of recurring invoice template 2301 is before its next run",
     ],
     [
-      "an interval this server does not offer",
-      templateRow({ status: "50", accountIntervall: "P0Y0M1W" }),
-      "has an interval this server does not offer",
+      "automatic sending on",
+      templateRow({ status: "50", autoSendConfiguration: { id: "77", sendType: "VM" } }),
+      "sevdesk_invoice_end_recurring",
+    ],
+    [
+      "settings sevDesk did not return",
+      templateRow({ status: "50", autoSendConfiguration: undefined }),
+      "could not be checked",
+    ],
+    [
+      "a generation value whose meaning is not recorded",
+      templateRow({ status: "50", propertyAutoGenerateRecurringInvoice: "2" }),
+      "not recorded",
     ],
   ])("refuses %s", async (_label, row, message) => {
     expect(await refusal(reactivateTool, templateChangeRoutes(row))).toContain(message);

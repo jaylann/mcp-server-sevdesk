@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  FIRST_RUN_TODAY,
+  RUN_DATE_BEHAVIOUR,
+  RUN_DATE_ON_AT_STORED_TIME,
+} from "../../../../src/domain/recurring/run-date.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { invoiceUpdateRecurringTool as tool } from "../../../../src/tools/invoices/recurring-update.js";
 import { ACCOUNT_RECURRING_INVOICES } from "../../../../src/tools/types.js";
@@ -8,6 +13,8 @@ import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import { TIMESTAMPS, unknownRegimeRoute, withRoutes } from "../drafts/routes.js";
 import { StagedClient } from "../lifecycle/helpers.js";
 import {
+  generatedRoute,
+  generatedRow,
   type Row,
   storedDate,
   templateChangeRoutes,
@@ -94,6 +101,7 @@ describe("sevdesk_invoice_update_recurring", () => {
       );
       expect(plan.preview.facts).toEqual([
         { label: "Template", value: "2301 (recurring invoice template, active)" },
+        { label: "Automatic generation (Automatische Generierung)", value: "on" },
         { label: "Customer", value: "Musterfirma GmbH (contact 1001)" },
         {
           label: "Interval",
@@ -101,10 +109,7 @@ describe("sevdesk_invoice_update_recurring", () => {
         },
         { label: "Next run", value: "2026-12-01" },
         { label: "Following runs", value: "2027-03-01, 2027-06-01, 2027-09-01" },
-        {
-          label: "End",
-          value: "none (sevDesk keeps creating invoices until the template is ended)",
-        },
+        { label: "End", value: "none (the template runs until it is ended)" },
         { label: "Total per invoice", value: "unchanged: gross 65.45 EUR" },
       ]);
       expect(plan.preview.warnings).toEqual([
@@ -112,7 +117,7 @@ describe("sevdesk_invoice_update_recurring", () => {
           "it; nobody is asked again. This approval covers all of them until the template ends.",
         "Invoices sevDesk already created from this template stay as they are; the change " +
           "applies only to later ones.",
-        expect.stringMatching(/^Not recorded yet: what sevDesk generates on a run date/),
+        RUN_DATE_BEHAVIOUR.on.en,
         "With a new interval sevDesk keeps the next run (2026-12-01); the runs after it follow " +
           "the new interval.",
       ]);
@@ -125,6 +130,7 @@ describe("sevdesk_invoice_update_recurring", () => {
       );
       expect(plan.previewDe.facts.map((f) => f.label)).toEqual([
         "Vorlage",
+        "Automatische Generierung",
         "Kunde",
         "Intervall",
         "Enddatum",
@@ -138,7 +144,7 @@ describe("sevdesk_invoice_update_recurring", () => {
       );
       expect(fact(plan.previewDe.facts, "Enddatum")).toBe("keines → 01.06.2027");
       expect(fact(plan.previewDe.facts, "Ende")).toBe(
-        "01.06.2027 (bis dahin 3 Rechnungen, die erste eingeschlossen)",
+        "01.06.2027 (bis dahin 3 Ausführungen, die erste eingeschlossen)",
       );
       expect(plan.previewDe.warnings).toHaveLength(plan.preview.warnings.length);
       expect(plan.state.body.invoice.accountEndDate).toBe(JUN_1);
@@ -161,10 +167,126 @@ describe("sevdesk_invoice_update_recurring", () => {
       expect(plan.state.body.invoice).toEqual({ ...head, accountStartDate: JAN_1 });
       expect(plan.state.schedule).toMatchObject({ startDate: "2027-01-01", nextRun: "2027-01-01" });
       expect(fact(plan.preview.facts, "Start date")).toBe(
-        "2026-12-01 → 2027-01-01 (also the next run)",
+        "2026-12-01 → 2027-01-01 (also the next run; the last run is cleared)",
       );
+      expect(plan.preview.warnings).toContainEqual(
+        expect.stringMatching(
+          /^sevDesk moves the next run to the new start date as well and clears the template's last run/,
+        ),
+      );
+    });
+
+    it("a new start after the newest period the template generated (found by origin)", async () => {
+      const billed = [
+        generatedRow("9001", "2026-11-01", "2026-11-30"),
+        generatedRow("9002", "2026-12-01", "2026-12-31"),
+        // Should sevDesk not filter by origin: another template's invoice and one made from an
+        // order with the same id are not counted.
+        {
+          ...generatedRow("9003", "2027-01-01", "2027-03-31"),
+          origin: { id: "2399", objectName: "Invoice" },
+        },
+        {
+          ...generatedRow("9004", "2027-01-01", "2027-03-31"),
+          origin: { id: "2301", objectName: "Order" },
+        },
+      ];
+      const table = [generatedRoute(billed), ...templateChangeRoutes()];
+      expect(await refusal({ startDate: "2026-12-01" }, table)).toContain(
+        "has already billed the period up to 2026-12-31",
+      );
+      const plan = await prepare({ startDate: "2027-01-01" }, table);
+      expect(plan.state.body.invoice).toEqual({ ...head, accountStartDate: JAN_1 });
+    });
+
+    it("switches automatic generation off, and says what that means", async () => {
+      const plan = await prepare({ autoGenerate: false });
+      expect(plan.state.body.invoice).toEqual({
+        ...head,
+        propertyAutoGenerateRecurringInvoice: false,
+      });
+      expect(plan.preview.action).toMatch(/: automatic generation\.$/);
+      expect(fact(plan.preview.facts, "Automatic generation (Automatische Generierung)")).toBe(
+        "on → off (never set or switched off)",
+      );
+      expect(fact(plan.previewDe.facts, "Automatische Generierung")).toBe(
+        "an → aus (nie gesetzt oder ausgeschaltet)",
+      );
+      expect(plan.preview.warnings).toContain(RUN_DATE_BEHAVIOUR.off.en);
+      expect(plan.preview.warnings).not.toContain(RUN_DATE_BEHAVIOUR.on.en);
+      expect(plan.previewDe.warnings).toContain(RUN_DATE_BEHAVIOUR.off.de);
+    });
+
+    it("switches automatic generation on for a next run after today", async () => {
+      const off = templateChangeRoutes(templateRow({ propertyAutoGenerateRecurringInvoice: null }));
+      const plan = await prepare({ autoGenerate: true }, off);
+      expect(plan.state.body.invoice).toEqual({
+        ...head,
+        propertyAutoGenerateRecurringInvoice: true,
+      });
+      expect(fact(plan.preview.facts, "Automatic generation (Automatische Generierung)")).toBe(
+        "off (never set or switched off) → on",
+      );
+      expect(plan.preview.warnings).toEqual(
+        expect.arrayContaining([RUN_DATE_BEHAVIOUR.on.en, RUN_DATE_BEHAVIOUR.autoSending.en]),
+      );
+      expect(plan.preview.warnings).not.toContain(FIRST_RUN_TODAY.en);
+    });
+
+    it("switches it on for a next run today: the first draft comes at once", async () => {
+      const today = storedDate("2026-11-17");
+      const off = templateChangeRoutes(
+        templateRow({
+          propertyAutoGenerateRecurringInvoice: null,
+          accountStartDate: today,
+          accountNextInvoice: today,
+        }),
+      );
+      const plan = await prepare({ autoGenerate: true }, off);
+      expect(plan.preview.warnings).toContain(FIRST_RUN_TODAY.en);
+      expect(plan.previewDe.warnings).toContain(FIRST_RUN_TODAY.de);
+    });
+
+    it("switches it on for a past next run only together with a new start", async () => {
+      const past = storedDate("2026-11-01");
+      const off = templateChangeRoutes(
+        templateRow({
+          propertyAutoGenerateRecurringInvoice: null,
+          accountStartDate: past,
+          accountNextInvoice: past,
+        }),
+      );
+      const plan = await prepare({ autoGenerate: true, startDate: "2027-01-01" }, off);
+      expect(plan.state.body.invoice).toEqual({
+        ...head,
+        accountStartDate: JAN_1,
+        propertyAutoGenerateRecurringInvoice: true,
+      });
+      expect(plan.preview.warnings).not.toContain(FIRST_RUN_TODAY.en);
+    });
+
+    it("a template made in the web app: its interval and run time as stored", async () => {
+      const at = "2026-12-01T11:08:00+01:00";
+      const web = templateChangeRoutes(
+        templateRow({
+          accountIntervall: "P0Y0M1W",
+          accountStartDate: at,
+          accountNextInvoice: at,
+        }),
+      );
+      const plan = await prepare({ header: "Neu" }, web);
+      expect(plan.state.body.invoice).toEqual({ ...head, header: "Neu" });
+      expect(fact(plan.preview.facts, "Interval")).toBe("every 1 week (P0Y0M1W)");
+      expect(fact(plan.previewDe.facts, "Intervall")).toBe("P0Y0M1W");
+      expect(fact(plan.preview.facts, "Following runs")).toBe(
+        "not computed: the stored interval is not one this server offers",
+      );
+      expect(plan.preview.warnings).toContain(RUN_DATE_ON_AT_STORED_TIME.en);
+      expect(plan.preview.warnings).not.toContain(RUN_DATE_BEHAVIOUR.on.en);
+      expect(plan.preview.warnings.join(" ")).not.toMatch(/00:00|midnight \(/);
       expect(plan.preview.warnings).toContain(
-        "sevDesk moves the next run to the new start date as well.",
+        "The stored interval is not one this server offers, so the following runs are not " +
+          "listed; set interval to replace it.",
       );
     });
 
@@ -252,7 +374,7 @@ describe("sevdesk_invoice_update_recurring", () => {
         "The template is ended (status 50): sevDesk creates no invoice from it now. The change " +
           "applies once it is reactivated with sevdesk_invoice_reactivate_recurring.",
       );
-      expect(plan.preview.warnings.some((w) => w.startsWith("Not recorded yet"))).toBe(false);
+      expect(plan.preview.warnings).not.toContain(RUN_DATE_BEHAVIOUR.on.en);
     });
 
     it("warns in both languages when the account's VAT regulation cannot be read", async () => {
@@ -293,15 +415,48 @@ describe("sevdesk_invoice_update_recurring", () => {
       );
     });
 
-    it("a new start on a template that has run", async () => {
-      const ran = templateRow({ accountLastInvoice: storedDate("2026-11-01") });
-      expect(await refusal({ startDate: "2027-01-01" }, templateChangeRoutes(ran))).toContain(
-        "created an invoice on 2026-11-01 already",
+    it("a template with automatic sending on, or whose settings sevDesk did not return", async () => {
+      const sending = templateChangeRoutes(
+        templateRow({ autoSendConfiguration: { id: "77", sendType: "VM" } }),
+      );
+      const sent = await refusal({ header: "Neu" }, sending);
+      expect(sent).toContain("automatic sending");
+      expect(sent).toContain("sevdesk_invoice_end_recurring");
+      const unread = templateRow();
+      delete unread.autoSendConfiguration;
+      expect(await refusal({ header: "Neu" }, templateChangeRoutes(unread))).toContain(
+        "could not be checked",
+      );
+      const noGeneration = templateRow();
+      delete noGeneration.propertyAutoGenerateRecurringInvoice;
+      expect(await refusal({ header: "Neu" }, templateChangeRoutes(noGeneration))).toContain(
+        "could not be checked",
+      );
+    });
+
+    it("switching generation on with a next run before today, naming the catch-up", async () => {
+      const past = storedDate("2026-11-01");
+      const off = templateChangeRoutes(
+        templateRow({
+          propertyAutoGenerateRecurringInvoice: null,
+          accountStartDate: past,
+          accountNextInvoice: past,
+        }),
+      );
+      const message = await refusal({ autoGenerate: true }, off);
+      expect(message).toContain("one a minute");
+      expect(message).toContain("Give a new startDate in the same call.");
+    });
+
+    it("an unchanged switch is no change", async () => {
+      expect(await refusal({ autoGenerate: true })).toBe(
+        "Nothing changes: recurring invoice template 2301 already has every value given.",
       );
     });
 
     it.each([
-      [{ startDate: "2026-11-16" }, "The start date 2026-11-16 is in the past"],
+      [{ startDate: "2026-11-16" }, "The new start date 2026-11-16 is not after today (2026-11-17"],
+      [{ startDate: "2026-11-17" }, "The new start date 2026-11-17 is not after today"],
       [{ startDate: "2027-01-31" }, "falls on day 31 of the month"],
       [{ endDate: "2026-11-30" }, "The end date 2026-11-30 is before the next run 2026-12-01."],
       [{ endDate: "2037-01-01" }, "more than 10 years after the next run 2026-12-01"],
@@ -363,12 +518,31 @@ describe("sevdesk_invoice_update_recurring", () => {
       expect(output.data.schedule).toEqual({
         interval: "P0Y3M0W",
         intervalKey: "quarterly",
+        every: "every 3 months",
         startDate: "2026-12-01",
         nextRun: "2026-12-01",
+        autoGenerate: "on",
+        autoSendConfigured: false,
       });
       expect(output.data.notes).toBeUndefined();
       expect(output.summary).toBe("Changed recurring invoice template 2301 (interval).");
       expect(output.affected).toEqual([{ objectName: "Invoice", id: "2301" }]);
+    });
+
+    it("checks the switch read back after changing it", async () => {
+      const stillOn = new StagedClient(templateChangeRoutes(), templateChangeRoutes());
+      const kept = await executeWrite(tool, { id: 2301, autoGenerate: false }, stillOn);
+      expect(stillOn.writes()).toHaveLength(1);
+      expect(kept.output.data.notes).toEqual([
+        expect.stringMatching(
+          /^sevDesk stored automatic generation \(Automatische Generierung\) as on although/,
+        ),
+      ]);
+      const off = templateChangeRoutes(templateRow({ propertyAutoGenerateRecurringInvoice: null }));
+      const done = new StagedClient(templateChangeRoutes(), off);
+      const switched = await executeWrite(tool, { id: 2301, autoGenerate: false }, done);
+      expect(switched.output.data.notes).toBeUndefined();
+      expect(switched.output.data.schedule).toMatchObject({ autoGenerate: "off" });
     });
 
     it("says where sevDesk kept another schedule than expected", async () => {

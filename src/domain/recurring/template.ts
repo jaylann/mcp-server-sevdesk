@@ -9,15 +9,18 @@
  */
 import { z } from "zod";
 
-import { berlinDateOf } from "../../sevdesk/dates.js";
-import { expectSingle } from "../../sevdesk/envelope.js";
+import { expectArray } from "../../sevdesk/envelope.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
-import { sevdeskPath, toSevdeskId } from "../../sevdesk/paths.js";
+import { toSevdeskId } from "../../sevdesk/paths.js";
+import { parseUpstream, zBerlinDate, zOptionalRef } from "../../sevdesk/schema.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
+import type { CountryReadOptions } from "../country-codes.js";
 import { savedDocumentId } from "../drafts/payloads.js";
-import { type InvoiceDetail, mapInvoiceDetail } from "../invoices.js";
+import { getInvoice, type InvoiceDetail, type InvoiceDetails } from "../invoices.js";
+import { type Phrase, phrase, type PreviewLanguage } from "../preview-text.js";
 import { documentTypeByCode } from "../reference-data.js";
-import { ENDED_STATUS, readStoredSchedule, type StoredSchedule } from "./schedule.js";
+import { RUN_DATE_BEHAVIOUR, RUN_DATE_ON_AT_STORED_TIME } from "./run-date.js";
+import { ENDED_STATUS, type StoredSchedule } from "./schedule.js";
 
 /** The statuses of an active template: 100, the status of a new one, and 200 (D-112). */
 const ACTIVE_STATUSES: ReadonlySet<number> = new Set([100, 200]);
@@ -76,22 +79,22 @@ export function templateState(id: number, status: number): TemplateState {
 
 /** One stored template as the status tools and every read-back see it. */
 export interface StoredTemplate {
-  readonly invoice: InvoiceDetail;
+  readonly details: InvoiceDetails;
+  /** The schedule with automatic generation and sending (`{}` when the invoice is no template). */
   readonly schedule: StoredSchedule;
 }
 
 /**
- * `GET /Invoice/{id}?embed=contact`, mapped to the invoice DTO and the stored schedule. A missing
- * invoice is a `validation` error that says how to find templates.
+ * The invoice with its positions and, for a template, its schedule and settings
+ * (`getInvoice`). A missing invoice is a `validation` error that says how to find templates.
  */
 export async function loadTemplate(
   client: SevdeskClient,
   id: number,
-  signal: AbortSignal | undefined,
+  options: CountryReadOptions,
 ): Promise<StoredTemplate> {
-  let payload: unknown;
   try {
-    payload = await readTemplateRecord(client, id, signal);
+    return templateOf(await getInvoice(client, id, options));
   } catch (error) {
     if (error instanceof SevdeskError && error.kind === "not_found") {
       refuse(
@@ -101,30 +104,118 @@ export async function loadTemplate(
     }
     throw error;
   }
-  return storedTemplate(payload, id);
 }
 
-/** The raw record of a template, contact embedded (for its name). */
-export function readTemplateRecord(
+/** A read invoice as a {@link StoredTemplate}. */
+export function templateOf(details: InvoiceDetails): StoredTemplate {
+  return { details, schedule: details.invoice.schedule ?? {} };
+}
+
+/**
+ * Refuses to change or reactivate a template whose automatic sending is on, or whose settings
+ * sevDesk did not return (D-132). With sending on, sevDesk finalizes, e-mails and enshrines every
+ * invoice it generates, with no approval of this server's `external` tier: a change or a restart
+ * here would let that happen. Ending stays allowed, since it stops the e-mails.
+ */
+export function assertNoAutoSending(
+  id: number,
+  schedule: StoredSchedule,
+  done: "changed" | "reactivated",
+): void {
+  if (schedule.autoSendConfigured === true) {
+    refuse(
+      `Recurring invoice template ${String(id)} has automatic sending (Automatisches Versenden) ` +
+        "on: sevDesk would finalize, e-mail and enshrine every invoice it creates from it, with " +
+        `no further approval. Such a template is ${done} in the sevDesk web app; ` +
+        "sevdesk_invoice_end_recurring ends it here, which stops the e-mails.",
+    );
+  }
+  if (schedule.autoSendConfigured === undefined || schedule.autoGenerate === undefined) {
+    refuse(
+      `sevDesk did not return the automatic generation and sending settings of recurring invoice ` +
+        `template ${String(id)}, so whether it would e-mail invoices by itself could not be ` +
+        `checked. It is not ${done} here; check it in the sevDesk web app.`,
+    );
+  }
+}
+
+/** Automatic generation as stored, in words (D-132). */
+const GENERATION_TEXT: Readonly<Record<"on" | "off" | "unrecorded" | "unread", Phrase>> = {
+  on: phrase("on", "an"),
+  off: phrase("off (never set or switched off)", "aus (nie gesetzt oder ausgeschaltet)"),
+  unrecorded: phrase(
+    "a stored value whose meaning is not recorded",
+    "ein gespeicherter Wert, dessen Bedeutung nicht erfasst ist",
+  ),
+  unread: phrase("not returned by sevDesk", "von sevDesk nicht geliefert"),
+};
+
+/** A template's automatic generation in words, for a preview. */
+export function generationText(
+  state: StoredSchedule["autoGenerate"],
+  lang: PreviewLanguage,
+): string {
+  return GENERATION_TEXT[state ?? "unread"][lang];
+}
+
+/**
+ * What sevDesk does on a run date with automatic generation on, for a stored template: the
+ * sentence of `run-date.ts` that names 00:00 only when the stored next run is at midnight.
+ */
+export function generationOnPhrase(schedule: StoredSchedule): Phrase {
+  return schedule.runTime === undefined ? RUN_DATE_BEHAVIOUR.on : RUN_DATE_ON_AT_STORED_TIME;
+}
+
+/** Invoices sevDesk generated from a template that are read to find the newest period. */
+const GENERATED_SCAN_LIMIT = 1000;
+
+const generatedRowSchema = z.object({
+  origin: zOptionalRef,
+  deliveryDate: zBerlinDate,
+  deliveryDateUntil: zBerlinDate,
+});
+
+/**
+ * The last day of the newest period template `id` has billed: the latest `deliveryDateUntil` (or
+ * `deliveryDate`) of the invoices that name it as `origin`, listed with
+ * `GET /Invoice?origin[id]=…&origin[objectName]=Invoice&showAll=true` (D-111) and re-checked here
+ * by their origin, since sevDesk may ignore a filter silently (D-015). `undefined` when it has
+ * generated none. More rows than one read takes is a `validation` error: the newest period could
+ * be missed.
+ */
+export async function lastBilledDay(
   client: SevdeskClient,
   id: number,
   signal: AbortSignal | undefined,
-): Promise<unknown> {
-  return client.request({
+): Promise<string | undefined> {
+  const payload = await client.request({
     method: "GET",
-    path: sevdeskPath("Invoice", toSevdeskId(id)),
-    query: { embed: "contact" },
+    path: "/Invoice",
+    query: {
+      "origin[id]": toSevdeskId(id),
+      "origin[objectName]": "Invoice",
+      showAll: true,
+      limit: GENERATED_SCAN_LIMIT,
+      offset: 0,
+    },
     ...(signal === undefined ? {} : { signal }),
   });
-}
-
-/** Maps a `GET /Invoice/{id}` answer to {@link StoredTemplate}. */
-export function storedTemplate(payload: unknown, id: number): StoredTemplate {
-  const record = expectSingle(payload, `invoice ${String(id)}`);
-  return {
-    invoice: mapInvoiceDetail(record, berlinDateOf(Date.now())),
-    schedule: readStoredSchedule(record),
-  };
+  const rows = expectArray(payload, "invoices");
+  if (rows.length >= GENERATED_SCAN_LIMIT) {
+    refuse(
+      `Recurring invoice template ${String(id)} has generated ${String(GENERATED_SCAN_LIMIT)} ` +
+        "invoices or more, so the newest billed period could not be checked. Change its start " +
+        "date in the sevDesk web app.",
+    );
+  }
+  let last: string | undefined;
+  for (const raw of rows) {
+    const row = parseUpstream(generatedRowSchema, raw, "an invoice generated from a template");
+    if (row.origin?.id !== id || row.origin.objectName !== "Invoice") continue;
+    const end = row.deliveryDateUntil ?? row.deliveryDate;
+    if (end !== undefined && (last === undefined || end > last)) last = end;
+  }
+  return last;
 }
 
 /**

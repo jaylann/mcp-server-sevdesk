@@ -42,15 +42,20 @@ export const invoiceUpdateRecurringTool = defineWriteTool({
   title: "Change a recurring invoice template",
   description:
     "Change a recurring invoice template (Abo-Rechnung, type WKR), e.g. a new price, new " +
-    "positions, texts, or another interval or end date. Only the fields you give change. " +
-    "positions replace ALL positions; priceMode needs positions too. Content works as in " +
+    "positions, texts, another interval or end date, or switch its automatic generation " +
+    "(autoGenerate) on or off. Only the fields you give change. positions replace ALL " +
+    "positions; priceMode needs positions too. Content works as in " +
     "sevdesk_invoice_update_draft (tax rule and rates for the account, contact, address). " +
     "Schedule: interval (the next run date stays), endDate or removeEndDate, startDate (also " +
-    "the next run; only before the template's first invoice; today or later, day 1–28). " +
-    "Invoices sevDesk already created stay as they are. Commit tier: a human confirms the " +
-    "preview (each change before → after, the total per invoice, the next run dates); dryRun " +
-    "only previews. Ending: sevdesk_invoice_end_recurring. Before: sevdesk_invoice_get. " +
-    "After: sevdesk_invoice_get.",
+    "the next run; after today, day 1–28, and after the period of the newest invoice the " +
+    "template generated). Switching autoGenerate on is refused while the next run is before " +
+    "today, unless startDate is given. A template with automatic sending on, or whose settings " +
+    "sevDesk does not return, is refused (the web app manages it). Templates made in the web " +
+    "app work too; an interval this server does not offer stays as it is. Invoices sevDesk " +
+    "already created stay as they are. Commit tier: a human confirms the preview (each change " +
+    "before → after, the total per invoice, the next run dates, what sevDesk does on a run " +
+    "date); dryRun only previews. Ending: sevdesk_invoice_end_recurring. Before: " +
+    "sevdesk_invoice_get. After: sevdesk_invoice_get.",
   toolset: "invoices",
   tier: "commit",
   annotations: {

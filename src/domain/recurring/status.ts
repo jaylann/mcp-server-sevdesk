@@ -1,25 +1,34 @@
 /**
  * Ending and reactivating a recurring invoice template (Abo-Rechnung, type WKR).
  *
- * Recorded (spec/deviations.md D-112; 2026-11-16 and 2026-11-17): `saveInvoice` with the template's
- * id and `status: "50"` ends it, `status: "100"` sets it back, and neither changes a schedule field
- * or a position. The body carries nothing else (`templateStatusBodySchema`), so the save cannot
- * change the template's content. Ending does not touch the invoices sevDesk already generated.
+ * Recorded (spec/deviations.md D-112, D-132; 2026-11-16 and 2026-11-17): `saveInvoice` with the
+ * template's id and `status: "50"` ends it, `status: "100"` sets it back, and neither changes a
+ * schedule field, a position or automatic generation. The body carries nothing else
+ * (`templateStatusBodySchema`), so the save cannot change the template's content. An ended
+ * template generates nothing, even with automatic generation on; set back to 100 with generation
+ * on and a run due, it generated a draft within a minute. Ending does not touch the invoices
+ * sevDesk already generated.
  *
- * Reactivating starts billing again, so its preview lists the next run dates and what sevDesk does
- * on a run date ({@link RUN_DATE_BEHAVIOUR}). It is refused when the kept next run is in the past:
- * sevDesk may then create every invoice due since that date at once, which no preview lists
- * (the same rule as a new template's start date). The template gets a new start date first.
+ * Whether a reactivated template generates anything is decided by its automatic generation:
+ * - on: sevDesk generates drafts again, at once when the next run is today. A next run before
+ *   today is refused, since sevDesk catches up one missed period a minute (D-111);
+ * - off (never set or switched off): reactivating alone generates nothing, which the preview says;
+ * - a stored value whose meaning is not recorded: refused, so the outcome is never a guess.
+ * A template with automatic sending on, or whose settings sevDesk did not return, is not
+ * reactivated here (`assertNoAutoSending`); ending one is always allowed, since it stops the
+ * e-mails.
  */
 import { canonicalJson, sha256Hex } from "../../safety/hashing.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { cleanText, trimmedText } from "../common.js";
+import type { CountryReadOptions } from "../country-codes.js";
 import { todayInBerlin } from "../drafts/fields.js";
 import { strictBody } from "../drafts/payloads.js";
 import type { DraftPreview, PreviewFact } from "../drafts/preview.js";
 import { moneyText } from "../drafts/preview.js";
 import { readBack } from "../drafts/read-back.js";
+import { getInvoice } from "../invoices.js";
 import {
   bothPreviews,
   dateText,
@@ -44,14 +53,16 @@ import {
   type StoredSchedule,
 } from "./schedule.js";
 import {
+  assertNoAutoSending,
   assertTemplate,
   type ExpectedSchedule,
+  generationOnPhrase,
+  generationText,
   loadTemplate,
-  readTemplateRecord,
   sameTemplateSaved,
   scheduleNotes,
   type StoredTemplate,
-  storedTemplate,
+  templateOf,
   templateRecordNotes,
   templateState,
 } from "./template.js";
@@ -89,17 +100,18 @@ function refuse(message: string): never {
 }
 
 /**
- * Reads the template, checks that the change does something, and builds the body and both
- * previews. Throws `validation` errors; sends nothing.
+ * Reads the template with its settings, checks that the change does something and is safe, and
+ * builds the body and both previews. Throws `validation` errors; sends nothing.
  */
 export async function prepareTemplateStatus(
   client: SevdeskClient,
   id: number,
   change: TemplateStatusChange,
-  signal: AbortSignal | undefined,
+  options: CountryReadOptions,
 ): Promise<TemplateStatusPlan> {
-  const template = await loadTemplate(client, id, signal);
-  const { invoice, schedule } = template;
+  const template = await loadTemplate(client, id, options);
+  const { invoice } = template.details;
+  const { schedule } = template;
   assertTemplate(
     id,
     invoice.type.code,
@@ -108,7 +120,6 @@ export async function prepareTemplateStatus(
   );
   const state = templateState(id, invoice.status.code);
   const today = todayInBerlin();
-  let projected: Schedule | undefined;
   if (change === "end") {
     if (state === "ended") {
       refuse(
@@ -124,7 +135,8 @@ export async function prepareTemplateStatus(
           "sevdesk_invoice_update_recurring or end it with sevdesk_invoice_end_recurring.",
       );
     }
-    projected = checkReactivation(id, schedule, today);
+    assertNoAutoSending(id, schedule, "reactivated");
+    checkReactivation(id, schedule, today);
   }
 
   const status = change === "end" ? ENDED_STATUS : TEMPLATE_SAVE_STATUS;
@@ -137,6 +149,11 @@ export async function prepareTemplateStatus(
     },
     "recurring invoice template status",
   );
+  const { intervalKey, nextRun, endDate } = schedule;
+  const projected =
+    intervalKey === undefined || nextRun === undefined
+      ? undefined
+      : scheduleFrom(intervalKey, nextRun, endDate);
   const input: StatusPreviewInput = { id, template, projected, today };
   return {
     ...bothPreviews((lang) => ({
@@ -163,26 +180,38 @@ export async function prepareTemplateStatus(
 }
 
 /**
- * The schedule a reactivated template follows from its kept next run, or a refusal when that run
- * is missing or past, when no run is left before the end date, or when the interval is not one
- * this server can list run dates for (the preview must show them).
+ * Refuses a reactivation whose outcome is unknown or would bill more than the preview shows: a
+ * generation value whose meaning is not recorded; with generation on, no next run, a next run
+ * before today (sevDesk would catch up the missed periods at once), or an end before the next run.
+ * With generation off, reactivating generates nothing, so the dates refuse nothing.
  */
-function checkReactivation(id: number, schedule: StoredSchedule, today: string): Schedule {
-  const { nextRun, intervalKey, endDate } = schedule;
+function checkReactivation(id: number, schedule: StoredSchedule, today: string): void {
+  if (schedule.autoGenerate === "unrecorded") {
+    refuse(
+      `Recurring invoice template ${String(id)} has a value for automatic generation ` +
+        "(Automatische Generierung) whose meaning is not recorded (see schedule.autoGenerateValue " +
+        "in sevdesk_invoice_get), so whether sevDesk would generate invoices cannot be said. " +
+        "Switch it on or off with sevdesk_invoice_update_recurring (autoGenerate) first, then " +
+        "reactivate it.",
+    );
+  }
+  if (schedule.autoGenerate !== "on") return;
+  const { nextRun, endDate } = schedule;
   const newStart =
     "Give it a new start date first with sevdesk_invoice_update_recurring (startDate), then " +
     "reactivate it.";
   if (nextRun === undefined) {
     refuse(
-      `Recurring invoice template ${String(id)} has no next run date, so when sevDesk would ` +
-        `create the next invoice cannot be shown. ${newStart}`,
+      `Recurring invoice template ${String(id)} has automatic generation on but no next run ` +
+        `date, so when sevDesk would create the next invoice cannot be shown. ${newStart}`,
     );
   }
   if (nextRun < today) {
     refuse(
       `The next run of recurring invoice template ${String(id)} is ${nextRun}, before today ` +
-        `(${today} in Berlin). Reactivated, sevDesk may create every invoice due since then at ` +
-        `once, which no preview shows. ${newStart}`,
+        `(${today} in Berlin), and its automatic generation is on. Reactivated, sevDesk would ` +
+        "catch up and create a draft for every period since then, one a minute, which no " +
+        `preview shows. ${newStart}`,
     );
   }
   if (endDate !== undefined && endDate < nextRun) {
@@ -192,14 +221,6 @@ function checkReactivation(id: number, schedule: StoredSchedule, today: string):
         "removeEndDate) with sevdesk_invoice_update_recurring first.",
     );
   }
-  if (intervalKey === undefined) {
-    refuse(
-      `Recurring invoice template ${String(id)} has an interval this server does not offer (see ` +
-        "schedule.interval in sevdesk_invoice_get), so its run dates cannot be shown. Set " +
-        "interval with sevdesk_invoice_update_recurring first, or reactivate it in sevDesk.",
-    );
-  }
-  return scheduleFrom(intervalKey, nextRun, endDate);
 }
 
 /** A status change as read back, with trusted notes. */
@@ -212,8 +233,9 @@ export interface TemplateStatusResult extends StoredTemplate {
 export async function executeTemplateStatus(
   client: SevdeskClient,
   state: TemplateStatusState,
-  signal: AbortSignal | undefined,
+  options: CountryReadOptions,
 ): Promise<TemplateStatusResult> {
+  const { signal } = options;
   const response = await client.request({
     method: "POST",
     path: SAVE_PATH,
@@ -226,13 +248,13 @@ export async function executeTemplateStatus(
   const id = sameTemplateSaved(response, state.id);
   const saved = { objectName: "Invoice", id: String(id) };
   const template = await readBack(saved, async () =>
-    storedTemplate(await readTemplateRecord(client, id, signal), id),
+    templateOf(await getInvoice(client, id, options)),
   );
   return {
     id,
     ...template,
     notes: [
-      ...templateRecordNotes(id, template.invoice, state.status),
+      ...templateRecordNotes(id, template.details.invoice, state.status),
       ...scheduleNotes(state.schedule, template.schedule),
     ],
   };
@@ -245,7 +267,7 @@ export async function executeTemplateStatus(
 interface StatusPreviewInput {
   readonly id: number;
   readonly template: StoredTemplate;
-  /** Reactivation: the runs from the kept next run on. */
+  /** The runs from the kept next run on, when the interval is one this server offers. */
   readonly projected: Schedule | undefined;
   readonly today: string;
 }
@@ -256,6 +278,7 @@ const LABELS = {
     customer: "Customer",
     title: "Title (Betreff)",
     interval: "Interval",
+    autoGenerate: "Automatic generation (Automatische Generierung)",
     nextRun: "Next run",
     followingRuns: "Following runs",
     end: "End",
@@ -269,6 +292,7 @@ const LABELS = {
     customer: "Kunde",
     title: "Betreff",
     interval: "Intervall",
+    autoGenerate: "Automatische Generierung",
     nextRun: "Nächste Ausführung",
     followingRuns: "Folgende Ausführungen",
     end: "Ende",
@@ -280,7 +304,7 @@ const LABELS = {
 } as const;
 
 function customerText(input: StatusPreviewInput, lang: PreviewLanguage): string {
-  const contact = input.template.invoice.contact;
+  const contact = input.template.details.invoice.contact;
   const word = lang === "de" ? "Kontakt" : "contact";
   if (contact === undefined) return lang === "de" ? "(kein Kontakt)" : "(no contact)";
   const name = cleanText(contact.name, NAME_MAX);
@@ -289,12 +313,12 @@ function customerText(input: StatusPreviewInput, lang: PreviewLanguage): string 
 }
 
 function grossText(input: StatusPreviewInput, lang: PreviewLanguage): string | undefined {
-  const gross = input.template.invoice.totals.gross;
+  const gross = input.template.details.invoice.totals.gross;
   return gross === undefined ? undefined : moneyText(gross.amount, gross.currency, lang);
 }
 
 function totalText(input: StatusPreviewInput, lang: PreviewLanguage): string | undefined {
-  const { net, tax, gross } = input.template.invoice.totals;
+  const { net, tax, gross } = input.template.details.invoice.totals;
   if (gross === undefined) return undefined;
   const words = lang === "de" ? ["netto", "USt.", "brutto"] : ["net", "tax", "gross"];
   return [net, tax, gross]
@@ -307,16 +331,19 @@ function totalText(input: StatusPreviewInput, lang: PreviewLanguage): string | u
     .join(", ");
 }
 
-/** The stored interval as a preview names it: the offered interval, or the raw form. */
+/**
+ * The stored interval as a preview names it: the offered interval with its run day, or, for one
+ * made in the web app, its description in English and the stored form in German.
+ */
 function storedIntervalText(schedule: StoredSchedule, lang: PreviewLanguage): string {
-  const { interval, intervalKey, nextRun } = schedule;
+  const { interval, intervalKey, nextRun, every } = schedule;
   if (intervalKey !== undefined && nextRun !== undefined) {
     return intervalText(scheduleFrom(intervalKey, nextRun, undefined), lang);
   }
   if (interval === undefined) return lang === "de" ? "keines gespeichert" : "none stored";
   return lang === "de"
     ? `${interval} (kein Intervall, das dieser Server anbietet)`
-    : `${interval} (not an interval this server offers)`;
+    : `${every ?? interval} (${interval}; not an interval this server offers)`;
 }
 
 function dateOrNone(date: string | undefined, none: string, lang: PreviewLanguage): string {
@@ -325,7 +352,8 @@ function dateOrNone(date: string | undefined, none: string, lang: PreviewLanguag
 
 function commonFacts(input: StatusPreviewInput, lang: PreviewLanguage): PreviewFact[] {
   const t = LABELS[lang];
-  const { invoice, schedule } = input.template;
+  const { invoice } = input.template.details;
+  const { schedule } = input.template;
   const list: PreviewFact[] = [];
   const add = (label: string, value: string | undefined): void => {
     if (value !== undefined && trimmedText(value) !== undefined) list.push({ label, value });
@@ -340,6 +368,7 @@ function commonFacts(input: StatusPreviewInput, lang: PreviewLanguage): PreviewF
   add(t.customer, customerText(input, lang));
   add(t.title, invoice.header);
   add(t.interval, storedIntervalText(schedule, lang));
+  add(t.autoGenerate, generationText(schedule.autoGenerate, lang));
   return list;
 }
 
@@ -381,12 +410,29 @@ const ENDING_KEEPS_INVOICES: Phrase = phrase(
     "sevdesk_invoice_cancel storniert).",
 );
 
+const ENDED_GENERATES_NOTHING: Phrase = phrase(
+  "An ended template generates nothing, even with automatic generation on (recorded). It keeps " +
+    "its automatic generation as it is, for a later reactivation.",
+  "Eine beendete Vorlage erzeugt nichts, auch nicht bei eingeschalteter automatischer " +
+    "Generierung (erfasst). Sie behält ihre automatische Generierung, wie sie ist, für ein " +
+    "späteres Aktivieren.",
+);
+
 const ENDING_KEEPS_TEMPLATE: Phrase = phrase(
   "The template is kept with its positions and schedule: sevdesk_invoice_reactivate_recurring " +
     "starts it again. A template is deleted only in the sevDesk web app (Abo-Rechnungen).",
   "Die Vorlage bleibt mit ihren Positionen und ihrem Zeitplan erhalten: " +
     "sevdesk_invoice_reactivate_recurring startet sie wieder. Löschen lässt sich eine Vorlage nur " +
     "in der sevDesk-Web-App (Abo-Rechnungen).",
+);
+
+const ENDING_STOPS_SENDING: Phrase = phrase(
+  "Automatic sending (Automatisches Versenden) is on for this template: ending it stops sevDesk " +
+    "from finalizing, e-mailing and enshrining further invoices from it. Reactivating such a " +
+    "template is left to the sevDesk web app.",
+  "Für diese Vorlage ist das automatische Versenden an: Das Beenden hält sevDesk davon ab, " +
+    "weitere Rechnungen aus ihr fertigzustellen, per E-Mail zu versenden und festzuschreiben. " +
+    "Eine solche Vorlage wird in der sevDesk-Web-App wieder aktiviert.",
 );
 
 const RUN_TODAY_ENDING: Phrase = phrase(
@@ -397,70 +443,130 @@ const RUN_TODAY_ENDING: Phrase = phrase(
 );
 
 function endWarnings(input: StatusPreviewInput, lang: PreviewLanguage): string[] {
-  return [
+  const { schedule } = input.template;
+  const list: (string | undefined)[] = [
     ENDING_KEEPS_INVOICES[lang],
+    ENDED_GENERATES_NOTHING[lang],
     ENDING_KEEPS_TEMPLATE[lang],
-    ...(input.template.schedule.nextRun === input.today ? [RUN_TODAY_ENDING[lang]] : []),
+    schedule.autoSendConfigured === true ? ENDING_STOPS_SENDING[lang] : undefined,
+    schedule.nextRun === input.today ? RUN_TODAY_ENDING[lang] : undefined,
   ];
+  return list.filter((warning): warning is string => warning !== undefined);
+}
+
+function generating(input: StatusPreviewInput): boolean {
+  return input.template.schedule.autoGenerate === "on";
 }
 
 function reactivateAction(input: StatusPreviewInput, lang: PreviewLanguage): string {
   const customer = customerText(input, lang);
-  const gross = grossText(input, lang);
-  const next = input.projected === undefined ? "" : dateText(input.projected.startDate, lang);
-  if (lang === "de") {
-    return (
-      `Abo-Rechnung ${String(input.id)} für ${customer} wieder aktivieren: sevDesk erzeugt aus ` +
-      `ihr wieder Rechnungen${gross === undefined ? "" : ` über ${gross} brutto`}, die nächste ` +
-      `am ${next}.`
-    );
+  const de = lang === "de";
+  if (!generating(input)) {
+    return de
+      ? `Abo-Rechnung ${String(input.id)} für ${customer} wieder aktivieren; bei ausgeschalteter ` +
+          "automatischer Generierung erzeugt sevDesk daraus von selbst nichts."
+      : `Reactivate recurring invoice template ${String(input.id)} (Abo-Rechnung) for ` +
+          `${customer}; with automatic generation off, sevDesk creates nothing from it by itself.`;
   }
-  return (
-    `Reactivate recurring invoice template ${String(input.id)} (Abo-Rechnung) for ${customer}: ` +
-    `sevDesk issues invoices from it again${gross === undefined ? "" : `, ${gross} gross each`}, ` +
-    `the next on ${next}.`
-  );
+  const gross = grossText(input, lang);
+  const next = input.template.schedule.nextRun;
+  const nextText = next === undefined ? "" : dateText(next, lang);
+  return de
+    ? `Abo-Rechnung ${String(input.id)} für ${customer} wieder aktivieren: sevDesk erzeugt aus ` +
+        `ihr wieder Rechnungsentwürfe${gross === undefined ? "" : ` über ${gross} brutto`}, den ` +
+        `nächsten am ${nextText}.`
+    : `Reactivate recurring invoice template ${String(input.id)} (Abo-Rechnung) for ` +
+        `${customer}: sevDesk generates draft invoices from it again` +
+        `${gross === undefined ? "" : `, ${gross} gross each`}, the next on ${nextText}.`;
 }
 
 function reactivateFacts(input: StatusPreviewInput, lang: PreviewLanguage): PreviewFact[] {
   const t = LABELS[lang];
   const facts = commonFacts(input, lang);
   const { projected } = input;
+  const { schedule } = input.template;
+  if (schedule.nextRun !== undefined) {
+    facts.push({ label: t.nextRun, value: dateText(schedule.nextRun, lang) });
+  }
   if (projected !== undefined) {
-    facts.push({ label: t.nextRun, value: dateText(projected.startDate, lang) });
     facts.push({ label: t.followingRuns, value: followingRunsText(projected, lang) });
     facts.push({ label: t.end, value: endText(projected, lang) });
+  } else {
+    if (schedule.nextRun !== undefined) {
+      facts.push({
+        label: t.followingRuns,
+        value:
+          lang === "de"
+            ? "nicht berechnet: das gespeicherte Intervall bietet dieser Server nicht an"
+            : "not computed: the stored interval is not one this server offers",
+      });
+    }
+    facts.push({ label: t.end, value: dateOrNone(schedule.endDate, t.none, lang) });
   }
-  facts.push({
-    label: t.lastRun,
-    value: dateOrNone(input.template.schedule.lastRun, t.noneYet, lang),
-  });
+  facts.push({ label: t.lastRun, value: dateOrNone(schedule.lastRun, t.noneYet, lang) });
   const total = totalText(input, lang);
   if (total !== undefined) facts.push({ label: t.total, value: total });
   return facts;
 }
 
-const ISSUES_AGAIN: Phrase = phrase(
-  "Once reactivated, sevDesk again creates an invoice from this template on every run date by " +
-    "itself, with its stored positions and texts; nobody is asked again. This approval covers " +
-    "every one of those invoices until the template ends.",
-  "Nach dem Aktivieren erzeugt sevDesk wieder an jedem Ausführungstag selbst eine Rechnung aus " +
-    "dieser Vorlage, mit ihren gespeicherten Positionen und Texten; niemand wird erneut gefragt. " +
-    "Diese Freigabe gilt für alle diese Rechnungen, bis die Vorlage endet.",
+const GENERATES_AGAIN: Phrase = phrase(
+  "Once reactivated, sevDesk again creates a draft invoice from this template on every run date " +
+    "by itself, with its stored positions and texts; nobody is asked again. This approval covers " +
+    "every one of those drafts until the template ends.",
+  "Nach dem Aktivieren erzeugt sevDesk wieder an jedem Ausführungstag selbst einen " +
+    "Rechnungsentwurf aus dieser Vorlage, mit ihren gespeicherten Positionen und Texten; niemand " +
+    "wird erneut gefragt. Diese Freigabe gilt für alle diese Entwürfe, bis die Vorlage endet.",
 );
 
+const REACTIVATED_OFF: Phrase = phrase(
+  "Automatic generation is off for this template, so reactivating it alone generates nothing. " +
+    "sevDesk creates drafts from it only once automatic generation is switched on: with " +
+    "sevdesk_invoice_update_recurring (autoGenerate true) or in the sevDesk web app.",
+  "Für diese Vorlage ist die automatische Generierung aus, daher erzeugt das Aktivieren allein " +
+    "nichts. sevDesk erzeugt erst Entwürfe aus ihr, wenn die automatische Generierung " +
+    "eingeschaltet wird: mit sevdesk_invoice_update_recurring (autoGenerate true) oder in der " +
+    "sevDesk-Web-App.",
+);
+
+function pastNextRunWhileOff(nextRun: string, lang: PreviewLanguage): string {
+  return lang === "de"
+    ? `Die nächste Ausführung (${dateText(nextRun, lang)}) liegt vor heute: Vor dem Einschalten ` +
+        "der automatischen Generierung braucht die Vorlage ein neues Startdatum, sonst würde " +
+        "sevDesk die versäumten Zeiträume nachholen."
+    : `The next run (${nextRun}) lies before today: before automatic generation is switched on, ` +
+        "the template needs a new start date, or sevDesk would catch up the missed periods.";
+}
+
 const RUN_TODAY_REACTIVATING: Phrase = phrase(
-  "The next run is today: sevDesk may create an invoice as soon as the template is active.",
-  "Die nächste Ausführung ist heute: sevDesk erzeugt womöglich eine Rechnung, sobald die " +
-    "Vorlage aktiv ist.",
+  "The next run is today, so it is due at once: sevDesk creates a draft within about a minute of " +
+    "the reactivation.",
+  "Die nächste Ausführung ist heute und damit sofort fällig: sevDesk erzeugt etwa eine Minute " +
+    "nach dem Aktivieren einen Entwurf.",
+);
+
+const RUNS_NOT_LISTED: Phrase = phrase(
+  "The stored interval is not one this server offers, so the runs after the next one are not " +
+    "listed; check them in the sevDesk web app.",
+  "Das gespeicherte Intervall bietet dieser Server nicht an, daher werden die Ausführungen nach " +
+    "der nächsten nicht genannt; prüfe sie in der sevDesk-Web-App.",
 );
 
 function reactivateWarnings(input: StatusPreviewInput, lang: PreviewLanguage): string[] {
-  const { projected } = input;
+  const { projected, today } = input;
+  const { schedule } = input.template;
+  if (!generating(input)) {
+    const next = schedule.nextRun;
+    return [
+      REACTIVATED_OFF[lang],
+      ...(next !== undefined && next < today ? [pastNextRunWhileOff(next, lang)] : []),
+    ];
+  }
   const list: (string | undefined)[] = [
-    ISSUES_AGAIN[lang],
-    RUN_DATE_BEHAVIOUR[lang],
-    projected?.startDate === input.today ? RUN_TODAY_REACTIVATING[lang] : undefined,
+    GENERATES_AGAIN[lang],
+    generationOnPhrase(schedule)[lang],
+    RUN_DATE_BEHAVIOUR.autoSending[lang],
+    schedule.nextRun === today ? RUN_TODAY_REACTIVATING[lang] : undefined,
+    projected === undefined ? RUNS_NOT_LISTED[lang] : undefined,
     projected !== undefined && !runDayFitsEveryMonth(projected)
       ? SHORT_MONTH_RUNS[lang]
       : undefined,

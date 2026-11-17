@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { getInvoice, listInvoices } from "../../../src/domain/invoices.js";
+import { TEMPLATE_SETTINGS_EMBED } from "../../../src/domain/recurring/schedule.js";
 import { type FakeRoute, FakeSevdeskClient } from "../../helpers/fake-client.js";
 
 const TODAY = "2026-11-07";
@@ -83,6 +84,46 @@ describe("invoice details (spec Model_InvoiceResponse fields, fake data)", () =>
     });
     expect(invoice.paymentTerms).toBeUndefined();
     expect(invoice.address).toBeUndefined();
+  });
+
+  it("reads a template's switches with the settings embed (D-132)", async () => {
+    const template = {
+      status: "100",
+      invoiceType: "WKR",
+      accountIntervall: "P0Y1M0W",
+      accountStartDate: "2026-12-01T00:00:00+01:00",
+      accountNextInvoice: "2026-12-01T00:00:00+01:00",
+    };
+    const client = new FakeSevdeskClient([
+      {
+        path: "/Invoice/77",
+        query: { embed: TEMPLATE_SETTINGS_EMBED },
+        response: {
+          body: {
+            objects: [
+              {
+                id: "77",
+                ...template,
+                propertyAutoGenerateRecurringInvoice: null,
+                autoSendConfiguration: null,
+              },
+            ],
+          },
+        },
+      },
+      ...detailRoutes(template),
+    ]);
+    const { invoice } = await getInvoice(client, 77, { today: TODAY, cacheOwner: client });
+    expect(invoice.schedule).toMatchObject({
+      interval: "P0Y1M0W",
+      intervalKey: "monthly",
+      nextRun: "2026-12-01",
+      autoGenerate: "off",
+      autoSendConfigured: false,
+    });
+    expect(
+      client.calls.filter((call) => call.query["embed"] === TEMPLATE_SETTINGS_EMBED),
+    ).toHaveLength(1);
   });
 
   it("fails on an unreadable date instead of dropping it", async () => {

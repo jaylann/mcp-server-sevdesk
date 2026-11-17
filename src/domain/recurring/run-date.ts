@@ -69,6 +69,25 @@ export const RUN_DATE_BEHAVIOUR: Readonly<Record<RunDateCase, Phrase>> = {
   ),
 };
 
+/**
+ * The `on` case for a stored template whose run time is not known to be 00:00: one made in the web
+ * app stores its start and next run with the time of day it was saved at, and that time is then
+ * the run time (recorded 2026-11-17, D-111). Same facts, without naming midnight.
+ */
+export const RUN_DATE_ON_AT_STORED_TIME: Phrase = phrase(
+  "Automatic generation is on: on every run date, within about a minute of the run time stored " +
+    "with the template's next run (not necessarily midnight), sevDesk creates a draft invoice " +
+    "from this template by itself, with its positions and texts plus a line in the head text " +
+    "that names the billing period. sevDesk neither finalizes nor sends the draft, and its " +
+    "number is provisional: a person must still finalize and send every draft.",
+  "Die automatische Generierung ist an: An jedem Ausführungstag erzeugt sevDesk etwa eine Minute " +
+    "nach der Uhrzeit, die mit der nächsten Ausführung der Vorlage gespeichert ist (nicht " +
+    "unbedingt Mitternacht), selbst einen Rechnungsentwurf aus dieser Vorlage, mit ihren " +
+    "Positionen und Texten und einer Zeile im Kopftext, die den Abrechnungszeitraum nennt. " +
+    "sevDesk stellt den Entwurf weder fertig noch versendet ihn, und seine Nummer ist vorläufig: " +
+    "Jeden Entwurf muss noch jemand fertigstellen und versenden.",
+);
+
 /** Added when the first run is today and automatic generation is on: the run is due at once. */
 export const FIRST_RUN_TODAY: Phrase = phrase(
   "The first run is today, so it is due at once: sevDesk creates the first draft within about a " +

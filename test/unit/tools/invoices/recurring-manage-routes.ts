@@ -12,13 +12,39 @@ import { invoiceUpdateRoutes } from "../drafts/routes.js";
 export type Row = Record<string, unknown>;
 
 /**
- * Template 2301 as stored (monthly from 2026-12-01, status 100, 65.45 EUR) with `overrides`, its
- * contact 1001 embedded as `embed=contact` answers it.
+ * Template 2301 as stored (monthly from 2026-12-01, status 100, 65.45 EUR) with `overrides`: its
+ * contact 1001 embedded as `embed=contact` answers it, and automatic generation on ("1") and
+ * automatic sending off (`null`) as `embed=` with the settings answers them (D-132). The fake
+ * answers every read of the record with all of it.
  */
 export function templateRow(overrides: Row = {}): Row {
   const [row] = (loadFixture("recurring/template-2301.json").body as { objects: Row[] }).objects;
   const [contact] = (loadFixture("contacts/contact-1001.json").body as { objects: Row[] }).objects;
-  return { ...row, contact, ...overrides };
+  return {
+    ...row,
+    contact,
+    propertyAutoGenerateRecurringInvoice: "1",
+    autoSendConfiguration: null,
+    ...overrides,
+  };
+}
+
+/** An invoice sevDesk generated from template 2301 (type RE, a draft) for the period `from`–`until`. */
+export function generatedRow(id: string, from: string, until: string): Row {
+  return {
+    ...templateRow(),
+    id,
+    invoiceType: "RE",
+    status: "100",
+    origin: { id: "2301", objectName: "Invoice" },
+    deliveryDate: storedDate(from),
+    deliveryDateUntil: storedDate(until),
+  };
+}
+
+/** `GET /Invoice?origin[id]=2301…`: the invoices generated from template 2301. */
+export function generatedRoute(rows: readonly Row[]): FakeRoute {
+  return { path: "/Invoice", query: { "origin[id]": 2301 }, response: { body: { objects: rows } } };
 }
 
 /** Its two position rows (5301 Beratung 3 × 10, 5302 Paket 1 × 25, net at 19 %). */
@@ -53,15 +79,20 @@ const saveTemplate2301Route: FakeRoute = {
 };
 
 /**
- * Every route of a change of template `row`: the template, the save, and the reads of an invoice
- * draft update (account, contact 1001, user, countries, units), which the template's routes win
- * against as they come first.
+ * Every route of a change of template `row`: the template, no generated invoices, the save, and
+ * the reads of an invoice draft update (account, contact 1001, user, countries, units), which the
+ * template's routes win against as they come first.
  */
 export function templateChangeRoutes(
   row: Row = templateRow(),
   positions?: readonly Row[],
 ): FakeRoute[] {
-  return [...templateRoutes(row, positions), saveTemplate2301Route, ...invoiceUpdateRoutes];
+  return [
+    ...templateRoutes(row, positions),
+    generatedRoute([]),
+    saveTemplate2301Route,
+    ...invoiceUpdateRoutes,
+  ];
 }
 
 /** `YYYY-MM-DDT00:00:00+01:00`, the form sevDesk reads schedule dates back in (D-111). */

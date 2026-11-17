@@ -109,8 +109,10 @@ function wholeTaxSetting(value: {
  * (it cannot turn an invoice into a template or start or end one), and the strict schema refuses
  * both. Positions are replaced as a whole (every stored row in `invoicePosDelete`, the new ones in
  * `invoicePosSave`), never changed by id: a position sent by its id with only a new price was
- * left unchanged without an error (recorded 2026-11-17). `accountEndDate: null` removes the end
- * date (an empty string is refused with 500).
+ * left unchanged without an error (D-135). `accountEndDate: null` removes the end date (an empty
+ * string is refused with 500). Automatic generation is switched with
+ * `propertyAutoGenerateRecurringInvoice` `true` (reads "1") or `false` (reads ""), both recorded on
+ * an update (D-132); automatic sending is never sent.
  */
 const templateChangeSchema = z
   .strictObject({
@@ -121,6 +123,7 @@ const templateChangeSchema = z
     accountIntervall: z.enum(INTERVAL_WIRE_FORMS).optional(),
     accountStartDate: timestamp.optional(),
     accountEndDate: timestamp.nullable().optional(),
+    propertyAutoGenerateRecurringInvoice: z.boolean().optional(),
   })
   .refine(wholeTaxSetting, TAX_MESSAGE);
 

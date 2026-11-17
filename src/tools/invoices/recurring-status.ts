@@ -41,15 +41,16 @@ function templateLocks(args: { readonly id: number }): SevdeskObjectRef[] {
 }
 
 function toolOutput(result: TemplateStatusResult, done: string) {
+  const { invoice } = result.details;
   return {
     data: {
-      invoice: result.invoice,
+      invoice,
       schedule: result.schedule,
       ...(result.notes.length === 0 ? {} : { notes: [...result.notes] }),
     },
     summary:
       `${done} recurring invoice template ${String(result.id)} (status ` +
-      `${String(result.invoice.status.code)}).` +
+      `${String(invoice.status.code)}).` +
       (result.notes.length === 0 ? "" : " See notes."),
     affected: [{ objectName: "Invoice", id: String(result.id) }],
   };
@@ -61,9 +62,10 @@ export const invoiceEndRecurringTool = defineWriteTool({
   title: "End a recurring invoice template",
   description:
     "End a recurring invoice template (Abo-Rechnung, type WKR), e.g. a cancelled subscription " +
-    "or contract: sevDesk then creates no further invoice from it (status 50, deactivated). " +
+    "or contract: sevDesk then creates no further invoice from it (status 50, deactivated), " +
+    "even with automatic generation on, and a template with automatic sending stops e-mailing. " +
     "Invoices it already created stay as they are (not cancelled or changed); the template " +
-    "keeps its positions and schedule and can be started again with " +
+    "keeps its positions, schedule and automatic generation and can be started again with " +
     "sevdesk_invoice_reactivate_recurring. Deleting a template: the sevDesk web app. An ended " +
     "template is refused. Commit tier: a human confirms the preview (customer, interval, the " +
     "next run that no longer happens, total per invoice); dryRun only previews. Before: " +
@@ -79,9 +81,19 @@ export const invoiceEndRecurringTool = defineWriteTool({
   input,
   output,
   locks: templateLocks,
-  prepare: (args, ctx) => prepareTemplateStatus(ctx.client, args.id, "end", ctx.signal),
+  prepare: (args, ctx) =>
+    prepareTemplateStatus(ctx.client, args.id, "end", {
+      signal: ctx.signal,
+      cacheOwner: ctx.config,
+    }),
   execute: async (_args, plan, ctx) =>
-    toolOutput(await executeTemplateStatus(ctx.client, plan.state, ctx.signal), "Ended"),
+    toolOutput(
+      await executeTemplateStatus(ctx.client, plan.state, {
+        signal: ctx.signal,
+        cacheOwner: ctx.config,
+      }),
+      "Ended",
+    ),
 });
 
 /** `sevdesk_invoice_reactivate_recurring`: starts an ended recurring invoice template again. */
@@ -89,13 +101,17 @@ export const invoiceReactivateRecurringTool = defineWriteTool({
   name: "sevdesk_invoice_reactivate_recurring",
   title: "Reactivate a recurring invoice template",
   description:
-    "Start an ended recurring invoice template (Abo-Rechnung, type WKR, status 50) again: " +
-    "sevDesk then creates an invoice from it on every run date by itself, from its kept next " +
-    "run on. Refused for an active template, and when the kept next run is in the past (sevDesk " +
-    "could create the missed invoices at once): give it a new startDate with " +
-    "sevdesk_invoice_update_recurring first. Commit tier: a human confirms the preview " +
-    "(customer, total per invoice, the next run dates, what sevDesk does on a run date); dryRun " +
-    "only previews. Before: sevdesk_invoices_list with type recurring, sevdesk_invoice_get.",
+    "Start an ended recurring invoice template (Abo-Rechnung, type WKR, status 50) again. With " +
+    "its automatic generation on, sevDesk then creates a draft invoice from it on every run date " +
+    "by itself, from its kept next run on (at once when that is today); with it off, " +
+    "reactivating alone creates nothing (switch it on with sevdesk_invoice_update_recurring). " +
+    "Refused for an active template; for one with automatic sending on, or whose settings " +
+    "sevDesk does not return (the web app manages those); and, with generation on, when the " +
+    "kept next run is before today (sevDesk would catch up every missed period): give it a new " +
+    "startDate with sevdesk_invoice_update_recurring first. Commit tier: a human confirms the " +
+    "preview (customer, automatic generation, total per invoice, the next run dates, what " +
+    "sevDesk does on a run date); dryRun only previews. Before: sevdesk_invoices_list with type " +
+    "recurring, sevdesk_invoice_get.",
   toolset: "invoices",
   tier: "commit",
   annotations: {
@@ -107,7 +123,17 @@ export const invoiceReactivateRecurringTool = defineWriteTool({
   input,
   output,
   locks: templateLocks,
-  prepare: (args, ctx) => prepareTemplateStatus(ctx.client, args.id, "reactivate", ctx.signal),
+  prepare: (args, ctx) =>
+    prepareTemplateStatus(ctx.client, args.id, "reactivate", {
+      signal: ctx.signal,
+      cacheOwner: ctx.config,
+    }),
   execute: async (_args, plan, ctx) =>
-    toolOutput(await executeTemplateStatus(ctx.client, plan.state, ctx.signal), "Reactivated"),
+    toolOutput(
+      await executeTemplateStatus(ctx.client, plan.state, {
+        signal: ctx.signal,
+        cacheOwner: ctx.config,
+      }),
+      "Reactivated",
+    ),
 });

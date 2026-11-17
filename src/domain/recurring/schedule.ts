@@ -260,6 +260,13 @@ export const storedScheduleSchema = z.object({
     .describe('The interval in words ("every 1 month", "every 2 weeks"), when it is a duration.'),
   startDate: z.string().optional().describe("First run (accountStartDate), YYYY-MM-DD."),
   nextRun: z.string().optional().describe("Next run (accountNextInvoice), YYYY-MM-DD."),
+  runTime: z
+    .string()
+    .optional()
+    .describe(
+      "Time of day (HH:MM, Berlin) stored with the next run, when it is not 00:00: a template " +
+        "made in the web app runs at the time it was saved at.",
+    ),
   endDate: z.string().optional().describe("No run after this date (accountEndDate), YYYY-MM-DD."),
   lastRun: z
     .string()
@@ -321,12 +328,37 @@ export function readStoredSchedule(raw: unknown): StoredSchedule {
     every: interval === undefined ? undefined : describeInterval(interval),
     startDate: record.accountStartDate,
     nextRun: record.accountNextInvoice,
+    runTime: storedRunTime(raw),
     endDate: record.accountEndDate,
     lastRun: record.accountLastInvoice,
     ended: record.status === ENDED_STATUS ? true : undefined,
     ...readAutoGenerate(record.propertyAutoGenerateRecurringInvoice),
     ...readAutoSend(record.autoSendConfiguration),
   });
+}
+
+const BERLIN_TIME = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Europe/Berlin",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+/**
+ * The Berlin time of day of a stored next run that carries one other than 00:00 (an ISO
+ * date-time, as a template made in the web app stores it, D-111); `undefined` for midnight, a
+ * bare date or anything that is not a date-time.
+ */
+function storedRunTime(raw: unknown): string | undefined {
+  const value =
+    typeof raw === "object" && raw !== null && "accountNextInvoice" in raw
+      ? raw.accountNextInvoice
+      : undefined;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T/.test(value)) return undefined;
+  const moment = new Date(value);
+  if (Number.isNaN(moment.getTime())) return undefined;
+  const time = BERLIN_TIME.format(moment);
+  return time === "00:00" ? undefined : time;
 }
 
 function readAutoSend(value: unknown): {

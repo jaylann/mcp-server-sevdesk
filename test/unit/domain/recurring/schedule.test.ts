@@ -287,6 +287,8 @@ describe("readStoredSchedule", () => {
       every: "every 1 month",
       startDate: "2026-11-17",
       nextRun: "2026-12-17",
+      // The web app's template runs at the time it was saved at, not at midnight (D-111).
+      runTime: "11:08",
       lastRun: "2026-11-17",
       autoGenerate: "off",
       autoSendConfigured: false,
@@ -437,6 +439,7 @@ describe("changing a stored schedule", () => {
     expect(readStoredSchedule({ ...row, status: "50" })).toEqual({
       interval: "P0Y1M0W",
       intervalKey: "monthly",
+      every: "every 1 month",
       nextRun: "2026-12-01",
       ended: true,
     });

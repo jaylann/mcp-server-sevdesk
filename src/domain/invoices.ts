@@ -61,7 +61,12 @@ import {
 import { INVOICE_STATUS_FILTERS, INVOICE_TYPE_FILTERS, keyForCode } from "./filter-keys.js";
 import { invoiceLink } from "./links.js";
 import { DEFAULT_CURRENCY } from "./money.js";
-import { readStoredSchedule, storedScheduleSchema } from "./recurring/schedule.js";
+import {
+  readStoredSchedule,
+  type StoredSchedule,
+  storedScheduleSchema,
+  TEMPLATE_SETTINGS_EMBED,
+} from "./recurring/schedule.js";
 import { documentTypeByCode } from "./reference-data.js";
 
 export { INVOICE_STATUS_FILTERS, INVOICE_TYPE_FILTERS } from "./filter-keys.js";
@@ -167,8 +172,8 @@ export const invoiceRowSchema = z.object({
   schedule: storedScheduleSchema
     .optional()
     .describe(
-      "Recurring invoice templates (type WKR) only: interval, start, next run, end and last " +
-        "run as sevDesk stores them.",
+      "Recurring invoice templates (type WKR) only: interval, start, next run, end, last run, " +
+        "automatic generation and automatic sending as sevDesk stores them.",
     ),
 });
 
@@ -383,9 +388,12 @@ export async function listInvoices(
   signal?: AbortSignal,
 ): Promise<DocumentListResult<InvoiceRow>> {
   const dates = documentDateFilter(params);
-  const query: Record<string, QueryValue> = { embed: EMBED_CONTACT, ...dates.query };
-  if (params.status !== undefined) query["status"] = INVOICE_STATUS_FILTERS[params.status];
   const type = params.type === undefined ? undefined : INVOICE_TYPE_FILTERS[params.type];
+  // Rows of templates carry automatic generation and sending only with this embed (D-132);
+  // other lists keep the plain contact embed.
+  const embed = type === "WKR" ? `${EMBED_CONTACT},${TEMPLATE_SETTINGS_EMBED}` : EMBED_CONTACT;
+  const query: Record<string, QueryValue> = { embed, ...dates.query };
+  if (params.status !== undefined) query["status"] = INVOICE_STATUS_FILTERS[params.status];
   if (type !== undefined) query["invoiceType"] = type;
   // The Invoice tag's filter table lists `showWkr=all` ("Retrieve all recurring invoices") and
   // `showMa=all` ("… payment reminders"), which suggests sevDesk hides recurring templates and
@@ -415,6 +423,25 @@ export async function listInvoices(
     recheck: (row) => dates.contains(row.date),
     signal,
   });
+}
+
+/**
+ * The stored schedule of recurring template `invoiceId` with automatic generation and sending
+ * (`GET /Invoice/{id}?embed=…`, D-132): one read, never a write.
+ */
+export async function readTemplateSchedule(
+  client: SevdeskClient,
+  invoiceId: number,
+  signal: AbortSignal | undefined,
+): Promise<StoredSchedule> {
+  const id = toSevdeskId(invoiceId);
+  const payload = await client.request({
+    method: "GET",
+    path: sevdeskPath("Invoice", id),
+    query: { embed: TEMPLATE_SETTINGS_EMBED },
+    ...(signal === undefined ? {} : { signal }),
+  });
+  return readStoredSchedule(expectSingle(payload, `invoice ${id}`));
 }
 
 export interface InvoiceDetails {
@@ -459,11 +486,13 @@ export async function getInvoice(
   ]);
   const raw = expectSingle(payload, `invoice ${id}`);
   const record = parseInvoiceRecord(raw);
-  const invoice = await withDocumentCountry(
-    withSchedule(toInvoiceDetail(record, today), raw),
-    client,
-    { signal, cacheOwner },
-  );
+  const detail = toInvoiceDetail(record, today);
+  // A template's settings come only with their own embed, read when it is one (D-132).
+  const withTemplate =
+    detail.type.code === "WKR"
+      ? { ...detail, schedule: await readTemplateSchedule(client, invoiceId, signal) }
+      : detail;
+  const invoice = await withDocumentCountry(withTemplate, client, { signal, cacheOwner });
   const context = { currency: invoice.currency, showNet: record.showNet, unitNames };
   return {
     invoice,

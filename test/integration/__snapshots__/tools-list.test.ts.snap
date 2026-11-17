@@ -3087,6 +3087,10 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "minLength": 1,
           "type": "string",
         },
+        "autoGenerate": {
+          "description": "Automatische Generierung: true makes sevDesk create a draft invoice from the template on every run date by itself, false stops that. Switching it on is refused while the next run lies before today (sevDesk would catch up every missed period) unless startDate is given too.",
+          "type": "boolean",
+        },
         "contactId": {
           "description": "Bill another customer from now on; takes that contact's invoice address unless you give one.",
           "exclusiveMinimum": 0,
@@ -3216,7 +3220,7 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "type": "boolean",
         },
         "startDate": {
-          "description": "New first run, YYYY-MM-DD (today or later, at most a year ahead, day 1–28); it also becomes the next run. Only for a template that has not created an invoice yet.",
+          "description": "New first run, YYYY-MM-DD: after today, at most a year ahead, on day 1–28, and after the period of the newest invoice the template generated. It also becomes the next run, and sevDesk clears the stored last run.",
           "type": "string",
         },
         "taxRuleId": {

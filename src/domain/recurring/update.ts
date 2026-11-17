@@ -1,27 +1,33 @@
 /**
  * Changing a stored recurring invoice template (Abo-Rechnung, type WKR): its content (positions,
- * texts, payment term, tax rule, customer, address) and its schedule (interval, start, end).
+ * texts, payment term, tax rule, customer, address), its schedule (interval, start, end) and its
+ * automatic generation.
  *
- * What sevDesk does with an update (recorded 2026-11-17, spec/deviations.md D-111, D-112):
+ * What sevDesk does with an update (recorded 2026-11-17, spec/deviations.md D-111, D-112, D-132):
  * - `saveInvoice` with the template's id and only the fields that change keeps everything else
- *   (type, status, contact, texts, schedule, positions). So the body is minimal: it never carries
- *   `invoiceType` or `status` (`changeTemplateBodySchema`).
- * - A new `accountIntervall` alone moves neither the start nor the next run; a new
- *   `accountStartDate` moves both (on a template that has not run yet; a template that has run is
- *   not recorded, so a new start is refused there); `accountEndDate` is stored alone, and `null`
- *   removes it.
- * - A position sent by its id with only a new price was left unchanged without an error. Positions
- *   are therefore replaced as a whole, like the invoice draft update does it, and the read-back
- *   compares the stored positions with the ones sent, so a change sevDesk ignored becomes a note.
+ *   (type, status, contact, texts, schedule, positions, settings). So the body is minimal: it
+ *   never carries `invoiceType` or `status` (`changeTemplateBodySchema`).
+ * - A new `accountIntervall` alone moves neither the start nor the next run; `accountEndDate` is
+ *   stored alone, and `null` removes it.
+ * - A new `accountStartDate` moves start and next run to it and clears `accountLastInvoice`, also
+ *   on a template that has run; with a start that was due, sevDesk billed a period a second time.
+ *   So whether a template has run is read from the invoices that name it as `origin`, and a new
+ *   start must lie after today and after the last day of the newest period billed.
+ * - `propertyAutoGenerateRecurringInvoice: true` switches automatic generation on, `false` off.
+ *   With generation on and a next run before today, sevDesk catches up one draft per missed
+ *   period, a minute apart: switching it on then is refused unless the same call sets a new start.
+ * - The price of a position sent by its id is kept (D-135). Positions are therefore replaced as a
+ *   whole, like the invoice draft update does it, and the read-back compares the stored positions
+ *   with the ones sent, so a change sevDesk ignored becomes a note.
  *
+ * A template with automatic sending on, or whose settings sevDesk does not return, is not changed
+ * here (`assertNoAutoSending`): sevDesk would e-mail invoices from it with no further approval.
  * Content goes through the same resolvers and checks as the invoice draft update
- * (`resolveUpdateBasics`: tax rule and rates against the account, units, contact, address); the
- * schedule through the rules of a new template (`schedule.ts`).
+ * (`resolveUpdateBasics`); the schedule through the rules of a new template (`schedule.ts`).
  */
 import { z } from "zod";
 
 import { canonicalJson, sha256Hex } from "../../safety/hashing.js";
-import { expectSingle } from "../../sevdesk/envelope.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { cleanText, isoDateInput } from "../common.js";
@@ -52,23 +58,24 @@ import {
   resolveUpdateBasics,
   type UpdateArgs,
 } from "../drafts/shared.js";
-import { getInvoice, type InvoiceDetails } from "../invoices.js";
+import { getInvoice, type InvoiceDetails, readTemplateSchedule } from "../invoices.js";
 import { compare, decimal, format } from "../money.js";
 import { type ChangeTemplateBody, changeTemplateBodySchema } from "./payload.js";
 import {
   checkEndDate,
   checkStartDate,
   INTERVALS,
-  readStoredSchedule,
   RECURRING_INTERVALS,
   type RecurringInterval,
   scheduleFrom,
+  settingsDifferences,
   type StoredSchedule,
 } from "./schedule.js";
 import {
+  assertNoAutoSending,
   assertTemplate,
   type ExpectedSchedule,
-  readTemplateRecord,
+  lastBilledDay,
   sameTemplateSaved,
   scheduleNotes,
   templateIdInput,
@@ -77,6 +84,7 @@ import {
 } from "./template.js";
 import {
   type ChangeName,
+  type GenerationChange,
   type ScheduleChange,
   type TemplateUpdatePreviewInput,
   templateUpdatePreviews,
@@ -98,8 +106,9 @@ export const recurringInvoiceUpdateInputShape = {
   startDate: isoDateInput
     .optional()
     .describe(
-      "New first run, YYYY-MM-DD (today or later, at most a year ahead, day 1–28); it also " +
-        "becomes the next run. Only for a template that has not created an invoice yet.",
+      "New first run, YYYY-MM-DD: after today, at most a year ahead, on day 1–28, and after the " +
+        "period of the newest invoice the template generated. It also becomes the next run, and " +
+        "sevDesk clears the stored last run.",
     ),
   endDate: isoDateInput
     .optional()
@@ -110,6 +119,15 @@ export const recurringInvoiceUpdateInputShape = {
     .literal(true)
     .optional()
     .describe("true removes the end date: the template runs until it is ended."),
+  autoGenerate: z
+    .boolean()
+    .optional()
+    .describe(
+      "Automatische Generierung: true makes sevDesk create a draft invoice from the template on " +
+        "every run date by itself, false stops that. Switching it on is refused while the next " +
+        "run lies before today (sevDesk would catch up every missed period) unless startDate is " +
+        "given too.",
+    ),
   positions: invoiceUpdateInputShape.positions.describe(
     "When given, replaces ALL positions of every later invoice; leave out to keep them.",
   ),
@@ -133,6 +151,7 @@ export interface RecurringInvoiceUpdateArgs extends UpdateArgs {
   readonly startDate?: string | undefined;
   readonly endDate?: string | undefined;
   readonly removeEndDate?: true | undefined;
+  readonly autoGenerate?: boolean | undefined;
   readonly timeToPay?: number | undefined;
   readonly header?: string | undefined;
   readonly headText?: string | undefined;
@@ -146,6 +165,8 @@ export interface RecurringInvoiceUpdateState {
   /** The status the template keeps (the body sends none). */
   readonly status: number;
   readonly schedule: ExpectedSchedule;
+  /** Automatic generation as switched by the call; `undefined` when the call leaves it alone. */
+  readonly generationOn: boolean | undefined;
   /** Set when the positions are replaced: what was sent, and the totals expected. */
   readonly positions?:
     | {
@@ -173,53 +194,84 @@ function refuse(message: string): never {
 }
 
 /**
- * The schedule after the call. Throws `validation` errors for a start date on a template that has
- * run, and for start and end dates outside the rules of a new template.
+ * A new start date: after today, within the rules of a new template, and after the last day of
+ * the newest period the template billed (read only when a start is given). Returns whether it
+ * changes the stored start or next run.
  */
-function resolveSchedule(
+async function checkNewStart(
+  client: SevdeskClient,
+  args: RecurringInvoiceUpdateArgs & { readonly startDate: string },
+  stored: StoredSchedule,
+  today: string,
+  signal: AbortSignal | undefined,
+): Promise<boolean> {
+  const { startDate } = args;
+  if (startDate <= today) {
+    refuse(
+      `The new start date ${startDate} is not after today (${today} in Berlin). A start that is ` +
+        "due makes sevDesk run the template at once, and for a template that has run it would " +
+        "bill a period again. Give a later date.",
+    );
+  }
+  checkStartDate(startDate, today);
+  const billed = await lastBilledDay(client, args.id, signal);
+  if (billed !== undefined && startDate <= billed) {
+    refuse(
+      `Recurring invoice template ${String(args.id)} has already billed the period up to ` +
+        `${billed}, so the new start date ${startDate} would make sevDesk bill that period ` +
+        `again. Give a start after ${billed}.`,
+    );
+  }
+  return startDate !== stored.startDate || startDate !== stored.nextRun;
+}
+
+/** The end date after the call, checked against the run it follows. */
+function resolveEnd(
+  args: RecurringInvoiceUpdateArgs,
+  stored: StoredSchedule,
+  start: { readonly changed: boolean; readonly nextRun: string | undefined },
+  today: string,
+): string | undefined {
+  if (args.removeEndDate === true) return undefined;
+  const { nextRun } = start;
+  if (args.endDate !== undefined) {
+    if (start.changed && nextRun !== undefined) {
+      checkEndDate(args.endDate, nextRun, "the start date");
+    } else if (nextRun !== undefined && nextRun >= today) {
+      checkEndDate(args.endDate, nextRun, "the next run");
+    } else {
+      checkEndDate(args.endDate, today, "today");
+    }
+    return args.endDate;
+  }
+  if (start.changed && nextRun !== undefined && stored.endDate !== undefined) {
+    // The stored end must still follow the new start.
+    checkEndDate(stored.endDate, nextRun, "the start date");
+  }
+  return stored.endDate;
+}
+
+/** The schedule after the call. Throws `validation` errors for dates outside the rules. */
+async function resolveSchedule(
+  client: SevdeskClient,
   args: RecurringInvoiceUpdateArgs,
   stored: StoredSchedule,
   today: string,
-): ScheduleChange {
+  signal: AbortSignal | undefined,
+): Promise<ScheduleChange> {
   if (args.endDate !== undefined && args.removeEndDate === true) {
     refuse("Give either endDate or removeEndDate, not both.");
   }
   const interval = args.interval ?? stored.intervalKey;
   const intervalChanged =
     args.interval !== undefined && stored.interval !== INTERVALS[args.interval].wire;
-
-  let startChanged = false;
-  if (args.startDate !== undefined) {
-    if (stored.lastRun !== undefined) {
-      refuse(
-        `Recurring invoice template ${String(args.id)} created an invoice on ${stored.lastRun} ` +
-          "already. What a new start date does to a template that has run is not recorded (it " +
-          "could create past invoices again), so it is not changed here: change the start in " +
-          "the sevDesk web app, or end this template and create a new one.",
-      );
-    }
-    checkStartDate(args.startDate, today);
-    startChanged = args.startDate !== stored.startDate || args.startDate !== stored.nextRun;
-  }
-  const startDate = startChanged ? args.startDate : stored.startDate;
-  const nextRun = startChanged ? args.startDate : stored.nextRun;
-
-  let endDate = stored.endDate;
-  if (args.removeEndDate === true) {
-    endDate = undefined;
-  } else if (args.endDate !== undefined) {
-    endDate = args.endDate;
-    if (startChanged && args.startDate !== undefined) {
-      checkEndDate(args.endDate, args.startDate, "the start date");
-    } else if (nextRun !== undefined && nextRun >= today) {
-      checkEndDate(args.endDate, nextRun, "the next run");
-    } else {
-      checkEndDate(args.endDate, today, "today");
-    }
-  } else if (startChanged && args.startDate !== undefined && stored.endDate !== undefined) {
-    // The stored end must still follow the new start.
-    checkEndDate(stored.endDate, args.startDate, "the start date");
-  }
+  const { startDate: newStart } = args;
+  const startChanged =
+    newStart !== undefined &&
+    (await checkNewStart(client, { ...args, startDate: newStart }, stored, today, signal));
+  const startDate = startChanged ? newStart : stored.startDate;
+  const nextRun = startChanged ? newStart : stored.nextRun;
+  const endDate = resolveEnd(args, stored, { changed: startChanged, nextRun }, today);
   return {
     interval,
     intervalChanged,
@@ -232,17 +284,53 @@ function resolveSchedule(
 }
 
 /**
- * Validates a change (schedule first, so a refused schedule costs only the template's read),
- * reads what the body needs, and builds the minimal body and both previews. Throws `validation`
- * errors for a call that is not about a template or changes nothing; sends nothing.
+ * Automatic generation after the call. Switching it on is refused without a next run, and while
+ * the next run lies before today: sevDesk would catch up one draft per missed period.
+ */
+function resolveGeneration(
+  args: RecurringInvoiceUpdateArgs,
+  stored: StoredSchedule,
+  schedule: ScheduleChange,
+  today: string,
+): GenerationChange {
+  const before = stored.autoGenerate;
+  if (args.autoGenerate === undefined) return { before, after: before, changed: false };
+  const after = args.autoGenerate ? "on" : "off";
+  const changed = after !== before;
+  if (changed && after === "on") {
+    const { nextRun } = schedule;
+    if (nextRun === undefined) {
+      refuse(
+        `Recurring invoice template ${String(args.id)} has no next run date, so when sevDesk ` +
+          "would generate the first invoice cannot be shown. Give startDate together with " +
+          "autoGenerate.",
+      );
+    }
+    if (nextRun < today) {
+      refuse(
+        `The next run of recurring invoice template ${String(args.id)} is ${nextRun}, before ` +
+          `today (${today} in Berlin). With automatic generation on, sevDesk would catch up and ` +
+          "create a draft for every period since then, one a minute. Give a new startDate in " +
+          "the same call.",
+      );
+    }
+  }
+  return { before, after, changed };
+}
+
+/**
+ * Validates a change (the template and its settings first, then the schedule), reads what the
+ * body needs, and builds the minimal body and both previews. Throws `validation` errors for a call
+ * that is not about a template, is not safe, or changes nothing; sends nothing.
  */
 export async function prepareRecurringInvoiceUpdate(
   client: SevdeskClient,
   args: RecurringInvoiceUpdateArgs,
   options: DraftCallOptions,
 ): Promise<RecurringInvoiceUpdatePlan> {
+  const { signal } = options;
   assertChanges(args, "recurring invoice template");
-  const current = await loadCurrentInvoice(client, args.id, options.signal);
+  const current = await loadCurrentInvoice(client, args.id, signal);
   const doc = current.document;
   assertTemplate(
     args.id,
@@ -251,9 +339,11 @@ export async function prepareRecurringInvoiceUpdate(
     "A draft invoice is changed with sevdesk_invoice_update_draft.",
   );
   const state = templateState(doc.id, doc.status);
-  const stored = readStoredSchedule(current.record);
+  const stored = await readTemplateSchedule(client, doc.id, signal);
+  assertNoAutoSending(doc.id, stored, "changed");
   const today = todayInBerlin();
-  const schedule = resolveSchedule(args, stored, today);
+  const schedule = await resolveSchedule(client, args, stored, today, signal);
+  const generation = resolveGeneration(args, stored, schedule, today);
 
   const basics = await resolveUpdateBasics(
     client,
@@ -313,6 +403,10 @@ export async function prepareRecurringInvoiceUpdate(
           : schedule.endDate === undefined
             ? null
             : wireTimestamp(schedule.endDate),
+        // true reads back "1", false reads back "" (D-132).
+        propertyAutoGenerateRecurringInvoice: generation.changed
+          ? generation.after === "on"
+          : undefined,
       },
       invoicePosSave:
         positions === undefined
@@ -326,7 +420,7 @@ export async function prepareRecurringInvoiceUpdate(
     "recurring invoice template change",
   );
 
-  const changed = changeNames(body, schedule);
+  const changed = changeNames(body, schedule, generation);
   if (changed.length === 0) {
     refuse(
       `Nothing changes: recurring invoice template ${String(doc.id)} already has every value ` +
@@ -355,6 +449,7 @@ export async function prepareRecurringInvoiceUpdate(
     after: { header, headText, footText, timeToPay, positions, expected },
     stored,
     schedule,
+    generation,
     projected,
   };
   const intervalWire = schedule.intervalChanged ? body.invoice.accountIntervall : stored.interval;
@@ -372,6 +467,7 @@ export async function prepareRecurringInvoiceUpdate(
         nextRun: schedule.nextRun,
         endDate: schedule.endDate,
       },
+      generationOn: generation.changed ? generation.after === "on" : undefined,
       positions:
         positions === undefined || expected === undefined
           ? undefined
@@ -393,7 +489,11 @@ function storedAmount(value: string | undefined): string | undefined {
 }
 
 /** The trusted names of what the body changes, in preview order. */
-function changeNames(body: ChangeTemplateBody, schedule: ScheduleChange): ChangeName[] {
+function changeNames(
+  body: ChangeTemplateBody,
+  schedule: ScheduleChange,
+  generation: GenerationChange,
+): ChangeName[] {
   const { invoice } = body;
   const names: [ChangeName, boolean][] = [
     ["customer", invoice.contact !== undefined],
@@ -409,6 +509,7 @@ function changeNames(body: ChangeTemplateBody, schedule: ScheduleChange): Change
     ["interval", schedule.intervalChanged],
     ["start date", schedule.startChanged],
     ["end date", schedule.endChanged],
+    ["automatic generation", generation.changed],
   ];
   return names.filter(([, changed]) => changed).map(([name]) => name);
 }
@@ -423,15 +524,15 @@ export interface RecurringInvoiceUpdateResult {
 
 /**
  * Sends the prepared body (one request, never retried) and reads the template back: the invoice
- * with its positions, and the raw record for the schedule. A failing read-back names the template
- * as a completed write.
+ * with its positions, schedule and settings (`getInvoice`). A failing read-back names the
+ * template as a completed write.
  */
 export async function executeRecurringInvoiceUpdate(
   client: SevdeskClient,
   state: RecurringInvoiceUpdateState,
   options: CountryReadOptions,
 ): Promise<RecurringInvoiceUpdateResult> {
-  const { signal, cacheOwner } = options;
+  const { signal } = options;
   const response = await client.request({
     method: "POST",
     path: SAVE_PATH,
@@ -443,23 +544,20 @@ export async function executeRecurringInvoiceUpdate(
   });
   const id = sameTemplateSaved(response, state.id);
   const saved = { objectName: "Invoice", id: String(id) };
-  const { details, schedule } = await readBack(saved, async () => {
-    const [read, record] = await Promise.all([
-      getInvoice(client, id, { signal, cacheOwner }),
-      readTemplateRecord(client, id, signal),
-    ]);
-    return {
-      details: read,
-      schedule: readStoredSchedule(expectSingle(record, `invoice ${String(id)}`)),
-    };
-  });
+  const details = await readBack(saved, () => getInvoice(client, id, options));
+  const schedule = details.invoice.schedule ?? {};
+  // The schedule of a record that is no template any more is not read; its type note says so.
+  const isTemplate = details.invoice.type.code === "WKR";
   return {
     id,
     details,
     schedule,
     notes: [
       ...templateRecordNotes(id, details.invoice, state.status),
-      ...scheduleNotes(state.schedule, schedule),
+      ...(isTemplate ? scheduleNotes(state.schedule, schedule) : []),
+      ...(isTemplate && state.generationOn !== undefined
+        ? settingsDifferences(state.generationOn, schedule)
+        : []),
       ...positionNotes(state, details),
     ],
   };
