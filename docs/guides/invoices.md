@@ -59,6 +59,23 @@ tax rule that fits your account: 1 for regular VAT (rates 0, 7 and 19 %), 11 for
 the preview warns about a possible duplicate. If the account has several sevDesk users, the
 assistant has to name one as contact person.
 
+> Which tax rule does an invoice for consulting to Wiener Muster GmbH in Vienna take?
+
+For a customer abroad, or a sale that is not plain domestic,
+[`sevdesk_tax_rule_suggest`](../tools.md#sevdesk_tax_rule_suggest) (`read`) suggests the tax rule
+from the customer's country, whether it buys as a business, its VAT ID (USt-IdNr.) and whether you
+sell goods or services: the rule, the rate (for One-Stop-Shop sales the customer country's
+standard rate), the note the invoice must carry (for example "Steuerschuldnerschaft des
+Leistungsempfängers") and the legal basis. When a threshold or a special kind of service decides,
+it lists each option with its condition instead of guessing. Northern Ireland follows the EU rules
+for goods (pass country `XI` or the customer's XI VAT ID), Monaco counts as France, and parts of
+member states outside the EU VAT area, such as the Canary Islands, come as exceptions (Heligoland
+and Büsingen, for a German customer, as a note). It is not tax advice.
+[`sevdesk_vat_id_check`](../tools.md#sevdesk_vat_id_check) (`read`) checks a VAT ID's format; it
+asks the European Commission's VIES service only if the server's operator switched that on
+(`SEVDESK_VIES_CHECK`, see [Privacy](../../PRIVACY.md)). The draft preview also warns when the tax
+rule is not the usual one for the customer; it never refuses the draft for that.
+
 A position can link a part (Artikel) from [`sevdesk_parts_list`](../tools.md#sevdesk_parts_list),
 but its name and price still come from the position.
 
@@ -75,6 +92,51 @@ on an e-invoice: sevDesk's handling of the other cases is not verified yet, and 
 instead of guessing. Changing the draft later keeps the discount unless you replace it or remove
 it. A document with several discounts (sevDesk's totals then count only one of them) is left to
 the sevDesk web app, and the get tools and the approval warn about it.
+
+### Offers: accept, confirm, deliver
+
+Before an offer (Angebot) is invoiced, the assistant can record the customer's answer and create
+the documents that follow it:
+
+> Musterfirma accepted offer AN-1042 by phone. Mark it as accepted.
+
+> They declined AN-1043.
+
+[`sevdesk_order_set_offer_status`](../tools.md#sevdesk_order_set_offer_status) (`commit`, **you
+confirm**) marks a sent offer as accepted (angenommen) or rejected (abgelehnt), or sets an accepted
+or rejected offer back to sent (`reopen`). It changes nothing but the status and sends nothing to
+the customer. Offer drafts are refused (send them first: sevDesk would renumber a draft), and so are
+order confirmations and delivery notes.
+
+> Create the order confirmation for AN-1042.
+
+[`sevdesk_order_create_confirmation`](../tools.md#sevdesk_order_create_confirmation) (`commit`,
+**you confirm**) creates an order confirmation (Auftragsbestätigung, AB) draft with the offer's
+contact, texts and positions, which the preview lists. sevDesk marks the offer as accepted in the
+same step, which is why you confirm it. It takes sent and accepted offers only: a draft is refused
+(it would accept an offer the customer never received), and a rejected offer must be reopened
+first, so turning a rejection into an acceptance is always a step of its own.
+
+> Create a delivery note for AB-1007.
+
+[`sevdesk_order_create_delivery_note`](../tools.md#sevdesk_order_create_delivery_note) (`write`,
+no confirmation) creates a delivery note (Lieferschein, LI) draft from an order confirmation (draft,
+sent or accepted) or from an offer that was sent or accepted, and leaves the source as it is. Offer
+drafts and rejected offers are refused.
+
+The confirmation tool refuses a second confirmation from the same offer unless you ask for one. The
+delivery note tool refuses only while an earlier delivery note from the same order is still a
+draft, because a further delivery note can be a partial delivery; finalized ones are named in its
+preview. The new draft is finalized with
+[`sevdesk_order_finalize`](../tools.md#sevdesk_order_finalize). Both previews also list discounts
+or surcharges on the whole source document; whether sevDesk takes them over has not been checked,
+so compare the new draft's totals before finalizing it. sevDesk gives the new document the next
+number of its range without moving the counter, so it can carry a number another confirmation or
+delivery note already has; the result names any it finds. To find offers that are still open, ask
+for sent offers in a date range ([`sevdesk_orders_list`](../tools.md#sevdesk_orders_list)). The
+[`offer_follow_up`](../tools.md#offer_follow_up) prompt does that for offers older than a number
+of days (14 by default) and goes through each with you: accepted or rejected, the order
+confirmation, the delivery note, the invoice, or a follow-up message you send yourself.
 
 ### From an offer or order confirmation
 

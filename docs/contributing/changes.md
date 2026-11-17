@@ -69,8 +69,9 @@ itself and `--no-open` only logs the links. It needs no token, and nothing leave
 
 ## Adding a prompt
 
-Prompts are bookkeeping workflows the user picks in the client. They render text only and never
-call sevDesk.
+Prompts are bookkeeping workflows the user picks in the client. Rendering one only produces text
+and never calls sevDesk; only the suggestions for some arguments (`completion/complete`) read
+names from the account, read-only.
 
 1. Add the prompt to `src/prompts/catalog.ts` with `definePrompt`: a snake_case `name` without a
    `sevdesk_` prefix (clients namespace prompts per server), title, description, the tools it
@@ -81,7 +82,13 @@ call sevDesk.
    user should learn that a setting would enable the step; the renderer adds which one.
 3. Arguments are optional strings with a pattern or length check. Show a raw argument only
    through `fenceInline`, never in the trusted text.
-4. Run `test/unit/prompts/` and `test/integration/prompts-list.test.ts`: the lint renders every
+4. To have an argument completed, name its `CompletionKind` in `completions` (month, period,
+   contact, checkAccount); the catalog holds only that name. A new kind needs a completer in
+   `src/prompts/completions.ts`, an entry in `COMPLETION_HINTS` (the Suggestions column of
+   `docs/tools.md`) and, if it reads sevDesk, one in `COMPLETION_TOOLS`: the read tool that must
+   be registered before it reads anything. Such a read goes through `readOnlyClient` with an
+   explicit limit and is cached per account `Config`.
+5. Run `test/unit/prompts/` and `test/integration/prompts-list.test.ts`: the lint renders every
    prompt in many configurations and fails when a step names a tool that configuration does not
    register. Update the `prompts/list` snapshot
    (`pnpm test test/integration/prompts-list.test.ts -u`) and review the diff, then

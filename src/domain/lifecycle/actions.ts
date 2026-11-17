@@ -1,7 +1,8 @@
 /**
  * The binding requests of the lifecycle tools: one function per sevDesk endpoint that finalizes,
- * emails, enshrines, resets, cancels or pays a document. The tools check and preview first
- * (`transitions.ts`, `payments.ts`, `email.ts`) and call these from `execute` with the client
+ * emails, enshrines, resets, cancels or pays a document, or accepts or rejects an offer. The
+ * tools check and preview first (`transitions.ts`, `payments.ts`, `email.ts`) and call these
+ * from `execute` with the client
  * scoped to their tier; the paths and the request shapes are built only here, so the tool layer
  * never talks to the client itself (review 2026-11, round 3).
  *
@@ -20,7 +21,7 @@ import { SEND_TYPE_CODES, type SentVia } from "../document-positions.js";
 import { KINDS, type PaymentKind, type SalesKind } from "./documents.js";
 import type { SendEmailPayload } from "./email.js";
 import type { BookAmountPayload } from "./payments.js";
-import type { ResetTarget } from "./transitions.js";
+import type { OfferStatusTarget, ResetTarget } from "./transitions.js";
 
 /** Outgoing `sendBy` body (strict: sevDesk ignores unknown fields silently, D-003). */
 const sendByPayloadSchema = z.strictObject({
@@ -125,6 +126,39 @@ export async function bookPayment(
     method: "PUT",
     path: sevdeskPath(KINDS[kind].objectName, id, "bookAmount"),
     body: payload,
+    ...(signal === undefined ? {} : { signal }),
+  });
+}
+
+/**
+ * The `PUT /Order/{id}` body of an offer status change: the status and nothing else (strict:
+ * sevDesk would take any other field of `Model_OrderUpdate` along, D-003, D-108).
+ */
+const orderStatusPayloadSchema = z.strictObject({
+  status: z.union([z.literal(200), z.literal(300), z.literal(500)]),
+});
+
+export type OrderStatusPayload = z.output<typeof orderStatusPayloadSchema>;
+
+/** The body that sets an offer to sent (200), rejected (300) or accepted (500). */
+export function orderStatusPayload(status: OfferStatusTarget): OrderStatusPayload {
+  return orderStatusPayloadSchema.parse({ status });
+}
+
+/**
+ * Sets an offer's status: `PUT /Order/{id}` with `{status}` only (D-108). The answer is the order;
+ * the caller reads it back itself.
+ */
+export async function setOrderStatus(
+  client: SevdeskClient,
+  id: number,
+  payload: OrderStatusPayload,
+  signal?: AbortSignal,
+): Promise<void> {
+  await client.request({
+    method: "PUT",
+    path: sevdeskPath("Order", id),
+    body: orderStatusPayloadSchema.parse(payload),
     ...(signal === undefined ? {} : { signal }),
   });
 }

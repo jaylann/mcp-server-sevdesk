@@ -141,6 +141,21 @@ describe("sevdesk_invoice_update_draft (community shapes, fake data)", () => {
     });
   });
 
+  it("warns that stored document discounts are left out of the expected total", async () => {
+    const discounted = withRoutes(routes, storedDraft({ sumDiscounts: "-10" }));
+    const replaced = await prepare(
+      { id: 2102, positions: [{ name: "Wartung", quantity: 1, unitPrice: 100, taxRate: 19 }] },
+      discounted,
+    );
+    expect(replaced.plan.state.expected).toEqual({ net: "100.00", tax: "19.00", gross: "119.00" });
+    expect(replaced.plan.preview.warnings).toContainEqual(
+      expect.stringMatching(/^The draft has document discounts \(Rabatte\) that stay on it/),
+    );
+    // Kept positions show the stored total, which already includes the discounts.
+    const kept = await prepare({ id: 2102, header: "Neu" }, discounted);
+    expect(kept.plan.preview.warnings.join(" ")).not.toContain("Rabatte");
+  });
+
   it("saves once, reads the invoice back and reports it as affected", async () => {
     const client = new FakeSevdeskClient(routes);
     const { output } = await executeWrite(tool, { id: 2102, timeToPay: 30 }, client);
@@ -439,6 +454,13 @@ describe("sevdesk_invoice_update_draft (community shapes, fake data)", () => {
         "a reminder",
         { invoiceType: "MA" },
         "Invoice 2102 is a reminder invoice (MA); this tool only changes regular invoices (RE). Edit it in sevDesk.",
+      ],
+      // A new template has status 100 like a draft (D-112), and its update would go out as RE
+      // through saveInvoice, which the client lets a write tool send: the type check is the guard.
+      [
+        "a recurring invoice template",
+        { invoiceType: "WKR" },
+        "Invoice 2102 is a recurring invoice (WKR); this tool only changes regular invoices (RE). Edit it in sevDesk.",
       ],
       [
         "an unknown invoice type",

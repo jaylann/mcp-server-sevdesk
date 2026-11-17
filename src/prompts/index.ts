@@ -6,9 +6,11 @@
  * missing step with a fallback becomes a line under "Not available with the current settings"
  * that says which setting enables it (derived from the missing tools' tier, toolset and
  * availability, worded for the deployment). So a rendered prompt never names a tool the client
- * cannot call. Handlers only render text: they never call sevDesk.
+ * cannot call. Handlers only render text: they never call sevDesk. Argument suggestions
+ * (`completion/complete`) are attached per server instance; see `completions.ts` for the ones
+ * that read the account.
  */
-import type { GetPromptResult, McpServer } from "@modelcontextprotocol/server";
+import { completable, type GetPromptResult, type McpServer } from "@modelcontextprotocol/server";
 
 import type { Config } from "../config.js";
 import type { Tier } from "../safety/tiers.js";
@@ -16,7 +18,8 @@ import { berlinDateOf } from "../sevdesk/dates.js";
 import type { ToolsetName } from "../tools/toolsets.js";
 import type { AnyToolDefinition } from "../tools/types.js";
 import { PROMPTS } from "./catalog.js";
-import type { PromptDefinition, ToolRequirement } from "./types.js";
+import { type Completers, periodCompleters } from "./completions.js";
+import type { PromptArgsSchema, PromptDefinition, ToolRequirement } from "./types.js";
 
 export { PROMPTS } from "./catalog.js";
 
@@ -239,24 +242,68 @@ export function renderPrompt(
 
 /** @public Options of {@link registerPrompts}. */
 export interface PromptRegistrationOptions {
-  /** Epoch milliseconds, for default periods; injectable for tests. Default `Date.now`. */
+  /**
+   * Epoch milliseconds, for default periods and month suggestions; injectable for tests. Default
+   * `Date.now`.
+   */
   readonly now?: () => number;
+  /**
+   * Completers of this instance beyond months and periods, which are always completed: contact
+   * and payment account names of its account (`accountCompleters`). An argument whose kind has
+   * no completer here is not completed.
+   */
+  readonly completers?: Completers;
 }
 
-/** Registers the planned prompts on `server` (see {@link planPrompts}). */
+/**
+ * `prompt.args` with the `completers` of one instance attached to the arguments the catalog marks
+ * ({@link PromptDefinition.completions}). The SDK's `completable` marks a schema instance for
+ * good, and the catalog's schemas are shared by every instance and account, so each completed
+ * argument is a fresh copy with the same checks and description; the others stay as they are.
+ * The object itself is copied with `safeExtend`, which keeps its own settings (unknown keys,
+ * refinements over several arguments), and its metadata is carried over. Suggestions the
+ * argument would refuse are dropped, so every offered value passes the same pattern check as a
+ * typed one.
+ */
+export function completableArgs(
+  prompt: PromptDefinition,
+  completers: Completers,
+): PromptArgsSchema {
+  const shape: PromptArgsSchema["shape"] = {};
+  for (const [name, argument] of Object.entries(prompt.args.shape)) {
+    const kind = prompt.completions[name];
+    const complete = kind === undefined ? undefined : completers[kind];
+    if (complete === undefined) continue;
+    const value = argument.unwrap().clone();
+    const copy = completable(value, async (typed) =>
+      (await complete(typed)).filter((suggestion) => value.safeParse(suggestion).success),
+    ).optional();
+    shape[name] = argument.description === undefined ? copy : copy.describe(argument.description);
+  }
+  if (Object.keys(shape).length === 0) return prompt.args;
+  const args = prompt.args.safeExtend(shape);
+  const meta = prompt.args.meta();
+  return meta === undefined ? args : args.meta(meta);
+}
+
+/**
+ * Registers the planned prompts on `server` (see {@link planPrompts}), with suggestions for the
+ * arguments this instance can complete (the SDK then declares the `completions` capability).
+ */
 export function registerPrompts(
   server: McpServer,
   prompts: readonly PlannedPrompt[],
   options: PromptRegistrationOptions = {},
 ): void {
   const now = options.now ?? Date.now;
+  const completers: Completers = { ...periodCompleters(now), ...options.completers };
   for (const planned of prompts) {
     server.registerPrompt(
       planned.prompt.name,
       {
         title: planned.prompt.title,
         description: planned.prompt.description,
-        argsSchema: planned.prompt.args,
+        argsSchema: completableArgs(planned.prompt, completers),
       },
       (args) => renderPrompt(planned, args, now),
     );

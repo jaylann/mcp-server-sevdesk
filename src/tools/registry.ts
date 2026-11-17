@@ -15,7 +15,7 @@ import type { z } from "zod";
 import { requestPrincipal } from "../accounts/types.js";
 import type { Config, StructuredOutputMode } from "../config.js";
 import { type FileAccess, remoteFilesEnabled } from "../safety/file-access.js";
-import { localFileAccess, remoteFileAccess } from "../safety/file-sources.js";
+import { linkReader, localFileAccess, remoteFileAccess } from "../safety/file-sources.js";
 import type { SafetyRuntime } from "../safety/runtime.js";
 import type { Tier, WriteTier } from "../safety/tiers.js";
 import type { TransferStore } from "../safety/transfer-types.js";
@@ -262,10 +262,12 @@ export function fileAccessFor(
   deps: Pick<RegistryDeps, "config" | "transfer">,
 ): FileAccess {
   const { config, transfer } = deps;
+  const principal = requestPrincipal(request.http?.authInfo, config);
   if (remoteFilesEnabled(config) && transfer !== undefined) {
-    return remoteFileAccess(config, transfer, requestPrincipal(request.http?.authInfo, config));
+    return remoteFileAccess(config, transfer, principal);
   }
-  return localFileAccess(config);
+  // Downloads from links count against the principal's account in every mode.
+  return localFileAccess(config, linkReader(config, principal));
 }
 
 /**

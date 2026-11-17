@@ -1,4 +1,4 @@
-<!-- translated-from: docs/recording-session.md sha256:dc5cd26a51dc -->
+<!-- translated-from: docs/recording-session.md sha256:8b5a29d01ede -->
 
 # Runbook für die Aufnahmesitzung
 
@@ -30,13 +30,24 @@ drei Werkzeugen. Diese Seite ist das Runbook des Maintainers dafür.
   Grenze). Sie schalten die Stufen `write` und `commit` frei. Die Stufe `external` (E-Mail) wird
   nur freigeschaltet, wenn du eine eigene Adresse übergibst (`pnpm probe --probe-email`,
   `SEVDESK_LIVE_EMAIL_TO` für `test:live`), und dann geht genau eine E-Mail an diese Adresse, nie an
-  einen Kontakt. Nichts wird festgeschrieben, mit einer Ausnahme: Die Opt-in-Probe
-  `write-transaction-enshrine` schreibt einen markierten Kontoumsatz fest, den sie selbst angelegt
-  hat (unumkehrbar, nur auf dem Testkonto). Exporte: der DATEV-CSV-Job der M4-Probe und des
-  M4-Szenarios (er startet einen Job; nie mit `enshrineDocuments`), die Rechnungs- und Beleg-ZIPs
-  der Lückenproben (sie ändern kein Dokument, D-101) und der DATEV-XML-Job der Opt-in-Probe
-  `write-export-datev-xml`. Die Opt-in-Probe `write-voucher-from-file` schickt einen erzeugten Beleg
-  an `createVoucherFromFile`; der Entwurfsbeleg, den das anlegt, bleibt auf dem Konto.
+  einen Kontakt. Keine Anfrage zum Festschreiben wird gesendet, mit einer Ausnahme: Die
+  Opt-in-Probe `write-transaction-enshrine` schreibt einen markierten Kontoumsatz fest, den sie
+  selbst angelegt hat (unumkehrbar, nur auf dem Testkonto). Exporte: der DATEV-CSV-Job der
+  M4-Probe und des M4-Szenarios (er startet einen Job; nie mit `enshrineDocuments`), die Rechnungs-
+  und Beleg-ZIPs der Lückenproben (sie ändern kein Dokument, D-101) und der DATEV-XML-Job der
+  Opt-in-Probe `write-export-datev-xml`. Die Opt-in-Probe `write-voucher-from-file` schickt einen
+  erzeugten Beleg an `createVoucherFromFile`; der Entwurfsbeleg, den das anlegt, bleibt auf dem
+  Konto. Die übrigen Lückenproben hinterlassen Datensätze, die sich nicht löschen lassen: Angebote
+  und Auftragsbestätigungen, die als versendet markiert sind, und zwei fertiggestellte Rechnungen,
+  eine für `createFromInvoice` und eine für den Rechnungs-ZIP-Export (das Testkonto schreibt
+  Rechnungen beim Fertigstellen fest, D-023, D-059). Zwei von ihnen hinterlassen Vorlagen für
+  Abo-Rechnungen, die du in der Web-App löschst. Drei weitere sind opt-in, weil sie etwas
+  hinterlassen: `write-cash-register-transaction` (ihre Kassenbuchungen und die Gegenbuchungen
+  ihrer Zurücksetzungen bleiben im Kassenbuch, D-095),
+  `write-reserved-number-delete-draft` (reserviert eine Angebots- und eine Gutschriftsnummer;
+  sevDesk hat sie wieder vergeben, nachdem die Entwürfe gelöscht waren, D-066) und
+  `write-recurring-template-due` (hinterlässt mit Absicht EINE AKTIVE Vorlage für Abo-Rechnungen;
+  beende und lösche sie nach `read-recurring-generated`).
 - Alles Geschriebene trägt einen Lauf-Tag wie `MCP-E2E 20261120-1432-k3f9` im Namen und steht in
   einer Aufräumliste (am Ende des Probe-Berichts, am Ende des `test:live`-Logs).
 - Aufzeichnungen und Berichte werden bereinigt (`scripts/lib/scrub.ts`): Namen, E-Mail-Adressen,
@@ -165,10 +176,13 @@ Hinweise:
 Die M4-Proben und das M4-Lebenszyklus-Szenario decken Belege, Kontoumsätze, den DATEV-Export und
 E-Rechnungen ab. Sie brauchen vorher Firmendaten und eine DATEV-Konfiguration; Vorbereitung,
 Läufe, was sie anlegen und was du committest, stehen auf einer eigenen Seite:
-[M4-Läufe](recording-session/m4.de.md). Die Lückenproben vom 2026-11-16 (Kassen und
-Verrechnungskonten, Kontoumsätze löschen und festschreiben, Regeln für private Umsätze, Hashes von
-Belegdateien, ZIP-Exporte, der DATEV-XML-Job, die Belegerkennung) laufen von derselben Seite aus:
-[Lückenproben](recording-session/m4.de.md#lückenproben-banking-exporte-belegerkennung).
+[M4-Läufe](recording-session/m4.de.md). Die Lückenproben vom 2026-11-16 laufen von derselben Seite
+aus: [Banking, Exporte und Belegerkennung](recording-session/m4.de.md#lückenproben-banking-exporte-belegerkennung)
+(Kassen und Verrechnungskonten, Kontoumsätze löschen und festschreiben, Regeln für private Umsätze,
+Hashes von Belegdateien, ZIP-Exporte, der DATEV-XML-Job),
+[Kontakte, Tags und Kostenstellen](recording-session/m4.de.md#lückenproben-kontakte-tags-und-kostenstellen)
+und
+[Aufträge, Entwürfe, Abo-Rechnungen und Layouts](recording-session/m4.de.md#lückenproben-aufträge-entwürfe-abo-rechnungen-und-layouts).
 
 ## 3b. M5: Prüfung des Fernzugriffs (etwa 60 bis 90 Minuten)
 
