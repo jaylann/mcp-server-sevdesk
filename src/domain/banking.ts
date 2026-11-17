@@ -118,6 +118,8 @@ const accountRecordSchema = z.object({
   iban: zText,
   type: zText,
   importType: zText,
+  /** Spec: the data provider (e.g. `FINAPI`), "only set if the account is connected" to one. */
+  bankServer: zText,
   currency: zText,
   defaultAccount: zBool01.optional(),
   status: zNullableInt,
@@ -253,14 +255,19 @@ export function maskIban(iban: string | undefined): string | undefined {
 }
 
 /**
- * A file-import account is told by its `importType` (CSV or MT940) on an `online` account, never
- * by `type` alone: a bank connection is `online` too (D-097).
+ * A file-import account is told by its `importType` (CSV or MT940) on an `online` account without
+ * a `bankServer`, never by `type` alone: a bank connection is `online` too (D-097). How a
+ * connected account reads is not recorded, so one that names a data provider is never taken for a
+ * file-import account, whatever its `importType` says.
  */
 function toAccountDto(record: AccountRecord): BankAccountDto {
   const sevdeskType = cleanText(record.type, 20);
   const currency = currencyCode(record.currency);
+  const unconnected = cleanText(record.bankServer, 40) === undefined;
   const importType =
-    sevdeskType === "online" ? fileImportTypeOf(cleanText(record.importType, 10)) : undefined;
+    sevdeskType === "online" && unconnected
+      ? fileImportTypeOf(cleanText(record.importType, 10))
+      : undefined;
   return compact({
     id: record.id,
     name: accountName(record),

@@ -33,6 +33,7 @@ interface AccountRow {
   readonly type: string;
   readonly status: string;
   readonly importType: string | null;
+  readonly bankServer: string | null;
 }
 
 function accountRows(): readonly AccountRow[] {
@@ -83,11 +84,14 @@ describe(`recorded ${SESSION}: check accounts (D-097)`, () => {
     expect(imports.every((row) => row.importType === "CSV")).toBe(true);
     expect(result.items.filter((account) => account.type === "bank")).toHaveLength(imports.length);
     expect(result.items.filter((account) => account.type === "clearing")).toHaveLength(1);
-    // fileImport follows importType on the online rows: every recorded file-import account is
-    // marked, with its import type, and the offline account is not.
+    // fileImport follows importType on the online rows without a bankServer (recorded: null on
+    // every row): every recorded file-import account is marked, with its import type, and the
+    // offline account is not.
+    expect(imports.every((row) => row.bankServer === null)).toBe(true);
     for (const account of result.items) {
       const row = accountRows().find((candidate) => candidate.id === String(account.id));
-      const isImport = row?.type === "online" && row.importType === "CSV";
+      const isImport =
+        row?.type === "online" && row.importType === "CSV" && row.bankServer === null;
       expect(account.fileImport, String(account.id)).toBe(isImport);
       expect(account.importType, String(account.id)).toBe(isImport ? "CSV" : undefined);
     }

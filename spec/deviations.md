@@ -3637,17 +3637,19 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   only archived, refuses a name an active account has (no human confirms this tier, and a second
   account could not be deleted again), and takes the created account from sevDesk's answer.
   The account list's `fileImport` (with `importType`) is true only for an `online` account with
-  `importType` `CSV` or `MT940`; `type` keeps its meaning.
+  `importType` `CSV` or `MT940` and no `bankServer` (how a connected account reads is not
+  recorded, so one that names a data provider never counts as a file-import account); `type`
+  keeps its meaning.
 - **Test:** `test/contract/recorded-gaps-banking.test.ts` (the recorded list through
   `listBankAccounts`: file-import accounts as `bank` with `fileImport` and `importType` `CSV`,
   the offline account as `clearing`, only active rows, an incomplete page);
-  `test/unit/tools/banking/accounts.test.ts` ("tells file-import accounts by importType, never by
-  type alone"); `test/unit/domain/bank-account-create.test.ts` (the two factories and their
-  bodies, the account read from the answer, the refusal of a same-named active account);
-  `test/unit/tools/banking/account-create.test.ts` (no cash register, archive-only wording);
-  `test/regressions/concurrent-check-then-write.test.ts` (two creations at once make one
-  account); `test/unit/scripts/gaps-banking-probes.test.ts` (archiving, the refusal text). Live:
-  probes `write-check-account-factories`, `read-check-account-kinds`.
+  `test/unit/tools/banking/accounts.test.ts` ("tells file-import accounts by importType without a
+  bankServer, never by type alone"); `test/unit/domain/bank-account-create.test.ts` (the two
+  factories and their bodies, the account read from the answer, the refusal of a same-named
+  active account); `test/unit/tools/banking/account-create.test.ts` (no cash register,
+  archive-only wording); `test/regressions/concurrent-check-then-write.test.ts` (two creations at
+  once make one account); `test/unit/scripts/gaps-banking-probes.test.ts` (archiving, the refusal
+  text). Live: probes `write-check-account-factories`, `read-check-account-kinds`.
 
 ### D-098: An enshrined transaction locks itself and the payment it books
 
