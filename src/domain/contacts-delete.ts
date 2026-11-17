@@ -621,8 +621,7 @@ export async function executeContactDelete(
   persons: readonly ContactPerson[],
   signal: AbortSignal | undefined,
 ): Promise<ContactDeleteResult> {
-  const result = await deleteAndCheck(client, contactId, persons.length > 0, signal);
-  if (persons.length === 0) return { ...result, persons: [] };
+  const result = await deleteAndCheck(client, contactId, signal);
   const outcomes: ContactPersonOutcome[] = [];
   for (const person of persons) {
     outcomes.push({
@@ -631,10 +630,15 @@ export async function executeContactDelete(
       outcome: await personOutcome(client, person.id, signal),
     });
   }
+  const personGone = outcomes.some((entry) => entry.outcome === "deleted");
   return {
     ...result,
     persons: outcomes,
-    notes: [...result.notes, ...personNotes(contactId, kind, result.deleted, outcomes)],
+    notes: [
+      ...(result.stillReferenced ? [refusalNote(contactId, persons.length > 0, personGone)] : []),
+      ...result.notes,
+      ...personNotes(contactId, kind, result.deleted, outcomes),
+    ],
   };
 }
 
@@ -702,11 +706,25 @@ function personNotes(
   return notes;
 }
 
+/**
+ * sevDesk's refusal (D-085) in our words. "Nothing was deleted" only while no contact person read
+ * back as gone: a partial cascade is not measured, and the reads afterwards may show one.
+ */
+function refusalNote(contactId: number, hasPersons: boolean, personGone: boolean): string {
+  const referenced = hasPersons ? "it or one of its contact persons" : "it";
+  return (
+    `sevDesk refused to delete contact ${String(contactId)}: documents still reference ` +
+    `${referenced} (sevDesk keeps a contact that invoices or other documents use, drafts ` +
+    `included). ${personGone ? "The contact" : "Nothing was deleted; the contact"}, its ` +
+    "addresses and its communication ways are unchanged. Give those drafts another contact or " +
+    "delete them first; finalized documents keep their contact."
+  );
+}
+
 /** The DELETE and the read of the contact itself (see {@link executeContactDelete}). */
 async function deleteAndCheck(
   client: SevdeskClient,
   contactId: number,
-  hasPersons: boolean,
   signal: AbortSignal | undefined,
 ): Promise<Omit<ContactDeleteResult, "persons">> {
   const id = String(contactId);
@@ -749,19 +767,10 @@ async function deleteAndCheck(
   }
 
   if (refused) {
-    const referenced = hasPersons ? "it or one of its contact persons" : "it";
+    // The refusal's note depends on what the reads of the contact persons find; the caller writes
+    // it (refusalNote).
     return stillThere
-      ? {
-          deleted: false,
-          stillReferenced: true,
-          notes: [
-            `sevDesk refused to delete contact ${id}: documents still reference ${referenced} ` +
-              "(sevDesk keeps a contact that invoices or other documents use, drafts included). " +
-              "Nothing was deleted; the contact, its addresses and its communication ways are " +
-              "unchanged. Give those drafts another contact or delete them first; finalized " +
-              "documents keep their contact.",
-          ],
-        }
+      ? { deleted: false, stillReferenced: true, notes: [] }
       : {
           deleted: true,
           stillReferenced: false,

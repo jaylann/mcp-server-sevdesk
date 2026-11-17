@@ -96,11 +96,15 @@ export const contactDeleteTool = defineWriteTool({
       .map((person) => ({ objectName: "Contact", id: String(person.id) }));
     const seeNotes = result.notes.length === 0 ? "" : " See notes.";
     if (result.stillReferenced) {
+      // A contact person may read back as gone although sevDesk refused (a partial cascade is not
+      // measured): then "nothing was deleted" would be untrue.
       return {
         data,
         summary:
-          `sevDesk refused to delete contact ${id}: documents still reference it. Nothing was ` +
-          `deleted.${seeNotes}`,
+          `sevDesk refused to delete contact ${id}: documents still reference it. ` +
+          (gonePersons.length === 0
+            ? `Nothing was deleted.${seeNotes}`
+            : `The ${contact.kind} was not deleted; see notes.`),
         affected: gonePersons,
       };
     }

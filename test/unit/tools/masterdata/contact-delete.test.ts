@@ -457,6 +457,34 @@ describe("sevdesk_contact_delete", () => {
     expect(JSON.stringify(output)).not.toContain("necessary references");
   });
 
+  it("does not claim nothing was deleted when a contact person is gone after a refusal", async () => {
+    const client = new StagedClient(
+      organisationRoutes(),
+      afterDelete({ error: REFUSED }, { fixture: "contacts/contact-1001.json" }, GONE),
+    );
+    const { output } = await executeWrite(tool, { id: 1001 }, client);
+    expect(output.data).toMatchObject({
+      deleted: false,
+      stillReferenced: true,
+      contactPersons: [{ id: 1002, outcome: "deleted" }],
+    });
+    expect(output.summary).toBe(
+      "sevDesk refused to delete contact 1001: documents still reference it. The organisation " +
+        "was not deleted; see notes.",
+    );
+    expect(output.data.notes).toEqual([
+      "sevDesk refused to delete contact 1001: documents still reference it or one of its " +
+        "contact persons (sevDesk keeps a contact that invoices or other documents use, drafts " +
+        "included). The contact, its addresses and its communication ways are unchanged. Give " +
+        "those drafts another contact or delete them first; finalized documents keep their " +
+        "contact.",
+      "Contact person 1002 is gone although organisation 1001 is still in sevDesk. Check with " +
+        "sevdesk_contact_get.",
+    ]);
+    expect(JSON.stringify(output)).not.toContain("Nothing was deleted");
+    expect(output.affected).toEqual([{ objectName: "Contact", id: "1002" }]);
+  });
+
   it("treats the same refusal with the 409 the spec declares alike", async () => {
     const conflict = new SevdeskError({
       kind: "validation",
