@@ -95,11 +95,18 @@ server downloads it during the call and keeps nothing:
 - redirects are followed at most three times, and only to hosts on the list, checked the same way;
 - no cookies, no credentials and never the sevDesk token are sent; a link that needs a sign-in
   fails;
-- a PDF, PNG, JPEG or XML file (checked by content and by its declared type), at most 20 MB,
-  within 60 seconds.
+- a PDF, PNG, JPEG or XML file (checked by content and by its declared type; a web page such as a
+  sign-in page is refused), at most 20 MB, within 60 seconds; at most two downloads at once per
+  account.
 
-The preview and the result show the file's SHA-256 and the host it came from, never the path or
-query of the link; the audit log records the link without its query. List hosts exactly
+The preview and the result show the file's name, its SHA-256 and the host it came from. The name
+is the last part of the link's path when that is a file name of at most 64 characters ending in
+`.pdf`, `.png`, `.jpg`, `.jpeg` or `.xml`, otherwise `download.pdf` (or `.png`, `.jpg`, `.xml`);
+sevDesk keeps the file under that name. Nothing else of the link is shown, and the audit log
+records it as its host only (`https://host/…?[redacted]`). The real call downloads the file again
+after a dry run: pass the SHA-256 from the dry run's preview as `fileSha256`, and a file with other
+bytes is refused before anything reaches sevDesk (this works for local files and uploads too).
+List hosts exactly
 (internationalized names in their `xn--` form). `*.example.com` allows every subdomain of
 example.com: name a shared domain (a cloud provider's storage) only if you trust every file on it,
 since anyone can put a file there.

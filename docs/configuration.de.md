@@ -1,4 +1,4 @@
-<!-- translated-from: docs/configuration.md sha256:725ad61dcb11 -->
+<!-- translated-from: docs/configuration.md sha256:19d4fdbbd03a -->
 
 # Konfiguration
 
@@ -103,11 +103,18 @@ Modus (auch mit OAuth). Der Server lädt die Datei während des Aufrufs herunter
   geprüft;
 - gesendet werden keine Cookies, keine Zugangsdaten und nie das sevDesk-Token; ein Link, der eine
   Anmeldung braucht, schlägt fehl;
-- eine PDF-, PNG-, JPEG- oder XML-Datei (geprüft am Inhalt und am angegebenen Typ), höchstens
-  20 MB, innerhalb von 60 Sekunden.
+- eine PDF-, PNG-, JPEG- oder XML-Datei (geprüft am Inhalt und am angegebenen Typ; eine Webseite
+  wie eine Anmeldeseite wird abgelehnt), höchstens 20 MB, innerhalb von 60 Sekunden; höchstens
+  zwei Downloads gleichzeitig je Konto.
 
-Vorschau und Ergebnis zeigen die SHA-256 der Datei und den Host, von dem sie kam, nie Pfad oder
-Query des Links; das Audit-Log hält den Link ohne seine Query fest. Trage Hosts genau ein
+Vorschau und Ergebnis zeigen den Namen der Datei, ihre SHA-256 und den Host, von dem sie kam. Der
+Name ist der letzte Teil des Link-Pfads, wenn er ein Dateiname von höchstens 64 Zeichen ist, der
+auf `.pdf`, `.png`, `.jpg`, `.jpeg` oder `.xml` endet, sonst `download.pdf` (oder `.png`, `.jpg`,
+`.xml`); unter diesem Namen behält sevDesk die Datei. Sonst wird nichts vom Link gezeigt, und das
+Audit-Log hält nur seinen Host fest (`https://host/…?[redacted]`). Der echte Aufruf lädt die Datei
+nach einem Probelauf erneut: Übergib die SHA-256 aus der Vorschau des Probelaufs als `fileSha256`,
+dann wird eine Datei mit anderen Bytes abgelehnt, bevor etwas sevDesk erreicht (das gilt auch für
+lokale Dateien und Uploads). Trage Hosts genau ein
 (internationalisierte Namen in ihrer `xn--`-Form). `*.example.com` erlaubt jede Subdomain von
 example.com: Nenne eine geteilte Domain (den Speicher eines Cloud-Anbieters) nur, wenn du jeder
 Datei darauf traust, denn dort kann jeder eine Datei ablegen.

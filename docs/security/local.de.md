@@ -1,4 +1,4 @@
-<!-- translated-from: docs/security/local.md sha256:eac86a3e10d7 -->
+<!-- translated-from: docs/security/local.md sha256:ca727e81de4f -->
 
 # Lokale Nutzung
 
@@ -57,14 +57,28 @@ in sein eigenes Netz werden und nicht von überall laden (`src/safety/url-files.
   der im Download schon aufgelöst wurde, behält seine Adresse.
 - Die Anfrage enthält nur `Accept` und `User-Agent`: kein Cookie, kein `Authorization`, nie das
   sevDesk-Token. Eine Antwort muss 200 sein, unkomprimiert, mit einem Inhaltstyp, der zu einer
-  PDF-, PNG-, JPEG- oder XML-Datei passt und zum Inhalt stimmt, höchstens 20 MiB (geprüft an
-  `Content-Length` und während der Body ankommt), innerhalb von 60 Sekunden; höchstens vier
-  Downloads laufen gleichzeitig.
+  PDF-, PNG-, JPEG- oder XML-Datei passt und zum Inhalt stimmt (Kodierung und Typ werden an den
+  Headern geprüft, bevor der Body gelesen wird), höchstens 20 MiB (geprüft an `Content-Length` und
+  während der Body ankommt), innerhalb von 60 Sekunden. Ein Body, der eine Webseite ist
+  (`<!doctype html` oder `<html`, nach einer Byte-Reihenfolge-Markierung, Leerraum, Kommentaren
+  oder einer XML-Deklaration), wird als Anmelde- oder Fehlerseite abgelehnt, auch wenn er als XML
+  oder ohne Typ kommt. Ein Abbruch oder die Frist beendet den Download vor der nächsten
+  Weiterleitung.
+- Höchstens zwei Downloads laufen gleichzeitig je Konto und vier im Prozess, weil jeder bis zu
+  20 MiB im Speicher hält. Im OAuth-Modus können zwei Konten zusammen die vier Plätze trotzdem bis
+  zu einer Minute füllen.
 - Nach dem Aufruf bleibt nichts. Ablehnungen sind vertrauenswürdiger Text: Sie nennen die
   Einstellung und die erlaubten Hosts, nie den Link, seinen Pfad oder seine Query, ein
-  Weiterleitungsziel oder etwas, das der Host gesendet hat. Vorschau und Ergebnis zeigen die
-  SHA-256 der Datei und den Host; das Audit-Log hält den Link ohne Benutzerangaben, Query und
-  Fragment fest.
+  Weiterleitungsziel oder etwas, das der Host gesendet hat. Vorschau und Ergebnis zeigen Namen,
+  SHA-256 und Host der Datei. Der Name ist das letzte Pfadsegment des Links nur, wenn es ein
+  Dateiname von höchstens 64 Zeichen ist, der auf `.pdf`, `.png`, `.jpg`, `.jpeg` oder `.xml`
+  endet, sonst `download.<ext>`, weil ein Link als Berechtigung sein Token im Pfad tragen kann und
+  der Name mit dem Beleg in sevDesk gespeichert wird. Das Audit-Log hält ein Link-Argument nur mit
+  Schema und Host fest (`https://host/…?[redacted]`).
+- Der echte Aufruf liest die Datei nach einem Probelauf erneut (ein Link wird erneut
+  heruntergeladen) und könnte so andere Bytes anhängen, als die Vorschau gezeigt hat. Mit
+  `fileSha256` (der SHA-256 aus der Vorschau) lehnt der Aufruf andere Bytes ab, bevor etwas
+  sevDesk erreicht, für Links, Uploads und lokale Dateien.
 
 Das verbleibende Risiko ist die Liste selbst: Ein Host darauf, der Dateien ausliefert, die jeder
 hochladen kann (eine geteilte Cloud-Speicher-Domain, besonders unter `*.`), lässt das Modell eine

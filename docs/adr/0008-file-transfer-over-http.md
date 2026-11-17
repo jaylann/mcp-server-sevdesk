@@ -170,20 +170,34 @@ the client metadata fetch of OAuth mode, whose guard moved to `src/safety/public
 `src/safety/pinned-https.ts` for both: https only, the default port, no user info, a host name on
 the list (exact, or `*.example.com` for its subdomains), resolved once per download to public
 addresses only, the connection pinned to the checked address; no cookies, credentials or sevDesk
-token; 200 only, uncompressed, a content type that fits the content, the caller's size limit
-(20 MiB) on `Content-Length` and while streaming, 60 seconds in total, four downloads at once.
-**Redirects are followed**, at most three, each target checked by the same rules including the
-list; a host keeps the address of its first resolution within one download. Cloud storage and
-portals hand out links that redirect (to a storage or CDN host), and refusing them would make the
-feature useless for them; the list still bounds every host a request reaches, and a redirect off
-it is refused without naming the target. **Nothing is kept**: the bytes live in the tool call,
-like a local file's, so `FileAccess.release` has nothing to release, and a dry run downloads again
-on the real call. The preview shows the file's full SHA-256 and the host, the results add
-`sha256` (every source) and `downloadedFrom`; messages, previews and results never show the path or
-query of a link (a signed link carries its signature there), and the audit log records the link
-argument without user info, query and fragment. The tools that take a file declare
-`openWorldHint: true` (their tiers stay), and `sevdesk_einvoice_parse` and
+token; 200 only, uncompressed, a content type that fits the content (checked on the headers before
+the body is read), no web page where XML is expected, the caller's size limit (20 MiB) on
+`Content-Length` and while streaming, 60 seconds in total, two downloads at once per account and
+four in the process. **Redirects are followed**, at most three, each target checked by the same
+rules including the list; a host keeps the address of its first resolution within one download.
+Cloud storage and portals hand out links that redirect (to a storage or CDN host), and refusing
+them would make the feature useless for them; the list still bounds every host a request reaches,
+and a redirect off it is refused without naming the target. **Nothing is kept**: the bytes live in
+the tool call, like a local file's, so `FileAccess.release` has nothing to release, and the real
+call downloads the file again after a dry run. The previews of every file show its full SHA-256
+as a fact of its own (a link's also the host), the results add `sha256` (every source) and
+`downloadedFrom`. The file's name is the link's last path segment only when that is a file name
+of at most 64 characters ending in `.pdf`, `.png`, `.jpg`, `.jpeg` or `.xml`, else
+`download.<ext>`: a capability link may carry its token in the path, and the name is shown and
+stored in sevDesk. Messages, previews and results show nothing else of a link, and the audit log
+records a link argument as its scheme and host only (`https://host/…?[redacted]`). The tools that
+take a file declare `openWorldHint: true` (their tiers stay), and `sevdesk_einvoice_parse` and
 `sevdesk_voucher_import_einvoice` are offered with link hosts alone too.
+
+**Binding the real call to the checked bytes (2026-11-17, review of #101).** A dry run and the
+real call read the file separately: a link is downloaded again, an upload or a local file can be
+replaced in between, so the real call may attach other bytes than the preview a human checked.
+Every tool that takes `file` therefore also takes an optional `fileSha256` (64 hex characters, any
+case). When it is given, the call computes the SHA-256 of the bytes it is about to use, in a dry
+run as in the real call, and refuses before anything reaches sevDesk when they differ; the message
+names both hashes, shortened, and nothing of the file or its reference. The full SHA-256 to pass
+comes from the dry run's preview (or `sevdesk_einvoice_parse`'s `file.sha256`). Without
+`fileSha256` nothing changes.
 
 ## Consequences
 
@@ -219,8 +233,11 @@ argument without user info, query and fragment. The tools that take a file decla
   same argument works over stdio and HTTP.
 - Bad (links): the server reaches hosts beyond sevDesk at the model's request. The list bounds
   them, but a host on it that serves files anyone can upload (a shared storage domain, especially
-  under `*.`) lets the model attach such a file. Four slow downloads at once keep a fifth waiting
-  up to a minute, also across accounts in OAuth mode.
+  under `*.`) lets the model attach such a file. Slow downloads keep others waiting up to a
+  minute: two per account, so in OAuth mode two accounts together can still fill the four slots
+  of the process.
+- Bad (links): the real call downloads the file again, so without `fileSha256` it may attach
+  other bytes than the dry run showed.
 
 ## Alternatives considered
 

@@ -1,4 +1,4 @@
-<!-- translated-from: docs/adr/0008-file-transfer-over-http.md sha256:ca66bcfe81eb -->
+<!-- translated-from: docs/adr/0008-file-transfer-over-http.md sha256:a78abd7dbd11 -->
 
 # ADR 0008: Dateiübertragung über HTTP
 
@@ -195,21 +195,37 @@ eingegrenzt wie der Abruf der Client-Metadaten im OAuth-Modus, dessen Schutz fü
 Standardport, keine Benutzerangaben, ein Hostname auf der Liste (genau, oder `*.example.com` für
 dessen Subdomains), je Download einmal aufgelöst und nur zu öffentlichen Adressen, die Verbindung
 an die geprüfte Adresse gebunden; keine Cookies, Zugangsdaten oder sevDesk-Token; nur 200,
-unkomprimiert, ein Inhaltstyp, der zum Inhalt passt, die Größengrenze des Aufrufers (20 MiB) an
-`Content-Length` und während der Übertragung, 60 Sekunden insgesamt, vier Downloads gleichzeitig.
-**Weiterleitungen werden verfolgt**, höchstens drei, jedes Ziel nach denselben Regeln geprüft samt
-Liste; ein Host behält innerhalb eines Downloads die Adresse seiner ersten Auflösung.
-Cloud-Speicher und Portale geben Links aus, die weiterleiten (zu einem Speicher- oder CDN-Host),
-und sie abzulehnen, machte die Funktion für sie nutzlos; die Liste begrenzt trotzdem jeden Host,
-den eine Anfrage erreicht, und eine Weiterleitung daneben wird abgelehnt, ohne das Ziel zu nennen.
-**Nichts wird behalten**: Die Bytes leben im Werkzeugaufruf, wie die einer lokalen Datei; es gibt
-für `FileAccess.release` also nichts freizugeben, und ein Probelauf lädt beim echten Aufruf erneut.
-Die Vorschau zeigt die vollständige SHA-256 der Datei und den Host, die Ergebnisse ergänzen
-`sha256` (für jede Quelle) und `downloadedFrom`; Meldungen, Vorschauen und Ergebnisse zeigen nie
-Pfad oder Query eines Links (ein signierter Link trägt dort seine Signatur), und das Audit-Log hält
-das Link-Argument ohne Benutzerangaben, Query und Fragment fest. Die Werkzeuge, die eine Datei
-nehmen, erklären `openWorldHint: true` (ihre Stufen bleiben), und `sevdesk_einvoice_parse` und
+unkomprimiert, ein Inhaltstyp, der zum Inhalt passt (an den Headern geprüft, bevor der Body gelesen
+wird), keine Webseite, wo XML erwartet wird, die Größengrenze des Aufrufers (20 MiB) an
+`Content-Length` und während der Übertragung, 60 Sekunden insgesamt, zwei Downloads gleichzeitig
+je Konto und vier im Prozess. **Weiterleitungen werden verfolgt**, höchstens drei, jedes Ziel nach
+denselben Regeln geprüft samt Liste; ein Host behält innerhalb eines Downloads die Adresse seiner
+ersten Auflösung. Cloud-Speicher und Portale geben Links aus, die weiterleiten (zu einem Speicher-
+oder CDN-Host), und sie abzulehnen, machte die Funktion für sie nutzlos; die Liste begrenzt
+trotzdem jeden Host, den eine Anfrage erreicht, und eine Weiterleitung daneben wird abgelehnt, ohne
+das Ziel zu nennen. **Nichts wird behalten**: Die Bytes leben im Werkzeugaufruf, wie die einer
+lokalen Datei; es gibt für `FileAccess.release` also nichts freizugeben, und der echte Aufruf lädt
+die Datei nach einem Probelauf erneut. Die Vorschauen jeder Datei zeigen deren vollständige
+SHA-256 als eigene Angabe (die eines Links auch den Host), die Ergebnisse ergänzen `sha256` (für
+jede Quelle) und `downloadedFrom`. Der Name der Datei ist das letzte Pfadsegment des Links nur,
+wenn es ein Dateiname von höchstens 64 Zeichen ist, der auf `.pdf`, `.png`, `.jpg`, `.jpeg` oder
+`.xml` endet, sonst `download.<ext>`: Ein Link als Berechtigung kann sein Token im Pfad tragen, und
+der Name wird gezeigt und in sevDesk gespeichert. Meldungen, Vorschauen und Ergebnisse zeigen
+nichts weiter von einem Link, und das Audit-Log hält ein Link-Argument nur mit Schema und Host fest
+(`https://host/…?[redacted]`). Die Werkzeuge, die eine Datei nehmen, erklären
+`openWorldHint: true` (ihre Stufen bleiben), und `sevdesk_einvoice_parse` und
 `sevdesk_voucher_import_einvoice` werden auch allein mit Link-Hosts angeboten.
+
+**Den echten Aufruf an die geprüften Bytes binden (2026-11-17, Review von #101).** Ein Probelauf
+und der echte Aufruf lesen die Datei getrennt: Ein Link wird erneut heruntergeladen, ein Upload
+oder eine lokale Datei kann dazwischen ersetzt werden, und der echte Aufruf kann so andere Bytes
+anhängen als die Vorschau, die ein Mensch geprüft hat. Jedes Werkzeug, das `file` nimmt, nimmt
+deshalb auch ein optionales `fileSha256` (64 Hexadezimalzeichen, Groß- oder Kleinschreibung). Ist
+es angegeben, berechnet der Aufruf die SHA-256 der Bytes, die er verwenden will, im Probelauf wie
+im echten Aufruf, und lehnt ab, bevor etwas sevDesk erreicht, wenn sie abweicht; die Meldung nennt
+beide Hashes gekürzt und nichts von der Datei oder ihrer Referenz. Die vollständige SHA-256 kommt
+aus der Vorschau des Probelaufs (oder aus `file.sha256` von `sevdesk_einvoice_parse`). Ohne
+`fileSha256` ändert sich nichts.
 
 ## Folgen
 
@@ -250,8 +266,10 @@ nehmen, erklären `openWorldHint: true` (ihre Stufen bleiben), und `sevdesk_einv
 - Nachteil (Links): Der Server erreicht auf Wunsch des Modells Hosts außerhalb von sevDesk. Die
   Liste begrenzt sie, aber ein Host darauf, der Dateien ausliefert, die jeder hochladen kann (eine
   geteilte Speicher-Domain, besonders unter `*.`), lässt das Modell eine solche Datei anhängen.
-  Vier langsame Downloads gleichzeitig lassen einen fünften bis zu einer Minute warten, im
-  OAuth-Modus auch über Konten hinweg.
+  Langsame Downloads lassen andere bis zu einer Minute warten: zwei je Konto, im OAuth-Modus
+  können zwei Konten zusammen also trotzdem die vier Plätze des Prozesses füllen.
+- Nachteil (Links): Der echte Aufruf lädt die Datei erneut; ohne `fileSha256` kann er andere Bytes
+  anhängen, als der Probelauf gezeigt hat.
 
 ## Erwogene Alternativen
 

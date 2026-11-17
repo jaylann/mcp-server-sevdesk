@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/receipts.md sha256:e29a5da92960 -->
+<!-- translated-from: docs/guides/receipts.md sha256:7ceebf59fb07 -->
 
 # Belege und Eingangsrechnungen
 
@@ -46,6 +46,11 @@ Die Beleg-Werkzeuge lesen nie von sich aus auf deiner Festplatte:
   Download-Link eines Lieferantenportals, einen Speicher-Link). Der Server lädt sie nur für diesen
   Aufruf herunter, ohne sich irgendwo anzumelden; siehe
   [Dateien von einem Link](../configuration.de.md#dateien-von-einem-link).
+
+Die Vorschau des Probelaufs zeigt die vollständige SHA-256 der Datei. Der echte Aufruf liest die
+Datei erneut (ein Link wird erneut heruntergeladen); der Assistent kann diese SHA-256 deshalb als
+`fileSha256` übergeben: Haben sich die Bytes dazwischen geändert, wird der Aufruf abgelehnt, bevor
+etwas sevDesk erreicht.
 
 > Erfasse den Beleg Belege/2026-11/tankstelle-shell.pdf.
 

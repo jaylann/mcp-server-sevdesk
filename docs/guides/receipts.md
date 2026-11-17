@@ -43,6 +43,10 @@ The voucher tools never read your disk on their own:
   download link, a storage link). The server downloads it for this call only, without signing in
   anywhere; see [Files from a link](../configuration.md#files-from-a-link).
 
+The dry run's preview shows the file's full SHA-256. The real call reads the file again (a link is
+downloaded again), so the assistant can pass that SHA-256 as `fileSha256`: if the bytes changed in
+between, the call is refused before anything reaches sevDesk.
+
 > File the receipt Belege/2026-11/tankstelle-shell.pdf.
 
 ## Check for duplicates
