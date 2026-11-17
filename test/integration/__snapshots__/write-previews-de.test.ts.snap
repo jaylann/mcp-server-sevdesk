@@ -210,6 +210,20 @@ Summe (erwartet): netto 100,00 EUR, USt. 19,00 EUR, brutto 119,00 EUR
 Status nach dem Speichern: Entwurf (50), noch nicht gebucht"
 `;
 
+exports[`German previews > create a private-transaction rule: says the same in German 1`] = `
+"Eine Regel für private Umsätze zum Auftraggeber/Empfänger anlegen: sevDesk soll Kontoumsätze, die es von der Bank importiert, anhand des Textes unten als privat markieren.
+! sevDesk wendet eine Regel selbst an, wenn es Kontoumsätze von der Bank importiert: Ein passender Umsatz wird dann als privat markiert (Privatentnahme bei Ausgängen, Privateinlage bei Eingängen) und zählt weder als Betriebsausgabe noch als Betriebseinnahme. Getestet werden konnte das nicht: Ein Testkonto importiert keine Kontoumsätze.
+! Die aufgeführten Umsätze sind eine Schätzung dieses Servers, nicht sevDesks Abgleich: offene (ungebuchte) Umsätze, deren Auftraggeber/Empfänger den Text enthält, ohne Rücksicht auf Groß- und Kleinschreibung. Wie sevDesk eine Regel abgleicht (ganzer Text, Teil davon, Schreibweise), ist nicht bekannt, und bei der Messung änderte es weder bestehende noch von Hand erfasste Umsätze. Das Anlegen der Regel ändert keinen der aufgeführten Umsätze; sevdesk_transaction_mark_private markiert einen davon als privat.
+! Kapitalgesellschaften (GmbH, UG, AG) kennen keine Privatentnahmen oder Privateinlagen; dort führt eine solche Regel zu falschen Buchungen.
+! Rückgängig: sevdesk_private_transaction_rule_delete. Umsätze, die sevDesk bis dahin als privat markiert hat, bleiben privat (bei der Messung änderte das Löschen von Regeln keinen Umsatz); sevdesk_transaction_reset setzt einen davon zurück.
+(umkehrbar)
+Regel prüft: Auftraggeber/Empfänger
+Text: Netflix
+Geprüfte offene Umsätze: 2 (alle offenen Umsätze)
+Vermutlich gemeint (Schätzung): 1
+Schätzung: Kontoumsatz 5102: 05.01.2026, -12,99 EUR, NETFLIX INTERNATIONAL B.V."
+`;
+
 exports[`German previews > delete a draft voucher: says the same in German 1`] = `
 "Beleg 2101 (Entwurf) aus sevDesk löschen.
 ! Der Entwurf und alle seine Positionen werden aus sevDesk gelöscht; das lässt sich nicht rückgängig machen.
@@ -225,6 +239,17 @@ Netto: 100,00 EUR
 Umsatzsteuer: 19,00 EUR
 Brutto: 119,00 EUR
 Bisher bezahlt: 0,00 EUR"
+`;
+
+exports[`German previews > delete a private-transaction rule: says the same in German 1`] = `
+"Regel für private Umsätze 951 löschen.
+! sevDesk markiert importierte Kontoumsätze danach nicht mehr nach dieser Regel als privat. Wo Regeln wirken, beim Bankimport, ließ sich auf einem Testkonto nicht testen.
+! Bereits als privat markierte Umsätze bleiben privat: Bei der Messung änderte das Löschen einer Regel keinen Umsatz. sevdesk_transaction_reset setzt einen davon auf ungebucht zurück.
+! Rückgängig: die Regel mit sevdesk_private_transaction_rule_create neu anlegen; sie erhält eine neue ID.
+(umkehrbar)
+Regel für private Umsätze: ID 951
+Text zu Auftraggeber/Empfänger: Vermieter Huber
+Angelegt: 09.11.2026"
 `;
 
 exports[`German previews > delete an unbooked bank transaction: says the same in German 1`] = `

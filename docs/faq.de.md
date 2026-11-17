@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:f698ef2b5da2 -->
+<!-- translated-from: docs/faq.md sha256:1767e69cb6b5 -->
 
 # Häufige Fragen
 
@@ -144,6 +144,17 @@ Dateiimport-Konto trägt [`sevdesk_transaction_create`](tools.md#sevdesk_transac
 Umsatz von Hand ein und kann ihn im selben Schritt einem Dokument zuordnen. Beides sind
 `commit`-Werkzeuge, die du bestätigst; Einzelheiten stehen in
 [Bank und Kasse](guides/banking.de.md).
+
+### Kann es wiederkehrende private Zahlungen automatisch markieren?
+
+Über die Regeln für private Umsätze in sevDesk: Eine Regel nennt einen Text zum
+Auftraggeber/Empfänger oder zum Verwendungszweck, und sevDesk markiert passende Umsätze als privat,
+wenn es sie von der Bank importiert. Der Server listet Regeln, legt sie an und löscht sie; Anlegen
+und Löschen sind `commit`-Werkzeuge, die du bestätigst. Wo Regeln wirken, ließ sich nicht testen,
+weil ein Testkonto keine Kontoumsätze importiert, und dort änderten sie keinen vorhandenen Umsatz.
+Die Liste offener Umsätze in der Vorschau, die die Regel vermutlich meint, ist eine Schätzung des
+Servers, nicht sevDesks Abgleich. Einzelheiten:
+[Bank und Kasse](guides/banking.de.md#regeln-für-private-umsätze).
 
 ### Wie weit kann ich mich auf die Umsatzsteuer-Auswertung und die Gewinn- und Verlustrechnung verlassen?
 

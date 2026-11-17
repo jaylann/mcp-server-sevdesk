@@ -1,23 +1,26 @@
-<!-- translated-from: docs/guides/banking.md sha256:19b1a9c2b52c -->
+<!-- translated-from: docs/guides/banking.md sha256:17d8eed4d2e5 -->
 
 # Bank und Kasse
 
 Diese Anleitung behandelt das Geld auf deinen Zahlungskonten: welches Konto was annimmt, einen
 Barverkauf oder eine Barausgabe in der Kasse erfassen, einen Kontoumsatz von Hand eintragen, Umsätze
-Dokumenten zuordnen und einen Umsatz löschen oder festschreiben. Zu jedem Schritt steht, was du
-fragst, das Werkzeug, die [Stufe](../permissions.de.md#stufen) und ob du bestätigst.
+Dokumenten zuordnen, einen Umsatz löschen oder festschreiben und die Regeln, die Umsätze als privat
+markieren. Zu jedem Schritt steht, was du fragst, das Werkzeug, die
+[Stufe](../permissions.de.md#stufen) und ob du bestätigst.
 
 ## Überblick
 
-| Schritt                                                                                | Werkzeug                                                                                                                                               | Stufe            | Bestätigung      |
-| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------- | ---------------- |
-| [Konten und Bestände ansehen](#welches-konto-was-annimmt)                              | [`sevdesk_bank_accounts_list`](../tools.md#sevdesk_bank_accounts_list), [`sevdesk_cash_position`](../tools.md#sevdesk_cash_position)                   | `read`           | nein             |
-| [Ein Konto anlegen](#welches-konto-was-annimmt)                                        | [`sevdesk_bank_account_create`](../tools.md#sevdesk_bank_account_create)                                                                               | `write`          | nein             |
-| [Barverkauf oder Barausgabe erfassen](#einen-barverkauf-oder-eine-barausgabe-erfassen) | [`sevdesk_voucher_book_payment`](../tools.md#sevdesk_voucher_book_payment), [`sevdesk_invoice_book_payment`](../tools.md#sevdesk_invoice_book_payment) | `commit`         | **ja**           |
-| [Einen Umsatz von Hand erfassen](#einen-umsatz-von-hand-erfassen)                      | [`sevdesk_transaction_create`](../tools.md#sevdesk_transaction_create)                                                                                 | `commit`         | **ja**           |
-| [Umsätze Dokumenten zuordnen](#umsätze-zuordnen)                                       | [`sevdesk_reconcile_suggest`](../tools.md#sevdesk_reconcile_suggest), [`sevdesk_transaction_book`](../tools.md#sevdesk_transaction_book)               | `read`, `commit` | Zuordnen: **ja** |
-| [Einen Umsatz löschen](#einen-umsatz-löschen)                                          | [`sevdesk_transaction_delete`](../tools.md#sevdesk_transaction_delete)                                                                                 | `commit`         | **ja**           |
-| [Einen Umsatz festschreiben](#einen-umsatz-festschreiben)                              | [`sevdesk_transaction_enshrine`](../tools.md#sevdesk_transaction_enshrine)                                                                             | `commit`         | **ja**           |
+| Schritt                                                                                | Werkzeug                                                                                                                                                                                           | Stufe            | Bestätigung      |
+| -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | ---------------- |
+| [Konten und Bestände ansehen](#welches-konto-was-annimmt)                              | [`sevdesk_bank_accounts_list`](../tools.md#sevdesk_bank_accounts_list), [`sevdesk_cash_position`](../tools.md#sevdesk_cash_position)                                                               | `read`           | nein             |
+| [Ein Konto anlegen](#welches-konto-was-annimmt)                                        | [`sevdesk_bank_account_create`](../tools.md#sevdesk_bank_account_create)                                                                                                                           | `write`          | nein             |
+| [Barverkauf oder Barausgabe erfassen](#einen-barverkauf-oder-eine-barausgabe-erfassen) | [`sevdesk_voucher_book_payment`](../tools.md#sevdesk_voucher_book_payment), [`sevdesk_invoice_book_payment`](../tools.md#sevdesk_invoice_book_payment)                                             | `commit`         | **ja**           |
+| [Einen Umsatz von Hand erfassen](#einen-umsatz-von-hand-erfassen)                      | [`sevdesk_transaction_create`](../tools.md#sevdesk_transaction_create)                                                                                                                             | `commit`         | **ja**           |
+| [Umsätze Dokumenten zuordnen](#umsätze-zuordnen)                                       | [`sevdesk_reconcile_suggest`](../tools.md#sevdesk_reconcile_suggest), [`sevdesk_transaction_book`](../tools.md#sevdesk_transaction_book)                                                           | `read`, `commit` | Zuordnen: **ja** |
+| [Einen Umsatz löschen](#einen-umsatz-löschen)                                          | [`sevdesk_transaction_delete`](../tools.md#sevdesk_transaction_delete)                                                                                                                             | `commit`         | **ja**           |
+| [Einen Umsatz festschreiben](#einen-umsatz-festschreiben)                              | [`sevdesk_transaction_enshrine`](../tools.md#sevdesk_transaction_enshrine)                                                                                                                         | `commit`         | **ja**           |
+| [Regeln für private Umsätze ansehen](#regeln-für-private-umsätze)                      | [`sevdesk_private_transaction_rules_list`](../tools.md#sevdesk_private_transaction_rules_list)                                                                                                     | `read`           | nein             |
+| [Eine Regel anlegen oder löschen](#regeln-für-private-umsätze)                         | [`sevdesk_private_transaction_rule_create`](../tools.md#sevdesk_private_transaction_rule_create), [`sevdesk_private_transaction_rule_delete`](../tools.md#sevdesk_private_transaction_rule_delete) | `commit`         | **ja**           |
 
 Der Prompt [`bank_reconciliation`](../tools.md#bank_reconciliation) führt durch die Schritte des
 Zuordnens, mit einem Probelauf vor jeder Änderung.
@@ -127,9 +130,55 @@ nicht mehr auf offen zurücksetzen; ihre Zahlung bleibt bestehen. Die Dokumente 
 dadurch nicht festgeschrieben, das tun ihre eigenen Werkzeuge. Trifft ein Zurücksetzen auf eine
 festgeschriebene Zahlung, sagen die Werkzeuge das in eigenen Worten.
 
+## Regeln für private Umsätze
+
+> Markiere die Zahlungen an meinen Vermieter ab jetzt als privat.
+
+sevDesk kann Kontoumsätze selbst als privat markieren (Privatentnahme, Privateinlage), nach einer
+Regel: einem Text, zu dem der Auftraggeber/Empfänger oder der Verwendungszweck eines Umsatzes
+passt.
+[`sevdesk_private_transaction_rules_list`](../tools.md#sevdesk_private_transaction_rules_list)
+(`read`) listet die Regeln mit ihren Texten.
+[`sevdesk_private_transaction_rule_create`](../tools.md#sevdesk_private_transaction_rule_create)
+(`commit`) legt eine Regel mit einem Text an, `counterparty` oder `purpose`, und
+[`sevdesk_private_transaction_rule_delete`](../tools.md#sevdesk_private_transaction_rule_delete)
+(`commit`) löscht eine. Beide sind `commit`, weil eine Regel von selbst tut, was
+[`sevdesk_transaction_mark_private`](../tools.md#sevdesk_transaction_mark_private) von Hand tut.
+
+**Wo Regeln wirken, und was sich nicht testen ließ.** sevDesk wendet eine Regel an, wenn es Umsätze
+von der Bank importiert. Ein Testkonto importiert nichts: Dort änderten zwei Regeln keinen der
+vorhandenen offenen Umsätze, auch keinen, der nach den Regeln von Hand erfasst wurde, und das
+Löschen der Regeln änderte ebenfalls nichts. Wie sevDesk eine Regel abgleicht (ganzer Text oder ein
+Teil davon, Groß- und Kleinschreibung) und ob auch ein CSV-Dateiimport Regeln anwendet, ist daher
+nicht bekannt.
+
+**Die Schätzung in der Vorschau.** Die Vorschau beim Anlegen nennt offene Umsätze, die vermutlich
+gemeint sind: bis zu zehn von höchstens 500 offenen (ungebuchten) Umsätzen, deren
+Auftraggeber/Empfänger oder Verwendungszweck den Text enthält, ohne Rücksicht auf Groß- und
+Kleinschreibung. Das ist eine eigene Schätzung des Servers und als solche gekennzeichnet, nicht
+sevDesks Abgleich, und das Anlegen der Regel ändert keinen dieser Umsätze. Um einen davon jetzt als
+privat zu markieren, nimm `sevdesk_transaction_mark_private`.
+
+Das Werkzeug zum Anlegen lehnt ab, bevor etwas gesendet wird:
+
+- eine Regel mit beiden Texten: Ob sevDesk dann beide Texte oder nur einen verlangt, wurde nicht
+  getestet. Lege eine Regel je Text an, wenn jeder davon einen Umsatz privat machen soll;
+- einen Text mit weniger als vier Buchstaben oder Ziffern: Ein kurzer Text wie „AG“ oder „dm“ kommt
+  in sehr vielen fremden Auftraggebern und Verwendungszwecken vor, und eine Regel markiert jeden
+  Import, zu dem sie passt;
+- einen Text, den eine vorhandene Regel schon hat (ohne Rücksicht auf Groß- und Kleinschreibung und
+  zusätzliche Leerzeichen); die Ablehnung nennt diese Regel.
+
+Das Löschen einer Regel lässt Umsätze, die schon privat sind, wie sie sind;
+[`sevdesk_transaction_reset`](../tools.md#sevdesk_transaction_reset) setzt einen davon zurück. Eine
+Regel lässt sich nicht ändern: Lösche sie und lege eine neue an. Eine Kapitalgesellschaft (GmbH,
+UG, AG) kennt keine Privatentnahmen oder Privateinlagen, eine solche Regel gehört also nicht in
+ihre Buchhaltung.
+
 ## Grenzen
 
 - Konten mit Bankanbindung ließen sich nicht testen (ein Testkonto hat keine): Umsätze dort von
   Hand zu erfassen oder zu löschen wird abgelehnt.
-- Konten umbenennen und archivieren sowie die Regeln, die wiederkehrende private Umsätze markieren,
-  sind noch nicht abgedeckt.
+- Regeln für private Umsätze ließen sich dort, wo sie wirken, beim Bankimport, nicht testen (siehe
+  [oben](#regeln-für-private-umsätze)).
+- Konten umbenennen und archivieren ist noch nicht abgedeckt.

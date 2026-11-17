@@ -108,6 +108,16 @@ export const ACCOUNT_CHECK_ACCOUNTS: SevdeskObjectRef = {
 };
 
 /**
+ * The same for private-transaction rules: creating one checks first that no rule has its text,
+ * then creates it; deleting one finds it in the list, then deletes it and reads the list back.
+ * Two creations at once would both pass the check and leave two equal rules.
+ */
+export const ACCOUNT_PRIVATE_TRANSACTION_RULES: SevdeskObjectRef = {
+  objectName: "PrivateTransactionRules",
+  id: "account",
+};
+
+/**
  * A lock key for creating voucher drafts in an account: a new voucher is refused when one with
  * the same supplier, number, date and gross exists already, then it is created. Two identical
  * creations at once both passed that check and left two drafts (review 2026-11, round 3).

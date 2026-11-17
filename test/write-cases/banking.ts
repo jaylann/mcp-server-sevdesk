@@ -1,4 +1,8 @@
 import { bankAccountCreateTool } from "../../src/tools/banking/account-create.js";
+import {
+  privateRuleCreateTool,
+  privateRuleDeleteTool,
+} from "../../src/tools/banking/private-rules.js";
 import { transactionBookTool } from "../../src/tools/banking/transaction-book.js";
 import { transactionCreateTool } from "../../src/tools/banking/transaction-create.js";
 import { transactionDeleteTool } from "../../src/tools/banking/transaction-delete.js";
@@ -65,6 +69,57 @@ function changedByWrite(
       response: {
         get body() {
           return { objects: [written.has(key) ? after : before] };
+        },
+      },
+    },
+    ...others,
+    {
+      method: write.method,
+      path: write.path,
+      response: {
+        get body() {
+          written.add(key);
+          return { objects: write.objects };
+        },
+      },
+    },
+  ];
+}
+
+/** A private-transaction rule as listed: the recorded keys (D-099), made-up values. */
+function ruleRow(id: number, texts: Record<string, string>): Record<string, unknown> {
+  return {
+    id: String(id),
+    objectName: "PrivateTransactionRule",
+    additionalInformation: null,
+    create: "2026-11-09T12:00:00+01:00",
+    update: "2026-11-09T12:00:00+01:00",
+    sevClient: { id: "1", objectName: "SevClient" },
+    paymentPurpose: null,
+    counterpartName: null,
+    ...texts,
+  };
+}
+
+const landlordRule = ruleRow(951, { counterpartName: "Vermieter Huber" });
+
+/**
+ * The rule list (`GET /PrivateTransactionRule`) before and after a write, like
+ * {@link changedByWrite}: the rule tools confirm a create or delete by reading the list back.
+ */
+function rulesChangedByWrite(
+  before: readonly Record<string, unknown>[],
+  after: readonly Record<string, unknown>[],
+  write: { readonly method: "POST" | "DELETE"; readonly path: string; readonly objects: unknown },
+  others: readonly FakeRoute[],
+): FakeRoute[] {
+  const key = `${write.method} ${write.path}`;
+  return [
+    {
+      path: "/PrivateTransactionRule",
+      response: {
+        get body() {
+          return { objects: written.has(key) ? after : before };
         },
       },
     },
@@ -202,5 +257,48 @@ export const BANKING_CASES: readonly WriteToolCase[] = [
       },
     ],
     writes: [{ method: "POST", path: "/CheckAccount/Factory/fileImportAccount" }],
+  },
+  {
+    label: "create a private-transaction rule",
+    tool: privateRuleCreateTool,
+    args: { counterparty: "Netflix" },
+    // The preview's estimate reads the open transactions; the read-back lists the new rule.
+    routes: rulesChangedByWrite(
+      [landlordRule],
+      [landlordRule, ruleRow(952, { counterpartName: "Netflix" })],
+      {
+        method: "POST",
+        path: "/PrivateTransactionRule",
+        objects: ruleRow(952, { counterpartName: "Netflix" }),
+      },
+      [
+        accountsListRoute(),
+        listRoute("/CheckAccountTransaction", [
+          transactionRow({
+            id: "5102",
+            amount: "-12.99",
+            payeePayerName: "NETFLIX INTERNATIONAL B.V.",
+            paymtPurpose: "Abo November",
+          }),
+          freeTransaction,
+        ]),
+      ],
+    ),
+    setup: resetWrites,
+    writes: [{ method: "POST", path: "/PrivateTransactionRule" }],
+  },
+  {
+    label: "delete a private-transaction rule",
+    tool: privateRuleDeleteTool,
+    args: { id: 951 },
+    // The tool confirms the delete by the rule missing from the list read afterwards.
+    routes: rulesChangedByWrite(
+      [landlordRule],
+      [],
+      { method: "DELETE", path: "/PrivateTransactionRule/951", objects: [null] },
+      [],
+    ),
+    setup: resetWrites,
+    writes: [{ method: "DELETE", path: "/PrivateTransactionRule/951" }],
   },
 ];

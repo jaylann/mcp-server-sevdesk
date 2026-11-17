@@ -119,6 +119,7 @@ export const READ_CASES: readonly LiveCase[] = [
   { tool: "sevdesk_voucher_get", args: byId("voucher") },
   { tool: "sevdesk_bank_accounts_list", args: () => ({}) },
   { tool: "sevdesk_transactions_list", args: () => ({}) },
+  { tool: "sevdesk_private_transaction_rules_list", args: () => ({}) },
   { tool: "sevdesk_parts_list", args: () => ({}) },
   { tool: "sevdesk_part_get", args: byId("part") },
   { tool: "sevdesk_cash_position", args: () => ({}) },

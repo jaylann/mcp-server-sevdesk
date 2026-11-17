@@ -3605,10 +3605,23 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Impact:** The rule tools of #88 can list, create and delete rules, but a preview of which
   open transactions a new rule "would match" cannot rely on sevDesk applying it to existing or
   hand-made rows: it must say that sevDesk applies rules to imported transactions, and mark any
-  local matching as an estimate.
+  local matching as an estimate. Handling (#88): `sevdesk_private_transaction_rules_list` (read,
+  explicit `limit`, texts cleaned), `sevdesk_private_transaction_rule_create` and
+  `sevdesk_private_transaction_rule_delete` (both `commit`: a rule makes sevDesk mark imports
+  private as `sevdesk_transaction_mark_private` does by hand). Create sends one text per rule, as
+  recorded (a rule with both texts is refused: whether sevDesk then needs both or either is not
+  recorded), refuses texts with fewer than four letters or digits and a rule whose text equals an
+  existing one's (case and spaces ignored), and lists up to ten of at most 500 open transactions
+  whose counterparty or purpose contains the text, every time labelled as this server's estimate,
+  never as sevDesk's matching, with the sentence that sevDesk acts on bank imports and could not
+  be tested on a trial account. Both tools confirm the write by reading the rule list back (no
+  read by id is recorded); the delete preview says that private transactions stay private.
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("answers the banking questions as
-  recorded…": no row turns private, the rules are deleted). Handling: pending, the rule tools of
-  #88. The recorded list was empty, so no fixture was kept.
+  recorded…": no row turns private, the rules are deleted);
+  `test/unit/tools/banking/private-rules.test.ts` (list, refusals, the estimate and its labels,
+  read-backs); `test/regressions/private-transaction-rules.test.ts` (no rule without a
+  confirmation, no match stated as fact). The recorded list was empty, so no fixture was kept; the
+  tests build rows with the recorded keys.
 
 ### D-100: A receipt's `contentHash` is the SHA-256 of the file; rendered PDFs have none
 

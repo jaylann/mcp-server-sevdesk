@@ -505,6 +505,15 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
       "type": "integer",
     },
   },
+  "sevdesk_private_transaction_rules_list": {
+    "/properties/hasMore": {
+      "description": "More rows may follow: call again with offset = nextOffset. An empty page ends.",
+      "type": "boolean",
+    },
+    "/properties/limit": {
+      "type": "integer",
+    },
+  },
   "sevdesk_reconcile_suggest": {
     "/properties/hasMore": {
       "description": "More transactions may follow: call again with nextOffset.",
@@ -3776,6 +3785,103 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     },
     "name": "sevdesk_payables_aging",
     "title": "Payables aging",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Create a sevDesk private-transaction rule",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "counterparty": {
+          "description": "Counterparty (Auftraggeber/Empfänger) text to match, e.g. a landlord's name, at least 4 letters or digits. Give this or the other text, not both.",
+          "maxLength": 100,
+          "minLength": 1,
+          "pattern": "^[^\\r\\n]*$",
+          "type": "string",
+        },
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "purpose": {
+          "description": "Purpose (Verwendungszweck) text to match, at least 4 letters or digits. Give this or the other text, not both.",
+          "maxLength": 100,
+          "minLength": 1,
+          "pattern": "^[^\\r\\n]*$",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_private_transaction_rule_create",
+    "title": "Create a sevDesk private-transaction rule",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Delete a sevDesk private-transaction rule",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Rule id, from sevdesk_private_transaction_rules_list.",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_private_transaction_rule_delete",
+    "title": "Delete a sevDesk private-transaction rule",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List sevDesk private-transaction rules",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 50,
+          "description": "Page size, 1–200.",
+          "maximum": 200,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
+          "minimum": 0,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_private_transaction_rules_list",
+    "title": "List sevDesk private-transaction rules",
   },
   {
     "annotations": {
@@ -7576,6 +7682,37 @@ exports[`tools/list > SEVDESK_ALLOW=write 1`] = `
       "idempotentHint": true,
       "openWorldHint": false,
       "readOnlyHint": true,
+      "title": "List sevDesk private-transaction rules",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 50,
+          "description": "Page size, 1–200.",
+          "maximum": 200,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
+          "minimum": 0,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_private_transaction_rules_list",
+    "title": "List sevDesk private-transaction rules",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
       "title": "Profit and loss (EÜR-style)",
     },
     "inputSchema": {
@@ -9300,6 +9437,37 @@ exports[`tools/list > default configuration (read tier, default toolsets) 1`] = 
     },
     "name": "sevdesk_payables_aging",
     "title": "Payables aging",
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true,
+      "title": "List sevDesk private-transaction rules",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 50,
+          "description": "Page size, 1–200.",
+          "maximum": 200,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "offset": {
+          "default": 0,
+          "description": "Rows to skip, for paging: pass the previous result's nextOffset.",
+          "minimum": 0,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "sevdesk_private_transaction_rules_list",
+    "title": "List sevDesk private-transaction rules",
   },
   {
     "annotations": {
