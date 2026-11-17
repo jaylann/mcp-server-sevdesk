@@ -63,3 +63,14 @@ describe.each(["month_end_close", "vat_precheck"])("%s", (name) => {
     }
   });
 });
+
+describe("vat_precheck", () => {
+  it("claims a match of the § 13b sums with the summary only on the accrual basis, up to cents", () => {
+    const text = textOf(planned("vat_precheck", testConfig()));
+    expect(text).toContain(
+      "Against the summary on the accrual basis its sums should match Kz 46/47, 84/85 (rules 12 " +
+        "and 13 together), 60 and 21 up to cent rounding; on the cash basis they can differ",
+    );
+    expect(text).not.toContain("its sums match the summary");
+  });
+});
