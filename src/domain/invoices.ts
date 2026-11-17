@@ -73,6 +73,7 @@ import {
   TEMPLATE_SETTINGS_EMBED,
 } from "./recurring/schedule.js";
 import { documentTypeByCode } from "./reference-data.js";
+import { carriesTag, tagFilterQuery, type TagListFilter } from "./tags.js";
 
 export { INVOICE_STATUS_FILTERS, INVOICE_TYPE_FILTERS } from "./filter-keys.js";
 
@@ -372,6 +373,8 @@ export interface InvoiceListParams {
   readonly to?: string | undefined;
   /** Open/partially paid with a due date before today; filtered here (see the tool). */
   readonly overdueOnly?: boolean | undefined;
+  /** Only invoices with this tag (`resolveTagFilter`), re-checked on every row. */
+  readonly tagFilter?: TagListFilter | undefined;
   readonly limit: number;
   readonly offset: number;
   /** Berlin `YYYY-MM-DD` used for "today" (tests); defaults to the current date. */
@@ -384,8 +387,8 @@ export interface InvoiceListParams {
  * here (see `listDocuments`): the overdue filter, whose server-side form (`delinquent`) the web
  * app only uses together with `status=200` and `notPartiallyPaid`, and exact re-checks of the
  * number (see {@link matchesNumber}) and the type, which sevDesk would ignore silently if it did
- * not understand them (spec/deviations.md D-015, D-035). The date range is re-checked without a
- * scan (see `documentDateFilter`).
+ * not understand them (spec/deviations.md D-015, D-035). The date range and the tag are
+ * re-checked without a scan (see `documentDateFilter`, `carriesTag`).
  */
 export async function listInvoices(
   client: SevdeskClient,
@@ -397,7 +400,11 @@ export async function listInvoices(
   // Rows of templates carry automatic generation and sending only with this embed (D-132);
   // other lists keep the plain contact embed.
   const embed = type === "WKR" ? `${EMBED_CONTACT},${TEMPLATE_SETTINGS_EMBED}` : EMBED_CONTACT;
-  const query: Record<string, QueryValue> = { embed, ...dates.query };
+  const query: Record<string, QueryValue> = {
+    embed,
+    ...dates.query,
+    ...tagFilterQuery(params.tagFilter),
+  };
   if (params.status !== undefined) query["status"] = INVOICE_STATUS_FILTERS[params.status];
   if (type !== undefined) query["invoiceType"] = type;
   // The Invoice tag's filter table lists `showWkr=all` ("Retrieve all recurring invoices") and
@@ -425,7 +432,7 @@ export async function listInvoices(
       matchesNumber(params.number),
       type === undefined ? undefined : (row: InvoiceRow) => row.type.code === type,
     ),
-    recheck: (row) => dates.contains(row.date),
+    recheck: (row) => dates.contains(row.date) && carriesTag(params.tagFilter, row.id),
     signal,
   });
 }

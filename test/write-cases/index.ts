@@ -7,6 +7,7 @@ import { MASTERDATA_CASES } from "./masterdata.js";
 import { ORDERS_CASES } from "./orders.js";
 import { RECURRING_CASES } from "./recurring.js";
 import { REPORTS_CASES } from "./reports.js";
+import { TAGS_CASES } from "./tags.js";
 import { VOUCHERS_CASES } from "./vouchers.js";
 
 /** Every write-tool case (lead-owned: add new area files here). */
@@ -19,4 +20,5 @@ export const WRITE_TOOL_CASES: readonly WriteToolCase[] = [
   ...BANKING_CASES,
   ...REPORTS_CASES,
   ...RECURRING_CASES,
+  ...TAGS_CASES,
 ].map((testCase) => ({ ...testCase, routes: withCountryRoute(testCase.routes) }));

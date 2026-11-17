@@ -244,6 +244,17 @@ or name), `sevdesk_contact_update` removes a value (`remove` with kind `customFi
 The fields themselves are defined in the sevDesk web app: deleting a field there deletes its value
 on every contact, so the server never creates, renames or deletes one.
 
+### Can it group documents by project or customer (tags)?
+
+Yes, with sevDesk's tags. `sevdesk_tags_list` lists the tags and how many invoices, credit notes,
+orders and vouchers carry each. `sevdesk_invoices_list`, `sevdesk_credit_notes_list`,
+`sevdesk_orders_list` and `sevdesk_vouchers_list` take a `tag` name and show only the documents
+with that tag; an unknown name is refused instead of listing everything.
+`sevdesk_document_tag` (`write` tier) adds a tag to one document or removes it, one document per
+call. Tags are named, not numbered, and sevDesk compares names ignoring case and accents
+("Café" is "cafe"): a name sevDesk does not know yet creates the tag, and removing a tag from its
+last document deletes the tag in sevDesk; the preview says both.
+
 ## Support
 
 ### Where do I get help?

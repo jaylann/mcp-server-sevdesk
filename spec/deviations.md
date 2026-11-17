@@ -3378,9 +3378,14 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   - The factory tags draft invoices, vouchers, orders (AN) and credit notes. The answer is one
     TagRelation object: `id`, `objectName: "TagRelation"`, `additionalInformation`, `create`,
     `tag: {id, objectName: "Tag"}`, `object: {id, objectName}`, `sevClient`.
+  - It tags documents that are no longer drafts as well: an invoice at status 200 (type RE), a
+    voucher at status 100 and a credit note at status 200; and the other order types: an order
+    confirmation (AB, status 500) and a delivery note (LI, status 100).
   - A name that exists reuses that tag, ignoring case (the same name in upper case gave the same
-    tag id); a new name creates the tag. Tagging a document that already has the tag answers its
-    existing relation (same relation id): the call is idempotent.
+    tag id) and accents (`… Café` on one document and `… Cafe` on another gave the same tag id;
+    only this é/e pair was measured, not ß, ligatures or other letters); a new name creates the
+    tag. Tagging a document that already has the tag answers its existing relation (same
+    relation id): the call is idempotent.
   - `{tag: {id, objectName: "Tag"}, object}` without `name` is refused with 400 "Invalid type of
     parameter": a tag is added by name only.
   - `GET /Tag` rows: `id`, `objectName`, `additionalInformation`, `create`, `name`, `objectType`
@@ -3391,13 +3396,34 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Sources:** spec (`createTag`, `getTags`, `getTagRelations`, `Model_TagResponse`,
   `Model_TagCreateResponse`); recorded 2026-11-16, trial account, Update 2.0 (probes
   `write-tag-create-on-documents`, `write-tag-relation-filters`, `read-tag-lists`; the lists in
-  `test/fixtures/recorded/2026-11-16/tags/`).
-- **Impact:** No tag tools yet. #87's tag tool adds a tag by name (the preview says whether the name
-  is new, compared ignoring case as sevDesk does) and counts uses from `GET /TagRelation` totals.
+  `test/fixtures/recorded/2026-11-16/tags/`); recorded 2026-11-16, trial account, Update 2.0
+  (one-off check by the orchestrator, run tag `MCP-E2E 20261116-2308-evj7`: finalized documents,
+  AB and LI, accents).
+- **Impact:** `sevdesk_document_tag` adds a tag by name to any document status and order type; its
+  preview says whether the name is new or reuses a tag whose name differs only in case or accents
+  (names are folded with NFKD, combining marks dropped, lower case, as far as measured). The same
+  folding finds the tag to remove and the tag of the list filter (D-090); when several tags fold
+  to one name, the exact spelling wins, otherwise the call is refused. Names are compared, and
+  sent back, as sevDesk stores them, not in their cleaned form. When no tag matches but one does
+  after also dropping invisible characters and spelling out ß, æ, œ and ø (not measured), the
+  preview says sevDesk may reuse it; whether the tag was created is decided afterwards by the tag
+  id in sevDesk's answer. `sevdesk_tags_list` counts uses from the relations.
 - **Test:** `test/contract/recorded-gaps-contacts.test.ts` (both recorded lists: keys, references,
   no usage count, the object types; the probe `read-tag-lists` on them);
   `test/unit/scripts/gaps-contacts-probes.test.ts` ("tags documents of every kind, reuses a tag by
-  name and removes one relation"). Live: the three probes above.
+  name and removes one relation"). The tools: `test/unit/tools/documents/tag-tool.test.ts`
+  ("previews a new tag as created by sevDesk and creates it with the factory", "reuses an existing
+  tag in another letter case with its own spelling", "reuses an existing tag whose name differs
+  only in accents (Café = Cafe, D-088)", "refuses a name two tags share, since sevDesk's pick is
+  unknown, without naming it", "refuses to add when tags differ only in accents, since sevDesk's
+  pick is unknown", "matches the name sevDesk stores and sends it back unchanged (invisible
+  characters, spaces)", "does not take a cleaned name for the stored one, and says sevDesk may
+  reuse that tag", "never matches the placeholder of a tag without a name", "reports the tag
+  sevDesk reused for a similar spelling, not a created one (Großkunde = Grosskunde)", "leaves
+  tagCreated out when sevDesk used a tag beyond the tags read"),
+  `test/unit/tools/documents/tags-list.test.ts`
+  ("pages the recorded tags with an explicit limit and counts uses per kind from the relations",
+  "says when the cap cut the counts short"). Live: the three probes above.
 
 ### D-089: `DELETE /TagRelation/{id}` removes a tag from a document, the last one the tag
 
@@ -3410,14 +3436,24 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   second `DELETE` answers 404. `PUT /Tag/{tagId}` with `name` answers the tag object and keeps its
   relations; a name another tag already has is accepted (two tags with one name).
   `DELETE /Tag/{tagId}` of a tag that documents use answers `{objects: [null]}` and removes all its
-  relations; the documents stay.
+  relations; the documents stay. A second check removed 7 relations (on finalized invoices,
+  vouchers and credit notes, and on AB and LI orders): each tag went with its last relation, no
+  tag was left.
 - **Sources:** spec (`updateTag`, `deleteTag`); recorded 2026-11-16, trial account, Update 2.0
-  (probes `write-tag-relation-remove`, `write-tag-update-delete`).
+  (probes `write-tag-relation-remove`, `write-tag-update-delete`); recorded 2026-11-16, trial
+  account, Update 2.0 (one-off check by the orchestrator, run tag `MCP-E2E 20261116-2308-evj7`).
 - **Impact:** #87 removes one tag from one document with `DELETE /TagRelation/{id}` (D-024) and
-  says in the preview when that removes the tag altogether; a rename must check for an existing
-  name itself.
+  says in the preview when that removes the tag altogether; it counts the tag's uses from its
+  relations, every row checked again, so a tag filter sevDesk ignored cannot hide a last use. A
+  rename must check for an existing name itself.
 - **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("tags documents of every kind, reuses
-  a tag by name and removes one relation"). Live: the two probes above.
+  a tag by name and removes one relation"); `test/unit/tools/documents/tag-tool.test.ts` ("removes
+  the document's relation and keeps the tag when others use it", "warns that removing the last use
+  deletes the tag (D-089)", "still warns of the last use when sevDesk ignores the tag filter of the
+  count (D-089)", "says when a tag's uses were counted only up to the cap", "refuses when an
+  ignored filter leaves the uses uncounted and this may be the last", "finds the tag by a spelling
+  with other accents and case (cafe → Café)", "uses the exact spelling among accent variants and
+  refuses when none matches exactly"). Live: the two probes above.
 
 ### D-090: Document lists filter by tag only with `tags[0][id]`; `tag[id]` is ignored
 
@@ -3433,7 +3469,13 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   `tags[0][objectName]`; an ignored filter would return every document, so the parameter names are
   pinned by tests and the rows are checked against the tag's relations where the tool can.
 - **Test:** `test/unit/scripts/gaps-contacts-probes.test.ts` ("tells honoured list filters from
-  ignored ones, with an untagged control"). Live: probe `write-tag-list-filters`.
+  ignored ones, with an untagged control"); `test/regressions/tag-filter-never-unfiltered.test.ts`
+  (per list tool: an unknown name is refused before any list request; `tags[0][id]` is sent and
+  rows the tag's relations do not name are dropped even when every row comes back);
+  `test/unit/tools/documents/tags-list.test.ts` ("keeps rows on sevDesk's word beyond 10,000 uses
+  and says so", "finds the tag by a spelling with other accents and case (CAFE → Café)", "refuses
+  a name several tags fold to when none is spelled exactly so"). Live: probe
+  `write-tag-list-filters`.
 
 ### D-091: Cost centres are managed through the undocumented `/CostCentre` endpoints
 

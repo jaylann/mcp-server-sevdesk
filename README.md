@@ -65,8 +65,8 @@ the token safe.
 
 ## What it can do
 
-93 tools across 10 toolsets. The 42 read tools fill the first column; with the write tiers
-enabled, 51 more tools create and change data.
+95 tools across 10 toolsets. The 43 read tools fill the first column; with the write tiers
+enabled, 52 more tools create and change data.
 
 | Area                               | Read                                                                                                                                                                                                               | Write (`write`, `commit`, `external`)                                                                                                                                                                                                                             |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -77,6 +77,10 @@ enabled, 51 more tools create and change data.
 | **Reports**                        | Summaries, receivables and payables aging, cash position, changes since a date, a **VAT summary** (UStVA boxes, ZM, OSS), an **EÜR-style profit and loss**, a **tax-rule helper** for sales and a **VAT-ID check** | The **DATEV export** (Buchungsstapel ZIP or XML with receipt images, never enshrined) and its settings; invoice or voucher **PDF archives** as one ZIP                                                                                                            |
 | **Contacts and parts**             | Search and get, parts with their stock (Lagerbestand)                                                                                                                                                              | Create and update, including a person's organisation (Ansprechpartner), removing single addresses and e-mails, and a part's `stock` and `stockEnabled`. Delete contacts                                                                                           |
 | **Advanced** (off by default)      | `sevdesk_api_get`: a read-only GET of any sevDesk endpoint no other tool covers, such as text templates. It refuses everything that could change data, return files or start jobs                                  |                                                                                                                                                                                                                                                                   |
+
+Invoices, credit notes, orders and vouchers can carry tags (projects, customers, branches):
+`sevdesk_tags_list` shows each tag with its uses, the four list tools filter by tag, and
+`sevdesk_document_tag` (tier `write`) adds a tag to one document or removes it.
 
 The VAT summary is clearly marked as an estimate (accrual or cash basis). The **audits**
 (`sevdesk_records_audit`) answer "what is wrong?": foreign suppliers and customers whose VAT

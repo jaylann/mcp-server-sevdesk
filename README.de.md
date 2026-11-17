@@ -1,4 +1,4 @@
-<!-- translated-from: README.md sha256:c66ea3154e97 -->
+<!-- translated-from: README.md sha256:14fab4b5b733 -->
 
 <!-- Nur die Breite: mit einer Höhe dazu zeichnet GitHub einen getönten Kasten hinter das Bild. -->
 <p align="center"><img src="https://raw.githubusercontent.com/jaylann/mcp-server-sevdesk/main/assets/logo.svg" alt="" width="96"></p>
@@ -71,8 +71,8 @@ freischalten, zuerst im Probelauf, und das Token sicher aufbewahren.
 
 ## Was er kann
 
-93 Werkzeuge in 10 Werkzeuggruppen. Die 42 Lesewerkzeuge füllen die erste Spalte; mit den
-Schreibstufen kommen 51 weitere Werkzeuge hinzu, die Daten anlegen und ändern.
+95 Werkzeuge in 10 Werkzeuggruppen. Die 43 Lesewerkzeuge füllen die erste Spalte; mit den
+Schreibstufen kommen 52 weitere Werkzeuge hinzu, die Daten anlegen und ändern.
 
 | Bereich                                | Lesen                                                                                                                                                                                                                                                                                                                 | Schreiben (`write`, `commit`, `external`)                                                                                                                                                                                                                    |
 | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -83,6 +83,11 @@ Schreibstufen kommen 51 weitere Werkzeuge hinzu, die Daten anlegen und ändern.
 | **Auswertungen**                       | Zusammenfassungen, Altersstruktur offener Forderungen und Verbindlichkeiten, Liquidität, Änderungen seit einem Datum, eine **Umsatzsteuer-Auswertung** (UStVA-Kennzahlen, ZM, OSS), eine **Gewinn- und Verlustrechnung nach Art der EÜR**, eine **Steuerregel-Hilfe** für Verkäufe und eine **Prüfung der USt-IdNr.** | Der **DATEV-Export** (Buchungsstapel als ZIP oder XML mit Belegbildern, schreibt nie fest) und seine Einstellungen; Rechnungs- oder Beleg-PDFs als ein **ZIP-Archiv**                                                                                        |
 | **Kontakte und Artikel**               | Suchen und abrufen, Artikel mit ihrem Lagerbestand                                                                                                                                                                                                                                                                    | Anlegen und ändern, auch die Organisation einer Person (Ansprechpartner), einzelne Adressen und E-Mail-Adressen entfernen sowie `stock` und `stockEnabled` eines Artikels. Kontakte löschen                                                                  |
 | **Advanced** (standardmäßig aus)       | `sevdesk_api_get`: ein reines Lese-GET auf jeden sevDesk-Endpunkt, den kein anderes Werkzeug abdeckt, etwa Textvorlagen. Es lehnt alles ab, was Daten ändern, Dateien liefern oder Hintergrundaufgaben starten könnte                                                                                                 |                                                                                                                                                                                                                                                              |
+
+Rechnungen, Gutschriften, Aufträge und Belege können Tags tragen (Projekte, Kunden, Filialen):
+`sevdesk_tags_list` zeigt jeden Tag mit seinen Verwendungen, die vier Listenwerkzeuge filtern nach
+Tag, und `sevdesk_document_tag` (Stufe `write`) fügt einem Dokument einen Tag hinzu oder entfernt
+ihn.
 
 Die Umsatzsteuer-Auswertung ist deutlich als Schätzung gekennzeichnet (Soll- oder
 Istversteuerung). Die **Prüfungen** (`sevdesk_records_audit`) beantworten „Was ist falsch?“:

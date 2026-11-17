@@ -121,6 +121,8 @@ export const READ_CASES: readonly LiveCase[] = [
   { tool: "sevdesk_transactions_list", args: () => ({}) },
   { tool: "sevdesk_parts_list", args: () => ({}) },
   { tool: "sevdesk_part_get", args: byId("part") },
+  // #87: tags with their uses (TagRelation counts).
+  { tool: "sevdesk_tags_list", args: () => ({}) },
   { tool: "sevdesk_cash_position", args: () => ({}) },
   { tool: "sevdesk_changed_since", args: () => ({ since: SINCE }) },
   { tool: "sevdesk_payables_aging", args: () => ({}) },

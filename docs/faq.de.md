@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:f713126703a3 -->
+<!-- translated-from: docs/faq.md sha256:182ca29899c0 -->
 
 # Häufige Fragen
 
@@ -266,6 +266,18 @@ ganze Wert, Groß- und Kleinschreibung egal). `sevdesk_reference_lookup` mit kin
 `contact_custom_fields` listet die Felder deines Kontos. Die Felder selbst legst du in der
 sevDesk-Weboberfläche an: Wer dort ein Feld löscht, löscht seinen Wert bei jedem Kontakt, darum
 legt der Server nie ein Feld an, benennt keins um und löscht keins.
+
+### Kann es Dokumente nach Projekt oder Kunde gruppieren (Tags)?
+
+Ja, mit den Tags von sevDesk. `sevdesk_tags_list` listet die Tags und wie viele Rechnungen,
+Gutschriften, Aufträge und Belege jeden tragen. `sevdesk_invoices_list`,
+`sevdesk_credit_notes_list`, `sevdesk_orders_list` und `sevdesk_vouchers_list` nehmen einen
+`tag`-Namen und zeigen nur die Dokumente mit diesem Tag; ein unbekannter Name wird abgelehnt,
+statt alles aufzulisten. `sevdesk_document_tag` (Stufe `write`) fügt einem Dokument einen Tag
+hinzu oder entfernt ihn, ein Dokument pro Aufruf. Tags haben einen Namen, keine Nummer, und
+sevDesk vergleicht Namen ohne Rücksicht auf Groß- und Kleinschreibung und Akzente („Café“ ist
+„cafe“): Ein Name, den sevDesk noch nicht kennt, legt den Tag an, und wer einen Tag von seinem
+letzten Dokument entfernt, löscht ihn in sevDesk; die Vorschau sagt beides.
 
 ## Hilfe
 
