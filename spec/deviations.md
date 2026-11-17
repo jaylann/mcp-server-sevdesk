@@ -3390,8 +3390,11 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   preview says whether the name is new or reuses a tag whose name differs only in case or accents
   (names are folded with NFKD, combining marks dropped, lower case, as far as measured). The same
   folding finds the tag to remove and the tag of the list filter (D-090); when several tags fold
-  to one name, the exact spelling wins, otherwise the call is refused. `sevdesk_tags_list` counts
-  uses from the relations.
+  to one name, the exact spelling wins, otherwise the call is refused. Names are compared, and
+  sent back, as sevDesk stores them, not in their cleaned form. When no tag matches but one does
+  after also dropping invisible characters and spelling out ß, æ, œ and ø (not measured), the
+  preview says sevDesk may reuse it; whether the tag was created is decided afterwards by the tag
+  id in sevDesk's answer. `sevdesk_tags_list` counts uses from the relations.
 - **Test:** `test/contract/recorded-gaps-contacts.test.ts` (both recorded lists: keys, references,
   no usage count, the object types; the probe `read-tag-lists` on them);
   `test/unit/scripts/gaps-contacts-probes.test.ts` ("tags documents of every kind, reuses a tag by
@@ -3400,7 +3403,12 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   tag in another letter case with its own spelling", "reuses an existing tag whose name differs
   only in accents (Café = Cafe, D-088)", "refuses a name two tags share, since sevDesk's pick is
   unknown, without naming it", "refuses to add when tags differ only in accents, since sevDesk's
-  pick is unknown"), `test/unit/tools/documents/tags-list.test.ts`
+  pick is unknown", "matches the name sevDesk stores and sends it back unchanged (invisible
+  characters, spaces)", "does not take a cleaned name for the stored one, and says sevDesk may
+  reuse that tag", "never matches the placeholder of a tag without a name", "reports the tag
+  sevDesk reused for a similar spelling, not a created one (Großkunde = Grosskunde)", "leaves
+  tagCreated out when sevDesk used a tag beyond the tags read"),
+  `test/unit/tools/documents/tags-list.test.ts`
   ("pages the recorded tags with an explicit limit and counts uses per kind from the relations",
   "says when the cap cut the counts short"). Live: the three probes above.
 

@@ -226,6 +226,150 @@ describe("sevdesk_document_tag: add", () => {
   });
 });
 
+describe("sevdesk_document_tag: which tag an add uses (stored names, similar spellings)", () => {
+  /** `Tag/Factory/create` answering a relation of tag `tagId` on invoice 1001 (D-088). */
+  function createAnswering(tagId: number): FakeRoute {
+    return {
+      method: "POST",
+      path: "/Tag/Factory/create",
+      response: { body: { objects: relationRow(8101, tagId, "Invoice", 1001) } },
+    };
+  }
+  const SIMILAR =
+    "No tag has exactly this name (compared ignoring case and accents), but one is spelled " +
+    "similarly (e.g. ß for ss, or with invisible characters). sevDesk may reuse that tag " +
+    "instead of creating one: how it compares such spellings is not measured. The result says " +
+    "which tag was used.";
+
+  it("matches the name sevDesk stores and sends it back unchanged (invisible characters, spaces)", async () => {
+    const stored = " Projekt​Y ";
+    const fake = client([
+      INVOICE,
+      tagsRoute([tagRow(7001, stored), tagRow(7002, "Filiale München")]),
+      documentTagRoute(7001, "Invoice", 1001, []),
+      CREATE,
+    ]);
+    const { plan, output } = await executeWrite(tool, { ...add, tag: "projekt​y" }, fake);
+    // Shown cleaned, matched and sent as stored: the cleaned "ProjektY" would be a new tag.
+    expect(plan.preview.action).toBe("Tag invoice RE-1001 with the tag ProjektY.");
+    expect(plan.preview.facts).toContainEqual({
+      label: "Tag status",
+      value: "exists (id 7001), added to this document",
+    });
+    expect(fake.writes()[0]?.body).toEqual({
+      name: stored,
+      object: { id: 1001, objectName: "Invoice" },
+    });
+    expect(output.data).toMatchObject({ tag: { id: 7001, name: "ProjektY" }, tagCreated: false });
+  });
+
+  it("does not take a cleaned name for the stored one, and says sevDesk may reuse that tag", async () => {
+    const fake = client([
+      INVOICE,
+      tagsRoute([tagRow(7001, "Projekt​Y"), tagRow(7002, "Filiale München")]),
+      CREATE,
+    ]);
+    const { plan, output } = await executeWrite(tool, { ...add, tag: "ProjektY" }, fake);
+    expect(plan.preview.facts).toContainEqual({
+      label: "Tag status",
+      value: "new, unless sevDesk takes a similar tag for it",
+    });
+    expect(plan.preview.facts).toContainEqual({
+      label: "Similar tag",
+      value: "ProjektY (id 7001)",
+    });
+    expect(plan.preview.warnings).toEqual([SIMILAR]);
+    expect(fake.writes()[0]?.body).toEqual({
+      name: "ProjektY",
+      object: { id: 1001, objectName: "Invoice" },
+    });
+    // The fixture's answer names tag 7001: sevDesk reused it.
+    expect(output.data).toMatchObject({ tag: { id: 7001, name: "ProjektY" }, tagCreated: false });
+  });
+
+  it("never matches the placeholder of a tag without a name", async () => {
+    const tags = tagsRoute([tagRow(7001, ""), tagRow(7002, "Filiale München")]);
+    const placeholder = "(unnamed tag 7001)";
+    const plan = await prepareWrite(tool, { ...add, tag: placeholder }, client([INVOICE, tags]));
+    expect(plan.preview.facts).toContainEqual({
+      label: "Tag status",
+      value: "new: sevDesk creates it",
+    });
+    await expect(
+      prepareWrite(tool, { ...remove, tag: placeholder }, client([INVOICE, tags])),
+    ).rejects.toThrow("Invoice 1001 does not carry this tag");
+  });
+
+  it("reports the tag sevDesk reused for a similar spelling, not a created one (Großkunde = Grosskunde)", async () => {
+    const fake = client([
+      INVOICE,
+      tagsRoute([tagRow(7001, "Großkunde"), tagRow(7002, "Filiale München")]),
+      CREATE,
+    ]);
+    const { plan, output } = await executeWrite(tool, { ...add, tag: "Grosskunde" }, fake);
+    expect(plan.preview.facts).toContainEqual({
+      label: "Tag status",
+      value: "new, unless sevDesk takes a similar tag for it",
+    });
+    expect(plan.preview.facts).toContainEqual({
+      label: "Similar tag",
+      value: "Großkunde (id 7001)",
+    });
+    expect(plan.preview.warnings).toEqual([SIMILAR]);
+    expect(fake.writes()[0]?.body).toEqual({
+      name: "Grosskunde",
+      object: { id: 1001, objectName: "Invoice" },
+    });
+    expect(output.data).toEqual({
+      action: "added",
+      document: { kind: "invoice", id: 1001 },
+      tag: { id: 7001, name: "Großkunde" },
+      relationId: 8101,
+      tagCreated: false,
+    });
+    expect(output.affected).toEqual([
+      { objectName: "Invoice", id: "1001" },
+      { objectName: "TagRelation", id: "8101" },
+    ]);
+    expect(output.summary).toBe("Tagged invoice 1001 with tag 7001.");
+  });
+
+  it("names up to three similar tags and counts the rest", async () => {
+    const fake = client([
+      INVOICE,
+      tagsRoute([
+        tagRow(7001, "Strasse"),
+        tagRow(7002, "STRASSE"),
+        tagRow(7003, "Stras​se"),
+        tagRow(7004, "strasse"),
+      ]),
+    ]);
+    const plan = await prepareWrite(tool, { ...add, tag: "Straße" }, fake);
+    expect(plan.preview.facts).toContainEqual({
+      label: "Similar tags",
+      value: "Strasse (id 7001); STRASSE (id 7002); Strasse (id 7003); and 1 more",
+    });
+  });
+
+  it("leaves tagCreated out when sevDesk used a tag beyond the tags read", async () => {
+    const others = Array.from({ length: 10_000 }, (_, index) => tagRow(20_000 + index, "Andere"));
+    const fake = client([
+      INVOICE,
+      tagsRoute([tagRow(7001, "Projekt Y"), ...others]),
+      documentTagRoute(7001, "Invoice", 1001, []),
+      createAnswering(99_999),
+    ]);
+    const { output } = await executeWrite(tool, add, fake);
+    expect(output.data).toEqual({
+      action: "added",
+      document: { kind: "invoice", id: 1001 },
+      tag: { id: 99_999, name: "Projekt Y" },
+      relationId: 8101,
+    });
+    expect(output.summary).toBe("Tagged invoice 1001 with tag 99999.");
+  });
+});
+
 describe("sevdesk_document_tag: remove", () => {
   const carries = documentTagRoute(7001, "Invoice", 1001, [
     relationRow(8101, 7001, "Invoice", 1001),
