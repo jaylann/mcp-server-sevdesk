@@ -10,6 +10,7 @@
  */
 import { z } from "zod";
 
+import type { Config } from "../../config.js";
 import { amountInput } from "../../domain/common.js";
 import {
   ARCHIVE_EXPORTS,
@@ -23,7 +24,7 @@ import {
   mayBeTruncated,
 } from "../../domain/exports/archive.js";
 import { resolvePeriod } from "../../domain/reports/vat.js";
-import { canDeliverFiles } from "../../safety/file-access.js";
+import { canDeliverFiles, remoteFilesEnabled } from "../../safety/file-access.js";
 import { defineWriteTool } from "../define-tool.js";
 import { deliveryData, deliveryOutputShape, downloadText } from "../documents/delivery.js";
 import { dryRunInputShape } from "../write-input.js";
@@ -93,21 +94,32 @@ const COVERAGE: Readonly<Record<ArchiveParams["subject"], string>> = {
 };
 
 /**
- * How long the archive may take. Over stdio the request has its own budget of
- * `ARCHIVE_TIMEOUT_MS` (5 minutes); a remote server's router still ends every request after
- * 120 s, and the download link must fit the account's share of the file space (20 MiB by
- * default without a state directory, `docs/remote/files.md`), which a month of invoices can
- * exceed (24.6 MB recorded for 130).
+ * The preview's caveat about time and size. Over stdio the request has its own budget of
+ * `ARCHIVE_TIMEOUT_MS` (5 minutes) and the ZIP may be 100 MiB. A remote server's router still
+ * ends every request after 120 s, and a download link must fit the account's share of the file
+ * space (20 MiB by default without a state directory, `docs/remote/files.md`), which a month of
+ * invoices can exceed (24.6 MB recorded for 130). Over HTTP with `SEVDESK_OUTPUT_DIR` the file
+ * is saved locally, so only the 120 s apply.
  */
-const DURATION_LOCAL =
-  "sevDesk renders every PDF of the period before it answers: a large archive takes minutes " +
-  "and is stopped after 5; a ZIP above 100 MiB is not saved. The remedy for both is a shorter " +
-  "period.";
-const DURATION_REMOTE =
-  "sevDesk renders every PDF of the period before it answers (about a minute per 100 " +
-  "invoices), and this remote server ends every request after 120 seconds; the download link " +
-  "must also fit this account's share of the server's file space (SEVDESK_HTTP_FILES_MAX_MB). " +
-  "The remedy for both is a shorter period, such as a week or two of invoices.";
+function durationWarning(config: Config): string {
+  if (config.deployment.kind !== "http") {
+    return (
+      "sevDesk renders every PDF of the period before it answers: a large archive takes " +
+      "minutes and is stopped after 5; a ZIP above 100 MiB is not saved. The remedy for both " +
+      "is a shorter period."
+    );
+  }
+  const links = remoteFilesEnabled(config) && config.outputDir === undefined;
+  return (
+    "sevDesk renders every PDF of the period before it answers (about a minute per 100 " +
+    "invoices), and this remote server ends every request after 120 seconds; " +
+    (links
+      ? "the download link must also fit this account's share of the server's file space " +
+        "(SEVDESK_HTTP_FILES_MAX_MB). The remedy for both is a shorter period, such as a week " +
+        "or two of invoices."
+      : "a ZIP above 100 MiB is not saved. The remedy for both is a shorter period.")
+  );
+}
 
 export const archiveExportTool = defineWriteTool({
   name: "sevdesk_archive_export",
@@ -210,7 +222,7 @@ export const archiveExportTool = defineWriteTool({
             "(festgeschrieben).",
           DRAFTS_INCLUDED,
           COVERAGE[args.subject],
-          ctx.config.deployment.kind === "http" ? DURATION_REMOTE : DURATION_LOCAL,
+          durationWarning(ctx.config),
         ],
         irreversible: false,
       },

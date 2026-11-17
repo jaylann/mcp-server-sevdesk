@@ -146,7 +146,7 @@ const TRUNCATION_SLACK = 0.02;
  * Whether sevDesk may have stopped at `limit`: the ZIP holds at least `limit` minus a slack of
  * 2 % (at least 1) files. The limit applies to the documents sevDesk selects, the ZIP holds files,
  * and the two differ: an invoice archive held one invoice fewer than the list (D-101), so an
- * archive cut at the limit can hold a few files less than the limit. Counting files cannot see a
+ * archive cut at the limit can hold a few files fewer than the limit. Counting files cannot see a
  * cut voucher archive whose vouchers mostly lack a receipt file, so `false` is no proof that every
  * document is in it; the result says so for vouchers. (A count of the matching documents
  * beforehand would settle it, but `GET /Invoice` and `GET /Voucher` take no amount filter, and

@@ -8,7 +8,7 @@ import { listZipEntries } from "../../../../src/domain/exports/zip.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { archiveExportTool } from "../../../../src/tools/reports/archive-export.js";
 import { FakeSevdeskClient, testContext } from "../../../helpers/fake-client.js";
-import { filesConfig, useTransfer } from "../../../helpers/transfer.js";
+import { filesConfig, filesOffDeployment, useTransfer } from "../../../helpers/transfer.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import { buildZip, pdfBytes } from "../../../helpers/zip.js";
 import { ARCHIVE_ROUTES, INVOICE_ARCHIVE } from "../../../write-cases/reports.js";
@@ -75,6 +75,19 @@ describe("sevdesk_archive_export: on a remote server", () => {
     );
     expect(plan.preview.warnings.join(" ")).not.toContain("stopped after 5");
     expect(client.calls).toEqual([]);
+  });
+
+  it("names only the 120 seconds when the remote server saves into SEVDESK_OUTPUT_DIR", async () => {
+    const plan = await prepareWrite(archiveExportTool, OCTOBER, new FakeSevdeskClient([]), {
+      deployment: filesOffDeployment("bearer"),
+      outputDir: directory,
+    });
+
+    expect(plan.preview.warnings).toContain(
+      "sevDesk renders every PDF of the period before it answers (about a minute per 100 " +
+        "invoices), and this remote server ends every request after 120 seconds; a ZIP above " +
+        "100 MiB is not saved. The remedy for both is a shorter period.",
+    );
   });
 });
 
