@@ -100,12 +100,16 @@ export interface CurrentDraft<D> {
   readonly positions: readonly PositionRecord[];
 }
 
-/** The stored invoice and its positions. A missing invoice is a `validation` error. */
+/**
+ * The stored invoice and its positions. A missing invoice is a `validation` error. `record` is
+ * the raw record as sevDesk sent it, for readers of fields beyond the update's (the schedule of a
+ * recurring template, `../recurring/schedule.ts`).
+ */
 export async function loadCurrentInvoice(
   client: SevdeskClient,
   invoiceId: number,
   signal?: AbortSignal,
-): Promise<CurrentDraft<CurrentInvoice>> {
+): Promise<CurrentDraft<CurrentInvoice> & { readonly record: unknown }> {
   const id = toSevdeskId(invoiceId);
   const [payload, positions] = await Promise.all([
     readOrExplain(
@@ -127,12 +131,9 @@ export async function loadCurrentInvoice(
       signal,
     ),
   ]);
-  const document = parseUpstream(
-    currentInvoiceSchema,
-    expectSingle(payload, `invoice ${id}`),
-    "an invoice",
-  );
-  return { document, positions: completePositions(positions, `invoice ${id}`) };
+  const record = expectSingle(payload, `invoice ${id}`);
+  const document = parseUpstream(currentInvoiceSchema, record, "an invoice");
+  return { document, positions: completePositions(positions, `invoice ${id}`), record };
 }
 
 /** The stored order and its positions. A missing order is a `validation` error. */

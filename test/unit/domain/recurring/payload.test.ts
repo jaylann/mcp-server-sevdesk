@@ -7,7 +7,11 @@
 import { describe, expect, it } from "vitest";
 
 import { strictBody } from "../../../../src/domain/drafts/payloads.js";
-import { saveTemplateBodySchema } from "../../../../src/domain/recurring/payload.js";
+import {
+  changeTemplateBodySchema,
+  saveTemplateBodySchema,
+  templateStatusBodySchema,
+} from "../../../../src/domain/recurring/payload.js";
 import { TEMPLATE_SAVE_STATUS } from "../../../../src/domain/recurring/run-date.js";
 
 function body(invoice: Record<string, unknown> = {}): Record<string, unknown> {
@@ -111,5 +115,69 @@ describe("saveInvoice body of a recurring invoice template (D-111, D-003)", () =
     expect(parse({ ...body(), invoicePosDelete: [{ id: 1, objectName: "InvoicePos" }] })).toBe(
       false,
     );
+  });
+});
+
+describe("saveInvoice body changing a stored template (recorded 2026-11-17)", () => {
+  const change = (invoice: Record<string, unknown>, rest: Record<string, unknown> = {}) =>
+    changeTemplateBodySchema.safeParse({
+      invoice: { id: 2301, objectName: "Invoice", mapAll: true, ...invoice },
+      invoicePosSave: null,
+      invoicePosDelete: null,
+      ...rest,
+    }).success;
+
+  it("carries the id and only the fields that change", () => {
+    expect(change({ header: "Neu" })).toBe(true);
+    expect(change({ accountIntervall: "P0Y3M0W" })).toBe(true);
+    expect(change({ accountEndDate: 1827615600 })).toBe(true);
+    expect(change({ accountEndDate: null })).toBe(true);
+    expect(change({ id: undefined, header: "Neu" })).toBe(false);
+  });
+
+  it("never sends a type, a status or the next run", () => {
+    expect(change({ invoiceType: "WKR" })).toBe(false);
+    expect(change({ status: 100 })).toBe(false);
+    expect(change({ accountNextInvoice: 1796079600 })).toBe(false);
+    expect(change({ accountEndDate: "" })).toBe(false);
+  });
+
+  it("sends a tax setting whole or not at all", () => {
+    expect(change({ taxRule: { id: 1, objectName: "TaxRule" } })).toBe(false);
+    expect(
+      change({ taxRule: { id: 1, objectName: "TaxRule" }, taxRate: 0, smallSettlement: false }),
+    ).toBe(true);
+  });
+
+  it("replaces positions as a whole: new rows to save, stored rows to delete", () => {
+    const save = body().invoicePosSave;
+    expect(
+      change(
+        {},
+        { invoicePosSave: save, invoicePosDelete: [{ id: 5301, objectName: "InvoicePos" }] },
+      ),
+    ).toBe(true);
+    expect(change({}, { invoicePosSave: [], invoicePosDelete: null })).toBe(false);
+    // A stored position sent by id is not changed by sevDesk: the schema has no place for one.
+    expect(
+      change({}, { invoicePosSave: [{ ...(Array.isArray(save) ? save[0] : {}), id: 5301 }] }),
+    ).toBe(false);
+  });
+});
+
+describe("saveInvoice body ending or reactivating a template (D-112)", () => {
+  const status = (value: unknown, rest: Record<string, unknown> = {}) =>
+    templateStatusBodySchema.safeParse({
+      invoice: { id: 2301, objectName: "Invoice", mapAll: true, status: value, ...rest },
+      invoicePosSave: null,
+      invoicePosDelete: null,
+    }).success;
+
+  it("sends status 50 or the save status as text, and nothing else", () => {
+    expect(status("50")).toBe(true);
+    expect(status(String(TEMPLATE_SAVE_STATUS))).toBe(true);
+    expect(status("200")).toBe(false);
+    expect(status(50)).toBe(false);
+    expect(status("50", { header: "Neu" })).toBe(false);
   });
 });

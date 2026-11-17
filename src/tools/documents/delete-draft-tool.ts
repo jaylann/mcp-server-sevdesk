@@ -96,7 +96,8 @@ export const documentDeleteDraftTool = defineWriteTool({
     "Auftragsbestätigung, Lieferschein) with its positions, e.g. one created by mistake, for the " +
     "wrong customer, or a duplicate. Only drafts (status 100); a finalized invoice is cancelled " +
     "(sevdesk_invoice_cancel) or corrected with a credit note, never deleted. Recurring invoice " +
-    "templates (Abo-Rechnung) are not deleted here. The number an order or credit note draft " +
+    "templates (Abo-Rechnung) are not deleted here (end one with " +
+    "sevdesk_invoice_end_recurring). The number an order or credit note draft " +
     "holds is handed out again, so the number range keeps no gap. Cannot be undone. Commit tier: asks a human to " +
     "confirm the preview, which names the document; dryRun only previews. Vouchers: " +
     "sevdesk_voucher_delete_draft. Before: the kind's get tool, e.g. sevdesk_invoice_get.",

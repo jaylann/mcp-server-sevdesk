@@ -51,9 +51,10 @@ export const invoiceCreateRecurringTool = defineWriteTool({
     "draft tool's checks apply (tax rule and rates for the account, address, contact person), " +
     "and the total must be above zero. Commit tier: a human confirms the preview, which lists the positions, the total " +
     "per invoice, the next run dates and what sevDesk does on a run date; dryRun only previews. " +
-    "The preview warns when the customer has a template with the same total already. Changing or " +
-    "ending a template: the sevDesk web app. Before: sevdesk_contacts_search for contactId. " +
-    "After: sevdesk_invoices_list with type recurring, sevdesk_invoice_get.",
+    "The preview warns when the customer has a template with the same total already. Changing " +
+    "or ending a template: sevdesk_invoice_update_recurring, sevdesk_invoice_end_recurring. " +
+    "Before: sevdesk_contacts_search for contactId. After: sevdesk_invoices_list with type " +
+    "recurring, sevdesk_invoice_get.",
   toolset: "invoices",
   tier: "commit",
   annotations: {

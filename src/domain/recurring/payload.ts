@@ -48,3 +48,101 @@ export const saveTemplateBodySchema = z.strictObject({
 });
 
 export type SaveTemplateBody = z.output<typeof saveTemplateBodySchema>;
+
+// ---------------------------------------------------------------------------------------------
+// Changing a stored template
+// ---------------------------------------------------------------------------------------------
+
+const id = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
+
+/** The fields an update may change, each optional: the template's own content fields. */
+const changeableShape = z
+  .strictObject(invoiceContentShape)
+  .pick({
+    contact: true,
+    contactPerson: true,
+    header: true,
+    headText: true,
+    footText: true,
+    timeToPay: true,
+    showNet: true,
+    taxRule: true,
+    taxType: true,
+    taxSet: true,
+    taxRate: true,
+    taxText: true,
+    smallSettlement: true,
+    address: true,
+    addressName: true,
+    addressStreet: true,
+    addressZip: true,
+    addressCity: true,
+    addressCountry: true,
+  })
+  .partial().shape;
+
+/** Tax fields go together: either none, or a full setting with exactly one rule or type. */
+function wholeTaxSetting(value: {
+  taxRate?: unknown;
+  taxRule?: unknown;
+  taxType?: unknown;
+}): boolean {
+  if (value.taxRate === undefined) {
+    return value.taxRule === undefined && value.taxType === undefined;
+  }
+  return oneTaxSetting(value);
+}
+
+/**
+ * `saveInvoice` with the id of a stored template and ONLY the fields that change. Recorded on
+ * 2026-11-17 (spec/deviations.md D-111, D-112): such a minimal body keeps type, status, contact,
+ * texts, schedule and positions as stored. So the body never carries `invoiceType` or `status`
+ * (it cannot turn an invoice into a template or start or end one), and the strict schema refuses
+ * both. Positions are replaced as a whole (every stored row in `invoicePosDelete`, the new ones in
+ * `invoicePosSave`), never changed by id: a position sent by its id with only a new price was
+ * left unchanged without an error (recorded 2026-11-17). `accountEndDate: null` removes the end
+ * date (an empty string is refused with 500).
+ */
+const templateChangeSchema = z
+  .strictObject({
+    id,
+    objectName: z.literal("Invoice"),
+    mapAll: z.literal(true),
+    ...changeableShape,
+    accountIntervall: z.enum(INTERVAL_WIRE_FORMS).optional(),
+    accountStartDate: timestamp.optional(),
+    accountEndDate: timestamp.nullable().optional(),
+  })
+  .refine(wholeTaxSetting, TAX_MESSAGE);
+
+/** `POST /Invoice/Factory/saveInvoice` changing a stored template. */
+export const changeTemplateBodySchema = z.strictObject({
+  invoice: templateChangeSchema,
+  invoicePosSave: z.array(positionSchema("InvoicePos")).min(1).nullable(),
+  invoicePosDelete: z
+    .array(z.strictObject({ id, objectName: z.literal("InvoicePos") }))
+    .min(1)
+    .nullable(),
+});
+
+export type ChangeTemplateBody = z.output<typeof changeTemplateBodySchema>;
+
+/**
+ * The statuses the end and reactivate tools send, as strings: the form recorded for both
+ * (`status: "50"` ends a template, `"100"` sets it back, D-112).
+ */
+const STATUS_WIRE = ["50", String(TEMPLATE_SAVE_STATUS)] as const;
+
+/** `POST /Invoice/Factory/saveInvoice` that only sets a template's status (end or reactivate). */
+export const templateStatusBodySchema = z.strictObject({
+  invoice: z.strictObject({
+    id,
+    objectName: z.literal("Invoice"),
+    mapAll: z.literal(true),
+    status: z.enum(STATUS_WIRE),
+  }),
+  invoicePosSave: z.null(),
+  invoicePosDelete: z.null(),
+});
+
+export type TemplateStatusBody = z.output<typeof templateStatusBodySchema>;

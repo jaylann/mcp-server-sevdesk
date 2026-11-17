@@ -557,9 +557,10 @@ export async function executeInvoiceDraft(
 
 /**
  * The stored address of an invoice: its structured fields when any is set (drafts saved through
- * the API), else the free-text `address` (web-app drafts), else none.
+ * the API), else the free-text `address` (web-app drafts), else none. Shared with the update of a
+ * recurring invoice template (`../recurring/update.ts`).
  */
-function invoiceStoredAddress(doc: CurrentInvoice): StoredAddress {
+export function invoiceStoredAddress(doc: CurrentInvoice): StoredAddress {
   const countryId = doc.addressCountry?.id;
   const parts = {
     name: doc.addressName,
@@ -581,7 +582,11 @@ function invoiceStoredAddress(doc: CurrentInvoice): StoredAddress {
   return { base: { kind: "none" }, lines: [], countryId };
 }
 
-/** Only regular draft invoices that are not enshrined can be updated here. */
+/**
+ * Only regular draft invoices that are not enshrined can be updated here. The type is checked
+ * before the status, so a recurring template (WKR) at any status is pointed to its own tool
+ * instead of being told to reset it to a draft, which the reset tool refuses for templates.
+ */
 function checkUpdatable(doc: {
   readonly id: number;
   readonly status: number;
@@ -594,6 +599,20 @@ function checkUpdatable(doc: {
       message: `Invoice ${doc.id} is enshrined (festgeschrieben) and can no longer be changed.`,
     });
   }
+  const type = doc.invoiceType?.trim().toUpperCase() ?? "RE";
+  if (type !== "RE") {
+    const known = documentTypeByCode("invoice", type);
+    const instead =
+      type === "WKR"
+        ? "Change a recurring invoice template with sevdesk_invoice_update_recurring."
+        : "Edit it in sevDesk.";
+    throw new SevdeskError({
+      kind: "validation",
+      message:
+        `Invoice ${doc.id} is ${known === undefined ? "not a regular invoice" : `a ${known.label.toLowerCase()} (${known.code})`}; ` +
+        `this tool only changes regular invoices (RE). ${instead}`,
+    });
+  }
   if (doc.status !== 100) {
     throw new SevdeskError({
       kind: "validation",
@@ -601,16 +620,6 @@ function checkUpdatable(doc: {
         `Invoice ${doc.id} is not a draft (status: ${statusDto("invoice", doc.status).label}); ` +
         'only drafts can be changed. Reset it to a draft first with sevdesk_invoice_reset (to: "draft") ' +
         "or cancel it with sevdesk_invoice_cancel.",
-    });
-  }
-  const type = doc.invoiceType?.trim().toUpperCase() ?? "RE";
-  if (type !== "RE") {
-    const known = documentTypeByCode("invoice", type);
-    throw new SevdeskError({
-      kind: "validation",
-      message:
-        `Invoice ${doc.id} is ${known === undefined ? "not a regular invoice" : `a ${known.label.toLowerCase()} (${known.code})`}; ` +
-        "this tool only changes regular invoices (RE). Edit it in sevDesk.",
     });
   }
 }

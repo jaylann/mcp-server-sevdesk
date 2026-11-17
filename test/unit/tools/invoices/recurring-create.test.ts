@@ -193,8 +193,9 @@ describe("sevdesk_invoice_create_recurring", () => {
         "with a number that is booked), whether it sends that invoice to the customer, and " +
         "whether a template saved with status 100 runs at all. Check the first invoice it " +
         "generates in sevDesk.",
-      "To change, pause or end the template later, use the sevDesk web app (Abo-Rechnungen); " +
-        "this server has no tool for that yet.",
+      "To change the template later, use sevdesk_invoice_update_recurring; to end it, " +
+        "sevdesk_invoice_end_recurring. A template is deleted only in the sevDesk web app " +
+        "(Abo-Rechnungen).",
     ]);
   });
 

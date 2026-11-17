@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   addMonths,
+  checkEndDate,
   checkSchedule,
+  checkStartDate,
   INTERVAL_WIRE_FORMS,
   intervalOf,
   INTERVALS,
@@ -10,8 +12,10 @@ import {
   RECURRING_INTERVALS,
   runCount,
   runDates,
+  runDayFitsEveryMonth,
   type Schedule,
   scheduleDifferences,
+  scheduleFrom,
   type ScheduleInput,
 } from "../../../../src/domain/recurring/schedule.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
@@ -289,5 +293,48 @@ describe("scheduleDifferences", () => {
       "sevDesk set the next run to 2027-01-01, not to the start date 2026-12-01. Check the " +
         "template in sevDesk before its first run.",
     ]);
+  });
+});
+
+describe("changing a stored schedule", () => {
+  it("checks an end date against the run it follows, named in the message", () => {
+    expect(
+      refusal(() => {
+        checkEndDate("2026-11-30", "2026-12-01", "the next run");
+      }),
+    ).toBe("The end date 2026-11-30 is before the next run 2026-12-01.");
+    expect(
+      refusal(() => {
+        checkEndDate("2037-01-01", "2026-12-01", "today");
+      }),
+    ).toContain("more than 10 years after today 2026-12-01 (the latest is 2036-12-01)");
+    expect(() => {
+      checkEndDate("2026-12-01", "2026-12-01", "the next run");
+    }).not.toThrow();
+  });
+
+  it("checks a new start like a template's first one and returns its day", () => {
+    expect(checkStartDate("2026-12-15", TODAY)).toBe(15);
+    expect(refusal(() => checkStartDate("2026-11-16", TODAY))).toContain("is in the past");
+  });
+
+  it("lists runs from a stored next run, also on a day some months lack", () => {
+    const from31 = scheduleFrom("monthly", "2026-12-31", "2027-03-31");
+    expect(runDayFitsEveryMonth(from31)).toBe(false);
+    expect(runDates(from31, 5)).toEqual(["2026-12-31", "2027-01-31", "2027-02-28", "2027-03-31"]);
+    expect(runDayFitsEveryMonth(scheduleFrom("quarterly", "2026-12-28", undefined))).toBe(true);
+  });
+
+  it("marks an ended template (status 50, D-112) and nothing else", () => {
+    const row = { accountIntervall: "P0Y1M0W", accountNextInvoice: "2026-12-01T00:00:00+01:00" };
+    expect(readStoredSchedule({ ...row, status: "50" })).toEqual({
+      interval: "P0Y1M0W",
+      intervalKey: "monthly",
+      nextRun: "2026-12-01",
+      ended: true,
+    });
+    for (const status of ["100", "200", undefined]) {
+      expect(readStoredSchedule({ ...row, status })).not.toHaveProperty("ended");
+    }
   });
 });

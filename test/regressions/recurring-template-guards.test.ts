@@ -16,6 +16,8 @@ import { documentDeleteDraftTool } from "../../src/tools/documents/delete-draft-
 import { invoiceUpdateDraftTool } from "../../src/tools/invoices/draft-update.js";
 import { INVOICE_LIFECYCLE_TOOLS } from "../../src/tools/invoices/lifecycle-tools.js";
 import { invoiceCreateRecurringTool } from "../../src/tools/invoices/recurring-create.js";
+import { invoiceEndRecurringTool } from "../../src/tools/invoices/recurring-status.js";
+import { invoiceUpdateRecurringTool } from "../../src/tools/invoices/recurring-update.js";
 import { approve } from "../helpers/confirm-client.js";
 import { type FakeRoute, loadFixture } from "../helpers/fake-client.js";
 import {
@@ -25,6 +27,8 @@ import {
   writeHarness,
   writesOf,
 } from "../helpers/write-flow.js";
+import { invoiceUpdateRoutes } from "../unit/tools/drafts/routes.js";
+import { templateChangeRoutes } from "../unit/tools/invoices/recurring-manage-routes.js";
 import {
   recurringCreateArgs,
   recurringCreateRoutes,
@@ -91,7 +95,11 @@ const ATTEMPTS: readonly (readonly [string, Record<string, unknown>, string])[] 
     { id: 2301, to: "open" },
     "recurring invoice template (WKR, Abo-Rechnung)",
   ],
-  ["sevdesk_invoice_update_draft", { id: 2301, header: "Neu" }, "is a recurring invoice (WKR)"],
+  [
+    "sevdesk_invoice_update_draft",
+    { id: 2301, header: "Neu" },
+    "Change a recurring invoice template with sevdesk_invoice_update_recurring.",
+  ],
   [
     "sevdesk_document_delete_draft",
     { kind: "invoice", id: 2301 },
@@ -142,14 +150,85 @@ describe("a template at any status", () => {
       for (const [name, args, refusal] of ATTEMPTS) {
         const result = await client.callTool({ name, arguments: args });
         expect(result.isError, name).toBe(true);
-        // The draft update checks the status before the type (a template outside 100 is "not a
-        // draft" there); every other tool names the template.
-        if (name !== "sevdesk_invoice_update_draft" || status === "100") {
-          expect(resultText(result), name).toContain(refusal);
-        }
+        // Every tool names the template, the draft update at every status too (it checks the
+        // type before the status, so it never says "reset it to a draft").
+        expect(resultText(result), name).toContain(refusal);
       }
       expect(prompts).toHaveLength(0);
       expect(writesOf(fake)).toEqual([]);
     },
   );
+});
+
+describe("a template changed and ended by the template tools", () => {
+  it("is still refused by every other invoice tool", async () => {
+    const { client, fake } = await writeHarness({
+      tools: [...TOOLS, invoiceUpdateRecurringTool, invoiceEndRecurringTool],
+      routes: [...templateChangeRoutes(), accountRoute(accountRow(4001))],
+      connect: { era: "modern", transport: "http", answer: approve },
+    });
+    for (const [name, args] of [
+      ["sevdesk_invoice_update_recurring", { id: 2301, interval: "quarterly", header: "Neu" }],
+      ["sevdesk_invoice_end_recurring", { id: 2301 }],
+    ] as const) {
+      const result = await client.callTool({ name, arguments: args });
+      expect(result.isError, name).not.toBe(true);
+      expect(resultData(result), name).toMatchObject({ status: "done" });
+    }
+    const saves = [
+      { method: "POST", path: "/Invoice/Factory/saveInvoice" },
+      { method: "POST", path: "/Invoice/Factory/saveInvoice" },
+    ];
+    expect(writesOf(fake)).toEqual(saves);
+
+    for (const [name, args, refusal] of ATTEMPTS) {
+      const result = await client.callTool({ name, arguments: args });
+      expect(result.isError, name).toBe(true);
+      expect(resultText(result), name).toContain(refusal);
+    }
+    expect(writesOf(fake)).toEqual(saves);
+  });
+});
+
+/**
+ * Issue #91: the invoices sevDesk generates from a template are regular invoices (type RE) whose
+ * `origin` names the template. They must keep working with the lifecycle tools: no tool may take
+ * the origin for a template.
+ */
+describe("an invoice generated from a template (RE, origin: the template)", () => {
+  const generated = (status: string): Record<string, unknown> => ({
+    ...templateRow(status),
+    invoiceType: "RE",
+    origin: { id: "2300", objectName: "Invoice" },
+  });
+
+  it.each(["100", "200"])("status %s: no tool refuses it as a template", async (status) => {
+    const { client, fake } = await writeHarness({
+      tools: TOOLS,
+      routes: [...templateRoutes(generated(status)), ...invoiceUpdateRoutes],
+      connect: { era: "modern", transport: "http", answer: approve },
+    });
+    for (const [name, args] of ATTEMPTS) {
+      const result = await client.callTool({ name, arguments: { ...args, dryRun: true } });
+      const text = resultText(result);
+      expect(text, name).not.toContain("recurring invoice template");
+      expect(text, name).not.toContain("WKR");
+    }
+    expect(writesOf(fake)).toEqual([]);
+  });
+
+  it("a draft of it can be finalized, changed and deleted (dry runs)", async () => {
+    const { client } = await writeHarness({
+      tools: TOOLS,
+      routes: [...templateRoutes(generated("100")), ...invoiceUpdateRoutes],
+      connect: { era: "modern", transport: "http", answer: approve },
+    });
+    for (const [name, args] of [
+      ["sevdesk_invoice_update_draft", { id: 2301, header: "Neu" }],
+      ["sevdesk_document_delete_draft", { kind: "invoice", id: 2301 }],
+    ] as const) {
+      const result = await client.callTool({ name, arguments: { ...args, dryRun: true } });
+      expect(result.isError, `${name}: ${resultText(result)}`).not.toBe(true);
+    }
+  });
 });

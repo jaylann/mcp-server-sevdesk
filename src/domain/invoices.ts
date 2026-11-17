@@ -61,6 +61,7 @@ import {
 import { INVOICE_STATUS_FILTERS, INVOICE_TYPE_FILTERS, keyForCode } from "./filter-keys.js";
 import { invoiceLink } from "./links.js";
 import { DEFAULT_CURRENCY } from "./money.js";
+import { readStoredSchedule, storedScheduleSchema } from "./recurring/schedule.js";
 import { documentTypeByCode } from "./reference-data.js";
 
 export { INVOICE_STATUS_FILTERS, INVOICE_TYPE_FILTERS } from "./filter-keys.js";
@@ -163,6 +164,12 @@ export const invoiceRowSchema = z.object({
     .optional()
     .describe("Festgeschrieben: locked for changes (GoBD); only shown when true."),
   link: z.string().optional().describe("Opens the invoice in the sevDesk web app."),
+  schedule: storedScheduleSchema
+    .optional()
+    .describe(
+      "Recurring invoice templates (type WKR) only: interval, start, next run, end and last " +
+        "run as sevDesk stores them.",
+    ),
 });
 
 export type InvoiceRow = z.output<typeof invoiceRowSchema>;
@@ -322,7 +329,15 @@ function toInvoiceDetail(record: InvoiceRecord, today: string): InvoiceDetail {
  * `YYYY-MM-DD` for `overdue`. Throws `unexpected_response` for a record that does not fit.
  */
 export function mapInvoiceDetail(raw: unknown, today: string): InvoiceDetail {
-  return toInvoiceDetail(parseInvoiceRecord(raw), today);
+  return withSchedule(toInvoiceDetail(parseInvoiceRecord(raw), today), raw);
+}
+
+/**
+ * A recurring template's row with the schedule sevDesk stores (`recurring/schedule.ts`, D-111):
+ * the invoice parser reads only the interval and the next run. Other rows stay as they are.
+ */
+function withSchedule<T extends InvoiceRow>(row: T, raw: unknown): T {
+  return row.type.code === "WKR" ? { ...row, schedule: readStoredSchedule(raw) } : row;
 }
 
 /** The value unless it is a zero decimal (sevDesk sends "0" for "no Skonto", "no fee"). */
@@ -391,7 +406,7 @@ export async function listInvoices(
     query,
     limit: params.limit,
     offset: params.offset,
-    map: (raw) => toInvoiceRow(parseInvoiceRecord(raw), today),
+    map: (raw) => withSchedule(toInvoiceRow(parseInvoiceRecord(raw), today), raw),
     keep: allOf(
       params.overdueOnly === true ? (row: InvoiceRow) => row.overdue === true : undefined,
       matchesNumber(params.number),
@@ -442,11 +457,13 @@ export async function getInvoice(
     ),
     loadUnitNames(client, signal),
   ]);
-  const record = parseInvoiceRecord(expectSingle(payload, `invoice ${id}`));
-  const invoice = await withDocumentCountry(toInvoiceDetail(record, today), client, {
-    signal,
-    cacheOwner,
-  });
+  const raw = expectSingle(payload, `invoice ${id}`);
+  const record = parseInvoiceRecord(raw);
+  const invoice = await withDocumentCountry(
+    withSchedule(toInvoiceDetail(record, today), raw),
+    client,
+    { signal, cacheOwner },
+  );
   const context = { currency: invoice.currency, showNet: record.showNet, unitNames };
   return {
     invoice,
