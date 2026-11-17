@@ -22,6 +22,24 @@ function contactRows(id: number, addresses: string, ways: string): FakeRoute[] {
   ];
 }
 
+/** A contact's custom field values (D-086: read on their own, with the setting embedded). */
+function customFieldRows(id: number, response: FakeRoute["response"]): FakeRoute {
+  return {
+    path: "/ContactCustomField",
+    query: {
+      "contact[id]": String(id),
+      "contact[objectName]": "Contact",
+      embed: "contactCustomFieldSetting",
+    },
+    response,
+  };
+}
+
+const CUSTOM_FIELD_SETTINGS: FakeRoute = {
+  path: "/ContactCustomFieldSetting",
+  response: { fixture: "contacts/custom-field-settings.json" },
+};
+
 function invoiceRoutes(id: number, invoice: string, positions: string): FakeRoute[] {
   return [
     { path: `/Invoice/${id}`, query: { embed: "contact" }, response: { fixture: invoice } },
@@ -145,6 +163,44 @@ export const MASTERDATA_CASES: readonly WriteToolCase[] = [
     writes: [{ method: "DELETE", path: "/ContactAddress/3002" }],
   },
   {
+    label: "set one custom field of a contact, change another and remove a third value",
+    tool: contactUpdateTool,
+    args: {
+      id: 1001,
+      customFields: [
+        { name: "Kundennr extern", value: "EXT-4712" },
+        { settingId: 19500, value: "Umbau Lager" },
+      ],
+      remove: [{ kind: "customField", id: 7002 }],
+    },
+    routes: [
+      { path: "/Contact/1001", response: { fixture: "contacts/contact-1001.json" } },
+      ...contactRows(
+        1001,
+        "contacts/contact-addresses-1001.json",
+        "contacts/communication-ways-1001.json",
+      ),
+      customFieldRows(1001, { fixture: "contacts/custom-fields-1001.json" }),
+      CUSTOM_FIELD_SETTINGS,
+      {
+        method: "PUT",
+        path: "/ContactCustomField/7001",
+        response: { body: { objects: { id: "7001", objectName: "ContactCustomField" } } },
+      },
+      {
+        method: "POST",
+        path: "/ContactCustomField",
+        response: { body: { objects: { id: "7003", objectName: "ContactCustomField" } } },
+      },
+      { method: "DELETE", path: "/ContactCustomField/7002", response: DELETED },
+    ],
+    writes: [
+      { method: "PUT", path: "/ContactCustomField/7001" },
+      { method: "POST", path: "/ContactCustomField" },
+      { method: "DELETE", path: "/ContactCustomField/7002" },
+    ],
+  },
+  {
     label: "delete an organisation with its addresses, communication ways and contact persons",
     tool: contactDeleteTool,
     args: { id: 1001 },
@@ -155,6 +211,7 @@ export const MASTERDATA_CASES: readonly WriteToolCase[] = [
         "contacts/contact-addresses-1001.json",
         "contacts/communication-ways-1001.json",
       ),
+      customFieldRows(1001, { fixture: "contacts/custom-fields-1001.json" }),
       // Its contact persons (D-083: `GET /Contact` honours the parent filter): person 1002, which
       // sevDesk deletes with it (D-084) and which is read back afterwards.
       {

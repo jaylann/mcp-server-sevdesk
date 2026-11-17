@@ -55,8 +55,23 @@ function personRows(...extra: readonly [id: number, firstName: string][]): unkno
   ];
 }
 
-/** Organisation 1001 with its two addresses and three communication ways. */
-function organisationRoutes(persons: FakeRoute = personsRoute()): FakeRoute[] {
+/** The custom field values of a contact (D-086: read on their own, with the setting embedded). */
+function customFieldsRoute(
+  id: number,
+  response: FakeRoute["response"] = { body: { objects: [] } },
+): FakeRoute {
+  return {
+    path: "/ContactCustomField",
+    query: { ...filter(id), embed: "contactCustomFieldSetting" },
+    response,
+  };
+}
+
+/** Organisation 1001 with its two addresses, three communication ways and two custom fields. */
+function organisationRoutes(
+  persons: FakeRoute = personsRoute(),
+  customFields: FakeRoute["response"] = { fixture: "contacts/custom-fields-1001.json" },
+): FakeRoute[] {
   return [
     { path: "/Contact/1001", response: { fixture: "contacts/contact-1001.json" } },
     {
@@ -69,19 +84,22 @@ function organisationRoutes(persons: FakeRoute = personsRoute()): FakeRoute[] {
       query: filter(1001),
       response: { fixture: "contacts/communication-ways-1001.json" },
     },
+    customFieldsRoute(1001, customFields),
     persons,
   ];
 }
 
 /**
- * Person 1002 (belongs to 1001) without addresses or communication ways, and the contacts stored
- * with 1002 as their parent (none unless given; sevDesk stores a person as parent, D-083).
+ * Person 1002 (belongs to 1001) without addresses, communication ways or custom fields, and the
+ * contacts stored with 1002 as their parent (none unless given; sevDesk stores a person as
+ * parent, D-083).
  */
 function personRoutes(children: readonly unknown[] = []): FakeRoute[] {
   return [
     { path: "/Contact/1002", response: { fixture: "contacts/contact-1002.json" } },
     { path: "/ContactAddress", query: filter(1002), response: { body: { objects: [] } } },
     { path: "/CommunicationWay", query: filter(1002), response: { body: { objects: [] } } },
+    customFieldsRoute(1002),
     {
       path: "/Contact",
       query: { depth: "1", "parent[id]": "1002", "parent[objectName]": "Contact" },
@@ -154,6 +172,7 @@ describe("sevdesk_contact_delete", () => {
         { label: "Category", value: "Kunde (customer)" },
         { label: "Addresses (deleted with it)", value: "2" },
         { label: "Communication ways (deleted with it)", value: "3" },
+        { label: "Custom field values (Zusatzfelder, deleted with it)", value: "2" },
         { label: "Contact persons (deleted with it)", value: "1" },
         { label: "Contact person (deleted with it)", value: "Dr. Max Mustermann (contact 1002)" },
       ],
@@ -162,6 +181,8 @@ describe("sevdesk_contact_delete", () => {
           "this cannot be undone.",
         "sevDesk deletes the organisation's 1 contact person (Ansprechpartner) with it; this " +
           "cannot be undone either.",
+        "Any custom field values (Zusatzfelder) of the contact and of its contact person are " +
+          "deleted with them.",
       ],
       irreversible: true,
     });
@@ -173,6 +194,7 @@ describe("sevdesk_contact_delete", () => {
         { label: "Kategorie", value: "Kunde" },
         { label: "Adressen (werden mitgelöscht)", value: "2" },
         { label: "Kommunikationswege (werden mitgelöscht)", value: "3" },
+        { label: "Werte von Zusatzfeldern (werden mitgelöscht)", value: "2" },
         { label: "Ansprechpartner (werden mitgelöscht)", value: "1" },
         {
           label: "Ansprechpartner (wird mitgelöscht)",
@@ -184,6 +206,8 @@ describe("sevdesk_contact_delete", () => {
           "gelöscht; das lässt sich nicht rückgängig machen.",
         "sevDesk löscht den Ansprechpartner der Organisation mit; das lässt sich ebenfalls nicht " +
           "rückgängig machen.",
+        "Auch die Werte von Zusatzfeldern des Kontakts und seines Ansprechpartners werden " +
+          "mitgelöscht.",
       ],
       irreversible: true,
     });
@@ -222,6 +246,7 @@ describe("sevdesk_contact_delete", () => {
       { label: "Contact person of", value: "contact 1001" },
       { label: "Addresses (deleted with it)", value: "0" },
       { label: "Communication ways (deleted with it)", value: "0" },
+      { label: "Custom field values (Zusatzfelder, deleted with it)", value: "0" },
     ]);
     expect(preview.warnings).toHaveLength(1);
     expect(previewDe.action).toBe("Kontakt 1002 (Person) aus sevDesk löschen.");
@@ -269,6 +294,15 @@ describe("sevdesk_contact_delete", () => {
         "außerhalb dieses Servers gesetzt). sevDesk löscht ihn möglicherweise mit; das lässt " +
         "sich ebenfalls nicht rückgängig machen.",
     );
+    // The custom field values: the person's own, and those of a contact sevDesk may take along.
+    expect(plan.preview.warnings[2]).toBe(
+      "Its custom field values (Zusatzfelder) are deleted with it, and so are those of any " +
+        "contact sevDesk deletes with it.",
+    );
+    expect(plan.previewDe.warnings[2]).toBe(
+      "Auch die Werte seiner Zusatzfelder werden mitgelöscht, ebenso die jedes Kontakts, den " +
+        "sevDesk mitlöscht.",
+    );
     // A contact stored under the person after the human was asked asks again.
     expect(plan.binding).not.toBe(plain.binding);
 
@@ -281,6 +315,54 @@ describe("sevdesk_contact_delete", () => {
         "sevdesk_contact_get.",
     ]);
     expect(output.affected).not.toContainEqual({ objectName: "Contact", id: "1006" });
+  });
+
+  it("says the custom field values go too, and when they could not be read (D-086)", async () => {
+    const error = new SevdeskError({ kind: "server", status: 500, message: "Down." });
+    const client = new FakeSevdeskClient(
+      withCountryRoute(organisationRoutes(personsRoute([]), { error })),
+    );
+    const { preview, previewDe } = await prepareWrite(tool, { id: 1001 }, client);
+    expect(preview.facts).toContainEqual({
+      label: "Custom field values (Zusatzfelder, deleted with it)",
+      value: "could not be read",
+    });
+    expect(previewDe.facts).toContainEqual({
+      label: "Werte von Zusatzfeldern (werden mitgelöscht)",
+      value: "nicht lesbar",
+    });
+    // Unread values may exist, so the warning names them all the same.
+    expect(preview.warnings).toContain(
+      "Its custom field values (Zusatzfelder) are deleted with it.",
+    );
+    expect(previewDe.warnings).toContain("Auch die Werte seiner Zusatzfelder werden mitgelöscht.");
+    expect(client.writes()).toEqual([]);
+    expect(client.callsTo("/ContactCustomField").every((call) => call.method === "GET")).toBe(true);
+  });
+
+  it("binds the approval to the custom field values the preview counts (D-086)", async () => {
+    const [first, second] = (
+      loadFixture("contacts/custom-fields-1001.json").body as { objects: object[] }
+    ).objects;
+    const prepare = (values: FakeRoute["response"]) =>
+      prepareWrite(
+        tool,
+        { id: 1001 },
+        new FakeSevdeskClient(withCountryRoute(organisationRoutes(personsRoute([]), values))),
+      );
+    const plan = await prepare({ body: { objects: [first, second] } });
+    // The same count, but value 7002 replaced by another one: the same previews, another binding.
+    const swapped = await prepare({ body: { objects: [first, { ...second, id: "7009" }] } });
+    expect(swapped.preview).toEqual(plan.preview);
+    expect(swapped.previewDe).toEqual(plan.previewDe);
+    expect(swapped.binding).not.toBe(plan.binding);
+    // Unreadable values bind as such, unlike any list that was read.
+    const unreadable = await prepare({
+      error: new SevdeskError({ kind: "server", status: 500, message: "Down." }),
+    });
+    expect(unreadable.binding).not.toBe(plan.binding);
+    const empty = await prepare({ body: { objects: [] } });
+    expect(empty.binding).not.toBe(unreadable.binding);
   });
 
   it("lists no contact persons as none, and says when address lists were cut", async () => {
@@ -312,7 +394,9 @@ describe("sevdesk_contact_delete", () => {
     expect(preview.warnings).toEqual([
       "The contact, its at least 10000 addresses and its 3 communication ways are deleted from " +
         "sevDesk; this cannot be undone.",
+      "Its custom field values (Zusatzfelder) are deleted with it.",
     ]);
+    expect(previewDe.warnings).toContain("Auch die Werte seiner Zusatzfelder werden mitgelöscht.");
     expect(previewDe.facts).toContainEqual({
       label: "Ansprechpartner (werden mitgelöscht)",
       value: "keine",

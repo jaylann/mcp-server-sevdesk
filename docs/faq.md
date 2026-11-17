@@ -187,6 +187,16 @@ Yes. `sevdesk_part_get` reports the current stock when stock tracking is on, `se
 and `sevdesk_part_get` show `stock` and `stockEnabled`, and `sevdesk_part_create` and
 `sevdesk_part_update` set them. The sevDesk API has no other stock endpoints.
 
+### Does it handle custom contact fields (Zusatzfelder)?
+
+Yes, their values. `sevdesk_contact_get` shows a contact's custom fields with their names,
+`sevdesk_contact_create` and `sevdesk_contact_update` set them (`customFields`, by the field's id
+or name), `sevdesk_contact_update` removes a value (`remove` with kind `customField`), and
+`sevdesk_contacts_search` finds contacts by a value (`customField`; the whole value, any case).
+`sevdesk_reference_lookup` with kind `contact_custom_fields` lists the fields of your account.
+The fields themselves are defined in the sevDesk web app: deleting a field there deletes its value
+on every contact, so the server never creates, renames or deletes one.
+
 ## Support
 
 ### Where do I get help?

@@ -49,6 +49,7 @@ Handel = "Handel"
 ist = "ist"
 Oktober = "Oktober"
 Paket = "Paket"
+Branche = "Branche"
 vor = "vor"
 # Deliberately mangled objectName in the error-rendering sanitizer test.
 SYSTE = "SYSTE"
