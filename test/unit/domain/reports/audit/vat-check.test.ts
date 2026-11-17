@@ -177,6 +177,25 @@ describe("check vat on a quarter with known positives and negatives", () => {
     }
   });
 
+  it("cites the current § 13b and words the German titles in full", async () => {
+    const { result } = await audit([regularAccount, ...quarterRoutes()]);
+    const byCode = (code: string) => result.findings.find((finding) => finding.code === code);
+
+    // Nr. 12 (telecommunication services to resellers) since 2021.
+    expect(byCode("eu_reverse_charge_for_domestic_supplier")?.reason).toContain(
+      "§ 13b Abs. 2 Nr. 2 to 12 UStG",
+    );
+    expect(byCode("eu_supplier_under_rule_12")?.titleDe).toBe(
+      "Leistung eines EU-Unternehmens mit Steuerregel 12",
+    );
+    expect(byCode("eu_reverse_charge_for_non_eu_supplier")?.titleDe).toBe(
+      "EU-Reverse-Charge bei einem Lieferanten außerhalb der EU",
+    );
+    expect(byCode("acquisition_from_non_eu_supplier")?.titleDe).toBe(
+      "Innergemeinschaftlicher Erwerb von einem Lieferanten außerhalb der EU",
+    );
+  });
+
   it("says what the customer's VAT id is without quoting it", async () => {
     const { result } = await audit([regularAccount, ...quarterRoutes()]);
     const missing = result.findings.find(

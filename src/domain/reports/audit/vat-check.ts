@@ -205,7 +205,7 @@ const TEXTS: Readonly<Record<VatFindingCode, (context: TextContext) => FindingTe
       "Rule 14 is for services of a business established in another EU state (§ 13b Abs. 1 " +
       "UStG), but sevDesk holds only German data for the supplier (a German VAT id or address). " +
       "A business established in Germany charges German VAT itself (§ 13a Abs. 1 Nr. 1 UStG), " +
-      "apart from the domestic reverse-charge cases of § 13b Abs. 2 Nr. 2 to 11 UStG (e.g. " +
+      "apart from the domestic reverse-charge cases of § 13b Abs. 2 Nr. 2 to 12 UStG (e.g. " +
       "construction services, building cleaning), which belong under rule 12.",
     action:
       "Check the invoice: with German VAT, book it under rule 9; for a domestic reverse-charge " +
@@ -229,7 +229,7 @@ const TEXTS: Readonly<Record<VatFindingCode, (context: TextContext) => FindingTe
   eu_supplier_under_rule_12: () => ({
     severity: "check",
     title: "Service from an EU business under rule 12",
-    titleDe: "Leistung eines EU-Unternehmens unter Regel 12",
+    titleDe: "Leistung eines EU-Unternehmens mit Steuerregel 12",
     reason:
       "The supplier looks established in another EU state, but the document uses rule 12 " +
       "(§ 13b Abs. 2 UStG, Kz 84/85). Services of a business established in another EU state " +
@@ -244,7 +244,7 @@ const TEXTS: Readonly<Record<VatFindingCode, (context: TextContext) => FindingTe
   eu_reverse_charge_for_non_eu_supplier: () => ({
     severity: "check",
     title: "EU reverse charge for a supplier outside the EU",
-    titleDe: "EU-Reverse-Charge bei Lieferant außerhalb der EU",
+    titleDe: "EU-Reverse-Charge bei einem Lieferanten außerhalb der EU",
     reason:
       "Rule 14 (§ 13b Abs. 1 UStG, Kz 46/47) is only for services of a business established in " +
       "another EU state, but the supplier looks established outside the EU. Services of a " +
@@ -257,7 +257,7 @@ const TEXTS: Readonly<Record<VatFindingCode, (context: TextContext) => FindingTe
   acquisition_from_non_eu_supplier: () => ({
     severity: "check",
     title: "Intra-EU acquisition from a supplier outside the EU",
-    titleDe: "Innergemeinschaftlicher Erwerb von Lieferant außerhalb der EU",
+    titleDe: "Innergemeinschaftlicher Erwerb von einem Lieferanten außerhalb der EU",
     reason:
       "Rule 8 (intra-EU acquisition, § 1a UStG) needs goods that come from another EU state, " +
       "but the supplier looks established outside the EU. Goods shipped from outside the EU are " +
