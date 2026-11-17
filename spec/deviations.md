@@ -3624,18 +3624,22 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   private as `sevdesk_transaction_mark_private` does by hand). Create sends one trimmed text per
   rule (sevDesk would store a rule with both texts, but whether it then needs both or either is
   not known, so both are refused), at most 100 characters (sevDesk cuts a text over 255 without
-  notice, D-130), refuses texts with fewer than four letters or digits and
-  a rule whose text equals an existing one's (case and spaces ignored; sevDesk itself would store
-  the duplicate), and lists up to ten of at most 500 open transactions
-  whose counterparty or purpose contains the text, every time labelled as this server's estimate,
-  never as sevDesk's matching, with the sentence that sevDesk acts on bank imports and could not
-  be tested on a trial account. Both tools confirm the write by reading the rule list back (no
-  read by id is recorded); create compares the stored text exactly with the trimmed text it sent
-  and notes any difference. The delete preview says that private transactions stay private.
+  notice, D-130), refuses texts with fewer than four letters or digits and a rule whose text
+  equals an existing one's (case and spaces ignored; sevDesk itself would store the duplicate),
+  and lists up to ten of at most 500 open transactions whose counterparty or purpose contains the
+  text, every time labelled as this server's estimate, never as sevDesk's matching, with the
+  sentence that sevDesk acts on bank imports and could not be tested on a trial account. Both
+  tools confirm the write by reading the rule list back (no read by id is recorded); create
+  compares the stored text exactly with the trimmed text it sent and notes any difference. The
+  order of the list is not recorded, so create looks for the new rule on up to five pages of 1000;
+  on a longer list without it, the result shows the rule as sevDesk answered the POST and notes
+  that its stored text was not checked. The delete preview says that private transactions stay
+  private.
 - **Test:** `test/unit/scripts/gaps-banking-probes.test.ts` ("answers the banking questions as
   recorded…": no row turns private, the rules are deleted);
   `test/unit/tools/banking/private-rules.test.ts` (list, refusals, the estimate and its labels,
-  read-backs, the trimmed text sent and a stored text with spaces or cut short noted);
+  read-backs, also past the first 1000 rules, the trimmed text sent and a stored text with spaces
+  or cut short noted);
   `test/regressions/private-transaction-rules.test.ts` (no rule without a confirmation, no match
   stated as fact); `test/regressions/concurrent-check-then-write.test.ts` (two equal creations at
   once give one rule). The recorded list was empty, so no fixture was kept; the

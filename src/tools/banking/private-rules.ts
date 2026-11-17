@@ -154,7 +154,12 @@ export const privateRuleCreateTool = defineWriteTool({
     purpose: ruleTextInput("Purpose (Verwendungszweck) text to match"),
     ...dryRunInputShape,
   }),
-  output: z.object({ rule: privateRuleDtoSchema.describe("The new rule as read back.") }),
+  output: z.object({
+    rule: privateRuleDtoSchema.describe(
+      "The new rule as read back (as sevDesk answered the create when the read-back did not " +
+        "reach it; the summary says so).",
+    ),
+  }),
   // "No rule has this text" is checked, then the rule is created: two calls at once would both
   // pass the check.
   locks: () => [ACCOUNT_PRIVATE_TRANSACTION_RULES],

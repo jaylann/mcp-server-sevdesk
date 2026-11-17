@@ -50,6 +50,12 @@ const OBJECT_NAME = "PrivateTransactionRule";
 
 /** sevDesk's maximum page size: one request reads every rule an account plausibly has. */
 const RULES_PAGE_SIZE = 1000;
+/**
+ * Pages the read-back after a create reads at most while it looks for the new rule. In which order
+ * sevDesk lists rules is not recorded, so on an account with more than {@link RULES_PAGE_SIZE}
+ * rules the new one can be on any page; five pages (5000 rules) bound the requests.
+ */
+const READ_BACK_PAGES = 5;
 
 /**
  * Fewest letters or digits a rule text needs. A rule marks every bank import it matches private,
@@ -157,13 +163,23 @@ interface RuleEntry {
   };
 }
 
-/** Every rule of one page of {@link RULES_PAGE_SIZE}; `complete` is false when more may exist. */
-async function readAllRules(
+/** The rules of the first page; `complete` is false when more may exist. */
+function readAllRules(
   client: SevdeskClient,
+  signal: AbortSignal | undefined,
+): Promise<{ readonly entries: readonly RuleEntry[]; readonly complete: boolean }> {
+  return readRulePage(client, 0, signal);
+}
+
+/** The rules of the page at `offset`; `complete` is false when more may follow it. */
+async function readRulePage(
+  client: SevdeskClient,
+  offset: number,
   signal: AbortSignal | undefined,
 ): Promise<{ readonly entries: readonly RuleEntry[]; readonly complete: boolean }> {
   const page = await client.list(RULE_PATH, undefined, {
     limit: RULES_PAGE_SIZE,
+    offset,
     ...(signal === undefined ? {} : { signal }),
   });
   const entries = page.items.map(parseRule).map((record) => ({
@@ -175,8 +191,39 @@ async function readAllRules(
     stored: { counterparty: record.counterpartName, purpose: record.paymentPurpose },
   }));
   const received = page.items.length;
-  const complete = page.total === undefined ? received < RULES_PAGE_SIZE : page.total <= received;
+  const complete =
+    page.total === undefined ? received < RULES_PAGE_SIZE : page.total <= offset + received;
   return { entries, complete };
+}
+
+/** What {@link findRule} found, and whether it read the whole list. */
+interface RuleSearch {
+  readonly entry: RuleEntry | undefined;
+  /**
+   * False when the pages ran out (or sevDesk sent an empty page) before the end of the list, so a
+   * rule not found may sit further on.
+   */
+  readonly searchedAll: boolean;
+  /** Rules read. */
+  readonly read: number;
+}
+
+/** Looks for rule `id` page by page, at most {@link READ_BACK_PAGES} pages. */
+async function findRule(
+  client: SevdeskClient,
+  id: number,
+  signal: AbortSignal | undefined,
+): Promise<RuleSearch> {
+  let read = 0;
+  for (let page = 0; page < READ_BACK_PAGES; page += 1) {
+    const { entries, complete } = await readRulePage(client, read, signal);
+    read += entries.length;
+    const entry = entries.find((candidate) => candidate.rule.id === id);
+    if (entry !== undefined) return { entry, searchedAll: true, read };
+    if (complete) return { entry: undefined, searchedAll: true, read };
+    if (entries.length === 0) break;
+  }
+  return { entry: undefined, searchedAll: false, read };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -327,16 +374,22 @@ async function estimateMatches(
 
 /** The new rule as read back, and how it differs from the request. */
 export interface PrivateRuleCreated {
+  /** As read back; as sevDesk answered the POST when the read-back did not reach it (see notes). */
   readonly rule: PrivateRuleDto;
-  /** Trusted sentences naming each difference between the request and what sevDesk stored. */
+  /**
+   * Trusted sentences naming each difference between the request and what sevDesk stored, or that
+   * the read-back did not reach the rule.
+   */
   readonly notes: readonly string[];
 }
 
 /**
- * Creates the rule (one POST, never retried), takes its id from sevDesk's answer and confirms it
- * by reading the rules back. An answer without an id, a failed read-back and a rule missing from
- * the list fail with a message that says the rule was probably created, so the call is not
- * repeated blindly.
+ * Creates the rule (one POST, never retried), takes it from sevDesk's answer and confirms it by
+ * reading the rules back, page by page up to {@link READ_BACK_PAGES} pages. An answer without an
+ * id, a failed read-back and a rule missing from the whole list fail with a message that says the
+ * rule was probably created, so the call is not repeated blindly. A list longer than the read-back
+ * reads, without the rule in it, is not taken as a failure: the rule is returned as sevDesk
+ * answered the POST, with a note that its stored text was not checked.
  */
 export async function executePrivateRuleCreate(
   client: SevdeskClient,
@@ -349,8 +402,8 @@ export async function executePrivateRuleCreate(
     body: payload,
     ...(signal === undefined ? {} : { signal }),
   });
-  const id = createdRuleId(answer);
-  if (id === undefined) {
+  const created = createdRule(answer);
+  if (created === undefined) {
     throw new SevdeskError({
       kind: "unexpected_response",
       message:
@@ -359,9 +412,21 @@ export async function executePrivateRuleCreate(
         "sevdesk_private_transaction_rules_list first.",
     });
   }
+  const { id } = created;
   const changed = [ruleObject(id)];
-  const { entries } = await readBackRules(client, changed, signal);
-  const entry = entries.find((candidate) => candidate.rule.id === id);
+  const { entry, searchedAll, read } = await afterWrite(changed, () =>
+    findRule(client, id, signal),
+  );
+  if (entry === undefined && !searchedAll) {
+    return {
+      rule: toRuleDto(created),
+      notes: [
+        `Rule ${String(id)} is not among the first ${String(read)} rules sevDesk lists, so it ` +
+          "is shown as sevDesk answered the create and the text it stored was not checked; " +
+          "check it with sevdesk_private_transaction_rules_list.",
+      ],
+    };
+  }
   if (entry === undefined) {
     throw new SevdeskError({
       kind: "unexpected_response",
@@ -390,10 +455,11 @@ export async function executePrivateRuleCreate(
   return { rule: entry.rule, notes };
 }
 
-const createdSchema = z.object({ id: zId });
-
-/** The id in sevDesk's answer to the POST (one object, or an array of one); `undefined` if none. */
-function createdRuleId(answer: unknown): number | undefined {
+/**
+ * The rule in sevDesk's answer to the POST (one object, or an array of one; recorded with the
+ * listed keys, D-099); `undefined` when it names no id.
+ */
+function createdRule(answer: unknown): RuleRecord | undefined {
   let single: unknown;
   try {
     single = expectSingle(answer, "created private-transaction rule");
@@ -401,8 +467,8 @@ function createdRuleId(answer: unknown): number | undefined {
     if (error instanceof SevdeskError) return undefined;
     throw error;
   }
-  const parsed = createdSchema.safeParse(single);
-  return parsed.success ? parsed.data.id : undefined;
+  const parsed = ruleRecordSchema.safeParse(single);
+  return parsed.success ? parsed.data : undefined;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -448,7 +514,7 @@ export async function executePrivateRuleDelete(
     ...(signal === undefined ? {} : { signal }),
   });
   const changed = [ruleObject(id)];
-  const { entries } = await readBackRules(client, changed, signal);
+  const { entries } = await afterWrite(changed, () => readAllRules(client, signal));
   if (entries.some((entry) => entry.rule.id === id)) {
     throw new SevdeskError({
       kind: "unexpected_response",
@@ -461,14 +527,13 @@ export async function executePrivateRuleDelete(
   }
 }
 
-/** The rules read after a write; a failed read is rethrown with `changed` as completed writes. */
-async function readBackRules(
-  client: SevdeskClient,
+/** A read after a write; a failed read is rethrown with `changed` as completed writes. */
+async function afterWrite<T>(
   changed: readonly SevdeskObjectRef[],
-  signal: AbortSignal | undefined,
-): Promise<{ readonly entries: readonly RuleEntry[] }> {
+  read: () => Promise<T>,
+): Promise<T> {
   try {
-    return await readAllRules(client, signal);
+    return await read();
   } catch (error) {
     if (error instanceof SevdeskError) throw withCompletedWrites(error, changed);
     throw error;

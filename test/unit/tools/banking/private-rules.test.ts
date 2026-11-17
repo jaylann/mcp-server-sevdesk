@@ -341,6 +341,71 @@ describe("sevdesk_private_transaction_rule_create", () => {
     expect(output.affected).toEqual([{ objectName: "PrivateTransactionRule", id: "952" }]);
   });
 
+  describe("on an account with more than 1000 rules", () => {
+    const others = Array.from({ length: 1000 }, (_, index) =>
+      ruleRow(10_000 + index, { counterpartName: `Regel ${String(index)}` }),
+    );
+
+    /** The offsets of the rule reads after the POST. */
+    function readBackOffsets(client: StagedClient): unknown[] {
+      return client.after.calls
+        .filter((call) => call.method === "GET" && call.path === "/PrivateTransactionRule")
+        .map((call) => call.query["offset"]);
+    }
+
+    it("finds the new rule on a later page of the read-back", async () => {
+      const client = new StagedClient(createReads([], []), [
+        POST,
+        rulesRoute([...others, NEW_RULE]),
+      ]);
+      const { output } = await executeWrite(createTool, { counterparty: "Netflix" }, client);
+      expect(output.data.rule).toEqual({
+        id: 952,
+        counterparty: "Netflix",
+        createdOn: "2026-11-16",
+      });
+      expect(output.summary).not.toContain("Note:");
+      expect(readBackOffsets(client)).toEqual([0, 1000]);
+    });
+
+    it("still reports a rule missing from the whole list as created", async () => {
+      const client = new StagedClient(createReads([], []), [
+        POST,
+        rulesRoute([...others, ruleRow(953, { counterpartName: "Spotify" })]),
+      ]);
+      const error = await executeWrite(createTool, { counterparty: "Netflix" }, client).catch(
+        (e: unknown) => e,
+      );
+      expect(error).toMatchObject({
+        kind: "unexpected_response",
+        completedWrites: [{ objectName: "PrivateTransactionRule", id: "952" }],
+      });
+      expect(readBackOffsets(client)).toEqual([0, 1000]);
+    });
+
+    // sevDesk's order of rules is not recorded, so beyond the pages read the rule may well exist:
+    // no "not in the list" error for a good write, but a note that the read-back did not reach it.
+    it("takes the rule from the answer when the read-back does not reach it", async () => {
+      const client = new StagedClient(createReads([], []), [
+        POST,
+        { path: "/PrivateTransactionRule", response: { body: { objects: others, total: 6000 } } },
+      ]);
+      const { output } = await executeWrite(createTool, { counterparty: "Netflix" }, client);
+      expect(output.data.rule).toEqual({
+        id: 952,
+        counterparty: "Netflix",
+        createdOn: "2026-11-16",
+      });
+      expect(output.summary).toContain(
+        "Note: Rule 952 is not among the first 5000 rules sevDesk lists, so it is shown as " +
+          "sevDesk answered the create and the text it stored was not checked; check it with " +
+          "sevdesk_private_transaction_rules_list.",
+      );
+      expect(readBackOffsets(client)).toEqual([0, 1000, 2000, 3000, 4000]);
+      expect(client.writes()).toHaveLength(1);
+    });
+  });
+
   it("reads the id from an answer that wraps the rule in an array", async () => {
     const client = new StagedClient(createReads([], []), [
       { ...POST, response: { body: { objects: [NEW_RULE] } } },
