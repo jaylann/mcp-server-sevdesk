@@ -39,13 +39,24 @@ describe("recurring intervals", () => {
 
   it("read every spelling of the four intervals, and nothing else (D-111: any string is stored)", () => {
     expect(intervalOf("P0Y1M0W")).toBe("monthly");
+    // The web app stores its monthly template so (recorded 2026-11-17).
+    expect(intervalOf("P0Y1M")).toBe("monthly");
     expect(intervalOf("P1M")).toBe("monthly");
+    expect(intervalOf("P0Y1M0W0D")).toBe("monthly");
     expect(intervalOf("P0Y3M")).toBe("quarterly");
+    expect(intervalOf("P0Y3M0W")).toBe("quarterly");
+    expect(intervalOf("P0Y6M")).toBe("half_yearly");
     expect(intervalOf("P0Y6M0W")).toBe("half_yearly");
     expect(intervalOf("P1Y")).toBe("yearly");
+    expect(intervalOf("P1Y0M")).toBe("yearly");
+    expect(intervalOf("P1Y0M0W")).toBe("yearly");
     expect(intervalOf("P0Y12M")).toBe("yearly");
     expect(intervalOf("P0Y0M1W")).toBeUndefined();
+    expect(intervalOf("P14D")).toBeUndefined();
+    expect(intervalOf("P0Y1M1D")).toBeUndefined();
     expect(intervalOf("P0Y2M")).toBeUndefined();
+    expect(intervalOf("P2Y")).toBeUndefined();
+    expect(intervalOf("P")).toBeUndefined();
     expect(intervalOf("monthly")).toBeUndefined();
     expect(intervalOf("1 month")).toBeUndefined();
   });
@@ -79,13 +90,13 @@ describe("checkSchedule", () => {
     ]);
   });
 
-  it("refuses a start in the past: sevDesk may create the missed invoices at once", () => {
+  it("refuses a start in the past: sevDesk catches up one missed period a minute (D-111)", () => {
     expect(
       refusal(() => checkSchedule({ interval: "monthly", startDate: "2026-11-16" }, TODAY)),
     ).toBe(
-      "The start date 2026-11-16 is in the past (today is 2026-11-17 in Berlin). sevDesk may " +
-        "then create every invoice due since that date at once, which no preview shows. Give " +
-        "today or a later date as startDate.",
+      "The start date 2026-11-16 is in the past (today is 2026-11-17 in Berlin). sevDesk would " +
+        "then catch up and create an invoice for every period since that date, one a minute, " +
+        "which no preview shows. Give today or a later date as startDate.",
     );
   });
 
@@ -219,6 +230,7 @@ describe("readStoredSchedule", () => {
     ).toEqual({
       interval: "P0Y1M0W",
       intervalKey: "monthly",
+      every: "every 1 month",
       startDate: "2026-12-01",
       nextRun: "2026-12-01",
       endDate: "2027-12-01",
@@ -226,13 +238,108 @@ describe("readStoredSchedule", () => {
     });
   });
 
-  it("keeps an interval it does not know as text, without a key", () => {
-    expect(readStoredSchedule(storedRow({ accountIntervall: "monthly" }))).toMatchObject({
-      interval: "monthly",
+  it("keeps an interval it does not know as text, without a key or words", () => {
+    const stored = readStoredSchedule(storedRow({ accountIntervall: "monthly" }));
+    expect(stored).toMatchObject({ interval: "monthly" });
+    expect(stored).not.toHaveProperty("intervalKey");
+    expect(stored).not.toHaveProperty("every");
+  });
+
+  it.each([
+    ["P0Y0M1W", "every 1 week"],
+    ["P0Y0M2W", "every 2 weeks"],
+    ["P14D", "every 14 days"],
+    ["P0Y2M", "every 2 months"],
+    ["P2Y", "every 2 years"],
+  ])("describes another duration (%s) instead of failing", (interval, every) => {
+    expect(readStoredSchedule(storedRow({ accountIntervall: interval }))).toMatchObject({
+      interval,
+      every,
     });
-    expect(readStoredSchedule(storedRow({ accountIntervall: "monthly" }))).not.toHaveProperty(
+    expect(readStoredSchedule(storedRow({ accountIntervall: interval }))).not.toHaveProperty(
       "intervalKey",
     );
+  });
+
+  it("reads a template made in the web app: P0Y1M, dates with a time of day, the settings", () => {
+    // The shape of the web app's monthly template (recorded 2026-11-17, D-111, D-132), read with
+    // embed=propertyAutoGenerateRecurringInvoice,autoSendConfiguration.
+    expect(
+      readStoredSchedule(
+        storedRow({
+          accountIntervall: "P0Y1M",
+          accountStartDate: "2026-11-17T11:08:32+01:00",
+          accountNextInvoice: "2026-12-17T11:08:32+01:00",
+          accountLastInvoice: "2026-11-17T11:09:10+01:00",
+          sendType: null,
+          invoiceNumber: "",
+          propertyAutoGenerateRecurringInvoice: "",
+          autoSendConfiguration: null,
+        }),
+      ),
+    ).toEqual({
+      interval: "P0Y1M",
+      intervalKey: "monthly",
+      every: "every 1 month",
+      startDate: "2026-11-17",
+      nextRun: "2026-12-17",
+      lastRun: "2026-11-17",
+      autoGenerate: "off",
+      autoSendConfigured: false,
+    });
+  });
+
+  it("takes a time of day near midnight to the Berlin calendar day", () => {
+    expect(
+      readStoredSchedule(
+        storedRow({
+          accountStartDate: "2026-11-30T23:30:00+00:00",
+          accountNextInvoice: "2026-12-01T00:30:00+01:00",
+          accountEndDate: "2027-06-30T22:15:00Z",
+        }),
+      ),
+    ).toMatchObject({ startDate: "2026-12-01", nextRun: "2026-12-01", endDate: "2027-07-01" });
+  });
+
+  it.each([
+    [null, { autoGenerate: "off" }],
+    ["", { autoGenerate: "off" }],
+    ["1", { autoGenerate: "on" }],
+    ["0", { autoGenerate: "unrecorded", autoGenerateValue: "0" }],
+    ["2", { autoGenerate: "unrecorded", autoGenerateValue: "2" }],
+  ])("reads automatic generation stored as %j", (value, expected) => {
+    const stored = readStoredSchedule(
+      storedRow({ propertyAutoGenerateRecurringInvoice: value, autoSendConfiguration: null }),
+    );
+    expect(stored).toMatchObject({ ...expected, autoSendConfigured: false });
+    if (expected.autoGenerate !== "unrecorded") {
+      expect(stored).not.toHaveProperty("autoGenerateValue");
+    }
+  });
+
+  it("reads automatic sending as on only when sevDesk returns a configuration, with its sendType", () => {
+    const configuration = {
+      id: "9101",
+      objectName: "AutoSendConfiguration",
+      sendType: "VM",
+      textTemplate: { id: "9102", objectName: "TextTemplate" },
+    };
+    const on = readStoredSchedule(storedRow({ autoSendConfiguration: configuration }));
+    expect(on).toMatchObject({ autoSendConfigured: true, autoSendType: "VM" });
+    expect(JSON.stringify(on)).not.toMatch(/9101|9102/);
+    const odd = readStoredSchedule(storedRow({ autoSendConfiguration: { id: "7" } }));
+    expect(odd.autoSendConfigured).toBe(true);
+    expect(odd).not.toHaveProperty("autoSendType");
+    const off = readStoredSchedule(storedRow({ autoSendConfiguration: null }));
+    expect(off.autoSendConfigured).toBe(false);
+    expect(off).not.toHaveProperty("autoSendType");
+  });
+
+  it("leaves the settings out of a record read without the embed (a plain row)", () => {
+    const stored = readStoredSchedule(storedRow());
+    expect(stored).not.toHaveProperty("autoGenerate");
+    expect(stored).not.toHaveProperty("autoGenerateValue");
+    expect(stored).not.toHaveProperty("autoSendConfigured");
   });
 
   it("leaves unset fields out", () => {

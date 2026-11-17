@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:82927922c84c -->
+<!-- translated-from: docs/faq.md sha256:0db728cfb236 -->
 
 # Häufige Fragen
 
@@ -153,11 +153,14 @@ nichts überprüft. Unterstützung für Österreich ist für ein späteres 1.x-R
 Es kann eine anlegen.
 [`sevdesk_invoice_create_recurring`](tools.md#sevdesk_invoice_create_recurring) (Stufe `commit`, du
 bestätigst) speichert eine Vorlage für wiederkehrende Rechnungen, monatlich, vierteljährlich,
-halbjährlich oder jährlich, aus der sevDesk dann an jedem Ausführungstag selbst eine Rechnung
-erzeugt ([Abo-Rechnungen](guides/invoices.de.md#abo-rechnungen)). Was sevDesk an einem
-Ausführungstag erzeugt (einen Entwurf oder eine fertiggestellte Rechnung, versendet oder nicht),
-ist noch nicht erfasst; prüf deshalb die erste erzeugte Rechnung. Ändern oder beenden lässt sich
-eine Vorlage vorerst nur in der sevDesk-Web-App.
+halbjährlich oder jährlich, mit eingeschalteter automatischer Generierung, außer du willst sie aus
+([Abo-Rechnungen](guides/invoices.de.md#abo-rechnungen)). sevDesk erzeugt daraus dann an jedem
+Ausführungstag selbst einen Rechnungsentwurf, innerhalb etwa einer Minute: nicht fertiggestellt,
+nicht versendet, mit einer vorläufigen Nummer, die beim Fertigstellen endgültig wird. Du prüfst
+jeden Entwurf und stellst ihn mit den üblichen Rechnungswerkzeugen fertig und versendest ihn. Das
+automatische Versenden von sevDesk, das jede erzeugte Rechnung fertigstellen, per E-Mail versenden
+und festschreiben würde, bevor jemand sie sieht, schaltet der Server nie ein. Ändern oder beenden
+lässt sich eine Vorlage vorerst nur in der sevDesk-Web-App.
 
 ### Kann es Briefe per Post versenden?
 

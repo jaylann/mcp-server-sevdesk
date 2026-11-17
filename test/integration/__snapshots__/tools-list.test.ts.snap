@@ -2297,6 +2297,11 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
           "minLength": 1,
           "type": "string",
         },
+        "autoGenerate": {
+          "default": true,
+          "description": "Automatische Generierung. true: sevDesk creates a draft invoice from the template on every run date by itself, within about a minute; the drafts are neither finalized nor sent. false: sevDesk creates nothing until someone switches it on in the sevDesk web app or clicks "Rechnung erzeugen" there.",
+          "type": "boolean",
+        },
         "contactId": {
           "description": "Customer contact id (Kontakt), from sevdesk_contacts_search.",
           "exclusiveMinimum": 0,

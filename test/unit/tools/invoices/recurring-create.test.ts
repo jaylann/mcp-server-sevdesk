@@ -1,14 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { TEMPLATE_SETTINGS_EMBED } from "../../../../src/domain/recurring/schedule.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { invoiceCreateRecurringTool as tool } from "../../../../src/tools/invoices/recurring-create.js";
 import { ACCOUNT_RECURRING_INVOICES } from "../../../../src/tools/types.js";
-import { type FakeRoute, FakeSevdeskClient, loadFixture } from "../../../helpers/fake-client.js";
+import { type FakeRoute, FakeSevdeskClient } from "../../../helpers/fake-client.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import { notFound, TIMESTAMPS, unknownRegimeRoute, withRoutes } from "../drafts/routes.js";
 import {
   recurringCreateArgs as args,
   recurringCreateRoutes as routes,
+  SETTINGS_NEVER_SET,
+  SETTINGS_ON,
+  settingsReadRoute,
+  templateRow,
 } from "./recurring-routes.js";
 
 /** Berlin midnight of 2026-12-01 and 2027-03-01 in Unix seconds. */
@@ -41,13 +46,6 @@ async function refusal(callArgs: unknown, table: readonly FakeRoute[] = routes) 
   return { message: (error as SevdeskError).message, client };
 }
 
-/** The template row of the read-back fixture with `overrides`. */
-function templateRow(overrides: Record<string, unknown>): Record<string, unknown> {
-  const [row] = (loadFixture("recurring/template-2301.json").body as { objects: unknown[] })
-    .objects as Record<string, unknown>[];
-  return { ...row, ...overrides };
-}
-
 /** `GET /Invoice?invoiceType=WKR` answering `rows` (the duplicate check). */
 function templatesRoute(rows: readonly Record<string, unknown>[]): FakeRoute {
   return { path: "/Invoice", query: { invoiceType: "WKR" }, response: { body: { objects: rows } } };
@@ -78,6 +76,7 @@ const expectedBody = {
     addressCountry: { id: 1, objectName: "StaticCountry" },
     accountIntervall: "P0Y1M0W",
     accountStartDate: DEC_1,
+    propertyAutoGenerateRecurringInvoice: true,
   },
   invoicePosSave: [
     {
@@ -144,6 +143,78 @@ describe("sevdesk_invoice_create_recurring", () => {
     expect(plan.state.body.invoice.accountIntervall).toBe(wire);
   });
 
+  describe("automatic generation (D-132)", () => {
+    it("is on by default and sent as true, the same as asking for it", async () => {
+      const byDefault = await prepare(args);
+      const asked = await prepare({ ...args, autoGenerate: true });
+      expect(byDefault.plan.state.body.invoice.propertyAutoGenerateRecurringInvoice).toBe(true);
+      expect(asked.plan).toEqual(byDefault.plan);
+    });
+
+    it("is left out when off: a template saved without it reads null, which is off", async () => {
+      const { plan } = await prepare({ ...args, autoGenerate: false });
+      expect(plan.state.body.invoice).not.toHaveProperty("propertyAutoGenerateRecurringInvoice");
+      const { propertyAutoGenerateRecurringInvoice: _on, ...withoutSwitch } = expectedBody.invoice;
+      expect(plan.state.body).toEqual({ ...expectedBody, invoice: withoutSwitch });
+    });
+
+    it("is part of the approval: on and off bind different bodies", async () => {
+      const on = await prepare(args);
+      const off = await prepare({ ...args, autoGenerate: false });
+      expect(off.plan.binding).not.toBe(on.plan.binding);
+    });
+
+    it("is a boolean, nothing else", () => {
+      for (const value of ["1", "0", 1, 0, null]) {
+        expect(tool.input.safeParse({ ...args, autoGenerate: value }).success, String(value)).toBe(
+          false,
+        );
+      }
+    });
+
+    it("is stated as a fact, with what it means on a run date, in both languages", async () => {
+      const on = await prepare(args);
+      const off = await prepare({ ...args, autoGenerate: false });
+      const fact = (plan: typeof on.plan, label: string, lang: "en" | "de" = "en") =>
+        (lang === "de" ? plan.previewDe : plan.preview).facts.find((f) => f.label === label)?.value;
+      const label = "Automatic generation (Automatische Generierung)";
+      expect(fact(on.plan, label)).toBe("on (sevDesk creates a draft invoice on every run date)");
+      expect(fact(off.plan, label)).toBe("off (sevDesk creates nothing by itself)");
+      expect(fact(on.plan, "Automatische Generierung", "de")).toBe(
+        "an (sevDesk erzeugt an jedem Ausführungstag einen Rechnungsentwurf)",
+      );
+      expect(fact(off.plan, "Automatische Generierung", "de")).toBe(
+        "aus (sevDesk erzeugt von selbst nichts)",
+      );
+      expect(off.plan.preview.warnings[0]).toBe(
+        "Automatic generation is off: sevDesk creates nothing from this template by itself, on " +
+          "no run date, until someone switches automatic generation on for it in the sevDesk " +
+          'web app or clicks "Rechnung erzeugen" there.',
+      );
+      expect(off.plan.previewDe.warnings[0]).toBe(
+        "Die automatische Generierung ist aus: sevDesk erzeugt aus dieser Vorlage von selbst " +
+          "nichts, an keinem Ausführungstag, bis jemand sie in der sevDesk-Web-App für die " +
+          "Vorlage einschaltet oder dort auf „Rechnung erzeugen“ klickt.",
+      );
+    });
+
+    it("warns that a first run today makes the first draft at once, only when on", async () => {
+      const today = { ...args, startDate: "2026-11-17" };
+      const on = await prepare(today);
+      const off = await prepare({ ...today, autoGenerate: false });
+      expect(on.plan.preview.warnings[3]).toBe(
+        "The first run is today, so it is due at once: sevDesk creates the first draft within " +
+          "about a minute of saving the template.",
+      );
+      expect(on.plan.previewDe.warnings[3]).toBe(
+        "Die erste Ausführung ist heute und damit sofort fällig: sevDesk erzeugt den ersten " +
+          "Entwurf etwa eine Minute nach dem Speichern der Vorlage.",
+      );
+      expect(off.plan.preview.warnings).toHaveLength(2);
+      expect(off.plan.previewDe.warnings).toHaveLength(2);
+    });
+  });
+
   it("previews customer, schedule, texts, positions and totals in English", async () => {
     const { plan } = await prepare({
       ...args,
@@ -165,9 +236,10 @@ describe("sevdesk_invoice_create_recurring", () => {
       { label: "Interval", value: "monthly, every month on day 1 (P0Y1M0W)" },
       { label: "First run", value: "2026-12-01" },
       { label: "Following runs", value: "2027-01-01, 2027-02-01, 2027-03-01" },
+      { label: "End", value: "none (the template runs until it is ended)" },
       {
-        label: "End",
-        value: "none (sevDesk keeps creating invoices until the template is ended)",
+        label: "Automatic generation (Automatische Generierung)",
+        value: "on (sevDesk creates a draft invoice on every run date)",
       },
       { label: "Contact person (Ansprechpartner)", value: "Erika Musterfrau (user 2001)" },
       { label: "Title (Betreff)", value: "Rechnung" },
@@ -186,15 +258,18 @@ describe("sevdesk_invoice_create_recurring", () => {
       { label: "Total per invoice", value: "net 55.00 EUR, tax 10.45 EUR, gross 65.45 EUR" },
     ]);
     expect(plan.preview.warnings).toEqual([
-      "From the first run on, sevDesk creates an invoice from this template on every run date by " +
-        "itself, with these positions and texts; nobody is asked again. This approval covers " +
-        "every one of those invoices until the template ends.",
-      "Not recorded yet: what sevDesk generates on a run date (a draft, or a finalized invoice " +
-        "with a number that is booked), whether it sends that invoice to the customer, and " +
-        "whether a template saved with status 100 runs at all. Check the first invoice it " +
-        "generates in sevDesk.",
-      "To change, pause or end the template later, use the sevDesk web app (Abo-Rechnungen); " +
-        "this server has no tool for that yet.",
+      "Automatic generation is on: on every run date, within about a minute after 00:00 (Berlin " +
+        "time), sevDesk creates a draft invoice from this template by itself, with these " +
+        "positions and texts plus a line in the head text that names the billing period (the " +
+        "run date to the day before the next run). sevDesk neither finalizes nor sends the " +
+        "draft, and its number is provisional (several drafts can show the same number until " +
+        "each is finalized): a person must still finalize and send every draft.",
+      "This server never switches on automatic sending (Automatisches Versenden). If someone " +
+        "switches it on for the template in the sevDesk web app, sevDesk finalizes every invoice " +
+        "it creates with its final number, e-mails it with the PDF to the customer and enshrines " +
+        "it (festgeschrieben) within about two minutes of the run time, before anyone has seen it.",
+      "To change, pause or end the template later, or to switch automatic generation on or off, " +
+        "use the sevDesk web app (Abo-Rechnungen); this server has no tool for that yet.",
     ]);
   });
 
@@ -211,6 +286,7 @@ describe("sevdesk_invoice_create_recurring", () => {
       "Erste Ausführung",
       "Folgende Ausführungen",
       "Ende",
+      "Automatische Generierung",
       "Ansprechpartner",
       "Betreff",
       "Preise eingegeben als",
@@ -223,12 +299,21 @@ describe("sevdesk_invoice_create_recurring", () => {
     const value = (label: string) => plan.previewDe.facts.find((f) => f.label === label)?.value;
     expect(value("Intervall")).toBe("monatlich, jeden Monat am 1. (P0Y1M0W)");
     expect(value("Folgende Ausführungen")).toBe("01.01.2027, 01.02.2027");
-    expect(value("Ende")).toBe("15.02.2027 (bis dahin 3 Rechnungen, die erste eingeschlossen)");
+    expect(value("Ende")).toBe("15.02.2027 (bis dahin 3 Ausführungen, die erste eingeschlossen)");
     expect(value("Position 1")).toBe("Beratung: 3 × 10,00 EUR netto, 19 % USt. → netto 30,00 EUR");
     expect(value("Summe je Rechnung")).toBe("netto 55,00 EUR, USt. 10,45 EUR, brutto 65,45 EUR");
     expect(plan.previewDe.warnings).toHaveLength(plan.preview.warnings.length);
+    expect(plan.previewDe.warnings[0]).toBe(
+      "Die automatische Generierung ist an: An jedem Ausführungstag erzeugt sevDesk etwa eine " +
+        "Minute nach 0 Uhr (Berliner Zeit) selbst einen Rechnungsentwurf aus dieser Vorlage, mit " +
+        "diesen Positionen und Texten und einer Zeile im Kopftext, die den Abrechnungszeitraum " +
+        "nennt (vom Ausführungstag bis zum Tag vor der nächsten Ausführung). sevDesk stellt den " +
+        "Entwurf weder fertig noch versendet ihn, und seine Nummer ist vorläufig (mehrere " +
+        "Entwürfe können dieselbe Nummer zeigen, bis jeder fertiggestellt ist): Jeden Entwurf " +
+        "muss noch jemand fertigstellen und versenden.",
+    );
     expect(plan.preview.facts.find((f) => f.label === "End")?.value).toBe(
-      "2027-02-15 (3 invoices up to then, the first included)",
+      "2027-02-15 (3 runs up to then, the first included)",
     );
   });
 
@@ -242,16 +327,16 @@ describe("sevdesk_invoice_create_recurring", () => {
   it("warns when the first run is today, and when a run falls on the end date", async () => {
     const { plan } = await prepare({ ...args, startDate: "2026-11-17", endDate: "2027-01-17" });
     expect(plan.preview.warnings.slice(3)).toEqual([
-      "The first run is today: sevDesk may create the first invoice as soon as the template is " +
-        "saved.",
-      "A run falls on the end date itself (2027-01-17); whether sevDesk still creates an " +
-        "invoice on its end date is not recorded.",
+      "The first run is today, so it is due at once: sevDesk creates the first draft within " +
+        "about a minute of saving the template.",
+      "A run falls on the end date itself (2027-01-17); whether sevDesk still runs the template " +
+        "on its end date is not recorded.",
     ]);
     expect(plan.previewDe.warnings.slice(3)).toEqual([
-      "Die erste Ausführung ist heute: sevDesk erzeugt die erste Rechnung womöglich, sobald die " +
-        "Vorlage gespeichert ist.",
-      "Eine Ausführung fällt genau auf das Enddatum (17.01.2027); ob sevDesk am Enddatum selbst " +
-        "noch eine Rechnung erzeugt, ist nicht erfasst.",
+      "Die erste Ausführung ist heute und damit sofort fällig: sevDesk erzeugt den ersten " +
+        "Entwurf etwa eine Minute nach dem Speichern der Vorlage.",
+      "Eine Ausführung fällt genau auf das Enddatum (17.01.2027); ob sevDesk die Vorlage am " +
+        "Enddatum selbst noch ausführt, ist nicht erfasst.",
     ]);
     expect(plan.preview.facts.find((f) => f.label === "Following runs")?.value).toBe(
       "2026-12-17, 2027-01-17",
@@ -342,30 +427,41 @@ describe("sevdesk_invoice_create_recurring", () => {
     expect(output.data.schedule).toEqual({
       interval: "P0Y1M0W",
       intervalKey: "monthly",
+      every: "every 1 month",
       startDate: "2026-12-01",
       nextRun: "2026-12-01",
+      autoGenerate: "on",
+      autoSendConfigured: false,
     });
     expect(output.data.notes).toBeUndefined();
     expect(output.summary).toBe(
       "Created recurring invoice template 2301 (monthly from 2026-12-01, gross 65.45 EUR per " +
-        "invoice).",
+        "invoice, automatic generation on).",
+    );
+    // The schedule and the switches come from the raw record, read with the settings embed.
+    expect(client.callsTo("/Invoice/2301").map((call) => call.query["embed"])).toEqual(
+      expect.arrayContaining(["contact", TEMPLATE_SETTINGS_EMBED]),
     );
   });
 
   it("says where sevDesk stored another schedule, type, status or total than was sent", async () => {
-    const stored = templateRow({
+    const changes = {
       invoiceType: "RE",
       status: "200",
       sumGross: "70",
       accountStartDate: "2027-01-01T00:00:00+01:00",
       accountNextInvoice: "2027-01-01T00:00:00+01:00",
-    });
+    };
     const client = new FakeSevdeskClient(
-      withRoutes(routes, {
-        path: "/Invoice/2301",
-        query: { embed: "contact" },
-        response: { body: { objects: [stored] } },
-      }),
+      withRoutes(
+        routes,
+        {
+          path: "/Invoice/2301",
+          query: { embed: "contact" },
+          response: { body: { objects: [templateRow(changes)] } },
+        },
+        settingsReadRoute(templateRow({ ...changes, ...SETTINGS_ON })),
+      ),
     );
     const { output } = await executeWrite(tool, args, client);
     expect(output.data.notes).toEqual([
@@ -381,6 +477,109 @@ describe("sevdesk_invoice_create_recurring", () => {
         "template in sevDesk before its first run.",
     ]);
     expect(output.summary).toMatch(/ See notes\.$/);
+  });
+
+  describe("compares automatic generation and sending as stored with what was sent (D-132)", () => {
+    const check = "Check the template in the sevDesk web app before its first run.";
+    const offNote =
+      "sevDesk stored automatic generation (Automatische Generierung) as off, not on as sent, so " +
+      "it creates nothing from the template by itself. Switch it on for the template in the " +
+      "sevDesk web app.";
+    const onNote =
+      "sevDesk stored automatic generation (Automatische Generierung) as on although it was left " +
+      "off: it creates a draft invoice from the template on every run date. Switch it off in the " +
+      "sevDesk web app if that is not wanted.";
+    const zeroNote = (sent: string) =>
+      "sevDesk stored automatic generation (Automatische Generierung) as 0, a value whose " +
+      `meaning is not recorded. ${sent} ${check}`;
+
+    async function notesFor(callArgs: unknown, stored: Record<string, unknown>) {
+      const client = new FakeSevdeskClient(
+        withRoutes(routes, settingsReadRoute(templateRow(stored))),
+      );
+      const { output } = await executeWrite(tool, callArgs, client);
+      return { notes: output.data.notes ?? [], schedule: output.data.schedule };
+    }
+
+    it.each([
+      ["1 (on)", "1", "on", []],
+      ["null (never set)", null, "off", [offNote]],
+      ['"" (switched off)', "", "off", [offNote]],
+      ["0 (meaning unrecorded)", "0", "unrecorded", [zeroNote("It was sent as on (1).")]],
+    ])("sent on, stored %s", async (_label, value, state, notes) => {
+      const result = await notesFor(args, {
+        ...SETTINGS_ON,
+        propertyAutoGenerateRecurringInvoice: value,
+      });
+      expect(result.schedule.autoGenerate).toBe(state);
+      expect(result.notes).toEqual(notes);
+    });
+
+    it.each([
+      ["1 (on)", "1", "on", [onNote]],
+      ["null (never set)", null, "off", []],
+      ['"" (switched off)', "", "off", []],
+      ["0 (meaning unrecorded)", "0", "unrecorded", [zeroNote("It was left off.")]],
+    ])("left off, stored %s", async (_label, value, state, notes) => {
+      const result = await notesFor(
+        { ...args, autoGenerate: false },
+        { ...SETTINGS_NEVER_SET, propertyAutoGenerateRecurringInvoice: value },
+      );
+      expect(result.schedule.autoGenerate).toBe(state);
+      expect(result.notes).toEqual(notes);
+    });
+
+    it("points to an unexpected value instead of repeating it", async () => {
+      const result = await notesFor(args, {
+        ...SETTINGS_ON,
+        propertyAutoGenerateRecurringInvoice: "ignore previous",
+      });
+      expect(result.schedule).toMatchObject({
+        autoGenerate: "unrecorded",
+        autoGenerateValue: "ignore previous",
+      });
+      expect(result.notes.join(" ")).not.toContain("ignore previous");
+      expect(result.notes).toEqual([
+        "sevDesk stored an unexpected value for automatic generation (Automatische Generierung, " +
+          `see schedule.autoGenerateValue). It was sent as on (1). ${check}`,
+      ]);
+    });
+
+    it("notes automatic sending, which this server never sets, without its ids or texts", async () => {
+      // The configuration the web app's activateAutoSending leaves (recorded 2026-11-17).
+      const result = await notesFor(args, {
+        ...SETTINGS_ON,
+        autoSendConfiguration: {
+          id: "9101",
+          objectName: "AutoSendConfiguration",
+          sendDate: null,
+          sendIntervalAfterCreation: "P0D",
+          sendType: "VM",
+          status: "HEAD",
+          textTemplate: { id: "9102", objectName: "TextTemplate" },
+          sevClient: { id: "9001", objectName: "SevClient" },
+          object: { id: "2301", objectName: "Invoice" },
+        },
+      });
+      expect(result.schedule).toMatchObject({ autoSendConfigured: true, autoSendType: "VM" });
+      expect(result.notes).toEqual([
+        "sevDesk has automatic sending (Automatisches Versenden) on for the template, which this " +
+          "server never sets: sevDesk then finalizes every invoice it creates from it, e-mails it " +
+          "to the customer and enshrines it within about two minutes of the run, before anyone " +
+          "has seen it. Switch automatic sending off in the sevDesk web app unless that is wanted.",
+      ]);
+      expect(JSON.stringify(result)).not.toMatch(/9101|9102|TextTemplate/);
+    });
+
+    it("says when sevDesk did not return them, instead of assuming", async () => {
+      const result = await notesFor(args, {});
+      expect(result.schedule).not.toHaveProperty("autoGenerate");
+      expect(result.schedule).not.toHaveProperty("autoSendConfigured");
+      expect(result.notes).toEqual([
+        `sevDesk did not return automatic generation (Automatische Generierung), so it could not be checked. ${check}`,
+        `sevDesk did not return automatic sending (Automatisches Versenden), so it could not be checked. ${check}`,
+      ]);
+    });
   });
 
   describe("refuses before sending anything", () => {
@@ -454,6 +653,8 @@ describe("sevdesk_invoice_create_recurring", () => {
         { deliveryDate: "2026-12-01" },
         { accountNextInvoice: "2026-12-01" },
         { recurringInterval: "P0Y1M0W" },
+        { propertyAutoGenerateRecurringInvoice: true },
+        { autoSendConfiguration: { sendType: "VM" } },
         { interval: "weekly" },
         { interval: "P0Y1M0W" },
         { startDate: "01.12.2026" },

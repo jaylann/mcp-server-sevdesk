@@ -5,8 +5,9 @@
  * A template prints its texts and positions on every invoice sevDesk creates from it, without
  * asking anyone again, so the human approves all of it here: the texts in full (not cut, as the
  * finalize approval shows a draft's, `../lifecycle/content.ts`), every position, the totals per
- * invoice, and the schedule with its next run dates. The approval is also bound to the exact body
- * that is sent (`create.ts`).
+ * invoice, the schedule with its next run dates, and whether sevDesk creates the drafts by itself
+ * (automatic generation), with what that means on a run date (`run-date.ts`). The approval is also
+ * bound to the exact body that is sent (`create.ts`), the switch included.
  */
 import { cleanText, trimmedText } from "../common.js";
 import type { NewInvoiceContent } from "../drafts/invoice.js";
@@ -28,7 +29,7 @@ import {
   phrase,
   type PreviewLanguage,
 } from "../preview-text.js";
-import { RUN_DATE_BEHAVIOUR } from "./run-date.js";
+import { FIRST_RUN_TODAY, RUN_DATE_BEHAVIOUR } from "./run-date.js";
 import { INTERVALS, runCount, runDates, type Schedule } from "./schedule.js";
 
 /** Runs listed after the first one. */
@@ -43,33 +44,29 @@ export interface TemplatePreviewInput {
   readonly basics: CreateBasics;
   readonly content: NewInvoiceContent;
   readonly schedule: Schedule;
+  /** Whether sevDesk creates a draft on every run date by itself (Automatische Generierung). */
+  readonly autoGenerate: boolean;
   /** Berlin's `YYYY-MM-DD` when the call is prepared. */
   readonly today: string;
   /** Ids of templates for the same customer with the same gross total, not deactivated. */
   readonly similar: readonly number[];
 }
 
-const AUTOMATIC: Phrase = phrase(
-  "From the first run on, sevDesk creates an invoice from this template on every run date by " +
-    "itself, with these positions and texts; nobody is asked again. This approval covers every " +
-    "one of those invoices until the template ends.",
-  "Ab der ersten Ausführung erzeugt sevDesk an jedem Ausführungstag selbst eine Rechnung aus " +
-    "dieser Vorlage, mit diesen Positionen und Texten; niemand wird erneut gefragt. Diese " +
-    "Freigabe gilt für alle diese Rechnungen, bis die Vorlage endet.",
-);
-
 const HOW_TO_END: Phrase = phrase(
-  "To change, pause or end the template later, use the sevDesk web app (Abo-Rechnungen); this " +
-    "server has no tool for that yet.",
+  "To change, pause or end the template later, or to switch automatic generation on or off, use " +
+    "the sevDesk web app (Abo-Rechnungen); this server has no tool for that yet.",
   "Ändern, pausieren oder beenden lässt sich die Vorlage vorerst nur in der sevDesk-Web-App " +
-    "(Abo-Rechnungen); dieser Server hat dafür noch kein Werkzeug.",
+    "(Abo-Rechnungen); dort wird auch die automatische Generierung ein- oder ausgeschaltet. " +
+    "Dieser Server hat dafür noch kein Werkzeug.",
 );
 
-const STARTS_TODAY: Phrase = phrase(
-  "The first run is today: sevDesk may create the first invoice as soon as the template is saved.",
-  "Die erste Ausführung ist heute: sevDesk erzeugt die erste Rechnung womöglich, sobald die " +
-    "Vorlage gespeichert ist.",
-);
+const AUTO_GENERATE_TEXT: Readonly<Record<"on" | "off", Phrase>> = {
+  on: phrase(
+    "on (sevDesk creates a draft invoice on every run date)",
+    "an (sevDesk erzeugt an jedem Ausführungstag einen Rechnungsentwurf)",
+  ),
+  off: phrase("off (sevDesk creates nothing by itself)", "aus (sevDesk erzeugt von selbst nichts)"),
+};
 
 const LABELS = {
   en: {
@@ -79,6 +76,7 @@ const LABELS = {
     firstRun: "First run",
     followingRuns: "Following runs",
     end: "End",
+    autoGenerate: "Automatic generation (Automatische Generierung)",
     contactPerson: "Contact person (Ansprechpartner)",
     title: "Title (Betreff)",
     paymentTerm: "Payment term (Zahlungsziel)",
@@ -97,6 +95,7 @@ const LABELS = {
     firstRun: "Erste Ausführung",
     followingRuns: "Folgende Ausführungen",
     end: "Ende",
+    autoGenerate: "Automatische Generierung",
     contactPerson: "Ansprechpartner",
     title: "Betreff",
     paymentTerm: "Zahlungsziel",
@@ -165,19 +164,19 @@ function intervalText(schedule: Schedule, lang: PreviewLanguage): string {
   return `${label}, ${every} on day ${day} (${wire})`;
 }
 
-/** The end date with the number of invoices up to it, or that there is none. */
+/** The end date with the number of runs up to it, or that there is none. */
 function endText(schedule: Schedule, lang: PreviewLanguage): string {
   const count = runCount(schedule);
   if (schedule.endDate === undefined || count === undefined) {
     return lang === "de"
-      ? "keines (sevDesk erzeugt Rechnungen, bis die Vorlage beendet wird)"
-      : "none (sevDesk keeps creating invoices until the template is ended)";
+      ? "keines (die Vorlage läuft, bis sie beendet wird)"
+      : "none (the template runs until it is ended)";
   }
   const end = dateText(schedule.endDate, lang);
   const plural = count === 1 ? "" : lang === "de" ? "en" : "s";
   return lang === "de"
-    ? `${end} (bis dahin ${String(count)} Rechnung${plural}, die erste eingeschlossen)`
-    : `${end} (${String(count)} invoice${plural} up to then, the first included)`;
+    ? `${end} (bis dahin ${String(count)} Ausführung${plural}, die erste eingeschlossen)`
+    : `${end} (${String(count)} run${plural} up to then, the first included)`;
 }
 
 function followingRunsText(schedule: Schedule, lang: PreviewLanguage): string {
@@ -251,6 +250,7 @@ function facts(input: TemplatePreviewInput, lang: PreviewLanguage): PreviewFact[
   add(t.firstRun, dateText(schedule.startDate, lang));
   add(t.followingRuns, followingRunsText(schedule, lang));
   add(t.end, endText(schedule, lang));
+  add(t.autoGenerate, AUTO_GENERATE_TEXT[switchState(input)][lang]);
   add(
     t.contactPerson,
     `${cleanText(person.name, NAME_MAX) ?? ""} (${user} ${String(person.id)})`.trim(),
@@ -320,20 +320,25 @@ function endOnRunWarning(schedule: Schedule, lang: PreviewLanguage): string | un
   if (runs.at(-1) !== endDate) return undefined;
   const end = dateText(endDate, lang);
   return lang === "de"
-    ? `Eine Ausführung fällt genau auf das Enddatum (${end}); ob sevDesk am Enddatum selbst ` +
-        "noch eine Rechnung erzeugt, ist nicht erfasst."
-    : `A run falls on the end date itself (${end}); whether sevDesk still creates an invoice on ` +
+    ? `Eine Ausführung fällt genau auf das Enddatum (${end}); ob sevDesk die Vorlage am ` +
+        "Enddatum selbst noch ausführt, ist nicht erfasst."
+    : `A run falls on the end date itself (${end}); whether sevDesk still runs the template on ` +
         "its end date is not recorded.";
+}
+
+function switchState(input: TemplatePreviewInput): "on" | "off" {
+  return input.autoGenerate ? "on" : "off";
 }
 
 /** Consequences first, then notes on the dates, a possible duplicate, and the tax rule. */
 function warnings(input: TemplatePreviewInput, lang: PreviewLanguage): string[] {
   const { schedule, basics } = input;
   const list: (string | undefined)[] = [
-    AUTOMATIC[lang],
-    RUN_DATE_BEHAVIOUR[lang],
+    RUN_DATE_BEHAVIOUR[switchState(input)][lang],
+    // What would turn the drafts into sent invoices: only relevant while sevDesk creates them.
+    input.autoGenerate ? RUN_DATE_BEHAVIOUR.autoSending[lang] : undefined,
     HOW_TO_END[lang],
-    schedule.startDate === input.today ? STARTS_TODAY[lang] : undefined,
+    input.autoGenerate && schedule.startDate === input.today ? FIRST_RUN_TODAY[lang] : undefined,
     endOnRunWarning(schedule, lang),
     similarWarning(input, lang),
     basics.regime === undefined

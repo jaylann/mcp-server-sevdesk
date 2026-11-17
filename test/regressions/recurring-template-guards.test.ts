@@ -6,9 +6,11 @@
  * D-111, D-112) and deletes one at status 100 and 50. A tool that only checked the status would
  * finalize, send, book, cancel, update or delete it, and a finalized template would put an invoice
  * without a customer's order into the books while sevDesk keeps billing from it. So the template
- * that `sevdesk_invoice_create_recurring` leaves behind is created here through MCP, and every
- * tool that takes an invoice id must refuse it before any data-changing request, at the status the
- * tool saves with and at the other statuses a template can have (200 active, 50 deactivated).
+ * that `sevdesk_invoice_create_recurring` leaves behind (automatic generation on, D-132) is
+ * created here through MCP, and every tool that takes an invoice id must refuse it before any
+ * data-changing request, at the status the tool saves with and at the other statuses a template
+ * can have (200 active, 50 deactivated). The drafts sevDesk generates from it are type RE and go
+ * through those tools like any draft.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -17,7 +19,7 @@ import { invoiceUpdateDraftTool } from "../../src/tools/invoices/draft-update.js
 import { INVOICE_LIFECYCLE_TOOLS } from "../../src/tools/invoices/lifecycle-tools.js";
 import { invoiceCreateRecurringTool } from "../../src/tools/invoices/recurring-create.js";
 import { approve } from "../helpers/confirm-client.js";
-import { type FakeRoute, loadFixture } from "../helpers/fake-client.js";
+import type { FakeRoute } from "../helpers/fake-client.js";
 import {
   closeWriteHarnessesAfterEach,
   resultData,
@@ -28,6 +30,8 @@ import {
 import {
   recurringCreateArgs,
   recurringCreateRoutes,
+  SETTINGS_ON,
+  templateRow as storedTemplate,
 } from "../unit/tools/invoices/recurring-routes.js";
 import { accountRoute, accountRow, positionRoutes } from "../unit/tools/lifecycle/helpers.js";
 
@@ -48,11 +52,9 @@ const TOOLS = [
   documentDeleteDraftTool,
 ];
 
-/** The template as the tool's read-back shows it, at `status`. */
+/** The template as the tool's read-back shows it, at `status`, with automatic generation on. */
 function templateRow(status: string): Record<string, unknown> {
-  const [row] = (loadFixture("recurring/template-2301.json").body as { objects: unknown[] })
-    .objects as Record<string, unknown>[];
-  return { ...row, status };
+  return storedTemplate({ ...SETTINGS_ON, status });
 }
 
 /** Every read of template 2301 answers `row` (with and without an embedded contact). */
@@ -114,7 +116,10 @@ describe("a template made by sevdesk_invoice_create_recurring", () => {
     expect(created.isError).not.toBe(true);
     expect(resultData(created)).toMatchObject({
       status: "done",
-      result: { invoice: { id: 2301, type: { code: "WKR" }, status: { code: 100 } } },
+      result: {
+        invoice: { id: 2301, type: { code: "WKR" }, status: { code: 100 } },
+        schedule: { autoGenerate: "on", autoSendConfigured: false },
+      },
     });
     expect(writesOf(fake)).toEqual([{ method: "POST", path: "/Invoice/Factory/saveInvoice" }]);
     const asked = prompts.length;

@@ -212,16 +212,17 @@ Status nach dem Speichern: Entwurf (50), noch nicht gebucht"
 
 exports[`German previews > create a recurring invoice template: says the same in German 1`] = `
 "Abo-Rechnung (Vorlage für wiederkehrende Rechnungen) für Musterfirma GmbH (Kontakt 1001) anlegen: 65,45 EUR brutto je Rechnung, monatlich ab 01.12.2026, bis sie beendet wird.
-! Ab der ersten Ausführung erzeugt sevDesk an jedem Ausführungstag selbst eine Rechnung aus dieser Vorlage, mit diesen Positionen und Texten; niemand wird erneut gefragt. Diese Freigabe gilt für alle diese Rechnungen, bis die Vorlage endet.
-! Noch nicht erfasst: was sevDesk an einem Ausführungstag erzeugt (einen Entwurf oder eine fertiggestellte, gebuchte Rechnung mit Nummer), ob sevDesk diese Rechnung an den Kunden versendet und ob eine mit Status 100 gespeicherte Vorlage überhaupt ausgeführt wird. Prüf die erste erzeugte Rechnung in sevDesk.
-! Ändern, pausieren oder beenden lässt sich die Vorlage vorerst nur in der sevDesk-Web-App (Abo-Rechnungen); dieser Server hat dafür noch kein Werkzeug.
+! Die automatische Generierung ist an: An jedem Ausführungstag erzeugt sevDesk etwa eine Minute nach 0 Uhr (Berliner Zeit) selbst einen Rechnungsentwurf aus dieser Vorlage, mit diesen Positionen und Texten und einer Zeile im Kopftext, die den Abrechnungszeitraum nennt (vom Ausführungstag bis zum Tag vor der nächsten Ausführung). sevDesk stellt den Entwurf weder fertig noch versendet ihn, und seine Nummer ist vorläufig (mehrere Entwürfe können dieselbe Nummer zeigen, bis jeder fertiggestellt ist): Jeden Entwurf muss noch jemand fertigstellen und versenden.
+! Dieser Server schaltet das automatische Versenden nie ein. Schaltet es jemand in der sevDesk-Web-App für die Vorlage ein, stellt sevDesk jede erzeugte Rechnung etwa zwei Minuten nach der Ausführungszeit mit ihrer endgültigen Nummer fertig, schickt sie mit dem PDF per E-Mail an den Kunden und schreibt sie fest, bevor jemand sie gesehen hat.
+! Ändern, pausieren oder beenden lässt sich die Vorlage vorerst nur in der sevDesk-Web-App (Abo-Rechnungen); dort wird auch die automatische Generierung ein- oder ausgeschaltet. Dieser Server hat dafür noch kein Werkzeug.
 (umkehrbar)
 Kunde: Musterfirma GmbH (Kontakt 1001)
 Anschrift auf den Rechnungen: Musterfirma GmbH, Buchhaltung, Musterstraße 1, 12345 Musterstadt, Deutschland
 Intervall: monatlich, jeden Monat am 1. (P0Y1M0W)
 Erste Ausführung: 01.12.2026
 Folgende Ausführungen: 01.01.2027, 01.02.2027, 01.03.2027
-Ende: keines (sevDesk erzeugt Rechnungen, bis die Vorlage beendet wird)
+Ende: keines (die Vorlage läuft, bis sie beendet wird)
+Automatische Generierung: an (sevDesk erzeugt an jedem Ausführungstag einen Rechnungsentwurf)
 Ansprechpartner: Erika Musterfrau (Benutzer 2001)
 Betreff: Rechnung
 Preise eingegeben als: netto

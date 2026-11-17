@@ -1,6 +1,9 @@
 /**
- * Creating a recurring invoice template (Abo-Rechnung, invoice type WKR): sevDesk creates an
- * invoice from it on every run date by itself (spec/deviations.md D-111, D-112).
+ * Creating a recurring invoice template (Abo-Rechnung, invoice type WKR): with automatic
+ * generation on, sevDesk creates a draft invoice from it on every run date by itself
+ * (spec/deviations.md D-111, D-112, D-132; `run-date.ts`). The switch is on unless the caller
+ * turns it off: a template that creates nothing is rarely what "bill monthly" means, and what it
+ * creates are drafts that a person still finalizes and sends. Automatic sending is never set.
  *
  * The template is made of what an invoice draft is made of, resolved and checked by the same code
  * (`../drafts/invoice.ts`: `INVOICE_TAX_OPTIONS`, `newInvoiceContent`, `newInvoicePositions` over
@@ -9,8 +12,9 @@
  * top come the schedule (`schedule.ts`) and a total above zero.
  *
  * One `saveInvoice` without an id, never retried; then the template is read back (the invoice and
- * its positions, and the raw record for the schedule fields the invoice DTO does not carry) and
- * every way the stored schedule differs from the one sent becomes a note.
+ * its positions, and the raw record with automatic generation and sending embedded, for what the
+ * invoice DTO does not carry) and every way the stored schedule or switches differ from what was
+ * sent becomes a note.
  */
 import { z } from "zod";
 
@@ -59,7 +63,9 @@ import {
   type Schedule,
   scheduleDifferences,
   type ScheduleInput,
+  settingsDifferences,
   type StoredSchedule,
+  TEMPLATE_SETTINGS_EMBED,
 } from "./schedule.js";
 
 const SAVE_PATH = "/Invoice/Factory/saveInvoice";
@@ -87,6 +93,15 @@ export const recurringInvoiceCreateInputShape = {
       "No invoice after this date (Enddatum), YYYY-MM-DD, at most 10 years after startDate; " +
         "leave out to run until the template is ended.",
     ),
+  autoGenerate: z
+    .boolean()
+    .default(true)
+    .describe(
+      "Automatische Generierung. true: sevDesk creates a draft invoice from the " +
+        "template on every run date by itself, within about a minute; the drafts are neither " +
+        "finalized nor sent. false: sevDesk creates nothing until someone switches it on in the " +
+        'sevDesk web app or clicks "Rechnung erzeugen" there.',
+    ),
   positions: invoiceCreateInputShape.positions.describe(
     "Positionen of every invoice, in printed order; prices per priceMode.",
   ),
@@ -101,7 +116,10 @@ export const recurringInvoiceCreateInputShape = {
   ...addressInputShape,
 };
 
-export interface RecurringInvoiceCreateArgs extends CreateArgs, InvoiceContentArgs, ScheduleInput {}
+export interface RecurringInvoiceCreateArgs extends CreateArgs, InvoiceContentArgs, ScheduleInput {
+  /** Automatic generation (`propertyAutoGenerateRecurringInvoice`); the tool defaults it to on. */
+  readonly autoGenerate: boolean;
+}
 
 /** What `execute` needs: the exact body the preview describes, and what it promised. */
 export interface RecurringInvoiceState {
@@ -159,6 +177,8 @@ export async function prepareRecurringInvoiceCreate(
         accountStartDate: wireTimestamp(schedule.startDate),
         accountEndDate:
           schedule.endDate === undefined ? undefined : wireTimestamp(schedule.endDate),
+        // Off is left out: a template saved without it reads null, the recorded "off" (D-132).
+        propertyAutoGenerateRecurringInvoice: args.autoGenerate ? true : undefined,
       },
       invoicePosSave: newInvoicePositions(basics),
       invoicePosDelete: null,
@@ -167,7 +187,15 @@ export async function prepareRecurringInvoiceCreate(
   );
 
   return {
-    ...templatePreviews({ contactId: args.contactId, basics, content, schedule, today, similar }),
+    ...templatePreviews({
+      contactId: args.contactId,
+      basics,
+      content,
+      schedule,
+      autoGenerate: args.autoGenerate,
+      today,
+      similar,
+    }),
     binding: sha256Hex(canonicalJson({ kind: "recurring-invoice-template", body })),
     state: { body, schedule, expected: basics.expected },
   };
@@ -232,11 +260,12 @@ export async function executeRecurringInvoiceCreate(
   const { details, schedule } = await readBack(saved, async () => {
     const [read, record] = await Promise.all([
       getInvoice(client, id, { signal, cacheOwner }),
-      // The raw record: the schedule fields beyond interval and next run are not in the DTO.
+      // The raw record: the schedule fields beyond interval and next run are not in the DTO,
+      // and automatic generation and sending only come with this embed (D-132).
       client.request({
         method: "GET",
         path: sevdeskPath("Invoice", toSevdeskId(id)),
-        query: { embed: "contact" },
+        query: { embed: TEMPLATE_SETTINGS_EMBED },
         ...withSignal,
       }),
     ]);
@@ -245,6 +274,7 @@ export async function executeRecurringInvoiceCreate(
       schedule: readStoredSchedule(expectSingle(record, `invoice ${String(id)}`)),
     };
   });
+  const askedOn = state.body.invoice.propertyAutoGenerateRecurringInvoice === true;
   return {
     id,
     details,
@@ -252,6 +282,7 @@ export async function executeRecurringInvoiceCreate(
     notes: [
       ...recordNotes(id, details, state.expected),
       ...scheduleDifferences(state.schedule, schedule),
+      ...settingsDifferences(askedOn, schedule),
     ],
   };
 }
