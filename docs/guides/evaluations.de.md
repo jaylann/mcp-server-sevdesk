@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/evaluations.md sha256:be20700dc6d4 -->
+<!-- translated-from: docs/guides/evaluations.md sha256:9570fe3b1ee5 -->
 
 # Auswertungen und Exporte
 
@@ -31,9 +31,12 @@ DATEV-Export und das Belegarchiv brauchen `write`, das Setzen der DATEV-Einstell
 | Die DATEV-Buchungsdaten für die Steuerberatung              | [`sevdesk_datev_export`](../tools.md#sevdesk_datev_export)                 | `write` |
 | Alle Rechnungs- oder Beleg-PDFs eines Zeitraums             | [`sevdesk_archive_export`](../tools.md#sevdesk_archive_export)             | `write` |
 
-Zwei Prompts kombinieren sie: [`vat_precheck`](../tools.md#vat_precheck) vor der
-Umsatzsteuer-Voranmeldung und [`month_end_close`](../tools.md#month_end_close) für den
-Monatsabschluss bis zur Übergabe an die Steuerberatung.
+Drei Prompts kombinieren sie: [`vat_precheck`](../tools.md#vat_precheck) vor der
+Umsatzsteuer-Voranmeldung, [`month_end_close`](../tools.md#month_end_close) für den
+Monatsabschluss bis zur Übergabe an die Steuerberatung und
+[`year_end_handoff`](../tools.md#year_end_handoff) für das Jahr: Gewinn- und Verlustrechnung,
+Prüfungen, offene Posten, DATEV-Export und das Belegarchiv in Teilen, die klein genug für seine
+Grenzen sind.
 
 ## Summen
 

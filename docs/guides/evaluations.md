@@ -27,9 +27,11 @@ settings needs `commit` ([Permissions](../permissions.md#tiers)).
 | The DATEV booking data for the tax adviser    | [`sevdesk_datev_export`](../tools.md#sevdesk_datev_export)                 | `write` |
 | All invoice or receipt PDFs of a period       | [`sevdesk_archive_export`](../tools.md#sevdesk_archive_export)             | `write` |
 
-Two prompts combine them: [`vat_precheck`](../tools.md#vat_precheck) before the
-Umsatzsteuer-Voranmeldung, and [`month_end_close`](../tools.md#month_end_close) for a month-end
-close up to the hand-over to the Steuerberater.
+Three prompts combine them: [`vat_precheck`](../tools.md#vat_precheck) before the
+Umsatzsteuer-Voranmeldung, [`month_end_close`](../tools.md#month_end_close) for a month-end close
+up to the hand-over to the Steuerberater, and [`year_end_handoff`](../tools.md#year_end_handoff)
+for the year: profit and loss, the audits, the open items, the DATEV export and the document
+archive in parts small enough for its limits.
 
 ## Totals
 

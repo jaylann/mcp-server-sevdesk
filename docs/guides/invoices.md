@@ -119,7 +119,10 @@ or surcharges on the whole source document; whether sevDesk takes them over has 
 so compare the new draft's totals before finalizing it. sevDesk gives the new document the next
 number of its range without moving the counter, so it can carry a number another confirmation or
 delivery note already has; the result names any it finds. To find offers that are still open, ask
-for sent offers in a date range ([`sevdesk_orders_list`](../tools.md#sevdesk_orders_list)).
+for sent offers in a date range ([`sevdesk_orders_list`](../tools.md#sevdesk_orders_list)). The
+[`offer_follow_up`](../tools.md#offer_follow_up) prompt does that for offers older than a number
+of days (14 by default) and goes through each with you: accepted or rejected, the order
+confirmation, the delivery note, the invoice, or a follow-up message you send yourself.
 
 ### From an offer or order confirmation
 

@@ -138,6 +138,33 @@ describe.each(CASES)("%s era over %s", (era, transport) => {
     expect(fake.writes()).toEqual([]);
   });
 
+  it("completes the arguments of the missing-receipts and offer prompts, not the year", async () => {
+    const { client, fake } = await serve(testConfig(), FIXTURE_ROUTES, era, transport);
+
+    expect(await complete(client, "missing_receipts", "period", "2024-q")).toEqual([
+      "2024-Q4",
+      "2024-Q3",
+      "2024-Q2",
+      "2024-Q1",
+    ]);
+    // The year has no completion kind: nothing is suggested, and nothing is read.
+    expect(await complete(client, "year_end_handoff", "year", "20")).toEqual([]);
+    expect(await complete(client, "offer_follow_up", "minAgeDays", "1")).toEqual([]);
+    expect(fake.calls).toEqual([]);
+
+    expect(await complete(client, "missing_receipts", "checkAccount", "konto")).toEqual([
+      "Basiskonto",
+      "Geschäftskonto Musterbank",
+    ]);
+    expect(await complete(client, "offer_follow_up", "contact", "muster")).toEqual([
+      "Musterfirma GmbH",
+      "Dr. Max Mustermann",
+      "Erika Musterfrau",
+      "Stadtverwaltung Musterstadt",
+    ]);
+    expect(fake.writes()).toEqual([]);
+  });
+
   it("reads each list once while the cache holds, across server instances", async () => {
     const { client, fake } = await serve(testConfig(), FIXTURE_ROUTES, era, transport);
 

@@ -154,6 +154,13 @@ unbooked transactions to vouchers by Belegnummer and amount and books each match
 [`sevdesk_transaction_book`](../tools.md#sevdesk_transaction_book) (`commit`). A bank fee with no
 receipt yet gets a voucher first, then the transaction is booked to it.
 
+To find the receipts that are missing in the first place, the
+[`missing_receipts`](../tools.md#missing_receipts) prompt goes through a month or quarter:
+outgoing transactions no voucher explains, suppliers that bill regularly without a bill in the
+period, receipts only on drafts or booked twice and, with `SEVDESK_FILE_DIRS`, the files in your
+receipt folder that no voucher carries. Its findings are hints, not tax advice; a receipt that
+turns up is filed as a voucher draft as above.
+
 ## Enshrine
 
 > Enshrine the vouchers of the third quarter.

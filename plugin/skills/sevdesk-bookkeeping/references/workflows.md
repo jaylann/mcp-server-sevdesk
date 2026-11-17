@@ -115,6 +115,31 @@ the prompt itself never calls sevDesk.
    documents (also other transactions' and cash bookings, listed in the preview): rebook them
    afterwards. Enshrined transactions and documents cannot be reset.
 
+## Missing receipts (fehlende Belege)
+
+Tiers: `read` to find them; `write` to file a found receipt as a voucher draft. The receipt
+folder check needs `SEVDESK_FILE_DIRS`.
+
+The `missing_receipts` prompt accepts optional strings: `period` (`YYYY-MM` or `YYYY-Qn`, default
+the previous month) and `checkAccount` (payment account name or id, up to 200 characters). It is
+listed when the bank tools or the audit are enabled.
+
+1. `sevdesk_bank_accounts_list`; if `checkAccount` was given, resolve it to a `checkAccountId`.
+2. `sevdesk_transactions_list` with `status: ["created"]`, `direction: "out"` and the period's
+   `from`/`to`: outgoing transactions that no document is booked to yet.
+3. `sevdesk_reconcile_suggest` for them: one with a matching voucher only needs booking ("Reconcile
+   the bank"); one without any matching voucher most likely lacks its receipt. Bank fees, taxes,
+   salaries and private withdrawals often have no supplier receipt: ask the user.
+4. `sevdesk_records_audit` with `check: recurring_gaps` (regular suppliers without a bill in the
+   period) and `check: duplicates` (receipts booked twice, drafts left open). Hints, not tax
+   advice.
+5. `sevdesk_vouchers_list` with `status: "draft"`: receipts captured but never finalized.
+6. With `SEVDESK_FILE_DIRS`: `sevdesk_receipt_folder_check` on the user's folder for the period:
+   files no voucher carries, files only on a draft, files on two vouchers (a hint, not proof).
+7. File each receipt that turns up as in "File a receipt": `sevdesk_voucher_create_draft` with the
+   file as `file`, `dryRun` first, and its SHA-256 (from the folder check or the preview) as
+   `fileSha256`. An XRechnung or ZUGFeRD file goes through `sevdesk_voucher_import_einvoice`.
+
 ## Dunning run (Mahnlauf)
 
 Tiers: `read` to list overdue invoices; `write` for reminder drafts; `commit` to finalize and
@@ -193,18 +218,58 @@ no pre-returns.
    may mark the documents as exported and never enshrines them) or `sevdesk_csv_export` (`read`,
    `SEVDESK_OUTPUT_DIR`; raw CSV as sevDesk exports it).
 
-## Year end
+## Year end: handoff to the Steuerberater
 
-1. Every month closed as above; no drafts, no unbooked transactions for the year.
-2. `sevdesk_profit_and_loss` for the year (EÜR view) and `sevdesk_records_summarize` grouped by
-   month or contact for plausibility checks.
-3. Open items at 31 December: `sevdesk_receivables_aging`, `sevdesk_payables_aging` (as of
-   today; sevDesk knows only today's open items) and `sevdesk_cash_position` with `asOf`.
-4. Assets: `sevdesk_profit_and_loss` lists purchases on asset accounts (e.g. GWG, EDV-Software)
-   apart and without depreciation (AfA); depreciation is done by the Steuerberater or in sevDesk.
-5. Export the year: `sevdesk_datev_export` for the full fiscal year.
-6. Enshrine the year's documents if not done monthly (`commit`, irreversible), and keep the
-   retention periods in mind ([gobd.md](gobd.md)).
+Tiers: `read` for the checks and numbers; `write` and `SEVDESK_OUTPUT_DIR` (on a remote server:
+download links) for the DATEV export and the archive; `commit` to set the DATEV settings.
+
+The `year_end_handoff` prompt accepts an optional `year` (`YYYY`, default the previous year). For a
+fiscal year that does not start on 1 January, use its `from`/`to` instead of `year`.
+
+1. Every month closed as above; no drafts, no unbooked transactions for the year
+   (`sevdesk_transactions_list` with `status: ["created"]`, `sevdesk_vouchers_list` and
+   `sevdesk_invoices_list` with `status: "draft"`).
+2. `sevdesk_profit_and_loss` for the year (EÜR view, cash basis by default) and
+   `sevdesk_records_summarize` grouped by month for plausibility checks and to size the archive
+   parts. Purchases on asset accounts (e.g. GWG, EDV-Software) are listed apart and without
+   depreciation (AfA); depreciation is done by the Steuerberater or in sevDesk.
+3. `sevdesk_records_audit` for the year: `vat`, `reverse_charge`, `duplicates`, `recurring_gaps`
+   (hints, not tax advice; `vat` and `reverse_charge` read up to 1,500 documents, so per quarter
+   for more). With `SEVDESK_FILE_DIRS`: `sevdesk_receipt_folder_check` (500 files per call).
+4. Open items: `sevdesk_receivables_aging`, `sevdesk_payables_aging` (as of today; sevDesk knows
+   only today's open items), the open and partially paid invoices and vouchers of the year from
+   the list tools, and `sevdesk_cash_position` with `asOf` for the balances on 31 December.
+5. `sevdesk_datev_export` for the year (`dryRun` first; CSV Buchungsstapel or `format: "xml"`, as
+   the Steuerberater imports). Missing or wrong DATEV settings: `sevdesk_datev_settings_update`
+   (`commit`, confirmation) with the numbers from the Steuerberater, never guessed.
+6. `sevdesk_archive_export` for `invoices` and `vouchers` (`dryRun` first), in parts: one call
+   holds 500 documents by default (`limit` up to 1,000), stops after 5 minutes (on a remote server
+   after 120 s, and a download link must fit the account's file space) and saves at most 100 MiB.
+   By quarter, or by month where the counts are large or a part fails.
+7. Enshrine the year's documents if not done monthly (`commit`, irreversible), after the
+   Steuerberater's review, and keep the retention periods in mind ([gobd.md](gobd.md)).
+
+## Offer follow-up (Angebote nachfassen)
+
+Tiers: `read` to list; `commit` to record the customer's answer or create an order confirmation;
+`write` for delivery notes and invoices from an order (each with confirmation where the tier
+asks for it).
+
+The `offer_follow_up` prompt accepts optional strings: `minAgeDays` (1–4 digits, 0–3650, default 14) and `contact` (customer name or id, up to 200 characters).
+
+1. `sevdesk_orders_list` with `type: "offer"`, `status: "sent"` and `to` set to today minus the
+   age: open offers the customer has not answered. `sevdesk_order_get` for details and the
+   documents already created from one.
+2. Per offer, what the customer said:
+   - yes or no: `sevdesk_order_set_offer_status` (`accept` / `reject`; `commit`, confirmation);
+     it sends nothing to the customer.
+   - yes, with an order confirmation: `sevdesk_order_create_confirmation` (`commit`,
+     confirmation); sevDesk marks the offer as accepted in the same request.
+   - goods to deliver: `sevdesk_order_create_delivery_note` (`write`) from the sent or accepted
+     offer or its confirmation.
+   - ready to bill: `sevdesk_invoice_create_from_order` (`write`), whole order, partial or
+     advance invoice; then finalize as for invoices.
+   - no answer: a follow-up message the user sends; nothing is sent from sevDesk.
 
 ## Invoices (Rechnungen)
 

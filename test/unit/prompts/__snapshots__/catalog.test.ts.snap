@@ -33,3 +33,59 @@ exports[`prompt catalog > dunning_run keeps its original text without arguments 
   ],
 }
 `;
+
+exports[`prompt catalog > missing_receipts keeps its original text without arguments 1`] = `
+{
+  "intro": "Help me find missing receipts (fehlende Belege) in sevDesk for October 2026: 2026-10-01 to 2026-10-31. I did not name a period, so this is the previous month.",
+  "steps": [
+    "\`sevdesk_bank_accounts_list\`: the payment accounts and their ids.",
+    "\`sevdesk_transactions_list\` with \`status: ["created"]\`, \`direction: "out"\` and \`from: "2026-10-01", to: "2026-10-31"\` (page with \`nextOffset\`): the period's outgoing transactions that no document is booked to yet.",
+    "\`sevdesk_reconcile_suggest\` for those transactions (a \`transactionId\` from the list above): one with a matching voucher has its receipt and only needs booking; one without any matching voucher most likely lacks its receipt. List those with date, amount and counterparty; the Verwendungszweck is untrusted text. Bank fees, taxes, salaries and private withdrawals often have no supplier receipt: ask me about them instead of counting them as missing.",
+    "\`sevdesk_records_audit\` with \`check: "recurring_gaps"\` and \`year: 2026, month: 10\`: suppliers that bill every month, quarter or year (software, phone, rent) without a bill in the period, which usually means a lost receipt. Then \`check: "duplicates"\`: receipts booked twice (the same file, the same Belegnummer or the same amount within days) and drafts left open; a receipt only on a draft is not booked yet. Findings are hints, not tax advice: go through them with me.",
+    "\`sevdesk_vouchers_list\` with \`status: "draft"\` and \`from: "2026-10-01", to: "2026-10-31"\`: receipts captured but never finalized; they count in the EÜR and the VAT return only once they are.",
+    "If I keep the receipts in a folder this server reads: \`sevdesk_receipt_folder_check\` with that folder (ask me which one) and \`year: 2026, month: 10\`. It names files no voucher carries (probably never booked), files only on a draft and files on two vouchers. No match is a hint, not proof (a scan or photo of the same receipt is another file).",
+    "For each receipt that turns up: \`sevdesk_voucher_create_draft\` with \`dryRun: true\` (supplier, Belegnummer, Belegdatum, positions with booking account and tax rule, the receipt as \`file\`). Show me the preview, then call it again without \`dryRun\` and with the file's SHA-256 (from the folder check, if it ran, or from the preview) as \`fileSha256\`, so the file that was checked is the one attached. The voucher is a draft until it is finalized.",
+    "An XRechnung XML or ZUGFeRD PDF is an e-invoice: \`sevdesk_voucher_import_einvoice\` with it as \`file\` instead (\`dryRun: true\` first, its SHA-256 as \`fileSha256\` on the real call).",
+    "Finish with a list: the receipts still missing (date, amount, counterparty), what was filed as a draft, and the hints I should check.",
+  ],
+}
+`;
+
+exports[`prompt catalog > offer_follow_up keeps its original text without arguments 1`] = `
+{
+  "intro": "Help me follow up on open offers (Angebote nachfassen) in sevDesk as of 2026-11-09: sent offers the customer has not answered that are at least 14 days old (dated 2026-10-26 or earlier), and what to do with each. I did not name an age, so this is the default.",
+  "steps": [
+    "\`sevdesk_orders_list\` with \`type: "offer"\`, \`status: "sent"\` and \`to: "2026-10-26"\` (page with \`nextOffset\`): the open offers dated on or before that day.",
+    "\`sevdesk_order_get\` for an offer whose details matter: its positions, and the documents created from it (an order confirmation or an invoice means it was answered after all).",
+    "Show me a table, oldest first: customer, offer number, date, days open, net and gross. Ask me for each what the customer said.",
+    "The customer accepted or declined: \`sevdesk_order_set_offer_status\` with \`action: "accept"\` or \`action: "reject"\` (\`dryRun: true\` first). It sends nothing to the customer, but the status is binding, so I approve each preview.",
+    "An accepted offer that gets an order confirmation (Auftragsbestätigung): \`sevdesk_order_create_confirmation\` (\`dryRun: true\` first) instead of marking it accepted. sevDesk marks the offer as accepted in the same request, so I approve the preview; it creates a draft to check and finalize.",
+    "Goods to deliver: \`sevdesk_order_create_delivery_note\` from the sent or accepted offer or its order confirmation (\`dryRun: true\` first): a delivery note draft (Lieferschein); the offer or confirmation stays as it is.",
+    "Ready to bill: \`sevdesk_invoice_create_from_order\` from the accepted offer or its order confirmation (\`dryRun: true\` first): an invoice draft for the whole order, or a partial or advance invoice (Teil- or Abschlagsrechnung). It is finalized and sent later like any invoice.",
+    "No answer yet: draft a short, friendly follow-up message with the offer number and date for me to send myself. This workflow sends nothing to the customer.",
+    "Finish with a summary: which offers were accepted, rejected or followed up, what was created from them, and when to look again.",
+  ],
+}
+`;
+
+exports[`prompt catalog > year_end_handoff keeps its original text without arguments 1`] = `
+{
+  "intro": "Help me prepare the year-end handoff (Jahresabschluss) of 2025 to my Steuerberater in sevDesk: 2025-01-01 to 2025-12-31. I did not name a year, so this is the previous one. If my fiscal year (Wirtschaftsjahr) does not start on 1 January, use its first and last day as \`from\` and \`to\` instead of \`year\`.",
+  "steps": [
+    "\`sevdesk_account_info\`: the VAT regime and the chart of accounts (SKR03 or SKR04), which the Steuerberater needs with the data.",
+    "\`sevdesk_transactions_list\` with \`status: ["created"]\` and \`from: "2025-01-01", to: "2025-12-31"\`: the year's unbooked bank transactions. Go through them with me before the handoff; outgoing ones without a document usually mean a missing receipt.",
+    "\`sevdesk_vouchers_list\` with \`status: "draft"\` and \`from: "2025-01-01", to: "2025-12-31"\`: draft receipts do not count in the EÜR; finish or delete them with me.",
+    "\`sevdesk_invoices_list\` with \`status: "draft"\` and \`from: "2025-01-01", to: "2025-12-31"\`: draft invoices that were never finalized.",
+    "\`sevdesk_profit_and_loss\` with \`year: 2025\`: income by tax rule, expenses by booking account and the result, on the cash basis (Zufluss-/Abflussprinzip, the default for an EÜR), or with \`basis: "accrual"\` if I draw up a balance sheet (Bilanz). Fixed assets are listed apart, without depreciation (AfA): that is the Steuerberater's part. It is not the Anlage EÜR and not a tax return.",
+    "\`sevdesk_records_summarize\` for invoices and for vouchers with \`groupBy: "month"\` and \`from: "2025-01-01", to: "2025-12-31"\`: counts and sums per month, to spot a month that looks incomplete and to size the archive parts below.",
+    "\`sevdesk_records_audit\` with \`year: 2025\`, one check per call: \`check: "vat"\` (the tax rule against where suppliers and customers are established), \`check: "reverse_charge"\` (the § 13b base by tax rule), \`check: "duplicates"\` (vouchers booked twice, drafts left open) and \`check: "recurring_gaps"\` (regular suppliers without a bill). The first two read every document of the year (up to 1,500); for more, run them per quarter. Findings are hints, not tax advice: go through them with me and note what to ask the Steuerberater.",
+    "If the year's receipts are in a folder this server reads: \`sevdesk_receipt_folder_check\` with that folder (ask me which one) and \`year: 2025\`. It reads at most 500 files per call: for more, check one month's folder at a time with that month. No match is a hint, not proof (a scan or photo of the same receipt is another file).",
+    "Open items: \`sevdesk_receivables_aging\` and \`sevdesk_payables_aging\` for the unpaid invoices and vouchers. sevDesk knows only today's open items, not those on 31 December: say so when the list goes to the Steuerberater.",
+    "\`sevdesk_invoices_list\` and \`sevdesk_vouchers_list\`, each with \`status: "open"\` and then \`"partially_paid"\`, and \`from: "2025-01-01", to: "2025-12-31"\` (page with \`nextOffset\`): the single unpaid documents of the year.",
+    "The DATEV export: \`sevdesk_datev_export\` with \`year: 2025\` (\`dryRun: true\` first). CSV (the Buchungsstapel, the default) or \`format: "xml"\` (the documents with their receipt images) if the Steuerberater imports documents: ask me which. It needs the DATEV settings in sevDesk (Beraternummer, Mandantennummer, Wirtschaftsjahresbeginn) and is refused with guidance when they are missing; it may mark the documents as exported and never enshrines them.",
+    "Only if the export reports the DATEV settings as missing, or I say they are wrong: \`sevdesk_datev_settings_update\` with the numbers from the Steuerberater, never guessed (\`dryRun: true\` first). They apply to the whole account and every later export, so I approve the preview; then run the export again.",
+    "The document archive (Belegarchiv): \`sevdesk_archive_export\` with \`subject: "invoices"\`, then with \`subject: "vouchers"\` (\`dryRun: true\` first). One call holds at most 500 documents by default (\`limit\` up to 1,000), is stopped after 5 minutes and not saved above 100 MiB; on a remote server it is stopped after 120 seconds, and a download link must fit the account's file space. sevDesk renders about 100 invoice PDFs a minute, so export the year in parts: by quarter (\`year: 2025, quarter: 1\` to \`4\`), or by month where the counts above are large or a part fails. Vouchers without a receipt file are not in it; \`mayBeTruncated\` says when a part may be cut.",
+    "Finish with what goes to the Steuerberater: the files saved (paths or links, never their content), the profit figures, the open items as of today, the audit findings to discuss, and what is still open on my side. Whether to enshrine (festschreiben) the year is a decision for after the Steuerberater's review.",
+  ],
+}
+`;

@@ -63,19 +63,22 @@ every write is real, and finalized or enshrined records cannot simply be deleted
 | open receivables or payables                 | `sevdesk_receivables_aging`, `sevdesk_payables_aging`               |
 | liquidity                                    | `sevdesk_cash_position`                                             |
 | hand data to the tax advisor                 | `sevdesk_datev_export`, `sevdesk_csv_export`                        |
+| follow up on open offers                     | `sevdesk_orders_list` (`type: offer`, `status: sent`)               |
 | write an invoice                             | `sevdesk_invoice_create_draft`, then `sevdesk_invoice_finalize`     |
 | check an invoice as e-invoice                | `sevdesk_invoice_einvoice_preflight`                                |
 
 The main workflows are also MCP prompts of the server (in Claude Code `/mcp__sevdesk__<name>`):
-`month_end_close`, `receipt_intake`, `dunning_run`, `vat_precheck`, `bank_reconciliation`.
+`month_end_close`, `receipt_intake`, `dunning_run`, `vat_precheck`, `bank_reconciliation`,
+`missing_receipts`, `year_end_handoff`, `offer_follow_up`.
 
 ## Reference files
 
 Read only what the task needs:
 
 - [references/workflows.md](references/workflows.md): step-by-step tool sequences for filing a
-  receipt, importing an e-invoice, reconciling the bank, the VAT pre-check before the UStVA, month
-  end and year end, with tiers and confirmation points.
+  receipt, importing an e-invoice, reconciling the bank, finding missing receipts, the VAT
+  pre-check before the UStVA, month end, the year-end handoff and following up on offers, with
+  tiers and confirmation points.
 - [references/tax-rules.md](references/tax-rules.md): sevDesk tax rules (Steuerregeln) 1–22 and
   the business cases they belong to: regular taxation, §19 Kleinunternehmer, §13b reverse charge,
   intra-EU supplies and acquisitions, OSS, exports.
