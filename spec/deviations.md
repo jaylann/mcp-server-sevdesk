@@ -3970,18 +3970,22 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Sources:** spec (`deleteOrder`, `deletecreditNote`); recorded 2026-11-16, trial account,
   Update 2.0 (probe `write-delete-draft-order-credit-note`).
 - **Impact:** The draft delete tool refuses anything but status 100 before sending, reads back
-  with a GET to confirm, and turns a 409 into a trusted message that nothing was deleted. (#90)
-  A draft can hold a number that was issued, since open invoices and credit notes can be reset
-  to draft. So the preview of a numbered order or credit note draft says the number comes back
-  only if it was the last one handed out, and the preview of an invoice draft with a number warns
-  that deleting it leaves a gap if the number was issued (more strongly when sevDesk records it
-  as sent) and that an issued invoice is cancelled instead. A warning, not a refusal: the record
-  does not tell whether the number was issued. Where sevDesk enshrines on finalizing, an enshrined
-  invoice refuses `resetToDraft` and deletion (D-023, D-059), so the gap cannot arise there.
+  with a plain GET to confirm, and turns a 409 into a trusted message that nothing was deleted
+  (`deleteDocument` in `src/domain/lifecycle/actions.ts`). The GET maps nothing: an answer means
+  the document is still there, a 404 or an empty answer that it is gone, and any other failure is
+  reported with the deletion as a completed write. A draft can hold a number that was issued,
+  since open invoices and credit notes can be reset to draft. So the preview of a numbered order
+  or credit note draft says the number comes back only if it was the last one handed out, and the
+  preview of an invoice draft with a number warns that deleting it leaves a gap if the number was
+  issued (more strongly when sevDesk records it as sent) and that an issued invoice is cancelled
+  instead. A warning, not a refusal: the record does not tell whether the number was issued.
+  Where sevDesk enshrines on finalizing, an enshrined invoice refuses `resetToDraft` and deletion
+  (D-023, D-059), so the gap cannot arise there. (#90)
 - **Test:** `test/unit/tools/documents/delete-draft.test.ts` ("deletes a … draft and confirms
-  with a GET that it is gone", "explains sevDesk's 409 for a document that is no draft anymore",
-  "says that the number of a numbered … draft comes back only if it was the last (D-066)", "an
-  invoice draft with a number …"), the German previews in
+  with a GET that it is gone", "says so when sevDesk still returns … after the DELETE", "reports
+  the deletion as done when the read-back …", "explains sevDesk's 409 for a document that is no
+  draft anymore", "says that the number of a numbered … draft comes back only if it was the last
+  (D-066)", "an invoice draft with a number …"), the German previews in
   `test/integration/__snapshots__/write-previews-de.test.ts.snap` ("delete a numbered credit note
   draft", "delete an invoice draft that has a number and was sent"),
   `test/regressions/delete-only-drafts.test.ts` (no DELETE for a non-draft or a template),

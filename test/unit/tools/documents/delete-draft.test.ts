@@ -338,9 +338,17 @@ describe("sevdesk_document_delete_draft", () => {
     expect(otherLanguage.binding).not.toBe(base.binding);
   });
 
-  it("says so when sevDesk still returns the document after the DELETE", async () => {
-    const fake = staged(ORDER, documentRoute("order", ORDER.row));
+  it.each([
+    ["the full record", ORDER.row],
+    // The read-back is a plain GET: a record this server could not map still counts as there.
+    ["a record this server could not map", { id: "3002", objectName: "Order", status: "bogus" }],
+  ])("says so when sevDesk still returns %s after the DELETE", async (_label, row) => {
+    const fake = staged(ORDER, { path: ORDER.path, response: { body: { objects: [row] } } });
     const { output } = await executeWrite(tool, { kind: "order", id: 3002 }, fake);
+    expect(fake.after.calls.map((call) => [call.method, call.path, call.query])).toEqual([
+      ["DELETE", ORDER.path, {}],
+      ["GET", ORDER.path, {}],
+    ]);
     expect(output.data.deleted).toBe(false);
     expect(output.data.notes).toEqual([
       "sevDesk accepted the deletion, but still returns order 3002. Check it with " +
@@ -349,6 +357,12 @@ describe("sevdesk_document_delete_draft", () => {
     expect(output.summary).toBe(
       "Asked sevDesk to delete order 3002; it is still there. See notes.",
     );
+  });
+
+  it("counts an empty answer to the read-back as gone", async () => {
+    const fake = staged(ORDER, { path: ORDER.path, response: { body: { objects: [] } } });
+    const { output } = await executeWrite(tool, { kind: "order", id: 3002 }, fake);
+    expect(output.data.deleted).toBe(true);
   });
 
   it("reports the deletion as done when the read-back fails", async () => {
@@ -364,6 +378,46 @@ describe("sevdesk_document_delete_draft", () => {
       "sevDesk accepted the deletion of credit note 2001, but the check afterwards failed: " +
         "Down. Do not delete again; check with sevdesk_credit_note_get.",
     );
+    expect(error.completedWrites).toEqual([{ objectName: "CreditNote", id: "2001" }]);
+  });
+
+  it("reports the deletion as done when the read-back answer is unreadable", async () => {
+    const fake = staged(CREDIT_NOTE, {
+      path: CREDIT_NOTE.path,
+      response: { body: { objects: "not a record" } },
+    });
+    const error = (await executeWrite(tool, { kind: "credit_note", id: 2001 }, fake).catch(
+      (caught: unknown) => caught,
+    )) as SevdeskError;
+    expect(error).toBeInstanceOf(SevdeskError);
+    expect(error.kind).toBe("unexpected_response");
+    expect(error.message).toBe(
+      "sevDesk accepted the deletion of credit note 2001, but the check afterwards failed: " +
+        "sevDesk returned an unexpected format: expected one credit note 2001. Do not delete " +
+        "again; check with sevdesk_credit_note_get.",
+    );
+    expect(error.completedWrites).toEqual([{ objectName: "CreditNote", id: "2001" }]);
+  });
+
+  it("reports the deletion as done when the read-back throws something else", async () => {
+    const body = {
+      // A failure that is no SevdeskError, thrown while the answer is read.
+      get objects(): never {
+        throw new TypeError("Cannot read the answer.");
+      },
+    };
+    const fake = staged(CREDIT_NOTE, { path: CREDIT_NOTE.path, response: { body } });
+    const error = (await executeWrite(tool, { kind: "credit_note", id: 2001 }, fake).catch(
+      (caught: unknown) => caught,
+    )) as SevdeskError;
+    expect(error).toBeInstanceOf(SevdeskError);
+    expect(error.kind).toBe("unexpected_response");
+    // Its text is not ours, so it stays out of the message.
+    expect(error.message).toBe(
+      "sevDesk accepted the deletion of credit note 2001, but the check afterwards failed. Do " +
+        "not delete again; check with sevdesk_credit_note_get.",
+    );
+    expect(error.cause).toBeInstanceOf(TypeError);
     expect(error.completedWrites).toEqual([{ objectName: "CreditNote", id: "2001" }]);
   });
 

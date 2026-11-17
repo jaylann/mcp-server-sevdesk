@@ -64,7 +64,6 @@ import {
   documentOutput,
   KIND_TOOLS,
 } from "../lifecycle/shared.js";
-import type { ToolContext } from "../types.js";
 import { dryRunInputShape } from "../write-input.js";
 
 /** The values of the `kind` argument. */
@@ -220,7 +219,7 @@ export const documentDeleteDraftTool = defineWriteTool({
       throw error;
     }
     assertDeletable(doc);
-    // The identifying facts and the approval binding over the record and all its positions.
+    // The identifying facts and the approval binding (record, positions, discounts, layout).
     const content = await documentContent(ctx, doc);
     const number = numberWarning(doc);
     const warnings = [IRREVERSIBLE, ...(number === undefined ? [] : [number])];
@@ -242,27 +241,9 @@ export const documentDeleteDraftTool = defineWriteTool({
     const kind = DELETE_KINDS[args.kind];
     const { noun, toolPrefix } = KINDS[kind];
     const id = String(args.id);
-    try {
-      await deleteDocument(ctx.client, kind, args.id, ctx.signal);
-    } catch (error) {
-      if (error instanceof SevdeskError && error.status === 409) {
-        throw new SevdeskError({
-          kind: error.kind,
-          status: 409,
-          message:
-            `sevDesk refused to delete ${noun} ${id}: only drafts (status 100) can be deleted, ` +
-            "and it is no longer one (probably finalized in the meantime). Nothing was deleted; " +
-            `check it with ${toolPrefix}_get.`,
-          ...(error.upstreamMessage === undefined
-            ? {}
-            : { upstreamMessage: error.upstreamMessage }),
-          cause: error,
-        });
-      }
-      throw error;
-    }
+    // Sends the DELETE once and reads back with a plain GET (409 and read-back failures included).
+    const deleted = await deleteDocument(ctx.client, kind, args.id, ctx.signal);
     const changed = documentObject(kind, args.id);
-    const deleted = await confirmGone(ctx, kind, args.id);
     const dto: DetailByKind[SalesKind] = plan.state.dto;
     return {
       data: {
@@ -285,30 +266,3 @@ export const documentDeleteDraftTool = defineWriteTool({
     };
   },
 });
-
-/**
- * Reads the document after the DELETE: `true` when sevDesk answers 404 (gone), `false` when it
- * still returns it. Any other failure is rethrown with the deletion as a completed write, so the
- * user is told not to delete again.
- */
-async function confirmGone(ctx: ToolContext, kind: SalesKind, id: number): Promise<boolean> {
-  try {
-    await readLifecycleDocument(ctx.client, kind, id, {
-      signal: ctx.signal,
-      cacheOwner: ctx.config,
-    });
-    return false;
-  } catch (error) {
-    if (!(error instanceof SevdeskError)) throw error;
-    if (error.kind === "not_found") return true;
-    const { noun, toolPrefix } = KINDS[kind];
-    throw new SevdeskError({
-      kind: error.kind,
-      message:
-        `sevDesk accepted the deletion of ${noun} ${String(id)}, but the check afterwards ` +
-        `failed: ${error.message} Do not delete again; check with ${toolPrefix}_get.`,
-      cause: error,
-      completedWrites: [documentObject(kind, id)],
-    });
-  }
-}

@@ -5,6 +5,7 @@ import { INVOICE_LIFECYCLE_TOOLS } from "../../src/tools/invoices/lifecycle-tool
 import { ORDER_LIFECYCLE_TOOLS } from "../../src/tools/orders/lifecycle-tools.js";
 import type { AnyToolDefinition, AnyWriteToolDefinition } from "../../src/tools/types.js";
 import { isWriteTool } from "../../src/tools/types.js";
+import type { FakeRoute } from "../helpers/fake-client.js";
 import { letterpapersRoute, templatesRoute } from "../helpers/layout-routes.js";
 import type { WriteToolCase } from "../helpers/write-cases.js";
 import { discountRow, discountsRoute } from "../unit/tools/drafts/routes.js";
@@ -262,6 +263,7 @@ const CASES: readonly WriteToolCase[] = [
     routes: [
       documentRoute("creditNote", draftCreditNote),
       writeRoute("DELETE", "/CreditNote/2001", "document-delete.json"),
+      goneRoute("/CreditNote/2001"),
     ],
     writes: [{ method: "DELETE", path: "/CreditNote/2001" }],
   },
@@ -273,10 +275,19 @@ const CASES: readonly WriteToolCase[] = [
     routes: [
       documentRoute("invoice", { ...openInvoice, id: "1004", status: "100" }),
       writeRoute("DELETE", "/Invoice/1004", "document-delete.json"),
+      goneRoute("/Invoice/1004"),
     ],
     writes: [{ method: "DELETE", path: "/Invoice/1004" }],
   },
 ];
+
+/**
+ * The plain GET a draft delete reads back with (no `embed`, so `documentRoute` does not answer
+ * it), answering that the document is gone (an empty list).
+ */
+function goneRoute(path: string): FakeRoute {
+  return { path, response: { body: { objects: [] } } };
+}
 
 /**
  * Every case also serves empty position lists, no document discounts and the default layout, read
