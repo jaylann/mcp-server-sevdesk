@@ -1,4 +1,4 @@
-<!-- translated-from: docs/architecture/transports.md sha256:15578f39e65d -->
+<!-- translated-from: docs/architecture/transports.md sha256:0904dc5f1af0 -->
 
 # Transporte
 
@@ -137,6 +137,14 @@ Prinzipal der Anfrage baut. Es gibt zwei Umsetzungen (`src/safety/file-sources.t
   Speicher oder im Zustandsverzeichnis, und nach einem Neustart weg. Die Seiten sind
   `src/http/transfer-routes.ts` und `transfer-pages.ts`. Der Bearer-Modus kann weiterhin lokale
   Ordner verwenden, und `SEVDESK_OUTPUT_DIR` hat, wenn gesetzt, Vorrang vor Download-Links.
+
+In beiden ist ein Dateiargument, das wie eine URL beginnt, ein Link: `src/safety/url-files.ts` lädt
+ihn während des Aufrufs von den Hosts in `SEVDESK_FILE_URL_HOSTS` herunter (standardmäßig keine),
+löst den Host einmal und nur zu öffentlichen Adressen auf (`src/safety/public-address.ts`, geteilt
+mit dem Abruf der Client-Metadaten im OAuth-Modus) und verbindet sich mit der geprüften Adresse
+(`src/safety/pinned-https.ts`), folgt höchstens drei Weiterleitungen, die dieselben Prüfungen
+bestehen, ohne Zugangsdaten und mit Größengrenze; nichts wird behalten
+([Dateien von einem Link](../security/local.de.md#dateien-von-einem-link)).
 
 Das Modell sieht und sendet nie Dateiinhalte, und es kann keinen Text auf die Upload-Seite setzen.
 Einzelheiten für Betreiber, Grenzen und Laufzeiten stehen unter

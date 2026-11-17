@@ -1,4 +1,4 @@
-<!-- translated-from: docs/guides/invoices.md sha256:caef58509a6e -->
+<!-- translated-from: docs/guides/invoices.md sha256:13c2e28e36d2 -->
 
 # Rechnungen: vom Entwurf bis zur Zahlung
 
@@ -64,6 +64,25 @@ Umsatzsteuer (Steuersätze 0, 7 und 19 %), 11 für Kleinunternehmer (0 %). Eine 
 Steuersatz, der nicht zum Konto passt, wird abgelehnt, bevor etwas gespeichert wird, und die
 Vorschau warnt vor einer möglichen Dublette. Hat das Konto mehrere sevDesk-Benutzer, muss der
 Assistent einen als Ansprechpartner angeben.
+
+> Welche Steuerregel nimmt eine Rechnung über Beratung an die Wiener Muster GmbH in Wien?
+
+Für Kunden im Ausland oder einen Verkauf, der kein einfacher Inlandsumsatz ist, schlägt
+[`sevdesk_tax_rule_suggest`](../tools.md#sevdesk_tax_rule_suggest) (`read`) die Steuerregel vor:
+aus dem Land des Kunden, ob er als Unternehmer kauft, seiner USt-IdNr. und ob du Waren lieferst
+oder Leistungen erbringst. Es nennt die Regel, den Steuersatz (bei One-Stop-Shop-Umsätzen den
+Regelsteuersatz des Kundenlandes), den Hinweis, den die Rechnung tragen muss (etwa
+„Steuerschuldnerschaft des Leistungsempfängers“), und die Rechtsgrundlage. Entscheidet eine
+Schwelle oder eine besondere Art von Leistung, nennt es jede Möglichkeit mit ihrer Bedingung,
+statt zu raten. Nordirland folgt bei Waren den Regeln der EU (gib das Land `XI` oder die
+XI-USt-IdNr. des Kunden an), Monaco gilt als Frankreich, und Gebiete von Mitgliedstaaten außerhalb
+des Mehrwertsteuergebiets der EU, etwa die Kanarischen Inseln, kommen als Ausnahmen (Helgoland und
+Büsingen, bei einem Kunden in Deutschland, als Hinweis). Es ist keine Steuerberatung.
+[`sevdesk_vat_id_check`](../tools.md#sevdesk_vat_id_check) (`read`) prüft das Format einer
+USt-IdNr.; beim VIES-Dienst der Europäischen Kommission fragt es nur nach, wenn der Betreiber des
+Servers das eingeschaltet hat (`SEVDESK_VIES_CHECK`, siehe [Datenschutz](../../PRIVACY.de.md)).
+Auch die Vorschau des Entwurfs warnt, wenn die Steuerregel nicht die übliche für den Kunden ist;
+deshalb abgelehnt wird der Entwurf nie.
 
 Eine Position kann einen Artikel aus [`sevdesk_parts_list`](../tools.md#sevdesk_parts_list)
 verknüpfen, Bezeichnung und Preis kommen aber trotzdem aus der Position.

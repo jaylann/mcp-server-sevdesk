@@ -1,4 +1,4 @@
-<!-- translated-from: docs/permissions.md sha256:8405988d460f -->
+<!-- translated-from: docs/permissions.md sha256:cf8c349d52ed -->
 
 # Berechtigungen und Bestätigung
 

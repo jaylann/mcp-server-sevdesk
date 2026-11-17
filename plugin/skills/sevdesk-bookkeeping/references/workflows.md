@@ -11,8 +11,10 @@ in a confirmation prompt; never ask them to "just approve" without showing the p
 
 Tiers needed (`SEVDESK_ALLOW`): `read` is always on; `write` for drafts; `commit` for finalizing,
 booking, resetting and enshrining; `external` for email. Local files need `SEVDESK_FILE_DIRS`
-(reading receipts and e-invoices) and `SEVDESK_OUTPUT_DIR` (writing exports). If a tool below is
-missing from the tool list, the setting is off: tell the user which one, do not work around it.
+(reading receipts and e-invoices) and `SEVDESK_OUTPUT_DIR` (writing exports). A receipt or
+e-invoice that is online can be passed as an https link instead of a path when its host is in
+`SEVDESK_FILE_URL_HOSTS`; the server downloads it during the call. If a tool below is missing from
+the tool list, the setting is off: tell the user which one, do not work around it.
 
 ## Session start (every workflow)
 
@@ -23,7 +25,8 @@ missing from the tool list, the setting is off: tell the user which one, do not 
 
 ## File a receipt (Beleg erfassen)
 
-Tiers: `write` (draft); `commit` to finalize or book the payment. File upload: `SEVDESK_FILE_DIRS`.
+Tiers: `write` (draft); `commit` to finalize or book the payment. Receipt file: `SEVDESK_FILE_DIRS`,
+or an https link to a host in `SEVDESK_FILE_URL_HOSTS`.
 
 1. Read the receipt with the user: supplier, date, Belegnummer, gross amount, VAT rate(s), what
    was bought, whether it is already paid.
@@ -40,10 +43,12 @@ Tiers: `write` (draft); `commit` to finalize or book the payment. File upload: `
    (`supplierId` or `supplierName`), Belegnummer (`number`), Belegdatum (`date`), positions with
    booking account, amount and rate, the tax rule (defaults to 9, or 10 on a Kleinunternehmer
    account) and, if there is a scan, its path as `file` (inside `SEVDESK_FILE_DIRS`; PDF, PNG,
-   JPEG or XML). The tool checks every account × tax rule × rate against the receipt guidance
+   JPEG or XML), or its https link (a host in `SEVDESK_FILE_URL_HOSTS`; the preview also shows
+   the host). The tool checks every account × tax rule × rate against the receipt guidance
    and refuses a likely duplicate (same supplier, number, date and amount) unless
-   `allowDuplicate` is set. Show the preview, then call it again without `dryRun`. The voucher
-   is a draft (status 50).
+   `allowDuplicate` is set. Show the preview, then call it again without `dryRun`, with the
+   preview's SHA-256 as `fileSha256`: the file is read again (a link downloaded again), and other
+   bytes than the user saw are refused. The voucher is a draft (status 50).
 6. Corrections while it is a draft: `sevdesk_voucher_update_draft` (changes only what is given;
    `positions` replaces all positions); a wrong duplicate draft: `sevdesk_voucher_delete_draft`.
 7. `sevdesk_voucher_finalize` (`commit`, confirmation): draft → open (status 100); from now on
@@ -56,9 +61,11 @@ Tiers: `write` (draft); `commit` to finalize or book the payment. File upload: `
 
 ## Import an e-invoice (E-Rechnung)
 
-Tiers: `read` to check, `write` to import. Needs `SEVDESK_FILE_DIRS`.
+Tiers: `read` to check, `write` to import. Needs `SEVDESK_FILE_DIRS`, or `SEVDESK_FILE_URL_HOSTS`
+for a file passed as an https link.
 
-1. `sevdesk_einvoice_parse` with the path of the XRechnung XML or ZUGFeRD/Factur-X PDF: it reads
+1. `sevdesk_einvoice_parse` with the path (or https link) of the XRechnung XML or
+   ZUGFeRD/Factur-X PDF: it reads
    the structured data (EN 16931), checks totals, VAT breakdown and required fields, and reports
    findings. Nothing is sent to sevDesk. For a hybrid PDF the XML is what counts.
 2. Go through the findings with the user. A non-structured PDF (no XML inside) is not an
@@ -66,6 +73,7 @@ Tiers: `read` to check, `write` to import. Needs `SEVDESK_FILE_DIRS`.
 3. Duplicate check: `sevdesk_vouchers_list` with supplier name and invoice number.
 4. `sevdesk_voucher_import_einvoice` with `dryRun: true`, then without: creates a voucher draft
    from the e-invoice (supplier, dates, positions, VAT) and stores the original file with it.
+   Pass `file.sha256` from step 1 as `fileSha256`, so the import uses the file that was checked.
    Check the proposed booking accounts with `receipt_guidance` as for any receipt.
 5. Continue with steps 7–8 of "File a receipt". Keep the original e-invoice file: the XML is the
    record that has to be retained (see [e-invoicing.md](e-invoicing.md), [gobd.md](gobd.md)).
@@ -190,13 +198,18 @@ no pre-returns.
 ## Invoices (Rechnungen)
 
 1. `sevdesk_contacts_search` for the customer id.
-2. `sevdesk_invoice_create_draft` (`dryRun` first). For a public-sector customer or a business
+2. Tax rule, unless it is a plain domestic sale: `sevdesk_tax_rule_suggest` with the contact and
+   goods or services gives the rule, the rate and the note the invoice must carry
+   ([tax-rules.md](tax-rules.md)); when the answer depends on a threshold or a special service, ask
+   the user. For an EU business customer check the USt-IdNr. with `sevdesk_vat_id_check`.
+3. `sevdesk_invoice_create_draft` (`dryRun` first), with the note in `footText`. The preview warns
+   when the rule is not the usual one for the customer. For a public-sector customer or a business
    that wants an e-invoice, check it with `sevdesk_invoice_einvoice_preflight`.
-3. `sevdesk_invoice_finalize` (`commit`): the number is assigned and the invoice becomes binding.
-4. `sevdesk_invoice_send_email` (`external`) or the user sends the PDF
+4. `sevdesk_invoice_finalize` (`commit`): the number is assigned and the invoice becomes binding.
+5. `sevdesk_invoice_send_email` (`external`) or the user sends the PDF
    (`sevdesk_invoice_pdf`, `sevdesk_document_save`).
-5. Payment: via the bank reconciliation, or `sevdesk_invoice_book_payment` (`commit`).
-6. Mistake after finalizing: `sevdesk_invoice_cancel` (Stornorechnung) or a credit note
+6. Payment: via the bank reconciliation, or `sevdesk_invoice_book_payment` (`commit`).
+7. Mistake after finalizing: `sevdesk_invoice_cancel` (Stornorechnung) or a credit note
    (`sevdesk_credit_note_create_from_invoice`); `sevdesk_invoice_reset` to draft only for an invoice
    that was never sent to anyone (see [gobd.md](gobd.md)).
 

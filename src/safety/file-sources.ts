@@ -11,6 +11,10 @@
  *   folders when `SEVDESK_FILE_DIRS` is set (bearer mode). Deliveries become download links of the
  *   principal's account, unless `SEVDESK_OUTPUT_DIR` is set, which wins.
  *
+ * In both, a reference that starts like a URL (`isUrlRef`) is downloaded by `./url-files.ts` from
+ * the hosts in `SEVDESK_FILE_URL_HOSTS` (refused naming the setting when there are none). Nothing
+ * of it is kept, so `release` has nothing to do for it.
+ *
  * Every refusal is a local `validation` {@link SevdeskError} with trusted text (no ids, no file
  * content; upload names come cleaned from the store and are shown only sanitized). Upload ids are
  * never put into messages: they only travel in the tool arguments the model already has.
@@ -22,6 +26,7 @@ import { sanitizeUntrusted } from "./fence.js";
 import {
   type FileAccess,
   type InputFile,
+  isUrlRef,
   type OutputFile,
   parseUploadRef,
   type ReadFileOptions,
@@ -40,24 +45,45 @@ import {
   uploadPageUrl,
   type UploadTicketView,
 } from "./transfer-types.js";
+import { createUrlFileReader, type UrlFileReader } from "./url-files.js";
 
-/** What {@link localFileAccess} reads of the configuration. */
-export type LocalFileConfig = Pick<Config, "fileDirs" | "outputDir">;
+/**
+ * What {@link localFileAccess} reads of the configuration. Without `fileUrlHosts` links are
+ * refused, as with an empty list.
+ */
+export type LocalFileConfig = Pick<Config, "fileDirs" | "outputDir"> &
+  Partial<Pick<Config, "fileUrlHosts">>;
 
 /** What {@link remoteFileAccess} reads of the configuration. */
-export type RemoteFileConfig = Pick<Config, "fileDirs" | "outputDir" | "deployment">;
+export type RemoteFileConfig = LocalFileConfig & Pick<Config, "deployment">;
 
 const NOTHING_SENT = "Nothing was sent to sevDesk.";
 
 /**
- * File access over the local folders only: `SEVDESK_FILE_DIRS` for reading, `SEVDESK_OUTPUT_DIR`
- * for delivering. With neither set, every read and delivery is refused with a message naming the
- * setting.
+ * The reader of `config`'s allowed hosts with the system resolver and the real transport. Its
+ * downloads count against `principal`'s account (`RequestPrincipal.accountScope`, for the
+ * per-account download limit); without one, against the single local account of stdio.
  */
-export function localFileAccess(config: LocalFileConfig): FileAccess {
+export function linkReader(config: LocalFileConfig, principal?: RequestPrincipal): UrlFileReader {
+  return createUrlFileReader({
+    hosts: config.fileUrlHosts ?? [],
+    account: principal?.accountScope,
+  });
+}
+
+/**
+ * File access over the local folders only: `SEVDESK_FILE_DIRS` for reading, `SEVDESK_OUTPUT_DIR`
+ * for delivering, and links to the hosts in `SEVDESK_FILE_URL_HOSTS` (read by `links`: over HTTP
+ * the request principal's {@link linkReader}; tests pass one with a fake resolver and transport).
+ * With none set, every read and delivery is refused with a message naming the setting.
+ */
+export function localFileAccess(
+  config: LocalFileConfig,
+  links: UrlFileReader = linkReader(config),
+): FileAccess {
   const { fileDirs, outputDir } = config;
   return {
-    canRead: fileDirs.length > 0,
+    canRead: fileDirs.length > 0 || (config.fileUrlHosts ?? []).length > 0,
     canDeliver: outputDir !== undefined,
     requestUpload() {
       throw refusal(
@@ -73,6 +99,7 @@ export function localFileAccess(config: LocalFileConfig): FileAccess {
       throw refusal("Batch uploads need a remote server with file transfer (SEVDESK_HTTP_FILES)");
     },
     async read(ref, options) {
+      if (isUrlRef(ref)) return links(ref, options);
       if (ref.startsWith(UPLOAD_REF_PREFIX)) {
         throw refusal(
           "upload: references come from sevdesk_upload_request, which only a remote server with " +
@@ -83,7 +110,7 @@ export function localFileAccess(config: LocalFileConfig): FileAccess {
       return readLocal(fileDirs, ref, options);
     },
     release() {
-      // Local files belong to the user and outlive tool calls.
+      // Local files belong to the user and outlive tool calls; downloaded ones were never kept.
     },
     deliver: async (file) => ({ savedTo: await saveLocal(outputDir, file) }),
     async checkDelivery() {
@@ -98,13 +125,14 @@ export function localFileAccess(config: LocalFileConfig): FileAccess {
 
 /**
  * File access of one HTTP request with remote file transfer on: uploads and download links of
- * `principal` in `store`, with the local folders where configured (see the module doc).
- * `config.deployment` must be the HTTP deployment with `files` set.
+ * `principal` in `store`, with the local folders and the allowed link hosts where configured (see
+ * the module doc). `config.deployment` must be the HTTP deployment with `files` set.
  */
 export function remoteFileAccess(
   config: RemoteFileConfig,
   store: TransferStore,
   principal: RequestPrincipal,
+  links: UrlFileReader = linkReader(config, principal),
 ): FileAccess {
   const { deployment } = config;
   if (deployment.kind !== "http" || deployment.files === undefined) {
@@ -112,7 +140,7 @@ export function remoteFileAccess(
   }
   const { publicOrigin } = deployment;
   const lifetime = duration(deployment.files.ttlSeconds * 1000);
-  const local = localFileAccess(config);
+  const local = localFileAccess(config, links);
   const localOutput = config.outputDir !== undefined;
   return {
     canRead: true,
@@ -159,6 +187,7 @@ export function remoteFileAccess(
       return batch;
     },
     async read(ref, options) {
+      if (isUrlRef(ref)) return links(ref, options);
       if (!ref.startsWith(UPLOAD_REF_PREFIX)) {
         if (config.fileDirs.length > 0) return readLocal(config.fileDirs, ref, options);
         throw refusal(
