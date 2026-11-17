@@ -82,7 +82,8 @@ function refuseNumberlessCreditNote(doc: LifecycleDocument, action: string): voi
     `${documentRef(doc, true)} is a draft without a number, and ${action} it could fail half-way ` +
       "in sevDesk and leave a finalized credit note without a number. Create it again with " +
       "sevdesk_credit_note_create_draft (which takes a number from the number range) and delete " +
-      "this draft in sevDesk, or give it a number in the sevDesk web app first.",
+      "this draft with sevdesk_document_delete_draft, or give it a number in the sevDesk web " +
+      "app first.",
   );
 }
 
@@ -166,7 +167,7 @@ export function assertCancellable(doc: LifecycleDocument<"invoice">): void {
   if (doc.status === codes.draft) {
     refuse(
       `${ref} is a draft: a draft has no legal effect and needs no cancellation. Change it with ` +
-        `sevdesk_invoice_update_draft or delete it in sevDesk.`,
+        `sevdesk_invoice_update_draft or delete it with sevdesk_document_delete_draft.`,
     );
   }
   if (doc.status === codes.partiallyPaid || (doc.status === codes.open && hasPayments(doc))) {
@@ -426,5 +427,39 @@ export function assertResettable(doc: LifecycleDocument<PaymentKind>, to: ResetT
   }
   if (doc.status !== codes.open) {
     refuse(`${ref} has ${statusText(doc)}; only open documents reset to draft.`);
+  }
+}
+
+/** What to do instead of deleting a document that is no longer a draft, per kind. */
+const INSTEAD_OF_DELETE: Readonly<Record<SalesKind, string>> = {
+  invoice:
+    "A finalized invoice stays in the books (GoBD): cancel it with sevdesk_invoice_cancel " +
+    "(Storno), or correct a paid one with a credit note (sevdesk_credit_note_create_from_invoice).",
+  creditNote:
+    "A finalized credit note stays in the books (GoBD): to correct it, reset it to draft with " +
+    'sevdesk_credit_note_reset (to "draft") while it is not enshrined, or create a new document.',
+  order: "A sent order stays as it is; create a new order if it has to change.",
+};
+
+/**
+ * Delete (`DELETE /{Invoice|CreditNote|Order}/{id}`): drafts (status 100) only, as sevDesk
+ * enforces with 409 "… can only be deleted in status 100 but is status 200" (spec/deviations.md
+ * D-109, D-074). Recurring invoice templates (WKR) are refused although sevDesk deletes them at
+ * status 100 and 50 (D-112): ending a template is another action, and a template is no draft.
+ */
+export function assertDeletable(doc: LifecycleDocument<SalesKind>): void {
+  const ref = documentRef(doc, true);
+  if (isInvoiceType(doc, "WKR")) {
+    refuse(
+      `${ref} is a recurring invoice template (WKR, Abo-Rechnung), not a draft; ` +
+        "sevdesk_document_delete_draft does not delete templates. Deactivate or delete it in " +
+        "the sevDesk web app.",
+    );
+  }
+  if (doc.status !== statusOf(doc).draft) {
+    refuse(
+      `${ref} is not a draft (${statusText(doc)}); sevDesk deletes only drafts (status ` +
+        `${String(statusOf(doc).draft)}). ${INSTEAD_OF_DELETE[doc.kind]}`,
+    );
   }
 }

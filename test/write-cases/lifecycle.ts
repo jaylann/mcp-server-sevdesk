@@ -1,9 +1,11 @@
 import { CREDIT_NOTE_LIFECYCLE_TOOLS } from "../../src/tools/credit-notes/lifecycle-tools.js";
+import { documentDeleteDraftTool } from "../../src/tools/documents/delete-draft-tool.js";
 import { documentSetLayoutTool } from "../../src/tools/documents/layout-tool.js";
 import { INVOICE_LIFECYCLE_TOOLS } from "../../src/tools/invoices/lifecycle-tools.js";
 import { ORDER_LIFECYCLE_TOOLS } from "../../src/tools/orders/lifecycle-tools.js";
 import type { AnyToolDefinition, AnyWriteToolDefinition } from "../../src/tools/types.js";
 import { isWriteTool } from "../../src/tools/types.js";
+import type { FakeRoute } from "../helpers/fake-client.js";
 import { letterpapersRoute, templatesRoute } from "../helpers/layout-routes.js";
 import type { WriteToolCase } from "../helpers/write-cases.js";
 import { discountRow, discountsRoute } from "../unit/tools/drafts/routes.js";
@@ -254,7 +256,38 @@ const CASES: readonly WriteToolCase[] = [
     ],
     writes: [{ method: "PUT", path: "/Order/3002/changeParameter" }],
   },
+  {
+    label: "delete a numbered credit note draft",
+    tool: documentDeleteDraftTool,
+    args: { kind: "credit_note", id: 2001 },
+    routes: [
+      documentRoute("creditNote", draftCreditNote),
+      writeRoute("DELETE", "/CreditNote/2001", "document-delete.json"),
+      goneRoute("/CreditNote/2001"),
+    ],
+    writes: [{ method: "DELETE", path: "/CreditNote/2001" }],
+  },
+  // Its own invoice (1004): numbered and sent, as after a reset to draft (the gap warning).
+  {
+    label: "delete an invoice draft that has a number and was sent",
+    tool: documentDeleteDraftTool,
+    args: { kind: "invoice", id: 1004 },
+    routes: [
+      documentRoute("invoice", { ...openInvoice, id: "1004", status: "100" }),
+      writeRoute("DELETE", "/Invoice/1004", "document-delete.json"),
+      goneRoute("/Invoice/1004"),
+    ],
+    writes: [{ method: "DELETE", path: "/Invoice/1004" }],
+  },
 ];
+
+/**
+ * The plain GET a draft delete reads back with (no `embed`, so `documentRoute` does not answer
+ * it), answering that the document is gone (an empty list).
+ */
+function goneRoute(path: string): FakeRoute {
+  return { path, response: { body: { objects: [] } } };
+}
 
 /**
  * Every case also serves empty position lists, no document discounts and the default layout, read

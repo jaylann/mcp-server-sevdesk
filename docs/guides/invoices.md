@@ -13,6 +13,7 @@ whether you confirm it.
 | [Create a draft](#create-a-draft)      | [`sevdesk_invoice_create_draft`](../tools.md#sevdesk_invoice_create_draft), [`sevdesk_invoice_create_from_order`](../tools.md#sevdesk_invoice_create_from_order) | `write`           | no              |
 | [Check it](#check-the-draft)           | [`sevdesk_invoice_get`](../tools.md#sevdesk_invoice_get), [`sevdesk_invoice_pdf`](../tools.md#sevdesk_invoice_pdf)                                               | `read`            | no              |
 | [Change it](#check-the-draft)          | [`sevdesk_invoice_update_draft`](../tools.md#sevdesk_invoice_update_draft)                                                                                       | `write`           | no              |
+| [Delete it](#delete-a-draft)           | [`sevdesk_document_delete_draft`](../tools.md#sevdesk_document_delete_draft)                                                                                     | `commit`          | **yes**         |
 | [Finalize](#finalize)                  | [`sevdesk_invoice_finalize`](../tools.md#sevdesk_invoice_finalize)                                                                                               | `commit`          | **yes**         |
 | [Send by email](#send-it)              | [`sevdesk_invoice_send_email`](../tools.md#sevdesk_invoice_send_email)                                                                                           | `external`        | **yes**         |
 | [Book the payment](#book-the-payment)  | [`sevdesk_invoice_book_payment`](../tools.md#sevdesk_invoice_book_payment)                                                                                       | `commit`          | **yes**         |
@@ -199,6 +200,32 @@ PDF as a preview that never marks the invoice as sent. Both are `read`. To keep 
 confirmation) changes only the fields you name. New positions replace all stored positions, so
 the assistant passes the full list. A new discount replaces the stored one, and "remove the
 discount" deletes it. Only drafts can be changed.
+
+### Delete a draft
+
+> Delete the draft invoice for Musterfirma, it went to the wrong customer.
+
+[`sevdesk_document_delete_draft`](../tools.md#sevdesk_document_delete_draft) (`commit`, **you
+confirm**) deletes a draft with its positions; the same tool deletes order and credit note drafts.
+The preview names the document (number, customer, date, total); if the draft changes before you
+approve, you are asked again. Only drafts (status 100) are deleted: a finalized invoice stays in
+the books and is cancelled or corrected with a credit note instead, and recurring invoice
+templates are not deleted here.
+
+Mind the number range. Orders and credit notes take their number when the draft is saved; after
+the deletion sevDesk gives that number to the next document only if it was the last one handed
+out, otherwise the range keeps a gap. An invoice draft normally has no number yet. One that has
+a number may be an invoice that was finalized and later reset to draft; if that number was
+issued, deleting the draft leaves a gap in the invoice numbers, so the preview warns (more
+strongly when sevDesk records the invoice as sent). An issued invoice is cancelled instead:
+finalize it again, then cancel it with
+[`sevdesk_invoice_cancel`](../tools.md#sevdesk_invoice_cancel). On accounts where sevDesk
+enshrines documents when they are finalized (the setting "Automatische Festschreibung von
+Dokumenten bei Fertigstellung"), an issued invoice cannot become a draft again: sevDesk refuses
+to reset or delete an enshrined invoice.
+
+> [!WARNING]
+> A deletion cannot be undone.
 
 ### E-invoice readiness
 

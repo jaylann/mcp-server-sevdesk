@@ -213,6 +213,47 @@ exports[`advertises additive output keys, countries and lookup paging 1`] = `
       "type": "integer",
     },
   },
+  "sevdesk_document_delete_draft": {
+    "/properties/result/properties/creditNote/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/creditNote/properties/bookingCategory/properties/key": {
+      "description": "Accepted bookingCategory input key; absent for unsupported categories.",
+      "type": "string",
+    },
+    "/properties/result/properties/creditNote/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/result/properties/invoice/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/invoice/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/result/properties/invoice/properties/type/properties/key": {
+      "description": "Accepted type input/filter key; absent for unknown codes.",
+      "type": "string",
+    },
+    "/properties/result/properties/order/properties/address/properties/country": {
+      "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
+      "pattern": "^[A-Z]{2}$",
+      "type": "string",
+    },
+    "/properties/result/properties/order/properties/status/properties/key": {
+      "description": "Accepted status filter key; absent when no filter accepts this code.",
+      "type": "string",
+    },
+    "/properties/result/properties/order/properties/type/properties/key": {
+      "description": "Accepted type input/filter key; absent for unknown codes.",
+      "type": "string",
+    },
+  },
   "sevdesk_invoice_book_payment": {
     "/properties/result/properties/invoice/properties/address/properties/country": {
       "description": "ISO 3166-1 alpha-2 country code; absent when the country cannot be resolved.",
@@ -2347,6 +2388,46 @@ exports[`tools/list > SEVDESK_ALLOW=all with all toolsets 1`] = `
     },
     "name": "sevdesk_datev_settings_update",
     "title": "Set sevDesk's DATEV export settings",
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": false,
+      "title": "Delete a draft invoice, credit note or order",
+    },
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "description": "Preview only: check the action and return exactly what it would do, without changing anything in sevDesk and without asking the user. Defaults to false.",
+          "type": "boolean",
+        },
+        "id": {
+          "description": "Document id (not its number), e.g. from sevdesk_invoices_list, sevdesk_credit_notes_list or sevdesk_orders_list.",
+          "exclusiveMinimum": 0,
+          "type": "integer",
+        },
+        "kind": {
+          "description": "Which document: invoice, credit_note or order.",
+          "enum": [
+            "invoice",
+            "credit_note",
+            "order",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "kind",
+        "id",
+      ],
+      "type": "object",
+    },
+    "name": "sevdesk_document_delete_draft",
+    "title": "Delete a draft invoice, credit note or order",
   },
   {
     "annotations": {

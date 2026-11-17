@@ -921,7 +921,7 @@ Every entry was checked against the vendored snapshot in [`openapi.yaml`](openap
   | `GET /SevClient`                                                                       | the account's taxation regime, chart of accounts, company data and DATEV settings (D-067)                          | recorded |
   | `GET /Order/Factory/getNextOrderNumber`, `/CreditNote/Factory/getNextCreditNoteNumber` | the next order and credit note numbers (D-066)                                                                     | recorded |
   | `GET /CheckAccountTransactionLog`                                                      | what a bank transaction was booked against, and how much (D-057)                                                   | recorded |
-  | `DELETE /Invoice/{invoiceId}`                                                          | deleting a draft invoice (no tool uses it)                                                                         | recorded |
+  | `DELETE /Invoice/{invoiceId}`                                                          | deleting draft invoices (`sevdesk_document_delete_draft`; D-109)                                                   | recorded |
   | `DELETE /Voucher/{voucherId}`                                                          | deleting draft vouchers (the spec has only GET and PUT; D-074)                                                     | recorded |
   | `GET`, `POST /CostCentre`, `GET`, `DELETE /CostCentre/{costCentreId}`                  | cost centres of documents (D-091)                                                                                  | recorded |
   | `DELETE /TagRelation/{tagRelationId}`                                                  | removing one tag from one document (D-089)                                                                         | recorded |
@@ -2489,9 +2489,10 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 
   Recorded 2026-11-16 (offers and credit notes alike): after `useNextNumber=true` the peek shows
   the following number; saving a draft with the reserved number does not move the counter again;
-  after that draft is deleted (D-109), the peek shows the **reserved number again**. A number
-  reserved for a draft that is then deleted is handed out once more, so deleting a numbered draft
-  leaves no gap. Saving or deleting a draft with a peeked number moves nothing.
+  after that draft is deleted (D-109), the peek shows the **reserved number again**. The number
+  reserved last, held by a draft that is then deleted, is handed out once more, so deleting that
+  draft leaves no gap. Whether a number from further back comes back once later numbers were
+  reserved was not recorded. Saving or deleting a draft with a peeked number moves nothing.
 
 - **Sources:** recorded 2026-11-07, trial account, Update 2.0 (probe `write-next-order-number`:
   two peeks, the same number); manual check (lead) of `useNextNumber=true`, the credit note and
@@ -2507,14 +2508,19 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   `write` tier ("it reserves the next document number"): it is refused in read-only and dry-run
   mode, needs the calling tool's tier and is never retried. Only `useNextNumber` false is a read
   (recorded); an absent flag is treated as reserving because it was never measured, except on the
-  documented `getNextCustomerNumber` (fix in this PR).
+  documented `getNextCustomerNumber` (fix in this PR). The preview of
+  `sevdesk_document_delete_draft` says no more than was recorded: a numbered order or credit note
+  draft's number comes back only if it was the last one handed out, otherwise the range keeps a
+  gap (D-109).
 - **Test:** `test/unit/sevdesk/paths.test.ts`, `test/unit/sevdesk/client.test.ts`,
   `test/unit/sevdesk/scoped-client.test.ts` (side-effect classification),
-  `test/unit/domain/drafts/numbering.test.ts`, `test/unit/tools/drafts/numbering.test.ts`. Live:
-  probe `write-next-order-number`, and the opt-in probe `write-reserved-number-delete-draft`
-  (it consumes a number of each sequence; the catalog test in `test/unit/scripts/probes.test.ts`
-  allows `useNextNumber=true` only there); the delete tools of #90 pin the "number is handed out
-  again" note when they come.
+  `test/unit/domain/drafts/numbering.test.ts`, `test/unit/tools/drafts/numbering.test.ts`;
+  `test/unit/tools/documents/delete-draft.test.ts` ("says that the number of a numbered … draft
+  comes back only if it was the last (D-066)") and the German preview in
+  `test/integration/__snapshots__/write-previews-de.test.ts.snap` ("delete a numbered credit note
+  draft"). Live: probe `write-next-order-number`, and the opt-in probe
+  `write-reserved-number-delete-draft` (it consumes a number of each sequence; the catalog test in
+  `test/unit/scripts/probes.test.ts` allows `useNextNumber=true` only there).
 
 ### D-067: `GET /SevClient` tells the taxation regime, and sevDesk checks it only when finalizing
 
@@ -2822,10 +2828,13 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   (`prepareVoucherDelete` in `src/domain/drafts/voucher-finalize.ts`), sends the DELETE once,
   ignores its answer and confirms with a GET that the voucher is gone (`executeVoucherDelete`). A
   409 (the voucher was finalized in the meantime) becomes a trusted message that nothing was
-  deleted. The preview warns that an attached receipt file may stay.
+  deleted. The preview warns that an attached receipt file may stay. `sevdesk_document_delete_draft`
+  does the same for invoice, order and credit note drafts (D-109).
 - **Test:** `test/unit/tools/vouchers/finalize-delete.test.ts` ("deletes a draft and confirms it is
   gone", "explains sevDesk's 409 for a voucher that is no draft anymore", "refuses an open
-  voucher", "warns that an attached receipt may stay"). Live: probe `write-voucher-delete`.
+  voucher", "warns that an attached receipt may stay"); for invoices, orders and credit notes
+  `test/unit/tools/documents/delete-draft.test.ts` and `test/regressions/delete-only-drafts.test.ts`
+  (D-109). Live: probe `write-voucher-delete`.
 
 ### D-075: A `FULL_PAYMENT` must use the whole linked transaction; type `N` splits it
 
@@ -3956,15 +3965,33 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   and without a number) the DELETE answers `{objects: [null]}`, after which GET answers 404, as for
   vouchers (D-074) and invoices (D-024). A sent offer (200) is refused with 409 "Order can only be
   deleted in status 100 but is status 200" and stays. A finalized credit note was not at hand.
-  Deleting a draft saved with a peeked number does not move the counter; deleting one saved with
-  a reserved number gives that number back (D-066).
+  Deleting a draft saved with a peeked number does not move the counter; deleting the one saved
+  with the number reserved last gives that number back (D-066).
 - **Sources:** spec (`deleteOrder`, `deletecreditNote`); recorded 2026-11-16, trial account,
   Update 2.0 (probe `write-delete-draft-order-credit-note`).
 - **Impact:** The draft delete tool refuses anything but status 100 before sending, reads back
-  with a GET to confirm, and turns a 409 into a trusted message that nothing was deleted. (#90)
-- **Test:** pending: the #90 tools. Live: probe `write-delete-draft-order-credit-note`
-  (`test/unit/scripts/gaps-documents-probes.test.ts`, "deletes drafts, records the refusal of
-  non-drafts, and follows the counters").
+  with a plain GET to confirm, and turns a 409 into a trusted message that nothing was deleted
+  (`deleteDocument` in `src/domain/lifecycle/actions.ts`). The GET maps nothing: an answer means
+  the document is still there, a 404 or an empty answer that it is gone, and any other failure is
+  reported with the deletion as a completed write. A draft can hold a number that was issued,
+  since open invoices and credit notes can be reset to draft. So the preview of a numbered order
+  or credit note draft says the number comes back only if it was the last one handed out, and the
+  preview of an invoice draft with a number warns that deleting it leaves a gap if the number was
+  issued (more strongly when sevDesk records it as sent) and that an issued invoice is cancelled
+  instead. A warning, not a refusal: the record does not tell whether the number was issued.
+  Where sevDesk enshrines on finalizing, an enshrined invoice refuses `resetToDraft` and deletion
+  (D-023, D-059), so the gap cannot arise there. (#90)
+- **Test:** `test/unit/tools/documents/delete-draft.test.ts` ("deletes a … draft and confirms
+  with a GET that it is gone", "says so when sevDesk still returns … after the DELETE", "reports
+  the deletion as done when the read-back …", "explains sevDesk's 409 for a document that is no
+  draft anymore", "says that the number of a numbered … draft comes back only if it was the last
+  (D-066)", "an invoice draft with a number …"), the German previews in
+  `test/integration/__snapshots__/write-previews-de.test.ts.snap` ("delete a numbered credit note
+  draft", "delete an invoice draft that has a number and was sent"),
+  `test/regressions/delete-only-drafts.test.ts` (no DELETE for a non-draft or a template),
+  `test/unit/domain/lifecycle/transitions.test.ts` (`assertDeletable`). Live: probe
+  `write-delete-draft-order-credit-note` (`test/unit/scripts/gaps-documents-probes.test.ts`,
+  "deletes drafts, records the refusal of non-drafts, and follows the counters").
 
 ### D-110: `saveCreditNote` with an id updates a draft; `creditNotePosDelete` is a list
 
@@ -4047,11 +4074,17 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
 - **Sources:** spec (Invoice tag, status table and filters); recorded 2026-11-16, trial account,
   Update 2.0 (probes `write-recurring-template-update-end`, `write-recurring-schedule-fields`,
   `write-recurring-template-create`).
-- **Impact:** Ending a template is `saveInvoice` with its id and status 50, previewed; deleting
-  is allowed only at 50 or 100. The lifecycle tools keep refusing templates
-  (`refuseTemplate`). (#91)
+- **Impact:** Ending a template is `saveInvoice` with its id and status 50, previewed; sevDesk
+  deletes a template only at 50 or 100. The lifecycle tools keep refusing templates
+  (`refuseTemplate`). `sevdesk_document_delete_draft` refuses templates at every status, 100 and
+  50 included (`assertDeletable`): a template is no draft, and deleting one belongs to the
+  recurring tools. (#91)
 - **Test:** `test/contract/recorded-gaps-documents.test.ts` ("lists only templates, active ones
-  (status 200) included, with total and paging"); the end tool: pending, #91.
+  (status 200) included, with total and paging"); `test/unit/domain/lifecycle/transitions.test.ts`
+  (`assertDeletable`, "refuses recurring invoice templates, active or not"),
+  `test/regressions/delete-only-drafts.test.ts` ("refuses an active recurring template / a
+  recurring template at status 100 / a deactivated recurring template without a write"); the end
+  tool: pending, #91.
 
 ### D-113: `changeParameter` answers the layout in `metaData`; orders need a preview first
 

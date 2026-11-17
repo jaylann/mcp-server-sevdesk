@@ -15,6 +15,7 @@ Kunden Rechnungen stellen. Zu jedem Schritt steht, was du fragst, welches Werkze
 | [Entwurf anlegen](#einen-entwurf-anlegen)   | [`sevdesk_invoice_create_draft`](../tools.md#sevdesk_invoice_create_draft), [`sevdesk_invoice_create_from_order`](../tools.md#sevdesk_invoice_create_from_order) | `write`           | nein           |
 | [Prüfen](#den-entwurf-prüfen)               | [`sevdesk_invoice_get`](../tools.md#sevdesk_invoice_get), [`sevdesk_invoice_pdf`](../tools.md#sevdesk_invoice_pdf)                                               | `read`            | nein           |
 | [Ändern](#den-entwurf-prüfen)               | [`sevdesk_invoice_update_draft`](../tools.md#sevdesk_invoice_update_draft)                                                                                       | `write`           | nein           |
+| [Löschen](#einen-entwurf-löschen)           | [`sevdesk_document_delete_draft`](../tools.md#sevdesk_document_delete_draft)                                                                                     | `commit`          | **ja**         |
 | [Fertigstellen](#fertigstellen)             | [`sevdesk_invoice_finalize`](../tools.md#sevdesk_invoice_finalize)                                                                                               | `commit`          | **ja**         |
 | [Per E-Mail versenden](#versenden)          | [`sevdesk_invoice_send_email`](../tools.md#sevdesk_invoice_send_email)                                                                                           | `external`        | **ja**         |
 | [Zahlung buchen](#die-zahlung-buchen)       | [`sevdesk_invoice_book_payment`](../tools.md#sevdesk_invoice_book_payment)                                                                                       | `commit`          | **ja**         |
@@ -212,6 +213,33 @@ auf der Festplatte zu behalten, schreibt
 Bestätigung) ändert nur die Felder, die du nennst. Neue Positionen ersetzen alle gespeicherten,
 deshalb übergibt der Assistent die vollständige Liste. Ein neuer Rabatt ersetzt den gespeicherten,
 und „entferne den Rabatt“ löscht ihn. Nur Entwürfe lassen sich ändern.
+
+### Einen Entwurf löschen
+
+> Lösch den Rechnungsentwurf für die Musterfirma, der ging an den falschen Kunden.
+
+[`sevdesk_document_delete_draft`](../tools.md#sevdesk_document_delete_draft) (`commit`, **du
+bestätigst**) löscht einen Entwurf mit seinen Positionen; dasselbe Werkzeug löscht auch Entwürfe
+von Aufträgen und Gutschriften. Die Vorschau nennt das Dokument (Nummer, Kunde, Datum, Summe);
+ändert sich der Entwurf, bevor du zustimmst, wirst du erneut gefragt. Gelöscht werden nur Entwürfe
+(Status 100): Eine fertiggestellte Rechnung bleibt in der Buchhaltung und wird stattdessen storniert
+oder mit einer Gutschrift korrigiert, und Abo-Rechnungen (Vorlagen) werden hier nicht gelöscht.
+
+Achte auf den Nummernkreis. Aufträge und Gutschriften bekommen ihre Nummer schon beim Speichern
+des Entwurfs; nach dem Löschen vergibt sevDesk diese Nummer nur dann an das nächste Dokument,
+wenn sie die zuletzt vergebene war, sonst bleibt eine Lücke. Ein Rechnungsentwurf hat
+normalerweise noch keine Nummer. Hat er eine, kann es eine Rechnung sein, die fertiggestellt und
+später auf Entwurf zurückgesetzt wurde; war die Nummer schon vergeben, hinterlässt das Löschen
+eine Lücke in den Rechnungsnummern, und die Vorschau warnt davor (deutlicher, wenn sevDesk die
+Rechnung als versendet führt). Eine ausgestellte Rechnung wird stattdessen storniert: Stelle sie
+erneut fertig und storniere sie mit
+[`sevdesk_invoice_cancel`](../tools.md#sevdesk_invoice_cancel). In Konten, in denen sevDesk
+Dokumente beim Fertigstellen festschreibt (die Einstellung „Automatische Festschreibung von
+Dokumenten bei Fertigstellung“), kann eine ausgestellte Rechnung nicht wieder zum Entwurf werden:
+sevDesk lehnt Zurücksetzen und Löschen einer festgeschriebenen Rechnung ab.
+
+> [!WARNING]
+> Das Löschen lässt sich nicht rückgängig machen.
 
 ### Bereit für die E-Rechnung
 
