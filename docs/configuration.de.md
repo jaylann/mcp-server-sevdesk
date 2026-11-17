@@ -1,4 +1,4 @@
-<!-- translated-from: docs/configuration.md sha256:815c74cd6128 -->
+<!-- translated-from: docs/configuration.md sha256:9642ef66122e -->
 
 # Konfiguration
 
@@ -71,11 +71,11 @@ wird nicht gezeigt, weil es das Geheimnis selbst sein kann, in die falsche Varia
 
 ### Werkzeuge und Ausgabe
 
-| Variable                    | Standard  | Bedeutung                                                                                                                                                                                                                                                                  |
-| --------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SEVDESK_TOOLSETS`          | `default` | Die [Werkzeuggruppen](#werkzeuggruppen), die geladen werden: eine Liste aus `meta`, `contacts`, `invoices`, `credit-notes`, `orders`, `vouchers`, `banking`, `parts`, `reports`, `advanced` oder `default` (alles außer `advanced`) oder `all`. `meta` wird immer geladen. |
-| `SEVDESK_STRUCTURED_OUTPUT` | `auto`    | `auto`, `on` oder `off`: ob Werkzeuge ein Ausgabeschema angeben und neben dem JSON-Text typisierten `structuredContent` zurückgeben. Siehe [Strukturierte Ausgabe](#strukturierte-ausgabe).                                                                                |
-| `SEVDESK_VIES_CHECK`        | `0`       | `1` erlaubt `sevdesk_vat_id_check`, beim VIES-Dienst der Europäischen Kommission zu fragen, ob eine USt-IdNr. gültig ist; dabei geht die USt-IdNr. an `ec.europa.eu` ([Datenschutz](../PRIVACY.de.md)). Aus: nur ihr Format wird geprüft.                                  |
+| Variable                    | Standard  | Bedeutung                                                                                                                                                                                                                                                                         |
+| --------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SEVDESK_TOOLSETS`          | `default` | Die [Werkzeuggruppen](#werkzeuggruppen), die geladen werden: eine Liste aus `meta`, `contacts`, `invoices`, `credit-notes`, `orders`, `vouchers`, `banking`, `parts`, `reports`, `advanced` oder `default` (alles außer `advanced`) oder `all`. `meta` wird immer geladen.        |
+| `SEVDESK_STRUCTURED_OUTPUT` | `auto`    | `auto`, `on` oder `off`: ob Werkzeuge ein Ausgabeschema angeben und neben dem JSON-Text typisierten `structuredContent` zurückgeben. Siehe [Strukturierte Ausgabe](#strukturierte-ausgabe).                                                                                       |
+| `SEVDESK_VIES_CHECK`        | `0`       | `1` oder `true` erlaubt `sevdesk_vat_id_check`, beim VIES-Dienst der Europäischen Kommission zu fragen, ob eine USt-IdNr. gültig ist; dabei geht die USt-IdNr. an `ec.europa.eu` ([Datenschutz](../PRIVACY.de.md)). Nicht gesetzt, `0` oder `false`: nur ihr Format wird geprüft. |
 
 ### Dateien und Audit-Log
 

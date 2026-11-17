@@ -69,7 +69,7 @@ shown, because it may be the secret itself, pasted into the wrong variable.
 | --------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `SEVDESK_TOOLSETS`          | `default` | The [toolsets](#toolsets) to load: a list of `meta`, `contacts`, `invoices`, `credit-notes`, `orders`, `vouchers`, `banking`, `parts`, `reports`, `advanced`, or `default` (everything except `advanced`) or `all`. `meta` is always loaded. |
 | `SEVDESK_STRUCTURED_OUTPUT` | `auto`    | `auto`, `on` or `off`: whether tools declare an output schema and return typed `structuredContent` next to the JSON text. See [Structured output](#structured-output).                                                                       |
-| `SEVDESK_VIES_CHECK`        | `0`       | `1` lets `sevdesk_vat_id_check` ask the European Commission's VIES service whether a VAT ID is valid, which sends the VAT ID to `ec.europa.eu` ([Privacy](../PRIVACY.md)). Off: only its format is checked.                                  |
+| `SEVDESK_VIES_CHECK`        | `0`       | `1` or `true` lets `sevdesk_vat_id_check` ask the European Commission's VIES service whether a VAT ID is valid, which sends the VAT ID to `ec.europa.eu` ([Privacy](../PRIVACY.md)). Unset, `0` or `false`: only its format is checked.      |
 
 ### Files and the audit log
 

@@ -89,7 +89,7 @@
         },
         {
           "name": "SEVDESK_VIES_CHECK",
-          "description": "Set to true to let sevdesk_vat_id_check ask the European Commission's VIES service whether a VAT ID is valid; this sends the VAT ID to ec.europa.eu. Off: only the format is checked.",
+          "description": "Set to 1 or true to let sevdesk_vat_id_check ask the European Commission's VIES service whether a VAT ID is valid; this sends the VAT ID to ec.europa.eu. Unset, 0 or false (the default): only the format is checked.",
           "format": "boolean",
           "default": "false",
           "isRequired": false,
@@ -182,7 +182,7 @@
         },
         {
           "name": "SEVDESK_VIES_CHECK",
-          "description": "Set to true to let sevdesk_vat_id_check ask the European Commission's VIES service whether a VAT ID is valid; this sends the VAT ID to ec.europa.eu. Off: only the format is checked.",
+          "description": "Set to 1 or true to let sevdesk_vat_id_check ask the European Commission's VIES service whether a VAT ID is valid; this sends the VAT ID to ec.europa.eu. Unset, 0 or false (the default): only the format is checked.",
           "format": "boolean",
           "default": "false",
           "isRequired": false,
