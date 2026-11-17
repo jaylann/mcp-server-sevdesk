@@ -61,7 +61,11 @@ import type { QueryValue, SevdeskClient } from "../sevdesk/types.js";
 import { cleanText } from "./common.js";
 import { type CountryReadOptions, withDocumentCountry } from "./country-codes.js";
 import { type CreditNoteDetails, getCreditNote } from "./credit-notes.js";
-import type { DocumentDiscount } from "./document-discounts.js";
+import {
+  discountAmountOfItem,
+  discountRowText,
+  type DocumentDiscount,
+} from "./document-discounts.js";
 import type { DocumentTotals } from "./document-positions.js";
 import {
   findCreditNotesWithNumber,
@@ -75,7 +79,7 @@ import {
   type InvoiceDetails,
   mapInvoiceDetail,
 } from "./invoices.js";
-import { compare, DEFAULT_CURRENCY, format } from "./money.js";
+import { compare, format } from "./money.js";
 import { getOrder, mapOrderDetail, type OrderDetail } from "./orders.js";
 import { jsonNumber } from "./parts-write.js";
 
@@ -239,7 +243,7 @@ export async function planOrderToInvoice(
     { label: "Order", value: `${label} (${order.type.labelDe ?? order.type.label})` },
     ...customerFact(order.contact),
     ...totalsFacts("Order", order.totals, order.currency),
-    ...orderDiscountFacts(discount, order.currency),
+    ...sourceOrderDiscountFacts(discount, order.currency),
     { label: "Creates", value: MODE_LABELS[input.mode] },
   ];
   if (partial && input.amount !== undefined) {
@@ -1211,28 +1215,21 @@ function totalsFacts(
 }
 
 /**
- * The order's discounts on the whole document, one fact each (numbered when there are several),
- * then what they deduct as sevDesk computed it (negative). A fixed amount on a document in another
- * currency gets no currency: which one sevDesk reads it in is not checked (D-116).
+ * The source order's discounts on the whole document (`discountRowText`, with the cleaned text in
+ * quotes), one fact each (numbered when there are several), then what they deduct as sevDesk
+ * computed it (negative).
  */
-function orderDiscountFacts(
+function sourceOrderDiscountFacts(
   discount: DocumentDiscount | undefined,
   currency: string,
 ): ConfirmationFact[] {
   if (discount === undefined) return [];
   const several = discount.items.length > 1;
   const facts: ConfirmationFact[] = discount.items.map((item, index) => {
-    const basis = item.basis === "gross" ? "gross" : "net";
-    const amount =
-      item.kind === "percent"
-        ? `${item.value} % of the ${basis} total`
-        : currency === DEFAULT_CURRENCY
-          ? `${format(item.value, 2)} ${currency} ${basis}`
-          : `${format(item.value, 2)} ${basis} (fixed amount)`;
     const text = item.text === undefined ? "" : ` ("${item.text}")`;
     return {
       label: several ? `Order discount ${String(index + 1)}` : "Order discount",
-      value: `${item.surcharge === true ? "surcharge " : ""}${amount}${text}`,
+      value: `${discountRowText(discountAmountOfItem(item), currency, "en")}${text}`,
     };
   });
   const sums = [

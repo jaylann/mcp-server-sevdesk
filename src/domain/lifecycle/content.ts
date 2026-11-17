@@ -34,9 +34,15 @@ import {
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import { moneyFromUpstream, splitTotals, trimmedText } from "../common.js";
 import type { CreditNoteDetail } from "../credit-notes.js";
-import { type DiscountRow, discountTotals, readDocumentDiscounts } from "../document-discounts.js";
+import {
+  type DiscountRow,
+  discountRowText,
+  discountTotals,
+  readDocumentDiscounts,
+  severalDiscountsWarning,
+} from "../document-discounts.js";
 import type { InvoiceDetail } from "../invoices.js";
-import { DEFAULT_CURRENCY, isDecimal, isZero, type Money } from "../money.js";
+import { isDecimal, isZero, type Money } from "../money.js";
 import type { OrderDetail } from "../orders.js";
 import { type ChildRows, listChildRows } from "../paging.js";
 import {
@@ -180,12 +186,15 @@ export async function readDocumentContent(
         (a.positionNumber ?? Number.MAX_SAFE_INTEGER) -
           (b.positionNumber ?? Number.MAX_SAFE_INTEGER) || a.id - b.id,
     );
+  const several = severalDiscountsWarning(discounts.rows.length);
   return content(
     binding,
     (lang) => documentFacts(doc, lang, addressFacts(record, TEXT[lang])),
     (lang) => salesFacts(doc, record, rows, positions.complete, discounts.rows, lang),
     NOT_SHOWN[doc.kind],
-    discounts.rows.length > 1 ? [severalDiscountsNote(discounts.rows.length)] : [],
+    // Several discounts: sevDesk's totals do not count all of them (D-116), so the total shown
+    // may not be what the rows listed suggest.
+    several === undefined ? [] : [several],
   );
 }
 
@@ -204,23 +213,6 @@ function content(
     notShown,
     notes,
   };
-}
-
-/**
- * Several discounts on the whole document: sevDesk's totals do not count all of them (in the
- * check of 2026-11-17 only the newest, D-116), so the total shown may not be what the rows listed
- * above suggest.
- */
-function severalDiscountsNote(count: number): Phrase {
-  return phrase(
-    `This document has ${String(count)} discounts on the whole document, and sevDesk's totals ` +
-      "may count only one of them (in a check, only the newest), so the total may not be what " +
-      "the discounts listed suggest. Check the total in sevDesk before you approve.",
-    `Das Dokument hat ${String(count)} Rabatte auf den Gesamtbetrag, und sevDesk rechnet in den ` +
-      "Summen womöglich nur einen davon ein (in einer Prüfung nur den neuesten); die Summe ist " +
-      "dann nicht, was die aufgeführten Rabatte erwarten lassen. Prüfe die Summe vor der " +
-      "Freigabe in sevDesk.",
-  );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -334,10 +326,6 @@ const TEXT = {
     optional: "optional (not in the total)",
     documentDiscount: "Discount on the whole document (Rabatt)",
     discountsTotal: "Discounts in total",
-    surcharge: "surcharge (Aufschlag)",
-    ofNet: "of the net total",
-    ofGross: "of the gross total",
-    fixedAmount: "fixed amount",
     text: "Text",
     id: "id",
     account: "booking account (Buchungskonto) id",
@@ -374,10 +362,6 @@ const TEXT = {
     optional: "optional (nicht in der Summe)",
     documentDiscount: "Rabatt auf den Gesamtbetrag",
     discountsTotal: "Rabatte insgesamt",
-    surcharge: "Aufschlag",
-    ofNet: "vom Nettobetrag",
-    ofGross: "vom Bruttobetrag",
-    fixedAmount: "fester Betrag",
     text: "Text",
     id: "ID",
     account: "Buchungskonto-ID",
@@ -612,20 +596,14 @@ function listedPositions<T>(
 }
 
 /**
- * One document discount: "10 % of the net total" or "10.00 EUR net", a surcharge marked as such,
- * then its text as stored on the line below. A fixed amount on a document in another currency is
- * not given a currency: which one sevDesk reads it in is not recorded (D-116).
+ * One document discount as `discountRowText` writes it, then its text as stored on the line below
+ * (like a position's text).
  */
 function documentDiscountText(row: DiscountRow, currency: string, lang: PreviewLanguage): string {
-  const t = TEXT[lang];
-  const gross = row.isNet === false;
-  const amount = row.percentage
-    ? `${numberText(row.value, lang)} % ${gross ? t.ofGross : t.ofNet}`
-    : currency === DEFAULT_CURRENCY
-      ? `${amountText(row.value, currency, lang) ?? row.value} ${gross ? t.gross : t.net}`
-      : `${numberText(row.value, lang)} ${gross ? t.gross : t.net} (${t.fixedAmount})`;
-  const line = row.surcharge ? `${t.surcharge}: ${amount}` : amount;
-  return trimmedText(row.text) === undefined ? line : `${line}\n${t.text}: ${row.text ?? ""}`;
+  const line = discountRowText(row, currency, lang);
+  return trimmedText(row.text) === undefined
+    ? line
+    : `${line}\n${TEXT[lang].text}: ${row.text ?? ""}`;
 }
 
 /**

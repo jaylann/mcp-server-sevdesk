@@ -35,6 +35,7 @@ import { SevdeskError } from "../../sevdesk/errors.js";
 import { amountInput, currencyCode, splitTotals, type SumFields } from "../common.js";
 import {
   type DiscountRow,
+  discountRowText,
   type DiscountSums,
   discountTotals,
   type DocumentDiscount,
@@ -334,25 +335,38 @@ function cents(net: Decimal, tax: Decimal): Amounts {
   };
 }
 
+/** The net the discount deducts from the net total `net`: a percentage rounded to cents. */
+function deductionOf(net: Decimal, discount: DraftDiscount): Decimal {
+  return discount.percentage
+    ? round(multiplyPercent(net, discount.value), CENT_PLACES)
+    : decimal(discount.value);
+}
+
+/**
+ * Why the discount cannot be taken off `base` (trusted text): a net total that is not positive, or
+ * a deduction above it. `undefined` when it can.
+ */
+function totalProblem(base: Amounts, discount: DraftDiscount): string | undefined {
+  const net = decimal(base.net);
+  if (compare(net, 0) <= 0) {
+    return `The net total is ${base.net}; a discount on the whole document needs a positive total.`;
+  }
+  const deduction = deductionOf(net, discount);
+  if (compare(deduction, net) > 0) {
+    return `The discount of ${format(deduction, CENT_PLACES)} is more than the net total of ${base.net}.`;
+  }
+  return undefined;
+}
+
 /**
  * `base` (the undiscounted totals of positions that all carry `rate`) less the discount. Throws a
  * `validation` error when the net total is not positive or a fixed amount exceeds it.
  */
 export function discountedTotals(base: Amounts, rate: string, discount: DraftDiscount): Amounts {
+  const problem = totalProblem(base, discount);
+  if (problem !== undefined) throw refusal(problem);
   const net = decimal(base.net);
-  if (compare(net, 0) <= 0) {
-    throw refusal(
-      `The net total is ${base.net}; a discount on the whole document needs a positive total.`,
-    );
-  }
-  const deduction = discount.percentage
-    ? round(multiplyPercent(net, discount.value), CENT_PLACES)
-    : decimal(discount.value);
-  if (compare(deduction, net) > 0) {
-    throw refusal(
-      `The discount of ${format(deduction, CENT_PLACES)} is more than the net total of ${base.net}.`,
-    );
-  }
+  const deduction = deductionOf(net, discount);
   const deductionTax = round(multiplyPercent(deduction, rate), CENT_PLACES);
   return cents(subtract(net, deduction), subtract(base.tax, deductionTax));
 }
@@ -453,9 +467,15 @@ export function updateTotals(input: {
     case "none":
       return { expected: base, changes: true, warning: undefined };
     case "one": {
-      const reason = unrecorded(after.discount, { mode, rates, currency });
-      if (reason !== undefined) {
-        return uncomputed(`The draft keeps its discount on the whole document. ${reason}`);
+      // A new discount passed `checkNewDiscount` above and is refused by `discountedTotals` when
+      // it does not fit the total. A kept one is never refused: the call does not touch it.
+      if (change.planned === undefined) {
+        const reason =
+          unrecorded(after.discount, { mode, rates, currency }) ??
+          totalProblem(base, after.discount);
+        if (reason !== undefined) {
+          return uncomputed(`The draft keeps its discount on the whole document. ${reason}`);
+        }
       }
       return {
         expected: discountedTotals(base, distinctRates(rates)[0] ?? "0", after.discount),
@@ -480,15 +500,19 @@ export function updateTotals(input: {
 // Preview and read-back
 // ---------------------------------------------------------------------------------------------
 
-/** A new discount for a preview, e.g. `3 % of the net total ("Rabatt")`. */
+/**
+ * A new discount for a preview, written like a stored one (`discountRowText`), e.g.
+ * `3 % of the net total ("Rabatt")`.
+ */
 export function discountText(discount: DraftDiscount, currency: string): string {
-  const amount = discount.percentage
-    ? `${discount.value} % of the net total`
-    : `${format(discount.value, CENT_PLACES)} ${currency} net`;
-  return `${amount} ("${discount.text}")`;
+  const row = { surcharge: false, percentage: discount.percentage, value: discount.value };
+  return `${discountRowText({ ...row, isNet: true }, currency, "en")} ("${discount.text}")`;
 }
 
-/** The stored discounts for a preview (raw text, cleaned by `fact`), or `undefined` for none. */
+/**
+ * The stored discounts for a preview (`discountRowText`, raw text in quotes, cleaned by `fact`),
+ * or `undefined` for none.
+ */
 export function storedDiscountText(
   rows: readonly DiscountRow[],
   currency: string,
@@ -496,12 +520,8 @@ export function storedDiscountText(
   if (rows.length === 0) return undefined;
   return rows
     .map((row) => {
-      const basis = row.isNet === false ? "gross" : "net";
-      const amount = row.percentage
-        ? `${row.value} % of the ${basis} total`
-        : `${row.value} ${currency} ${basis}`;
       const text = row.text === undefined ? "" : ` ("${row.text}")`;
-      return `${row.surcharge ? "surcharge " : ""}${amount}${text}`;
+      return `${discountRowText(row, currency, "en")}${text}`;
     })
     .join("; ");
 }

@@ -554,8 +554,8 @@ describe("sevdesk_invoice_create_from_order with a discount on the whole order",
 
     const several =
       "This document has 2 discounts on the whole document, and sevDesk's totals may count only " +
-      "one of them (in a check, only the newest), so the total may not be what the rows " +
-      "suggest. Check it in sevDesk.";
+      "one of them (in a check, only the newest), so the total may not be what the listed " +
+      "discounts suggest. Check the total in sevDesk.";
     expect(plan.preview.facts.map((fact) => fact.label)).toEqual(
       expect.arrayContaining(["Order discount 1", "Order discount 2", "Order discounts deduct"]),
     );

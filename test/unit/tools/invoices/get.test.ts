@@ -219,8 +219,8 @@ describe("sevdesk_invoice_get (community: recorded Invoice/InvoicePos shapes, fa
     // the summary say so.
     const several =
       "This document has 2 discounts on the whole document, and sevDesk's totals may count only " +
-      "one of them (in a check, only the newest), so the total may not be what the rows " +
-      "suggest. Check it in sevDesk.";
+      "one of them (in a check, only the newest), so the total may not be what the listed " +
+      "discounts suggest. Check the total in sevDesk.";
     expect(tool.output.parse(result.data)).toEqual(result.data);
     expect(result.data.discount).toEqual({
       items: [
