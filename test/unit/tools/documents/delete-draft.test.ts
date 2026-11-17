@@ -93,6 +93,7 @@ function readsOnly(c: Case, row: Row): FakeSevdeskClient {
 }
 
 const [INVOICE, CREDIT_NOTE, ORDER] = DRAFTS as [Case, Case, Case];
+const INVOICE_ARGS = { kind: "invoice", id: 1001 };
 
 describe("sevdesk_document_delete_draft", () => {
   it("is a commit tool in the meta toolset: destructive, idempotent, closed world", () => {
@@ -162,19 +163,101 @@ describe("sevdesk_document_delete_draft", () => {
   });
 
   it.each([CREDIT_NOTE, ORDER])(
-    "says that the number of a numbered $arg draft is handed out again (D-066)",
+    "says that the number of a numbered $arg draft comes back only if it was the last (D-066)",
     async (c) => {
       const plan = await prepareWrite(tool, { kind: c.arg, id: idOf(c.row) }, readsOnly(c, c.row));
+      expect(plan.preview.warnings).toHaveLength(2);
       expect(plan.preview.warnings[1]).toBe(
-        "The draft's number is not used up: sevDesk gives it to the next document of the " +
-          "number range, so the range keeps no gap.",
+        "If the draft's number is the last one sevDesk handed out in its number range, sevDesk " +
+          "gives it to the next document again; otherwise the number stays unused and the range " +
+          "has a gap.",
       );
       expect(plan.previewDe.warnings[1]).toBe(
-        "Die Nummer des Entwurfs ist nicht verbraucht: sevDesk vergibt sie an das nächste " +
-          "Dokument des Nummernkreises, der Nummernkreis bleibt also lückenlos.",
+        "Ist die Nummer des Entwurfs die zuletzt vergebene seines Nummernkreises, vergibt sevDesk " +
+          "sie an das nächste Dokument erneut; sonst bleibt die Nummer unbenutzt und der " +
+          "Nummernkreis hat eine Lücke.",
       );
     },
   );
+
+  describe("an invoice draft with a number (it may have been issued and reset to draft)", () => {
+    const numbered = { status: "100", invoiceNumber: "RE-1012", sendDate: null, sendType: null };
+
+    it("warns that deleting it leaves a gap if the number was issued", async () => {
+      const row = invoiceRow(numbered);
+      const plan = await prepareWrite(tool, INVOICE_ARGS, readsOnly(INVOICE, row));
+      expect(plan.preview.warnings).toEqual([
+        "The draft and all its positions are deleted from sevDesk; this cannot be undone.",
+        "This invoice draft already has a number. If that number was issued (for example, the " +
+          "invoice was finalized and later reset to draft), deleting the draft leaves a gap in " +
+          "the invoice number range. An issued invoice is cancelled, not deleted: finalize it " +
+          "again and cancel it with sevdesk_invoice_cancel (Storno).",
+      ]);
+      expect(plan.previewDe.warnings).toEqual([
+        "Der Entwurf und alle seine Positionen werden aus sevDesk gelöscht; das lässt sich nicht " +
+          "rückgängig machen.",
+        "Dieser Rechnungsentwurf hat bereits eine Nummer. Wurde sie schon vergeben (etwa weil " +
+          "die Rechnung fertiggestellt und später auf Entwurf zurückgesetzt wurde), hinterlässt " +
+          "das Löschen eine Lücke im Nummernkreis der Rechnungen. Eine ausgestellte Rechnung " +
+          "wird nicht gelöscht, sondern storniert: Stelle sie erneut fertig und storniere sie " +
+          "mit sevdesk_invoice_cancel (Storno).",
+      ]);
+      // The number itself is among the facts, not in the warning.
+      expect(plan.preview.facts[0]).toEqual({
+        label: "Invoice (Rechnung)",
+        value: "RE-1012 (id 1001)",
+      });
+    });
+
+    it("says more when sevDesk records it as sent, with the send date", async () => {
+      const row = invoiceRow({
+        ...numbered,
+        sendDate: "2026-10-22T00:00:00+02:00",
+        sendType: "VM",
+      });
+      const plan = await prepareWrite(tool, INVOICE_ARGS, readsOnly(INVOICE, row));
+      expect(plan.preview.warnings[1]).toBe(
+        "This invoice draft has a number, and sevDesk records it as sent on 2026-10-22: the " +
+          "customer has probably received it under that number. Deleting it leaves a gap in the " +
+          "invoice number range and removes an invoice the customer holds. An issued invoice is " +
+          "cancelled, not deleted: finalize it again and cancel it with sevdesk_invoice_cancel " +
+          "(Storno).",
+      );
+      expect(plan.previewDe.warnings[1]).toBe(
+        "Dieser Rechnungsentwurf hat eine Nummer, und sevDesk führt ihn als versendet (am " +
+          "22.10.2026): Der Kunde hat die Rechnung wahrscheinlich unter dieser Nummer erhalten. " +
+          "Das Löschen hinterlässt eine Lücke im Nummernkreis der Rechnungen und entfernt eine " +
+          "Rechnung, die beim Kunden liegt. Eine ausgestellte Rechnung wird nicht gelöscht, " +
+          "sondern storniert: Stelle sie erneut fertig und storniere sie mit " +
+          "sevdesk_invoice_cancel (Storno).",
+      );
+    });
+
+    it("leaves the date out when only the send type says it was sent", async () => {
+      const row = invoiceRow({ ...numbered, sendType: "VPDF" });
+      const plan = await prepareWrite(tool, INVOICE_ARGS, readsOnly(INVOICE, row));
+      expect(plan.preview.warnings[1]).toMatch(
+        /^This invoice draft has a number, and sevDesk records it as sent: /,
+      );
+      expect(plan.previewDe.warnings[1]).toMatch(
+        /^Dieser Rechnungsentwurf hat eine Nummer, und sevDesk führt ihn als versendet: /,
+      );
+    });
+
+    it("still deletes it after the approval: a warning, not a refusal", async () => {
+      const row = invoiceRow({
+        ...numbered,
+        sendDate: "2026-10-22T00:00:00+02:00",
+        sendType: "VM",
+      });
+      const fake = staged({ ...INVOICE, row });
+      const { output } = await executeWrite(tool, INVOICE_ARGS, fake);
+      expect(fake.writes().map((call) => [call.method, call.path])).toEqual([
+        ["DELETE", "/Invoice/1001"],
+      ]);
+      expect(output.data.deleted).toBe(true);
+    });
+  });
 
   it("leaves the number note out for a credit note draft without a number", async () => {
     const row = creditNoteRow({ status: "100", creditNoteNumber: null });

@@ -265,6 +265,17 @@ const CASES: readonly WriteToolCase[] = [
     ],
     writes: [{ method: "DELETE", path: "/CreditNote/2001" }],
   },
+  // Its own invoice (1004): numbered and sent, as after a reset to draft (the gap warning).
+  {
+    label: "delete an invoice draft that has a number and was sent",
+    tool: documentDeleteDraftTool,
+    args: { kind: "invoice", id: 1004 },
+    routes: [
+      documentRoute("invoice", { ...openInvoice, id: "1004", status: "100" }),
+      writeRoute("DELETE", "/Invoice/1004", "document-delete.json"),
+    ],
+    writes: [{ method: "DELETE", path: "/Invoice/1004" }],
+  },
 ];
 
 /**

@@ -328,7 +328,7 @@ Bisher bezahlt: 0,00 EUR"
 exports[`German previews > delete a numbered credit note draft: says the same in German 1`] = `
 "Gutschrift GU-1101 (Entwurf) aus sevDesk löschen.
 ! Der Entwurf und alle seine Positionen werden aus sevDesk gelöscht; das lässt sich nicht rückgängig machen.
-! Die Nummer des Entwurfs ist nicht verbraucht: sevDesk vergibt sie an das nächste Dokument des Nummernkreises, der Nummernkreis bleibt also lückenlos.
+! Ist die Nummer des Entwurfs die zuletzt vergebene seines Nummernkreises, vergibt sevDesk sie an das nächste Dokument erneut; sonst bleibt die Nummer unbenutzt und der Nummernkreis hat eine Lücke.
 (nicht umkehrbar)
 Gutschrift: GU-1101 (ID 2001)
 Status: Entwurf (100)
@@ -340,6 +340,26 @@ Datum: 22.10.2026
 Netto: 20,00 EUR
 Umsatzsteuer: 3,80 EUR
 Brutto: 23,80 EUR"
+`;
+
+exports[`German previews > delete an invoice draft that has a number and was sent: says the same in German 1`] = `
+"Rechnung RE-1001 (Entwurf) aus sevDesk löschen.
+! Der Entwurf und alle seine Positionen werden aus sevDesk gelöscht; das lässt sich nicht rückgängig machen.
+! Dieser Rechnungsentwurf hat eine Nummer, und sevDesk führt ihn als versendet (am 01.10.2026): Der Kunde hat die Rechnung wahrscheinlich unter dieser Nummer erhalten. Das Löschen hinterlässt eine Lücke im Nummernkreis der Rechnungen und entfernt eine Rechnung, die beim Kunden liegt. Eine ausgestellte Rechnung wird nicht gelöscht, sondern storniert: Stelle sie erneut fertig und storniere sie mit sevdesk_invoice_cancel (Storno).
+(nicht umkehrbar)
+Rechnung: RE-1001 (ID 1004)
+Typ: Rechnung (RE)
+Status: Entwurf (100)
+Kunde: Musterfirma GmbH (Kontakt 1001)
+Anschrift auf dem Dokument: Musterfirma GmbH
+Musterstraße 1
+12345 Musterstadt
+Datum: 01.10.2026
+Fällig am: 15.10.2026
+Netto: 149,02 EUR
+Umsatzsteuer: 28,31 EUR
+Brutto: 177,33 EUR
+Bisher bezahlt: 0,00 EUR"
 `;
 
 exports[`German previews > delete an organisation with its addresses, communication ways and contact persons: says the same in German 1`] = `

@@ -224,8 +224,19 @@ von Aufträgen und Gutschriften. Die Vorschau nennt das Dokument (Nummer, Kunde,
 ändert sich der Entwurf, bevor du zustimmst, wirst du erneut gefragt. Gelöscht werden nur Entwürfe
 (Status 100): Eine fertiggestellte Rechnung bleibt in der Buchhaltung und wird stattdessen storniert
 oder mit einer Gutschrift korrigiert, und Abo-Rechnungen (Vorlagen) werden hier nicht gelöscht.
-Aufträge und Gutschriften bekommen ihre Nummer schon beim Speichern des Entwurfs; nach dem Löschen
-vergibt sevDesk diese Nummer an das nächste Dokument, der Nummernkreis bleibt also lückenlos.
+
+Achte auf den Nummernkreis. Aufträge und Gutschriften bekommen ihre Nummer schon beim Speichern
+des Entwurfs; nach dem Löschen vergibt sevDesk diese Nummer nur dann an das nächste Dokument,
+wenn sie die zuletzt vergebene war, sonst bleibt eine Lücke. Ein Rechnungsentwurf hat
+normalerweise noch keine Nummer. Hat er eine, kann es eine Rechnung sein, die fertiggestellt und
+später auf Entwurf zurückgesetzt wurde; war die Nummer schon vergeben, hinterlässt das Löschen
+eine Lücke in den Rechnungsnummern, und die Vorschau warnt davor (deutlicher, wenn sevDesk die
+Rechnung als versendet führt). Eine ausgestellte Rechnung wird stattdessen storniert: Stelle sie
+erneut fertig und storniere sie mit
+[`sevdesk_invoice_cancel`](../tools.md#sevdesk_invoice_cancel). In Konten, in denen sevDesk
+Dokumente beim Fertigstellen festschreibt (die Einstellung „Automatische Festschreibung von
+Dokumenten bei Fertigstellung“), kann eine ausgestellte Rechnung nicht wieder zum Entwurf werden:
+sevDesk lehnt Zurücksetzen und Löschen einer festgeschriebenen Rechnung ab.
 
 > [!WARNING]
 > Das Löschen lässt sich nicht rückgängig machen.

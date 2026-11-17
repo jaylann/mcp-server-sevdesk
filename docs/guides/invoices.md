@@ -210,9 +210,19 @@ confirm**) deletes a draft with its positions; the same tool deletes order and c
 The preview names the document (number, customer, date, total); if the draft changes before you
 approve, you are asked again. Only drafts (status 100) are deleted: a finalized invoice stays in
 the books and is cancelled or corrected with a credit note instead, and recurring invoice
-templates are not deleted here. Orders and credit notes take their number when the draft is
-saved; after the draft is deleted, sevDesk gives that number to the next document, so the number
-range keeps no gap.
+templates are not deleted here.
+
+Mind the number range. Orders and credit notes take their number when the draft is saved; after
+the deletion sevDesk gives that number to the next document only if it was the last one handed
+out, otherwise the range keeps a gap. An invoice draft normally has no number yet. One that has
+a number may be an invoice that was finalized and later reset to draft; if that number was
+issued, deleting the draft leaves a gap in the invoice numbers, so the preview warns (more
+strongly when sevDesk records the invoice as sent). An issued invoice is cancelled instead:
+finalize it again, then cancel it with
+[`sevdesk_invoice_cancel`](../tools.md#sevdesk_invoice_cancel). On accounts where sevDesk
+enshrines documents when they are finalized (the setting "Automatische Festschreibung von
+Dokumenten bei Fertigstellung"), an issued invoice cannot become a draft again: sevDesk refuses
+to reset or delete an enshrined invoice.
 
 > [!WARNING]
 > A deletion cannot be undone.
