@@ -12,7 +12,7 @@ import { z } from "zod";
 import { expectArray } from "../../sevdesk/envelope.js";
 import { SevdeskError } from "../../sevdesk/errors.js";
 import { toSevdeskId } from "../../sevdesk/paths.js";
-import { parseUpstream, zBerlinDate, zOptionalRef } from "../../sevdesk/schema.js";
+import { parseUpstream, zBerlinDate, zOptionalInt, zOptionalRef } from "../../sevdesk/schema.js";
 import type { SevdeskClient } from "../../sevdesk/types.js";
 import type { CountryReadOptions } from "../country-codes.js";
 import { savedDocumentId } from "../drafts/payloads.js";
@@ -170,6 +170,7 @@ export function generationOnPhrase(schedule: StoredSchedule): Phrase {
 const GENERATED_SCAN_LIMIT = 1000;
 
 const generatedRowSchema = z.object({
+  id: zOptionalInt,
   origin: zOptionalRef,
   deliveryDate: zBerlinDate,
   deliveryDateUntil: zBerlinDate,
@@ -178,10 +179,12 @@ const generatedRowSchema = z.object({
 /**
  * The last day of the newest period template `id` has billed: the latest `deliveryDateUntil` (or
  * `deliveryDate`) of the invoices that name it as `origin`, listed with
- * `GET /Invoice?origin[id]=…&origin[objectName]=Invoice&showAll=true` (D-111) and re-checked here
- * by their origin, since sevDesk may ignore a filter silently (D-015). `undefined` when it has
- * generated none. More rows than one read takes is a `validation` error: the newest period could
- * be missed.
+ * `GET /Invoice?origin[id]=…&origin[objectName]=Invoice&showAll=true`, which returned exactly the
+ * template's generated invoices (D-111). Each row's origin is re-checked here all the same, as a
+ * defence against a filter sevDesk ignores silently (D-015). `undefined` when it has generated
+ * none. `validation` errors, since the newest period could be missed: more rows than one read
+ * takes, and a generated invoice with neither date (each carries both, D-111), whose period cannot
+ * be told.
  */
 export async function lastBilledDay(
   client: SevdeskClient,
@@ -213,7 +216,16 @@ export async function lastBilledDay(
     const row = parseUpstream(generatedRowSchema, raw, "an invoice generated from a template");
     if (row.origin?.id !== id || row.origin.objectName !== "Invoice") continue;
     const end = row.deliveryDateUntil ?? row.deliveryDate;
-    if (end !== undefined && (last === undefined || end > last)) last = end;
+    if (end === undefined) {
+      const invoice = row.id === undefined ? "An invoice" : `Invoice ${String(row.id)}`;
+      refuse(
+        `${invoice} generated from recurring invoice template ${String(id)} has no delivery ` +
+          "date (Lieferdatum or Leistungszeitraum), so the newest period the template has billed " +
+          "cannot be told, and a new start date could bill a period again. Check that invoice in " +
+          "sevDesk, or change the template's start date in the sevDesk web app.",
+      );
+    }
+    if (last === undefined || end > last) last = end;
   }
   return last;
 }

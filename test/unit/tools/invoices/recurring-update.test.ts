@@ -199,6 +199,29 @@ describe("sevdesk_invoice_update_recurring", () => {
       expect(plan.state.body.invoice).toEqual({ ...head, accountStartDate: JAN_1 });
     });
 
+    it("a new start when a generated invoice has no delivery date: its period cannot be told", async () => {
+      const undated = (origin: string): Row => ({
+        ...generatedRow("9001", "2026-11-01", "2026-11-30"),
+        origin: { id: origin, objectName: "Invoice" },
+        deliveryDate: null,
+        deliveryDateUntil: null,
+      });
+      const dated = generatedRow("9002", "2026-10-01", "2026-10-31");
+      // 2026-11-20 lies after the dated period but could lie inside the undated one.
+      const table = [generatedRoute([dated, undated("2301")]), ...templateChangeRoutes()];
+      expect(await refusal({ startDate: "2026-11-20" }, table)).toBe(
+        "Invoice 9001 generated from recurring invoice template 2301 has no delivery date " +
+          "(Lieferdatum or Leistungszeitraum), so the newest period the template has billed " +
+          "cannot be told, and a new start date could bill a period again. Check that invoice " +
+          "in sevDesk, or change the template's start date in the sevDesk web app.",
+      );
+      // Another template's undated invoice is not counted.
+      const other = [generatedRoute([dated, undated("2399")]), ...templateChangeRoutes()];
+      expect((await prepare({ startDate: "2026-11-20" }, other)).state.schedule).toMatchObject({
+        nextRun: "2026-11-20",
+      });
+    });
+
     it("switches automatic generation off, and says what that means", async () => {
       const plan = await prepare({ autoGenerate: false });
       expect(plan.state.body.invoice).toEqual({
