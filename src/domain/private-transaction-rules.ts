@@ -66,7 +66,7 @@ export const RULE_TEXT_MAX = 100;
 /** Longest rule text shown from sevDesk (untrusted; a rule made elsewhere may be longer). */
 const RULE_TEXT_DISPLAY_MAX = 200;
 /** Open transactions the estimate examines at most. */
-export const ESTIMATE_SCAN_LIMIT = 500;
+const ESTIMATE_SCAN_LIMIT = 500;
 /** Transactions of the estimate a preview lists by id at most. */
 export const ESTIMATE_LISTED_MAX = 10;
 

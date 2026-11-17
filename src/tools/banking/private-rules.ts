@@ -21,7 +21,6 @@ import {
 } from "../../domain/preview-text.js";
 import {
   ESTIMATE_LISTED_MAX,
-  ESTIMATE_SCAN_LIMIT,
   executePrivateRuleCreate,
   executePrivateRuleDelete,
   listPrivateRules,
@@ -267,12 +266,15 @@ function createWarnings(plan: PrivateRuleCreatePlan): Phrase[] {
     ),
   ];
   if (!estimate.complete) {
+    // The number actually examined: the scan stops at 500 open transactions, or earlier when
+    // listTransactions reaches its cap of rows read (most of them booked).
+    const count = estimate.examined;
     warnings.push(
       phrase(
-        `Only the first ${String(ESTIMATE_SCAN_LIMIT)} open transactions were examined: the ` +
-          "list was cut, and more may look like what the rule is meant for.",
-        `Nur die ersten ${String(ESTIMATE_SCAN_LIMIT)} offenen Umsätze wurden geprüft: Die ` +
-          "Liste wurde gekürzt, und weitere können gemeint scheinen.",
+        `Only ${String(count)} open ${count === 1 ? "transaction was" : "transactions were"} ` +
+          "examined: the list was cut, and more may look like what the rule is meant for.",
+        `Nur ${String(count)} ${count === 1 ? "offener Umsatz wurde" : "offene Umsätze wurden"} ` +
+          "geprüft: Die Liste wurde gekürzt, und weitere können gemeint scheinen.",
       ),
     );
   }

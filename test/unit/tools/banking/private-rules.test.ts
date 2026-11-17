@@ -238,11 +238,36 @@ describe("sevdesk_private_transaction_rule_create", () => {
       10,
     );
     expect(plan.preview.warnings).toContain(
-      "Only the first 500 open transactions were examined: the list was cut, and more may look " +
-        "like what the rule is meant for.",
+      "Only 500 open transactions were examined: the list was cut, and more may look like what " +
+        "the rule is meant for.",
     );
     expect(plan.preview.warnings).toContain("Only the first 10 of 500 matches are listed by id.");
     expect(plan.previewDe.facts[2]?.value).toBe("500 (die ersten 500; die Liste wurde gekürzt)");
+  });
+
+  // The transaction scan also stops after 5000 rows read (MAX_SCAN_ROWS), e.g. when sevDesk
+  // ignores status=100 and most rows are booked: then fewer than 500 open ones were examined.
+  it("names the number examined when the row scan stops before 500 open transactions", async () => {
+    const rows = Array.from({ length: 6000 }, (_, index) =>
+      index < 30
+        ? open(7000 + index, "Netflix", `Abo ${String(index)}`)
+        : open(7000 + index, "Stadtwerke", "Strom", { status: "400" }),
+    );
+    const client = new StagedClient(createReads([], rows), []);
+    const plan = await prepareWrite(createTool, { counterparty: "Netflix" }, client);
+    expect(plan.preview.facts[2]).toEqual({
+      label: "Open transactions examined",
+      value: "30 (the first 30; the list was cut)",
+    });
+    expect(plan.preview.warnings).toContain(
+      "Only 30 open transactions were examined: the list was cut, and more may look like what " +
+        "the rule is meant for.",
+    );
+    expect(plan.previewDe.warnings).toContain(
+      "Nur 30 offene Umsätze wurden geprüft: Die Liste wurde gekürzt, und weitere können " +
+        "gemeint scheinen.",
+    );
+    expect(plan.preview.warnings.join(" ")).not.toContain("500");
   });
 
   it.each([
