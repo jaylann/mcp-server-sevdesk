@@ -3894,20 +3894,23 @@ vatdrop}}`: an undeclared top-level `vatdrop` (recorded as the string `"not rele
   for a confirmation, the offer as completed writes. Both refuse a second document from the same
   source unless `allowDuplicate`; the delivery note refuses only a second draft and names
   finalized delivery notes from the same source in a warning (a further one can be a partial
-  delivery). Both previews list the source's discounts on the whole document
-  (`GET /Order/{id}/getDiscounts`, D-116) and say that whether the factory copies them has not
-  been checked. (#89)
+  delivery). Both previews list the source's discounts on the whole document with the rest of its
+  content (the shared reader and facts of D-116, so the confirmation's approval binds them too; a
+  row of another record is refused), warn when there are several, and say that whether the
+  factory copies them has not been checked. (#89)
 - **Test:** `test/unit/tools/orders/create-confirmation.test.ts` ("creates the confirmation with
   the offer in query and body, and reads both back", "creates one from an accepted offer and says
   the offer stays accepted", "refuses a draft offer before any request (sevDesk would accept it
   unsent)", "refuses a rejected offer before any request (sevDesk would accept it silently)",
   "names another confirmation with the same number", "names the accepted offer too when the
-  confirmation cannot be read back", "shows the offer's document discounts in both languages
-  (review of #112, L5)"), `test/unit/tools/orders/create-delivery-note.test.ts` ("creates the
-  delivery note with the source in query and body, and reads it back", "accepts sent and accepted
-  offers and order confirmations that are drafts, sent or accepted", "refuses offer drafts,
-  rejected offers and other statuses", "names finalized delivery notes from the order without
-  refusing (review of #112, L1)"), `test/unit/domain/order-discounts.test.ts`,
+  confirmation cannot be read back", "shows and binds the offer's document discounts in both
+  languages (review of #112, L5)", "refuses when sevDesk lists another order's discount for the
+  offer (D-116)"), `test/unit/tools/orders/create-delivery-note.test.ts` ("creates the delivery
+  note with the source in query and body, and reads it back", "accepts sent and accepted offers
+  and order confirmations that are drafts, sent or accepted", "refuses offer drafts, rejected
+  offers and other statuses", "names finalized delivery notes from the order without refusing
+  (review of #112, L1)", "shows the order's document discounts (review of #112, L5)"),
+  `test/unit/domain/document-discounts.test.ts`,
   `test/regressions/offer-status-and-confirmation.test.ts` ("refuses a confirmation from an offer
   with status 100/300"), `test/integration/order-acceptance-path.test.ts`. Live: probes
   `write-order-contract-note-from-order`, `write-order-packing-list-from-order` (their reporting:
@@ -4179,12 +4182,16 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   approval. (#94) Built so (`src/domain/drafts/discount.ts`, `src/domain/document-discounts.ts`):
   the draft tools' `discount` argument (percent or a fixed net amount, one per document; `null`
   removes it) reads the stored rows before every update; the get and draft tools return them with
-  sevDesk's `sumDiscountNet`/`sumDiscountGross`; finalize, send and enshrine bind the rows and list
-  them in both languages; `sevdesk_invoice_create_from_order` shows the order's discounts in its
-  preview and the invoice's in its result. A document with several rows is never replaced or
-  removed by the draft tools (the refusal says that sevDesk's totals do not count all of them),
-  and the get tools, the from-order tool and the approvals of finalize, send and enshrine warn
-  about it. Not measured, so a new discount is refused with a reason: on gross prices, on
+  sevDesk's `sumDiscountNet`/`sumDiscountGross`; finalize, send and enshrine, the order
+  confirmation and the offer status (`sevdesk_order_create_confirmation`,
+  `sevdesk_order_set_offer_status`) bind the rows and list them in both languages, and the
+  delivery note preview lists them (D-107); `sevdesk_invoice_create_from_order` shows the order's
+  discounts in its preview and the invoice's in its result. Every one reads the rows with the same
+  reader, which refuses a row of another record, and writes each with the same text. A document
+  with several rows is never replaced or removed by the draft tools (the refusal says that
+  sevDesk's totals do not count all of them), and the get tools, the from-order tool and all of
+  these approvals warn about it. A kept discount is never refused: when the totals cannot be
+  computed with it, the draft update preview says that sevDesk computes them. Not measured, so a new discount is refused with a reason: on gross prices, on
   positions with several tax rates, a fixed amount on a document in another currency than EUR,
   and on an e-invoice. What a partial or advance invoice from an order does with its discount is
   not checked either; the from-order preview says so. The replacement was checked on an invoice;
@@ -4201,5 +4208,7 @@ pdf, sevClient, name, default, img}]}`, `GET /DocServer/getTemplatesWithThumb?ty
   sevDesk deducted (D-116)"), `test/unit/tools/masterdata/invoice-from-order.test.ts`
   ("sevdesk_invoice_create_from_order with a discount on the whole order"),
   `test/regressions/approval-binds-document-discount.test.ts` (Guard 3: "warns in English and
-  German when the document has several discounts"). Live: probes `write-document-discount`,
-  `read-order-get-discounts`.
+  German when the document has several discounts"), `test/unit/domain/document-discounts.test.ts`
+  (the shared reader and row text), `test/unit/tools/orders/create-confirmation.test.ts` ("shows
+  and binds the offer's document discounts in both languages (review of #112, L5)"). Live: probes
+  `write-document-discount`, `read-order-get-discounts`.

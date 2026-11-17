@@ -84,6 +84,12 @@ export interface DocumentContent {
    * total sevDesk may not compute from all of them (D-116). Empty for most documents.
    */
   readonly notes: readonly Phrase[];
+  /**
+   * How many discounts on the whole document (D-116) {@link printed} lists, read with the rest of
+   * the content and bound with it; 0 for a voucher. Lets a tool add its own warning about them
+   * without reading them again.
+   */
+  readonly discountCount: number;
 }
 
 /** Where the positions of each kind live and how they point back to their document. */
@@ -172,6 +178,7 @@ export async function readDocumentContent(
       (lang) => voucherFacts(doc, rows, positions.complete, lang),
       NOT_SHOWN.voucher,
       [],
+      0,
     );
   }
   const record: PrintedRecord = parseUpstream(
@@ -195,6 +202,7 @@ export async function readDocumentContent(
     // Several discounts: sevDesk's totals do not count all of them (D-116), so the total shown
     // may not be what the rows listed suggest.
     several === undefined ? [] : [several],
+    discounts.rows.length,
   );
 }
 
@@ -204,6 +212,7 @@ function content(
   printed: (lang: PreviewLanguage) => Fact[],
   notShown: Phrase,
   notes: readonly Phrase[],
+  discountCount: number,
 ): DocumentContent {
   return {
     binding,
@@ -212,6 +221,7 @@ function content(
     facts: (lang) => [...identity(lang), ...printed(lang)],
     notShown,
     notes,
+    discountCount,
   };
 }
 

@@ -116,7 +116,7 @@ export const orderSetOfferStatusTool = defineWriteTool({
     const content = await documentContent(ctx, doc);
     const from = statusWord(doc.status);
     const to = statusWord(target);
-    const warnings = [CONSEQUENCES[args.action], ONLY_STATUS, content.notShown];
+    const warnings = [CONSEQUENCES[args.action], ONLY_STATUS, content.notShown, ...content.notes];
     return {
       ...bothPreviews((lang) => {
         const title =

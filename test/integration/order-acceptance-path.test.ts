@@ -32,7 +32,7 @@ import { derivedRow, sentOffer } from "../write-cases/orders.js";
 
 const ORDER_PATH = /^\/Order\/(\d+)$/;
 const RELATED_PATH = /^\/Order\/(\d+)\/getRelatedObjects$/;
-const DISCOUNTS_PATH = /^\/Order\/(\d+)\/getDiscounts$/;
+const DISCOUNTS_PATH = /^\/(Order|Invoice)\/(\d+)\/getDiscounts$/;
 const SEND_BY_PATH = /^\/Order\/(\d+)\/sendBy$/;
 const INVOICE_PATH = /^\/Invoice\/(\d+)$/;
 

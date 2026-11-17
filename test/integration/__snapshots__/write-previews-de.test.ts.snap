@@ -277,6 +277,7 @@ exports[`German previews > create an order confirmation from an accepted offer w
 ! sevDesk gibt der Auftragsbestätigung die nächste Nummer des AB-Nummernkreises, ohne den Zähler weiterzuschalten; eine andere Auftragsbestätigung kann daher dieselbe Nummer tragen. Das Ergebnis nennt solche, die es findet.
 ! Das Angebot trägt Rabatte oder Aufschläge auf das ganze Dokument (oben aufgeführt). Ob sevDesk sie in die Auftragsbestätigung übernimmt, ist nicht geprüft; vergleiche die Summen des neuen Entwurfs mit sevdesk_order_get, bevor du ihn fertigstellst.
 ! Die Angaben nennen die gespeicherten Texte, die Anschrift und die Positionen. Nicht gezeigt werden: der Ansprechpartner, das Land der Anschrift, die Einheiten und verknüpften Artikel der Positionen sowie das Layout des PDF. Prüfe bei Bedarf sevdesk_order_pdf.
+! Das Dokument hat 2 Rabatte auf den Gesamtbetrag, und sevDesk rechnet in den Summen womöglich nur einen davon ein (in einer Prüfung nur den neuesten); die Summe ist dann nicht, was die aufgeführten Rabatte erwarten lassen. Prüfe die Summe in sevDesk.
 (umkehrbar)
 Auftrag: AN-1003 (ID 3003)
 Typ: Angebot (AN)
@@ -297,11 +298,14 @@ Steuerhinweis: 0
 Kopftext: <p>Gerne bieten wir Ihnen an:</p>
 Position 1: Testartikel: 2 × 49,9919 EUR brutto, 19 % USt. → 84,02 EUR netto, 99,98 EUR brutto
 Position 2: Optionale Einweisung: 1 × 119,00 EUR brutto, 19 % USt., optional (nicht in der Summe) → 100,00 EUR netto, 119,00 EUR brutto
+Rabatt auf den Gesamtbetrag 1: 5 % vom Nettobetrag
+Text: Treuerabatt
+Rabatt auf den Gesamtbetrag 2: Aufschlag: 12,50 EUR brutto
+Text: Expresszuschlag
+Rabatte insgesamt: 0,00 EUR netto, 0,00 EUR brutto
 Fußtext: <p>Das Angebot ist 30 Tage gültig.</p>
 Zahlungsbedingungen: 14 Tage netto
-Lieferbedingungen: Lieferung frei Haus
-Rabatte und Aufschläge auf das ganze Dokument: 5 % Rabatt (netto): Treuerabatt
-12,50 EUR Aufschlag (brutto): Expresszuschlag"
+Lieferbedingungen: Lieferung frei Haus"
 `;
 
 exports[`German previews > delete a draft voucher: says the same in German 1`] = `

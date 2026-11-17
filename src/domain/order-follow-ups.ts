@@ -28,18 +28,9 @@ import { z } from "zod";
 
 import type { SevdeskObjectRef } from "../safety/write-types.js";
 import { SevdeskError, withCompletedWrites } from "../sevdesk/errors.js";
-import { sevdeskPath, toSevdeskId } from "../sevdesk/paths.js";
-import {
-  parseUpstream,
-  zBool01,
-  zId,
-  zIntish,
-  zOptionalDecimal,
-  zOptionalRef,
-  zText,
-} from "../sevdesk/schema.js";
+import { toSevdeskId } from "../sevdesk/paths.js";
+import { parseUpstream, zId, zIntish, zOptionalRef, zText } from "../sevdesk/schema.js";
 import type { QueryValue, SevdeskClient } from "../sevdesk/types.js";
-import { moneyFromUpstream } from "./common.js";
 import type { CountryReadOptions } from "./country-codes.js";
 import {
   createdDocumentId,
@@ -51,9 +42,7 @@ import {
 } from "./derived-documents.js";
 import { quotableNumber } from "./drafts/numbering.js";
 import { type LifecycleDocument, readLifecycleDocument, STATUS } from "./lifecycle/documents.js";
-import { type Fact, formatMoney } from "./lifecycle/preview.js";
 import { getOrder, type OrderDetails } from "./orders.js";
-import { numberText, type PreviewLanguage } from "./preview-text.js";
 
 /** The two order factories. */
 export type OrderFactory = "confirmation" | "deliveryNote";
@@ -352,116 +341,4 @@ async function sameNumberNotes(
           "sevdesk_orders_list.",
       ]
     : [counter];
-}
-
-// ---------------------------------------------------------------------------------------------
-// Discounts on the whole source order (D-116)
-// ---------------------------------------------------------------------------------------------
-
-/** A row of `GET /Order/{id}/getDiscounts`; D-116 recorded every scalar as a string. */
-const discountRowSchema = z.object({
-  id: zId,
-  object: zOptionalRef,
-  /** true: a discount (Rabatt); false: a surcharge (Aufschlag). */
-  discount: zBool01.optional(),
-  text: zText,
-  /** true: `value` is a percentage; false: an amount in the order's currency. */
-  percentage: zBool01.optional(),
-  value: zOptionalDecimal,
-  /** Whether `value` applies to the net (true) or gross (false) total. */
-  isNet: zBool01.optional(),
-});
-
-type OrderDiscount = z.output<typeof discountRowSchema>;
-
-/** Rows asked for in one page: a document carries a handful at most. */
-const DISCOUNT_PAGE_SIZE = 100;
-
-/** The discounts and surcharges stored on a whole order, see {@link readOrderDiscounts}. */
-export interface OrderDiscounts {
-  readonly rows: readonly OrderDiscount[];
-  /** False when the page came back full, so there may be more rows. */
-  readonly complete: boolean;
-}
-
-/**
- * The discounts and surcharges on the whole order (not those of single positions), from
- * `GET /Order/{id}/getDiscounts` (D-116). A row that names another record is dropped. Reads only.
- * Whether a factory copies them to the new order is not recorded (only `createInvoiceFromOrder`
- * was), so the follow-up tools show them on the source and say exactly that.
- */
-export async function readOrderDiscounts(
-  client: SevdeskClient,
-  orderId: number,
-  signal?: AbortSignal,
-): Promise<OrderDiscounts> {
-  const page = await client.list(
-    sevdeskPath("Order", orderId, "getDiscounts"),
-    {},
-    { limit: DISCOUNT_PAGE_SIZE, ...(signal === undefined ? {} : { signal }) },
-  );
-  const rows = page.items
-    .map((raw) => parseUpstream(discountRowSchema, raw, "the discounts of an order"))
-    .filter(
-      (row) =>
-        row.object === undefined ||
-        (row.object.objectName === "Order" && row.object.id === orderId),
-    );
-  return { rows, complete: page.items.length < DISCOUNT_PAGE_SIZE };
-}
-
-const DISCOUNT_TEXT = {
-  en: {
-    label: "Discounts on the whole document (Rabatte, Aufschläge)",
-    discount: "discount",
-    surcharge: "surcharge",
-    either: "discount or surcharge",
-    net: "net",
-    gross: "gross",
-    more: `sevDesk returned ${String(DISCOUNT_PAGE_SIZE)} rows; there may be more. Check them in sevDesk.`,
-  },
-  de: {
-    label: "Rabatte und Aufschläge auf das ganze Dokument",
-    discount: "Rabatt",
-    surcharge: "Aufschlag",
-    either: "Rabatt oder Aufschlag",
-    net: "netto",
-    gross: "brutto",
-    more:
-      `sevDesk hat ${String(DISCOUNT_PAGE_SIZE)} Zeilen geliefert; es kann weitere geben. ` +
-      "Prüfe sie in sevDesk.",
-  },
-} as const;
-
-/** "10 % discount (net): Treuerabatt", "10.00 EUR surcharge (gross)": one discount row. */
-function discountLine(row: OrderDiscount, currency: string, lang: PreviewLanguage): string {
-  const t = DISCOUNT_TEXT[lang];
-  let amount = "?";
-  if (row.value !== undefined) {
-    const fixed = row.percentage === false ? moneyFromUpstream(row.value, currency) : undefined;
-    amount =
-      fixed === undefined
-        ? `${numberText(row.value, lang)}${row.percentage === true ? " %" : ""}`
-        : formatMoney(fixed, lang);
-  }
-  const kind = row.discount === undefined ? t.either : row.discount ? t.discount : t.surcharge;
-  const base = row.isNet === undefined ? "" : ` (${row.isNet ? t.net : t.gross})`;
-  const text = row.text?.split(/\s+/).filter(Boolean).join(" ");
-  return `${amount} ${kind}${base}${text === undefined || text === "" ? "" : `: ${text}`}`;
-}
-
-/**
- * The fact listing the discounts and surcharges on the whole order, one row per line; no fact
- * when it carries none (absent values are left out of previews, like in `lifecycle/content.ts`).
- */
-export function orderDiscountFacts(
-  discounts: OrderDiscounts,
-  currency: string,
-  lang: PreviewLanguage,
-): Fact[] {
-  if (discounts.rows.length === 0 && discounts.complete) return [];
-  const t = DISCOUNT_TEXT[lang];
-  const lines = discounts.rows.map((row) => discountLine(row, currency, lang));
-  if (!discounts.complete) lines.push(t.more);
-  return [{ label: t.label, value: lines.join("\n") }];
 }

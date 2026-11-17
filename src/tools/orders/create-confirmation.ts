@@ -16,8 +16,6 @@ import {
   createOrderFromOrder,
   derivedOrderState,
   findOrdersFrom,
-  orderDiscountFacts,
-  readOrderDiscounts,
 } from "../../domain/order-follow-ups.js";
 import {
   bothPreviews,
@@ -147,10 +145,10 @@ export const orderCreateConfirmationTool = defineWriteTool({
           "allowDuplicate: true to create another one.",
       );
     }
+    // The content lists the offer's discounts on the whole document and binds them (D-116).
     const content = await documentContent(ctx, doc);
-    const discounts = await readOrderDiscounts(ctx.client, doc.id, ctx.signal);
     const warnings: Phrase[] = [accepts ? ACCEPTS : STAYS_ACCEPTED, DRAFT, NUMBER];
-    if (discounts.rows.length > 0) warnings.push(DISCOUNTS);
+    if (content.discountCount > 0) warnings.push(DISCOUNTS);
     if (existing.ids.length > 0) {
       warnings.push(
         phrase(
@@ -162,7 +160,7 @@ export const orderCreateConfirmationTool = defineWriteTool({
       );
     }
     if (existing.truncated) warnings.push(TRUNCATED);
-    warnings.push(content.notShown);
+    warnings.push(content.notShown, ...content.notes);
     return {
       ...bothPreviews((lang) => ({
         action:
@@ -187,7 +185,6 @@ export const orderCreateConfirmationTool = defineWriteTool({
                 : "order confirmation (Auftragsbestätigung, AB) as a draft",
           },
           ...content.printed(lang),
-          ...orderDiscountFacts(discounts, doc.currency, lang),
         ],
         warnings: warnings.map((warning) => warning[lang]),
         irreversible: false,
