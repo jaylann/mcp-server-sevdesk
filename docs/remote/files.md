@@ -29,6 +29,11 @@ before saving (or follow an explicitly absent attachment); if it stays the same 
 state is unknown, the upload remains available until expiry. To use a successfully attached file
 again after its upload was released, request a new upload.
 
+A receipt that is already online (a supplier portal, a storage link) needs no upload when the
+operator lists its host in `SEVDESK_FILE_URL_HOSTS`: the model passes the https link as `file`,
+and the server downloads it during the call and keeps nothing
+([Files from a link](../configuration.md#files-from-a-link)).
+
 ## Several files on one page
 
 `sevdesk_upload_request` takes an optional `count` (1–10, default 1). With `count` above 1 it

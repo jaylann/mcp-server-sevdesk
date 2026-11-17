@@ -1,4 +1,4 @@
-<!-- translated-from: docs/contributing/testing.md sha256:3e63489dad80 -->
+<!-- translated-from: docs/contributing/testing.md sha256:ab27bbfa492c -->
 
 # Testen
 
@@ -72,7 +72,9 @@ Das eingecheckte `server.json` ist die npm/OCI-Vorlage. `publish-registry` warte
 `server.json` einzutragen, das es veröffentlicht. Vor dem Schreiben prüft es den Namen und die
 Manifest-Version des Bundles; in diesem privilegierten Job läuft keine Installation von
 Abhängigkeiten. Der MCPB-Eintrag entsteht erst bei der Veröffentlichung, weil release-please den
-Hash eines künftigen Assets nicht kennen kann. Die Tests des Generators validieren gegen das
+Hash eines künftigen Assets nicht kennen kann. Im selben Schritt wandert die URL des Icons von
+`main` auf das Tag des Releases: Die eingecheckte URL muss erreichbar sein, bevor es das Tag gibt,
+die veröffentlichte behält das Icon dieses Releases. Die Tests des Generators validieren gegen das
 offizielle Schema, das `server.json` festlegt (Snapshot und Herkunft in `spec/mcp-registry/`). Um
 dieselbe Vorbereitung nach `pnpm mcpb` probeweise durchzuspielen:
 

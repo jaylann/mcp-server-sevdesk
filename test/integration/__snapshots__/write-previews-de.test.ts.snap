@@ -190,7 +190,8 @@ Steuerregel: 9 Vorsteuerabziehbare Aufwendungen
 Betragseingabe: brutto
 Position 1: 6815 Bürobedarf (Konto 4266): 119,00 EUR brutto, 19 % USt. → netto 100,00, USt. 19,00, brutto 119,00
 Summe (erwartet): netto 100,00 EUR, USt. 19,00 EUR, brutto 119,00 EUR
-Belegdatei: Rechnung-0815.pdf (PDF, 77 Bytes, SHA-256 56c2ac043c28d354…)
+Belegdatei: Rechnung-0815.pdf (PDF, 77 Bytes)
+SHA-256: 56c2ac043c28d3543275a6f50b593a6beb0b6888ed8159ac02e3e7f4a32ccb26
 Status nach dem Speichern: Entwurf (50), noch nicht gebucht"
 `;
 
@@ -517,7 +518,8 @@ Wechselkurs: 1 USD = 0,9 EUR
 EUR-Gegenwert (vom Server berechnet): netto 283,37 EUR, USt. 19,84 EUR, brutto 303,21 EUR
 Position 1: 6815 Bürobedarf (Konto 4266): 314,86 USD netto, 7 % USt. → netto 314,86, USt. 22,04, brutto 336,90; E-Rechnung, USt 7 % (S)
 Summe (erwartet): netto 314,86 USD, USt. 22,04 USD, brutto 336,90 USD
-Belegdatei: usd.xml (XML, 9622 Bytes, SHA-256 37f2bafa4fadc060…)
+Belegdatei: usd.xml (XML, 9622 Bytes)
+SHA-256: 37f2bafa4fadc060c079a0111600fa7fee0a0be24249d1467e2d38eda57de076
 Aussteller (aus der E-Rechnung): [Seller name], USt-IdNr. DE123456789
 Summen der E-Rechnung: netto 314,86 USD, USt. 22,04 USD, brutto 336,90 USD
 Grundlage der Steuerregel: Inlandsrechnung mit Umsatzsteuer: Vorsteuerabzug möglich (Regel 9, §15 UStG).
@@ -540,7 +542,8 @@ Steuerregel: 9 Vorsteuerabziehbare Aufwendungen
 Betragseingabe: netto
 Position 1: 6815 Bürobedarf (Konto 4266): 314,86 EUR netto, 7 % USt. → netto 314,86, USt. 22,04, brutto 336,90; E-Rechnung, USt 7 % (S)
 Summe (erwartet): netto 314,86 EUR, USt. 22,04 EUR, brutto 336,90 EUR
-Belegdatei: xrechnung.xml (XML, 9622 Bytes, SHA-256 727b51982a84c9b4…)
+Belegdatei: xrechnung.xml (XML, 9622 Bytes)
+SHA-256: 727b51982a84c9b406599a7384783570910440ed405c9bb6d918b22442636886
 Aussteller (aus der E-Rechnung): [Seller name], USt-IdNr. DE123456789
 Summen der E-Rechnung: netto 314,86 EUR, USt. 22,04 EUR, brutto 336,90 EUR
 Grundlage der Steuerregel: Inlandsrechnung mit Umsatzsteuer: Vorsteuerabzug möglich (Regel 9, §15 UStG).

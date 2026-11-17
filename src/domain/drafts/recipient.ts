@@ -142,13 +142,24 @@ export type AddressBase =
   | { readonly kind: "none" };
 
 /**
- * The contact's address a new document takes: the one with category 47 (Rechnungsanschrift),
- * else the first one sevDesk lists; `none` when the contact has no address.
+ * The address a new document for `contact` takes: the one with category 47
+ * (Rechnungsanschrift), else the first one sevDesk lists; undefined when it has none.
+ */
+export function invoiceAddressOf(
+  contact: ContactDetails,
+): ContactDetails["addresses"][number] | undefined {
+  return (
+    contact.addresses.find((address) => address.category?.id === INVOICE_ADDRESS_CATEGORY_ID) ??
+    contact.addresses[0]
+  );
+}
+
+/**
+ * The contact's address a new document takes ({@link invoiceAddressOf}) as the base the call's
+ * address fields are merged onto; `none` when the contact has no address.
  */
 export function contactAddressBase(contact: ContactDetails): AddressBase {
-  const chosen =
-    contact.addresses.find((address) => address.category?.id === INVOICE_ADDRESS_CATEGORY_ID) ??
-    contact.addresses[0];
+  const chosen = invoiceAddressOf(contact);
   if (chosen === undefined) return { kind: "none" };
   return {
     kind: "parts",

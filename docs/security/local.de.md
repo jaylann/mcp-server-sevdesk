@@ -1,4 +1,4 @@
-<!-- translated-from: docs/security/local.md sha256:800bd554a235 -->
+<!-- translated-from: docs/security/local.md sha256:ca727e81de4f -->
 
 # Lokale Nutzung
 
@@ -32,6 +32,57 @@ Grenzen kann ihn also mehrere Sekunden beschäftigen, aber nicht länger.
 Das ZIP des DATEV-Exports wird über einen vorsignierten Link geholt, den sevDesk zurückgibt. Der
 Server akzeptiert dafür genau einen https-Host, folgt keinen Weiterleitungen, sendet keine
 Zugangsdaten, begrenzt die Größe und zeigt den Link nie dem Modell.
+
+## Dateien von einem Link
+
+Ist `SEVDESK_FILE_URL_HOSTS` gesetzt (standardmäßig ist die Variable leer und die Funktion aus),
+nehmen die Werkzeuge, die einen Beleg oder eine E-Rechnung lesen, als `file` auch einen https-Link
+an. Der Link kommt vom Modell, das manipuliert werden kann; der Server darf also nicht zu einem Weg
+in sein eigenes Netz werden und nicht von überall laden (`src/safety/url-files.ts`):
+
+- Vor jeder Netzwerkanfrage: nur https, der Standardport, kein Benutzername oder Passwort, ein
+  Hostname statt einer IP-Adresse (auch nicht in Formen wie `0x7f.1` oder `2130706433`, die Parser
+  zu einer machen), und der Host steht auf der Liste des Betreibers (genau, oder `*.example.com`
+  für dessen Subdomains). Mit leerer Liste wird jeder Link abgelehnt, mit dem Namen der
+  Einstellung.
+- Der Host wird je Download einmal aufgelöst, und jede Adresse muss öffentlich sein, nach
+  denselben Regeln wie beim Abruf der Client-Metadaten im OAuth-Modus
+  ([SSRF](remote.de.md#metadaten-von-clients-abrufen-ssrf)): Private, Loopback-, Link-Local-,
+  CGNAT-, Unique-Local-, Dokumentations- und Multicast-Bereiche werden abgelehnt, auch innerhalb
+  von NAT64-, 6to4- und IPv4-gemappten Adressen. Die Verbindung geht an die geprüfte Adresse
+  (festgelegte Auflösung, SNI und Zertifikatsprüfung für den Namen), eine zweite DNS-Antwort wird
+  also nie verwendet (DNS-Rebinding).
+- Weiterleitungen werden höchstens dreimal verfolgt, weil Cloud-Speicher und Portale Links
+  ausgeben, die weiterleiten; jedes Ziel durchläuft dieselben Prüfungen samt Liste, und ein Host,
+  der im Download schon aufgelöst wurde, behält seine Adresse.
+- Die Anfrage enthält nur `Accept` und `User-Agent`: kein Cookie, kein `Authorization`, nie das
+  sevDesk-Token. Eine Antwort muss 200 sein, unkomprimiert, mit einem Inhaltstyp, der zu einer
+  PDF-, PNG-, JPEG- oder XML-Datei passt und zum Inhalt stimmt (Kodierung und Typ werden an den
+  Headern geprüft, bevor der Body gelesen wird), höchstens 20 MiB (geprüft an `Content-Length` und
+  während der Body ankommt), innerhalb von 60 Sekunden. Ein Body, der eine Webseite ist
+  (`<!doctype html` oder `<html`, nach einer Byte-Reihenfolge-Markierung, Leerraum, Kommentaren
+  oder einer XML-Deklaration), wird als Anmelde- oder Fehlerseite abgelehnt, auch wenn er als XML
+  oder ohne Typ kommt. Ein Abbruch oder die Frist beendet den Download vor der nächsten
+  Weiterleitung.
+- Höchstens zwei Downloads laufen gleichzeitig je Konto und vier im Prozess, weil jeder bis zu
+  20 MiB im Speicher hält. Im OAuth-Modus können zwei Konten zusammen die vier Plätze trotzdem bis
+  zu einer Minute füllen.
+- Nach dem Aufruf bleibt nichts. Ablehnungen sind vertrauenswürdiger Text: Sie nennen die
+  Einstellung und die erlaubten Hosts, nie den Link, seinen Pfad oder seine Query, ein
+  Weiterleitungsziel oder etwas, das der Host gesendet hat. Vorschau und Ergebnis zeigen Namen,
+  SHA-256 und Host der Datei. Der Name ist das letzte Pfadsegment des Links nur, wenn es ein
+  Dateiname von höchstens 64 Zeichen ist, der auf `.pdf`, `.png`, `.jpg`, `.jpeg` oder `.xml`
+  endet, sonst `download.<ext>`, weil ein Link als Berechtigung sein Token im Pfad tragen kann und
+  der Name mit dem Beleg in sevDesk gespeichert wird. Das Audit-Log hält ein Link-Argument nur mit
+  Schema und Host fest (`https://host/…?[redacted]`).
+- Der echte Aufruf liest die Datei nach einem Probelauf erneut (ein Link wird erneut
+  heruntergeladen) und könnte so andere Bytes anhängen, als die Vorschau gezeigt hat. Mit
+  `fileSha256` (der SHA-256 aus der Vorschau) lehnt der Aufruf andere Bytes ab, bevor etwas
+  sevDesk erreicht, für Links, Uploads und lokale Dateien.
+
+Das verbleibende Risiko ist die Liste selbst: Ein Host darauf, der Dateien ausliefert, die jeder
+hochladen kann (eine geteilte Cloud-Speicher-Domain, besonders unter `*.`), lässt das Modell eine
+solche Datei als Beleg anhängen.
 
 ## Generischer Lesezugriff
 

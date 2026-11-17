@@ -637,7 +637,8 @@ export const WRITE_PROBES: readonly ProbeDefinition[] = [
     deviations: ["D-021"],
     async run(ctx) {
       const result = await ctx.http.write("POST", "/Invoice/Factory/saveInvoice", {
-        tier: "write",
+        // Without invoiceType the client counts it as a possible recurring template: commit.
+        tier: "commit",
         body: {
           invoice: { objectName: "Invoice", mapAll: true, header: `${data(ctx).tag} invalid` },
           invoicePosSave: [],
@@ -931,7 +932,9 @@ export const WRITE_PROBES: readonly ProbeDefinition[] = [
         }
         const before = await ctx.read.byId(kind, draft.id);
         const update = await ctx.http.write("POST", `/${kind}/Factory/save${kind}`, {
-          tier: "write",
+          // An invoice update without invoiceType is a commit step: the client cannot tell it
+          // from a change of a recurring template.
+          tier: kind === "Invoice" ? "commit" : "write",
           body: {
             [key]: {
               id: draft.id,

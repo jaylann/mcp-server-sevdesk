@@ -289,7 +289,7 @@ export function createSevdeskClient(
       const reason = writeBlockReason(
         config,
         request.tier,
-        minimumWriteTier(path, request.query, request.body),
+        minimumWriteTier(path, request.query, request.body, request.form),
       );
       if (reason !== undefined) {
         const effect = safety?.sideEffect === true ? ` (${safety.effect})` : "";

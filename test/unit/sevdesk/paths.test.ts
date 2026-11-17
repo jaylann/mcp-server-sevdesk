@@ -295,10 +295,11 @@ describe("minimumWriteTier", () => {
     ["/Invoice/1/sendViaEmail", "external"],
     ["/Order/1/sendViaEmail", "external"],
     ["/CreditNote/1/sendByWithRender", "external"],
-    ["/Invoice/Factory/saveInvoice", "write"],
     ["/Invoice/Factory/createInvoiceFromOrder", "write"],
     ["/Invoice/Factory/createInvoiceReminder", "write"],
     ["/CreditNote/Factory/createFromInvoice", "write"],
+    ["/Order/Factory/createContractNoteFromOrder", "commit"],
+    ["/Order/Factory/createPackingListFromOrder", "write"],
     ["/Contact", "write"],
     ["/Contact/7", "write"],
     ["/ContactAddress", "write"],
@@ -307,7 +308,7 @@ describe("minimumWriteTier", () => {
     ["/CheckAccountTransaction/9", "commit"],
     ["/checkaccounttransaction/9", "commit"],
     ["/CheckAccountTransaction/9/enshrine", "commit"],
-    ["/CheckAccountTransaction", "write"],
+    ["/CheckAccountTransaction", "commit"],
     ["/Voucher/4", "write"],
     ["/Voucher/Factory/uploadTempFile", "write"],
     ["/Voucher/4/bookAmount", "commit"],
@@ -328,6 +329,23 @@ describe("minimumWriteTier", () => {
     expect(minimumWriteTier("/Voucher/Factory/uploadTempFile", undefined, undefined)).toBe("write");
   });
 
+  it("reads every spelling of a saveVoucher's voucher and status keys", () => {
+    const save = "/Voucher/Factory/saveVoucher";
+    const both = { voucher: { status: 50 }, Voucher: { status: 100 } };
+    expect(minimumWriteTier(save, undefined, both)).toBe("commit");
+    expect(minimumWriteTier(save, undefined, { Voucher: { Status: 100 } })).toBe("commit");
+    expect(minimumWriteTier(save, undefined, { voucher: { status: 50, STATUS: "100" } })).toBe(
+      "commit",
+    );
+    expect(minimumWriteTier(save, undefined, { voucher: { status: 50 }, VOUCHER: null })).toBe(
+      "commit",
+    );
+    expect(minimumWriteTier(save, undefined, { Voucher: { Status: "50" } })).toBe("write");
+    expect(minimumWriteTier(save, undefined, { voucher: { status: 50, Status: 50 } })).toBe(
+      "write",
+    );
+  });
+
   it("lets write tools reserve document numbers", () => {
     expect(minimumWriteTier("/Order/Factory/getNextOrderNumber", { useNextNumber: "true" })).toBe(
       "write",
@@ -341,6 +359,380 @@ describe("minimumWriteTier", () => {
     expect(minimumWriteTier("/Export/datevCSV", { enshrine: true })).toBe("commit");
     expect(minimumWriteTier("/Export/datevCSV", { enshrineDocuments: "1" })).toBe("commit");
     expect(minimumWriteTier("/Export/datevCSV", { enshrine: false })).toBe("write");
+  });
+});
+
+describe("minimumWriteTier for creating a bank transaction (#88, D-096, D-098)", () => {
+  const transaction = {
+    objectName: "CheckAccountTransaction",
+    mapAll: true,
+    amount: -20,
+    checkAccount: { id: 5, objectName: "CheckAccount" },
+    status: 100,
+  };
+
+  it.each(["/CheckAccountTransaction", "/checkaccounttransaction", "/CHECKACCOUNTTRANSACTION"])(
+    "needs commit for %s, whatever the body",
+    (path) => {
+      expect(minimumWriteTier(path, undefined, transaction)).toBe("commit");
+      expect(minimumWriteTier(path, undefined, {})).toBe("commit");
+      expect(minimumWriteTier(path, undefined, undefined)).toBe("commit");
+    },
+  );
+
+  it.each([
+    ["/CheckAccountTransaction/9/notes", "write"],
+    ["/CheckAccountTransaction/9/enshrine", "commit"],
+    ["/CheckAccountTransactionLog", "write"],
+    ["/CheckAccount/Factory/fileImportAccount", "write"],
+    ["/CheckAccount/5", "write"],
+  ] as const)("leaves %s at %s", (path, tier) => {
+    expect(minimumWriteTier(path, undefined, transaction)).toBe(tier);
+  });
+});
+
+describe("minimumWriteTier for accepting an offer (#89, D-107, D-108)", () => {
+  it("needs commit for a contract note, which sets the source offer to accepted", () => {
+    const query = { "order[id]": 7, "order[objectName]": "Order" };
+    const body = { id: 7, objectName: "Order" };
+    expect(minimumWriteTier("/Order/Factory/createContractNoteFromOrder", query, body)).toBe(
+      "commit",
+    );
+    expect(minimumWriteTier("/order/factory/CREATECONTRACTNOTEFROMORDER", query, body)).toBe(
+      "commit",
+    );
+    expect(minimumWriteTier("/Order/Factory/createContractNoteFromOrder/7", query, body)).toBe(
+      "commit",
+    );
+    expect(minimumWriteTier("/Order/Factory/createPackingListFromOrder", query, body)).toBe(
+      "write",
+    );
+  });
+
+  it("refuses the contract note factory as a generic read", () => {
+    expect(genericGetRefusal("/Order/Factory/createContractNoteFromOrder", undefined)).toMatch(
+      /accepting an offer/,
+    );
+  });
+
+  it.each(["/Order/5", "/order/5", "/Invoice/5", "/CreditNote/5", "/creditnote/5", "/Voucher/5"])(
+    "needs commit when a request to %s sets the status",
+    (path) => {
+      for (const body of [
+        { status: 500 },
+        { status: "300" },
+        { status: 0 },
+        { status: null },
+        { Status: 200 },
+        { STATUS: 100, header: "x" },
+      ]) {
+        expect(minimumWriteTier(path, undefined, body), JSON.stringify(body)).toBe("commit");
+      }
+    },
+  );
+
+  it.each([[[]], ["status"], [42], [null], [true]])(
+    "needs commit when a document record's body cannot be read (%j)",
+    (body) => {
+      expect(minimumWriteTier("/Order/5", undefined, body)).toBe("commit");
+    },
+  );
+
+  it("leaves other changes of a document record, and other records, at write", () => {
+    expect(minimumWriteTier("/Order/5", undefined, { header: "Angebot" })).toBe("write");
+    expect(minimumWriteTier("/Order/5", undefined, {})).toBe("write");
+    expect(minimumWriteTier("/Order/5", undefined, { status: undefined })).toBe("write");
+    // No body at all: a DELETE keeps the tier of its path.
+    expect(minimumWriteTier("/Order/5", undefined, undefined)).toBe("write");
+    expect(minimumWriteTier("/Voucher/5", undefined, undefined)).toBe("write");
+    // Only keys that are sent count: JSON leaves inherited ones out.
+    const inherited: unknown = Object.create({ status: 500 });
+    expect(minimumWriteTier("/Order/5", undefined, inherited)).toBe("write");
+    // Not a document record: contacts, positions, sub-resources, and a factory save of a draft
+    // (status 100; another status needs commit, see the factory save tests below).
+    expect(minimumWriteTier("/Contact/5", undefined, { status: 1000 })).toBe("write");
+    expect(minimumWriteTier("/OrderPos/5", undefined, { status: 100 })).toBe("write");
+    expect(minimumWriteTier("/Order/5/notes", undefined, { status: 100 })).toBe("write");
+    expect(
+      minimumWriteTier("/Order/Factory/saveOrder", undefined, { order: { status: 100 } }),
+    ).toBe("write");
+  });
+
+  it("needs commit when a request to an invoice record sets its type or schedule (D-111)", () => {
+    for (const body of [
+      { invoiceType: "WKR" },
+      { invoiceType: "RE" },
+      { accountIntervall: "P0Y1M0W" },
+      { accountStartDate: 1_763_247_600 },
+      { AccountEndDate: "15.11.2027" },
+      { accountNextInvoice: null },
+    ]) {
+      expect(minimumWriteTier("/Invoice/5", undefined, body), JSON.stringify(body)).toBe("commit");
+    }
+    expect(minimumWriteTier("/Invoice/5", undefined, { header: "Abo" })).toBe("write");
+    expect(minimumWriteTier("/Order/5", undefined, { accountIntervall: "P1M" })).toBe("write");
+    expect(minimumWriteTier("/Order/5", undefined, { invoiceType: "WKR" })).toBe("write");
+  });
+});
+
+describe("minimumWriteTier for saving a recurring invoice template (#91, D-111, D-112)", () => {
+  const save = "/Invoice/Factory/saveInvoice";
+  /** The shape the invoice draft tools send (`drafts/payloads.ts` pins `RE` and status 100). */
+  const draft = (invoice: Record<string, unknown>) => ({
+    invoice: { objectName: "Invoice", mapAll: true, status: 100, ...invoice },
+    invoicePosSave: null,
+    invoicePosDelete: null,
+  });
+
+  it("leaves a save that names a type other than WKR at write", () => {
+    for (const type of ["RE", "re", " RE ", "SR", "AR"]) {
+      expect(minimumWriteTier(save, undefined, draft({ invoiceType: type })), type).toBe("write");
+    }
+    expect(minimumWriteTier(save, undefined, draft({ id: 9, invoiceType: "RE" }))).toBe("write");
+  });
+
+  it.each(["WKR", "wkr", " Wkr "])("needs commit for invoiceType %j", (type) => {
+    expect(minimumWriteTier(save, undefined, draft({ invoiceType: type }))).toBe("commit");
+    expect(
+      minimumWriteTier("/invoice/factory/SAVEINVOICE", undefined, draft({ invoiceType: type })),
+    ).toBe("commit");
+  });
+
+  it("needs commit when the type is missing: the stored one may be WKR", () => {
+    // Ending a template is saveInvoice with its id and status 50 (D-112).
+    expect(minimumWriteTier(save, undefined, draft({ id: 9, status: "50" }))).toBe("commit");
+    expect(minimumWriteTier(save, undefined, draft({ invoiceType: undefined }))).toBe("commit");
+    const inherited: unknown = Object.create({ invoiceType: "RE" });
+    expect(minimumWriteTier(save, undefined, { invoice: inherited })).toBe("commit");
+  });
+
+  it.each([[null], [5], [["WKR"]], [{ code: "RE" }]])(
+    "needs commit for an invoiceType that is not text (%j)",
+    (type) => {
+      expect(minimumWriteTier(save, undefined, draft({ invoiceType: type }))).toBe("commit");
+    },
+  );
+
+  it.each([[undefined], [null], [[]], ["invoice"], [{}], [{ invoice: null }], [{ invoice: [] }]])(
+    "needs commit for an unreadable body (%j)",
+    (body) => {
+      expect(minimumWriteTier(save, undefined, body)).toBe("commit");
+    },
+  );
+
+  it("needs commit when any spelling of a key may name a template", () => {
+    expect(
+      minimumWriteTier(save, undefined, {
+        invoice: { invoiceType: "RE" },
+        Invoice: { invoiceType: "WKR" },
+      }),
+    ).toBe("commit");
+    expect(
+      minimumWriteTier(save, undefined, { invoice: { invoiceType: "RE", InvoiceType: "WKR" } }),
+    ).toBe("commit");
+    expect(minimumWriteTier(save, undefined, { Invoice: { InvoiceType: "RE" } })).toBe("write");
+  });
+
+  it("leaves the other invoice factories and other saves alone", () => {
+    expect(minimumWriteTier("/Invoice/Factory/createInvoiceFromOrder", undefined, {})).toBe(
+      "write",
+    );
+    expect(
+      minimumWriteTier("/Order/Factory/saveOrder", undefined, { order: { orderType: "AN" } }),
+    ).toBe("write");
+    expect(
+      minimumWriteTier("/CreditNote/Factory/saveCreditNote", undefined, {
+        creditNote: { creditNoteType: "CN" },
+      }),
+    ).toBe("write");
+  });
+});
+
+describe("minimumWriteTier for a status written through a factory save", () => {
+  /** Each save with a regular draft of its document, the way the draft tools send it. */
+  const SAVES = [
+    ["/Invoice/Factory/saveInvoice", "invoice", { invoiceType: "RE" }],
+    ["/Order/Factory/saveOrder", "order", { orderType: "AN" }],
+    ["/CreditNote/Factory/saveCreditNote", "creditNote", { creditNoteType: "CN" }],
+  ] as const;
+  const save = (key: string, document: Record<string, unknown>) => ({
+    [key]: { objectName: "x", mapAll: true, ...document },
+    [`${key}PosSave`]: null,
+    [`${key}PosDelete`]: null,
+  });
+
+  it.each(SAVES)("leaves %s of a draft (status 100, or none) at write", (path, key, kind) => {
+    expect(minimumWriteTier(path, undefined, save(key, { ...kind, status: 100 }))).toBe("write");
+    expect(minimumWriteTier(path, undefined, save(key, { ...kind, status: "100" }))).toBe("write");
+    // An update without a status keeps the stored one.
+    expect(minimumWriteTier(path, undefined, save(key, { ...kind, id: 7 }))).toBe("write");
+    expect(minimumWriteTier(path, undefined, save(key, { ...kind, status: undefined }))).toBe(
+      "write",
+    );
+  });
+
+  it.each(SAVES)("needs commit when %s writes another status", (path, key, kind) => {
+    for (const status of [
+      500,
+      "500",
+      1000,
+      "200",
+      300,
+      50,
+      "50",
+      0,
+      null,
+      " 100",
+      "100.0",
+      [100],
+    ]) {
+      const body = save(key, { ...kind, id: 7, status });
+      expect(minimumWriteTier(path, undefined, body), JSON.stringify(status)).toBe("commit");
+    }
+  });
+
+  it.each(SAVES)("reads every spelling of the keys of %s", (path, key, kind) => {
+    const upper = key.charAt(0).toUpperCase() + key.slice(1);
+    expect(minimumWriteTier(path, undefined, save(upper, { ...kind, Status: 500 }))).toBe("commit");
+    expect(
+      minimumWriteTier(path, undefined, {
+        ...save(key, { ...kind, status: 100 }),
+        [upper]: { ...kind, STATUS: "1000" },
+      }),
+    ).toBe("commit");
+    expect(
+      minimumWriteTier(path, undefined, save(key, { ...kind, status: 100, Status: 200 })),
+    ).toBe("commit");
+  });
+
+  it.each(SAVES)("needs commit when %s cannot be read", (path, key) => {
+    for (const body of [[], "body", 7, null, { [key]: null }, { [key]: [] }, { [key]: "x" }]) {
+      expect(minimumWriteTier(path, undefined, body), JSON.stringify(body)).toBe("commit");
+    }
+  });
+
+  it("leaves a save without a body, and statuses outside the document, alone", () => {
+    expect(minimumWriteTier("/Order/Factory/saveOrder", undefined, undefined)).toBe("write");
+    expect(
+      minimumWriteTier("/Order/Factory/saveOrder", undefined, {
+        ...save("order", { orderType: "AN", status: 100 }),
+        status: 500,
+        orderPosSave: [{ objectName: "OrderPos", status: 500 }],
+      }),
+    ).toBe("write");
+  });
+});
+
+describe("minimumWriteTier reads the query and the form", () => {
+  const draftInvoice = {
+    invoice: { objectName: "Invoice", mapAll: true, invoiceType: "RE", status: 100 },
+  };
+  const form = () => {
+    const data = new FormData();
+    data.append("status", "500");
+    return data;
+  };
+
+  it.each([
+    ["/Order/7", { status: 500 }],
+    ["/Order/7", { Status: "300" }],
+    ["/Order/7", { "status[0]": 500 }],
+    ["/order/7", { STATUS: 1 }],
+    ["/Voucher/7", { status: 100 }],
+    ["/Invoice/7", { invoiceType: "WKR" }],
+    ["/Invoice/7", { accountIntervall: "P0Y1M0W" }],
+  ] as const)("needs commit for %s with the query %j", (path, query) => {
+    expect(minimumWriteTier(path, query, undefined)).toBe("commit");
+    expect(minimumWriteTier(path, query, { header: "x" })).toBe("commit");
+  });
+
+  it("leaves other query keys of a document record at write", () => {
+    expect(minimumWriteTier("/Order/7", { header: "x", status: undefined }, undefined)).toBe(
+      "write",
+    );
+    expect(minimumWriteTier("/Order/7", { invoiceType: "WKR" }, undefined)).toBe("write");
+    expect(minimumWriteTier("/Contact/7", { status: 1000 }, undefined)).toBe("write");
+  });
+
+  it.each([
+    ["/Invoice/Factory/saveInvoice", { "invoice[status]": 1000 }, draftInvoice],
+    ["/Invoice/Factory/saveInvoice", { "Invoice[invoiceType]": "WKR" }, draftInvoice],
+    ["/Order/Factory/saveOrder", { "order[status]": 500 }, { order: { status: 100 } }],
+    ["/Order/Factory/saveOrder", { order: "x" }, { order: { status: 100 } }],
+    ["/CreditNote/Factory/saveCreditNote", { "creditNote[status]": 200 }, {}],
+    ["/Voucher/Factory/saveVoucher", { "voucher[status]": 100 }, { voucher: { status: 50 } }],
+  ] as const)("needs commit when the query of %s names its document (%j)", (path, query, body) => {
+    expect(minimumWriteTier(path, query, body)).toBe("commit");
+    expect(minimumWriteTier(path, undefined, body)).toBe("write");
+  });
+
+  it("leaves other query keys of a factory save at write", () => {
+    expect(
+      minimumWriteTier("/Invoice/Factory/saveInvoice", { takeDefaultAddress: true }, draftInvoice),
+    ).toBe("write");
+    expect(
+      minimumWriteTier("/Order/Factory/saveOrder", { "orderPosSave[0][status]": 500 }, {}),
+    ).toBe("write");
+  });
+
+  it.each([
+    ["/Order/7", undefined],
+    ["/Invoice/7", undefined],
+    ["/CreditNote/7", undefined],
+    ["/Voucher/7", undefined],
+    ["/Invoice/Factory/saveInvoice", draftInvoice],
+    ["/Order/Factory/saveOrder", { order: { status: 100 } }],
+    ["/CreditNote/Factory/saveCreditNote", { creditNote: { status: 100 } }],
+    ["/Voucher/Factory/saveVoucher", { voucher: { status: 50 } }],
+  ])("needs commit for a form sent to %s, which it cannot read", (path, draft) => {
+    expect(minimumWriteTier(path, undefined, draft)).toBe("write");
+    expect(minimumWriteTier(path, undefined, draft, form())).toBe("commit");
+    expect(minimumWriteTier(path, undefined, draft, new FormData())).toBe("commit");
+  });
+
+  it("leaves the receipt upload with its form at write", () => {
+    expect(minimumWriteTier("/Voucher/Factory/uploadTempFile", undefined, undefined, form())).toBe(
+      "write",
+    );
+  });
+});
+
+describe("minimumWriteTier reads the body as it is sent", () => {
+  it("reads what toJSON sends, not the object's own keys", () => {
+    const hidden = { header: "Angebot", toJSON: () => ({ status: 500 }) };
+    expect(minimumWriteTier("/Order/7", undefined, hidden)).toBe("commit");
+    const shown = { status: 500, toJSON: () => ({ header: "Angebot" }) };
+    expect(minimumWriteTier("/Order/7", undefined, shown)).toBe("write");
+    const order = { status: 100, toJSON: () => ({ status: 500 }) };
+    expect(minimumWriteTier("/Order/Factory/saveOrder", undefined, { order })).toBe("commit");
+    const invoice = { invoiceType: "RE", toJSON: () => ({ invoiceType: "WKR" }) };
+    expect(minimumWriteTier("/Invoice/Factory/saveInvoice", undefined, { invoice })).toBe("commit");
+    const voucher = { status: 50, toJSON: () => ({ status: 100 }) };
+    expect(minimumWriteTier("/Voucher/Factory/saveVoucher", undefined, { voucher })).toBe("commit");
+  });
+
+  it("reads getters, hidden keys and class instances the way JSON.stringify does", () => {
+    const getter = Object.defineProperty({}, "status", { enumerable: true, get: () => 500 });
+    expect(minimumWriteTier("/Order/7", undefined, getter)).toBe("commit");
+    // Neither a key that is not enumerable nor a getter of the prototype is sent.
+    const hiddenKey = Object.defineProperty({}, "status", { enumerable: false, value: 500 });
+    expect(minimumWriteTier("/Order/7", undefined, hiddenKey)).toBe("write");
+    class Body {
+      readonly header = "Angebot";
+      get status(): number {
+        return 500;
+      }
+    }
+    expect(minimumWriteTier("/Order/7", undefined, new Body())).toBe("write");
+  });
+
+  it("needs commit for a body without a JSON form, or one that is sent as no object", () => {
+    const cyclic: Record<string, unknown> = { header: "x" };
+    cyclic["self"] = cyclic;
+    for (const body of [cyclic, { header: 1n }, () => undefined, Symbol("body"), new Date(0)]) {
+      expect(minimumWriteTier("/Order/7", undefined, body)).toBe("commit");
+      expect(minimumWriteTier("/Order/Factory/saveOrder", undefined, body)).toBe("commit");
+    }
   });
 });
 
@@ -372,6 +764,7 @@ describe("endpoint names before the last segment", () => {
     ["/Order/1/sendViaEmail/2", "external"],
     ["/CreditNote/1/sendByWithRender/enshrine", "external"],
     ["/Invoice/1/bookAmount/sendViaEmail", "external"],
+    ["/Order/Factory/createContractNoteFromOrder/x", "commit"],
   ] as const)("minimumWriteTier raises %s to %s", (path, tier) => {
     expect(minimumWriteTier(path, undefined)).toBe(tier);
   });

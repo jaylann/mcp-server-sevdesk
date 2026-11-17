@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:0710f20c7863 -->
+<!-- translated-from: docs/faq.md sha256:324d78b885be -->
 
 # Häufige Fragen
 
@@ -44,9 +44,11 @@ Weil es vollen Zugriff auf das Konto hat, lege es für einen eigenen sevDesk-Ben
 ### Wohin gehen meine Daten?
 
 Der Server läuft auf deinem Rechner (oder im Fernzugriff auf deinem eigenen Server) und spricht nur
-mit der sevDesk-API. Es gibt zwei Ausnahmen: den DATEV-Export, den sevDesk als Download aus seinem
-eigenen Speicher (bei Amazon S3) ausliefert, und einen Server im Fernzugriff mit OAuth, der das
-Metadaten-Dokument eines Clients, der sich verbindet, vom Host dieses Clients abruft. Ergebnisse
+mit der sevDesk-API. Es gibt drei Ausnahmen: den DATEV-Export, den sevDesk als Download aus seinem
+eigenen Speicher (bei Amazon S3) ausliefert, die Prüfung einer USt-IdNr. bei VIES, dem Dienst der
+Europäischen Kommission, nur wenn du sie mit `SEVDESK_VIES_CHECK` einschaltest, und einen Server im
+Fernzugriff mit OAuth, der das Metadaten-Dokument eines Clients, der sich verbindet, vom Host dieses
+Clients abruft. Ergebnisse
 gehen an deinen MCP-Client und von dort an deinen Modellanbieter: Rechnungen, Kontakte und
 Kontoumsätze sind dann Teil deiner Unterhaltung, zu den Bedingungen dieses Anbieters.
 Buchhaltungsdaten enthalten personenbezogene Daten deiner Kunden; prüfe daher die Bedingungen

@@ -806,7 +806,7 @@ describe("gap probes on a simulated trial account", () => {
     ).toEqual([]);
     for (const call of account.client.writes()) {
       expect(call.tier, `${call.method} ${call.path}`).toMatch(/^(write|commit)$/);
-      if (/bookAmount|resetTo|^\/CheckAccountTransaction\/\d+$/.test(call.path)) {
+      if (/bookAmount|resetTo|^\/CheckAccountTransaction(\/\d+)?$/.test(call.path)) {
         expect(call.tier, call.path).toBe("commit");
       }
     }

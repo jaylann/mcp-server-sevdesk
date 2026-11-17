@@ -431,14 +431,15 @@ describe("endpoint minimum tier", () => {
   });
 
   it.each([
-    ["PUT", "/Invoice/1/sendBy", "commit"],
-    ["PUT", "/Invoice/1/sendBy", "external"],
-    ["POST", "/Invoice/1/sendViaEmail", "external"],
-    ["POST", "/Invoice/Factory/saveInvoice", "write"],
-  ] as const)("lets %s %s through from a %s tool", async (method, path, tier) => {
+    ["PUT", "/Invoice/1/sendBy", "commit", {}],
+    ["PUT", "/Invoice/1/sendBy", "external", {}],
+    ["POST", "/Invoice/1/sendViaEmail", "external", {}],
+    // A regular draft: a save that may be a recurring template needs commit (paths.test.ts).
+    ["POST", "/Invoice/Factory/saveInvoice", "write", { invoice: { invoiceType: "RE" } }],
+  ] as const)("lets %s %s through from a %s tool", async (method, path, tier, body) => {
     const { client, fake } = setup([envelope({ id: "1" })], { config: all });
 
-    await client.request({ method, tier, path, body: {} });
+    await client.request({ method, tier, path, body });
 
     expect(fake.requests).toHaveLength(1);
   });
