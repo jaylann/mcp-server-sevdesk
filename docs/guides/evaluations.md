@@ -104,8 +104,10 @@ nothing.
 
 The check compares each document's tax rule with where the other side is established, as far as
 sevDesk knows it: the contact's VAT ID and the countries of its addresses. A German VAT ID or a
-German address counts as registered or established in Germany. Documents are taken by document
-date; sales are checked on invoices.
+German address counts as registered or established in Germany, and Monaco counts as France. On
+sales, a customer's VAT ID counts only in the valid format of its state, as
+[`sevdesk_vat_id_check`](../tools.md#sevdesk_vat_id_check) checks it. Documents are taken by
+document date; sales are checked on invoices.
 
 | Code                                                                            | Means                                                                                                       |
 | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
@@ -116,7 +118,7 @@ date; sales are checked on invoices.
 | `eu_reverse_charge_for_non_eu_supplier`, `acquisition_from_non_eu_supplier`     | Rule 14 or 8 for a supplier outside the EU                                                                  |
 | `eu_supplier_under_rule_12`                                                     | A service from another EU state under rule 12 instead of 14                                                 |
 | `german_vat_to_eu_business`                                                     | German VAT on an invoice to a customer with a VAT ID of another EU state                                    |
-| `intra_eu_supply_without_eu_vat_id`, `eu_service_without_eu_vat_id`             | Rule 3 or 21 without the customer's VAT ID of another EU state                                              |
+| `intra_eu_supply_without_eu_vat_id`, `eu_service_without_eu_vat_id`             | Rule 3 or 21 without a valid VAT ID of the customer from another EU state                                   |
 
 Not flagged on purpose: a foreign supplier with a German VAT ID or a German address (it may charge
 German VAT), a supplier with only German data that charges no VAT (for example a Kleinunternehmer),

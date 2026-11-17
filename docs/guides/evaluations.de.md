@@ -111,7 +111,9 @@ jedes Ergebnis sagt das auf Englisch und Deutsch. Das Werkzeug ändert nichts.
 
 Die Prüfung vergleicht die Steuerregel jedes Dokuments damit, wo die Gegenseite ansässig ist,
 soweit sevDesk es weiß: die USt-IdNr. des Kontakts und die Länder seiner Adressen. Eine deutsche
-USt-IdNr. oder eine deutsche Adresse gilt als in Deutschland registriert oder ansässig. Dokumente
+USt-IdNr. oder eine deutsche Adresse gilt als in Deutschland registriert oder ansässig, und Monaco
+zählt als Frankreich. Bei Verkäufen zählt die USt-IdNr. eines Kunden nur im gültigen Format ihres
+Staats, so wie [`sevdesk_vat_id_check`](../tools.md#sevdesk_vat_id_check) sie prüft. Dokumente
 werden nach Belegdatum ausgewählt; Verkäufe werden an Rechnungen geprüft.
 
 | Code                                                                            | Bedeutet                                                                                                                           |
@@ -123,7 +125,7 @@ werden nach Belegdatum ausgewählt; Verkäufe werden an Rechnungen geprüft.
 | `eu_reverse_charge_for_non_eu_supplier`, `acquisition_from_non_eu_supplier`     | Regel 14 oder 8 bei einem Lieferanten außerhalb der EU                                                                             |
 | `eu_supplier_under_rule_12`                                                     | Eine Leistung aus einem anderen EU-Staat unter Regel 12 statt 14                                                                   |
 | `german_vat_to_eu_business`                                                     | Deutsche Umsatzsteuer auf einer Rechnung an einen Kunden mit USt-IdNr. eines anderen EU-Staats                                     |
-| `intra_eu_supply_without_eu_vat_id`, `eu_service_without_eu_vat_id`             | Regel 3 oder 21 ohne USt-IdNr. des Kunden aus einem anderen EU-Staat                                                               |
+| `intra_eu_supply_without_eu_vat_id`, `eu_service_without_eu_vat_id`             | Regel 3 oder 21 ohne gültige USt-IdNr. des Kunden aus einem anderen EU-Staat                                                       |
 
 Bewusst nicht gemeldet: ein ausländischer Lieferant mit deutscher USt-IdNr. oder deutscher Adresse
 (er darf deutsche Umsatzsteuer berechnen), ein Lieferant mit nur deutschen Daten, der keine
