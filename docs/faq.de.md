@@ -1,4 +1,4 @@
-<!-- translated-from: docs/faq.md sha256:25cf367474bd -->
+<!-- translated-from: docs/faq.md sha256:f713126703a3 -->
 
 # Häufige Fragen
 
@@ -214,6 +214,25 @@ Nicht in 1.0. Steuerregeln, die Umsatzsteuer-Auswertung (Kennzahlen der UStVA), 
 E-Rechnungen und der Buchhaltungs-Skill folgen deutschem Recht, und der Server ist nur mit
 deutschen Konten getestet. Lesen kann mit einem österreichischen Konto funktionieren, aber dort ist
 nichts überprüft. Unterstützung für Österreich ist für ein späteres 1.x-Release vorgesehen.
+
+### Kann es Abo-Rechnungen einrichten?
+
+Ja. [`sevdesk_invoice_create_recurring`](tools.md#sevdesk_invoice_create_recurring) (Stufe
+`commit`, du bestätigst) speichert eine Vorlage für wiederkehrende Rechnungen, monatlich, vierteljährlich,
+halbjährlich oder jährlich, mit eingeschalteter automatischer Generierung, außer du willst sie aus
+([Abo-Rechnungen](guides/invoices.de.md#abo-rechnungen)). sevDesk erzeugt daraus dann an jedem
+Ausführungstag selbst einen Rechnungsentwurf, innerhalb etwa einer Minute: nicht fertiggestellt,
+nicht versendet, mit einer vorläufigen Nummer, die beim Fertigstellen endgültig wird. Du prüfst
+jeden Entwurf und stellst ihn mit den üblichen Rechnungswerkzeugen fertig und versendest ihn. Das
+automatische Versenden von sevDesk, das jede erzeugte Rechnung fertigstellen, per E-Mail versenden
+und festschreiben würde, bevor jemand sie sieht, schaltet der Server nie ein.
+[`sevdesk_invoice_update_recurring`](tools.md#sevdesk_invoice_update_recurring) ändert eine Vorlage
+(auch ihre automatische Generierung),
+[`sevdesk_invoice_end_recurring`](tools.md#sevdesk_invoice_end_recurring) beendet eine und
+[`sevdesk_invoice_reactivate_recurring`](tools.md#sevdesk_invoice_reactivate_recurring) startet sie
+wieder, jeweils Stufe `commit` mit deiner Bestätigung. Eine Vorlage mit eingeschaltetem
+automatischem Versenden wird hier nur beendet; Ändern oder Aktivieren bleibt der sevDesk-Web-App
+überlassen. Löschen lässt sich eine Vorlage nur in der sevDesk-Web-App.
 
 ### Kann es mit Angeboten, Auftragsbestätigungen und Lieferscheinen umgehen?
 

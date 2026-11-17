@@ -469,7 +469,7 @@ describe("sevdesk_invoice_update_draft (community shapes, fake data)", () => {
       [
         "a recurring invoice template",
         { invoiceType: "WKR" },
-        "Invoice 2102 is a recurring invoice (WKR); this tool only changes regular invoices (RE). Edit it in sevDesk.",
+        "Invoice 2102 is a recurring invoice (WKR); this tool only changes regular invoices (RE). Change a recurring invoice template with sevdesk_invoice_update_recurring.",
       ],
       [
         "an unknown invoice type",

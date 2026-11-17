@@ -4,6 +4,7 @@ import type { LifecycleDocument } from "../../../../src/domain/lifecycle/documen
 import {
   assertBookable,
   assertCancellable,
+  assertDeletable,
   assertEmailable,
   assertEnshrinable,
   assertFinalizable,
@@ -347,5 +348,64 @@ describe("assertResettable", () => {
         assertResettable(creditNoteDoc({ enshrined: "2026-10-02T10:00:00+02:00" }), "draft");
       }),
     ).toContain("Correct it with a new document instead.");
+  });
+});
+
+describe("assertDeletable", () => {
+  it("accepts drafts of every kind", () => {
+    for (const doc of [
+      invoiceDoc(draft),
+      creditNoteDoc({ status: "100" }),
+      orderDoc({ status: "100" }),
+    ]) {
+      expect(
+        refusal(() => {
+          assertDeletable(doc);
+        }),
+      ).toBeUndefined();
+    }
+  });
+
+  it("refuses documents that are no drafts and says what to do instead", () => {
+    expect(
+      refusal(() => {
+        assertDeletable(invoiceDoc());
+      }),
+    ).toBe(
+      "Invoice 1001 is not a draft (status 200, Open / due); sevDesk deletes only drafts " +
+        "(status 100). A finalized invoice stays in the books (GoBD): cancel it with " +
+        "sevdesk_invoice_cancel (Storno), or correct a paid one with a credit note " +
+        "(sevdesk_credit_note_create_from_invoice).",
+    );
+    expect(
+      refusal(() => {
+        assertDeletable(creditNoteDoc());
+      }),
+    ).toContain('reset it to draft with sevdesk_credit_note_reset (to "draft")');
+    expect(
+      refusal(() => {
+        assertDeletable(orderDoc());
+      }),
+    ).toContain("Order 3002 is not a draft (status 500");
+    expect(
+      refusal(() => {
+        assertDeletable(invoiceDoc(paid));
+      }),
+    ).toContain("is not a draft (status 1000");
+  });
+
+  it("refuses recurring invoice templates, active or not", () => {
+    for (const status of ["100", "50", "200"]) {
+      expect(
+        refusal(() => {
+          assertDeletable(invoiceDoc({ ...draft, status, invoiceType: "WKR" }));
+        }),
+      ).toBe(
+        "Invoice 1001 is a recurring invoice template (WKR, Abo-Rechnung), not a draft; " +
+          "sevdesk_document_delete_draft does not delete templates. End it with " +
+          "sevdesk_invoice_end_recurring (it can be reactivated later); a template is deleted " +
+          "only in the sevDesk web app.",
+      );
+    }
   });
 });

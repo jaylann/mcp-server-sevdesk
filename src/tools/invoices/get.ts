@@ -29,8 +29,10 @@ export const invoiceGetTool = defineTool({
     "Umsatzsteuer, gross; EUR and document currency for foreign-currency invoices), tax rule " +
     "(Steuerregel), recipient address, payment terms (Zahlungsziel, Skonto), delivery date " +
     "(Leistungsdatum), paid amount, the order it was created from (origin; open it with " +
-    "sevdesk_order_get), the invoice a cancellation (SR) cancels and dunning data (Mahnung). " +
-    "Use it after sevdesk_invoices_list. Contact details: sevdesk_contact_get.",
+    "sevdesk_order_get), the invoice a cancellation (SR) cancels, dunning data (Mahnung) and, " +
+    "for a recurring template (WKR, Abo-Rechnung), its schedule (interval, start, next run, " +
+    "end, last run, ended). Use it after sevdesk_invoices_list. Contact details: " +
+    "sevdesk_contact_get.",
   toolset: "invoices",
   tier: "read",
   annotations: {
