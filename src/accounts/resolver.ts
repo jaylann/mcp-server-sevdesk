@@ -8,8 +8,9 @@
  *   argument suggestions in `src/prompts/completions.ts` are keyed by it, the system-version cache
  *   by the client), so accounts never see each other's cached data.
  *   File access is off (`fileDirs: []`, no `outputDir`: the server's disk would be shared by every
- *   grant), `confirmOpen` is off (the browser is the user's, not the server's), and the tiers are
- *   those the user granted that `SEVDESK_ALLOW` also allows.
+ *   grant); downloads from `SEVDESK_FILE_URL_HOSTS` stay on (they touch no disk and reach only the
+ *   operator's hosts). `confirmOpen` is off (the browser is the user's, not the server's), and the
+ *   tiers are those the user granted that `SEVDESK_ALLOW` also allows.
  *
  * Contexts are kept in an LRU (64 entries, dropped after 15 minutes unused) keyed by
  * `accountId:fingerprint(token):tiers`; the fingerprint is an HMAC with a random per-process key,
@@ -211,6 +212,7 @@ function accountConfig(
     auditLogPath: settings.auditLogPath,
     outputDir: undefined,
     fileDirs: Object.freeze([]) as readonly string[],
+    fileUrlHosts: settings.fileUrlHosts,
     viesCheck: settings.viesCheck,
     userAgent: settings.userAgent,
     account: Object.freeze({ id: grant.accountId }),

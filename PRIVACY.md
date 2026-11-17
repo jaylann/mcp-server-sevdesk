@@ -6,7 +6,7 @@ collects **no telemetry**.
 - **Data flow.** The server sends its requests to the sevDesk API
   (`https://my.sevdesk.de/api/v1`, or the `SEVDESK_BASE_URL` you set) with your token, and returns
   results to the MCP client you connected (for example Claude Desktop). What your client or model
-  provider does with that data is governed by their terms. It contacts no other host, with three
+  provider does with that data is governed by their terms. It contacts no other host, with four
   exceptions:
   - **DATEV export.** `sevdesk_datev_export` (`write` tier) downloads the finished ZIP from
     sevDesk's export storage on Amazon S3
@@ -14,6 +14,12 @@ collects **no telemetry**.
     link sevDesk returns for the export. The request carries that link and no sevDesk token; the
     storage host sees the server's IP address and the time. A link to any other host is refused,
     and redirects are not followed.
+  - **Receipts from a link**, only when you list hosts in `SEVDESK_FILE_URL_HOSTS` (empty by
+    default). The voucher and e-invoice tools then download an https link to one of those hosts
+    when the model passes one as the file, during that call, and keep nothing afterwards. The
+    request carries the link, including its query, and no sevDesk token, cookie or credential; the
+    host sees the server's IP address and the time. Other hosts, IP addresses and non-public
+    addresses are refused, also as redirect targets.
   - **VAT-ID check with VIES, only if you switch it on.** With `SEVDESK_VIES_CHECK=1` (off by
     default; "Check VAT IDs with VIES" in the Claude Desktop extension), `sevdesk_vat_id_check`
     asks the European Commission's VIES service (`https://ec.europa.eu/taxation_customs/vies/`)

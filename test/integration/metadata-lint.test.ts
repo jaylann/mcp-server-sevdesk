@@ -22,8 +22,8 @@ const ANNOTATION_KEYS = ["destructiveHint", "idempotentHint", "openWorldHint", "
  * The reviewed tools with file effects (catalog order = `ALL_TOOLS` order). Both go only through
  * `ToolContext.files` (`FileAccess`, `src/safety/file-sources.ts`): writers hand files out as new
  * files inside `SEVDESK_OUTPUT_DIR` (`writeNewFile`) or, over HTTP with file transfer, as download
- * links of the caller's account; readers read inside `SEVDESK_FILE_DIRS` (`readConfinedFile`) or
- * the caller's own uploads.
+ * links of the caller's account; readers read inside `SEVDESK_FILE_DIRS` (`readConfinedFile`),
+ * the caller's own uploads, or download from an https link to a host in `SEVDESK_FILE_URL_HOSTS`.
  */
 const FILE_WRITERS = [
   "sevdesk_voucher_receipt_save",
@@ -119,6 +119,17 @@ describe("tool metadata", () => {
       expect(tool?.available?.(allEnabledConfig({ deployment: filesDeployment() })), name).toBe(
         true,
       );
+      expect(
+        tool?.available?.(allEnabledConfig({ fileUrlHosts: ["belege.example.com"] })),
+        name,
+      ).toBe(true);
+    }
+  });
+
+  it("marks every file reader as open world: its file may be downloaded from a link", () => {
+    for (const name of FILE_READERS) {
+      const tool = ALL_TOOLS.find((candidate) => candidate.name === name);
+      expect(tool?.annotations.openWorldHint, name).toBe(true);
     }
   });
 

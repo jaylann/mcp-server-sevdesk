@@ -391,6 +391,28 @@ describe("other settings", () => {
     ]);
   });
 
+  it("reads the hosts files may be downloaded from: none by default, lower case, no duplicates", () => {
+    expect(loadConfig({ SEVDESK_API_TOKEN: TOKEN }).fileUrlHosts).toEqual([]);
+    expect(
+      loadConfig({
+        SEVDESK_API_TOKEN: TOKEN,
+        SEVDESK_FILE_URL_HOSTS: " Portal.Example.com, *.dl.example-cdn.net,portal.example.com ",
+      }).fileUrlHosts,
+    ).toEqual(["portal.example.com", "*.dl.example-cdn.net"]);
+  });
+
+  it("refuses link hosts that are not plain host names, naming them", () => {
+    const problems = problemsOf({
+      SEVDESK_FILE_URL_HOSTS:
+        "https://a.example.com,a.example.com:8443,10.0.0.1,localhost,*.com,a.example.com/x,*",
+    }).filter((problem) => problem.startsWith("SEVDESK_FILE_URL_HOSTS"));
+    expect(problems).toEqual([
+      "SEVDESK_FILE_URL_HOSTS: expected host names such as portal.example.com or *.example.com " +
+        '(no scheme, port, path or IP address), got "https://a.example.com", ' +
+        '"a.example.com:8443", "10.0.0.1", "localhost", "*.com", "a.example.com/x", "*".',
+    ]);
+  });
+
   it("collects every problem at once", () => {
     const problems = problemsOf({
       SEVDESK_ALLOW: "x",

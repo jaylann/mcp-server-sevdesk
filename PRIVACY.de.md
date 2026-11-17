@@ -1,4 +1,4 @@
-<!-- translated-from: PRIVACY.md sha256:23e4dc390879 -->
+<!-- translated-from: PRIVACY.md sha256:80ea1885bfa8 -->
 
 # Datenschutz
 
@@ -9,13 +9,20 @@ erhebt **keine Telemetrie**.
   (`https://my.sevdesk.de/api/v1`, oder die von dir gesetzte `SEVDESK_BASE_URL`), mit deinem
   Token, und gibt Ergebnisse an den MCP-Client zurück, den du verbunden hast (zum Beispiel
   Claude Desktop). Was dein Client oder dein Modellanbieter mit diesen Daten tut, regeln deren
-  Bedingungen. Einen anderen Host kontaktiert er nicht, mit drei Ausnahmen:
+  Bedingungen. Einen anderen Host kontaktiert er nicht, mit vier Ausnahmen:
   - **DATEV-Export.** `sevdesk_datev_export` (Stufe `write`) lädt das fertige ZIP aus dem
     Export-Speicher von sevDesk bei Amazon S3
     (`sevexport-filestorage-workload-prod.s3.eu-central-1.amazonaws.com`), über den vorsignierten
     Link, den sevDesk für den Export zurückgibt. Die Anfrage enthält diesen Link und kein
     sevDesk-Token; der Speicher-Host sieht die IP-Adresse des Servers und den Zeitpunkt. Ein Link
     zu einem anderen Host wird abgelehnt, und Weiterleitungen werden nicht verfolgt.
+  - **Belege von einem Link**, nur wenn du in `SEVDESK_FILE_URL_HOSTS` Hosts einträgst
+    (standardmäßig leer). Die Beleg- und E-Rechnungs-Werkzeuge laden dann einen https-Link zu einem
+    dieser Hosts herunter, wenn das Modell ihn als Datei übergibt, während dieses Aufrufs, und
+    behalten danach nichts. Die Anfrage enthält den Link samt seiner Query und kein sevDesk-Token,
+    kein Cookie und keine Zugangsdaten; der Host sieht die IP-Adresse des Servers und den
+    Zeitpunkt. Andere Hosts, IP-Adressen und nicht öffentliche Adressen werden abgelehnt, auch als
+    Ziel einer Weiterleitung.
   - **Prüfung der USt-IdNr. bei VIES, nur wenn du sie einschaltest.** Mit `SEVDESK_VIES_CHECK=1`
     (standardmäßig aus; „Check VAT IDs with VIES“ in der Claude-Desktop-Erweiterung) fragt
     `sevdesk_vat_id_check` beim VIES-Dienst der Europäischen Kommission

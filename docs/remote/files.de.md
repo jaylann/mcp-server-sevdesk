@@ -1,4 +1,4 @@
-<!-- translated-from: docs/remote/files.md sha256:e6ce7542d66e -->
+<!-- translated-from: docs/remote/files.md sha256:61bedf851635 -->
 
 # Dateien: Uploads und Download-Links
 
@@ -33,6 +33,11 @@ gepr체ften Stand 채ndern (oder erstmals ein Anhang vorliegen, wenn vorher ausdr�
 vorhanden war); bei gleicher ID oder unbekanntem vorherigem Stand bleibt der Upload bis zum Ablauf
 verf체gbar. Um eine erfolgreich angeh채ngte Datei nach der Freigabe ihres Uploads erneut zu
 verwenden, fordere einen neuen Upload an.
+
+Ein Beleg, der schon online liegt (in einem Lieferantenportal, hinter einem Speicher-Link), braucht
+keinen Upload, wenn der Betreiber seinen Host in `SEVDESK_FILE_URL_HOSTS` eintr채gt: Das Modell
+체bergibt den https-Link als `file`, und der Server l채dt die Datei w채hrend des Aufrufs herunter und
+beh채lt nichts ([Dateien von einem Link](../configuration.de.md#dateien-von-einem-link)).
 
 ## Mehrere Dateien auf einer Seite
 

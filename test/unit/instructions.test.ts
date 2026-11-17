@@ -283,6 +283,41 @@ describe("buildInstructions over HTTP (config.deployment)", () => {
     expect(text.length).toBeLessThanOrEqual(MAX_INSTRUCTIONS_LENGTH);
   });
 
+  it("names the hosts a file argument may link to, when a file tool is registered", () => {
+    const hosts = ["belege.example.com", "*.dl.example-cdn.net"];
+    expect(build(allEnabledConfig({ fileUrlHosts: hosts }), ALL_TOOLS)).toContain(
+      "A file argument may also be an https link to belege.example.com, *.dl.example-cdn.net; " +
+        "links elsewhere are refused.",
+    );
+    // Without the setting, or without a tool that reads files, not a word about links.
+    expect(build(allEnabledConfig(), ALL_TOOLS)).not.toContain("https link");
+    expect(build(testConfig({ fileUrlHosts: hosts }))).not.toContain("https link");
+
+    // Many hosts: the first ones are named, the rest counted.
+    const many = Array.from({ length: 40 }, (_, index) => `host-${String(index)}.example.com`);
+    const listed = build(allEnabledConfig({ fileUrlHosts: many }), ALL_TOOLS);
+    expect(listed).toContain("an https link to host-0.example.com, host-1.example.com,");
+    expect(listed).toMatch(/host-\d+\.example\.com and \d+ more; links elsewhere are refused\./);
+
+    // The line is optional: with the longest required sections it yields instead of the text
+    // being cut.
+    const crowded = build(
+      allEnabledConfig({
+        fileUrlHosts: many,
+        confirm: "browser",
+        dryRun: true,
+        deployment: {
+          ...http("oauth", `https://${"x".repeat(200)}.example.com/approvals`),
+          files: { ttlSeconds: 1_800 },
+        },
+      }),
+      ALL_TOOLS,
+    );
+    expect(crowded.length).toBeLessThanOrEqual(MAX_INSTRUCTIONS_LENGTH);
+    expect(crowded.endsWith("…")).toBe(false);
+    expect(crowded).toContain("sevdesk_upload_request");
+  });
+
   it("stays within the cap with the shipped tools and a long inbox URL", () => {
     const text = build(
       allEnabledConfig({

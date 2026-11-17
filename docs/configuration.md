@@ -73,14 +73,44 @@ shown, because it may be the secret itself, pasted into the wrong variable.
 
 ### Files and the audit log
 
-| Variable             | Default | Meaning                                                                                                                                                                                                                                                                                                                                                                        |
-| -------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `SEVDESK_FILE_DIRS`  |         | Folders that receipts and e-invoices may be read from, for voucher drafts (`sevdesk_voucher_create_draft`, `sevdesk_voucher_update_draft`), `sevdesk_einvoice_parse` and `sevdesk_voucher_import_einvoice`. Symbolic links must stay inside; nothing else on your disk can be read. Without it, those tools take no local files (and the two e-invoice tools are not offered). |
-| `SEVDESK_OUTPUT_DIR` |         | The folder where `sevdesk_document_save`, `sevdesk_csv_export` and `sevdesk_datev_export` may write files (PDFs, e-invoice XML, CSV and DATEV exports). These tools are offered only when it is set. They create new files only, with mode 0600, and never overwrite one.                                                                                                      |
-| `SEVDESK_AUDIT_LOG`  |         | Path of an append-only JSON Lines log of every write call (mode 0600): previews, confirmations, executions and failures. If it is set but cannot be written, writes are refused. See [Audit log](permissions/audit-log.md).                                                                                                                                                    |
+| Variable                 | Default | Meaning                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `SEVDESK_FILE_DIRS`      |         | Folders that receipts and e-invoices may be read from, for voucher drafts (`sevdesk_voucher_create_draft`, `sevdesk_voucher_update_draft`), `sevdesk_einvoice_parse` and `sevdesk_voucher_import_einvoice`. Symbolic links must stay inside; nothing else on your disk can be read. Without it, those tools take no local files (and the two e-invoice tools are not offered). |
+| `SEVDESK_FILE_URL_HOSTS` |         | Hosts those tools may download a receipt or e-invoice from when `file` is an https link: a list of host names, `*.example.com` for every subdomain of example.com. Empty: links are refused. See [Files from a link](#files-from-a-link).                                                                                                                                      |
+| `SEVDESK_OUTPUT_DIR`     |         | The folder where `sevdesk_document_save`, `sevdesk_csv_export` and `sevdesk_datev_export` may write files (PDFs, e-invoice XML, CSV and DATEV exports). These tools are offered only when it is set. They create new files only, with mode 0600, and never overwrite one.                                                                                                      |
+| `SEVDESK_AUDIT_LOG`      |         | Path of an append-only JSON Lines log of every write call (mode 0600): previews, confirmations, executions and failures. If it is set but cannot be written, writes are refused. See [Audit log](permissions/audit-log.md).                                                                                                                                                    |
 
 In remote mode the folders are on the server. OAuth mode refuses both folder variables and uses
 upload pages and download links instead ([Files over HTTP](remote/files.md)).
+
+#### Files from a link
+
+With `SEVDESK_FILE_URL_HOSTS` set, the `file` argument of the four tools above also takes an https
+link, for a receipt in a supplier portal or in cloud storage, in every mode (OAuth included). The
+server downloads it during the call and keeps nothing:
+
+- only from the listed hosts, by name (no IP addresses, no other port, no user name or password in
+  the link), and only when every address the host resolves to is public: private, loopback,
+  link-local, CGNAT and multicast addresses are refused, and the connection goes to the address
+  that was checked;
+- redirects are followed at most three times, and only to hosts on the list, checked the same way;
+- no cookies, no credentials and never the sevDesk token are sent; a link that needs a sign-in
+  fails;
+- a PDF, PNG, JPEG or XML file (checked by content and by its declared type; a web page such as a
+  sign-in page is refused), at most 20 MB, within 60 seconds; at most two downloads at once per
+  account.
+
+The preview and the result show the file's name, its SHA-256 and the host it came from. The name
+is the last part of the link's path when that is a file name of at most 64 characters ending in
+`.pdf`, `.png`, `.jpg`, `.jpeg` or `.xml`, otherwise `download.pdf` (or `.png`, `.jpg`, `.xml`);
+sevDesk keeps the file under that name. Nothing else of the link is shown, and the audit log
+records it as its host only (`https://host/…?[redacted]`). The real call downloads the file again
+after a dry run: pass the SHA-256 from the dry run's preview as `fileSha256`, and a file with other
+bytes is refused before anything reaches sevDesk (this works for local files and uploads too).
+
+List hosts exactly (internationalized names in their `xn--` form). `*.example.com` allows every
+subdomain of example.com: name a shared domain (a cloud provider's storage) only if you trust every
+file on it, since anyone can put a file there.
 
 ### Connection
 

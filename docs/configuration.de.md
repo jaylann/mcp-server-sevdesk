@@ -1,4 +1,4 @@
-<!-- translated-from: docs/configuration.md sha256:9642ef66122e -->
+<!-- translated-from: docs/configuration.md sha256:62a8fcef2999 -->
 
 # Konfiguration
 
@@ -79,15 +79,47 @@ wird nicht gezeigt, weil es das Geheimnis selbst sein kann, in die falsche Varia
 
 ### Dateien und Audit-Log
 
-| Variable             | Standard | Bedeutung                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| -------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SEVDESK_FILE_DIRS`  |          | Ordner, aus denen Belege und E-Rechnungen gelesen werden dürfen: für Belegentwürfe (`sevdesk_voucher_create_draft`, `sevdesk_voucher_update_draft`), `sevdesk_einvoice_parse` und `sevdesk_voucher_import_einvoice`. Symbolische Links müssen innerhalb bleiben; sonst kann nichts auf deiner Festplatte gelesen werden. Ohne die Variable nehmen diese Werkzeuge keine lokalen Dateien an (und die beiden E-Rechnungs-Werkzeuge werden nicht angeboten). |
-| `SEVDESK_OUTPUT_DIR` |          | Der Ordner, in den `sevdesk_document_save`, `sevdesk_csv_export` und `sevdesk_datev_export` Dateien schreiben dürfen (PDFs, E-Rechnungs-XML, CSV- und DATEV-Exporte). Diese Werkzeuge werden nur angeboten, wenn die Variable gesetzt ist. Sie legen nur neue Dateien an, mit Modus 0600, und überschreiben nie eine.                                                                                                                                     |
-| `SEVDESK_AUDIT_LOG`  |          | Pfad eines Protokolls im Format JSON Lines, an das nur angehängt wird, für jeden schreibenden Aufruf (Modus 0600): Vorschauen, Bestätigungen, Ausführungen und Fehlschläge. Ist die Variable gesetzt, die Datei aber nicht beschreibbar, werden Schreibvorgänge abgelehnt. Siehe [Audit-Log](permissions/audit-log.de.md).                                                                                                                                |
+| Variable                 | Standard | Bedeutung                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SEVDESK_FILE_DIRS`      |          | Ordner, aus denen Belege und E-Rechnungen gelesen werden dürfen: für Belegentwürfe (`sevdesk_voucher_create_draft`, `sevdesk_voucher_update_draft`), `sevdesk_einvoice_parse` und `sevdesk_voucher_import_einvoice`. Symbolische Links müssen innerhalb bleiben; sonst kann nichts auf deiner Festplatte gelesen werden. Ohne die Variable nehmen diese Werkzeuge keine lokalen Dateien an (und die beiden E-Rechnungs-Werkzeuge werden nicht angeboten). |
+| `SEVDESK_FILE_URL_HOSTS` |          | Hosts, von denen diese Werkzeuge einen Beleg oder eine E-Rechnung herunterladen dürfen, wenn `file` ein https-Link ist: eine Liste von Hostnamen, `*.example.com` für jede Subdomain von example.com. Leer: Links werden abgelehnt. Siehe [Dateien von einem Link](#dateien-von-einem-link).                                                                                                                                                              |
+| `SEVDESK_OUTPUT_DIR`     |          | Der Ordner, in den `sevdesk_document_save`, `sevdesk_csv_export` und `sevdesk_datev_export` Dateien schreiben dürfen (PDFs, E-Rechnungs-XML, CSV- und DATEV-Exporte). Diese Werkzeuge werden nur angeboten, wenn die Variable gesetzt ist. Sie legen nur neue Dateien an, mit Modus 0600, und überschreiben nie eine.                                                                                                                                     |
+| `SEVDESK_AUDIT_LOG`      |          | Pfad eines Protokolls im Format JSON Lines, an das nur angehängt wird, für jeden schreibenden Aufruf (Modus 0600): Vorschauen, Bestätigungen, Ausführungen und Fehlschläge. Ist die Variable gesetzt, die Datei aber nicht beschreibbar, werden Schreibvorgänge abgelehnt. Siehe [Audit-Log](permissions/audit-log.de.md).                                                                                                                                |
 
 Im Fernzugriff liegen die Ordner auf dem Server. Der OAuth-Modus lehnt beide Ordnervariablen ab
 und verwendet stattdessen Upload-Seiten und Download-Links
 ([Dateien über HTTP](remote/files.de.md)).
+
+#### Dateien von einem Link
+
+Ist `SEVDESK_FILE_URL_HOSTS` gesetzt, nimmt das Argument `file` der vier Werkzeuge oben auch einen
+https-Link an, für einen Beleg in einem Lieferantenportal oder einem Cloud-Speicher, in jedem
+Modus (auch mit OAuth). Der Server lädt die Datei während des Aufrufs herunter und behält nichts:
+
+- nur von den aufgeführten Hosts, nach Namen (keine IP-Adressen, kein anderer Port, kein
+  Benutzername oder Passwort im Link), und nur, wenn jede Adresse, zu der der Host aufgelöst wird,
+  öffentlich ist: Private, Loopback-, Link-Local-, CGNAT- und Multicast-Adressen werden abgelehnt,
+  und die Verbindung geht an die geprüfte Adresse;
+- Weiterleitungen werden höchstens dreimal verfolgt und nur zu Hosts auf der Liste, gleich
+  geprüft;
+- gesendet werden keine Cookies, keine Zugangsdaten und nie das sevDesk-Token; ein Link, der eine
+  Anmeldung braucht, schlägt fehl;
+- eine PDF-, PNG-, JPEG- oder XML-Datei (geprüft am Inhalt und am angegebenen Typ; eine Webseite
+  wie eine Anmeldeseite wird abgelehnt), höchstens 20 MB, innerhalb von 60 Sekunden; höchstens
+  zwei Downloads gleichzeitig je Konto.
+
+Vorschau und Ergebnis zeigen den Namen der Datei, ihre SHA-256 und den Host, von dem sie kam. Der
+Name ist der letzte Teil des Link-Pfads, wenn er ein Dateiname von höchstens 64 Zeichen ist, der
+auf `.pdf`, `.png`, `.jpg`, `.jpeg` oder `.xml` endet, sonst `download.pdf` (oder `.png`, `.jpg`,
+`.xml`); unter diesem Namen behält sevDesk die Datei. Sonst wird nichts vom Link gezeigt, und das
+Audit-Log hält nur seinen Host fest (`https://host/…?[redacted]`). Der echte Aufruf lädt die Datei
+nach einem Probelauf erneut: Übergib die SHA-256 aus der Vorschau des Probelaufs als `fileSha256`,
+dann wird eine Datei mit anderen Bytes abgelehnt, bevor etwas sevDesk erreicht (das gilt auch für
+lokale Dateien und Uploads).
+
+Trage Hosts genau ein (internationalisierte Namen in ihrer `xn--`-Form). `*.example.com` erlaubt
+jede Subdomain von example.com: Nenne eine geteilte Domain (den Speicher eines Cloud-Anbieters)
+nur, wenn du jeder Datei darauf traust, denn dort kann jeder eine Datei ablegen.
 
 ### Verbindung
 

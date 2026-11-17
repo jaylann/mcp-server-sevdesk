@@ -1,9 +1,13 @@
+import { createHash } from "node:crypto";
+
 import { afterEach, describe, expect, it } from "vitest";
 
+import { localFileAccess } from "../../../../src/safety/file-sources.js";
 import { SevdeskError } from "../../../../src/sevdesk/errors.js";
 import { tierScopedClient } from "../../../../src/sevdesk/scoped-client.js";
 import { voucherUpdateDraftTool as tool } from "../../../../src/tools/vouchers/draft-update.js";
 import { type FakeRoute, FakeSevdeskClient, testContext } from "../../../helpers/fake-client.js";
+import { fakeLinks, LINK, LINK_HOST, LINK_PDF } from "../../../helpers/links.js";
 import { executeWrite, prepareWrite } from "../../../helpers/write-tools.js";
 import {
   accountsRoute,
@@ -78,15 +82,89 @@ const carried = {
 };
 
 describe("sevdesk_voucher_update_draft", () => {
-  it("is a write tool with update annotations that may read local files", () => {
+  it("is a write tool with update annotations that may read local files or a link", () => {
     expect(tool.tier).toBe("write");
     expect(tool.localEffects).toBe("reads-files");
     expect(tool.annotations).toEqual({
       readOnlyHint: false,
       destructiveHint: true,
       idempotentHint: false,
-      openWorldHint: false,
+      openWorldHint: true,
     });
+  });
+
+  it("attaches a receipt downloaded from an allowed link to the draft", async () => {
+    const links = fakeLinks();
+    const files = localFileAccess(
+      { fileDirs: [], outputDir: undefined, fileUrlHosts: [LINK_HOST] },
+      links.reader,
+    );
+    const fake = client();
+    const { plan, output } = await executeWrite(
+      tool,
+      { id: 2101, file: LINK },
+      fake,
+      { fileUrlHosts: [LINK_HOST] },
+      files,
+    );
+
+    expect(fake.writes().map((call) => call.path)).toEqual([
+      "/Voucher/Factory/uploadTempFile",
+      "/Voucher/Factory/saveVoucher",
+    ]);
+    expect(JSON.stringify(plan.preview)).not.toContain("SIGNATURE-7f3a");
+    expect(output.data.receipt).toMatchObject({
+      name: "Rechnung-4711.pdf",
+      downloadedFrom: `https://${LINK_HOST}`,
+    });
+    expect(links.requests).toHaveLength(1);
+  });
+
+  it("shows the attached link's name, full SHA-256 and host as facts of their own, in English and German", async () => {
+    const segment = `${"R".repeat(60)}.pdf`;
+    const config = { fileUrlHosts: [LINK_HOST] };
+    const files = localFileAccess(
+      { fileDirs: [], outputDir: undefined, ...config },
+      fakeLinks().reader,
+    );
+    const link = `https://${LINK_HOST}/portal/${segment}?sig=SIGNATURE-7f3a`;
+    const plan = await prepareWrite(tool, { id: 2101, file: link }, client(), config, files);
+
+    const digest = createHash("sha256").update(LINK_PDF).digest("hex");
+    const size = String(LINK_PDF.length);
+    expect(plan.preview.action).toBe("Update draft voucher 2101: change file.");
+    expect(plan.preview.facts.slice(2, 5)).toEqual([
+      { label: "Receipt file (Belegbild)", value: `attach ${segment} (PDF, ${size} bytes)` },
+      { label: "SHA-256", value: digest },
+      { label: "Downloaded from", value: `https://${LINK_HOST}` },
+    ]);
+    expect(plan.previewDe?.facts.slice(2, 5)).toEqual([
+      { label: "Belegdatei", value: `anhängen: ${segment} (PDF, ${size} Bytes)` },
+      { label: "SHA-256", value: digest },
+      { label: "Heruntergeladen von", value: `https://${LINK_HOST}` },
+    ]);
+  });
+
+  it("refuses a link whose bytes differ from fileSha256, before any request", async () => {
+    const config = { fileUrlHosts: [LINK_HOST] };
+    const files = localFileAccess(
+      { fileDirs: [], outputDir: undefined, ...config },
+      fakeLinks().reader,
+    );
+    const fake = client();
+    const message = await refusal(
+      executeWrite(tool, { id: 2101, file: LINK, fileSha256: "0".repeat(64) }, fake, config, files),
+    );
+    expect(message).toContain("differs from fileSha256 (000000000000…)");
+    expect(fake.calls).toEqual([]);
+  });
+
+  it("refuses fileSha256 without a file", async () => {
+    const fake = client();
+    const message = await refusal(
+      prepareWrite(tool, { id: 2101, number: "X-1", fileSha256: "0".repeat(64) }, fake),
+    );
+    expect(message).toContain("fileSha256 pins the bytes of file");
   });
 
   it("changes the Belegnummer and carries every stored field over, positions untouched", async () => {

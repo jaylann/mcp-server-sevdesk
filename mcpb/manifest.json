@@ -34,6 +34,7 @@
         "SEVDESK_CONFIRM": "${user_config.confirm}",
         "SEVDESK_TOOLSETS": "${user_config.toolsets}",
         "SEVDESK_FILE_DIRS": "${user_config.file_dir}",
+        "SEVDESK_FILE_URL_HOSTS": "${user_config.file_url_hosts}",
         "SEVDESK_OUTPUT_DIR": "${user_config.output_dir}",
         "SEVDESK_AUDIT_LOG": "${user_config.audit_log}",
         "SEVDESK_VIES_CHECK": "${user_config.vies_check}"
@@ -115,6 +116,13 @@
       "type": "directory",
       "title": "Receipt folder",
       "description": "A folder receipts and e-invoices may be read from, to attach them to vouchers (Belege) or import them. Empty: no local file is read.",
+      "required": false,
+      "default": ""
+    },
+    "file_url_hosts": {
+      "type": "string",
+      "title": "Receipt link hosts",
+      "description": "Comma-separated hosts receipts and e-invoices may be downloaded from when Claude is given an https link, e.g. portal.example.com or *.example.com for its subdomains. Empty: links are refused.",
       "required": false,
       "default": ""
     },
